@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: HelloConsole
+  version: 1.0.0
+  description: |
+    The Rust kernel's end-to-end fixture: identical to examples/hello-world
+    apart from the import source. The published `oci://` ref carries no
+    Rust-hostable controller — `?local_path=` resolves only in a source
+    checkout — so this kernel imports the module from the repository until
+    bundled native layers exist.
+imports:
+  Console: ../../../../../modules/console
+targets:
+  - invoke: !ref Console.writeLine
+    inputs:
+      output: "Hello from Telo!"

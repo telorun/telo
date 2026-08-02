@@ -3,6 +3,12 @@ resolver = "2"
 members = [
     "kernel/nodejs/tests/napi-echo",
     "sdk/rust",
+    "sdk/rust/abi",
     "sdk/rust/macros",
+    "templating/rust",
+    "analyzer/rust",
+    "kernel/rust",
+    "cli/rust",
+    "modules/console/rust",
     "modules/starlark/rust",
 ]

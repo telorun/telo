@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: ConsoleRuntimeRust
+  version: 1.0.0
+  description: |
+    Verifies that the fragment-qualified `pkg:cargo` candidates resolve on the
+    Node.js kernel: `WriteLine` and `ReadLine` each name a distinct controller
+    inside one crate (`#writeline_controller`, `#readline_controller`), which
+    only works if the napi bridge namespaces its exports by entry.
+
+    The policy is `[rust, any]` rather than strict `rust` because coverage is
+    partial: `WriteStream` and `StreamWait` are JavaScript-only, and a strict
+    policy fails the whole import when any one kind has no matching candidate.
+    The `any` tail lets each kind resolve independently.
+
+    This still fails loudly if the rust candidate is broken rather than absent —
+    a resolved-but-unloadable controller is a hard error, not an env-missing one,
+    so it never silently falls back to the JavaScript controller.
+imports:
+  Console:
+    source: ../
+    runtime: [rust, any]
+  Assert: ../../assert
+targets:
+  - name: Print
+    invoke: !ref Console.writeLine
+    inputs:
+      output: "printed by the {green rust} controller"
+  - name: Check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.Print.result"
+      expected: "printed by the {green rust} controller"

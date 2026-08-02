@@ -4,7 +4,7 @@ The Rust SDK provides the authoring surface for Telo controllers written in Rust
 
 ## What It Provides
 
-> **Status:** PoC scaffold. The shape is the final design — future Rust controllers use this infrastructure unchanged. The `native` backend is a stub until the pure-Rust kernel ships.
+> **Status:** Both backends are implemented. `napi` loads a controller into the Node.js kernel; `native` loads one into the Rust kernel (`kernel/rust`) over the C ABI in `telorun-abi`.
 
 - **Controller trait** (`Controller`) — author-facing contract with `register`, `create`, `invoke`, and `snapshot` hooks. Implement on your struct, add `#[controller]` to the impl block, and the SDK generates the FFI bindings.
 - **Resource context** (`ResourceContext`) — per-resource handle passed to `create`. Today exposes `create_type_validator(type_ref)` for resolving named or inline schemas into a `DataValidator`.
@@ -15,7 +15,7 @@ The Rust SDK provides the authoring surface for Telo controllers written in Rust
 Author principle: Rust developers write Rust, nothing else. A controller crate is `Cargo.toml` + `src/*.rs` — no `build.rs`, no `package.json`, no JS tooling, no awareness of which kernel will load it.
 
 ```rust
-use telorun_sdk::{controller, Controller, ResourceContext, Result, Value};
+use telorun_sdk::{controller, Controller, InvokeContext, ResourceContext, Result, Value};
 
 pub struct MyController {
     code: String,
@@ -29,7 +29,10 @@ impl Controller for MyController {
         })
     }
 
-    fn invoke(&self, input: Value) -> Result<Value> {
+    fn invoke(&self, input: Value, ctx: &InvokeContext) -> Result<Value> {
+        if ctx.cancellation.is_cancelled() {
+            return Ok(Value::Null);
+        }
         Ok(serde_json::json!({ "echoed": input }))
     }
 }
@@ -48,10 +51,30 @@ Use the SDK when building or extending Telo controllers in Rust. It is not the k
 
 The SDK ships two backends, gated by Cargo features:
 
-- `napi` (default) — N-API bindings for today's Node.js kernel.
-- `native` (stub) — placeholder for the future pure-Rust kernel. Trait shapes are present so `cargo check --features native --no-default-features` confirms your controller compiles for both.
+- `napi` — N-API bindings for the Node.js kernel.
+- `native` — a C-ABI vtable export for the Rust kernel, defined in [`abi/`](./abi).
 
-The kernel's loader picks the backend at build time. **Your controller's source and `Cargo.toml` do not change** — backend selection is injected via `--features`. When the kernel is rewritten in Rust, controllers port over without source edits: the `Controller` trait, `serde_json::Value`, and the `#[cfg(feature = "native")]` branch all stay put.
+**There is no default backend, deliberately.** A controller crate carries no `[features]` block, so the backend can only be chosen from outside it — and `--no-default-features` on that build would apply to the *controller* crate, not to this dependency. Each kernel therefore selects one as a dependency feature when it builds the crate:
+
+| Kernel   | Build invocation                                            |
+| -------- | ----------------------------------------------------------- |
+| Node.js  | `cargo build --release --features telorun-sdk/napi`          |
+| Rust     | `cargo build --release --features telorun-sdk/native`        |
+
+A bare `cargo check` / `cargo clippy` / rust-analyzer run compiles the traits and your `impl` with no bridge at all, which is what keeps the inner loop working on a fresh clone.
+
+**Your controller's source and `Cargo.toml` do not change between kernels.** The `Controller` trait and `serde_json::Value` are backend-independent; only the generated bridge differs.
+
+`#[controller]` takes an optional `entry` naming the exported controller, which is what a `pkg:cargo` PURL's `#fragment` selects:
+
+```rust
+#[controller(entry = "writeline_controller")]
+impl Controller for WriteLine { /* … */ }
+```
+
+Omit it and the entry defaults to the snake_case of the type, *and* the crate's `default` entry is exported — the one a fragment-less PURL resolves to. Two entry-less controllers in one crate collide at link time, which is the right failure: only one can be "the crate's controller".
+
+The entry means the same thing on both backends. Natively it names the exported C symbol; under napi it becomes the export *namespace*, so the Node loader projects `module.<entry>.create`. That is also what lets one crate carry several controllers under napi, where every bridge would otherwise export a flat `create` / `register`.
 
 Today the SDK covers `Telo.Runnable` / `Telo.Invocable` capabilities. `Service`, `Mount`, and `Provider` are not yet in the trait set and are added as controllers need them.
 

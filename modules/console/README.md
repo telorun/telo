@@ -191,7 +191,11 @@ literal: \{red\} not a tag   escaped braces - backslash also escapes itself
 - **TTY**: ANSI SGR codes. 16-color baseline + 256-color and truecolor for hex variants.
 - **Non-TTY** (piped, redirected): all markup stripped, content emitted verbatim.
 
-Detection happens once per controller invocation by checking `ctx.stdout.isTTY`. No environment variables, no `--color` flag plumbing required.
+Detection happens once per controller invocation, against whichever stream that controller writes to: `ctx.stdout.isTTY` for the JavaScript controllers, the process's own standard output for the Rust ones (see [docs/runtime-rust.md](./docs/runtime-rust.md)). No environment variables, no `--color` flag plumbing required either way.
+
+## Runtimes
+
+`WriteLine` and `ReadLine` ship a native Rust controller alongside the JavaScript one, so the Rust kernel can print. Which one runs is decided by the kernel and the import's `runtime:` field — see [docs/runtime-rust.md](./docs/runtime-rust.md).
 
 ## Notes
 

@@ -5,13 +5,12 @@ edition = "2021"
 publish = false
 description = "Kernel test fixture for NapiControllerLoader dispatch. Not a real controller."
 
+# Deliberately does NOT depend on `telorun-sdk`: it hand-rolls its napi exports,
+# which is what makes it a test of the loader rather than of the SDK. The loader
+# passes the SDK's backend feature only to crates that actually depend on it, and
+# this fixture is what proves that.
 [lib]
 crate-type = ["cdylib"]
-
-[features]
-default = ["napi"]
-napi = []
-native = []
 
 [dependencies]
 napi = { version = "2", default-features = false, features = ["napi4"] }

@@ -1,0 +1,10 @@
+[package]
+name = "telo-templating"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Telo templating — YAML tag sentinels shared by the manifest loader and the future CEL engine."
+
+[dependencies]
+serde_json = "1"
+serde_yaml = "0.9"
