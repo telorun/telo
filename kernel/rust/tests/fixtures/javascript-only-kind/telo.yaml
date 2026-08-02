@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata:
+  name: JavascriptOnlyKind
+  version: 1.0.0
+  description: |
+    `console.WriteStream` ships only a JavaScript controller. Importing the
+    module must still succeed — resolution is deferred to instantiation — and
+    declaring a resource of that kind must fail naming the kind, not the module.
+imports:
+  Console: ../../../../../modules/console
+targets:
+  - invoke: !ref Console.writeLine
+    inputs:
+      output: "unreachable"
+---
+kind: Console.WriteStream
+metadata:
+  name: drain

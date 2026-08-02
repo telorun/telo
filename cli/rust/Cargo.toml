@@ -1,0 +1,13 @@
+[package]
+name = "telo-cli"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Command-line entry point for the Rust Telo kernel."
+
+[[bin]]
+name = "telo-rs"
+path = "src/main.rs"
+
+[dependencies]
+telo-kernel = { path = "../../kernel/rust" }

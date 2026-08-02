@@ -32,7 +32,7 @@ imports:
 The kernel will:
 
 1. Probe `rustc --version`. Missing → fall back if the runtime spec allows it (e.g. `runtime: [rust, any]`); error if the spec is strict.
-2. Run `cargo build --release --features napi` in `modules/starlark/rust/`.
+2. Run `cargo build --release --features telorun-sdk/napi` in `modules/starlark/rust/`. The backend is selected as a dependency feature of the SDK, which declares no default — the controller crate has no `[features]` block of its own for the flag to target.
 3. Locate the produced dylib via `cargo metadata` and copy it to `<libname>.node`.
 4. Load via Node's `require` and use it as the controller.
 

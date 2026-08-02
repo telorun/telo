@@ -218,13 +218,26 @@ export class NapiControllerLoader {
       throw new ControllerEnvMissingError("rustc not found on PATH");
     }
 
+    // Read before building: the metadata answers both "where did the dylib
+    // land" and "does this crate use the SDK", and the second decides the build
+    // flags.
+    const { targetDir, libName, usesSdk } = await resolveCrateMetadata(cratePath, fallbackName);
+
     try {
-      // Plain `cargo build --release` — no `--features` flag. The SDK's
-      // `default = ["napi"]` selects the napi backend transitively, so the
-      // controller crate's Cargo.toml stays free of any `[features]` block
-      // or napi-rs deps. A future Rust kernel passes
-      // `--no-default-features --features native` here instead.
-      await execFileAsync("cargo", ["build", "--release"], {
+      // The backend is selected as a *dependency* feature of the SDK. A crate
+      // built on `telorun-sdk` carries no `[features]` block of its own, so this
+      // is the only way to pick one from outside it: `--no-default-features`
+      // here would apply to the controller crate, not to the SDK, and the SDK
+      // therefore declares no default backend at all. The Rust kernel passes
+      // `--features telorun-sdk/native` at the same spot.
+      //
+      // Only when the crate actually depends on the SDK. `pkg:cargo` names a
+      // Rust controller, not an SDK user — a crate may implement the napi
+      // exports by hand (the `tests/napi-echo` fixture does exactly that, which
+      // is what makes it a test of this loader rather than of the SDK). Naming a
+      // feature of a dependency it does not have is a hard cargo error.
+      const featureArgs = usesSdk ? ["--features", "telorun-sdk/napi"] : [];
+      await execFileAsync("cargo", ["build", "--release", ...featureArgs], {
         cwd: cratePath,
         maxBuffer: 32 * 1024 * 1024,
         env: hostEnv(),
@@ -236,8 +249,6 @@ export class NapiControllerLoader {
         `cargo build failed for ${cratePath}:${stderr}`,
       );
     }
-
-    const { targetDir, libName } = await resolveCrateMetadata(cratePath, fallbackName);
 
     const dylibPath = await findDylib(targetDir, libName);
     if (!dylibPath) {
@@ -300,10 +311,14 @@ function project(module: any, entry: string | undefined, where: string): Control
   return sub;
 }
 
+/** The SDK crate whose backend feature selects the FFI bridge, when the
+ *  controller is built on it. */
+const SDK_CRATE_NAME = "telorun-sdk";
+
 async function resolveCrateMetadata(
   cratePath: string,
   fallbackName: string,
-): Promise<{ targetDir: string; libName: string }> {
+): Promise<{ targetDir: string; libName: string; usesSdk: boolean }> {
   const result = await execFileAsync("cargo", [
     "metadata",
     "--format-version",
@@ -317,9 +332,13 @@ async function resolveCrateMetadata(
     (p: any) => p.manifest_path === path.join(cratePath, "Cargo.toml"),
   );
   const packageName = cratePackage?.name ?? fallbackName;
+  const usesSdk = (cratePackage?.dependencies ?? []).some(
+    (dependency: any) => dependency?.name === SDK_CRATE_NAME,
+  );
   return {
     targetDir: metadata.target_directory,
     libName: packageName.replace(/-/g, "_"),
+    usesSdk,
   };
 }
 

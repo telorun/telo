@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedVariables
+  version: 1.0.0
+  description: |
+    A valid Telo application that binds a host environment variable. This kernel
+    does not implement `variables:`, and running it with the binding silently
+    absent would be worse than refusing — so the load must fail naming the field.
+variables:
+  greeting:
+    env: GREETING
+    type: string
+    default: "Hello from Telo!"
+imports:
+  Console: ../../../../../modules/console
+targets:
+  - invoke: !ref Console.writeLine
+    inputs:
+      output: "constant, because this kernel cannot read variables.greeting"

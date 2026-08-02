@@ -1,0 +1,9 @@
+[package]
+name = "telorun-abi"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "C ABI contract between a Rust Telo kernel and a Rust controller loaded from a cdylib."
+
+[lib]
+crate-type = ["rlib"]

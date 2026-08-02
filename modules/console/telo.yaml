@@ -28,8 +28,12 @@ metadata:
     as ANSI colour on a terminal and is stripped to plain text when the output is
     piped or captured. Takes no configuration.
 capability: Telo.Invocable
+# The JS controller is listed first so the Node.js kernel's default `auto`
+# policy keeps resolving to it; the Rust kernel's native type is `pkg:cargo`,
+# so it prefers the second entry from the same declaration.
 controllers:
   - pkg:telo/local/js?path=./nodejs/writeline-controller.mjs&local_path=./nodejs/src/writeline-controller.ts
+  - pkg:cargo/telorun-console?local_path=./rust#writeline_controller
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -59,6 +63,7 @@ metadata:
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/readline-controller.mjs&local_path=./nodejs/src/readline-controller.ts
+  - pkg:cargo/telorun-console?local_path=./rust#readline_controller
 inputType:
   kind: Telo.JsonSchema
   schema:

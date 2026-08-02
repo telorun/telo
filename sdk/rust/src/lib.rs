@@ -4,7 +4,7 @@
 //! then add `#[controller]` to the impl block to generate FFI bindings:
 //!
 //! ```ignore
-//! use telorun_sdk::{controller, Controller, ResourceContext, Result, Value};
+//! use telorun_sdk::{controller, Controller, InvokeContext, ResourceContext, Result, Value};
 //!
 //! pub struct MyController {
 //!     // ...
@@ -16,15 +16,20 @@
 //!         Ok(MyController {})
 //!     }
 //!
-//!     fn invoke(&self, input: Value) -> Result<Value> {
+//!     fn invoke(&self, input: Value, ctx: &InvokeContext) -> Result<Value> {
 //!         Ok(input)
 //!     }
 //! }
 //! ```
 //!
-//! The same crate compiles against the napi backend (`--features napi`) for
-//! today's Node.js kernel and against the native backend (`--features native`)
-//! for the future pure-Rust kernel — without source changes.
+//! The same controller crate compiles against either backend without source
+//! changes. The backend is chosen by whichever kernel builds the crate — the
+//! Node.js kernel passes `--features telorun-sdk/napi`, the Rust kernel passes
+//! `--features telorun-sdk/native`. The controller's own `Cargo.toml` carries no
+//! `[features]` block, and this crate declares no default backend: selecting one
+//! from the outside is only possible as a dependency feature, since
+//! `--no-default-features` on the build would apply to the controller crate
+//! rather than to this dependency.
 
 pub use serde_json::Value;
 pub use telorun_sdk_macros::controller;
@@ -46,7 +51,10 @@ pub use invoke_context::{CancellationToken, InvokeContext};
 pub use traits::{Controller, ControllerContext, DataValidator, ResourceContext, Result};
 
 // Re-exports used by `#[controller]`-generated code. Stable paths so
-// downstream controllers don't need a direct napi-rs dep.
+// downstream controllers don't need a direct napi-rs or ABI dep.
+#[doc(hidden)]
+pub use telorun_abi as __abi;
+
 #[cfg(feature = "napi")]
 #[doc(hidden)]
 pub use napi as __napi;
@@ -77,5 +85,23 @@ macro_rules! __bridge {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __bridge {
+    ($($t:tt)*) => {};
+}
+
+/// Wraps the C-ABI bridge emitted by `#[controller]` for the native backend,
+/// on the same principle as [`__bridge`]: the SDK's feature selection — not the
+/// controller crate's — decides whether the bridge compiles. With `native` off,
+/// no `::telorun_sdk::backend::native` reference enters the build graph.
+#[cfg(feature = "native")]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __native_bridge {
+    ($($t:tt)*) => { $($t)* };
+}
+
+#[cfg(not(feature = "native"))]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __native_bridge {
     ($($t:tt)*) => {};
 }

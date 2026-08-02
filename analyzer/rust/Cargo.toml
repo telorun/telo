@@ -1,0 +1,13 @@
+[package]
+name = "telo-analyzer"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Telo manifest loading and reference resolution, shared between the Rust kernel and future static analysis."
+
+[dependencies]
+serde = "1"
+serde_json = "1"
+serde_yaml = "0.9"
+telo-templating = { path = "../../templating/rust" }
+thiserror = "1"

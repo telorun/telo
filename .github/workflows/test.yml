@@ -319,3 +319,28 @@ jobs:
 
       - name: Run tests (docker image)
         run: docker run --rm -v "$PWD":/workspace -v /workspace/.telo -w /workspace telo:ci ./test-suite.yaml
+
+  rust:
+    name: Run Rust tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      # Both SDK backends are compiled explicitly. `telorun-sdk` declares no
+      # default backend, so a bare `cargo test` would exercise neither bridge
+      # and let one of them bit-rot unnoticed.
+      - name: Check the napi backend
+        run: cargo check --workspace --features telorun-sdk/napi
+
+      - name: Check the native backend
+        run: cargo check --workspace --features telorun-sdk/native
+
+      # The kernel's integration tests build the console controller crate as a
+      # subprocess, so this covers the native backend end to end.
+      - name: Run tests
+        run: cargo test --workspace
