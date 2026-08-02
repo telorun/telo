@@ -1,0 +1,12 @@
+# The extension ships as a single esbuild bundle (`dist/extension.js`), so
+# nothing that produced it needs to travel with it.
+.vscodeignore
+.gitignore
+src/**
+scripts/**
+node_modules/**
+tsconfig.json
+esbuild.mjs
+**/*.ts
+**/*.map
+*.vsix
