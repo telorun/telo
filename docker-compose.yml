@@ -162,7 +162,7 @@ services:
 
   db:
     # pgvector-enabled Postgres 18 (drop-in for `postgres:18`): the hub's vector
-    # index (std/vector-store-pgvector) needs `CREATE EXTENSION vector`.
+    # index (the vector-store-pgvector module) needs `CREATE EXTENSION vector`.
     image: pgvector/pgvector:pg18
     environment:
       POSTGRES_USER: postgres

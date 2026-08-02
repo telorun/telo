@@ -33,9 +33,9 @@ piped straight to the encoder for a **resumable** stream — the client checkpoi
 kind: Telo.Application
 metadata: { name: sse-stream, version: 1.0.0 }
 imports:
-  Sse: std/sse-codec@0.7.0
-  Http: std/http-server@0.19.1
-  Stream: std/stream@0.5.0
+  Sse: oci://ghcr.io/telorun/sse-codec@0.7.0
+  Http: oci://ghcr.io/telorun/http-server@0.19.1
+  Stream: oci://ghcr.io/telorun/stream@0.5.0
 ports:
   http: { env: PORT, default: 3000 }
 targets: [ !ref Server ]

@@ -43,7 +43,7 @@ metadata:
   name: HelloConsole
   version: 1.0.0
 imports:
-  Console: std/console@<version>
+  Console: oci://ghcr.io/telorun/console@<version>
 targets:
   - invoke: !ref Console.writeLine
     inputs:

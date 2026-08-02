@@ -8,8 +8,8 @@ Every `sql` operation (`Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transac
 
 ```yaml
 imports:
-  Sql: std/sql@0.13.0
-  SqlSqlite: std/sql-sqlite@0.1.0
+  Sql: oci://ghcr.io/telorun/sql@0.13.0
+  SqlSqlite: oci://ghcr.io/telorun/sql-sqlite@0.1.0
 ---
 kind: SqlSqlite.Connection
 metadata: { name: Db }

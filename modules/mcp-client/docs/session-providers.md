@@ -15,7 +15,7 @@ equivalent session concept (the process lifecycle is the session).
 abstract contract; every concrete (static-from-secret, per-call SQL lookup,
 Vault read, OIDC token exchange) is authored by the consuming library as a
 `Telo.Definition` template that `extends: McpClient.SessionProvider`. Keeps
-this module a transport leaf — no `std/sql`, no other backend pulled in via
+this module a transport leaf — no `sql`, no other backend pulled in via
 a "convenience" provider.
 
 ## When to use external session providers

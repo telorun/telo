@@ -20,7 +20,7 @@ All instance names (Resources and Imports) must match the following regex: `^[a-
 
 ## 2. Recommended Naming Conventions
 
-While the engine permits any valid alphanumeric string for instances, the official Telo modules (`std/*`) and documentation strictly adhere to the following stylistic rules. We highly recommend you do the same.
+While the engine permits any valid alphanumeric string for instances, the official Telo modules (`ghcr.io/telorun/*`) and documentation strictly adhere to the following stylistic rules. We highly recommend you do the same.
 
 ### 🟢 `PascalCase` for Instances (Resources & Imports)
 

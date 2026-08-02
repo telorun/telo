@@ -9,16 +9,16 @@ metadata:
     becomes registered) and the inline-error path (an unresolvable ref returns
     400 with a reason, never tracked).
 imports:
-  HttpClient: std/http-client@0.8.0
-  Run: std/run@0.12.0
-  Assert: std/assert@0.9.2
+  HttpClient: oci://ghcr.io/telorun/http-client@0.16.0#sha256-Jca84EaplnO_x7MbGic28qfh7qqAUGwgeC77eXBUSoQ
+  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
+  Assert: oci://ghcr.io/telorun/assert@0.14.0#sha256-dYQWezypcu4qCCS1v6h5LL30w0utrr7srTavsMYj7rU
 targets:
   - !ref Register_ValidRefSucceeds
   - !ref Register_InvalidRefReturns400
   - !ref Register_LocalPathRejected
   - !ref Register_ApplicationRejected
 ---
-# A reachable Telo module (the seeded std/console) validates and registers.
+# A reachable Telo module (the seeded console module) validates and registers.
 # Re-registering an already-tracked ref is idempotent (INSERT ... ON CONFLICT
 # DO NOTHING), so this stays green regardless of prior runs.
 kind: Run.Sequence
@@ -31,7 +31,7 @@ steps:
       url: http://localhost:8040/register
       method: POST
       body:
-        ref: std/console
+        ref: oci://ghcr.io/telorun/console
   - name: assert
     inputs:
       status: !cel "steps.hit.result.status"
@@ -47,7 +47,7 @@ steps:
             type: object
             properties:
               registered: { const: true }
-              ref: { const: std/console }
+              ref: { const: oci://ghcr.io/telorun/console }
             required: [registered, ref]
         required: [status, body]
 ---

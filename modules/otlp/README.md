@@ -1,4 +1,4 @@
-# std/otlp
+# otlp
 
 Export Telo's structured log records to an OpenTelemetry collector over
 OTLP/JSON.
@@ -13,7 +13,7 @@ kind: Telo.Application
 metadata:
   name: my-app
 imports:
-  Otlp: std/otlp@0.1.0
+  Otlp: oci://ghcr.io/telorun/otlp@0.1.0
 secrets:
   collectorToken:
     env: OTLP_TOKEN

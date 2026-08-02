@@ -322,7 +322,7 @@ with:
   - kind: Telo.Import
     metadata:
       name: Http
-    source: std/http-client
+    source: oci://ghcr.io/telorun/http-client
   - kind: Http.Request
     metadata:
       name: FetchData

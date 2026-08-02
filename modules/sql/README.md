@@ -36,8 +36,8 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
 imports:
-  Sql: std/sql@0.13.0
-  SqlPostgres: std/sql-postgres@0.4.0
+  Sql: oci://ghcr.io/telorun/sql@0.13.0
+  SqlPostgres: oci://ghcr.io/telorun/sql-postgres@0.4.0
 targets: [ !ref Migrate ]
 secrets:
   DATABASE_URL: { env: DATABASE_URL, type: string }

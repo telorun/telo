@@ -50,11 +50,11 @@ secrets:
     env: OPENAI_API_KEY
     type: string
 imports:
-  Ai: std/ai@^0.4.0
-  AiOpenai: std/ai-openai@^0.4.0
-  Mcp: std/mcp-client@^0.4.0
-  AiMcp: std/ai-mcp@^0.4.0          # the bridge — present only because we use MCP
-  Js: std/javascript@^0.4.0
+  Ai: oci://ghcr.io/telorun/ai@^0.4.0
+  AiOpenai: oci://ghcr.io/telorun/ai-openai@^0.4.0
+  Mcp: oci://ghcr.io/telorun/mcp-client@^0.4.0
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@^0.4.0          # the bridge — present only because we use MCP
+  Js: oci://ghcr.io/telorun/javascript@^0.4.0
 targets:
   - name: ask
     invoke: { kind: Ai.Agent, name: Assistant }

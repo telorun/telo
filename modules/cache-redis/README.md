@@ -27,9 +27,9 @@
 
 ```yaml
 imports:
-  Cache: std/cache@0.5.0
-  CacheMemory: std/cache-memory@0.5.0
-  CacheRedis: std/cache-redis@0.5.0
+  Cache: oci://ghcr.io/telorun/cache@0.5.0
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.5.0
+  CacheRedis: oci://ghcr.io/telorun/cache-redis@0.5.0
 ---
 kind: CacheMemory.Store
 metadata: { name: Local }       # in-process fallback

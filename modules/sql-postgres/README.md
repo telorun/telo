@@ -8,8 +8,8 @@ Every `sql` operation (`Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transac
 
 ```yaml
 imports:
-  Sql: std/sql@0.13.0
-  SqlPostgres: std/sql-postgres@0.1.0
+  Sql: oci://ghcr.io/telorun/sql@0.13.0
+  SqlPostgres: oci://ghcr.io/telorun/sql-postgres@0.1.0
 ---
 kind: SqlPostgres.Connection
 metadata: { name: Db }

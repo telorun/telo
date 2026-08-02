@@ -31,7 +31,7 @@ Direct access to the process's standard streams. Useful for CLI-style manifests,
 kind: Telo.Application
 metadata: { name: Hello, version: 1.0.0 }
 imports:
-  Console: std/console@0.12.0
+  Console: oci://ghcr.io/telorun/console@0.12.0
 targets:
   - invoke: !ref Console.writeLine
     inputs:

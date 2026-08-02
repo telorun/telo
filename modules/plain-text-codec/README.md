@@ -21,9 +21,9 @@ Plain-text codec — UTF-8 string ↔ byte iterables. The encoder accepts `{delt
 kind: Telo.Application
 metadata: { name: plain-text-stream, version: 1.0.0 }
 imports:
-  PlainText: std/plain-text-codec@0.6.0
-  Http: std/http-server@0.19.1
-  Stream: std/stream@0.5.0
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.6.0
+  Http: oci://ghcr.io/telorun/http-server@0.19.1
+  Stream: oci://ghcr.io/telorun/stream@0.5.0
 ports:
   http: { env: PORT, default: 3000 }
 targets: [ !ref Server ]

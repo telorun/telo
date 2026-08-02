@@ -20,7 +20,7 @@ Keep tests next to the manifest they exercise — a `tests/` directory beside yo
 
 ## Anatomy of a test manifest
 
-A test is a `Telo.Application` that imports the stdlib modules it needs, then defines the resource named in `targets:`. Pin each import to an exact registry version (`@<version>`):
+A test is a `Telo.Application` that imports the stdlib modules it needs, then defines the resource named in `targets:`. Pin each import to an exact published version (`@<version>`):
 
 ```yaml
 kind: Telo.Application
@@ -28,9 +28,9 @@ metadata:
   name: AddTwoNumbers
   version: 1.0.0
 imports:
-  Run: std/run@<version>
-  JavaScript: std/javascript@<version>
-  Assert: std/assert@<version>
+  Run: oci://ghcr.io/telorun/run@<version>
+  JavaScript: oci://ghcr.io/telorun/javascript@<version>
+  Assert: oci://ghcr.io/telorun/assert@<version>
 targets:
   - TestAdd
 ---
@@ -63,7 +63,7 @@ steps:
 
 ## Running a whole suite
 
-`Test.Suite` (from `std/test`) discovers test manifests by glob, runs each in its own isolated kernel, and reports pass/fail. Write a suite application once and point `telo` at it:
+`Test.Suite` (from the `test` module) discovers test manifests by glob, runs each in its own isolated kernel, and reports pass/fail. Write a suite application once and point `telo` at it:
 
 ```yaml
 kind: Telo.Application
@@ -71,7 +71,7 @@ metadata:
   name: TestSuite
   version: 1.0.0
 imports:
-  Test: std/test@<version>
+  Test: oci://ghcr.io/telorun/test@<version>
 targets:
   - RunAll
 ---
@@ -90,7 +90,7 @@ telo ./test-suite.yaml add             # filter by substring (matches "add-two-n
 telo ./test-suite.yaml --filter=add    # same, explicit
 ```
 
-See the [`Test.Suite` reference](/reference/std/test/docs/suite) for the full field and CLI-flag list.
+See the [`Test.Suite` reference on the hub](https://telo.sh/?q=Test.Suite) for the full field and CLI-flag list.
 
 ## Step shapes
 
@@ -218,7 +218,7 @@ A do-while pattern emerges naturally from sharing a step name between a pre-loop
 
 ## Assertion kinds
 
-All exported by the `assert` stdlib (`Assert: std/assert@<version>`):
+All exported by the `assert` stdlib (`Assert: oci://ghcr.io/telorun/assert@<version>`):
 
 | Kind | Use for | Where it goes |
 |---|---|---|
@@ -269,6 +269,6 @@ Two shapes:
 
 ## See also
 
-- [`Test.Suite` reference](/reference/std/test/docs/suite) — discovery, isolation, and CLI flags.
-- [`Run.Sequence` reference](/reference/std/run) — the full step grammar.
+- [`Test.Suite` reference on the hub](https://telo.sh/?q=Test.Suite) — discovery, isolation, and CLI flags.
+- [`Run.Sequence` reference on the hub](https://telo.sh/?q=Run.Sequence) — the full step grammar.
 - [Installation & CLI](/learn/installation-and-cli) — running and watching manifests with `telo`.

@@ -11,14 +11,14 @@ metadata:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
 imports:
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.12.0#sha256-gFdHL9ia6eNS4lHutSyxI6GlTPr9_Qgl1mF2X7dkh7U
-  Ai: oci://ghcr.io/telorun/ai@0.10.0#sha256-BJeZjpD9k7zaZozje25pc9dhZUxKyw5bwqjYs35UpD8
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.9.0#sha256-HBO4_mOMh4GTQ1ojjmuQvfvMfStSA7XCtXmyDGYQj8k
-  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.6.0#sha256-br9h8QxAyZeEg5L0rYwHXMEzYkKnjd9eXen9EWRulyg
-  Console: oci://ghcr.io/telorun/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
-  Run: oci://ghcr.io/telorun/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
-  Sql: oci://ghcr.io/telorun/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
-  SqlSqlite: oci://ghcr.io/telorun/sql-sqlite@0.4.0#sha256-Tx6iWpzDfFNKkmAmlzK74dsP1w4CR9e_jkU_EITvjb4
+  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.14.0#sha256-jQIFsa0DnwEN9nwtx8ByryM3S3rPpaZsPv_jArPIOuk
+  Ai: oci://ghcr.io/telorun/ai@0.13.0#sha256-LDNwi5X9AjcanUEKe497WJHR0Zt3xO-monL-r_hfIZE
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.13.0#sha256-TRAc17F29HyFCRUrQsqMgTszlyuGdCjY1keKmbs7mzA
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.9.0#sha256-FrUzkoYEcjkfsIsODR_BFMMChdmt8Rbm4emaaXH4b0Q
+  Console: oci://ghcr.io/telorun/console@0.15.0#sha256-TXqhVyXKPxNKmQ2V0agBCMo6k_GWYd61192g9j5eRd0
+  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
+  Sql: oci://ghcr.io/telorun/sql@0.17.0#sha256-2MVr2geYa5ThbZ6CYSAHaiim4eVrgs8Y0lEyB_St6ic
+  SqlSqlite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
 targets:
   - !ref InitSchema
   - !ref ChatLoop

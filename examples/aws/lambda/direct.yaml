@@ -17,16 +17,20 @@ metadata:
     isn't HTTP API or SQS. See `examples/aws/lambda/README.md` for the
     full packaging + deploy walkthrough.
 imports:
-  Lambda: aws/lambda@0.6.0
-  Run: std/run@0.11.1
+  Lambda: oci://ghcr.io/telorun/lambda@0.9.0#sha256-wQ-vDZupLmsrhBHrimFfJMIwlzwMHwxAH8nfrQ_P3QE
+  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
 targets:
   - !ref Main
 ---
 # User handler: greets the caller by name.
 kind: Run.Value
 metadata: { name: Greet }
-inputs:
-  name: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      name: { type: string }
 value:
   message: !cel "'Hello, ' + inputs.name + '!'"
 ---

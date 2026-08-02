@@ -82,7 +82,7 @@ interface ModuleVersionsResponse {
  *  ordering is authoritative, so index 0 is the latest.
  *
  *  `baseRef` must be the bare registered ref (`oci://ghcr.io/acme/telo-s3`,
- *  `std/console`); the hub matches it exactly. This is the only version source
+ *  `oci://ghcr.io/telorun/console`); the hub matches it exactly. This is the only version source
  *  the editor has: a browser cannot speak the OCI protocol, so `tags/list` is
  *  out of reach and the hub's ingest is what holds the version list.
  *
@@ -114,7 +114,7 @@ export async function fetchHubVersions(
 }
 
 /** The pinned import source for a hit: `<ref>@<version>` (e.g.
- *  `oci://ghcr.io/acme/telo-s3@1.2.0`, `std/console@0.9.0`). */
+ *  `oci://ghcr.io/acme/telo-s3@1.2.0`, `acme/console@0.9.0`). */
 export function importSourceForHit(hit: HubModuleHit): string {
   const { ref, version } = hit.module;
   return version ? `${ref}@${version}` : ref;

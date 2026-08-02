@@ -30,8 +30,8 @@ bounding boxes, draw them, let it look again.
 kind: Telo.Application
 metadata: { name: box-preview, version: 1.0.0 }
 imports:
-  Image: std/image@0.4.0
-  Run: std/run@0.13.0
+  Image: oci://ghcr.io/telorun/image@0.4.0
+  Run: oci://ghcr.io/telorun/run@0.13.0
 targets: [ !ref MarkFields ]
 ---
 kind: Image.Overlay

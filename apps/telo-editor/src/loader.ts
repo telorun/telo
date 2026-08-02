@@ -284,8 +284,8 @@ export function mergeWorkspaceDependencies(
  * scanned — e.g. a flat sibling file copied in by a remote-open cascade — is
  * loaded here too, read through the local adapter.
  *
- * Registry/remote sources may resolve a raw input ref (`std/foo@1.0.0`) to a
- * different canonical URL (e.g. `registry://std/foo@1.0.0/telo.yaml`). The
+ * Registry/remote sources may resolve a raw input ref (`acme/foo@1.0.0`) to a
+ * different canonical URL (e.g. `registry://acme/foo@1.0.0/telo.yaml`). The
  * returned `canonicalByRawInput` map lets `finalizeWorkspace` set each import's
  * `resolvedPath` to the canonical key — otherwise `analyzeWorkspace` looks up
  * the imported library's identity by the raw ref and misses, leaving every

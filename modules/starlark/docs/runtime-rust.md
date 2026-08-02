@@ -1,5 +1,5 @@
 ---
-description: "Selecting the native Rust controller for std/starlark via the import's runtime field."
+description: "Selecting the native Rust controller for the starlark module via the import's runtime field."
 sidebar_label: Rust runtime
 ---
 
@@ -7,14 +7,14 @@ sidebar_label: Rust runtime
 
 > Examples below assume this module is imported with an `imports:` entry under alias `Starlark`. If you import the module under a different name, substitute your alias accordingly.
 
-The `std/starlark` module ships two controller implementations:
+The `starlark` module ships two controller implementations:
 
 | Implementation | Declared as                    | Backed by               |
 | -------------- | ------------------------------ | ----------------------- |
 | `nodejs`       | `pkg:npm/@telorun/starlark`    | `starlark-webasm`       |
 | `rust`         | `pkg:cargo/telorun-starlark`   | Native Rust addon (N-API) |
 
-By default, importing `std/starlark` resolves to the kernel-native implementation — `nodejs` for the Node.js kernel today.
+By default, importing `starlark` resolves to the kernel-native implementation — `nodejs` for the Node.js kernel today.
 
 ## Opting into the Rust controller
 
@@ -25,7 +25,7 @@ kind: Telo.Application
 metadata: { name: my-app, version: 1.0.0 }
 imports:
   Starlark:
-    source: std/starlark@0.8.0
+    source: oci://ghcr.io/telorun/starlark@0.8.0
     runtime: rust
 ```
 

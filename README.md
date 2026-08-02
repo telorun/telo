@@ -48,7 +48,9 @@ See [examples/](./examples/) for a list of working applications.
 
 ## Status
 
-Telo is under **active development**. The core runtime, module system, and standard library are functional, but the API surface — including YAML shapes — may change without notice. Not yet recommended for production use.
+Telo is under heavy development. While it is pre-1.0, breaking changes ship in **minor** releases — manifest shapes, kind schemas, and APIs can change between versions. Pin your imports and expect to update manifests when you upgrade. The core runtime, module system, and standard library are functional, but Telo is not yet recommended for production use.
+
+**1.0 lands when the Rust kernel reaches feature parity with the Node.js implementation** — that is the milestone that freezes the manifest contract across runtimes.
 
 ## The Meaning of Telo
 

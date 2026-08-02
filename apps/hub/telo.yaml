@@ -17,34 +17,23 @@ metadata:
     Federated discovery hub: tracks registered module refs across transports,
     caches manifests, and serves per-resource search over HTTP and MCP.
 imports:
-  Http: std/http-server@0.19.1#sha256-MkMefY1OtI0KMFV4VwvTaHJntTcnS3qEm53uoqyU7R4
-  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
-  Postgres: std/sql-postgres@0.4.0#sha256-l0R480mxguUeQ6ACoefbGfHbGpchcpuodAy5-7tQ5PA
-  Run: std/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
-  Shell: std/shell@0.4.0#sha256-Xwt_rwCRjZVVXWTNmI0wM5RmdcRNpu88Q1o8hhskTM4
-  S3: std/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Yaml: std/yaml@0.6.0#sha256-RUEuFaLE6dMJvqkSXB1b3RKyt0bFsVJJOUI_R8H9x2M
-  Mcp: std/mcp-server@0.9.0#sha256-n5wc3Ks9wJ5KNrhDJMFrJccvvV_n7B0Me6wZUkExzMk
-  Timer: std/timer@0.4.0#sha256-t5ZPVZadQK-UbODqoHZUHdeUNR9ItiDuxj3FtBBmBOM
-  PlainText: std/plain-text-codec@0.6.0#sha256-36gvBMcKnfdvQzcXk9wLMCVAUjlo4gg7IDvrC0oeIWc
-  Console: std/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
-  # Interim relative paths: the queryPrompt / passagePrompt contract on
-  # Embedding.Model is unpublished. A registry pin resolves to the published
-  # 0.2.0 (no prompt fields) and version-hoisting drags embedding-openai's own
-  # `../embedding` onto that same copy, so both must be local or neither is.
-  # Flip both back to `std/…@<version>` once released.
-  Embedding: std/embedding@0.5.0#sha256-CWrU6XQ5Dt475bfsuB9wHGvfrMMowJGRxLKIi6fHHmg
-  EmbeddingOpenai: std/embedding-openai@0.6.0#sha256-bzecl5iROojz35r014Z8ktNSzf0iITSJG__xuNXBtfQ
-  # cache-memory's local source is ahead of the registry (0.4.0 unpublished);
-  # pin the published 0.3.0 so the Docker `telo install` build resolves.
-  CacheMemory: std/cache-memory@0.5.0#sha256-tPl4-N_n55zAYO24yvr7K9ewKck5S7x6Kd2OhUQ64Z0
-  RateLimit: std/rate-limit@0.5.0#sha256-vJVRRG7yUo3ja1pYGeakMMel4m2MKnkdov5ZTe-wQfE
-  VectorStore: std/vector-store@0.4.0#sha256-drERpw8IiDehuKFGuov93UyKN3yuOv2TZHgiZ4AfArY
-  # Interim relative path: vector-store-pgvector@0.1.0 is not yet published to
-  # the registry. Flip to `std/vector-store-pgvector@0.1.0` once it ships (the
-  # changeset/changie fragments drive that release); the registry-resolved
-  # form is what the Docker `telo install` build expects.
-  VectorStorePgvector: std/vector-store-pgvector@0.3.0#sha256-QiwU58kD_EQuOQdg-qSgJig7I1G3wifDXW5a3DiaAPk
+  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
+  Sql: oci://ghcr.io/telorun/sql@0.17.0#sha256-2MVr2geYa5ThbZ6CYSAHaiim4eVrgs8Y0lEyB_St6ic
+  Postgres: oci://ghcr.io/telorun/sql-postgres@0.7.0#sha256-djk1ZCgokLPMl3CJDh6S7jsNLlzsE11ZsyjGyUhL_bg
+  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
+  Shell: oci://ghcr.io/telorun/shell@0.8.0#sha256-SWKnaji4u_iarIVnrzsJcRCN1bXx7zdohhd8FWXbD2E
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Yaml: oci://ghcr.io/telorun/yaml@0.9.0#sha256-4QyxVfE2X7FNULAf8mP_1_4qH5a8zKKrAWt-ySlzXbk
+  Mcp: oci://ghcr.io/telorun/mcp-server@0.12.0#sha256-dc-9oks6oC13x_66AzMmO2VMpxEqwfZDNJfUpDvk_bA
+  Timer: oci://ghcr.io/telorun/timer@0.7.0#sha256-Xqvwj957jkAdJw8oCT4iI7mDNZDv9GhHoQg8vFA3-TE
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.9.0#sha256-FrUzkoYEcjkfsIsODR_BFMMChdmt8Rbm4emaaXH4b0Q
+  Console: oci://ghcr.io/telorun/console@0.15.0#sha256-TXqhVyXKPxNKmQ2V0agBCMo6k_GWYd61192g9j5eRd0
+  Embedding: oci://ghcr.io/telorun/embedding@0.9.0#sha256-pda3xTlGEDtiJ642t2VTlOxV2iQQZR2bBdQysSugqrk
+  EmbeddingOpenai: oci://ghcr.io/telorun/embedding-openai@0.8.0#sha256-6_g_RsXr1OVC_C_-19srfTA8bEYU4hfBvH4NhyL7c8E
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.7.0#sha256-RPFdTN1BPz0WtfjLsUF8JeRK_ilI6hnHny6wwrmsoAw
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.9.0#sha256-qel_0gu1Ok2n_KBslLlGKUGn-zkoet-XAp7GdafOFOk
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.8.0#sha256-fAlV_DZU21oy3OZdfiYUfDmg5ObCpdRHK1IT-T3b-vg
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.7.0#sha256-ErVZeyvYoidKnWjrlHeQe5n0cycZtaVUZ0vDdMYJgJU
 ports:
   http:
     env: PORT
@@ -63,7 +52,7 @@ variables:
     env: MANIFEST_BUCKET_FORCE_PATH_STYLE
     type: boolean
     default: false
-  # Curated first-party ref list, JSON array (e.g. '["std/console","oci://ghcr.io/acme/telo-s3"]').
+  # Curated first-party ref list, JSON array (e.g. '["oci://ghcr.io/telorun/console","oci://ghcr.io/acme/telo-s3"]').
   # Registered idempotently on boot; public registration is a later phase.
   seedRefs:
     env: SEED_REFS
@@ -366,9 +355,13 @@ metadata:
 kind: Run.Value
 metadata:
   name: VersionedRef
-inputs:
-  ref: { type: string }
-  version: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      version: { type: string }
 # How a ref pins to one version, in one place. A direct `https://` ref addresses
 # a single file at a fixed location and takes NO `@version` suffix — appending
 # one produces a 404. Registry and OCI refs pin with `@<version>`.
@@ -377,8 +370,12 @@ value: !cel "inputs.ref.startsWith('https://') ? inputs.ref : inputs.ref + '@' +
 kind: Run.Value
 metadata:
   name: ConcreteVersions
-inputs:
-  versions: { type: array }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      versions: { type: array }
 value: !cel "inputs.versions.filter(v, v != 'latest')"
 ---
 # ── Registration (curated seed) ──────────────────────────────────────────────
@@ -396,8 +393,12 @@ steps:
 kind: Run.Sequence
 metadata:
   name: RegisterModule
-inputs:
-  ref: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
 steps:
   - name: upsert
     invoke: !ref Exec
@@ -426,9 +427,13 @@ steps:
 kind: Run.Sequence
 metadata:
   name: RegisterAndValidate
-inputs:
-  ref: { type: string }
-  clientIp: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      clientIp: { type: string }
 steps:
   # Per-IP budget, checked before anything else — this endpoint is open and does
   # real work, so it must not be free to hammer. Non-throwing: the verdict maps
@@ -646,8 +651,12 @@ outputs:
 kind: Run.Iteration
 metadata:
   name: TrackEachModule
-inputs:
-  modules: { type: array }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      modules: { type: array }
 collection: !cel "inputs.modules"
 concurrency: 2
 steps:
@@ -672,9 +681,14 @@ steps:
 kind: Run.Sequence
 metadata:
   name: TrackModule
-inputs:
-  moduleId: { type: integer }
-  ref: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      # modules.id is a bigint — the driver yields it as a string.
+      moduleId: { type: string }
+      ref: { type: string }
 steps:
   - name: versionsCmd
     invoke: !ref TeloCli
@@ -729,11 +743,16 @@ steps:
 kind: Run.Iteration
 metadata:
   name: TrackEachVersion
-inputs:
-  moduleId: { type: integer }
-  ref: { type: string }
-  versions: { type: array }
-  latestVersion: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      # modules.id is a bigint — the driver yields it as a string.
+      moduleId: { type: string }
+      ref: { type: string }
+      versions: { type: array }
+      latestVersion: { type: string }
 collection: !cel "inputs.versions"
 steps:
   - name: sync
@@ -750,11 +769,16 @@ steps:
 kind: Run.Sequence
 metadata:
   name: SyncVersion
-inputs:
-  moduleId: { type: integer }
-  ref: { type: string }
-  version: { type: string }
-  latestVersion: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      # modules.id is a bigint — the driver yields it as a string.
+      moduleId: { type: string }
+      ref: { type: string }
+      version: { type: string }
+      latestVersion: { type: string }
 steps:
   - name: pinned
     invoke: !ref VersionedRef
@@ -936,11 +960,16 @@ steps:
 kind: Run.Iteration
 metadata:
   name: InsertKinds
-inputs:
-  moduleId: { type: integer }
-  version: { type: string }
-  ref: { type: string }
-  docs: { type: array }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      # modules.id is a bigint — the driver yields it as a string.
+      moduleId: { type: string }
+      version: { type: string }
+      ref: { type: string }
+      docs: { type: array }
 # The row is shaped here rather than in the bindings below so each fact is
 # derived exactly once. Two of them are not plain reads:
 #
@@ -1012,14 +1041,19 @@ steps:
 # half of its public surface. An importer references one as
 # `!ref <Alias>.<name>`, so what matters is the name, not a kind: a library can
 # export an instance of a kind it deliberately does NOT export (singleton
-# enforcement), and std/console exports only instances, no kinds at all.
+# enforcement), and the console module exports only instances, no kinds at all.
 kind: Run.Iteration
 metadata:
   name: InsertResources
-inputs:
-  moduleId: { type: integer }
-  version: { type: string }
-  docs: { type: array }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      # modules.id is a bigint — the driver yields it as a string.
+      moduleId: { type: string }
+      version: { type: string }
+      docs: { type: array }
 collection: !cel >-
   'exports' in inputs.docs[0] && 'resources' in inputs.docs[0].exports
     ? inputs.docs[0].exports.resources : []
@@ -1052,9 +1086,13 @@ steps:
 kind: Run.Sequence
 metadata:
   name: SearchResources
-inputs:
-  q: { type: string }
-  category: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      q: { type: string }
+      category: { type: string }
 steps:
   - name: vector
     if: !cel "inputs.q != ''"
@@ -1149,11 +1187,15 @@ outputs:
 kind: Run.Sequence
 metadata:
   name: SearchModules
-inputs:
-  q: { type: string }
-  category: { type: string }
-  limit: { type: integer }
-  offset: { type: integer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      q: { type: string }
+      category: { type: string }
+      limit: { type: integer }
+      offset: { type: integer }
 steps:
   - name: vector
     if: !cel "inputs.q != ''"
@@ -1277,9 +1319,13 @@ outputs:
 kind: Run.Sequence
 metadata:
   name: GetModuleManifest
-inputs:
-  ref: { type: string }
-  version: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      version: { type: string }
 steps:
   - name: resolve
     invoke: !ref Query
@@ -1589,7 +1635,7 @@ routes:
             ref:
               type: string
               minLength: 1
-              description: "Module ref to register (e.g. oci://ghcr.io/acme/telo-s3 or std/console)."
+              description: "Module ref to register (e.g. oci://ghcr.io/acme/telo-s3 or https://host/path/telo.yaml)."
           required: [ref]
     handler: !ref RegisterAndValidate
     inputs:
@@ -1694,7 +1740,7 @@ entries:
   - name: get_module_manifest
     description: |
       Fetch the raw `telo.yaml` for a tracked module by its location ref
-      (e.g. `oci://ghcr.io/acme/telo-s3` or `std/console`). The response
+      (e.g. `oci://ghcr.io/acme/telo-s3`). The response
       contains the `Telo.Library` and `Telo.Definition` docs that fully
       describe the module's public surface. `version` defaults to `latest`
       (the latest tracked version).

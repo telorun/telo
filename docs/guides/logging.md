@@ -106,7 +106,7 @@ logging:
   level: info          # app-wide default
 imports:
   Db:
-    source: std/sql@1.2.0
+    source: oci://ghcr.io/telorun/sql@1.2.0
     logging:
       level: debug     # this import's subtree only
   Api:
@@ -116,8 +116,8 @@ imports:
 Config cascades and can be narrowed at each hop, so raising `Api` lifts
 everything beneath it without editing `Api`'s manifest.
 
-Overrides attach to imports because module names are not unique — `std/sql` and
-`acme/sql` are both named `sql`, and the same module imported twice is two
+Overrides attach to imports because module names are not unique —
+`ghcr.io/telorun/sql` and `ghcr.io/acme/sql` are both named `sql`, and the same module imported twice is two
 subsystems sharing one name. Import aliases are already unique.
 
 Every record carries the `scope` that selected its threshold, so the path on a
@@ -141,7 +141,7 @@ per-request work entirely rather than building a record and discarding it:
 ```yaml
 imports:
   Http:
-    source: std/http-server
+    source: oci://ghcr.io/telorun/http-server
     logging:
       level: warn   # server errors only, no per-request access logs
 ```
@@ -212,12 +212,12 @@ unaffected.
 
 ## Shipping records elsewhere
 
-Any module can publish a sink. `std/otlp` exports records to an OpenTelemetry
+Any module can publish a sink. The `otlp` module exports records to an OpenTelemetry
 collector:
 
 ```yaml
 imports:
-  Otlp: std/otlp@0.1.0
+  Otlp: oci://ghcr.io/telorun/otlp@0.1.0
 secrets:
   collectorToken:
     env: OTLP_TOKEN

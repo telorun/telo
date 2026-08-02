@@ -44,10 +44,10 @@ imports:
       # form (program + args), not a shell string — the file path is appended and
       # execed directly.
       checkArgv: [bun, ../cli/nodejs/bin/telo.ts, check]
-  Shell: std/shell@0.2.0
-  Stream: std/stream@0.3.0
-  Run: std/run@0.11.1
-  Assert: std/assert@0.8.14
+  Shell: oci://ghcr.io/telorun/shell@0.8.0#sha256-SWKnaji4u_iarIVnrzsJcRCN1bXx7zdohhd8FWXbD2E
+  Stream: oci://ghcr.io/telorun/stream@0.8.0#sha256-R83SxsVMctuYE7E99vcB9EoWS0Du9iyA0VuDLsRzsLE
+  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
+  Assert: oci://ghcr.io/telorun/assert@0.14.0#sha256-dYQWezypcu4qCCS1v6h5LL30w0utrr7srTavsMYj7rU
 targets:
   - !ref Chat.initSchema
   - !ref TestAuthors

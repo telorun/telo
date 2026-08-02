@@ -4,8 +4,8 @@ metadata:
   version: 1.0.0
   description: A demo showcasing a Starlark script run from flat `targets`.
 imports:
-  Starlark: oci://ghcr.io/telorun/starlark@0.8.0#sha256-wzyRBWgGIZsLLCMkAlaBiKV8p_akXPkGoZhs6g9knAY
-  Console: oci://ghcr.io/telorun/console@0.12.0#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY
+  Starlark: oci://ghcr.io/telorun/starlark@0.10.0#sha256-HX1_KxwMtlNy2HTepr7Fh7XVPzTvgN_3JvaAiYU-2uM
+  Console: oci://ghcr.io/telorun/console@0.15.0#sha256-TXqhVyXKPxNKmQ2V0agBCMo6k_GWYd61192g9j5eRd0
 targets:
   - name: Step1
     invoke: !ref ExampleStarlarkScript

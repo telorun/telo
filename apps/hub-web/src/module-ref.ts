@@ -1,5 +1,5 @@
 /** Presentation helpers for a module location ref. A ref is the module's
- *  identity (`std/console`, `oci://ghcr.io/org/team/youtrack`,
+ *  identity (`oci://ghcr.io/telorun/console`, `oci://ghcr.io/org/team/youtrack`,
  *  `https://host/…/telo.yaml`); these only shape how it reads on screen. */
 
 /** The memorable tail of a ref: `oci://ghcr.io/org/team/youtrack` → `youtrack`,

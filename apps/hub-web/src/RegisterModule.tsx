@@ -45,7 +45,7 @@ export function RegisterModule() {
             setRef(e.target.value);
             if (status.kind === "done") setStatus({ kind: "idle" });
           }}
-          placeholder="oci://ghcr.io/acme/telo-s3 · std/console · https://host/path/telo.yaml"
+          placeholder="oci://ghcr.io/acme/telo-s3 · https://host/path/telo.yaml"
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}

@@ -30,7 +30,7 @@ function resolveRegistryUrl(explicit?: string): string {
 /** Normalize a ref for version enumeration. The version segment is irrelevant to
  *  `listVersions` (only the `<ns>/<name>` path or OCI repo is used), but the
  *  registry transport only owns refs that carry an `@version` — so a bare
- *  `std/console` gets a placeholder version. Scheme refs (`oci://`) and
+ *  `acme/console` gets a placeholder version. Scheme refs (`oci://`) and
  *  already-versioned refs pass through. */
 function refForEnumeration(ref: string): string {
   const base = splitIntegrity(ref).base;
@@ -426,7 +426,7 @@ export function moduleCommand(yargs: Argv): Argv {
           (yy) =>
             yy
               .positional("ref", {
-                describe: "Module ref: ./path, std/console, oci://host/repo, or an https URL",
+                describe: "Module ref: ./path, oci://host/repo, ns/name, or an https URL",
                 type: "string",
                 demandOption: true,
               })
@@ -450,7 +450,7 @@ export function moduleCommand(yargs: Argv): Argv {
             yy
               .positional("ref", {
                 describe:
-                  "Module ref: ./path, std/console@0.9.0, oci://host/repo@1.2.0, or an https URL",
+                  "Module ref: ./path, oci://host/repo@1.2.0, ns/name@0.9.0, or an https URL",
                 type: "string",
                 demandOption: true,
               })
@@ -474,7 +474,7 @@ export function moduleCommand(yargs: Argv): Argv {
             yy
               .positional("ref", {
                 describe:
-                  "Module ref: ./path, std/console@0.9.0, oci://host/repo@1.2.0, or an https URL",
+                  "Module ref: ./path, oci://host/repo@1.2.0, ns/name@0.9.0, or an https URL",
                 type: "string",
                 demandOption: true,
               })
@@ -498,7 +498,7 @@ export function moduleCommand(yargs: Argv): Argv {
             yy
               .positional("ref", {
                 describe:
-                  "Module ref: ./path, std/console@0.9.0, oci://host/repo@1.2.0, or an https URL",
+                  "Module ref: ./path, oci://host/repo@1.2.0, ns/name@0.9.0, or an https URL",
                 type: "string",
                 demandOption: true,
               })
@@ -522,7 +522,7 @@ export function moduleCommand(yargs: Argv): Argv {
             yy
               .positional("ref", {
                 describe:
-                  "Module ref: ./path, std/console@0.9.0, oci://host/repo@1.2.0, or an https URL",
+                  "Module ref: ./path, oci://host/repo@1.2.0, ns/name@0.9.0, or an https URL",
                 type: "string",
                 demandOption: true,
               })

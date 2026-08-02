@@ -29,10 +29,10 @@ native way to seed a pipeline with fixed data (instead of a `JS.Script`).
 kind: Telo.Application
 metadata: { name: seed-pipeline, version: 1.0.0 }
 imports:
-  Stream: std/stream@0.5.0
-  PlainText: std/plain-text-codec@0.6.0
-  Gzip: std/gzip@0.4.0
-  Run: std/run@0.13.0
+  Stream: oci://ghcr.io/telorun/stream@0.5.0
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.6.0
+  Gzip: oci://ghcr.io/telorun/gzip@0.4.0
+  Run: oci://ghcr.io/telorun/run@0.13.0
 targets: [ !ref Pipeline ]
 ---
 kind: Stream.Of

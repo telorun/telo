@@ -1,17 +1,21 @@
 // Shared, build-time resolution of package version pins in documentation.
 //
 // Docs reference packages with a literal `<version>` marker instead of a real
-// version: `std/console@<version>`, `@telorun/run@<version>`. At build time we
-// substitute the marker with the version from LOCAL source of truth — never
-// the network — so the rendered site and the llms-txt outputs always match the
-// repo's working state:
+// version: `oci://ghcr.io/telorun/console@<version>`, `@telorun/run@<version>`.
+// At build time we substitute the marker with the version from LOCAL source of
+// truth — never the network — so the rendered site and the llms-txt outputs
+// always match the repo's working state:
 //
-//   - std/<name>       → metadata.version in modules/<name>/telo.yaml
-//   - @telorun/<name>  → version in that package's package.json
+//   - oci://ghcr.io/telorun/<name>  → metadata.version in modules/<name>/telo.yaml
+//   - @telorun/<name>               → version in that package's package.json
+//
+// The OCI repository name is the module's DIRECTORY name, which is what
+// `publish-packages.mjs` pushes to — not `metadata.name`, which may differ.
 //
 // A ref to a package that doesn't resolve locally is a hard build error — a
 // typo or an illustrative ref that was wrongly tokenized. Illustrative refs
-// (e.g. `std/foo@1.0.0`) keep a real literal version and are left untouched.
+// (e.g. `oci://ghcr.io/acme/foo@1.0.0`) keep a real literal version and are
+// left untouched.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -19,8 +23,10 @@ const YAML = require("yaml");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
-// `std/console`, `@telorun/run` (or inside a purl: `pkg:npm/@telorun/run@<version>#…`).
-const REF = /(std\/[a-z0-9][a-z0-9-]*|@telorun\/[a-z0-9][a-z0-9-]*)@<version>/g;
+// `oci://ghcr.io/telorun/console`, `@telorun/run` (or inside a purl:
+// `pkg:npm/@telorun/run@<version>#…`).
+const REF =
+  /(oci:\/\/ghcr\.io\/telorun\/[a-z0-9][a-z0-9-]*|@telorun\/[a-z0-9][a-z0-9-]*)@<version>/g;
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -50,8 +56,8 @@ function collectModuleVersions(map) {
     if (!fs.existsSync(manifest)) continue;
     for (const doc of YAML.parseAllDocuments(fs.readFileSync(manifest, "utf8"))) {
       const metadata = doc.toJS()?.metadata;
-      if (metadata?.name && metadata?.version) {
-        map.set(`std/${metadata.name}`, String(metadata.version));
+      if (metadata?.version) {
+        map.set(`oci://ghcr.io/telorun/${entry.name}`, String(metadata.version));
         break;
       }
     }

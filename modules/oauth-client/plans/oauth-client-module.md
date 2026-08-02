@@ -385,11 +385,11 @@ kind: Telo.Application
 metadata:
   name: sheets-demo
 imports:
-  OAuth: std/oauth-client@0.1.0
-  Http: std/http-client@0.14.0
-  KvStore: std/kv-store-sql@0.4.0
-  Console: std/console@0.13.0
-  Run: std/run@0.13.0
+  OAuth: oci://ghcr.io/telorun/oauth-client@0.1.0
+  Http: oci://ghcr.io/telorun/http-client@0.14.0
+  KvStore: oci://ghcr.io/telorun/kv-store-sql@0.4.0
+  Console: oci://ghcr.io/telorun/console@0.13.0
+  Run: oci://ghcr.io/telorun/run@0.13.0
 secrets:
   googleClientSecret:
     env: GOOGLE_CLIENT_SECRET

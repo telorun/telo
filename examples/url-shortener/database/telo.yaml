@@ -12,11 +12,11 @@ variables:
     type: string
     description: Path to the SQLite database file.
 imports:
-  Sql: std/sql@0.13.0#sha256-ARE0QGUj8CtyNKTgIwiBFnHq1YbH-3B6nK4TLmvg_aE
+  Sqlite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
 exports:
   resources:
     - connection
 ---
-kind: Sql.SqliteConnection
+kind: Sqlite.Connection
 metadata: { name: connection }
 file: !cel "variables.dbFile"

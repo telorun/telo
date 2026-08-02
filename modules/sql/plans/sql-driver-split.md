@@ -146,8 +146,8 @@ Usage:
 
 ```yaml
 imports:
-  Sql: std/sql@0.10.0
-  SqlPostgres: std/sql-postgres@0.1.0
+  Sql: oci://ghcr.io/telorun/sql@0.10.0
+  SqlPostgres: oci://ghcr.io/telorun/sql-postgres@0.1.0
 ---
 kind: SqlPostgres.Connection
 metadata: { name: Db }
@@ -280,9 +280,9 @@ Two connections in scope — a Postgres and a SQLite — and two Stores wiring e
 
 ```yaml
 imports:
-  SqlPostgres: std/sql-postgres@0.1.0
-  SqlSqlite: std/sql-sqlite@0.1.0
-  VectorStorePgvector: std/vector-store-pgvector@0.1.0
+  SqlPostgres: oci://ghcr.io/telorun/sql-postgres@0.1.0
+  SqlSqlite: oci://ghcr.io/telorun/sql-sqlite@0.1.0
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.1.0
 ---
 kind: SqlPostgres.Connection
 metadata: { name: Pg }

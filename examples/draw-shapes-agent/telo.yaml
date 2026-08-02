@@ -22,12 +22,12 @@ metadata:
   version: 1.0.0
   description: HTTP API where an AI vision agent draws shapes on a canvas and returns an S3 link.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.19.1#sha256-ttYHRhb5HyTKVz7m9BetgWukGyknrpddBsWL_VRUXbM
-  Ai: oci://ghcr.io/telorun/ai@0.10.0#sha256-BJeZjpD9k7zaZozje25pc9dhZUxKyw5bwqjYs35UpD8
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.12.0#sha256-gFdHL9ia6eNS4lHutSyxI6GlTPr9_Qgl1mF2X7dkh7U
-  Image: oci://ghcr.io/telorun/image@0.4.0#sha256-jEfAoeln5oXIfogWibaXxKaNJTXG_A0utgrfHbZ4q6s
+  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
+  Ai: oci://ghcr.io/telorun/ai@0.13.0#sha256-LDNwi5X9AjcanUEKe497WJHR0Zt3xO-monL-r_hfIZE
+  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.14.0#sha256-jQIFsa0DnwEN9nwtx8ByryM3S3rPpaZsPv_jArPIOuk
+  Image: oci://ghcr.io/telorun/image@0.6.0#sha256-19U9akkaFk-EDEHE-tOJSssJn2AaKdSOUX-vHgzjca0
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Run: oci://ghcr.io/telorun/run@0.13.0#sha256-s5raonayIOI78D9YjhAG_TB_KV7wILexhfEOpygFauc
+  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
 targets:
   - !ref Server
 ports:
@@ -116,8 +116,12 @@ expiresIn: 3600
 kind: Run.Value
 metadata:
   name: MakeId
-inputs:
-  seed: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      seed: { type: string }
 value:
   documentId: !cel "'drawings/' + inputs.seed + '.png'"
 ---
@@ -126,20 +130,24 @@ value:
 kind: Run.Sequence
 metadata:
   name: DrawTool
-inputs:
-  documentId: { type: string }
-  shapes:
-    type: array
-    items:
-      type: object
-      properties:
-        x: { type: number }
-        y: { type: number }
-        width: { type: number }
-        height: { type: number }
-        label: { type: string }
-        color: { type: string }
-      required: [x, y, width, height]
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      documentId: { type: string }
+      shapes:
+        type: array
+        items:
+          type: object
+          properties:
+            x: { type: number }
+            y: { type: number }
+            width: { type: number }
+            height: { type: number }
+            label: { type: string }
+            color: { type: string }
+          required: [x, y, width, height]
 steps:
   - name: Blank
     invoke: !ref Canvas
@@ -182,20 +190,24 @@ options:
 kind: Run.Sequence
 metadata:
   name: ValidateTool
-inputs:
-  request: { type: string }
-  shapes:
-    type: array
-    items:
-      type: object
-      properties:
-        x: { type: number }
-        y: { type: number }
-        width: { type: number }
-        height: { type: number }
-        label: { type: string }
-        color: { type: string }
-      required: [x, y, width, height]
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      request: { type: string }
+      shapes:
+        type: array
+        items:
+          type: object
+          properties:
+            x: { type: number }
+            y: { type: number }
+            width: { type: number }
+            height: { type: number }
+            label: { type: string }
+            color: { type: string }
+          required: [x, y, width, height]
 steps:
   - name: Blank
     invoke: !ref Canvas
@@ -311,8 +323,12 @@ toolProviders:
 kind: Run.Sequence
 metadata:
   name: HandleDraw
-inputs:
-  prompt: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      prompt: { type: string }
 steps:
   - name: GenId
     invoke: !ref MakeId
