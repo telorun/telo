@@ -1,4 +1,30 @@
-import { parse, type ASTNode as CelJsNode } from "@marcbachmann/cel-js";
+import { ParseError, parse, type ASTNode as CelJsNode } from "@marcbachmann/cel-js";
+
+/** A CEL body that does not parse — an author's expression, mid-typing or
+ *  malformed. Owned here so a consumer can be lenient about author syntax
+ *  (navigation, completion) without also swallowing a defect in the wrapper
+ *  below, and so the third-party parser's error type stays internal, exactly as
+ *  its AST type does. */
+export class CelParseError extends Error {
+  constructor(
+    readonly source: string,
+    override readonly cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = "CelParseError";
+  }
+}
+
+/** Parse a CEL body, translating the parser's own failure into `CelParseError`.
+ *  Anything else (a bug in `wrapCelAst`) propagates untouched. */
+function parseCel(source: string): CelJsNode {
+  try {
+    return parse(source).ast;
+  } catch (error) {
+    if (error instanceof ParseError) throw new CelParseError(source, error);
+    throw error;
+  }
+}
 
 /** Read-only CEL expression tree owned by the analyzer. The third-party
  *  `@marcbachmann/cel-js` `ASTNode` stays an internal detail — `wrapCelAst`
@@ -57,7 +83,9 @@ export interface CelSegment {
   source: string;
   /** True when a `${{` has no matching `}}` yet (the user is mid-typing). */
   open: boolean;
-  /** Lazily parse + wrap; ranges are already absolute. */
+  /** Lazily parse + wrap; ranges are already absolute. Throws `CelParseError`
+   *  when the body doesn't parse — an `open` segment recovers to its longest
+   *  parseable prefix instead, so only a closed one can throw. */
   ast(): CelNode;
 }
 
@@ -178,9 +206,11 @@ function parseLenient(source: string, segmentStart: number, range: [number, numb
     const trimmed = candidate.trim();
     if (!trimmed) break;
     try {
-      return wrapCelAst(parse(trimmed).ast, segmentStart);
-    } catch {
-      // try the next-shorter prefix
+      return wrapCelAst(parseCel(trimmed), segmentStart);
+    } catch (error) {
+      // Only a body that doesn't parse warrants the next-shorter prefix; a
+      // wrapper defect is not something a shorter prefix fixes.
+      if (!(error instanceof CelParseError)) throw error;
     }
   }
   return { kind: "ident", range, name: source.trim() };
@@ -211,7 +241,7 @@ export function buildCelSegments(
         range,
         source: taggedSource,
         open: false,
-        ast: () => wrapCelAst(parse(taggedSource).ast, bodyStart),
+        ast: () => wrapCelAst(parseCel(taggedSource), bodyStart),
       },
     ];
   }
@@ -230,7 +260,7 @@ export function buildCelSegments(
       range: [scalarStart + match.index, scalarStart + match.index + whole.length],
       source,
       open: false,
-      ast: () => wrapCelAst(parse(source).ast, bodyStart),
+      ast: () => wrapCelAst(parseCel(source), bodyStart),
     });
     lastClosedEnd = match.index + whole.length;
   }
