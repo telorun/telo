@@ -16,6 +16,11 @@ import {
  *  "which container am I typing into". */
 export interface ResolvedCursor {
   docIndex: number;
+  /** The cursor as a document offset. Carried so a consumer hit-testing inside a
+   *  node (a CEL chain, the halves of an `Alias.Name` value) reuses the one this
+   *  resolution was performed with, rather than recomputing the line table and
+   *  risking a different answer. */
+  offset: number;
   /** Top-level `kind:` value of the cursor's document, when present. */
   docKind?: string;
   slot: "key" | "value";
@@ -332,6 +337,7 @@ export function resolveNodeAtPosition(
     }
     return {
       docIndex,
+      offset,
       docKind,
       slot: "key",
       path: found.path,
@@ -362,6 +368,7 @@ export function resolveNodeAtPosition(
       const { path, existingKeys, scope } = columnSearch(doc.root, col, offset, lineOffsets);
       return {
         docIndex,
+        offset,
         docKind,
         slot: "key",
         path,
@@ -375,6 +382,7 @@ export function resolveNodeAtPosition(
     const clampedEnd = Math.min(offset, value.range[1]);
     return {
       docIndex,
+      offset,
       docKind,
       slot: "value",
       path: found.keyName != null ? [...found.path, found.keyName] : found.path,
@@ -395,6 +403,7 @@ export function resolveNodeAtPosition(
     : { path: [], existingKeys: new Set<string>(), scope: { depth: 0 } };
   return {
     docIndex,
+    offset,
     docKind,
     slot: "key",
     path: resolution.path,

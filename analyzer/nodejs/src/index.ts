@@ -161,7 +161,7 @@ export { validateModuleArtifact } from "./validate-module-artifact.js";
 export { withSyntheticPositions } from "./with-synthetic-positions.js";
 export { documentToAst, parseToAst } from "./yaml-ast.js";
 export type { AstDocument, AstMap, AstNode, AstPair, AstScalar, AstSeq } from "./yaml-ast.js";
-export { buildCelSegments, wrapCelAst } from "./cel-ast.js";
+export { CelParseError, buildCelSegments, wrapCelAst } from "./cel-ast.js";
 export type { CelNode, CelSegment } from "./cel-ast.js";
 export { DEFAULT_MANIFEST_FILENAME, DiagnosticSeverity } from "./types.js";
 export type {
