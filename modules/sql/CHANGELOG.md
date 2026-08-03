@@ -1,5 +1,7 @@
 # Changelog
-## 0.17.0 - 2026-08-01
+## 0.18.0 - 2026-08-03
+### Added
+* Structured deprecation on Sql.Migration. The kind's replacement was previously stated only in prose inside its description, where nothing could badge it or link it. It now carries `metadata.deprecated` with a `reason` and `replacedBy: Self.Migrations`, which the hub resolves through this manifest's own imports into a target a consumer can follow. Behaviour is unchanged — a standalone Sql.Migration is still discovered by any Sql.Migrations in the same module scope and merged into its set.## 0.17.0 - 2026-08-01
 ### Added
 * The controller now ships inside the module artifact as a bundle (pkg:telo/local/js) instead of being fetched from npm at load. Importing this module needs no npm registry at run time, and its version is a single number again: metadata.version. The kernel builds the controller from source while the module is a working copy, so a checkout needs no build step.## 0.16.0 - 2026-07-29
 ### Added
