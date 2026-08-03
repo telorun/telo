@@ -1,0 +1,88 @@
+kind: Telo.Application
+metadata:
+  name: RunBindingsTest
+  version: 1.0.0
+  description: |
+    Named `bindings:` on Run.Value and Run.Choice: a binding declared before the
+    one it reads (order is derived, not declared), a binding shared by several
+    decision rows, and one that would throw if it were evaluated — proving a
+    binding nothing reads is never computed.
+imports:
+  Run: ../
+  Assert: ../../assert
+targets:
+  - !ref TestValueBindings
+  - !ref TestChoiceBindings
+---
+# `net` is declared first and reads `gross`/`discount`, which are declared after
+# it: the evaluation order comes from the references, not the manifest order.
+kind: Run.Value
+metadata: { name: PriceLine }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [qty, unitPrice, discountRate, taxRate]
+    properties:
+      qty: { type: number }
+      unitPrice: { type: number }
+      discountRate: { type: number }
+      taxRate: { type: number }
+bindings:
+  net: !cel "gross - discount"
+  gross: !cel "inputs.qty * inputs.unitPrice"
+  discount: !cel "gross * inputs.discountRate"
+value:
+  gross: !cel "gross"
+  net: !cel "net"
+  tax: !cel "net * inputs.taxRate"
+---
+# `weight` is read by two predicates and by the winning row's value — computed
+# once. `poison` is read only by a row that never wins, so it is never computed;
+# evaluating it would divide by zero and fail the call.
+kind: Run.Choice
+metadata: { name: ShippingTier }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [grams, zero]
+    properties:
+      grams: { type: number }
+      zero: { type: integer }
+bindings:
+  weight: !cel "inputs.grams / 1000.0"
+  poison: !cel "1 / inputs.zero"
+choices:
+  - when: !cel "weight > 30.0"
+    value: { tier: freight, kg: !cel "poison" }
+  - when: !cel "weight > 2.0"
+    value: { tier: parcel, kg: !cel "weight" }
+default:
+  value: { tier: letter, kg: 0.0 }
+---
+kind: Run.Sequence
+metadata: { name: TestValueBindings }
+steps:
+  - name: Price
+    invoke: !ref PriceLine
+    inputs: { qty: 2.0, unitPrice: 10.0, discountRate: 0.1, taxRate: 0.5 }
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Price.result"
+      expected: { gross: 20.0, net: 18.0, tax: 9.0 }
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: TestChoiceBindings }
+steps:
+  - name: Tier
+    invoke: !ref ShippingTier
+    inputs: { grams: 5000.0, zero: 0 }
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Tier.result"
+      expected: { tier: parcel, kg: 5.0 }
+    invoke:
+      kind: Assert.Equals

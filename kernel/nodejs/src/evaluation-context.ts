@@ -263,6 +263,11 @@ export function ambientInvokeContext(): InvokeContext | undefined {
   return cancellationStore.getStore();
 }
 
+/** Marks a scope built by {@link EvaluationContext.bindScope}, whose properties
+ *  are getters. `expandWith` merges such a scope by descriptor rather than by
+ *  value — reading the value here is what a lazy binding must not do. */
+const LAZY_SCOPE = Symbol("telo.lazyScope");
+
 type Walker = (ctx: Record<string, unknown>) => unknown;
 
 /** Compile a manifest subtree into a tightly-bound walker closure. The returned
@@ -1545,6 +1550,9 @@ export class EvaluationContext implements IEvaluationContext {
    * `expand` is synchronous; cel-vm closures only read from the activation.
    */
   expandWith(value: unknown, extraContext: Record<string, unknown>): unknown {
+    if ((extraContext as Record<symbol, unknown>)[LAZY_SCOPE] === true) {
+      return this.expandWithLazyScope(value, extraContext);
+    }
     const ctx = this._context as Record<string, unknown>;
     const keys = Object.keys(extraContext);
     const savedValues: unknown[] = new Array(keys.length);
@@ -1564,6 +1572,88 @@ export class EvaluationContext implements IEvaluationContext {
         else delete ctx[k];
       }
     }
+  }
+
+  /**
+   * `expandWith` for a scope carrying accessor properties (a {@link bindScope}
+   * result). Transfers property *descriptors* rather than values, so a binding's
+   * getter reaches the activation intact and is called only if the expression
+   * reads it. The value-copying fast path above would force every getter at
+   * merge time, which is exactly the eagerness lazy bindings avoid.
+   */
+  private expandWithLazyScope(value: unknown, extraContext: Record<string, unknown>): unknown {
+    const ctx = this._context as Record<string, unknown>;
+    const keys = Object.keys(extraContext);
+    const saved: (PropertyDescriptor | undefined)[] = new Array(keys.length);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]!;
+      saved[i] = Object.getOwnPropertyDescriptor(ctx, key);
+      Object.defineProperty(ctx, key, {
+        ...Object.getOwnPropertyDescriptor(extraContext, key)!,
+        configurable: true,
+      });
+    }
+    try {
+      return this.expand(value);
+    } finally {
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i]!;
+        const previous = saved[i];
+        if (previous) Object.defineProperty(ctx, key, previous);
+        else delete ctx[key];
+      }
+    }
+  }
+
+  /**
+   * Extend `base` with a kind's named CEL bindings, each evaluated lazily and
+   * memoised for the lifetime of the returned scope. See
+   * `ControllerContext.bindScope`.
+   */
+  bindScope(
+    bindings: Record<string, unknown> | undefined,
+    base: Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (bindings === null || typeof bindings !== "object") return base;
+    // A scope variable always wins — the caller's own (`inputs`, `item`) AND the
+    // ambient ones on this context (`variables`, `resources`, …), which are not
+    // in `base` and would otherwise be shadowed for the length of an expansion.
+    // That is what bounds a name the analyzer's reserved-set check did not know
+    // to reject: a dead binding, never a hijacked global.
+    const names = Object.keys(bindings).filter(
+      (name) => !(name in base) && !(name in this._context),
+    );
+    if (names.length === 0) return base;
+
+    const scope: Record<string, unknown> = { ...base };
+    const resolved = new Map<string, unknown>();
+    const resolving = new Set<string>();
+    for (const name of names) {
+      Object.defineProperty(scope, name, {
+        enumerable: true,
+        configurable: true,
+        get: () => {
+          if (resolved.has(name)) return resolved.get(name);
+          if (resolving.has(name)) {
+            throw new RuntimeError(
+              "ERR_BINDING_CYCLE",
+              `Binding '${name}' resolves through itself (${[...resolving, name].join(" → ")}). ` +
+                `A binding is computed from the ones it references, so the chain cannot close.`,
+            );
+          }
+          resolving.add(name);
+          try {
+            const value = this.expandWith(bindings[name], scope);
+            resolved.set(name, value);
+            return value;
+          } finally {
+            resolving.delete(name);
+          }
+        },
+      });
+    }
+    Object.defineProperty(scope, LAZY_SCOPE, { value: true });
+    return scope;
   }
 
   /** Cache of compiled walker closures keyed on the manifest subtree they walk.

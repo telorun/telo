@@ -23,7 +23,11 @@ import {
   resolveContract,
 } from "./invocation-contract.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
-import { buildKernelGlobalsSchema, mergeKernelGlobalsIntoContext } from "./kernel-globals.js";
+import {
+  buildKernelGlobalsSchema,
+  KERNEL_GLOBAL_NAMES,
+  mergeKernelGlobalsIntoContext,
+} from "./kernel-globals.js";
 import {
   buildObservedStateIndex,
   buildObservedStateResourcesSchema,
@@ -59,6 +63,16 @@ import {
   resolveTypeFieldToSchema,
 } from "./validate-cel-context.js";
 import { buildEvalPaths, evalPathsCover } from "./eval-paths.js";
+import {
+  BINDINGS_ANNOTATION,
+  bindingContextProperties,
+  bindingPathChain,
+  CEL_RESERVED_WORDS,
+  findBindingSites,
+  resolveBindingOrder,
+  schemaAtChain,
+  type BindingSites,
+} from "./cel-bindings.js";
 import { validateExtends } from "./validate-extends.js";
 import { validateLogging } from "./validate-logging.js";
 import { validateModuleArtifact } from "./validate-module-artifact.js";
@@ -416,6 +430,9 @@ function buildStepContextSchema(
 
     const invokeField = stepCtx.invoke;
     const outputTypeField = stepCtx.outputType;
+    // Optional: the field a step uses to produce a result without dispatching.
+    // Only a kind that declares one has pure steps at all.
+    const valueField = stepCtx.value;
     if (!invokeField || !outputTypeField) continue;
 
     const steps = manifest[fieldName];
@@ -424,6 +441,13 @@ function buildStepContextSchema(
     const stepItemSchema = resolveLocalRef(
       fieldSchema.items as Record<string, any> | undefined,
       defSchema,
+    );
+
+    // The instance's own input contract, for typing a pure step that just
+    // forwards one of its values.
+    const ownInputs = resolveTypeFieldToSchema(
+      (manifest as Record<string, any>).inputType,
+      allManifests,
     );
 
     const stepProperties: Record<string, any> = {};
@@ -435,7 +459,28 @@ function buildStepContextSchema(
       // wrappers (try/if/while/switch/throw) don't produce a result and must
       // not shadow real entries with a permissive `additionalProperties: true`,
       // or unknown step references slip through chain validation.
-      if (typeof name !== "string" || !invoke || typeof invoke !== "object") return;
+      if (typeof name !== "string") return;
+      if (!invoke || typeof invoke !== "object") {
+        // A pure step dispatches nothing, so there is no contract to resolve.
+        // Where its expression is a plain chain into something already typed —
+        // an earlier step's result, or the kind's own inputs — that type carries
+        // through; anything else (arithmetic, a call, a comprehension) stays
+        // permissive rather than guessed. Same rule as a named binding's.
+        if (valueField && valueField in s) {
+          const scopeRoot = {
+            properties: {
+              steps: { type: "object", properties: { ...stepProperties } },
+              ...(ownInputs ? { inputs: ownInputs } : {}),
+            },
+          };
+          const chained = schemaAtChain(bindingPathChain(s[valueField]), scopeRoot);
+          stepProperties[name] = {
+            type: "object",
+            properties: { result: chained ?? PERMISSIVE_CONTRACT },
+          };
+        }
+        return;
+      }
       const invokedKind = invoke.kind as string | undefined;
       const invokedName = invoke.name as string | undefined;
       // A named `!ref` carries the target's own manifest (which may narrow the
@@ -763,6 +808,29 @@ function errorContextForPath(
     }
   }
   return best?.schema;
+}
+
+/** Add a kind's named bindings to a resolved context, when the context declares
+ *  a bindings region. They go UNDER the context's own properties: a scope
+ *  variable wins over a same-named binding at runtime, so static typing has to
+ *  agree (the collision itself is `BINDING_NAME_RESERVED`). */
+function withBindingNames(
+  contextSchema: Record<string, any>,
+  resource: Record<string, any>,
+): Record<string, any> {
+  const field = contextSchema[BINDINGS_ANNOTATION];
+  if (typeof field !== "string") return contextSchema;
+  const bindings = resource[field];
+  if (bindings === null || typeof bindings !== "object" || Array.isArray(bindings)) {
+    return contextSchema;
+  }
+  return {
+    ...contextSchema,
+    properties: {
+      ...bindingContextProperties(bindings as Record<string, unknown>, contextSchema),
+      ...(contextSchema.properties ?? {}),
+    },
+  };
 }
 
 /** Member-access chains in a CEL expression, or none when it doesn't parse.
@@ -1695,6 +1763,9 @@ export class StaticAnalyzer {
     // `x-telo-step-context` / `x-telo-error-context` scopes. A `!cel` outside
     // every region is read as a literal — the runtime never evaluates it.
     let celEvalPaths: string[] = [];
+    // The bindings field this kind declares (if any), read by the CEL sites that
+    // see the names it introduces.
+    let celBindingSites: BindingSites | undefined;
     // The compile half alone: a field that resolves at startup, where observed
     // state cannot exist yet.
     let celCompilePaths: string[] = [];
@@ -1747,6 +1818,75 @@ export class StaticAnalyzer {
           celErrorScopes = collectErrorContextScopes(
             e.definition?.schema as Record<string, any> | undefined,
           );
+
+          celBindingSites = findBindingSites(e.definition?.schema as Record<string, any>);
+          if (celBindingSites) {
+            const declared = (m as Record<string, any>)[celBindingSites.field];
+            const bindingsName = (m.metadata as any)?.name as string | undefined;
+            const bindingsFile = (m.metadata as { source?: string } | undefined)?.source;
+            const resourceRef = { kind: m.kind, name: bindingsName ?? "" };
+
+            // Which field holds the bindings would otherwise be decided by
+            // schema walk order, silently.
+            if (celBindingSites.fields.length > 1) {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "BINDING_FIELD_AMBIGUOUS",
+                source: SOURCE,
+                message: `${m.kind}/${bindingsName}: the kind's schema points '${BINDINGS_ANNOTATION}' at more than one field (${celBindingSites.fields.join(", ")}). Every annotated context must name the same bindings field.`,
+                data: { resource: resourceRef, filePath: bindingsFile, path: celBindingSites.field },
+              });
+            }
+
+            if (declared !== null && typeof declared === "object" && !Array.isArray(declared)) {
+
+              for (const cycle of resolveBindingOrder(declared).cycles) {
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: "BINDING_CYCLE",
+                  source: SOURCE,
+                  message: `${m.kind}/${bindingsName}: '${celBindingSites.field}' has a cycle — ${cycle.join(" → ")}. A binding is resolved from the ones it references, so it cannot reference itself, directly or through others.`,
+                  data: {
+                    resource: resourceRef,
+                    filePath: bindingsFile,
+                    path: `${celBindingSites.field}.${cycle[0]}`,
+                  },
+                });
+              }
+
+              // Every name the CEL environment already binds at this site: the
+              // kernel globals (registered straight onto the environment, not
+              // contributed by any annotation), the scope the annotated contexts
+              // declare, and the two the analyzer merges per site. Shadowing one
+              // would leave the binding silently unreachable there — as would
+              // naming it after a CEL keyword, which never lexes as a reference.
+              const inScope = new Set<string>([
+                ...KERNEL_GLOBAL_NAMES,
+                ...celBindingSites.scopeNames,
+              ]);
+              if (celStepContextSchema) inScope.add("steps");
+              if (celErrorScopes.size > 0) inScope.add("error");
+              const keywords = new Set<string>(CEL_RESERVED_WORDS);
+
+              for (const name of Object.keys(declared)) {
+                const shadows = inScope.has(name);
+                if (!shadows && !keywords.has(name)) continue;
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: "BINDING_NAME_RESERVED",
+                  source: SOURCE,
+                  message: shadows
+                    ? `${m.kind}/${bindingsName}: binding '${name}' shadows a variable already in scope here (${[...inScope].sort().join(", ")}). Rename the binding — a scope variable always wins, so this one would never be read.`
+                    : `${m.kind}/${bindingsName}: binding '${name}' is a CEL keyword, so no expression can read it as a reference. Rename the binding.`,
+                  data: {
+                    resource: resourceRef,
+                    filePath: bindingsFile,
+                    path: `${celBindingSites.field}.${name}`,
+                  },
+                });
+              }
+            }
+          }
 
           // The non-eval-field check only applies to runtime resource instances:
           // structural / templating kinds (capability `Telo.Template`, or no
@@ -1889,7 +2029,10 @@ export class StaticAnalyzer {
               aliases,
               allManifests: allManifests as Record<string, any>[],
             });
-            effectiveContext = mergeKernelGlobalsIntoContext(resolvedContext, kernelGlobals);
+            effectiveContext = mergeKernelGlobalsIntoContext(
+              withBindingNames(resolvedContext, m as Record<string, any>),
+              kernelGlobals,
+            );
           } else if (observedStateContext) {
             // No `x-telo-context` matched, so nothing was chain-validated here
             // before. Validate the observed-state segment alone rather than

@@ -75,6 +75,25 @@ Beyond `name`, a step is exactly one of the following.
 `invoke:` takes a `!ref` to an Invocable or Runnable, or an inline `{ kind, … }`
 declaration. `inputs:` is a CEL-templatable map. `retry:` is optional.
 
+### Value — compute without dispatching
+
+```yaml
+- name: Total
+  value: !cel "sum(steps.LoadCart.result.lines.map(l, l.price * double(l.qty)))"
+```
+
+A step with `value:` instead of `invoke:` publishes `steps.Total.result` exactly
+as an invoke step does, so nothing downstream can tell the difference — but it
+dispatches nothing: no resource, no span, no topology node. Reach for it when an
+intermediate is derived from an earlier step and would otherwise cost a whole
+`Run.Value` resource to name. It sees the same scope as any other step,
+including the enclosing kind's (`item` / `index` inside an iteration,
+`iteration` / `previous` inside a loop).
+
+For intermediates derived from `inputs:` rather than from a step, `Run.Value`
+and `Run.Choice` take a `bindings:` map — see
+[naming an intermediate value](/learn/refs-and-cel#naming-an-intermediate-value).
+
 ### Conditional — `if` / `elseif` / `then` / `else`
 
 ```yaml
@@ -209,8 +228,8 @@ says more about intent and is easier to read:
 
 | Kind | For |
 | --- | --- |
-| `Run.Value` | Return a shaped value computed with CEL. The declarative alternative to a one-line script. |
-| `Run.Choice` | A first-match decision table: return the value of the first choice whose predicate holds, or a declared default. |
+| `Run.Value` | Return a shaped value computed with CEL, naming its intermediate steps with `bindings:`. The declarative alternative to a one-line script. |
+| `Run.Choice` | A first-match decision table: return the value of the first choice whose predicate holds, or a declared default. Also takes `bindings:`, shared across rows. |
 | `Run.Iteration` | Run a step body once per collection element, with configurable concurrency. |
 | `Run.Projection` | Map each element of a collection through a body into a result array. |
 | `Run.Loop` | Repeat a body while a condition holds or up to `maxIterations`, seeing the iteration count and previous result. |
@@ -220,12 +239,19 @@ Full field schemas for each are on the [hub](https://hub.telo.run/?q=Run.Sequenc
 
 ## When to reach for a script instead
 
-`JavaScript.Script` runs inline code and is occasionally the right answer — a
-gnarly string transform, a bit of arithmetic no expression makes readable. But
-prefer composition first: a step graph stays visible to the analyzer, the
+`JavaScript.Script` runs inline code and is occasionally the right answer, but
+the cases that used to justify it mostly have declarative forms now: arithmetic
+no single expression makes readable is `bindings:` or a `value:` step, a string
+transform is usually one CEL call (`regexReplace`, `split`, `parseJson`,
+`base64Encode`, `sha256`, `uuidv7`, `nowIso` — see the
+[CEL reference](/cel)), and branching is `Run.Choice`.
+
+Prefer composition first: a step graph stays visible to the analyzer, the
 editor, and the topology view, while the inside of a script is opaque to all
-three. If you find yourself writing a script that calls out to something, that
-something probably wants to be a resource.
+three. What genuinely remains for a script is a Node.js API the kernel does not
+expose — `Buffer` and byte-level work, streams, a native library. And if you
+find yourself writing a script that calls out to something, that something
+probably wants to be a resource.
 
 ## See also
 

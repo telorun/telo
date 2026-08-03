@@ -42,7 +42,8 @@ value:
 | Field | Purpose |
 | --- | --- |
 | `inputType` | The input **contract** — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. The `value` expression reads the values as `!cel "inputs.<name>"`. Optional — a constant needs none. |
-| `value` | A CEL expression, a structure (map / array) with CEL leaves, or a plain literal. Evaluated at invoke time over `inputs`; the result is what callers receive and may be any shape (object, array, scalar). |
+| `bindings` | Optional named intermediate values, readable by bare name inside `value` and by each other. Order is derived from what each one references; each is computed at most once per call, and only if something reads it. See [Bindings and pure steps](./bindings.md). |
+| `value` | A CEL expression, a structure (map / array) with CEL leaves, or a plain literal. Evaluated at invoke time over `inputs` and any `bindings`; the result is what callers receive and may be any shape (object, array, scalar). |
 
 Like `Run.Sequence`, the `inputs:` field is the contract (what the resource accepts), distinct from the `inputs:` a caller passes at invoke time (the values).
 
@@ -114,10 +115,22 @@ value:
   doubled: "${{ double(inputs.n) * 2.0 }}"
 ```
 
+## Naming the steps of a calculation
+
+A `value` with four derived quantities in it does not need four resources — declare them as `bindings:` and read them by name:
+
+```yaml
+bindings:
+  gross: !cel "inputs.qty * inputs.unitPrice"
+  discount: !cel "gross * inputs.discountRate"
+value:
+  net: !cel "gross - discount"
+```
+
+See [Bindings and pure steps](./bindings.md) for the ordering, laziness and shadowing rules.
+
 ## When NOT to use `Run.Value`
 
-`value` is pure CEL. Reach for `JS.Script` (or a dedicated resource kind) when the work needs:
+`value` is pure CEL, but "pure CEL" covers more than it sounds: the CEL catalog already has `parseJson` / `json`, `base64Encode` / `base64Decode`, `sha256` / `sha1` / `sha512` / `hmac`, `uuidv4` / `uuidv7`, `nowIso` / `today`, `regexGroups` / `regexExtractAll`, `sum` / `avg` / `min` / `max`, and `sort` / `distinct` / `flatten` / `range`. Branching is [`Run.Choice`](./choice.md), mapping is [`Run.Projection`](./projection.md), and aggregation lives in the `collection` module.
 
-- a Node.js API — `fetch`, `Buffer`/`Uint8Array`, `Date`, `Map`, streams, crypto;
-- real branching, loops, or recursion that CEL can't express cleanly;
-- parsing (`JSON.parse`) or byte-level inspection.
+What is left for a `JS.Script` (or a dedicated resource kind) is a Node.js API the kernel does not expose: `fetch`, `Buffer` / byte-level inspection, streams, a native library.

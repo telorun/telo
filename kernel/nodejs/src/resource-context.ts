@@ -754,6 +754,13 @@ export class ResourceContextImpl implements ResourceContext {
     return this.owningContext.expandWith(value, context);
   }
 
+  bindScope(
+    bindings: Record<string, unknown> | undefined,
+    scope: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return this.owningContext.bindScope(bindings, scope);
+  }
+
   async emitEvent(event: string, payload?: any) {
     await this.kernel.emitRuntimeEvent(event, payload);
   }

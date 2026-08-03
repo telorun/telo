@@ -8,6 +8,7 @@ interface ChoiceRow {
 interface RunChoiceManifest {
   metadata: { name: string };
   inputs?: Record<string, unknown>;
+  bindings?: Record<string, unknown>;
   choices: ChoiceRow[];
   default?: { value: unknown };
   outputType?: string | Record<string, unknown>;
@@ -26,7 +27,9 @@ class RunChoice {
   ) {}
 
   async invoke(inputs: Record<string, unknown>): Promise<unknown> {
-    const scope = { inputs: inputs ?? {} };
+    // One scope for the whole call: a binding read by several rows is computed
+    // once, and one read by no row that runs is never computed at all.
+    const scope = this.ctx.bindScope(this.resource.bindings, { inputs: inputs ?? {} });
 
     for (let i = 0; i < this.resource.choices.length; i++) {
       const row = this.resource.choices[i]!;

@@ -25,6 +25,14 @@ export {
 } from "./flatten-for-analyzer.js";
 export { buildEvalPaths, evalPathCovers } from "./eval-paths.js";
 export {
+  BINDINGS_ANNOTATION,
+  bindingContextProperties,
+  bindingDependencies,
+  findBindingSites,
+  resolveBindingOrder,
+} from "./cel-bindings.js";
+export type { BindingSites } from "./cel-bindings.js";
+export {
   applyObservedStateNode,
   buildObservedStateIndex,
   buildObservedStateResourcesSchema,

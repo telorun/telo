@@ -3,6 +3,7 @@ import { type ResourceContext } from "@telorun/sdk";
 interface RunValueManifest {
   metadata: Record<string, string | number | boolean>;
   inputs?: Record<string, unknown>;
+  bindings?: Record<string, unknown>;
   value: unknown;
 }
 
@@ -17,7 +18,8 @@ class RunValue {
   ) {}
 
   async invoke(inputs: Record<string, unknown>): Promise<unknown> {
-    return this.ctx.expandValue(this.resource.value, { inputs: inputs ?? {} });
+    const scope = this.ctx.bindScope(this.resource.bindings, { inputs: inputs ?? {} });
+    return this.ctx.expandValue(this.resource.value, scope);
   }
 }
 

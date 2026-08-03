@@ -124,6 +124,21 @@ steps:
 
 `targets:` is **not** Application-only — both `Telo.Application` and `Run.Sequence` have it. The difference is lifetime: an Application's targets/resources live for the process; a sequence's `with:` resources live only for that run. So yes, a `Run.Sequence` can start an `Http.Server` (put it in `with:`, list it in `targets:`) — useful for self-contained integration tests.
 
+## Naming intermediate values
+
+A calculation's intermediate values do not need a resource each. `Run.Value` and `Run.Choice` take a `bindings:` map — names readable bare in their expressions, ordered by what they reference and evaluated lazily — and any step list takes a step carrying `value:` instead of `invoke:`, which publishes `steps.<name>.result` with no dispatch:
+
+```yaml
+steps:
+  - name: cart
+    invoke: !ref LoadCart
+  - name: total
+    value: !cel "sum(steps.cart.result.lines.map(l, l.price * double(l.qty)))"
+```
+
+See [Bindings and pure steps](docs/bindings.md).
+
 ## Reference
 
+- [Bindings and pure steps](docs/bindings.md) — naming intermediate values without a dispatch.
 - [Structured Errors](docs/structured-errors.md) — how `try`/`catch` interacts with `InvokeError`.

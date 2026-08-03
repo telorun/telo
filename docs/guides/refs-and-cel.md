@@ -88,9 +88,85 @@ the single most useful table on the page:
 | `request.*` | inside an HTTP handler's `inputs:` / `returns:` | query, body, params, headers, path, method |
 | `result.*` | inside a `returns:` block | what the handler returned |
 | `error.*` | inside `catch:` / `finally:` / `catches:` | the caught failure: `code`, `message`, `step`, `data` |
+| a bare name | inside a kind that declares `bindings:` | a value you named yourself — see below |
 
 Everything here is **typed**. `steps.Greet.result.mesage` is a
 `CEL_UNKNOWN_FIELD` error at check time, not `undefined` at 3am.
+
+### Naming an intermediate value
+
+One expression that computes four things at once is unreadable, and splitting it
+across four resources costs four dispatches. `Run.Value` and `Run.Choice` take a
+`bindings:` map instead: each entry names a value, readable by bare name in the
+kind's expressions and in the other bindings.
+
+```yaml
+kind: Run.Value
+metadata: { name: PriceLine }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [qty, unitPrice, discountRate, taxRate]
+    properties:
+      qty: { type: number }
+      unitPrice: { type: number }
+      discountRate: { type: number }
+      taxRate: { type: number }
+bindings:
+  net: !cel "gross - discount"
+  gross: !cel "inputs.qty * inputs.unitPrice"
+  discount: !cel "gross * inputs.discountRate"
+value:
+  net: !cel "net"
+  tax: !cel "net * inputs.taxRate"
+```
+
+`net` is written first and reads two bindings declared after it. That is fine:
+**order comes from the references, not the manifest** — which is why `bindings:`
+is a map (order carries no meaning) while `steps:` is a list (order is the
+point). A binding that reaches itself is a `BINDING_CYCLE` error.
+
+Each binding is computed **on first read, at most once per call** — and never at
+all if nothing reads it. So a binding means exactly what pasting its expression
+into each use site would mean. In a decision table that is the difference
+between computing a shared value once and computing it per row:
+
+```yaml
+kind: Run.Choice
+metadata: { name: ShippingTier }
+bindings:
+  weight: !cel "sum(inputs.items.map(i, i.grams)) / 1000.0"
+choices:
+  - when: !cel "weight > 30.0"
+    value: { tier: freight }
+  - when: !cel "weight > 2.0"
+    value: { tier: parcel }
+default:
+  value: { tier: letter }
+```
+
+Bindings are evaluated before any step runs, so they never see `steps.*`. For a
+value derived from a step's result, use a step that carries `value:` instead of
+`invoke:` — it publishes `steps.<name>.result` like any other step, but
+dispatches nothing:
+
+```yaml
+steps:
+  - name: Cart
+    invoke: !ref LoadCart
+  - name: Total
+    value: !cel "sum(steps.Cart.result.lines.map(l, l.price * double(l.qty)))"
+  - name: Charge
+    invoke: !ref PaymentGateway
+    inputs:
+      amount: !cel "steps.Total.result"
+```
+
+A binding may not shadow a name already in scope — `inputs`, `steps`, `error`,
+`variables`, `secrets`, `resources`, `ports`. `telo check` says so
+(`BINDING_NAME_RESERVED`) rather than leaving you with a name that silently
+never resolves.
 
 ### Not every field evaluates CEL
 

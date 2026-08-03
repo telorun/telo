@@ -180,6 +180,12 @@ export interface EvaluationContext {
   runDetached<T>(fn: () => Promise<T>): Promise<T>;
   expand(value: unknown): unknown;
   expandWith(value: unknown, extraContext: Record<string, unknown>): unknown;
+  /** Extend a scope with a kind's named CEL bindings, evaluated lazily and
+   *  memoised per returned scope. See {@link ControllerContext.bindScope}. */
+  bindScope(
+    bindings: Record<string, unknown> | undefined,
+    scope: Record<string, unknown>,
+  ): Record<string, unknown>;
   expandPaths(
     value: Record<string, unknown>,
     paths: string[],
