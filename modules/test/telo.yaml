@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: test
-  namespace: std
+  name: Test
   version: 0.4.37
   description: Test discovery and execution
 exports:

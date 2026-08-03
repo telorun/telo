@@ -74,7 +74,7 @@ CLI args take precedence over the `filter` manifest field.
 
 1. Discovers test manifests by scanning the filesystem with `include`/`exclude` patterns.
 2. Applies the filter (from `ctx.args`, positional arg, or manifest field).
-3. Runs up to `concurrency` tests in parallel (default `3`). Each test gets a fresh `Kernel` instance with `.env` file support (loads `.env` and `.env.local` from the test's directory).
+3. Runs up to `concurrency` tests in parallel (default `3`). Each test gets a fresh kernel from the host (`ctx.createKernel()`), inheriting the host's manifest sources, with `.env` file support (loads `.env` and `.env.local` from the test's directory).
 4. Runs `kernel.load(testPath)` + `kernel.start()` on the child kernel.
 5. When more than one test is in the run, captures the child kernel's stdout/stderr per-test and emits it only on failure (passing tests' output is dropped). Single-test runs stream output live to the parent without buffering.
 6. Reports PASS/FAIL per test with timing **as each test completes** (so order is non-deterministic when `concurrency > 1`), and a summary at the end.

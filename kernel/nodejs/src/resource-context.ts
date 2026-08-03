@@ -10,11 +10,13 @@ import {
   type ControllerPolicy,
   type EvaluationContext as IEvaluationContext,
   type InvokeContext,
+  type Kernel as IKernel,
   type LoadOptions,
   type ModuleContext,
   type OpenSpan,
   type OpenSpanOptions,
   type ParsedArgs,
+  type SubKernelOptions,
   type TypeRule,
 } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
@@ -244,6 +246,10 @@ export class ResourceContextImpl implements ResourceContext {
 
   registerManifest(resource: any): void {
     this.moduleContext.registerManifest(resource);
+  }
+
+  createKernel(options?: SubKernelOptions): IKernel {
+    return this.kernel.createKernel(options);
   }
 
   loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {

@@ -1,6 +1,5 @@
 import { selectByPatterns } from "@telorun/glob";
-import { Kernel, LocalFileSource } from "@telorun/kernel";
-import type { ResourceContext, Runnable } from "@telorun/sdk";
+import type { Kernel, ResourceContext, Runnable, SubKernelOptions } from "@telorun/sdk";
 import { Static, Type } from "@sinclair/typebox";
 import * as fs from "fs";
 import * as path from "path";
@@ -162,16 +161,16 @@ async function runOneTest(
   parentStdout: NodeJS.WritableStream,
   parentStderr: NodeJS.WritableStream,
   hostEnv: Record<string, string | undefined>,
+  createKernel: (options?: SubKernelOptions) => Kernel,
 ): Promise<TestResult> {
   const start = Date.now();
   const stdout = captureOutput ? new BufferedWritable() : parentStdout;
   const stderr = captureOutput ? new BufferedWritable() : parentStderr;
   try {
-    const kernel = new Kernel({
+    const kernel = createKernel({
       env: buildEnvForManifest(testPath, hostEnv),
       stdout,
       stderr,
-      sources: [new LocalFileSource()],
     });
     await kernel.load(testPath);
     await kernel.start();
@@ -231,7 +230,14 @@ export async function create(
           if (i >= tests.length) return;
           const testPath = tests[i];
           const label = labelFor(testPath, baseDir);
-          const result = await runOneTest(testPath, !singleTest, ctx.stdout, ctx.stderr, ctx.env);
+          const result = await runOneTest(
+            testPath,
+            !singleTest,
+            ctx.stdout,
+            ctx.stderr,
+            ctx.env,
+            (options) => ctx.createKernel(options),
+          );
           result.label = label;
           results.push(result);
 

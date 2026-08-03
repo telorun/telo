@@ -1,0 +1,11 @@
+project: assert
+kind: Added
+body: >-
+  Renamed the module to `Assert` (`metadata.name`) and dropped its
+  `metadata.namespace`, so its published identity is now the bare name `Assert`
+  rather than `std/assert`. Manifests are otherwise unaffected — kinds are
+  referenced through the import alias you choose (`kind: Assert.Equals`), not
+  through the module name, so only the import `source` changes. The npm
+  controller package stays `@telorun/assert` (npm forbids uppercase) and the
+  directory stays `modules/assert`.
+time: 2026-08-03T15:00:00.000000000+02:00

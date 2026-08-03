@@ -9,7 +9,7 @@ metadata:
     `Console.WriteLine` instance. Exercises the full path: alias-qualified ref
     resolution, the kernel registering `Self` in the import's child context so
     the library can declare its own instance, cross-context injection, and the
-    boot-target invoke. The assertion itself uses `std/assert`'s exported
+    boot-target invoke. The assertion itself uses the `assert` module's exported
     `equals` singleton (`!ref Assert.equals`) — so this whole application
     declares NO local resources, referencing only cross-module exports.
     `steps.Print.result` (the writeLine return value) confirms the invoke ran.

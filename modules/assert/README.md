@@ -50,7 +50,7 @@ The config-bearing kinds (`Schema`, `Manifest`, `Events`, `ModuleContext`) carry
 kind: Telo.Application
 metadata: { name: assert-app, version: 1.0.0 }
 imports:
-  Assert: std/assert@latest
+  Assert: ./path/to/modules/assert
 ---
 kind: Assert.Equals
 metadata: { name: CheckTotal }

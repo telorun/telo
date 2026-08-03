@@ -6,6 +6,7 @@ import { ModuleContext } from "./module-context.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeResource } from "./runtime-resource.js";
+import type { Kernel } from "./types.js";
 
 export interface LoadOptions {
   /** When true, `${{ }}` templates are replaced with CompiledValue wrappers
@@ -40,6 +41,16 @@ export class NoopValidator implements DataValidator {
 }
 
 export type ParsedArgs = Partial<Record<string, string | boolean | string[]>> & { _: string[] };
+
+/** Overrides for a sub-kernel spawned via {@link ResourceContext.createKernel}.
+ *  Anything omitted is inherited from the host kernel. */
+export interface SubKernelOptions {
+  env?: Record<string, string | undefined>;
+  stdin?: NodeJS.ReadableStream;
+  stdout?: NodeJS.WritableStream;
+  stderr?: NodeJS.WritableStream;
+  argv?: string[];
+}
 
 export interface ResourceContext extends ControllerContext {
   readonly args: ParsedArgs;
@@ -121,6 +132,13 @@ export interface ResourceContext extends ControllerContext {
    *  loader re-deriving the root from the entry URL. `undefined` mirrors
    *  `getEntryUrl()` (callers that bypass `Kernel.load()`). */
   getInstallRoot(): string | undefined;
+  /** Create a fresh, isolated kernel that resolves manifest URLs through the
+   *  host kernel's own `ManifestSource` chain. The child shares no runtime
+   *  state with the host — its own controller registry, event bus, and
+   *  lifecycle — so a controller that has to run or analyze another manifest
+   *  asks the host for a kernel instead of depending on the concrete
+   *  implementation. */
+  createKernel(options?: SubKernelOptions): Kernel;
   /** Load a single module (its own file + `include`d partials). Use this when
    *  you need just the declaring file's manifests. */
   loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]>;

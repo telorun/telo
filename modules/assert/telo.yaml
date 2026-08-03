@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: assert
-  namespace: std
+  name: Assert
   version: 0.8.14
   description: Assertion and value verification for testing
 exports:

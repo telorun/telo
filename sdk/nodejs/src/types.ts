@@ -108,6 +108,18 @@ export interface ControllerInstance<
 export interface Kernel {
   load(url: string): Promise<void>;
   /**
+   * Statically analyze a manifest graph without instantiating anything.
+   * Returns every diagnostic the analysis produced — both `error` and
+   * `warning` severities — instead of throwing on a failed analysis. Only a
+   * graph that cannot be loaded at all (unreadable entry, unresolvable
+   * import) throws.
+   *
+   * Leaves the kernel untouched: no entry URL, no registered definitions, no
+   * cache writes — so it is safe to call on a kernel that has already loaded
+   * a different manifest.
+   */
+  analyze(url: string): Promise<RuntimeDiagnostic[]>;
+  /**
    * Boot: initialize resources without running targets. Returns when every
    * resource is initialized and the kernel is ready to accept `invoke()`
    * calls. Throws ERR_KERNEL_STATE_INVALID if called twice or after teardown.

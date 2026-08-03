@@ -209,13 +209,15 @@ export async function canonicalizeRelativeImports(
       name?: string;
       version?: string;
     };
-    if (!namespace || !name || !version) {
+    if (!name || !version) {
       throw new Error(
-        `import source '${source}' (resolved: '${targetUrl}') is missing metadata.namespace/name/version, required for canonicalization.`,
+        `import source '${source}' (resolved: '${targetUrl}') is missing metadata.name/version, required for canonicalization.`,
       );
     }
 
-    moduleDoc.setIn(importRef.path, `${namespace}/${name}@${version}`);
+    // `namespace` is optional — an un-namespaced module canonicalizes to a bare
+    // `<name>@<version>` ref.
+    moduleDoc.setIn(importRef.path, `${namespace ? `${namespace}/` : ""}${name}@${version}`);
     changed = true;
   }
 
@@ -260,18 +262,20 @@ async function pushToTeloRegistry(
   const name = nameMatch?.[1];
   const version = versionMatch?.[1];
 
-  if (!namespace || !name || !version) {
+  if (!name || !version) {
     console.error(
       log.error("error") +
-        `  ${filePath}: metadata must include namespace, name, and version.\n` +
-        `  Found: namespace=${namespace ?? "(missing)"}, name=${name ?? "(missing)"}, version=${version ?? "(missing)"}`,
+        `  ${filePath}: metadata must include name and version.\n` +
+        `  Found: name=${name ?? "(missing)"}, version=${version ?? "(missing)"}`,
     );
     return { ok: false, label: "", url: "" };
   }
 
-  const base = `${registry.replace(/\/$/, "")}/${namespace}/${name}/${version}`;
+  // `namespace` is optional: an un-namespaced module addresses as `<name>/<version>`.
+  const nsSegment = namespace ? `${namespace}/` : "";
+  const base = `${registry.replace(/\/$/, "")}/${nsSegment}${name}/${version}`;
   const url = `${base}${push.urlSuffix}`;
-  const label = `${namespace}/${name}@${version}`;
+  const label = `${namespace ? `${namespace}/` : ""}${name}@${version}`;
 
   const headers: Record<string, string> = { "content-type": push.contentType };
   const token = process.env.TELO_REGISTRY_TOKEN;

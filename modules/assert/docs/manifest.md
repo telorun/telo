@@ -48,11 +48,11 @@ expect:
 
 ## Behaviour
 
-1. Loads the target manifest (and all its transitive imports) via the standard `Loader`.
-2. Runs `StaticAnalyzer.analyze()` on the loaded manifests.
-3. Filters for error-severity diagnostics.
-4. If `expect.errors` is empty, asserts that zero errors were produced.
-5. If `expect.errors` has entries, matches each against the diagnostics by `code` (exact) and `message` (substring). Unmatched expectations fail the test.
+1. Asks the host for a throwaway kernel (`ctx.createKernel()`) and calls `analyze()` on it. The target manifest and all its transitive imports resolve through the same manifest sources a real run would use; nothing is registered on the host kernel.
+2. Collects every diagnostic the analysis produced — including version-reconciliation diagnostics (`MODULE_VERSION_CONFLICT`, `MODULE_VERSION_HOISTED`) — and splits them by severity. A file that fails to parse short-circuits: only the `MANIFEST_PARSE_FAILED` diagnostics are reported, because analyzing a mangled parse tree buries the real error under spurious secondaries.
+3. If `expect.errors` is empty, asserts that zero errors were produced.
+4. If `expect.errors` has entries, matches each against the diagnostics by `code` (exact) and `message` (substring). Unmatched expectations fail the test.
+5. A manifest graph that cannot be loaded at all (unreadable entry, unresolvable import) is a load error, matched against `expect.loadError` rather than `expect.errors`.
 
 ## Test file conventions
 

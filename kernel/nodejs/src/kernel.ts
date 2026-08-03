@@ -2,6 +2,7 @@ import {
   AnalysisRegistry,
   buildEvalPaths,
   defaultSources,
+  DiagnosticSeverity,
   flattenForAnalyzer,
   flattenLoadedModule,
   isModuleKind,
@@ -22,6 +23,8 @@ import {
   RuntimeError,
   RuntimeEvent,
   type BootTarget,
+  type RuntimeDiagnostic,
+  type SubKernelOptions,
   type CancellationSource,
   type EvaluationContext as IEvaluationContext,
   type InvokeOptions,
@@ -148,6 +151,9 @@ export class Kernel implements IKernel {
   readonly env: Record<string, string | undefined>;
   readonly argv: string[];
   readonly registryUrl: string | undefined;
+  /** The caller-supplied source chain, retained so `createKernel()` can hand a
+   *  child the same manifest reachability the host has. */
+  private readonly sources: ManifestSource[];
 
   constructor(options: KernelOptions) {
     this.stdin = options.stdin ?? process.stdin;
@@ -156,10 +162,68 @@ export class Kernel implements IKernel {
     this.env = options.env ?? hostEnv();
     this.argv = options.argv ?? [];
     this.registryUrl = options.registryUrl;
+    this.sources = [...options.sources];
     this.loader = new Loader(defaultSources(this.registryUrl), { celHandlers: nodeCelHandlers });
-    for (const source of options.sources) {
+    for (const source of this.sources) {
       this.loader.register(source);
     }
+  }
+
+  /**
+   * Spawn a fresh kernel sharing this one's source chain and, unless
+   * overridden, its streams and environment. The child is fully isolated —
+   * its own controller registry, event bus, and lifecycle — so a controller
+   * that runs or analyzes another manifest never reaches for the concrete
+   * `Kernel` class. `registryUrl` is deliberately not inherited: the child
+   * resolves registry refs through the default sources.
+   */
+  createKernel(options?: SubKernelOptions): IKernel {
+    return new Kernel({
+      sources: this.sources,
+      stdin: options?.stdin ?? this.stdin,
+      stdout: options?.stdout ?? this.stdout,
+      stderr: options?.stderr ?? this.stderr,
+      env: options?.env ?? this.env,
+      argv: options?.argv,
+    });
+  }
+
+  /**
+   * Static-analysis pass over a manifest graph, returning every diagnostic
+   * (errors and warnings) rather than throwing on the first error the way
+   * `load()` does. Nothing is registered on this kernel and no cache is
+   * written — the analysis runs against fresh registries, so calling it on a
+   * kernel that has already loaded another manifest is safe.
+   *
+   * A graph that cannot be loaded at all (unreadable entry, unresolvable
+   * import) still throws — an unloadable manifest has no diagnostics to
+   * report, only a failure.
+   */
+  async analyze(url: string): Promise<RuntimeDiagnostic[]> {
+    const sourceUrl = await this.loader.resolveEntryPoint(url);
+    const graph = await this.loader.loadGraph(sourceUrl, { desugarImports: true });
+    if (graph.errors.length > 0) throw graph.errors[0].error;
+    // A file that fails to parse still lands in the flattened list, as a
+    // mangled `toJSON()` tree — analyzing it buries the real parse error under
+    // a cascade of spurious secondaries. Report the parse (and version)
+    // diagnostics and stop, mirroring `telo check` and `load()` (which throws
+    // on a parse failure before it reaches analysis).
+    //
+    // Version-reconciliation diagnostics come from the loader, not `analyze()`;
+    // merge them in so a major skew surfaces here as the error `load()` refuses
+    // to boot on, and a hoist as the warning it logs.
+    const diagnostics =
+      graph.parseDiagnostics.length > 0
+        ? [...graph.parseDiagnostics, ...graph.versionDiagnostics]
+        : [...graph.versionDiagnostics, ...this.analyzer.analyze(flattenForAnalyzer(graph))];
+    return diagnostics.map((d) => ({
+      severity: d.severity === DiagnosticSeverity.Error ? ("error" as const) : ("warning" as const),
+      message: d.message,
+      code: d.code !== undefined ? String(d.code) : undefined,
+      resource: (d.data as any)?.resource
+        ? `${(d.data as any).resource.kind}.${(d.data as any).resource.name}`
+        : undefined,
+    }));
   }
 
   async registerController(

@@ -1,0 +1,11 @@
+project: test
+kind: Added
+body: >-
+  Renamed the module to `Test` (`metadata.name`) and dropped its
+  `metadata.namespace`, so its published identity is now the bare name `Test`
+  rather than `std/test`. Manifests are otherwise unaffected — kinds are
+  referenced through the import alias you choose (`kind: Test.Suite`), not
+  through the module name, so only the import `source` changes. The npm
+  controller package stays `@telorun/test` (npm forbids uppercase) and the
+  directory stays `modules/test`.
+time: 2026-08-03T15:00:01.000000000+02:00

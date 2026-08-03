@@ -31,6 +31,19 @@ Follow this strictly:
 - `JS.Script` in manifests is a last resort. Before reaching for it, check whether the work belongs in a new generic stdlib resource (composes with the existing kind library, reusable across consumers, type-safe at the manifest level). A `JS.Script` is acceptable when (a) the logic is one-off and demonstrably not reusable, or (b) it bridges to a Node-specific API the kernel doesn't yet expose. In every other case, propose a new resource kind first and ask before adding inline JS.
 - never add Docusaurus or any other rendering-tool annotations (`sidebar_label`, `sidebar_position`, `description`, etc.) to `README.md` files. Docusaurus-specific labels and ordering belong in `pages/sidebars.ts`; other markdown files under `docs/` may keep frontmatter where it's actually consumed.
 - keep your communication very concise and to the point; avoid unnecessary preambles, or apologies. Focus on the task at hand and the specific changes being made. If you need to explain a complex decision, do so.
+- **the Telo registry is deprecated and will be deleted. OCI is its replacement. Adding, extending, or fixing registry support is forbidden** — see [Module distribution](#module-distribution--oci-not-the-registry).
+
+## Module distribution — OCI, not the registry
+
+**The Telo registry (`registry.telo.run`, `apps/registry`) is deprecated and scheduled for deletion. OCI registries are the replacement.** Modules are distributed as OCI artifacts.
+
+This is a prohibition, not a preference:
+
+- **Never add, extend, or fix registry support.** No new registry endpoints, no new `RegistrySource` capabilities, no widening of the `<namespace>/<name>@<version>` ref grammar, no new consumers of `registry.telo.run`. Existing code stays only until it is removed.
+- **Never write a registry ref into docs, examples, or manifests.** A `std/foo@1.0.0` import source in new documentation is wrong. Use a local path or an OCI reference.
+- When a task appears to need registry work, that is the signal to stop and propose the OCI path instead.
+
+`metadata.namespace` existed to namespace registry paths and gate publish ownership. It is optional and on its way out — `metadata.name` alone identifies a module. Do not reintroduce a namespace requirement anywhere (publish, loader, analyzer, or manifest schema).
 
 ## Architecture
 
@@ -85,7 +98,8 @@ When designing a new module or capability, ask: which of the above does this res
 - `kernel.ts` — main orchestrator, boot sequence, multi-pass init loop, event bus
 - `loader.ts` — YAML loading + CEL-YAML compilation; accepts `compileContext` param
 - `evaluation-context.ts` — `EvaluationContext`, `ModuleContext` — variable/secret/resource scoping
-- `resource-context.ts` — bridge: `getModuleContext()`, `registerModuleImport()`
+- `resource-context.ts` — bridge: `getModuleContext()`, `registerModuleImport()`, `createKernel()`
+- **Sub-kernels** — a controller that has to *run* or *analyze* another manifest asks the host via `ctx.createKernel(opts?)` (SDK-declared, kernel-implemented) instead of importing `@telorun/kernel`. The child inherits the host's `ManifestSource` chain and, unless overridden, its streams/env; it shares no runtime state (own controller registry, event bus, lifecycle) and does **not** inherit `registryUrl`. `Kernel.analyze(url)` is the non-throwing counterpart to `load()` — it returns every diagnostic (`error` + `warning`, plus `MANIFEST_PARSE_FAILED`) against fresh registries and writes no cache, so it never mutates the kernel it is called on. This is what keeps `@telorun/test` and `@telorun/assert` on `@telorun/sdk` only, so their controllers bundle (`pkg:telo`) like every other module — a module controller must never inline a second copy of the kernel or analyzer.
 - `module-context-registry.ts` — per-module store for variables, secrets, resources, imports
 - `controller-registry.ts` — maps resource kinds to controller implementations
 - `controllers/module/module-controller.ts` — handles `kind: Telo.Application` / `kind: Telo.Library` (includes, module scope)

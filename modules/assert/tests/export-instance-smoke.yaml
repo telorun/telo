@@ -3,7 +3,7 @@ metadata:
   name: AssertExportInstanceSmoke
   version: 1.0.0
   description: |
-    Verifies `std/assert` exports the config-free assertions (`equals`,
+    Verifies the `assert` module exports the config-free assertions (`equals`,
     `matches`, `contains`) as ready-made singletons, referenced with
     `!ref Assert.<name>` — no locally declared instance. Crucially this
     exercises the cross-module ref inside a `Run.Sequence` step, whose

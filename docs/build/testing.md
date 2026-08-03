@@ -30,7 +30,7 @@ metadata:
 imports:
   Run: std/run@<version>
   JavaScript: std/javascript@<version>
-  Assert: std/assert@<version>
+  Assert: ./path/to/modules/assert
 targets:
   - TestAdd
 ---
@@ -63,7 +63,7 @@ steps:
 
 ## Running a whole suite
 
-`Test.Suite` (from `std/test`) discovers test manifests by glob, runs each in its own isolated kernel, and reports pass/fail. Write a suite application once and point `telo` at it:
+`Test.Suite` (from the `test` module) discovers test manifests by glob, runs each in its own isolated kernel, and reports pass/fail. Write a suite application once and point `telo` at it:
 
 ```yaml
 kind: Telo.Application
@@ -71,7 +71,7 @@ metadata:
   name: TestSuite
   version: 1.0.0
 imports:
-  Test: std/test@<version>
+  Test: ./path/to/modules/test
 targets:
   - RunAll
 ---
@@ -218,7 +218,7 @@ A do-while pattern emerges naturally from sharing a step name between a pre-loop
 
 ## Assertion kinds
 
-All exported by the `assert` stdlib (`Assert: std/assert@<version>`):
+All exported by the `assert` stdlib (imported here under the alias `Assert`):
 
 | Kind | Use for | Where it goes |
 |---|---|---|
