@@ -111,6 +111,7 @@ export { defaultSources } from "./sources/default-sources.js";
 export {
   splitIntegrity,
   foldIntegrity,
+  isCanonicalIntegrity,
   verifyIntegrity,
   verifiedFetch,
   sha256Base64Url,

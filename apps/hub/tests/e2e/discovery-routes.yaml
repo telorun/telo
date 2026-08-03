@@ -239,10 +239,28 @@ steps:
               # Not pinned to a version number: these are published modules
               # whose newest release moves, and what this route owes a caller
               # is a non-empty newest-first list for the ref it echoes back.
+              #
+              # `integrity` is the import pin for that version, and every
+              # seeded ref is `oci://` — a transport that always produces a
+              # hash — so it OUGHT to be required here. It is not yet, and the
+              # reason is a bootstrap, not a shrug: the hub container tracks
+              # with the `telo` its base image ships (see the workflow comment
+              # above `Build workspace packages`), never the workspace one, so
+              # `telo module manifest --json` in CI is a release that predates
+              # the field and reports no pin. Make this `required` once a CLI
+              # release carrying `integrity` lands in `telorun/node` and
+              # TELO_NODE_VERSION is bumped to it — until then the shape is
+              # asserted, the value cannot be. The CLI half is covered where it
+              # can run: `cli/nodejs/tests/module-manifest.test.ts`.
               versions:
                 type: array
                 minItems: 1
-                items: { type: string, minLength: 1 }
+                items:
+                  type: object
+                  properties:
+                    version: { type: string, minLength: 1 }
+                    integrity: { type: string, pattern: "^sha256-[A-Za-z0-9_-]{43}$" }
+                  required: [version]
             required: [ref, versions]
         required: [status, body]
 ---

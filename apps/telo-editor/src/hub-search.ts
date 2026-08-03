@@ -2,6 +2,10 @@
  *  Powers the "Add import" dialog's autocomplete: the hub is the single source
  *  of importable modules (no per-registry fan-out). */
 
+import { parseModuleVersions, type ModuleVersion } from "@telorun/ide-support";
+
+export type { ModuleVersion };
+
 /** Public hub, mirroring the CLI's `TELO_HUB_URL` default. A self-hosted setup
  *  overrides it via the `hubUrl` setting. */
 export const DEFAULT_HUB_URL = "https://telo.sh";
@@ -74,10 +78,6 @@ export async function searchHubModules(
   return (data.hits ?? []).filter((h) => h.module?.ref);
 }
 
-interface ModuleVersionsResponse {
-  versions?: string[];
-}
-
 /** Every version the hub tracks for `baseRef`, newest first — the hub's
  *  ordering is authoritative, so index 0 is the latest.
  *
@@ -92,7 +92,7 @@ interface ModuleVersionsResponse {
 export async function fetchHubVersions(
   hubUrl: string | undefined,
   baseRef: string,
-): Promise<string[]> {
+): Promise<ModuleVersion[]> {
   const base = resolveHubUrl(hubUrl);
   const url = `${base}/module/versions?ref=${encodeURIComponent(baseRef)}`;
   let res: Response;
@@ -109,8 +109,7 @@ export async function fetchHubVersions(
       `Hub version lookup for ${baseRef} failed at ${base}: HTTP ${res.status} ${res.statusText}.`,
     );
   }
-  const data = (await res.json()) as ModuleVersionsResponse;
-  return (data.versions ?? []).filter((v): v is string => typeof v === "string");
+  return parseModuleVersions(await res.json());
 }
 
 /** The pinned import source for a hit: `<ref>@<version>` (e.g.

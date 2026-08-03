@@ -17,6 +17,7 @@ import semver from "semver";
 import { type Document, parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { createLogger, type Logger } from "../logger.js";
+import { fetchManifestHash } from "../registry-hash.js";
 import { findModuleDoc } from "./manifest-imports.js";
 
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
@@ -226,6 +227,69 @@ function cacheKeyForRef(ref: string, registryUrl: string, text: string): string 
   return manifestCacheKey({ transport: "registry", host, path: modulePath, version });
 }
 
+/** The import-pin hash for a remote ref (`sha256-<base64url>`), or `null` with
+ *  the reason on stderr when it cannot be produced.
+ *
+ *  Delegates to `fetchManifestHash` so the transport stays the single authority
+ *  on what gets hashed — the registry hashes raw response bytes, OCI the UTF-8
+ *  text extracted from the tar layer, and only the transport knows which a pin
+ *  written at this ref will be checked against.
+ *
+ *  Best-effort, but never silent: the manifest itself resolved, so failing the
+ *  whole command over a pin would break every caller that wants the text. The
+ *  reason goes to stderr — `--json` writes the document on stdout, so a warning
+ *  cannot ride along inside it, and "no transport owns this ref", an auth
+ *  rejection and a transient network failure are three different problems that
+ *  must not collapse into an unexplained `null`. */
+async function integrityForRef(
+  ref: string,
+  registryUrl: string,
+  log: Logger,
+): Promise<string | null> {
+  try {
+    return await fetchManifestHash(registryUrl, ref);
+  } catch (err) {
+    console.error(`${log.warn("warn")}  no integrity hash for '${ref}': ${errMsg(err)}`);
+    return null;
+  }
+}
+
+/** What `telo module manifest --json` prints. The hub's tracker reads all four:
+ *  `manifest` is cached to the bucket at `cacheKey`, and `integrity` becomes the
+ *  import pin it serves per version. */
+export interface ManifestJsonPayload {
+  ref: string;
+  /** Deterministic hub cache key, or `null` for a ref with no cache location. */
+  cacheKey: string | null;
+  manifest: string;
+  /** `sha256-<base64url>`, or `null` when nothing could hash the ref. */
+  integrity: string | null;
+}
+
+/** Build the `--json` payload for an already-resolved manifest.
+ *
+ *  Separate from `runManifest` so the shape can be asserted without a process:
+ *  the hub e2e cannot cover it — that container tracks with the `telo` its base
+ *  image ships, so a field added here is invisible there until a release lands —
+ *  which leaves this the only place the contract the tracker depends on is
+ *  checked. */
+export async function buildManifestJsonPayload(
+  ref: string,
+  registryUrl: string,
+  text: string,
+  log: Logger,
+): Promise<ManifestJsonPayload> {
+  // A local module has neither: no cache location, and no transport whose
+  // verification a pin would be checked against.
+  const local = localManifestPath(ref) !== null;
+  return {
+    ref,
+    cacheKey: local ? null : cacheKeyForRef(ref, registryUrl, text),
+    manifest: text,
+    integrity: local ? null : await integrityForRef(ref, registryUrl, log),
+  };
+}
+
 async function runManifest(argv: {
   ref: string;
   registryUrl?: string;
@@ -234,10 +298,10 @@ async function runManifest(argv: {
   const log = createLogger(false);
   const text = await loadManifestText(argv.ref, argv.registryUrl, log);
   if (argv.json) {
-    const cacheKey = localManifestPath(argv.ref)
-      ? null
-      : cacheKeyForRef(argv.ref, resolveRegistryUrl(argv.registryUrl), text);
-    console.log(JSON.stringify({ ref: argv.ref, cacheKey, manifest: text }));
+    const registryUrl = resolveRegistryUrl(argv.registryUrl);
+    console.log(
+      JSON.stringify(await buildManifestJsonPayload(argv.ref, registryUrl, text, log)),
+    );
     return;
   }
   process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
@@ -461,7 +525,7 @@ export function moduleCommand(yargs: Argv): Argv {
               .option("json", {
                 type: "boolean",
                 default: false,
-                describe: "Emit { ref, cacheKey, manifest } as JSON",
+                describe: "Emit { ref, cacheKey, manifest, integrity } as JSON",
               }),
           async (argv) => {
             await runManifest(argv as any);

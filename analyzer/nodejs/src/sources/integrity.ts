@@ -11,6 +11,13 @@
  *  only algorithm accepted today; the prefix leaves room to migrate. */
 const INTEGRITY_FRAGMENT = /#(sha256-[A-Za-z0-9_+/=-]+)$/;
 
+/** The canonical written form: SHA-256 as unpadded base64url, exactly what
+ *  {@link sha256Base64Url} emits and what the `layers[].integrity` schema
+ *  accepts. Stricter than {@link INTEGRITY_FRAGMENT}, which also tolerates the
+ *  padded / standard-base64 spellings {@link verifyIntegrity} normalizes on the
+ *  way in — reading is forgiving, writing is not. */
+const CANONICAL_INTEGRITY = /^sha256-[A-Za-z0-9_-]{43}$/;
+
 /** A failed integrity/tamper check — always terminal, never best-effort. A
  *  distinct type so a caller doing best-effort network handling (e.g. the
  *  bundle extractor warning-and-skipping on a fetch blip) can still let a
@@ -39,6 +46,19 @@ export function foldIntegrity(source: string, integrity: unknown): string {
   return typeof integrity === "string" && !source.includes("#")
     ? `${source}#${integrity}`
     : source;
+}
+
+/** True for a value safe to WRITE into a manifest as an integrity pin.
+ *
+ *  A pin arriving from outside the file — the hub's version index, a registry
+ *  response — is untrusted text before it is untrusted *content*: a value
+ *  carrying a quote, a `#`, or a newline corrupts the YAML it is spliced into,
+ *  which no later install-time verification can catch because the manifest no
+ *  longer parses. A wrong-but-well-formed hash is the case install *does*
+ *  catch; this is the case it cannot. Callers writing a pin they did not
+ *  compute check here first and fall back to writing none. */
+export function isCanonicalIntegrity(value: unknown): value is string {
+  return typeof value === "string" && CANONICAL_INTEGRITY.test(value);
 }
 
 function toBase64Url(bytes: Uint8Array): string {

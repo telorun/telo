@@ -79,9 +79,11 @@ export function useImportUpgrade(
       setLoading(true);
 
       try {
+        // The dropdown offers version names; the pin each entry carries is for
+        // the upgrade path, which this view does not write yet.
         const result = await fetchHubVersions(hubUrl, ref.baseRef);
         if (requestId.current !== id) return;
-        setVersions(result);
+        setVersions(result.map((v) => v.version));
         if (result.length === 0) setError("Not tracked by the hub");
       } catch (err) {
         if (requestId.current !== id) return;

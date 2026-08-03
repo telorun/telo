@@ -17,7 +17,9 @@ search API, and the MCP endpoint are all resources in one manifest.
   discovery-specific resource kind exists.
 - **Digest-reconciles every version on every track.** Version content
   immutability is a convention no transport enforces; an unchanged digest is
-  skipped (cheap read), a moved digest re-ingests that version.
+  skipped (cheap read), a moved digest re-ingests that version. A version whose
+  stored integrity pin is null re-ingests too, which is what backfills the pin
+  for everything tracked before the hub recorded one.
 - **Caches each version's `telo.yaml`** to an S3-compatible bucket at the
   deterministic key `<transport>/<host>/<path…>/<version>/telo.yaml` — the key
   the CLI computes with the analyzer's shared `manifestCacheKey` helper, so the
@@ -106,9 +108,17 @@ Every module hit carries the provenance the module declares in its
 indexed per tracked version and served on `/search/modules`,
 `/search/resources`, `/refs`, and the `search_resources` MCP tool. A module
 that declares none reports them as empty strings, never null.
-`/module/versions` is deliberately excluded: it returns a bare newest-first
-array of version strings that IDE completion indexes into, so it stays a
-version list rather than a metadata endpoint.
+`/module/versions` is deliberately excluded: it stays a version list rather
+than a metadata endpoint. Each newest-first entry is `{ version, integrity }`,
+and `integrity` is the one thing beyond the name it carries — the
+`sha256-<base64url>` import pin for exactly that version, so an editor
+upgrading an `imports:` entry writes the new pin in the request it already
+makes rather than downloading the module to hash it. The pin comes from
+`telo module manifest --json`, i.e. from the owning transport's own
+`manifestHash`, since only the transport knows what its reads verify against.
+It is omitted for a version tracked before the hub recorded pins (the tracker
+re-ingests those on the next pass) and for a ref no transport can hash — a
+consumer reads its absence as "no pin available", never as an error.
 
 Search hits carry both grouping axes: `categories` on the module and on each
 kind — each entry a `{ slug, label }` pair, so a chip prints the label and a

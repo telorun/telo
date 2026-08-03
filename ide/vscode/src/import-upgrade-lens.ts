@@ -1,6 +1,8 @@
 import {
   buildImportUpgrades,
+  type ImportUpgradeEdit,
   type ImportUpgradeSet,
+  type ModuleVersion,
   type ModuleVersionLookup,
   type Range as TeloRange,
 } from "@telorun/ide-support";
@@ -36,7 +38,7 @@ interface CacheEntry {
   /** The in-flight or settled lookup. Stored as the promise so concurrent lens
    *  resolutions for sibling imports of the same module share one request
    *  instead of racing several. */
-  versions: Promise<string[]>;
+  versions: Promise<ModuleVersion[]>;
   /** Set once the lookup is known to have rejected, which shortens its TTL.
    *  Recorded rather than inferred so a pending entry is never mistaken for a
    *  failed one. */
@@ -113,18 +115,36 @@ export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
   async provideCodeLenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]> {
     if (!lensesEnabled()) return [];
     const set = await this.upgradesFor(document);
-    if (!set || (set.upgrades.length === 0 && set.skipped.length === 0)) return [];
+    if (!set) return [];
+    if (set.upgrades.length === 0 && set.pins.length === 0 && set.skipped.length === 0) return [];
 
     const uri = document.uri.toString();
     const lenses = set.upgrades.map(
       (u) =>
         new vscode.CodeLens(toVscodeRange(u.keyRange), {
           title: `↑ ${u.currentVersion} → ${u.latestVersion}`,
-          tooltip: `Upgrade ${u.alias} to ${u.latestVersion}`,
+          tooltip: u.repinned
+            ? `Upgrade ${u.alias} to ${u.latestVersion} and re-pin its integrity hash`
+            : `Upgrade ${u.alias} to ${u.latestVersion} (the hub publishes no integrity pin for it)`,
           command: UPGRADE_IMPORT_COMMAND,
           arguments: [{ uri, aliases: [u.alias] } satisfies UpgradeArgs],
         }),
     );
+
+    // An import at the newest version but carrying no hash. Offered separately
+    // from an upgrade because it is a different edit with a different risk:
+    // nothing about the resolved module changes, the version it already
+    // resolves to simply becomes tamper-evident.
+    for (const pin of set.pins) {
+      lenses.push(
+        new vscode.CodeLens(toVscodeRange(pin.keyRange), {
+          title: `+ pin ${pin.version}`,
+          tooltip: `Pin ${pin.alias} to the integrity hash published for ${pin.version}`,
+          command: UPGRADE_IMPORT_COMMAND,
+          arguments: [{ uri, aliases: [pin.alias] } satisfies UpgradeArgs],
+        }),
+      );
+    }
 
     // An import that is behind but cannot be rewritten here still gets a lens.
     // Silence would read as "up to date", which is the one thing it is not.
@@ -138,14 +158,14 @@ export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
       );
     }
 
-    if (set.upgrades.length > 0) {
-      const n = set.upgrades.length;
+    const actionable = [...set.upgrades, ...set.pins];
+    if (actionable.length > 0) {
       lenses.unshift(
         new vscode.CodeLens(toVscodeRange(set.importsKeyRange), {
-          title: `${n} import${n === 1 ? "" : "s"} outdated · Upgrade all`,
+          title: summaryTitle(set.upgrades.length, set.pins.length),
           command: UPGRADE_ALL_IMPORTS_COMMAND,
           arguments: [
-            { uri, aliases: set.upgrades.map((u) => u.alias) } satisfies UpgradeArgs,
+            { uri, aliases: actionable.map((a) => a.alias) } satisfies UpgradeArgs,
           ],
         }),
       );
@@ -174,13 +194,17 @@ export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
     return set;
   }
 
-  /** Command handler for both lenses. Recomputes against the document as it
-   *  stands now and applies only the named aliases. */
+  /** Command handler for every lens. Recomputes against the document as it
+   *  stands now and applies only the named aliases, whichever category each
+   *  turns out to be in — an alias is one import, and what it needs is the
+   *  builder's answer, not the clicked lens's. */
   async apply(args: UpgradeArgs): Promise<void> {
     const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(args.uri));
     const set = await this.upgradesFor(document);
     const wanted = new Set(args.aliases);
-    const selected = (set?.upgrades ?? []).filter((u) => wanted.has(u.alias));
+    const upgrades = (set?.upgrades ?? []).filter((u) => wanted.has(u.alias));
+    const pins = (set?.pins ?? []).filter((p) => wanted.has(p.alias));
+    const selected: Array<{ edits: ImportUpgradeEdit[] }> = [...upgrades, ...pins];
 
     if (selected.length === 0) {
       // "Nothing to do" and "we could not find out" are different answers, and
@@ -193,8 +217,8 @@ export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
     }
 
     const edit = new vscode.WorkspaceEdit();
-    for (const upgrade of selected) {
-      for (const e of upgrade.edits) {
+    for (const entry of selected) {
+      for (const e of entry.edits) {
         edit.replace(document.uri, toVscodeRange(e.range), e.newText);
       }
     }
@@ -207,7 +231,7 @@ export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
     }
 
     this.changed.fire();
-    notifyDroppedPins(selected.filter((u) => u.wasPinned).length);
+    notifyDroppedPins(upgrades.filter((u) => u.wasPinned && !u.repinned).length);
   }
 
   /** Says why an upgrade click changed nothing, in the order that matters to
@@ -250,14 +274,25 @@ export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
   }
 }
 
+/** Both counts in one line, so the `imports:` key carries a single lens no
+ *  matter which mix of work the block needs. */
+function summaryTitle(outdated: number, unpinned: number): string {
+  const parts: string[] = [];
+  if (outdated > 0) parts.push(`${outdated} import${outdated === 1 ? "" : "s"} outdated`);
+  if (unpinned > 0) parts.push(`${unpinned} unpinned`);
+  return `${parts.join(", ")} · ${outdated > 0 ? "Upgrade all" : "Pin all"}`;
+}
+
 /** An upgraded import's `integrity:` hash covers the version that was replaced,
- *  and the hub serves version lists rather than manifest hashes — so the pin is
- *  dropped rather than recomputed. Say so: the rewrite is otherwise invisible
- *  in the YAML. */
+ *  so it is dropped rather than carried forward. Normally the hub publishes a
+ *  pin for the new version and the rewrite re-pins in the same edit; this is
+ *  the residual case where it has none. Say so — the loss is otherwise
+ *  invisible in the YAML. */
 function notifyDroppedPins(count: number): void {
   if (count === 0) return;
   vscode.window.showInformationMessage(
     `telo: removed the integrity pin from ${count} upgraded import${count === 1 ? "" : "s"} — ` +
-      "the hash covers the version that was replaced. Run `telo upgrade` to re-pin.",
+      "the hub publishes no pin for the new version, and the old hash covers the version " +
+      "that was replaced. Run `telo upgrade` to re-pin from the origin.",
   );
 }
