@@ -1,5 +1,19 @@
 # @telorun/kernel
 
+## 0.64.0
+
+### Minor Changes
+
+- a8402d9: Select the Rust SDK's controller backend explicitly when building a `pkg:cargo` controller.
+
+  `telorun-sdk` no longer declares a default backend feature. A controller crate carries no `[features]` block, so a backend can only be chosen as a dependency feature from the build that hosts it — `--no-default-features` would apply to the controller crate rather than to the SDK. `NapiControllerLoader` now passes `--features telorun-sdk/napi`, which is what lets the new Rust kernel pass `--features telorun-sdk/native` for the same unchanged crate.
+
+### Patch Changes
+
+- Updated dependencies [424aacf]
+  - @telorun/analyzer@0.51.0
+  - @telorun/templating@0.11.1
+
 ## 0.63.0
 
 ### Minor Changes
