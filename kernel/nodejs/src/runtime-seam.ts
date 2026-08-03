@@ -207,11 +207,17 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     }
 
     let manifests;
+    // Parse failures and version reconciliation are the loader's findings, not
+    // `analyze()`'s — carried out of the try so the checks below can see them.
+    let parseDiagnostics: AnalysisDiagnostic[] = [];
+    let versionDiagnostics: AnalysisDiagnostic[] = [];
     try {
       const graph = await loader.loadGraph(source, {
         desugarImports: options?.desugarImports ?? true,
       });
       if (graph.errors.length > 0) throw graph.errors[0].error;
+      parseDiagnostics = graph.parseDiagnostics;
+      versionDiagnostics = graph.versionDiagnostics;
       manifests = flattenForAnalyzer(graph);
     } catch (err) {
       // A graph that would not load is an answer, not a failure of the call —
@@ -224,7 +230,22 @@ export class KernelRuntimeSeam implements RuntimeSeam {
       };
     }
 
+    // A file that fails to parse is not dropped — it reaches the flattened list
+    // as a mangled `toJSON()` tree, and analyzing that buries the real error
+    // under a cascade of secondaries which exist only because the parse failed.
+    // Report the parse findings and stop, the policy `load()` already applies by
+    // treating a parse failure as fatal before analysis.
+    if (parseDiagnostics.length > 0) {
+      return {
+        diagnostics: [...parseDiagnostics, ...versionDiagnostics].map(toCheckDiagnostic),
+      };
+    }
+
+    // `analyze()` never sees version skew, so without merging these a major
+    // mismatch — which `load()` refuses to boot on — would check clean.
     const diagnostics = new StaticAnalyzer({ celHandlers: nodeCelHandlers }).analyze(manifests);
-    return { diagnostics: diagnostics.map(toCheckDiagnostic) };
+    return {
+      diagnostics: [...versionDiagnostics, ...diagnostics].map(toCheckDiagnostic),
+    };
   }
 }
