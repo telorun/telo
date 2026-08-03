@@ -36,7 +36,7 @@ export function useLatestVersions(
           // which neither `telo upgrade` nor the VS Code lenses do — the
           // per-import dropdown still lists every version for a deliberate pick.
           const versions = await fetchHubVersions(hubUrl, baseRef);
-          return [baseRef, newestModuleVersion(versions) ?? null] as const;
+          return [baseRef, newestModuleVersion(versions.map((v) => v.version)) ?? null] as const;
         } catch (err) {
           // Best-effort: the badge is background information, and an
           // unreachable hub must not blank the whole Imports view. The

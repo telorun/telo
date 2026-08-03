@@ -248,6 +248,20 @@ migrations:
       - CREATE INDEX module_versions_categories_idx ON module_versions USING GIN (categories)
       - CREATE INDEX resource_kinds_categories_idx ON resource_kinds USING GIN (categories)
       - CREATE INDEX resource_kinds_extends_idx ON resource_kinds (extends_ref, extends_kind)
+  # The import pin an editor writes when it upgrades a dependency:
+  # `sha256-<base64url>` over the bytes this version's transport verifies its own
+  # reads against, so the value is comparable to what `telo install` re-derives.
+  # Distinct from `digest` next to it, which is transport-NATIVE and opaque (for
+  # OCI, the image-manifest digest) and exists only to detect a re-pushed tag.
+  #
+  # Nullable, with three meanings the tracker keeps distinct: a hash, '' for
+  # "asked, nothing could hash this ref", and NULL for "never asked". Only NULL
+  # triggers a re-ingest, so every version tracked before this column existed
+  # backfills itself on its next sync pass — no separate backfill job — and one
+  # that can never be hashed settles after a single pass instead of looping.
+  "20260803090000_AddVersionIntegrity":
+    statements:
+      - ALTER TABLE module_versions ADD COLUMN integrity TEXT
 ---
 # ── Semantic search: embedding model + pgvector index ────────────────────────
 # The embedder is a self-hosted embeddinggemma-300m sidecar (OpenAI-compatible);
@@ -809,12 +823,27 @@ steps:
   - name: existing
     invoke: !ref Query
     inputs:
-      sql: SELECT digest FROM module_versions WHERE module_id = $1 AND version = $2
+      # `needsPin` is true nullity, NOT an empty hash: those are different
+      # states and only one is worth re-ingesting for. NULL means the row
+      # predates the integrity column and was never asked; '' means it WAS
+      # asked and nothing could hash the ref. Collapsing them (COALESCE to '')
+      # would re-ingest the unhashable ones on every pass, forever — and an
+      # ingest is not a cheap read but the whole `then:` branch: a second
+      # origin pull for the hash, the R2 put, kinds and resources deleted and
+      # re-inserted, and for the latest version a vector purge plus a re-embed,
+      # leaving a recurring window where the module has no vectors at all.
+      sql: >-
+        SELECT digest, (integrity IS NULL) AS "needsPin"
+        FROM module_versions WHERE module_id = $1 AND version = $2
       bindings:
         - !cel "inputs.moduleId"
         - !cel "inputs.version"
+  # Re-ingest on a new version, a moved digest, or a row that predates the
+  # integrity column — the last is what backfills the import pin for everything
+  # tracked before it existed, without a separate migration pass. It settles in
+  # one pass either way: the hash lands, or '' records that there is none.
   - name: ingest
-    if: !cel "steps.existing.result.rows.size() == 0 || steps.existing.result.rows[0].digest != steps.digest.result.docs[0].digest"
+    if: !cel "steps.existing.result.rows.size() == 0 || steps.existing.result.rows[0].digest != steps.digest.result.docs[0].digest || steps.existing.result.rows[0].needsPin"
     then:
       - name: manifestCmd
         invoke: !ref TeloCli
@@ -853,9 +882,10 @@ steps:
           sql: >-
             INSERT INTO module_versions
               (module_id, version, digest, module_name, description, repository, license, manifest_key,
-               categories, category_labels)
+               categories, category_labels, integrity)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-                    ARRAY(SELECT category_slug(l) FROM unnest($9::text[]) AS l), $9::text[])
+                    ARRAY(SELECT category_slug(l) FROM unnest($9::text[]) AS l), $9::text[],
+                    COALESCE($10, ''))
             ON CONFLICT (module_id, version) DO UPDATE SET
               digest = EXCLUDED.digest,
               module_name = EXCLUDED.module_name,
@@ -865,6 +895,7 @@ steps:
               manifest_key = EXCLUDED.manifest_key,
               categories = EXCLUDED.categories,
               category_labels = EXCLUDED.category_labels,
+              integrity = EXCLUDED.integrity,
               tracked_at = NOW()
           bindings:
             - !cel "inputs.moduleId"
@@ -876,6 +907,11 @@ steps:
             - !cel "steps.docs.result.docs[0].metadata.?license.orValue('')"
             - !cel "steps.manifestJson.result.docs[0].cacheKey"
             - !cel "steps.docs.result.docs[0].metadata.?categories.orValue([])"
+            # `telo module manifest --json` emits null where nothing could hash
+            # the ref (with the reason on its stderr); COALESCE above stores
+            # that as '' — "asked, none available" — so it is never mistaken for
+            # the NULL that means "never asked".
+            - !cel "steps.manifestJson.result.docs[0].?integrity.orValue('')"
       - name: clearKinds
         invoke: !ref Exec
         inputs:
@@ -1598,7 +1634,8 @@ routes:
       # the CLI's sortVersionsDesc. Consumers (IDE version completion) rely on
       # index 0 being the latest version.
       sql: >-
-        SELECT mv.version FROM module_versions mv
+        SELECT mv.version, COALESCE(mv.integrity, '') AS integrity
+        FROM module_versions mv
         JOIN modules m ON m.id = mv.module_id
         WHERE m.ref = $1
         ORDER BY (CASE WHEN mv.version ~ '^[0-9]+(\.[0-9]+)*$'
@@ -1613,7 +1650,16 @@ routes:
           application/json:
             body:
               ref: !cel "request.query.ref"
-              versions: !cel "result.rows.map(r, r.version)"
+              # `{version, integrity}` per entry, not bare strings: the pin an
+              # editor writes when it upgrades an import belongs to exactly one
+              # version, and a parallel array or a keyed side-map could disagree
+              # with the list it annotates. `integrity` is omitted for a version
+              # ingested before the column existed or one nothing can hash — a
+              # consumer treats its absence as "no pin available", never as an
+              # error.
+              versions: !cel >-
+                result.rows.map(r,
+                  r.integrity == '' ? {'version': r.version} : {'version': r.version, 'integrity': r.integrity})
       - status: 404
         content:
           application/json:

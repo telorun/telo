@@ -32,12 +32,15 @@ Hover a kind or a reference for its description and schema. Go-to-definition jum
 
 ### Import upgrades
 
-CodeLenses over your `imports:` block show when a module has a newer version on the hub:
+CodeLenses over your `imports:` block show when a module has a newer version on the hub, or is missing its integrity pin:
 
 - A summary lens on the `imports:` key — `2 imports outdated · Upgrade all`
 - A per-entry lens — `↑ 0.9.0 → 1.0.0`
+- A per-entry lens on an unpinned import already at the newest version — `+ pin 1.4.0`
 
-Applying an upgrade rewrites the source ref and removes the now-stale `integrity:` pin, which hashes the `telo.yaml` of the version being replaced. Prereleases are excluded by default, matching `telo upgrade`.
+Applying an upgrade rewrites the source ref and re-pins it to the new version's integrity hash, which the hub publishes alongside the version list. The pin is written in the shape you wrote — a `#sha256-…` fragment on the source, or the value of an `integrity:` key. Prereleases are excluded by default, and a moving tag (`latest`) or a digest is never pinned, both matching `telo upgrade`.
+
+Where the hub has no pin for the target version, the upgrade still applies and the stale pin is removed — it hashes the `telo.yaml` of the version being replaced — with a notification saying so. Run `telo upgrade` to re-pin from the origin.
 
 Version lookups are memoized so lens resolution stays off the keystroke path. Run **Telo: Check Imports for Updates** to drop the memo and re-check. Hub failures go to the `Telo` output channel.
 

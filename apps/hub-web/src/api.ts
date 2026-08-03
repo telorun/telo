@@ -132,7 +132,11 @@ export async function fetchCategories(signal?: AbortSignal): Promise<CategoryFac
 }
 
 /** Every version the hub has tracked for a ref, newest first. The detail pane
- *  shows more than a search hit carries, which only names the latest version. */
+ *  shows more than a search hit carries, which only names the latest version.
+ *
+ *  The route returns `{version, integrity}` per entry — the import pin an editor
+ *  writes on upgrade. Only the names are wanted here, so the pin is dropped at
+ *  the boundary rather than carried into a list that never renders it. */
 export async function fetchModuleVersions(ref: string, signal?: AbortSignal): Promise<string[]> {
   const res = await fetch(`${HUB_API}/module/versions?ref=${encodeURIComponent(ref)}`, {
     headers: { accept: "application/json" },
@@ -141,7 +145,10 @@ export async function fetchModuleVersions(ref: string, signal?: AbortSignal): Pr
   if (!res.ok) return [];
   const data: unknown = await res.json().catch(() => ({}));
   const versions = (data as { versions?: unknown }).versions;
-  return Array.isArray(versions) ? (versions as string[]) : [];
+  if (!Array.isArray(versions)) return [];
+  return versions
+    .map((entry) => (entry as { version?: unknown }).version)
+    .filter((v): v is string => typeof v === "string");
 }
 
 function isRegistered(data: unknown): data is { registered: true; ref: string } {

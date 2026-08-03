@@ -1,14 +1,10 @@
 import type { HubRef, IdeEnvironmentAdapter } from "@telorun/ide-support";
 import type { WorkspaceAdapter } from "../../../model";
 import { pathJoin } from "../../../loader/paths";
-import { resolveHubUrl } from "../../../hub-search";
+import { fetchHubVersions, resolveHubUrl } from "../../../hub-search";
 
 interface RefsResponse {
   refs?: Array<{ ref?: string; latestVersion?: string; description?: string }>;
-}
-
-interface VersionsResponse {
-  versions?: string[];
 }
 
 /** Reuses the editor's existing TauriFsAdapter for filesystem reads and the
@@ -69,14 +65,13 @@ export class EditorIdeAdapter implements IdeEnvironmentAdapter {
     }
   }
 
+  /** Completion offers version names. Delegates to the module that already owns
+   *  this route rather than re-reading it here: a second hand-rolled parse is
+   *  what silently emptied this list when the response shape gained per-version
+   *  integrity pins. */
   async listVersionsForRef(ref: string): Promise<string[]> {
     try {
-      const res = await fetch(`${this.hubUrl}/module/versions?ref=${encodeURIComponent(ref)}`, {
-        headers: { accept: "application/json" },
-      });
-      if (!res.ok) return [];
-      const data = (await res.json()) as VersionsResponse;
-      return (data.versions ?? []).filter((v): v is string => typeof v === "string");
+      return (await fetchHubVersions(this.hubUrl, ref)).map((v) => v.version);
     } catch (err) {
       console.warn(`telo: hub version lookup failed (${this.hubUrl}): ${errText(err)}`);
       return [];

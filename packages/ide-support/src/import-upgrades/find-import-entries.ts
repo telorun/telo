@@ -24,17 +24,24 @@ export interface ImportEntry {
    *  shorthand, the `source:` value for the object form. Replacing this span
    *  re-points the import. */
   sourceRange: Range;
-  /** Whole-line span of an object-form `integrity:` entry, including its
-   *  trailing newline, so a caller can delete the line. Absent for the scalar
-   *  shorthand (where the pin rides inside `sourceRange`) and for an entry that
-   *  declares no `integrity:`. */
-  integrityLineRange?: Range;
-  /** Set when the entry carries an `integrity:` sibling that does NOT occupy
-   *  whole lines of its own (a flow-style `{source: …, integrity: …}` map).
-   *  Deleting it would need a structural rewrite rather than a line splice, so
-   *  a caller that cannot leave the pin behind must skip this entry rather
-   *  than re-point it and strand a hash for the version it replaced. */
-  integrityInline?: boolean;
+  /** Where an object-form `integrity:` sibling sits, when the entry declares
+   *  one. Absent for the scalar shorthand — there the pin rides inside
+   *  `sourceRange` as a `#sha256-…` fragment — and for an unpinned entry. */
+  integrity?: ImportEntryIntegrity;
+}
+
+/** The two spans a caller needs to act on an object-form `integrity:`: one to
+ *  re-pin it, one to remove it. They are separate because a flow-style map
+ *  (`{source: …, integrity: …}`) supports the first and not the second. */
+export interface ImportEntryIntegrity {
+  /** Span of the hash value itself. Replacing it re-pins the entry in the shape
+   *  the author wrote, in any YAML style. */
+  valueRange: Range;
+  /** Whole-line span of the `integrity:` entry including its trailing newline,
+   *  so a caller with no replacement hash can delete the line outright. Absent
+   *  when the pair shares a line with other content, where removing it would
+   *  need a structural rewrite rather than a line splice. */
+  lineRange?: Range;
 }
 
 /** Where the `imports:` map lives in a module document. */
@@ -116,14 +123,15 @@ function readEntry(
   };
 
   if (integrityPair?.value && integrity !== undefined) {
-    const lineSpan = wholeLineSpan(
-      integrityPair.key.range[0],
-      integrityPair.value.range[1],
-      text,
-      lineOffsets,
-    );
-    if (lineSpan) entry.integrityLineRange = lineSpan;
-    else entry.integrityInline = true;
+    entry.integrity = {
+      valueRange: toRange(integrityPair.value, lineOffsets),
+      lineRange: wholeLineSpan(
+        integrityPair.key.range[0],
+        integrityPair.value.range[1],
+        text,
+        lineOffsets,
+      ),
+    };
   }
 
   return entry;
