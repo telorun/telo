@@ -1,0 +1,10 @@
+project: sql
+kind: Added
+body: 'Structured deprecation on Sql.Migration. The kind''s replacement was
+  previously stated only in prose inside its description, where nothing could
+  badge it or link it. It now carries `metadata.deprecated` with a `reason` and
+  `replacedBy: Self.Migrations`, which the hub resolves through this manifest''s
+  own imports into a target a consumer can follow. Behaviour is unchanged — a
+  standalone Sql.Migration is still discovered by any Sql.Migrations in the same
+  module scope and merged into its set.'
+time: 2026-08-03T11:00:00.000000000Z

@@ -1,0 +1,56 @@
+project: hub
+kind: Added
+body: 'Runtime, language and deprecation facets, plus a module detail route.
+  resource_kinds gains runtimes/languages/portable and a resolved deprecation
+  (reason + replaced_by_ref/replaced_by_kind, resolved through the declaring
+  manifest''s imports exactly as extends is); module_versions gains homepage,
+  deprecation, a languages list, a portable flag, and the runtime roll-up as
+  `runtimes` (every kernel with at least partial reach) plus `runtimes_full`
+  (the subset covering every kind) — split so a filter reads one column while a
+  UI can still say "Rust (partial)". All of it comes from `telo module manifest
+  --json`, so this app parses no PURLs: the mapping from a controller PURL to
+  the kernels that can load it is loader knowledge, and a second copy here would
+  drift. Publisher is derived from the ref by a new `module_publisher(ref,
+  transport)` function rather than declared — ownership is a property of the
+  host, and a `url` module is attributed to its host alone since its path
+  segments are a directory, not an organisation. /search/resources,
+  /search/modules and the search_resources MCP tool take a `runtime` filter
+  (`nodejs`, `rust`); a portable kind satisfies every runtime. New GET /module
+  returns everything a module page renders in one call — metadata, every
+  exported kind with its own runtime and deprecation, exported instances and the
+  tracked version list — keyed by ref and able to serve a non-latest version,
+  neither of which a search hit can do. `module_versions.runtimes` is nullable
+  and NULL means "never asked", so versions tracked before this backfill
+  themselves on the next sync pass with no separate job. Whether the block was
+  ASKED for is recorded separately (`runtimes_asked`) from the answer, so a hub
+  running against a CLI too old to report it settles in one pass instead of
+  re-entering the whole ingest branch — an origin pull, an R2 put, a kinds and
+  resources rewrite, and a vector purge plus re-embed — on every pass forever.
+  The runtime filter is enumerated (`nodejs`, `rust`) on both HTTP routes and the
+  MCP tool, so a wrong value is a 400 rather than a near-empty result set that
+  reads as "no such module"; the labels match an `imports:` entry''s `runtime:`
+  field rather than coining a third spelling for the same two kernels.
+
+
+  Export lists on a /search/modules hit now carry full detail instead of bare
+  names, so a client can preview any kind or instance of any result without a
+  second request — which is what makes scanning results cheap. `exportedKinds`
+  entries become objects (capability, description, extends, runtime,
+  deprecation) rather than strings; `matchedKinds` stays separate because only
+  it carries a relevance score. `exportedResources` entries likewise become
+  objects, gaining the `kind` each instance instantiates and that instance''s own
+  description, read from its declaring doc (`module_resources.kind` /
+  `.description`) — a bare name told a reader they could write `!ref
+  Alias.writeLine` but not what they would get. Both are empty for a re-export,
+  whose declaring doc belongs to another module; the verbatim `declared` entry
+  distinguishes the two.
+
+
+  Module hits also carry the declared `metadata.name` as `name`. It was already
+  stored and served by GET /module but not by search, so a result list had only
+  the ref''s last path segment to title a row with — which reads as `telo-s3`
+  for a module that calls itself `S3`, and renders two modules of the same name
+  on different hosts identically. Display identity only: the ref remains the
+  locator and a name is not unique across the federation, so a client shows it
+  alongside the ref, never instead of it.'
+time: 2026-08-03T11:02:00.000000000Z

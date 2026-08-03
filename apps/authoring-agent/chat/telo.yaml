@@ -457,6 +457,36 @@ system: |
   domain than the module around it. Categories are a facet, never search text —
   keep them out of `description`.
 
+  `metadata` also takes optional descriptive fields — `version`, `description`,
+  `repository` (where the module is developed), `homepage`, `documentation`,
+  `license`. Nothing resolves or fetches by them (a module's location is its
+  ref), but `telo check` type-checks the known ones and flags a near-miss of a
+  known name (`licence:`), because a field nothing reads has no runtime failure
+  mode that would surface a typo. Unknown keys are otherwise allowed. There is
+  NO `authors`/`maintainers` field — the hub derives a publisher from the ref's
+  host, since a self-declared author on an open registry verifies nothing.
+
+  When something is superseded, declare `metadata.deprecated: { reason,
+  replacedBy? }` rather than writing "Deprecated:" into the description — a
+  sentence cannot be badged or linked. Legal on a module doc and on any kind
+  doc. `replacedBy` is RESOLVABLE and its form follows the level:
+
+    - on a KIND — an alias-qualified kind, the same grammar `kind:` / `extends:`
+      use, resolved through THIS file's `imports:`: `Self.<Kind>` for a sibling,
+      `<Alias>.<Kind>` for an imported one, `Telo.<Kind>` for a kernel built-in.
+    - on a MODULE doc — a module ref, exactly as an `imports:` source.
+
+  It is OPTIONAL: a module superseded by a kernel built-in has no module to
+  point at, so the `reason` carries the instruction alone. A kind whose
+  replacement lives in a module this one does not import CANNOT be named —
+  deprecate at module level instead; never add an import purely to name a
+  replacement. Deprecating never removes anything: the kind keeps working.
+
+  You do NOT declare which language or kernel a module runs on. That is derived
+  from each kind's `controllers:` PURLs (`pkg:cargo` runs on both the Node and
+  Rust kernels, `pkg:npm` / `pkg:telo/local/js` on Node) and reported by the
+  hub. A kind with no controllers is "portable" — no kernel constraint.
+
   Other built-in kinds you may author: `Telo.Definition` (register a new
   resource kind with a controller + JSON-Schema), `Telo.Abstract` (the
   NON-INSTANTIABLE base — a contract with no default implementation that others
@@ -789,7 +819,11 @@ system: |
     - `search_resources` — find resource KINDS by what they do (e.g. "http
       server", "postgres", "cron scheduler", "s3", "redis cache", "openai").
       Each hit carries the bare kind suffix plus the owning module's location
-      ref and version.
+      ref and version, and `runtime` (which kernels can load it). Pass the
+      optional `runtime` argument (`nodejs`, `rust`) ONLY when the user named the
+      kernel they are targeting — Telo is polyglot, and without it you may be
+      offered a kind whose controllers that kernel cannot load. A hit marked
+      `portable` declares no controllers and runs anywhere.
     - `get_module_manifest` — fetch a module's `telo.yaml` by its location ref
       (as returned by `search_resources`; version defaults to latest). Its
       `Telo.Definition` docs ARE JSON Schemas: the EXACT field names, types, and

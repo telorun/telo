@@ -16,6 +16,12 @@ import * as path from "path";
 import semver from "semver";
 import { type Document, parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
+import {
+  type KindRuntimeEntry,
+  kindRuntimeSupport,
+  type ModuleRuntimeReport,
+  moduleRuntimeReport,
+} from "../controller-runtime.js";
 import { createLogger, type Logger } from "../logger.js";
 import { fetchManifestHash } from "../registry-hash.js";
 import { findModuleDoc } from "./manifest-imports.js";
@@ -254,9 +260,10 @@ async function integrityForRef(
   }
 }
 
-/** What `telo module manifest --json` prints. The hub's tracker reads all four:
- *  `manifest` is cached to the bucket at `cacheKey`, and `integrity` becomes the
- *  import pin it serves per version. */
+/** What `telo module manifest --json` prints. The hub's tracker reads all five:
+ *  `manifest` is cached to the bucket at `cacheKey`, `integrity` becomes the
+ *  import pin it serves per version, and `runtime` is stored as the runtime and
+ *  language facets without the consumer parsing a single PURL. */
 export interface ManifestJsonPayload {
   ref: string;
   /** Deterministic hub cache key, or `null` for a ref with no cache location. */
@@ -264,6 +271,8 @@ export interface ManifestJsonPayload {
   manifest: string;
   /** `sha256-<base64url>`, or `null` when nothing could hash the ref. */
   integrity: string | null;
+  /** Which kernels can host each kind, and the module-level roll-up. */
+  runtime: ModuleRuntimeReport;
 }
 
 /** Build the `--json` payload for an already-resolved manifest.
@@ -287,6 +296,7 @@ export async function buildManifestJsonPayload(
     cacheKey: local ? null : cacheKeyForRef(ref, registryUrl, text),
     manifest: text,
     integrity: local ? null : await integrityForRef(ref, registryUrl, log),
+    runtime: extractKindRuntimes(parseDocs(text)),
   };
 }
 
@@ -396,6 +406,35 @@ function pascalCase(name: string): string {
     .join("");
 }
 
+/** Read a YAML node that should be a list of strings, tolerating both a plain
+ *  array and a `yaml` collection node. */
+function toStringArray(raw: unknown): string[] {
+  const list: unknown[] = Array.isArray(raw)
+    ? raw
+    : raw && typeof (raw as { toJSON?: unknown }).toJSON === "function"
+      ? (raw as { toJSON: () => unknown[] }).toJSON()
+      : [];
+  return list.filter((v): v is string => typeof v === "string");
+}
+
+/** Classify every kind in the manifest by the kernels that can host it, derived
+ *  from its `controllers:` PURL candidates.
+ *
+ *  Lives with the verb rather than in the hub: the PURL-to-kernel mapping is
+ *  loader knowledge, and a consumer re-deriving it would hold a second copy that
+ *  drifts silently the day a loader lands. */
+function extractKindRuntimes(docs: Document[]): ModuleRuntimeReport {
+  const entries: KindRuntimeEntry[] = [];
+  for (const doc of docs) {
+    const kind = doc.get("kind");
+    if (kind !== "Telo.Definition" && kind !== "Telo.Abstract") continue;
+    const name = doc.getIn(["metadata", "name"]);
+    if (typeof name !== "string") continue;
+    entries.push({ name, ...kindRuntimeSupport(toStringArray(doc.get("controllers"))) });
+  }
+  return moduleRuntimeReport(entries);
+}
+
 /** The resource kinds a module defines: each `Telo.Definition` / `Telo.Abstract`
  *  as its suffix, owning module, capability, export status, and description. A
  *  plain inspector — how a downstream consumer (e.g. the discovery hub) composes
@@ -405,13 +444,7 @@ function extractKinds(docs: Document[]): KindEntry[] {
   const moduleName = moduleDoc?.getIn(["metadata", "name"]);
   const prefix = typeof moduleName === "string" ? moduleName : "";
 
-  const rawExports = moduleDoc?.getIn(["exports", "kinds"]);
-  const exportList: unknown[] = Array.isArray(rawExports)
-    ? rawExports
-    : rawExports && typeof (rawExports as { toJSON?: unknown }).toJSON === "function"
-      ? (rawExports as { toJSON: () => unknown[] }).toJSON()
-      : [];
-  const exported = new Set(exportList.filter((v): v is string => typeof v === "string"));
+  const exported = new Set(toStringArray(moduleDoc?.getIn(["exports", "kinds"])));
 
   const out: KindEntry[] = [];
   for (const doc of docs) {
@@ -525,7 +558,7 @@ export function moduleCommand(yargs: Argv): Argv {
               .option("json", {
                 type: "boolean",
                 default: false,
-                describe: "Emit { ref, cacheKey, manifest, integrity } as JSON",
+                describe: "Emit { ref, cacheKey, manifest, integrity, runtime } as JSON",
               }),
           async (argv) => {
             await runManifest(argv as any);

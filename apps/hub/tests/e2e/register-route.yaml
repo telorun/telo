@@ -30,6 +30,14 @@ steps:
       metadata: { name: PostValidRegister }
       url: http://localhost:8040/register
       method: POST
+      # /register does its work INLINE so a 200 means "actually searchable"
+      # rather than "queued" — three sequential origin round trips, each a
+      # `telo` subprocess doing an anonymous OCI token handshake (`module
+      # versions`, `module manifest`, then `module digest` in the track). The
+      # client's 10s default is marginal against that on a loaded CI runner, so
+      # the request that exercises the full path states its own budget. This is
+      # the verb behaving as designed, not a slow endpoint.
+      timeout: 30000
       body:
         ref: oci://ghcr.io/telorun/console
   - name: assert
@@ -62,6 +70,9 @@ steps:
       metadata: { name: PostInvalidRegister }
       url: http://localhost:8040/register
       method: POST
+      # Reaches the network too: the ref clears the shape gate, so the hub tries
+      # to resolve it before deciding it is unregisterable.
+      timeout: 30000
       body:
         ref: e2e/nonexistent-module-xyz
   - name: assert
@@ -134,6 +145,9 @@ steps:
       metadata: { name: PostApplicationRef }
       url: http://localhost:8040/register
       method: POST
+      # Fetches the manifest from raw.githubusercontent.com before it can read
+      # the root doc's kind, so this one is network-bound as well.
+      timeout: 30000
       body:
         ref: https://raw.githubusercontent.com/telorun/telo/refs/heads/main/examples/agent-console/telo.yaml
   - name: assert
