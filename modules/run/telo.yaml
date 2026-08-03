@@ -256,6 +256,23 @@ schema:
                 - code
           required:
             - throw
+
+        - title: value
+          description: >-
+            Computes a value and publishes it as `steps.<name>.result`, with no
+            dispatch — no resource, no span, no topology node. For an
+            intermediate derived from an earlier step: reshape a response,
+            total some rows, build the next call's inputs.
+          properties:
+            value:
+              title: Value
+              description: >-
+                A CEL expression — or a structure (map / array) with `!cel`
+                leaves — evaluated in the step scope: `inputs`, the results of
+                the steps before it, and whatever the enclosing kind binds
+                (`item` / `index` / `items`, `iteration` / `previous`).
+          required:
+            - value
       required:
         - name
 
@@ -318,6 +335,7 @@ schema:
       x-telo-step-context:
         invoke: invoke
         outputType: outputType
+        value: value
       items:
         $ref: "#/$defs/step"
   required:
@@ -373,16 +391,38 @@ schema:
         statically by `x-telo-value-schema-from`, and has the produced value
         validated at dispatch.
       x-telo-ref: Telo.Type
+    bindings:
+      title: Bindings
+      description: >-
+        Named intermediate values, read by bare name inside the expressions
+        below and by each other. Evaluation order is derived from what each one
+        references — declaration order carries no meaning — and each is computed
+        at most once per call, only if something reads it. A name already in
+        scope (`inputs`, a kernel global) is rejected by `telo check`.
+      type: object
+      additionalProperties: true
+      # The name IS the interface — bindings are read bare in CEL — so a name
+      # that does not lex as an identifier could never be referenced.
+      propertyNames:
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      x-telo-context:
+        type: object
+        x-telo-bindings-from: bindings
+        properties:
+          inputs:
+            type: object
+            x-telo-context-from: "inputType"
     value:
       title: Value
       description: >-
         A CEL expression — or a structure (map / array) with `!cel` leaves —
-        evaluated at invoke time over `inputs`. Its result becomes the
+        evaluated at invoke time over `inputs` and `bindings`. Its result becomes the
         resource's invoke result and may be any shape (object, array, scalar).
         The declarative replacement for a `Js.Script` that only shapes a value
         (concat, field mapping, a constant literal) with no I/O or branching.
       x-telo-context:
         type: object
+        x-telo-bindings-from: bindings
         properties:
           inputs:
             type: object
@@ -450,6 +490,27 @@ schema:
         satisfy. Optional; declaring it is what gives the table one shared
         result contract and lets a caller's `steps.<name>.result` type-check.
       x-telo-ref: Telo.Type
+    bindings:
+      title: Bindings
+      description: >-
+        Named intermediate values, read by bare name inside the expressions
+        below and by each other. Evaluation order is derived from what each one
+        references — declaration order carries no meaning — and each is computed
+        at most once per call, only if something reads it. A name already in
+        scope (`inputs`, a kernel global) is rejected by `telo check`.
+      type: object
+      additionalProperties: true
+      # The name IS the interface — bindings are read bare in CEL — so a name
+      # that does not lex as an identifier could never be referenced.
+      propertyNames:
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      x-telo-context:
+        type: object
+        x-telo-bindings-from: bindings
+        properties:
+          inputs:
+            type: object
+            x-telo-context-from: "inputType"
     choices:
       title: Choices
       description: >-
@@ -461,6 +522,7 @@ schema:
       # `inputs` against the resource root rather than an individual row.
       x-telo-context:
         type: object
+        x-telo-bindings-from: bindings
         properties:
           inputs:
             type: object
@@ -500,6 +562,7 @@ schema:
         - value
       x-telo-context:
         type: object
+        x-telo-bindings-from: bindings
         properties:
           inputs:
             type: object
@@ -734,6 +797,23 @@ schema:
                 - code
           required:
             - throw
+
+        - title: value
+          description: >-
+            Computes a value and publishes it as `steps.<name>.result`, with no
+            dispatch — no resource, no span, no topology node. For an
+            intermediate derived from an earlier step: reshape a response,
+            total some rows, build the next call's inputs.
+          properties:
+            value:
+              title: Value
+              description: >-
+                A CEL expression — or a structure (map / array) with `!cel`
+                leaves — evaluated in the step scope: `inputs`, the results of
+                the steps before it, and whatever the enclosing kind binds
+                (`item` / `index` / `items`, `iteration` / `previous`).
+          required:
+            - value
       required:
         - name
   properties:
@@ -806,6 +886,7 @@ schema:
       x-telo-step-context:
         invoke: invoke
         outputType: outputType
+        value: value
       x-telo-context:
         type: object
         properties:
@@ -1031,6 +1112,23 @@ schema:
                 - code
           required:
             - throw
+
+        - title: value
+          description: >-
+            Computes a value and publishes it as `steps.<name>.result`, with no
+            dispatch — no resource, no span, no topology node. For an
+            intermediate derived from an earlier step: reshape a response,
+            total some rows, build the next call's inputs.
+          properties:
+            value:
+              title: Value
+              description: >-
+                A CEL expression — or a structure (map / array) with `!cel`
+                leaves — evaluated in the step scope: `inputs`, the results of
+                the steps before it, and whatever the enclosing kind binds
+                (`item` / `index` / `items`, `iteration` / `previous`).
+          required:
+            - value
       required:
         - name
   properties:
@@ -1103,6 +1201,7 @@ schema:
       x-telo-step-context:
         invoke: invoke
         outputType: outputType
+        value: value
       x-telo-context:
         type: object
         properties:
@@ -1347,6 +1446,23 @@ schema:
                 - code
           required:
             - throw
+
+        - title: value
+          description: >-
+            Computes a value and publishes it as `steps.<name>.result`, with no
+            dispatch — no resource, no span, no topology node. For an
+            intermediate derived from an earlier step: reshape a response,
+            total some rows, build the next call's inputs.
+          properties:
+            value:
+              title: Value
+              description: >-
+                A CEL expression — or a structure (map / array) with `!cel`
+                leaves — evaluated in the step scope: `inputs`, the results of
+                the steps before it, and whatever the enclosing kind binds
+                (`item` / `index` / `items`, `iteration` / `previous`).
+          required:
+            - value
       required:
         - name
   properties:
@@ -1420,6 +1536,7 @@ schema:
       x-telo-step-context:
         invoke: invoke
         outputType: outputType
+        value: value
       x-telo-context:
         type: object
         properties:

@@ -274,6 +274,39 @@ The value is `<refField>/<subpath>`. The analyzer resolves `refField` to the man
 
 This is the mechanism that types the `result` variable in HTTP response body CEL expressions based on the `outputSchema` declared on the handler resource (e.g. `Sql.Select`).
 
+#### `x-telo-bindings-from`
+
+Gives a kind **named CEL bindings**: an author-declared map of intermediate values, each readable by bare name inside the annotated contexts and inside the other bindings. Declare the field in the schema, then point every context that should see the names at it.
+
+```yaml
+bindings:
+  type: object
+  additionalProperties: true
+  # The name is the interface — bindings are read bare — so constrain it.
+  propertyNames:
+    pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+  x-telo-context:
+    type: object
+    x-telo-bindings-from: bindings
+    properties:
+      inputs: { type: object, x-telo-context-from: "inputType" }
+value:
+  x-telo-context:
+    type: object
+    x-telo-bindings-from: bindings
+    properties:
+      inputs: { type: object, x-telo-context-from: "inputType" }
+```
+
+The field is read from the **resource root**, not the per-scope manifest item, so contexts anchored anywhere (a decision table annotates both its rows and its `default`) resolve the same map. Every annotated context must name the same field — more than one is `BINDING_FIELD_AMBIGUOUS`.
+
+The analyzer merges each binding name into the context, typed from its expression when that expression is a plain chain into an already-typed variable and left open otherwise, and reports:
+
+- `BINDING_CYCLE` — a binding that reaches itself, directly or through others. Edges come from parsing each expression's root identifiers, so a binding named after another's *field* is not an edge.
+- `BINDING_NAME_RESERVED` — a name the CEL environment already binds at that site (the ambient `variables` / `secrets` / `resources` / `ports` plus whatever the contexts declare), or a CEL keyword.
+
+The controller reaches them with `ctx.bindScope(bindings, scope)`, which returns a scope evaluating each binding **lazily and at most once**, so a binding nothing reads never runs and a binding means exactly what inlining its expression would. A name already in scope is skipped rather than shadowing it. Pass the returned scope to `expandValue` by identity — copying it (`{ ...scope }`) forces every binding at the copy.
+
 ---
 
 ## 7. Execution (`controllers`)

@@ -812,6 +812,22 @@ system: |
   Declaring `outputType` on a `Run.Choice` makes `telo check` validate every row
   against one contract and types `steps.<name>.result` for callers.
 
+  Name the intermediate values of a calculation instead of nesting one huge
+  expression or minting a resource per step. `Run.Value` and `Run.Choice` take an
+  optional `bindings:` MAP (name → CEL); every name is read BARE in that kind's
+  expressions and in the other bindings. Order is DERIVED from what each one
+  references, so declaration order carries no meaning; evaluation is lazy and
+  memoised per call, so a binding several decision rows share is computed once
+  and one nothing reads is never computed. A binding may not shadow a name
+  already in scope (`inputs`, `steps`, `error`, `variables`, `secrets`,
+  `resources`, `ports`) — that is a `BINDING_NAME_RESERVED` error, and a cycle is
+  `BINDING_CYCLE`. Bindings run BEFORE any step, so they never see `steps.*`: for
+  an intermediate derived from a step's result, write a step carrying `value:`
+  instead of `invoke:`. That pure step publishes `steps.<name>.result` like any
+  other step but dispatches nothing (no resource, no span, no topology node), and
+  it works in every step list — `Run.Sequence`, `Run.Loop`, `Run.Iteration`,
+  `Run.Projection`, and their `if`/`switch`/`try` branches.
+
   Two key/value abstracts exist and are NOT interchangeable — the difference is
   the GUARANTEES, not the operations. `Cache.Store` is a FRESHNESS contract
   (miss/fresh/stale), evictable by design: use it to avoid recomputing something.

@@ -1100,6 +1100,7 @@ export class Kernel implements IKernel {
       acquireHold: (reason?: string) => this.acquireHold(reason),
       expandValue: (value: any, context: Record<string, any>) =>
         this.rootContext.expandWith(value, context),
+      bindScope: (bindings, scope) => this.rootContext.bindScope(bindings, scope),
       requestExit: (code: number) => this.requestExit(code),
     };
   }

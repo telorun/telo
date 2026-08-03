@@ -60,6 +60,7 @@ default:
 | Field | Purpose |
 | --- | --- |
 | `inputType` | The input **contract** — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. Rows read the values as `!cel "inputs.<name>"`. The kernel fills declared defaults and validates every call against it. |
+| `bindings` | Optional named values, readable by bare name in every row's `when` / `value` and in `default`. A binding several rows share is computed once per call, and one that no row reaching evaluation reads is never computed. See [Bindings and pure steps](./bindings.md). |
 | `choices` | Ordered decision rows, each `{ when, value }`. The first row whose `when` is true wins; no later row is evaluated. At least one row is required. |
 | `default` | `{ value }` produced when no row matches. Omit it to make a non-exhaustive table an error. |
 | `outputType` | Optional named or inline type every row's `value` must satisfy. |

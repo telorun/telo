@@ -1,0 +1,82 @@
+kind: Telo.Application
+metadata:
+  name: RunPureStepTest
+  version: 1.0.0
+  description: |
+    A step that carries `value:` instead of `invoke:`: it computes an
+    intermediate from an earlier step's result and publishes it as
+    `steps.<name>.result`, dispatching nothing. Covered in a Run.Sequence and in
+    a Run.Projection body, which share the step grammar.
+imports:
+  Run: ../
+  Assert: ../../assert
+targets:
+  - !ref TestSequencePureStep
+  - !ref TestProjectionPureStep
+---
+kind: Run.Value
+metadata: { name: LoadCart }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id]
+    properties:
+      id: { type: string }
+value:
+  customerId: !cel "'customer-' + inputs.id"
+  lines:
+    - { price: 4.0, qty: 2.0 }
+    - { price: 1.5, qty: 4.0 }
+---
+# `total` derives from the step before it with no resource, no span, no
+# topology node — and the step after it reads it like any other step result.
+kind: Run.Sequence
+metadata: { name: TestSequencePureStep }
+steps:
+  - name: Cart
+    invoke: !ref LoadCart
+    inputs: { id: "42" }
+  - name: Total
+    value: !cel "sum(steps.Cart.result.lines.map(l, l.price * l.qty))"
+  # A pure step whose expression is a plain chain carries the type through, so
+  # `steps.Customer.result.<typo>` would be a static error rather than silence.
+  - name: Customer
+    value: !cel "steps.Cart.result.customerId"
+  - name: Assert
+    inputs:
+      actual:
+        customer: !cel "steps.Cart.result.customerId"
+        total: !cel "steps.Total.result"
+      expected: { customer: customer-42, total: 14.0 }
+    invoke:
+      kind: Assert.Equals
+---
+# The same step form inside a per-element body, where it also sees `item`.
+kind: Run.Projection
+metadata: { name: LabelWeights }
+collection: !cel "inputs.parcels"
+steps:
+  - name: Kilos
+    value: !cel "item.grams / 1000.0"
+outputs:
+  id: !cel "item.id"
+  kg: !cel "steps.Kilos.result"
+---
+kind: Run.Sequence
+metadata: { name: TestProjectionPureStep }
+steps:
+  - name: Label
+    invoke: !ref LabelWeights
+    inputs:
+      parcels:
+        - { id: a, grams: 1500.0 }
+        - { id: b, grams: 250.0 }
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Label.result"
+      expected:
+        - { id: a, kg: 1.5 }
+        - { id: b, kg: 0.25 }
+    invoke:
+      kind: Assert.Equals

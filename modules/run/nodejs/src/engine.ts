@@ -50,7 +50,19 @@ export interface ThrowStep {
   };
 }
 
-export type Step = InvokeStep | IfStep | WhileStep | SwitchStep | TryStep | ThrowStep;
+export interface ValueStep {
+  name: string;
+  value: unknown;
+}
+
+export type Step =
+  | InvokeStep
+  | IfStep
+  | WhileStep
+  | SwitchStep
+  | TryStep
+  | ThrowStep
+  | ValueStep;
 
 /** Code assigned to any caught failure that is not a structured `InvokeError`.
  *  Guarantees `error.code` is always a non-empty string inside a `catch`, so a
@@ -82,6 +94,9 @@ function isTryStep(step: Step): step is TryStep {
 }
 function isThrowStep(step: Step): step is ThrowStep {
   return "throw" in step;
+}
+function isValueStep(step: Step): step is ValueStep {
+  return "value" in step;
 }
 
 /** Shared step-execution engine for `Run.Sequence` and the binding-wrapper kinds
@@ -163,6 +178,7 @@ export class StepEngine {
     else if (isSwitchStep(step)) await this.executeSwitchStep(step, steps, scope, extraCtx);
     else if (isTryStep(step)) await this.executeTryStep(step, steps, scope, extraCtx);
     else if (isThrowStep(step)) this.executeThrowStep(step, steps, extraCtx);
+    else if (isValueStep(step)) this.executeValueStep(step, steps, extraCtx);
     else throw new Error(`Step "${(step as Step).name}" has no recognized type key`);
   }
 
@@ -215,6 +231,29 @@ export class StepEngine {
       await this.executeSteps(step.default, steps, scope, extraCtx);
     } else {
       throw new Error(`Switch step "${step.name}": no matching case for "${key}" and no default`);
+    }
+  }
+
+  /** A pure step: expand the expression in the step scope and publish it as
+   *  `steps.<name>.result`, the same shape an invoke step records — so a
+   *  downstream step cannot tell how the value was produced. Nothing is
+   *  dispatched, so there is no span and no topology edge. */
+  private executeValueStep(
+    step: ValueStep,
+    steps: Record<string, unknown>,
+    extraCtx: Record<string, unknown>,
+  ): void {
+    try {
+      steps[step.name] = { result: this.ctx.expandValue(step.value, { steps, ...extraCtx }) };
+    } catch (err) {
+      // Attribute the failure the way every other step branch does — a bare
+      // expression error names no step, no resource and no line, which is the
+      // one thing a `catch:` and a stack trace both need.
+      const failure = toSequenceError(err, step.name);
+      throw new InvokeError(failure.code, `Step "${step.name}": ${failure.message}`, {
+        step: step.name,
+        data: failure.data,
+      });
     }
   }
 

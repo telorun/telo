@@ -20,15 +20,23 @@ resource boundary instead of inside a controller class.
 | `process.env` reads scattered around | one `variables:` / `secrets:` block on the application |
 | A `/healthz` route you wrote by hand | still a route you write — see [Running in production](/deploy/production) |
 
-**Where does my business logic go?** In a resource. Often that is
-`JavaScript.Script`, sometimes a `Run.Sequence` composing several calls, and for
-anything you will reuse, a kind of your own with a controller behind it. The
-rule of thumb: if it is *orchestration* (call this, then that, retry, branch),
-declare it; if it is *computation*, write it in a script or a controller.
+**Where does my business logic go?** In a resource — and more of it is
+declarable than the YAML suggests. Orchestration is a `Run.Sequence`. A decision
+is a `Run.Choice`. Shaping a value is a `Run.Value`, whose `bindings:` let you
+name the steps of a calculation without a resource each, and whose expressions
+reach a CEL library that already covers hashing, UUIDs, timestamps, regex
+captures, JSON parsing and base64. Mapping over a collection is a
+`Run.Projection`; grouping and aggregating is the `collection` module. An
+intermediate derived from a step's result is a step carrying `value:` instead of
+`invoke:` — no dispatch, no span, no topology node. What is left for a
+controller is what genuinely needs code: a Node API, a native library, an
+algorithm.
 
-**Can I just write JavaScript?** Yes — but treat it as an escape hatch. A step
-graph stays visible to the analyzer, the editor and the topology view; the
-inside of a script is opaque to all three. Reach for composition first.
+**Can I just write JavaScript?** Yes — but by the time you need it you are
+usually reaching for a platform API (`fetch`, `Buffer`, streams, crypto), not
+for logic, and most of those have a kind of their own. Treat a script as the
+escape hatch it is: a step graph stays visible to the analyzer, the editor and
+the topology view; the inside of a script is opaque to all three.
 
 ## From Kubernetes / Helm
 
