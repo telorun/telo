@@ -1,5 +1,57 @@
 # @telorun/analyzer
 
+## 0.52.0
+
+### Minor Changes
+
+- bd6398e: Upgrading an import from an editor now writes the new version's integrity pin
+  instead of dropping it.
+
+  `telo module manifest --json` emits an `integrity` field — the owning
+  transport's `manifestHash`, never a hash re-derived from the manifest text,
+  since only the transport knows what its own reads verify against. The hub stores
+  it per version and serves it from `/module/versions`, so an editor gets the pin
+  in the request it already makes and no browser has to speak OCI to produce one.
+
+  In `@telorun/ide-support`, `ModuleVersionLookup` now returns
+  `{version, integrity?}` entries, and `buildImportUpgrades` reports two
+  categories: imports that are behind (bumped and re-pinned in one edit) and
+  imports at the newest version carrying no pin (pinned in place, matching
+  `telo upgrade`'s `ensurePinned`). Pins are written in the shape the author
+  wrote — a scalar shorthand takes a `#sha256-…` fragment, an object-form
+  `integrity:` has its value replaced — which also lets a flow-style
+  `{source: …, integrity: …}` entry be re-pointed instead of skipped. With no pin
+  available for the target version the previous behaviour is unchanged: the
+  version is bumped, the stale pin removed, and the host told to say so.
+
+  A pin arriving over the network is spliced into the author's YAML, so it is
+  validated before it is written: `@telorun/analyzer` exports
+  `isCanonicalIntegrity`, and a value that is not `sha256-<43 base64url chars>`
+  is treated as no pin rather than written through — a malformed one would
+  corrupt the manifest, which is the one failure install-time verification cannot
+  catch. `parseModuleVersions` (also new, in `@telorun/ide-support`) is the single
+  reader for the route's body, so a host no longer hand-rolls the parse.
+
+- f94ff85: `x-telo-context-from-root` now resolves a `telo#Type` slot to the schema it names, which **tightens an existing check**.
+
+  A type field is written as an inline `{ kind, schema }` wrapper, a `!ref` to a named type, or a bare name. Pointing the annotation at one used to type the CEL variable as the _wrapper_ — exposing `kind` / `schema` instead of the contract — and forced every such variable to be an object, so a scalar contract could not be expressed at all. It now resolves to the declared schema. A raw JSON Schema still resolves to itself and a plain property map is still used verbatim.
+
+  **This can turn a previously-passing manifest into a `telo check` failure.** `Telo.Definition`'s built-in context types a template body's `inputs` with `x-telo-context-from-root: "inputType"` — a type slot. Where that resolved to the wrapper (which declares no `type` / `properties`), `inputs` was typed permissively and any member access passed; it is now typed from the declared contract, so `inputs.<typo>` inside a template definition's `inputs:` / `resources:` body is a `CEL_UNKNOWN_FIELD`. The diagnostic is correct — it catches real typos that used to reach runtime — but it is a new failure on unchanged input, which is why this is a minor rather than a patch. A definition whose `inputType` is undeclared is unaffected (the annotation falls back to an open schema).
+
+  This is also what lets `Collection.Fold` type `acc` from its declared `accType`, including a scalar accumulator.
+
+- 0bbbc3f: Named CEL bindings: a kind can declare a `bindings:` map whose names are in scope inside its own expressions.
+
+  A kind opts in with `x-telo-bindings-from: "<field>"` on the `x-telo-context` node of every field that sees the names — the same annotation family as `x-telo-context-from` / `x-telo-context-element-from`, so no kind is named in analyzer code. `analyzer/nodejs/src/cel-bindings.ts` (exported as `resolveBindingOrder` / `findBindingSites` / `bindingContextProperties` / `bindingPathChain` / `schemaAtChain`) derives each binding's dependencies from the **root of every member-access chain its expression parses to** — never from a token scan, which would read `inputs.total` as depending on a sibling binding named `total` and reject a correct manifest — merges the names into the CEL context so they type-check, and reports `BINDING_CYCLE`, `BINDING_NAME_RESERVED` (any name `buildCelEnvironment` already binds at that site, kernel globals included, plus CEL's keywords, which can never be read as a reference) and `BINDING_FIELD_AMBIGUOUS` (a kind whose contexts point the annotation at two different fields).
+
+  The kernel adds `ctx.bindScope(bindings, scope)` (`ControllerContext` / `EvaluationContext`), which extends a scope with accessor properties evaluated lazily and memoised per returned scope, so a binding nothing reads is never evaluated and one read repeatedly is computed once. `expandWith` merges such a scope by property descriptor rather than by value — copying the values would force every getter at merge time — so the returned scope must reach `expandValue` by identity. A name already in scope is skipped, the caller's own and the **ambient globals on the context** alike, which bounds a reserved name the static check did not foresee to a dead binding rather than a hijacked global. A binding that reaches itself raises `ERR_BINDING_CYCLE`.
+
+  `x-telo-step-context` accepts an optional `value` field naming the step key that produces a result without dispatching. Such a step registers `steps.<name>.result` typed from its expression when that expression is a plain chain into something already typed (an earlier step's result, the kind's `inputType`), and permissively otherwise.
+
+### Patch Changes
+
+- @telorun/templating@0.11.1
+
 ## 0.51.0
 
 ### Minor Changes
