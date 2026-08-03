@@ -44,7 +44,7 @@ metadata:
   description: Write lines to stdout and read them back from stdin.
   repository: https://github.com/telorun/telo
   license: Apache-2.0
-  documentation: https://telo.sh/?q=Console.WriteLine
+  documentation: https://hub.telo.run/?q=Console.WriteLine
 ```
 
 These are purely descriptive. Nothing resolves, fetches, caches, or publishes by them — a module's location is its ref, never its metadata — so they are safe to change without affecting how anyone imports the module.
@@ -218,7 +218,7 @@ Throw an `InvokeError` for domain failures that are part of your kind's contract
 
 Publish refuses to ship changed bytes at an unchanged `metadata.version`: it compares each built layer's content digest against the one already published under that version. A bundle inlines its dependencies, so a fix in a shared library changes a module's bytes while touching no file the module owns — bumping the version is what makes that fix reach consumers.
 
-To make the module discoverable, register its ref with the [hub](https://telo.sh). See the [CLI reference](/learn/installation-and-cli).
+To make the module discoverable, register its ref with the [hub](https://hub.telo.run). See the [CLI reference](/learn/installation-and-cli).
 
 ## See also
 

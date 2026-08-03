@@ -11,10 +11,20 @@ More importantly, **how you name your resources directly affects how you write C
 
 ## 1. The Golden Rule of Telo Identifiers
 
-To ensure CEL expressions evaluate correctly, **Resource names and Import aliases must not contain hyphens (`-`).** In CEL, a hyphen is evaluated as a mathematical subtraction operator. For example, if you name a resource `my-server`, the expression `${{ resources.my-server.url }}` will crash because the engine reads it as: `resources.my` _minus_ `server.url`.
+**Resource names and import aliases must not contain hyphens (`-`).** In CEL a
+hyphen is the subtraction operator, so naming a resource `my-server` makes
+`!cel "resources.my-server.url"` unreadable — the expression parses as
+`resources.my` _minus_ `server.url`.
 
-**Technical Engine Constraint:**
-All instance names (Resources and Imports) must match the following regex: `^[a-zA-Z_][a-zA-Z0-9_]*$` (Alphanumeric characters and underscores only; must start with a letter or underscore).
+Nothing rejects a hyphenated name at load time: `telo check` accepts it, and
+the resource initializes. What you lose is the ability to reference it from any
+CEL expression, which usually surfaces much later as a confusing type error.
+Keep instance names to `^[a-zA-Z_][a-zA-Z0-9_]*$` and the problem cannot arise.
+
+**One name rule _is_ enforced:** a resource name must not contain a dot
+(`INVALID_RESOURCE_NAME`). In a `!ref` the first dot separates the import alias
+from the resource name (`!ref Console.writeLine`), so a dotted name would
+mis-resolve.
 
 ---
 
@@ -43,47 +53,96 @@ Data inputs and outputs behave exactly like object properties in JSON/JavaScript
 
 - **Do:** `dbPassword`, `maxRetries`, `apiUrl`
 - **Don't:** `DB_PASSWORD`, `max_retries`, `ApiUrl`
-- **CEL Usage:** `${{ secrets.dbPassword }}`
+- **CEL Usage:** `!cel "secrets.dbPassword"`
 
-### 🟢 `kebab-case` for Module Packages (`metadata.module`, `source`)
+The `env:` key those entries bind to is a host environment variable, and follows
+the platform convention instead: `SCREAMING_SNAKE_CASE`.
 
-When naming a module that will be published, use standard URL-friendly formatting. This matches GitHub repositories and NPM packages.
+### 🟢 `PascalCase` for a module's `metadata.name`
 
-- **Do:** `secure-api-template`, `http-server`, `my-awesome-app`
-- **Don't:** `SecureApiTemplate`, `http_server`
+A module's `metadata.name` becomes the canonical kind prefix (`MyModule.Thing`)
+and is what diagnostics print. It is **not** a locator — imports resolve by
+`source`, and `!ref` targets are named by import alias — so treat it as a name,
+not a slug.
+
+- **Do:** `OAuthClient`, `HttpServer`
+- **Don't:** anything containing a dot — the `!ref` grammar splits on the first one
+
+Older standard-library modules still carry the historical kebab-case form
+(`http-server`), which keeps working; new modules should use PascalCase.
+
+### 🟢 `kebab-case` for directories and published repository names
+
+The filesystem directory and the npm / OCI repository name stay URL-friendly —
+npm forbids uppercase, and the OCI repository name is the module's directory
+name.
+
+- **Do:** `modules/http-server/`, `oci://ghcr.io/telorun/http-server`
+- **Don't:** `modules/HttpServer/`, `http_server`
 
 ---
 
-## 3. Putting It All Together
+## 3. Always write CEL with the `!cel` tag
 
-Here is a perfect example of a Telo manifest utilizing the recommended style guide:
+Every dynamic value is written `!cel "<expression>"` — pure expressions and
+string interpolation alike:
 
 ```yaml
-# Module name: kebab-case
+port: !cel "ports.http"
+message: !cel "'Hello, ' + inputs.name + '!'"
+```
+
+Do not use the inline `"${{ … }}"` string form in new manifests. The formatter
+normalizes to `!cel`, and the inline form does not survive a round-trip through
+tooling intact.
+
+## 4. Putting It All Together
+
+A complete manifest applying every rule above:
+
+```yaml
+# Module name: PascalCase
 kind: Telo.Application
 metadata:
-  name: my-awesome-app
+  name: MyAwesomeApp
+  version: 1.0.0
 imports:
-  # Import alias (instance): PascalCase
-  ProdApi:
-    source: telo/secure-api-template@v1.0.0
-    # Variables & secrets: camelCase
-    variables:
-      listenPort: 8080
-    secrets:
-      dbPassword: "${{ secrets.prodDbPassword }}"
-secrets:
-  prodDbPassword:
-    env: DB_PASSWORD
+  # Import aliases: PascalCase — this is the kind prefix you write below
+  Console: oci://ghcr.io/telorun/console@<version>
+  Run: oci://ghcr.io/telorun/run@<version>
+variables:
+  # Property names: camelCase. The env var they bind to: SCREAMING_SNAKE_CASE.
+  apiBaseUrl:
+    env: API_BASE_URL
     type: string
+    default: https://api.example.com
+targets:
+  - !ref AnnounceStartup
 ---
-# Resource kind: PascalCase
-kind: Logger.Stdout
+# Kind: PascalCase, prefixed by the import alias
+kind: Run.Sequence
 metadata:
-  # Instance name: PascalCase
-  name: AppLogger
-  module: my-awesome-app
-# Notice how clean the CEL expression reads:
-# resources.Instance.property -> resources.ProdApi.apiUrl
-message: "Production API is running at: ${{ resources.ProdApi.apiUrl }}"
+  # Instance name: PascalCase, so it reads cleanly in CEL
+  name: AnnounceStartup
+steps:
+  - name: BuildMessage
+    invoke: !ref StartupMessage
+  - name: Print
+    inputs:
+      # steps.<StepName>.result — the step name is PascalCase for the same reason
+      output: !cel "steps.BuildMessage.result.text"
+    invoke: !ref Console.writeLine
+---
+kind: Run.Value
+metadata:
+  name: StartupMessage
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [text]
+value:
+  text: !cel "'Talking to ' + variables.apiBaseUrl"
 ```

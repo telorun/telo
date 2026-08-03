@@ -241,7 +241,7 @@ Relative paths follow the same semantics as `<script src>` in HTML — the base 
 
 ### 6.2 Publishing locations
 
-An OCI reference has the shape `oci://<host>/<path…>/<module-name>@<version>`. The path segments preceding the module name are the **publisher's** repository namespace on that host — `ghcr.io/telorun` for the Telo-curated standard library, `ghcr.io/acme` for a third party. Trust in a specific publisher is signalled out-of-band (a verification badge on the module's [hub](https://telo.sh) listing), not by the path string.
+An OCI reference has the shape `oci://<host>/<path…>/<module-name>@<version>`. The path segments preceding the module name are the **publisher's** repository namespace on that host — `ghcr.io/telorun` for the Telo-curated standard library, `ghcr.io/acme` for a third party. Trust in a specific publisher is signalled out-of-band (a verification badge on the module's [hub](https://hub.telo.run) listing), not by the path string.
 
 The standard library covers portable, vendor-neutral primitives whose surface is defined by an open protocol or by Telo itself: HTTP transport, SQL, JavaScript execution, config, sequencing, assertions, testing, console I/O. A module belongs there only if its semantics are not tied to any specific vendor implementation; Telo curates membership. Vendor adapters — `lambda`, `s3`, `cloud-functions` — are published the same way, under whichever repository their publisher owns.
 
@@ -253,7 +253,7 @@ Examples:
 
 Where a module is published is a property of the **ref**, not of the library: a module declares nothing about its own location, and the same bytes can be published to an OCI repo, a registry path, or a URL without changing. Moving a module to a different repository is a breaking change to every consumer's `source:` field and is treated as a new module, not a version bump.
 
-**Discovery.** Modules are discovered through the **hub** ([`telo.sh`](https://telo.sh)) — a federated index over every registered module across transports (the HTTP registry, OCI, and direct manifest URLs). `telo search "<query>"` and the hub's MCP tools (`search_resources`, `get_module_manifest` — see [Coding Agents](/build/coding-agents)) resolve intent to the exact kind and its owning ref. Discovery is independent of where a module is hosted: the hub stores only metadata and cached manifests, and `telo install` / `telo run` resolve the actual artifact against the module's own origin (see §7).
+**Discovery.** Modules are discovered through the **hub** ([`hub.telo.run`](https://hub.telo.run)) — a federated index over every registered module across transports (the HTTP registry, OCI, and direct manifest URLs). `telo search "<query>"` and the hub's MCP tools (`search_resources`, `get_module_manifest` — see [Coding Agents](/build/coding-agents)) resolve intent to the exact kind and its owning ref. Discovery is independent of where a module is hosted: the hub stores only metadata and cached manifests, and `telo install` / `telo run` resolve the actual artifact against the module's own origin (see §7).
 
 ### Import Declaration
 
