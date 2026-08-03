@@ -1,5 +1,7 @@
 # Changelog
-## 0.4.0 - 2026-07-20
+## 0.5.0 - 2026-08-03
+### Added
+* Per-version import integrity. module_versions gains a nullable integrity column holding the `sha256-<base64url>` pin an editor writes into an `imports:` entry, taken from `telo module manifest --json` rather than derived from the manifest text (only the owning transport knows what its own reads verify against). GET /module/versions now returns `[{version, integrity}]` objects instead of bare version strings; `integrity` is omitted for a version nothing can hash. The tracker re-ingests a version whose stored integrity is NULL, so everything tracked before this backfills itself on the next sync pass; a ref nothing can hash records an empty string instead and settles after that one pass rather than re-ingesting forever.## 0.4.0 - 2026-07-20
 ### Added
 * Updated modules to latest version## 0.3.0 - 2026-07-19
 ### Added
