@@ -8,8 +8,17 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         { type: "doc", id: "docs/guides/getting-started", label: "Getting Started" },
+        { type: "doc", id: "docs/guides/first-http-api", label: "Your first HTTP API" },
+        { type: "doc", id: "docs/guides/how-telo-works", label: "How Telo works" },
+        { type: "doc", id: "docs/guides/refs-and-cel", label: "!ref and !cel" },
+        { type: "doc", id: "docs/guides/static-analysis", label: "Catching errors early" },
+        { type: "doc", id: "docs/guides/composing-behaviour", label: "Composing behaviour" },
+        { type: "doc", id: "docs/guides/configuration", label: "Configuring an application" },
+        { type: "doc", id: "docs/guides/reusing-manifests", label: "Reusing manifests" },
         { type: "doc", id: "cli/README", label: "Installation & CLI" },
+        { type: "doc", id: "docs/guides/coming-from", label: "Coming from somewhere else" },
         { type: "doc", id: "docs/guides/style-guide", label: "Style Guide" },
+        { type: "doc", id: "docs/guides/glossary", label: "Glossary" },
       ],
     },
     {
@@ -19,6 +28,7 @@ const sidebars: SidebarsConfig = {
       items: [
         { type: "doc", id: "docs/build/overview", label: "Overview" },
         { type: "doc", id: "docs/build/editor", label: "Telo Editor" },
+        { type: "doc", id: "ide/vscode/README", label: "VS Code extension" },
         { type: "doc", id: "docs/coding-agents", label: "Working with coding agents" },
         { type: "doc", id: "docs/build/testing", label: "Testing your manifests" },
         { type: "doc", id: "docs/guides/logging", label: "Logging" },
@@ -31,6 +41,9 @@ const sidebars: SidebarsConfig = {
       items: [
         { type: "doc", id: "docs/deploy/overview", label: "Overview" },
         { type: "doc", id: "docs/deploy/docker", label: "Docker image" },
+        { type: "doc", id: "docs/deploy/lambda", label: "AWS Lambda" },
+        { type: "doc", id: "docs/deploy/production", label: "Running in production" },
+        { type: "doc", id: "docs/deploy/security", label: "Security & supply chain" },
       ],
     },
     {
@@ -66,7 +79,9 @@ const sidebars: SidebarsConfig = {
       label: "Reference",
       collapsed: false,
       items: [
+        { type: "doc", id: "docs/reference/standard-library", label: "Standard library" },
         { type: "doc", id: "docs/cel-reference", label: "CEL Functions" },
+        { type: "doc", id: "docs/reference/diagnostics", label: "Diagnostics reference" },
         {
           type: "category",
           label: "Kernel",
@@ -90,6 +105,7 @@ const sidebars: SidebarsConfig = {
                 { type: "doc", id: "kernel/docs/inheritance", label: "Inheritance" },
                 { type: "doc", id: "kernel/docs/evaluation-context", label: "Evaluation Context" },
                 { type: "doc", id: "kernel/docs/data-types", label: "Data Types" },
+                { type: "doc", id: "kernel/docs/observed-state", label: "Observed State" },
                 {
                   type: "doc",
                   id: "kernel/docs/invoke-cancellation",
@@ -137,6 +153,15 @@ const sidebars: SidebarsConfig = {
               label: "Runtime & Ops",
               items: [
                 { type: "doc", id: "kernel/docs/controllers", label: "Controllers" },
+              ],
+            },
+            {
+              type: "category",
+              label: "Specifications",
+              items: [
+                { type: "doc", id: "kernel/specs/invocation-contract", label: "Invocation Contract" },
+                { type: "doc", id: "kernel/specs/logging", label: "Logging" },
+                { type: "doc", id: "kernel/specs/module-artifact", label: "Module Artifact" },
               ],
             },
           ],

@@ -24,5 +24,5 @@ cp node_modules/@telorun/lambda/managed.mjs ./index.mjs
 # Emulator (RIE) for local testing.
 ```
 
-See [Deploying](../../../modules/lambda/docs/deploying.md) for the full
+See [Deploying to AWS Lambda](https://telo.run/deploy/lambda) for the full
 packaging flow and AWS-side configuration.

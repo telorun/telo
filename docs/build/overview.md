@@ -26,7 +26,7 @@ A typical authoring cycle:
 
 1. **Start from a template** — [Getting Started](/learn/getting-started) walks through a minimal `Telo.Application`; the [Examples](/examples) index has runnable manifests for common patterns (HTTP API, chat console, scheduled job).
 2. **Declare imports** in the `imports:` map and pin each to an exact version. `telo upgrade` refreshes those pins; the [CLI reference](/learn/installation-and-cli) covers every command in detail.
-3. **Compose resources** — invokes, sequences, routers, services. The [Kernel reference](/reference/kernel) explains the building blocks; the [Standard Library](/reference/std) is the surface you import from.
+3. **Compose resources** — invokes, sequences, routers, services. The [Kernel reference](/reference/kernel) explains the building blocks; the [Standard Library](/reference/standard-library) is the surface you import from.
 4. **Run it** — `telo ./manifest.yaml` runs locally; the [Telo Editor](/build/editor)'s Deployment view spawns it in a container.
 5. **[Test it](/build/testing)** — Telo tests are themselves Telo manifests, so the kernel you target in production is the kernel that runs your tests. The same `Assert.*` resources that guard production behaviour guard development behaviour.
 6. **Ship it** — see [Deploy](/deploy).

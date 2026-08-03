@@ -89,21 +89,21 @@ and dispatch.
 ## Add something runtime-shaped
 
 A console one-shot is the simplest possible Telo manifest, but the runtime
-really shines once you wire long-running services together. The next stop
-is [`examples/hello-api/telo.yaml`](https://github.com/telorun/telo/blob/main/examples/hello-api/telo.yaml)
-— a minimal HTTP server with one route, a CEL-templated request handler,
-and a JavaScript script that builds the response. Same four phases, but
-with a `Telo.Service` (the HTTP server) that stays alive after init.
+really shines once you wire long-running services together.
+[**Your first HTTP API**](/learn/first-http-api) is the next step: a server with
+a validated route, a typed response, and configuration bound to the
+environment — about fifteen minutes, and it covers every piece an ordinary Telo
+application is made of.
 
 ## What's next
 
-- [Kernel reference](/kernel/) — Resources, capabilities, modules, and the
-  CEL evaluation model.
-- [HTTP Server](/standard-library/http-server/) — Route definitions, request /
-  response shaping, OpenAPI generation.
-- [Standard library overview](/standard-library/) — All built-in modules (HTTP, SQL,
-  AI, Lambda, MCP, …).
-- [Style guide](/guides/style-guide) — Naming, structure, and CEL
+- [Standard library](/reference/standard-library) — the modules you import
+  from: HTTP, SQL, AI, MCP, caching, scheduling, and the rest.
+- [Kernel reference](/reference/kernel) — resources, capabilities, modules, and
+  the CEL evaluation model.
+- [Style guide](/guides/style-guide) — naming, structure, and CEL
   conventions.
-- [CLI reference](/cli/) — `telo run`, `telo check`, `telo install`,
-  `telo search`, `telo publish` (to OCI), and watch mode.
+- [CLI reference](/learn/installation-and-cli) — `telo run`, `telo check`,
+  `telo install`, `telo upgrade`, `telo publish` (to OCI), and watch mode.
+- [Catching errors before they run](/learn/static-analysis) — what `telo check`
+  finds, and how to debug what it cannot.

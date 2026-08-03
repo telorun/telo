@@ -5,12 +5,17 @@ import type { Config } from "@docusaurus/types";
 
 import { generateCelReference } from "./lib/generate-cel-reference";
 import { generateExamplesIndex } from "./lib/generate-examples-index";
+import { generateStandardLibrary } from "./lib/generate-standard-library";
 import remarkVersions from "./plugins/remark-versions";
 import sidebars from "./sidebars";
 
 const repoRoot = path.resolve(__dirname, "..");
 generateExamplesIndex(path.join(repoRoot, "examples"), path.join(repoRoot, "examples", "INDEX.md"));
 generateCelReference(path.join(repoRoot, "docs", "cel-reference.md"));
+generateStandardLibrary(
+  path.join(repoRoot, "modules"),
+  path.join(repoRoot, "docs", "reference", "standard-library.md"),
+);
 
 function collectDocIds(items: unknown): string[] {
   if (!Array.isArray(items)) return [];
@@ -52,17 +57,15 @@ const config: Config = {
       if (result.frontMatter.slug !== undefined) return result;
       const normalized = filePath.replace(/\\/g, "/");
 
-      // The one module page still wired into the site is the AWS Lambda
-      // deploying guide, promoted into the top-level Deploy group with an
-      // explicit `/deploy/` slug. Stdlib module reference now lives on the
-      // hub (hub.telo.run), so there is no `/reference/std/` catch-all.
-      const lambdaDeployingMatch = normalized.match(/\/modules\/lambda\/docs\/deploying\.md$/);
-      if (lambdaDeployingMatch) {
-        result.frontMatter.slug = "/deploy/lambda";
+      // No module page is wired into the site: stdlib module reference lives on
+      // the hub (hub.telo.run), and `docs/reference/standard-library.md` is the
+      // generated index that points at it.
+      if (/\/ide\/vscode\/README\.md$/.test(normalized)) {
+        result.frontMatter.slug = "/build/vscode";
         return result;
       }
 
-      const kernelMatch = normalized.match(/\/kernel\/(README|docs\/.+)\.md$/);
+      const kernelMatch = normalized.match(/\/kernel\/(README|docs\/.+|specs\/.+)\.md$/);
       if (kernelMatch) {
         const rel = kernelMatch[1] === "README" ? "" : kernelMatch[1].replace(/^docs\//, "");
         result.frontMatter.slug = rel ? `/reference/kernel/${rel}` : "/reference/kernel";

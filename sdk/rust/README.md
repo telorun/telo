@@ -52,7 +52,7 @@ Use the SDK when building or extending Telo controllers in Rust. It is not the k
 The SDK ships two backends, gated by Cargo features:
 
 - `napi` — N-API bindings for the Node.js kernel.
-- `native` — a C-ABI vtable export for the Rust kernel, defined in [`abi/`](./abi).
+- `native` — a C-ABI vtable export for the Rust kernel, defined in [`abi/`](https://github.com/telorun/telo/tree/main/sdk/rust/abi).
 
 **There is no default backend, deliberately.** A controller crate carries no `[features]` block, so the backend can only be chosen from outside it — and `--no-default-features` on that build would apply to the *controller* crate, not to this dependency. Each kernel therefore selects one as a dependency feature when it builds the crate:
 
@@ -128,4 +128,4 @@ throws:
   passthrough: true   # union is whatever my inputs.code resolves to (Run.Throw-style)
 ```
 
-`inherit` is driven by the analyzer's dataflow pass over `x-telo-step-context` arrays. See [modules/run/docs/structured-errors.md](../../modules/run/docs/structured-errors.md) for the end-to-end flow.
+`inherit` is driven by the analyzer's dataflow pass over `x-telo-step-context` arrays. See [modules/run/docs/structured-errors.md](https://github.com/telorun/telo/blob/main/modules/run/docs/structured-errors.md) for the end-to-end flow.

@@ -32,7 +32,7 @@ imports:
   JavaScript: oci://ghcr.io/telorun/javascript@<version>
   Assert: oci://ghcr.io/telorun/assert@<version>
 targets:
-  - TestAdd
+  - !ref TestAdd
 ---
 kind: Run.Sequence
 metadata:
@@ -44,22 +44,29 @@ steps:
       b: 3
     invoke:
       kind: JavaScript.Script
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            sum: { type: integer }
+          required: [sum]
       code: |
         function main({ a, b }) {
           return { sum: a + b }
         }
   - name: VerifySum
     inputs:
-      sum: !cel "steps.AddNumbers.result.sum"
+      actual: !cel "steps.AddNumbers.result.sum"
+      expected: 8
     invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          sum:
-            type: number
-            const: 8
+      kind: Assert.Equals
 ```
+
+Prefer `Assert.Equals` over `Assert.Schema` for checking an output: it reads as
+a plain expected value and compares the whole result at once. Declaring
+`outputType` on the script is what makes `steps.AddNumbers.result.sum`
+type-check rather than fall back to a permissive shape.
 
 ## Running a whole suite
 
@@ -73,7 +80,7 @@ metadata:
 imports:
   Test: oci://ghcr.io/telorun/test@<version>
 targets:
-  - RunAll
+  - !ref RunAll
 ---
 kind: Test.Suite
 metadata:
@@ -90,131 +97,44 @@ telo ./test-suite.yaml add             # filter by substring (matches "add-two-n
 telo ./test-suite.yaml --filter=add    # same, explicit
 ```
 
-See the [`Test.Suite` reference on the hub](https://telo.sh/?q=Test.Suite) for the full field and CLI-flag list.
+See the [`Test.Suite` reference on the hub](https://hub.telo.run/?q=Test.Suite) for the full field and CLI-flag list.
 
 ## Step shapes
 
-Every step has a `name`. Beyond that, a step is one of several shapes — an invoke, or a control-flow block (conditional, loop, switch, try, throw). The `when:` guard composes with any of them.
+A test drives its assertions with the ordinary `Run.Sequence` grammar — invoke,
+`if`/`then`/`else`, `while`/`do`, `switch`/`cases`, `try`/`catch`/`finally`,
+`throw`, and the `when:` guard. All of it is documented once, in
+[Composing behaviour](/learn/composing-behaviour); none of it is test-specific.
 
-### Invoke
-
-`{ name, inputs?, invoke }`. `inputs` is a CEL-templatable map; `invoke` declares the resource to call. The result is available to later steps as `!cel "steps.<name>.result.<field>"`.
-
-### Conditional — `if/then/else`
-
-```yaml
-- name: BranchOnValue
-  if: !cel "steps.Setup.result.value == 42"
-  then:
-    - name: Matched
-      inputs: { value: !cel "steps.Setup.result.value" }
-      invoke:
-        kind: Assert.Schema
-        schema:
-          type: object
-          properties:
-            value: { const: 42 }
-  else:
-    - name: NotMatched
-      ...
-```
-
-### Loop — `while/do`
-
-A do-while pattern emerges naturally from sharing a step name between a pre-loop initializer and the loop body:
+Two shapes come up constantly in tests:
 
 ```yaml
-- name: Counter
-  inputs: { n: 0 }
+# Assert on an earlier step's result — actual/expected are call inputs
+- name: VerifySum
+  inputs:
+    actual: !cel "steps.AddNumbers.result.sum"
+    expected: 8
   invoke:
-    kind: JavaScript.Script
-    code: |
-      function main({ n }) { return { n } }
+    kind: Assert.Equals
 
-- name: Increment
-  while: !cel "steps.Counter.result.n < 3"
-  do:
-    - name: Counter            # shared name overwrites prior result each iteration
-      inputs: { n: !cel "steps.Counter.result.n" }
-      invoke:
-        kind: JavaScript.Script
-        code: |
-          function main({ n }) { return { n: n + 1 } }
-```
-
-### Switch — `switch/cases/default`
-
-```yaml
-- name: RouteByRole
-  switch: !cel "steps.ComputeRole.result.role"
-  cases:
-    admin:
-      - name: AdminAction
-        ...
-    viewer:
-      - name: ViewerAction
-        ...
-  default:
-    - name: Fallback
-      ...
-```
-
-### Try/catch/finally
-
-`error` is bound inside `catch:` with `code`, `message`, `step`, and `data`.
-
-```yaml
-- name: Outer
+# Assert that something fails, and how
+- name: Attempt
   try:
     - name: Boom
-      invoke:
-        kind: JavaScript.Script
-        code: |
-          function main() { throw new Error("caught me") }
+      throw:
+        code: UNAUTHORIZED
+        message: "bad token"
   catch:
     - name: Inspect
       inputs:
-        msg: !cel "error.message"
-        step: !cel "error.step"
+        actual: !cel "error.code"
+        expected: UNAUTHORIZED
       invoke:
-        kind: Assert.Schema
-        schema:
-          type: object
-          properties:
-            msg: { type: string }
-            step: { type: string }
-  finally:
-    - name: Cleanup
-      ...
+        kind: Assert.Equals
 ```
 
-### Throw
-
-`throw:` raises a structured `InvokeError` that the nearest enclosing `catch:` binds as `error`:
-
-```yaml
-- name: Boom
-  throw:
-    code: "UNAUTHORIZED"
-    message: "bad token"
-    data: { reason: "expired" }
-```
-
-### Guard — `when`
-
-`when:` skips a step if the expression is false. Works on plain steps, `if:`, `try:`, `switch:`, and `while:` blocks alike.
-
-```yaml
-- name: ShouldSkip
-  when: !cel "false"
-  inputs: { x: 999 }
-  invoke:
-    kind: Assert.Schema
-    schema:
-      type: object
-      properties:
-        x: { const: 0 }
-```
+`error.step` inside a `catch:` names the **enclosing** step that failed
+(`Attempt` above), not the inner one.
 
 ## Assertion kinds
 
@@ -269,6 +189,6 @@ Two shapes:
 
 ## See also
 
-- [`Test.Suite` reference on the hub](https://telo.sh/?q=Test.Suite) — discovery, isolation, and CLI flags.
-- [`Run.Sequence` reference on the hub](https://telo.sh/?q=Run.Sequence) — the full step grammar.
+- [`Test.Suite` reference on the hub](https://hub.telo.run/?q=Test.Suite) — discovery, isolation, and CLI flags.
+- [`Run.Sequence` reference on the hub](https://hub.telo.run/?q=Run.Sequence) — the full step grammar.
 - [Installation & CLI](/learn/installation-and-cli) — running and watching manifests with `telo`.

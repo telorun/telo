@@ -75,7 +75,7 @@ it — or another runtime's kernel — can load.
 
 The `path=` entry point is part of the module's payload **because `controllers:`
 names it**; it does not have to be restated in `files:`. See the
-[module artifact spec](./specs/module-artifact.md) for how candidates partition
+[module artifact spec](../specs/module-artifact.md) for how candidates partition
 into layers, and for the `os`/`arch`/`libc` selector axes.
 
 ---

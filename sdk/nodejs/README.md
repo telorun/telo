@@ -64,4 +64,4 @@ throws:
   passthrough: true   # union is whatever my inputs.code resolves to (Run.Throw-style)
 ```
 
-`inherit` is driven by the analyzer's dataflow pass over `x-telo-step-context` arrays; future composers opt in by declaring both the annotation and `inherit: true`. See [modules/run/docs/structured-errors.md](../../modules/run/docs/structured-errors.md) for the end-to-end flow.
+`inherit` is driven by the analyzer's dataflow pass over `x-telo-step-context` arrays; future composers opt in by declaring both the annotation and `inherit: true`. See [modules/run/docs/structured-errors.md](https://github.com/telorun/telo/blob/main/modules/run/docs/structured-errors.md) for the end-to-end flow.

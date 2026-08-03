@@ -21,7 +21,7 @@ A child that `extends` a concrete kind and declares **no** own `controllers:` /
 template body inherits, by delegation:
 
 - **The controller.** The kernel resolves the controller-bearing ancestor,
-  evaluates the child's [`base:`](#base-the-super-mapping) mapping, calls the
+  evaluates the child's [`base:`](#base--the-super-mapping) mapping, calls the
   ancestor controller's `create()` with the mapped config, and **returns that
   instance verbatim**. The child instance therefore *is* a parent instance — it
   duck-types identically (e.g. it has the `Client`'s `.snapshot()`), so consumers

@@ -27,4 +27,7 @@ Every deployment model shares the same preparation steps:
 3. **Ship the manifest and its `.telo/` tree together.** They are co-located by design — `COPY` the manifest directory and both caches travel with it; no environment variable points at the cache.
 4. **Configure runtime env** so the manifest's `variables:` and `secrets:` resolve at `kernel.load()`.
 
-The pages that follow walk through each model.
+The pages that follow walk through each model. Two of them apply whichever you pick:
+
+- [**Running in production**](/deploy/production) — how the process starts and stops, what it exits with, how to probe it, and every environment variable the runtime reads.
+- [**Security & supply chain**](/deploy/security) — what a module can reach on your host, and how import pins are verified end to end.

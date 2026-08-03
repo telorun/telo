@@ -134,11 +134,14 @@ One loader serves every path in a single invocation, so `telo check a b c` resol
 **Example output:**
 
 ```
-manifest.yaml:14:5  error    Unknown resource kind "Http.Srver"  E001
-manifest.yaml:22:7  warning  Unused variable "port"  W003
+manifest.yaml:14:5  error    No Telo.Definition found for kind "Http.Srver".  UNDEFINED_KIND
+manifest.yaml:22:7  warning  variables.port is declared but never referenced in any CEL expression.  UNUSED_DECLARATION
 
-2 errors, 1 warning
+1 error, 1 warning
 ```
+
+Every code is listed in the [diagnostics reference](/reference/diagnostics),
+along with what triggers it and how to fix it.
 
 On success:
 

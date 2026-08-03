@@ -24,7 +24,7 @@ Context-aware, driven entirely by the resolved schemas — nothing about specifi
 - **Kinds** at a `kind:` slot, filtered to what the current file actually imports.
 - **Property keys** for the kind you are inside, from its `Telo.Definition` schema.
 - **Reference names** at `!ref` slots, filtered to resources whose capability the slot accepts.
-- **Import sources** at `imports:` — searched against the [Telo hub](https://telo.sh), including version lists.
+- **Import sources** at `imports:` — searched against the [Telo hub](https://hub.telo.run), including version lists.
 
 ### Hover and go-to-definition
 
@@ -50,7 +50,7 @@ Version lookups are memoized so lens resolution stays off the keystroke path. Ru
 | Setting | Default | Description |
 | --- | --- | --- |
 | `telo.importUpgrades.enabled` | `true` | Show upgrade CodeLenses over `imports:`. Disable to stop the editor contacting the hub entirely. |
-| `telo.hubUrl` | `https://telo.sh` | Hub used for import-source autocomplete and version lists. |
+| `telo.hubUrl` | `https://telo.sh` | Hub **API** host used for import-source autocomplete and version lists. This is the machine-facing endpoint — the browsable index lives at [hub.telo.run](https://hub.telo.run). |
 
 ## Network access
 
@@ -59,7 +59,7 @@ Analysis is local. The extension contacts the network in two cases only: resolvi
 ## Learn more
 
 - [telo.run](https://telo.run) — documentation
-- [telo.sh](https://telo.sh) — module hub
+- [hub.telo.run](https://hub.telo.run) — module hub
 - [github.com/telorun/telo](https://github.com/telorun/telo) — source and issues
 
 ## License
