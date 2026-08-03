@@ -4,7 +4,7 @@ Pure, CEL-driven reshaping of a collection of records — grouping, aggregation,
 
 ## Why use this
 
-- **Declarative, type-checked reshaping** — fold, dedupe, sort, batch, and join records with CEL only. No `JavaScript.Script`; the operations stay visually editable and statically analyzable.
+- **Declarative, type-checked reshaping** — group, accumulate, dedupe, sort, batch, and join records with CEL only. No `JavaScript.Script`; the operations stay visually editable and statically analyzable.
 - **Transport-neutral** — operates over any array of records, wherever it came from (an HTTP body, a SQL result, a stream drained to a list).
 - **Composes with the `run` module** — where `Run.Projection` / `Run.Iteration` loop invocable step bodies (control flow), `Collection` reshapes data with CEL only. Same subject, different layer.
 
@@ -14,6 +14,7 @@ Pure, CEL-driven reshaping of a collection of records — grouping, aggregation,
 | --- | --- |
 | `Collection.GroupBy` | Partition by a CEL key tuple; reduce each group into a row (`sum` / `avg` / `min` / `max` / `size`), optionally ordered. |
 | `Collection.Summarize` | Reduce a whole collection to one summary row — `GroupBy` with a single implicit group. |
+| `Collection.Fold` | Accumulate across elements with state you define, optionally stopping early — the general form of `Summarize`. See [Collection.Fold](docs/fold.md). |
 | `Collection.Sort` | Order a collection by N CEL keys (each asc/desc), applied as tie-breakers. |
 | `Collection.Distinct` | Keep the first element per distinct CEL key tuple, preserving input order. |
 | `Collection.Chunk` | Split a collection into consecutive batches of at most `size`. |

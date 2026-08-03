@@ -7,14 +7,15 @@ metadata:
   categories: [Data]
   description: |
     Reshaping a collection of records with CEL expressions: group and reduce by a key,
-    summarize a whole set into one row, order by several computed sort keys,
-    deduplicate by a computed key, split into batches, and join two collections on
-    matching keys. Pure data transforms — a list in, a list out, no I/O and no control
-    flow.
+    summarize a whole set into one row, accumulate across elements with author-defined
+    state, order by several computed sort keys, deduplicate by a computed key, split
+    into batches, and join two collections on matching keys. Pure data transforms —
+    a list in, a list out, no I/O and no control flow.
 exports:
   kinds:
     - GroupBy
     - Summarize
+    - Fold
     - Sort
     - Distinct
     - Chunk
@@ -191,6 +192,145 @@ schema:
         count: !cel "double(size(group))"
         total: !cel "sum(group.map(o, o.amount))"
         average: !cel "avg(group.map(o, o.amount))"
+---
+# Accumulate across a collection with author-defined state — the general form of
+# Summarize, whose aggregator vocabulary is fixed. Termination is structural:
+# iterations are bounded by the collection's length and `while` can only shorten
+# the run, which is what makes this a fold rather than unanalyzable recursion.
+# Unlike every sibling the result shape is the author's, so it is returned bare
+# rather than under a named key: a fixed `{ value: … }` wrapper would have to be
+# restated inside any `outputType` an author declares, since contracts replace
+# rather than merge, and callers would read `result.value.<field>` untyped.
+kind: Telo.Definition
+metadata:
+  name: Fold
+  description: >-
+    Accumulates a collection into one value, applying a CEL step to a running
+    state once per element and optionally stopping early. Carries state between
+    elements — a running balance, a greedy allocation across records, a dedupe
+    that remembers what it has seen, a state machine over an event list — which
+    fixed aggregators cannot. Returns the final projection, or the accumulator
+    itself when none is declared.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/fold-controller.mjs&local_path=./nodejs/src/fold-controller.ts
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: >-
+      Values read inside collection / initial / accumulate / while / value CEL
+      as `inputs.<name>`.
+throws:
+  codes:
+    INVALID_COLLECTION:
+      description: "`collection` did not resolve to an array."
+    ERR_INVALID_PREDICATE:
+      description: "`while` evaluated to something other than a boolean."
+    INVALID_VALUE:
+      description: >-
+        `value` was written blank. Raised at load, not per call — a key with no
+        value parses to null, which the schema cannot tell from a CEL node.
+schema:
+  type: object
+  required: [collection, initial, accumulate, value]
+  additionalProperties: false
+  properties:
+    accType:
+      title: Accumulator Type
+      description: >-
+        The intermediate state's contract — a named type reference or an inline
+        type definition. Declaring it types `acc` inside `while` / `accumulate`
+        / `value`, and holds BOTH the seed and the step to that shape at
+        analysis time: a fold whose step drops a required field is an error
+        before it runs, and so is a seed that never had it.
+      x-telo-ref: Telo.Type
+    outputType:
+      title: Output Type
+      description: >-
+        The result contract — a named type reference or an inline type
+        definition. Declaring it types `steps.<name>.result` for callers, has
+        `value` checked against it statically, and has the produced value
+        validated at dispatch.
+      x-telo-ref: Telo.Type
+    collection:
+      title: Collection
+      description: CEL expression resolving to the array to fold over. Sees inputs.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    initial:
+      title: Initial
+      description: >-
+        The starting accumulator — a CEL expression, a structure with `!cel`
+        leaves, or a literal. Sees inputs. It is the first `acc`, so it is held
+        to `accType` exactly as `accumulate` is.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+      x-telo-value-schema-from: accType
+    while:
+      title: While
+      description: >-
+        Optional CEL predicate evaluated BEFORE each element; the fold stops at
+        the first element for which it is false, leaving the accumulator as it
+        was. Checked before, not after, so a fold that stops "once the balance
+        is exhausted" never consumes the element that would overdraw it. Must
+        evaluate to a boolean (ERR_INVALID_PREDICATE).
+      type: boolean
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          acc: { x-telo-context-from-root: "accType" }
+          item: { x-telo-context-element-from: "collection" }
+          index: { type: integer }
+          items: { type: array }
+    accumulate:
+      title: Accumulate
+      description: >-
+        The accumulator's next value, evaluated once per element — a CEL
+        expression, a structure with `!cel` leaves, or a literal. Sees acc (the
+        running state), item, index, items, inputs. It REPLACES the accumulator
+        rather than merging into it.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          acc: { x-telo-context-from-root: "accType" }
+          item: { x-telo-context-element-from: "collection" }
+          index: { type: integer }
+          items: { type: array }
+      x-telo-value-schema-from: accType
+    value:
+      title: Value
+      description: >-
+        The result, projected from the finished accumulator and evaluated once.
+        Sees acc, items, inputs. Write `!cel "acc"` when the accumulator IS the
+        result: required rather than optional so the output contract always has
+        exactly one slot to hold it to, and so a slot left blank cannot quietly
+        become a null result.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          acc: { x-telo-context-from-root: "accType" }
+          items: { type: array }
+      x-telo-value-schema-from: outputType
+  examples:
+    - collection: !cel "inputs.invoices"
+      initial:
+        remaining: !cel "inputs.amount"
+        allocations: []
+      while: !cel "acc.remaining > 0.0"
+      accumulate:
+        remaining: !cel "acc.remaining - min([acc.remaining, item.due])"
+        allocations: !cel "acc.allocations + [{'invoice': item.id, 'applied': min([acc.remaining, item.due])}]"
+      value: !cel "acc.allocations"
 ---
 # Order a collection by N CEL keys (each asc/desc), applied as tie-breakers.
 # Native CEL sort() only orders scalars — this sorts records by computed keys.

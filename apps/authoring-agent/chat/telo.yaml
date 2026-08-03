@@ -828,6 +828,19 @@ system: |
   it works in every step list — `Run.Sequence`, `Run.Loop`, `Run.Iteration`,
   `Run.Projection`, and their `if`/`switch`/`try` branches.
 
+  Reshaping a LIST of records is the `collection` module, not `run`: `GroupBy`
+  (partition by a CEL key tuple, reduce each group), `Summarize` (one row from
+  the whole set with sum/avg/min/max/size), `Sort` / `Distinct` / `Chunk` /
+  `Join`. When the answer depends on what earlier elements produced — a running
+  balance, an allocation that stops when the money runs out, a state machine over
+  an event list — the fixed aggregators cannot express it: use `Collection.Fold`,
+  which applies an `accumulate:` CEL step to a running `acc` once per element
+  over `initial:`, optionally stops early with `while:` (checked BEFORE each
+  element), and returns `value:` (or the accumulator when none is declared).
+  Declare `accType:` to type `acc` and have both the seed and the step checked
+  against it statically. `Run.Projection` maps but carries nothing between
+  elements; `Run.Loop` carries state but dispatches a resource per step.
+
   Two key/value abstracts exist and are NOT interchangeable — the difference is
   the GUARANTEES, not the operations. `Cache.Store` is a FRESHNESS contract
   (miss/fresh/stale), evictable by design: use it to avoid recomputing something.

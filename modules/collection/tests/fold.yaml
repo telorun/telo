@@ -1,0 +1,119 @@
+kind: Telo.Application
+metadata:
+  name: CollectionFoldTest
+  version: 1.0.0
+  description: |
+    Accumulation with author-defined state: a greedy allocation that stops once
+    the payment is exhausted (so `while` guards before the element, never
+    consuming the one that would overdraw), a scalar running total that shows
+    the accumulator need not be an object, and a fold with no `value:` that
+    returns the accumulator itself.
+imports:
+  Collection: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestAllocate
+  - !ref TestRunningTotal
+  - !ref TestNoProjection
+---
+kind: Collection.Fold
+metadata: { name: AllocatePayment }
+collection: !cel "inputs.invoices"
+accType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [remaining, allocations]
+    properties:
+      remaining: { type: number }
+      allocations: { type: array }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: array
+    items:
+      type: object
+      required: [invoice, applied]
+      properties:
+        invoice: { type: string }
+        applied: { type: number }
+initial:
+  remaining: !cel "inputs.amount"
+  allocations: []
+while: !cel "acc.remaining > 0.0"
+accumulate:
+  remaining: !cel "acc.remaining - min([acc.remaining, item.due])"
+  allocations: !cel "acc.allocations + [{'invoice': item.id, 'applied': min([acc.remaining, item.due])}]"
+value: !cel "acc.allocations"
+---
+# A scalar accumulator — the shape `Summarize`'s fixed aggregators cannot carry
+# between elements.
+kind: Collection.Fold
+metadata: { name: RunningTotal }
+collection: !cel "inputs.amounts"
+accType:
+  kind: Telo.JsonSchema
+  schema: { type: number }
+initial: 0.0
+accumulate: !cel "acc + item"
+value: !cel "acc"
+---
+kind: Collection.Fold
+metadata: { name: LongestWord }
+collection: !cel "inputs.words"
+initial: ""
+# The accumulator IS the result — written out, since `value` is required.
+accumulate: !cel "size(item) > size(acc) ? item : acc"
+value: !cel "acc"
+---
+kind: Run.Sequence
+metadata: { name: TestAllocate }
+steps:
+  - name: Allocate
+    invoke: !ref AllocatePayment
+    inputs:
+      amount: 25.0
+      invoices:
+        - { id: a, due: 10.0 }
+        - { id: b, due: 30.0 }
+        - { id: c, due: 5.0 }
+  - name: Assert
+    inputs:
+      # `c` is never reached: the payment is exhausted by `b`, so `while` stops
+      # the fold before the third element rather than after it.
+      actual: !cel "steps.Allocate.result"
+      expected:
+        - { invoice: a, applied: 10.0 }
+        - { invoice: b, applied: 15.0 }
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: TestRunningTotal }
+steps:
+  - name: Total
+    invoke: !ref RunningTotal
+    inputs:
+      amounts: [1.5, 2.5, 6.0]
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Total.result"
+      expected: 10.0
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: TestNoProjection }
+steps:
+  - name: Longest
+    invoke: !ref LongestWord
+    inputs:
+      words: [ox, telo, manifest, cel]
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Longest.result"
+      expected: manifest
+    invoke:
+      kind: Assert.Equals
