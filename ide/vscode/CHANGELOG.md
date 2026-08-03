@@ -1,5 +1,22 @@
 # telo-kernel
 
+## 0.2.0
+
+### Minor Changes
+
+- 7edc69d: Remove the `telo.registryUrl` setting from the VS Code extension.
+
+  The setting overrode the base URL of the module registry that resolves imports during analysis. Import resolution now uses the kernel transport registry's own default, so `registry://` and bare refs resolve exactly as they do under `telo check` with no configuration. Nothing else read the setting — `telo.hubUrl`, which drives federated import autocomplete and the upgrade lenses, is a separate concern and is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [c28ee72]
+- Updated dependencies [424aacf]
+- Updated dependencies [a8402d9]
+  - @telorun/ide-support@0.9.0
+  - @telorun/analyzer@0.51.0
+  - @telorun/kernel@0.64.0
+
 ## 0.1.0
 
 ### Minor Changes

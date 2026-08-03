@@ -1,5 +1,0 @@
-project: console
-kind: Added
-body: 'Native Rust controllers for WriteLine and ReadLine, selected automatically
-  by the Rust kernel and available on the Node.js kernel via runtime: rust.'
-time: 2026-08-02T08:53:36.468559172Z

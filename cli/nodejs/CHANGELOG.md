@@ -1,5 +1,26 @@
 # @telorun/cli
 
+## 0.64.0
+
+### Minor Changes
+
+- c28ee72: Present OCI as the primary module ref form in CLI help and docs. `telo module`'s
+  `<ref>` help text now leads with `oci://host/repo@1.2.0` instead of a `std/`
+  registry ref; the bare `<namespace>/<name>@<version>` form still resolves and is
+  still listed. No behavioural change — help and comment text only.
+
+### Patch Changes
+
+- Updated dependencies [c28ee72]
+- Updated dependencies [424aacf]
+- Updated dependencies [a8402d9]
+- Updated dependencies [642b057]
+  - @telorun/ide-support@0.9.0
+  - @telorun/analyzer@0.51.0
+  - @telorun/kernel@0.64.0
+  - @telorun/sdk@0.64.0
+  - @telorun/templating@0.11.1
+
 ## 0.63.0
 
 ### Minor Changes
