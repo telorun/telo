@@ -35,7 +35,7 @@ exports:
 
 ### Provenance
 
-`metadata` also takes optional descriptive fields — `description`, `repository`, `license`, and `documentation`:
+`metadata` also takes optional descriptive fields — `description`, `repository`, `homepage`, `license`, and `documentation`:
 
 ```yaml
 metadata:
@@ -43,11 +43,16 @@ metadata:
   version: 0.9.0
   description: Write lines to stdout and read them back from stdin.
   repository: https://github.com/telorun/telo
+  homepage: https://telo.run/modules/console
   license: Apache-2.0
   documentation: https://hub.telo.run/?q=Console.WriteLine
 ```
 
 These are purely descriptive. Nothing resolves, fetches, caches, or publishes by them — a module's location is its ref, never its metadata — so they are safe to change without affecting how anyone imports the module.
+
+Because nothing in the kernel branches on them, a mistyped one has no failure mode that would ever surface it — so `telo check` validates the block instead: known fields are type-checked, and an unrecognized key is reported only when it is a near-miss of a known one (`licence:` → did you mean `license`). The vocabulary stays open, so a key of your own passes untouched.
+
+There is no `authors` or `maintainers` field, deliberately. Registration is open and unauthenticated, so a self-declared author verifies nothing; the hub derives a **publisher** from the ref's host and organisation instead, because ownership is a property of the host that serves the module.
 
 Publishing projects them into the destination's own metadata surface. An OCI publish maps them onto the standard `org.opencontainers.image.*` annotations (`repository` → `source`, `license` → `licenses`), which is what makes a published package show a description and link back to its source in registry UIs.
 
@@ -70,6 +75,30 @@ The list is unordered — entries carry equal weight, and the module appears und
 A `Telo.Definition` / `Telo.Abstract` may declare its own `categories`, which **replace** its module's for that kind. Use it when a kind belongs somewhere other than the module around it (a retry helper inside a compute module), not to repeat what the module already says.
 
 Categories are the *declared* grouping axis. The other one is derived and needs nothing from you: a kind's `extends` target identifies the contract it implements, so every backend of one abstract is discoverable together — see [Kind Inheritance](/extend/kind-inheritance).
+
+### Deprecating a module or a kind
+
+When something is superseded, say so where a machine can read it. `metadata.deprecated` takes a `reason` and an optional `replacedBy`, on a module doc or on any `Telo.Definition` / `Telo.Abstract`:
+
+```yaml
+kind: Telo.Definition
+metadata:
+  name: Migration
+  description: A single standalone schema-migration script.
+  deprecated:
+    reason: Declare migrations inline in the keyed `migrations` map instead.
+    replacedBy: Self.Migrations
+```
+
+The point is that a sentence buried in a description cannot be badged, linked, or warned about — nothing can tell "this kind mentions the word deprecated" from "this kind is deprecated". Declared, the hub badges it and links the replacement.
+
+**`replacedBy` is resolvable, and its form follows the level.** On a kind, it is an alias-qualified kind — the same grammar `kind:`, `extends:` and `x-telo-ref` use — resolved through this file's own `imports:`: `Self.<Kind>` for a sibling, `<Alias>.<Kind>` for an imported one, `Telo.<Kind>` for a kernel built-in. On a module doc it is a **module ref**, addressed exactly as an `imports:` source would be. `telo check` reports a replacement that does not resolve, because one a reader cannot follow is no better than none.
+
+`replacedBy` is optional: a module superseded by a kernel built-in has no module to point at, so the `reason` carries the instruction on its own.
+
+A kind whose replacement lives in a module this one does not import cannot be named — there is no alias for it. Deprecate at module level with a module ref instead; adding a real dependency purely to name a replacement would be worse.
+
+Deprecating is not removing. The kind keeps working exactly as before — this only tells readers what to write instead.
 
 ## Step 1 — declare the kind
 

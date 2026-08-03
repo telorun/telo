@@ -2,20 +2,38 @@ import * as React from "react";
 import { PackagePlus, Search } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ModulePage } from "@/ModulePage";
 import { RegisterModule } from "@/RegisterModule";
 import { SearchModules } from "@/SearchModules";
+import { navigate, useRoute } from "@/routing";
 
 export function App() {
-  // Two views, no router — search deep-links via `?q=` (see SearchModules), which
-  // is the only URL state worth carrying for a two-tab app.
-  const [tab, setTab] = React.useState("find");
+  const route = useRoute();
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-8 px-6 py-12">
+      {route.name === "module" ? (
+        <ModulePage moduleRef={route.ref} version={route.version} />
+      ) : (
+        <Home />
+      )}
+    </main>
+  );
+}
+
+function Home() {
+  const [tab, setTab] = React.useState("find");
+
+  return (
+    <>
       <header className="flex flex-col gap-2">
-        <span className="text-sm font-medium tracking-wide text-muted-foreground uppercase">
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          className="self-start text-sm font-medium tracking-wide text-muted-foreground uppercase"
+        >
           Telo Hub
-        </span>
+        </button>
         <h1 className="text-2xl font-semibold tracking-tight">
           Find a module, on any host
         </h1>
@@ -45,6 +63,6 @@ export function App() {
           <RegisterModule />
         </TabsContent>
       </Tabs>
-    </main>
+    </>
   );
 }

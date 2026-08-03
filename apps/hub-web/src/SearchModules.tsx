@@ -10,8 +10,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { ModuleDetail } from "@/ModuleDetail";
-import { moduleLabel } from "@/module-ref";
+import { RuntimeBadges } from "@/Badges";
+import { KindPopover } from "@/KindPopover";
+import { ModulePreview } from "@/ModulePreview";
+import { moduleDisplayName, refToPath } from "@/module-ref";
+import { navigate } from "@/routing";
 import {
   fetchCategories,
   PAGE_SIZE,
@@ -19,6 +22,10 @@ import {
   type CategoryFacet,
   type ModuleHit,
 } from "@/api";
+
+/** How many matched kinds a row names before it stops. Enough to recognise the
+ *  module without turning the list into a wall of chips. */
+const INLINE_KINDS = 3;
 
 /** Debounce so a search fires once the author pauses, not per keystroke — the
  *  hub embeds the query for the semantic arm, so each one costs real work. */
@@ -52,7 +59,7 @@ function syncUrl(query: string, category: string) {
   window.history.replaceState(null, "", url);
 }
 
-/** Identity of a hit for selection — a module is unique by ref. */
+/** Identity of a hit — a module is unique by ref. */
 function hitKey(hit: ModuleHit): string {
   return hit.module.ref;
 }
@@ -103,7 +110,7 @@ export function SearchModules() {
   const hits = state.kind === "ready" ? state.hits : [];
   // The URL carries the slug; prose should read back the label an author wrote.
   const categoryLabel = facets.find((f) => f.category === category)?.label ?? category;
-  // The drawer opens only on an explicit pick — no auto-selection, or a fresh
+  // The panel opens only on an explicit pick — no auto-selection, or a fresh
   // search would pop it open unbidden. It closes if a re-search drops the module.
   const selected = hits.find((h) => hitKey(h) === selectedRef) ?? null;
 
@@ -184,37 +191,79 @@ export function SearchModules() {
       {state.kind === "ready" && hits.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {hits.map((hit) => (
-            <li key={hitKey(hit)}>
-              <button
-                type="button"
-                onClick={() => setSelectedRef(hitKey(hit))}
-                className="flex w-full flex-col gap-0.5 rounded-lg border border-transparent px-3 py-2 text-left transition-colors outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50"
+            <li
+              key={hitKey(hit)}
+              className="rounded-lg border border-transparent px-3 py-2 transition-colors hover:bg-muted/60 has-focus-visible:bg-muted/60"
+            >
+              {/* Left-click previews in the panel — scanning candidates is the
+                  common case, and a navigation per module makes it expensive.
+                  It stays a real anchor so the URL is honest and cmd/middle-click
+                  still opens the full page in a new tab. */}
+              <a
+                href={refToPath(hit.module.ref)}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                  e.preventDefault();
+                  setSelectedRef(hitKey(hit));
+                }}
+                className="flex w-full flex-col gap-0.5 text-left outline-none focus-visible:underline"
               >
-                <div className="flex w-full items-baseline gap-x-3">
-                  <span className="truncate font-medium">{moduleLabel(hit.module.ref)}</span>
+                <span className="flex w-full items-baseline gap-x-3">
+                  <span className="truncate font-medium">{moduleDisplayName(hit.module)}</span>
                   <span className="shrink-0 font-mono text-xs text-muted-foreground">
                     v{hit.module.version}
                   </span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {hit.matchedKinds.length} {hit.matchedKinds.length === 1 ? "kind" : "kinds"}
-                  </span>
-                </div>
-                <span className="line-clamp-2 w-full text-sm leading-snug text-muted-foreground">
-                  {hit.module.description || hit.module.ref}
+                  {hit.module.deprecated?.reason && (
+                    <span className="shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-[11px] text-destructive">
+                      Deprecated
+                    </span>
+                  )}
                 </span>
-                {(hit.module.categories?.length ?? 0) > 0 && (
-                  <span className="flex flex-wrap gap-1 pt-0.5">
-                    {hit.module.categories!.map((category) => (
-                      <span
-                        key={category.slug}
-                        className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
-                      >
-                        {category.label}
-                      </span>
-                    ))}
+                {/* The full ref, because the bold name is only the tail and two
+                    modules on different hosts share one — `.../telorun/console`
+                    and `.../acme/console` both read as "console". Truncates at
+                    the END on purpose: the tail is already the line above, so
+                    what this adds is the scheme, host and org. */}
+                <span
+                  className="block w-full truncate font-mono text-[11px] text-muted-foreground"
+                  title={hit.module.ref}
+                >
+                  {hit.module.ref}
+                </span>
+                {hit.module.description && (
+                  <span className="line-clamp-2 w-full pt-0.5 text-sm leading-snug text-muted-foreground">
+                    {hit.module.description}
                   </span>
                 )}
-              </button>
+              </a>
+
+              {/* Outside the anchor: these are buttons, and nesting interactive
+                  elements inside a link is invalid and breaks keyboard order. */}
+              <div className="flex flex-wrap items-center gap-1 pt-1">
+                {hit.matchedKinds.slice(0, INLINE_KINDS).map((k) => (
+                  <KindPopover key={k.kind} kind={k} />
+                ))}
+                {hit.matchedKinds.length > INLINE_KINDS && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRef(hitKey(hit))}
+                    className="rounded px-1 py-0.5 text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+                  >
+                    +{hit.matchedKinds.length - INLINE_KINDS} more
+                  </button>
+                )}
+                <span className="ml-auto flex flex-wrap items-center gap-1">
+                  <RuntimeBadges runtime={hit.module.runtime} />
+                  {hit.module.categories?.map((category) => (
+                    <span
+                      key={category.slug}
+                      className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                    >
+                      {category.label}
+                    </span>
+                  ))}
+                </span>
+              </div>
             </li>
           ))}
         </ul>
@@ -226,8 +275,8 @@ export function SearchModules() {
           if (!open) setSelectedRef(null);
         }}
       >
-        <SheetContent aria-label="Module details">
-          {selected && <ModuleDetail hit={selected} />}
+        <SheetContent aria-label="Module preview" className="overflow-y-auto">
+          {selected && <ModulePreview hit={selected} />}
         </SheetContent>
       </Sheet>
     </div>

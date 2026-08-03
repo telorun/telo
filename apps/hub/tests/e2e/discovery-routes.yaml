@@ -24,6 +24,11 @@ targets:
   - !ref Categories_ListsDeclaredFacet
   - !ref SearchModules_FiltersByCategory
   - !ref Implementations_ListsBackendsOfContract
+  - !ref Module_ReturnsDetailForSeededRef
+  - !ref Module_UntrackedReturns404
+  - !ref Module_UnknownVersionReturns404
+  - !ref SearchResources_RejectsUnknownRuntime
+  - !ref SearchResources_AcceptsKnownRuntime
 ---
 kind: Run.Sequence
 metadata: { name: Health }
@@ -159,16 +164,42 @@ steps:
                           description: { type: string }
                           score: { type: number }
                         required: [kind, capability, score]
+                    # Every exported kind carries full detail, not just a name,
+                    # so a client can preview any of them without a second
+                    # request — the property that lets a result list stay
+                    # scannable.
                     exportedKinds:
                       type: array
-                      contains: { const: WriteLine }
+                      contains:
+                        type: object
+                        properties:
+                          kind: { const: WriteLine }
+                          capability: { type: string, minLength: 1 }
+                          description: { type: string, minLength: 1 }
+                          extends: { type: object }
+                          runtime: { type: object }
+                          deprecated: { type: object }
+                        required: [kind, capability, description, extends, runtime, deprecated]
                     # A library's public surface is two lists, and console is
                     # the seeded module that has both: a kinds-only index would
                     # miss `writeLine`, a ready-made instance an importer
                     # references as `!ref <Alias>.writeLine`.
+                    #
+                    # `kind` is what the instance instantiates, read from its
+                    # declaring doc — a bare name told a reader they could write
+                    # the `!ref` but not what they would get. It is non-empty
+                    # here precisely because `writeLine` is declared locally;
+                    # a re-export would carry an empty one.
                     exportedResources:
                       type: array
-                      contains: { const: writeLine }
+                      contains:
+                        type: object
+                        properties:
+                          name: { const: writeLine }
+                          kind: { const: WriteLine }
+                          description: { type: string, minLength: 1 }
+                          declared: { const: writeLine }
+                        required: [name, kind, description, declared]
                   required: [module, matchedKinds, exportedKinds, exportedResources]
             required: [hits]
         required: [status, body]
@@ -489,4 +520,180 @@ steps:
                         ref: { const: "oci://ghcr.io/telorun/kv-store-memory" }
                       required: [ref]
             required: [extends, implementations]
+        required: [status, body]
+---
+# GET /module — everything a module page renders in one call. Distinct from
+# /search/*: keyed by ref rather than ranked, and it serves the full kind list
+# rather than only what a query matched.
+#
+# The seeded `timer` module is used because it is in the compose SEED_REFS set
+# and exports at least one kind. Values that move with a release (version,
+# description) are asserted as shape; what is pinned is the contract — the ref
+# echoes back, and the kind list is non-empty and carries the per-kind fields a
+# page needs.
+kind: Run.Sequence
+metadata: { name: Module_ReturnsDetailForSeededRef }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitModuleDetail }
+      url: http://localhost:8040/module?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Ftimer
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertModuleDetail }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              module:
+                type: object
+                properties:
+                  ref: { const: "oci://ghcr.io/telorun/timer" }
+                  version: { type: string, minLength: 1 }
+                  latestVersion: { type: string, minLength: 1 }
+                  # Derived from the ref, never declared — so unlike the runtime
+                  # facets below it does not wait on a CLI release.
+                  publisher: { const: "ghcr.io/telorun" }
+                  transport: { const: oci }
+                  # Present as a fixed shape even when the module declares none;
+                  # a typed client must never have to probe for these.
+                  deprecated:
+                    type: object
+                    properties:
+                      reason: { type: string }
+                    required: [reason]
+                  runtime:
+                    type: object
+                    properties:
+                      runtimes: { type: array }
+                      full: { type: array }
+                      languages: { type: array }
+                      portable: { type: boolean }
+                    required: [runtimes, languages, portable]
+                required: [ref, version, latestVersion, publisher, transport, deprecated, runtime]
+              kinds:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+                  properties:
+                    kind: { type: string, minLength: 1 }
+                    capability: { type: string }
+                    description: { type: string }
+                    extends:
+                      type: object
+                      properties:
+                        kind: { type: string }
+                        ref: { type: string }
+                      required: [kind, ref]
+                    runtime: { type: object }
+                    deprecated: { type: object }
+                  required: [kind, capability, description, extends, runtime, deprecated]
+              versions:
+                type: array
+                minItems: 1
+                items: { type: string, minLength: 1 }
+            required: [module, kinds, exportedResources, versions]
+        required: [status, body]
+---
+# One 404 covers both "never registered" and "no such version": the caller's
+# next move is identical, and separating them would leak which refs are tracked.
+kind: Run.Sequence
+metadata: { name: Module_UntrackedReturns404 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitUntrackedModule }
+      url: http://localhost:8040/module?ref=e2e/nonexistent-module
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel "{'status': steps.hit.result.status, 'body': steps.hit.result.body}"
+      expected:
+        status: 404
+        body:
+          error: Module not tracked
+    invoke:
+      kind: Assert.Equals
+---
+# A tracked ref at a version that was never published takes the same 404 path,
+# rather than falling back to the latest version and quietly answering a
+# question the caller did not ask.
+kind: Run.Sequence
+metadata: { name: Module_UnknownVersionReturns404 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitUnknownVersion }
+      url: http://localhost:8040/module?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Ftimer&version=0.0.0-nope
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel "steps.hit.result.status"
+      expected: 404
+    invoke:
+      kind: Assert.Equals
+---
+# The runtime filter is an enum, so a wrong value is an error rather than a
+# near-empty result set. Without the enum an unrecognized value matches only
+# portable kinds, which reads as "no such module" — and `nodejs` vs a guessed
+# `node` is exactly the mistake a caller makes, since `nodejs` is what an
+# `imports:` entry's `runtime:` field uses.
+kind: Run.Sequence
+metadata: { name: SearchResources_RejectsUnknownRuntime }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitBadRuntime }
+      url: "http://localhost:8040/search/resources?q=delay&runtime=deno"
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel "steps.hit.result.status"
+      expected: 400
+    invoke:
+      kind: Assert.Equals
+---
+# The accepted value returns the ordinary 200 shape. Deliberately not asserting
+# non-empty hits: the hub container tracks with the `telo` its base image ships,
+# which predates the runtime block, so every seeded row has an empty runtime set
+# until a CLI release lands (same bootstrap as `integrity` above).
+kind: Run.Sequence
+metadata: { name: SearchResources_AcceptsKnownRuntime }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitGoodRuntime }
+      url: "http://localhost:8040/search/resources?q=delay&runtime=nodejs"
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertGoodRuntime }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              runtime: { const: nodejs }
+              hits: { type: array }
+            required: [runtime, hits]
         required: [status, body]

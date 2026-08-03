@@ -167,6 +167,10 @@ export {
 } from "./artifact-layer-index.js";
 export type { ArtifactLayer } from "./artifact-layer-index.js";
 export { validateModuleArtifact } from "./validate-module-artifact.js";
+// Warnings everywhere, fatal at `telo publish` — descriptive metadata has no
+// runtime failure mode, so it must not stop a manifest running, but it is the
+// module's public face the moment it is published.
+export { PUBLISH_BLOCKING_CODES } from "./validate-module-metadata.js";
 export { withSyntheticPositions } from "./with-synthetic-positions.js";
 export { documentToAst, parseToAst } from "./yaml-ast.js";
 export type { AstDocument, AstMap, AstNode, AstPair, AstScalar, AstSeq } from "./yaml-ast.js";

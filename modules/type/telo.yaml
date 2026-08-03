@@ -19,11 +19,16 @@ metadata:
   license: LicenseRef-SustainableUse
   categories: [Data]
   description: >-
-    DEPRECATED — superseded by the kernel built-in `Telo.JsonSchema`, which needs no
-    import. Reusable data shapes declared once and referenced anywhere a type is
+    Reusable data shapes declared once and referenced anywhere a type is
     expected: a call's inputs or results, a request body, a model's output. Shapes
     inherit from one another, and CEL rules express invariants that JSON Schema alone
     cannot, each failing with its own error code.
+  # No `replacedBy`: the replacement is a kernel built-in, and a module-level
+  # replacement names another MODULE ref. The reason carries the instruction.
+  deprecated:
+    reason: >-
+      Superseded by the kernel built-in `Telo.JsonSchema`, which is identical and
+      needs no import. Write `kind: Telo.JsonSchema` and drop this dependency.
 exports:
   kinds:
     - JsonSchema
@@ -38,8 +43,12 @@ kind: Telo.Definition
 metadata:
   name: JsonSchema
   description: >-
-    DEPRECATED — use the built-in `Telo.JsonSchema` instead. Declares a named data
-    shape as JSON Schema, optionally inheriting from other named shapes, with CEL
-    rules for the invariants schema cannot state. Each rule carries an error code
-    reported when data violates it.
+    Declares a named data shape as JSON Schema, optionally inheriting from other
+    named shapes, with CEL rules for the invariants schema cannot state. Each rule
+    carries an error code reported when data violates it.
+  # Alias-qualified, so the hub resolves it to a linkable target. `Telo.` names a
+  # kernel built-in, which resolves to no owning module ref.
+  deprecated:
+    reason: Identical to the kernel built-in, which needs no import.
+    replacedBy: Telo.JsonSchema
 extends: Telo.JsonSchema

@@ -41,7 +41,11 @@ search API, and the MCP endpoint are all resources in one manifest.
   exports only ready-made singletons and no kinds at all is legitimate, so a
   kinds-only index showed none of its actual entry points. Surfaced as
   `exportedResources` on a module hit; not independently searchable yet
-  (display-only).
+  (display-only). Each entry carries the `kind` it instantiates and that
+  instance's own `description`, read from the declaring doc — a bare name says
+  you may write `!ref Alias.writeLine` but not what you get. Both are empty for
+  a **re-export**, whose declaring doc belongs to another module; `declared`
+  (the verbatim entry) is what tells the two apart.
 - **Groups modules two ways, so discovery works without a query.** The
   *declared* axis is `metadata.categories` — an open vocabulary of domain
   labels a module (or an individual kind, which overrides its module's) puts
@@ -73,11 +77,12 @@ search API, and the MCP endpoint are all resources in one manifest.
 
 | Verb | Path |
 | --- | --- |
-| `telo search "<query>"` | `GET /search/modules?q=…&category=…&limit=…&offset=…` (grouped by module) |
-| `telo search --kinds "<query>"` | `GET /search/resources?q=…&category=…` (flat kind hits) |
+| `telo search "<query>"` | `GET /search/modules?q=…&category=…&runtime=…&limit=…&offset=…` (grouped by module) |
+| `telo search --kinds "<query>"` | `GET /search/resources?q=…&category=…&runtime=…` (flat kind hits) |
 | ref autocomplete | `GET /refs?q=…` (pg_trgm fuzzy, lexical) |
 | browse the category facet | `GET /categories` (slug + module count) |
 | backends of a contract | `GET /implementations?ref=…&kind=…` |
+| everything about one module | `GET /module?ref=…&version=…` |
 | `telo module versions <ref>` | `GET /module/versions?ref=…` |
 | register a module | `POST /register` (`{ ref }` → validate + index; open, no auth) |
 | MCP (`search_resources`, `get_module_manifest`) | `POST /mcp` |
@@ -92,6 +97,20 @@ module list). `search_resources` takes the same optional `category`. The
 parameter is slugified on the way in, so either the slug the API returns
 (`storage`) or the label an author wrote (`AI`) selects the same group.
 
+**The semantic arm has a relevance floor** (`VECTOR_MIN_SCORE`, cosine
+similarity, default `0.5`). An ANN search always returns its nearest `topK`
+however far away they are — ask for something the index has nothing like and it
+still hands back 50 neighbours, which RRF ranks and the response presents as
+answers. The floor turns "the nearest 50" into "the ones actually near", so a
+query with no good answer returns nothing rather than a page of noise.
+
+It applies to the **vector arm only**. The lexical arm has its own gate (a
+full-text match or a name substring), and thresholding that too would regress
+the exact-name lookup hybrid ranking exists to protect. An empty `q` skips the
+vector arm entirely, so browsing a category is unaffected. The value is pinned
+to the embedding model exactly as the stored vectors are — a different model
+scores on a different scale, so re-tune it alongside a re-embed.
+
 `/search/resources` returns a fixed top-20. `/search/modules` takes `limit`
 (default 20, max 100) and `offset`, and reports `total` — the pre-limit match
 count — because a browse that silently stopped at 20 would read as "that's all
@@ -103,7 +122,14 @@ The static manifest read
 (`GET manifests.telo.sh/<transport>/<host>/<path…>/<version>/telo.yaml`) never
 touches this app.
 
-Every module hit carries the provenance the module declares in its
+Every module hit carries the module's declared `metadata.name` as `name`. It is
+**display identity only** — the ref is the locator, and a name is not unique
+across the federation — but it is what the author calls the module and what the
+kind registry and diagnostics print, so it is the right heading when the repo
+path and the name diverge (`oci://ghcr.io/aws/telo-s3` is `S3`). A client shows
+it with the ref, never instead of it.
+
+Every module hit also carries the provenance the module declares in its
 `metadata` — `description`, `repository` (source-code URL), and `license` —
 indexed per tracked version and served on `/search/modules`,
 `/search/resources`, `/refs`, and the `search_resources` MCP tool. A module
@@ -128,6 +154,81 @@ which belongs to no published module. A module that implements another's
 abstract stays a top-level result in its own right — the hub lists it both
 under its categories and under `/implementations` of the contract; nesting one
 inside the other is a client's presentation choice, not the index's.
+
+### Runtime reach
+
+Telo is polyglot: one manifest is loaded by different kernels, and a kind's
+`controllers:` candidates decide which of them can host it. The hub indexes
+that, because without it `search_resources` hands a caller composing for the
+Rust kernel a kind whose only controller is JavaScript — and nothing in the
+response says so. Every kind hit carries
+`runtime: { runtimes, languages, portable }`, and `runtime` on `/search/*` and
+on `search_resources` filters by kernel (`nodejs`, `rust`) — the same labels an `imports:` entry's `runtime:` field uses.
+
+The facet is **per kind**, and the module roll-up distinguishes full from
+partial reach, because coverage genuinely differs inside one module:
+`std/console` ships Rust controllers for two of its four kinds. A module hit
+carries `runtime.runtimes` (every kernel with at least partial reach) and
+`runtime.full` (the subset covering every kind), so a filter reads one list and
+a UI still renders "Rust (partial)".
+
+A kind that declares no controllers is `portable: true` with an empty
+`runtimes` — no kernel constraint applies, so it satisfies every runtime
+filter. That is a flag rather than a list of today's kernels on purpose:
+enumerating them would make every stored row wrong the day a third kernel
+ships. Language is a **separate axis** from runtime and is left empty for a
+`napi`/`wasm` bundle, whose source language the PURL does not determine — a
+blank beats a guess.
+
+None of this is derived here. `telo module manifest --json` reports it, because
+the mapping from a controller PURL to the kernels that can load it is loader
+knowledge; a second copy in this app would drift silently the day a loader
+lands.
+
+### Deprecation and provenance
+
+A module or kind may declare `metadata.deprecated: { reason, replacedBy? }`, and
+hits carry it as `deprecated: { reason, replacedBy }` — `reason: ""` meaning not
+deprecated, since a fixed response shape is what lets typed clients consume this
+without probing for optional keys. A kind's replacement is resolved through the
+declaring manifest's own `imports:` map into `{ ref, kind }`, exactly as
+`extends` is, so it is a target a consumer can follow; an empty `ref` with a
+non-empty `kind` names a kernel built-in. A module's replacement is a plain
+module ref, and is optional — a module superseded by a kernel built-in has no
+module to point at, so the reason carries the instruction.
+
+`publisher` is **derived from the ref**, never declared: ownership is a property
+of the host, and a self-asserted field on an open, unauthenticated registry
+verifies nothing. It is the host and organisation (`ghcr.io/telorun`), or the
+host alone for a `url` module, whose path segments are a directory rather than
+an organisation.
+
+### Export lists carry full detail
+
+On a `/search/modules` hit, `exportedKinds` describes **every** exported kind —
+capability, description, `extends`, runtime, deprecation — not just the ones
+that matched. `matchedKinds` stays a separate list because only it carries a
+relevance score.
+
+That redundancy is deliberate: it is what lets a client preview any kind of any
+result without a second request. A consumer scanning results is deciding
+*between* modules, and a list that can only describe the kinds a query happened
+to hit forces a navigation per candidate to answer "what else is in here?".
+
+### `GET /module`
+
+Everything a module page renders, in one call: the module's metadata, every
+exported kind with its own capability, contract, runtime and deprecation, the
+exported singleton instances, and the tracked version list. `version` selects a
+tracked version and defaults to the latest.
+
+It exists because a search hit cannot answer this question. `/search/*` is
+ranked and returns only the latest version and only the kinds that matched a
+query; this is keyed by ref, serves any tracked version, and carries the full
+kind list. A page built on search would need three round trips and still could
+not address an older version. Both "never registered" and "no such version"
+return one 404 — the caller's next move is the same, and separating them would
+leak which refs are tracked.
 
 ## Configuration
 

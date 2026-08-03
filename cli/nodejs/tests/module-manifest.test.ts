@@ -13,6 +13,26 @@ import { createLogger } from "../src/logger.js";
 const log = createLogger(false);
 const MANIFEST = "kind: Telo.Library\nmetadata:\n  name: Console\n  version: 0.9.0\n";
 
+/** Two kinds with different controller coverage, so the roll-up has something
+ *  to disagree about — a module where every kind matched would pass even if the
+ *  per-kind classification were dropped entirely. */
+const KIND_MANIFEST = `${MANIFEST}---
+kind: Telo.Definition
+metadata:
+  name: WriteLine
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/writeline.mjs
+  - pkg:cargo/telorun-console?local_path=./rust#writeline_controller
+---
+kind: Telo.Definition
+metadata:
+  name: WriteStream
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/writestream.mjs
+`;
+
 function stubFetch(impl: () => { ok: boolean; body?: string }): void {
   vi.stubGlobal("fetch", async () => {
     const r = impl();
@@ -65,6 +85,23 @@ describe("buildManifestJsonPayload", () => {
     expect(payload.manifest).toBe(MANIFEST);
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining("no integrity hash"));
     stderr.mockRestore();
+  });
+
+  it("carries the runtime classification the tracker stores without parsing a PURL", async () => {
+    stubFetch(() => ({ ok: true, body: KIND_MANIFEST }));
+
+    const payload = await buildManifestJsonPayload(
+      "std/console@0.9.0",
+      "https://reg.example.test",
+      KIND_MANIFEST,
+      log,
+    );
+
+    expect(payload.runtime.runtimes).toEqual({ nodejs: "full", rust: "partial" });
+    expect(payload.runtime.kinds).toEqual([
+      { name: "WriteLine", runtimes: ["nodejs", "rust"], languages: ["javascript", "rust"], portable: false },
+      { name: "WriteStream", runtimes: ["nodejs"], languages: ["javascript"], portable: false },
+    ]);
   });
 
   it("has neither a pin nor a cache key for a local module", async () => {

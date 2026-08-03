@@ -351,8 +351,14 @@ metadata:
   name: Migration
   description: >-
     A single standalone schema-migration script, identified by a durable version key
-    recorded in the tracking table so it runs at most once. Deprecated: declare
-    migrations inline in the keyed migrations map instead.
+    recorded in the tracking table so it runs at most once.
+  deprecated:
+    reason: >-
+      Declare migrations inline in the keyed `migrations` map on Sql.Migrations
+      instead — move this entry under that map with the `version` value as its
+      key. A standalone Sql.Migration is still discovered and merged, so existing
+      manifests keep working.
+    replacedBy: Self.Migrations
 capability: Telo.Provider
 controllers:
   - pkg:telo/local/js?path=./nodejs/sql-migration-controller.mjs&local_path=./nodejs/src/sql-migration-controller.ts

@@ -2,7 +2,7 @@ import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { pathToFileURL } from "url";
-import { DEFAULT_MANIFEST_FILENAME, Loader, StaticAnalyzer, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
 import { LocalFileSource, defaultTransportRegistry } from "@telorun/kernel";
 import { fetchManifestHash } from "../registry-hash.js";
 import { defaultCustomTags } from "@telorun/templating";
@@ -503,6 +503,23 @@ async function publishOne(
   const diagnostics = new StaticAnalyzer().analyze(analysisManifests);
   const { errorCount } = formatAnalysisDiagnostics(diagnostics, analysisGraph, log, filePath);
   if (errorCount > 0) {
+    return false;
+  }
+  // Some diagnostics are warnings while a manifest merely runs and fatal the
+  // moment it is published. Descriptive metadata is the case: nothing reads
+  // `version` or `license` at runtime, so refusing to start an app over one is
+  // worse than the mistake — but publish is where those fields become the
+  // module's public face, projected onto the artifact's annotations and indexed
+  // by the hub, and a wrong one there is permanent for that version.
+  const blocking = diagnostics.filter(
+    (d) => typeof d.code === "string" && PUBLISH_BLOCKING_CODES.has(d.code),
+  );
+  if (blocking.length > 0) {
+    console.error(
+      `${log.error("error")}  ${blocking.length} metadata problem${blocking.length !== 1 ? "s" : ""} must be fixed before publishing ` +
+        `(reported as warnings above). These fields describe the module to everyone who finds it, ` +
+        `and this version's copy of them cannot be changed once published.`,
+    );
     return false;
   }
   stepOk(log, "check", "static analysis passed");

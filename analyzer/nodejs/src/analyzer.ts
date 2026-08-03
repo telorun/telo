@@ -76,6 +76,7 @@ import {
 import { validateExtends } from "./validate-extends.js";
 import { validateLogging } from "./validate-logging.js";
 import { validateModuleArtifact } from "./validate-module-artifact.js";
+import { validateModuleMetadata } from "./validate-module-metadata.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateInvocationContract } from "./validate-invocation-contract.js";
 import { collectStepInputIssues } from "./validate-step-inputs.js";
@@ -1315,6 +1316,10 @@ export class StaticAnalyzer {
       // would otherwise fail on a consumer's machine — or, for a mistyped platform
       // axis, silently offer one platform's binary to every host.
       diagnostics.push(...validateModuleArtifact(allManifests));
+      // The descriptive `metadata:` surface. Nothing in the kernel branches on
+      // these fields, which is precisely why they need a check: a mistyped one
+      // has no runtime failure mode that would ever surface it.
+      diagnostics.push(...validateModuleMetadata(allManifests, defs, aliases));
     }
     resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule);
 
