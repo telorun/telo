@@ -1,6 +1,6 @@
 # Collection operations
 
-Beyond [`GroupBy`](group-by.md), the module covers five more reshaping operations that native CEL cannot express. All are `Telo.Invocable`: invoke them from a `Run.Sequence` step or a boot target. All read `collection` (CEL or literal) that must resolve to an array, and none perform I/O.
+Beyond [`GroupBy`](group-by.md) and [`Fold`](fold.md), the module covers five more reshaping operations that native CEL cannot express. All are `Telo.Invocable`: invoke them from a `Run.Sequence` step or a boot target. All read `collection` (CEL or literal) that must resolve to an array, and none perform I/O.
 
 ## `Collection.Summarize`
 
@@ -15,6 +15,8 @@ aggregate:
   total: !cel "sum(group.map(o, o.amount))"
   average: !cel "avg(group.map(o, o.amount))"
 ```
+
+When the answer depends on what earlier elements produced — a running balance, an allocation that stops when the money runs out — the aggregators are not enough; that is [`Collection.Fold`](fold.md), which carries state you define from element to element.
 
 ## `Collection.Sort`
 

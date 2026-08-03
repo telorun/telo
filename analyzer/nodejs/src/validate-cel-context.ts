@@ -325,11 +325,16 @@ export function resolveContextAnnotations(
       : [fromRefKindRaw];
   if (fromRoot || fromRefKinds.length > 0) {
     if (fromRoot) {
-      const resolved = navigatePath(manifestRoot, fromRoot.split("/")) as
+      const navigated = navigatePath(manifestRoot, fromRoot.split("/")) as
         | Record<string, any>
         | undefined;
-      if (resolved && typeof resolved === "object" && !Array.isArray(resolved)) {
-        return resolved;
+      if (navigated && typeof navigated === "object" && !Array.isArray(navigated)) {
+        // A `telo#Type` slot resolves to the schema it names — the inline
+        // `{ kind, schema }` wrapper, a `!ref` to a named type, or a bare name —
+        // so the variable is typed by the CONTRACT rather than by the wrapper
+        // around it. A raw JSON Schema resolves to itself, and a plain property
+        // map (a transport scope) resolves to nothing and is used verbatim.
+        return resolveTypeFieldToSchema(navigated, allManifests ?? []) ?? navigated;
       }
     }
     if (defs) {

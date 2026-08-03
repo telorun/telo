@@ -45,6 +45,24 @@ describe("x-telo-context-from-root", () => {
     expect(resolved.properties.self).toEqual(manifestRoot.schema);
   });
 
+  it("resolves a telo#Type slot to the schema it names, not the wrapper around it", () => {
+    // A type field is written as `{ kind, schema }` (or a `!ref`, or a bare
+    // name). Typing the variable as the WRAPPER would expose `kind`/`schema`
+    // instead of the contract, and would force every such variable to be an
+    // object — a scalar contract could not be expressed at all.
+    const manifestRoot = {
+      kind: "Telo.Definition",
+      accType: { kind: "Telo.JsonSchema", schema: { type: "number" } },
+    };
+    const contextSchema = {
+      type: "object",
+      properties: { acc: { "x-telo-context-from-root": "accType" } },
+    };
+
+    const resolved = resolveContextAnnotations(contextSchema, manifestRoot, { manifestRoot });
+    expect(resolved.properties.acc).toEqual({ type: "number" });
+  });
+
   it("falls back to an open schema when the navigation path is missing", () => {
     const manifestRoot = { kind: "Telo.Definition" };
     const contextSchema = {
