@@ -1,5 +1,7 @@
 # Changelog
-## 0.10.0 - 2026-07-31
+## 0.11.0 - 2026-08-03
+### Added
+* Structured deprecation. This module's supersession by the kernel built-in `Telo.JsonSchema` lived in a YAML comment and a "DEPRECATED —" prefix on its descriptions, so no consumer could see it and the prefix diluted the module's hub search vector. It is now declared as `metadata.deprecated` on both the library doc and the JsonSchema kind, the kind naming `Telo.JsonSchema` as its replacement; the library carries a reason only, since a module-level replacement addresses another module and the replacement here is a kernel built-in. Descriptions were restored to describing what the module does. Behaviour is unchanged.## 0.10.0 - 2026-07-31
 ### Deprecated
 * Superseded by the kernel built-in `Telo.JsonSchema`, which needs no import. Declaring a data shape stopped being optional once any kind can carry an invocation contract: writing `inputType:` should not require an import, and a library declaring its own contract should not import a module purely to describe itself. This module is unchanged and `Type.JsonSchema` still resolves and behaves identically, so published manifests importing it keep working — but the standard library, examples and templates have moved to the built-in, and new manifests should too.## 0.9.0 - 2026-07-27
 ### Added
