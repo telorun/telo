@@ -6,6 +6,7 @@ import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   precompileDefinitionSchemas,
+  precompileTypeSchemas,
   resolveApplicationEnv,
 } from "../src/application-env.js";
 import { SchemaValidator } from "../src/schema-validator.js";
@@ -55,6 +56,119 @@ describe("precompileDefinitionSchemas", () => {
     runtime.compile(defSchema).validate({ url: "x" });
     const afterRuntime = (await fs.readdir(cacheDir)).sort();
     expect(afterRuntime).toEqual(afterWarm);
+  });
+
+  // A contract is compiled at first dispatch from the RESOLVED schema, never
+  // from the declaration. `{kind: Telo.JsonSchema, schema: …}` is not a JSON
+  // Schema, so baking it produced a validator for `{kind, schema}` and every
+  // contract-declaring kind missed the cache on every boot.
+  describe("invocation contracts", () => {
+    const inner = {
+      type: "object",
+      properties: { output: { type: "string" } },
+      required: ["output"],
+      additionalProperties: false,
+    };
+
+    it("bakes the schema the runtime compiles, not the declaration", async () => {
+      const warm = buildValidator();
+      warm.setCacheDir(cacheDir);
+      precompileDefinitionSchemas(
+        [
+          {
+            kind: "Telo.Definition",
+            metadata: { name: "WriteLine" },
+            schema: { type: "object", additionalProperties: false },
+            inputType: { kind: "Telo.JsonSchema", schema: inner },
+          },
+        ],
+        warm,
+      );
+      const afterWarm = (await fs.readdir(cacheDir)).sort();
+
+      // What `resolveBoundContract` asks for at dispatch: the inner schema.
+      const runtime = buildValidator();
+      runtime.setCacheDir(cacheDir);
+      runtime.compile(inner).validate({ output: "hi" });
+      expect((await fs.readdir(cacheDir)).sort()).toEqual(afterWarm);
+    });
+
+    it("bakes a resource instance's own narrowing", async () => {
+      // A per-instance `outputType` replaces the kind's, so it is what the
+      // runtime compiles for that instance — the warm has to see resource docs,
+      // not only `Telo.Definition` docs.
+      const warm = buildValidator();
+      warm.setCacheDir(cacheDir);
+      precompileDefinitionSchemas(
+        [{ kind: "JS.Script", metadata: { name: "Narrowed" }, outputType: { schema: inner } }],
+        warm,
+      );
+
+      const runtime = buildValidator();
+      runtime.setCacheDir(cacheDir);
+      const before = (await fs.readdir(cacheDir)).sort();
+      runtime.compile(inner).validate({ output: "hi" });
+      expect((await fs.readdir(cacheDir)).sort()).toEqual(before);
+      expect(before.length).toBeGreaterThan(0);
+    });
+
+    it("bakes a contract that is a $ref to a named type", async () => {
+      // The `{kind: Telo.JsonSchema, schema: {$ref: "telo:m/X"}}` form
+      // `oauth-client` and `vector-store` use. The runtime follows the alias to
+      // the schema X registered under that id and compiles THAT, so the warm
+      // has to register the type first — otherwise it follows the alias to the
+      // wrapper, AJV refuses the unresolvable reference, and nothing is baked.
+      const tokenSet = {
+        type: "object",
+        required: ["accessToken"],
+        properties: { accessToken: { type: "string" } },
+      };
+      const manifests = [
+        {
+          kind: "Telo.JsonSchema",
+          metadata: { name: "TokenSet", module: "OAuthClient" },
+          schema: tokenSet,
+        },
+        {
+          kind: "Telo.Definition",
+          metadata: { name: "TokenExchange" },
+          schema: { type: "object" },
+          outputType: {
+            kind: "Telo.JsonSchema",
+            schema: { $ref: "telo:OAuthClient/TokenSet" },
+          },
+        },
+      ];
+
+      const warm = buildValidator();
+      warm.setCacheDir(cacheDir);
+      await precompileTypeSchemas(manifests, warm);
+      precompileDefinitionSchemas(manifests, warm);
+      const afterWarm = (await fs.readdir(cacheDir)).sort();
+
+      // Runtime: the type is registered by its own init, the contract resolves
+      // through it, and the compile must hit what the warm baked.
+      const runtime = buildValidator();
+      runtime.setCacheDir(cacheDir);
+      await precompileTypeSchemas(manifests, runtime);
+      runtime
+        .compile(runtime.getSchema("telo:OAuthClient/TokenSet") as any)
+        .validate({ accessToken: "t" });
+      expect((await fs.readdir(cacheDir)).sort()).toEqual(afterWarm);
+    });
+
+    it("skips a name no type in the manifest set declares", async () => {
+      // `precompileTypeSchemas` registers every named type it can see, so a
+      // resolvable name IS warmed. One nothing declares resolves to nothing —
+      // baking a stand-in for it would be worse than a miss.
+      const warm = buildValidator();
+      warm.setCacheDir(cacheDir);
+      precompileDefinitionSchemas(
+        [{ kind: "Telo.Definition", metadata: { name: "Named" }, inputType: "RequestShape" }],
+        warm,
+      );
+      expect(await fs.readdir(cacheDir)).toEqual([]);
+    });
   });
 
   // An `extends` child without `base:` is validated at runtime against

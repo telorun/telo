@@ -9,8 +9,8 @@ metadata:
     becomes registered) and the inline-error path (an unresolvable ref returns
     400 with a reason, never tracked).
 imports:
-  HttpClient: oci://ghcr.io/telorun/http-client@0.16.0#sha256-Jca84EaplnO_x7MbGic28qfh7qqAUGwgeC77eXBUSoQ
-  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
+  HttpClient: oci://ghcr.io/telorun/http-client@0.17.0#sha256-I1E-vVv84rdwXuTJBkGr8r1wIp0Nw1WUAzuRR_gPxEU
+  Run: oci://ghcr.io/telorun/run@0.21.0#sha256-l-xpPdlKYmuxqoGX9FtzEShAbMGdgNGOlSmI9d6RWU4
   Assert: oci://ghcr.io/telorun/assert@0.14.0#sha256-dYQWezypcu4qCCS1v6h5LL30w0utrr7srTavsMYj7rU
 targets:
   - !ref Register_ValidRefSucceeds

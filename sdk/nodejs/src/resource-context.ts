@@ -214,6 +214,12 @@ export interface ResourceContext extends ControllerContext {
     expects?: string,
   ): T;
   validateSchema(value: any, schema: any): void;
+  /** Compile an author-written JSON Schema from a resource field into a
+   *  reusable validator, through the runtime's own engine — so its formats and
+   *  `x-telo-*` keywords apply and one process never holds two disagreeing
+   *  validators. Compile once in `create()` and validate per invocation; the
+   *  result is memoized in-process but never written to the on-disk validator
+   *  cache, which only warms kind schemas and invocation contracts. */
   createSchemaValidator(schema: any): DataValidator;
   registerSchema(name: string, schema: object): void;
   lookupSchema(name: string): object | undefined;

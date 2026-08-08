@@ -7,6 +7,7 @@ import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manif
 import type { ContractDirection, DefResolver } from "./extends-resolution.js";
 import { resolveContract } from "./invocation-contract.js";
 import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
+import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import type { AnalysisContext } from "./types.js";
 
 /** One reference field declared by a resource's definition, derived purely from
@@ -59,6 +60,21 @@ export class AnalysisRegistry {
 
   resolveKind(kind: string): string | undefined {
     return this.aliases.resolveKind(kind);
+  }
+
+  /** Rewrite `telo://Self/<type>` / `telo://<Alias>/<type>` schema references in
+   *  `manifests` to the canonical id their type registered under, in the scope
+   *  each doc was declared in. Idempotent — an already-canonical ref resolves to
+   *  no module and is left alone.
+   *
+   *  `analyze()` runs this over its own view; a caller holding a separately
+   *  flattened projection (the kernel's build-time validator warm, which must
+   *  resolve a `$ref` contract exactly as the runtime will) needs it applied to
+   *  that projection too. Exposed as a method because the alias tables are this
+   *  registry's, and handing them out would make every consumer's scoping its
+   *  own problem. */
+  resolveSchemaTypeRefs(manifests: ResourceManifest[]): void {
+    resolveSchemaTypeRefsIn(manifests, this.aliases, this.aliasesByModule);
   }
 
   /**

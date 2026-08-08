@@ -43,6 +43,7 @@ interface KernelModuleContext {
   getLoggingConfig?(): ScopeConfig | undefined;
 }
 import { stripCompiledValues } from "./schema-compiled-values.js";
+import { resolveTypeFieldSchema } from "./type-field-schema.js";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import { Kernel } from "./kernel.js";
@@ -179,7 +180,12 @@ export class ResourceContextImpl implements ResourceContext {
     if (!schema) {
       return new NoopValidator();
     }
-    return this.validator.compile(schema);
+    // Never persisted: the schema is author data in a RESOURCE field, which the
+    // build-time warm does not walk, so a disk entry could only ever miss and
+    // be rewritten on every boot. Compiling through the kernel's validator is
+    // still what keeps one engine in the process — its formats, its `x-telo-*`
+    // keywords, its non-strict mode.
+    return this.validator.compile(schema, { persist: false });
   }
 
   registerSchema(name: string, schema: object): void {
@@ -216,54 +222,13 @@ export class ResourceContextImpl implements ResourceContext {
    *  anyway, for the decisions a validator cannot answer: which properties carry
    *  `x-telo-stream` and must be exempt from the walk, and which paths a
    *  `default:` can be written to. Returns undefined when the reference resolves
-   *  to nothing. */
+   *  to nothing.
+   *
+   *  Shared with the build-time validator warm through
+   *  {@link resolveTypeFieldSchema} — the warm must land on the same schema
+   *  object the runtime compiles, or its baked entry is one nothing asks for. */
   resolveTypeSchema(typeRef: unknown): Record<string, any> | undefined {
-    return this.followTypeAlias(this.readTypeSchema(typeRef), new Set());
-  }
-
-  private readTypeSchema(typeRef: unknown): Record<string, any> | undefined {
-    if (!typeRef) return undefined;
-    if (typeof typeRef === "string") return this.validator.getSchema(typeRef) as any;
-    if (typeof typeRef !== "object") return undefined;
-    const ref = typeRef as Record<string, any>;
-    if (ref.schema && typeof ref.schema === "object") return ref.schema;
-    if (typeof ref.name === "string") return this.validator.getSchema(ref.name) as any;
-    if (ref.type || ref.properties || ref.$ref) return ref;
-    return undefined;
-  }
-
-  /**
-   * Follow a schema that is nothing but a `$ref` to a registered type, so the
-   * schema-level questions (which properties are streams, which paths carry a
-   * default) are asked of the real shape rather than of an alias.
-   *
-   * Only the whole-document alias form is followed, and only to READ it — the
-   * schema handed to AJV keeps its `$ref`s intact, because AJV resolves them
-   * itself against the registered ids and each type stays its own document with
-   * its own `$defs`. Inlining instead would move a `$ref: "#/$defs/X"` out of the
-   * document that defines `$defs.X`.
-   *
-   * `seen` guards a cycle two mutually-referencing types would otherwise spin on.
-   * A `$ref` alongside other keywords is left alone: that is a composition, not
-   * an alias.
-   */
-  private followTypeAlias(
-    schema: Record<string, any> | undefined,
-    seen: Set<string>,
-  ): Record<string, any> | undefined {
-    let current = schema;
-    while (
-      current &&
-      typeof current.$ref === "string" &&
-      Object.keys(current).length === 1 &&
-      !seen.has(current.$ref)
-    ) {
-      seen.add(current.$ref);
-      const target = this.validator.getSchema(current.$ref) as Record<string, any> | undefined;
-      if (!target) return current;
-      current = target;
-    }
-    return current;
+    return resolveTypeFieldSchema(typeRef, (name) => this.validator.getSchema(name));
   }
 
   /** Compile `schema` but compose the CEL `rules:` registered under `name`.

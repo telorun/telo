@@ -61,6 +61,35 @@ function collectSchemaProperties(
   return props;
 }
 
+/** True when a ref slot is holding CONFIG rather than a reference.
+ *
+ *  A slot annotated `x-telo-ref` is normally handed back whole, but the
+ *  annotation can sit on a node that is a reference AND a config carrier at
+ *  once: `targets:` puts it on the array ITEM so a bare `!ref Foo` is accepted,
+ *  while the same item may be a step object (`{ref, when}` /
+ *  `{invoke, inputs, when}`) whose `when` is a CEL guard that must be stripped
+ *  like any other. Told apart by what the value IS, three ways:
+ *
+ *  - a reference carries a `kind` — `resolveRefSentinels` rewrites a `!ref` to
+ *    `{kind, name, alias?}`, and the only other object a ref slot admits is an
+ *    inline definition (`{kind, …config}`);
+ *  - a live instance is either not a plain object, or exposes a method (a
+ *    controller's `create()` may return an object literal — `Assert.Schema`
+ *    does). Copying one is what the walk exists to avoid, and its graph is
+ *    routinely cyclic;
+ *  - what is left came from YAML, where a function cannot appear. */
+function isConfigAtRefSlot(value: unknown): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return false;
+  const obj = value as Record<string, unknown>;
+  if ("kind" in obj) return false;
+  for (const member of Object.values(obj)) {
+    if (typeof member === "function") return false;
+  }
+  return true;
+}
+
 /** Replaces CompiledValue wrappers with schema-appropriate placeholders for schema validation.
  *  Template strings were compiled from YAML at load time; this restores a shape
  *  that AJV can validate without evaluating expressions. When no schema is
@@ -88,10 +117,13 @@ export function stripCompiledValues(
     const resolved = resolveSchemaRef(nodeSchema, root);
 
     if (isCompiledValue(value)) return placeholderForSchema(resolved);
-    // A slot the schema declares as a reference is never config: it holds a
-    // `{kind, name}` ref or the live instance Phase 5 replaced it with, and the
-    // schema declares no shape to validate against either way.
-    if (resolved["x-telo-ref"] !== undefined) return value;
+    // A slot the schema declares as a reference is never config when it HOLDS a
+    // reference: a `{kind, name}` ref or the live instance Phase 5 replaced it
+    // with, and the schema declares no shape to validate against either way. A
+    // ref slot carrying config beside the ref keeps walking — bailing there left
+    // a boot target's `when: !cel` a CompiledValue for AJV to reject as
+    // "must be string", which is the whole gated-target form.
+    if (resolved["x-telo-ref"] !== undefined && !isConfigAtRefSlot(value)) return value;
 
     if (Array.isArray(value)) {
       const itemSchema = resolveSchemaRef((resolved.items ?? {}) as Record<string, unknown>, root);
