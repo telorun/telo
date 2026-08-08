@@ -72,6 +72,7 @@ import {
   collectDeclaredEnvKeys,
   precompileApplicationEnvSchemas,
   precompileDefinitionSchemas,
+  precompileTypeSchemas,
   resolveApplicationEnv,
 } from "./application-env.js";
 import { policyFingerprint } from "./runtime-registry.js";
@@ -571,6 +572,26 @@ export class Kernel implements IKernel {
       // same content-addressed `__validators/` cache the runtime reads. The
       // resolver lets it also bake each `extends` child's inheritance-resolved
       // schema — the form the runtime actually validates against.
+      //
+      // Named types first: a contract that is a `$ref` to one resolves through
+      // the schema registry, which at runtime is populated by the type
+      // resources' own init. Without them a `$ref` contract bakes nothing.
+      //
+      // Fed from the GRAPH, not from `staticManifests`: flatten forwards every
+      // module's definitions but only the ENTRY's resource instances, and a
+      // named type is a resource instance — so a library that declares its
+      // shapes once and `$ref`s them (`oauth-client`, `vector-store`) has no
+      // type doc in the flattened view at all.
+      const graphDocs = [...analysisGraph.modules.values()].flatMap((mod) =>
+        flattenLoadedModule(mod),
+      );
+      // Canonicalize `telo://Self/<type>` to the id the type registers under.
+      // `analyze()` did this to its own view; these projections are separate
+      // objects, and an un-canonicalized `$ref` resolves to nothing here while
+      // the runtime resolves it fine — a guaranteed miss on exactly the
+      // contracts that reference a named shape.
+      this.registry.resolveSchemaTypeRefs([...graphDocs, ...staticManifests]);
+      await precompileTypeSchemas(graphDocs, this.sharedSchemaValidator);
       precompileDefinitionSchemas(staticManifests, this.sharedSchemaValidator, (def) =>
         this.registry.resolverForDefinition(def),
       );

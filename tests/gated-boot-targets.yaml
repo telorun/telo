@@ -1,0 +1,73 @@
+# A boot target may carry a `when:` CEL guard, in both shapes `targets:` accepts:
+# the gated reference `{ref, when}` and the inline invoke step `{invoke, when}`.
+#
+# Regression: `when` is declared `type: string`, but the loader compiles a `!cel`
+# leaf into a CompiledValue before the kernel validates the Application. The
+# strip that restores the pre-CEL view used to bail out of any slot annotated
+# `x-telo-ref` — and that annotation sits on the targets ARRAY ITEM, so a bare
+# `!ref Foo` target is accepted — leaving the guard a sentinel object and failing
+# every `anyOf` branch with "/targets/N/when must be string".
+#
+# A target that must NOT run asserts a contradiction, so running it fails the
+# suite rather than passing silently.
+kind: Telo.Application
+metadata:
+  name: GatedBootTargets
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+  Run: ../modules/run
+variables:
+  enabled:
+    env: GATED_TARGETS_ENABLED
+    type: boolean
+    default: true
+  disabled:
+    env: GATED_TARGETS_DISABLED
+    type: boolean
+    default: false
+targets:
+  - ref: !ref RanWhenTrue
+    when: !cel "variables.enabled"
+  - ref: !ref MustNotRun
+    when: !cel "variables.disabled"
+  - name: InlineWhenTrue
+    invoke: !ref AssertTrue
+    inputs:
+      actual: !cel "variables.enabled"
+      expected: true
+    when: !cel "variables.enabled"
+  - name: InlineWhenFalse
+    invoke: !ref AssertUnreachable
+    inputs:
+      actual: "gate open"
+      expected: "gate closed"
+    when: !cel "variables.disabled"
+---
+kind: Assert.Equals
+metadata:
+  name: AssertTrue
+---
+kind: Assert.Equals
+metadata:
+  name: AssertUnreachable
+---
+kind: Run.Sequence
+metadata:
+  name: RanWhenTrue
+steps:
+  - name: Check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "variables.enabled"
+      expected: true
+---
+kind: Run.Sequence
+metadata:
+  name: MustNotRun
+steps:
+  - name: Unreachable
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: "gate open"
+      expected: "gate closed"

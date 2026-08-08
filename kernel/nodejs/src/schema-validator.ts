@@ -146,6 +146,64 @@ function collapseSentinelsToSource(value: unknown): unknown {
   return value;
 }
 
+/** Schema keywords whose VALUE is a map keyed by author-chosen names rather
+ *  than by keyword. A name may legitimately be `x-telo-…`, so the strip below
+ *  must not treat a key in one of these maps as an annotation. */
+const NAME_KEYED_SCHEMA_KEYWORDS = new Set([
+  "properties",
+  "patternProperties",
+  "dependentSchemas",
+  "dependentRequired",
+  "$defs",
+  "definitions",
+]);
+
+/** Schema keywords whose value is DATA, not a subschema. The strip must not
+ *  descend into them at all: an `x-telo-…` key inside a `const` / `default` /
+ *  `enum` member is part of the value being matched or filled, so removing it
+ *  would change what the validator accepts and what it writes — and would make
+ *  two schemas that differ only there hash alike. */
+const DATA_VALUE_KEYWORDS = new Set(["const", "default", "enum", "examples"]);
+
+/** Deep-clone `schema` without its `x-telo-*` annotations — applied, like
+ *  {@link collapseSentinelsToSource}, before both AJV compilation and cache
+ *  hashing.
+ *
+ *  Every `x-telo-*` keyword is analyzer/editor metadata: AJV runs `strict:
+ *  false` and registers the known ones as no-op keywords, so none of them emits
+ *  a single line of validation code. Leaving them in the hashed form makes the
+ *  cache key sensitive to differences that cannot change what the validator
+ *  does — and one such difference is real and systematic. The analyzer rewrites
+ *  `x-telo-ref.kind` to its canonical `<module>.<Kind>` in the declaring scope
+ *  (`resolveSchemaRefKinds`), and `telo install`'s warm pass bakes THAT view;
+ *  the kernel's controller registry never runs the rewrite, so at runtime the
+ *  same kind's schema still reads `Self.Connection`. Two keys, one validator:
+ *  every kind whose schema declares an alias-qualified ref missed the baked
+ *  cache on every boot and tried to rewrite it — the EACCES noise on a
+ *  read-only image.
+ *
+ *  Stripping is what makes the key describe the compiled validator and nothing
+ *  else, so the two views converge without either side having to agree on an
+ *  annotation's spelling. `normalizeRefSlots` runs FIRST and is unaffected: it
+ *  reads `x-telo-ref` to drop a legacy scalar `type` at a ref slot, which does
+ *  change validation, and it has already done so by the time this runs. */
+function stripTeloAnnotations(value: unknown, nameKeyed = false): unknown {
+  // An array's items are schema nodes (`allOf`, tuple `items`), never names.
+  if (Array.isArray(value)) return value.map((item) => stripTeloAnnotations(item));
+  if (!value || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (!nameKeyed && k.startsWith("x-telo-")) continue;
+    // A data-bearing keyword's value is carried over verbatim; a name-keyed
+    // map's VALUES are schema nodes again, so only its keys are exempt.
+    out[k] =
+      !nameKeyed && DATA_VALUE_KEYWORDS.has(k)
+        ? v
+        : stripTeloAnnotations(v, !nameKeyed && NAME_KEYED_SCHEMA_KEYWORDS.has(k));
+  }
+  return out;
+}
+
 export class SchemaValidator {
   private ajv: InstanceType<typeof Ajv>;
   private typeRules = new Map<string, TypeRule[]>();
@@ -162,6 +220,13 @@ export class SchemaValidator {
    *  process — `compiledValidators` is keyed by object identity and would
    *  miss those cases. */
   private hashCache = new Map<string, DataValidator>();
+  /** Hashes whose compile went through the disk layer. A `persist: false`
+   *  compile populates `hashCache` too — a repeat within the process should
+   *  still collapse — but must not be mistaken for a baked entry: returning it
+   *  to a persisting caller would suppress that caller's write permanently, so
+   *  content shared with a warmable schema would never reach the cache. Such a
+   *  caller falls through and compiles again, this time with the disk layer. */
+  private persistedHashes = new Set<string>();
   /** Where cache-failure diagnostics go. Injected rather than reached for
    *  globally: this class is constructed outside the kernel's stdio scope, and
    *  §13.1 forbids the kernel writing to `process.stderr` directly. Defaults to
@@ -239,7 +304,18 @@ export class SchemaValidator {
     this.cacheWritable = opts?.write ?? true;
   }
 
-  compile(schema: any): DataValidator {
+  /** Compile `schema` to a validator, reusing the in-memory and on-disk caches.
+   *
+   *  `persist: false` keeps the compile in memory only — no disk read, no disk
+   *  write. It is for a schema the build-time warm cannot see: an author-written
+   *  JSON Schema sitting in a RESOURCE field (`ctx.createSchemaValidator`),
+   *  rather than a kind's config schema or an invocation contract. Those are
+   *  baked by `precompileDefinitionSchemas`; a resource-field schema never was,
+   *  so persisting it only ever produced a miss-then-write on every boot — the
+   *  EACCES noise on a read-only image. Declining to own what it cannot warm is
+   *  the cache being honest, not a capability given up: the in-memory layers
+   *  still collapse a repeat compile within the process. */
+  compile(schema: any, options?: { persist?: boolean }): DataValidator {
     if (schema && typeof schema === "object") {
       const cached = this.compiledValidators.get(schema as object);
       if (cached) return cached;
@@ -284,7 +360,7 @@ export class SchemaValidator {
     // precompiled (runtime) views of one schema land on the same cache key. The
     // hashed and the compiled schema are this same canonical form. See
     // `collapseSentinelsToSource`.
-    const sanitized = collapseSentinelsToSource(injected);
+    const sanitized = collapseSentinelsToSource(stripTeloAnnotations(injected));
 
     const hash = createHash("sha256")
       .update(
@@ -295,15 +371,17 @@ export class SchemaValidator {
       )
       .digest("hex")
       .slice(0, 32);
+    const persist = options?.persist ?? true;
     const cachedByHash = this.hashCache.get(hash);
-    if (cachedByHash) {
+    if (cachedByHash && (!persist || this.persistedHashes.has(hash))) {
       if (schema && typeof schema === "object") {
         this.compiledValidators.set(schema as object, cachedByHash);
       }
       return cachedByHash;
     }
 
-    const validate = this.compileAjvOrLoadCached(sanitized, hash);
+    const validate = this.compileAjvOrLoadCached(sanitized, hash, persist);
+    if (persist) this.persistedHashes.add(hash);
 
     const validator = {
       validate: (data: any) => {
@@ -342,8 +420,12 @@ export class SchemaValidator {
   private compileAjvOrLoadCached(
     schema: any,
     hash: string,
+    persist: boolean,
   ): ValidateFunction {
-    const cacheDir = this.cacheDir;
+    // `persist: false` drops the whole disk layer — the read too, not just the
+    // write. Nothing bakes these entries, so a lookup is an ENOENT probe whose
+    // only possible hit is one this process wrote on an earlier run.
+    const cacheDir = persist ? this.cacheDir : undefined;
     if (cacheDir) {
       const cachePath = path.join(cacheDir, `${hash}.cjs`);
       try {

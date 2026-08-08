@@ -143,6 +143,118 @@ describe("SchemaValidator disk cache", () => {
     expect(await fs.readdir(workdir)).toEqual(afterWarm);
   });
 
+  it("keys on validation behaviour, not on x-telo-* annotations", async () => {
+    // The warm pass bakes the ANALYZER's view of a definition schema, where
+    // `resolveSchemaRefKinds` has canonicalized every ref constraint to
+    // `<module>.<Kind>`; the kernel's controller registry never runs that
+    // rewrite, so at `_createInstance` the same kind still reads `Self.X`. AJV
+    // registers `x-telo-ref` as a no-op keyword, so both compile to the same
+    // validator — and both must land on the same cache entry, or every kind
+    // whose schema declares an alias-qualified ref misses the baked cache on
+    // every boot and tries to rewrite it.
+    const canonical = {
+      type: "object",
+      properties: {
+        connection: { "x-telo-ref": { kind: "sql.Connection", use: "dependency" } },
+      },
+    };
+    const aliased = {
+      type: "object",
+      properties: {
+        connection: { "x-telo-ref": { kind: "Self.Connection", use: "dependency" } },
+      },
+    };
+
+    const warm = new SchemaValidator();
+    warm.setCacheDir(workdir);
+    warm.compile(canonical);
+    const baked = await fs.readdir(workdir);
+    expect(baked).toHaveLength(1);
+
+    const runtime = new SchemaValidator();
+    runtime.setCacheDir(workdir, { write: false });
+    expect(runtime.compile(aliased).isValid({ connection: { kind: "x", name: "db" } })).toBe(true);
+    expect(await fs.readdir(workdir)).toEqual(baked);
+  });
+
+  it("keeps an x-telo-* key inside a const / default / enum value", () => {
+    // Those keywords carry DATA, not a subschema: stripping inside them would
+    // change what the validator matches and what it fills, and would collapse
+    // two schemas that differ only there onto one key.
+    const v = new SchemaValidator();
+    v.setCacheDir(workdir);
+    const withAnnotation = v.compile({
+      type: "object",
+      properties: { tag: { const: { "x-telo-ref": "kept" } } },
+      required: ["tag"],
+    });
+    expect(withAnnotation.isValid({ tag: { "x-telo-ref": "kept" } })).toBe(true);
+    expect(withAnnotation.isValid({ tag: {} })).toBe(false);
+
+    // A different const value is a different validator, not a cache hit.
+    const other = v.compile({
+      type: "object",
+      properties: { tag: { const: { "x-telo-ref": "other" } } },
+      required: ["tag"],
+    });
+    expect(other.isValid({ tag: { "x-telo-ref": "kept" } })).toBe(false);
+
+    // `default` is filled verbatim (the validator runs with useDefaults).
+    const data: Record<string, unknown> = {};
+    v.compile({ type: "object", properties: { t: { default: { "x-telo-ref": "d" } } } }).validate(
+      data,
+    );
+    expect(data.t).toEqual({ "x-telo-ref": "d" });
+  });
+
+  it("a persist:false compile does not suppress a later persisting write", async () => {
+    const schema = { type: "object", properties: { k: { type: "string" } }, required: ["k"] };
+    const v = new SchemaValidator();
+    v.setCacheDir(workdir);
+
+    v.compile(schema, { persist: false });
+    expect(await fs.readdir(workdir)).toEqual([]);
+
+    // Same content through a persisting caller: the in-memory entry must not be
+    // mistaken for a baked one, or this schema could never reach the cache.
+    const persisted = v.compile({ ...schema }, { persist: true });
+    expect(persisted.isValid({ k: "x" })).toBe(true);
+    expect(await fs.readdir(workdir)).toHaveLength(1);
+  });
+
+  it("keeps a property literally named x-telo-* when stripping annotations", () => {
+    // `properties` is keyed by author-chosen names, so the annotation strip must
+    // not read a key there as a keyword and delete the property's schema.
+    const v = new SchemaValidator();
+    v.setCacheDir(workdir);
+    const validator = v.compile({
+      type: "object",
+      properties: { "x-telo-ref": { type: "string" } },
+      required: ["x-telo-ref"],
+      additionalProperties: false,
+    });
+    expect(validator.isValid({ "x-telo-ref": "kept" })).toBe(true);
+    expect(validator.isValid({})).toBe(false);
+  });
+
+  it("persist:false compiles in memory and touches no disk entry", async () => {
+    // `ctx.createSchemaValidator` — an author-written schema in a resource
+    // field, which the build-time warm never walks. A disk entry for it could
+    // only ever miss and be rewritten every boot.
+    const schema = { type: "object", properties: { k: { const: 1 } }, required: ["k"] };
+
+    const v = new SchemaValidator();
+    v.setCacheDir(workdir);
+    const validator = v.compile(schema, { persist: false });
+    expect(validator.isValid({ k: 1 })).toBe(true);
+    expect(validator.isValid({ k: 2 })).toBe(false);
+    expect(await fs.readdir(workdir)).toEqual([]);
+
+    // The in-memory layer still collapses a repeat compile of the same content.
+    expect(v.compile({ ...schema }, { persist: false })).toBe(validator);
+    expect(await fs.readdir(workdir)).toEqual([]);
+  });
+
   it("includes the AJV runtime version in the cache file name", async () => {
     // The hash incorporates AJV / ajv-formats versions, so an upgrade
     // to either invalidates the cache by name (the old hash isn't a

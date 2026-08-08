@@ -1,7 +1,19 @@
-import { type DefResolver, effectiveAuthorSchema, residualEntrySchema } from "@telorun/analyzer";
-import type { ResourceDefinition } from "@telorun/sdk";
+import {
+  type DefResolver,
+  effectiveAuthorSchema,
+  residualEntrySchema,
+  withStreamPropertiesSkipped,
+} from "@telorun/analyzer";
+import type {
+  ResourceContext,
+  ResourceDefinition,
+  ResourceManifest,
+  TypeRule,
+} from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
+import { create as createJsonSchemaType } from "./controllers/type/json-schema-controller.js";
 import { SchemaValidator } from "./schema-validator.js";
+import { resolveTypeFieldSchema } from "./type-field-schema.js";
 
 type EntryType = "string" | "integer" | "number" | "boolean" | "object" | "array";
 
@@ -145,6 +157,63 @@ export function precompileApplicationEnvSchemas(
 }
 
 /**
+ * Register every `Telo.JsonSchema` resource's resolved schema into `validator`,
+ * ahead of the contract warm below.
+ *
+ * A contract declared as `{kind: Telo.JsonSchema, schema: {$ref: "telo:m/X"}}`
+ * — what `oauth-client` and `vector-store` write — is compiled at runtime from
+ * the schema registered under that id, reached by following the alias. With no
+ * types registered the warm follows it to the `$ref` wrapper itself, AJV refuses
+ * the unresolvable reference, and the entry is silently not baked while the
+ * runtime goes on compiling something else: a guaranteed miss for exactly the
+ * modules that declare their shapes once and reference them.
+ *
+ * Runs the REAL type controller rather than re-deriving registration here. The
+ * three names a type registers under, the canonical `telo:` id and the `extends`
+ * merge are its rules; a second implementation would drift into baking schemas
+ * under keys the runtime never asks for — the failure this whole pass exists to
+ * remove. The loop mirrors the kernel's multi-pass init (`create` returns null
+ * while a parent type is unregistered) and stops as soon as a pass registers
+ * nothing new, so an unresolvable parent ends it instead of spinning.
+ *
+ * The deprecated `Type.JsonSchema` is not warmed: it is a module kind with its
+ * own controller, and reaching for this one would be assuming the two stayed
+ * identical.
+ */
+export async function precompileTypeSchemas(
+  manifests: Array<Record<string, any>>,
+  validator: SchemaValidator,
+): Promise<void> {
+  const ctx = {
+    lookupSchema: (name: string) => validator.getSchema(name),
+    registerSchema: (name: string, schema: object) => validator.addSchema(name, schema),
+    registerTypeRules: (name: string, rules: TypeRule[]) => validator.addTypeRules(name, rules),
+  } as unknown as ResourceContext;
+
+  let pending = manifests.filter(
+    (m) =>
+      m?.kind === "Telo.JsonSchema" &&
+      m.schema &&
+      typeof m.metadata?.name === "string" &&
+      typeof m.metadata?.module === "string",
+  );
+  while (pending.length > 0) {
+    const deferred: Array<Record<string, any>> = [];
+    for (const m of pending) {
+      try {
+        if ((await createJsonSchemaType(m as unknown as ResourceManifest, ctx)) === null) {
+          deferred.push(m);
+        }
+      } catch {
+        // A broken type surfaces through analysis / runtime, not the warm pass.
+      }
+    }
+    if (deferred.length === pending.length) break;
+    pending = deferred;
+  }
+}
+
+/**
  * Build-time cache warm for resource-config validators. The runtime
  * `_createInstance` compiles the declaring `Telo.Definition`'s `schema` to
  * validate every resource's config, then validates inputs/outputs against
@@ -188,11 +257,31 @@ export function precompileDefinitionSchemas(
       // Broken schemas are reported by analysis / runtime, not the warm pass.
     }
   };
+  const lookup = (name: string) => validator.getSchema(name);
+  // A contract validator is compiled from the RESOLVED schema with its
+  // `x-telo-stream` properties stripped, never from the declaration — see
+  // `resolveBoundContract`. Baking the declaration instead bakes a validator for
+  // `{kind, schema}`, which no dispatch asks for. A declaration that needs the
+  // runtime type registry (a bare name, a `{kind, name}` ref) resolves to
+  // nothing here — named types register when their resources initialize, long
+  // after the warm — so it is skipped rather than baked wrong.
+  const compileContract = (declared: unknown): void => {
+    if (declared === undefined || declared === null) return;
+    try {
+      const schema = resolveTypeFieldSchema(declared, lookup);
+      if (!schema) return;
+      compile(withStreamPropertiesSkipped(schema, (ref) => lookup(ref) as any));
+    } catch {
+      // An unresolvable contract is a dispatch-time error, not a warm failure.
+    }
+  };
   for (const m of manifests) {
+    // A per-instance contract overrides the kind's, so a resource declaring its
+    // own narrowing is what the runtime compiles for that instance.
+    compileContract(m?.inputType);
+    compileContract(m?.outputType);
     if (m?.kind !== "Telo.Definition") continue;
     compile(m.schema);
-    compile(m.inputType);
-    compile(m.outputType);
     if (resolverFor && m.extends) {
       // Mirrors the runtime stamp in `resource-definition-controller`; sharing
       // `effectiveAuthorSchema` is what keeps the two keys identical.
