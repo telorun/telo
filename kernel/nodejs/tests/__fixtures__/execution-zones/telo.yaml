@@ -1,0 +1,165 @@
+kind: Telo.Library
+metadata:
+  name: ZoneFixture
+  version: 1.0.0
+  description: >-
+    Test fixture for execution zones: a correlated zone provider, an
+    uncorrelated one, a requirer, and probes that report what the ambient stack
+    looks like from inside a detached dispatch, a service's run(), and a
+    root-context dispatch.
+exports:
+  kinds:
+    - Session
+    - Batch
+    - Ambient
+    - Enqueue
+    - Probe
+    - Detacher
+    - Starter
+    - Reporter
+files:
+  - "nodejs/*.mjs"
+---
+# The resource a correlated zone is keyed ON — the object both halves hold by
+# reference, and where a real provider would hang its private payload.
+kind: Telo.Definition
+metadata:
+  name: Session
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/zones.mjs#session
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    label:
+      type: string
+---
+# A CORRELATED zone: its `steps` slot establishes this kind's zone, carrying
+# whatever `/session` resolves to as the correlation payload.
+kind: Telo.Definition
+metadata:
+  name: Batch
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/zones.mjs#batch
+schema:
+  type: object
+  required: [session, steps]
+  additionalProperties: false
+  properties:
+    session:
+      x-telo-ref:
+        kind: Self.Session
+        use: dependency
+    steps:
+      x-telo-ref:
+        kind: Telo.Executable
+        use: call
+      x-telo-provides-zone: /session
+---
+# The requirer. Its `batch` field declares the requirement; the correlation key
+# tries its own `/session` first, then derives one through the batch it names —
+# the ordered-list shape `Sql.Command` uses.
+kind: Telo.Definition
+metadata:
+  name: Enqueue
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/zones.mjs#enqueue
+schema:
+  type: object
+  required: [batch]
+  additionalProperties: false
+  properties:
+    session:
+      x-telo-ref:
+        kind: Self.Session
+        use: dependency
+    batch:
+      x-telo-ref:
+        kind: Self.Batch
+        use: dependency
+      x-telo-requires-zone:
+        zone: Self.Batch
+        key: [/session, /batch/session]
+        reason: the message would be written outside any batch, losing atomicity
+---
+# Reports the ambient stack it observes, so a test can assert what survives an
+# edge without reaching into kernel internals.
+kind: Telo.Definition
+metadata:
+  name: Probe
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/zones.mjs#probe
+schema:
+  type: object
+  additionalProperties: false
+---
+# Dispatches its target through `ctx.runDetached`, which replaces the ambient
+# context with the uncancellable root — so the target sheds every zone.
+kind: Telo.Definition
+metadata:
+  name: Detacher
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/zones.mjs#detacher
+schema:
+  type: object
+  required: [invoke]
+  additionalProperties: false
+  properties:
+    invoke:
+      x-telo-ref:
+        kind: Telo.Invocable
+        use: detached
+---
+# A Telo.Service: the kernel dispatches its `run()` with no ambient scope, so
+# work it triggers starts zone-free by construction.
+kind: Telo.Definition
+metadata:
+  name: Starter
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/zones.mjs#starter
+schema:
+  type: object
+  required: [invoke]
+  additionalProperties: false
+  properties:
+    invoke:
+      x-telo-ref:
+        kind: Telo.Invocable
+        use: trigger.inbound
+---
+# Collects what each probe observed. A plain provider so a test reads results
+# without depending on event ordering.
+kind: Telo.Definition
+metadata:
+  name: Reporter
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/zones.mjs#reporter
+schema:
+  type: object
+  additionalProperties: false
+---
+# An UNCORRELATED zone (`x-telo-provides-zone: true`) — the simpler shape a kind
+# with a single ambient resource wants.
+kind: Telo.Definition
+metadata:
+  name: Ambient
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/zones.mjs#ambient
+schema:
+  type: object
+  required: [steps]
+  additionalProperties: false
+  properties:
+    steps:
+      x-telo-ref:
+        kind: Telo.Executable
+        use: call
+      x-telo-provides-zone: true

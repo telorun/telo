@@ -1,9 +1,11 @@
 import {
   Loader,
   StaticAnalyzer,
+  collectZoneModuleDocuments,
   flattenForAnalyzer,
   type AnalysisDiagnostic,
   type ManifestSource,
+  type ZoneModuleDocuments,
 } from "@telorun/analyzer";
 import {
   Stream,
@@ -211,6 +213,7 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     // `analyze()`'s — carried out of the try so the checks below can see them.
     let parseDiagnostics: AnalysisDiagnostic[] = [];
     let versionDiagnostics: AnalysisDiagnostic[] = [];
+    let moduleDocuments: ZoneModuleDocuments[] = [];
     try {
       const graph = await loader.loadGraph(source, {
         desugarImports: options?.desugarImports ?? true,
@@ -219,6 +222,9 @@ export class KernelRuntimeSeam implements RuntimeSeam {
       parseDiagnostics = graph.parseDiagnostics;
       versionDiagnostics = graph.versionDiagnostics;
       manifests = flattenForAnalyzer(graph);
+      // The zone stage derives each imported library's export contracts from
+      // its own full documents, which the flattened list drops.
+      moduleDocuments = collectZoneModuleDocuments(graph);
     } catch (err) {
       // A graph that would not load is an answer, not a failure of the call —
       // "this manifest does not load, and here is the reason" is precisely what
@@ -243,7 +249,9 @@ export class KernelRuntimeSeam implements RuntimeSeam {
 
     // `analyze()` never sees version skew, so without merging these a major
     // mismatch — which `load()` refuses to boot on — would check clean.
-    const diagnostics = new StaticAnalyzer({ celHandlers: nodeCelHandlers }).analyze(manifests);
+    const diagnostics = new StaticAnalyzer({ celHandlers: nodeCelHandlers }).analyze(manifests, {
+      moduleDocuments,
+    });
     return {
       diagnostics: [...versionDiagnostics, ...diagnostics].map(toCheckDiagnostic),
     };

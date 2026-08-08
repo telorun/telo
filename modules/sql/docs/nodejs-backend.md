@@ -36,19 +36,26 @@ const myDialect: SqlDialect = {
 };
 
 class MyConnection extends SqlConnectionBase {
-  constructor(db: Kysely<any>) {
-    super(db, myDialect);
+  constructor(db: Kysely<any>, ctx: ResourceContext) {
+    super(db, myDialect, ctx);
   }
 }
 
 export async function create(resource: MyManifest, ctx: ResourceContext) {
-  return new MyConnection(buildKysely(resource));
+  return new MyConnection(buildKysely(resource), ctx);
 }
 ```
 
-`SqlConnectionBase` implements `execute`, `executeTemplate`, `transaction`,
-`toRowCount`, `init`, `teardown` and `snapshot` over a kysely instance. Nothing
-in it is database-specific.
+`SqlConnectionBase` implements `execute`, `executeTemplate`, `runInTransaction`,
+`hasOpenTransaction`, `toRowCount`, `init`, `teardown` and `snapshot` over a
+kysely instance. Nothing in it is database-specific.
+
+The `ResourceContext` is required: transaction membership is ambient and keyed
+per connection, so the base reads the kernel's zone stack (`ctx.zonesFor(this)`)
+to find whether a transaction is open on *this* connection. It keeps the
+executor map as an instance field, never at module scope — see
+[transaction state](writing-a-backend.md#transaction-state-belongs-to-the-connection-instance)
+for why that distinction is load-bearing rather than stylistic.
 
 ## What a backend overrides
 

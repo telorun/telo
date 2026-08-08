@@ -1,4 +1,11 @@
-import type { CancellationSource, InvokeContext, OpenSpan, OpenSpanOptions } from "./cancellation.js";
+import type {
+  CancellationSource,
+  InvokeContext,
+  OpenSpan,
+  OpenSpanOptions,
+  ZoneEntry,
+} from "./cancellation.js";
+import type { ResourceHandle } from "./resource-instance.js";
 import { ControllerContext } from "./controller-context.js";
 import type { Logger } from "./logger.js";
 import type { LoggingHost } from "./log-sink.js";
@@ -45,6 +52,21 @@ export class NoopValidator implements DataValidator {
 
 export type ParsedArgs = Partial<Record<string, string | boolean | string[]>> & { _: string[] };
 
+/**
+ * Per-call options for a by-name dispatch.
+ *
+ * A bag rather than a positional context parameter because this slot already
+ * carried one meaning — `retry`, consumed by the step leaf — and
+ * `ResourceContext` satisfies `InvokeStepContext` structurally, so a positional
+ * `InvokeContext` here silently receives a step's retry options instead.
+ */
+export interface InvokeByNameOptions {
+  /** Seeds the invocation context, replacing the ambient. */
+  ctx?: InvokeContext;
+  /** Retry policy, read by `executeInvokeStep`. */
+  retry?: unknown;
+}
+
 export interface ResourceContext extends ControllerContext {
   readonly args: ParsedArgs;
   /** The id prefix of the context this resource was created in (the creating
@@ -81,6 +103,50 @@ export interface ResourceContext extends ControllerContext {
    *  lambda budget). Pass `source.context` into `invokeResolved` to scope an
    *  invocation tree to it. */
   createCancellationSource(): CancellationSource;
+  /** This resource's own handle. Its `ref` is how a controller names itself in a
+   *  diagnostic; its id is what the kernel stamps as a zone's `provider`. */
+  readonly self: ResourceHandle;
+  /**
+   * Open the zone declared by this resource's `slot` (`x-telo-provides-zone`)
+   * around `fn`. Kind = the declaring kind; correlation key = the annotation's
+   * pointer, resolved against this resource's own manifest. Throws if `slot`
+   * carries no such annotation — a controller and its schema disagreeing is a
+   * defect, not a fallback.
+   *
+   * A scope function rather than a push/pop pair: push/pop cannot be honest
+   * across async boundaries. `fn` receives the derived context to thread into
+   * `invokeResolved` for the body — the discipline cancellation already has —
+   * and the minted entry, which a provider with private state (an open
+   * transaction, a journal) keys its own map on.
+   *
+   * `base` is the context the new zone is layered onto. Pass the
+   * {@link InvokeContext} the controller was handed, exactly as
+   * {@link requireZone} takes one: a runtime with no ambient store (the Rust
+   * kernel passes its context explicitly and has none) can only implement the
+   * provider half through this parameter, so omitting it would make the surface
+   * unportable. Defaults to the ambient context.
+   */
+  withZone<T>(
+    slot: string,
+    fn: (ctx: InvokeContext, entry: ZoneEntry) => Promise<T>,
+    base?: InvokeContext,
+  ): Promise<T>;
+  /** The zone required by this resource's `field` (`x-telo-requires-zone`), or
+   *  throw ERR_ZONE_REQUIRED. Reads the ambient stack unless `ctx` is given. */
+  requireZone(field: string, ctx?: InvokeContext): ZoneEntry;
+  /** Like {@link requireZone} but absence is a valid answer, not an error. */
+  findZone(field: string, ctx?: InvokeContext): ZoneEntry | undefined;
+  /** Ambient zones correlated on an instance the caller holds, innermost first —
+   *  the undeclared case (a statement with no `transaction:` still joins an open
+   *  one). No kind parameter: the provider's own per-instance map already
+   *  discriminates — a zone this instance's owner did not open simply misses. */
+  zonesFor(instance: ResourceInstance, ctx?: InvokeContext): readonly ZoneEntry[];
+  /** The root context for runtime-driven inbound work (request, timer, queue
+   *  message): inherits nothing from whatever ambient happens to be live at the
+   *  registration site — no zones, no trace parent, no caller token. An inbound
+   *  registrant dispatches with this (or a cancellation source's context, which
+   *  is one), never `undefined`. */
+  rootContext(opts?: { cancellation?: CancellationSource }): InvokeContext;
   /** Run `fn` detached from the caller's cancellation/trace scope: the ambient
    *  request token + span are replaced with the uncancellable root, so request
    *  teardown cannot abort the work and it does not nest under the request's
@@ -95,7 +161,16 @@ export interface ResourceContext extends ControllerContext {
    *  (e.g. a W3C `traceparent`). A no-op (returns `base` unchanged) when tracing
    *  is off. */
   openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan>;
-  invoke<TInputs>(kind: string, name: string, inputs: TInputs, options?: any): Promise<any>;
+  /** Dispatch by name through the traced chokepoint. See
+   *  {@link InvokeByNameOptions} for `ctx` — an inbound registrant passes
+   *  {@link rootContext} there so the handler inherits nothing ambient
+   *  (execution-zones spec §7). */
+  invoke<TInputs>(
+    kind: string,
+    name: string,
+    inputs: TInputs,
+    options?: InvokeByNameOptions,
+  ): Promise<any>;
   invokeResolved<TInputs>(
     kind: string,
     name: string,

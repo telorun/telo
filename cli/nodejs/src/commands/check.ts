@@ -1,4 +1,9 @@
-import { Loader, StaticAnalyzer, flattenForAnalyzer } from "@telorun/analyzer";
+import {
+  Loader,
+  StaticAnalyzer,
+  collectZoneModuleDocuments,
+  flattenForAnalyzer,
+} from "@telorun/analyzer";
 import { assembleGraphDiagnostics } from "@telorun/ide-support";
 import {
   LocalManifestCacheSource,
@@ -200,7 +205,13 @@ async function checkOne(
     // `imports:` source thus surfaces here as a coded diagnostic — identical to
     // the editor — instead of a bare re-thrown load error. The CLI drops the
     // suppressed cascade; the editor / VS Code keep it available to render.
-    const analysis = new StaticAnalyzer().analyze(flattenForAnalyzer(graph));
+    // `moduleDocuments` carries each imported library's FULL documents, which
+    // the flattened list drops — the zone stage derives an export's open
+    // requirements from the library's own internal dispatch chain. No cache:
+    // the CLI analyzes once per process.
+    const analysis = new StaticAnalyzer().analyze(flattenForAnalyzer(graph), {
+      moduleDocuments: collectZoneModuleDocuments(graph),
+    });
     const { diagnostics } = assembleGraphDiagnostics(graph, analysis);
     const counts = formatAnalysisDiagnostics(diagnostics, graph, log, entryPath);
 

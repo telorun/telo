@@ -1,7 +1,12 @@
-import { InvokeError, isParameterizedSql, type ResourceContext } from "@telorun/sdk";
+import {
+  InvokeError,
+  isParameterizedSql,
+  type InvokeContext,
+  type ResourceContext,
+  type ZoneEntry,
+} from "@telorun/sdk";
 import type { QueryResult } from "kysely";
 import type { SqlConnection } from "./sql-connection.js";
-import type { SqlTransactionResource } from "./sql-transaction-controller.js";
 
 /** Execute the `sql` input of a Query/Exec resource against `connection`.
  *
@@ -16,9 +21,10 @@ import type { SqlTransactionResource } from "./sql-transaction-controller.js";
  *  with neither is executed verbatim. */
 export async function runSql(
   connection: SqlConnection,
-  transaction: SqlTransactionResource | undefined,
+  zone: ZoneEntry | undefined,
   input: unknown,
   ctx: ResourceContext,
+  invokeCtx?: InvokeContext,
 ): Promise<QueryResult<Record<string, unknown>>> {
   const expanded = ctx.expandValue(input, {}) as { sql: unknown; bindings?: unknown[] };
   const sql = expanded.sql;
@@ -37,13 +43,15 @@ export async function runSql(
     return connection.executeTemplate<Record<string, unknown>>(
       sql.fragments,
       sql.values,
-      transaction,
+      zone,
+      invokeCtx,
     );
   }
 
   return connection.execute<Record<string, unknown>>(
     sql as string,
     hasBindings ? (bindings as unknown[]) : [],
-    transaction,
+    zone,
+    invokeCtx,
   );
 }

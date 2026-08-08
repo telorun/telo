@@ -198,7 +198,16 @@ schema:
       type: object
       x-telo-ref:
         kind: Telo.Invocable
-        use: [call, detached]
+        # Which dispatches actually happen is decided by `revalidate:` —
+        # `background` adds the detached refresh; under `sync`/`off` the
+        # controller only ever calls inline. An unconditional [call, detached]
+        # would overstate the default and every graph consumer reads it.
+        use:
+          by: /revalidate
+          cases:
+            background: [call, detached]
+            sync: call
+            off: call
     ttl:
       title: TTL
       type: string

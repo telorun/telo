@@ -1,0 +1,153 @@
+# Nesting is per CONNECTION, which is what the correlated zone buys.
+#
+#  - A nested Sql.Transaction on the SAME connection joins the enclosing one —
+#    one commit, so a failure anywhere rolls the whole thing back.
+#  - A nested transaction on a DIFFERENT connection opens its own, because a
+#    transaction on another connection is not this connection's.
+#
+# Both were broken before zones: the ambient store was per controller bundle, so
+# the nesting check always read empty and every nested transaction opened its
+# own, on whatever connection happened to be ambient.
+kind: Telo.Application
+metadata:
+  name: TransactionNestingPerConnection
+  version: 1.0.0
+imports:
+  Sql: ../
+  SqlSqlite: ../../sql-sqlite
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestNesting
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: DbA
+file: ":memory:"
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: DbB
+file: ":memory:"
+---
+# Outer transaction on DbA whose body opens another transaction on DbA (joined,
+# so it shares the outer commit) and one on DbB (its own).
+kind: Sql.Transaction
+metadata:
+  name: OuterTx
+connection: !ref DbA
+steps: !ref OuterBody
+---
+kind: Run.Sequence
+metadata:
+  name: OuterBody
+steps:
+  - name: WriteA
+    invoke:
+      kind: Sql.Command
+      connection: !ref DbA
+    inputs:
+      sql: "INSERT INTO a (v) VALUES ('outer')"
+  - name: NestedSameConnection
+    invoke: !ref InnerTxA
+  - name: NestedOtherConnection
+    invoke: !ref InnerTxB
+  # Fails after every write above, so the rollback boundary is observable:
+  # DbA's writes (outer + joined inner) all vanish, DbB's committed inner
+  # transaction survives.
+  - name: Boom
+    invoke:
+      kind: Sql.Command
+      connection: !ref DbA
+    inputs:
+      sql: "INSERT INTO missing_table (v) VALUES ('boom')"
+---
+kind: Sql.Transaction
+metadata:
+  name: InnerTxA
+connection: !ref DbA
+steps: !ref InnerBodyA
+---
+kind: Run.Sequence
+metadata:
+  name: InnerBodyA
+steps:
+  - name: WriteNestedA
+    invoke:
+      kind: Sql.Command
+      connection: !ref DbA
+    inputs:
+      sql: "INSERT INTO a (v) VALUES ('inner-same')"
+---
+kind: Sql.Transaction
+metadata:
+  name: InnerTxB
+connection: !ref DbB
+steps: !ref InnerBodyB
+---
+kind: Run.Sequence
+metadata:
+  name: InnerBodyB
+steps:
+  - name: WriteNestedB
+    invoke:
+      kind: Sql.Command
+      connection: !ref DbB
+    inputs:
+      sql: "INSERT INTO b (v) VALUES ('inner-other')"
+---
+kind: Run.Sequence
+metadata:
+  name: TestNesting
+steps:
+  - name: CreateA
+    invoke:
+      kind: Sql.Command
+      connection: !ref DbA
+    inputs:
+      sql: "CREATE TABLE a (v TEXT NOT NULL)"
+  - name: CreateB
+    invoke:
+      kind: Sql.Command
+      connection: !ref DbB
+    inputs:
+      sql: "CREATE TABLE b (v TEXT NOT NULL)"
+
+  - name: RunOuter
+    try:
+      - name: Call
+        invoke: !ref OuterTx
+    catch:
+      - name: Expected
+        value: outer-failed
+
+  # Joined nesting: the inner DbA transaction shared the outer commit, so its
+  # write rolled back with it. Two separate transactions would have left
+  # 'inner-same' behind.
+  - name: SelectA
+    invoke:
+      kind: Sql.Query
+      connection: !ref DbA
+    inputs:
+      sql: "SELECT v FROM a"
+  - name: AssertARolledBack
+    inputs:
+      actual: !cel "steps.SelectA.result.rows"
+      expected: []
+    invoke:
+      kind: Assert.Equals
+
+  # Separate connection: its own transaction, committed independently.
+  - name: SelectB
+    invoke:
+      kind: Sql.Query
+      connection: !ref DbB
+    inputs:
+      sql: "SELECT v FROM b"
+  - name: AssertBCommitted
+    inputs:
+      actual: !cel "steps.SelectB.result.rows"
+      expected:
+        - v: inner-other
+    invoke:
+      kind: Assert.Equals

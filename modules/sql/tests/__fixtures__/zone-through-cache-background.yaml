@@ -1,0 +1,70 @@
+# The sibling of `zone-through-cache-sync.yaml`, differing in one field.
+# `revalidate: background` is the one setting under which `Cache.View` really
+# does dispatch detached (to refresh a stale entry), so this instance's slot
+# resolves to the set `[call, detached]` — and this manifest is WRONG.
+#
+# `readAccounts` declares `transaction:`, so it requires a transaction zone on
+# `appDb`. The background refresh reaches it through `ctx.runDetached`, which
+# replaces the ambient context with the uncancellable root: on every stale
+# revalidation the statement runs with no zone open and throws
+# ERR_ZONE_REQUIRED. The miss path works, which is exactly what makes this
+# worth catching statically — the failure only shows up once an entry goes
+# stale, in production, on a timer.
+#
+# A set member the runtime GUARANTEES is cleared makes the edge decidably
+# wrong rather than undecidable: the detached dispatch is never inside the
+# caller's zone. What stays unknown is only how often that path is taken, and
+# "sometimes throws" is not a working manifest.
+kind: Telo.Application
+metadata:
+  name: ZoneThroughCacheBackground
+  version: 1.0.0
+imports:
+  Sql: ../../
+  SqlSqlite: ../../../sql-sqlite
+  Cache: ../../../cache
+  CacheMemory: ../../../cache-memory
+  Run: ../../../run
+targets:
+  - !ref accountTx
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: appDb
+file: ":memory:"
+---
+kind: CacheMemory.Store
+metadata:
+  name: store
+---
+kind: Sql.Transaction
+metadata:
+  name: accountTx
+connection: !ref appDb
+steps: !ref body
+---
+kind: Run.Sequence
+metadata:
+  name: body
+steps:
+  - name: cached
+    invoke: !ref cachedRead
+    inputs:
+      key: accounts
+---
+kind: Cache.View
+metadata:
+  name: cachedRead
+store: !ref store
+invoke: !ref readAccounts
+ttl: 30s
+staleTtl: 5m
+revalidate: background
+---
+kind: Sql.Query
+metadata:
+  name: readAccounts
+connection: !ref appDb
+transaction: !ref accountTx
+inputs:
+  sql: "SELECT email FROM accounts"

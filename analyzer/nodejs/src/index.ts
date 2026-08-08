@@ -11,6 +11,7 @@ export type {
     ParseError,
 } from "./loaded-types.js";
 export {
+    collectZoneModuleDocuments,
     flattenForAnalyzer,
     flattenLoadedModule,
     forwardReExportManifests,
@@ -96,6 +97,29 @@ export {
   transfersControl,
 } from "./ref-slot.js";
 export type { RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
+export {
+  hasProvidesZone,
+  hasRequiresZone,
+  readProvidesZone,
+  readRequiresZone,
+  rewriteRequiresZoneKind,
+} from "./zone-slot.js";
+export type { ProvidesZoneSlot, RequiresZoneSlot } from "./zone-slot.js";
+export {
+  deriveLibraryExportRequirements,
+  projectZoneRequirements,
+  runZoneAnalysis,
+  zoneDocumentsSignature,
+} from "./resolve-zone-requirements.js";
+export type {
+  ZoneExportCache,
+  ZoneExportCacheEntry,
+  ZoneExportRequirements,
+  ZoneRequirementSpec,
+} from "./resolve-zone-requirements.js";
+export type { ZoneModuleDocuments } from "./zone-module-documents.js";
+export { validateZoneSlotDeclarations } from "./validate-zone-slots.js";
+export type { ZoneSlotIssue } from "./validate-zone-slots.js";
 export { validateDynamicSelectors, validateRefSlotDeclarations } from "./validate-ref-slots.js";
 export type { RefSlotIssue } from "./validate-ref-slots.js";
 export { visitManifest } from "./manifest-visitor.js";

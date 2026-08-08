@@ -155,8 +155,9 @@ class PostgresConnection extends SqlConnectionBase {
   constructor(
     db: Kysely<any>,
     private readonly beginHealthCheck: () => () => void,
+    ctx: ResourceContext,
   ) {
-    super(db, postgresDialect);
+    super(db, postgresDialect, ctx);
   }
 
   /** The sweep starts only once the connection has proved itself: a recurring
@@ -202,15 +203,18 @@ export async function create(
 
   const db = new Kysely<any>({ dialect: new PostgresDialect({ pool }) });
 
-  return new PostgresConnection(db, () =>
-    startHealthCheck(
-      pool,
-      // `pool` present but `healthCheckMs` omitted takes the schema default;
-      // `pool` omitted entirely never reaches AJV's property defaults, so the
-      // fallback has to exist here too.
-      resource.pool?.healthCheckMs ?? DEFAULT_HEALTH_CHECK_MS,
-      minConnections,
-      ctx.log,
-    ),
+  return new PostgresConnection(
+    db,
+    () =>
+      startHealthCheck(
+        pool,
+        // `pool` present but `healthCheckMs` omitted takes the schema default;
+        // `pool` omitted entirely never reaches AJV's property defaults, so the
+        // fallback has to exist here too.
+        resource.pool?.healthCheckMs ?? DEFAULT_HEALTH_CHECK_MS,
+        minConnections,
+        ctx.log,
+      ),
+    ctx,
   );
 }

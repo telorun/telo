@@ -106,7 +106,7 @@ import { ViewContainer } from "./views/ViewContainer";
 import { refTargetName } from "./views/topology/overview-graph";
 import type { RefWrite } from "./views/topology/application-canvas-model";
 import { leafConcreteIndex, writeConcretePath } from "../lib/concrete-path";
-import type { Range } from "@telorun/analyzer";
+import type { Range, ZoneExportCache } from "@telorun/analyzer";
 
 /** Shallow, order-sensitive equality for `include:` lists. Used to detect
  *  source-edits that changed the owner module's partial-file set so Editor
@@ -304,6 +304,13 @@ export function Editor() {
   const agentVisible = agentSupported || agent.overrideUrl.trim() !== "";
 
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Host-lifetime cache for per-library zone-export derivation. Owned here, not
+  // by the per-run AnalysisRegistry: analysis runs on every keystroke and each
+  // run builds a fresh registry per closure, so a cache there would rebuild
+  // every dependency's call graph each time. Its `(source, content signature)`
+  // key makes a workspace library the user is editing invalidate by
+  // construction.
+  const zoneExportCacheRef = useRef<ZoneExportCache>(new Map());
   // History manager lives in state so (a) construction runs in an effect, not
   // during render, and (b) swapping when rootDir changes triggers a re-render.
   // `historyVersion` bumps on every recordEdit/undo/redo; `canUndo`/`canRedo`
@@ -368,6 +375,7 @@ export function Editor() {
         workspace,
         manifestAdapter,
         createRegistryAdapters(settings),
+        zoneExportCacheRef.current,
       );
       setState((s) => {
         if (s.workspace !== workspace) return s;

@@ -1,0 +1,48 @@
+# The positive control for the whole check: exactly the shape the plan's
+# example uses. `insertAccount` declares a `transaction:`, so it requires a
+# transaction zone correlated on `appDb`. The requirement travels up two `call`
+# edges — the sequence's step slot and `Sql.Transaction.steps` — and `accountTx`
+# discharges it, since that slot also PROVIDES the zone and its `connection:` is
+# the same `appDb`.
+#
+# This fixture existing at all depends on `steps:` accepting a Telo.Executable:
+# before the widening a Run.Sequence was rejected there, and the only shape the
+# narrower constraint allowed cycles against the statement's own ref.
+kind: Telo.Application
+metadata:
+  name: ZoneSatisfied
+  version: 1.0.0
+imports:
+  Sql: ../../
+  SqlSqlite: ../../../sql-sqlite
+  Run: ../../../run
+targets:
+  - !ref accountTx
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: appDb
+file: ":memory:"
+---
+kind: Sql.Transaction
+metadata:
+  name: accountTx
+connection: !ref appDb
+steps: !ref accountWrites
+---
+kind: Run.Sequence
+metadata:
+  name: accountWrites
+steps:
+  - name: insertAccount
+    invoke: !ref insertAccount
+---
+# Omits `connection:` — the idiomatic statement. Correlation resolves through
+# the key's second pointer (`/transaction/connection`), the manifest-level
+# transcription of the controller's own `??`.
+kind: Sql.Command
+metadata:
+  name: insertAccount
+transaction: !ref accountTx
+inputs:
+  sql: "INSERT INTO accounts (email) VALUES ('ada@example.com')"

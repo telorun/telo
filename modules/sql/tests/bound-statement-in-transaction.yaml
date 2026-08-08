@@ -1,0 +1,151 @@
+# The flagship regression test for execution zones: a statement that DECLARES
+# `transaction:` executes transactionally, end-to-end, across the delivery
+# split. `Sql.Command`'s controller ships as a bundle while the connection base
+# is reached through `@telorun/sql` from the `pkg:npm`-delivered sqlite backend,
+# so the zone state must live where both sides reach it — the kernel's ambient
+# stack plus an instance field on the injected connection, never module scope.
+# Before zones this shape could not even be written: `steps:` was
+# `Telo.Invocable` (a Run.Sequence body was rejected) and the direct wiring was
+# an init-order cycle, so `transaction:` threw on every path.
+kind: Telo.Application
+metadata:
+  name: BoundStatementInTransaction
+  version: 1.0.0
+imports:
+  Sql: ../
+  SqlSqlite: ../../sql-sqlite
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestBoundStatement
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: Db
+file: ":memory:"
+---
+# A Run.Sequence in `steps:` — what the Telo.Executable widening buys, and what
+# breaks the cycle: a step's `invoke:` is not a Phase-5 injection site, so
+# `InsertAccount` may point its `transaction:` back at this transaction.
+kind: Sql.Transaction
+metadata:
+  name: AccountTx
+connection: !ref Db
+steps: !ref AccountWrites
+inputs:
+  email: !cel "inputs.email"
+---
+kind: Run.Sequence
+metadata:
+  name: AccountWrites
+steps:
+  - name: Insert
+    invoke: !ref InsertAccount
+    inputs:
+      sql: "INSERT INTO accounts (email) VALUES (?)"
+      bindings:
+        - !cel "inputs.email"
+---
+# Declares `transaction:`, so it requires an AccountTx zone correlated on Db.
+# `connection:` is omitted deliberately: the correlation key's second pointer
+# (`/transaction/connection`) derives it, exactly as the controller's own `??`
+# does at runtime.
+kind: Sql.Command
+metadata:
+  name: InsertAccount
+transaction: !ref AccountTx
+---
+kind: Run.Sequence
+metadata:
+  name: TestBoundStatement
+steps:
+  - name: CreateTable
+    inputs:
+      sql: "CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT NOT NULL)"
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+
+  - name: WriteInTx
+    inputs:
+      email: ada@example.com
+    invoke: !ref AccountTx
+
+  - name: SelectBack
+    inputs:
+      sql: "SELECT email FROM accounts"
+    invoke:
+      kind: Sql.Query
+      connection: !ref Db
+
+  - name: AssertCommitted
+    inputs:
+      actual: !cel "steps.SelectBack.result.rows"
+      expected:
+        - email: ada@example.com
+    invoke:
+      kind: Assert.Equals
+
+  # Deliberately absent: a step invoking `InsertAccount` outside its
+  # transaction. That path is now a `telo check` ERROR — it is exactly what
+  # ZONE_REQUIREMENT_UNSATISFIED exists to catch — so the manifest cannot
+  # express it while still checking clean. The runtime half (ERR_ZONE_REQUIRED
+  # at the dispatch) is covered by `kernel/nodejs/tests/execution-zones.test.ts`,
+  # and the static half by `zone-static-analysis.yaml`.
+
+  # The rollback is what proves the write really was inside the transaction:
+  # nothing from the failed body survives.
+  - name: FailingTx
+    try:
+      - name: CallDoomed
+        invoke: !ref RollbackTx
+        inputs:
+          email: doomed@example.com
+    catch:
+      - name: Ignored
+        value: rolled-back
+
+  - name: SelectAfterRollback
+    inputs:
+      sql: "SELECT email FROM accounts"
+    invoke:
+      kind: Sql.Query
+      connection: !ref Db
+
+  - name: AssertRolledBack
+    inputs:
+      actual: !cel "steps.SelectAfterRollback.result.rows"
+      expected:
+        - email: ada@example.com
+    invoke:
+      kind: Assert.Equals
+---
+kind: Sql.Transaction
+metadata:
+  name: RollbackTx
+connection: !ref Db
+steps: !ref RollbackWrites
+inputs:
+  email: !cel "inputs.email"
+---
+kind: Run.Sequence
+metadata:
+  name: RollbackWrites
+steps:
+  - name: Insert
+    invoke: !ref InsertDoomed
+    inputs:
+      sql: "INSERT INTO accounts (email) VALUES (?)"
+      bindings:
+        - !cel "inputs.email"
+  - name: Boom
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+    inputs:
+      sql: "INSERT INTO accounts (id, email) VALUES (1, 'duplicate-primary-key')"
+---
+kind: Sql.Command
+metadata:
+  name: InsertDoomed
+transaction: !ref RollbackTx

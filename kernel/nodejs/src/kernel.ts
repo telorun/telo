@@ -1,6 +1,7 @@
 import {
   AnalysisRegistry,
   buildEvalPaths,
+  collectZoneModuleDocuments,
   flattenForAnalyzer,
   flattenLoadedModule,
   isModuleKind,
@@ -45,6 +46,7 @@ import { formatSpanCounter } from "./logging/span-id.js";
 import { ambientInvokeContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
+import { mintResourceHandle } from "./resource-handle.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
@@ -520,7 +522,10 @@ export class Kernel implements IKernel {
     const skipValidation = stamp?.signature === analysisSignature;
     const errors = this.analyzer.analyzeErrors(
       staticManifests,
-      { skipValidation },
+      // Imported libraries' full documents, for the zone stage's per-library
+      // export derivation: `flattenForAnalyzer` forwards only each library's
+      // export surface, never its internal dispatch chain.
+      { skipValidation, moduleDocuments: collectZoneModuleDocuments(analysisGraph) },
       this.registry,
     );
     if (errors.length > 0) {
@@ -1285,6 +1290,17 @@ export class Kernel implements IKernel {
     );
     const instance = await controller.create(processedResource, ctx);
     if (!instance) return null;
+
+    // Mint the instance's identity here, at the single instance-production site,
+    // so an instance is never observable without a handle — the same argument
+    // that put contract binding here. First mint wins: a `base:` child IS the
+    // parent instance returned verbatim and must not be re-identified.
+    const handle = mintResourceHandle(
+      instance,
+      resolvedKind,
+      (processedResource.metadata?.name as string | undefined) ?? "<unnamed>",
+    );
+    (ctx as ResourceContextImpl).bindResourceIdentity(handle, resolvedKind, processedResource);
 
     // Bind the resolved invocation contract to the instance, here at the kernel's
     // single instance-production site — so every consumer holds an already

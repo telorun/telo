@@ -1,4 +1,4 @@
-import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlConnection } from "./sql-connection.js";
 import { resolveSqlConnection } from "./sql-connection-ref.js";
 import { runSql } from "./sql-run.js";
@@ -25,7 +25,7 @@ class SqlQueryResource implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(input: unknown): Promise<SqlResult> {
+  async invoke(input: unknown, invokeCtx?: InvokeContext): Promise<SqlResult> {
     const m = this.manifest;
     const ctx = this.ctx;
     const connection = resolveConnection(
@@ -34,7 +34,10 @@ class SqlQueryResource implements ResourceInstance {
       ctx,
       () => `Sql.Query "${m.metadata.name}": 'connection'`,
     );
-    const result = await runSql(connection, m.transaction, input, ctx);
+    // ERR_ZONE_REQUIRED when no sql.Transaction zone is open on THIS query's
+    // connection — a transaction on another connection no longer answers.
+    const zone = m.transaction ? ctx.requireZone("transaction", invokeCtx) : undefined;
+    const result = await runSql(connection, zone, input, ctx, invokeCtx);
     return { rows: result.rows, rowCount: result.rows.length };
   }
 }

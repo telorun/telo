@@ -159,7 +159,12 @@ class HttpServer implements ResourceInstance {
           { parseAs: "string" },
           async (_req, body, done) => {
             try {
-              done(null, await parser.invoke({ body }));
+              // The bound entry point forwards every argument, so the root
+              // context rides in as the InvokeContext — §7's obligation for an
+              // inbound registrant. (This path still calls the instance
+              // directly rather than going through `invokeResolved`, so it is
+              // untraced; that predates zones and is tracked separately.)
+              done(null, await parser.invoke({ body }, this.ctx.rootContext()));
             } catch (err) {
               done(err as Error, undefined);
             }
@@ -322,7 +327,11 @@ class HttpServer implements ResourceInstance {
 
         let result: any;
         try {
-          result = await this.ctx.invoke(handler.kind, handler.name, invokeInput);
+          // rootContext: an inbound registrant dispatches with a context that
+          // inherits nothing ambient (kernel/specs/execution-zones.md §7).
+          result = await this.ctx.invoke(handler.kind, handler.name, invokeInput, {
+            ctx: this.ctx.rootContext(),
+          });
         } catch (err) {
           if (!isInvokeError(err)) throw err;
           return dispatchCatches(

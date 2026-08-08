@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { rewriteRefSlotKinds } from "./ref-slot.js";
+import { hasRequiresZone, rewriteRequiresZoneKind } from "./zone-slot.js";
 
 const REF_ANNOTATION = "x-telo-ref";
 
@@ -25,6 +26,10 @@ export interface RefConstraintIssue {
   /** The `Telo.Definition` / `Telo.Abstract` doc that declares the slot. */
   manifest: ResourceManifest;
   reason: RefConstraintReason;
+  /** Which annotation carried the unresolved name: an `x-telo-ref` constraint
+   *  (the default) or an `x-telo-requires-zone` provider kind — the caller
+   *  reports the latter as ZONE_PROVIDER_UNRESOLVED. */
+  annotation?: "ref" | "zone";
   /** For `gated`: the target module and the kinds it does export. */
   gate?: { module: string; exported: string[] };
   /** Aliases the declaring scope does know — the "did you mean" material for
@@ -70,9 +75,9 @@ export function resolveSchemaRefKinds(
 ): RefConstraintIssue[] {
   const issues: RefConstraintIssue[] = [];
 
-  const record = (ref: string, path: string): void => {
+  const record = (ref: string, path: string, annotation: "ref" | "zone" = "ref"): void => {
     if (isLegacyRefIdentity(ref)) {
-      issues.push({ ref, path, manifest: definition, reason: "legacy" });
+      issues.push({ ref, path, manifest: definition, reason: "legacy", annotation });
       return;
     }
     const result = resolver.resolveKindResult(ref);
@@ -84,6 +89,7 @@ export function resolveSchemaRefKinds(
             path,
             manifest: definition,
             reason: "gated",
+            annotation,
             gate: { module: result.module, exported: result.exported },
           }
         : {
@@ -91,6 +97,7 @@ export function resolveSchemaRefKinds(
             path,
             manifest: definition,
             reason: "unknown",
+            annotation,
             knownAliases: resolver.knownAliases(),
           },
     );
@@ -110,6 +117,21 @@ export function resolveSchemaRefKinds(
         const result = isLegacyRefIdentity(ref) ? null : resolver.resolveKindResult(ref);
         if (result?.status === "ok") return result.kind;
         record(ref, path);
+        return undefined;
+      });
+    }
+    if (hasRequiresZone(obj)) {
+      // A zone requirement names its provider kind through the identical
+      // alias-qualified grammar, resolved in the same declaring scope — one
+      // walk canonicalizes both, so the kernel's `requireZone` and the zone
+      // projection never see an alias. An unresolved name is reported like an
+      // unresolved ref constraint (the caller maps it to
+      // ZONE_PROVIDER_UNRESOLVED); the legacy identity form is not accepted
+      // here — the annotation postdates its removal.
+      rewriteRequiresZoneKind(obj, (zone) => {
+        const result = resolver.resolveKindResult(zone);
+        if (result.status === "ok") return result.kind;
+        record(zone, `${path}.x-telo-requires-zone`, "zone");
         return undefined;
       });
     }

@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import type { LoadedGraph, LoadedModule } from "./loaded-types.js";
 import type { LoadedFile } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
+import type { ZoneModuleDocuments } from "./zone-module-documents.js";
 
 /** One parsed `exports.resources` / `exports.kinds` entry. `name` is the exported
  *  instance name or kind suffix (the part after the dot, or the whole entry); `alias`
@@ -378,6 +379,37 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
   }
   stampReExportedKinds(imports, exportedKinds);
   stampExportedKinds(imports, declaredKinds);
+}
+
+/** Collect every imported library's FULL document set for the zone stage's
+ *  per-library export derivation (`AnalysisOptions.moduleDocuments`) — the
+ *  flat list above deliberately drops library internals, and the zone
+ *  projection needs the internal dispatch chain to derive an export's open
+ *  requirements. Only libraries that actually export instances are included:
+ *  a library exporting nothing has no export contract to derive. */
+export function collectZoneModuleDocuments(graph: LoadedGraph): ZoneModuleDocuments[] {
+  const out: ZoneModuleDocuments[] = [];
+  for (const [source, mod] of graph.modules) {
+    if (source === graph.rootSource) continue;
+    const libDoc = mod.owner.manifests.find((m) => m && isModuleKind(m.kind)) as
+      | (ResourceManifest & { exports?: { resources?: unknown[] } })
+      | undefined;
+    const moduleName = libDoc?.metadata?.name as string | undefined;
+    if (!libDoc || !moduleName) continue;
+    const exportedNames: string[] = [];
+    for (const entry of libDoc.exports?.resources ?? []) {
+      if (typeof entry !== "string") continue;
+      exportedNames.push(parseExportEntry(entry).name);
+    }
+    if (exportedNames.length === 0) continue;
+    out.push({
+      module: moduleName,
+      sourceId: mod.owner.source,
+      manifests: collectModuleManifests(mod),
+      exportedNames,
+    });
+  }
+  return out;
 }
 
 /** Project a LoadedModule (owner + partials) to a flat ResourceManifest[]

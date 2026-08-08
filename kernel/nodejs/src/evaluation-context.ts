@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { formatSpanCounter } from "./logging/span-id.js";
 import {
+  deriveContext,
   getRefIdentity,
   isCompiledValue,
   isInvokeError,
@@ -261,6 +262,15 @@ export async function publishedPropsOf(
  */
 export function ambientInvokeContext(): InvokeContext | undefined {
   return cancellationStore.getStore();
+}
+
+/**
+ * Establish `ctx` as the ambient invocation context for the duration of `fn`.
+ * The seam `withZone` uses to make an opened zone ambient without owning the
+ * store — the store itself stays kernel-internal, never on the SDK surface.
+ */
+export function runWithAmbientContext<T>(ctx: InvokeContext, fn: () => T): T {
+  return cancellationStore.run(ctx, fn);
 }
 
 /** Marks a scope built by {@link EvaluationContext.bindScope}, whose properties
@@ -1189,11 +1199,13 @@ export class EvaluationContext implements IEvaluationContext {
         outcome,
         phase === "end" && rootScope ? { ...detail, context: rootScope } : detail,
       );
-    // When tracing, a fresh context carries the new id down the tree so nested
+    // When tracing, a derived context carries the new id down the tree so nested
     // invokes read it as their parent; it is never `=== ambient`, so the call
-    // always (re)establishes the ALS scope.
+    // always (re)establishes the ALS scope. Derived, never a fresh literal: a
+    // literal drops every field it does not restate (`zones`), making
+    // propagation differ between tracing on and off.
     const invokeCtx: InvokeContext = tracing
-      ? { cancellation: token, invocationId, parentInvocationId, traceId }
+      ? deriveContext(baseCtx, { invocationId, parentInvocationId, traceId })
       : baseCtx;
 
     // Pre-dispatch gate: a sub-invoke reached after the tree was cancelled is
@@ -1391,12 +1403,14 @@ export class EvaluationContext implements IEvaluationContext {
       );
 
     await this.emit(`${opts.ref.name}.Requesting`, payload("start", undefined));
-    const context: InvokeContext = {
-      cancellation: ctx.cancellation,
+    // Derived so the span context keeps whatever `base` carries beyond the span
+    // ids — with tracing off this method returns `base` unchanged, and tracing
+    // must not change what propagates.
+    const context: InvokeContext = deriveContext(ctx, {
       invocationId: spanId,
       parentInvocationId: parentSpanId,
       traceId,
-    };
+    });
     let settled = false;
     return {
       context,
@@ -1460,7 +1474,7 @@ export class EvaluationContext implements IEvaluationContext {
         phase === "end" && rootScope ? { ...detail, context: rootScope } : detail,
       );
     const invokeCtx: InvokeContext = tracing
-      ? { cancellation: token, invocationId, parentInvocationId, traceId }
+      ? deriveContext(baseCtx, { invocationId, parentInvocationId, traceId })
       : baseCtx;
 
     // Refuse a target reached after the boot run was cancelled.

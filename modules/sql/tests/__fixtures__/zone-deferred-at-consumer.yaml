@@ -1,0 +1,49 @@
+# A bound statement registered as a stream-completion handler.
+# `RecordStream.OnComplete.handler` is a `trigger.consumer` edge: the handler
+# runs when whoever holds the returned stream drains it, and a consumer draining
+# inside a transaction genuinely IS inside it. No guarantee holds in either
+# direction, so this WARNS with the full path rather than erroring — a hard
+# error here would reject a manifest that works — and the runtime assertion
+# remains the enforcement at the drain site.
+kind: Telo.Application
+metadata:
+  name: ZoneDeferredAtConsumer
+  version: 1.0.0
+imports:
+  Sql: ../../
+  SqlSqlite: ../../../sql-sqlite
+  RecordStream: ../../../record-stream
+# No `targets:` — `OnComplete` takes a stream input, so it cannot be started by
+# a boot `run()`. What this fixture exercises is the EDGE, which the projection
+# walks regardless of what starts it.
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: appDb
+file: ":memory:"
+---
+kind: Sql.Transaction
+metadata:
+  name: accountTx
+connection: !ref appDb
+steps: !ref unrelated
+---
+kind: Sql.Command
+metadata:
+  name: unrelated
+connection: !ref appDb
+inputs:
+  sql: "SELECT 1"
+---
+kind: RecordStream.OnComplete
+metadata:
+  name: auditOnDone
+handler: !ref insertAccount
+---
+kind: Sql.Command
+metadata:
+  name: insertAccount
+connection: !ref appDb
+transaction: !ref accountTx
+inputs:
+  sql: "INSERT INTO audit (email) VALUES ('x')"
