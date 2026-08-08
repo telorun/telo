@@ -1,5 +1,8 @@
 # Changelog
-## 0.9.0 - 2026-08-01
+## 0.10.0 - 2026-08-08
+### Added
+* Every `x-telo-ref` slot now declares what this module does with the target: `use: dependency` (held and read), `call` (control transfers during the invocation and returns), `detached`, `trigger.inbound`, `trigger.consumer`, or `schema` for a slot that only names a shape. Slots that accepted `Telo.Invocable | Telo.Runnable` through an `anyOf` now say `Telo.Executable`, the new built-in parent of both. Wiring manifests are unchanged — this is schema metadata, and it is what lets `telo check` answer whether control reaches a referenced resource, and when.
+* `Cache.View.invoke` declares its `use` as a case map on `/revalidate` (`background: [call, detached]`, `sync: call`, `off: call`) instead of the unconditional set `[call, detached]`. The union overstated what the controller does under the default `sync`, where it never detaches, and every consumer of the reference graph reads that declaration — a requirement travelling through a default-configured `Cache.View` was being treated as crossing a detach boundary. Wiring manifests are unchanged.## 0.9.0 - 2026-08-01
 ### Added
 * The controller now ships inside the module artifact as a bundle (pkg:telo/local/js) instead of being fetched from npm at load. Importing this module needs no npm registry at run time, and its version is a single number again: metadata.version. The kernel builds the controller from source while the module is a working copy, so a checkout needs no build step.## 0.8.0 - 2026-07-31
 ### Added

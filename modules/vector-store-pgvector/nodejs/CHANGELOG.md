@@ -1,5 +1,14 @@
 # @telorun/vector-store-pgvector
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [8a9b494]
+- Updated dependencies [0938ed4]
+  - @telorun/sql@0.12.0
+  - @telorun/vector-store@0.4.0
+
 ## 0.0.1
 
 ### Patch Changes
