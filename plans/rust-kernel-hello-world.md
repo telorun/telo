@@ -97,11 +97,10 @@ valid manifests.
   `ReadLine` is in despite being unused by the fixture: console exports a ready-made `readLine`
   singleton, and a library's exported instances are created when the module loads — so leaving
   it out made the whole module unloadable, not merely that one kind unusable.
-- **Controller resolution is deferred to first instantiation.** Node resolves at
-  `Telo.Definition` init so a broken candidate fails fast at boot; here that would reject
-  `console` outright over two kinds nobody uses. Node already defers the *import* of a resolved
-  controller, so this extends an existing seam rather than inventing one; porting the deferral
-  back to `kernel/nodejs` is a follow-up.
+- **Controller resolution is deferred to first instantiation.** Resolving at
+  `Telo.Definition` init would reject `console` outright over two kinds nobody uses. Both
+  kernels defer: `kernel/nodejs` resolves and imports inside its lazy-controller thunk too,
+  so the two agree on when a partially-covered module fails.
 - **`telorun-sdk` loses its default backend feature.** The original plan had the Rust kernel
   build controllers with `--no-default-features --features native`, which cannot work: those
   flags apply to the controller crate, and the controller crate deliberately has no `[features]`
@@ -135,8 +134,6 @@ before the Rust kernel is a peer of the Node one:
 - **A published Rust controller has nowhere to live.** `?local_path=` resolves only in a source
   checkout, so `oci://` imports of a Rust-backed module cannot work until bundled native layers
   (`pkg:telo/local/dylib` + `os`/`arch`/`libc` selectors) and a cross-compile pipeline exist.
-- **Controller resolution deferral has not been ported back to `kernel/nodejs`.** Until it is,
-  the two kernels reject a partially-covered module at different moments.
 - **The controller cache is per-thread**, because its entries are `Rc`. One kernel run is one
   thread, so `register` still runs once per run; a process running two kernels concurrently
   would build and register twice. Process-wide caching needs a `Send + Sync` controller handle.

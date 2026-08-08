@@ -9,6 +9,7 @@ import {
   resolveEntryDir,
   writeManifestCache,
 } from "@telorun/kernel";
+import type { ModuleArtifact } from "@telorun/kernel";
 import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "path";
 import { pathToFileURL } from "url";
@@ -149,6 +150,14 @@ async function installOne(
     return false;
   }
 
+  // The artifact of each module that ships a payload, keyed by canonical source
+  // — the key a definition's `metadata.source` carries. The controller
+  // pre-install pass below needs it: a published module's bundled controller
+  // lives in its artifact's layers, not beside its cached manifest, so a
+  // `pkg:telo` candidate resolved without the artifact is env-missing and the
+  // job fails on a module `telo run` loads fine.
+  let moduleArtifacts: Map<string, ModuleArtifact> | undefined;
+
   // Persist every imported manifest to `<entry-dir>/.telo/manifests/` so the
   // boot path (`telo run`) can resolve every import from disk and skip
   // the registry round-trip. The Dockerfile `COPY --from=build /srv /srv`
@@ -172,9 +181,10 @@ async function installOne(
         platform,
         (msg) => console.error(`  ${log.warn("⚠")}  ${msg}`),
       );
-      if (warmed > 0) {
+      moduleArtifacts = warmed.artifacts;
+      if (warmed.materialized > 0) {
         console.log(
-          `  ${log.ok("✓")}  materialized ${warmed} module layer${warmed !== 1 ? "s" : ""} ` +
+          `  ${log.ok("✓")}  materialized ${warmed.materialized} module layer${warmed.materialized !== 1 ? "s" : ""} ` +
             `for ${log.dim(describePlatformTarget(platform))}`,
         );
       }
@@ -209,8 +219,13 @@ async function installOne(
     installRoot: cacheRoot ? path.join(cacheRoot, "npm") : undefined,
   });
   const started = Date.now();
+  // `job.baseUri` is the declaring module's canonical source — the exact key
+  // `warmModuleLayers` filed its artifact under (and the kernel's
+  // `getModuleArtifact` uses at run time).
   const results = await Promise.allSettled(
-    jobs.map((job) => controllerLoader.load(job.purls, job.baseUri)),
+    jobs.map((job) =>
+      controllerLoader.load(job.purls, job.baseUri, undefined, moduleArtifacts?.get(job.baseUri)),
+    ),
   );
 
   let failed = 0;
