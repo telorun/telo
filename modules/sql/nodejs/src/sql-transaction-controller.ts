@@ -38,14 +38,18 @@ export class SqlTransactionResource implements ResourceInstance {
     const m = this.manifest;
     const ctx = this.ctx;
 
+    // The declared `inputs:` map's CEL reads the caller's invocation input as
+    // `inputs.<field>` — the same variable name a Run.Sequence step's inputs
+    // read, and what the slot's `inputs: /inputs` pointer names.
+    const celScope = { inputs: input ?? {} };
+
     // Flat nesting: if already inside a transaction, reuse it
     if (currentTxId()) {
-      const expandedInputs = ctx.expandValue(m.inputs ?? {}, input ?? {});
-      return m.steps.invoke(expandedInputs);
+      return m.steps.invoke(ctx.expandValue(m.inputs ?? {}, celScope));
     }
 
     const conn = this.getConnection();
-    const expandedInputs = ctx.expandValue(m.inputs ?? {}, input ?? {});
+    const expandedInputs = ctx.expandValue(m.inputs ?? {}, celScope);
 
     return conn.transaction(() => m.steps.invoke(expandedInputs));
   }

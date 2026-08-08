@@ -64,9 +64,10 @@ schema:
             description: Resource that implements the tool's behaviour — Invocable or Runnable. Receives the result of `inputs:` and returns a value rendered by `result:`.
             x-telo-topology-role: handler
             # Accept either capability so dual-mode kinds like Run.Sequence fit.
-            anyOf:
-              - x-telo-ref: Telo.Invocable
-              - x-telo-ref: Telo.Runnable
+            x-telo-ref:
+              kind: Telo.Executable
+              use: trigger.inbound
+              inputs: /inputs
           inputs:
             title: Inputs
             description: CEL expressions mapping the MCP request scope onto the handler's input shape.
@@ -228,9 +229,10 @@ schema:
             title: Handler
             description: Resource that produces contents on read — Invocable or Runnable.
             x-telo-topology-role: handler
-            anyOf:
-              - x-telo-ref: Telo.Invocable
-              - x-telo-ref: Telo.Runnable
+            x-telo-ref:
+              kind: Telo.Executable
+              use: trigger.inbound
+              inputs: /inputs
           inputs:
             title: Inputs
             type: "object"
@@ -316,9 +318,10 @@ schema:
             title: Handler
             description: Resource that produces the prompt message array on get — Invocable or Runnable.
             x-telo-topology-role: handler
-            anyOf:
-              - x-telo-ref: Telo.Invocable
-              - x-telo-ref: Telo.Runnable
+            x-telo-ref:
+              kind: Telo.Executable
+              use: trigger.inbound
+              inputs: /inputs
           inputs:
             title: Inputs
             type: "object"
@@ -397,19 +400,25 @@ schema:
       description: Mcp.Tools bundles whose entries should be exposed by this transport.
       type: "array"
       items:
-        x-telo-ref: Self.Tools
+        x-telo-ref:
+          kind: Self.Tools
+          use: dependency
     resources:
       title: Resources
       description: Mcp.Resources bundles (v2 runtime).
       type: "array"
       items:
-        x-telo-ref: Self.Resources
+        x-telo-ref:
+          kind: Self.Resources
+          use: dependency
     prompts:
       title: Prompts
       description: Mcp.Prompts bundles (v2 runtime).
       type: "array"
       items:
-        x-telo-ref: Self.Prompts
+        x-telo-ref:
+          kind: Self.Prompts
+          use: dependency
   required: ["serverInfo"]
 ---
 # Mcp.HttpEndpoint — Telo.Mount. Mounts on Http.Server at a chosen path; owns
@@ -467,17 +476,23 @@ schema:
       description: Mcp.Tools bundles whose entries should be exposed by this transport.
       type: "array"
       items:
-        x-telo-ref: Self.Tools
+        x-telo-ref:
+          kind: Self.Tools
+          use: dependency
     resources:
       title: Resources
       description: Mcp.Resources bundles (v2 runtime).
       type: "array"
       items:
-        x-telo-ref: Self.Resources
+        x-telo-ref:
+          kind: Self.Resources
+          use: dependency
     prompts:
       title: Prompts
       description: Mcp.Prompts bundles (v2 runtime).
       type: "array"
       items:
-        x-telo-ref: Self.Prompts
+        x-telo-ref:
+          kind: Self.Prompts
+          use: dependency
   required: ["serverInfo"]

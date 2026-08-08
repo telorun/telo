@@ -108,7 +108,9 @@ schema:
     host:
       title: Host
       description: Reference to the Shell.Host the command runs on.
-      x-telo-ref: Self.Host
+      x-telo-ref:
+        kind: Self.Host
+        use: dependency
   examples:
     - host: !ref Local
 ---
@@ -185,7 +187,9 @@ schema:
     host:
       title: Host
       description: Reference to the Shell.Host the command runs on.
-      x-telo-ref: Self.Host
+      x-telo-ref:
+        kind: Self.Host
+        use: dependency
   examples:
     - host: !ref Local
 ---

@@ -40,6 +40,8 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …).
-      x-telo-ref: Mcp.Client
+      x-telo-ref:
+        kind: Mcp.Client
+        use: dependency
   required: [ client ]
   additionalProperties: false

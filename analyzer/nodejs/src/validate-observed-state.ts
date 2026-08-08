@@ -1,23 +1,19 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { OBSERVED_STATE_KEY } from "@telorun/sdk";
-import { type DefResolver, effectiveStatusSchema } from "./extends-resolution.js";
+import { effectiveStatusSchema } from "./extends-resolution.js";
 import { parseExportEntry } from "./flatten-for-analyzer.js";
-import { moduleScopedDefResolver, type ModuleScopes } from "./alias-resolver.js";
+import {
+  moduleScopedDefResolver,
+  type AliasResolver,
+  type ModuleScopes,
+} from "./alias-resolver.js";
+import type { CallGraph } from "./call-graph.js";
+import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   buildReferenceFieldMap,
-  isRefEntry,
   isScopeEntry,
   resolveFieldValues,
 } from "./reference-field-map.js";
-
-/** The kernel capabilities whose `run()` the kernel dispatches. A ref slot that
- *  accepts one of them is a slot that can start a resource — `targets:` on an
- *  Application or a `Run.Sequence`, and a step's `invoke:` (whose schema accepts
- *  `Telo.Runnable` alongside `Telo.Invocable`, and which the kernel dispatches
- *  through `run()` when the target has no `invoke()`). Keyed on the declared
- *  capability, never on a field name or a kind, so any composer that accepts a
- *  runnable participates without the analyzer knowing about it. */
-const RUN_DISPATCH_CONTRACTS = new Set(["Telo.Runnable", "Telo.Service"]);
 
 const SYSTEM_KINDS = new Set([
   "Telo.Definition",
@@ -99,92 +95,30 @@ export function observedStateRead(chain: readonly string[]): ObservedStateRead |
 }
 
 /**
- * The names of every resource some slot can start: referenced from a ref slot
- * that accepts a `Telo.Runnable` / `Telo.Service`, or named as a step's
- * `invoke:` target. A resource in none of them can never `run()`, so it can
- * never report observed state.
+ * The names of every resource some slot can start.
  *
- * Deliberately an over-approximation — a name reachable through any of these
- * routes counts as runnable — because the cost of a false "can never run" is a
- * valid manifest rejected, while the cost of a miss is only that the reader
- * finds out at runtime instead, with a message that names the same fix.
+ * One question, one answer: a resource is run-reachable when a control-
+ * transferring edge reaches it in the typed reference graph. `call`, `detached`,
+ * `trigger.inbound` and `trigger.consumer` all mean control arrives; `schema` and
+ * `dependency` mean it never does.
+ *
+ * This replaced two independent over-approximations that had to agree by
+ * coincidence: a field-map scan keeping slots whose *constraint capability*
+ * looked runnable, plus an untyped whole-manifest scan for the declared step
+ * invoke key at any depth. Both were guesses at the question `use` now answers —
+ * and the first was wrong in the direction that rejects valid manifests, since a
+ * slot constrained to `Telo.Invocable` can still be dispatched through `run()`.
  */
-export function collectRunReachableNames(
-  manifests: readonly ResourceManifest[],
-  defs: { resolve(kind: string): ResourceDefinition | undefined },
-  aliases?: { resolveKind(kind: string): string | undefined },
-): Set<string> {
+export function collectRunReachableNames(graph: CallGraph): Set<string> {
+  // By NAME, not by resolved node: a `with:`-scoped resource is started by its
+  // sequence's `targets:` while never being a top-level node, so resolving first
+  // would report it as unstartable. The graph is passed in, never built here —
+  // one build per analysis, shared with every other graph consumer.
   const names = new Set<string>();
-  const resolve: DefResolver = (kind) =>
-    defs.resolve(aliases?.resolveKind(kind) ?? kind) ?? defs.resolve(kind);
-
-  for (const manifest of manifests) {
-    const def = resolve(manifest.kind as string);
-    const schema = def?.schema as Record<string, any> | undefined;
-    if (!schema) continue;
-
-    for (const [path, entry] of buildReferenceFieldMap(schema)) {
-      if (!isRefEntry(entry)) continue;
-      if (!entry.refs.some((ref) => RUN_DISPATCH_CONTRACTS.has(ref))) continue;
-      for (const value of resolveFieldValues(manifest, path)) collectRefName(value, names);
-    }
-
-    // Step arrays nest through `if` / `while` / `switch` / `try`, and the step
-    // `invoke:` slot sits behind a local `$ref` the field map does not follow.
-    // Match the declared invoke key at any depth instead of re-deriving the
-    // nesting rules — over-approximating in the safe direction.
-    const invokeKey = stepInvokeKey(schema);
-    if (invokeKey) collectKeyedRefs(manifest, invokeKey, names);
-  }
-
+  for (const edge of graph.controlEdges()) names.add(edge.toName);
   return names;
 }
 
-/** The property name a kind's `x-telo-step-context` declares as its dispatch
- *  slot (`invoke`), or undefined when the kind has no step array. */
-function stepInvokeKey(schema: Record<string, any>): string | undefined {
-  for (const fieldSchema of Object.values(
-    (schema.properties ?? {}) as Record<string, any>,
-  )) {
-    const stepCtx = fieldSchema?.["x-telo-step-context"] as
-      | Record<string, string>
-      | undefined;
-    if (stepCtx?.invoke) return stepCtx.invoke;
-  }
-  return undefined;
-}
-
-/** Collect ref names at every `key` property anywhere in `node`. */
-function collectKeyedRefs(node: unknown, key: string, out: Set<string>): void {
-  if (Array.isArray(node)) {
-    for (const item of node) collectKeyedRefs(item, key, out);
-    return;
-  }
-  if (node === null || typeof node !== "object") return;
-  for (const [k, value] of Object.entries(node as Record<string, unknown>)) {
-    if (k === key) collectRefName(value, out);
-    collectKeyedRefs(value, key, out);
-  }
-}
-
-/** Record the resource name a slot value points at — a resolved `{kind, name}`
- *  ref, an unresolved `!ref` sentinel, or a `{ ref }` / `{ invoke }` wrapper. */
-function collectRefName(value: unknown, out: Set<string>): void {
-  if (value === null || typeof value !== "object") return;
-  if (Array.isArray(value)) {
-    for (const item of value) collectRefName(item, out);
-    return;
-  }
-  const v = value as Record<string, unknown>;
-  if (typeof v.name === "string") out.add(v.name);
-  if (typeof v.source === "string") {
-    const dot = v.source.lastIndexOf(".");
-    out.add(dot >= 0 ? v.source.slice(dot + 1) : v.source);
-  }
-  for (const wrapper of ["ref", "invoke"]) {
-    if (v[wrapper] !== undefined) collectRefName(v[wrapper], out);
-  }
-}
 
 /** What a resource name resolves to for CEL purposes. `status` is present only
  *  when the kind declares one; `scoped` marks a resource declared inside an

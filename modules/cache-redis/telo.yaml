@@ -42,7 +42,9 @@ schema:
         Optional Cache.Store served when Redis is unreachable (degraded mode).
         Cache failover is safe — a miss just recomputes; the degradation is
         logged and surfaced as a `cache.degraded` / `cache.recovered` event.
-      x-telo-ref: Cache.Store
+      x-telo-ref:
+        kind: Cache.Store
+        use: dependency
     connectTimeout:
       title: Connect Timeout
       type: string

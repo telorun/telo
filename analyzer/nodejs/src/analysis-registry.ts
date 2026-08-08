@@ -177,10 +177,28 @@ export class AnalysisRegistry {
   private capabilitiesForRefs(refs: string[]): string[] {
     const out: string[] = [];
     for (const ref of refs) {
-      const cap = this.capabilityForRef(ref);
-      if (cap && !out.includes(cap)) out.push(cap);
+      for (const cap of this.leafCapabilitiesForRef(ref)) {
+        if (!out.includes(cap)) out.push(cap);
+      }
     }
     return out;
+  }
+
+  /** Like {@link capabilityForRef}, but a capability GROUP — an abstract with no
+   *  `capability` of its own that other capability abstracts extend, i.e.
+   *  `Telo.Executable` over Invocable and Runnable — expands to its leaves.
+   *  Classification consumers (the editor's port flavor) match against leaf
+   *  capabilities, so without expansion every `Telo.Executable` slot would fall
+   *  out of both classification sets and silently stop rendering — and so would
+   *  slots constrained to the next abstract-of-abstracts. */
+  private leafCapabilitiesForRef(xTeloRef: string): string[] {
+    const cap = this.capabilityForRef(xTeloRef);
+    if (!cap) return [];
+    const leaves = this.defs
+      .getByExtends(cap)
+      .filter((d) => d.kind === "Telo.Abstract" && !d.capability)
+      .map((d) => `${(d.metadata as { module?: string }).module}.${d.metadata.name}`);
+    return leaves.length > 0 ? leaves : [cap];
   }
 
   /**

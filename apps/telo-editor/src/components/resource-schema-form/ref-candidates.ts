@@ -1,3 +1,4 @@
+import { readRefSlot } from "@telorun/analyzer";
 import { isRefSentinel, makeTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
 import { isRecord } from "../../lib/utils";
 import type { ResolvedResourceOption } from "./types";
@@ -124,21 +125,11 @@ export function toRefValue(option: { kind: string; name: string }): TaggedSentin
 }
 
 /** Collects every `x-telo-ref` target from a property, including refs buried
- *  inside `oneOf` / `anyOf` alternatives. */
-export function collectRefTargets(
-  prop: Record<string, unknown> & {
-    "x-telo-ref"?: unknown;
-    oneOf?: Array<Record<string, unknown>>;
-    anyOf?: Array<Record<string, unknown>>;
-  },
-): string[] {
-  const targets: string[] = [];
-  const direct = prop["x-telo-ref"];
-  if (typeof direct === "string") targets.push(direct);
-  for (const item of prop.anyOf ?? prop.oneOf ?? []) {
-    if (item && typeof item === "object" && typeof item["x-telo-ref"] === "string") {
-      targets.push(item["x-telo-ref"] as string);
-    }
-  }
-  return targets;
+ *  inside `oneOf` / `anyOf` alternatives.
+ *
+ *  Delegates to the analyzer's accessor so the picker recognises exactly the
+ *  slots the analyzer does — the annotation's shape is read in one place, and
+ *  the editor is not a surface that has to be remembered when it changes. */
+export function collectRefTargets(prop: Record<string, unknown>): string[] {
+  return readRefSlot(prop)?.kinds ?? [];
 }

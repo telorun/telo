@@ -146,7 +146,7 @@ export interface VisitOptions {
 
 /** Synthetic entry for a value-tree-discovered ref — these carry no declared
  *  x-telo-ref constraint. */
-const NESTED_REF_ENTRY: RefFieldEntry = { refs: [], isArray: false };
+const NESTED_REF_ENTRY: RefFieldEntry = { refs: [], uses: [], isArray: false };
 
 /** Scans a value tree for ref-shaped values, emitting each with its concrete
  *  path. Recognizes `!ref <name>` sentinels and named `{kind, name}` reference

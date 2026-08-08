@@ -120,7 +120,9 @@ schema:
     store:
       title: Store
       description: Reference to the backing vector store.
-      x-telo-ref: Self.Store
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
   examples:
     - store: !ref knowledgeBase
 ---
@@ -175,7 +177,9 @@ schema:
     store:
       title: Store
       description: Reference to the backing vector store.
-      x-telo-ref: Self.Store
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
     topK:
       title: Top K
       description: Maximum matches to return.
@@ -234,6 +238,8 @@ schema:
     store:
       title: Store
       description: Reference to the backing vector store.
-      x-telo-ref: Self.Store
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
   examples:
     - store: !ref knowledgeBase

@@ -96,6 +96,12 @@ const KNOWN_CAPABILITIES = [
   // path, and dispatch emits trace events, so routing logs through it would
   // generate telemetry from inside the telemetry path. See kernel/specs/logging.md §10.
   "Telo.Sink",
+  // `Telo.Executable` is deliberately declarable NOWHERE: it is the slot-
+  // constraint parent of Invocable and Runnable ("control can be transferred to
+  // this"), naming no lifecycle role. Listing it here keeps the open third-party
+  // fallback branch below from accepting it — and since no branch above admits
+  // it either, `capability: Telo.Executable` fails validation outright.
+  "Telo.Executable",
 ] as const;
 
 /** Rule 8: `throws:` is only meaningful on Telo.Invocable or Telo.Runnable.

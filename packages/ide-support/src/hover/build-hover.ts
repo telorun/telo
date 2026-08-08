@@ -1,5 +1,6 @@
 import {
   parseToAst,
+  readRefSlot,
   type AnalysisRegistry,
   type AstDocument,
 } from "@telorun/analyzer";
@@ -65,8 +66,13 @@ function fieldHover(keyName: string, field: Record<string, any>): string {
   if (typeof field.description === "string" && field.description) {
     lines.push("", field.description);
   }
-  const ref = field["x-telo-ref"];
-  if (typeof ref === "string") lines.push("", `Reference → \`${ref}\``);
+  // Through the shared accessor, so a slot whose constraint sits in an `anyOf`
+  // branch — or in a `kind:` list — hovers like any other. Reading the raw
+  // annotation here meant those slots showed no reference line at all.
+  const refKinds = readRefSlot(field)?.kinds ?? [];
+  if (refKinds.length > 0) {
+    lines.push("", `Reference → ${refKinds.map((k) => `\`${k}\``).join(" | ")}`);
+  }
   if (Array.isArray(field.enum) && field.enum.length > 0) {
     lines.push("", `Allowed: ${field.enum.map((v: unknown) => `\`${v}\``).join(", ")}`);
   }

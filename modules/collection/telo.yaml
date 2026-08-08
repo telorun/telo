@@ -245,7 +245,9 @@ schema:
         / `value`, and holds BOTH the seed and the step to that shape at
         analysis time: a fold whose step drops a required field is an error
         before it runs, and so is a seed that never had it.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     outputType:
       title: Output Type
       description: >-
@@ -253,7 +255,9 @@ schema:
         definition. Declaring it types `steps.<name>.result` for callers, has
         `value` checked against it statically, and has the produced value
         validated at dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     collection:
       title: Collection
       description: CEL expression resolving to the array to fold over. Sees inputs.

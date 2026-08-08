@@ -75,7 +75,19 @@ const provider = {
   metadata: { name: "Config" },
 } as unknown as ResourceManifest;
 
-const base = [sequenceDef, sinkDef, sink, providerDef, provider];
+const mountDef = {
+  kind: "Telo.Definition",
+  metadata: { name: "Panel", module: "run" },
+  capability: "Telo.Mount",
+  schema: { type: "object", additionalProperties: true },
+} as unknown as ResourceManifest;
+
+const mount = {
+  kind: "run.Panel",
+  metadata: { name: "Dashboard" },
+} as unknown as ResourceManifest;
+
+const base = [sequenceDef, sinkDef, sink, providerDef, provider, mountDef, mount];
 
 const unresolved = (m: ResourceManifest[]) =>
   new StaticAnalyzer()
@@ -134,22 +146,40 @@ describe("validateStepInvokeReferences", () => {
     expect(unresolved([...base, seq])).toEqual([]);
   });
 
-  it("flags a step invoke of a resolved instance whose capability has no invoke/run", () => {
-    // The instance exists, so the ref resolves — but a Telo.Provider structurally
-    // has no invoke/run method. Mirrors the kernel's ERR_RESOURCE_NOT_INVOKABLE.
+  it("flags a step invoke of a capability that names no entry point", () => {
+    // The instance exists, so the ref resolves — but a Telo.Mount declares no
+    // entry point at all. Mirrors the kernel's ERR_RESOURCE_NOT_INVOKABLE.
     const seq = {
       kind: "run.Sequence",
       metadata: { name: "Main" },
-      steps: [{ name: "go", invoke: makeTaggedSentinel("ref", "Config") }],
+      steps: [{ name: "go", invoke: makeTaggedSentinel("ref", "Dashboard") }],
     } as unknown as ResourceManifest;
 
     const diags = new StaticAnalyzer()
       .analyze(withSyntheticPositions([...base, seq]))
       .filter((d) => d.code === "REFERENCE_KIND_MISMATCH");
     expect(diags).toHaveLength(1);
-    expect(diags[0].message).toContain("run.Store");
-    expect(diags[0].message).toContain("Telo.Provider");
+    expect(diags[0].message).toContain("run.Panel");
+    expect(diags[0].message).toContain("Telo.Mount");
     expect(diags[0].message).toContain("ERR_RESOURCE_NOT_INVOKABLE");
     expect((diags[0].data as { path: string }).path).toBe("steps[0].invoke");
+  });
+
+  it("does NOT flag a Telo.Provider — entry points can be conventional", () => {
+    // `Ai.Model` is the shipped counterexample: it declares `capability:
+    // Telo.Provider` and no schema at all, while the agent controller invokes it
+    // directly. Capability is a lifecycle role; it has never named a call
+    // relationship, so rejecting a Provider here rejected a working manifest.
+    const seq = {
+      kind: "run.Sequence",
+      metadata: { name: "Main" },
+      steps: [{ name: "go", invoke: makeTaggedSentinel("ref", "Config") }],
+    } as unknown as ResourceManifest;
+
+    expect(
+      new StaticAnalyzer()
+        .analyze(withSyntheticPositions([...base, seq]))
+        .filter((d) => d.code === "REFERENCE_KIND_MISMATCH"),
+    ).toEqual([]);
   });
 });

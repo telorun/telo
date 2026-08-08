@@ -128,7 +128,9 @@ schema:
       description: "Whether redirects should be followed automatically."
     credential:
       title: Credential
-      x-telo-ref: Self.Credential
+      x-telo-ref:
+        kind: Self.Credential
+        use: call
       description: >-
         Authenticates every request made through this client. The credential is
         consulted once per request; what it returns overrides the client's own
@@ -176,7 +178,9 @@ schema:
   properties:
     client:
       title: Client
-      x-telo-ref: Self.Client
+      x-telo-ref:
+        kind: Self.Client
+        use: dependency
       description: "Reference to an Http.Client resource. Injected as a live instance at runtime; its baseUrl, headers, and timeout supply per-request defaults."
     timeout:
       title: Timeout

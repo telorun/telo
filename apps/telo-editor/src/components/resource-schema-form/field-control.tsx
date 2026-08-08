@@ -1,3 +1,4 @@
+import { readRefSlot } from "@telorun/analyzer";
 import { ArrayObjectField } from "./array-object-field";
 import { CelFieldWrapper } from "./cel-field-wrapper";
 import { getCelEvalMode, type CelEvalMode } from "./cel-utils";
@@ -12,6 +13,15 @@ import { ScalarField } from "./scalar-field";
 import { TypeField } from "./type-field";
 import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
 import { UnsupportedField } from "./unsupported-field";
+
+/** A slot the picker can actually offer candidates for. Gates on the accepted
+ *  KINDS being non-empty — the same test the analyzer's field map applies — so
+ *  a malformed structured annotation with no `kind` falls through to normal
+ *  rendering instead of a picker with nothing behind it (the analyzer reports
+ *  it as `X_TELO_REF_MISSING_KIND`). */
+function isPickableRefSlot(prop: JsonSchemaProperty): boolean {
+  return (readRefSlot(prop)?.kinds.length ?? 0) > 0;
+}
 
 interface FieldControlProps {
   rootFieldName: string;
@@ -81,11 +91,7 @@ function isMapValueSchema(value: unknown): value is JsonSchemaProperty {
 /** True when the renderer draws its own field title. Callers should omit the
  *  parent label when this is true. */
 export function ownsLabel(prop: JsonSchemaProperty): boolean {
-  if (typeof prop["x-telo-ref"] === "string") return false;
-  const hasNestedRef = (prop.anyOf ?? prop.oneOf ?? []).some(
-    (item) => typeof item === "object" && item !== null && typeof item["x-telo-ref"] === "string",
-  );
-  if (hasNestedRef) return false;
+  if (isPickableRefSlot(prop)) return false;
   if (inferType(prop) !== "object") return false;
   if (prop.properties) return true;
   return isMapValueSchema(prop.additionalProperties);
@@ -119,14 +125,7 @@ export function FieldControl({
   const evalMode = getCelEvalMode(prop, rootCelEval);
 
   function renderInner() {
-    const hasDirectRef = typeof prop["x-telo-ref"] === "string";
-    const hasNestedRef =
-      !hasDirectRef &&
-      (prop.anyOf ?? prop.oneOf ?? []).some(
-        (item) =>
-          typeof item === "object" && item !== null && typeof item["x-telo-ref"] === "string",
-      );
-    if (hasDirectRef || hasNestedRef) {
+    if (isPickableRefSlot(prop)) {
       // A ref field that also permits an inline object (e.g. an invocable's
       // `inputType`/`outputType`) gets a Reference/Inline toggle so an empty
       // candidate list isn't a dead end.

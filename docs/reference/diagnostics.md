@@ -38,6 +38,7 @@ how to read a failure, and the debugging flags — see
 | `EXTENDS_MALFORMED` | `extends:` must be the string form `<Alias>.<Kind>` (use `Self.<Kind>` for a kind in the same library). |
 | `EXTENDS_UNKNOWN_TARGET` | The `extends:` target is not an exported kind of that alias. |
 | `EXTENDS_CAPABILITY_MISMATCH` | A child declares a different `capability:` than its ancestor. Capability is inherited and immutable — omit it, or restate it identically. |
+| `CAPABILITY_NOT_DECLARABLE` | `capability: Telo.Executable` — that name is an `x-telo-ref` slot constraint (the parent `Telo.Invocable` and `Telo.Runnable` extend), not a lifecycle role. Declare `Telo.Invocable` (invoke) or `Telo.Runnable` (run). |
 | `CAPABILITY_SHADOWS_EXTENDS` ⚠️ | `capability:` names a user-declared abstract. Capability names a kernel lifecycle role; use `extends:` for a contract. |
 | `PROVIDER_MISSING_IMPLEMENTATION` | A `Telo.Provider` definition needs either `controllers:` or a `provide:` body. |
 | `SCOPE_ENTRY_NOT_INLINE` | Entries in an `x-telo-scope` block must be inline declarations (`kind:` + `metadata.name`), not references. |
@@ -52,6 +53,11 @@ how to read a failure, and the debugging flags — see
 | `INVALID_REFERENCE` | A reference object is missing string `kind` / `name` fields. |
 | `X_TELO_REF_UNRESOLVED` | A kind's own `x-telo-ref` constraint names nothing resolvable — a module-authoring bug, in the module that declares the slot. |
 | `X_TELO_REF_LEGACY_IDENTITY` ⚠️ | The module uses the deprecated `"<namespace>/<module>#<Kind>"` ref form. Still resolves; the module should migrate to the alias form. |
+| `X_TELO_REF_INVALID_USE` | A structured `x-telo-ref` carries an unrecognized `use` token (a typo would otherwise silently degrade to the legacy no-use reading), or a `use` case map whose `by` is not a JSON Pointer. Valid uses: `schema`, `dependency`, `call`, `detached`, `trigger.inbound`, `trigger.consumer`. |
+| `X_TELO_REF_MISSING_USE` | The structured `x-telo-ref` form declares no `use`. Say what the declaring resource does with the target; only the legacy bare-string spelling may omit it. |
+| `X_TELO_REF_MISSING_KIND` | A structured `x-telo-ref` declares no `kind`, so the slot constrains nothing and the editor has nothing to pick against. |
+| `X_TELO_REF_USE_CONFLICT` | `anyOf` branches of one slot declare disagreeing `use`s. `use` is a property of the slot — declare the acceptable kinds as one `kind:` list with one `use`. |
+| `X_TELO_REF_DYNAMIC_SELECTOR` | A `use` case map's selector field is written in CEL, so which `use` holds cannot be resolved statically. Write the mode as a literal (or rely on the schema default), or split the wiring into one resource per mode. |
 | `MOUNT_TARGET_UNKNOWN` / `MOUNT_TARGET_NOT_MOUNTABLE` | A `mount:` names something that does not exist, or whose capability is not `Telo.Mount`. |
 | `MOUNT_ON_NON_MOUNT` / `MOUNT_DISPATCHER_CONFLICT` | `mount:` used on a non-Mount definition, or alongside another dispatcher (`invoke:` / `provide:` / `run:`). |
 | `PROVIDE_TARGET_UNKNOWN` / `PROVIDE_TARGET_NOT_INVOCABLE` / `PROVIDE_KIND_MISMATCH` | The `provide:` target is missing, not invocable, or its declared kind disagrees with the resolved one. |

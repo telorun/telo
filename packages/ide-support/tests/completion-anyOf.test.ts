@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectContext, lookupRefConstraint, navigateSchema } from "../src/completions/detect-context.js";
+import { detectContext, lookupRefConstraints, navigateSchema } from "../src/completions/detect-context.js";
 
 /** A schema that mimics the shape of an `x-telo-ref` slot: the property
  *  itself has no `properties` of its own — the object form lives inside an
@@ -84,9 +84,9 @@ describe("navigateSchema — anyOf/oneOf peeling for ref slots", () => {
   });
 });
 
-describe("lookupRefConstraint", () => {
+describe("lookupRefConstraints", () => {
   it("reads the x-telo-ref string at the navigated slot", () => {
-    expect(lookupRefConstraint(refSlotParent, ["steps", "invoke"])).toBe("telo#Invocable");
+    expect(lookupRefConstraints(refSlotParent, ["steps", "invoke"])).toEqual(["telo#Invocable"]);
   });
 
   it("preserves x-telo-ref when navigateSchema unions multiple oneOf branches", () => {
@@ -102,15 +102,39 @@ describe("lookupRefConstraint", () => {
         },
       },
     };
-    expect(lookupRefConstraint(schema, ["handler"])).toBe("telo#Invocable");
+    expect(lookupRefConstraints(schema, ["handler"])).toEqual(["telo#Invocable"]);
   });
 
-  it("returns undefined when the slot has no x-telo-ref", () => {
+  it("returns every branch's kind, not just the first", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        handler: {
+          anyOf: [{ "x-telo-ref": "telo.Invocable" }, { "x-telo-ref": "telo.Runnable" }],
+        },
+      },
+    };
+    expect(lookupRefConstraints(schema, ["handler"])).toEqual(["telo.Invocable", "telo.Runnable"]);
+  });
+
+  it("reads the structured form's kind list", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        handler: {
+          "x-telo-ref": { kind: ["telo.Runnable", "telo.Service"], use: "call" },
+        },
+      },
+    };
+    expect(lookupRefConstraints(schema, ["handler"])).toEqual(["telo.Runnable", "telo.Service"]);
+  });
+
+  it("returns nothing when the slot has no x-telo-ref", () => {
     const schema = {
       type: "object",
       properties: { port: { type: "integer" } },
     };
-    expect(lookupRefConstraint(schema, ["port"])).toBeUndefined();
+    expect(lookupRefConstraints(schema, ["port"])).toEqual([]);
   });
 });
 

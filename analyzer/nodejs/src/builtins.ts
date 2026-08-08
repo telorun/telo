@@ -145,7 +145,9 @@ const ROOT_LOGGING_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        "x-telo-ref": "Telo.LogSink",
+        // A sink is written to directly by the logging pipeline, never through
+        // `ctx.invoke` — so from the Application's side it is held, not called.
+        "x-telo-ref": { kind: "Telo.LogSink", use: "dependency" },
         "x-telo-inline": true,
       },
     },
@@ -155,9 +157,22 @@ const ROOT_LOGGING_SCHEMA = {
 
 export const KERNEL_BUILTINS: ResourceDefinition[] = [
   { kind: "Telo.Abstract", metadata: { name: "Template", module: "Telo" } },
-  { kind: "Telo.Abstract", metadata: { name: "Runnable", module: "Telo" } },
+  // "Control can be transferred to this" — the parent of Invocable and Runnable,
+  // and the only thing a slot that accepts either needs to say. It is a SLOT
+  // CONSTRAINT, never a lifecycle role: `capability: Telo.Executable` is rejected
+  // because it is absent from the kernel's `KNOWN_CAPABILITIES` enum, which is
+  // what keeps "what a resource is" and "what a slot does with it" separate.
+  //
+  // `Telo.Service` is deliberately NOT under it. A Service's `run()` is a
+  // lifecycle start the kernel dispatches differently (no ambient scope, so
+  // inbound work roots its own trace), and admitting it here would make every
+  // step's `invoke:` slot accept a service. Boot-target slots that genuinely take
+  // `Runnable | Service` stay kind lists — the honest shape for a heterogeneous
+  // set.
+  { kind: "Telo.Abstract", metadata: { name: "Executable", module: "Telo" } },
+  { kind: "Telo.Abstract", metadata: { name: "Runnable", module: "Telo" }, extends: "Telo.Executable" },
   { kind: "Telo.Abstract", metadata: { name: "Service", module: "Telo" } },
-  { kind: "Telo.Abstract", metadata: { name: "Invocable", module: "Telo" } },
+  { kind: "Telo.Abstract", metadata: { name: "Invocable", module: "Telo" }, extends: "Telo.Executable" },
   { kind: "Telo.Abstract", metadata: { name: "Mount", module: "Telo" } },
   { kind: "Telo.Abstract", metadata: { name: "Type", module: "Telo" } },
   {
@@ -558,12 +573,16 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           "x-telo-step-context": { invoke: "invoke", outputType: "outputType" },
           type: "array",
           items: {
+            // A genuinely heterogeneous set stays a kind list: `Telo.Service` is
+            // deliberately outside `Telo.Executable`, since a service's `run()`
+            // is a lifecycle start the kernel dispatches without an ambient
+            // scope.
+            "x-telo-ref": { kind: ["Telo.Runnable", "Telo.Service"], use: "call" },
             anyOf: [
-              { type: "string", "x-telo-ref": "Telo.Runnable" },
-              { type: "string", "x-telo-ref": "Telo.Service" },
+              { type: "string" },
               // Post-resolution shape that `resolveRefSentinels`
               // substitutes a `!ref <name>` sentinel into. The
-              // adjacent `x-telo-ref` constraints govern the kind
+              // adjacent `x-telo-ref` constraint governs the kind
               // check; this branch only admits the structural form so
               // AJV doesn't reject a resolved ref.
               {
@@ -583,9 +602,9 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                 required: ["ref"],
                 properties: {
                   ref: {
+                    "x-telo-ref": { kind: ["Telo.Runnable", "Telo.Service"], use: "call" },
                     anyOf: [
-                      { type: "string", "x-telo-ref": "Telo.Runnable" },
-                      { type: "string", "x-telo-ref": "Telo.Service" },
+                      { type: "string" },
                       {
                         type: "object",
                         required: ["kind", "name"],
@@ -617,6 +636,11 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                   name: { type: "string" },
                   invoke: {
                     "x-telo-topology-role": "invoke",
+                    "x-telo-ref": {
+                      kind: "Telo.Executable",
+                      use: "call",
+                      inputs: "/inputs",
+                    },
                     type: "object",
                     required: ["kind", "name"],
                     properties: {
@@ -624,10 +648,6 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                       name: { type: "string" },
                     },
                     additionalProperties: true,
-                    anyOf: [
-                      { "x-telo-ref": "Telo.Invocable" },
-                      { "x-telo-ref": "Telo.Runnable" },
-                    ],
                   },
                   inputs: {
                     // Same annotation Run.Sequence steps carry: it is what makes

@@ -1,9 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { isRefSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
+import { buildCallGraph, projectToPairs, type ResourceGraphNode } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { visitManifest } from "./manifest-visitor.js";
-import { DEPENDENCY_GRAPH_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 
 export interface ResourceNode {
   kind: string;
@@ -22,16 +20,26 @@ export interface DependencyGraph {
 const nodeKey = (kind: string, name: string) => `${kind}\0${name}`;
 
 /**
- * Builds a directed acyclic graph (DAG) of runtime resource dependencies and
+ * Builds a directed acyclic graph (DAG) of boot-time resource dependencies and
  * returns either a topological initialization order or the cycle path.
  *
- * Edges represent boot-time dependencies only:
- * - x-telo-ref fields that fall within a scope visibility path are excluded
- *   (scoped resources are initialized on demand at runtime, not at boot).
- * - x-telo-scope fields themselves are excluded from the graph.
+ * A projection of the typed reference graph, not a second walk of the manifest.
+ * What this consumer keeps of the full graph:
  *
- * The registry is queried for each resource's field map by kind — callers do
- * not pre-compute or pass field maps separately.
+ * - **Injection sites only.** A site the reference field map reaches is a
+ *   Phase-5 injection site, so its target must be constructed first — including
+ *   `Telo.Application`'s inline `targets[].invoke`, which is step-declared but
+ *   injected. A step slot behind a local `$ref` and a value-tree-discovered ref
+ *   resolve at dispatch, so their targets need only exist by the time the step
+ *   runs. All can be `use: call` — the difference is the site, never the node
+ *   kind or the use.
+ * - **Every use but `schema`.** A `Telo.Type` slot names a shape; no runtime
+ *   instance is constructed, so there is nothing to order against.
+ * - **No edge into the source's own scope.** A scoped resource is created when
+ *   the scope opens, not at boot.
+ * - **Pairs, not parallel edges.** This is the one consumer for which two slots
+ *   naming the same target genuinely mean the same thing, so it collapses the
+ *   multigraph itself instead of the graph erasing the distinction for everyone.
  */
 export function buildDependencyGraph(
   resources: ResourceManifest[],
@@ -39,67 +47,25 @@ export function buildDependencyGraph(
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
 ): DependencyGraph {
-  // --- Build node set + name index ---
+  const graph = buildCallGraph(resources, registry, { aliases, aliasesByModule });
+
   const nodes = new Map<string, ResourceNode>();
-  // Sentinel lookup (`!ref <name>`) needs to resolve a bare name to its
-  // declared kind. Names are unique within a manifest scope, so a flat
-  // map suffices and lets the sentinel branch below avoid a full
-  // O(N) scan of the node set on every reference.
-  const nodesByName = new Map<string, ResourceNode>();
-  for (const r of resources) {
-    if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
-    const node = { kind: r.kind, name: r.metadata.name as string };
-    nodes.set(nodeKey(node.kind, node.name), node);
-    nodesByName.set(node.name, node);
+  for (const node of graph.nodes.values()) {
+    if (node.type !== "resource") continue;
+    const resource = node as ResourceGraphNode;
+    // A scope-declared resource is created when its scope opens, never at boot.
+    if (resource.scoped) continue;
+    nodes.set(resource.id, { kind: resource.kind, name: resource.name });
   }
 
-  // --- Build adjacency: from → deps (from depends on dep) ---
-  const deps = new Map<string, Set<string>>();
-  for (const key of nodes.keys()) deps.set(key, new Set());
-
-  // Names of resources declared inside the *current* resource's scope fields —
-  // initialized on-demand at runtime, not at boot, so edges pointing to them
-  // are excluded. Scoping is per-source-resource: an edge A → B is dropped only
-  // when B is declared inside A's own scope (the visitor's ScopeBoundary fires
-  // before that resource's RefSites, so this is set before any edge is added).
-  let scopedNames = new Set<string>();
-
-  // Expanded map so refs nested behind x-telo-schema-from contribute edges to
-  // the DAG. Without these, a parent (e.g. Http.Server) can init before its
-  // extracted encoder and Phase 5 injection fires against a not-yet-created
-  // dependency.
-  visitManifest(
-    resources,
-    registry,
-    {
-      onScope: (e) => {
-        scopedNames = e.enclosedNames;
-      },
-      onRef: (e) => {
-        const sourceKey = nodeKey(e.source.kind, e.source.metadata!.name as string);
-        const val = e.value;
-
-        // `!ref <name>` sentinel — look up the target's kind from the name
-        // (resources are unique by name) so the edge carries the concrete kind,
-        // matching the {kind, name} edge shape below.
-        if (isRefSentinel(val)) {
-          const refName = val.source;
-          if (scopedNames.has(refName)) return;
-          const node = nodesByName.get(refName);
-          if (node) deps.get(sourceKey)!.add(nodeKey(node.kind, node.name));
-          return;
-        }
-
-        if (typeof val !== "object") return;
-        const ref = val as Record<string, unknown>;
-        if (!ref.kind || !ref.name) return;
-        if (scopedNames.has(ref.name as string)) return;
-        const targetKey = nodeKey(ref.kind as string, ref.name as string);
-        if (nodes.has(targetKey)) deps.get(sourceKey)!.add(targetKey);
-      },
-    },
-    { aliases, aliasesByModule, skipKinds: SYSTEM_KINDS, expand: true },
-  );
+  const deps = projectToPairs(graph, {
+    keepUse: (use) => use.length === 0 || use.some((u) => u !== "schema"),
+  });
+  for (const edge of graph.edges) {
+    if (!edge.scoped || !edge.to) continue;
+    deps.get(edge.from)?.delete(edge.to);
+  }
+  for (const key of nodes.keys()) if (!deps.has(key)) deps.set(key, new Set());
 
   // --- Kahn's topological sort ---
   // in-degree[X] = number of X's dependencies (size of deps[X])

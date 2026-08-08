@@ -157,7 +157,11 @@ schema:
                 encoder:
                   title: Encoder
                   description: Encoder ref (any kind extending Codec.Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
-                  x-telo-ref: Codec.Encoder
+                  x-telo-ref:
+                    kind: Codec.Encoder
+                    # The dispatcher awaits encoder.invoke({input}) inline —
+                    # the encoder's entry point, not a helper method.
+                    use: call
                 headers:
                   title: Headers
                   description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.

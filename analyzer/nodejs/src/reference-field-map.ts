@@ -1,9 +1,22 @@
+import { type RefSlot, type RefUse, type RefUseCases, readRefSlot } from "./ref-slot.js";
+
+export { readRefSlot, isRefSlot, hasDeclaredUse } from "./ref-slot.js";
+export type { RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
+
 /** An entry for a field that carries one or more x-telo-ref constraints. */
 export interface RefFieldEntry {
   /** One or more canonical kind keys ("<module>.<Kind>"), or the deprecated
    *  identity form ("<namespace>/<module>#<Kind>") for a legacy published module.
-   *  Multiple entries arise from anyOf branches. */
+   *  Multiple entries arise from a `kind:` list or from anyOf branches. */
   refs: string[];
+  /** What the declaring resource does with the target — see {@link RefUse}.
+   *  Empty for a slot still on the bare-string form. */
+  uses: RefUse[];
+  /** Set when the use is selected by a sibling config field. */
+  useCases?: RefUseCases;
+  /** JSON Pointer (relative to the object enclosing the slot) naming the field
+   *  carrying this call's arguments. */
+  inputs?: string;
   /** True when the field path traversed through at least one array (path contains "[]"). */
   isArray: boolean;
   /** x-telo-context schema declared on this ref slot, if any. Describes the CEL invocation
@@ -161,26 +174,11 @@ export function buildReferenceFieldMap(schema: Record<string, any>): ReferenceFi
   return map;
 }
 
-/** `x-telo-inline` declared on any `anyOf` branch marks the whole slot as
- *  inline-accepting, matching how {@link collectRefs} unions branch refs. */
-function collectInlineFlag(node: Record<string, any>): boolean {
-  if (!Array.isArray(node.anyOf)) return false;
-  return node.anyOf.some((branch: Record<string, any>) => branch?.["x-telo-inline"] === true);
-}
-
+/** The accepted kinds a node declares, unioned across a `kind:` list and across
+ *  `anyOf` branches. Thin wrapper over {@link readRefSlot} — kept because
+ *  several passes want only the kind set. */
 export function collectRefs(node: Record<string, any>): string[] {
-  const refs: string[] = [];
-  if (typeof node["x-telo-ref"] === "string") {
-    refs.push(node["x-telo-ref"]);
-  }
-  if (Array.isArray(node.anyOf)) {
-    for (const branch of node.anyOf) {
-      if (branch && typeof branch["x-telo-ref"] === "string") {
-        refs.push(branch["x-telo-ref"]);
-      }
-    }
-  }
-  return refs;
+  return readRefSlot(node)?.kinds ?? [];
 }
 
 /** Traverses an arbitrary JSON Schema starting at the given path prefix. Used to
@@ -203,17 +201,16 @@ function traverseNode(
   root?: Record<string, any>,
   visitedRefs: Set<string> = new Set(),
 ): void {
-  // Local `$ref` is intentionally NOT followed. Descending into shared
-  // `$defs` (notably `Run.Sequence`'s `step` definition) would surface
-  // ref slots like `steps[].invoke` that Phase 5 then injects live
-  // instances into; today's `Run.Sequence` controller calls
-  // `instance.invoke()` directly when handed an instance, bypassing
-  // the kernel's `runInvoke` emit-Invoked path. The walker fix and the
-  // dispatcher fix need to land together — see the follow-up in
-  // [kernel/nodejs/plans/reference-syntax-unification.md] and the
-  // stopgap in `resource-context.ts:ensureKindRef`. `visitedRefs`
-  // stays as a parameter so the recursive calls below thread the right
-  // signature; turning the descent back on is a single-branch change.
+  // Local `$ref` is intentionally NOT followed. This map is the kernel's
+  // Phase-5 injection surface: descending into shared `$defs` (notably
+  // `Run.Sequence`'s `step` definition) would make every step's `invoke` an
+  // injection site, and step slots resolve at dispatch — injecting there is
+  // unwanted regardless of tracing (the original dispatcher-bypass blocker
+  // has since shipped via the `REF_IDENTITY` stamp). Static analysis is NOT
+  // limited by this stop: the call graph (`call-graph.ts`) reads step slots
+  // from the item schema itself and scans the value tree, so it sees what
+  // this map deliberately hides. `visitedRefs` stays as a parameter so the
+  // recursive calls below thread the right signature.
   if (typeof node?.$ref === "string") return;
   // Scope slot — record and stop; do not recurse into scope contents
   if ("x-telo-scope" in node) {
@@ -227,12 +224,18 @@ function traverseNode(
     return;
   }
 
-  // Reference slot (direct or via anyOf)
-  const refs = collectRefs(node);
-  if (refs.length > 0) {
-    const entry: RefFieldEntry = { refs, isArray: path.includes("[]") };
+  // Reference slot (direct, via a `kind:` list, or via anyOf)
+  const slot = readRefSlot(node);
+  if (slot && slot.kinds.length > 0) {
+    const entry: RefFieldEntry = {
+      refs: slot.kinds,
+      uses: slot.uses,
+      isArray: path.includes("[]"),
+    };
+    if (slot.useCases) entry.useCases = slot.useCases;
+    if (slot.inputs !== undefined) entry.inputs = slot.inputs;
     if (node["x-telo-context"]) entry.context = node["x-telo-context"] as Record<string, any>;
-    if (node["x-telo-inline"] === true || collectInlineFlag(node)) entry.inline = true;
+    if (slot.inline) entry.inline = true;
     map.set(path, entry);
     // A node can mix item-level ref branches (a bare string / `{kind, name}`)
     // with object branches that carry their OWN nested refs — e.g. Application

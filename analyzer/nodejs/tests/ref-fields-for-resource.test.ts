@@ -40,6 +40,30 @@ describe("AnalysisRegistry.refFieldsForResource", () => {
     // Builtin abstracts still resolve: the kind itself is the capability.
     expect(byPath.get("fallback")?.capabilities).toEqual(["Telo.Runnable"]);
   });
+
+  it("expands a capability group (Telo.Executable) to its leaf capabilities", () => {
+    // Without expansion the editor's port classifier — which matches leaf
+    // capabilities — would drop every `Telo.Executable` slot from the canvas.
+    const reg = new AnalysisRegistry();
+    reg.registerDefinition(
+      def({
+        kind: "Telo.Definition",
+        metadata: { name: "Wrapper", module: "test" },
+        capability: "Telo.Invocable",
+        schema: {
+          type: "object",
+          properties: {
+            body: { "x-telo-ref": { kind: "Telo.Executable", use: "call" } },
+          },
+        },
+      }),
+    );
+    const fields = reg.refFieldsForResource({
+      kind: "test.Wrapper",
+      metadata: { name: "w" },
+    } as unknown as ResourceManifest);
+    expect(fields[0]?.capabilities?.slice().sort()).toEqual(["Telo.Invocable", "Telo.Runnable"]);
+  });
 });
 
 describe("AnalysisRegistry.inputTypeForKind", () => {

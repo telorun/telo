@@ -118,7 +118,12 @@ schema:
     model:
       title: Model
       description: Reference to any Embedding.Model implementation.
-      x-telo-ref: Self.Model
+      x-telo-ref:
+        kind: Self.Model
+        # embed(...) is a plain controller method, not a bound entry point
+        # (invoke/provide/run) — the same shape as connection.query(). The
+        # kernel's dispatch, tracing and zone machinery never see it.
+        use: dependency
     options:
       title: Options
       description: Provider-specific per-call options.
@@ -183,7 +188,12 @@ schema:
     model:
       title: Model
       description: Reference to any Embedding.Model implementation.
-      x-telo-ref: Self.Model
+      x-telo-ref:
+        kind: Self.Model
+        # embed(...) is a plain controller method, not a bound entry point
+        # (invoke/provide/run) — the same shape as connection.query(). The
+        # kernel's dispatch, tracing and zone machinery never see it.
+        use: dependency
     options:
       title: Options
       description: Provider-specific per-call options.

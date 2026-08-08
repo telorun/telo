@@ -40,7 +40,14 @@ function checkKind(
     if (subtypeKinds.has(resolved)) return [];
     if (targetDef.kind === "Telo.Abstract") {
       if (subtypes.length === 0) return []; // partial context — no implementations loaded yet
-      const options = [...subtypeKinds].join(", ");
+      // Suggest only what an author can actually wire: with abstract-extends-
+      // abstract real (Telo.Executable over Invocable/Runnable), the transitive
+      // subtype list contains abstracts, which are non-instantiable and would
+      // read as fixes that cannot work.
+      const concrete = subtypes
+        .filter((d) => d.kind !== "Telo.Abstract")
+        .map((d) => `${d.metadata.module}.${d.metadata.name}`);
+      const options = (concrete.length > 0 ? concrete : [...subtypeKinds]).join(", ");
       errors.push(
         `'${kind}' does not implement '${targetKind}' (known implementations: ${options})`,
       );

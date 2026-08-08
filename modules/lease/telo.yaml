@@ -106,7 +106,9 @@ schema:
         Reference to the KvStore.Store backing the lease. Use
         kv-store-sql or kv-store-redis for cross-instance exclusion;
         kv-store-memory is single-process only.
-      x-telo-ref: KvStore.Store
+      x-telo-ref:
+        kind: KvStore.Store
+        use: dependency
     ttl:
       title: TTL
       type: string
@@ -127,6 +129,8 @@ schema:
       title: Invoke
       description: The invocable or runnable run under the lease when acquired.
       type: object
-      anyOf:
-        - x-telo-ref: Telo.Invocable
-        - x-telo-ref: Telo.Runnable
+      x-telo-ref:
+        kind: Telo.Executable
+        use:
+          by: /detach
+          cases: { false: call, true: detached }

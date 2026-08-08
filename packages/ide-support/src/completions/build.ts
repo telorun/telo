@@ -1,7 +1,7 @@
 import { parseToAst, type AnalysisRegistry, type AstDocument, type AstMap } from "@telorun/analyzer";
 import type { CompletionResult, IdeEnvironmentAdapter } from "../types.js";
 import type { ReplaceRange } from "./detect-context.js";
-import { detectContext, lookupRefConstraint } from "./detect-context.js";
+import { detectContext, lookupRefConstraints } from "./detect-context.js";
 import { importSourceCompletions } from "./import-source.js";
 import { propKeyCompletions } from "./prop-keys.js";
 import { CAPABILITY_VALUES } from "./valid-capabilities.js";
@@ -47,7 +47,7 @@ function extractInFileResources(docs: AstDocument[]): ResourceRecord[] {
 function refNameCompletions(
   docs: AstDocument[],
   refKind: string | undefined,
-  refConstraint: string | undefined,
+  refConstraints: string[],
   registry: AnalysisRegistry | undefined,
   replaceRange: ReplaceRange,
 ): CompletionResult[] {
@@ -56,9 +56,14 @@ function refNameCompletions(
 
   if (refKind) {
     acceptable = new Set([refKind]);
-  } else if (refConstraint && registry) {
-    const kinds = registry.userFacingKindsForRef(refConstraint);
-    if (kinds) acceptable = new Set(kinds);
+  } else if (refConstraints.length > 0 && registry) {
+    // Union across the slot's accepted kinds: a resource satisfying any one of
+    // them fills the slot. A constraint the registry can't resolve contributes
+    // nothing rather than narrowing to the ones it could.
+    const resolved = refConstraints.map((c) => registry.userFacingKindsForRef(c));
+    if (resolved.some(Boolean)) {
+      acceptable = new Set(resolved.flatMap((kinds) => kinds ?? []));
+    }
   }
 
   const seen = new Set<string>();
@@ -90,12 +95,14 @@ function refConstrainedKinds(
 ): string[] | undefined {
   const definition = registry.resolveDefinition(parentDocKind);
   if (!definition?.schema) return undefined;
-  const refString = lookupRefConstraint(
+  const constraints = lookupRefConstraints(
     definition.schema as Record<string, any>,
     parentYamlPath,
   );
-  if (!refString) return undefined;
-  return registry.userFacingKindsForRef(refString);
+  if (constraints.length === 0) return undefined;
+  const resolved = constraints.map((c) => registry.userFacingKindsForRef(c));
+  if (!resolved.some(Boolean)) return undefined;
+  return [...new Set(resolved.flatMap((kinds) => kinds ?? []))];
 }
 
 function kindCompletions(
@@ -154,10 +161,10 @@ export async function buildCompletions(
   if (ctx.type === "capability") return capabilityCompletions();
   if (ctx.type === "ref-name") {
     const definition = registry?.resolveDefinition(ctx.docKind);
-    const refConstraint = definition?.schema
-      ? lookupRefConstraint(definition.schema as Record<string, any>, ctx.yamlPath)
-      : undefined;
-    return refNameCompletions(astDocs, ctx.refKind, refConstraint, registry, ctx.replaceRange);
+    const refConstraints = definition?.schema
+      ? lookupRefConstraints(definition.schema as Record<string, any>, ctx.yamlPath)
+      : [];
+    return refNameCompletions(astDocs, ctx.refKind, refConstraints, registry, ctx.replaceRange);
   }
   if (ctx.type === "field-value") {
     if (ctx.field === "import-source") {

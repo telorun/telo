@@ -241,6 +241,17 @@ export function register(ctx: ControllerContext): void {
 }
 
 export async function create(resource: any, ctx: ResourceContext): Promise<ResourceDefinition> {
+  // Named preflight for the one capability the schema rejects by omission: the
+  // AJV oneOf failure it produces never says WHY, and this is the mistake an
+  // author migrating a multi-kind slot is most likely to make.
+  if (resource?.capability === "Telo.Executable") {
+    throw new Error(
+      `Invalid ResourceDefinition "${resource.metadata?.name}": capability 'Telo.Executable' ` +
+        `is an x-telo-ref slot constraint (the parent Telo.Invocable and Telo.Runnable ` +
+        `extend), not a declarable lifecycle role. Declare 'Telo.Invocable' (invoke) or ` +
+        `'Telo.Runnable' (run) instead.`,
+    );
+  }
   // Validate incoming resource definition against schema
   if (!validateResourceDefinition(resource)) {
     throw new Error(

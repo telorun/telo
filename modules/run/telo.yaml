@@ -55,13 +55,10 @@ schema:
               # which `validateReferenceForms` cannot catch at this nested slot —
               # at `telo check` instead of as an obscure runtime failure.
               type: object
-              anyOf:
-                - title: Invocable
-                  description: Reference to an invocable resource.
-                  x-telo-ref: Telo.Invocable
-                - title: Runnable
-                  description: Reference to a runnable resource.
-                  x-telo-ref: Telo.Runnable
+              x-telo-ref:
+                kind: Telo.Executable
+                use: call
+                inputs: /inputs
             inputs:
               title: Inputs
               description: Inputs passed to the invoked resource.
@@ -291,12 +288,20 @@ schema:
       items:
         title: Target
         description: A with-resource to run before steps — write it as a `!ref`.
+        x-telo-ref:
+          kind: [Telo.Runnable, Telo.Service]
+          use: call
+        # Structural constraint alongside the annotation, mirroring the builtin
+        # Application `targets` items: admit the `!ref` string and the resolved
+        # `{kind, name}` shape so AJV doesn't reject a resolved ref.
         anyOf:
           - type: string
-            x-telo-ref: Telo.Runnable
-          - type: string
-            x-telo-ref: Telo.Service
-          - $ref: "telo://manifest#/$defs/ResourceRef"
+          - type: object
+            required: [kind, name]
+            properties:
+              kind: { type: string }
+              name: { type: string }
+            additionalProperties: true
     inputType:
       title: Input Type
       description: >-
@@ -304,7 +309,9 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     outputType:
       title: Output Type
       description: >-
@@ -312,7 +319,9 @@ schema:
         `steps.<name>.result` for callers, has every result slot checked
         statically by `x-telo-value-schema-from`, and has the produced value
         validated at dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     outputs:
       title: Outputs
       type: object
@@ -382,7 +391,9 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     outputType:
       title: Output Type
       description: >-
@@ -390,7 +401,9 @@ schema:
         `steps.<name>.result` for callers, has every result slot checked
         statically by `x-telo-value-schema-from`, and has the produced value
         validated at dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     bindings:
       title: Bindings
       description: >-
@@ -482,14 +495,18 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     outputType:
       title: Output Type
       description: >-
         Named type reference or inline type definition every row's `value` must
         satisfy. Optional; declaring it is what gives the table one shared
         result contract and lets a caller's `steps.<name>.result` type-check.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     bindings:
       title: Bindings
       description: >-
@@ -624,13 +641,10 @@ schema:
               description: Resource to invoke for this step.
               x-telo-topology-role: invoke
               type: object
-              anyOf:
-                - title: Invocable
-                  description: Reference to an invocable resource.
-                  x-telo-ref: Telo.Invocable
-                - title: Runnable
-                  description: Reference to a runnable resource.
-                  x-telo-ref: Telo.Runnable
+              x-telo-ref:
+                kind: Telo.Executable
+                use: call
+                inputs: /inputs
             inputs:
               title: Inputs
               description: Inputs passed to the invoked resource.
@@ -824,7 +838,9 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     outputType:
       title: Output Type
       description: >-
@@ -832,7 +848,9 @@ schema:
         `steps.<name>.result` for callers, has every result slot checked
         statically by `x-telo-value-schema-from`, and has the produced value
         validated at dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     collection:
       title: Collection
       description: CEL expression resolving to the array iterated over.
@@ -939,13 +957,10 @@ schema:
               description: Resource to invoke for this step.
               x-telo-topology-role: invoke
               type: object
-              anyOf:
-                - title: Invocable
-                  description: Reference to an invocable resource.
-                  x-telo-ref: Telo.Invocable
-                - title: Runnable
-                  description: Reference to a runnable resource.
-                  x-telo-ref: Telo.Runnable
+              x-telo-ref:
+                kind: Telo.Executable
+                use: call
+                inputs: /inputs
             inputs:
               title: Inputs
               description: Inputs passed to the invoked resource.
@@ -1139,7 +1154,9 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     outputType:
       title: Output Type
       description: >-
@@ -1147,7 +1164,9 @@ schema:
         `steps.<name>.result` for callers, has every result slot checked
         statically by `x-telo-value-schema-from`, and has the produced value
         validated at dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     collection:
       title: Collection
       description: CEL expression resolving to the array projected over.
@@ -1273,13 +1292,10 @@ schema:
               description: Resource to invoke for this step.
               x-telo-topology-role: invoke
               type: object
-              anyOf:
-                - title: Invocable
-                  description: Reference to an invocable resource.
-                  x-telo-ref: Telo.Invocable
-                - title: Runnable
-                  description: Reference to a runnable resource.
-                  x-telo-ref: Telo.Runnable
+              x-telo-ref:
+                kind: Telo.Executable
+                use: call
+                inputs: /inputs
             inputs:
               title: Inputs
               description: Inputs passed to the invoked resource.
@@ -1473,7 +1489,9 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     outputType:
       title: Output Type
       description: >-
@@ -1481,7 +1499,9 @@ schema:
         `steps.<name>.result` for callers, has every result slot checked
         statically by `x-telo-value-schema-from`, and has the produced value
         validated at dispatch.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     condition:
       title: Condition
       description: >-
@@ -1607,4 +1627,6 @@ schema:
       title: Invoke
       description: The invocable dispatched in the background.
       type: object
-      x-telo-ref: Telo.Invocable
+      x-telo-ref:
+        kind: Telo.Invocable
+        use: detached
