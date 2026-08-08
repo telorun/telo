@@ -80,7 +80,9 @@ schema:
     store:
       title: Store
       description: Reference to the backing cache store.
-      x-telo-ref: Self.Store
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
 ---
 kind: Telo.Definition
 metadata:
@@ -119,7 +121,9 @@ schema:
     store:
       title: Store
       description: Reference to the backing cache store.
-      x-telo-ref: Self.Store
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
     ttl:
       title: TTL
       type: string
@@ -185,12 +189,16 @@ schema:
     store:
       title: Store
       description: Reference to the backing cache store.
-      x-telo-ref: Self.Store
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
     invoke:
       title: Invoke
       description: The wrapped source-of-truth invocable, called on miss / revalidation.
       type: object
-      x-telo-ref: Telo.Invocable
+      x-telo-ref:
+        kind: Telo.Invocable
+        use: [call, detached]
     ttl:
       title: TTL
       type: string

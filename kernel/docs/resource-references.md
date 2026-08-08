@@ -27,13 +27,56 @@ Both fields are required. The kind constraint is declared in the definition sche
 
 ## 2. The `x-telo-ref` Schema Keyword
 
-`x-telo-ref` is a custom JSON Schema keyword that marks a field as a resource reference slot and declares the kind constraint. Its value is an **alias-qualified kind** — the same grammar `kind:`, `extends:` and `capability:` use:
+`x-telo-ref` is a custom JSON Schema keyword that marks a field as a resource reference slot. It declares two things: which kinds the slot accepts, and **what the declaring resource does with the target**.
 
 ```yaml
-x-telo-ref: KvStore.Store    # a module declared in this file's `imports:` map
-x-telo-ref: Self.Store       # a kind declared in this same library
-x-telo-ref: Telo.Invocable   # a built-in capability
+x-telo-ref:
+  kind: KvStore.Store        # one alias-qualified kind, or a list of them
+  use: dependency            # what this resource does with the target
+  inputs: /inputs            # optional: JSON Pointer to this call's arguments
 ```
+
+`kind` is an **alias-qualified kind** — the same grammar `kind:`, `extends:` and `capability:` use: an alias from this file's `imports:` map, `Self.<Kind>` for a kind in this same library, or `Telo.<Kind>` for a built-in. Give it a **list** for a slot that accepts several (`kind: [Telo.Runnable, Telo.Service]`).
+
+The **bare string form** (`x-telo-ref: KvStore.Store`) is still accepted and declares no `use`. Every analysis that asks "does control reach this target?" reads such a slot conservatively — as if control does — which is what the walkers this replaced already assumed.
+
+### `use` — when control reaches the target
+
+`use` names when control reaches the target **relative to the declaring resource's own invocation**. That single fact is what every analysis derives from, which is why there is one axis rather than a family of per-concern annotations.
+
+| `use` | Meaning |
+| --- | --- |
+| `schema` | Names a shape; no runtime instance exists. No edge of any kind. |
+| `dependency` | Held and read; control never transfers to its entry point. Init-order edge only. |
+| `call` | Control transfers during my invocation and returns to me. |
+| `detached` | Control transfers through the kernel's detach primitive; I do not await it. |
+| `trigger.inbound` | I register the target; control reaches it after my invocation, driven by a request or a timer, with a guaranteed-fresh ambient context. |
+| `trigger.consumer` | I register it; control reaches it when someone drains a value I returned, so no guarantee holds either way. |
+
+The line between `dependency` and `call` is **bound entry point, not method call**. The entry points are `invoke()` / `provide()` / `run()` — the methods the kernel dispatches, traces, contract-checks and zone-tracks. A `Sql.Connection` slot is a `dependency` even though the controller calls `query()` on it, and so is an `Embedding` model whose `embed()` does the real work — a domain method is not dispatch, no matter how much it does. An `Ai.Text` / `Ai.Agent` model slot is a `call` because the controller drives the bound `invoke()`; the streaming variants hold the same kind as a `dependency`, because `stream()` is a convention method nothing in the kernel can observe.
+
+The trigger source lives **inside the value** rather than in a sibling key: a sibling can be omitted, has no place in a case map, and would need its own diagnostic to police what an enum enforces structurally.
+
+**`use` is a set.** A slot may dispatch its target more than one way within a single invocation — `Cache.View` calls inline on a miss and refreshes detached on a stale hit — so it writes `use: [call, detached]`. Each consumer states its own reduction: exceptions propagate if **any** member is `call`, an ambient scope's lifetime extends only if **every** member is.
+
+**A slot whose mode is chosen by configuration declares a case map** keyed on a sibling field:
+
+```yaml
+invoke:
+  x-telo-ref:
+    kind: Telo.Executable
+    use:
+      by: /detach
+      cases: { false: call, true: detached }
+```
+
+The selector **must be statically resolvable** — a literal or a schema default (a `Lease.Critical` that omits `detach:` takes the schema's `default: false` and classifies as `call`). A CEL value there is `X_TELO_REF_DYNAMIC_SELECTOR`: a call graph known only at runtime is not statically analyzable, which is the property this design exists to protect. There is deliberately **no fallback**, because no single value is conservative for every consumer — the throws union must assume `call` to keep an error path, while a scope requirement must assume the opposite to avoid inventing one. The annotation's own validity is enforced by `validate-ref-slots.ts`: an unrecognized `use` token (`X_TELO_REF_INVALID_USE`), a structured form missing `use` or `kind`, and `anyOf` branches whose declared uses disagree (`X_TELO_REF_USE_CONFLICT`) are all diagnostics, scoped to the entry's own modules.
+
+A case map and a set answer different questions and do not substitute for each other: the map says *the configuration decides which relation holds*, the set says *several hold at once*.
+
+**Pointers are relative to the object enclosing the slot** — the resource root for a resource-level slot, the array item for a slot inside one, so a route's `handler` can name its siblings. Nothing can address across an array boundary.
+
+**`use` is never cross-checked against the target's capability.** `Ai.Model` declares `capability: Telo.Provider` and no schema at all, exposing its entry points as an ai-module convention, and its slot is genuinely `use: call`. The kernel tests method presence at dispatch; a static test can only read a declared capability. Capability says nothing about whether a slot transfers control.
 
 **One grammar for every kind reference.** A definition schema is authored by a module author, and the alias it names is the author's own — declared in the same file's `imports:` map, resolved in the declaring module's scope, never the consumer's. So the constraint is pinned to a specific module *version* (the one the import source resolves to) and stays correct no matter what alias the consumer picks for the same library. The prefix is an ordinary import alias, so `Self` reaches the declaring library's own kinds and `Telo` reaches the built-ins.
 
@@ -70,11 +113,12 @@ schema:
       type: object
       properties:
         invoke:
-          x-telo-ref: Telo.Invocable # any Telo.Invocable resource
+          # registered now, driven later by an inbound request
+          x-telo-ref: { kind: Telo.Executable, use: trigger.inbound }
     middlewares:
       type: array
       items:
-        x-telo-ref: Http.Middleware # specifically Http.Middleware
+        x-telo-ref: { kind: Http.Middleware, use: trigger.inbound }
     mounts:
       type: array
       items:
@@ -83,7 +127,8 @@ schema:
           path:
             type: string
           mount:
-            x-telo-ref: Telo.Service # any Telo.Service resource
+            # held, never dispatched by the server
+            x-telo-ref: { kind: Telo.Service, use: dependency }
 ```
 
 ```yaml
@@ -94,25 +139,40 @@ schema:
       items:
         properties:
           invoke:
-            x-telo-ref: Telo.Invocable
+            x-telo-ref:
+              kind: Telo.Executable
+              use: call
+              inputs: /inputs
 ```
 
 ---
 
 ## 4. Kind-Level Narrowing
 
-Referencing a concrete kind (`x-telo-ref: Http.Middleware`) constrains a slot to that resource kind **or any kind that transitively `extends` it** (general single inheritance — subtypes are substitutable). Referencing an abstract kind accepts every kind that transitively extends it. Both use the same transitive subtype index; the constraint is enforced semantically in Phase 3 by resolving the value and comparing the alias-resolved kind against the target kind and its descendants. All reference shapes are structurally identical.
+Referencing a concrete kind (`kind: Http.Middleware`) constrains a slot to that resource kind **or any kind that transitively `extends` it** (general single inheritance — subtypes are substitutable). Referencing an abstract kind accepts every kind that transitively extends it. Both use the same transitive subtype index; the constraint is enforced semantically in Phase 3 by resolving the value and comparing the alias-resolved kind against the target kind and its descendants. All reference shapes are structurally identical.
 
-For slots that accept multiple specific kinds, use `anyOf`. Place `x-telo-ref` inside each branch:
+For slots that accept multiple kinds, give `kind` a **list**:
 
 ```yaml
 handler:
-  anyOf:
-    - x-telo-ref: Http.Middleware
-    - x-telo-ref: Js.Script
+  x-telo-ref:
+    kind: [Http.Middleware, Js.Script]
+    use: trigger.inbound
 ```
 
-Phase 3 validates that the reference's resolved kind satisfies at least one branch (`anyOf` semantics: one or more branches may match). Do not use `oneOf` (exactly one match) or `allOf` (all branches must match) in reference slot positions — both are semantically incorrect for multi-kind slots and the kernel does not support them there.
+Phase 3 validates that the reference's resolved kind satisfies at least one entry.
+
+**Why a list and not `anyOf`.** An `anyOf` puts each `x-telo-ref` in its own branch, so once the annotation is structured, a branch could carry a *different* `use` than its neighbour — a disagreement with no meaning, since which kinds are acceptable is a property of the target while `use` is a fact about the slot. One slot, one `use`, several acceptable kinds. The analyzer always unioned those branches into a single list internally, so the list simply makes the surface match the model that was already underneath.
+
+The older `anyOf` spelling still resolves for already-published modules; its branches are unioned exactly as a list. Do not use `oneOf` or `allOf` in reference slot positions.
+
+### `Telo.Executable`
+
+`Telo.Executable` is a built-in abstract, the parent of `Telo.Invocable` and `Telo.Runnable`: "control can be transferred to this". A slot that accepts either writes `kind: Telo.Executable` rather than listing both.
+
+It is a **slot constraint, never a lifecycle role** — `capability: Telo.Executable` is rejected, because it names no entry point a controller could implement. And it never gates `use`: a slot may declare `use: call` against any kind at all, which is what keeps a Provider exposing conventional entry points (`Ai.Model`) expressible.
+
+**`Telo.Service` is deliberately outside it.** A service's `run()` is a lifecycle start the kernel dispatches differently — with no ambient scope, so inbound work roots its own trace — and a step's `invoke:` must keep rejecting it. Slots that genuinely accept both, like boot targets, stay lists: `kind: [Telo.Runnable, Telo.Service]`.
 
 ---
 

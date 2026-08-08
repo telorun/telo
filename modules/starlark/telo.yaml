@@ -43,9 +43,13 @@ schema:
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for script inputs.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for script outputs.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
   required: [metadata, code]

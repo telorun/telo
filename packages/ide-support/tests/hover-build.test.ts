@@ -22,6 +22,16 @@ function buildRegistry(): AnalysisRegistry {
       properties: {
         host: { type: "string", description: "Hostname to bind." },
         mode: { type: "string", enum: ["fast", "safe"], default: "safe" },
+        target: {
+          description: "The body to dispatch.",
+          // Structured x-telo-ref with a kind LIST — the shape that replaced
+          // the anyOf-of-branches spelling.
+          "x-telo-ref": { kind: ["Telo.Invocable", "Telo.Runnable"], use: "call" },
+        },
+        legacy: {
+          description: "A slot still on the bare-string form.",
+          "x-telo-ref": "Telo.Invocable",
+        },
       },
     },
   } as unknown as ResourceDefinition;
@@ -80,6 +90,22 @@ describe("buildHover", () => {
     const pos = at(text, "Telo.Service");
     const hover = buildHover(text, pos.line, pos.character, registry);
     expect(hover?.contents).toContain("Long-lived");
+  });
+
+  it("renders the reference line for a structured kind-list slot", () => {
+    const text = ["kind: Test.Sequence", "metadata:", "  name: seq", "target: !ref x"].join("\n");
+    const pos = at(text, "target");
+    const hover = buildHover(text, pos.line, pos.character, registry);
+    expect(hover?.contents).toContain("The body to dispatch.");
+    expect(hover?.contents).toContain("Telo.Invocable");
+    expect(hover?.contents).toContain("Telo.Runnable");
+  });
+
+  it("renders the reference line for a legacy bare-string slot", () => {
+    const text = ["kind: Test.Sequence", "metadata:", "  name: seq", "legacy: !ref x"].join("\n");
+    const pos = at(text, "legacy");
+    const hover = buildHover(text, pos.line, pos.character, registry);
+    expect(hover?.contents).toContain("Telo.Invocable");
   });
 
   it("returns undefined off any known symbol", () => {

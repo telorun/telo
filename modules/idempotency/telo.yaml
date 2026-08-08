@@ -99,7 +99,9 @@ schema:
     store:
       title: Store
       description: Reference to the KvStore.Store holding claims and settled results.
-      x-telo-ref: KvStore.Store
+      x-telo-ref:
+        kind: KvStore.Store
+        use: dependency
     claimTtl:
       title: Claim TTL
       type: string
@@ -122,6 +124,7 @@ schema:
       title: Invoke
       description: The wrapped body run at most once per key.
       type: object
-      anyOf:
-        - x-telo-ref: Telo.Invocable
-        - x-telo-ref: Telo.Runnable
+      x-telo-ref:
+        kind: Telo.Executable
+        use: call
+        inputs: /inputs

@@ -64,7 +64,9 @@ schema:
     store:
       title: Store
       description: Reference to the Cache.Store holding the rate-limit counters.
-      x-telo-ref: Cache.Store
+      x-telo-ref:
+        kind: Cache.Store
+        use: dependency
     limit:
       title: Limit
       type: integer
@@ -159,7 +161,9 @@ schema:
     store:
       title: Store
       description: Reference to the Cache.Store holding the budget counters.
-      x-telo-ref: Cache.Store
+      x-telo-ref:
+        kind: Cache.Store
+        use: dependency
     limit:
       title: Limit
       type: integer

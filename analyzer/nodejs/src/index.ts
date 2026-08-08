@@ -73,8 +73,31 @@ export {
   RedactionPathError,
 } from "./redaction-path.js";
 export type { RedactionSegment } from "./redaction-path.js";
+export { buildCallGraph, projectToPairs, resourceId } from "./call-graph.js";
+export type {
+  BuildCallGraphOptions,
+  CallGraph,
+  CallGraphEdge,
+  CallGraphNode,
+  ResourceGraphNode,
+  StepGraphNode,
+} from "./call-graph.js";
 export { buildReferenceFieldMap, isRefEntry, isScopeEntry } from "./reference-field-map.js";
 export type { ReferenceFieldMap, RefFieldEntry } from "./reference-field-map.js";
+export {
+  hasDeclaredUse,
+  isRefSlot,
+  isRefUse,
+  possibleUses,
+  readRefSlot,
+  REF_USES,
+  refSlotAnnotation,
+  rewriteRefSlotKinds,
+  transfersControl,
+} from "./ref-slot.js";
+export type { RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
+export { validateDynamicSelectors, validateRefSlotDeclarations } from "./validate-ref-slots.js";
+export type { RefSlotIssue } from "./validate-ref-slots.js";
 export { visitManifest } from "./manifest-visitor.js";
 export type {
     CelSiteEvent,

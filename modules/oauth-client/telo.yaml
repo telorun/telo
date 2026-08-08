@@ -170,7 +170,9 @@ schema:
     authorizationServer:
       title: Authorization Server
       description: The server this application is registered at.
-      x-telo-ref: Self.AuthorizationServer
+      x-telo-ref:
+        kind: Self.AuthorizationServer
+        use: dependency
     clientId:
       title: Client ID
       type: string
@@ -236,14 +238,18 @@ schema:
     client:
       title: Client
       description: The registration whose grants this source holds.
-      x-telo-ref: Self.Client
+      x-telo-ref:
+        kind: Self.Client
+        use: dependency
     store:
       title: Store
       description: >-
         Durable storage for grants and for the short-lived records a pending
         authorization and an in-flight refresh write. Refresh tokens are long-lived
         credentials — use a store that outlives the process.
-      x-telo-ref: KvStore.Store
+      x-telo-ref:
+        kind: KvStore.Store
+        use: dependency
     key:
       title: Key
       type: string
@@ -350,7 +356,9 @@ schema:
     source:
       title: Source
       description: The token source whose client asks for consent and whose store holds the pending record.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
     pendingTtl:
       title: Pending TTL
       type: string
@@ -475,7 +483,9 @@ schema:
     listener:
       title: Listener
       description: The local listener to wait on.
-      x-telo-ref: Self.RedirectListener
+      x-telo-ref:
+        kind: Self.RedirectListener
+        use: dependency
     timeout:
       title: Timeout
       type: string
@@ -558,7 +568,9 @@ schema:
         The authorization this callback completes. Its store, client and key space
         are read through this reference, so the two halves of the flow cannot be
         pointed at different stores.
-      x-telo-ref: Self.Authorization
+      x-telo-ref:
+        kind: Self.Authorization
+        use: dependency
 ---
 kind: Telo.Definition
 metadata:
@@ -604,7 +616,9 @@ schema:
     source:
       title: Source
       description: The token source whose client performs the exchange.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
 ---
 kind: Telo.Definition
 metadata:
@@ -647,7 +661,9 @@ schema:
     source:
       title: Source
       description: The token source holding the grant to refresh.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
 ---
 kind: Telo.Definition
 metadata:
@@ -690,7 +706,9 @@ schema:
     source:
       title: Source
       description: The token source whose client authenticates and whose store holds the result.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
 ---
 kind: Telo.Definition
 metadata:
@@ -745,7 +763,9 @@ schema:
     source:
       title: Source
       description: The token source whose client starts the device grant.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
 ---
 kind: Telo.Definition
 metadata:
@@ -790,7 +810,9 @@ schema:
     source:
       title: Source
       description: The token source whose client polls and whose store holds the result.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
 ---
 # OAuthClient.AccessToken — a currently-valid token, refreshed inside a skew window.
 #
@@ -838,7 +860,9 @@ schema:
     source:
       title: Source
       description: The token source to read and refresh through.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
 ---
 kind: Telo.Definition
 metadata:
@@ -882,7 +906,9 @@ schema:
     source:
       title: Source
       description: The token source whose store is read.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
 ---
 kind: Telo.Definition
 metadata:
@@ -923,7 +949,9 @@ schema:
     source:
       title: Source
       description: The token source whose store is written.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
 ---
 kind: Telo.Definition
 metadata:
@@ -958,7 +986,9 @@ schema:
     source:
       title: Source
       description: The token source whose store is cleared.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
 ---
 # OAuthClient.Credential — attach to an Http.Client and every request through it is
 # authenticated by construction. No request wrapper exists, so no unauthenticated
@@ -983,7 +1013,9 @@ schema:
     source:
       title: Source
       description: The token source to draw tokens from.
-      x-telo-ref: Self.TokenSource
+      x-telo-ref:
+        kind: Self.TokenSource
+        use: dependency
     key:
       title: Key
       type: string

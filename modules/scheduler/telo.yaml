@@ -41,9 +41,10 @@ schema:
       title: Invoke
       description: The body fired on each tick.
       type: object
-      anyOf:
-        - x-telo-ref: Telo.Invocable
-        - x-telo-ref: Telo.Runnable
+      x-telo-ref:
+        kind: Telo.Executable
+        use: trigger.inbound
+        inputs: /inputs
     inputs:
       title: Inputs
       type: object
@@ -101,9 +102,10 @@ schema:
       title: Invoke
       description: The body fired on each tick.
       type: object
-      anyOf:
-        - x-telo-ref: Telo.Invocable
-        - x-telo-ref: Telo.Runnable
+      x-telo-ref:
+        kind: Telo.Executable
+        use: trigger.inbound
+        inputs: /inputs
     inputs:
       title: Inputs
       type: object

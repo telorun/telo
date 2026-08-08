@@ -36,7 +36,9 @@ schema:
     connection:
       title: Connection
       description: Reference to the Postgres Sql.Connection the vectors table lives in.
-      x-telo-ref: Sql.Connection
+      x-telo-ref:
+        kind: Sql.Connection
+        use: dependency
     dimensions:
       title: Dimensions
       type: integer

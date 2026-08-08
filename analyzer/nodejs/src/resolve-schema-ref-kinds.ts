@@ -1,5 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
+import { rewriteRefSlotKinds } from "./ref-slot.js";
 
 const REF_ANNOTATION = "x-telo-ref";
 
@@ -102,11 +103,15 @@ export function resolveSchemaRefKinds(
       return;
     }
     const obj = value as Record<string, unknown>;
-    const ref = obj[REF_ANNOTATION];
-    if (typeof ref === "string" && ref) {
-      const result = isLegacyRefIdentity(ref) ? null : resolver.resolveKindResult(ref);
-      if (result?.status === "ok") obj[REF_ANNOTATION] = result.kind;
-      else record(ref, path);
+    if (obj[REF_ANNOTATION] !== undefined) {
+      // Shape knowledge stays in `ref-slot.ts`: this pass states only the
+      // alias→canonical rule and what to report when it does not apply.
+      rewriteRefSlotKinds(obj, (ref) => {
+        const result = isLegacyRefIdentity(ref) ? null : resolver.resolveKindResult(ref);
+        if (result?.status === "ok") return result.kind;
+        record(ref, path);
+        return undefined;
+      });
     }
     for (const key of Object.keys(obj)) {
       walk(obj[key], path ? `${path}.${key}` : key);

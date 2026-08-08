@@ -1,0 +1,75 @@
+# Sql.Transaction's declared `inputs:` map is CEL-expanded against the caller's
+# invocation input (readable as `inputs.<field>`) and forwarded to the `steps`
+# resource — the feature the field exists for, previously unusable because the
+# schema spelled the slot `bindings:` while the controller read `inputs`.
+kind: Telo.Application
+metadata:
+  name: TransactionForwardsInputs
+  version: 1.0.0
+imports:
+  Sql: ../
+  SqlSqlite: ../../sql-sqlite
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestTransactionForwardsInputs
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: Db
+file: ":memory:"
+---
+kind: Sql.Transaction
+metadata:
+  name: InsertTx
+connection: !ref Db
+steps: !ref InsertUser
+inputs:
+  sql: "INSERT INTO users (id, name) VALUES (?, ?)"
+  bindings:
+    - !cel "inputs.id"
+    - !cel "inputs.name"
+---
+# No `transaction:` ref — the command joins the ambient transaction it is
+# invoked inside (a bound ref here would also cycle init order with the
+# transaction's own `steps:` ref back to this command).
+kind: Sql.Command
+metadata:
+  name: InsertUser
+connection: !ref Db
+---
+kind: Run.Sequence
+metadata:
+  name: TestTransactionForwardsInputs
+steps:
+  - name: CreateTable
+    inputs:
+      sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+
+  # The transaction is invoked with {id, name}; its inputs map turns them into
+  # the command's positional bindings inside the open transaction.
+  - name: InsertViaTx
+    inputs:
+      id: !cel "7"
+      name: Ada
+    invoke: !ref InsertTx
+
+  - name: SelectBack
+    inputs:
+      sql: "SELECT name FROM users WHERE id = ?"
+      bindings:
+        - !cel "7"
+    invoke:
+      kind: Sql.Query
+      connection: !ref Db
+
+  - name: AssertRow
+    inputs:
+      actual: !cel "steps.SelectBack.result.rows"
+      expected:
+        - name: Ada
+    invoke:
+      kind: Assert.Equals

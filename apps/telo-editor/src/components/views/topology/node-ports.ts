@@ -47,12 +47,14 @@ export interface NodePort {
   createKinds?: string[];
 }
 
-/** Classifies a port by the capability its constraints target: node → edge,
- *  ambient → picker, neither → null (not a port). */
+/** Classifies a port by the capabilities its constraints target: any node
+ *  capability → edge, else any ambient capability → picker, neither → null
+ *  (not a port). Scans the WHOLE list — a multi-kind slot (or a capability
+ *  group like `Telo.Executable`, expanded to its leaves by the registry) must
+ *  not be classified by whichever entry happens to come first. */
 function portFlavor(capabilities: string[]): PortFlavor | null {
-  const cap = capabilities[0];
-  if (cap && NODE_CAPABILITIES.has(cap)) return "edge";
-  if (cap && AMBIENT_CAPABILITIES.has(cap)) return "picker";
+  if (capabilities.some((cap) => NODE_CAPABILITIES.has(cap))) return "edge";
+  if (capabilities.some((cap) => AMBIENT_CAPABILITIES.has(cap))) return "picker";
   return null;
 }
 

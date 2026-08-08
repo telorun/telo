@@ -1,4 +1,4 @@
-import { parseToAst, type AstDocument } from "@telorun/analyzer";
+import { parseToAst, readRefSlot, refSlotAnnotation, type AstDocument } from "@telorun/analyzer";
 import type { ReplaceRange } from "../types.js";
 import { resolveNodeAtPosition } from "./resolve-node.js";
 
@@ -108,9 +108,12 @@ export function navigateSchema(
 /** Merge multiple peeled schema branches into one node for completion purposes.
  *  Property maps are unioned (first branch wins on key collision). `required`
  *  becomes the intersection so optional-in-any-branch keys still surface.
- *  `x-telo-ref` from the unpeeled parent is preserved so ref-aware lookups
- *  (`lookupRefConstraint`) still see the constraint when navigateSchema is
- *  called on a property that places the annotation alongside `anyOf`/`oneOf`. */
+ *
+ *  The parent's reference slot is re-stamped on the merged node, because peeling
+ *  is exactly what destroys it: for the canonical multi-kind shape
+ *  (`anyOf: [{x-telo-ref: A}, {x-telo-ref: B}]`) the constraint lives ONLY in the
+ *  branches, and merging them left a node declaring no slot at all. Re-emitted
+ *  through the analyzer's accessor so both annotation shapes survive the merge. */
 function unionLeaves(
   parent: Record<string, any>,
   leaves: Record<string, any>[],
@@ -135,7 +138,8 @@ function unionLeaves(
     );
   }
   const out: Record<string, any> = { type: "object", properties, required };
-  if (typeof parent["x-telo-ref"] === "string") out["x-telo-ref"] = parent["x-telo-ref"];
+  const slot = readRefSlot(parent);
+  if (slot && slot.kinds.length > 0) out["x-telo-ref"] = refSlotAnnotation(slot);
   return out;
 }
 
@@ -145,22 +149,21 @@ function unionLeaves(
  *  completion to discover what kind of resource the user is targeting in an
  *  object-form ref. Walking stops at the first line with a strictly smaller
  *  indent (that's the parent's structural boundary). */
-/** Looks up the `x-telo-ref` string carried by the schema node at `yamlPath`
- *  inside `definitionSchema`. Checks both the property node directly and its
- *  peeled `anyOf` / `oneOf` branches, since some library schemas place the
- *  annotation at the property level and others inside a branch. Returns
- *  `undefined` when the path doesn't resolve or no ref constraint is declared. */
-export function lookupRefConstraint(
+/** Every kind the `x-telo-ref` slot at `yamlPath` accepts, or an empty array
+ *  when the path doesn't resolve or declares no constraint.
+ *
+ *  All of them, not the first: a slot accepting `Invocable | Runnable` used to
+ *  complete only the invocables, because a single-constraint lookup stopped at
+ *  the first branch. The analyzer's accessor unions a `kind:` list and the
+ *  `anyOf` / `oneOf` branches alike, so completion now offers what the slot
+ *  actually takes. */
+export function lookupRefConstraints(
   definitionSchema: Record<string, any>,
   yamlPath: string[],
-): string | undefined {
+): string[] {
   const node = navigateSchema(definitionSchema, yamlPath);
-  if (!node) return undefined;
-  if (typeof node["x-telo-ref"] === "string") return node["x-telo-ref"];
-  for (const branch of peelCombinators(node)) {
-    if (typeof branch["x-telo-ref"] === "string") return branch["x-telo-ref"];
-  }
-  return undefined;
+  if (!node) return [];
+  return readRefSlot(node)?.kinds ?? [];
 }
 
 /** Derive a `CompletionCtx` from the AST-resolved cursor (Approach B). The

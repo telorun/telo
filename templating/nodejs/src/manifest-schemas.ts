@@ -118,8 +118,13 @@ export function normalizeRefSlots(schema: unknown): unknown {
   const out: Record<string, unknown> = { ...node };
   // Reference slot with a stale scalar `type` (legacy string-ref encoding):
   // drop the constraint so the resolved reference object / sentinel validates.
+  //
+  // A presence test, not a shape test — deliberately, since `templating` sits
+  // BELOW the analyzer in the dependency order and cannot reach the shared
+  // `readRefSlot` accessor. Presence is the only thing this rule needs, and it
+  // is stable across every annotation shape.
   if (
-    typeof node[REF_ANNOTATION] === "string" &&
+    node[REF_ANNOTATION] !== undefined &&
     typeof node.type === "string" &&
     LEGACY_REF_SCALAR_TYPES.has(node.type)
   ) {

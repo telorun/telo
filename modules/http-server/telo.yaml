@@ -131,7 +131,9 @@ schema:
               Mcp.HttpEndpoint, …). Use a `!ref` to the resource by name; an
               `!ref <Alias>.<name>` reaches a mount exported by an imported
               library.
-            x-telo-ref: Telo.Mount
+            x-telo-ref:
+              kind: Telo.Mount
+              use: dependency
     contentTypeParsers:
       title: Content Type Parsers
       description: Custom parsers for specific content types.
@@ -153,9 +155,9 @@ schema:
             # Accept either capability: a controller may implement `invoke()`
             # (typical) or `run()` (e.g. a Run.Sequence dispatching to a parser
             # pipeline). The kernel calls whichever method exists.
-            anyOf:
-              - x-telo-ref: Telo.Invocable
-              - x-telo-ref: Telo.Runnable
+            x-telo-ref:
+              kind: Telo.Executable
+              use: trigger.inbound
             oneOf:
               - title: Parser Reference
                 description: String reference to an invocable parser.
@@ -274,9 +276,10 @@ schema:
           title: Invoke
           description: Resource invoked (or run) to generate not-found response data.
           # Accept either capability so dual-mode kinds like Run.Sequence fit.
-          anyOf:
-            - x-telo-ref: Telo.Invocable
-            - x-telo-ref: Telo.Runnable
+          x-telo-ref:
+            kind: Telo.Executable
+            use: trigger.inbound
+            inputs: /inputs
         inputs:
           title: Inputs
           type: "object"
@@ -399,9 +402,9 @@ schema:
             # whose controller also implements `invoke()`) is a real-world
             # consumer here — its `run()` and `invoke()` both produce the
             # response body, the kernel calls whichever is appropriate.
-            anyOf:
-              - x-telo-ref: Telo.Invocable
-              - x-telo-ref: Telo.Runnable
+            x-telo-ref:
+              kind: Telo.Executable
+              use: trigger.inbound
             x-telo-context:
               type: object
               properties:
@@ -490,7 +493,11 @@ schema:
                       encoder:
                         title: Encoder
                         description: Encoder ref (any kind extending Codec.Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
-                        x-telo-ref: Codec.Encoder
+                        x-telo-ref:
+                          kind: Codec.Encoder
+                          # The dispatcher awaits encoder.invoke({input}) inline —
+                          # the encoder's entry point, not a helper method.
+                          use: call
                       headers:
                         title: Headers
                         description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.

@@ -136,7 +136,10 @@ schema:
         present, each invoke() calls provider.provide() and forwards the
         returned sessionId; the client never handshakes. Omit for self-managed
         handshake mode.
-      x-telo-ref: Self.SessionProvider
+      x-telo-ref:
+        kind: Self.SessionProvider
+        # provide() is the provider's entry point, awaited on each invoke.
+        use: call
     clientInfo:
       title: Client Info
       description: Identity advertised to MCP servers during initialize. Used in self-handshake mode only.
@@ -239,7 +242,9 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …).
-      x-telo-ref: Self.Client
+      x-telo-ref:
+        kind: Self.Client
+        use: dependency
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -340,7 +345,9 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation.
-      x-telo-ref: Self.Client
+      x-telo-ref:
+        kind: Self.Client
+        use: dependency
 inputType:
   kind: Telo.JsonSchema
   schema:

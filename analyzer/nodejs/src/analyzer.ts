@@ -22,6 +22,7 @@ import {
   PERMISSIVE_CONTRACT,
   resolveContract,
 } from "./invocation-contract.js";
+import { buildCallGraph } from "./call-graph.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import {
   buildKernelGlobalsSchema,
@@ -42,6 +43,11 @@ import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
 import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
+import {
+  validateDynamicSelectors,
+  validateRefSlotDeclarations,
+  type RefSlotIssue,
+} from "./validate-ref-slots.js";
 import { resolveSchemaTypeRefs } from "./resolve-schema-type-refs.js";
 import { validateSchemaTypeRefs } from "./validate-schema-type-refs.js";
 import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
@@ -521,24 +527,76 @@ function buildStepContextSchema(
   return undefined;
 }
 
-/**
- * Capabilities whose instances structurally expose no `invoke`/`run` method, so
- * a step `invoke` of one always fails at runtime with ERR_RESOURCE_NOT_INVOKABLE
- * (kernel dispatch checks method presence, not capability — evaluation-context.ts).
- * `Telo.Service` is intentionally absent: some services are invocable (a function
- * handler dispatched directly, e.g. `Lambda.Function`), so it can't be rejected
- * statically without false positives. This is the sound subset of the runtime rule.
- */
 /** The built-in namespace: globally resolvable, crossing no import boundary. */
 const TELO_BUILTIN_MODULE = "Telo";
 
-const NON_INVOKABLE_CAPABILITIES = new Set([
-  "Telo.Provider",
+/** One mapping from a ref-slot issue to a diagnostic — the shape is identical
+ *  for the schema-level and the manifest-level (dynamic selector) checks. */
+function refSlotIssueDiagnostic(issue: RefSlotIssue): AnalysisDiagnostic {
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: issue.code,
+    source: SOURCE,
+    message: issue.message,
+    data: {
+      resource: { kind: issue.manifest.kind, name: issue.manifest.metadata?.name as string },
+      filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
+      path: issue.path,
+    },
+  };
+}
+
+/**
+ * Is this kind acceptable in a slot that transfers control?
+ *
+ * The executable side is a POSITIVE test against the `Telo.Executable`
+ * hierarchy: a capability that is, or `extends`, `Telo.Executable` is
+ * executable, so a future executable capability opts in with one `extends:`
+ * edge — no name list here to keep in step. This replaced
+ * `NON_INVOKABLE_CAPABILITIES`, a maintained set of capabilities the analyzer
+ * believed could never be invoked, which was unsound in the direction that
+ * rejects working manifests: it listed `Telo.Provider`, and `Ai.Model` is a
+ * Provider the agent controller invokes directly — the divergence being
+ * structural versus nominal, since the kernel tests method presence at dispatch
+ * while any static test can only read a declared capability.
+ *
+ * Outside the hierarchy nothing is guessed: `Telo.Provider` (entry points by
+ * convention) and `Telo.Service` (some services are invocable) pass, an unknown
+ * capability passes (rejecting it would be the wrong polarity for third-party
+ * extensions), and only the kernel-owned capabilities whose CONTRACT has no
+ * entry point — `Telo.Type`, `Telo.Mount`, `Telo.Template`, `Telo.Sink` (a sink
+ * is written to through a direct contract on the controller instance, never
+ * dispatched) — are rejected. That last set is the capabilities' own
+ * definition, not a belief about controllers.
+ */
+function isExecutableKind(kind: string, defs: DefinitionRegistry, aliases: AliasResolver): boolean {
+  const canonical = aliases.resolveKind(kind) ?? kind;
+  const def = defs.resolve(canonical);
+  if (!def) return true;
+  const capability = def.capability as string | undefined;
+  if (!capability) return true;
+  if (capabilityExtendsExecutable(capability, defs)) return true;
+  return !NO_ENTRY_POINT_CAPABILITIES.has(capability);
+}
+
+/** Does this capability name `Telo.Executable` or extend it, transitively?
+ *  Derived from the abstract hierarchy at call time, never from a name list. */
+function capabilityExtendsExecutable(capability: string, defs: DefinitionRegistry): boolean {
+  let current: string | undefined = capability;
+  const seen = new Set<string>();
+  while (current && !seen.has(current)) {
+    if (current === "Telo.Executable") return true;
+    seen.add(current);
+    current = defs.resolve(current)?.extends as string | undefined;
+  }
+  return false;
+}
+
+/** Kernel-owned capabilities whose contract declares no entry point. */
+const NO_ENTRY_POINT_CAPABILITIES = new Set([
   "Telo.Mount",
   "Telo.Type",
   "Telo.Template",
-  // A sink is written to through a direct contract on the controller instance,
-  // never dispatched — so invoking one is statically wrong.
   "Telo.Sink",
 ]);
 
@@ -557,9 +615,10 @@ const NON_INVOKABLE_CAPABILITIES = new Set([
  *     *kind* instead of an exported instance (`!ref Stream.Of`) — is a still-a-
  *     sentinel after Phase 2.5 resolution → `UNRESOLVED_REFERENCE` (runtime
  *     `ERR_RESOURCE_NOT_FOUND`).
- *   - Invokability: a resolved instance whose capability structurally has no
- *     invoke/run method (`NON_INVOKABLE_CAPABILITIES`) → `REFERENCE_KIND_MISMATCH`
- *     (runtime `ERR_RESOURCE_NOT_INVOKABLE`).
+ *   - Invokability: a resolved instance whose kind fails `isExecutableKind` —
+ *     outside the `Telo.Executable` hierarchy AND declaring a capability whose
+ *     contract has no entry point → `REFERENCE_KIND_MISMATCH` (runtime
+ *     `ERR_RESOURCE_NOT_INVOKABLE`).
  *
  * Generic and topology-driven — it walks steps via the same `x-telo-step-context`
  * / `x-telo-topology-role` annotations `buildStepContextSchema` uses (through the
@@ -656,15 +715,13 @@ function validateStepInvokeReferences(
     // Resolved `{kind, name}` (or an inline `{kind, …}` definition) — the
     // instance exists. Mirror the kernel's ERR_RESOURCE_NOT_INVOKABLE, which
     // fires when the instance has neither an `invoke` nor a `run` method
-    // (evaluation-context.ts). That is a per-instance property, not a pure
-    // capability, so only capabilities that STRUCTURALLY expose no such method
-    // are rejected statically — Service is intentionally excluded, since some
-    // services are invocable (e.g. a function handler dispatched directly).
+    // (evaluation-context.ts). That is a per-instance property, so the static
+    // test only rejects a kind whose declared capability names no entry point.
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
     const kind = (value as Record<string, unknown>).kind;
     if (typeof kind !== "string") return;
-    const capability = defs.resolve(aliases.resolveKind(kind) ?? kind)?.capability;
-    if (typeof capability === "string" && NON_INVOKABLE_CAPABILITIES.has(capability)) {
+    if (!isExecutableKind(kind, defs, aliases)) {
+      const capability = defs.resolve(aliases.resolveKind(kind) ?? kind)?.capability;
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
         code: "REFERENCE_KIND_MISMATCH",
@@ -1164,6 +1221,7 @@ export class StaticAnalyzer {
     // of alias choices. `capability` covers the legacy implements-this-abstract overload;
     // `extends` is the canonical first-class form.
     const refConstraintIssues: RefConstraintIssue[] = [];
+    const refSlotIssues: RefSlotIssue[] = [];
     for (const m of manifests) {
       if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
       const def = m as unknown as ResourceDefinition;
@@ -1180,10 +1238,37 @@ export class StaticAnalyzer {
       // still on the deprecated form — or with a constraint that no longer
       // resolves — is not the consumer's to fix, and every import would
       // otherwise flood `telo check` with unactionable noise.
-      if (!ownModule || rootModules.has(ownModule)) refConstraintIssues.push(...issues);
+      if (!ownModule || rootModules.has(ownModule)) {
+        refConstraintIssues.push(...issues);
+        refSlotIssues.push(...validateRefSlotDeclarations(m as unknown as ResourceManifest));
+      }
       const resolvedCapability = def.capability
         ? (scopeResolver.resolveKind(def.capability) ?? def.capability)
         : def.capability;
+      // `Telo.Executable` is a slot constraint — the x-telo-ref parent of
+      // Invocable and Runnable — and names no lifecycle role. The kernel
+      // rejects it at load; without this the analyzer would report "no issues"
+      // on a manifest that cannot boot.
+      if (
+        resolvedCapability === "Telo.Executable" &&
+        (!ownModule || rootModules.has(ownModule))
+      ) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "CAPABILITY_NOT_DECLARABLE",
+          source: SOURCE,
+          message:
+            `'${def.metadata?.name}' declares capability: Telo.Executable, which is an ` +
+            `x-telo-ref slot constraint (the parent Telo.Invocable and Telo.Runnable extend), ` +
+            `not a declarable lifecycle role. Declare 'Telo.Invocable' (invoke) or ` +
+            `'Telo.Runnable' (run) instead.`,
+          data: {
+            resource: { kind: m.kind, name: m.metadata?.name as string },
+            filePath: (m.metadata as { source?: string } | undefined)?.source,
+            path: "capability",
+          },
+        });
+      }
       const resolvedExtends = def.extends
         ? (scopeResolver.resolveKind(def.extends) ?? def.extends)
         : def.extends;
@@ -1253,6 +1338,10 @@ export class StaticAnalyzer {
         }
       }
       diagnostics.push(...validateReferenceForms(manifests, defs, aliases, aliasesByModule));
+      // The x-telo-ref annotation's own validity — the strict half of the
+      // accessor split; `readRefSlot` stays lenient so surfaces keep working
+      // mid-migration, and this reports what leniency would silently absorb.
+      for (const issue of refSlotIssues) diagnostics.push(refSlotIssueDiagnostic(issue));
     }
 
     // Phase 2: extract inline resources from x-telo-ref slots into first-class manifests
@@ -1263,6 +1352,36 @@ export class StaticAnalyzer {
     // kernel controllers) see a uniform shape. Runs after normalize so both
     // original and inline-extracted manifests have their sentinels resolved.
     resolveRefSentinels(allManifests, aliases, aliasesByModule, [], defs);
+
+    // ONE typed reference graph per analysis. Both graph consumers in this
+    // pass (the dynamic-selector check and run-reachability) read the same
+    // build — constructing it per consumer is strictly more work than the
+    // walks it replaced, and performance is a core goal. Lazy, so a
+    // skipValidation pass with no observed state builds nothing.
+    let callGraphMemo: ReturnType<typeof buildCallGraph> | undefined;
+    const getCallGraph = () =>
+      (callGraphMemo ??= buildCallGraph(allManifests as unknown as ResourceManifest[], defs, {
+        aliases,
+        aliasesByModule,
+      }));
+
+    // A `use` case map's selector written in CEL is a hard diagnostic — a call
+    // graph known only at runtime is not statically analyzable, and no fallback
+    // is conservative for every consumer. Scoped to the entry's own modules:
+    // a published dependency's manifest is not the consumer's to fix.
+    if (!options?.skipValidation) {
+      for (const issue of validateDynamicSelectors(
+        allManifests as unknown as ResourceManifest[],
+        defs,
+        aliases,
+        aliasesByModule,
+        getCallGraph(),
+      )) {
+        const ownModule = (issue.manifest.metadata as { module?: string } | undefined)?.module;
+        if (ownModule && !rootModules.has(ownModule)) continue;
+        diagnostics.push(refSlotIssueDiagnostic(issue));
+      }
+    }
 
     // Phase 2.6: register each named `Telo.Type` resource's schema under its
     // canonical module-scoped id (`telo://<module>/<name>`), validate
@@ -1427,7 +1546,7 @@ export class StaticAnalyzer {
     const observedState = buildObservedStateIndex(allManifests, defs, aliases, moduleScopes);
     const reportsObservedState = [...observedState.values()].some((r) => r.status);
     const runReachable = reportsObservedState
-      ? collectRunReachableNames(allManifests, defs, aliases)
+      ? collectRunReachableNames(getCallGraph())
       : new Set<string>();
 
     // Build typed kernel globals schema so x-telo-context chain validation

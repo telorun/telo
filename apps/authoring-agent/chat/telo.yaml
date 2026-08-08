@@ -512,13 +512,69 @@ system: |
   consumer does not need to import the abstract's library to read either half.
 
   A field in a definition's `schema:` that must hold a reference to another
-  resource carries `x-telo-ref: <Alias>.<Kind>` — an ALIAS-QUALIFIED KIND, the
-  same grammar as `kind:` and `extends:`. The prefix is an alias declared in
-  THIS file's own `imports:` map, `Self` for a kind in this same library, or
-  `Telo` for a built-in capability (`Telo.Invocable`, `Telo.Runnable`, …). So a
-  kind whose slot takes a store must import the module that declares it. Never
-  write the old identity form `"std/kv-store#Store"` — it is deprecated and
-  warns.
+  resource carries `x-telo-ref`, which states BOTH the accepted kind and what
+  this resource DOES with the target:
+
+      store:
+        x-telo-ref:
+          kind: KvStore.Store
+          use: dependency
+      invoke:
+        x-telo-ref:
+          kind: Telo.Executable
+          use: call
+          inputs: /inputs
+
+  `kind` is an ALIAS-QUALIFIED KIND — the same grammar as `kind:` and
+  `extends:`. The prefix is an alias declared in THIS file's own `imports:` map,
+  `Self` for a kind in this same library, or `Telo` for a built-in. Never write
+  the old identity form `"std/kv-store#Store"` — it is deprecated and warns. To
+  accept several kinds, give `kind` a LIST (`kind: [Telo.Runnable,
+  Telo.Service]`) — never an `anyOf` of separate `x-telo-ref` branches.
+
+  `use` says WHEN control reaches the target, relative to this resource's own
+  invocation. Pick the one that is true:
+    - `schema`           — names a shape only (a `Telo.Type` slot). No instance.
+    - `dependency`       — held and read; you call library methods on it
+                           (`connection.query()`, `encoder.encode()`). Control
+                           never transfers to its ENTRY POINT.
+    - `call`             — you dispatch its entry point during your invocation
+                           and it returns to you.
+    - `detached`         — you dispatch it through the kernel's detach primitive
+                           and do not await it.
+    - `trigger.inbound`  — you REGISTER it now; control reaches it later, driven
+                           by an inbound request or a timer (an HTTP route
+                           handler, a cron target).
+    - `trigger.consumer` — you register it; control reaches it when someone
+                           drains a value you returned. No guarantee either way.
+
+  The distinction that matters most: calling a METHOD on a held instance is
+  `dependency`; dispatching a BOUND ENTRY POINT (`invoke`/`provide`/`run` — what
+  the kernel dispatches, traces and contract-checks) is `call`. A domain method
+  is not dispatch no matter how much work it does: `connection.query()`,
+  `model.embed()`, `model.stream()` are all `dependency`, while an `Ai.Text`
+  model slot is `call` because the controller drives the bound `invoke()`.
+
+  `use` is a SET — write a list when one slot genuinely dispatches two ways in a
+  single invocation (`use: [call, detached]`). When the mode is chosen by a
+  sibling config field, write a case map whose selector must be a literal or a
+  schema default, never CEL:
+
+      use: { by: /detach, cases: { false: call, true: detached } }
+
+  `inputs` is an optional JSON Pointer naming the field that carries the call's
+  arguments. All pointers are relative to the object ENCLOSING the slot — the
+  resource root for a top-level slot, the array item for a slot inside one.
+
+  `Telo.Executable` is the built-in parent of `Telo.Invocable` and
+  `Telo.Runnable` — use it for any slot that accepts either. It is a SLOT
+  CONSTRAINT only: never write `capability: Telo.Executable` on a definition.
+  `Telo.Service` is NOT executable, so a slot that also accepts services writes
+  the list `[Telo.Runnable, Telo.Service]`.
+
+  Nothing cross-checks `use` against the target's capability, deliberately —
+  `Ai.Model` declares `capability: Telo.Provider` yet is genuinely `use: call`.
+  Declare what the controller actually does.
 
   A `!ref` inside a `Run.Sequence` `with:` block may name either a scope-local
   resource or one from the enclosing module; scope-local wins, exactly as CEL's
@@ -592,7 +648,7 @@ system: |
         type: object
         required: [client, q]
         properties:
-          client: { x-telo-ref: Http.Client }
+          client: { x-telo-ref: { kind: Http.Client, use: dependency } }
           q: { type: string }
       base:
         client: !cel "self.client"

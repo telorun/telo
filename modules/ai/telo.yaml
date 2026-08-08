@@ -42,9 +42,8 @@ metadata:
   name: Model
   description: >-
     A configured handle to a language model — credentials, model id and default
-    options — that completion and agent operations drive. It is held, not invoked:
-    whoever holds it asks for a buffered completion or a token stream, optionally
-    passing tools the model may call.
+    options — that completion and agent operations drive for buffered completions
+    or token streams, optionally passing tools the model may call.
 capability: Telo.Provider
 ---
 kind: Telo.Definition
@@ -120,7 +119,9 @@ schema:
     model:
       title: Model
       description: Reference to any Ai.Model implementation (Ai.OpenaiModel, Ai.AnthropicModel, Ai.OllamaModel, or a third-party provider).
-      x-telo-ref: Self.Model
+      x-telo-ref:
+        kind: Self.Model
+        use: call
     system:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
@@ -213,7 +214,13 @@ schema:
     model:
       title: Model
       description: Reference to any Ai.Model implementation.
-      x-telo-ref: Self.Model
+      x-telo-ref:
+        kind: Self.Model
+        # stream(...) is a convention method on the held model, not a bound
+        # entry point — unlike OnComplete.handler, whose handler.invoke() IS
+        # the entry point dispatched at drain time (trigger.consumer there).
+        # Nothing the kernel dispatches, traces or zone-tracks happens here.
+        use: dependency
     system:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
@@ -279,9 +286,9 @@ schema:
               Reference to any Telo.Invocable or Telo.Runnable to expose as a tool.
               A Run.Sequence (a Runnable with callable inputs/outputs) can wrap a
               multi-step pipeline as a single tool.
-            anyOf:
-              - x-telo-ref: Telo.Invocable
-              - x-telo-ref: Telo.Runnable
+            x-telo-ref:
+              kind: Telo.Executable
+              use: call
           name:
             title: Name
             description: Tool name the model sees. Defaults to the referenced resource name.
@@ -425,7 +432,9 @@ schema:
     model:
       title: Model
       description: Reference to any Ai.Model implementation.
-      x-telo-ref: Self.Model
+      x-telo-ref:
+        kind: Self.Model
+        use: call
     system:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
@@ -465,7 +474,12 @@ schema:
           provider:
             title: Provider
             description: Reference to any Ai.ToolProvider implementation.
-            x-telo-ref: Self.ToolProvider
+            x-telo-ref:
+              kind: Self.ToolProvider
+              # listTools/callTool are convention methods on a held provider,
+              # not bound entry points (invoke/provide/run) — the tool ITSELF
+              # is dispatched (Ai.Tools' tool slot carries the call edge).
+              use: dependency
           prefix:
             title: Prefix
             description: Namespaces this provider's tool names to avoid collisions.
@@ -570,7 +584,13 @@ schema:
     model:
       title: Model
       description: Reference to any Ai.Model implementation.
-      x-telo-ref: Self.Model
+      x-telo-ref:
+        kind: Self.Model
+        # stream(...) is a convention method on the held model, not a bound
+        # entry point — unlike OnComplete.handler, whose handler.invoke() IS
+        # the entry point dispatched at drain time (trigger.consumer there).
+        # Nothing the kernel dispatches, traces or zone-tracks happens here.
+        use: dependency
     system:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
@@ -610,7 +630,12 @@ schema:
           provider:
             title: Provider
             description: Reference to any Ai.ToolProvider implementation.
-            x-telo-ref: Self.ToolProvider
+            x-telo-ref:
+              kind: Self.ToolProvider
+              # listTools/callTool are convention methods on a held provider,
+              # not bound entry points (invoke/provide/run) — the tool ITSELF
+              # is dispatched (Ai.Tools' tool slot carries the call edge).
+              use: dependency
           prefix:
             title: Prefix
             description: Namespaces this provider's tool names to avoid collisions.

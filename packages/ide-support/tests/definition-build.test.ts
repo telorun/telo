@@ -314,6 +314,28 @@ describe("buildDefinition", () => {
     expect(def?.range.start.line).toBe(11); // `  name: Thing`
   });
 
+  it("resolves the kind inside a structured x-telo-ref annotation", () => {
+    const { appSrc, appText, storeSrc, graph } = twoModuleGraph();
+    const text = [
+      appText,
+      "---",
+      "kind: Telo.Definition",
+      "metadata:",
+      "  name: Wrapper",
+      "schema:",
+      "  properties:",
+      "    target:",
+      "      x-telo-ref:",
+      "        kind: Store.Thing",
+      "        use: dependency",
+    ].join("\n");
+
+    const pos = at(text, "Thing", 1); // the kind NAME inside the structured form
+    const def = buildDefinition(text, pos.line, pos.character, graph, appSrc);
+    expect(def?.uri).toBe(storeSrc);
+    expect(def?.range.start.line).toBe(11); // `  name: Thing`
+  });
+
   it("ignores extends outside a definition doc's top level", () => {
     const { appSrc, appText, graph } = twoModuleGraph();
     // A data field that happens to be named `extends` is not a kind slot.

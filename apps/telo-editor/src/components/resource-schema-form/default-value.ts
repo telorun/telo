@@ -1,5 +1,10 @@
 import { inferType } from "./field-control";
-import { resolveRefCandidates, toRefValue, type RefResolver } from "./ref-candidates";
+import {
+  collectRefTargets,
+  resolveRefCandidates,
+  toRefValue,
+  type RefResolver,
+} from "./ref-candidates";
 import type { JsonSchemaProperty, ResolvedResourceOption } from "./types";
 
 /** Editor-coupled default-value builder. Aware of `x-telo-ref` resolution
@@ -12,9 +17,12 @@ export function buildEditorDefaultValue(
 ): unknown {
   if (prop.default !== undefined) return prop.default;
 
-  const refTarget = prop["x-telo-ref"];
-  if (typeof refTarget === "string") {
-    const options = resolveRefCandidates([refTarget], resolvedResources, registry);
+  // Every accepted kind, not just a directly-annotated one: a slot whose ref
+  // sits in an `anyOf` branch renders as a picker, so it must seed a default
+  // ref too or the widget opens on a value its own control cannot produce.
+  const refTargets = collectRefTargets(prop);
+  if (refTargets.length > 0) {
+    const options = resolveRefCandidates(refTargets, resolvedResources, registry);
     if (options.length === 0) return undefined;
     return toRefValue(options[0]);
   }

@@ -58,11 +58,15 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: Self.Connection
+      x-telo-ref:
+        kind: Self.Connection
+        use: dependency
     transaction:
       title: Transaction
       description: Reference to the SQL transaction resource.
-      x-telo-ref: Self.Transaction
+      x-telo-ref:
+        kind: Self.Transaction
+        use: dependency
     inputs:
       title: Inputs
       description: Query parameters supplied at invocation time.
@@ -132,11 +136,15 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: Self.Connection
+      x-telo-ref:
+        kind: Self.Connection
+        use: dependency
     transaction:
       title: Transaction
       description: Reference to the SQL transaction resource.
-      x-telo-ref: Self.Transaction
+      x-telo-ref:
+        kind: Self.Transaction
+        use: dependency
     inputs:
       title: Inputs
       description: Statement parameters supplied at invocation time.
@@ -205,15 +213,28 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: Self.Connection
+      x-telo-ref:
+        kind: Self.Connection
+        use: dependency
     steps:
       title: Steps
       description: Invocable resource executed inside the transaction.
-      x-telo-ref: Telo.Invocable
-    bindings:
-      title: Bindings
+      x-telo-ref:
+        kind: Telo.Invocable
+        use: call
+        inputs: /inputs
+    inputs:
+      title: Inputs
       type: object
-      description: Forwarded to the steps resource at invoke time; may contain CEL template expressions
+      additionalProperties: true
+      description: >-
+        Inputs forwarded to the steps resource at invoke time. CEL here reads the
+        caller's invocation input as `inputs.<field>` — the same variable a
+        Run.Sequence step's inputs read.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
 ---
 kind: Telo.Definition
 metadata:
@@ -242,11 +263,15 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: Self.Connection
+      x-telo-ref:
+        kind: Self.Connection
+        use: dependency
     transaction:
       title: Transaction
       description: Reference to the SQL transaction resource.
-      x-telo-ref: Self.Transaction
+      x-telo-ref:
+        kind: Self.Transaction
+        use: dependency
     from:
       title: From
       description: Table name to select from.
@@ -340,11 +365,15 @@ schema:
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for invocation inputs.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for invocation outputs.
-      x-telo-ref: Telo.Type
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
 ---
 kind: Telo.Definition
 metadata:
@@ -420,7 +449,9 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref: Self.Connection
+      x-telo-ref:
+        kind: Self.Connection
+        use: dependency
     migrations:
       title: Migrations
       description: >-
