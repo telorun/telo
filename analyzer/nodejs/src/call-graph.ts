@@ -38,10 +38,15 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import type { ResourceManifest } from "@telorun/sdk";
+import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import {
+  enclosingOf,
+  propertySchemas,
+  resolveLocalRef,
+} from "./manifest-navigation.js";
 import { visitManifest } from "./manifest-visitor.js";
 import {
   possibleUses,
@@ -193,42 +198,6 @@ function navigatePointer(enclosing: unknown, pointer: string): unknown {
   return current;
 }
 
-/** The object enclosing a concrete site — its path with the last segment
- *  dropped. `routes[2].handler` → the value at `routes[2]`. A slot that IS an
- *  array element (`targets[0]`) has no enclosing object: its siblings are other
- *  elements, and a pointer must not cross the array boundary — returning the
- *  root here would silently do exactly that. */
-function enclosingOf(root: unknown, concretePath: string): unknown {
-  const lastDot = concretePath.lastIndexOf(".");
-  const lastSegment = concretePath.slice(lastDot + 1);
-  if (lastSegment.includes("[")) return undefined;
-  if (lastDot < 0) return root;
-  return navigateConcrete(root, concretePath.slice(0, lastDot));
-}
-
-/** Navigate a concrete dotted path (`routes[2].handler`, `content.a/b.encoder`). */
-function navigateConcrete(root: unknown, path: string): unknown {
-  let current: unknown = root;
-  for (const rawSegment of path.split(".")) {
-    if (current == null || typeof current !== "object") return undefined;
-    let segment = rawSegment;
-    const indices: number[] = [];
-    const bracket = segment.indexOf("[");
-    if (bracket >= 0) {
-      for (const m of segment.slice(bracket).matchAll(/\[(\d+)\]/g)) {
-        indices.push(Number(m[1]));
-      }
-      segment = segment.slice(0, bracket);
-    }
-    if (segment) current = (current as Record<string, unknown>)[segment];
-    for (const index of indices) {
-      if (!Array.isArray(current)) return undefined;
-      current = current[index];
-    }
-  }
-  return current;
-}
-
 type SchemaDefault = (pointer: string) => unknown;
 
 const NO_DEFAULT: SchemaDefault = () => undefined;
@@ -327,40 +296,6 @@ function resolveUseAtSite(
 function stepContextOf(schema: Record<string, any> | undefined): Record<string, any> | undefined {
   const annotation = schema?.["x-telo-step-context"];
   return annotation && typeof annotation === "object" ? annotation : undefined;
-}
-
-/** Resolve a local `#/$defs/<name>` ref against the root schema. */
-function resolveLocalRef(
-  schema: Record<string, any> | undefined,
-  root: Record<string, any>,
-): Record<string, any> | undefined {
-  if (!schema) return undefined;
-  const ref = schema.$ref;
-  if (typeof ref === "string" && ref.startsWith("#/$defs/")) {
-    const resolved = root.$defs?.[ref.slice("#/$defs/".length)];
-    if (resolved && typeof resolved === "object") return resolved as Record<string, any>;
-  }
-  return schema;
-}
-
-/** Property schemas of a possibly variant-bearing object schema. */
-function propertySchemas(schema: Record<string, any>): Array<[string, Record<string, any>]> {
-  const out: Array<[string, Record<string, any>]> = [];
-  if (schema.properties && typeof schema.properties === "object") {
-    for (const [k, v] of Object.entries(schema.properties)) out.push([k, v as Record<string, any>]);
-  }
-  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
-    const variants = schema[key];
-    if (!Array.isArray(variants)) continue;
-    for (const variant of variants) {
-      if (variant?.properties && typeof variant.properties === "object") {
-        for (const [k, v] of Object.entries(variant.properties)) {
-          out.push([k, v as Record<string, any>]);
-        }
-      }
-    }
-  }
-  return out;
 }
 
 /** A resolved plain reference value (`{kind, name}`, optionally `alias`) — the
@@ -566,6 +501,26 @@ export function buildCallGraph(
   const stepsByOwner = new Map<string, StepGraphNode[]>();
   const stepEdgesByPath = new Map<string, CallGraphEdge>();
 
+  /**
+   * A resource's definition, resolved in the scope of the module that DECLARED
+   * it. A manifest carries the kind as AUTHORED (`Run.Sequence`), while the
+   * registry is keyed canonically (`run.Sequence`), so a raw lookup misses for
+   * every alias-form kind — which is every kind in a real manifest. That miss
+   * is silent and costly: step collection would find no step list (so a step's
+   * declared `use` never reaches its edge, and the site degrades to an untyped
+   * value-tree edge), and a case map's selector would find no schema `default`
+   * (so a slot resolved by an omitted field reads as unresolved). Same scope
+   * selection as `expandedFieldMapForResource`.
+   */
+  const definitionFor = (manifest: ResourceManifest): ResourceDefinition | undefined => {
+    const direct = registry.resolve(manifest.kind as string);
+    if (direct) return direct;
+    const module = (manifest.metadata as { module?: string } | undefined)?.module;
+    const scope = (module ? options.aliasesByModule?.get(module) : undefined) ?? options.aliases;
+    const canonical = scope?.resolveKind(manifest.kind as string);
+    return canonical ? registry.resolve(canonical) : undefined;
+  };
+
   for (const manifest of resources) {
     const name = manifest.metadata?.name;
     if (!name || !manifest.kind || SYSTEM_KINDS.has(manifest.kind)) continue;
@@ -585,7 +540,7 @@ export function buildCallGraph(
     node: ResourceGraphNode,
     resolveName: (name: string) => ResourceGraphNode | undefined,
   ): void => {
-    const definition = registry.resolve(node.kind);
+    const definition = definitionFor(node.manifest);
     const schema = definition?.schema as Record<string, any> | undefined;
     if (!schema) return;
     const collected: StepGraphNode[] = [];
@@ -686,7 +641,7 @@ export function buildCallGraph(
           // The scoped resource's own ref slots, from its kind's field map.
           const fieldMap = fieldMapFor(scopedNode.manifest);
           if (fieldMap) {
-            const definition = registry.resolve(scopedNode.kind);
+            const definition = definitionFor(scopedNode.manifest);
             const rootSchema = definition?.schema as Record<string, any> | undefined;
             for (const [fieldPath, entry] of fieldMap) {
               if (!isRefEntry(entry)) continue;
@@ -745,7 +700,7 @@ export function buildCallGraph(
         const targetName = refTargetName(event.value);
         if (targetName === undefined) return;
 
-        const definition = registry.resolve(event.source.kind);
+        const definition = definitionFor(event.source);
         const rootSchema = definition?.schema as Record<string, any> | undefined;
         const schemaDefault =
           !event.nested && rootSchema

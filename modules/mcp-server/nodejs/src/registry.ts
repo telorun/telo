@@ -105,11 +105,14 @@ export function buildServer(opts: BuildOptions): Server {
 
     let handlerResult: unknown;
     try {
+      // rootContext: an inbound registrant dispatches with a context inheriting
+      // nothing ambient (kernel/specs/execution-zones.md §7), never `undefined`.
       handlerResult = await opts.ctx.invokeResolved(
         tool.handlerKind,
         tool.handlerName,
         tool.handler,
         { ...inputs, inputs },
+        opts.ctx.rootContext(),
       );
     } catch (err) {
       if (!isInvokeError(err)) throw err;

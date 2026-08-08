@@ -1,0 +1,50 @@
+# A library exports a sequence whose requirement correlates on a connection it
+# keeps internal. Reached through `billingTx` the requirement is satisfied — but
+# the EXPORT of `billingWrites` carries it open, as a contract importers must
+# satisfy, and it correlates on `billingDb`, which no importer can reference.
+#
+# Unsatisfiable by construction, so it errors here, at the library's own check.
+# An importer derives the same set (it needs it) but never reports this against
+# a file it does not own. The fixes: export `billingDb` too (importers wrap the
+# sequence in their own transaction on it), or export a runnable that goes
+# through `billingTx` instead of the raw sequence.
+kind: Telo.Library
+metadata:
+  name: Billing
+  version: 1.0.0
+  description: >-
+    Test fixture for the export-side zone contract: a library exporting a
+    sequence whose open requirement correlates on an unexported connection.
+imports:
+  Sql: ../../../
+  SqlSqlite: ../../../../sql-sqlite
+  Run: ../../../../run
+exports:
+  resources:
+    - billingWrites # billingDb and billingTx stay internal
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: billingDb
+file: ":memory:"
+---
+kind: Sql.Transaction
+metadata:
+  name: billingTx
+connection: !ref billingDb
+steps: !ref billingWrites
+---
+kind: Run.Sequence
+metadata:
+  name: billingWrites
+steps:
+  - name: charge
+    invoke: !ref charge
+---
+kind: Sql.Command
+metadata:
+  name: charge
+connection: !ref billingDb
+transaction: !ref billingTx
+inputs:
+  sql: "UPDATE accounts SET balance = balance - 1 WHERE id = 1"

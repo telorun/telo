@@ -7,12 +7,13 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 - **Two backends, one shape** — `SqlPostgres.Connection` (pg + Kysely) and `SqlSqlite.Connection` (Node SQLite) implement the same `Sql.Connection` abstract, so every other kind references a connection driver-agnostically.
 - **Safe inline values** — write bound parameters directly in SQL with the `!sql` tag (`WHERE id = ${{ x }}`); each interpolation is bound, never spliced — dialect-neutral and injection-safe.
 - **Raw and structured** — `Sql.Query` / `Sql.Command` for hand-written SQL; `Sql.Selection` for declarative SELECTs as data.
-- **Implicit transactions** — `Sql.Transaction` propagates the active transaction through `AsyncLocalStorage`; nested invocations pick it up automatically.
+- **Implicit transactions, checked statically** — `Sql.Transaction` opens an execution zone around its body; every statement reached through it joins automatically, per connection. A statement that names a `transaction:` declares a *requirement*, and `telo check` reports a path that reaches it outside one — see [Transactions](docs/transactions.md).
 - **Idempotent migrations** — `Sql.Migrations` applies its keyed migration entries in lexicographic key order and tracks applied versions in a metadata table.
 - **Tunable pooling** — each backend exposes its own connection and pool settings; see [`sql-postgres`](../sql-postgres/README.md).
 
 ## Docs
 
+- [Transactions](docs/transactions.md) — how membership works (ambient, per connection), what `transaction:` actually declares, and what `telo check` reports.
 - [Writing a SQL backend](docs/writing-a-backend.md) — what a backend owes in any language: the kind, the connection behaviours, the dialect, the lifecycle.
 - [Node backends](docs/nodejs-backend.md) — the `@telorun/sql` helper library (`SqlConnection` / `SqlDialect` / `SqlConnectionBase`) for backends written in TypeScript.
 
@@ -26,7 +27,7 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 | `Sql.Query` | SQL returning rows plus row count; inline `!sql` binding or `bindings` escape hatch. |
 | `Sql.Command` | Same shape as `Sql.Query` for statements that do not return rows. |
 | `Sql.Selection` | Declarative SELECT builder — columns, filters, ordering, pagination, grouping. |
-| `Sql.Transaction` | Wraps an invocable in a database transaction; nested transactions are flattened. |
+| `Sql.Transaction` | Wraps an executable in a database transaction; a nested transaction on the same connection joins the enclosing one. |
 | `Sql.Migrations` | Boot-time runner holding a keyed `migrations` map; applies pending entries in key order. |
 | `Sql.Migration` | **Deprecated** — standalone migration entry, discovered and merged by `Sql.Migrations`. Prefer the inline map. |
 

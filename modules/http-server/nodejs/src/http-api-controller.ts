@@ -174,7 +174,10 @@ export class HttpServerApi implements ResourceInstance {
         // Open a request span rooting this request's own trace: the handler (and
         // its nested invokes) nest under it, and it's labelled with the route so
         // the trace shows the actual method+path, attributed to this Http.Api.
-        const span = await this.ctx.openSpan(cancellation.context, {
+        // rootContext: an inbound registrant dispatches with a context that
+        // inherits nothing ambient — no zones, no trace parent, no caller token
+        // (the conformance obligation in kernel/specs/execution-zones.md §7).
+        const span = await this.ctx.openSpan(this.ctx.rootContext({ cancellation }), {
           ref: { kind: "Http.Api", name: this.apiName },
           label: `${route.request.method} ${route.request.path}`,
           attributes: { method: route.request.method, path: route.request.path },

@@ -67,6 +67,10 @@ schema:
       x-telo-ref:
         kind: Self.Transaction
         use: dependency
+      x-telo-requires-zone:
+        zone: Self.Transaction
+        key: [/connection, /transaction/connection]
+        reason: the query would execute outside any transaction
     inputs:
       title: Inputs
       description: Query parameters supplied at invocation time.
@@ -145,6 +149,10 @@ schema:
       x-telo-ref:
         kind: Self.Transaction
         use: dependency
+      x-telo-requires-zone:
+        zone: Self.Transaction
+        key: [/connection, /transaction/connection]
+        reason: the statement would execute outside any transaction
     inputs:
       title: Inputs
       description: Statement parameters supplied at invocation time.
@@ -218,11 +226,15 @@ schema:
         use: dependency
     steps:
       title: Steps
-      description: Invocable resource executed inside the transaction.
+      description: Resource executed inside the transaction.
       x-telo-ref:
-        kind: Telo.Invocable
+        # Telo.Executable, not Telo.Invocable: a Run.Sequence body is the whole
+        # point, and the direct-statement shape the narrower constraint allowed
+        # is an init-order cycle against the statement's own `transaction:` ref.
+        kind: Telo.Executable
         use: call
         inputs: /inputs
+      x-telo-provides-zone: /connection
     inputs:
       title: Inputs
       type: object
@@ -272,6 +284,10 @@ schema:
       x-telo-ref:
         kind: Self.Transaction
         use: dependency
+      x-telo-requires-zone:
+        zone: Self.Transaction
+        key: [/connection, /transaction/connection]
+        reason: the selection would execute outside any transaction
     from:
       title: From
       description: Table name to select from.

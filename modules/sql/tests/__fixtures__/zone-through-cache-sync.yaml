@@ -1,0 +1,62 @@
+# A bound statement reached THROUGH a Cache.View that takes the default
+# `revalidate: sync`. Under that setting the controller never detaches, so the
+# case map resolves this instance's `invoke:` slot to a plain `call`: the
+# requirement travels through and the enclosing transaction discharges it.
+#
+# This is the case that forced `Cache.View.invoke` to be re-annotated. Its old
+# unconditional `use: [call, detached]` was a property of the SLOT, not of this
+# instance, and reading it as "may detach" would have flagged every working
+# cached transactional call in the ecosystem.
+kind: Telo.Application
+metadata:
+  name: ZoneThroughCacheSync
+  version: 1.0.0
+imports:
+  Sql: ../../
+  SqlSqlite: ../../../sql-sqlite
+  Cache: ../../../cache
+  CacheMemory: ../../../cache-memory
+  Run: ../../../run
+targets:
+  - !ref accountTx
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: appDb
+file: ":memory:"
+---
+kind: CacheMemory.Store
+metadata:
+  name: store
+---
+kind: Sql.Transaction
+metadata:
+  name: accountTx
+connection: !ref appDb
+steps: !ref body
+---
+kind: Run.Sequence
+metadata:
+  name: body
+steps:
+  - name: cached
+    invoke: !ref cachedRead
+    inputs:
+      key: accounts
+---
+# `revalidate:` omitted, so the schema default `sync` applies — resolved
+# statically, exactly as the runtime would.
+kind: Cache.View
+metadata:
+  name: cachedRead
+store: !ref store
+invoke: !ref readAccounts
+ttl: 30s
+---
+kind: Sql.Query
+metadata:
+  name: readAccounts
+connection: !ref appDb
+transaction: !ref accountTx
+inputs:
+  sql: "SELECT email FROM accounts"

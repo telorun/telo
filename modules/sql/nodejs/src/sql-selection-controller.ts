@@ -1,4 +1,4 @@
-import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { SqlConnection, SqlDialect } from "./sql-connection.js";
 import { resolveSqlConnection } from "./sql-connection-ref.js";
 import type { SqlResult } from "./sql-query-controller.js";
@@ -82,7 +82,7 @@ class SqlSelectionResource implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(input: unknown): Promise<SqlResult> {
+  async invoke(input: unknown, invokeCtx?: InvokeContext): Promise<SqlResult> {
     const m = this.manifest;
     const ctx = this.ctx;
     const inputs = {
@@ -103,8 +103,11 @@ class SqlSelectionResource implements ResourceInstance {
       throw new Error("Sql.Selection: either 'connection' or 'transaction' must be set");
     }
 
+    // ERR_ZONE_REQUIRED when no sql.Transaction zone is open on THIS selection's
+    // connection — a transaction on another connection no longer answers.
+    const zone = m.transaction ? ctx.requireZone("transaction", invokeCtx) : undefined;
     const { sql, params } = buildSelect(m, where, having, limit, offset, connection.dialect);
-    const result = await connection.execute<Record<string, unknown>>(sql, params, m.transaction);
+    const result = await connection.execute<Record<string, unknown>>(sql, params, zone, invokeCtx);
     return { rows: result.rows, rowCount: result.rows.length };
   }
 }

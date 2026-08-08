@@ -77,7 +77,9 @@ export class ScheduleRunner {
         this.ctx,
         () => this.label,
       );
-      await dispatch(inputs);
+      // rootContext: a timer-driven inbound dispatch starts from a context
+      // inheriting nothing ambient (kernel/specs/execution-zones.md §7).
+      await dispatch(inputs, this.ctx.rootContext());
     } catch (err) {
       this.ctx.log.log(SEVERITY.error, `${this.label}: tick failed`, {
         error: err instanceof Error ? err.message : String(err),

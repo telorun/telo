@@ -582,6 +582,73 @@ system: |
   a `with:` block may reference each other — a listener and the step that waits on
   it, for instance.
 
+  ## Execution zones — "this must run inside that"
+
+  Some resources only make sense inside another resource's body: a SQL statement
+  bound to a transaction, a durable step that can park. Two annotations sit
+  beside a slot's `x-telo-ref` and say so, and `telo check` then reports a path
+  that reaches the resource outside one BEFORE it ever executes.
+
+  A zone is identified by the kind that PROVIDES it — no new kind, nothing
+  instantiated. The provider never names a zone (the zone it provides IS its own
+  kind); only the requirer names one, in the same alias-qualified grammar:
+
+      # provider — dispatching through `steps` opens this kind's zone
+      steps:
+        x-telo-ref: { kind: Telo.Executable, use: call }
+        x-telo-provides-zone: /connection   # ← the CORRELATION KEY, not the zone
+
+      # requirer — must be reached through such a zone
+      transaction:
+        x-telo-ref: { kind: Self.Transaction, use: dependency }
+        x-telo-requires-zone:
+          zone: Self.Transaction
+          key: [/connection, /transaction/connection]
+          reason: the statement would execute outside any transaction
+
+  Note the requirer's slot is `use: dependency` — control never transfers
+  through it. What it carries is the requirement.
+
+  `x-telo-provides-zone` takes `true` (uncorrelated) or a self-relative JSON
+  pointer to the field whose resolved reference the zone carries as its
+  correlation payload. `x-telo-requires-zone` takes a bare kind name
+  (uncorrelated) or an object with `zone`, an optional `key` (ONE pointer or an
+  ORDERED LIST tried in order, first hit winning — the correlated field is often
+  optional, so a single pointer would resolve to nothing in the common shape; a
+  pointer may traverse a `!ref` into a kind the declaring module owns), and an
+  optional `reason` quoted in diagnostics.
+
+  What the checker does with it follows entirely from `use`: a requirement
+  propagates up `call` edges and is discharged by a providing slot whose
+  correlation matches; it ERRORS at `detached` and `trigger.inbound` (the
+  runtime guarantees those a fresh context), at a `use` SET containing either of
+  those (the controller really does detach on some dispatch), and at an
+  Application's `targets:` (nothing encloses boot); it WARNS only where the
+  target genuinely might still be in a zone — a `trigger.consumer` edge, an
+  unresolvable case-map selector, an undeclared `use`. Diagnostics:
+  ZONE_REQUIREMENT_UNSATISFIED, ZONE_REQUIREMENT_DEFERRED,
+  ZONE_EXPORT_UNSATISFIABLE, ZONE_PROVIDER_UNRESOLVED, ZONE_ANNOTATION_INVALID.
+
+  When you AUTHOR a manifest using such kinds:
+    - Wire a transaction's `steps:` at a `Run.Sequence` (or any Telo.Executable),
+      never directly at a statement that names that same transaction — both are
+      injection sites, so that shape is an init-order cycle.
+    - A statement with NO `transaction:` still joins an open transaction on its
+      connection ambiently. Declare `transaction:` only to ASSERT that one must
+      be open.
+    - Keep the statement and the transaction on the SAME connection; correlation
+      is per connection, and a mismatch is a hard error.
+    - Do not wrap a statement that declares `transaction:` in a decorator that
+      detaches (a `Cache.View` with `revalidate: background`): the detached
+      dispatch runs outside the transaction and throws.
+
+  When you AUTHOR a zone-bearing kind, the controller half names its own
+  ANNOTATION SITE, never a kind — `ctx.withZone("steps", (zoneCtx, entry) => …)`
+  to provide, `ctx.requireZone("transaction")` to require. The kernel derives the
+  zone kind and correlation key from the annotation, so the two halves cannot
+  disagree. Provider-private state (an open executor) goes on an instance both
+  sides hold by reference, never at module scope.
+
   ## Authenticating outbound HTTP
 
   Never wire an `Authorization` header by hand, and never build a "request

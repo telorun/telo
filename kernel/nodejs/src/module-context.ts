@@ -1,4 +1,4 @@
-import { executeInvokeStep, getRefIdentity, RuntimeError } from "@telorun/sdk";
+import { deriveContext, executeInvokeStep, getRefIdentity, RuntimeError } from "@telorun/sdk";
 import type { ScopeConfig } from "./logging/scope-config.js";
 import type {
   BootTarget,
@@ -585,12 +585,11 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       );
     const targetCtx: InvokeContext | undefined =
       tracing && ctx
-        ? {
-            cancellation: ctx.cancellation,
+        ? deriveContext(ctx, {
             invocationId: appSpanId,
             parentInvocationId: undefined,
             traceId: appTraceId,
-          }
+          })
         : ctx;
 
     const steps: Record<string, unknown> = {};

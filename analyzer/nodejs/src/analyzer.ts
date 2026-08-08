@@ -43,6 +43,8 @@ import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
 import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
+import { runZoneAnalysis, type ZoneExportCache } from "./resolve-zone-requirements.js";
+import { validateZoneSlotDeclarations, type ZoneSlotIssue } from "./validate-zone-slots.js";
 import {
   validateDynamicSelectors,
   validateRefSlotDeclarations,
@@ -1043,6 +1045,7 @@ export class StaticAnalyzer {
     manifests: ResourceManifest[],
     options?: AnalysisOptions,
     registry?: AnalysisRegistry,
+    zoneExportCache?: ZoneExportCache,
   ): AnalysisDiagnostic[] {
     assertManifestPositions(manifests);
     const diagnostics: AnalysisDiagnostic[] = [];
@@ -1222,6 +1225,7 @@ export class StaticAnalyzer {
     // `extends` is the canonical first-class form.
     const refConstraintIssues: RefConstraintIssue[] = [];
     const refSlotIssues: RefSlotIssue[] = [];
+    const zoneSlotIssues: ZoneSlotIssue[] = [];
     for (const m of manifests) {
       if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
       const def = m as unknown as ResourceDefinition;
@@ -1241,6 +1245,7 @@ export class StaticAnalyzer {
       if (!ownModule || rootModules.has(ownModule)) {
         refConstraintIssues.push(...issues);
         refSlotIssues.push(...validateRefSlotDeclarations(m as unknown as ResourceManifest));
+        zoneSlotIssues.push(...validateZoneSlotDeclarations(m as unknown as ResourceManifest));
       }
       const resolvedCapability = def.capability
         ? (scopeResolver.resolveKind(def.capability) ?? def.capability)
@@ -1298,6 +1303,24 @@ export class StaticAnalyzer {
         };
         const filePath = (issue.manifest.metadata as { source?: string } | undefined)?.source;
         const data = { resource, filePath, path: issue.path };
+        if (issue.annotation === "zone") {
+          // Mirrors X_TELO_REF_UNRESOLVED: an unresolvable provider kind would
+          // leave the requirement silently unenforced — no provider ever
+          // matches a kind that does not exist.
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "ZONE_PROVIDER_UNRESOLVED",
+            source: SOURCE,
+            message:
+              `x-telo-requires-zone '${issue.ref}' at '${issue.path}' names no kind. The prefix ` +
+              `must be an import alias declared in this file's 'imports:' map, 'Self' for a kind ` +
+              `in this library, or 'Telo' for a built-in. An unresolvable zone would leave the ` +
+              `requirement silently unenforced. Known aliases: ` +
+              `${issue.knownAliases?.join(", ") || "(none)"}.`,
+            data,
+          });
+          continue;
+        }
         if (issue.reason === "legacy") {
           diagnostics.push({
             severity: DiagnosticSeverity.Warning,
@@ -1342,6 +1365,26 @@ export class StaticAnalyzer {
       // accessor split; `readRefSlot` stays lenient so surfaces keep working
       // mid-migration, and this reports what leniency would silently absorb.
       for (const issue of refSlotIssues) diagnostics.push(refSlotIssueDiagnostic(issue));
+      // Same split for the two zone annotations. Unreadable ones fail in
+      // OPPOSITE directions — a dropped requirement is silently unenforced, a
+      // dropped provision invents failures — so neither can be left to
+      // leniency.
+      for (const issue of zoneSlotIssues) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: issue.code,
+          source: SOURCE,
+          message: issue.message,
+          data: {
+            resource: {
+              kind: issue.manifest.kind,
+              name: issue.manifest.metadata?.name as string,
+            },
+            filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
+            path: issue.path,
+          },
+        });
+      }
     }
 
     // Phase 2: extract inline resources from x-telo-ref slots into first-class manifests
@@ -1381,6 +1424,25 @@ export class StaticAnalyzer {
         if (ownModule && !rootModules.has(ownModule)) continue;
         diagnostics.push(refSlotIssueDiagnostic(issue));
       }
+
+      // Zone requirements — a projection over the same graph: propagate along
+      // `call` edges, discharge at providing slots under correlation, fire at
+      // terminating edges and boot. Imported libraries' export contracts are
+      // derived over their full documents (options.moduleDocuments — the
+      // flattened view no longer holds their internal dispatch chains), cached
+      // per library in the host-lifetime `zoneExportCache`.
+      diagnostics.push(
+        ...runZoneAnalysis({
+          manifests: allManifests as unknown as ResourceManifest[],
+          graph: getCallGraph(),
+          defs,
+          aliases,
+          aliasesByModule,
+          rootModules,
+          moduleDocuments: options?.moduleDocuments,
+          cache: zoneExportCache,
+        }),
+      );
     }
 
     // Phase 2.6: register each named `Telo.Type` resource's schema under its
@@ -2277,8 +2339,9 @@ export class StaticAnalyzer {
     manifests: ResourceManifest[],
     options?: AnalysisOptions,
     registry?: AnalysisRegistry,
+    zoneExportCache?: ZoneExportCache,
   ): AnalysisDiagnostic[] {
-    return this.analyze(manifests, options, registry).filter(
+    return this.analyze(manifests, options, registry, zoneExportCache).filter(
       (d) => d.severity === DiagnosticSeverity.Error,
     );
   }

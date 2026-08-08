@@ -1,11 +1,13 @@
 import {
   AnalysisRegistry,
   StaticAnalyzer,
+  collectZoneModuleDocuments,
   flattenForAnalyzer,
   importResolutionDiagnostics,
   type DocumentPosition,
   type LoadedGraph,
   type ManifestSource,
+  type ZoneExportCache,
 } from "@telorun/analyzer";
 import { compromisedFiles, normalizeDiagnostic, type NormalizedDiagnostic } from "@telorun/ide-support";
 import { isWorkspaceModule } from "./loader";
@@ -118,13 +120,24 @@ function analyzeClosure(
   app: Workspace,
   graph: LoadedGraph,
   acc: MergeAccumulators,
+  zoneExportCache?: ZoneExportCache,
 ): void {
   const manifests = flattenForAnalyzer(graph);
   const positions = buildPositionMap(graph);
 
   const analyzer = new StaticAnalyzer();
   const registry = new AnalysisRegistry();
-  const diagnostics = analyzer.analyze(manifests, undefined, registry);
+  // `moduleDocuments` carries each imported library's full documents (the
+  // flatten above forwards only export surfaces) so the zone stage can derive
+  // an export's open requirements. The cache is HOST-lifetime — this registry
+  // is fresh per closure per run, so a cache on it would die at the boundary
+  // it exists to cross, and the editor re-analyzes on every keystroke.
+  const diagnostics = analyzer.analyze(
+    manifests,
+    { moduleDocuments: collectZoneModuleDocuments(graph) },
+    registry,
+    zoneExportCache,
+  );
 
   // A file that fails to parse (mangled tree) or whose import failed to resolve
   // (broken kind resolution) yields a spurious analyze cascade that would bury
@@ -327,6 +340,12 @@ export async function analyzeWorkspace(
   app: Workspace,
   manifestAdapter: ManifestSource,
   registryAdapters: ManifestSource[] = [],
+  /** Host-lifetime cache for per-library zone-export derivation, owned by the
+   *  caller so it survives across analysis runs (and across the closures of one
+   *  run). Keyed `(source identity, content signature)`, so a workspace library
+   *  the user is editing invalidates by construction. Omit it and every run
+   *  rebuilds each dependency's graph. */
+  zoneExportCache?: ZoneExportCache,
 ): Promise<WorkspaceDiagnostics> {
   const acc: MergeAccumulators = {
     byResource: new Map(),
@@ -351,7 +370,7 @@ export async function analyzeWorkspace(
       console.error(`Failed to load analysis graph for ${root}:`, err);
       continue;
     }
-    analyzeClosure(app, graph, acc);
+    analyzeClosure(app, graph, acc, zoneExportCache);
   }
 
   return {

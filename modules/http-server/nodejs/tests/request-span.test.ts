@@ -1,4 +1,4 @@
-import { createCancellationSource } from "@telorun/sdk";
+import { UNCANCELLABLE_CONTEXT, createCancellationSource } from "@telorun/sdk";
 import Fastify from "fastify";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
@@ -31,6 +31,10 @@ describe("http-server request span", () => {
       ensureKindRef: () => ({ kind: "JS.Script", name: "Echo" }),
       moduleContext: { expandWith: (value: unknown) => value },
       createCancellationSource: () => createCancellationSource(),
+      // The controller dispatches through a context it minted rather than the
+      // ambient — execution-zones spec §7 — so the mock must offer it.
+      rootContext: (opts?: { cancellation?: { context: unknown } }) =>
+        opts?.cancellation?.context ?? UNCANCELLABLE_CONTEXT,
       invokeResolved: (_kind: string, _name: string, h: typeof handler, input: unknown) =>
         h.invoke(input),
       emitEvent: () => {},

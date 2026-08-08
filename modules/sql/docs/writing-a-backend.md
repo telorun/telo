@@ -50,7 +50,8 @@ name its language uses:
 | Execute a statement | Take SQL text plus positional parameters, return rows and an affected-row count. |
 | Execute a template | Take literal fragments and values, interleave the driver-native placeholder, bind values positionally — never splice a value into the text. |
 | Execute a script | Run a multi-statement script. |
-| Transaction | Run a callback with an executor whose statements share one transaction; the operations inside must pick it up implicitly. |
+| Open a transaction | Begin one and let the caller bind the open executor to the zone entry it mints; commit or roll back when the body settles. |
+| Report an open transaction | Say whether a transaction zone correlated on *this* connection has an executor open here — the nesting check. |
 | Row count | Normalize "rows affected" across drivers. |
 
 Values are **always bound, never interpolated** — that is the guarantee `!sql`
@@ -74,6 +75,27 @@ Adding a database that differs in some further construct means adding to this
 list and answering it in every dialect. That is the point: a difference is
 declared once, in the open, rather than becoming a branch inside a shared code
 path.
+
+## Transaction state belongs to the connection instance
+
+Transaction membership is ambient and keyed per connection, carried by the
+kernel's [execution-zone](https://telo.run/extend/execution-zones) stack. The
+kernel owns the stack; a backend owns only the mapping from a zone entry to the
+executor it opened.
+
+That mapping **must live on the connection instance** — the object both the
+transaction controller and the operations hold by reference — and never at
+module scope. A module's controllers may ship as separate bundles, each inlining
+its own copy of a shared source file, so module-scoped state is one copy *per
+bundle*: the write and the read never meet, and every lookup silently misses.
+(That was a live bug in this module before zones: `transaction:` threw on every
+path, including inside its own transaction.)
+
+The same rule fixes what a miss must do. When a caller passes an explicit zone
+this connection did not open, **throw** — the caller declared a requirement, and
+falling back to the unzoned executor would run the statement outside the
+transaction it asked for. A loud failure is strictly better than silently
+non-transactional writes.
 
 ## Lifecycle
 

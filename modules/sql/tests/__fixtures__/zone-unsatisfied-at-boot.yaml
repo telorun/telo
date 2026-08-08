@@ -1,0 +1,45 @@
+# A bound statement named directly as a boot target. Nothing encloses an
+# Application's `targets:`, so the open requirement surfaces there.
+kind: Telo.Application
+metadata:
+  name: ZoneUnsatisfiedAtBoot
+  version: 1.0.0
+imports:
+  Sql: ../../
+  SqlSqlite: ../../../sql-sqlite
+  Run: ../../../run
+targets:
+  - !ref bootWrites
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: appDb
+file: ":memory:"
+---
+kind: Sql.Transaction
+metadata:
+  name: accountTx
+connection: !ref appDb
+steps: !ref unrelated
+---
+kind: Sql.Command
+metadata:
+  name: unrelated
+connection: !ref appDb
+inputs:
+  sql: "SELECT 1"
+---
+kind: Run.Sequence
+metadata:
+  name: bootWrites
+steps:
+  - name: insert
+    invoke: !ref insertAccount
+---
+kind: Sql.Command
+metadata:
+  name: insertAccount
+connection: !ref appDb
+transaction: !ref accountTx
+inputs:
+  sql: "INSERT INTO accounts (email) VALUES ('x')"

@@ -1,15 +1,20 @@
 import {
+  InvokeError,
   NoopValidator,
   ResourceContext,
   ResourceInstance,
   ResourceManifest,
   RuntimeError,
   RuntimeResource,
+  UNCANCELLABLE_CONTEXT,
   createCancellationSource,
+  deriveContext,
+  getRefIdentity,
   resolveRefInstance,
   type CancellationSource,
   type ControllerPolicy,
   type EvaluationContext as IEvaluationContext,
+  type InvokeByNameOptions,
   type InvokeContext,
   type LoadOptions,
   type ModuleContext,
@@ -17,10 +22,14 @@ import {
   type OpenSpan,
   type OpenSpanOptions,
   type ParsedArgs,
+  type ResourceDefinition,
+  type ResourceHandle,
   type RuntimeSeam,
   type TypeRule,
+  type ZoneEntry,
 } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
+import { ZoneContext } from "./zone-context.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
@@ -350,6 +359,88 @@ export class ResourceContextImpl implements ResourceContext {
     return createCancellationSource();
   }
 
+  // ── Execution zones (kernel/specs/execution-zones.md) ─────────────────────
+  //
+  // Identity is held here (it is the resource's, not the zone subsystem's);
+  // everything else delegates to `ZoneContext`, which owns the annotation
+  // resolution, correlation walk and stack matching — and memoizes them, since
+  // this sits on the dispatch path.
+
+  #self: ResourceHandle | undefined;
+  #zones: ZoneContext | undefined;
+
+  /** Kernel-internal: stamped at `create()`, the moment the instance exists. */
+  bindResourceIdentity(
+    handle: ResourceHandle,
+    resolvedKind: string,
+    manifest: Record<string, unknown>,
+  ): void {
+    this.#self = handle;
+    this.#zones = new ZoneContext({
+      resourceName: (this.metadata?.name as string) ?? "<unnamed>",
+      resolvedKind,
+      self: handle,
+      // The SAME object Phase-5 injection later mutates, so a correlation
+      // pointer read at invoke time sees live instances in ref slots.
+      manifest,
+      resolveDefinition: (kind) => this.kernel.getAnalysisRegistry().resolveDefinition(kind),
+      resolveDefinitionIn: (kind, module) =>
+        this.kernel.getAnalysisRegistry().resolveDefinitionIn(kind, module),
+      resolveLocalInstance: (name) => this.resolveLocalInstance(name),
+      resolveLocalManifest: (name) =>
+        this.contextForName(name).resourceInstances.get(name)?.resource as
+          | Record<string, unknown>
+          | undefined,
+    });
+  }
+
+  get self(): ResourceHandle {
+    if (!this.#self) {
+      throw new RuntimeError(
+        "ERR_RESOURCE_IDENTITY_UNBOUND",
+        `[${this.metadata.name}] ctx.self is unavailable inside create() — the handle is minted when create() returns`,
+      );
+    }
+    return this.#self;
+  }
+
+  /** The zone subsystem, available once `create()` has returned. */
+  private zoneContext(): ZoneContext {
+    if (!this.#zones) {
+      throw new RuntimeError(
+        "ERR_RESOURCE_IDENTITY_UNBOUND",
+        `[${this.metadata.name}] zones are unavailable inside create() — the handle is minted when create() returns`,
+      );
+    }
+    return this.#zones;
+  }
+
+  withZone<T>(
+    slot: string,
+    fn: (ctx: InvokeContext, entry: ZoneEntry) => Promise<T>,
+    base?: InvokeContext,
+  ): Promise<T> {
+    return this.zoneContext().withZone(slot, fn, base);
+  }
+
+  requireZone(field: string, ctx?: InvokeContext): ZoneEntry {
+    return this.zoneContext().requireZone(field, ctx);
+  }
+
+  findZone(field: string, ctx?: InvokeContext): ZoneEntry | undefined {
+    return this.zoneContext().findZone(field, ctx);
+  }
+
+  zonesFor(instance: ResourceInstance, ctx?: InvokeContext): readonly ZoneEntry[] {
+    return this.zoneContext().zonesFor(instance, ctx);
+  }
+
+  /** The root context for runtime-driven inbound work — inherits nothing from
+   *  whatever ambient happens to be live at the registration site. */
+  rootContext(opts?: { cancellation?: CancellationSource }): InvokeContext {
+    return opts?.cancellation?.context ?? UNCANCELLABLE_CONTEXT;
+  }
+
   /** In-flight fire-and-forget tasks this resource spawned. Owned here, not by
    *  the kernel: the resource drains them in its own teardown (see
    *  `drainDetached`), so background work is bounded by the resource's lifetime. */
@@ -401,8 +492,13 @@ export class ResourceContextImpl implements ResourceContext {
     return this.owningContext.openSpan(base, opts);
   }
 
-  invoke<TInputs>(kind: string, name: string, inputs: TInputs): Promise<any> {
-    return this.contextForName(name).invoke(kind, name, inputs);
+  invoke<TInputs>(
+    kind: string,
+    name: string,
+    inputs: TInputs,
+    options?: InvokeByNameOptions,
+  ): Promise<any> {
+    return this.contextForName(name).invoke(kind, name, inputs, options?.ctx);
   }
 
   invokeResolved<TInputs>(

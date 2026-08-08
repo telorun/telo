@@ -1,0 +1,115 @@
+# Every body goes through a Run.Sequence rather than naming the requirer
+# directly. That is not incidental: a `steps: !ref <requirer>` wiring is an
+# init-order cycle, because both the body slot and the requirer's own zone-
+# bearing ref are Phase-5 injection sites, while a step's `invoke:` resolves at
+# dispatch. It is the same shape every real zone manifest takes.
+kind: Telo.Application
+metadata:
+  name: ZoneApp
+  version: 1.0.0
+imports:
+  Zone: ../execution-zones/telo.yaml
+  Run: ../../../../../modules/run
+---
+kind: Zone.Session
+metadata:
+  name: sessionA
+label: A
+---
+kind: Zone.Session
+metadata:
+  name: sessionB
+label: B
+---
+# Correlated on sessionA.
+kind: Zone.Batch
+metadata:
+  name: batchA
+session: !ref sessionA
+steps: !ref bodyA
+---
+kind: Run.Sequence
+metadata:
+  name: bodyA
+steps:
+  - name: Enqueue
+    invoke: !ref insideA
+outputs:
+  zone: !cel "steps.Enqueue.result.zone"
+  correlatedOn: !cel "steps.Enqueue.result.correlatedOn"
+---
+# Correlated on sessionB — a requirer keyed on sessionA must NOT be satisfied
+# by this one, which is the whole point of correlation.
+kind: Zone.Batch
+metadata:
+  name: batchB
+session: !ref sessionB
+steps: !ref bodyB
+---
+kind: Run.Sequence
+metadata:
+  name: bodyB
+steps:
+  - name: Enqueue
+    invoke: !ref insideB
+outputs:
+  zone: !cel "steps.Enqueue.result.zone"
+  correlatedOn: !cel "steps.Enqueue.result.correlatedOn"
+---
+kind: Zone.Enqueue
+metadata:
+  name: insideA
+session: !ref sessionA
+batch: !ref batchA
+---
+# Declares no `session:` of its own: the correlation key's SECOND pointer
+# derives one by traversing `/batch/session` — the ordered-list shape.
+kind: Zone.Enqueue
+metadata:
+  name: insideB
+batch: !ref batchB
+---
+kind: Zone.Probe
+metadata:
+  name: probe
+---
+kind: Zone.Ambient
+metadata:
+  name: ambientBatch
+steps: !ref probe
+---
+kind: Zone.Detacher
+metadata:
+  name: detachedProbe
+invoke: !ref probe
+---
+kind: Zone.Batch
+metadata:
+  name: batchAroundDetached
+session: !ref sessionA
+steps: !ref detachedProbe
+---
+kind: Zone.Batch
+metadata:
+  name: batchAroundProbe
+session: !ref sessionA
+steps: !ref probe
+---
+kind: Zone.Reporter
+metadata:
+  name: reporter
+---
+# Opens a zone on sessionB around a requirer correlated on sessionA: the KIND
+# matches but the correlation does not, so the requirement must not discharge.
+kind: Zone.Batch
+metadata:
+  name: crossBatch
+session: !ref sessionB
+steps: !ref crossBody
+---
+kind: Run.Sequence
+metadata:
+  name: crossBody
+steps:
+  - name: Enqueue
+    invoke: !ref insideA

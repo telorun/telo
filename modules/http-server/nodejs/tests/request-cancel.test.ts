@@ -1,4 +1,9 @@
-import { ERR_INVOKE_CANCELLED, InvokeError, createCancellationSource } from "@telorun/sdk";
+import {
+  ERR_INVOKE_CANCELLED,
+  InvokeError,
+  UNCANCELLABLE_CONTEXT,
+  createCancellationSource,
+} from "@telorun/sdk";
 import Fastify from "fastify";
 import net from "node:net";
 import type { AddressInfo } from "node:net";
@@ -45,6 +50,12 @@ describe("http-server request cancellation", () => {
       ensureKindRef: () => ({ kind: "Test.Handler", name: "SlowWork" }),
       moduleContext: { expandWith: (value: unknown) => value },
       createCancellationSource: () => createCancellationSource(),
+      // As the kernel implements it: an inbound registrant dispatches through a
+      // context it minted rather than the ambient (execution-zones spec §7), and
+      // the request's cancellation token rides in on it — which is what makes
+      // the disconnect below reach the handler.
+      rootContext: (opts?: { cancellation?: { context: unknown } }) =>
+        opts?.cancellation?.context ?? UNCANCELLABLE_CONTEXT,
       invokeResolved: (_kind: string, _name: string, h: typeof handler, input: unknown, c: unknown) =>
         h.invoke(input, c as { cancellation?: any }),
       emitEvent: () => {},

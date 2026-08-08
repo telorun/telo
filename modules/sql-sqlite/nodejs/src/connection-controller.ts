@@ -23,8 +23,9 @@ class SqliteConnection extends SqlConnectionBase {
   constructor(
     db: Kysely<any>,
     private readonly sqlite: SqliteDb,
+    ctx: ResourceContext,
   ) {
-    super(db, sqliteDialect);
+    super(db, sqliteDialect, ctx);
   }
 
   /** The driver's native multi-statement entry point — kysely binds one
@@ -78,11 +79,11 @@ export function register(): void {}
 
 export async function create(
   resource: SqliteConnectionManifest,
-  _ctx: ResourceContext,
+  ctx: ResourceContext,
 ): Promise<SqliteConnection> {
   const sqlite = await openSqliteDatabase(resource.file ?? ":memory:");
   const db = new Kysely<any>({
     dialect: new TransactionalSqliteDialect({ database: sqlite }),
   });
-  return new SqliteConnection(db, sqlite);
+  return new SqliteConnection(db, sqlite, ctx);
 }

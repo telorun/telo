@@ -38,6 +38,27 @@ export interface RefIdentity {
 }
 
 /**
+ * Kernel-minted, unique per LIVE instance, stable for its lifetime. Distinct
+ * from {@link RefIdentity}: a `with:`-scoped resource has one declaration and
+ * one instance per scope run, and correlation must see those as different.
+ * A string rather than an object reference so it serializes across the ABI —
+ * a second-language kernel compares the same value.
+ */
+export type ResourceInstanceId = string & { readonly __brand: "ResourceInstanceId" };
+
+/**
+ * Typed identity of a live resource instance. `id` is the only thing compared;
+ * `ref` is where the instance was declared — diagnostics only, so an error can
+ * say *no transaction open on connection `appDb`* instead of printing an id.
+ */
+export interface ResourceHandle {
+  readonly id: ResourceInstanceId;
+  readonly ref: RefIdentity;
+}
+
+export const sameResource = (a: ResourceHandle, b: ResourceHandle): boolean => a.id === b.id;
+
+/**
  * Non-enumerable identity tag the kernel stamps on a live instance when it
  * injects a resolved `!ref` into a slot. A consumer that holds only the bare
  * instance (an `executeInvokeStep` target whose `!ref` was pre-injected) can

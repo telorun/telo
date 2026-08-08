@@ -1,0 +1,69 @@
+# A bound statement wired straight to an HTTP route. `insertAccount` requires a
+# transaction zone correlated on `appDb`; the requirement travels up through the
+# route's `handler:` slot — a `trigger.inbound` edge the runtime guarantees a
+# fresh context — and nothing on the way provides it.
+#
+# Today this throws only when the route is first exercised, possibly in
+# production. The whole answer is in the manifest.
+kind: Telo.Application
+metadata:
+  name: ZoneUnsatisfiedAtRoute
+  version: 1.0.0
+imports:
+  Sql: ../../
+  SqlSqlite: ../../../sql-sqlite
+  Http: ../../../http-server
+ports:
+  http:
+    env: PORT
+    default: 8080
+targets:
+  - !ref server
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: appDb
+file: ":memory:"
+---
+kind: Sql.Transaction
+metadata:
+  name: accountTx
+connection: !ref appDb
+steps: !ref unrelated
+---
+kind: Sql.Command
+metadata:
+  name: unrelated
+connection: !ref appDb
+inputs:
+  sql: "SELECT 1"
+---
+kind: Http.Server
+metadata:
+  name: server
+port: !cel "ports.http"
+mounts:
+  - path: /api
+    mount: !ref accountsApi
+---
+kind: Http.Api
+metadata:
+  name: accountsApi
+routes:
+  - request:
+      path: /accounts
+      method: POST
+    handler: !ref insertAccount
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Sql.Command
+metadata:
+  name: insertAccount
+connection: !ref appDb
+transaction: !ref accountTx
+inputs:
+  sql: "INSERT INTO accounts (email) VALUES ('x')"

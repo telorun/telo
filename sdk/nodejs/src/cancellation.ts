@@ -1,4 +1,5 @@
 import { InvokeError } from "./invoke-error.js";
+import type { ResourceHandle } from "./resource-instance.js";
 
 /**
  * Cooperative invocation cancellation — the standard source/token split.
@@ -35,6 +36,22 @@ export interface CancellationToken {
 }
 
 /**
+ * One open execution zone — see `kernel/specs/execution-zones.md`. Three
+ * identities and nothing else: no provider-private payload rides here (a
+ * provider keys its own map on the entry), so the contract stays serializable
+ * across the ABI and another module's open transaction is never readable from
+ * the ambient stack.
+ */
+export interface ZoneEntry {
+  /** Canonical `<module>.<Kind>` of the providing kind — what a requirement names. */
+  readonly kind: string;
+  readonly provider: ResourceHandle;
+  /** The instance the provider's correlation-key pointer resolved to.
+   *  Absent = uncorrelated zone. */
+  readonly key?: ResourceHandle;
+}
+
+/**
  * The out-of-band second argument every `invoke()` receives. Intentionally an
  * extensible object rather than a bare token so future per-invoke concerns
  * (trace, idempotency) can join without a breaking signature change.
@@ -53,6 +70,20 @@ export interface InvokeContext {
    *  trace the way OpenTelemetry's `trace_id` does (an exporter maps it directly),
    *  independent of the parent chain. */
   readonly traceId?: string;
+  /** Zones open around this invocation, outermost first. Absent = none. */
+  readonly zones?: readonly ZoneEntry[];
+}
+
+/**
+ * The ONE way to build a context derived from another. A fresh object literal
+ * at a rebuild site silently drops every field it does not restate — with
+ * `zones` that means the stack survives with tracing off and vanishes under
+ * `--debug`, a safety property flipping on a debug flag. Every context-rebuild
+ * site (the kernel's tracing branches, span derivation) goes through here so a
+ * field added to {@link InvokeContext} propagates without each site opting in.
+ */
+export function deriveContext(base: InvokeContext, overrides: Partial<InvokeContext>): InvokeContext {
+  return { ...base, ...overrides };
 }
 
 /** Terminal status of a span — maps to OpenTelemetry span status. */

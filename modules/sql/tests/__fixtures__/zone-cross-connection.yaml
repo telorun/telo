@@ -1,0 +1,47 @@
+# Correlation failure: the statement is wired to a connection the enclosing
+# transaction was not opened on. The zone's KIND matches, so a type-scoped check
+# alone would report clean — and would report clean on exactly the corrupting
+# case, since under the fixed runtime that statement is simply not
+# transactional.
+kind: Telo.Application
+metadata:
+  name: ZoneCrossConnection
+  version: 1.0.0
+imports:
+  Sql: ../../
+  SqlSqlite: ../../../sql-sqlite
+  Run: ../../../run
+targets:
+  - !ref writesTx
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: dbA
+file: ":memory:"
+---
+kind: SqlSqlite.Connection
+metadata:
+  name: dbB
+file: ":memory:"
+---
+kind: Sql.Transaction
+metadata:
+  name: writesTx
+connection: !ref dbA
+steps: !ref writes
+---
+kind: Run.Sequence
+metadata:
+  name: writes
+steps:
+  - name: insert
+    invoke: !ref insertOnOtherConnection
+---
+# On dbB, inside a transaction on dbA.
+kind: Sql.Command
+metadata:
+  name: insertOnOtherConnection
+connection: !ref dbB
+transaction: !ref writesTx
+inputs:
+  sql: "INSERT INTO t (v) VALUES ('x')"
