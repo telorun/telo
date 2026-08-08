@@ -1,5 +1,0 @@
-project: cache
-kind: Added
-body: >-
-  `Cache.View.invoke` declares its `use` as a case map on `/revalidate` (`background: [call, detached]`, `sync: call`, `off: call`) instead of the unconditional set `[call, detached]`. The union overstated what the controller does under the default `sync`, where it never detaches, and every consumer of the reference graph reads that declaration — a requirement travelling through a default-configured `Cache.View` was being treated as crossing a detach boundary. Wiring manifests are unchanged.
-time: 2026-08-08T16:00:01.000000000Z

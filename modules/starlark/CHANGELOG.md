@@ -1,5 +1,7 @@
 # Changelog
-## 0.10.0 - 2026-07-31
+## 0.11.0 - 2026-08-08
+### Added
+* Every `x-telo-ref` slot now declares what this module does with the target: `use: dependency` (held and read), `call` (control transfers during the invocation and returns), `detached`, `trigger.inbound`, `trigger.consumer`, or `schema` for a slot that only names a shape. Slots that accepted `Telo.Invocable | Telo.Runnable` through an `anyOf` now say `Telo.Executable`, the new built-in parent of both. Wiring manifests are unchanged — this is schema metadata, and it is what lets `telo check` answer whether control reaches a referenced resource, and when.## 0.10.0 - 2026-07-31
 ### Added
 * Update controller @telorun/starlark to 0.5.0.## 0.9.0 - 2026-07-27
 ### Added

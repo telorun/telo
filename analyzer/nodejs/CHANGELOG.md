@@ -1,5 +1,156 @@
 # @telorun/analyzer
 
+## 0.54.0
+
+### Minor Changes
+
+- 8a9b494: Execution zones — a resource can declare that it must be reached through
+  another resource's body (a transaction, a durable run, a batch), checked
+  statically and enforced at dispatch. Normative contract in
+  `kernel/specs/execution-zones.md`.
+
+  **SDK.** `ZoneEntry` and `InvokeContext.zones` (the ambient zone stack, ordered
+  outermost first); `deriveContext(base, overrides)`, the one way to build a
+  context from another — a fresh object literal at a rebuild site drops every
+  field it does not restate, which for `zones` would mean the stack surviving with
+  tracing off and vanishing under `--debug`. `ResourceInstanceId` /
+  `ResourceHandle` / `sameResource`: a kernel-minted per-instance identity that is
+  a compared string rather than an object reference, so an entry crosses the ABI
+  and no controller can read another module's instance off the stack. New
+  `ResourceContext` members: `self`, `withZone(slot, fn)`, `requireZone(field)`,
+  `findZone(field)`, `zonesFor(instance)`, `rootContext(opts?)`.
+
+  **Kernel.** The handle is minted at `create()`, the single instance-production
+  site, so an instance is never observable unbound; the instance → handle map has
+  no reverse direction. `withZone` derives every field of the entry from the
+  slot's `x-telo-provides-zone` annotation (resolved in the kind's _declaring_
+  scope) — a controller names its own annotation site, never a kind, because it
+  has no alias scope of its own. Clearing is the default state rather than a list
+  of sites: `runDetached` already replaces the ambient context and a
+  `Telo.Service`'s `run()` establishes none, so the only residue is a
+  `trigger.inbound` registered from inside an invocation by a non-Service, which
+  `rootContext()` names as a conformance obligation. `Http.Api`, `Mcp` tools and
+  `Schedule.Cron` / `Interval` dispatch through it.
+
+  **Analyzer.** `resolve-zone-requirements.ts`, a consumer of the call-graph
+  service with no traversal of its own: requirements propagate along `call` edges,
+  discharge at providing slots under the correlation rule (`extends`-aware), and
+  fire at edges the runtime guarantees are cleared. `zone-slot.ts` is the single
+  reader of both annotations, the `ref-slot.ts` precedent. Per-library export
+  derivation runs as its own stage in `analyze()` over each library's full
+  documents, cached in a host-lifetime cache the caller owns, keyed
+  `(source identity, content signature)`. `validate-zone-slots.ts` is the strict half of the same accessor split
+  `validate-ref-slots.ts` has, and is not optional: the two annotations fail in
+  opposite directions (an unreadable requirement is silently unenforced, an
+  unreadable provision invents failures), and a correlation key written as a bare
+  field name would be read by the kernel's pointer walk but skipped by the
+  checker — the two halves disagreeing about what a manifest means. New
+  diagnostics: `ZONE_REQUIREMENT_UNSATISFIED` (error),
+  `ZONE_REQUIREMENT_DEFERRED` (warning), `ZONE_EXPORT_UNSATISFIABLE` (error, at
+  the exporting library only), `ZONE_PROVIDER_UNRESOLVED` (error),
+  `ZONE_ANNOTATION_INVALID` (error).
+
+  `ResourceContext.invoke`'s fourth parameter is now a typed
+  `InvokeByNameOptions` bag (`{ ctx?, retry? }`) rather than `any`. It always
+  carried `retry`; `ctx` joins it so an inbound registrant can seed the
+  invocation context, which a positional parameter could not do safely —
+  `ResourceContext` satisfies `InvokeStepContext` structurally, so a positional
+  context would silently receive a step's retry options.
+
+  Also fixes a latent bug in `buildCallGraph`: it resolved a resource's definition
+  by raw kind, but a manifest carries the kind as authored (`Run.Sequence`) while
+  the registry is keyed canonically (`run.Sequence`). Every alias-form kind — that
+  is, every kind in a real manifest — missed silently, so step collection found no
+  step list and a step's declared `use` never reached its edge, and a case map's
+  selector found no schema `default`. Definitions now resolve in the scope of the
+  module that declared the resource, matching `expandedFieldMapForResource`.
+
+- 0938ed4: A reference slot now declares what the declaring resource does with its target,
+  and one shared graph answers "what calls what" for every analysis that needs it.
+
+  `x-telo-ref` gains a structured form — `{kind, use, inputs?}` — alongside the
+  bare string. `kind` takes one alias-qualified kind or a list of them, replacing
+  the `anyOf` wrapping that multi-kind slots used; a schema branch per acceptable
+  kind would let `use` disagree with itself, and which kinds are acceptable is a
+  property of the target while `use` is a fact about the slot. `use` names when
+  control reaches the target relative to the declaring resource's own invocation:
+  `schema` (no instance exists), `dependency` (held and read), `call`, `detached`,
+  `trigger.inbound`, `trigger.consumer`. It is a set, because one slot can
+  dispatch its target more than one way in a single invocation — `Cache.View`
+  calls inline on a miss and detached on a background revalidation — and a slot
+  whose mode is chosen by configuration declares a map keyed on a sibling field
+  (`Lease.Critical` is `call` or `detached` by its `detach:` value), whose
+  selector must be statically resolvable.
+
+  A new `Telo.Executable` built-in abstract is the parent of `Telo.Invocable` and
+  `Telo.Runnable` — "control can be transferred to this" — collapsing every slot
+  that spelled `Invocable | Runnable`. It is a slot constraint, never a lifecycle
+  role, so `capability: Telo.Executable` remains invalid; and it never
+  cross-constrains `use`, because `Ai.Model` declares `Telo.Provider` while
+  exposing entry points by convention, so a nominal rule would reject a correct
+  `use: call`. `Telo.Service` stays outside it: a service's `run()` is a lifecycle
+  start the kernel dispatches without an ambient scope, and admitting it would
+  make every step's `invoke:` accept a service.
+
+  `buildCallGraph` builds one typed graph over two node kinds. Resource nodes
+  carry declaration-site identity; step nodes carry name, lexical order, enclosing
+  array and nesting parent, and only optionally an edge — a pure `value:` step
+  produces a result while referencing nothing, so a graph of reference edges alone
+  could not see it. Edges are `(from, slot, to, use)` and the graph is a
+  multigraph: the slot path is part of an edge's identity, so `Cache.View` holding
+  its `store:` as a dependency and calling its `invoke:` are two distinct edges
+  even when both name the same resource. The init-order consumer projects down to
+  unique pairs itself, since it is the only one for which that distinction does
+  not matter.
+
+  The dependency graph, run-reachability, and the step-invoke check now read that
+  graph instead of building private walkers. Two unsound inferences go with them:
+  run-reachability had been two independent over-approximations that had to agree
+  by coincidence, and the step-invoke check maintained a set of capabilities it
+  believed could never be invoked — a set listing `Telo.Provider`, which rejected
+  the shipped `Ai.Model` wiring. Capability now decides what a resource can do; it
+  no longer decides whether a slot transfers control.
+
+  One accessor reads the annotation for every surface — the analyzer, the kernel's
+  Phase-5 injection, the GUI editor's reference picker, and `ide-support`'s
+  completions, hover and go-to-definition — because making the annotation
+  structured changes how a slot is _recognised_, and four surfaces recognised it
+  by string-matching. That fixes two pre-existing divergences: hover never peeled
+  `anyOf` branches, so a multi-kind slot showed no reference at all, and
+  completion stopped at the first branch, offering only an `Invocable | Runnable`
+  slot's invocables.
+
+  The annotation's own validity is enforced (`validate-ref-slots.ts`): an
+  unrecognized `use` token, a structured annotation missing `kind` or `use`,
+  `anyOf` branches whose uses disagree, and a case-map selector written in CEL
+  are diagnostics — a typo would otherwise silently degrade a slot to the legacy
+  unannotated reading, and a call graph known only at runtime is not statically
+  analyzable. A case-map selector that is omitted takes its schema `default:`,
+  so the common spelling (`Lease.Critical` with no `detach:`) resolves statically.
+
+  The graph also discovers refs by value-tree scan (a `!ref` in a structure no
+  annotation anticipated is an edge, read conservatively) and descends
+  `x-telo-scope` arrays (a `with:`-scoped resource is a node whose own slots are
+  walked, scope-local names resolving first). Init order keys on whether a site
+  is a Phase-5 injection site — never on node kind — so an Application's inline
+  `targets[].invoke` and gated `{ref, when}` entries order boot exactly as
+  before.
+
+  `@telorun/templating`'s `normalizeRefSlots` recognises the structured
+  annotation (a presence test instead of `typeof === "string"`), so a structured
+  slot's stale scalar `type` is dropped the same way a bare-string slot's is.
+
+  The kernel rejects `capability: Telo.Executable` on a definition — it is an
+  `x-telo-ref` slot constraint (the parent Telo.Invocable and Telo.Runnable
+  extend), not a lifecycle role — with a named error at `create()` instead of an
+  anonymous `oneOf` failure; the analyzer reports the same mistake statically as
+  `CAPABILITY_NOT_DECLARABLE`.
+
+### Patch Changes
+
+- Updated dependencies [0938ed4]
+  - @telorun/templating@0.12.0
+
 ## 0.53.0
 
 ### Minor Changes

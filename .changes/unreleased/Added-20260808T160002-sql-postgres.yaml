@@ -1,5 +1,0 @@
-project: sql-postgres
-kind: Added
-body: >-
-  The connection passes its `ResourceContext` to `SqlConnectionBase`, which now carries transaction state through the kernel's execution-zone stack (keyed per connection) rather than a module-global store. No manifest change — pooling, `sslmode` handling and the liveness sweep are untouched.
-time: 2026-08-08T16:00:02.000000000Z

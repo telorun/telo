@@ -1,5 +1,38 @@
 # @telorun/cli
 
+## 0.67.0
+
+### Minor Changes
+
+- 8a9b494: `telo check` now reports execution-zone diagnostics: a statement declaring a
+  `transaction:` wired onto a path that reaches it outside any transaction is an
+  error at check time rather than a throw the first time that route is exercised.
+
+  The command feeds the analyzer each imported library's full documents
+  (`collectZoneModuleDocuments`) alongside the flattened manifest list. The
+  flattened view carries only each library's export surface, never its internal
+  dispatch chain, so without this the zone stage cannot derive what an exported
+  resource requires of its importers — and `ZONE_EXPORT_UNSATISFIABLE` would
+  never fire at the library that owns the fix.
+
+### Patch Changes
+
+- e7853d5: `telo install` now hands each controller pre-install job its module's
+  `ModuleArtifact`, the same handle the kernel supplies at run time. Previously
+  the pass called the controller loader with no artifact, so every `pkg:telo`
+  bundled candidate of a published (`oci://`) module was env-missing and the
+  install failed on modules `telo run` loads fine — only legacy `pkg:npm`
+  modules passed. `warmModuleLayers` now returns the artifact handles it already
+  built (keyed by module source) instead of discarding them.
+- Updated dependencies [8a9b494]
+- Updated dependencies [e7853d5]
+- Updated dependencies [0938ed4]
+  - @telorun/kernel@0.67.0
+  - @telorun/sdk@0.67.0
+  - @telorun/analyzer@0.54.0
+  - @telorun/ide-support@0.11.0
+  - @telorun/templating@0.12.0
+
 ## 0.66.0
 
 ### Minor Changes
