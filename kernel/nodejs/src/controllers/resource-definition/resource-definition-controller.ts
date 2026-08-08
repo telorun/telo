@@ -161,32 +161,39 @@ class ResourceDefinition implements ResourceInstance {
       cacheRoot: host.getCacheRoot?.(),
       log: ctx.log,
     });
-    // Eager resolve — verify the controller is hostable now (so a broken
-    // `controllers:` candidate fails fast at boot), but defer the expensive
-    // import/eval and the controller's `register()` to the kind's first
-    // instantiation. Definitions whose kind is never instantiated never import.
     // The artifact of the module that DECLARED this kind — a bundled controller
     // ships in its own module's payload, not the consumer's. It owns the pinned
     // ref and the verified layer index, so the loader picks a candidate and asks
     // it for that selector's directory rather than fetching anything itself.
     const artifact = host.getModuleArtifact?.(this.resource.metadata.source);
-    const resolved = await loader.resolve(
-      this.resource.controllers,
-      this.resource.metadata.source,
-      ctx.getControllerPolicy(),
-      artifact,
-    );
     ctx.registerDefinition(this.resource);
 
     const moduleName = this.resource.metadata.module;
     const kindName = this.resource.metadata.name;
-    // Emitted here (not in the loader) so ControllerLoading / ControllerLoaded /
-    // ControllerLoadFailed — and the import duration — surface when the load
-    // actually happens (first instantiation), with the resolved PURL + source.
+    const controllers = this.resource.controllers;
+    const source = this.resource.metadata.source;
+    const policy = ctx.getControllerPolicy();
+    // Resolution AND import are deferred to the kind's first instantiation,
+    // matching the Rust kernel: a definition whose candidate list nothing in
+    // this environment can host registers fine and errors — naming the kind —
+    // only when a resource of it is declared. That is what lets both kernels
+    // load a partially-covered module (e.g. console's stream kinds with no Rust
+    // controller) instead of rejecting it over kinds nobody uses.
+    // Lifecycle events are emitted here (not in the loader) so ControllerLoading
+    // / ControllerLoaded / ControllerLoadFailed — and the import duration —
+    // surface when the load actually happens, with the resolved PURL + source.
     host.registerLazyController(
       moduleName,
       kindName,
       async () => {
+        const resolved = await loader
+          .resolve(controllers, source, policy, artifact)
+          .catch((err) => {
+            if (err instanceof RuntimeError) {
+              throw new RuntimeError(err.code, `kind '${moduleName}.${kindName}': ${err.message}`);
+            }
+            throw err;
+          });
         await ctx.emit("ControllerLoading", { purl: resolved.purl });
         const startedAt = Date.now();
         const instance = await resolved.importInstance().catch(async (err) => {

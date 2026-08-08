@@ -10,6 +10,7 @@ import {
   moduleArtifactFor,
   moduleDirectoryFor,
   readOwnerManifest,
+  type ModuleArtifact,
 } from "@telorun/kernel";
 
 /**
@@ -32,9 +33,21 @@ import {
  * integrity failure, a malformed layer index, and a tar entry escaping the module
  * directory are all hard: a tampered or corrupt artifact must never be used, and
  * a bad index is an authoring error the publisher has to fix.
- *
- * Returns the number of layers materialized.
  */
+export interface WarmedLayers {
+  /** Layers actually materialized for the target platform. */
+  materialized: number;
+  /**
+   * One artifact handle per module that ships a payload, keyed by the module's
+   * canonical source — the same key a `Telo.Definition`'s `metadata.source`
+   * carries (mirroring the kernel's `moduleArtifacts` map), so the controller
+   * pre-install pass can hand each job its module's artifact. A module whose
+   * warm failed transiently is still present: the handle is valid and a later
+   * materialization may succeed where this one did not.
+   */
+  artifacts: Map<string, ModuleArtifact>;
+}
+
 export async function warmModuleLayers(
   graph: LoadedGraph,
   entryDir: string,
@@ -42,10 +55,11 @@ export async function warmModuleLayers(
   manifestsDir: string,
   target: PlatformTarget,
   onWarn: (message: string) => void,
-): Promise<number> {
+): Promise<WarmedLayers> {
   const transports = defaultTransportRegistry(registryUrl);
+  const artifacts = new Map<string, ModuleArtifact>();
   const seen = new Set<string>();
-  let count = 0;
+  let materialized = 0;
 
   for (const [, module] of graph.modules as Map<string, LoadedModule>) {
     const file = module.owner;
@@ -67,9 +81,10 @@ export async function warmModuleLayers(
       transports,
     });
     if (!artifact) continue;
+    artifacts.set(file.source, artifact);
 
     try {
-      count += (await artifact.materializeAll(target)).length;
+      materialized += (await artifact.materializeAll(target)).length;
     } catch (err) {
       if (err instanceof IntegrityError) throw err;
       const code = (err as { code?: string } | undefined)?.code;
@@ -81,7 +96,7 @@ export async function warmModuleLayers(
     }
   }
 
-  return count;
+  return { materialized, artifacts };
 }
 
 /**

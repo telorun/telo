@@ -183,14 +183,16 @@ export class ControllerLoader {
    * Resolve a controller without importing it: pick the first candidate this
    * environment can host (same ordering + env-missing fallback as {@link load}),
    * verify it's present, and return a {@link ResolvedController} whose
-   * `importInstance` defers the actual import/eval. Used by lazy controller
-   * loading so a `Telo.Definition` fails fast at boot when its controller can't
-   * load at all, while the expensive import is paid only on first instantiation.
+   * `importInstance` defers the actual import/eval. Lazy controller loading
+   * calls this from the kind's first instantiation — never at boot — so a
+   * definition whose candidate list nothing in this environment can host
+   * registers fine and errors only when a resource of it is declared (matching
+   * the Rust kernel's deferral).
    *
    * Silent by design — no lifecycle events here; the caller emits
    * ControllerLoading/Loaded around `importInstance` so the events fire when the
-   * load actually happens. A total resolution failure throws (the boot-time
-   * fail-fast), mirroring {@link load}'s aggregated error.
+   * load actually happens. A total resolution failure throws, mirroring
+   * {@link load}'s aggregated error.
    */
   async resolve(
     purlCandidates: string[],
