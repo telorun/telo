@@ -1,5 +1,30 @@
 # @telorun/kernel
 
+## 0.68.0
+
+### Minor Changes
+
+- 2373398: `ctx.createSchemaValidator` no longer persists to the on-disk validator cache.
+
+  The schema it compiles is author data in a **resource field**, which the build-time warm does not walk — so a disk entry for it could only ever miss and be rewritten on every boot, the last source of EACCES noise on a read-only image. `SchemaValidator.compile` takes a `persist: false` option that drops the disk layer in both directions; the in-memory layers still collapse a repeat compile within the process, but a non-persisted entry is tracked as such, so it can never suppress a later persisting caller's write of the same content. Compiling through the kernel's validator is unchanged, which is what keeps one engine — its formats, its `x-telo-*` keywords, its non-strict mode — for every schema in the process.
+
+- 2373398: Close the validator-cache warm gaps that made `telo run` recompile — and try to rewrite — schema validators on every boot, producing EACCES noise on a read-only image even after `telo install` had warmed the cache.
+
+  - The validator cache key now describes what AJV compiles, with `x-telo-*` annotations stripped before hashing. The analyzer canonicalizes `x-telo-ref.kind` to `<module>.<Kind>` and the warm pass bakes that view, while the kernel's controller registry keeps the authored `Self.<Kind>` — two keys for one validator, so every kind whose schema declares an alias-qualified ref missed on every boot. Data-bearing keywords (`const` / `default` / `enum` / `examples`) and name-keyed maps (`properties`, `$defs`, …) are exempt from the strip, so an annotation-shaped key inside a matched value or a property name survives.
+  - Contract validators (`inputType` / `outputType`) are warmed from the resolved schema the runtime compiles, through the same resolver (`resolveTypeFieldSchema`, extracted from `ResourceContextImpl`) plus the `x-telo-stream` skip. The warm previously compiled the raw declaration — `{kind: Telo.JsonSchema, schema: …}`, not a JSON Schema — and baked a validator no dispatch would ask for. Resource-level narrowings are warmed too, not only kind-level declarations.
+  - Named types are registered before the contract warm, from the module graph rather than the flattened view, so a contract written as a `$ref` to one resolves the way it will at runtime. Flatten forwards every module's definitions but only the entry's resource instances, and a named type is a resource instance — a library that declares its shapes once and `$ref`s them (`oauth-client`, `vector-store`) had no type doc in the warm's view at all.
+  - `AnalysisRegistry.resolveSchemaTypeRefs(manifests)` canonicalizes `telo://Self/<type>` references in a caller's own projection of the manifest set, in each doc's declaring scope. `analyze()` already did this to its internal view; the warm holds a separate projection, where an un-canonicalized `$ref` resolved to nothing while the runtime resolved it fine.
+
+### Patch Changes
+
+- 2373398: Fix a gated boot target (`- ref: !ref X` with a `when:` guard) failing schema validation with `/targets/N/when must be string`.
+
+  `when` is declared as a string, but the loader compiles a `!cel` leaf into a CompiledValue before the kernel validates the Application. The strip that restores the pre-CEL view bailed out of any slot annotated `x-telo-ref` — and that annotation sits on the targets ARRAY ITEM, so a bare `!ref Foo` target is accepted — leaving the guard a sentinel object that failed every `anyOf` branch. The bail is now driven by what the value IS rather than by the annotation alone: a reference (it carries a `kind`) and a live instance (not a plain object, or exposing a method) are still handed back untouched, while a step object carrying config beside the ref keeps being walked. Affects both gated shapes, `{ref, when}` and `{invoke, inputs, when}`.
+
+- Updated dependencies [2373398]
+  - @telorun/analyzer@0.55.0
+  - @telorun/templating@0.12.0
+
 ## 0.67.0
 
 ### Minor Changes

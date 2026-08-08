@@ -1,5 +1,18 @@
 # @telorun/cli
 
+## 0.68.0
+
+### Patch Changes
+
+- Updated dependencies [2373398]
+- Updated dependencies [2373398]
+- Updated dependencies [2373398]
+  - @telorun/kernel@0.68.0
+  - @telorun/sdk@0.68.0
+  - @telorun/analyzer@0.55.0
+  - @telorun/templating@0.12.0
+  - @telorun/ide-support@0.11.1
+
 ## 0.67.0
 
 ### Minor Changes
