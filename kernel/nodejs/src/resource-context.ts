@@ -28,6 +28,7 @@ import {
   type TypeRule,
   type ZoneEntry,
 } from "@telorun/sdk";
+import { binaryKeyword } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
 import * as path from "path";
@@ -301,6 +302,7 @@ export class ResourceContextImpl implements ResourceContext {
     for (const kw of ["x-telo-ref", "x-telo-scope", "x-telo-context", "x-telo-schema-from"]) {
       ajv.addKeyword(kw);
     }
+    ajv.addKeyword(binaryKeyword());
     const validate = ajv.compile(
       "type" in schema && typeof schema.type === "string"
         ? schema

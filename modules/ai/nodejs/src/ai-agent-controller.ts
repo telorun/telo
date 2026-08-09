@@ -1,6 +1,7 @@
 import type { InvokeContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 import type { MessageContent } from "./content.js";
+import { withTokenQuantity } from "./usage.js";
 import {
   assembleTools,
   buildInitialMessages,
@@ -108,7 +109,12 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
 
       const calls = result.toolCalls ?? [];
       if (calls.length === 0) {
-        return { text: result.text, usage, finishReason: result.finishReason, steps };
+        return {
+          text: result.text,
+          usage: withTokenQuantity(usage),
+          finishReason: result.finishReason,
+          steps,
+        };
       }
 
       const normalized = normalizeToolCalls(calls, step);
@@ -131,7 +137,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
     }
     return {
       text: last?.text ?? "",
-      usage,
+      usage: withTokenQuantity(usage),
       finishReason: last?.finishReason ?? "tool-calls",
       steps,
     };

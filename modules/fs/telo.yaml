@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: fs
+  name: Filesystem
   version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -90,8 +90,9 @@ metadata:
   name: FileWrite
   description: >-
     Writes a file on the local filesystem, replacing it whole, and reports the
-    number of bytes written. Content is utf8 text or a base64 string decoded to
-    binary; `createParents` makes missing parent directories first. The path
+    number of bytes written. Content is utf8 text, a base64 string decoded to
+    binary, or raw bytes taken straight from a resource that produced them;
+    `createParents` makes missing parent directories first. The path
     resolves against the resource's `cwd` unless absolute — for surgical changes to
     an existing file, edit it in place instead.
 capability: Telo.Invocable
@@ -111,11 +112,21 @@ inputType:
         minLength: 1
       content:
         title: Content
-        description: "Bytes to write — utf8 text, or a base64 string when `encoding: base64`."
-        type: string
+        description: >-
+          Bytes to write — utf8 text, a base64 string when `encoding: base64`, or
+          raw bytes (a Uint8Array) handed over by a byte-producing resource.
+        # anyOf, not oneOf: a consumer that does not know `x-telo-binary` reads the
+        # byte branch as an empty schema matching everything, so under oneOf a plain
+        # string would match BOTH branches and fail. anyOf degrades to permissive
+        # there while still rejecting a non-byte, non-string value here.
+        anyOf:
+          - type: string
+          - x-telo-binary: true
       encoding:
         title: Encoding
-        description: How `content` is interpreted. `base64` decodes it to binary first.
+        description: >-
+          How a string `content` is interpreted. `base64` decodes it to binary
+          first. Not applicable to raw bytes, which are written as they are.
         type: string
         enum: [utf8, base64]
         default: utf8
@@ -456,10 +467,17 @@ inputType:
               type: string
               minLength: 1
             content:
-              description: "Bytes to write — utf8 text, or a base64 string when `encoding: base64`."
-              type: string
+              description: >-
+                Bytes to write — utf8 text, a base64 string when `encoding: base64`,
+                or raw bytes (a Uint8Array) handed over by a byte-producing resource.
+              # anyOf for the same reason as Fs.FileWrite's `content` — see there.
+              anyOf:
+                - type: string
+                - x-telo-binary: true
             encoding:
-              description: How `content` is interpreted. `base64` decodes it to binary first.
+              description: >-
+                How a string `content` is interpreted. `base64` decodes it to binary
+                first. Not applicable to raw bytes, which are written as they are.
               type: string
               enum: [utf8, base64]
               default: utf8

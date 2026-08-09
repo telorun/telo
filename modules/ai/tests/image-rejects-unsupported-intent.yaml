@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: ImageRejectsUnsupportedIntentTest
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref TestAnalyzerRejectsUnsupportedIntent
+---
+# The whole point of deriving Ai.Image's `intent` from the referenced model's
+# `$defs/Intent` (x-telo-schema-from) rather than fixing an enum on the abstract:
+# an intent the backend has no route for is a STATIC error. If this ever regresses
+# to passing check, the failure moves to dispatch — which is the design this
+# replaced.
+kind: Assert.Manifest
+metadata:
+  name: TestAnalyzerRejectsUnsupportedIntent
+source: ./__fixtures__/image-unsupported-intent.yaml
+expect:
+  errors:
+    - code: DEPENDENT_SCHEMA_MISMATCH

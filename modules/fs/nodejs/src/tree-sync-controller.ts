@@ -1,11 +1,19 @@
 import type { ResourceInstance } from "@telorun/sdk";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { FsManifest, requirePath, resolveBase, resolveTarget, wrapFsError } from "./fs-support.js";
+import {
+  FsManifest,
+  requirePath,
+  resolveBase,
+  resolveTarget,
+  toWritableBytes,
+  WritableContent,
+  wrapFsError,
+} from "./fs-support.js";
 
 interface WriteItem {
   path: string;
-  content: string;
+  content: WritableContent;
   encoding?: "utf8" | "base64";
 }
 
@@ -33,10 +41,11 @@ class TreeSyncResource implements ResourceInstance<TreeSyncInput, TreeSyncResult
 
     for (const item of writes) {
       const target = resolveTarget(this.base, requirePath("Fs.TreeSync", item?.path));
-      if (typeof item?.content !== "string") {
-        throw new Error(`Fs.TreeSync: write for '${item?.path}' is missing string 'content'`);
-      }
-      const buffer = Buffer.from(item.content, item.encoding === "base64" ? "base64" : "utf8");
+      const buffer = toWritableBytes(
+        `Fs.TreeSync: write for '${item?.path}'`,
+        item?.content,
+        item?.encoding,
+      );
       try {
         await mkdir(path.dirname(target), { recursive: true });
         await writeFile(target, buffer);

@@ -1,0 +1,22 @@
+kind: Telo.Application
+metadata:
+  name: FsWriteRejectsLiteral
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref TestRejectsInlineBytes
+---
+# Widening `content` to accept raw bytes must not cost the check that `type: string`
+# used to give: before `x-telo-binary`, the byte branch could only be modelled as
+# `type: object`, which every object satisfies — so a mistyped literal passed check
+# and failed in the controller. The annotation restores it, and does so for a reason
+# no JSON Schema type can express: bytes ALWAYS arrive by reference, so a literal at
+# such a slot is wrong by construction.
+kind: Assert.Manifest
+metadata:
+  name: TestRejectsInlineBytes
+source: ./__fixtures__/write-content-literal.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH

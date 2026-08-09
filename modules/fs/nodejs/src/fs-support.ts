@@ -26,6 +26,43 @@ export function requirePath(kind: string, value: unknown): string {
   return value;
 }
 
+/** Content a write kind accepts: text (interpreted per `encoding`) or raw bytes
+ *  taken verbatim from whatever produced them. */
+export type WritableContent = string | Uint8Array;
+
+/** Normalize write content to the bytes that hit disk. A string is decoded per
+ *  `encoding`; a Uint8Array is wrapped without copying and `encoding` does not
+ *  apply to it — it is already bytes, not a rendering of them. */
+export function toWritableBytes(kind: string, content: unknown, encoding?: string): Buffer {
+  if (typeof content === "string") {
+    return Buffer.from(content, encoding === "base64" ? "base64" : "utf8");
+  }
+  if (content instanceof Uint8Array) {
+    return Buffer.from(content.buffer, content.byteOffset, content.byteLength);
+  }
+  throw new Error(
+    `${kind}: 'content' must be text or raw bytes, got ${describeContent(content)}. ` +
+      `Bytes come from a resource that produces them (a generated image, a decoded payload) — ` +
+      `they cannot be written inline in a manifest; use a string with 'encoding: base64' for that.`,
+  );
+}
+
+/** Name what actually arrived. The slot is `anyOf: [string, x-telo-binary]`, so a
+ *  plain object is rejected before this — statically for a literal, by the input
+ *  contract for a CEL value. This survives as defence in depth for a caller that
+ *  reaches the controller some other way, and the distinction it draws (a byte
+ *  buffer vs. a plain object) is the one "got object" would hide. */
+function describeContent(value: unknown): string {
+  if (value === null) return "null";
+  if (value === undefined) return "nothing";
+  if (Array.isArray(value)) return "an array";
+  if (typeof value === "object") {
+    const name = (value as object).constructor?.name;
+    return name && name !== "Object" ? `a ${name}` : "a plain object";
+  }
+  return `a ${typeof value}`;
+}
+
 const REASONS: Record<string, string> = {
   ENOENT: "no such file or directory",
   EACCES: "permission denied",

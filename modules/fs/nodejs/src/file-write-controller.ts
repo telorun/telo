@@ -1,11 +1,19 @@
 import type { ResourceInstance } from "@telorun/sdk";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { FsManifest, requirePath, resolveBase, resolveTarget, wrapFsError } from "./fs-support.js";
+import {
+  FsManifest,
+  requirePath,
+  resolveBase,
+  resolveTarget,
+  toWritableBytes,
+  WritableContent,
+  wrapFsError,
+} from "./fs-support.js";
 
 interface FileWriteInput {
   path: string;
-  content: string;
+  content: WritableContent;
   encoding?: "utf8" | "base64";
   createParents?: boolean;
 }
@@ -19,10 +27,7 @@ class FileWriteResource implements ResourceInstance<FileWriteInput, FileWriteRes
 
   async invoke(input: FileWriteInput): Promise<FileWriteResult> {
     const target = resolveTarget(this.base, requirePath("Fs.FileWrite", input?.path));
-    if (typeof input?.content !== "string") {
-      throw new Error("Fs.FileWrite: 'content' input is required and must be a string");
-    }
-    const buffer = Buffer.from(input.content, input.encoding === "base64" ? "base64" : "utf8");
+    const buffer = toWritableBytes("Fs.FileWrite", input?.content, input?.encoding);
     try {
       if (input.createParents) await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, buffer);

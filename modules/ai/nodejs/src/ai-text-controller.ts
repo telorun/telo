@@ -6,6 +6,7 @@ import type {
 } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 import { isContentParts } from "./content.js";
+import { withTokenQuantity } from "./usage.js";
 import type {
   AiModelInstance,
   CompletionResult,
@@ -105,7 +106,10 @@ class AiText implements ResourceInstance<AiTextInputs, CompletionResult> {
     });
 
     validateCompletionResult(result, name);
-    return result;
+    // Stamp the provider-neutral half of usage here rather than asking every
+    // provider for it — the token triple already carries the answer, and doing it
+    // in the operation keeps existing providers unchanged.
+    return { ...result, usage: withTokenQuantity(result.usage) };
   }
 
   snapshot(): Record<string, unknown> {

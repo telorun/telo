@@ -1,14 +1,15 @@
 # AI
 
-LLM access for Telo — defines the `Ai.Model` abstract every provider implements and ships ready-to-use buffered and streaming consumers.
+Model access for Telo — defines the `Ai.Model` and `Ai.ImageModel` abstracts every provider implements and ships ready-to-use buffered, streaming and image consumers.
 
 ## Why use this
 
 - **Provider-agnostic** — swap models by changing one resource reference; no controller code touches LLM SDKs directly.
 - **Buffered and streaming** — `Ai.Text` returns a complete response; `Ai.TextStream` exposes an async iterable of `StreamPart` records.
+- **Text and images** — `Ai.Image` turns a prompt into picture bytes, or reworks pictures you supply, through the same provider you already configured.
 - **Composable encoding** — pipe a stream through any `Codec.Encoder` (NDJSON, SSE, plain text, raw bytes) without bespoke serialization.
-- **Open for extension** — `Ai.Model` is a `Telo.Abstract`; any module declaring `extends: Ai.Model` is a drop-in provider.
-- **Typed contract** — provider input (`messages`, `options`) and output (`text`, `usage`, `finishReason`) are validated by JSON Schema.
+- **Open for extension** — both model abstracts are `Telo.Abstract`s; any module declaring `extends` is a drop-in provider.
+- **Typed contract** — provider input and output are validated by JSON Schema. `Ai.ImageModel` declares its call shape in the manifest, so the kernel enforces it at dispatch and a provider in any language has a contract to implement.
 
 ## Kinds
 
@@ -20,6 +21,8 @@ LLM access for Telo — defines the `Ai.Model` abstract every provider implement
 | `Ai.Agent` | Tool-use loop over any `Ai.Model` — calls tools, replays results, loops to a final answer. |
 | `Ai.ToolProvider` | Abstract contract every agent tool source implements (`listTools` + `callTool`). |
 | `Ai.Tools` | Built-in `Ai.ToolProvider`: a static list of tools, each wrapping any `Telo.Invocable`. |
+| `Ai.ImageModel` | Abstract contract every image provider implements (`invoke`, declared in the manifest). |
+| `Ai.Image` | Buffered image generation and editing delegating to any `Ai.ImageModel` implementation. |
 
 ## Example
 
@@ -52,6 +55,8 @@ system: "Summarize concisely."
 - [`Ai.TextStream`](docs/ai-text-stream.md) — streaming consumer.
 - [`Ai.Agent`](docs/ai-agent.md) — tool-use loop.
 - [`Ai.ToolProvider` / `Ai.Tools`](docs/ai-tool-provider.md) — the tool contract and the static-list provider.
+- [`Ai.ImageModel`](docs/ai-image-model.md) — image provider contract and implementation walkthrough.
+- [`Ai.Image`](docs/ai-image.md) — buffered generation and editing, intents, refusals.
 
 ## Provider Contract
 

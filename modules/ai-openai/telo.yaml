@@ -1,20 +1,22 @@
 kind: Telo.Library
 metadata:
-  name: ai-openai
+  name: OpenAI
   version: 0.14.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [AI]
   description: >-
-    Language-model access for OpenAI and any OpenAI-compatible endpoint — Azure
-    OpenAI, gateways, self-hosted servers — over the chat completions HTTP API with no
-    vendor SDK. Supplies buffered completions, token streaming and tool calling to
-    whichever operation holds the model.
+    Language and image model access for OpenAI and any OpenAI-compatible endpoint —
+    Azure OpenAI, gateways, self-hosted servers — over the chat completions and images
+    HTTP APIs with no vendor SDK. Supplies buffered completions, token streaming, tool
+    calling, and prompt-to-picture generation and editing to whichever operation holds
+    the model.
 imports:
   Ai: ../ai
 exports:
   kinds:
     - OpenaiModel
+    - OpenaiImageModel
 ---
 kind: Telo.Definition
 metadata:
@@ -60,3 +62,65 @@ schema:
       options:
         temperature: 0.2
         maxTokens: 512
+---
+# The image half of the same account: same key, same optional baseUrl, a different
+# HTTP surface. `$defs/Intent` is what Ai.Image derives its own `intent` field from
+# (x-telo-schema-from), so naming a mode this endpoint has no route for fails
+# `telo check` instead of throwing at dispatch.
+kind: Telo.Definition
+metadata:
+  name: OpenaiImageModel
+  description: >-
+    An image model served by OpenAI or an OpenAI-compatible endpoint: model id, API
+    key, an optional base URL for gateways or Azure, and default request options
+    (size, quality, count, output format) that per-call overrides win over.
+capability: Telo.Provider
+extends: Ai.ImageModel
+controllers:
+  - pkg:telo/local/js?path=./nodejs/openai-image-model-controller.mjs&local_path=./nodejs/src/openai-image-model-controller.ts
+schema:
+  type: object
+  properties:
+    model:
+      title: Model ID
+      description: OpenAI image model identifier passed to the API (e.g. gpt-image-1, dall-e-3).
+      type: string
+    apiKey:
+      title: API Key
+      description: Secret reference; typically `${{ secrets.openaiApiKey }}`.
+      type: string
+      x-telo-eval: compile
+    baseUrl:
+      title: Base URL
+      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
+      type: string
+      x-telo-eval: compile
+    options:
+      title: Options
+      description: >-
+        Model-level defaults as camelCase OpenAI image request params (size, quality,
+        n, outputFormat, background, …), normalized to snake_case. Merged beneath
+        Ai.Image.options and its per-call inputs.options; downstream wins.
+      type: object
+      additionalProperties: true
+  required: [ model, apiKey ]
+  additionalProperties: false
+  $defs:
+    # The reference-image modes this endpoint routes: edit and inpaint go to
+    # /images/edits, variation to /images/variations. Style and structure
+    # conditioning have no route here, so they are absent rather than accepted and
+    # rejected later.
+    Intent:
+      title: Intent
+      type: string
+      enum: [ edit, inpaint, variation ]
+  examples:
+    - model: gpt-image-1
+      apiKey: "${{ secrets.openaiApiKey }}"
+      options:
+        size: 1024x1024
+        quality: low
+    - model: dall-e-3
+      apiKey: "${{ secrets.openaiApiKey }}"
+      options:
+        size: 1024x1024

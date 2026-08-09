@@ -1,0 +1,35 @@
+kind: Telo.Application
+metadata:
+  name: WriteContentLiteralFixture
+  version: 1.0.0
+  description: |
+    Analyzer fixture: an object literal at a byte slot. `content` accepts text or
+    raw bytes (`x-telo-binary`), and no YAML literal is ever a byte buffer — so
+    this must fail statically rather than reaching the controller. Not a runnable
+    test; loaded by tests/write-content-rejects-literal.yaml.
+imports:
+  Fs: ../../
+  Run: ../../../run
+targets:
+  - !ref T
+---
+kind: Fs.FileWrite
+metadata: { name: Save }
+---
+kind: Fs.TreeSync
+metadata: { name: Sync }
+---
+kind: Run.Sequence
+metadata: { name: T }
+steps:
+  - name: WriteLiteral
+    inputs:
+      path: ./x.png
+      content: { foo: bar }
+    invoke: !ref Save
+  - name: SyncLiteral
+    inputs:
+      write:
+        - path: ./y.png
+          content: { foo: bar }
+    invoke: !ref Sync

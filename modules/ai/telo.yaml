@@ -1,15 +1,16 @@
 kind: Telo.Library
 metadata:
-  name: ai
+  name: AI
   version: 0.14.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [AI]
   description: |
-    Large-language-model completions over any provider: buffered text, token-by-token
-    streaming, and a tool-use agent loop that calls the model, runs the tools it asks
-    for, and replays their results until it settles. Tools wrap ordinary resources,
-    exposed as a static list or discovered at runtime.
+    Language and image models over any provider: buffered text, token-by-token
+    streaming, prompt-to-picture generation and editing, and a tool-use agent loop
+    that calls the model, runs the tools it asks for, and replays their results until
+    it settles. Tools wrap ordinary resources, exposed as a static list or discovered
+    at runtime.
 exports:
   kinds:
     - Model
@@ -19,6 +20,8 @@ exports:
     - Tools
     - Agent
     - AgentStream
+    - ImageModel
+    - Image
 ---
 # Ai.Model — the abstract LLM client every provider implements. Like Sql.Connection
 # or Http.Client, it is a Telo.Provider: a configured handle to a backend (model id,
@@ -106,7 +109,12 @@ outputType:
           promptTokens: { type: integer, minimum: 0 }
           completionTokens: { type: integer, minimum: 0 }
           totalTokens: { type: integer, minimum: 0 }
-        required: [promptTokens, completionTokens, totalTokens]
+          # The provider-neutral half, shared with Ai.Image's usage so one consumer
+          # can total spend across modalities. Filled by this kind from totalTokens,
+          # so a provider that reports only the token triple needs no change.
+          unit: { type: string }
+          total: { type: number, minimum: 0 }
+        required: [promptTokens, completionTokens, totalTokens, unit, total]
         additionalProperties: false
       finishReason:
         type: string
@@ -414,7 +422,11 @@ outputType:
           promptTokens: { type: integer, minimum: 0 }
           completionTokens: { type: integer, minimum: 0 }
           totalTokens: { type: integer, minimum: 0 }
-        required: [promptTokens, completionTokens, totalTokens]
+          # See the note on Ai.Text's usage — same provider-neutral half, accumulated
+          # across the loop's turns.
+          unit: { type: string }
+          total: { type: number, minimum: 0 }
+        required: [promptTokens, completionTokens, totalTokens, unit, total]
         additionalProperties: false
       finishReason:
         type: string
@@ -662,3 +674,262 @@ schema:
       maxSteps: 12
       toolProviders:
         - provider: !ref WorkspaceTools
+---
+# The result of an image generation, declared once and referenced by BOTH
+# Ai.ImageModel's outputType and Ai.Image's, so the provider contract and the
+# operation's cannot drift apart. The request shapes are deliberately not shared:
+# `intent` and the merged `options` are configuration on the operation and per-call
+# input on the model.
+#
+# `images` holds what was produced; `finishReason` says why there may be fewer than
+# asked for. A refusal carries no bytes, so it is reported here rather than as a
+# per-image reason — that would make `data` nullable and put a null guard on every
+# happy path. All-filtered is an empty array; some-filtered is a short one.
+kind: Telo.JsonSchema
+metadata:
+  name: ImageResult
+  description: >-
+    The images a generation produced, each with its bytes and media type, plus why
+    the run ended, what it cost, and any text the model returned alongside. Fewer
+    images than requested means the rest were refused.
+schema:
+  type: object
+  required: [images, finishReason]
+  additionalProperties: false
+  properties:
+    images:
+      description: One entry per produced image, in provider order. Empty when every image was refused.
+      type: array
+      items:
+        type: object
+        required: [data, mediaType]
+        additionalProperties: false
+        properties:
+          data:
+            description: Encoded image bytes, ready to write, overlay, or send back to a model.
+            x-telo-binary: true
+          mediaType:
+            description: MIME type of the encoded bytes (image/png, image/jpeg, image/webp).
+            type: string
+          width:
+            description: Pixel width, when the provider reports it. Not derived from the bytes here — decode them if you need it guaranteed.
+            type: integer
+            minimum: 1
+          height:
+            description: Pixel height, when the provider reports it.
+            type: integer
+            minimum: 1
+          details:
+            description: Provider-specific extras for this image (seed, safety flags, …).
+            type: object
+            additionalProperties: true
+    finishReason:
+      description: >-
+        Why the run ended. `content-filter` means some or all images were refused —
+        compare the array length against what was requested to tell which.
+      type: string
+      enum: [stop, content-filter, error, other]
+    usage:
+      description: What the run cost, when the provider reports it at all. Omitted entirely when it does not.
+      type: object
+      required: [unit, total]
+      additionalProperties: false
+      properties:
+        unit:
+          description: What `total` counts — tokens, credits, seconds, images. Open vocabulary; providers name their own.
+          type: string
+        total:
+          description: The quantity billed, in `unit`. The one number a spend aggregator can total across providers.
+          type: number
+          minimum: 0
+        details:
+          description: The provider's own breakdown (input/output token split, per-image cost, …).
+          type: object
+          additionalProperties: true
+    text:
+      description: Text the model returned alongside the images — a rewritten prompt, or commentary from a chat-native image model.
+      type: string
+---
+# Ai.ImageModel — the abstract image generator every provider implements. Like
+# Ai.Model it is a Telo.Provider: a configured handle (model id, API key, default
+# options), not an operation you invoke directly.
+#
+# Unlike Ai.Model, its call shape is DECLARED here rather than being a documented
+# convention, and the method is `invoke` — the kernel's bound entry point. That is
+# what makes the contract enforceable: the kernel binds `invoke` at its single
+# instance-production site and AJV-checks both directions at dispatch, so Ai.Image
+# validates nothing by hand, `telo check` sees the shape, and a provider written in
+# any language implements a manifest-declared contract instead of a TypeScript
+# interface. Cancellation rides the InvokeContext passed as the second argument
+# (the kernel forwards every argument through the bound entry point), never a
+# `signal` inside the input — an AbortSignal is not declarable data.
+#
+# A provider narrows the reference-image modes it serves by declaring `$defs/Intent`
+# in its own schema; Ai.Image derives its `intent` field from that, so an intent a
+# backend cannot serve is a static error rather than a runtime one.
+kind: Telo.Abstract
+metadata:
+  name: ImageModel
+  description: >-
+    A configured handle to an image model — credentials, model id and default options
+    — that generation operations drive to turn a prompt, and optionally reference
+    pictures, into image bytes.
+capability: Telo.Provider
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      prompt:
+        description: What to draw. Required unless the intent generates from the reference alone.
+        type: string
+      intent:
+        description: >-
+          What the reference images are for, resolved from the operation's config.
+          Absent means plain text-to-image. Each provider declares the values it
+          serves in its own `$defs/Intent`.
+        type: string
+      images:
+        description: Reference images the intent operates on.
+        type: array
+        minItems: 1
+        items:
+          type: object
+          required: [data, mediaType]
+          additionalProperties: false
+          properties:
+            data:
+              description: Encoded image bytes.
+              x-telo-binary: true
+            mediaType: { type: string }
+      mask:
+        description: Which region to repaint, as an image whose transparent area marks the target. Required under an inpainting intent.
+        type: object
+        required: [data, mediaType]
+        additionalProperties: false
+        properties:
+          data:
+            description: Encoded mask bytes.
+            x-telo-binary: true
+          mediaType: { type: string }
+      options:
+        description: Request options, already merged by the operation from its own and the caller's.
+        type: object
+        additionalProperties: true
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    $ref: "telo://Self/ImageResult"
+---
+# Ai.Image — the buffered generation operation, symmetric to Ai.Text. It merges
+# options, forwards cancellation, and hands the call to the model; the kernel
+# contract-checks what comes back, so there is no hand-rolled result validation here.
+#
+# `intent` is CONFIG, not a per-call input: its acceptable values come from the
+# referenced provider's `$defs/Intent` (x-telo-schema-from), which is what turns an
+# unsupported mode into a `telo check` error. The cost is that intent is fixed per
+# resource — generating and editing with one model means two Ai.Image resources,
+# which also reads better declaratively.
+kind: Telo.Definition
+metadata:
+  name: Image
+  description: >-
+    Generates pictures from a prompt, or reworks pictures you supply, returning the
+    encoded bytes with their media type plus why the run ended and what it cost.
+    Refused images come back as a short list rather than an error.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ai-image-controller.mjs&local_path=./nodejs/src/ai-image-controller.ts
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        `prompt` is missing with no intent configured, or `images` / `mask` are
+        supplied with no intent to say what they are for, or an intent is configured
+        and no `images` were supplied. Mode-specific requirements — which intents
+        need a mask, which can run without a prompt — are the provider's, and surface
+        with the same code from there. A malformed `inputs` shape is the kernel's
+        `ERR_INPUT_INVALID`, not this.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        The referenced `model` is not a live Ai.ImageModel instance — check that the
+        resource exists and that its controller loaded.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      prompt:
+        description: What to draw. Required unless the configured intent generates from the reference alone.
+        type: string
+      images:
+        description: Reference images the configured intent operates on. Only meaningful when `intent` is set.
+        type: array
+        minItems: 1
+        items:
+          type: object
+          required: [data, mediaType]
+          additionalProperties: false
+          properties:
+            data:
+              description: Encoded image bytes.
+              x-telo-binary: true
+            mediaType: { type: string }
+      mask:
+        description: Which region to repaint, as an image whose transparent area marks the target. Required under an inpainting intent.
+        type: object
+        required: [data, mediaType]
+        additionalProperties: false
+        properties:
+          data:
+            description: Encoded mask bytes.
+            x-telo-binary: true
+          mediaType: { type: string }
+      options:
+        description: Per-call option overrides. Shallow-merged over this resource's `options`; the call wins.
+        type: object
+        additionalProperties: true
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    $ref: "telo://Self/ImageResult"
+schema:
+  type: object
+  properties:
+    model:
+      title: Model
+      description: Reference to any Ai.ImageModel implementation.
+      x-telo-ref:
+        kind: Self.ImageModel
+        # invoke() is the kernel's bound entry point, dispatched and contract-checked
+        # during this resource's own invocation — the Ai.Text treatment, not the
+        # Embedding.Query one, whose embed() is a plain method on a held instance.
+        use: call
+    intent:
+      title: Intent
+      description: >-
+        What the reference images passed to this resource are for. Omit for plain
+        text-to-image. The accepted values come from the referenced model, so a mode
+        it cannot serve fails `telo check`.
+      # The base type is declared as well as derived: the derived schema is what
+      # narrows the values, but stating `string` keeps the kernel's own config
+      # validation and the editor's field rendering honest without either having to
+      # resolve the sibling ref first.
+      type: string
+      x-telo-schema-from: "model/$defs/Intent"
+    options:
+      title: Options
+      description: Request-level option defaults (size, quality, count, …). Per-call inputs.options wins.
+      type: object
+      additionalProperties: true
+  required: [model]
+  additionalProperties: false
+  examples:
+    - model: !ref Painter
+      options:
+        size: 1024x1024
+        quality: low
+    - model: !ref Painter
+      intent: inpaint

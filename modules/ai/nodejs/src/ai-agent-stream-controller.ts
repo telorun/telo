@@ -1,4 +1,5 @@
 import type { InvokeContext, ResourceInstance } from "@telorun/sdk";
+import { withTokenQuantity } from "./usage.js";
 import { InvokeError, Stream } from "@telorun/sdk";
 import {
   assembleTools,
@@ -142,7 +143,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
       // No tools requested this turn — the model has answered. Emit the single
       // synthesized terminal finish with accumulated usage.
       if (turnCalls.length === 0) {
-        yield { type: "finish", usage, finishReason };
+        yield { type: "finish", usage: withTokenQuantity(usage), finishReason };
         return;
       }
 
@@ -182,7 +183,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
       };
       return;
     }
-    yield { type: "finish", usage, finishReason };
+    yield { type: "finish", usage: withTokenQuantity(usage), finishReason };
   }
 
   snapshot(): Record<string, unknown> {
