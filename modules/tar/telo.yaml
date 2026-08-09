@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Tar
-  version: 0.7.0
+  version: 0.8.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Data]

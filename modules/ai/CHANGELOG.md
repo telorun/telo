@@ -1,5 +1,7 @@
 # Changelog
-## 0.14.0 - 2026-08-08
+## 0.15.0 - 2026-08-09
+### Added
+* Ai.ImageModel and Ai.Image: turn a prompt into picture bytes, or rework pictures you supply, through any image provider. The provider contract is declared in the manifest and its method is invoke, so the kernel contract-checks both directions at dispatch and a provider in any language has a shape to implement — Ai.Image validates nothing by hand. Reference-image work names an intent whose accepted values come from the model's own $defs/Intent, so a mode a backend cannot serve fails telo check instead of throwing. Refusals come back as a result (finishReason: content-filter with a short or empty list), not an error. Ai.Text and Ai.Agent gain optional unit/total fields on usage, filled from totalTokens, so one consumer can total spend across text and image calls; the token triple is unchanged and providers need no update.## 0.14.0 - 2026-08-08
 ### Added
 * Every `x-telo-ref` slot now declares what this module does with the target: `use: dependency` (held and read), `call` (control transfers during the invocation and returns), `detached`, `trigger.inbound`, `trigger.consumer`, or `schema` for a slot that only names a shape. Slots that accepted `Telo.Invocable | Telo.Runnable` through an `anyOf` now say `Telo.Executable`, the new built-in parent of both. Wiring manifests are unchanged — this is schema metadata, and it is what lets `telo check` answer whether control reaches a referenced resource, and when.## 0.13.0 - 2026-08-01
 ### Added

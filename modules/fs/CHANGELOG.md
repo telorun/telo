@@ -1,5 +1,7 @@
 # Changelog
-## 0.7.0 - 2026-08-01
+## 0.8.0 - 2026-08-09
+### Added
+* Fs.FileWrite and Fs.TreeSync accept raw bytes as content, alongside the existing utf8 and base64 string forms. A Uint8Array handed over by a byte-producing resource — a generated image, a decoded payload — is now written as it is, with no base64 round trip and no JS.Script hop in between. encoding does not apply to raw bytes and is ignored for them.## 0.7.0 - 2026-08-01
 ### Added
 * The controller now ships inside the module artifact as a bundle (pkg:telo/local/js) instead of being fetched from npm at load. Importing this module needs no npm registry at run time, and its version is a single number again: metadata.version. The kernel builds the controller from source while the module is a working copy, so a checkout needs no build step.## 0.6.0 - 2026-07-31
 ### Added

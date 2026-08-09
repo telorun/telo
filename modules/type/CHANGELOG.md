@@ -1,5 +1,7 @@
 # Changelog
-## 0.11.0 - 2026-08-03
+## 0.12.0 - 2026-08-09
+### Added
+* metadata.name is now Type, so the module contributes its kinds under the `Type.<Kind>` canonical prefix instead of `type.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.11.0 - 2026-08-03
 ### Added
 * Structured deprecation. This module's supersession by the kernel built-in `Telo.JsonSchema` lived in a YAML comment and a "DEPRECATED —" prefix on its descriptions, so no consumer could see it and the prefix diluted the module's hub search vector. It is now declared as `metadata.deprecated` on both the library doc and the JsonSchema kind, the kind naming `Telo.JsonSchema` as its replacement; the library carries a reason only, since a module-level replacement addresses another module and the replacement here is a kernel built-in. Descriptions were restored to describing what the module does. Behaviour is unchanged.## 0.10.0 - 2026-07-31
 ### Deprecated

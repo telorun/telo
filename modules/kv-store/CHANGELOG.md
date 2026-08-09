@@ -1,5 +1,7 @@
 # Changelog
-## 0.3.0 - 2026-07-27
+## 0.4.0 - 2026-08-09
+### Added
+* metadata.name is now KeyValueStore, so the module contributes its kinds under the `KeyValueStore.<Kind>` canonical prefix instead of `kv-store.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.3.0 - 2026-07-27
 ### Added
 * Reference slots name their target as an alias-qualified kind (`<Alias>.<Kind>`, `Self.<Kind>`, `Telo.<Kind>`) instead of the `<namespace>/<module>#<Kind>` identity string, so a constraint resolves through this module's own `imports:` map and stays pinned to the version it imports. `metadata.namespace` is dropped — a module's location is the ref it is published under, never anything it declares about itself.## 0.2.1 - 2026-07-27
 ### Fixed

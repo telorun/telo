@@ -1,5 +1,7 @@
 # Changelog
-## 0.8.0 - 2026-08-08
+## 0.9.0 - 2026-08-09
+### Added
+* metadata.name is now Postgres, so the module contributes its kinds under the `Postgres.<Kind>` canonical prefix instead of `sql-postgres.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.8.0 - 2026-08-08
 ### Added
 * The connection passes its `ResourceContext` to `SqlConnectionBase`, which now carries transaction state through the kernel's execution-zone stack (keyed per connection) rather than a module-global store. No manifest change — pooling, `sslmode` handling and the liveness sweep are untouched.## 0.7.0 - 2026-08-01
 ### Added

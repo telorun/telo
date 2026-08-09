@@ -1,5 +1,7 @@
 # Changelog
-## 0.16.0 - 2026-08-03
+## 0.17.0 - 2026-08-09
+### Added
+* metadata.name is now Console, so the module contributes its kinds under the `Console.<Kind>` canonical prefix instead of `console.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.16.0 - 2026-08-03
 ### Added
 * Native Rust controllers for WriteLine and ReadLine, selected automatically by the Rust kernel and available on the Node.js kernel via runtime: rust.## 0.15.0 - 2026-08-01
 ### Added
