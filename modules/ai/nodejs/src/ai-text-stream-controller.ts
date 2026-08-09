@@ -6,6 +6,7 @@ import type {
 } from "@telorun/sdk";
 import { InvokeError, Stream } from "@telorun/sdk";
 import { isContentParts } from "./content.js";
+import { stampStreamUsage } from "./usage.js";
 import type { AiModelInstance, Message, StreamPart } from "./types.js";
 
 /**
@@ -101,7 +102,8 @@ class AiTextStream implements ResourceInstance<AiTextStreamInputs, AiTextStreamO
     // Capture the signal at invoke-time so it rides into the deferred Stream
     // consumption and aborts the live model connection on cancel.
     const parts = model.stream({ messages, options: mergedOptions, signal: ctx?.cancellation.signal });
-    return { output: new Stream(parts) };
+    // Stamped so a streamed run reports usage exactly as a buffered one does.
+    return { output: new Stream(stampStreamUsage(parts)) };
   }
 
   snapshot(): Record<string, unknown> {

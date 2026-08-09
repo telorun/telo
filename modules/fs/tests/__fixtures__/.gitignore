@@ -1,4 +1,10 @@
 # Tests create scratch files/dirs here at runtime and remove them on success;
 # keep the directory tracked but ignore everything written into it.
+#
+# Checked-in fixtures must be un-ignored BY NAME. A fixture that an Assert.Manifest
+# test names as its `source:` is not scratch output — if it is ignored it still
+# passes locally, where the file is on disk, and silently stops testing anything on
+# a fresh clone.
 *
 !.gitignore
+!write-content-literal.yaml

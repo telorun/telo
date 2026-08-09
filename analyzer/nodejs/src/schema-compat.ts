@@ -1,6 +1,7 @@
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import { isRefSentinel, isTaggedSentinel, ManifestRootSchema, normalizeRefSlots } from "@telorun/templating";
+import { binaryKeyword, isBinarySlot } from "./binary-slot.js";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
 
@@ -17,6 +18,10 @@ export function createAjv(): InstanceType<typeof Ajv> {
   (addFormats as any).default
     ? (addFormats as any).default(instance)
     : (addFormats as any)(instance);
+  // Bytes have no JSON Schema type, so the annotation carries the check. Registered
+  // here and in the kernel's validators from one definition, so a literal at a byte
+  // slot is rejected statically and at dispatch by the identical rule.
+  instance.addKeyword(binaryKeyword());
   instance.addSchema(ManifestRootSchema);
   return instance;
 }
@@ -371,6 +376,11 @@ function foldedConstraints(schema: Record<string, any>): Record<string, any> {
 
 export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown {
   const schema = foldedConstraints(rawSchema);
+  // A byte slot's placeholder must BE bytes: the same keyword validates statically
+  // and at dispatch, so a CEL leaf standing in for a runtime buffer has to satisfy
+  // it. This is what keeps the rule single — a literal is rejected because no YAML
+  // literal is a Uint8Array, while a value arriving by reference passes.
+  if (isBinarySlot(schema)) return new Uint8Array();
   if (schema.default !== undefined) return schema.default;
   // An enum-constrained field needs a placeholder drawn from the enum: the
   // type-based fallbacks below ("" for a string, 0 for a number) satisfy `type`

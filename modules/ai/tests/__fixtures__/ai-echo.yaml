@@ -13,6 +13,7 @@ imports:
 exports:
   kinds:
     - EchoModel
+    - EchoImageModel
     - StreamCollector
 ---
 kind: Telo.Definition
@@ -55,6 +56,65 @@ schema:
       required: [ name ]
       additionalProperties: false
   additionalProperties: false
+---
+# Internal Ai.ImageModel fixture. Produces deterministic bytes describing the request
+# it received, so tests can assert what reached the provider without a live model or
+# a real encoder — the bytes are not a valid image, and nothing in the contract
+# decodes them.
+#
+# `$defs/Intent` is narrower than the OpenAI provider's on purpose: Ai.Image derives
+# its `intent` field from it, so a manifest naming `variation` against THIS model is
+# a static error, which is what tests/image-rejects-unsupported-intent.yaml asserts.
+kind: Telo.Definition
+metadata:
+  name: EchoImageModel
+capability: Telo.Provider
+extends: Ai.ImageModel
+controllers:
+  - pkg:telo/local/js?path=../../nodejs/ai-echo-image-controller.mjs&local_path=../../nodejs/src/ai-echo-image-controller.ts
+schema:
+  type: object
+  properties:
+    mediaType:
+      title: Media type
+      description: Media type reported for every produced image. Default image/png.
+      type: string
+    count:
+      title: Count
+      description: How many images to produce per call. Default 1.
+      type: integer
+      minimum: 0
+    width:
+      title: Width
+      description: Pixel width to report. Omitted from the result when unset, exercising the optional-dimension path.
+      type: integer
+      minimum: 1
+    height:
+      title: Height
+      description: Pixel height to report.
+      type: integer
+      minimum: 1
+    refuseOn:
+      title: Refuse-on rule
+      description: |
+        Test-only marker: when the prompt equals `prompt`, the run reports
+        content-filter and yields only `keep` images. `keep: 0` is total refusal,
+        a smaller-than-count value is partial.
+      type: object
+      properties:
+        prompt: { type: string }
+        keep: { type: integer, minimum: 0 }
+      required: [ prompt ]
+      additionalProperties: false
+    reportUsage:
+      title: Report usage
+      description: Whether to report a usage quantity, exercising both the present and absent paths.
+      type: boolean
+  additionalProperties: false
+  $defs:
+    Intent:
+      type: string
+      enum: [ edit, inpaint ]
 ---
 # Test-support Invocable: takes an Ai.Model reference, calls model.stream(...),
 # collects the StreamPart sequence, and returns it. Lets stream-contract tests

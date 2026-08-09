@@ -8,6 +8,7 @@
  * tool-use loop) import them to type the injected `resource.model`.
  */
 
+import type { InvokeContext } from "@telorun/sdk";
 import type { MessageContent } from "./content.js";
 
 export type { ContentPart, ImagePart, MessageContent, TextPart } from "./content.js";
@@ -52,11 +53,30 @@ export interface ToolDefinition {
   parameters: Record<string, unknown>;
 }
 
-/** Token usage counts returned by every invocation. */
+/** What a run cost, in whatever the provider bills. `unit` is an open vocabulary
+ *  (`tokens`, `credits`, `seconds`, `images`) and `total` is the one number a spend
+ *  aggregator can sum across providers and modalities; `details` carries the
+ *  provider's own breakdown. Omitted entirely when a provider reports nothing —
+ *  absent means absent, so no consumer has to special-case a sentinel unit. */
+export interface UsageQuantity {
+  unit: string;
+  total: number;
+  details?: Record<string, unknown>;
+}
+
+/** Token usage counts returned by every completion.
+ *
+ *  `unit` / `total` are the provider-neutral half shared with `UsageQuantity`, so
+ *  one consumer totals spend across text and image calls. They are stamped by the
+ *  consuming kind (Ai.Text / Ai.Agent) from `totalTokens`, not reported by
+ *  providers — which is why they are optional on this producer-facing type while
+ *  the kinds declare them required on their output. See `usage.ts`. */
 export interface Usage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  unit?: string;
+  total?: number;
 }
 
 /** Normalized completion termination reason. Provider-specific reasons are mapped
@@ -135,6 +155,81 @@ export type AgentStreamPart =
 export interface AiModelInstance {
   invoke(input: ModelInvokeInput): Promise<CompletionResult>;
   stream(input: ModelInvokeInput): AsyncIterable<StreamPart>;
+  snapshot?(): Record<string, unknown>;
+  init?(): Promise<void> | void;
+  teardown?(): Promise<void> | void;
+}
+
+// --- Image generation (Ai.ImageModel / Ai.Image) ---
+
+/** Encoded image bytes plus their MIME type — the currency of the image contract,
+ *  on the way in (references, masks) and on the way out. Raw bytes rather than
+ *  base64 so a result feeds Fs.FileWrite, Image.Overlay and multimodal message
+ *  parts without a conversion step. */
+export interface ImageBytes {
+  data: Uint8Array;
+  mediaType: string;
+}
+
+/** One produced image. `width`/`height` are whatever the provider reported — they
+ *  are never derived from the bytes, so a consumer needing them guaranteed decodes
+ *  the image itself. `details` is the provider's own per-image extras (seed, safety
+ *  flags). */
+export interface GeneratedImage extends ImageBytes {
+  width?: number;
+  height?: number;
+  details?: Record<string, unknown>;
+}
+
+/** Why a generation ended. A refusal carries no bytes, so it is reported once for
+ *  the run rather than per image — `content-filter` with a short (or empty)
+ *  `images` array is how partial and total refusal are told apart. */
+export type ImageFinishReason = "stop" | "content-filter" | "error" | "other";
+
+/** Buffered output of an image generation. Declared in the manifest as the shared
+ *  `ImageResult` type and AJV-checked by the kernel at dispatch; this interface is
+ *  convenience typing for Node providers, not the contract itself. */
+export interface ImageGenerationResult {
+  images: GeneratedImage[];
+  finishReason: ImageFinishReason;
+  usage?: UsageQuantity;
+  text?: string;
+}
+
+/** Input to an `AiImageModelInstance.invoke`. No `signal` member: cancellation rides
+ *  the `InvokeContext` passed as the second argument, the way every bound entry
+ *  point receives it — an AbortSignal is not declarable data, and the input is
+ *  contract-checked against a manifest schema.
+ *
+ *  `intent` names what the reference `images` are for. Its vocabulary is each
+ *  provider's own (declared as `$defs/Intent` in its schema, which is where
+ *  Ai.Image's static check comes from), so the contract types it as a plain
+ *  string. */
+export interface ImageInvokeInput {
+  prompt?: string;
+  intent?: string;
+  images?: ImageBytes[];
+  mask?: ImageBytes;
+  options?: Record<string, unknown>;
+}
+
+/**
+ * Runtime contract every Ai.ImageModel implementation exposes.
+ *
+ * `invoke` is the kernel's BOUND entry point, not a convention method like
+ * `AiModelInstance.invoke` — the kernel binds it at instance creation and validates
+ * inputs and outputs against the manifest-declared contract, so an implementation
+ * gets enforcement for free and any-language providers have a declared shape to
+ * implement.
+ *
+ * A provider that runs generation as an async job must forward `ctx.cancellation.signal`
+ * through its POLL LOOP, not merely the first request — an abandoned invoke must stop
+ * polling, not keep billing.
+ *
+ * `snapshot` must redact secrets (see `redact.ts`).
+ */
+export interface AiImageModelInstance {
+  invoke(input: ImageInvokeInput, ctx?: InvokeContext): Promise<ImageGenerationResult>;
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
   teardown?(): Promise<void> | void;

@@ -97,6 +97,7 @@ export {
   transfersControl,
 } from "./ref-slot.js";
 export type { RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
+export { binaryKeyword, isBinarySlot, X_TELO_BINARY } from "./binary-slot.js";
 export {
   hasProvidesZone,
   hasRequiresZone,

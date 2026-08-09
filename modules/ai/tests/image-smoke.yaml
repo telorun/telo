@@ -1,0 +1,257 @@
+kind: Telo.Application
+metadata:
+  name: ImageSmokeTest
+  version: 1.0.0
+  description: |
+    Ai.Image against the hermetic echo image model: option merging, the produced
+    result shape, the refusal path, and the input combinations the schema cannot
+    express. No live model — the echo fixture reports back what reached it.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestGeneration
+  - !ref TestEdit
+  - !ref TestRefusal
+  - !ref TestInputRules
+---
+kind: AiEcho.EchoImageModel
+metadata: { name: Echo }
+count: 2
+width: 1024
+height: 1024
+reportUsage: true
+---
+# Refuses the banned prompt outright — empty array, content-filter.
+kind: AiEcho.EchoImageModel
+metadata: { name: TotalRefuser }
+count: 2
+refuseOn:
+  prompt: BANNED
+  keep: 0
+---
+# Refuses only part of the batch: two asked for, one produced. Same finishReason as
+# a total refusal, which is why the array length is what tells them apart.
+kind: AiEcho.EchoImageModel
+metadata: { name: PartialRefuser }
+count: 2
+refuseOn:
+  prompt: BANNED
+  keep: 1
+---
+kind: Ai.Image
+metadata: { name: Draw }
+model: !ref Echo
+options:
+  size: 1024x1024
+---
+# One image per call, so the edit assertions read against a single reference.
+kind: AiEcho.EchoImageModel
+metadata: { name: Single }
+count: 1
+---
+kind: Ai.Image
+metadata: { name: DrawOne }
+model: !ref Single
+---
+kind: Ai.Image
+metadata: { name: Retouch }
+model: !ref Single
+intent: edit
+---
+kind: Ai.Image
+metadata: { name: Repaint }
+model: !ref Single
+intent: inpaint
+---
+kind: Ai.Image
+metadata: { name: DrawRefusedWhole }
+model: !ref TotalRefuser
+---
+kind: Ai.Image
+metadata: { name: DrawRefusedPartly }
+model: !ref PartialRefuser
+---
+# Text-to-image: the resource's options sit beneath the call's, the result carries
+# one entry per produced image with the provider's reported dimensions, and usage
+# arrives as the provider-neutral { unit, total } quantity.
+kind: Run.Sequence
+metadata:
+  name: TestGeneration
+steps:
+  - name: Generate
+    inputs:
+      prompt: a lighthouse
+      options:
+        quality: low
+    invoke: !ref Draw
+  - name: Assert
+    inputs:
+      actual:
+        echoed: !cel "steps.Generate.result.text"
+        count: !cel "size(steps.Generate.result.images)"
+        finishReason: !cel "steps.Generate.result.finishReason"
+        mediaType: !cel "steps.Generate.result.images[0].mediaType"
+        width: !cel "steps.Generate.result.images[0].width"
+        height: !cel "steps.Generate.result.images[0].height"
+        usageUnit: !cel "steps.Generate.result.usage.unit"
+        usageTotal: !cel "steps.Generate.result.usage.total"
+      expected:
+        # Resource options first, call options second — downstream wins on a clash.
+        echoed: 'prompt=a lighthouse|intent=|images=0|mask=0|options={"size":"1024x1024","quality":"low"}'
+        # size() yields a CEL int, so the expectation is written as one too — a plain
+        # YAML 2 is a float and would not deep-equal it.
+        count: !cel "2"
+        finishReason: stop
+        mediaType: image/png
+        width: 1024
+        height: 1024
+        usageUnit: images
+        usageTotal: 2
+    invoke:
+      kind: Assert.Equals
+---
+# An intent is resource config; the reference images ride the call. Both must reach
+# the provider, and a mask must reach it too under an inpainting intent. The
+# references are real bytes produced by an earlier generation — the same round trip
+# a caller makes when it reworks a picture it just generated.
+kind: Run.Sequence
+metadata:
+  name: TestEdit
+steps:
+  - name: Seed
+    inputs: { prompt: a lighthouse }
+    invoke: !ref DrawOne
+  - name: Edit
+    inputs:
+      prompt: add a storm
+      images:
+        - data: !cel "steps.Seed.result.images[0].data"
+          mediaType: !cel "steps.Seed.result.images[0].mediaType"
+    invoke: !ref Retouch
+  - name: Inpaint
+    inputs:
+      prompt: repaint the sky
+      images:
+        - data: !cel "steps.Seed.result.images[0].data"
+          mediaType: !cel "steps.Seed.result.images[0].mediaType"
+      mask:
+        data: !cel "steps.Seed.result.images[0].data"
+        mediaType: image/png
+    invoke: !ref Repaint
+  - name: Assert
+    inputs:
+      actual:
+        edited: !cel "steps.Edit.result.text"
+        inpainted: !cel "steps.Inpaint.result.text"
+      expected:
+        edited: "prompt=add a storm|intent=edit|images=1|mask=0|options={}"
+        inpainted: "prompt=repaint the sky|intent=inpaint|images=1|mask=1|options={}"
+    invoke:
+      kind: Assert.Equals
+---
+# A refusal is a RESULT, not an error: the run reports content-filter and hands back
+# whatever survived. Total and partial refusal share the reason and differ only in
+# how many images came back.
+kind: Run.Sequence
+metadata:
+  name: TestRefusal
+steps:
+  - name: Whole
+    inputs: { prompt: BANNED }
+    invoke: !ref DrawRefusedWhole
+  - name: Partly
+    inputs: { prompt: BANNED }
+    invoke: !ref DrawRefusedPartly
+  - name: Allowed
+    inputs: { prompt: fine by me }
+    invoke: !ref DrawRefusedWhole
+  - name: Assert
+    inputs:
+      actual:
+        wholeReason: !cel "steps.Whole.result.finishReason"
+        wholeCount: !cel "size(steps.Whole.result.images)"
+        partlyReason: !cel "steps.Partly.result.finishReason"
+        partlyCount: !cel "size(steps.Partly.result.images)"
+        allowedReason: !cel "steps.Allowed.result.finishReason"
+        allowedCount: !cel "size(steps.Allowed.result.images)"
+      expected:
+        wholeReason: content-filter
+        wholeCount: !cel "0"
+        partlyReason: content-filter
+        partlyCount: !cel "1"
+        allowedReason: stop
+        allowedCount: !cel "2"
+    invoke:
+      kind: Assert.Equals
+---
+# The combinations a JSON Schema cannot state. The first three are structural, so
+# Ai.Image owns them; the mask requirement is the PROVIDER's, since it owns the
+# intent vocabulary — `inpaint` means nothing to the generic module, and a backend
+# whose repaint mode is called `outpaint` would silently lose the rule if it did.
+kind: Run.Sequence
+metadata:
+  name: TestInputRules
+steps:
+  - name: Seed
+    inputs: { prompt: a lighthouse }
+    invoke: !ref DrawOne
+  - name: NoPrompt
+    try:
+      - name: Invoke
+        inputs: {}
+        invoke: !ref Draw
+    catch:
+      - name: Assert
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_INPUT
+        invoke:
+          kind: Assert.Equals
+  - name: ImagesWithoutIntent
+    try:
+      - name: Invoke
+        inputs:
+          prompt: a lighthouse
+          images:
+            - data: !cel "steps.Seed.result.images[0].data"
+              mediaType: image/png
+        invoke: !ref Draw
+    catch:
+      - name: Assert
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_INPUT
+        invoke:
+          kind: Assert.Equals
+  - name: IntentWithoutImages
+    try:
+      - name: Invoke
+        inputs: { prompt: add a storm }
+        invoke: !ref Retouch
+    catch:
+      - name: Assert
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_INPUT
+        invoke:
+          kind: Assert.Equals
+  # Raised by the echo PROVIDER, not by Ai.Image — same code, different owner.
+  - name: InpaintWithoutMask
+    try:
+      - name: Invoke
+        inputs:
+          prompt: repaint the sky
+          images:
+            - data: !cel "steps.Seed.result.images[0].data"
+              mediaType: image/png
+        invoke: !ref Repaint
+    catch:
+      - name: Assert
+        inputs:
+          actual: !cel "error.code + '|' + string(error.message.contains('EchoImageModel'))"
+          expected: ERR_INVALID_INPUT|true
+        invoke:
+          kind: Assert.Equals

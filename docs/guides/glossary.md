@@ -137,6 +137,13 @@ which kinds a reference slot accepts (`x-telo-ref`), whether a field is
 evaluated (`x-telo-eval`), what CEL context is in scope (`x-telo-context`). This
 is how the analyzer and the editor stay generic: they hardcode no kind.
 
+Nearly all of them are metadata that changes no validation. `x-telo-binary` is
+the exception: bytes have no JSON Schema type, so the annotation itself is what
+checks the slot — and because bytes always arrive by reference, an inline literal
+where one is expected is a static error. A union with a byte branch must use
+`anyOf`, not `oneOf`: tooling that does not know the keyword reads that branch as
+matching anything, which would make the union ambiguous.
+
 ### Module artifact
 
 A published module: `telo.yaml` plus layers for controllers and assets, each

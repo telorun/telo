@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: ImageUnsupportedIntentFixture
+  version: 1.0.0
+  description: |
+    Analyzer fixture: an Ai.Image naming an intent its model does not serve. The
+    echo image model declares `$defs/Intent` as [edit, inpaint]; Ai.Image derives its
+    `intent` field from that via x-telo-schema-from, so `variation` must fail
+    statically rather than at dispatch. Not a runnable test — loaded by
+    tests/image-rejects-unsupported-intent.yaml.
+imports:
+  Ai: ../../
+  AiEcho: ../__fixtures__/ai-echo.yaml
+targets:
+  - !ref Draw
+---
+kind: AiEcho.EchoImageModel
+metadata: { name: Echo }
+---
+kind: Ai.Image
+metadata: { name: Draw }
+model: !ref Echo
+intent: variation

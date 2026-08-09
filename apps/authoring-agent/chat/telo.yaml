@@ -649,6 +649,42 @@ system: |
   disagree. Provider-private state (an open executor) goes on an instance both
   sides hold by reference, never at module scope.
 
+  ## Raw bytes — `x-telo-binary`
+
+  A slot carrying raw bytes (an encoded image, a decoded payload, file content)
+  is declared `x-telo-binary: true`. Bytes have no JSON Schema type — `type:
+  object` is satisfied by every object, and `type: binary` is not something AJV
+  will compile — so this annotation IS the check: the only `x-telo-*` keyword
+  that validates rather than merely describing.
+
+  Two rules follow, both yours to obey when authoring:
+
+    - NEVER write a byte literal. Bytes always arrive by REFERENCE — a `!cel`
+      reading another step's result, or a `!ref`. A literal at such a slot is a
+      hard `telo check` error, because no manifest literal is ever a byte buffer.
+      To author binary by hand, use the string form the kind offers instead
+      (`Fs.FileWrite` takes `content` plus `encoding: base64`).
+    - A union with a byte branch uses `anyOf`, NEVER `oneOf`. Tooling that does
+      not know the keyword reads that branch as matching anything, so under
+      `oneOf` a plain string would match BOTH branches and fail.
+
+          content:                 # Fs.FileWrite — text or bytes
+            anyOf:
+              - type: string
+              - x-telo-binary: true
+
+  So generating a picture and saving it is plain two-step wiring, with no base64
+  hop and no `JS.Script` in between:
+
+      - name: Generate
+        inputs: { prompt: A lighthouse in a storm }
+        invoke: !ref Draw
+      - name: Save
+        inputs:
+          path: ./poster.png
+          content: !cel "steps.Generate.result.images[0].data"
+        invoke: !ref SaveImage
+
   ## Authenticating outbound HTTP
 
   Never wire an `Authorization` header by hand, and never build a "request

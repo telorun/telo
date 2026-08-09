@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
+import { binaryKeyword, X_TELO_BINARY } from "@telorun/analyzer";
 import { formatAjvErrors } from "./manifest-schemas.js";
 
 /** Render a value for an error message without ever throwing.
@@ -165,13 +166,23 @@ const NAME_KEYED_SCHEMA_KEYWORDS = new Set([
  *  two schemas that differ only there hash alike. */
 const DATA_VALUE_KEYWORDS = new Set(["const", "default", "enum", "examples"]);
 
+/** Annotations that DO emit validation code, and so must survive the strip and stay
+ *  in the cache key. `x-telo-binary` is the first: bytes have no JSON Schema type,
+ *  so the keyword is the only thing standing between a byte slot and "accepts any
+ *  object". Stripping it would silently reduce the slot to an empty schema — the
+ *  precise regression the annotation was introduced to close — and, because the key
+ *  is meant to describe the compiled validator, a keyword that changes the validator
+ *  belongs in it. */
+const VALIDATING_ANNOTATIONS = new Set([X_TELO_BINARY]);
+
 /** Deep-clone `schema` without its `x-telo-*` annotations — applied, like
  *  {@link collapseSentinelsToSource}, before both AJV compilation and cache
  *  hashing.
  *
- *  Every `x-telo-*` keyword is analyzer/editor metadata: AJV runs `strict:
- *  false` and registers the known ones as no-op keywords, so none of them emits
- *  a single line of validation code. Leaving them in the hashed form makes the
+ *  Almost every `x-telo-*` keyword is analyzer/editor metadata: AJV runs `strict:
+ *  false` and registers the known ones as no-op keywords, so they emit no
+ *  validation code. {@link VALIDATING_ANNOTATIONS} is the exception and is kept —
+ *  see the note there. Leaving the rest in the hashed form makes the
  *  cache key sensitive to differences that cannot change what the validator
  *  does — and one such difference is real and systematic. The analyzer rewrites
  *  `x-telo-ref.kind` to its canonical `<module>.<Kind>` in the declaring scope
@@ -193,7 +204,7 @@ function stripTeloAnnotations(value: unknown, nameKeyed = false): unknown {
   if (!value || typeof value !== "object") return value;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (!nameKeyed && k.startsWith("x-telo-")) continue;
+    if (!nameKeyed && k.startsWith("x-telo-") && !VALIDATING_ANNOTATIONS.has(k)) continue;
     // A data-bearing keyword's value is carried over verbatim; a name-keyed
     // map's VALUES are schema nodes again, so only its keys are exempt.
     out[k] =
@@ -265,6 +276,11 @@ export class SchemaValidator {
     ]) {
       this.ajv.addKeyword(kw);
     }
+    // Not a no-op like the rest: bytes have no JSON Schema type, so this keyword IS
+    // the check. Defined as codegen in the analyzer so it inlines into the
+    // standalone validators compiled and cached below, rather than needing the
+    // implementation present at load.
+    this.ajv.addKeyword(binaryKeyword());
     // Register the shared manifest root so module schemas can
     // `$ref: "telo://manifest#/$defs/ResourceRef"` without each manifest
     // bundling its own copy. Mirrors the analyzer's createAjv().

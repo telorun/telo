@@ -1,0 +1,93 @@
+kind: Telo.Application
+metadata:
+  name: ImageToFileTest
+  version: 1.0.0
+  description: |
+    The flow image generation exists for: generate, then save the bytes. Exercises
+    Fs.FileWrite's raw-byte content path with a real byte producer — fs has none of
+    its own, which is why this integration lives here rather than in modules/fs.
+    The echo model's bytes are utf8 text, so reading the file back proves the exact
+    bytes reached disk rather than a base64 rendering of them.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Fs: ../../fs
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestGenerateThenSave
+---
+kind: AiEcho.EchoImageModel
+metadata: { name: Echo }
+count: 1
+---
+kind: Ai.Image
+metadata: { name: Draw }
+model: !ref Echo
+---
+kind: Fs.FileWrite
+metadata: { name: SaveImage }
+cwd: ./modules/ai/tests/__fixtures__/scratch-image
+---
+kind: Fs.TreeSync
+metadata: { name: SaveTree }
+cwd: ./modules/ai/tests/__fixtures__/scratch-image
+---
+kind: Fs.File
+metadata: { name: ReadBack }
+cwd: ./modules/ai/tests/__fixtures__/scratch-image
+---
+kind: Fs.FileRemoval
+metadata: { name: Remove }
+cwd: ./modules/ai/tests/__fixtures__
+---
+kind: Run.Sequence
+metadata: { name: TestGenerateThenSave }
+steps:
+  - name: Generate
+    inputs: { prompt: a lighthouse }
+    invoke: !ref Draw
+
+  - name: Save
+    inputs:
+      path: poster.png
+      content: !cel "steps.Generate.result.images[0].data"
+      createParents: true
+    invoke: !ref SaveImage
+
+  - name: ReadItBack
+    inputs: { path: poster.png }
+    invoke: !ref ReadBack
+
+  # The batch write takes the same bytes through a different controller, so the
+  # branch is covered where it lives rather than by proxy.
+  - name: SaveViaTree
+    inputs:
+      write:
+        - path: nested/from-tree.png
+          content: !cel "steps.Generate.result.images[0].data"
+    invoke: !ref SaveTree
+
+  - name: ReadTreeBack
+    inputs: { path: nested/from-tree.png }
+    invoke: !ref ReadBack
+
+  - name: Assert
+    inputs:
+      actual:
+        # Byte count reported by the write matches what the model produced, and the
+        # round-tripped text is the echo descriptor verbatim — no base64 hop.
+        bytesWritten: !cel "steps.Save.result.bytesWritten"
+        roundTripped: !cel "steps.ReadItBack.result.content"
+        treeWritten: !cel "steps.SaveViaTree.result.written"
+        treeRoundTripped: !cel "steps.ReadTreeBack.result.content"
+      expected:
+        bytesWritten: 62
+        roundTripped: 'prompt=a lighthouse|intent=|images=0|mask=0|options={}|index=0'
+        treeWritten: 1
+        treeRoundTripped: 'prompt=a lighthouse|intent=|images=0|mask=0|options={}|index=0'
+    invoke: !ref Assert.equals
+
+  - name: Cleanup
+    inputs: { path: scratch-image, recursive: true }
+    invoke: !ref Remove

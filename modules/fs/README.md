@@ -2,8 +2,9 @@
 
 `fs` — local filesystem access for a running Telo app. Read, write, edit,
 list, create, and remove files and directories on the host the kernel runs on,
-via Node `fs/promises`. Buffered (small files), UTF-8 text by default with a
-base64 escape hatch for binary.
+via Node `fs/promises`. Buffered (small files), UTF-8 text by default, with a
+base64 escape hatch for binary and a raw-bytes path for writing what another
+resource produced.
 
 ## Kinds
 
@@ -56,6 +57,21 @@ compile-time field, so it can be a `!cel` value (e.g. `!cel "variables.workspace
 Content is UTF-8 text by default. Pass `encoding: base64` to read or write
 binary: `Fs.File` returns the bytes base64-encoded, and `Fs.FileWrite` decodes a
 base64 `content` to bytes before writing.
+
+`Fs.FileWrite` and `Fs.TreeSync` also accept **raw bytes** as `content` — what a
+byte-producing resource hands over (`Ai.Image`, `Image.Blank`, `Image.Overlay`, a
+decoder). They are written as they are, so `encoding` does not apply to them, and no
+base64 round trip sits between producing bytes and saving them. The slot is declared
+`x-telo-binary`, so bytes must arrive by reference: an inline literal there is a
+static error, and `encoding: base64` remains the way to author binary by hand.
+
+```yaml
+  - name: Save
+    inputs:
+      path: ./poster.png
+      content: !cel "steps.Generate.result.images[0].data"
+    invoke: !ref SaveImage
+```
 
 ## Errors
 

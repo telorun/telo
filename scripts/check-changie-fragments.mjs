@@ -219,6 +219,15 @@ try {
     // A docs-only or plan-only edit changes nothing a consumer receives.
     if (rest.startsWith("docs/") || rest.startsWith("plans/") || rest === "README.md") continue;
     if (rest === "CHANGELOG.md") continue;
+    // Tests are not in the artifact: no module's `files:` selects them, and a
+    // bundle's inputs are the controller's import graph, which never reaches a test.
+    // They are also the one module path a change ELSEWHERE routinely drags in — a
+    // shared behaviour change updates the expectations of every module that asserts
+    // against it — so counting them would demand a version bump, and a republish of
+    // identical bytes, from whichever module happened to hold the assertion. If a
+    // module ever does ship its tests, the publish-time digest gate catches it, the
+    // same backstop this path-scoped rule relies on everywhere else.
+    if (rest.startsWith("tests/")) continue;
     if (LANGUAGE_DIRS.some((dir) => rest.startsWith(dir)) && !bundlesAController(name)) continue;
     changedModules.add(name);
   }
