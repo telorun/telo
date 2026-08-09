@@ -13,7 +13,7 @@ metadata:
 imports:
   Idempotency: ../../idempotency
   KvStoreSql: ../
-  SqlSqlite: ../../sql-sqlite
+  SQLite: ../../sql-sqlite
   Cache: ../../cache
   CacheMemory: ../../cache-memory
   Run: ../../run
@@ -22,7 +22,7 @@ targets:
   - !ref TestReplay
   - !ref TestFailureReleases
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata: { name: Db }
 file: ":memory:"
 ---

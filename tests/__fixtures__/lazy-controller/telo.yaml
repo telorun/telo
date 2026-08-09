@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: lazy-controller
+  name: LazyController
   version: 1.0.0
 exports:
   kinds:

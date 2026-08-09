@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: abstract-impl
+  name: AbstractImpl
   version: 1.0.0
   description: Canonical concrete implementation of AbstractLib.Greeter.
 imports:

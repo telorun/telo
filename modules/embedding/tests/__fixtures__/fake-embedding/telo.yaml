@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: fake-embedding
+  name: FakeEmbedding
   version: 0.0.0
   description: Deterministic offline Embedding.Model for tests — no network call.
 imports:

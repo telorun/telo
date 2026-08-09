@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: provider-template-lib
+  name: ProviderTemplateLib
   version: 1.0.0
 exports:
   kinds:

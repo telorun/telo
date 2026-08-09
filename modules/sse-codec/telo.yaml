@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: sse-codec
+  name: SseCodec
   version: 0.9.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

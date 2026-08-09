@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: idempotency
+  name: Idempotency
   version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

@@ -69,7 +69,7 @@ limit: 50
 | --- | --- | --- | --- |
 | `sql` (core) | `@telorun/sql` | `Sql.Connection` (abstract), `Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transaction`, `Sql.Migration` (deprecated), `Sql.Migrations` | `kysely` only |
 | `sql-postgres` | `@telorun/sql-postgres` | `SqlPostgres.Connection` | `pg` |
-| `sql-sqlite` | `@telorun/sql-sqlite` | `SqlSqlite.Connection` | `better-sqlite3` (+ node/bun built-ins) |
+| `sql-sqlite` | `@telorun/sql-sqlite` | `SQLite.Connection` | `better-sqlite3` (+ node/bun built-ins) |
 
 Backends depend on `@telorun/sql` for the connection **contract**; core depends
 on no driver. No telo import cycle — backends `imports: { Sql: ../sql }`; core
@@ -98,7 +98,7 @@ against any backend (`Command` / `Selection` are the renamed `Exec` / `Select`):
 ```yaml
 kind: Sql.Query
 metadata: { name: GetUser }
-connection: !ref Db          # any SqlPostgres.Connection / SqlSqlite.Connection
+connection: !ref Db          # any SqlPostgres.Connection / SQLite.Connection
 inputs:
   sql: !sql "SELECT id, name FROM users WHERE id = ${{ request.params.id }}"
 ```
@@ -159,7 +159,7 @@ connection: !ref Db
 inputs: { sql: "SELECT 1" }
 ```
 
-### `SqlSqlite.Connection` (new) — in `sql-sqlite`
+### `SQLite.Connection` (new) — in `sql-sqlite`
 
 ```yaml
 # modules/sql-sqlite/telo.yaml
@@ -189,7 +189,7 @@ schema:
 ```
 
 ```yaml
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata: { name: Db }
 file: ":memory:"
 ```
@@ -248,7 +248,7 @@ connection.
 ## Strict connection ref (downstream — for `vector-store-pgvector`)
 
 **Hard requirement:** a pgvector Store must accept **only** a Postgres
-connection, and a wired-in `SqlSqlite.Connection` must be a **static analysis
+connection, and a wired-in `SQLite.Connection` must be a **static analysis
 failure** (`telo check`), never an init-time or runtime error. This is the whole
 reason the split exists — it gives `SqlPostgres.Connection` a concrete kind the
 analyzer can pin the ref to. Refs are always statically known (`!ref`), so the
@@ -267,8 +267,8 @@ whose target is a **concrete** kind requires the referenced instance's kind to
 **equal it exactly** (`checkKind` in `analyzer/nodejs/src/validate-references.ts`
 — abstract targets match any implementation via `getByExtends`; concrete targets
 use `resolved === targetKind`). So `x-telo-ref: "std/sql-postgres#Connection"`
-rejects a `SqlSqlite.Connection` statically as a kind-mismatch
-`INVALID_REFERENCE`. This holds because `SqlSqlite.Connection` does **not**
+rejects a `SQLite.Connection` statically as a kind-mismatch
+`INVALID_REFERENCE`. This holds because `SQLite.Connection` does **not**
 `extend` `SqlPostgres.Connection` — they're siblings under the `Sql.Connection`
 abstract, and the exact-match branch does no subtype walk. No
 `connection.driver === "postgres"` runtime assertion is needed, since the
@@ -281,14 +281,14 @@ Two connections in scope — a Postgres and a SQLite — and two Stores wiring e
 ```yaml
 imports:
   SqlPostgres: oci://ghcr.io/telorun/sql-postgres@0.1.0
-  SqlSqlite: oci://ghcr.io/telorun/sql-sqlite@0.1.0
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.1.0
   VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.1.0
 ---
 kind: SqlPostgres.Connection
 metadata: { name: Pg }
 connectionString: !cel secrets.databaseUrl
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata: { name: Lite }
 file: ":memory:"
 ---
@@ -309,7 +309,7 @@ dimensions: 1536
 
 ```
 ✗ INVALID_REFERENCE  BadVectors.connection
-    !ref Lite resolves to kind 'SqlSqlite.Connection', but this slot requires
+    !ref Lite resolves to kind 'SQLite.Connection', but this slot requires
     'std/sql-postgres#Connection'. Wire a SqlPostgres.Connection.
 
   modules/.../manifest.yaml:24
@@ -327,7 +327,7 @@ diagnostic.)
 `Sql.PostgresConnection` / `Sql.SqliteConnection` appear in **19 manifests**:
 `sql-repository` (telo.yaml + test), `apps/registry`, four `examples/*`, the
 `sql` module tests, and several `tests/__fixtures__`. Each needs the import
-added (`SqlPostgres` / `SqlSqlite`) and the kind renamed. The CLI
+added (`SqlPostgres` / `SQLite`) and the kind renamed. The CLI
 `upgrade`/`install` tooling can rewrite imports, but the kind rename
 (`Sql.PostgresConnection` → `SqlPostgres.Connection`) is a manifest edit.
 
@@ -358,7 +358,7 @@ the `Removed` kind would otherwise force.
 - Move the existing `sql` connection tests' instances to the backend kinds and
   rename `Sql.Exec` / `Sql.Select` usages to `Sql.Command` / `Sql.Selection`.
 - `sql-sqlite/tests/` — in-memory roundtrip (insert/select), reusing the current
-  `can-insert-and-select` body against `SqlSqlite.Connection`.
+  `can-insert-and-select` body against `SQLite.Connection`.
 - `sql-postgres/tests/` — gated on a `DATABASE_URL`; a connect + `SELECT 1`
   smoke. Keep the bulk of operation tests in `sql` core against `sql-sqlite`
   (no external service needed).

@@ -32,12 +32,12 @@ describe("buildResolvedProperties — resolved config for the debug stream", () 
 
   it("renders a live injected instance as its stamped identity, not its internals", () => {
     const connection: any = { driver: "sqlite", db: {}, sqlite: {} };
-    stampRefIdentity(connection, "SqlSqlite.Connection", "Db");
+    stampRefIdentity(connection, "SQLite.Connection", "Db");
     const props = buildResolvedProperties(
       { kind: "SqlRepo.Read", metadata: { name: "reader" }, connection, table: "todos" } as any,
       new Set(),
     );
-    expect(props.connection).toEqual({ kind: "SqlSqlite.Connection", name: "Db" });
+    expect(props.connection).toEqual({ kind: "SQLite.Connection", name: "Db" });
     expect(props.table).toBe("todos");
   });
 

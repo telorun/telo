@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: url-shortener-database
+  name: UrlShortenerDatabase
   version: 1.0.0
   description: |
     Owns the shared SQLite connection and exports it as a singleton. Every
@@ -12,11 +12,11 @@ variables:
     type: string
     description: Path to the SQLite database file.
 imports:
-  Sqlite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
 exports:
   resources:
     - connection
 ---
-kind: Sqlite.Connection
+kind: SQLite.Connection
 metadata: { name: connection }
 file: !cel "variables.dbFile"

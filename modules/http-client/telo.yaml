@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: http-client
+  name: HttpClient
   version: 0.17.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

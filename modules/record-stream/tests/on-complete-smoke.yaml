@@ -14,14 +14,14 @@ imports:
   JS: ../../javascript
   Run: ../../run
   Sql: ../../sql
-  SqlSqlite: ../../sql-sqlite
+  SQLite: ../../sql-sqlite
   Assert: ../../assert
 targets:
   - !ref InitSchema
   - !ref TestPersistOnComplete
   - !ref TestEarlyCancelSuppressesHandler
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata: { name: Db }
 file: ":memory:"
 ---

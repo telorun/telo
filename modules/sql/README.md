@@ -1,10 +1,10 @@
 # SQL
 
-Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw queries, a declarative SELECT builder, transactions, and migrations. Concrete drivers ship as their own modules — [`sql-postgres`](../sql-postgres/README.md) (`SqlPostgres.Connection`) and [`sql-sqlite`](../sql-sqlite/README.md) (`SqlSqlite.Connection`) — and `extend` `Sql.Connection`, mirroring the `cache` / `cache-*` family. The `sql` core depends on no database driver.
+Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw queries, a declarative SELECT builder, transactions, and migrations. Concrete drivers ship as their own modules — [`sql-postgres`](../sql-postgres/README.md) (`SqlPostgres.Connection`) and [`sql-sqlite`](../sql-sqlite/README.md) (`SQLite.Connection`) — and `extend` `Sql.Connection`, mirroring the `cache` / `cache-*` family. The `sql` core depends on no database driver.
 
 ## Why use this
 
-- **Two backends, one shape** — `SqlPostgres.Connection` (pg + Kysely) and `SqlSqlite.Connection` (Node SQLite) implement the same `Sql.Connection` abstract, so every other kind references a connection driver-agnostically.
+- **Two backends, one shape** — `SqlPostgres.Connection` (pg + Kysely) and `SQLite.Connection` (Node SQLite) implement the same `Sql.Connection` abstract, so every other kind references a connection driver-agnostically.
 - **Safe inline values** — write bound parameters directly in SQL with the `!sql` tag (`WHERE id = ${{ x }}`); each interpolation is bound, never spliced — dialect-neutral and injection-safe.
 - **Raw and structured** — `Sql.Query` / `Sql.Command` for hand-written SQL; `Sql.Selection` for declarative SELECTs as data.
 - **Implicit transactions, checked statically** — `Sql.Transaction` opens an execution zone around its body; every statement reached through it joins automatically, per connection. A statement that names a `transaction:` declares a *requirement*, and `telo check` reports a path that reaches it outside one — see [Transactions](docs/transactions.md).
@@ -23,7 +23,7 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 | --- | --- |
 | `Sql.Connection` | **Abstract** database-connection contract; reference it from any consumer (`x-telo-ref: Sql.Connection`). |
 | `SqlPostgres.Connection` | PostgreSQL connection (pool + `sslmode`); implements `Sql.Connection`. |
-| `SqlSqlite.Connection` | SQLite connection (`file` or in-memory); implements `Sql.Connection`. |
+| `SQLite.Connection` | SQLite connection (`file` or in-memory); implements `Sql.Connection`. |
 | `Sql.Query` | SQL returning rows plus row count; inline `!sql` binding or `bindings` escape hatch. |
 | `Sql.Command` | Same shape as `Sql.Query` for statements that do not return rows. |
 | `Sql.Selection` | Declarative SELECT builder — columns, filters, ordering, pagination, grouping. |
@@ -82,11 +82,11 @@ limit: 50
 
 **`SqlPostgres.Connection`** — `connectionString` is a `postgres://` / `postgresql://` URL (e.g. `postgres://user:pass@host:5432/db`). TLS uses the standard libpq `sslmode` query parameter: `?sslmode=require` encrypts without verifying the server certificate (suitable for managed Postgres that self-signs), while `?sslmode=verify-ca` / `?sslmode=verify-full` verify it; omitting it (or `?sslmode=disable`) connects without TLS. The `pool` knobs (`min`, `max`, `idleTimeoutMs`, `connectionTimeoutMs`) tune the connection pool.
 
-**`SqlSqlite.Connection`** — `file` is the database path (e.g. `./data.db`); its parent directory is auto-created on connect. Omit `file`, or set `:memory:`, for an ephemeral in-memory database.
+**`SQLite.Connection`** — `file` is the database path (e.g. `./data.db`); its parent directory is auto-created on connect. Omit `file`, or set `:memory:`, for an ephemeral in-memory database.
 
 The engine family is fixed by the kind, not sniffed from a string at runtime. Keep the connection *target* in the environment as usual — e.g. `SqlPostgres.Connection` with `connectionString: !cel "secrets.DATABASE_URL"`.
 
-`Sql.Connection` itself is abstract and has no controller — declaring `kind: Sql.Connection` fails with **"No controller registered"**. Always instantiate a concrete kind (`SqlPostgres.Connection` / `SqlSqlite.Connection`); reference the abstract only in `x-telo-ref` slots (which you don't write — they're in the kind schemas).
+`Sql.Connection` itself is abstract and has no controller — declaring `kind: Sql.Connection` fails with **"No controller registered"**. Always instantiate a concrete kind (`SqlPostgres.Connection` / `SQLite.Connection`); reference the abstract only in `x-telo-ref` slots (which you don't write — they're in the kind schemas).
 
 ## Reusing handlers
 

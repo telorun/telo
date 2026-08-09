@@ -1,10 +1,10 @@
 kind: Telo.Library
 metadata:
-  name: import-default-lib
+  name: ImportDefaultLib
   version: 1.0.0
 imports:
   Sql: ../../../../modules/sql
-  SqlSqlite: ../../../../modules/sql-sqlite
+  SQLite: ../../../../modules/sql-sqlite
 variables:
   dbFile:
     type: string
@@ -14,7 +14,7 @@ exports:
 ---
 # `file` reads the contract var `dbFile`. The importer provides no override, so it
 # must resolve to the library default ":memory:" — not a missing key.
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: Db
 file: "${{ variables.dbFile }}"

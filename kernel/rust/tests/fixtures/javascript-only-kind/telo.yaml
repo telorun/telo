@@ -3,7 +3,7 @@ metadata:
   name: JavascriptOnlyKind
   version: 1.0.0
   description: |
-    `console.WriteStream` ships only a JavaScript controller. Importing the
+    `Console.WriteStream` ships only a JavaScript controller. Importing the
     module must still succeed — resolution is deferred to instantiation — and
     declaring a resource of that kind must fail naming the kind, not the module.
 imports:

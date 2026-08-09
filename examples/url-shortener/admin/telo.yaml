@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: url-shortener-admin
+  name: UrlShortenerAdmin
   version: 1.0.0
   description: |
     Admin/analytics side of the URL shortener: list links with click counts and

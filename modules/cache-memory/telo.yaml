@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: cache-memory
+  name: CacheMemory
   version: 0.7.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

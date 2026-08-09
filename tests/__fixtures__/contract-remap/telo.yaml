@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: contract-remap
+  name: ContractRemap
   version: 0.1.0
   description: >-
     A kind that inherits a concrete controller and presents its own invocation

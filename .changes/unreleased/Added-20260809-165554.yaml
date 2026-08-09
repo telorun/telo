@@ -1,0 +1,4 @@
+project: timer
+kind: Added
+body: "metadata.name is now Timer, so the module contributes its kinds under the `Timer.<Kind>` canonical prefix instead of `timer.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix."
+time: 2026-08-09T16:55:54.270000Z

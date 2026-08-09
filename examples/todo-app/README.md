@@ -5,7 +5,7 @@ A complete application served from a single Telo manifest on one port:
 - **Frontend** — vanilla HTML/JS/CSS in [`public/`](public/), served by `Http.Static` at `/`.
 - **API** — a REST todo API (`Http.Api`) at `/api`, with handlers that are
   declarative SQL operations (`Sql.Query`).
-- **Storage** — a SQLite file (`SqlSqlite.Connection`), schema created on boot by
+- **Storage** — a SQLite file (`SQLite.Connection`), schema created on boot by
   `Sql.Migrations`.
 
 No build step: the frontend is plain files, so the whole app ships and runs as a
@@ -28,7 +28,7 @@ Then open <http://127.0.0.1:8077>. The OpenAPI reference for the API is at
 
 ```
 Http.Server (:8077)
-├── /api  → Http.Api      ──► Sql.Query ──► SqlSqlite.Connection
+├── /api  → Http.Api      ──► Sql.Query ──► SQLite.Connection
 └── /     → Http.Static   ──► public/ (index.html, app.js, style.css)
 ```
 

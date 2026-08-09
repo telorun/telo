@@ -1,10 +1,10 @@
 kind: Telo.Library
 metadata:
-  name: import-value-flow-data
+  name: ImportValueFlowData
   version: 1.0.0
 imports:
   Sql: ../../../../modules/sql
-  SqlSqlite: ../../../../modules/sql-sqlite
+  SQLite: ../../../../modules/sql-sqlite
 variables:
   dbFile:
     type: string
@@ -13,7 +13,7 @@ exports:
 ---
 # The connection path is the forwarded config value. Before the import-value-flow
 # fix this `${{ }}` reached the controller as a compiled-value object and crashed.
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: Db
 file: "${{ variables.dbFile }}"

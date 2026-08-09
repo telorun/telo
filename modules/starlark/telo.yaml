@@ -4,7 +4,7 @@ metadata:
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Compute]
-  name: starlark
+  name: Starlark
   description: >-
     Runs embedded Starlark — the sandboxed, Python-like configuration language — as a
     callable resource with typed inputs and outputs. Deterministic, with no I/O and no

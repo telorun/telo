@@ -7,7 +7,7 @@
 #   # then via RIE or `aws lambda invoke`
 kind: Telo.Application
 metadata:
-  name: lambda-direct-example
+  name: LambdaDirectExample
   version: 1.0.0
   description: |
     `Lambda.Direct` example: a synchronous AWS Lambda that receives a raw

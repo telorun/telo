@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: inherited-client
+  name: InheritedClient
   version: 0.1.0
   description: >-
     Fixture library exercising general kind inheritance — a client kind that

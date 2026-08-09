@@ -26,7 +26,7 @@
 ## Example
 
 ```yaml
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata: { name: db }
 file: ./data.db
 ---

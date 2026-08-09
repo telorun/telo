@@ -14,18 +14,18 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../
-  SqlSqlite: ../../sql-sqlite
+  SQLite: ../../sql-sqlite
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref TestNesting
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: DbA
 file: ":memory:"
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: DbB
 file: ":memory:"

@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: ai-echo
+  name: AiEcho
   version: 1.0.0
   description: Internal Ai.Model test fixture. Echoes the last message back, optionally with a suffix.
 imports:

@@ -11,7 +11,7 @@
 
 kind: Telo.Application
 metadata:
-  name: telo-hub
+  name: TeloHub
   version: 0.6.0
   description: >-
     Federated discovery hub: tracks registered module refs across transports,

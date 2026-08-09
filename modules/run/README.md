@@ -106,7 +106,7 @@ A sequence can stand up its own resources for the duration of its run — a data
 kind: Run.Sequence
 metadata: { name: IntegrationCheck }
 with:
-  - kind: SqlSqlite.Connection
+  - kind: SQLite.Connection
     metadata: { name: Db }
     file: ":memory:"
   - kind: Sql.Migrations

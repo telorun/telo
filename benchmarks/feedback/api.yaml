@@ -8,14 +8,14 @@ metadata:
 imports:
   Http: ../../modules/http-server
   Sql: ../../modules/sql
-  Sqlite: ../../modules/sql-sqlite
+  SQLite: ../../modules/sql-sqlite
   Run: ../../modules/run
 targets:
   - !ref SetupDb
   - !ref Server
 ---
 # SQLite database — swap to Sql.PostgresConnection for PostgreSQL
-kind: Sqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: Db
   module: FeedbackApi

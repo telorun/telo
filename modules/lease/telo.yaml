@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: lease
+  name: Lease
   version: 0.10.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

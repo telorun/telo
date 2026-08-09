@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: "mcp-server"
+  name: McpServer
   version: "0.13.0"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

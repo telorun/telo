@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: run
+  name: Run
   version: 0.21.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

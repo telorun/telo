@@ -13,7 +13,7 @@
 # the built-in and drop the import.
 kind: Telo.Library
 metadata:
-  name: type
+  name: Type
   version: "0.11.0"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

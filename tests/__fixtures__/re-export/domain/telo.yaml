@@ -1,14 +1,14 @@
 kind: Telo.Library
 metadata:
-  name: re-export-domain
+  name: ReExportDomain
   version: 1.0.0
 imports:
   Sql: ../../../../modules/sql
-  SqlSqlite: ../../../../modules/sql-sqlite
+  SQLite: ../../../../modules/sql-sqlite
 exports:
   resources: [ Db, Migrate ]
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: Db
 file: ":memory:"

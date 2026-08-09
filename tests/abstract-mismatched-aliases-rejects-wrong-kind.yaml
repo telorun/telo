@@ -20,4 +20,4 @@ source: ./__fixtures__/abstract-mismatched-aliases-rejects-wrong-kind.yaml
 expect:
   errors:
     - code: REFERENCE_KIND_MISMATCH
-      message: "does not implement 'abstract-lib.Greeter'"
+      message: "does not implement 'AbstractLib.Greeter'"

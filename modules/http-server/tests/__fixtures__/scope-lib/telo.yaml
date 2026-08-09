@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: scope-lib
+  name: ScopeLib
   version: 1.0.0
   description: |
     Test fixture: a library that defines an Http.Api whose route handlers use the
