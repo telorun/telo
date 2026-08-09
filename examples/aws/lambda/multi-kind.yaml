@@ -9,7 +9,7 @@
 #   # then POST any of the three event shapes via RIE
 kind: Telo.Application
 metadata:
-  name: lambda-multi-kind-example
+  name: LambdaMultiKindExample
   version: 1.0.0
   description: |
     Multi-kind AWS Lambda example: one Lambda artifact (one ARN, one IAM

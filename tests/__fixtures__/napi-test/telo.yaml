@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: napi-test
+  name: NapiTest
   version: 0.0.0
   description: Wraps the napi-echo fixture as a Telo.Library so kernel tests can import it via Telo.Import.
 exports:

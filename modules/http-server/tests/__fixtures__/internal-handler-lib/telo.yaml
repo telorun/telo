@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: internal-handler-lib
+  name: InternalHandlerLib
   version: 1.0.0
   description: |
     Regression fixture for cross-import handler injection. Defines an Http.Api

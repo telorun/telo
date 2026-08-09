@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: embedding-openai
+  name: EmbeddingOpenAI
   version: 0.8.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

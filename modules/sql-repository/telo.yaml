@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: sql-repository
+  name: SqlRepository
   version: 0.9.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
@@ -32,7 +32,7 @@ schema:
   required: [connection, table]
   examples:
     - connection:
-        kind: SqlSqlite.Connection
+        kind: SQLite.Connection
         name: Db
       table: users
   properties:
@@ -72,7 +72,7 @@ schema:
   required: [connection, table]
   examples:
     - connection:
-        kind: SqlSqlite.Connection
+        kind: SQLite.Connection
         name: Db
       table: users
   properties:
@@ -109,7 +109,7 @@ schema:
   required: [connection, table]
   examples:
     - connection:
-        kind: SqlSqlite.Connection
+        kind: SQLite.Connection
         name: Db
       table: users
   properties:
@@ -147,7 +147,7 @@ schema:
   required: [connection, table]
   examples:
     - connection:
-        kind: SqlSqlite.Connection
+        kind: SQLite.Connection
         name: Db
       table: users
   properties:

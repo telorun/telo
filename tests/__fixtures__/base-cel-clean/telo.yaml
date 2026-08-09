@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: base-cel-clean
+  name: BaseCelClean
   version: 0.1.0
   description: A base mapping built entirely from CEL values must analyze clean.
 imports:

@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: re-export-gateway
+  name: ReExportGateway
   version: 1.0.0
 imports:
   Api: ../api

@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: templated-server
+  name: TemplatedServer
   version: 1.0.0
   description: |
     Reusable Telo.Library that defines a single `HelloApi` (`Http.Api`) plus

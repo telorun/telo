@@ -1,14 +1,14 @@
 kind: Telo.Library
 metadata:
-  name: migration-lib
+  name: MigrationLib
   version: 1.0.0
 imports:
   Sql: ../../../
-  SqlSqlite: ../../../../sql-sqlite
+  SQLite: ../../../../sql-sqlite
 exports:
   resources: [ Db, Migrate ]
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: Db
 file: ":memory:"

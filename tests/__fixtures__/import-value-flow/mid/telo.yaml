@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: import-value-flow-mid
+  name: ImportValueFlowMid
   version: 1.0.0
 imports:
   Data:

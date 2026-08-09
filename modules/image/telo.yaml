@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: image
+  name: Image
   version: 0.6.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

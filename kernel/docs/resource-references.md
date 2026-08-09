@@ -83,8 +83,8 @@ A case map and a set answer different questions and do not substitute for each o
 **How the lookup works.** Before a definition is registered, the analyzer rewrites each `x-telo-ref` in its schema to the canonical `<module>.<Kind>` key, resolving the alias against the declaring module's import map — the same pre-resolution `extends:` receives. Downstream, the `DefinitionRegistry` answers a ref query with a plain lookup and needs no module context:
 
 ```text
-KvStore.Store   →  alias "KvStore" → module "kv-store"  →  registry key "kv-store.Store"
-Telo.Invocable  →  alias "Telo"    → module "Telo"      →  registry key "Telo.Invocable"
+KvStore.Store   →  alias "KvStore" → module "KeyValueStore" →  registry key "KeyValueStore.Store"
+Telo.Invocable  →  alias "Telo"    → module "Telo"          →  registry key "Telo.Invocable"
 ```
 
 A ref naming an alias the declaring file never imported does not resolve, and the constraint is skipped rather than enforced — the same lenient behaviour as any other partial-context lookup.

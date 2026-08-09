@@ -17,13 +17,13 @@ metadata:
     sequence whose open requirement correlates on an unexported connection.
 imports:
   Sql: ../../../
-  SqlSqlite: ../../../../sql-sqlite
+  SQLite: ../../../../sql-sqlite
   Run: ../../../../run
 exports:
   resources:
     - billingWrites # billingDb and billingTx stay internal
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: billingDb
 file: ":memory:"

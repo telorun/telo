@@ -11,7 +11,7 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../../
-  SqlSqlite: ../../../sql-sqlite
+  SQLite: ../../../sql-sqlite
   Http: ../../../http-server
 ports:
   http:
@@ -20,7 +20,7 @@ ports:
 targets:
   - !ref server
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: appDb
 file: ":memory:"

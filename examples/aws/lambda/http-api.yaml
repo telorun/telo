@@ -7,7 +7,7 @@
 #   # then via RIE with a synthetic HTTP API v2 event payload
 kind: Telo.Application
 metadata:
-  name: lambda-http-api-example
+  name: LambdaHttpApiExample
   version: 1.0.0
   description: |
     `Lambda.HttpApi` example: an AWS Lambda fronted by API Gateway HTTP API

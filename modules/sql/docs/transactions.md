@@ -63,8 +63,8 @@ Two things follow.
 raises `ERR_ZONE_REQUIRED`, naming the connection:
 
 ```
-sql.Command 'insertAccount': no sql.Transaction zone open on
-sql-sqlite.Connection 'appDb': the statement would execute outside any transaction
+SQL.Command 'insertAccount': no SQL.Transaction zone open on
+SQLite.Connection 'appDb': the statement would execute outside any transaction
 ```
 
 **At check time**, `telo check` follows every statically visible path to the
@@ -72,8 +72,8 @@ statement and reports one that provably reaches it outside a transaction —
 before the route is ever exercised:
 
 ```
-error  Sql.Command 'insertAccount' requires a sql.Transaction zone on
-       SqlSqlite.Connection 'appDb', and the path
+error  Sql.Command 'insertAccount' requires a SQL.Transaction zone on
+       SQLite.Connection 'appDb', and the path
        insertAccount → accountsApi.routes[0].handler is an inbound trigger
        registration — the handler runs on a fresh context driven by a request or
        timer, outside every zone.  ZONE_REQUIREMENT_UNSATISFIED

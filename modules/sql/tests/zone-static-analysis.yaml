@@ -60,7 +60,7 @@ source: ./__fixtures__/zone-cross-connection.yaml
 expect:
   errors:
     - code: ZONE_REQUIREMENT_UNSATISFIED
-      message: "sql.Transaction zone on SqlSqlite.Connection 'dbB'"
+      message: "SQL.Transaction zone on SQLite.Connection 'dbB'"
 ---
 # A `trigger.consumer` edge: whoever drains the returned value decides where the
 # dispatch runs, so a consumer draining inside a transaction genuinely is inside

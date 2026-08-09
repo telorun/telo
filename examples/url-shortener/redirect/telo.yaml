@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: url-shortener-redirect
+  name: UrlShortenerRedirect
   version: 1.0.0
   description: |
     Public side of the URL shortener: create a short link and redirect by code.

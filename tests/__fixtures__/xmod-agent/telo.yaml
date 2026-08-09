@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: xmodagent
+  name: XmodAgent
   version: 0.0.0
   description: |
     Fixture library for the cross-module ref-injection regression test. It declares

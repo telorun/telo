@@ -21,14 +21,14 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../../
-  SqlSqlite: ../../../sql-sqlite
+  SQLite: ../../../sql-sqlite
   Cache: ../../../cache
   CacheMemory: ../../../cache-memory
   Run: ../../../run
 targets:
   - !ref accountTx
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: appDb
 file: ":memory:"

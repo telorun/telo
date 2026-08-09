@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: owner-identity-lib
+  name: OwnerIdentityLib
   version: 1.0.0
 exports:
   kinds:

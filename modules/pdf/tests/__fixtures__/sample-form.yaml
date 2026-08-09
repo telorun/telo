@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: pdf-test-fixtures
+  name: PdfTestFixtures
   version: 0.1.0
   description: |
     Shared fixture for std/pdf tests — a hermetic two-page PDF (300×200 pt per

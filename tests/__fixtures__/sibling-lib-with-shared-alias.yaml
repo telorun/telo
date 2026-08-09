@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: sibling-lib-with-shared-alias
+  name: SiblingLibWithSharedAlias
   version: 1.0.0
 imports:
   # Internal import using the SAME alias name (`Tiny`) the test fixture's root also uses.

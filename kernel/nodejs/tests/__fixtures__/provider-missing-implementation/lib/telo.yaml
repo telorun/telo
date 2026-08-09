@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: provider-missing-impl-lib
+  name: ProviderMissingImplLib
   version: 1.0.0
 exports:
   kinds:

@@ -48,5 +48,5 @@ fn reports_a_kind_whose_controller_this_kernel_cannot_host() {
     // The module itself loaded — the failure is scoped to the one kind that has
     // no Rust controller, which is what deferred resolution buys.
     assert_eq!(err.code, "ERR_CONTROLLER_NOT_FOUND", "{err}");
-    assert!(err.message.contains("console.WriteStream"), "{err}");
+    assert!(err.message.contains("Console.WriteStream"), "{err}");
 }

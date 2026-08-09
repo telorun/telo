@@ -10,7 +10,7 @@ metadata:
 imports:
   Crud: ../
   Sql: ../../sql
-  SqlSqlite: ../../sql-sqlite
+  SQLite: ../../sql-sqlite
   Http: ../../http-server
   HttpClient: ../../http-client
   Run: ../../run
@@ -19,7 +19,7 @@ targets:
   - !ref Migrate
   - !ref Test
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata: { name: Db }
 file: ":memory:"
 ---

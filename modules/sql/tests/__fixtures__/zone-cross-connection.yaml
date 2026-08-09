@@ -9,17 +9,17 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../../
-  SqlSqlite: ../../../sql-sqlite
+  SQLite: ../../../sql-sqlite
   Run: ../../../run
 targets:
   - !ref writesTx
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: dbA
 file: ":memory:"
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: dbB
 file: ":memory:"

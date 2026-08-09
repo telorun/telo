@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: stub-mcp
+  name: StubMcp
   version: 0.3.1
   description: Test-only Mcp.Client stub for ai-mcp discovery/dispatch tests.
 imports:

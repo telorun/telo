@@ -9,13 +9,13 @@ metadata:
     and rowCount was always 0 even though the mutation ran.
 imports:
   Sql: ../../sql
-  SqlSqlite: ../
+  SQLite: ../
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref Test
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata:
   name: Db
 file: ":memory:"

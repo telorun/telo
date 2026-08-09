@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: library-with-env
+  name: LibraryWithEnv
   version: 1.0.0
 variables:
   shouldBeRejected:

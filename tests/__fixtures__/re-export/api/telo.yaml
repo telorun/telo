@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: re-export-api
+  name: ReExportApi
   version: 1.0.0
 imports:
   Domain: ../domain

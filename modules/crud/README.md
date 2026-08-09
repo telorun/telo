@@ -27,7 +27,7 @@ All five share the `<plural>` OpenAPI tag.
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `connection` | yes | `!ref` to a `Sql.Connection` (e.g. a `SqlSqlite.Connection`). |
+| `connection` | yes | `!ref` to a `Sql.Connection` (e.g. a `SQLite.Connection`). |
 | `singular` | yes | Singular noun for one item (e.g. `todo`). Defaults `idParam` to `<singular>Id` and names the per-item OpenAPI operations. |
 | `plural` | yes | Plural noun for the collection (e.g. `todos`). Defaults `table`; names the list operation and the OpenAPI tag. |
 | `model` | yes | A `Type.JsonSchema` (inline or `!ref`) describing the writable columns. Validates request bodies and feeds the OpenAPI document. |
@@ -55,7 +55,7 @@ metadata: { name: todo-api, version: 1.0.0 }
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.19.1
   Sql: oci://ghcr.io/telorun/sql@0.13.0
-  SqlSqlite: oci://ghcr.io/telorun/sql-sqlite@0.4.0
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.4.0
   Type: oci://ghcr.io/telorun/type@0.8.0
   Crud: oci://ghcr.io/telorun/crud@0.5.0
 targets:
@@ -63,7 +63,7 @@ targets:
 ports:
   http: { env: PORT, default: 8077 }
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata: { name: Db }
 file: ./todos.db
 ---

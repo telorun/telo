@@ -24,7 +24,7 @@ impl Controller for StarlarkScript {
             .ok_or_else(|| {
                 ControllerError::new(
                     "ERR_MISSING_CODE",
-                    "starlark.Script requires a non-empty `code` field",
+                    "Starlark.Script requires a non-empty `code` field",
                 )
             })?
             .to_string();

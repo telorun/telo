@@ -37,7 +37,7 @@ fn reports_a_failing_manifest_on_stderr_and_exits_nonzero() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("ERR_CONTROLLER_NOT_FOUND"), "{stderr}");
-    assert!(stderr.contains("console.WriteStream"), "{stderr}");
+    assert!(stderr.contains("Console.WriteStream"), "{stderr}");
     assert_eq!(output.status.code(), Some(1));
 }
 

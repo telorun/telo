@@ -7,7 +7,7 @@
 #   # then via RIE with a synthetic SQS event payload
 kind: Telo.Application
 metadata:
-  name: lambda-sqs-example
+  name: LambdaSqsExample
   version: 1.0.0
   description: |
     `Lambda.Sqs` example: an AWS Lambda triggered by an SQS event-source

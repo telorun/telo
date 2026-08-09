@@ -1,6 +1,6 @@
 kind: Telo.Application
 metadata:
-  name: templated-api-usage
+  name: TemplatedApiUsage
   version: 1.0.0
   description: |
     Imports `library.yaml` as a `Telo.Library` and mounts its

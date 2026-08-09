@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: scoped-kind-lib
+  name: ScopedKindLib
   version: 1.0.0
   description: >-
     A library whose exported sequence opens a `with:` scope declaring a resource

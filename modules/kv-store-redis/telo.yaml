@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: kv-store-redis
+  name: KeyValueStoreRedis
   version: 0.5.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: abstract-lib
+  name: AbstractLib
   version: 1.0.0
   description: Test fixture declaring a Telo.Abstract plus a non-abstract companion.
 exports:

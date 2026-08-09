@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: invoke-result-lib
+  name: InvokeResultLib
   version: 1.0.0
 exports:
   kinds:

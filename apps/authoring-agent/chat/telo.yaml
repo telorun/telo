@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: chat
+  name: Chat
   version: 0.0.0
   description: |
     The authoring agent's chat backend: an OpenAI-backed Ai.AgentStream with
@@ -24,7 +24,7 @@ imports:
   Fs: oci://ghcr.io/telorun/fs@0.7.0#sha256--Pqk8k2YGG7jAhcEP1kayrw_BiIYcSFP50K0R0j5aPc
   Shell: oci://ghcr.io/telorun/shell@0.9.0#sha256-9_0jKJQVzZbTS9gvSKjA1-6KrlVWxqCYNA-4PiemgJA
   Sql: oci://ghcr.io/telorun/sql@0.19.0#sha256-5aIRVn8VpAk2OB9EVIvzzylBWkMM63Aou4reb-owijc
-  SqlSqlite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
   RecordStream: oci://ghcr.io/telorun/record-stream@0.14.0#sha256-frZrun2pwkkH_VYyFGAoc-zFOzeU4m66NTjdXX_pZxU
   Run: oci://ghcr.io/telorun/run@0.21.0#sha256-l-xpPdlKYmuxqoGX9FtzEShAbMGdgNGOlSmI9d6RWU4
   Lease: oci://ghcr.io/telorun/lease@0.10.0#sha256-d2JyLTcQ_8gJKfXVPPOLDu104vLSNUDqjvB5RMJvxB0
@@ -81,7 +81,7 @@ exports:
     - historyQuery
     - importMessages
 ---
-kind: SqlSqlite.Connection
+kind: SQLite.Connection
 metadata: { name: chatDb }
 file: !cel "variables.dbFile"
 ---
@@ -761,8 +761,8 @@ system: |
 
   `metadata.name` becomes the module's canonical kind prefix. It is not a
   locator (imports resolve by `source`), so write it as a name, not a slug —
-  prefer PascalCase (`OAuthClient`); older stdlib modules still carry the
-  historical kebab-case form (`http-server`). It must contain no dot.
+  PascalCase (`OAuthClient`, `HttpServer`, `SQL`), which the whole standard
+  library uses. It must contain no dot.
   `metadata.version` is a semver string, required on the root doc.
 
   `metadata` also carries optional DESCRIPTIVE provenance — `description`,

@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: templated-server
+  name: TemplatedServer
   version: 1.0.0
 imports:
   Http: ../../modules/http-server
