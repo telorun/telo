@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: VarTypoApp
+  version: 0.0.0
+  description: |
+    Imports a library whose exported instance reads an undeclared variable. The
+    consumer's analysis must still report it: a forwarded export is not exempt
+    from CEL checking, only from being judged by the consumer's contract.
+imports:
+  Lib: ./typo-lib
+variables:
+  typoNotDeclared:
+    env: VAR_TYPO_NOT_DECLARED
+    type: string
+    default: a
+targets:
+  - !ref Lib.Work

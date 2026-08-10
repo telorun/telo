@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: VarApp
+  version: 0.0.0
+  description: |
+    Declares a variable block that shares no name with the library's, so a
+    library read checked against THIS contract is guaranteed to fail. Analyzing
+    this app must produce no errors: the library's CEL is its own to validate.
+imports:
+  Lib: ./lib
+variables:
+  appOnly:
+    env: VAR_APP_ONLY
+    type: string
+    default: a
+targets:
+  - !ref Lib.Work

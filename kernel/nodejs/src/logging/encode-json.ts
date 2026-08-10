@@ -1,4 +1,4 @@
-import { formatUnixNano, type AnyValue, type ErrorValue, type LogRecord } from "@telorun/sdk";
+import { bigIntAt, formatUnixNano, type AnyValue, type ErrorValue, type LogRecord } from "@telorun/sdk";
 
 /**
  * The `json` encoding — `kernel/specs/logging.md` §11.1. One JSON object per
@@ -83,16 +83,21 @@ function sortKeysDeep(value: AnyValue): AnyValue {
 }
 
 function makeReplacer(encodeBytes: BytesEncoder) {
-  return function replacer(this: unknown, _key: string, value: unknown): unknown {
-    if (typeof value === "bigint") {
-      // Values beyond 2^53 lose precision in a JS receiver, so they degrade to a
-      // decimal string rather than to a wrong number — the same reasoning OTLP
-      // gives for quoting its 64-bit fields.
-      return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER)
-        ? Number(value)
-        : value.toString();
+  return function replacer(this: unknown, key: string, value: unknown): unknown {
+    // Read the BigInt off the HOLDER, not off `value`: `BigInt.prototype.toJSON`
+    // has already rewritten it to the exact-digits form every other JSON boundary
+    // wants (see `enableBigIntJson`). A log record is the one destination where
+    // that is wrong — a value beyond 2^53 loses precision in a JS receiver, so it
+    // degrades to a decimal string rather than to a wrong number, the same
+    // reasoning OTLP gives for quoting its 64-bit fields.
+    const source = bigIntAt(this, key);
+    if (source !== undefined) {
+      return source >= MIN_SAFE && source <= MAX_SAFE ? Number(source) : source.toString();
     }
     if (value instanceof Uint8Array) return encodeBytes(value);
     return value;
   };
 }
+
+const MIN_SAFE = BigInt(Number.MIN_SAFE_INTEGER);
+const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);

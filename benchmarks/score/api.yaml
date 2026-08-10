@@ -37,9 +37,10 @@ routes:
   #
   # Type discipline: JSON-parsed numbers come into CEL as dyn<double>; literal
   # ints in CEL are int. CEL has no overload for `int OP dyn<double>`, so
-  # numeric literals here use `.0` suffix to stay in the double domain.
-  # `size()` returns BigInt — wrap with `double()` before it ever reaches
-  # response.body, since fastify can't JSON-serialize BigInt.
+  # numeric literals here use `.0` suffix to stay in the double domain, and
+  # `size()` — which returns int — is wrapped in `double()` wherever its result
+  # takes part in that arithmetic. Serialization needs no such cast: an int
+  # reaches the wire as its exact digits.
   - request:
       path: /score
       method: POST

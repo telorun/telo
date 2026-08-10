@@ -187,9 +187,7 @@ schema:
   examples:
     - collection: !cel "inputs.orders"
       aggregate:
-        # double() coerces the CEL int to a JSON number — a bare size() is a
-        # BigInt, which a plain JSON serializer downstream cannot encode.
-        count: !cel "double(size(group))"
+        count: !cel "size(group)"
         total: !cel "sum(group.map(o, o.amount))"
         average: !cel "avg(group.map(o, o.amount))"
 ---

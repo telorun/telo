@@ -305,27 +305,23 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
     instance.invoke = async (inputs: any, ...rest: unknown[]) => {
       let effective = inputs;
       if (input) {
+        // Copied only so the validator's default-fill cannot mutate what the
+        // caller still holds. The BigInt normalization a JSON Schema validator
+        // needs (CEL evaluates an integer to one, which AJV does not recognise
+        // as `integer`) belongs to the validator and is applied there — see
+        // `bigint-schema-view.ts`. Doing it here as well would walk every input
+        // tree twice per dispatch, and split one concern across two layers.
         effective = copyForDefaults(inputs, input.defaultPaths());
-        // Validate a BIGINT-NORMALIZED view, not the values themselves. CEL
-        // evaluates an integer literal to a BigInt, which a JSON Schema
-        // validator does not recognise as `integer` — so every computed integer
-        // reaching a declared integer input would be rejected for a reason the
-        // author cannot act on. The dispatched values keep their BigInts, since
-        // a controller may need the full 64-bit range.
-        const view = withBigIntsAsNumbers(effective);
         try {
-          input.validate(view);
+          input.validate(effective);
         } catch (error) {
           throw contractViolation("inputType", describeTarget, error);
         }
-        // Defaults are additive, so anything the validator filled into the view
-        // is a key the caller omitted — copy exactly those back.
-        effective = mergeFilledDefaults(effective, view);
       }
       const result = await original(effective, ...rest);
       if (output) {
         try {
-          output.validate(withBigIntsAsNumbers(result));
+          output.validate(result);
         } catch (error) {
           throw contractViolation("outputType", describeTarget, error);
         }
@@ -339,7 +335,7 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
     instance.provide = async (...args: unknown[]) => {
       const result = await original(...args);
       try {
-        output.validate(withBigIntsAsNumbers(result));
+        output.validate(result);
       } catch (error) {
         throw contractViolation("outputType", describeTarget, error);
       }
@@ -348,45 +344,3 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
   }
 }
 
-/** A structural copy with every BigInt rendered as a Number, for validation
- *  only. A value beyond the safe-integer range loses precision in the VIEW,
- *  which can only affect a bound check at the extremes; the dispatched value is
- *  untouched. Non-plain objects (a live `Stream`, a resource instance) pass
- *  through by reference — they are not data to be walked. */
-export function withBigIntsAsNumbers(value: unknown): unknown {
-  if (typeof value === "bigint") return Number(value);
-  if (Array.isArray(value)) {
-    let changed = false;
-    const items = value.map((item) => {
-      const next = withBigIntsAsNumbers(item);
-      if (next !== item) changed = true;
-      return next;
-    });
-    return changed ? items : value;
-  }
-  if (!value || typeof value !== "object") return value;
-  if (Object.getPrototypeOf(value) !== Object.prototype) return value;
-  let changed = false;
-  const out: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    const next = withBigIntsAsNumbers(item);
-    if (next !== item) changed = true;
-    out[key] = next;
-  }
-  return changed ? out : value;
-}
-
-/** Copy keys the validator's default-fill added to `view` back onto `target`.
- *  Only ADDITIONS are taken: a key already present came from the caller and its
- *  original (possibly BigInt) value is the one to dispatch. */
-function mergeFilledDefaults(target: unknown, view: unknown): unknown {
-  if (target === view) return target;
-  if (!target || typeof target !== "object" || Array.isArray(target)) return target;
-  if (!view || typeof view !== "object" || Array.isArray(view)) return target;
-  const out = target as Record<string, unknown>;
-  for (const [key, filled] of Object.entries(view as Record<string, unknown>)) {
-    if (!(key in out)) out[key] = filled;
-    else out[key] = mergeFilledDefaults(out[key], filled);
-  }
-  return out;
-}

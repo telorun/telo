@@ -41,7 +41,17 @@ export function parseExportEntry(entry: string): ParsedExportEntry {
  *  `byModuleName` and `!ref Alias.name` resolves, while `validate-references` /
  *  the per-resource validation loop never re-walk or re-validate it against the
  *  consumer's scope. A consumer that instead emits every module doc as a peer
- *  local manifest silently breaks both. */
+ *  local manifest silently breaks both.
+ *
+ *  Dropping the module doc costs the consumer's analysis the one thing a
+ *  forwarded manifest's CEL still needs: the `variables` / `secrets` / `ports`
+ *  contract its expressions are evaluated against. That contract is carried
+ *  across as {@link ModuleGlobals} on each forwarded manifest instead, so the
+ *  consumer can check those reads in the DECLARING module's scope rather than
+ *  either skipping them (a diagnostic performed nowhere) or judging them by its
+ *  own block (a hard error the library author cannot act on). Stamped here
+ *  because this is the only point where a manifest and its module doc are both
+ *  in hand — by the time `analyze()` sees the flat list, the doc is gone. */
 export function selectModuleManifestsForAnalysis(
   moduleManifests: ResourceManifest[],
   isRoot: boolean,
@@ -58,10 +68,12 @@ export function selectModuleManifestsForAnalysis(
     exportedResources.add(parseExportEntry(entry).name);
   }
 
+  const moduleGlobals = readModuleGlobals(libDoc);
+
   const out: ResourceManifest[] = [];
   for (const m of moduleManifests) {
     if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" || m.kind === "Telo.Import") {
-      out.push(m);
+      out.push(withModuleGlobals(m, moduleGlobals));
     } else if (
       !isModuleKind(m.kind) &&
       typeof m.metadata?.name === "string" &&
@@ -69,11 +81,57 @@ export function selectModuleManifestsForAnalysis(
     ) {
       out.push({
         ...m,
-        metadata: { ...m.metadata, forwardedExport: true } as ResourceManifest["metadata"],
+        metadata: {
+          ...m.metadata,
+          forwardedExport: true,
+          ...(moduleGlobals ? { moduleGlobals } : {}),
+        } as ResourceManifest["metadata"],
       });
     }
   }
   return out;
+}
+
+/** The declaring module's config contract, carried on a forwarded manifest so
+ *  the consumer's analysis can type its CEL globals in the right scope. Only the
+ *  namespaces whose typing is scope-dependent: `resources` is deliberately
+ *  absent, see {@link readModuleGlobals}. */
+export interface ModuleGlobals {
+  variables?: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
+  ports?: Record<string, unknown>;
+}
+
+/** Read the schema-map blocks off a module doc, or `undefined` when it declares
+ *  none (the globals then stay permissive, exactly as an absent doc does).
+ *
+ *  `resources` is NOT carried. The flat list holds only this module's EXPORTED
+ *  instances, so a name list built from it would omit every internal one — and a
+ *  `with:`-scoped resource is declared inline rather than as a doc, so it would
+ *  be missing too. Both would read as "no such resource" in a consumer's pass:
+ *  a false positive worse than the unchecked read it replaced. The consumer
+ *  leaves a forwarded manifest's `resources` node open and the library's own
+ *  analysis, which sees every name, does that check. */
+function readModuleGlobals(libDoc: ResourceManifest | undefined): ModuleGlobals | undefined {
+  const doc = libDoc as Record<string, any> | undefined;
+  if (!doc) return undefined;
+  const globals: ModuleGlobals = {};
+  for (const key of ["variables", "secrets", "ports"] as const) {
+    const block = doc[key];
+    if (block && typeof block === "object" && !Array.isArray(block)) globals[key] = block;
+  }
+  return Object.keys(globals).length > 0 ? globals : undefined;
+}
+
+function withModuleGlobals(
+  m: ResourceManifest,
+  moduleGlobals: ModuleGlobals | undefined,
+): ResourceManifest {
+  if (!moduleGlobals) return m;
+  return {
+    ...m,
+    metadata: { ...m.metadata, moduleGlobals } as ResourceManifest["metadata"],
+  };
 }
 
 /** Produce the flat manifest list `analyze()` consumes today.

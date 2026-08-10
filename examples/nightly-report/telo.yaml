@@ -144,15 +144,7 @@ routes:
       - status: 200
         content:
           application/json:
-            # CEL integers are BigInts, which JSON cannot serialize — cast the
-            # aggregates on the way out.
-            body: !cel >-
-              result.rows.map(r, {
-                'region': r.region,
-                'orders': double(r.orders),
-                'paidCents': double(r.paidCents),
-                'refundedCents': double(r.refundedCents)
-              })
+            body: !cel "result.rows"
 ---
 kind: Schedule.Cron
 metadata: { name: Nightly }

@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { defaultBearingPaths, withStreamPropertiesSkipped } from "@telorun/analyzer";
-import {
-  copyForDefaults,
-  resolveBoundContract,
-  withBigIntsAsNumbers,
-} from "../src/invocation-contract-binding.js";
+import { copyForDefaults, resolveBoundContract } from "../src/invocation-contract-binding.js";
 import type { ContractValidatorFactory } from "../src/invocation-contract-binding.js";
+import { withBigIntsAsNumbers } from "../src/bigint-schema-view.js";
 
 /**
  * Conformance tests for `kernel/specs/invocation-contract.md` §6, mirroring

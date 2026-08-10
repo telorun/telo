@@ -44,6 +44,7 @@ export type {
 } from "./transports/transport.js";
 export { ExecutionContext } from "./execution-context.js";
 export { Kernel, type KernelOptions } from "./kernel.js";
+export { enableBigIntJson } from "./bigint-json.js";
 export { nodeCelHandlers } from "./cel-handlers.js";
 export { ModuleContext } from "./module-context.js";
 export { ManifestRegistry as Registry } from "./registry.js";

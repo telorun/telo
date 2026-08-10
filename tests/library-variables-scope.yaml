@@ -1,0 +1,50 @@
+kind: Telo.Application
+metadata:
+  name: LibraryVariablesScopeTest
+  version: 1.0.0
+  description: |
+    A library's CEL is validated against the LIBRARY's variable contract, not the
+    importing application's — and is still validated.
+
+    An application analysis is flattened: `selectModuleManifestsForAnalysis`
+    forwards an imported library's definitions and its `exports.resources`
+    instances and drops the library doc, so the consumer's pass has no contract
+    to check those reads against. Typing them from the entry Application's block
+    was wrong in both directions — a hard error for a variable the library
+    declares and the app does not, silent acceptance of an undeclared one
+    whenever the app happened to declare that name. Skipping the resource
+    instead would be worse: it retires every other CEL diagnostic
+    (CEL_SYNTAX_ERROR, CEL_NULLABLE_ACCESS, CEL_IN_NON_EVAL_FIELD,
+    OBSERVED_STATE_*) for forwarded exports, and some — OBSERVED_STATE_NEVER_RUN
+    — are answerable ONLY in the consumer's analysis, since a library has no
+    `targets:` of its own. The declaring module's blocks are carried across as
+    `metadata.moduleGlobals` so the read is checked, in the right scope.
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref NoConsumerScopeLeak
+  - !ref ScopedToTheDeclaringLibrary
+---
+# The app and the library share NO variable name, so a library read judged by the
+# app's contract fails. Zero errors is the whole assertion.
+kind: Assert.Manifest
+metadata:
+  name: NoConsumerScopeLeak
+source: ./__fixtures__/library-variables/app.yaml
+expect:
+  errors: []
+---
+# The other direction, and the reason a blanket skip is not the fix. The library
+# reads a variable IT does not declare; the importing app declares that very
+# name. The consumer's pass must still report it (so forwarded exports are not
+# exempt from CEL checking) and must report it against the LIBRARY's block —
+# which `available: onlyInLib` is the proof of, since matching the app's contract
+# would have made this read valid.
+kind: Assert.Manifest
+metadata:
+  name: ScopedToTheDeclaringLibrary
+source: ./__fixtures__/library-variables/typo-app.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'variables.typoNotDeclared' is not defined (available: onlyInLib)"

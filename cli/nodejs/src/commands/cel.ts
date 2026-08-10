@@ -1,9 +1,6 @@
 import { buildCelEnvironment, celFunctionCatalog, type CelFunctionInfo } from "@telorun/templating";
-import { nodeCelHandlers } from "@telorun/kernel";
+import { enableBigIntJson, nodeCelHandlers } from "@telorun/kernel";
 import type { Argv } from "yargs";
-
-/** JSON.stringify replacer: cel-js ints are BigInt, which JSON can't serialize. */
-const bigintReplacer = (_k: string, v: unknown): unknown => (typeof v === "bigint" ? Number(v) : v);
 
 function printFunctions(asJson: boolean): void {
   const catalog = celFunctionCatalog();
@@ -35,6 +32,13 @@ function printFunctions(asJson: boolean): void {
 }
 
 function evalExpression(expr: string, contextJson: string | undefined, asJson: boolean): void {
+  // The one command that evaluates CEL without a kernel, so it installs the
+  // int64 JSON encoding itself — `telo cel eval --json 'size([1,2,3])'` has to
+  // print what the same expression produces in a run. Every other path reaches
+  // it through `boot()`, which is what keeps the CLI and an embedding Node app
+  // identical: hosting a kernel is the only thing that installs it.
+  enableBigIntJson();
+
   let context: Record<string, unknown>;
   try {
     context = contextJson ? JSON.parse(contextJson) : {};
@@ -55,7 +59,7 @@ function evalExpression(expr: string, contextJson: string | undefined, asJson: b
   }
 
   if (asJson) {
-    console.log(JSON.stringify(result, bigintReplacer, 2));
+    console.log(JSON.stringify(result, null, 2));
   } else {
     console.log(typeof result === "bigint" ? result.toString() : result);
   }

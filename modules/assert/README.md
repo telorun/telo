@@ -74,6 +74,12 @@ steps:
       expected: 42
 ```
 
+## How `Assert.Equals` compares
+
+Deep equality over the JSON-shaped values a Telo step passes around: primitives, plain objects, and arrays. A non-plain object (`Date`, `Map`, `Set`, `RegExp`, a class instance) is **not** compared structurally — only identity passes — because two distinct `new Date(...)` instances both have no own keys and would otherwise compare equal. Serialize first (`date.toISOString()`) and compare the strings.
+
+An integer compares by value across its representation. A CEL integer is int64 while an `expected:` literal comes out of YAML as a plain number, and YAML has no way to write the other — so `!cel "size(items)"` equals `3`. The match is exact in both directions: the literal must be integral and round-trip to the same int64, so neither `3.5` nor a magnitude a double cannot represent will match.
+
 ## Reference
 
 - [`Assert.Manifest`](docs/manifest.md)

@@ -12,6 +12,7 @@
  */
 export function deepEquals(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
+  if (typeof a === "bigint" || typeof b === "bigint") return sameInteger(a, b);
   if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
 
   if (Array.isArray(a) || Array.isArray(b)) {
@@ -37,6 +38,21 @@ export function deepEquals(a: unknown, b: unknown): boolean {
     if (!Object.prototype.hasOwnProperty.call(bo, k) || !deepEquals(ao[k], bo[k])) return false;
   }
   return true;
+}
+
+/** A CEL integer is int64 — a BigInt — while an `expected:` literal comes out of
+ *  YAML as a plain number, and YAML has no way to write the other. Without this,
+ *  no integer-valued expression could be asserted without first casting it to a
+ *  float, which is the cast this comparison exists to make unnecessary.
+ *
+ *  Equality is exact in both directions: the number must be integral, and must
+ *  round-trip to the same BigInt — so `3n` equals `3` while `3n` equals neither
+ *  `3.5` nor a magnitude a double cannot represent. Equal BigInts were already
+ *  settled by `Object.is` above. */
+function sameInteger(a: unknown, b: unknown): boolean {
+  const big = typeof a === "bigint" ? a : (b as bigint);
+  const other = typeof a === "bigint" ? b : a;
+  return typeof other === "number" && Number.isInteger(other) && big === BigInt(other);
 }
 
 function isPlainObject(v: object): boolean {

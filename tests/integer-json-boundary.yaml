@@ -1,0 +1,111 @@
+kind: Telo.Application
+metadata:
+  name: IntegerJsonBoundary
+  version: 1.0.0
+  description: |
+    A CEL integer is int64 — a BigInt in this runtime — and it must cross every
+    boundary a manifest can reach without being cast to a float. Both doors used
+    to be shut: a JSON response body without a declared schema hit a serializer
+    that throws on a BigInt, and declaring the schema traded that for an AJV
+    `must be integer` rejection before the value was ever serialized. The only
+    way through was `double(...)`, which lies about the type and truncates past
+    2^53.
+
+    Covers all three boundaries with no cast anywhere: the declared `integer`
+    slot (validation), the JSON encoding (including a value beyond 2^53 that a
+    double could not carry), and `Assert.Equals` against an integer literal.
+imports:
+  Http: ../modules/http-server
+  HttpClient: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref VerifyIntegersCrossJson
+---
+kind: Run.Sequence
+metadata:
+  name: VerifyIntegersCrossJson
+with:
+  - kind: Run.Value
+    metadata:
+      name: CountItems
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          items: { type: array }
+    value:
+      count: !cel "size(inputs.items)"
+      # Beyond 2^53 — a double cannot represent this, so a cast would silently
+      # change it. Serializing it is what the route below has to survive.
+      big: !cel "9007199254740993"
+  - kind: Http.Api
+    metadata:
+      name: CountApi
+    routes:
+      - request:
+          path: /count
+          method: GET
+        inputs:
+          items: [ a, b, c ]
+        handler: !ref CountItems
+        returns:
+          - status: 200
+            content:
+              application/json:
+                # The declared contract each value must satisfy as an integer —
+                # not as a number it was coerced into.
+                schema:
+                  type: object
+                  properties:
+                    count: { type: integer }
+                    big: { type: integer }
+                  required: [ count, big ]
+                body:
+                  count: !cel "result.count"
+                  big: !cel "result.big"
+  - kind: Http.Server
+    metadata:
+      name: CountServer
+    port: 8846
+    logger: false
+    mounts:
+      - path: /
+        mount: !ref CountApi
+targets:
+  - !ref CountServer
+steps:
+  - name: Local
+    invoke: !ref CountItems
+    inputs:
+      items: [ a, b, c ]
+  # An integer result compares equal to an integer literal: YAML has no way to
+  # write an int64, so requiring an exact type match would make every
+  # integer-valued expression unassertable without a cast.
+  - name: AssertLocal
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.Local.result.count"
+      expected: 3
+  # The encoding itself, before any transport: exact digits, not a rounded
+  # double. This is the same encoder every JSON boundary in the runtime uses.
+  - name: AssertExactDigits
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "json({'big': 9007199254740993})"
+      expected: '{"big":9007199254740993}'
+  # Over the wire: the route validates both values against `type: integer` and
+  # serializes them. `count` is asserted; `big` is proven by the request
+  # succeeding at all, since neither door would let it through before.
+  - name: Fetch
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8846/count
+      method: GET
+  - name: AssertWire
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.Fetch.result.body.count"
+      expected: 3

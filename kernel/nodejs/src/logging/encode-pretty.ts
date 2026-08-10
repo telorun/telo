@@ -1,4 +1,4 @@
-import { severityFloor, type AnyValue, type ErrorValue, type LogRecord } from "@telorun/sdk";
+import { bigIntAt, severityFloor, type AnyValue, type ErrorValue, type LogRecord } from "@telorun/sdk";
 
 /**
  * The `pretty` encoding — `kernel/specs/logging.md` §11.2. For humans on a
@@ -90,8 +90,17 @@ function quoteIfNeeded(text: string): string {
   return /[\s"=]/.test(text) ? JSON.stringify(text) : text;
 }
 
-function jsonSafe(_key: string, value: unknown): unknown {
-  if (typeof value === "bigint") return value.toString();
+function jsonSafe(this: unknown, key: string, value: unknown): unknown {
+  // Read the integer off the HOLDER, not off `value`: `BigInt.prototype.toJSON`
+  // (see `enableBigIntJson`) runs BEFORE a replacer, so by the time this is
+  // called a wide integer is already the exact-digits form every wire encoding
+  // wants. This console encoding renders it as a decimal string instead, and
+  // matching on `typeof value === "bigint"` would silently stop doing so —
+  // a changed encoding, not an error. Reading the holder keeps the rendering
+  // identical whether or not the patch is installed, which matters because a
+  // test can call this encoder outside a booted kernel.
+  const source = bigIntAt(this, key);
+  if (source !== undefined) return source.toString();
   if (value instanceof Uint8Array) return `<${value.byteLength} bytes>`;
   return value;
 }

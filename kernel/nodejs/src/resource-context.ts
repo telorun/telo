@@ -33,6 +33,7 @@ import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
+import { withBigIntsAsNumbers } from "./bigint-schema-view.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
 import { hostEnv } from "./host-env.js";
 import type { LoggingHost } from "./logging/logging-host.js";
@@ -313,7 +314,11 @@ export class ResourceContextImpl implements ResourceContext {
             additionalProperties: false,
           },
     );
-    const isValid = validate(stripCompiledValues(value));
+    // A BigInt-normalized view: AJV reads `integer` as `typeof == "number"`, so a
+    // CEL integer (int64) would be rejected at a slot it satisfies. This validator
+    // runs without `useDefaults` and already checks a derived value, so there is
+    // nothing to merge back. See `bigint-schema-view.ts`.
+    const isValid = validate(withBigIntsAsNumbers(stripCompiledValues(value)));
     if (!isValid) {
       throw new RuntimeError(
         "ERR_INVALID_VALUE",

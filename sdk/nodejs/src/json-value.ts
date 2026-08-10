@@ -1,18 +1,19 @@
 /**
  * JSON encoding for values that cross a persistence boundary.
  *
- * `JSON.stringify` THROWS on a BigInt, and CEL integers surface as BigInt in
- * this runtime — so any controller that persists a result computed in CEL
- * (`{ charged: 500 }` from a `Run.Sequence` output) hits it. A store that lets
- * that throw escape is worse than one that never persisted: the caller sees an
- * opaque TypeError, and a decorator built on the store can mistake it for the
- * body having failed.
+ * BigInt is encoded as a tagged object rather than as a plain string, a Number,
+ * or the exact digits every other JSON boundary emits: this codec has to be
+ * INVERTIBLE. A replayed value must equal the freshly-produced one — including
+ * its type — or at-most-once execution silently changes its answer on the second
+ * call. Digits would come back as a Number (lossy past 2^53), a string would come
+ * back a different type than went in.
  *
- * BigInt is encoded as a tagged object rather than a plain string or a Number:
- * a string would come back a different type than went in, and Number is lossy
- * past 2^53. A replayed value must equal the freshly-produced one, or
- * at-most-once execution silently changes its answer on the second call.
+ * That is why this file reaches past `BigInt.prototype.toJSON` with
+ * {@link bigIntAt} instead of inheriting the process-wide encoding: the wire wants
+ * the value, a store wants the value AND its type back.
  */
+
+import { bigIntAt } from "./bigint-json.js";
 
 const BIGINT_TAG = "$bigint";
 
@@ -32,9 +33,10 @@ function isTaggedBigInt(value: unknown): value is TaggedBigInt {
 
 /** Serialize a value to JSON text, preserving BigInt exactly. */
 export function encodeJsonValue(value: unknown): string {
-  return JSON.stringify(value ?? null, (_k, v) =>
-    typeof v === "bigint" ? { [BIGINT_TAG]: v.toString() } : v,
-  );
+  return JSON.stringify(value ?? null, function (this: unknown, key, v) {
+    const source = bigIntAt(this, key);
+    return source === undefined ? v : { [BIGINT_TAG]: source.toString() };
+  });
 }
 
 /** Inverse of {@link encodeJsonValue}; BigInt values are restored as BigInt. */

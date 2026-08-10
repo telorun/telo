@@ -1654,11 +1654,8 @@ outputs:
   # `total` is the match count before LIMIT/OFFSET — a paging UI needs to know
   # what it is not showing, and a browse that silently stopped at 20 would read
   # as "that's all there is". An empty result carries no row to read it from,
-  # hence the fallback; both branches are doubles because a CEL integer is
-  # 64-bit and reaches the JSON encoder as a BigInt, which it cannot serialize.
-  # (The populated branch only looked fine because Postgres `::int` arrives as
-  # a plain number.) JSON has one number type, so the wire value is unchanged.
-  total: !cel "steps.query.result.rows.size() > 0 ? double(steps.query.result.rows[0].total) : 0.0"
+  # hence the fallback.
+  total: !cel "steps.query.result.rows.size() > 0 ? steps.query.result.rows[0].total : 0"
   # `runtimes` lists every kernel with at least partial reach and `full` the
   # subset covering every kind, so a caller renders "Rust (partial)" without a
   # second lookup — and a filter still reads one array.

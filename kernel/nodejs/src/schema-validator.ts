@@ -8,17 +8,15 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import { binaryKeyword, X_TELO_BINARY } from "@telorun/analyzer";
+import { mergeFilledDefaults, withBigIntsAsNumbers } from "./bigint-schema-view.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
 
-/** Render a value for an error message without ever throwing.
- *
- *  `JSON.stringify` refuses BigInt, and CEL evaluates an integer literal to one —
- *  so serializing the offending data threw from inside the message template and
- *  the thrown stringify error REPLACED the validation failure. The author was
- *  told "cannot serialize BigInt" instead of which field was wrong. */
+/** Render a value for an error message without ever throwing — the offending
+ *  data may be cyclic, and a throw here would REPLACE the validation failure
+ *  with an unrelated error naming no field. */
 function describeValue(data: unknown): string {
   try {
-    return JSON.stringify(data, (_k, v) => (typeof v === "bigint" ? `${v}` : v)) ?? String(data);
+    return JSON.stringify(data) ?? String(data);
   } catch {
     return String(data);
   }
@@ -399,19 +397,32 @@ export class SchemaValidator {
     const validate = this.compileAjvOrLoadCached(sanitized, hash, persist);
     if (persist) this.persistedHashes.add(hash);
 
+    // AJV's type check is `typeof data == "number"`, so a CEL integer — a BigInt —
+    // is rejected at an `integer` slot no matter what the author writes. Check a
+    // normalized VIEW instead and merge the `useDefaults` fills back, so the value
+    // that reaches the controller keeps its 64-bit range. `withBigIntsAsNumbers`
+    // returns the same reference when there was nothing to normalize, which is what
+    // keeps the BigInt-free path byte-identical to a plain `validate(data)`.
+    const check = (data: any): boolean => {
+      const view = withBigIntsAsNumbers(data);
+      const ok = validate(view);
+      if (ok && view !== data) mergeFilledDefaults(data, view);
+      return ok;
+    };
+
     const validator = {
       validate: (data: any) => {
-        const isValid = validate(data);
-        if (!isValid) {
+        if (!check(data)) {
+          // Reports `data`, not the normalized view: the view renders a wide
+          // integer through a double, so the digits it prints for the offending
+          // value would not be the ones the author wrote.
           throw new RuntimeError(
             "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
             `Invalid value passed: ${describeValue(data)}. Error: ${formatAjvErrors(validate.errors)}`,
           );
         }
       },
-      isValid: (data: any) => {
-        return validate(data);
-      },
+      isValid: (data: any) => check(data),
     };
 
     this.hashCache.set(hash, validator);
