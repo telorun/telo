@@ -11,7 +11,7 @@ kind: Collection.Summarize
 metadata: { name: Totals }
 collection: !cel "inputs.orders"
 aggregate:
-  count: !cel "double(size(group))"
+  count: !cel "size(group)"
   total: !cel "sum(group.map(o, o.amount))"
   average: !cel "avg(group.map(o, o.amount))"
 ```
@@ -75,14 +75,10 @@ select:
 
 The right side is indexed by its key once, so the join is linear in `len(left) + len(right)`. In a `left` join, guard `right` for null in `select` (it is null on unmatched rows).
 
-## A note on BigInt
+## A note on integer counts
 
-CEL integers are **BigInt** (int64 precision), so `size(...)` returns a BigInt. Telo's real serialization boundaries (HTTP `json()`, logging) are BigInt-aware, but a plain `JSON.stringify` — and `Assert.Schema`'s message path — cannot encode one. When a count is bound for JSON output, coerce it with `double(...)`:
+`size(...)` returns a CEL **integer** — int64, not a double. It needs no cast anywhere: it serializes to JSON as its exact digits, satisfies a `type: integer` slot, and compares equal to an integer literal in `Assert.Equals`. Write `count: !cel "size(group)"`.
 
-```yaml
-count: !cel "double(size(group))"
-```
+`double(...)` remains meaningful for what it says — moving a value into the double domain, which CEL needs when an integer takes part in arithmetic with one (`double(size(x)) / total`). It is not a serialization step.
 
-`sum` and `avg` already return JSON numbers, so only bare integer expressions (`size`, integer literals, integer arithmetic) need this. This is CEL-wide behaviour, not specific to `Collection` — the same applies anywhere an integer CEL result flows into a JSON serializer.
-
-**Grouping / deduping / joining by an integer key works.** `GroupBy.key`, `Distinct.key`, and `Join.on` may compute integer keys (`size(...)`, integer arithmetic) — the bucket identity encodes BigInt safely, and a `size()`-derived key matches the same value arriving as a plain JSON int. Only the *output* needs `double(...)` when an integer is bound for JSON; the key path itself is BigInt-safe.
+**Grouping / deduping / joining by an integer key works.** `GroupBy.key`, `Distinct.key`, and `Join.on` may compute integer keys (`size(...)`, integer arithmetic); a `size()`-derived key matches the same value arriving as a plain JSON int.

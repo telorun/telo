@@ -38,6 +38,7 @@ import {
 import { parseArgs } from "util";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventBus } from "./events.js";
+import { enableBigIntJson } from "./bigint-json.js";
 import { hostEnv, lockControllerEnv } from "./host-env.js";
 import { KernelTracer } from "./tracing.js";
 import { KernelLogging, type LoggingManifestBlock } from "./logging/kernel-logging.js";
@@ -760,6 +761,13 @@ export class Kernel implements IKernel {
       throwInvalidState("boot", "load() has not been called");
     }
     this._bootCalled = true;
+
+    // Make a CEL integer JSON-serializable before any controller runs. CEL
+    // models `int` as int64 (a JS BigInt here), and `JSON.stringify` throws on
+    // one — so every JSON boundary a manifest can reach, in this kernel and in
+    // any module, needs the answer installed before the first value crosses it.
+    // Process-global and idempotent, like the env guardrail below.
+    enableBigIntJson();
 
     // Lock the ambient host environment before any controller runs: a key the
     // manifest binds via `variables`/`secrets`/`ports` must be read through

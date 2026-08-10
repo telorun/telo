@@ -216,9 +216,37 @@ a reason no author can act on — while converting the dispatched value would co
 a controller the full range it may need.
 
 Defaults filled into that view are ADDITIVE, so a runtime MUST carry back only
-the keys the fill added; a key the caller supplied keeps its original value.
+the keys the fill added; a key the caller supplied keeps its original value. The
+carry-back MUST reach values nested inside arrays: a schema may declare a default
+under `items`, and stopping at the array boundary drops that fill silently.
 
-### 4.4 What validation exempts
+### 4.4 Serializing a wide integer
+
+Where a value crosses a JSON boundary — a response body, a record frame, a
+persisted value — a wide integer MUST be emitted as its **exact decimal digits**.
+JSON places no precision limit on a number, so this is lossless, and it is what a
+schema-driven serializer already produces for a declared `integer`; a runtime with
+two serialization paths MUST NOT let them disagree at any magnitude. A runtime
+MUST NOT satisfy this by converting to its JSON number type, which silently loses
+precision beyond 2^53, and MUST NOT emit a quoted string, which changes the type a
+receiver sees.
+
+How a runtime achieves this is its own affair: the Node kernel installs
+`BigInt.prototype.toJSON` over `JSON.rawJSON` at boot, a runtime whose integers
+are already a JSON number type needs nothing.
+
+Two destinations are NAMED exceptions, because their own wire formats mandate
+otherwise and both are read by a receiver that cannot hold the value:
+
+- the `otlp` log encoding, whose 64-bit fields are quoted decimal strings
+  (`kernel/specs/logging.md` §11.3);
+- the `json` log encoding, which degrades a value beyond the safe-integer range
+  to a decimal string for the same reason.
+
+A runtime MUST NOT extend this list to a general-purpose boundary. An exception
+is a property of the destination format, never of the value.
+
+### 4.5 What validation exempts
 
 Validation MUST skip every property marked `x-telo-stream`, **in both
 directions**. Streams travel on inputs as much as on results, and the value at
@@ -276,8 +304,10 @@ A conforming runtime:
 4. binds `invoke` and `provide` and not `run` (§3.2);
 5. forwards every dispatch argument (§3.3);
 6. fills defaults over a copy deep along default-bearing paths (§4.2);
-7. validates both directions, exempting streams in both (§4.4), over a view where wide integers read as numbers (§4.3);
-8. raises the ambient codes structurally, and excludes them from declared-union
+7. validates both directions, exempting streams in both (§4.5), over a view where wide integers read as numbers (§4.3);
+8. serializes a wide integer as exact decimal digits at every JSON boundary but
+   the named log encodings (§4.4);
+9. raises the ambient codes structurally, and excludes them from declared-union
    counting (§5);
-9. raises rather than silently skipping when a declared contract resolves to no
-   schema (§5.1).
+10. raises rather than silently skipping when a declared contract resolves to no
+    schema (§5.1).

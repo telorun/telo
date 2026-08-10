@@ -881,6 +881,13 @@ system: |
     read is rejected before the app boots. Cross-module reads
     (`resources.<Alias>.<name>.status.<field>`, an imported library's exported
     instance) are checked the same way.
+  - A CEL integer is int64 and needs NO cast to cross a boundary: `!cel
+    "size(group)"` serializes to JSON as its exact digits, satisfies a declared
+    `type: integer`, and compares equal to an integer literal in an assertion.
+    `double(...)` means only "move into the double domain" — which CEL requires
+    when an integer takes part in arithmetic with a double
+    (`double(size(x)) / total`, since there is no `int OP double` overload). It
+    is never a serialization step; never write it to make a value encodable.
   - A resource `metadata.name` must contain NO dot — the `!ref` grammar splits
     on the first dot to separate alias from name.
   - Write object / array fields as real YAML maps / lists, never JSON strings;

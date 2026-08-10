@@ -26,8 +26,6 @@ Inside `aggregate`, `group` is the array of records in the group, so reductions 
 
 `sum` and `avg` are `std` CEL reducers (siblings of `min` / `max` / `size`), usable in any CEL expression, not just here.
 
-> `size(group)` is a CEL integer — a **BigInt** (int64). A bare BigInt can't be JSON-serialized downstream; wrap counts bound for JSON output in `double(...)`. `sum` / `avg` already return JSON numbers. See [operations.md](operations.md#a-note-on-bigint) for the full note.
-
 To reduce a whole collection (no grouping), use [`Collection.Summarize`](operations.md#collectionsummarize) — `GroupBy` with a single implicit group.
 
 > CEL arithmetic is type-exact: divide a `double` by a `double`. Write `/ 60.0`, not `/ 60`, or the analyzer reports `no such overload: double / int`.

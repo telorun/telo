@@ -16,12 +16,12 @@ interface EqualsInput {
   expected: unknown;
 }
 
-/** Render a value for output without throwing. CEL evaluates an integer to a
- *  BigInt, which `JSON.stringify` refuses — so reporting a result that contained
- *  one replaced the assertion's own message (pass or fail) with a TypeError. */
+/** Render a value for output without throwing — a cyclic or otherwise
+ *  unserializable actual must not replace the assertion's own message (pass or
+ *  fail) with an error about rendering it. */
 function render(value: unknown): string {
   try {
-    return JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? `${v}` : v)) ?? String(value);
+    return JSON.stringify(value) ?? String(value);
   } catch {
     return String(value);
   }

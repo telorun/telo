@@ -25,7 +25,7 @@ import {
 import { buildCallGraph } from "./call-graph.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import {
-  buildKernelGlobalsSchema,
+  buildKernelGlobalsIndex,
   KERNEL_GLOBAL_NAMES,
   mergeKernelGlobalsIntoContext,
 } from "./kernel-globals.js";
@@ -1613,7 +1613,7 @@ export class StaticAnalyzer {
 
     // Build typed kernel globals schema so x-telo-context chain validation
     // recognises variables, secrets, resources, env automatically
-    const kernelGlobals = buildKernelGlobalsSchema(allManifests, observedState);
+    const kernelGlobals = buildKernelGlobalsIndex(allManifests, observedState);
 
     // Fallback context for CEL in a slot with no `x-telo-context` annotation:
     // everything stays open except the typed `.status` nodes, so unknown-field
@@ -1632,7 +1632,8 @@ export class StaticAnalyzer {
 
     // The module doc (Application/Library) carries the Application-only `ports`
     // namespace; threaded into per-resource CEL typing so `${{ ports.X }}`
-    // resolves its nominal brand cross-doc.
+    // resolves its nominal brand cross-doc. A flattened set holds exactly one —
+    // the entry's; see `buildKernelGlobalsSchema`.
     const moduleManifest =
       allManifests.find((mm) => mm.kind === "Telo.Application") ??
       allManifests.find((mm) => mm.kind === "Telo.Library");
@@ -2217,7 +2218,10 @@ export class StaticAnalyzer {
             });
             effectiveContext = mergeKernelGlobalsIntoContext(
               withBindingNames(resolvedContext, m as Record<string, any>),
-              kernelGlobals,
+              // Typed in the module that DECLARED this resource — for a manifest
+              // forwarded from an imported library, that is its `moduleGlobals`
+              // stamp, not the consuming application's block.
+              kernelGlobals.forResource(m),
             );
           } else if (observedStateContext) {
             // No `x-telo-context` matched, so nothing was chain-validated here

@@ -22,28 +22,43 @@ const SYSTEM_KINDS = new Set([
   "Telo.Abstract",
 ]);
 
+/** Kernel globals as ONE resource's declaring module sees them. */
+export interface KernelGlobalsIndex {
+  forResource(m: ResourceManifest): Record<string, any>;
+}
+
 /**
- * Build a typed JSON Schema describing the kernel globals available in the
- * given manifest set. Used to merge into `x-telo-context` schemas so that
- * chain-access validation recognises kernel globals without module authors
+ * Build the typed JSON Schema describing the kernel globals available to each
+ * resource in a manifest set. Used to merge into `x-telo-context` schemas so
+ * that chain-access validation recognises kernel globals without module authors
  * having to re-declare them.
  *
- * - `variables` / `secrets`: typed from the root module doc — prefer
- *   Telo.Application when present, otherwise fall back to Telo.Library.
- *   Applications are the root whose variables/secrets contract governs CEL
- *   in the outer module; Libraries are only relevant when the caller scoped
- *   the manifest list to a single library's file.
- * - `resources`: enumerates all non-system resource names
+ * `variables` / `secrets` / `ports` are typed **per declaring module**, because
+ * that is the contract the resource's CEL is evaluated against at runtime. An
+ * application analysis is flattened — `selectModuleManifestsForAnalysis` drops
+ * an imported library's module doc and carries its config blocks across as
+ * `metadata.moduleGlobals` instead — so a resource forwarded from a library is
+ * typed from that stamp, and everything else from the entry module's own doc
+ * (the only module doc left in the set).
+ *
+ * Typing every resource from the entry doc is what made a library's
+ * `variables.x` a hard error the library author could not act on, and — in the
+ * other direction — let a library read a variable it never declared whenever the
+ * app happened to declare that name.
+ *
+ * `resources` is NOT per module: it enumerates every non-system resource name in
+ * the set, and stays OPEN for a forwarded manifest (see `readModuleGlobals` for
+ * why a name list cannot be carried across the boundary honestly).
  */
-export function buildKernelGlobalsSchema(
+export function buildKernelGlobalsIndex(
   manifests: ResourceManifest[],
   /** Every resource a CEL read can name, including scope-declared ones (see
    *  `buildObservedStateIndex`). Kinds that declare a `status:` get a typed,
    *  closed `status` node; every other resource node stays open, so no flat read
    *  that passes today can start failing. */
   resources?: ReadonlyMap<string, { kind: string; status?: Record<string, any> }>,
-): Record<string, any> {
-  const moduleManifest =
+): KernelGlobalsIndex {
+  const entryDoc =
     (manifests.find((m) => m.kind === "Telo.Application") as
       | Record<string, any>
       | undefined) ??
@@ -51,6 +66,52 @@ export function buildKernelGlobalsSchema(
       | Record<string, any>
       | undefined);
 
+  const entrySchema = globalsSchema(entryDoc, buildResourcesSchema(manifests, resources));
+  const openResources = { type: "object", additionalProperties: true };
+  const byModule = new Map<string, Record<string, any>>();
+
+  return {
+    forResource(m: ResourceManifest): Record<string, any> {
+      const meta = m.metadata as { module?: string; moduleGlobals?: ModuleGlobals } | undefined;
+      const stamped = meta?.moduleGlobals;
+      if (!stamped) return entrySchema;
+      const key = meta?.module ?? "";
+      const cached = byModule.get(key);
+      if (cached) return cached;
+      const schema = globalsSchema(stamped, openResources);
+      byModule.set(key, schema);
+      return schema;
+    },
+  };
+}
+
+/** The blocks a declaring module contributes to its resources' CEL globals. */
+interface ModuleGlobals {
+  variables?: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
+  ports?: Record<string, unknown>;
+}
+
+function globalsSchema(
+  doc: ModuleGlobals | Record<string, any> | undefined,
+  resourcesSchema: Record<string, any>,
+): Record<string, any> {
+  return {
+    type: "object",
+    properties: {
+      variables: buildSchemaMapSchema(doc?.variables as Record<string, any> | undefined),
+      secrets: buildSchemaMapSchema(doc?.secrets as Record<string, any> | undefined),
+      resources: resourcesSchema,
+      ports: buildPortsSchema(doc?.ports as Record<string, any> | undefined),
+    },
+  };
+}
+
+/** Every non-system resource name in the set, plus the scope-declared ones. */
+function buildResourcesSchema(
+  manifests: ResourceManifest[],
+  resources?: ReadonlyMap<string, { kind: string; status?: Record<string, any> }>,
+): Record<string, any> {
   const resourceProps: Record<string, any> = {};
   for (const m of manifests) {
     const name = m.metadata?.name as string | undefined;
@@ -76,19 +137,7 @@ export function buildKernelGlobalsSchema(
     applyObservedStateNode(resourceProps, key, entry.status);
   }
 
-  return {
-    type: "object",
-    properties: {
-      variables: buildSchemaMapSchema(moduleManifest?.variables),
-      secrets: buildSchemaMapSchema(moduleManifest?.secrets),
-      resources: {
-        type: "object",
-        properties: resourceProps,
-        additionalProperties: false,
-      },
-      ports: buildPortsSchema(moduleManifest?.ports),
-    },
-  };
+  return { type: "object", properties: resourceProps, additionalProperties: false };
 }
 
 /** Build the closed `ports` chain-access schema: each declared port is an

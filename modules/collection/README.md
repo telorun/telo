@@ -20,8 +20,6 @@ Pure, CEL-driven reshaping of a collection of records — grouping, aggregation,
 | `Collection.Chunk` | Split a collection into consecutive batches of at most `size`. |
 | `Collection.Join` | Match two collections on a CEL key from each side (`inner` / `left`); shape rows with `select`. |
 
-> **CEL integers are BigInt.** `size(group)` yields a BigInt (int64 precision); a plain JSON serializer downstream can't encode it. Wrap counts bound for JSON output in `double(...)` — e.g. `!cel "double(size(group))"`. `sum` / `avg` already return JSON numbers.
-
 ## Example
 
 ```yaml

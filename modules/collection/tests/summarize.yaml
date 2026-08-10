@@ -17,7 +17,7 @@ kind: Collection.Summarize
 metadata: { name: SummarizeOrders }
 collection: !cel "inputs.orders"
 aggregate:
-  count: !cel "double(size(group))"
+  count: !cel "size(group)"
   total: !cel "sum(group.map(o, o.amount))"
   average: !cel "avg(group.map(o, o.amount))"
 ---

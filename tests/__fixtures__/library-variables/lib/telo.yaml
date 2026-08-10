@@ -1,0 +1,36 @@
+kind: Telo.Library
+metadata:
+  name: VarLib
+  version: 0.0.0
+  description: |
+    Exports an instance whose CEL reads a variable this library declares and no
+    importer does. The read sits in a step's `inputs:` — a slot carrying an
+    `x-telo-context`, which is where the kernel-globals merge applies and where
+    the consumer's variable contract used to be imposed on it.
+imports:
+  Run: ../../../../modules/run
+variables:
+  onlyInLib:
+    type: string
+    default: hello
+exports:
+  resources: [ Work ]
+---
+kind: Run.Value
+metadata: { name: Echo }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+value:
+  echoed: !cel "inputs.text"
+---
+kind: Run.Sequence
+metadata: { name: Work }
+steps:
+  - name: Echo
+    invoke: !ref Echo
+    inputs:
+      text: !cel "variables.onlyInLib"
