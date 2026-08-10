@@ -2,16 +2,28 @@ kind: Telo.Application
 metadata:
   name: FeedbackApiRepo
   version: 1.0.0
+  categories: [ Transport, Storage ]
   description: |
-    Feedback REST API using SqlRepository — no SQL beyond the schema migration.
+    Feedback REST API with no hand-written SQL past the schema migration:
+    `SqlRepository.Create` / `SqlRepository.Read` are the route handlers, and CEL
+    maps `request.*` into them and `result.rows` back out.
+
+    Reach for this shape when the routes are yours to design but the queries are
+    plain table access; reach for `Crud.Resource` (see `todo-app`) when you want
+    the whole REST surface generated, and for `Sql.Query` when you need a join.
+
+    Run, then:
+        curl -X POST localhost:8844/v1/feedback \
+          -H 'content-type: application/json' \
+          -d '{"text":"the docs are great","source":"web","rating":5}'
+        curl localhost:8844/v1/feedback
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
-  Sql: oci://ghcr.io/telorun/sql@0.17.0#sha256-2MVr2geYa5ThbZ6CYSAHaiim4eVrgs8Y0lEyB_St6ic
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
-  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.8.0#sha256-PHjCP1cA2L0uBHPhmWeaF6JhlcUA-FhB1bGHKliGeVM
-  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
+  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.10.0#sha256-kLSJ6yaEYzV4ji9hxmWGURIPx1--l7_TOJCavrXdZys
 targets:
-  - !ref SetupDb
+  - !ref Migrate
   - !ref Server
 ports:
   http:
@@ -21,8 +33,25 @@ ports:
 kind: SQLite.Connection
 metadata:
   name: Db
-file: ./tmp/feedback-repo.db
+file: ./feedback.db
 ---
+kind: Sql.Migrations
+metadata:
+  name: Migrate
+connection: !ref Db
+migrations:
+  0001_create_feedback:
+    statement: |
+      CREATE TABLE IF NOT EXISTS feedback (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        text       TEXT    NOT NULL,
+        source     TEXT,
+        rating     INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+---
+# One repository resource per operation, not per route: `ReadFeedback` serves
+# both the list and the by-id route — the `filters:` differ at the call site.
 kind: SqlRepository.Create
 metadata:
   name: InsertFeedback
@@ -31,33 +60,9 @@ table: feedback
 ---
 kind: SqlRepository.Read
 metadata:
-  name: ListFeedback
+  name: ReadFeedback
 connection: !ref Db
 table: feedback
----
-kind: SqlRepository.Read
-metadata:
-  name: GetFeedback
-connection: !ref Db
-table: feedback
----
-kind: Run.Sequence
-metadata:
-  name: SetupDb
-steps:
-  - name: CreateTable
-    invoke:
-      kind: Sql.Command
-      connection: !ref Db
-    inputs:
-      sql: |
-        CREATE TABLE IF NOT EXISTS feedback (
-          id        INTEGER PRIMARY KEY AUTOINCREMENT,
-          text      TEXT    NOT NULL,
-          source    TEXT,
-          score     INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
 ---
 kind: Http.Server
 metadata:
@@ -76,26 +81,32 @@ kind: Http.Api
 metadata:
   name: FeedbackRoutes
 routes:
-  # POST /v1/feedback — insert a new entry
+  # POST /v1/feedback — insert a new entry. The request schema is the validation:
+  # a rating outside 1–5 never reaches the database.
   - request:
       path: /feedback
       method: POST
       schema:
         body:
           type: object
+          additionalProperties: false
+          required: [ text, rating ]
           properties:
             text:
               type: string
               minLength: 1
             source:
               type: string
-          required: [ text ]
+            rating:
+              type: integer
+              minimum: 1
+              maximum: 5
     handler: !ref InsertFeedback
     inputs:
       data:
-        text: "${{ request.body.text }}"
-        source: "${{ request.body.source }}"
-        score: "${{ size(request.body.text) }}"
+        text: !cel "request.body.text"
+        source: !cel "has(request.body.source) ? request.body.source : 'unknown'"
+        rating: !cel "request.body.rating"
     returns:
       - status: 201
         content:
@@ -108,14 +119,14 @@ routes:
   - request:
       path: /feedback
       method: GET
-    handler: !ref ListFeedback
+    handler: !ref ReadFeedback
     inputs:
       filters: {}
     returns:
       - status: 200
         content:
           application/json:
-            body: "${{ result.rows }}"
+            body: !cel "result.rows"
 
   # GET /v1/feedback/{id} — fetch a single entry by id
   - request:
@@ -128,16 +139,16 @@ routes:
             id:
               type: integer
           required: [ id ]
-    handler: !ref GetFeedback
+    handler: !ref ReadFeedback
     inputs:
       filters:
-        id: "${{ request.params.id }}"
+        id: !cel "request.params.id"
     returns:
       - status: 200
-        when: "${{ size(result.rows) > 0 }}"
+        when: !cel "size(result.rows) > 0"
         content:
           application/json:
-            body: "${{ result.rows[0] }}"
+            body: !cel "result.rows[0]"
       - status: 404
         content:
           application/json:

@@ -104,6 +104,22 @@
   }
 }
 
+/* Landing-page sample tabs. Six labels do not fit a phone, and infima's default
+   `flex-wrap: wrap` breaks them into rows and then breaks a label like
+   "HTTP API" across two lines. Keep every label on one line and let the strip
+   scroll sideways instead. */
+.tabs.sampleTabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.tabs.sampleTabs .tabs__item {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
 /* Feature page hero with prev/next carousel arrows */
 .featureHero {
   display: flex;

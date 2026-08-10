@@ -1,13 +1,15 @@
-import { parseVersionedRef, withRefVersion } from "@telorun/analyzer";
+import { parseVersionedRef } from "@telorun/analyzer";
 import { useCallback, useRef, useState } from "react";
-import { fetchHubVersions } from "../../hub-search";
+import { fetchHubVersions, type ModuleVersion } from "../../hub-search";
 import type { ParsedImport } from "../../model";
+import { isImportPinned, upgradedImportSource } from "./import-pin";
 
 export interface ImportUpgradeState {
   /** Name of the import whose versions are currently loaded, or null. */
   activeName: string | null;
-  /** Versions for that import, newest first (the hub's ordering). */
-  versions: string[];
+  /** Versions for that import, newest first (the hub's ordering), each with the
+   *  integrity pin the hub publishes for it. */
+  versions: ModuleVersion[];
   loading: boolean;
   /** Why the version list could not be loaded. Rendered inside the dropdown
    *  that asked for it. */
@@ -17,31 +19,35 @@ export interface ImportUpgradeState {
    *  upgrade can be applied from the button without ever opening a dropdown, so
    *  it must not depend on a menu being on screen to be seen. */
   submitError: string | null;
-  /** Set after an applied upgrade that removed an inline integrity pin, so the
-   *  view can say so — the rewrite is otherwise invisible in the YAML. */
+  /** Set after an applied upgrade that left a previously-pinned import with no
+   *  pin, so the view can say so — the rewrite is otherwise invisible in the
+   *  YAML. */
   pinNotice: string | null;
   dismissNotices(): void;
   /** Fetch the available versions for an import (called when its menu opens). */
   loadVersions(imp: ParsedImport): Promise<void>;
-  /** Re-point one import at `version`. */
-  selectVersion(imp: ParsedImport, version: string): Promise<void>;
+  /** Re-point one import at `version`, carrying that version's pin. */
+  selectVersion(imp: ParsedImport, version: ModuleVersion): Promise<void>;
   /** Re-point many imports in one persist cycle ("Upgrade all"). */
   upgradeAll(updates: BulkUpgrade[]): Promise<void>;
 }
 
-/** One entry of an "Upgrade all" batch. `wasPinned` is the caller's reading of
- *  the import it replaces, so the batch can report how many pins it dropped. */
+/** One entry of an "Upgrade all" batch. `wasPinned` / `repinned` are the
+ *  caller's reading of the import it replaces and of what replaces it, so the
+ *  batch can report the entries that came out unpinned. */
 export interface BulkUpgrade {
   name: string;
   newSource: string;
   wasPinned: boolean;
+  repinned: boolean;
 }
 
-/** The number of upgraded imports that carried a pin, phrased for the banner. */
-function pinRemovedMessage(count: number): string {
+/** The number of upgraded imports left unpinned, phrased for the banner. */
+function pinDroppedMessage(count: number): string {
   return (
-    `Removed the integrity pin from ${count} upgraded import${count === 1 ? "" : "s"} — ` +
-    `the hash covers the version that was replaced, and it cannot be recomputed here. ` +
+    `Upgraded ${count} import${count === 1 ? "" : "s"} without an integrity pin — ` +
+    `the hub publishes no hash for the version ${count === 1 ? "it now names" : "they now name"}, ` +
+    `and the previous pin covers the version that was replaced. ` +
     `Run \`telo upgrade\` to re-pin.`
   );
 }
@@ -52,7 +58,7 @@ export function useImportUpgrade(
   onUpgradeAllImports: (updates: { name: string; newSource: string }[]) => Promise<void>,
 ): ImportUpgradeState {
   const [activeName, setActiveName] = useState<string | null>(null);
-  const [versions, setVersions] = useState<string[]>([]);
+  const [versions, setVersions] = useState<ModuleVersion[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -79,11 +85,11 @@ export function useImportUpgrade(
       setLoading(true);
 
       try {
-        // The dropdown offers version names; the pin each entry carries is for
-        // the upgrade path, which this view does not write yet.
+        // Kept whole rather than mapped to names: the dropdown renders the
+        // version, and picking one writes the pin that came with it.
         const result = await fetchHubVersions(hubUrl, ref.baseRef);
         if (requestId.current !== id) return;
-        setVersions(result.map((v) => v.version));
+        setVersions(result);
         if (result.length === 0) setError("Not tracked by the hub");
       } catch (err) {
         if (requestId.current !== id) return;
@@ -99,13 +105,13 @@ export function useImportUpgrade(
   // dropdown and the Upgrade button used to differ, and "Upgrade all" had no
   // rejection handling at all.
   const applyUpgrade = useCallback(
-    async (run: () => Promise<void>, pinnedCount: number) => {
+    async (run: () => Promise<void>, unpinnedCount: number) => {
       setSubmitError(null);
       setPinNotice(null);
       setSubmitting(true);
       try {
         await run();
-        if (pinnedCount > 0) setPinNotice(pinRemovedMessage(pinnedCount));
+        if (unpinnedCount > 0) setPinNotice(pinDroppedMessage(unpinnedCount));
       } catch (err) {
         setSubmitError(errText(err));
       } finally {
@@ -116,22 +122,17 @@ export function useImportUpgrade(
   );
 
   const selectVersion = useCallback(
-    async (imp: ParsedImport, version: string) => {
-      const ref = parseVersionedRef(imp.source);
-      if (!ref) {
+    async (imp: ParsedImport, version: ModuleVersion) => {
+      if (!parseVersionedRef(imp.source)) {
         // Unreachable from the UI (a row without a parseable version renders no
         // upgrade control), but `withRefVersion` would throw rather than invent
         // a ref, so refuse here with something the user can act on.
         setSubmitError(`'${imp.source}' names no version to upgrade.`);
         return;
       }
-      // Re-points the ref at `version` and drops any inline `#sha256-…` pin —
-      // the pin hashes the module's `telo.yaml`, which a browser cannot compute
-      // for every transport. `telo upgrade` re-pins the rewritten import.
-      const newSource = withRefVersion(imp.source, version);
       await applyUpgrade(
-        () => onUpgradeImport(imp.name, newSource),
-        ref.integrity != null ? 1 : 0,
+        () => onUpgradeImport(imp.name, upgradedImportSource(imp, version)),
+        isImportPinned(imp) && version.integrity == null ? 1 : 0,
       );
     },
     [applyUpgrade, onUpgradeImport],
@@ -142,7 +143,7 @@ export function useImportUpgrade(
       if (updates.length === 0) return;
       await applyUpgrade(
         () => onUpgradeAllImports(updates.map(({ name, newSource }) => ({ name, newSource }))),
-        updates.filter((u) => u.wasPinned).length,
+        updates.filter((u) => u.wasPinned && !u.repinned).length,
       );
     },
     [applyUpgrade, onUpgradeAllImports],

@@ -124,7 +124,7 @@ Three properties follow:
 - **They are redacted in logs automatically.** Every value bound to `secrets:`
   is redacted with no configuration. Additional paths (an `authorization`
   header, a nested token) are named explicitly under `logging.redact.paths`,
-  and bad paths are caught by `telo check`. See [Logging](/learn/logging).
+  and bad paths are caught by `telo check`. See [Logging](/build/logging).
 - **They are not readable from the ambient environment.** Once a name is
   declared, the kernel replaces `process.env` with a guardrail proxy under
   which that key reads back `undefined`, with a warning. A controller cannot

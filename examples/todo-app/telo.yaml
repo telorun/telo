@@ -2,16 +2,17 @@ kind: Telo.Application
 metadata:
   name: TodoApp
   version: 1.0.0
+  categories: [ Transport, Storage ]
   description: |
     A complete app served as one unit: the REST todo API and the vanilla HTML/JS
     frontend that consumes it (Http.Static), on a single port. The whole REST
     surface is one declarative Crud.Resource — list / read / create / update /
     delete over the `todos` table — mounted alongside the static frontend.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
-  Sql: oci://ghcr.io/telorun/sql@0.17.0#sha256-2MVr2geYa5ThbZ6CYSAHaiim4eVrgs8Y0lEyB_St6ic
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
-  Crud: oci://ghcr.io/telorun/crud@0.7.0#sha256-gx3WmKY3EvU3SFNTDdfxlDgYyKii-f7xDjicLqZDDb8
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
+  Crud: oci://ghcr.io/telorun/crud@0.9.0#sha256-mhAY-K234E-y-ROkKtHxIjwKHlHVfkyjq8N-fvC2CYY
 targets:
   - !ref Migrate
   - !ref Server
@@ -30,7 +31,7 @@ ports:
 kind: SQLite.Connection
 metadata:
   name: Db
-file: ":memory:"
+file: ./todo.db
 ---
 kind: Sql.Migrations
 metadata:
@@ -49,7 +50,6 @@ migrations:
 kind: Http.Server
 metadata:
   name: Server
-host: 127.0.0.1
 port: !cel "ports.http"
 logger: true
 openapi:
@@ -65,12 +65,17 @@ mounts:
       connection: !ref Db
       plural: todos
       singular: todo
+      # The model is the request contract too: a POST without `text`, or with a
+      # property that isn't here, is rejected with a 400 before the database is
+      # touched. `isDone` reads and writes the snake_case column `is_done`.
       model:
         kind: Telo.JsonSchema
         schema:
           type: object
+          required: [ text ]
+          additionalProperties: false
           properties:
-            text: { type: string }
+            text: { type: string, minLength: 1 }
             isDone: { type: boolean }
 
   - path: /

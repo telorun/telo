@@ -19,15 +19,16 @@
 kind: Telo.Application
 metadata:
   name: DrawShapesAgent
+  categories: [ AI, Transport ]
   version: 1.0.0
   description: HTTP API where an AI vision agent draws shapes on a canvas and returns an S3 link.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
-  Ai: oci://ghcr.io/telorun/ai@0.13.0#sha256-LDNwi5X9AjcanUEKe497WJHR0Zt3xO-monL-r_hfIZE
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.14.0#sha256-jQIFsa0DnwEN9nwtx8ByryM3S3rPpaZsPv_jArPIOuk
-  Image: oci://ghcr.io/telorun/image@0.6.0#sha256-19U9akkaFk-EDEHE-tOJSssJn2AaKdSOUX-vHgzjca0
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  Ai: oci://ghcr.io/telorun/ai@0.15.0#sha256-dLZuJ0BjQeWkMj7aRPDOE-eFhcF8N3qGqTZY7E-j1F8
+  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.15.0#sha256-31u_XsWGqrzeSoxWwN9D-piVU-iH4RkRf-PibIpmt4A
+  Image: oci://ghcr.io/telorun/image@0.7.0#sha256-qmSEMiFzbx37tu5tOJjNHoEwtzWOLPjOthCx2i78c04
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
 targets:
   - !ref Server
 ports:
@@ -65,19 +66,19 @@ secrets:
 kind: AiOpenai.OpenaiModel
 metadata:
   name: VisionModel
-model: "${{ variables.modelId }}"
-apiKey: "${{ secrets.openaiApiKey }}"
+model: !cel "variables.modelId"
+apiKey: !cel "secrets.openaiApiKey"
 options:
   temperature: 0.2
 ---
 kind: S3.Bucket
 metadata:
   name: Store
-bucketName: "${{ variables.s3Bucket }}"
-endpoint: "${{ variables.s3Endpoint }}"
-accessKeyId: "${{ secrets.s3AccessKeyId }}"
-secretAccessKey: "${{ secrets.s3SecretAccessKey }}"
-forcePathStyle: "${{ variables.s3ForcePathStyle }}"
+bucketName: !cel "variables.s3Bucket"
+endpoint: !cel "variables.s3Endpoint"
+accessKeyId: !cel "secrets.s3AccessKeyId"
+secretAccessKey: !cel "secrets.s3SecretAccessKey"
+forcePathStyle: !cel "variables.s3ForcePathStyle"
 createIfMissing: true
 ---
 # Blank canvas seed — regenerated deterministically on every draw, so the field set
@@ -157,17 +158,17 @@ steps:
   - name: Mark
     invoke: !ref DrawBoxes
     inputs:
-      image: "${{ steps.Blank.result.image }}"
-      shapes: "${{ inputs.shapes }}"
+      image: !cel "steps.Blank.result.image"
+      shapes: !cel "inputs.shapes"
   - name: Store
     invoke: !ref PutObject
     inputs:
-      key: "${{ inputs.documentId }}"
-      body: "${{ steps.Mark.result.image }}"
-      contentType: "${{ steps.Mark.result.mediaType }}"
+      key: !cel "inputs.documentId"
+      body: !cel "steps.Mark.result.image"
+      contentType: !cel "steps.Mark.result.mediaType"
 outputs:
-  image: "${{ steps.Mark.result.image }}"
-  mediaType: "${{ steps.Mark.result.mediaType }}"
+  image: !cel "steps.Mark.result.image"
+  mediaType: !cel "steps.Mark.result.mediaType"
 ---
 # Independent reviewer for the validation loop. A vision Ai.Text that is shown the
 # rendered image (in a multimodal user message) and the original request, and judges
@@ -217,8 +218,8 @@ steps:
   - name: Mark
     invoke: !ref DrawBoxes
     inputs:
-      image: "${{ steps.Blank.result.image }}"
-      shapes: "${{ inputs.shapes }}"
+      image: !cel "steps.Blank.result.image"
+      shapes: !cel "inputs.shapes"
   - name: Review
     invoke: !ref Critic
     inputs:
@@ -226,12 +227,12 @@ steps:
         - role: user
           content:
             - type: text
-              text: "${{ 'Drawing request: ' + inputs.request + '. Does the rendered image satisfy it? Reply PASS, or FAIL with concrete fixes.' }}"
+              text: !cel "'Drawing request: ' + inputs.request + '. Does the rendered image satisfy it? Reply PASS, or FAIL with concrete fixes.'"
             - type: image
-              data: "${{ steps.Mark.result.image }}"
-              mediaType: "${{ steps.Mark.result.mediaType }}"
+              data: !cel "steps.Mark.result.image"
+              mediaType: !cel "steps.Mark.result.mediaType"
 outputs:
-  verdict: "${{ steps.Review.result.text }}"
+  verdict: !cel "steps.Review.result.text"
 ---
 kind: Ai.Tools
 metadata:
@@ -265,7 +266,11 @@ tools:
               height: { type: number, description: "Box height in pixels." }
               label: { type: string, description: "Optional caption drawn at the box corner." }
               color: { type: string, description: "Optional CSS color for this box." }
-    # Hand the rendered PNG back to the model as an image content part.
+    # Hand the rendered PNG back to the model as an image content part. Written
+    # in the inline form because `Ai.Tools.result` is declared `type: string` in
+    # ai@0.13.0 while the runtime has always accepted content parts; the `!cel`
+    # form is type-checked against that schema and would be rejected. The schema
+    # is fixed in `modules/ai` — switch this to `!cel` once ai republishes.
     result: "${{ {'type': 'image', 'data': result.image, 'mediaType': result.mediaType} }}"
   - tool: !ref ValidateTool
     name: validate
@@ -295,7 +300,7 @@ tools:
               height: { type: number }
               label: { type: string }
               color: { type: string }
-    result: "${{ result.verdict }}"
+    result: !cel "result.verdict"
 ---
 kind: Ai.Agent
 metadata:
@@ -333,19 +338,19 @@ steps:
   - name: GenId
     invoke: !ref MakeId
     inputs:
-      seed: "${{ uuidv4() }}"
+      seed: !cel "uuidv4()"
   - name: Draw
     invoke: !ref ShapeArtist
     inputs:
-      prompt: "${{ 'Document id: ' + steps.GenId.result.documentId + '. Drawing request: ' + inputs.prompt }}"
+      prompt: !cel "'Document id: ' + steps.GenId.result.documentId + '. Drawing request: ' + inputs.prompt"
   - name: Link
     invoke: !ref PresignGet
     inputs:
-      key: "${{ steps.GenId.result.documentId }}"
+      key: !cel "steps.GenId.result.documentId"
 outputs:
-  url: "${{ steps.Link.result.url }}"
-  expiresAt: "${{ steps.Link.result.expiresAt }}"
-  summary: "${{ steps.Draw.result.text }}"
+  url: !cel "steps.Link.result.url"
+  expiresAt: !cel "steps.Link.result.expiresAt"
+  summary: !cel "steps.Draw.result.text"
 ---
 kind: Http.Server
 metadata:
@@ -377,15 +382,15 @@ routes:
           required: [prompt]
     handler: !ref HandleDraw
     inputs:
-      prompt: "${{ request.body.prompt }}"
+      prompt: !cel "request.body.prompt"
     returns:
       - status: 201
         content:
           application/json:
             body:
-              url: "${{ result.url }}"
-              expiresAt: "${{ result.expiresAt }}"
-              summary: "${{ result.summary }}"
+              url: !cel "result.url"
+              expiresAt: !cel "result.expiresAt"
+              summary: !cel "result.summary"
     catches:
       # Catch-all: covers the handler's declared throws and the agent's runtime
       # failures (e.g. ERR_AGENT_MAX_STEPS when it can't converge within maxSteps).
@@ -393,5 +398,5 @@ routes:
         content:
           application/json:
             body:
-              error: "${{ error.message }}"
-              code: "${{ error.code }}"
+              error: !cel "error.message"
+              code: !cel "error.code"

@@ -1,3 +1,7 @@
+---
+description: "What telo check finds before your application runs — unknown kinds, broken references, CEL type errors — what it cannot see, and how to debug the rest."
+---
+
 # Catching errors before they run
 
 A Telo manifest is data, not code, so the whole application can be examined

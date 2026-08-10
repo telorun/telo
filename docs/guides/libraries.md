@@ -1,37 +1,28 @@
-# Reusing manifests
+---
+description: "Share and reuse manifests: writing a Telo.Library, importing it by relative path or as a published module, choosing what it exports, and splitting a file with include."
+---
 
-Once an application grows past one file there are exactly three tools: split a
-file, import a library, or publish one. This page covers all three and when each
-is right.
+# Libraries
 
-## Splitting one module across files — `include:`
+The unit of reuse in Telo is the **library**. A `Telo.Library` is an importable
+manifest with its own scope, its own configuration contract, and an explicit
+list of what it lets importers see — the same shape whether it lives in a
+sibling directory or is published for the world.
 
-The cheapest split. `include:` loads other files into the **same module scope**,
-as if you had pasted them in:
+A note on vocabulary, because Telo uses two words. **Library** is the kind you
+write (`kind: Telo.Library`). **Module** is the unit it becomes once published —
+what `telo module versions` inspects and what the [hub](https://hub.telo.run)
+indexes. They are not synonyms: an Application is a module too, with its own
+scope, but it is never a library because nothing can import it.
 
-```yaml
-kind: Telo.Application
-metadata:
-  name: MyApp
-  version: 1.0.0
-include:
-  - ./routes/*.yaml
-  - ./handlers/*.yaml
-```
+This page is about libraries: writing one, importing one, choosing what it
+exports, and publishing it when it outgrows your repo. It ends with `include:`,
+which splits a file without creating a boundary at all.
 
-The included files are *partials*: they contain resource documents only, and may
-not declare `Telo.Application`, `Telo.Library`, or `Telo.Definition`. Everything
-lands in one scope, so a `!ref` in one file resolves a resource declared in
-another with no ceremony.
+## A library, and importing it
 
-Use it to keep files readable. It is not an encapsulation boundary — there is
-no separate scope and nothing is hidden.
-
-## A library — the real boundary
-
-A `Telo.Library` is an importable unit with its **own scope and its own
-configuration contract**. Its resources are invisible to the importer unless
-explicitly exported.
+A library's resources are invisible to the importer unless explicitly exported.
+Start one anywhere in your repo — no publishing, no registry, no build step:
 
 ```yaml
 # libs/greetings/telo.yaml
@@ -112,7 +103,14 @@ Hej, World!
 ```
 
 An import entry is either a bare source string (`Console: oci://…`) or the
-object form above when you need to pass `variables:` / `secrets:`.
+object form above when you need to pass `variables:` / `secrets:`. Either way
+the alias is yours to choose: it is the prefix on every kind and every
+cross-module reference in the importing file, so the library never dictates what
+you call it.
+
+`source: ./libs/greetings` is a **relative path** — the library is read from
+disk. That is the whole setup. Nothing about the library changes when it later
+becomes a published module; only the importer's `source:` does.
 
 ## Two things a library can export
 
@@ -174,11 +172,11 @@ instance** — not a copy.
 
 | Situation | Use |
 | --- | --- |
-| One app, files getting long | `include:` |
 | A reusable piece with its own configuration | a `Telo.Library` in-repo, imported by relative path |
 | Consumers should not have to know which backend you chose | a library exporting the configured **instance** |
 | Consumers need to declare many of these themselves | a library exporting the **kind** |
 | Other teams or repositories need it | publish the library — [Authoring a module](/extend/authoring-a-module) |
+| One app, one scope, files just getting long | `include:` — see below |
 
 ## Publishing
 
@@ -195,6 +193,37 @@ imports:
 not yet know your module exists. See [Authoring a module](/extend/authoring-a-module)
 and, for extending an existing kind rather than composing one,
 [Kind inheritance](/extend/kind-inheritance).
+
+## When you do not want a boundary — `include:`
+
+Sometimes a file is simply long, and there is nothing to encapsulate. `include:`
+loads other files into the **same module scope**, as if you had pasted them in:
+
+```yaml
+kind: Telo.Application
+metadata:
+  name: MyApp
+  version: 1.0.0
+include:
+  - ./routes/*.yaml
+  - ./handlers/*.yaml
+```
+
+The included files are *partials*: resource documents only, and they may not
+declare `Telo.Application`, `Telo.Library`, or `Telo.Definition`. Everything
+lands in one scope, so a `!ref` in one file resolves a resource declared in
+another with no ceremony, and the including file's `imports:` aliases are the
+ones a partial's kinds are written against.
+
+**This is not a library.** There is no separate scope, no configuration
+contract, and nothing hidden — the split is for readability, and every name
+stays global to the module. Reach for it when one application's file has grown
+unwieldy; reach for a library the moment something should be reusable,
+configurable, or opaque from the outside.
+
+One use worth knowing: a partial can be included by an application **and** by
+its test, so the test exercises the same declarations the app serves rather than
+a copy that can drift.
 
 ## See also
 

@@ -1,0 +1,177 @@
+kind: Telo.Application
+metadata:
+  name: MoneyTransfer
+  version: 1.0.0
+  categories: [ Storage, Transport, Coordination ]
+  description: |
+    Moving money between two accounts: the debit and the credit are one
+    all-or-nothing unit, and the balance check happens inside it.
+
+    The interesting part is not that `Sql.Transaction` exists — it is that a
+    statement declaring `transaction:` becomes *unreachable* except through that
+    transaction's body. The requirement is a schema annotation
+    (`x-telo-requires-zone`), so `telo check` refuses a manifest that calls the
+    debit from anywhere else: a write that escapes the transaction is a static
+    error, not a 3am incident. `broken.yaml` in this directory is that mistake,
+    kept so you can watch the checker reject it.
+
+    Run, then:
+        curl -s localhost:8055/accounts
+        curl -s -XPOST localhost:8055/transfers -H 'content-type: application/json' \
+          -d '{"from":1,"to":2,"amountCents":2500}'
+        curl -s -XPOST localhost:8055/transfers -H 'content-type: application/json' \
+          -d '{"from":1,"to":2,"amountCents":999999}'   # 409, and nothing moved
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+targets:
+  - !ref Migrate
+  - !ref Server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8055
+---
+kind: SQLite.Connection
+metadata: { name: Db }
+file: ":memory:"
+---
+kind: Sql.Migrations
+metadata: { name: Migrate }
+connection: !ref Db
+migrations:
+  0001_accounts:
+    statements:
+      - |
+        CREATE TABLE IF NOT EXISTS accounts (
+          id            INTEGER PRIMARY KEY,
+          owner         TEXT    NOT NULL,
+          balance_cents INTEGER NOT NULL CHECK (balance_cents >= 0)
+        )
+      - "INSERT OR IGNORE INTO accounts (id, owner, balance_cents) VALUES (1, 'ada', 100000)"
+      - "INSERT OR IGNORE INTO accounts (id, owner, balance_cents) VALUES (2, 'grace', 5000)"
+---
+kind: Sql.Transaction
+metadata: { name: TransferTx }
+connection: !ref Db
+steps: !ref TransferWrites
+inputs:
+  from: !cel "inputs.from"
+  to: !cel "inputs.to"
+  amountCents: !cel "inputs.amountCents"
+---
+# Everything in here runs inside the open transaction, including the balance
+# read — so no one can spend the same money twice between the check and the
+# debit. A throw anywhere rolls the whole thing back.
+kind: Run.Sequence
+metadata: { name: TransferWrites }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ from, to, amountCents ]
+    properties:
+      from: { type: integer }
+      to: { type: integer }
+      amountCents: { type: integer }
+steps:
+  - name: balance
+    invoke: !ref ReadBalance
+    inputs:
+      sql: !sql "SELECT balance_cents FROM accounts WHERE id = ${{ inputs.from }}"
+  - name: settle
+    if: !cel "size(steps.balance.result.rows) > 0 && steps.balance.result.rows[0].balance_cents >= inputs.amountCents"
+    then:
+      - name: debit
+        invoke: !ref MoveMoney
+        inputs:
+          sql: !sql "UPDATE accounts SET balance_cents = balance_cents - ${{ inputs.amountCents }} WHERE id = ${{ inputs.from }}"
+      - name: credit
+        invoke: !ref MoveMoney
+        inputs:
+          sql: !sql "UPDATE accounts SET balance_cents = balance_cents + ${{ inputs.amountCents }} WHERE id = ${{ inputs.to }}"
+outputs:
+  declined: !cel "size(steps.balance.result.rows) == 0 || steps.balance.result.rows[0].balance_cents < inputs.amountCents"
+  moved: !cel "inputs.amountCents"
+---
+# `transaction:` instead of `connection:` is the whole trick: this statement
+# declares that it must be reached through TransferTx's body. Invoking it from
+# a plain step is ZONE_REQUIREMENT_UNSATISFIED at check time.
+kind: Sql.Command
+metadata: { name: MoveMoney }
+transaction: !ref TransferTx
+---
+kind: Sql.Query
+metadata: { name: ReadBalance }
+transaction: !ref TransferTx
+---
+# Reads outside the transfer are ordinary: this one takes `connection:`, so it
+# carries no zone requirement and can be called from any route.
+kind: Sql.Query
+metadata: { name: ListAccounts }
+connection: !ref Db
+---
+kind: Http.Api
+metadata: { name: BankRoutes }
+routes:
+  - request:
+      path: /accounts
+      method: GET
+    handler: !ref ListAccounts
+    inputs:
+      sql: "SELECT id, owner, balance_cents FROM accounts ORDER BY id"
+      bindings: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.rows"
+
+  - request:
+      path: /transfers
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ from, to, amountCents ]
+          properties:
+            from: { type: integer }
+            to: { type: integer }
+            amountCents: { type: integer, minimum: 1 }
+    handler: !ref TransferTx
+    inputs:
+      from: !cel "request.body.from"
+      to: !cel "request.body.to"
+      amountCents: !cel "request.body.amountCents"
+    returns:
+      # The balance check ran inside the transaction, so a decline means the
+      # transaction committed having written nothing.
+      - status: 409
+        when: !cel "result.declined"
+        content:
+          application/json:
+            body:
+              ok: false
+              error: insufficient_funds
+      - status: 200
+        content:
+          application/json:
+            body:
+              ok: true
+              movedCents: !cel "result.moved"
+---
+kind: Http.Server
+metadata: { name: Server }
+port: !cel "ports.http"
+logger: true
+openapi:
+  info:
+    title: Money transfer
+    version: 1.0.0
+mounts:
+  - path: /
+    mount: !ref BankRoutes

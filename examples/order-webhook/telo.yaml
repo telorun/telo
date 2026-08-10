@@ -1,0 +1,266 @@
+kind: Telo.Application
+metadata:
+  name: OrderWebhook
+  version: 1.0.0
+  categories: [ Transport, Reliability, Scheduling ]
+  description: |
+    A webhook receiver that survives the things webhooks actually do to you:
+    redelivery, bursts, and work that must not block the response.
+
+    Providers retry until they get a 2xx, so the same delivery arrives more than
+    once. `Idempotency.Once` claims the delivery id in a key/value store, runs the
+    body at most once, and replays the stored result for every retry — the reply
+    reports `fresh` or `replayed`, so you can watch it happen. Fulfilment is not
+    done inline: the handler records a pending row and a `Schedule.Interval`
+    drains the queue in the background, so the provider gets its 202 immediately.
+
+    Nothing here is a library call — retry-safety and the background drain are
+    both declared, and `telo check` sees them.
+
+    Run, then send the same delivery twice:
+        curl -s -XPOST localhost:8099/webhooks/orders \
+          -H 'content-type: application/json' \
+          -H 'authorization: Bearer local-dev-token' \
+          -d '{"deliveryId":"dlv_1","orderId":"ord_1","amountCents":4999,"currency":"EUR"}'
+    The first reply says "fresh", the second "replayed" — and only one order row
+    exists. Watch stdout for the sweeper shipping it.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
+  Idempotency: oci://ghcr.io/telorun/idempotency@0.8.0#sha256-Y4LsnajKvlVt8fMQNQ1LQBOA9jrK81QELy-U9kpSpRE
+  KvStore: oci://ghcr.io/telorun/kv-store-memory@0.6.0#sha256-l476AK3rjoPZ3lDPfWAc0cp6SjCz2ilmkAIKsaXgMbQ
+  Schedule: oci://ghcr.io/telorun/scheduler@0.7.0#sha256-9bjOxzQQkxxnPud17NRJrtEK3Hp3UyRURGMrk0wORwE
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+  Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
+targets:
+  - !ref Migrate
+  - !ref Server
+  - !ref Sweeper
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8099
+variables:
+  sweepEvery:
+    env: SWEEP_EVERY
+    type: string
+    default: "3s"
+secrets:
+  webhookToken:
+    env: WEBHOOK_TOKEN
+    type: string
+    default: local-dev-token
+---
+kind: SQLite.Connection
+metadata: { name: Db }
+file: ./orders.db
+---
+kind: Sql.Migrations
+metadata: { name: Migrate }
+connection: !ref Db
+migrations:
+  0001_orders:
+    statements:
+      - |
+        CREATE TABLE IF NOT EXISTS orders (
+          order_id     TEXT PRIMARY KEY,
+          amount_cents INTEGER NOT NULL,
+          currency     TEXT NOT NULL,
+          received_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      - |
+        CREATE TABLE IF NOT EXISTS fulfilments (
+          id       INTEGER PRIMARY KEY AUTOINCREMENT,
+          order_id TEXT NOT NULL,
+          status   TEXT NOT NULL DEFAULT 'pending',
+          sent_at  TEXT
+        )
+---
+# Where the idempotency keys live. Swap this one line for kv-store-redis and the
+# guarantee survives a restart and spans every replica — nothing else changes.
+kind: KvStore.Store
+metadata: { name: Claims }
+---
+kind: Sql.Command
+metadata: { name: Exec }
+connection: !ref Db
+---
+kind: Sql.Query
+metadata: { name: Query }
+connection: !ref Db
+---
+# The body that must run at most once per delivery.
+kind: Run.Sequence
+metadata: { name: RecordOrder }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ orderId, amountCents, currency ]
+    properties:
+      orderId: { type: string }
+      amountCents: { type: integer }
+      currency: { type: string }
+steps:
+  - name: insertOrder
+    invoke: !ref Exec
+    inputs:
+      sql: "INSERT INTO orders (order_id, amount_cents, currency) VALUES (?, ?, ?)"
+      bindings:
+        - !cel "inputs.orderId"
+        - !cel "inputs.amountCents"
+        - !cel "inputs.currency"
+  - name: enqueueFulfilment
+    invoke: !ref Exec
+    inputs:
+      sql: "INSERT INTO fulfilments (order_id) VALUES (?)"
+      bindings:
+        - !cel "inputs.orderId"
+outputs:
+  orderId: !cel "inputs.orderId"
+---
+# claimTtl bounds a crashed in-flight attempt; ttl is how long a completed
+# delivery stays replayable — a provider that retries for a day needs a day.
+kind: Idempotency.Once
+metadata: { name: RecordOrderOnce }
+store: !ref Claims
+claimTtl: "30s"
+ttl: "24h"
+invoke: !ref RecordOrder
+---
+kind: Run.Sequence
+metadata: { name: HandleDelivery }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ token, deliveryId, orderId, amountCents, currency ]
+    properties:
+      token: { type: string }
+      deliveryId: { type: string }
+      orderId: { type: string }
+      amountCents: { type: integer }
+      currency: { type: string }
+steps:
+  - name: rejectUnknownSender
+    if: !cel "inputs.token != 'Bearer ' + secrets.webhookToken"
+    then:
+      - name: deny
+        throw:
+          code: ERR_WEBHOOK_UNAUTHORIZED
+          message: bad or missing webhook token
+  - name: record
+    invoke: !ref RecordOrderOnce
+    inputs:
+      key: !cel "inputs.deliveryId"
+      inputs:
+        orderId: !cel "inputs.orderId"
+        amountCents: !cel "inputs.amountCents"
+        currency: !cel "inputs.currency"
+outputs:
+  state: !cel "steps.record.result.state"
+  orderId: !cel "steps.record.result.result.orderId"
+---
+kind: Http.Api
+metadata: { name: WebhookRoutes }
+routes:
+  - request:
+      path: /orders
+      method: POST
+      schema:
+        headers:
+          type: object
+          required: [ authorization ]
+          properties:
+            authorization: { type: string }
+        body:
+          type: object
+          additionalProperties: false
+          required: [ deliveryId, orderId, amountCents, currency ]
+          properties:
+            deliveryId: { type: string, minLength: 1 }
+            orderId: { type: string, minLength: 1 }
+            amountCents: { type: integer, minimum: 1 }
+            currency: { type: string, minLength: 3, maxLength: 3 }
+    handler: !ref HandleDelivery
+    inputs:
+      token: !cel "request.headers.authorization"
+      deliveryId: !cel "request.body.deliveryId"
+      orderId: !cel "request.body.orderId"
+      amountCents: !cel "request.body.amountCents"
+      currency: !cel "request.body.currency"
+    returns:
+      - status: 202
+        content:
+          application/json:
+            body:
+              orderId: !cel "result.orderId"
+              # `fresh` the first time, `replayed` for every redelivery.
+              state: !cel "result.state"
+    # `telo check` knows what the handler can throw and refuses to compile a
+    # route that leaves one of those codes unrendered — including ERR_CLAIM_LOST,
+    # which comes from Idempotency.Once several hops down.
+    catches:
+      - when: !cel "error.code == 'ERR_WEBHOOK_UNAUTHORIZED'"
+        status: 401
+        content:
+          application/json:
+            body:
+              error: unauthorized
+      # The claim lapsed mid-flight, so the delivery is not recorded as done.
+      # A 5xx is the honest answer: it tells the provider to send it again.
+      - when: !cel "error.code == 'ERR_CLAIM_LOST'"
+        status: 503
+        headers:
+          Retry-After: "5"
+        content:
+          application/json:
+            body:
+              error: retry_later
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"
+---
+kind: Http.Server
+metadata: { name: Server }
+port: !cel "ports.http"
+logger: true
+openapi:
+  info:
+    title: Order webhook
+    version: 1.0.0
+mounts:
+  - path: /webhooks
+    mount: !ref WebhookRoutes
+---
+# The background half. Same app, no queue broker, no worker process: a schedule
+# is a resource, so it is declared beside the route it drains for.
+kind: Run.Sequence
+metadata: { name: ShipPending }
+steps:
+  - name: pending
+    invoke: !ref Query
+    inputs:
+      sql: "SELECT id, order_id FROM fulfilments WHERE status = 'pending' ORDER BY id LIMIT 20"
+      bindings: []
+  - name: ship
+    if: !cel "size(steps.pending.result.rows) > 0"
+    then:
+      - name: mark
+        invoke: !ref Exec
+        inputs:
+          sql: "UPDATE fulfilments SET status = 'sent', sent_at = CURRENT_TIMESTAMP WHERE status = 'pending'"
+          bindings: []
+      - name: report
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel "'{dim shipped ' + string(size(steps.pending.result.rows)) + ' fulfilment(s)}'"
+---
+kind: Schedule.Interval
+metadata: { name: Sweeper }
+every: !cel "variables.sweepEvery"
+invoke: !ref ShipPending

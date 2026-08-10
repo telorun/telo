@@ -37,10 +37,12 @@ function parseInlineImports(moduleDoc: Record<string, unknown> | undefined): Par
           : undefined;
     const source = entry?.source;
     if (typeof source !== "string") continue;
+    const integrity = entry!.integrity;
     out.push({
       name,
       source,
       importKind: classifyImport(source),
+      integrity: typeof integrity === "string" ? integrity : undefined,
       variables: entry!.variables as Record<string, unknown> | undefined,
       secrets: entry!.secrets as Record<string, unknown> | undefined,
       inline: true,
@@ -100,13 +102,17 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
       const source = (r as Record<string, unknown>).source;
       return typeof name === "string" && typeof source === "string";
     })
-    .map((r) => ({
-      name: r.metadata.name as string,
-      source: (r as Record<string, unknown>).source as string,
-      importKind: classifyImport((r as Record<string, unknown>).source as string),
-      variables: (r as Record<string, unknown>).variables as Record<string, unknown> | undefined,
-      secrets: (r as Record<string, unknown>).secrets as Record<string, unknown> | undefined,
-    }));
+    .map((r) => {
+      const doc = r as Record<string, unknown>;
+      return {
+        name: r.metadata.name as string,
+        source: doc.source as string,
+        importKind: classifyImport(doc.source as string),
+        integrity: typeof doc.integrity === "string" ? doc.integrity : undefined,
+        variables: doc.variables as Record<string, unknown> | undefined,
+        secrets: doc.secrets as Record<string, unknown> | undefined,
+      };
+    });
 
   // Inline `imports:` map on the module doc. Each value is either a bare source
   // string (shorthand) or the object form. Marked `inline: true` so write-back

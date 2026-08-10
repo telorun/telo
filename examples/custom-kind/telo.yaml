@@ -1,0 +1,118 @@
+kind: Telo.Application
+metadata:
+  name: CustomKindDemo
+  version: 1.0.0
+  categories: [ Transport ]
+  description: |
+    Telo's kind library is not a closed set. `notify/` is a `Telo.Library` that
+    defines two new kinds in YAML alone — `Notify.Webhook`, built from an HTTP
+    request, and `Notify.Slack`, which `extends` it and narrows the schema to a
+    single `webhookUrl` — and this app imports them and uses them like any
+    built-in. No controller code, no npm package, no publish step.
+
+    To keep the demo self-contained, the "Slack" it posts to is a throwaway
+    `Http.Server` scoped to the run with `with:`, so it starts before the first
+    notification and is torn down after the last one — which is also why the app
+    exits on its own instead of hanging on a listening port.
+imports:
+  Notify: ./notify
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+  Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
+targets:
+  - !ref Demo
+---
+# Instances of the kinds the library defined. `Deploys` is the general kind;
+# `TeamChat` is the specialised one — it takes `webhookUrl` and nothing else,
+# because `base:` fills in the rest.
+kind: Notify.Webhook
+metadata: { name: Deploys }
+url: http://127.0.0.1:8033/hooks/generic
+headers:
+  x-source: telo-example
+---
+kind: Notify.Slack
+metadata: { name: TeamChat }
+webhookUrl: http://127.0.0.1:8033/hooks/slack
+---
+kind: Run.Sequence
+metadata: { name: Demo }
+with:
+  - kind: Http.Server
+    metadata: { name: Receiver }
+    host: 127.0.0.1
+    port: 8033
+    logger: false
+    openapi:
+      info:
+        title: Fake webhook receiver
+        version: 1.0.0
+    mounts:
+      - path: /hooks
+        mount: !ref Inbox
+targets:
+  - !ref Receiver
+steps:
+  - name: generic
+    invoke: !ref Deploys
+    inputs:
+      payload:
+        event: deploy.finished
+        service: checkout
+        version: "2026.8.1"
+  - name: slack
+    invoke: !ref TeamChat
+    inputs:
+      text: "checkout 2026.8.1 is live"
+  - name: report
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel >-
+        '{green ✔} webhook -> HTTP ' + string(steps.generic.result.status) +
+        ', slack -> HTTP ' + string(steps.slack.result.status)
+---
+# The stand-in receiver: prints whatever arrives so you can see both payload
+# shapes — the generic one verbatim, and Slack's `{text: …}` built by `base:`.
+kind: Http.Api
+metadata: { name: Inbox }
+routes:
+  - request:
+      path: /generic
+      method: POST
+    handler: !ref Echo
+    inputs:
+      label: generic
+      body: !cel "request.body"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+  - request:
+      path: /slack
+      method: POST
+    handler: !ref Echo
+    inputs:
+      label: slack
+      body: !cel "request.body"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+---
+kind: Run.Sequence
+metadata: { name: Echo }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ label, body ]
+    properties:
+      label: { type: string }
+      body: { type: object, additionalProperties: true }
+steps:
+  - name: print
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel "'{dim received on /' + inputs.label + ':} ' + json(inputs.body)"

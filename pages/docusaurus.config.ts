@@ -6,6 +6,8 @@ import type { Config } from "@docusaurus/types";
 import { generateCelReference } from "./lib/generate-cel-reference";
 import { generateExamplesIndex } from "./lib/generate-examples-index";
 import { generateStandardLibrary } from "./lib/generate-standard-library";
+import landingSample from "./lib/landing-sample";
+import { substituteVersions } from "./lib/version-map";
 import remarkVersions from "./plugins/remark-versions";
 import sidebars from "./sidebars";
 
@@ -39,13 +41,24 @@ const docInclude = collectDocIds(sidebars.docs).map((id) => `${id}.md`);
 
 const config: Config = {
   title: "Telo",
-  tagline: "The ultimate kernel for declarative backends.",
+  tagline: "Define how your app works. Telo builds and runs it.",
   url: "https://telo.run",
   baseUrl: process.env.BASE_URL ?? "/",
   trailingSlash: false,
   favicon: "favicon.png",
 
   onBrokenLinks: "warn",
+
+  // Each manifest is version-substituted at build time, exactly as the docs are;
+  // the terminal panes are real captured output and pass through untouched.
+  customFields: {
+    landingSample: {
+      cases: landingSample.cases.map((c) => ({
+        ...c,
+        files: c.files.map((f) => ({ ...f, body: substituteVersions(f.body) })),
+      })),
+    },
+  },
 
   markdown: {
     format: "detect",
@@ -125,6 +138,13 @@ const config: Config = {
           remarkPlugins: [remarkVersions],
         },
         blog: false,
+        sitemap: {
+          // `changefreq` / `priority` are ignored by Google and identical on
+          // every route; `lastmod` is the field crawlers actually read.
+          lastmod: "date",
+          changefreq: null,
+          priority: null,
+        },
         theme: {
           customCss: "./src/css/custom.css",
         },
@@ -151,6 +171,16 @@ const config: Config = {
         { to: "/extend/sdk", label: "Extend", position: "left" },
         { to: "/reference/kernel", label: "Reference", position: "left" },
         { to: "/examples", label: "Examples", position: "left" },
+        {
+          href: "https://editor.telo.run",
+          label: "Editor",
+          position: "right",
+        },
+        {
+          href: "https://hub.telo.run",
+          label: "Modules",
+          position: "right",
+        },
         {
           href: "https://github.com/telorun/telo",
           label: "GitHub",

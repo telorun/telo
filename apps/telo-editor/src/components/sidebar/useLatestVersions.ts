@@ -1,6 +1,6 @@
-import { newestModuleVersion, parseVersionedRef } from "@telorun/analyzer";
+import { isSameModuleVersion, newestModuleVersion, parseVersionedRef } from "@telorun/analyzer";
 import { useEffect, useState } from "react";
-import { fetchHubVersions } from "../../hub-search";
+import { fetchHubVersions, type ModuleVersion } from "../../hub-search";
 import type { ParsedImport } from "../../model";
 
 /** Resolves the latest tracked version for every distinct versioned module the
@@ -8,12 +8,18 @@ import type { ParsedImport } from "../../model";
  *  Fetches each ref once; imports that name no version (local paths, bare URLs,
  *  untagged OCI refs) are skipped. The map is keyed by the version-independent
  *  base ref (`acme/console`, `oci://ghcr.io/telorun/timer`) — the same identity
- *  the hub registers a module under, so every transport is treated alike. */
+ *  the hub registers a module under, so every transport is treated alike.
+ *
+ *  The value is the whole {@link ModuleVersion}, not just its name: the hub
+ *  reports an integrity pin per version, and an upgrade that dropped it would
+ *  leave the import unpinned. A browser cannot recompute that hash for any
+ *  transport, so the one the hub already published is the only pin the editor
+ *  can write. */
 export function useLatestVersions(
   imports: ParsedImport[],
   hubUrl: string | undefined,
-): Map<string, string> {
-  const [latest, setLatest] = useState<Map<string, string>>(new Map());
+): Map<string, ModuleVersion> {
+  const [latest, setLatest] = useState<Map<string, ModuleVersion>>(new Map());
 
   const baseRefs = [
     ...new Set(
@@ -36,7 +42,11 @@ export function useLatestVersions(
           // which neither `telo upgrade` nor the VS Code lenses do — the
           // per-import dropdown still lists every version for a deliberate pick.
           const versions = await fetchHubVersions(hubUrl, baseRef);
-          return [baseRef, newestModuleVersion(versions.map((v) => v.version)) ?? null] as const;
+          const newest = newestModuleVersion(versions.map((v) => v.version));
+          const picked = newest
+            ? versions.find((v) => isSameModuleVersion(v.version, newest))
+            : undefined;
+          return [baseRef, picked ?? null] as const;
         } catch (err) {
           // Best-effort: the badge is background information, and an
           // unreachable hub must not blank the whole Imports view. The
@@ -47,7 +57,7 @@ export function useLatestVersions(
       }),
     ).then((entries) => {
       if (cancelled) return;
-      const next = new Map<string, string>();
+      const next = new Map<string, ModuleVersion>();
       for (const [baseRef, version] of entries) {
         if (version) next.set(baseRef, version);
       }

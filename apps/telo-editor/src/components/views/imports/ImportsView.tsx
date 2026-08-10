@@ -1,16 +1,13 @@
-import {
-  isNewerModuleVersion,
-  isSameModuleVersion,
-  parseVersionedRef,
-  withRefVersion,
-} from "@telorun/analyzer";
+import { isNewerModuleVersion, isSameModuleVersion, parseVersionedRef } from "@telorun/analyzer";
 import { ArrowUp, ChevronDown, X } from "lucide-react";
 import { useState } from "react";
 import { getModuleFiles, summarizeResource } from "../../../diagnostics-aggregate";
+import type { ModuleVersion } from "../../../hub-search";
 import type { ParsedImport } from "../../../model";
 import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
 import { useDiagnosticsState } from "../../diagnostics/DiagnosticsContext";
 import { AddImportDialog } from "../../AddImportDialog";
+import { isImportPinned, upgradedImportSource } from "../../sidebar/import-pin";
 import type { ImportUpgradeState } from "../../sidebar/useImportUpgrade";
 import { useImportUpgrade } from "../../sidebar/useImportUpgrade";
 import { useLatestVersions } from "../../sidebar/useLatestVersions";
@@ -50,12 +47,13 @@ export function ImportsView({
     const ref = parseVersionedRef(imp.source);
     if (!ref) return [];
     const latest = latestVersions.get(ref.baseRef);
-    if (!latest || !isNewerModuleVersion(latest, ref.version)) return [];
+    if (!latest || !isNewerModuleVersion(latest.version, ref.version)) return [];
     return [
       {
         name: imp.name,
-        newSource: withRefVersion(imp.source, latest),
-        wasPinned: ref.integrity != null,
+        newSource: upgradedImportSource(imp, latest),
+        wasPinned: isImportPinned(imp),
+        repinned: latest.integrity != null,
       },
     ];
   });
@@ -202,7 +200,7 @@ interface ImportTableRowProps {
   imp: ParsedImport;
   filePaths: string[];
   upgrade: ImportUpgradeState;
-  latestVersions: Map<string, string>;
+  latestVersions: Map<string, ModuleVersion>;
   onRemove: (name: string) => void;
   onOpenModule: (filePath: string) => void;
 }
@@ -217,7 +215,8 @@ function ImportTableRow({
 }: ImportTableRowProps) {
   const ref = parseVersionedRef(imp.source);
   const latest = ref ? latestVersions.get(ref.baseRef) : undefined;
-  const outdated = ref != null && latest != null && isNewerModuleVersion(latest, ref.version);
+  const outdated =
+    ref != null && latest != null && isNewerModuleVersion(latest.version, ref.version);
   const diagState = useDiagnosticsState();
   const summary = summarizeResource(diagState, filePaths, imp.name);
 
@@ -236,13 +235,13 @@ function ImportTableRow({
         !upgrade.loading &&
         upgrade.versions.map((version) => (
           <DropdownMenuItem
-            key={version}
+            key={version.version}
             onSelect={() => upgrade.selectVersion(imp, version)}
             disabled={upgrade.submitting}
             className="justify-between gap-3"
           >
-            <span className="tabular-nums">{version}</span>
-            {isSameModuleVersion(version, ref.version) && (
+            <span className="tabular-nums">{version.version}</span>
+            {isSameModuleVersion(version.version, ref.version) && (
               <span className="text-[10px] text-muted-foreground">current</span>
             )}
           </DropdownMenuItem>
@@ -263,7 +262,7 @@ function ImportTableRow({
             <Badge
               variant="outline"
               className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-400"
-              title={`Latest is ${latest}`}
+              title={`Latest is ${latest?.version}`}
             >
               Outdated
             </Badge>
@@ -295,7 +294,7 @@ function ImportTableRow({
                 className="rounded-r-none text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
                 onClick={() => latest && upgrade.selectVersion(imp, latest)}
                 disabled={upgrade.submitting}
-                title={`Upgrade ${imp.name} to ${latest}`}
+                title={`Upgrade ${imp.name} to ${latest?.version}`}
               >
                 <ArrowUp />
                 Upgrade

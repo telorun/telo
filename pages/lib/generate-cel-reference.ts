@@ -45,6 +45,7 @@ export function generateCelReference(outFile: string): void {
   const lines: string[] = [
     "---",
     "slug: /cel",
+    "description: Every CEL function available in a Telo manifest expression — strings, math, collections, JSON, encoding, hashing, time and UUIDs — generated from the runtime registry.",
     "---",
     "",
     "# CEL Functions",

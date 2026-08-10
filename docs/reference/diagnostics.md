@@ -203,5 +203,5 @@ how to read a failure, and the debugging flags — see
 - [Running in production](/deploy/production) — exit codes and signal handling.
 - [Resource lifecycle](/reference/kernel/resource-lifecycle) — init ordering and
   failure classification.
-- [Style guide](/guides/style-guide) — naming rules that prevent a whole class
+- [Style guide](/learn/style-guide) — naming rules that prevent a whole class
   of these.

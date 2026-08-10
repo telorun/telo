@@ -1,0 +1,197 @@
+kind: Telo.Application
+metadata:
+  name: SupportInboxMcp
+  version: 1.0.0
+  categories: [ AI, Transport, Storage ]
+  description: |
+    A support-ticket service with two front doors onto the same handlers: a REST
+    API for your app, and an MCP endpoint so an assistant (Claude Desktop,
+    Cursor, any MCP client) can search and close tickets itself.
+
+    The two surfaces share the resources, not just the database — `SearchTickets`
+    and `CloseTicket` are each declared once and referenced by both the HTTP route
+    and the MCP tool entry. Exposing an existing app to a model is a mount and a
+    tool bundle, not a second service to keep in sync.
+
+    Run, then:
+        curl -s 'localhost:8066/api/tickets?q=login'
+        # point an MCP client at http://localhost:8066/mcp, or:
+        curl -s -XPOST localhost:8066/mcp -H 'content-type: application/json' \
+          -H 'accept: application/json, text/event-stream' \
+          -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  Mcp: oci://ghcr.io/telorun/mcp-server@0.14.0#sha256-rsHTBqyhpYZYEOIW15suoUwTTjzzOeDztioTqLQJyyU
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+targets:
+  - !ref Migrate
+  - !ref Server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8066
+---
+kind: SQLite.Connection
+metadata: { name: Db }
+file: ./tickets.db
+---
+kind: Sql.Migrations
+metadata: { name: Migrate }
+connection: !ref Db
+migrations:
+  0001_tickets:
+    statements:
+      - |
+        CREATE TABLE IF NOT EXISTS tickets (
+          id      INTEGER PRIMARY KEY AUTOINCREMENT,
+          subject TEXT NOT NULL,
+          body    TEXT NOT NULL,
+          status  TEXT NOT NULL DEFAULT 'open'
+        )
+      - "INSERT OR IGNORE INTO tickets (id, subject, body) VALUES (1, 'Cannot log in', 'The login page returns a 500 after the password reset.')"
+      - "INSERT OR IGNORE INTO tickets (id, subject, body) VALUES (2, 'Invoice is wrong', 'We were billed twice for March.')"
+      - "INSERT OR IGNORE INTO tickets (id, subject, body) VALUES (3, 'Login is slow', 'Signing in takes about 30 seconds on mobile.')"
+---
+# The two operations. Each is a plain Telo.Invocable — nothing about them knows
+# whether the caller is a browser or a language model.
+kind: Sql.Query
+metadata: { name: SearchTickets }
+connection: !ref Db
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          properties:
+            id: { type: integer }
+            subject: { type: string }
+            body: { type: string }
+            status: { type: string }
+---
+kind: Run.Sequence
+metadata: { name: CloseTicket }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ id ]
+    properties:
+      id: { type: integer }
+steps:
+  - name: close
+    invoke:
+      kind: Sql.Command
+      connection: !ref Db
+    inputs:
+      sql: !sql "UPDATE tickets SET status = 'closed' WHERE id = ${{ inputs.id }}"
+outputs:
+  closed: !cel "steps.close.result.rowCount > 0"
+  id: !cel "inputs.id"
+---
+# Front door 1: REST, for your own frontend.
+kind: Http.Api
+metadata: { name: TicketRoutes }
+routes:
+  - request:
+      path: /tickets
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            q: { type: string }
+    handler: !ref SearchTickets
+    inputs:
+      sql: "SELECT id, subject, body, status FROM tickets WHERE subject LIKE ? OR body LIKE ? ORDER BY id"
+      bindings:
+        - !cel "'%' + (has(request.query.q) ? request.query.q : '') + '%'"
+        - !cel "'%' + (has(request.query.q) ? request.query.q : '') + '%'"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.rows"
+---
+# Front door 2: MCP, for an assistant. Same two resources, described for a model
+# instead of for a browser — `argumentsSchema` is what the model must produce,
+# `inputs:` maps that onto the handler, `result:` renders what it gets back.
+kind: Mcp.Tools
+metadata: { name: InboxTools }
+entries:
+  - name: search_tickets
+    description: >-
+      Search support tickets by a free-text term matched against subject and
+      body. Returns matching tickets with their id, subject and status.
+    argumentsSchema:
+      type: object
+      additionalProperties: false
+      required: [ query ]
+      properties:
+        query:
+          type: string
+          description: Text to look for in the subject or body.
+    handler: !ref SearchTickets
+    inputs:
+      sql: "SELECT id, subject, body, status FROM tickets WHERE subject LIKE ? OR body LIKE ? ORDER BY id"
+      bindings:
+        - !cel "'%' + request.arguments.query + '%'"
+        - !cel "'%' + request.arguments.query + '%'"
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            size(result.rows) == 0
+              ? 'No tickets matched.'
+              : result.rows.map(r, '#' + string(r.id) + ' [' + r.status + '] ' + r.subject).join('\n')
+
+  - name: close_ticket
+    description: Close one support ticket by its numeric id.
+    argumentsSchema:
+      type: object
+      additionalProperties: false
+      required: [ id ]
+      properties:
+        id:
+          type: integer
+          description: The ticket id, as returned by search_tickets.
+    handler: !ref CloseTicket
+    inputs:
+      id: !cel "request.arguments.id"
+    result:
+      content:
+        - type: text
+          text: !cel "result.closed ? 'Closed ticket #' + string(result.id) : 'No open ticket with that id.'"
+      # A miss is a soft failure: the model is told, and can pick another id.
+      isError: !cel "!result.closed"
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: McpEndpoint }
+serverInfo:
+  name: support-inbox
+  version: 1.0.0
+instructions: |
+  This server exposes a support-ticket inbox. Use search_tickets to find tickets
+  by keyword, then close_ticket with the id you found. Do not guess ids.
+tools:
+  - !ref InboxTools
+---
+kind: Http.Server
+metadata: { name: Server }
+port: !cel "ports.http"
+logger: true
+openapi:
+  info:
+    title: Support inbox
+    version: 1.0.0
+mounts:
+  - path: /api
+    mount: !ref TicketRoutes
+  - path: /mcp
+    mount: !ref McpEndpoint

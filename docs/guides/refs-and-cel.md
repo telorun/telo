@@ -1,3 +1,7 @@
+---
+description: "The two YAML tags that carry everything dynamic in a Telo manifest: !ref to point at a resource, !cel to compute a value, what is in scope where, and the errors you meet first."
+---
+
 # `!ref` and `!cel`
 
 Two YAML tags carry everything dynamic in a Telo manifest. `!ref` points at
@@ -50,13 +54,21 @@ declaration** — an object with a `kind:` and no `name:`:
 
 ```yaml
 handler:
-  kind: JavaScript.Script
-  code: |
-    function main({ name }) { return { message: `Hello ${name}` } }
+  kind: Run.Value
+  bindings:
+    who: !cel "variables.audience"
+  value:
+    message: !cel "'Hello, ' + who + '!'"
+    greeting: !cel "who"
 ```
 
 Use a `!ref` when the resource is shared or worth naming; inline when it exists
 only for this one slot.
+
+`bindings:` is how a temporary value gets a name. `who` is computed once and
+read twice, so the expression it stands for is written once — that is the
+declarative answer to reaching for a script the moment a calculation needs a
+scratch variable. The next section covers it properly.
 
 ## `!cel` — compute a value
 

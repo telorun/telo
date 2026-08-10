@@ -19,7 +19,19 @@ interface ExampleEntry {
    * doc, with synthesized placeholder values. Rendered as a `KEY=val …`
    * prefix on the `telo <url>` line so the docs show a runnable command. */
   envBindings: EnvBinding[];
+  /** `metadata.categories`, the author-declared grouping facet. The first entry
+   * is the one the example is filed under — an example touches several domains
+   * but should appear once. */
+  categories: string[];
 }
+
+/** Examples shown first, in this order, regardless of category. Reading order,
+ * not a category: a newcomer wants "the smallest thing that runs" and then "a
+ * real app" before grouping by domain is useful to them. Directory names. */
+const FEATURED = ["hello-world", "todo-app", "money-transfer", "support-inbox-mcp"];
+
+/** Heading for examples whose manifest declares no `metadata.categories`. */
+const UNCATEGORIZED = "More examples";
 
 function readExampleMetadata(absPath: string): ExampleEntry | null {
   const raw = fs.readFileSync(absPath, "utf8");
@@ -41,7 +53,10 @@ function readExampleMetadata(absPath: string): ExampleEntry | null {
         ...collectEnvBindings(value.variables, "variable"),
         ...collectEnvBindings(value.secrets, "secret"),
       ];
-      return { file: absPath, name, description, envBindings };
+      const categories = Array.isArray(metadata.categories)
+        ? metadata.categories.filter((c: unknown): c is string => typeof c === "string")
+        : [];
+      return { file: absPath, name, description, envBindings, categories };
     }
   }
   return null;
@@ -181,9 +196,37 @@ export function generateExamplesIndex(examplesRoot: string, outFile: string): vo
     "",
   ];
 
-  if (topLevel.length) {
-    sections.push("## Top-level", "");
-    for (const entry of topLevel) {
+  const featured = FEATURED.map((dir) =>
+    topLevel.find((e) => path.basename(path.dirname(e.file)) === dir),
+  ).filter((e): e is ExampleEntry => e !== undefined);
+
+  if (featured.length) {
+    sections.push("## Start here", "");
+    for (const entry of featured) {
+      sections.push(renderEntry(entry, examplesRoot));
+    }
+  }
+
+  // Everything else is filed under its first declared category, so each example
+  // appears exactly once even though most touch several domains.
+  const byCategory = new Map<string, ExampleEntry[]>();
+  for (const entry of topLevel) {
+    if (featured.includes(entry)) continue;
+    const category = entry.categories[0] ?? UNCATEGORIZED;
+    const bucket = byCategory.get(category);
+    if (bucket) bucket.push(entry);
+    else byCategory.set(category, [entry]);
+  }
+
+  // Alphabetical, except the no-category bucket, which trails.
+  const categories = [...byCategory.keys()]
+    .filter((c) => c !== UNCATEGORIZED)
+    .sort((a, b) => a.localeCompare(b));
+  if (byCategory.has(UNCATEGORIZED)) categories.push(UNCATEGORIZED);
+
+  for (const category of categories) {
+    sections.push(`## ${category}`, "");
+    for (const entry of byCategory.get(category)!) {
       sections.push(renderEntry(entry, examplesRoot));
     }
   }

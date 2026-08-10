@@ -1,3 +1,8 @@
+---
+slug: /build/logging
+description: "Structured logging in Telo: levels, choosing sinks and their durability, per-dependency verbosity, redaction, sampling, emitting from a controller, and shipping records to OTLP."
+---
+
 # Logging
 
 Telo emits **structured log records**, not text lines. Every record carries a

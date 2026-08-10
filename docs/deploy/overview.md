@@ -23,7 +23,7 @@ The default recommendation is **Docker**: hermetic, reproducible, portable acros
 Every deployment model shares the same preparation steps:
 
 1. **Author the manifest.** A `Telo.Application` with `targets:` listing what to run, declaring `variables:` / `secrets:` against host env vars — see [Application Environment Variables](/reference/kernel/application-env-variables).
-2. **Warm the cache** with `telo install ./manifest.yaml`. Pre-downloads every controller and `Telo.Import` into `.telo/` next to the manifest, so the production host never touches the network at boot. Run this in your build pipeline, not at deploy time.
+2. **Warm the cache** with `telo install ./manifest.yaml`. Pre-downloads every controller and every imported module into `.telo/` next to the manifest, so the production host never touches the network at boot. Run this in your build pipeline, not at deploy time.
 3. **Ship the manifest and its `.telo/` tree together.** They are co-located by design — `COPY` the manifest directory and both caches travel with it; no environment variable points at the cache.
 4. **Configure runtime env** so the manifest's `variables:` and `secrets:` resolve at `kernel.load()`.
 

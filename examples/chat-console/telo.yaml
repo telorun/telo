@@ -1,6 +1,7 @@
 kind: Telo.Application
 metadata:
   name: ChatConsole
+  categories: [ AI, Streaming ]
   description: |
     Interactive REPL chat with OpenAI streaming completions. Persists the
     conversation in sqlite so each turn sees prior history and the chat survives
@@ -11,14 +12,14 @@ metadata:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
 imports:
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.14.0#sha256-jQIFsa0DnwEN9nwtx8ByryM3S3rPpaZsPv_jArPIOuk
-  Ai: oci://ghcr.io/telorun/ai@0.13.0#sha256-LDNwi5X9AjcanUEKe497WJHR0Zt3xO-monL-r_hfIZE
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.13.0#sha256-TRAc17F29HyFCRUrQsqMgTszlyuGdCjY1keKmbs7mzA
-  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.9.0#sha256-FrUzkoYEcjkfsIsODR_BFMMChdmt8Rbm4emaaXH4b0Q
-  Console: oci://ghcr.io/telorun/console@0.15.0#sha256-TXqhVyXKPxNKmQ2V0agBCMo6k_GWYd61192g9j5eRd0
-  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
-  Sql: oci://ghcr.io/telorun/sql@0.17.0#sha256-2MVr2geYa5ThbZ6CYSAHaiim4eVrgs8Y0lEyB_St6ic
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
+  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.15.0#sha256-31u_XsWGqrzeSoxWwN9D-piVU-iH4RkRf-PibIpmt4A
+  Ai: oci://ghcr.io/telorun/ai@0.15.0#sha256-dLZuJ0BjQeWkMj7aRPDOE-eFhcF8N3qGqTZY7E-j1F8
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.15.0#sha256-CPunVOEBnzIVR1dLResFHxZppaP64quRBAzHFk4uA_o
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.0#sha256-XFk43aL3kJ13u9QMjWKGMRt6wEqojl6xhszxInqrbXY
+  Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
 targets:
   - !ref InitSchema
   - !ref ChatLoop
@@ -49,7 +50,7 @@ migrations:
 kind: AiOpenai.OpenaiModel
 metadata: { name: Gpt54Nano }
 model: gpt-5.4-nano
-apiKey: "${{ secrets.openaiApiKey }}"
+apiKey: !cel "secrets.openaiApiKey"
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }
@@ -99,7 +100,7 @@ steps:
     inputs:
       prompt: "{cyan.bold you} › "
   - name: Loop
-    while: "${{ steps.Read.result.value != '/exit' }}"
+    while: !cel "steps.Read.result.value != '/exit'"
     do:
       # Insert the user message FIRST, then SELECT — the SELECT now
       # returns the freshly-inserted user row as the last element, so
@@ -121,27 +122,27 @@ steps:
       - name: Stream
         invoke: !ref ChatStream
         inputs:
-          messages: "${{ steps.ReadHistory.result.rows }}"
+          messages: !cel "steps.ReadHistory.result.rows"
       - name: Project
         invoke: !ref Deltas
         inputs:
-          input: "${{ steps.Stream.result.output }}"
+          input: !cel "steps.Stream.result.output"
       - name: Tee
         invoke: !ref ModelTee
         inputs:
-          input: "${{ steps.Project.result.output }}"
+          input: !cel "steps.Project.result.output"
       - name: Spin
         invoke: !ref ChatSpinner
         inputs:
-          input: "${{ steps.Tee.result.outputA }}"
+          input: !cel "steps.Tee.result.outputA"
       - name: Print
         invoke: !ref Stdout
         inputs:
-          input: "${{ steps.Spin.result.output }}"
+          input: !cel "steps.Spin.result.output"
       - name: Collect
         invoke: !ref AssistantText
         inputs:
-          input: "${{ steps.Tee.result.outputB }}"
+          input: !cel "steps.Tee.result.outputB"
       - name: InsertAssistant
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"

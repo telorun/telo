@@ -1,6 +1,7 @@
 kind: Telo.Application
 metadata:
   name: AiImageConsole
+  categories: [ AI ]
   version: 1.0.0
   description: |
     Prompts for a phrase on the console, generates a picture for it with OpenAI,
