@@ -2,6 +2,7 @@ kind: Telo.Application
 metadata:
   name: UrlShortener
   version: 1.0.0
+  categories: [ Transport, Performance, Reliability ]
   description: |
     A URL shortener exercising the cache, rate-limit, run (Detach), sql, and
     http-server modules end to end. A thin root that owns the shared schema
@@ -13,8 +14,8 @@ metadata:
 
     Zero external infra: a shared SQLite file + in-process CacheMemory.Store.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
-  Sql: oci://ghcr.io/telorun/sql@0.17.0#sha256-2MVr2geYa5ThbZ6CYSAHaiim4eVrgs8Y0lEyB_St6ic
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
   Database:
     source: ./database
     variables:

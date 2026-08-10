@@ -20,8 +20,9 @@ interface ToolEntry {
   parameters: Record<string, unknown>;
   /** Raw CEL template mapping model `arguments` → the invocable's input. */
   inputs?: Record<string, unknown>;
-  /** Raw CEL template shaping the invocable's `result` into the fed-back value. */
-  result?: string;
+  /** Raw CEL template shaping the invocable's `result` into the fed-back value:
+   *  a string, or a content part / list of parts for a multimodal result. */
+  result?: string | Record<string, unknown> | unknown[];
 }
 
 interface AiToolsResource {

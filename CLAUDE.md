@@ -20,6 +20,7 @@ Follow this strictly:
 - never implement logic that swallows errors
 - telo manifests MUST be type safe
 - in telo manifests, ALWAYS write CEL with the `!cel "..."` YAML tag — never the inline `"${{ ... }}"` string form. The formatter normalizes to `!cel`, and the inline form gets mangled on round-trip (it has been silently rewritten into a broken `!ref`). This applies to every CEL value, including pure expressions and string interpolations (`!cel "'http://localhost:' + string(ports.http)"`).
+- in telo manifests, declare a resource INLINE at its use site when it is used exactly once — `invoke: { kind: Some.Kind, ...config }`, with no `metadata.name`. Give a resource its own top-level document only when something needs to name it: it is referenced more than once, listed in `targets:`, or exported. A named single-use resource makes the reader jump documents to follow one call. The exception is a router (`Http.Api`) mounted on a server — keep it named, because that is what makes it independently testable.
 - never use `cat` nor `sed` to read files — read them directly
 - never use `AskUserQuestion` tool, ask questions directly
 - never do major upgrades of modules nor packages

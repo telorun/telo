@@ -325,9 +325,18 @@ schema:
           result:
             title: Result mapping
             description: |
-              Optional CEL expression shaping the invocable's `result` into the string
-              fed back to the model. Omit to JSON-stringify the output.
-            type: string
+              Optional CEL expression shaping the invocable's `result` into what is
+              fed back to the model: a string, or a content part / list of content
+              parts (`{type: image, data, mediaType}`) for a multimodal result.
+              Omit to JSON-stringify the output.
+            # Not `type: string`: the runtime has always accepted content parts
+            # (see `agent-tools.ts`), so constraining the evaluated CEL to a
+            # string rejected a shipped feature — visible only once the value is
+            # written in `!cel` form, which is type-checked against this schema.
+            anyOf:
+              - type: string
+              - type: object
+              - type: array
             x-telo-context:
               type: object
               properties:

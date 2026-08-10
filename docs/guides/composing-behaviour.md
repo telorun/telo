@@ -1,3 +1,7 @@
+---
+description: "Orchestrate work declaratively with Run.Sequence, Run.Choice and Run.Value: steps, branching, loops, error handling, and when a script is genuinely the right answer."
+---
+
 # Composing behaviour
 
 A handler that returns one value is `Run.Value`. Everything beyond that —

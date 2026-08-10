@@ -1,0 +1,111 @@
+kind: Telo.Library
+metadata:
+  name: Notify
+  version: 1.0.0
+  categories: [ Transport ]
+  description: |
+    Outbound notifications as first-class resource kinds: post a JSON payload to
+    a webhook URL, or send a message to a Slack incoming webhook. Declared
+    entirely in the manifest — the kinds are built from an HTTP request, with no
+    controller code to write, load or publish.
+imports:
+  Http: oci://ghcr.io/telorun/http-client@0.18.0#sha256-BkJT9iFGMog-V6L055uBn_F2BF2MgdPeNuBvZYX7XOY
+exports:
+  kinds:
+    - Webhook
+    - Slack
+---
+# A new kind, defined with nothing but YAML. `resources:` is the body it stands
+# up per instance, `invoke:` names which of them runs, and `inputs:` / `result:`
+# translate between the caller's contract and that resource's.
+kind: Telo.Definition
+metadata:
+  name: Webhook
+  description: >-
+    Posts a JSON payload to a fixed URL and reports the response status. The URL
+    and any standing headers belong to the resource; the payload is supplied per
+    call. A non-2xx response raises.
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  required: [ url ]
+  properties:
+    url:
+      title: URL
+      description: Absolute URL the payload is posted to.
+      type: string
+    headers:
+      title: Headers
+      description: Headers sent with every notification (a static auth token, say).
+      type: object
+      additionalProperties:
+        type: string
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ payload ]
+    properties:
+      payload:
+        type: object
+        additionalProperties: true
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ status ]
+    properties:
+      status: { type: integer }
+resources:
+  - kind: Http.Request
+    metadata:
+      name: !cel "self.name + '-post'"
+    throwOnHttpError: true
+invoke:
+  kind: Http.Request
+  name: !cel "self.name + '-post'"
+inputs:
+  url: !cel "self.url"
+  method: POST
+  headers: !cel "has(self.headers) ? self.headers : {}"
+  body: !cel "inputs.payload"
+result:
+  status: !cel "result.status"
+---
+# Specialising a kind you already have. `extends:` inherits Webhook's body,
+# `base:` is the super(...) call that supplies its config, and the author-facing
+# schema narrows to the one field a Slack webhook actually needs. Callers send
+# `{text}` rather than assembling Slack's payload shape.
+kind: Telo.Definition
+metadata:
+  name: Slack
+  description: >-
+    Sends a plain-text message to a Slack incoming webhook. Takes the webhook URL
+    at declaration and the message text per call; the Slack payload shape is
+    supplied for you.
+extends: Self.Webhook
+schema:
+  type: object
+  additionalProperties: false
+  required: [ webhookUrl ]
+  properties:
+    webhookUrl:
+      title: Webhook URL
+      description: A Slack incoming-webhook URL (https://hooks.slack.com/services/...).
+      type: string
+base:
+  url: !cel "self.webhookUrl"
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ text ]
+    properties:
+      text: { type: string }
+inputs:
+  payload:
+    text: !cel "inputs.text"

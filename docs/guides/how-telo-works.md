@@ -1,3 +1,7 @@
+---
+description: "The mental model behind Telo: manifests, resources and kinds, capabilities, the multi-pass init loop, where side effects live, and why a manifest stays statically analyzable."
+---
+
 # How Telo works
 
 Telo is a runtime, not a framework you import. You hand it a YAML manifest
@@ -53,7 +57,14 @@ slots will accept it:
 | `Telo.Invocable` | `invoke(inputs)` | Handlers, scripts — things you call |
 | `Telo.Provider` | `provide()` | Configuration and value sources |
 | `Telo.Mount` | mounted into a service | HTTP routers, middleware |
+| `Telo.Sink` | `write(record)`, `flush()` | Log sinks — record-stream destinations |
 | `Telo.Type` | nothing — schema only | Shared type declarations |
+
+A kind may instead be declared as a **`Telo.Abstract`**: a contract with no
+implementation, which exists to be extended. `Sql.Connection` is one — you never
+instantiate it, you instantiate `SQLite.Connection`, which `extends` it. Any slot
+that accepts the abstract accepts every kind that extends it, which is how one
+manifest swaps SQLite for Postgres by changing an import.
 
 Capability governs **wiring**, not dispatch. A step's `invoke:` slot accepts an
 Invocable or a Runnable; an application's `targets:` accepts a Runnable or a

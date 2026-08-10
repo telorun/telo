@@ -17,23 +17,23 @@ metadata:
     Federated discovery hub: tracks registered module refs across transports,
     caches manifests, and serves per-resource search over HTTP and MCP.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.23.0#sha256-JPX_TXascil8LvT-hLiwyRx5t4xUCvEFFfM4Wr4sUM4
-  Sql: oci://ghcr.io/telorun/sql@0.19.0#sha256-5aIRVn8VpAk2OB9EVIvzzylBWkMM63Aou4reb-owijc
-  Postgres: oci://ghcr.io/telorun/sql-postgres@0.8.0#sha256--ytBOz5-dmhYhos-tXMkeLe6UHWE0sYO6n5Ye84owcI
-  Run: oci://ghcr.io/telorun/run@0.21.0#sha256-l-xpPdlKYmuxqoGX9FtzEShAbMGdgNGOlSmI9d6RWU4
-  Shell: oci://ghcr.io/telorun/shell@0.9.0#sha256-9_0jKJQVzZbTS9gvSKjA1-6KrlVWxqCYNA-4PiemgJA
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  Postgres: oci://ghcr.io/telorun/sql-postgres@0.9.0#sha256-WeK81z2_tvW8AxNKkyOrdyfbRa6RKeJVJkwZ56p2eao
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+  Shell: oci://ghcr.io/telorun/shell@0.10.0#sha256-wV9WPZEHof0fhpT3fUQcPPBZvVG7QWxCPoOL-ILH8kE
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Yaml: oci://ghcr.io/telorun/yaml@0.9.0#sha256-4QyxVfE2X7FNULAf8mP_1_4qH5a8zKKrAWt-ySlzXbk
-  Mcp: oci://ghcr.io/telorun/mcp-server@0.13.0#sha256--KtMgNV8XU5GQTiNyphEJYcIOIXNHwrkpaf_UBYRGaQ
-  Timer: oci://ghcr.io/telorun/timer@0.7.0#sha256-Xqvwj957jkAdJw8oCT4iI7mDNZDv9GhHoQg8vFA3-TE
-  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.9.0#sha256-FrUzkoYEcjkfsIsODR_BFMMChdmt8Rbm4emaaXH4b0Q
-  Console: oci://ghcr.io/telorun/console@0.16.0#sha256-v5oEUQ3jIdGOu7zDYKWqlziH9EVvzcS1FYlg4Di453U
-  Embedding: oci://ghcr.io/telorun/embedding@0.10.0#sha256-RejMlGdTRlY-QQxx_yu7KMYnpUMxViWixeXN3cmzWdo
-  EmbeddingOpenai: oci://ghcr.io/telorun/embedding-openai@0.8.0#sha256-6_g_RsXr1OVC_C_-19srfTA8bEYU4hfBvH4NhyL7c8E
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.7.0#sha256-RPFdTN1BPz0WtfjLsUF8JeRK_ilI6hnHny6wwrmsoAw
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.10.0#sha256-3FnAF69rjA7fMDzn7ashQMInYa_y4wA8EPci2o7MTSA
-  VectorStore: oci://ghcr.io/telorun/vector-store@0.9.0#sha256-Xs-QU7RxSDUtiVHq-ogOLtnADTfPsFc8b5yG_AXNNHo
-  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.8.0#sha256-myJcqbrqSQe67wJI-N6ISemNAYESfk4p0c78xSgZDIg
+  Yaml: oci://ghcr.io/telorun/yaml@0.10.0#sha256-DlUb4l3RthpHUwWb6fCiHDl-MZaRGwSG4IWU9IA2Gpo
+  Mcp: oci://ghcr.io/telorun/mcp-server@0.14.0#sha256-rsHTBqyhpYZYEOIW15suoUwTTjzzOeDztioTqLQJyyU
+  Timer: oci://ghcr.io/telorun/timer@0.8.0#sha256-Po6J-NMmJ6o0jgEFuqzVRX4OAheY0y7Km2NDx8_RBS0
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.0#sha256-XFk43aL3kJ13u9QMjWKGMRt6wEqojl6xhszxInqrbXY
+  Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
+  Embedding: oci://ghcr.io/telorun/embedding@0.11.0#sha256-Ooh1n7qusgRGBVxEwjD8yRjiAMXnnZAUHHzUku7UWy4
+  EmbeddingOpenai: oci://ghcr.io/telorun/embedding-openai@0.9.0#sha256-L0lOSIwCUuWp6-CGbMsFuAS_orWcseuuc1c4yZ9p9Mw
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.8.0#sha256-Vo6BlHCcrdG3JSdDWYv_90wVoYYfErR340o6IdZP6uY
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.11.0#sha256-1f-qF082EYwdfKzx5K5e7eiLFmMn68Q6l1d3-3xImLs
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.10.0#sha256-C3xSbXeC1u8b_nzdiiJHUtiHWtn6xEA9JrTxYHd3E4g
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.9.0#sha256-eKOkWDTb8YexHzlq-rXGpynTucXU5nK3jMgd-9gMAGo
 ports:
   http:
     env: PORT

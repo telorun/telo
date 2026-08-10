@@ -283,13 +283,13 @@ Upgrading apps/my-app/telo.yaml
 
 ---
 
-### `telo [manifest]`
+### `telo run <path>` (default)
 
-Load and run a Telo manifest.
+Load and run a Telo manifest. `run` is the default command, so `telo ./manifest.yaml` and `telo run ./manifest.yaml` are the same thing.
 
 **Arguments:**
 
-- `manifest` - Path to a YAML manifest file or directory. Can be local or a remote URL.
+- `path` - Path to a YAML manifest file, a directory containing `telo.yaml`, or an HTTP(S) URL.
 
 **Options:**
 
@@ -301,6 +301,73 @@ Load and run a Telo manifest.
 
 The cache root defaults to `<manifest-dir>/.telo`; set `TELO_CACHE_DIR` to relocate it (resolved once and used for the manifest cache, compiled validators, analysis stamp, and npm install root alike).
 
+---
+
+### `telo search <query>`
+
+Search resource kinds across every module the [hub](https://hub.telo.run) tracks, matched on name and description. This is how you find a kind before you know which module owns it.
+
+**Arguments:**
+
+- `query` - What the resource should do, in plain words.
+
+**Options:**
+
+- `--kinds` - Flat kind hits, one line per resource kind, instead of grouping by module
+- `--json` - Emit the hub response as JSON
+- `--hub-url <url>` - Base URL of the hub. Overrides `TELO_HUB_URL`.
+
+```bash
+telo search "key value store"
+```
+
+```
+oci://ghcr.io/telorun/kv-store@0.4.0  —  Durable key/value storage with atomic conditional writes…
+  Store  (Provider)  A configured durable key/value store: read a value with its version token…
+oci://ghcr.io/telorun/cache@0.11.0  —  Caching of computed or fetched values under a key…
+  Store   (Provider)   A configured cache backend that holds values under a key…
+  Lookup  (Invocable)  Reads a cached key and reports the outcome as a miss, a fresh hit or a stale hit…
+```
+
+Each hit prints the exact ref to paste into your `imports:` map, and the kinds that ref makes available.
+
+---
+
+### `telo module <subcommand> <ref>`
+
+Inspect a module without importing it. `<ref>` is any form the runtime resolves: a local path, an `oci://` ref, a registry ref, or a direct URL.
+
+| Subcommand | What it prints |
+| --- | --- |
+| `versions` | The module's published versions, newest first (one entry for a local path or direct URL) |
+| `manifest` | The module's `telo.yaml`, verified against the inline hash when the ref is pinned |
+| `digest` | The version's content-identity digest — a cheap read that downloads no payload |
+| `resources` | The resource instances the module declares |
+| `kinds` | The resource kinds the module defines, with capability and whether each is exported |
+
+```bash
+telo module versions oci://ghcr.io/telorun/console
+telo module kinds oci://ghcr.io/telorun/console@0.16.0
+```
+
+---
+
+### `telo cel <subcommand>`
+
+Inspect and evaluate Telo's CEL environment — useful for checking an expression's syntax and result without wiring it into a manifest first.
+
+| Subcommand | What it does |
+| --- | --- |
+| `functions` | Lists the CEL standard-library functions available in manifests |
+| `eval <expression>` | Evaluates an expression — the body of a `!cel` scalar |
+
+```bash
+telo cel eval "'a-' + string(1+2)"
+# a-3
+```
+
+`eval` runs with no manifest loaded, so `variables`, `resources`, `steps` and the rest of the manifest scope are not available; it is for the pure-expression half of CEL.
+
 ## Examples
 
 ### Simple HTTP Server
@@ -311,42 +378,52 @@ Create a file `server.yaml`:
 kind: Telo.Application
 metadata:
   name: Example
+  version: 1.0.0
 imports:
-  HttpServer: oci://ghcr.io/telorun/http-server@<version>
-  JavaScript: oci://ghcr.io/telorun/javascript@<version>
+  Http: oci://ghcr.io/telorun/http-server@<version>
+  Run: oci://ghcr.io/telorun/run@<version>
 targets:
-  - Server
+  - !ref Server
+ports:
+  http:
+    env: PORT
+    default: 8080
+variables:
+  audience:
+    env: AUDIENCE
+    type: string
+    default: World
 ---
 kind: Http.Server
 metadata:
   name: Server
-  module: Example
-baseUrl: http://localhost:8080
-port: 8080
+port: !cel "ports.http"
 mounts:
   - path: /api
-    type: Http.Api.HelloApi
+    mount: !ref HelloApi
 ---
 kind: Http.Api
 metadata:
   name: HelloApi
-  module: Example
 routes:
   - request:
       path: /hello
       method: GET
     handler:
-      kind: JavaScript.Script
-      code: |
-        function main() {
-          return { message: 'Hello World!' }
-        }
-    response:
-      status: 200
-      statuses:
-        200:
-          body:
-            message: "${{ result.message }}"
+      kind: Run.Value
+      # `bindings:` names a temporary value: computed once, read by bare name
+      # wherever this resource's expressions need it.
+      bindings:
+        who: !cel "variables.audience"
+      value:
+        message: !cel "'Hello, ' + who + '!'"
+        greeted: !cel "who"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              message: !cel "result.message"
 ```
 
 Run it:

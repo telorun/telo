@@ -199,7 +199,7 @@ sampling. Records are structured, carry the resource that emitted them, and
 carry trace and span identifiers when emitted inside a dispatch. There is no
 `TELO_LOG_LEVEL`: bind a variable to your env var and reference it, so the
 configuration stays visible to `telo check` and the editor. See
-[Logging](/learn/logging).
+[Logging](/build/logging).
 
 Records can be shipped to an OpenTelemetry collector with the `otlp` module's
 sink. **Metrics and distributed tracing are not yet exposed as a runtime
@@ -267,4 +267,4 @@ the unit, so the first boot does not depend on the network.
   a module can reach.
 - [Diagnostics reference](/reference/diagnostics) — every error code, and what
   to do about it.
-- [Logging](/learn/logging) — levels, sinks, redaction, sampling.
+- [Logging](/build/logging) — levels, sinks, redaction, sampling.

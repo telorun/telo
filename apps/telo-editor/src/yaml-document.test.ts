@@ -507,6 +507,16 @@ describe("setInlineImportSource", () => {
     expect(serializeModuleDocument(out)).toContain("Timer: oci://ghcr.io/telorun/timer@0.4.0");
   });
 
+  it("carries a new pin into a scalar import as a fragment", () => {
+    const text =
+      "kind: Telo.Application\nmetadata:\n  name: app\nimports:\n  Timer: oci://ghcr.io/telorun/timer@0.3.0#sha256-abc\n";
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const out = setInlineImportSource(docs, "Timer", "oci://ghcr.io/telorun/timer@0.4.0#sha256-def");
+    expect(serializeModuleDocument(out)).toContain(
+      "Timer: oci://ghcr.io/telorun/timer@0.4.0#sha256-def",
+    );
+  });
+
   it("drops a stale integrity sibling from the object form", () => {
     const text =
       "kind: Telo.Application\nmetadata:\n  name: app\nimports:\n  Timer:\n    source: oci://ghcr.io/telorun/timer@0.3.0\n    integrity: sha256-abc\n    variables:\n      tz: UTC\n";
@@ -517,5 +527,29 @@ describe("setInlineImportSource", () => {
     expect(yaml).toContain("source: oci://ghcr.io/telorun/timer@0.4.0");
     expect(yaml).not.toContain("integrity");
     expect(yaml).toContain("tz: UTC");
+  });
+
+  it("re-pins the object form in place, keeping the sibling shape", () => {
+    const text =
+      "kind: Telo.Application\nmetadata:\n  name: app\nimports:\n  Timer:\n    source: oci://ghcr.io/telorun/timer@0.3.0\n    integrity: sha256-abc\n    variables:\n      tz: UTC\n";
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const yaml = serializeModuleDocument(
+      setInlineImportSource(docs, "Timer", "oci://ghcr.io/telorun/timer@0.4.0#sha256-def"),
+    );
+    expect(yaml).toContain("source: oci://ghcr.io/telorun/timer@0.4.0");
+    expect(yaml).toContain("integrity: sha256-def");
+    expect(yaml).not.toContain("#sha256-def");
+    expect(yaml).toContain("tz: UTC");
+  });
+
+  it("pins an object-form entry that had no sibling via the source fragment", () => {
+    const text =
+      "kind: Telo.Application\nmetadata:\n  name: app\nimports:\n  Timer:\n    source: oci://ghcr.io/telorun/timer@0.3.0\n    variables:\n      tz: UTC\n";
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const yaml = serializeModuleDocument(
+      setInlineImportSource(docs, "Timer", "oci://ghcr.io/telorun/timer@0.4.0#sha256-def"),
+    );
+    expect(yaml).toContain("source: oci://ghcr.io/telorun/timer@0.4.0#sha256-def");
+    expect(yaml).not.toContain("integrity:");
   });
 });

@@ -2,6 +2,7 @@ kind: Telo.Library
 metadata:
   name: UrlShortenerDatabase
   version: 1.0.0
+  categories: [ Storage ]
   description: |
     Owns the shared SQLite connection and exports it as a singleton. Every
     consumer (the app's migrations, the redirect library, the admin library)
@@ -12,7 +13,7 @@ variables:
     type: string
     description: Path to the SQLite database file.
 imports:
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.6.0#sha256-l6erVXhDXQzjAwYfo1IQWdi3uTOvVFiCK3arI4R20Ho
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
 exports:
   resources:
     - connection

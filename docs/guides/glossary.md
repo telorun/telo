@@ -1,3 +1,7 @@
+---
+description: "Short definitions for the vocabulary the Telo documentation assumes: manifest, resource, kind, capability, controller, module, reference, and the rest."
+---
+
 # Glossary
 
 Short definitions for the vocabulary the rest of the documentation assumes.

@@ -144,6 +144,11 @@ export interface ParsedImport {
   source: string;
   importKind: ImportKind;
   resolvedPath?: string;
+  /** The object form's `integrity:` sibling, when the entry wrote its pin there
+   *  rather than as a `#sha256-…` fragment on `source`. Kept beside `source`
+   *  instead of folded into it so the Imports view still displays the ref the
+   *  author wrote; a consumer asking "is this pinned?" must check both. */
+  integrity?: string;
   variables?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
   /** True when this import lives in the module doc's inline `imports:` map

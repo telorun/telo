@@ -1,0 +1,8 @@
+project: ai
+kind: Fixed
+body: 'Ai.Tools entry result: accepts a content part or list of parts, not just a
+  string. The runtime has always fed multimodal tool results back to the model (an
+  image part is what makes a look-then-redraw loop possible), but the field was declared
+  type: string, so a mapping written in !cel form was rejected at telo check while
+  the identical inline form passed. The schema now matches what the controller accepts.'
+time: 2026-08-09T19:01:23.960914758Z

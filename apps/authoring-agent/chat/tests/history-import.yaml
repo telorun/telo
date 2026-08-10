@@ -18,8 +18,8 @@ imports:
       openaiApiKey: dummy-key-never-used
     variables:
       dbFile: ":memory:"
-  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
-  Assert: oci://ghcr.io/telorun/assert@0.14.0#sha256-dYQWezypcu4qCCS1v6h5LL30w0utrr7srTavsMYj7rU
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+  Assert: oci://ghcr.io/telorun/assert@0.15.0#sha256-7xRDeZr8nL5wyC92JtBoXDY6nYBCubZoHZIWkgk8G3M
 targets:
   - !ref Chat.initSchema
   - !ref Test

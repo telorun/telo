@@ -28,12 +28,12 @@ The image has a smart entrypoint (like the official `node` image): a bare manife
 
 ## Warm the cache with `telo install`
 
-`telo install` walks the manifest's `Telo.Import` graph, downloads every controller package, and writes both to `<manifest-dir>/.telo/`:
+`telo install` walks the manifest's `imports:` graph transitively, downloads every controller package, and writes both to `<manifest-dir>/.telo/`:
 
 - `.telo/npm/` — controller `node_modules` tree, one realm per manifest.
 - `.telo/manifests/…` — every imported `telo.yaml`, registry-served or HTTP-fetched.
 
-Running this in the build stage means the production image is a hermetic snapshot. The kernel resolves every controller and every `Telo.Import` from disk — boot does **zero** network I/O, which is what makes the image safe to run in airgapped, scale-out, and cold-start scenarios.
+Running this in the build stage means the production image is a hermetic snapshot. The kernel resolves every controller and every imported module from disk — boot does **zero** network I/O, which is what makes the image safe to run in airgapped, scale-out, and cold-start scenarios.
 
 Skip the warm-up and your container will pull controllers on every boot, suffer slow start times, and break entirely if it has no outbound network.
 

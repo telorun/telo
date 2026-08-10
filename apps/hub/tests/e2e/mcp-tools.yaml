@@ -9,10 +9,10 @@ metadata:
     the exact module location ref, and `get_module_manifest(ref)` returns the
     tracker-cached telo.yaml for that ref.
 imports:
-  McpClient: oci://ghcr.io/telorun/mcp-client@0.12.0#sha256-fhtVG9Uzye4TLCCIhMd0f4Kvi6D56H3odXU0FFN9STk
-  Run: oci://ghcr.io/telorun/run@0.21.0#sha256-l-xpPdlKYmuxqoGX9FtzEShAbMGdgNGOlSmI9d6RWU4
-  Assert: oci://ghcr.io/telorun/assert@0.14.0#sha256-dYQWezypcu4qCCS1v6h5LL30w0utrr7srTavsMYj7rU
-  Yaml: oci://ghcr.io/telorun/yaml@0.9.0#sha256-4QyxVfE2X7FNULAf8mP_1_4qH5a8zKKrAWt-ySlzXbk
+  McpClient: oci://ghcr.io/telorun/mcp-client@0.13.0#sha256-RTVrccTFnPVQqBpteR5VW5qNV3JEA7mzRhJJ6kss0YI
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+  Assert: oci://ghcr.io/telorun/assert@0.15.0#sha256-7xRDeZr8nL5wyC92JtBoXDY6nYBCubZoHZIWkgk8G3M
+  Yaml: oci://ghcr.io/telorun/yaml@0.10.0#sha256-DlUb4l3RthpHUwWb6fCiHDl-MZaRGwSG4IWU9IA2Gpo
 targets:
   - !ref SearchResources_ReturnsKindHits
   - !ref GetModuleManifest_ReturnsCachedYaml
@@ -82,6 +82,6 @@ steps:
         moduleName: !cel "steps.parse.result.docs[0].metadata.name"
       expected:
         docKind: Telo.Library
-        moduleName: timer
+        moduleName: Timer
     invoke:
       kind: Assert.Equals

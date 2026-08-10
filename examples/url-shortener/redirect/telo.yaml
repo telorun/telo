@@ -2,6 +2,7 @@ kind: Telo.Library
 metadata:
   name: UrlShortenerRedirect
   version: 1.0.0
+  categories: [ Transport, Performance ]
   description: |
     Public side of the URL shortener: create a short link and redirect by code.
     Owns the read-through cache (Cache.View over the SQL lookup), the rate-limit
@@ -12,13 +13,13 @@ variables:
     type: string
     description: Path to the shared SQLite database file.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
-  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.8.0#sha256-PHjCP1cA2L0uBHPhmWeaF6JhlcUA-FhB1bGHKliGeVM
-  Sql: oci://ghcr.io/telorun/sql@0.17.0#sha256-2MVr2geYa5ThbZ6CYSAHaiim4eVrgs8Y0lEyB_St6ic
-  Run: oci://ghcr.io/telorun/run@0.19.0#sha256-PHumsTXpwnEAJD2nswW7ry-L0W43-fpkpwLjw7qUEHo
-  Cache: oci://ghcr.io/telorun/cache@0.9.0#sha256-gEBi-fkYFWUtYmkukwD6bfaAiPRPjD0InHZyM1k2xfQ
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.7.0#sha256-RPFdTN1BPz0WtfjLsUF8JeRK_ilI6hnHny6wwrmsoAw
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.9.0#sha256-qel_0gu1Ok2n_KBslLlGKUGn-zkoet-XAp7GdafOFOk
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.10.0#sha256-kLSJ6yaEYzV4ji9hxmWGURIPx1--l7_TOJCavrXdZys
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+  Cache: oci://ghcr.io/telorun/cache@0.11.0#sha256-bQ_pOOL-ul94KGND1T-GEzMMlT4P6bZHygvrdHrK1GM
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.8.0#sha256-Vo6BlHCcrdG3JSdDWYv_90wVoYYfErR340o6IdZP6uY
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.11.0#sha256-1f-qF082EYwdfKzx5K5e7eiLFmMn68Q6l1d3-3xImLs
   Database:
     source: ../database
     variables:
@@ -41,6 +42,9 @@ metadata: { name: LookupLink }
 connection: !ref Database.connection
 table: links
 ---
+# Read-through cache in front of the lookup: a hit skips SQL entirely, a stale
+# entry is served immediately and refreshed in the background (`revalidate:
+# background`), so a redirect never waits on the database.
 kind: Cache.View
 metadata: { name: LinkView }
 store: !ref Mem
@@ -58,6 +62,8 @@ metadata: { name: InsertClick }
 connection: !ref Database.connection
 table: clicks
 ---
+# Analytics must never delay the redirect: Run.Detach hands the insert to the
+# kernel and returns immediately, so the 302 goes out without waiting for it.
 kind: Run.Detach
 metadata: { name: RecordClick }
 invoke: !ref InsertClick
@@ -76,21 +82,21 @@ steps:
   - name: guard
     invoke: !ref Limit
     inputs:
-      key: "${{ inputs.ip }}"
+      key: !cel "inputs.ip"
   - name: maybeInsert
-    if: "${{ steps.guard.result.allowed }}"
+    if: !cel "steps.guard.result.allowed"
     then:
       - name: insert
         invoke: !ref InsertLink
         inputs:
           sql: "INSERT OR REPLACE INTO links (code, target) VALUES (?, ?)"
           bindings:
-            - "${{ inputs.code }}"
-            - "${{ inputs.url }}"
+            - !cel "inputs.code"
+            - !cel "inputs.url"
 outputs:
-  allowed: "${{ steps.guard.result.allowed }}"
-  retryAfter: "${{ steps.guard.result.retryAfter }}"
-  code: "${{ inputs.code }}"
+  allowed: !cel "steps.guard.result.allowed"
+  retryAfter: !cel "steps.guard.result.retryAfter"
+  code: !cel "inputs.code"
 ---
 kind: Run.Sequence
 metadata: { name: ResolveAndRedirect }
@@ -105,30 +111,30 @@ steps:
   - name: guard
     invoke: !ref Limit
     inputs:
-      key: "${{ inputs.ip }}"
+      key: !cel "inputs.ip"
   - name: maybeResolve
-    if: "${{ steps.guard.result.allowed }}"
+    if: !cel "steps.guard.result.allowed"
     then:
       - name: resolve
         invoke: !ref LinkView
         inputs:
-          key: "${{ inputs.code }}"
+          key: !cel "inputs.code"
           filters:
-            code: "${{ inputs.code }}"
+            code: !cel "inputs.code"
       - name: maybeClick
-        if: "${{ size(steps.resolve.result.value.rows) > 0 }}"
+        if: !cel "size(steps.resolve.result.value.rows) > 0"
         then:
           - name: click
             invoke: !ref RecordClick
             inputs:
               data:
-                code: "${{ inputs.code }}"
-                ip: "${{ inputs.ip }}"
+                code: !cel "inputs.code"
+                ip: !cel "inputs.ip"
 outputs:
-  allowed: "${{ steps.guard.result.allowed }}"
-  retryAfter: "${{ steps.guard.result.retryAfter }}"
-  found: "${{ has(steps.resolve) && size(steps.resolve.result.value.rows) > 0 }}"
-  target: "${{ has(steps.resolve) && size(steps.resolve.result.value.rows) > 0 ? steps.resolve.result.value.rows[0].target : '' }}"
+  allowed: !cel "steps.guard.result.allowed"
+  retryAfter: !cel "steps.guard.result.retryAfter"
+  found: !cel "has(steps.resolve) && size(steps.resolve.result.value.rows) > 0"
+  target: !cel "has(steps.resolve) && size(steps.resolve.result.value.rows) > 0 ? steps.resolve.result.value.rows[0].target : ''"
 ---
 kind: Http.Api
 metadata: { name: Routes }
@@ -145,20 +151,23 @@ routes:
             url: { type: string, minLength: 1 }
     handler: !ref CreateLink
     inputs:
-      code: "${{ request.body.code }}"
-      url: "${{ request.body.url }}"
-      ip: "${{ request.ip }}"
+      code: !cel "request.body.code"
+      url: !cel "request.body.url"
+      ip: !cel "request.ip"
     returns:
       - status: 429
-        when: "${{ !result.allowed }}"
-        headers: { Retry-After: "${{ string(result.retryAfter) }}" }
+        when: !cel "!result.allowed"
+        headers:
+          Retry-After: !cel "string(result.retryAfter)"
         content:
           application/json:
             body: { ok: false, message: "Rate limit exceeded" }
       - status: 201
         content:
           application/json:
-            body: { ok: true, code: "${{ result.code }}" }
+            body:
+              ok: true
+              code: !cel "result.code"
 
   - request:
       path: /{code}
@@ -171,18 +180,20 @@ routes:
             code: { type: string }
     handler: !ref ResolveAndRedirect
     inputs:
-      code: "${{ request.params.code }}"
-      ip: "${{ request.ip }}"
+      code: !cel "request.params.code"
+      ip: !cel "request.ip"
     returns:
       - status: 429
-        when: "${{ !result.allowed }}"
-        headers: { Retry-After: "${{ string(result.retryAfter) }}" }
+        when: !cel "!result.allowed"
+        headers:
+          Retry-After: !cel "string(result.retryAfter)"
         content:
           application/json:
             body: { ok: false, message: "Rate limit exceeded" }
       - status: 302
-        when: "${{ result.found }}"
-        headers: { Location: "${{ result.target }}" }
+        when: !cel "result.found"
+        headers:
+          Location: !cel "result.target"
       - status: 404
         content:
           application/json:

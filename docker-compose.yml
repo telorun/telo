@@ -124,9 +124,17 @@ services:
 
   pages:
     image: node:24
-    command: 'sh -c "rm -rf /telo/pages/.docusaurus /telo/pages/node_modules/.cache && cd pages && ./node_modules/.bin/docusaurus start --host 0.0.0.0 --port 3000 --poll 1000"'
+    command: 'sh -c "rm -rf /telo/pages/.docusaurus-docker /telo/pages/node_modules/.cache && cd pages && ./node_modules/.bin/docusaurus start --host 0.0.0.0 --port 3000 --poll 1000"'
     init: true
     user: ${UID:-1000}:${GID:-1000}
+    environment:
+      # The repo is bind-mounted at /telo here but lives elsewhere on the host,
+      # and .docusaurus/client-modules.js holds ABSOLUTE require() paths — so a
+      # host-side `pnpm build` and this dev server overwrite each other's copy,
+      # and whichever did not write it last fails to resolve its modules.
+      # Separate generated dirs let both run at once. CI has no container, so it
+      # keeps the `.docusaurus` default.
+      DOCUSAURUS_GENERATED_FILES_DIR_NAME: .docusaurus-docker
     volumes:
       - .:/telo
     working_dir: /telo

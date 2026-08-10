@@ -1,3 +1,7 @@
+---
+description: "Telo mapped onto the models you already have — a web framework, Kubernetes, or Terraform — and honest answers to the questions each one raises."
+---
+
 # Coming from somewhere else
 
 Telo looks like configuration and behaves like a runtime, which trips up almost
@@ -7,8 +11,9 @@ it, then answers the questions they generate.
 ## From a web framework (Express, FastAPI, NestJS, Spring)
 
 The closest analogy. Your route table, dependency injection, and startup wiring
-all become declarations; your business logic stays code — it just lives behind a
-resource boundary instead of inside a controller class.
+all become declarations — and so does more of your business logic than you would
+expect. What genuinely needs code lives behind a resource boundary instead of
+inside a controller class.
 
 | You had | You now write |
 | --- | --- |
@@ -78,10 +83,16 @@ need durable workflows (retries surviving a restart, long-running sagas), the
 `workflow` module declares that explicitly, with a backend such as Temporal
 behind it.
 
-**Do I have to write YAML for everything?** The declarative surface is wiring:
-what exists, what it is connected to, what runs. Logic stays code. If you find
-yourself expressing an algorithm in `!cel`, that is the signal to write a script
-or a controller.
+**Do I have to write YAML for everything?** No — and the declarative surface is
+wider than "wiring". Structure is declared (what exists, what it connects to,
+what runs), and so is most of what happens between: a `Run.Sequence` orders
+steps and handles errors, a `Run.Choice` decides, `Run.Projection` maps, `!cel`
+computes. The line is not logic-versus-wiring, because those are logic. It is
+**what the analyzer can see**: everything above is type-checked, rendered in the
+editor, and drawn in the topology view, while the inside of a script is opaque
+to all three. That is what makes a script the escape hatch rather than the
+default — and if you find yourself expressing an algorithm in `!cel`, that is
+the signal to reach for one, or for a controller.
 
 **Why not just write the code?** Because a manifest is data. It can be
 type-checked before it runs, rendered as a topology, edited in a GUI, searched

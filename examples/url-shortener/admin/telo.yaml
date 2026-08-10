@@ -2,6 +2,7 @@ kind: Telo.Library
 metadata:
   name: UrlShortenerAdmin
   version: 1.0.0
+  categories: [ Transport, Storage ]
   description: |
     Admin/analytics side of the URL shortener: list links with click counts and
     fetch a single link's stats. Read-only over the shared SQLite database
@@ -12,8 +13,8 @@ variables:
     type: string
     description: Path to the shared SQLite database file.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.22.0#sha256-1xIdKfDZ_KTlJuI57v2ADUT45nUsVAfk1nQA_kZYvFY
-  Sql: oci://ghcr.io/telorun/sql@0.17.0#sha256-2MVr2geYa5ThbZ6CYSAHaiim4eVrgs8Y0lEyB_St6ic
+  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
   Database:
     source: ../database
     variables:
@@ -44,7 +45,7 @@ routes:
       - status: 200
         content:
           application/json:
-            body: "${{ result.rows }}"
+            body: !cel "result.rows"
 
   - request:
       path: /links/{code}
@@ -59,13 +60,13 @@ routes:
     inputs:
       sql: "SELECT code, target, (SELECT COUNT(*) FROM clicks WHERE clicks.code = links.code) AS clicks FROM links WHERE code = ?"
       bindings:
-        - "${{ request.params.code }}"
+        - !cel "request.params.code"
     returns:
       - status: 200
-        when: "${{ size(result.rows) > 0 }}"
+        when: !cel "size(result.rows) > 0"
         content:
           application/json:
-            body: "${{ result.rows[0] }}"
+            body: !cel "result.rows[0]"
       - status: 404
         content:
           application/json:

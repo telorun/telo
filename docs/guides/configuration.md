@@ -1,3 +1,7 @@
+---
+description: "Bind an application to its environment with variables, secrets and ports, pass values into imported libraries, and keep one place that reads the host environment."
+---
+
 # Configuring an application
 
 Anything that differs between your laptop and production is **declared on the
@@ -80,9 +84,9 @@ variables:
 ## `variables` vs `secrets`
 
 Same shape, one difference that matters: **values bound to `secrets:` are
-redacted from logs automatically**, with no configuration. Put anything
-sensitive there — tokens, connection strings, keys — and non-sensitive
-configuration in `variables:`.
+redacted from logs automatically**, with no configuration — see
+[Logging basics](/learn/logging-basics). Put anything sensitive there — tokens,
+connection strings, keys — and non-sensitive configuration in `variables:`.
 
 Telo does not integrate with a secrets manager itself. Inject the values the way
 your platform already does (a Kubernetes `Secret`, an ECS task-definition
@@ -130,7 +134,7 @@ imports:
 
 That is the whole configuration boundary: one place binds the environment, and
 everything below it is passed values. See
-[Reusing manifests](/learn/reusing-manifests).
+[Libraries](/learn/libraries).
 
 ## Local development
 

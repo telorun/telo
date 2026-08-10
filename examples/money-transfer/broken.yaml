@@ -1,0 +1,61 @@
+# The mistake, kept runnable-adjacent so you can see the checker catch it:
+#
+#     telo check ./examples/money-transfer/broken.yaml
+#
+# `MoveMoney` declares `transaction: !ref TransferTx`, so it may only be reached
+# through that transaction's body. `Payout` calls it directly, which is a write
+# outside the transaction — reported as ZONE_REQUIREMENT_UNSATISFIED before the
+# app ever starts. Everything else here is identical to `telo.yaml`.
+kind: Telo.Application
+metadata:
+  name: MoneyTransferBroken
+  version: 1.0.0
+  description: |
+    Deliberately invalid companion to `telo.yaml`: it invokes a
+    transaction-bound statement from outside the transaction. Kept so the
+    execution-zone diagnostic can be seen rather than described.
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
+  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+targets:
+  - !ref Payout
+---
+kind: SQLite.Connection
+metadata: { name: Db }
+file: ":memory:"
+---
+kind: Sql.Transaction
+metadata: { name: TransferTx }
+connection: !ref Db
+steps: !ref TransferWrites
+inputs:
+  amountCents: !cel "inputs.amountCents"
+---
+kind: Run.Sequence
+metadata: { name: TransferWrites }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      amountCents: { type: integer }
+steps:
+  - name: debit
+    invoke: !ref MoveMoney
+    inputs:
+      sql: !sql "UPDATE accounts SET balance_cents = balance_cents - ${{ inputs.amountCents }} WHERE id = 1"
+---
+kind: Sql.Command
+metadata: { name: MoveMoney }
+transaction: !ref TransferTx
+---
+# The bug: a second caller that reaches the statement directly. At runtime this
+# would move money outside the transaction — silently, and only sometimes.
+kind: Run.Sequence
+metadata: { name: Payout }
+steps:
+  - name: sneak
+    invoke: !ref MoveMoney
+    inputs:
+      sql: "UPDATE accounts SET balance_cents = balance_cents - 100 WHERE id = 1"

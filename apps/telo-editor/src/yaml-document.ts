@@ -1,4 +1,4 @@
-import { parseLoadedFile, type LoadedFile } from "@telorun/analyzer";
+import { parseLoadedFile, splitIntegrity, type LoadedFile } from "@telorun/analyzer";
 import { isTaggedSentinel } from "@telorun/templating";
 import { Document, isDocument, isMap, isNode, isScalar } from "yaml";
 import type { ModuleDocument } from "./model";
@@ -489,11 +489,16 @@ export function removeInlineImport(docs: Document[], name: string): Document[] {
  *  (`Alias: { source, ... }`) — the object form keeps its `variables` /
  *  `secrets` / `runtime`. Returns the same array reference on no-op.
  *
- *  A stale `integrity:` sibling is dropped: it hashes the `telo.yaml` of the
- *  version the entry used to name, so carrying it onto a different version
- *  turns the next install into a tamper error. The kernel folds that sibling
- *  into the source exactly like an inline `#sha256-…` fragment, which the new
- *  source has already shed — `telo upgrade` re-pins either form. */
+ *  `newSource` is the FOLDED form: the ref with the new version's pin already
+ *  attached as a `#sha256-…` fragment, or no pin at all when none is available.
+ *  Where that pin physically lands follows the shape the author chose — an entry
+ *  that carried an `integrity:` sibling keeps it, everything else carries the
+ *  fragment inside `source`. Same rule the VS Code lens applies, so the two
+ *  upgrade paths leave a file in the same shape.
+ *
+ *  With no pin in `newSource` a stale `integrity:` sibling is deleted rather
+ *  than carried over: it hashes the `telo.yaml` of the version being replaced,
+ *  so keeping it turns the next install into a tamper error. */
 export function setInlineImportSource(
   docs: Document[],
   name: string,
@@ -505,8 +510,14 @@ export function setInlineImportSource(
   if (!doc.hasIn(["imports", name])) return docs;
   const entry = doc.getIn(["imports", name], true);
   if (entry && isMap(entry)) {
-    doc.setIn(["imports", name, "source"], newSource);
-    if (entry.has("integrity")) entry.delete("integrity");
+    if (entry.has("integrity")) {
+      const { base, integrity } = splitIntegrity(newSource);
+      doc.setIn(["imports", name, "source"], base);
+      if (integrity) doc.setIn(["imports", name, "integrity"], integrity);
+      else entry.delete("integrity");
+    } else {
+      doc.setIn(["imports", name, "source"], newSource);
+    }
   } else if (entry && isScalar(entry)) {
     // Preserve the scalar node (and any comment) — only swap its value.
     entry.value = newSource;

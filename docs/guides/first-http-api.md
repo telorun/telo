@@ -1,3 +1,7 @@
+---
+description: "Build a working HTTP API in Telo: a server, a router, a validated request, a typed response, and configuration bound to the environment. About fifteen minutes."
+---
+
 # Your first HTTP API
 
 [Getting started](/learn/getting-started) printed a line to the console. This
@@ -274,11 +278,12 @@ because they are declarations rather than code.
 
 ## What to do next
 
-- **Real logic in the handler** — swap `Run.Value` for `JavaScript.Script` when
-  you need code, or a `Run.Sequence` when you need several steps:
-  [Composing behaviour](/learn/composing-behaviour).
-- **Talk to a database** — search the [standard library](/reference/standard-library)
-  for `sql`, or `sql-repository` for table-level CRUD without hand-written SQL.
+- **Real logic in the handler** — a `Run.Sequence` when the work is several
+  steps, a `Run.Choice` when it is a decision, and `bindings:` on a `Run.Value`
+  to name the intermediate values of a calculation instead of nesting one
+  unreadable expression: [Composing behaviour](/learn/composing-behaviour).
+- **Talk to a database** — [Talking to a database](/learn/talking-to-a-database):
+  a connection, migrations, injection-safe statements, and transactions.
 - **Test it** — [Testing your manifests](/build/testing). Tests are manifests
   too, running on the same kernel.
 - **Ship it** — [Deploy](/deploy).
