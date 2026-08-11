@@ -54,7 +54,6 @@ kind: Http.Server
 metadata: { name: Server }
 port: !cel "ports.http"
 trustProxy: true
-logger: false
 openapi:
   info: { title: URL Shortener, version: 1.0.0 }
 mounts:

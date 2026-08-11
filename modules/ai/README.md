@@ -85,6 +85,18 @@ type StreamPart =
 
 Tool use / function calling is provided by [`Ai.Agent`](docs/ai-agent.md): it advertises tools to the model, executes the ones the model requests, and loops. Tools come from any [`Ai.ToolProvider`](docs/ai-tool-provider.md) — a static [`Ai.Tools`](docs/ai-tool-provider.md#aitools) list, or runtime discovery from an MCP server via [`AiMcp.ToolProvider`](../ai-mcp/README.md). The `Ai.Model` contract carries tools additively (`tools` in, `toolCalls` out, the `tool` message role); `Ai.Text`/`Ai.TextStream` never pass tools and are unaffected.
 
+## What is logged
+
+Every completion kind — `Ai.Text`, `Ai.TextStream`, `Ai.Agent` and `Ai.AgentStream` — logs **token usage and finish reason at `info`**, carrying `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` and `gen_ai.response.finish_reasons`. Usage is the metered quantity: what a run cost, and why a bill moved. Tracing carries the call's shape but is off unless asked for, and the returned `usage` object is only as visible as whatever the caller does with it.
+
+Both agents report the **aggregate across every turn** plus `ai.agent.steps`, since a per-turn figure would understate an agent that looped eight times. An agent that hits `maxSteps` with `onMaxSteps: return` logs at `warn`: the truncated answer is handed back as an ordinary result — a value, or a terminal `finish` frame — so nothing else marks that it never converged.
+
+A streamed run reports when its terminal part is reached, so a consumer that abandons the stream produces no record — correctly, since no usage was ever reported. One `info` per completion means a 1,000-completion batch is 1,000 records; that is the intended trade for usage being visible by default, and `logging.sampling` bounds it if you need it to.
+
+The record is emitted by the **operation**, not the provider — the same grain the module already normalizes usage on — so a provider published by someone else reports identically without doing anything.
+
+**Prompts, messages and completions are never logged.** They are the user's content, frequently the most sensitive thing in the process, and no threshold is the right place to decide to spill them.
+
 ## Out of Scope
 
 - **Multimodal input** — `content` is `string` today; widening to `string | ContentPart[]` is additive when needed.

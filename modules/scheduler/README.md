@@ -62,6 +62,8 @@ invoke: !ref refreshCache
 
 Cron expresses the calendar; `when` gates on state the calendar cannot see — a feature flag, a maintenance window, a queue depth.
 
+A skipped tick logs at `debug`, as does each firing tick and each re-arm. A schedule whose gate is closed is otherwise indistinguishable from one that never came due — both look like silence — so raise the module's import to `level: debug` when a schedule appears not to be running. A `when` that evaluates to a non-boolean is an authoring error and logs at `error`; the tick is skipped so a bad gate cannot fire the body.
+
 ## Ticks never overlap themselves
 
 The timer re-arms only after a tick settles, so a body slower than the period cannot stack up an unbounded queue of runs on one instance. That is **not** cross-instance exclusion: every replica runs its own schedule. When only one replica may run the job, wrap the body:

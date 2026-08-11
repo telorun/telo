@@ -1,8 +1,10 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { Kernel } from "../src/kernel.js";
+import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
 import { MemorySource } from "../src/manifest-sources/memory-source.js";
 
 /**
@@ -444,5 +446,42 @@ imports:
     expect(scopes.get("Api.Inner")?.threshold).toBe(17); // error — narrowed at the hop
 
     await kernel.teardown();
+  });
+});
+
+describe("§7.3 — resource identity on a record a controller actually emitted", () => {
+  // This test exists because its absence is why the bug shipped: the conformance
+  // suite asserted on a hand-built record literal, so `resource` being dropped
+  // from every controller-emitted record went unnoticed. It therefore asserts on
+  // a record produced by the real load → create → boot path, not a constructed
+  // one, and the fixture controller captures `ctx.log` inside `create()` — the
+  // exact path that regressed, since identity used to be bound afterwards.
+  // Loaded from disk rather than MemorySource: the fixture's controller is a
+  // real `pkg:telo/local/js` bundle, which only resolves against a module that
+  // has a filesystem base.
+  const app = fileURLToPath(new URL("./__fixtures__/log-identity/app.yaml", import.meta.url));
+
+  it("stamps the canonical <module>.<Kind>, independent of the importer's alias", async () => {
+    const stderr = new Capture();
+    const kernel = new Kernel({
+      sources: [new LocalFileSource()],
+      env: {},
+      stdout: new Capture().stream,
+      stderr: stderr.stream,
+    });
+    await kernel.load(app);
+    await kernel.boot();
+    // The record is emitted from `run()`, so the boot targets have to be
+    // dispatched — `boot()` alone only initializes.
+    await kernel.runTargets();
+    await kernel.teardown();
+
+    const emitted = stderr.records.find((r) => r["msg"] === "fixture emitted");
+    expect(emitted, "the controller's record never reached the sink").toBeDefined();
+    expect(emitted!["resource"]).toEqual({
+      kind: "LogIdentityFixture.Emitter",
+      name: "Emit",
+      id: "LogIdentityFixture.Emitter.Emit",
+    });
   });
 });

@@ -3,6 +3,7 @@ import {
   type ControllerContext,
   type ResourceContext,
   type ResourceInstance,
+  SEVERITY,
   parseDurationMs,
 } from "@telorun/sdk";
 import { type CacheStore, isCacheStore } from "@telorun/cache";
@@ -55,6 +56,13 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
   async invoke(inputs: BudgetInputs): Promise<BudgetResult> {
     // Fail closed: an empty key must not collapse every caller into one bucket.
     if (!inputs || typeof inputs.key !== "string" || inputs.key.length === 0) {
+      // Same reasoning as RateLimit.Guard: the denial is indistinguishable from a
+      // real exhaustion to the caller, so the authoring error would otherwise read
+      // as a budget that is permanently spent.
+      this.ctx.log.warn(
+        "Denied a call with a missing or empty 'key'; every request is denied until the " +
+          "caller supplies one",
+      );
       return { allowed: false, remaining: 0, retryAfter: Math.ceil(this.windowMs / 1000), reserved: 0 };
     }
     if (!Number.isInteger(inputs.amount) || inputs.amount < 0) {
@@ -79,7 +87,16 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
         // The reserve's window rolled over before this settle, so the refund
         // seeded a fresh counter negative — which would grant phantom budget
         // next window. Compensate back to a non-negative floor.
+        const seeded = total;
         total = await store.increment(bucketKey, -total, this.windowMs);
+        if (this.ctx.log.enabled(SEVERITY.debug)) {
+          // Expected at a window boundary rather than a fault, but it is a silent
+          // corrective write — the only trace that a refund crossed a rollover.
+          this.ctx.log.debug("Settle refund landed in a fresh window; compensated the counter", {
+            "ratelimit.key": inputs.key,
+            "ratelimit.seeded_total": seeded,
+          });
+        }
       }
       return { settled: true, total };
     }
@@ -90,7 +107,23 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
         // Refund the over-ceiling reservation so an unrelated caller isn't
         // charged for this denial, and deny.
         await store.increment(bucketKey, -inputs.amount, this.windowMs);
+        // `debug` for the same reason as RateLimit.Guard's throttle: the denial is
+        // per-request and scales with exactly the load the budget exists to shed.
+        if (this.ctx.log.enabled(SEVERITY.debug)) {
+          this.ctx.log.debug("Budget exhausted; reservation denied and refunded", {
+            "ratelimit.key": inputs.key,
+            "ratelimit.limit": this.resource.limit,
+            "ratelimit.requested": inputs.amount,
+          });
+        }
         return { allowed: false, remaining: 0, retryAfter: Math.ceil(this.windowMs / 1000), reserved: 0 };
+      }
+      if (this.ctx.log.enabled(SEVERITY.debug)) {
+        this.ctx.log.debug("Budget reserved", {
+          "ratelimit.key": inputs.key,
+          "ratelimit.reserved": inputs.amount,
+          "ratelimit.remaining": this.resource.limit - total,
+        });
       }
       return { allowed: true, remaining: this.resource.limit - total, retryAfter: 0, reserved: inputs.amount };
     }

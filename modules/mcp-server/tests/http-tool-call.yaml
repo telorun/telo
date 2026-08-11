@@ -63,7 +63,6 @@ with:
     host: 127.0.0.1
     port: 8951
     baseUrl: http://127.0.0.1:8951
-    logger: false
     mounts:
       - { path: /mcp, mount: !ref McpHttp }
 targets: [ !ref Server ]

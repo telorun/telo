@@ -23,7 +23,6 @@ metadata:
   module: ScoreApi
 baseUrl: http://localhost:8845
 port: 8845
-logger: false
 mounts:
   - path: /v1
     mount: !ref Routes

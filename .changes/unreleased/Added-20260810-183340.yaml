@@ -1,0 +1,9 @@
+project: lease
+kind: Added
+body: 'Lease.Critical logs its outcomes: cancellation at info, and contention, acquire and
+  release at debug. Contention is debug because it is the steady state of a mutex, not an
+  anomaly — the documented cross-replica pattern produces N-1 contended calls on every tick,
+  forever. A cancel refused because the requesting holder is stale is also reported, since
+  the returned value cannot distinguish it from ''nothing was running''. lease.key and lease.holder
+  ride on those records; redact them at the root if that is not acceptable.'
+time: 2026-08-10T18:33:40.975029Z

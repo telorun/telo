@@ -1,0 +1,5 @@
+project: lease
+kind: Fixed
+body: 'Lease.Critical warns when it refuses a call with a missing or empty ''key''. The fail-closed
+  ''acquired: false'' looks exactly like genuine contention, so the body silently never ran.'
+time: 2026-08-10T18:20:33.326018Z

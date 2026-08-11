@@ -1,0 +1,174 @@
+kind: Telo.Application
+metadata:
+  name: HttpServerLogEventsTest
+  version: 1.0.0
+  description: |
+    The executable definition of this kind's log-event contract (docs/log-events.md).
+
+    A second implementation of `Http.Server` — a Rust or Go controller on the same
+    Telo.Definition — has to satisfy this: the same event names, the same attribute
+    keys, seconds for the duration, and `http.route` as the matched TEMPLATE.
+
+    Three properties that are not obvious and have each been wrong:
+      - a request that matches NO route omits `http.route` entirely, rather than
+        falling back to the concrete URL. Otherwise an unauthenticated 404 scan
+        writes unbounded cardinality into the attribute dashboards group on.
+      - the duration is SECONDS, not milliseconds — the unit OTel's name carries.
+      - `http.server.stopped` is emitted only for a server that actually listened,
+        so a consumer pairing start/stop never sees an unmatched close.
+logging:
+  level: info
+  sinks:
+    - kind: Telo.FileSink
+      destination: /tmp/telo-http-log-events.jsonl
+      flush_interval: 20ms
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  JS: ../../javascript
+  Fs: ../../fs
+  Timer: ../../timer
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestLogEvents
+---
+kind: JS.Script
+metadata: { name: Slow }
+code: |
+  async function main() {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return { ok: true };
+  }
+---
+kind: Http.Api
+metadata: { name: Api }
+routes:
+  # Quoted: an unquoted `{id}` would open a nested YAML flow map.
+  - request: { path: "/things/{id}", method: GET }
+    handler: !ref Slow
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: !cel "result.ok" }
+---
+kind: JS.Script
+metadata: { name: Summarize }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [text]
+    additionalProperties: false
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      events: { type: array, items: { type: string } }
+      matchedRoute: { type: string }
+      unmatchedHasRoute: { type: boolean }
+      durationLooksLikeSeconds: { type: boolean }
+      startedAttributes: { type: array, items: { type: string } }
+      completedAttributes: { type: array, items: { type: string } }
+    required:
+      - events
+      - matchedRoute
+      - unmatchedHasRoute
+      - durationLooksLikeSeconds
+      - startedAttributes
+      - completedAttributes
+    additionalProperties: false
+code: |
+  function main({ text }) {
+    const all = text
+      .split("\n")
+      .filter((line) => line.trim().startsWith("{"))
+      .map((line) => JSON.parse(line))
+      .filter((r) => typeof r.event_name === "string");
+    // The sink appends, and the destination is a fixed path (it is not a CEL
+    // slot, so it cannot be made unique per run), so an earlier run's records
+    // are still in the file. This run's are the ones after the last server
+    // start — which is also why `http.server.started` being emitted exactly
+    // once per listen matters.
+    const start = all.findLastIndex((r) => r.event_name === "http.server.started");
+    const records = all.slice(Math.max(0, start));
+    const requests = records.filter((r) => r.event_name === "http.server.request");
+    const matched = requests.find((r) => r.attributes["http.response.status_code"] === 200);
+    const unmatched = requests.find((r) => r.attributes["http.response.status_code"] === 404);
+    // The handler sleeps 30ms. In seconds that is ~0.03; in milliseconds it would
+    // be ~30. A unit slip is a factor of 1000, so any bound in between catches it.
+    const duration = matched.attributes["http.server.request.duration"];
+    return {
+      events: records.map((r) => r.event_name),
+      matchedRoute: matched.attributes["http.route"],
+      unmatchedHasRoute: "http.route" in unmatched.attributes,
+      durationLooksLikeSeconds: duration > 0.001 && duration < 1,
+      startedAttributes: Object.keys(
+        records.find((r) => r.event_name === "http.server.started").attributes,
+      ).sort(),
+      completedAttributes: Object.keys(matched.attributes).sort(),
+    };
+  }
+---
+kind: Run.Sequence
+metadata:
+  name: TestLogEvents
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8913
+    baseUrl: http://127.0.0.1:8913
+    mounts:
+      - path: /api
+        mount: !ref Api
+  - kind: HttpClient.Request
+    metadata: { name: Call }
+  - kind: Fs.File
+    metadata: { name: ReadLog }
+targets:
+  - !ref Server
+steps:
+  - name: matched
+    invoke: !ref Call
+    inputs: { url: "http://127.0.0.1:8913/api/things/42" }
+  # Deliberately high-cardinality: this is what a 404 scan looks like, and what
+  # must NOT reach `http.route`.
+  - name: unmatched
+    invoke: !ref Call
+    inputs: { url: "http://127.0.0.1:8913/api/nope-8f3a1c9e-2b7d" }
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "250ms", value: {} }
+  - name: read
+    invoke: !ref ReadLog
+    inputs: { path: /tmp/telo-http-log-events.jsonl }
+  - name: summary
+    invoke: !ref Summarize
+    inputs: { text: !cel "steps.read.result.content" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.summary.result"
+      expected:
+        # `http.server.stopped` is absent: teardown has not run while the sequence
+        # that owns the server is still executing. That it does not appear here is
+        # the start/stop pairing holding.
+        events:
+          - http.server.started
+          - http.server.request
+          - http.server.request
+        matchedRoute: /api/things/:id
+        unmatchedHasRoute: false
+        durationLooksLikeSeconds: true
+        startedAttributes: [server.address, server.port, url.scheme]
+        completedAttributes:
+          - http.request.method
+          - http.response.status_code
+          - http.route
+          - http.server.request.duration
+          - httpserver.request_id

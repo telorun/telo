@@ -81,6 +81,7 @@ code: |
 
 - [`Http.Server` / `Http.Api` returns & catches](docs/returns-and-catches.md) — outcome lists, MIME negotiation, stream mode.
 - [Serving static files & frontends](docs/static-files.md) — `Http.Static`, manifest-relative roots, SPA fallback, asset caching.
+- [Log events](docs/log-events.md) — the `event_name` and attributes every implementation of this kind emits, and how to turn request logging off.
 
 ## Implementation Contract
 
@@ -236,3 +237,29 @@ never a framework's proxy-config object:
   (a client with direct network access could otherwise spoof the headers).
 - When `trustForwardedHeaders` is set, the request protocol/host exposed to handlers
   MUST also reflect the forwarded headers.
+
+### 6. Log events
+
+Every implementation emits the same log events — `http.server.started`,
+`http.server.request.started`, `http.server.request`, `http.server.stopped` —
+with the same OpenTelemetry attributes. See [log events](docs/log-events.md) for
+the table.
+
+The `event_name` and the attributes are the contract; the message text is not.
+Message strings come from whatever framework is underneath and differ per
+runtime, so **a consumer MUST key on `event_name`, never on the message**.
+
+Severity follows the response: `info`, except a **5xx**, which is `error`. A
+mount entry MAY carry `logging.level` to set its own floor — `warn` silences a
+health check polled every second, while its 5xx still surfaces because that is
+logged at `error`.
+
+Two consequences for an implementer:
+
+- **Disable the framework's own request logging** and emit from middleware
+  (Fastify's `onResponse`, a `tower` layer, an `http.Handler` wrapper). Passing a
+  framework's own access lines through is how a runtime ends up shipping Pino's
+  or `tower-http`'s record shape instead of this kind's.
+- **One `info` record per request, on completion.** The received-side record is
+  `debug`; it exists only so a request that hangs and never completes still
+  leaves a trace.

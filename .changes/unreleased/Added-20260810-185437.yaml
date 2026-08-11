@@ -1,0 +1,11 @@
+project: mcp-client
+kind: Added
+body: 'Mcp.StdioClient logs its connection at info and bridges the child server''s stderr
+  into records, mapping the server''s own level so a line beginning ERROR: or [warn] becomes
+  a record at that severity with the original spelling preserved. The code previously claimed
+  to forward stderr to the log but emitted only an event, which reaches nothing when no debug
+  consumer is attached, and every line landed at debug — so a server reporting its own failure
+  was invisible at the default level. Teardown now reports the SIGKILL escalation after the
+  shutdown grace period and a close failure, both of which happened silently because teardown
+  has no caller to report to.'
+time: 2026-08-10T18:54:37.176746Z

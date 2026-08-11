@@ -31,7 +31,10 @@ interface EncoderOutputs {
  * `event: error\ndata: {"message":"..."}\n\n` then end.
  */
 class SseEncoder implements ResourceInstance<EncoderInputs, EncoderOutputs> {
-  constructor(private readonly resource: EncoderResource) {}
+  constructor(
+    private readonly resource: EncoderResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   async invoke(inputs: EncoderInputs): Promise<EncoderOutputs> {
     const name = this.resource.metadata.name;
@@ -42,7 +45,7 @@ class SseEncoder implements ResourceInstance<EncoderInputs, EncoderOutputs> {
         `Sse.Encoder "${name}": 'input' must be an AsyncIterable.`,
       );
     }
-    return { output: new Stream(encode(input, name)) };
+    return { output: new Stream(encode(input, name, this.ctx)) };
   }
 
   snapshot(): Record<string, unknown> {
@@ -50,12 +53,22 @@ class SseEncoder implements ResourceInstance<EncoderInputs, EncoderOutputs> {
   }
 }
 
-async function* encode(input: AsyncIterable<unknown>, name: string): AsyncIterable<Uint8Array> {
+async function* encode(
+  input: AsyncIterable<unknown>,
+  name: string,
+  ctx: ResourceContext,
+): AsyncIterable<Uint8Array> {
   try {
     for await (const item of input) {
       yield Buffer.from(formatFrame(item, name), "utf8");
     }
   } catch (err) {
+    // The frame tells the client, and nothing else does: the stream has already
+    // been handed to the transport, so the failure never reaches the caller and
+    // the response still completes 200. Server-side this is the only report.
+    ctx.log.error("Upstream failed mid-stream; emitted a terminal SSE error frame", undefined, {
+      error: err,
+    });
     const message = err instanceof Error ? err.message : String(err);
     yield Buffer.from(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, "utf8");
   }
@@ -101,8 +114,8 @@ export function register(_ctx: ControllerContext): void {}
 
 export async function create(
   resource: EncoderResource,
-  _ctx: ResourceContext,
+  ctx: ResourceContext,
 ): Promise<SseEncoder> {
-  return new SseEncoder(resource);
+  return new SseEncoder(resource, ctx);
 }
 

@@ -81,7 +81,6 @@ with:
     metadata: { name: RelativeServer }
     host: 127.0.0.1
     port: 8961
-    logger: false
     openapi:
       info: { title: RelativeServer, version: 1.0.0 }
     mounts:
@@ -91,7 +90,6 @@ with:
     metadata: { name: ForwardedServer }
     host: 127.0.0.1
     port: 8962
-    logger: false
     trustForwardedHeaders: true
     openapi:
       info: { title: ForwardedServer, version: 1.0.0 }

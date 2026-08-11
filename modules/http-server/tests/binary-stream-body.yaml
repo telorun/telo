@@ -103,7 +103,6 @@ with:
     host: 127.0.0.1
     port: 8958
     baseUrl: http://127.0.0.1:8958
-    logger: false
     contentTypeParsers:
       - contentType: application/gzip
         stream: true

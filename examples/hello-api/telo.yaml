@@ -25,7 +25,6 @@ kind: Http.Server
 metadata:
   name: ExampleServer
 port: !cel "ports.http"
-logger: true
 openapi:
   info:
     title: Hello server

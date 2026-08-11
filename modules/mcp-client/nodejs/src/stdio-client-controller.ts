@@ -7,6 +7,7 @@ import {
 } from "@telorun/sdk";
 import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { bridgeStderrChunk } from "./stderr-bridge.js";
 
 import {
   jsonRpcError,
@@ -94,25 +95,26 @@ export class McpStdioClient {
       );
     }
 
-    // Forward child stderr to the kernel log per-line at debug level so a
-    // chatty server doesn't grow the controller's memory footprint.
+    // Forward child stderr per line, splitting so a chatty server doesn't grow
+    // the controller's memory footprint. The §13.3 level mapping lives in
+    // `stderr-bridge.ts`; the record is the only channel, since one already
+    // reaches every sink including the debug wire.
     const stderr = transport.stderr;
     if (stderr) {
       let leftover = "";
       stderr.on("data", (chunk: Buffer | string) => {
-        const text = leftover + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
-        const lines = text.split(/\r?\n/);
-        leftover = lines.pop() ?? "";
-        for (const line of lines) {
-          if (line.length === 0) continue;
-          // emit non-awaited; stderr is non-critical observability
-          this.ctx
-            .emitEvent(`${this.manifest.metadata.name}.Stderr`, { line })
-            .catch(() => {});
-        }
+        leftover = bridgeStderrChunk(
+          this.ctx.log,
+          leftover,
+          typeof chunk === "string" ? chunk : chunk.toString("utf8"),
+        );
       });
     }
 
+    this.ctx.log.info("Connected to the MCP server", {
+      "mcp.transport": "stdio",
+      "process.executable.name": command,
+    });
     this.client = client;
     this.transport = transport;
   }
@@ -203,19 +205,25 @@ export class McpStdioClient {
             // otherwise. Only escalate when the child is genuinely still up.
             process.kill(pid, 0);
             process.kill(pid, "SIGKILL");
-            await this.ctx.emitEvent(`${this.manifest.metadata.name}.ChildForceKilled`, {
-              pid,
-              graceMs: grace,
-            });
+            // A server that ignores SIGTERM is losing whatever it had not yet
+            // flushed. Teardown has no caller to report to, so without this the
+            // escalation happens entirely silently.
+            this.ctx.log.warn(
+              "MCP server did not exit within the shutdown grace period; sent SIGKILL",
+              { "mcp.transport": "stdio", "process.pid": pid, "mcp.shutdown_grace_ms": grace },
+              { eventName: "mcp.child.force_killed" },
+            );
           } catch {
             // ESRCH or EPERM — child already exited or we can't signal it.
             // Either way, nothing left to do.
           }
         }
       } catch (err) {
-        await this.ctx.emitEvent(`${this.manifest.metadata.name}.SdkCloseFailed`, {
-          stage: "client",
-          error: { message: (err as Error).message },
+        // Deliberately not rethrown — a failed close must not block shutdown —
+        // so this record is the only place the failure exists.
+        this.ctx.log.warn("Closing the MCP client failed; continuing shutdown", { stage: "client" }, {
+          error: err,
+          eventName: "mcp.close.failed",
         });
       } finally {
         if (graceTimer) clearTimeout(graceTimer);

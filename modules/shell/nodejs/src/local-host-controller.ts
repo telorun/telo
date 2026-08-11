@@ -1,4 +1,4 @@
-import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { SEVERITY, type InvokeContext, type Logger, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
 import { spawn, type ChildProcess } from "node:child_process";
 import type {
   BufferedResult,
@@ -262,6 +262,7 @@ class LocalShellHost implements ShellHost, ResourceInstance {
     private readonly shell: string,
     private readonly baseEnv: Record<string, string | null>,
     private readonly hostEnv: Record<string, string>,
+    private readonly log: Logger,
   ) {}
 
   snapshot(): Record<string, unknown> {
@@ -280,9 +281,57 @@ class LocalShellHost implements ShellHost, ResourceInstance {
       stdin: options.stdin,
       command: label,
     };
+    if (this.log.enabled(SEVERITY.debug)) {
+      this.log.debug("Running command", {
+        "process.command_line": label,
+        "process.executable.name": file,
+        "process.working_directory": this.cwd,
+      });
+    }
     return {
-      buffered: () => runBuffered(spec),
-      stream: () => runStream(spec),
+      buffered: async () => {
+        const result = await runBuffered(spec);
+        this.reportExit(label, result.exitCode);
+        return result;
+      },
+      stream: () => this.watchExit(label, runStream(spec)),
+    };
+  }
+
+  /**
+   * A non-zero exit RESOLVES — the caller receives `exitCode` and is free to
+   * ignore it — so a command that failed is otherwise indistinguishable from one
+   * that succeeded unless something reads the field. Every OTHER failure mode
+   * (spawn error, timeout, cancellation, termination by signal) rejects and
+   * reaches the caller as an error, so none of them is reported here.
+   */
+  private reportExit(command: string, exitCode: number): void {
+    if (exitCode === 0) {
+      if (this.log.enabled(SEVERITY.debug)) {
+        this.log.debug("Command exited", {
+          "process.command_line": command,
+          "process.exit.code": 0,
+        });
+      }
+      return;
+    }
+    this.log.info("Command exited non-zero", {
+      "process.command_line": command,
+      "process.exit.code": exitCode,
+    });
+  }
+
+  /** The streaming form reports its exit as a part rather than a return value,
+   *  so the same report is made by observing the stream rather than awaiting it. */
+  private watchExit(command: string, parts: AsyncIterable<StreamPart>): AsyncIterable<StreamPart> {
+    const report = (code: number) => this.reportExit(command, code);
+    return {
+      async *[Symbol.asyncIterator]() {
+        for await (const part of parts) {
+          if (part.type === "exit") report(part.exitCode);
+          yield part;
+        }
+      },
     };
   }
 }
@@ -299,5 +348,6 @@ export async function create(
     resource.shell ?? defaultShell(hostEnv),
     resource.env ?? {},
     hostEnv,
+    ctx.log,
   );
 }

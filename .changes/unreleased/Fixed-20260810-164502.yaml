@@ -1,7 +1,7 @@
 project: hub
 kind: Fixed
-body: 'Search reports total as an integer instead of a double. The count came back
-  from the query as a 64-bit integer and was cast to a double only because a CEL
-  integer could not previously reach the JSON encoder; both branches of the fallback
-  now stay integers. JSON has one number type, so the wire value is unchanged.'
-time: 2026-08-10T16:45:02.000000000Z
+body: Search reports total as an integer instead of a double. The count came back from the
+  query as a 64-bit integer and was cast to a double only because a CEL integer could not
+  previously reach the JSON encoder; both branches of the fallback now stay integers. JSON
+  has one number type, so the wire value is unchanged.
+time: 2026-08-10T16:45:02.000000Z

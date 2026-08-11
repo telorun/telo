@@ -8,6 +8,10 @@
 - **Self-healing** — leases are time-bounded (`ttl`). If a holder dies without releasing, the lease frees on expiry; no stuck locks.
 - **Race-free & shareable** — the atomic gate is the store's conditional write (`putIfAbsent`, via `KeyedClaim`), so the mutex is correct across concurrent callers and shared across instances when the store is (`KvStoreSql.Store`, `KvStoreRedis.Store`; `KvStoreMemory.Store` is single-process). The store is durable and non-evicting by contract — resting mutual exclusion on a cache would let an evicted record admit a second holder.
 - **No imperative actions** — there is no `Acquire`/`Release` kind to misuse. The lifecycle is structural.
+- **Fails closed** — a missing or empty `key` is refused rather than collapsed into one shared lease. The refusal is logged at `warn`: `{ acquired: false }` is also what genuine contention returns, so nothing else would distinguish it from a body that legitimately skipped.
+- **Observable** — cancellation logs at `info`; contention, acquire and release log at `debug`, each carrying `lease.key` and `lease.holder`. Contention is `debug` because it is the steady state of a mutex, not an anomaly: the cross-replica pattern below produces N−1 contended calls on every tick, forever. When you are asking "why did nothing happen", raise this module's import to `level: debug`.
+
+> **`lease.key` and `lease.holder` are on those records.** A lease key is typically a conversation, tenant or resource id. Both are `debug`-level, so nothing is emitted by default; redact them at the root with `logging.redact.paths: ["lease.key", "lease.holder"]` if you raise the level and that is not acceptable.
 
 ## Kinds
 

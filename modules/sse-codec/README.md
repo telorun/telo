@@ -27,6 +27,12 @@ Because a typeless object frames as a `message` event with an `id:` line, a
 piped straight to the encoder for a **resumable** stream — the client checkpoints
 `id` and reconnects with `?lastEventId=` (or the native `Last-Event-ID` header).
 
+If the upstream iterable throws mid-stream, the encoder emits a terminal
+`event: error` frame and ends. That tells the client, but by then the stream is
+already with the transport, so the failure never reaches the caller and the
+response still completes `200` — the encoder therefore also logs it at `error`,
+which is the only server-side report of a stream that died halfway.
+
 ## Example
 
 ```yaml

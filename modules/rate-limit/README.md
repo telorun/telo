@@ -7,7 +7,16 @@
 - **Transport-neutral** — the `key` is an explicit input (a client IP, API key, user, tenant); the guard doesn't know about HTTP.
 - **Non-throwing** — returns a verdict `{ allowed, remaining, retryAfter }`; the caller maps the response (e.g. a `429`).
 - **Composable storage** — counters share the same `Cache.Store` seam as the rest of the app; point it at `cache-redis` for limits shared across instances.
-- **Fails closed** — an empty key is denied, never collapsed into one shared bucket.
+- **Fails closed** — an empty key is denied, never collapsed into one shared bucket. The denial is logged at `warn`, because to the caller it is indistinguishable from a real throttle.
+- **Observable** — every verdict logs at `debug` with the key: a throttle or exhausted budget, and an allowed call or reservation. `debug` rather than `info` deliberately — absorbing a flood is the job, so a default-visible record per rejection would make the log the amplification target. Raise this module's import to `level: debug` when diagnosing throttling.
+
+> **The `ratelimit.key` attribute is on every one of those records**, and in practice a rate-limit key is a client IP, user id, API key or tenant id. They are `debug`-level, so nothing is emitted by default; if you raise the level and that is not acceptable, redact them at the root:
+>
+> ```yaml
+> logging:
+>   redact:
+>     paths: ["ratelimit.key"]
+> ```
 
 ## Kinds
 

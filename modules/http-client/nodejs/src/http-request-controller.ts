@@ -1,9 +1,11 @@
 import {
   ERR_INVOKE_CANCELLED,
   InvokeError,
+  SEVERITY,
   Stream,
   networkCauseCode,
   type InvokeContext,
+  type Logger,
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
@@ -186,32 +188,70 @@ async function executeRequest(
   }
 }
 
-async function executeWithRetry(
-  url: string,
-  method: string,
-  headers: Record<string, string>,
-  body: string | undefined,
-  timeout: number,
-  retriesLeft: number,
-  stream = false,
-  callerSignal?: AbortSignal,
-): Promise<TeloResponse> {
+/**
+ * The safe half of a URL, as attributes that mean exactly what they say.
+ *
+ * NOT `url.full`: that convention means the absolute URL, and publishing a
+ * query-stripped value under it hands an OTLP consumer a URL that silently
+ * differs from the request actually made. `server.address` / `server.port` /
+ * `url.path` / `url.scheme` are accurate as written.
+ *
+ * The query string and any userinfo are dropped rather than scrubbed, so no
+ * credential can reach a record by construction — §14.4 requires a logged URL to
+ * be scrubbed where credentials are identifiable (`X-Amz-Signature`, `sig`, …),
+ * and not carrying the query is the only form of that which cannot be defeated
+ * by a parameter nobody thought to list.
+ */
+function urlAttributes(url: string): Record<string, string | number> | undefined {
+  let parsed: URL;
   try {
-    return await executeRequest(url, method, headers, body, timeout, stream, callerSignal);
-  } catch (err) {
-    if (retriesLeft > 0 && (err as any).error === "NetworkError") {
-      return executeWithRetry(
-        url,
-        method,
-        headers,
-        body,
-        timeout,
-        retriesLeft - 1,
-        stream,
-        callerSignal,
-      );
+    parsed = new URL(url);
+  } catch {
+    // Unparseable — omit the keys entirely rather than emit empty strings, which
+    // an OTLP consumer cannot tell from "the host really was empty".
+    return undefined;
+  }
+  const attributes: Record<string, string | number> = {
+    "url.scheme": parsed.protocol.replace(/:$/, ""),
+    "server.address": parsed.hostname,
+    "url.path": parsed.pathname,
+  };
+  if (parsed.port) attributes["server.port"] = Number(parsed.port);
+  return attributes;
+}
+
+interface RequestAttempt {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: string | undefined;
+  timeout: number;
+  retries: number;
+  log: Logger;
+  stream: boolean;
+  callerSignal?: AbortSignal;
+}
+
+/** Iterative rather than recursive so the attempt counter is the loop variable
+ *  instead of a parameter threaded through — it was derivable from the remaining
+ *  retries anyway, and two representations of one number drift. */
+async function executeWithRetry(attempt: RequestAttempt): Promise<TeloResponse> {
+  const { url, method, headers, body, timeout, retries, log, stream, callerSignal } = attempt;
+  for (let resendCount = 0; ; resendCount++) {
+    try {
+      return await executeRequest(url, method, headers, body, timeout, stream, callerSignal);
+    } catch (err) {
+      if (resendCount >= retries || (err as any).error !== "NetworkError") throw err;
+      // Only the FINAL failure reaches the caller, so an attempt that failed and
+      // was retried is invisible to everything except this record — including the
+      // common case where the retry succeeds and the call looks perfectly healthy.
+      log.warn("Request failed; retrying", {
+        "http.request.method": method,
+        ...urlAttributes(url),
+        "http.request.resend_count": resendCount + 1,
+        "error.type": String((err as any).code ?? "NetworkError"),
+      });
     }
-    throw err;
   }
 }
 
@@ -467,16 +507,29 @@ class HttpRequestResource implements ResourceInstance {
         });
         url = buildUrl(applied?.query);
       }
-      const response = await executeWithRetry(
+      const startedAt = Date.now();
+      const response = await executeWithRetry({
         url,
         method,
         headers,
-        serializedBody,
-        effectiveTimeout,
+        body: serializedBody,
+        timeout: effectiveTimeout,
         retries,
-        m.mode === "stream",
-        invokeCtx?.cancellation.signal,
-      );
+        log: ctx.log,
+        stream: m.mode === "stream",
+        callerSignal: invokeCtx?.cancellation.signal,
+      });
+      if (ctx.log.enabled(SEVERITY.debug)) {
+        ctx.log.debug("Request completed", {
+          "http.request.method": method,
+          ...urlAttributes(url),
+          "http.response.status_code": response.status,
+          // OTel's name and OTel's unit — SECONDS, as a double. See the note in
+          // sql-connection-base: the name is safe to reuse, the wrong magnitude
+          // under it is not.
+          "http.client.request.duration": (Date.now() - startedAt) / 1000,
+        });
+      }
       return { response, url };
     };
 
@@ -487,6 +540,13 @@ class HttpRequestResource implements ResourceInstance {
     // once lives here rather than in each credential kind, so every scheme
     // inherits it. Exactly one retry — a second rejection propagates.
     if (response.status === 401 && applyCredential) {
+      // `info`: the caller sees only the second response, so a credential that
+      // needs re-acquiring on every call — a token TTL shorter than the client
+      // believes — looks identical to one that never expires.
+      ctx.log.info("Server rejected the credential; re-acquiring and retrying once", {
+        "http.request.method": method,
+        ...urlAttributes(fullUrl),
+      });
       if (m.mode === "stream") (response.body as PassThrough | undefined)?.destroy();
       ({ response, url: fullUrl } = await attempt(true));
     }

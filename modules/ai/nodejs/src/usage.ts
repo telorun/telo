@@ -1,3 +1,5 @@
+import type { Logger } from "@telorun/sdk";
+import { logCompletion } from "./completion-log.js";
 import type { StreamPart, Usage } from "./types.js";
 
 /**
@@ -21,11 +23,32 @@ export function withTokenQuantity(usage: Usage): Usage {
  *  reports usage the same way a buffered one does. Without this the cross-modal
  *  aggregation property would hold only for buffered calls — a distinction no
  *  consumer of a usage figure has any reason to expect. Lazy: every other part
- *  passes straight through, and abandoning the consumer still closes the source. */
+ *  passes straight through, and abandoning the consumer still closes the source.
+ *
+ *  Deliberately pure — reporting is `reportStreamUsage` below, so this stays a
+ *  normalization helper testable without a logger. */
 export async function* stampStreamUsage(
   parts: AsyncIterable<StreamPart>,
 ): AsyncIterable<StreamPart> {
   for await (const part of parts) {
     yield part.type === "finish" ? { ...part, usage: withTokenQuantity(part.usage) } : part;
+  }
+}
+
+/** Report the usage carried by an already-stamped stream's terminal part. The
+ *  logger is required: usage reporting is not an opt-in, and an optional one
+ *  would let a future caller produce a stream that silently reports nothing.
+ *
+ *  A consumer that abandons the stream produces no record — correctly, since no
+ *  terminal usage was ever reported to report on. */
+export async function* reportStreamUsage(
+  parts: AsyncIterable<StreamPart>,
+  log: Logger,
+): AsyncIterable<StreamPart> {
+  for await (const part of parts) {
+    if (part.type === "finish") {
+      logCompletion(log, "Streamed completion finished", part.usage, part.finishReason);
+    }
+    yield part;
   }
 }

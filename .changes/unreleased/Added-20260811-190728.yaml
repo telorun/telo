@@ -1,0 +1,17 @@
+project: http-server
+kind: Added
+body: 'Http.Server emits its own access record instead of passing Fastify''s through,
+  so the log is this kind''s contract rather than one framework''s prose — which is
+  what lets a Rust or Go implementation of the kind produce records a single consumer
+  can read. Each record carries an event_name (http.server.started, http.server.request,
+  http.server.request.started, http.server.stopped); consumers key on that, never
+  on the message text. Attributes follow OpenTelemetry conventions — http.route (the
+  low-cardinality matched template) rather than url.path, and http.server.request.duration
+  in seconds. One info record per request on completion instead of two, with the received-side
+  record at debug where it still catches a request that hangs. Severity follows the
+  response: info, except a 5xx which is error. A mount entry may carry its own logging.level,
+  so a health endpoint polled every second or a static mount serving a built SPA can
+  go quiet (level: warn) while the rest of the server keeps logging — the import-scoped
+  threshold cannot express this, because one server is a single resource in a single
+  scope. A quietened mount still reports its own 500. See docs/log-events.md.'
+time: 2026-08-11T19:07:28.274024291Z

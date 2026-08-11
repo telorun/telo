@@ -80,6 +80,21 @@ failure (`EACCES`), and the like raise an actionable error naming the offending
 path and code; an `Fs.FileEdit` with an absent or ambiguous `oldString` fails
 rather than silently doing nothing.
 
+## What is logged
+
+Writes log at `debug` with the path and byte count. **Removals log at `info`**,
+because a deletion is the one operation that leaves nothing behind to inspect
+afterwards: `Fs.FileRemoval` logs the path it removed, and `Fs.TreeSync` logs a
+single record with the number of paths it deleted (each path individually at
+`debug`, since a routine delta legitimately carries hundreds and one `info` each
+would make it the loudest thing in the log).
+
+That account matters most for `Fs.TreeSync`, whose delete is recursive and
+`force: true` — a mistyped path takes a whole tree, and a path that never existed
+reports success either way.
+
+File **contents are never logged** — only where they went and how many bytes.
+
 ## Example
 
 ```yaml

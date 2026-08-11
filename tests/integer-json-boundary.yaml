@@ -69,7 +69,6 @@ with:
     metadata:
       name: CountServer
     port: 8846
-    logger: false
     mounts:
       - path: /
         mount: !ref CountApi

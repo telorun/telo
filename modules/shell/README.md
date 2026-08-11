@@ -67,6 +67,21 @@ host: !ref Local
 # → the child cannot read OPENAI_API_KEY even though the parent has it.
 ```
 
+## What is logged
+
+The command being run logs at `debug`; a **non-zero exit logs at `info`**. That
+split is deliberate: a non-zero exit *resolves*, handing the caller an `exitCode`
+it is free to ignore, so a failed command is otherwise indistinguishable from a
+successful one unless something reads the field. Every other failure mode — spawn
+error, timeout, cancellation, termination by signal — rejects and reaches the
+caller as an error, so none of them is logged again here.
+
+Both records carry `process.command_line`. Prefer argv execution and `env:` for
+anything sensitive: a secret written **into the command string** will appear in
+the record (as it already does in `ps`), and only an exact-match declared secret
+is redacted automatically. A `!cel "secrets.X"` passed through `env` never
+reaches the command line at all.
+
 ## Example
 
 ```yaml

@@ -39,7 +39,6 @@ with:
     port: "${{ ports.http }}"
     baseUrl: "http://localhost:${{ ports.http }}"
     host: "${{ 'localhost' }}"
-    logger: false
     mounts:
       - path: /api
         mount: !ref TestApi

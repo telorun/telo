@@ -134,6 +134,31 @@ schema:
             x-telo-ref:
               kind: Telo.Mount
               use: dependency
+          logging:
+            title: Logging
+            description: >-
+              Access-log threshold for requests served by THIS mount, overriding
+              the level the server resolved from its scope. The import-scoped
+              level governs a whole module instance, so it cannot quieten one
+              path and not another — this can.
+
+              Access records are `info`, so `level: warn` is how a mount goes
+              quiet: a health check polled every second, or a static mount
+              serving a built SPA, stops producing a record per hit. A failing
+              request still surfaces, because a 5xx response is logged at
+              `error` regardless of status.
+
+              It gates only the records the SERVER emits for the mount (the
+              request and request-received records). A handler's own records
+              follow its own module's level.
+            type: object
+            additionalProperties: false
+            properties:
+              level:
+                title: Level
+                description: Minimum severity for this mount's access records.
+                type: string
+                enum: [ trace, debug, info, warn, error, fatal ]
     contentTypeParsers:
       title: Content Type Parsers
       description: Custom parsers for specific content types.
@@ -311,7 +336,6 @@ schema:
   examples:
     - host: 0.0.0.0
       port: !cel "ports.http"
-      logger: true
       openapi:
         info:
           title: Users API

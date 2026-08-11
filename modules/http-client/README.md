@@ -147,3 +147,12 @@ Valid `code` values MUST include: `TIMEOUT`, `CONNECTION_REFUSED`, `DNS_RESOLUTI
 
 - **Timeouts:** the module MUST enforce a default request timeout of 10,000 ms unless overridden. Timeout failures MUST throw a `NetworkError` with code `TIMEOUT`.
 - **Redirects:** the module MUST automatically follow `301` and `302` redirects, up to a maximum of 5, to prevent infinite redirect loops.
+
+### 5. What is logged
+
+A completed request logs at `debug` with `http.request.method`, `http.response.status_code` and the elapsed time. Two things log higher, because only the *final* outcome reaches the caller:
+
+- a network failure that is **retried** logs at `warn` with `http.request.resend_count` — otherwise a request that failed twice and succeeded on the third attempt is indistinguishable from one that worked first time;
+- the **401 re-acquire-and-retry** logs at `info`, so a credential that has to be refreshed on every call does not look like one that never expires.
+
+**The URL is reported as `url.scheme`, `server.address`, `server.port` and `url.path` — never `url.full`.** The query string and any userinfo are dropped rather than scrubbed, so a presigned URL's `X-Amz-Signature`, a `sig` parameter, or `https://user:pass@host` cannot reach a record; a drop cannot be defeated by a parameter name nobody thought to list. The result is deliberately *not* published as `url.full`, which means the absolute URL — a consumer correlating on it would get a value that silently differs from the request actually made. Request and response **headers are never captured**, per the logging spec's opt-in rule for them.
