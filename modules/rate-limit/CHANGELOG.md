@@ -1,5 +1,9 @@
 # Changelog
-## 0.11.0 - 2026-08-09
+## 0.12.0 - 2026-08-11
+### Added
+* RateLimit.Guard and RateLimit.Budget log every verdict at debug — a throttle or exhausted budget as well as an allowed call or reservation. Debug rather than info deliberately: absorbing a flood is the job, so a default-visible record per rejection would make the log the amplification target the limiter exists to prevent, and sampling is off by default. Budget also reports the counter compensation that follows a refund landing in a fresh window. ratelimit.key rides on those records.
+### Fixed
+* RateLimit.Guard and RateLimit.Budget warn when they deny a call with a missing or empty 'key'. The fail-closed denial is indistinguishable from a real throttle or an exhausted budget to the caller, so the authoring error read as a working rate limiter that rejected every request.## 0.11.0 - 2026-08-09
 ### Added
 * metadata.name is now RateLimit, so the module contributes its kinds under the `RateLimit.<Kind>` canonical prefix instead of `rate-limit.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.10.0 - 2026-08-08
 ### Added

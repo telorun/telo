@@ -1,9 +1,0 @@
-project: ai
-kind: Added
-body: Every completion kind — Ai.Text, Ai.TextStream, Ai.Agent and Ai.AgentStream — logs token
-  usage and finish reason at info. Usage is the metered quantity, what a run costs, and it
-  was reported nowhere by default. Both agents report the aggregate across every turn plus
-  a step count, and an agent that stops at maxSteps with onMaxSteps 'return' warns, since
-  the truncated answer is handed back as an ordinary result. Prompts and completions are never
-  logged.
-time: 2026-08-10T18:54:22.650389Z

@@ -1,5 +1,7 @@
 # Changelog
-## 0.10.0 - 2026-08-09
+## 0.11.0 - 2026-08-11
+### Added
+* Shell hosts log the command they run at debug and a non-zero exit at info. A non-zero exit RESOLVES — the caller receives exitCode and is free to ignore it — so a command that failed was indistinguishable from one that succeeded unless something read the field. Every other failure mode (spawn error, timeout, cancellation, signal) already rejects and reaches the caller.## 0.10.0 - 2026-08-09
 ### Added
 * metadata.name is now Shell, so the module contributes its kinds under the `Shell.<Kind>` canonical prefix instead of `shell.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.9.0 - 2026-08-08
 ### Added

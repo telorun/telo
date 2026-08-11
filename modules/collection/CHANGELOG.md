@@ -1,5 +1,7 @@
 # Changelog
-## 0.7.0 - 2026-08-09
+## 0.8.0 - 2026-08-11
+### Added
+* A count is written as size(group), with no double() cast. A CEL integer now crosses a JSON boundary as its exact digits and satisfies a declared integer slot, so the cast the examples and docs used to teach — which said "float" about a value that is an integer, and truncated past 2^53 — is no longer needed anywhere. Bucket identity for an integer key follows the same encoding: a size()-derived key still matches the same value arriving as a plain JSON int, and two distinct int64s never collide.## 0.7.0 - 2026-08-09
 ### Added
 * metadata.name is now Collection, so the module contributes its kinds under the `Collection.<Kind>` canonical prefix instead of `collection.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.6.0 - 2026-08-08
 ### Added

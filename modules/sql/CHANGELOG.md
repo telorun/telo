@@ -1,5 +1,7 @@
 # Changelog
-## 0.20.0 - 2026-08-09
+## 0.21.0 - 2026-08-11
+### Added
+* SQL connections log each statement at debug with the statement text, row count and db.client.operation.duration (OpenTelemetry's name, in OpenTelemetry's unit: seconds), and transaction start, commit and rollback. Sql.Migrations now reports each applied migration at info — migrateToLatest already returned the per-migration results and they were being discarded, so a run that applied four migrations and one that found none looked identical afterwards; a failed migration is reported at error carrying the underlying cause. Parameters are never logged; the values are the data.## 0.20.0 - 2026-08-09
 ### Added
 * metadata.name is now SQL, so the module contributes its kinds under the `SQL.<Kind>` canonical prefix instead of `sql.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.19.0 - 2026-08-08
 ### Added

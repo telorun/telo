@@ -1,9 +1,0 @@
-project: idempotency
-kind: Added
-body: 'Idempotency.Once logs its outcomes: a replay and an in-flight collision at info, a
-  fresh run and a retryable release at debug, a failed claim heartbeat at warn, and a lost
-  claim at error. Both suppressed paths return successfully, so nothing else marks that the
-  body did not run. The heartbeat is warn rather than debug because a failing renew is a store
-  WRITE failing and the leading indicator of ERR_CLAIM_LOST — a level you must raise in advance
-  is no use once the incident is over. idempotency.key rides on those records.'
-time: 2026-08-10T18:33:58.336183Z

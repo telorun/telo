@@ -1,5 +1,9 @@
 # Changelog
-## 0.15.0 - 2026-08-09
+## 0.16.0 - 2026-08-11
+### Added
+* Every completion kind — Ai.Text, Ai.TextStream, Ai.Agent and Ai.AgentStream — logs token usage and finish reason at info. Usage is the metered quantity, what a run costs, and it was reported nowhere by default. Both agents report the aggregate across every turn plus a step count, and an agent that stops at maxSteps with onMaxSteps 'return' warns, since the truncated answer is handed back as an ordinary result. Prompts and completions are never logged.
+### Fixed
+* Ai.Tools entry result: accepts a content part or list of parts, not just a string. The runtime has always fed multimodal tool results back to the model (an image part is what makes a look-then-redraw loop possible), but the field was declared type: string, so a mapping written in !cel form was rejected at telo check while the identical inline form passed. The schema now matches what the controller accepts.## 0.15.0 - 2026-08-09
 ### Added
 * Ai.ImageModel and Ai.Image: turn a prompt into picture bytes, or rework pictures you supply, through any image provider. The provider contract is declared in the manifest and its method is invoke, so the kernel contract-checks both directions at dispatch and a provider in any language has a shape to implement — Ai.Image validates nothing by hand. Reference-image work names an intent whose accepted values come from the model's own $defs/Intent, so a mode a backend cannot serve fails telo check instead of throwing. Refusals come back as a result (finishReason: content-filter with a short or empty list), not an error. Ai.Text and Ai.Agent gain optional unit/total fields on usage, filled from totalTokens, so one consumer can total spend across text and image calls; the token triple is unchanged and providers need no update.## 0.14.0 - 2026-08-08
 ### Added

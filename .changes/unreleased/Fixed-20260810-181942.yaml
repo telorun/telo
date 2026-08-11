@@ -1,7 +1,0 @@
-project: cache
-kind: Fixed
-body: Cache.View now reports a failed revalidation instead of silently swallowing it. Both
-  stale-if-error paths — the synchronous retry and the background one — logged nothing, so
-  an application served stale values indefinitely with no signal that the upstream was down.
-  Each now emits a warn record carrying the cache key and the underlying error.
-time: 2026-08-10T18:19:42.826371Z

@@ -1,5 +1,12 @@
 # @telorun/ai-mcp
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [51d7156]
+  - @telorun/ai@0.9.1
+
 ## 0.0.2
 
 ### Patch Changes

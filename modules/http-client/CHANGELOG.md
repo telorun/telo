@@ -1,5 +1,7 @@
 # Changelog
-## 0.18.0 - 2026-08-09
+## 0.19.0 - 2026-08-11
+### Added
+* Http.Request logs its outbound calls: each completed request with method, status and http.client.request.duration (OpenTelemetry's name, in seconds) at debug, a retried network failure at warn, and the re-acquire-and-retry after a 401 at info. Only the final outcome reaches the caller, so a request that failed and was retried — including the common case where the retry succeeds — was previously invisible. The URL is reported as url.scheme, server.address, server.port and url.path: the query string and any userinfo are dropped rather than scrubbed, so no credential can reach a record by construction, and the result is deliberately not published as url.full, which means the absolute URL.## 0.18.0 - 2026-08-09
 ### Added
 * metadata.name is now HttpClient, so the module contributes its kinds under the `HttpClient.<Kind>` canonical prefix instead of `http-client.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.17.0 - 2026-08-08
 ### Added

@@ -1,6 +1,0 @@
-project: idempotency
-kind: Fixed
-body: Idempotency.Once reports a failed claim heartbeat at debug instead of discarding it.
-  A renew failure is the leading indicator of the ERR_CLAIM_LOST raised later, and by the
-  time the claim is gone the store failure that lost it is no longer visible anywhere.
-time: 2026-08-10T18:20:26.102631Z

@@ -1,9 +1,0 @@
-project: rate-limit
-kind: Added
-body: 'RateLimit.Guard and RateLimit.Budget log every verdict at debug — a throttle or exhausted
-  budget as well as an allowed call or reservation. Debug rather than info deliberately: absorbing
-  a flood is the job, so a default-visible record per rejection would make the log the amplification
-  target the limiter exists to prevent, and sampling is off by default. Budget also reports
-  the counter compensation that follows a refund landing in a fresh window. ratelimit.key
-  rides on those records.'
-time: 2026-08-10T18:34:00.008007Z

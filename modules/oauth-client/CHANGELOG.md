@@ -1,5 +1,7 @@
 # Changelog
-## 0.4.0 - 2026-08-08
+## 0.5.0 - 2026-08-11
+### Added
+* The token lifecycle is logged: a successful refresh at info (carrying the grant key, the new deadline, and whether the server rotated the refresh token — never token material), a grant left with no refresh token at warn, and the refresh trigger plus single-flight claim contention at debug. Which trigger fired matters: a run of server-rejected tokens points at clock skew or too small a refreshSkew rather than normal expiry.## 0.4.0 - 2026-08-08
 ### Added
 * Every `x-telo-ref` slot now declares what this module does with the target: `use: dependency` (held and read), `call` (control transfers during the invocation and returns), `detached`, `trigger.inbound`, `trigger.consumer`, or `schema` for a slot that only names a shape. Slots that accepted `Telo.Invocable | Telo.Runnable` through an `anyOf` now say `Telo.Executable`, the new built-in parent of both. Wiring manifests are unchanged — this is schema metadata, and it is what lets `telo check` answer whether control reaches a referenced resource, and when.## 0.3.0 - 2026-08-01
 ### Added
