@@ -1,7 +1,0 @@
-project: cache
-kind: Added
-body: 'Cache.View logs the outcome of every lookup at debug: served from cache, served stale
-  while revalidating, revalidated before returning, or called through. The action is not recoverable
-  from the returned state — a stale result may or may not have triggered a revalidation, and
-  with ''revalidate: off'' a stale entry is reported to the caller as a miss.'
-time: 2026-08-10T18:33:39.295931Z

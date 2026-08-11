@@ -1,5 +1,7 @@
 # Changelog
-## 0.13.0 - 2026-08-09
+## 0.14.0 - 2026-08-11
+### Added
+* Mcp.StdioClient logs its connection at info and bridges the child server's stderr into records, mapping the server's own level so a line beginning ERROR: or [warn] becomes a record at that severity with the original spelling preserved. The code previously claimed to forward stderr to the log but emitted only an event, which reaches nothing when no debug consumer is attached, and every line landed at debug — so a server reporting its own failure was invisible at the default level. Teardown now reports the SIGKILL escalation after the shutdown grace period and a close failure, both of which happened silently because teardown has no caller to report to.## 0.13.0 - 2026-08-09
 ### Added
 * metadata.name is now McpClient, so the module contributes its kinds under the `McpClient.<Kind>` canonical prefix instead of `mcp-client.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.12.0 - 2026-08-08
 ### Added

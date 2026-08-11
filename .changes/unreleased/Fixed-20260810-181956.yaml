@@ -1,7 +1,0 @@
-project: rate-limit
-kind: Fixed
-body: RateLimit.Guard and RateLimit.Budget warn when they deny a call with a missing or empty
-  'key'. The fail-closed denial is indistinguishable from a real throttle or an exhausted
-  budget to the caller, so the authoring error read as a working rate limiter that rejected
-  every request.
-time: 2026-08-10T18:19:56.419791Z

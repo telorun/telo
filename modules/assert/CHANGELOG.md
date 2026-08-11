@@ -1,5 +1,7 @@
 # Changelog
-## 0.15.0 - 2026-08-09
+## 0.16.0 - 2026-08-11
+### Added
+* Assert.Equals compares a CEL integer against an integer literal. A CEL int is int64 — a BigInt — while an expected: literal comes out of YAML as a plain number, and YAML has no way to write the other, so every integer-valued expression was unassertable without first casting it to a float. Equality is exact in both directions: the literal must be integral and round-trip to the same int64, so 3 matches 3 but neither 3.5 nor a magnitude a double cannot represent.## 0.15.0 - 2026-08-09
 ### Added
 * metadata.name is now Assert, so the module contributes its kinds under the `Assert.<Kind>` canonical prefix instead of `assert.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.14.0 - 2026-08-01
 ### Added

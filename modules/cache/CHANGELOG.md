@@ -1,5 +1,9 @@
 # Changelog
-## 0.11.0 - 2026-08-09
+## 0.12.0 - 2026-08-11
+### Added
+* Cache.View logs the outcome of every lookup at debug: served from cache, served stale while revalidating, revalidated before returning, or called through. The action is not recoverable from the returned state — a stale result may or may not have triggered a revalidation, and with 'revalidate: off' a stale entry is reported to the caller as a miss.
+### Fixed
+* Cache.View now reports a failed revalidation instead of silently swallowing it. Both stale-if-error paths — the synchronous retry and the background one — logged nothing, so an application served stale values indefinitely with no signal that the upstream was down. Each now emits a warn record carrying the cache key and the underlying error.## 0.11.0 - 2026-08-09
 ### Added
 * metadata.name is now Cache, so the module contributes its kinds under the `Cache.<Kind>` canonical prefix instead of `cache.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.10.0 - 2026-08-08
 ### Added

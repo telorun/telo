@@ -1,5 +1,9 @@
 # Changelog
-## 0.8.0 - 2026-08-09
+## 0.9.0 - 2026-08-11
+### Added
+* Idempotency.Once logs its outcomes: a replay and an in-flight collision at info, a fresh run and a retryable release at debug, a failed claim heartbeat at warn, and a lost claim at error. Both suppressed paths return successfully, so nothing else marks that the body did not run. The heartbeat is warn rather than debug because a failing renew is a store WRITE failing and the leading indicator of ERR_CLAIM_LOST — a level you must raise in advance is no use once the incident is over. idempotency.key rides on those records.
+### Fixed
+* Idempotency.Once reports a failed claim heartbeat at debug instead of discarding it. A renew failure is the leading indicator of the ERR_CLAIM_LOST raised later, and by the time the claim is gone the store failure that lost it is no longer visible anywhere.## 0.8.0 - 2026-08-09
 ### Added
 * metadata.name is now Idempotency, so the module contributes its kinds under the `Idempotency.<Kind>` canonical prefix instead of `idempotency.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.7.0 - 2026-08-08
 ### Added

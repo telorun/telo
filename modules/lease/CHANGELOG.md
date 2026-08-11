@@ -1,5 +1,9 @@
 # Changelog
-## 0.11.0 - 2026-08-09
+## 0.12.0 - 2026-08-11
+### Added
+* Lease.Critical logs its outcomes: cancellation at info, and contention, acquire and release at debug. Contention is debug because it is the steady state of a mutex, not an anomaly — the documented cross-replica pattern produces N-1 contended calls on every tick, forever. A cancel refused because the requesting holder is stale is also reported, since the returned value cannot distinguish it from 'nothing was running'. lease.key and lease.holder ride on those records; redact them at the root if that is not acceptable.
+### Fixed
+* Lease.Critical warns when it refuses a call with a missing or empty 'key'. The fail-closed 'acquired: false' looks exactly like genuine contention, so the body silently never ran.## 0.11.0 - 2026-08-09
 ### Added
 * metadata.name is now Lease, so the module contributes its kinds under the `Lease.<Kind>` canonical prefix instead of `lease.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.10.0 - 2026-08-08
 ### Added
