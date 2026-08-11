@@ -76,6 +76,17 @@ Both `Mcp.ToolsCall` and `Mcp.ToolsList` surface a closed error union via `Invok
 
 A response with `isError: true` is converted to `ERR_MCP_TOOL_ERROR` so the success path never observes it — the `outputType` of `Mcp.ToolsCall` does not include an `isError` field.
 
+## What is logged
+
+`Mcp.StdioClient` logs its connection at `info` and **bridges the child server's stderr into records**, one per line — a stdio server owns a stream nothing can inject a logger into, so replacement is impossible and bridging is the sanctioned fallback.
+
+The bridge **maps the server's own level**, so a line beginning `ERROR:`, `[warn]` or `WARNING -` becomes a record at that severity with the original spelling preserved in `severity_text`. That is what makes a server's `ERROR: connection lost` visible at the default threshold — exactly when it is needed. A line with no recognisable level token stays at `debug`.
+
+Teardown reports two things that otherwise happen with nobody to tell, since teardown has no caller to throw to:
+
+- the **SIGKILL escalation** when the server does not exit within `shutdownGraceMs` (`warn`) — a server ignoring `SIGTERM` is losing whatever it had not flushed;
+- a **close failure** (`warn`), which is deliberately not rethrown so it cannot block shutdown.
+
 ## Out of Scope for v1
 
 - `resources/read`, `prompts/get`, `sampling`, server notifications, roots — v1 covers `tools/call` and `tools/list`.

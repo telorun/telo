@@ -4,6 +4,7 @@ import {
   type InvokeContext,
   type ResourceContext,
   type ResourceInstance,
+  SEVERITY,
   isCancellationError,
   parseDurationMs,
   resolveInvocableDispatcher,
@@ -81,6 +82,12 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
     const name = this.resource.metadata.name;
     if (!inputs || typeof inputs.key !== "string" || inputs.key.length === 0) {
       // Fail closed: an empty key must not collapse every caller into one lease.
+      // The caller sees `acquired: false`, which is also what genuine contention
+      // looks like — so without this the body silently never runs.
+      this.ctx.log.warn(
+        "Refused a call with a missing or empty 'key'; the body never runs until the caller " +
+          "supplies one",
+      );
       return { acquired: false };
     }
     if (inputs.op === "cancel") return this.cancelActive(inputs);
@@ -97,8 +104,24 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
     const holder = inputs.holder ?? randomUUID();
 
     const acq = await mutex.acquire(inputs.key, holder);
-    if (!acq.acquired) return { acquired: false, holder: acq.holder ?? null };
+    if (!acq.acquired) {
+      // `debug`, not `info`: contention is the steady state of a mutex, not an
+      // anomaly. The documented cross-replica pattern — a cron body wrapped in
+      // Lease.Critical — produces N−1 of these every single tick, forever, so at
+      // `info` the normal case would drown the log. An operator asking "why did
+      // nothing happen" raises this module's import to `level: debug`.
+      if (this.ctx.log.enabled(SEVERITY.debug)) {
+        this.ctx.log.debug("Lease is held elsewhere; the body did not run", {
+          "lease.key": inputs.key,
+          "lease.holder": String(acq.holder ?? ""),
+        });
+      }
+      return { acquired: false, holder: acq.holder ?? null };
+    }
     const version = acq.version!;
+    if (this.ctx.log.enabled(SEVERITY.debug)) {
+      this.ctx.log.debug("Lease acquired", { "lease.key": inputs.key, "lease.holder": holder });
+    }
 
     const dispatch = resolveInvocableDispatcher(
       this.resource.invoke,
@@ -126,6 +149,7 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
           this.active.delete(inputs.key);
           source.dispose();
           await mutex.release(inputs.key, version);
+          this.logReleased(inputs.key, holder, "the detached body reached its terminal");
         }
       });
       return { acquired: true, holder: null };
@@ -136,7 +160,18 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
       return { acquired: true, holder: null, result };
     } finally {
       await mutex.release(inputs.key, version);
+      this.logReleased(inputs.key, holder, "the body returned");
     }
+  }
+
+  /** `debug`: a release is the routine half of an acquire, and the pair is what
+   *  makes a hold's duration readable when a later caller finds the key held. */
+  private logReleased(key: string, holder: unknown, because: string): void {
+    if (!this.ctx.log.enabled(SEVERITY.debug)) return;
+    this.ctx.log.debug(`Lease released — ${because}`, {
+      "lease.key": key,
+      "lease.holder": String(holder),
+    });
   }
 
   /** `op: cancel` — cancel the detached body running under `key`, if any. When
@@ -145,10 +180,29 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
   private cancelActive(inputs: CriticalInputs): CriticalResult {
     const name = this.resource.metadata.name;
     const run = this.active.get(inputs.key);
-    if (!run) return { acquired: false, cancelled: false };
+    if (!run) {
+      if (this.ctx.log.enabled(SEVERITY.debug)) {
+        this.ctx.log.debug("Cancel requested for a key with no running body", {
+          "lease.key": inputs.key,
+        });
+      }
+      return { acquired: false, cancelled: false };
+    }
     if (inputs.holder != null && inputs.holder !== run.holder) {
+      // `info`: a stale caller tried to end a NEWER occupant's work. The refusal
+      // is the correct outcome, but it is indistinguishable from "nothing was
+      // running" in the returned value, and the two want opposite follow-ups.
+      this.ctx.log.info("Refused a cancel from a stale holder; the running body was left alone", {
+        "lease.key": inputs.key,
+        "lease.holder": String(run.holder),
+        "lease.requested_holder": String(inputs.holder),
+      });
       return { acquired: false, cancelled: false, holder: run.holder };
     }
+    this.ctx.log.info("Cancelling the detached body holding this lease", {
+      "lease.key": inputs.key,
+      "lease.holder": String(run.holder),
+    });
     run.source.cancel(`Lease.Critical "${name}": '${inputs.key}' cancelled by caller`);
     return { acquired: false, cancelled: true, holder: run.holder };
   }

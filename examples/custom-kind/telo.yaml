@@ -42,7 +42,6 @@ with:
     metadata: { name: Receiver }
     host: 127.0.0.1
     port: 8033
-    logger: false
     openapi:
       info:
         title: Fake webhook receiver

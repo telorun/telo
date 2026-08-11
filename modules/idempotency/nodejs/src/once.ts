@@ -1,5 +1,6 @@
 import {
   InvokeError,
+  SEVERITY,
   parseDurationMs,
   resolveInvocableDispatcher,
   type ResourceContext,
@@ -81,10 +82,20 @@ class IdempotencyOnce implements ResourceInstance<OnceInputs, OnceResult> {
     const holder = newHolderToken();
     const claim = await claims.claim(inputs.key, holder, this.claimTtlMs);
 
+    // `info` on both suppressed paths: the body did NOT run, which is the fact an
+    // operator reconstructing "why is there no side effect for this request"
+    // needs. Both return a successful result, so nothing else marks them.
     if (claim.state === "settled") {
+      this.ctx.log.info("Replayed a settled result; the body did not run", {
+        "idempotency.key": inputs.key,
+      });
       return { executed: false, state: "replayed", result: claim.value };
     }
     if (claim.state === "held") {
+      this.ctx.log.info("Key is claimed by another caller still in flight; the body did not run", {
+        "idempotency.key": inputs.key,
+        "idempotency.holder": String(claim.holder ?? ""),
+      });
       return { executed: false, state: "in-flight", holder: claim.holder ?? null };
     }
 
@@ -108,10 +119,22 @@ class IdempotencyOnce implements ResourceInstance<OnceInputs, OnceResult> {
         .then((renewed) => {
           if (renewed?.version) version = renewed.version;
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           // A failed renew is not fatal on its own — the claim simply lapses on
-          // schedule and another caller may take over. The body's own outcome
+          // schedule and another caller may take over, and the body's own outcome
           // still decides settle-vs-release below.
+          //
+          // `warn` nonetheless: a failing renew is a STORE WRITE failing, which
+          // is an infrastructure fault, and it is the leading indicator of the
+          // `ERR_CLAIM_LOST` this kind raises later. At `debug` it would only be
+          // captured by someone who had already raised the level before the
+          // incident — and by the time anyone is diagnosing the lost claim, the
+          // store failure that caused it is long gone.
+          this.ctx.log.warn(
+            "Claim heartbeat failed; the claim will lapse on schedule unless a later beat succeeds",
+            { "idempotency.key": inputs.key },
+            { error: err },
+          );
         });
     }, Math.max(1, Math.floor(this.claimTtlMs / 2)));
     // Never hold the process open for a heartbeat alone.
@@ -129,6 +152,13 @@ class IdempotencyOnce implements ResourceInstance<OnceInputs, OnceResult> {
       // The body failed, so nothing happened that must not happen twice: free the
       // key and let the caller retry. The error propagates untouched.
       await claims.release(inputs.key, version);
+      if (this.ctx.log.enabled(SEVERITY.debug)) {
+        // The error itself reaches the caller; what does not is that the key was
+        // freed, which is why an immediate retry is admitted rather than replayed.
+        this.ctx.log.debug("Body failed; released the claim so the operation stays retryable", {
+          "idempotency.key": inputs.key,
+        });
+      }
       throw err;
     } finally {
       clearInterval(heartbeat);
@@ -145,12 +175,25 @@ class IdempotencyOnce implements ResourceInstance<OnceInputs, OnceResult> {
       // persisted, so a later call will re-run the body — the guarantee is
       // already broken and the caller must hear about it rather than receive a
       // `fresh` that implies a durable record.
+      //
+      // Logged as well as thrown: this is the at-most-once guarantee breaking,
+      // and whether it stays visible must not depend on what the caller does with
+      // the error — a route's `catches:` can map it to a response and leave no
+      // other record that the key may now run twice.
+      this.ctx.log.error("Claim was lost after the body ran; the result could not be recorded", {
+        "idempotency.key": inputs.key,
+      });
       throw new InvokeError(
         "ERR_CLAIM_LOST",
         `Idempotency.Once "${name}": the body ran but its claim on key "${inputs.key}" was no ` +
           `longer held, so the result could not be recorded — a later call may run it again. ` +
           `Raise \`claimTtl\` above the body's worst-case duration.`,
       );
+    }
+    if (this.ctx.log.enabled(SEVERITY.debug)) {
+      this.ctx.log.debug("Body ran and its result was recorded", {
+        "idempotency.key": inputs.key,
+      });
     }
     return { executed: true, state: "fresh", result };
   }

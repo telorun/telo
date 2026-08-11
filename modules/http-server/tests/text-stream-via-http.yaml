@@ -168,7 +168,6 @@ with:
     host: 127.0.0.1
     port: 8946
     baseUrl: http://127.0.0.1:8946
-    logger: false
     openapi:
       info:
         title: TextStream via HTTP test

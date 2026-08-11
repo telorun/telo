@@ -1,5 +1,6 @@
 import {
   InvokeError,
+  SEVERITY,
   type InvokeContext,
   type ResourceContext,
   type ZoneEntry,
@@ -50,15 +51,38 @@ export abstract class SqlConnectionBase implements SqlConnection {
   async runInTransaction<T>(
     body: (bind: (entry: ZoneEntry) => void) => Promise<T>,
   ): Promise<T> {
-    return this.db
-      .transaction()
-      .execute((trx: Transaction<any>) => body((entry) => this.#executors.set(entry, trx)));
+    this.ctx.log.debug("Transaction started");
+    try {
+      const result = await this.db
+        .transaction()
+        .execute((trx: Transaction<any>) => body((entry) => this.#executors.set(entry, trx)));
+      this.ctx.log.debug("Transaction committed");
+      return result;
+    } catch (err) {
+      // The error reaches the caller, but the ROLLBACK does not: a caller that
+      // maps the failure to a response sees nothing saying its writes were
+      // discarded, and that is the fact worth reconstructing afterwards.
+      this.ctx.log.debug("Transaction rolled back", undefined, { error: err });
+      throw err;
+    }
   }
 
   hasOpenTransaction(ctx?: InvokeContext): boolean {
     return this.ctx.zonesFor(this, ctx).some((entry) => this.#executors.has(entry));
   }
 
+  /**
+   * Every statement this connection runs funnels through here — `executeTemplate`
+   * and `executeScript` both delegate — so it is the single instrumentation point.
+   *
+   * `db.query.text` is the statement, never the parameters: the values ARE the
+   * data, and a record carrying them would put row contents in the log. The
+   * statement itself is safe for a parameterized query (it is the template), and
+   * is `debug`-only regardless, because `Sql.Command` can carry inline literals.
+   *
+   * The disabled path allocates nothing and takes no clock reading — a query is
+   * the hottest thing this module does.
+   */
   async execute<T>(
     sql: string,
     params: unknown[] = [],
@@ -66,7 +90,22 @@ export abstract class SqlConnectionBase implements SqlConnection {
     ctx?: InvokeContext,
   ): Promise<QueryResult<T>> {
     const executor = this.resolveExecutor(zone, ctx);
-    return executor.executeQuery<T>(CompiledQuery.raw(sql, params));
+    if (!this.ctx.log.enabled(SEVERITY.debug)) {
+      return executor.executeQuery<T>(CompiledQuery.raw(sql, params));
+    }
+    const startedAt = Date.now();
+    const result = await executor.executeQuery<T>(CompiledQuery.raw(sql, params));
+    this.ctx.log.debug("Statement executed", {
+      "db.query.text": sql,
+      "db.response.returned_rows": result.rows.length,
+      // OTel's own name for this quantity, in OTel's own unit: SECONDS, as a
+      // double. Metric names and attribute keys are separate namespaces, so
+      // reusing the name is safe — what would not be safe is the name with the
+      // wrong magnitude, which is why this is not milliseconds. Units live in
+      // the convention, never in the key.
+      "db.client.operation.duration": (Date.now() - startedAt) / 1000,
+    });
+    return result;
   }
 
   async executeTemplate<T>(

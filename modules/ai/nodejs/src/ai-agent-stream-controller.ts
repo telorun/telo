@@ -1,4 +1,5 @@
-import type { InvokeContext, ResourceInstance } from "@telorun/sdk";
+import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { logCompletion } from "./completion-log.js";
 import { withTokenQuantity } from "./usage.js";
 import { InvokeError, Stream } from "@telorun/sdk";
 import {
@@ -54,7 +55,10 @@ interface AiAgentStreamOutput {
 class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStreamOutput> {
   private assembled?: AssembledTools;
 
-  constructor(private readonly resource: AiAgentStreamResource) {}
+  constructor(
+    private readonly resource: AiAgentStreamResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   async invoke(
     inputs: AiAgentStreamInputs = {},
@@ -143,7 +147,13 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
       // No tools requested this turn — the model has answered. Emit the single
       // synthesized terminal finish with accumulated usage.
       if (turnCalls.length === 0) {
-        yield { type: "finish", usage: withTokenQuantity(usage), finishReason };
+        const total = withTokenQuantity(usage);
+        // Reported on the same terms as the buffered agent: the aggregate across
+        // every turn, since a per-turn figure understates a run that looped.
+        logCompletion(this.ctx.log, "Agent stream finished", total, finishReason, {
+          "ai.agent.steps": step,
+        });
+        yield { type: "finish", usage: total, finishReason };
         return;
       }
 
@@ -183,7 +193,16 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
       };
       return;
     }
-    yield { type: "finish", usage: withTokenQuantity(usage), finishReason };
+    // `onMaxSteps: "return"` — handed back as an ordinary terminal finish, so
+    // nothing in the stream marks that the agent ran out of steps rather than
+    // converging. The buffered agent warns here for the same reason.
+    const total = withTokenQuantity(usage);
+    this.ctx.log.warn("Agent stream stopped at maxSteps without converging", {
+      "ai.agent.max_steps": maxSteps,
+      "gen_ai.usage.input_tokens": total.promptTokens,
+      "gen_ai.usage.output_tokens": total.completionTokens,
+    });
+    yield { type: "finish", usage: total, finishReason };
   }
 
   snapshot(): Record<string, unknown> {
@@ -193,7 +212,10 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
 
 export function register(): void {}
 
-export async function create(resource: AiAgentStreamResource): Promise<AiAgentStream> {
-  return new AiAgentStream(resource);
+export async function create(
+  resource: AiAgentStreamResource,
+  ctx: ResourceContext,
+): Promise<AiAgentStream> {
+  return new AiAgentStream(resource, ctx);
 }
 

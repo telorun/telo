@@ -1,5 +1,6 @@
-import type { InvokeContext, ResourceInstance } from "@telorun/sdk";
+import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { logCompletion } from "./completion-log.js";
 import type { MessageContent } from "./content.js";
 import { withTokenQuantity } from "./usage.js";
 import {
@@ -69,7 +70,10 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
   /** Tool set assembled lazily on first invoke and cached (list_changed refresh deferred). */
   private assembled?: AssembledTools;
 
-  constructor(private readonly resource: AiAgentResource) {}
+  constructor(
+    private readonly resource: AiAgentResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   async invoke(inputs: AiAgentInputs = {}, ctx?: InvokeContext): Promise<AiAgentOutput> {
     const name = this.resource.metadata.name;
@@ -109,9 +113,15 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
 
       const calls = result.toolCalls ?? [];
       if (calls.length === 0) {
+        const total = withTokenQuantity(usage);
+        // The aggregate across every turn, which is what the run actually cost —
+        // a per-turn figure would understate an agent that looped eight times.
+        logCompletion(this.ctx.log, "Agent run finished", total, result.finishReason, {
+          "ai.agent.steps": steps.length,
+        });
         return {
           text: result.text,
-          usage: withTokenQuantity(usage),
+          usage: total,
           finishReason: result.finishReason,
           steps,
         };
@@ -135,9 +145,18 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
         `Ai.Agent "${name}": did not converge within maxSteps=${maxSteps}.`,
       );
     }
+    // `onMaxSteps: "return"` — the run is handed back as an ordinary result, so
+    // nothing in the returned value marks that the agent ran out of steps rather
+    // than finishing. `warn`, because the answer is a truncation.
+    const total = withTokenQuantity(usage);
+    this.ctx.log.warn("Agent stopped at maxSteps without converging; returning the last turn", {
+      "ai.agent.max_steps": maxSteps,
+      "gen_ai.usage.input_tokens": total.promptTokens,
+      "gen_ai.usage.output_tokens": total.completionTokens,
+    });
     return {
       text: last?.text ?? "",
-      usage: withTokenQuantity(usage),
+      usage: total,
       finishReason: last?.finishReason ?? "tool-calls",
       steps,
     };
@@ -159,7 +178,10 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
 
 export function register(): void {}
 
-export async function create(resource: AiAgentResource): Promise<AiAgent> {
-  return new AiAgent(resource);
+export async function create(
+  resource: AiAgentResource,
+  ctx: ResourceContext,
+): Promise<AiAgent> {
+  return new AiAgent(resource, ctx);
 }
 

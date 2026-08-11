@@ -70,7 +70,6 @@ with:
     host: 127.0.0.1
     port: 8947
     baseUrl: http://127.0.0.1:8947
-    logger: false
     openapi:
       info: { title: NotFoundHandlerInputsTest, version: 1.0.0 }
     mounts: []

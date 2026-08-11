@@ -1,4 +1,4 @@
-import type { ResourceInstance } from "@telorun/sdk";
+import { SEVERITY, type Logger, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -23,7 +23,10 @@ interface FileWriteResult {
 }
 
 class FileWriteResource implements ResourceInstance<FileWriteInput, FileWriteResult> {
-  constructor(private readonly base: string) {}
+  constructor(
+    private readonly base: string,
+    private readonly log: Logger,
+  ) {}
 
   async invoke(input: FileWriteInput): Promise<FileWriteResult> {
     const target = resolveTarget(this.base, requirePath("Fs.FileWrite", input?.path));
@@ -31,6 +34,12 @@ class FileWriteResource implements ResourceInstance<FileWriteInput, FileWriteRes
     try {
       if (input.createParents) await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, buffer);
+      // `debug`, not `info`: a write leaves the file behind to inspect, so the
+      // record is a convenience rather than the only account — unlike a removal.
+      // The content is never logged; only where it went and how much.
+      if (this.log.enabled(SEVERITY.debug)) {
+        this.log.debug("Wrote", { "file.path": target, "file.size": buffer.byteLength });
+      }
       return { bytesWritten: buffer.byteLength };
     } catch (err) {
       throw wrapFsError("Fs.FileWrite: cannot write", target, err);
@@ -40,6 +49,9 @@ class FileWriteResource implements ResourceInstance<FileWriteInput, FileWriteRes
 
 export function register(): void {}
 
-export async function create(resource: FsManifest): Promise<FileWriteResource> {
-  return new FileWriteResource(resolveBase(resource.cwd));
+export async function create(
+  resource: FsManifest,
+  ctx: ResourceContext,
+): Promise<FileWriteResource> {
+  return new FileWriteResource(resolveBase(resource.cwd), ctx.log);
 }

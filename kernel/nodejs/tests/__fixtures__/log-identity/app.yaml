@@ -1,0 +1,22 @@
+##
+# Loaded by `logging-kernel.test.ts` (§7.3 resource identity).
+#
+# The alias is deliberately nothing like the module's own name: a record keyed on
+# the importer's alias would make two apps importing the same module produce
+# incomparable records, so `Zzz` is what proves the emitted kind is canonical.
+kind: Telo.Application
+metadata:
+  name: LogIdentityApp
+imports:
+  Zzz: ./
+logging:
+  level: info
+  sinks:
+    - kind: Telo.ConsoleSink
+      encoding: json
+targets:
+  - !ref Emit
+---
+kind: Zzz.Emitter
+metadata:
+  name: Emit

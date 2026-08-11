@@ -54,8 +54,11 @@ export class ScheduleRunner {
     if (this.stopped) return;
     const delay = this.nextDelay();
     if (delay === null) {
-      this.ctx.log.log(SEVERITY.info, `${this.label}: no further occurrences; schedule ended.`);
+      this.ctx.log.info("No further occurrences; the schedule has ended");
       return;
+    }
+    if (this.ctx.log.enabled(SEVERITY.debug)) {
+      this.ctx.log.debug("Armed for the next occurrence", { "schedule.delay_ms": delay });
     }
     this.timer = setTimeout(() => {
       this.inFlight = this.tick().finally(() => {
@@ -69,7 +72,15 @@ export class ScheduleRunner {
    *  failure is reported in full rather than dropped. */
   private async tick(): Promise<void> {
     try {
-      if (!this.gateOpen()) return;
+      const gate = this.gate();
+      // A skipped tick is indistinguishable from one that never came due — the
+      // schedule just goes quiet — so the gate's verdict is only visible here.
+      // An invalid gate has already reported itself at `error`.
+      if (gate === "closed") {
+        this.ctx.log.debug("Tick skipped: the `when` gate is closed");
+        return;
+      }
+      if (gate === "invalid") return;
       const inputs = (this.ctx.expandValue(this.resource.inputs ?? {}, {}) ??
         {}) as Record<string, unknown>;
       const dispatch = resolveInvocableDispatcher(
@@ -77,29 +88,32 @@ export class ScheduleRunner {
         this.ctx,
         () => this.label,
       );
+      this.ctx.log.debug("Tick firing");
       // rootContext: a timer-driven inbound dispatch starts from a context
       // inheriting nothing ambient (kernel/specs/execution-zones.md §7).
       await dispatch(inputs, this.ctx.rootContext());
     } catch (err) {
-      this.ctx.log.log(SEVERITY.error, `${this.label}: tick failed`, {
-        error: err instanceof Error ? err.message : String(err),
-      });
+      // The thrown value goes in `error`, not into an attribute: the record's
+      // `error` field is the structured ErrorValue (§4.2), so it keeps the type,
+      // the stack, and the `cause` chain that `err.message` alone discards.
+      this.ctx.log.error("Tick failed", undefined, { error: err });
     }
   }
 
   /** A `when` that isn't a boolean is an authoring error, not a silent skip —
-   *  reported, and the tick is skipped so a bad gate can't fire the body. */
-  private gateOpen(): boolean {
-    if (this.resource.when === undefined) return true;
+   *  reported, and the tick is skipped so a bad gate can't fire the body. The
+   *  three verdicts stay distinct because they are reported differently: a closed
+   *  gate is routine, an invalid one is a defect. */
+  private gate(): "open" | "closed" | "invalid" {
+    if (this.resource.when === undefined) return "open";
     const verdict = this.ctx.expandValue(this.resource.when, {});
     if (typeof verdict !== "boolean") {
-      this.ctx.log.log(
-        SEVERITY.error,
-        `${this.label}: \`when\` evaluated to ${typeof verdict}, expected a boolean — tick skipped.`,
+      this.ctx.log.error(
+        `\`when\` evaluated to ${typeof verdict}, expected a boolean — tick skipped`,
       );
-      return false;
+      return "invalid";
     }
-    return verdict;
+    return verdict ? "open" : "closed";
   }
 
   /** Disarm first so no new tick starts, then drain the one already running. */

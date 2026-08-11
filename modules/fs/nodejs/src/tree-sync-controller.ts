@@ -1,4 +1,4 @@
-import type { ResourceInstance } from "@telorun/sdk";
+import { SEVERITY, type Logger, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -33,7 +33,10 @@ interface TreeSyncResult {
  *  empty `delete`) and a partial delta (only what changed) without disturbing
  *  untouched files. */
 class TreeSyncResource implements ResourceInstance<TreeSyncInput, TreeSyncResult> {
-  constructor(private readonly base: string) {}
+  constructor(
+    private readonly base: string,
+    private readonly log: Logger,
+  ) {}
 
   async invoke(input: TreeSyncInput): Promise<TreeSyncResult> {
     const writes = input?.write ?? [];
@@ -49,6 +52,9 @@ class TreeSyncResource implements ResourceInstance<TreeSyncInput, TreeSyncResult
       try {
         await mkdir(path.dirname(target), { recursive: true });
         await writeFile(target, buffer);
+        if (this.log.enabled(SEVERITY.debug)) {
+          this.log.debug("Wrote", { "file.path": target, "file.size": buffer.byteLength });
+        }
       } catch (err) {
         throw wrapFsError("Fs.TreeSync: cannot write", target, err);
       }
@@ -60,9 +66,23 @@ class TreeSyncResource implements ResourceInstance<TreeSyncInput, TreeSyncResult
         // force: a path already gone is not an error (idempotent sync);
         // recursive: a deleted path may be a directory.
         await rm(target, { recursive: true, force: true });
+        // Per path at `debug`; the default-visible account is the single summary
+        // below. A sync legitimately carries hundreds of paths, so one `info`
+        // each would make a routine delta the loudest thing in the log.
+        if (this.log.enabled(SEVERITY.debug)) {
+          this.log.debug("Deleted", { "file.path": target });
+        }
       } catch (err) {
         throw wrapFsError("Fs.TreeSync: cannot remove", target, err);
       }
+    }
+
+    // `info`, once: this delete is recursive and `force: true`, so a mistyped
+    // path takes a tree and a path that never existed reports success either
+    // way. The count is the account that a deletion happened at all; `debug`
+    // above says which paths.
+    if (deletes.length > 0) {
+      this.log.info("Deleted paths", { "fs.deleted_count": deletes.length });
     }
 
     return { written: writes.length, deleted: deletes.length };
@@ -71,6 +91,9 @@ class TreeSyncResource implements ResourceInstance<TreeSyncInput, TreeSyncResult
 
 export function register(): void {}
 
-export async function create(resource: FsManifest): Promise<TreeSyncResource> {
-  return new TreeSyncResource(resolveBase(resource.cwd));
+export async function create(
+  resource: FsManifest,
+  ctx: ResourceContext,
+): Promise<TreeSyncResource> {
+  return new TreeSyncResource(resolveBase(resource.cwd), ctx.log);
 }

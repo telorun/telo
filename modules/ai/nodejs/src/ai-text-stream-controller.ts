@@ -6,7 +6,7 @@ import type {
 } from "@telorun/sdk";
 import { InvokeError, Stream } from "@telorun/sdk";
 import { isContentParts } from "./content.js";
-import { stampStreamUsage } from "./usage.js";
+import { reportStreamUsage, stampStreamUsage } from "./usage.js";
 import type { AiModelInstance, Message, StreamPart } from "./types.js";
 
 /**
@@ -44,7 +44,10 @@ const VALID_ROLES = new Set(["system", "user", "assistant"]);
  * a `JS.Script` step.
  */
 class AiTextStream implements ResourceInstance<AiTextStreamInputs, AiTextStreamOutput> {
-  constructor(private readonly resource: AiTextStreamResource) {}
+  constructor(
+    private readonly resource: AiTextStreamResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   async invoke(
     inputs: AiTextStreamInputs = {},
@@ -103,7 +106,9 @@ class AiTextStream implements ResourceInstance<AiTextStreamInputs, AiTextStreamO
     // consumption and aborts the live model connection on cancel.
     const parts = model.stream({ messages, options: mergedOptions, signal: ctx?.cancellation.signal });
     // Stamped so a streamed run reports usage exactly as a buffered one does.
-    return { output: new Stream(stampStreamUsage(parts)) };
+    return {
+      output: new Stream(reportStreamUsage(stampStreamUsage(parts), this.ctx.log)),
+    };
   }
 
   snapshot(): Record<string, unknown> {
@@ -145,8 +150,8 @@ export function register(_ctx: ControllerContext): void {}
 
 export async function create(
   resource: AiTextStreamResource,
-  _ctx: ResourceContext,
+  ctx: ResourceContext,
 ): Promise<AiTextStream> {
-  return new AiTextStream(resource);
+  return new AiTextStream(resource, ctx);
 }
 

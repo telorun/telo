@@ -1,6 +1,7 @@
 import {
   parseDurationMs,
   RuntimeError,
+  type Logger,
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
@@ -58,11 +59,16 @@ export class TokenSourceResource implements ResourceInstance {
   private readonly grantTtlMs: number;
   readonly refreshSkewMs: number;
   private readonly claimTtlMs: number;
+  /** The token lifecycle is driven by free functions in `tokens.ts` that hold
+   *  only the source, so the logger is reached through it — and the source is
+   *  the right identity on the record, since the refresh is its operation. */
+  readonly log: Logger;
 
   constructor(
     private readonly manifest: TokenSourceManifest,
     ctx: ResourceContext,
   ) {
+    this.log = ctx.log;
     const describe = () => `OAuthClient.TokenSource "${manifest.metadata?.name ?? ""}"`;
     this.client = ctx.resolveRef(
       manifest.client,
@@ -167,7 +173,15 @@ export class TokenSourceResource implements ResourceInstance {
     const claimKey = `oauth/refresh/${key}`;
     const holder = newHolderToken();
     const claim = await this.claims.claim(claimKey, holder, this.claimTtlMs);
-    if (claim.state !== "new") return whenHeld();
+    if (claim.state !== "new") {
+      // Single-flight working as intended, and invisible in the result: the
+      // caller gets tokens either way and cannot tell whose refresh produced
+      // them. Worth seeing when diagnosing a provider that rotates aggressively.
+      this.log.debug("Another caller holds the refresh claim; reading their result instead", {
+        "oauth.key": key,
+      });
+      return whenHeld();
+    }
     try {
       return await refresh();
     } finally {

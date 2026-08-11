@@ -92,6 +92,18 @@ durable — would be the double execution this kind exists to prevent.
 
 `claimTtl` should sit comfortably above the body's worst-case duration. Too short and a genuinely slow body can have its key taken over and the work done twice; there is no value that is safe if the body can outrun every heartbeat, so size it against the real upper bound.
 
+Every outcome is logged: a replay and an in-flight collision at `info`, a fresh run and the retryable release after a failed body at `debug`, and a lost claim at `error`. Both suppressed paths return successfully, so without the record nothing marks that the body did not run. `ERR_CLAIM_LOST` is logged as well as thrown — the at-most-once guarantee breaking must stay visible regardless of what the caller does with the error.
+
+> **`idempotency.key` is on those records, including the `info` ones**, and an idempotency key is supplied by the caller — often a request id, sometimes a user or tenant id. Redact it at the root if that is not acceptable:
+>
+> ```yaml
+> logging:
+>   redact:
+>     paths: ["idempotency.key"]
+> ```
+
+A heartbeat that fails to renew is logged at `warn` with the key. It is not fatal on its own — a later beat may succeed — but it is a store *write* failing, which is an infrastructure fault, and it is the leading indicator of an `ERR_CLAIM_LOST`. It is `warn` rather than `debug` precisely because a level you have to raise in advance is no use here: by the time anyone is diagnosing the lost claim, the store failure that caused it is long over.
+
 `ttl` should cover the window in which a caller could retry — a client's retry budget, a webhook sender's redelivery schedule. Once it lapses the key is new again and the operation may legitimately run once more.
 
 ## At most once, not exactly once

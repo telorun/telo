@@ -65,7 +65,6 @@ with:
     host: 127.0.0.1
     port: 8971
     baseUrl: http://127.0.0.1:8971
-    logger: false
     openapi:
       info:
         title: Todos API

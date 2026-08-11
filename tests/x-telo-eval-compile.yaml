@@ -35,7 +35,6 @@ with:
     port: "${{ 8857 }}"
     baseUrl: "${{ 'http://localhost:8857' }}"
     host: "${{ 'localhost' }}"
-    logger: false
     mounts:
       - path: /api
         mount: !ref TestApi

@@ -1145,17 +1145,31 @@ This also removes the duplication where a stream failure was both logged to Pino
 and separately re-emitted as an event for debug tooling — with the adapter in
 place, one record reaches every sink, including the debug wire.
 
-**Whether to instrument requests at all is derived from the resolved scope
-threshold, not a per-server flag.** There is no `Http.Server.logger` field.
-Fastify's per-request access lines are `info`-severity, so the server instruments
-requests iff `info` is enabled for its scope: on by default, and suppressed by
-raising the module's import to `level: warn`, which skips the per-request work
-entirely (Fastify's null logger) rather than building a record and discarding it.
-A boolean toggle would only duplicate what the threshold already expresses —
-`warn` keeps server error logs while dropping access noise, because the two
-differ in severity. The instrument-or-not decision is fixed at construction; a
-runtime threshold change (§12.4) still gates output through the adapter but does
-not re-instrument a server booted with request logging off.
+**The access record belongs to the KIND, not to the framework.** A conforming
+`Http.Server` disables its framework's own request logging and emits the record
+from its own middleware, so the record's shape is the kind's contract rather than
+whatever Pino, `tower-http` or `net/http` would produce. Consumers key on
+`event_name` (§4), never on the message: the message is prose and is the one
+field that legitimately differs between two implementations of one kind.
+
+**Whether requests are logged at all is derived from the resolved scope
+threshold, not a per-server flag.** There is no `Http.Server.logger` field. The
+access record is `info` (an error response is `error`), so it is on by default
+and suppressed by raising the module's import to `level: warn`. A boolean toggle
+would only duplicate what the threshold already expresses — `warn` keeps server
+error logs while dropping access noise, because the two differ in severity.
+
+For that to hold, the adapter MUST be injected unconditionally. Gating the
+injection on a threshold hands the framework its null logger at `warn` and
+silently drops every diagnostic the framework owns — the failures `warn` is
+specifically there to keep. The per-record threshold check belongs inside the
+adapter, where it costs one predicate.
+
+**A threshold governs a scope, and a scope cannot address a path.** One server is
+one resource in one module context, so the import-scoped level cannot quieten a
+health endpoint polled every second while leaving the rest of the server logging.
+A runtime MAY therefore let a mount carry its own level; that is a module-level
+concern and is not specified here.
 
 ---
 

@@ -97,9 +97,34 @@ class SqlMigrationsResource implements ResourceInstance {
       migrationLockTableName: "migration_locks",
     });
 
-    const { error } = await migrator.migrateToLatest();
+    const { error, results } = await migrator.migrateToLatest();
+    // A schema change is the least reversible thing an app does at boot, and the
+    // per-migration outcome was being discarded — so a run that applied four
+    // migrations and a run that found none to apply looked identical afterwards.
+    // `info`, because which migrations a deployment applied is the fact you go
+    // looking for when a schema is not what you expected.
+    // `sql.migration.name`, not `db.migration.name`: OTel owns `db.*` and defines
+    // no migration attribute, and §6.2 forbids inventing keys inside a namespace
+    // someone else governs.
+    for (const applied of results ?? []) {
+      if (applied.status === "Success") {
+        this.ctx.log.info("Migration applied", { "sql.migration.name": applied.migrationName });
+      } else if (applied.status === "Error") {
+        // The cause rides on the record: this is the error-severity line an
+        // operator finds first, and the migration name alone cannot say what
+        // went wrong. `error` keeps the type, stack and cause chain (§4.2).
+        this.ctx.log.error(
+          "Migration failed",
+          { "sql.migration.name": applied.migrationName },
+          { error },
+        );
+      }
+    }
     if (error) {
       throw error;
+    }
+    if (!results?.length) {
+      this.ctx.log.debug("No pending migrations");
     }
   }
 }

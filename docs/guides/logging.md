@@ -205,11 +205,89 @@ if (ctx.log.enabled(SEVERITY.debug)) {
 }
 ```
 
+**When to guard.** The standard library follows one rule: *guard a `debug` call
+when it sits on a per-operation path **and** builds arguments.* A call that
+passes no attributes allocates nothing, so a guard there only adds a second
+threshold check; a per-request or per-statement call that builds an attribute
+object allocates on every operation whether or not anything is listening. A
+lifecycle event that happens once per connection or per token refresh is not a
+per-operation path and needs no guard.
+
+### Choosing a level
+
+The standard library's convention, worth following in a third-party module:
+
+| Level | For |
+|---|---|
+| `info` | Something a default-configured operator needs: a schema migration, a token refresh, an at-most-once replay that suppressed a body, metered usage. |
+| `debug` | The routine per-operation outcome — a cache hit, an allowed request, a statement, a lease acquire/release. |
+| `warn` | Degraded but continuing: a swallowed failure, a fail-closed default, an infrastructure write that failed. |
+| `error` | A failure the caller cannot see, or an invariant break that must outlive the caller's error handling. |
+
+The load test for `info` is the one worth applying deliberately: **if the record
+scales with request volume, it belongs at `debug`.** Sampling is off by default,
+so nothing bounds an `info` on a hot path — a rate limiter logging every
+rejection at `info` turns the log into the amplifier the limiter exists to
+prevent.
+
+The deliberate exception is an **access log**, where the record *is* the primary
+artifact rather than a decision taken inside one. `Http.Server` logs a line per
+request at `info` for that reason (an error response at `error`), and it is
+switched off the same way as anything else — by raising that import's level to
+`warn`. The distinction is whether the record describes the operation itself or
+something the operation decided along the way.
+
 Bind attributes once with `ctx.log.with({ component: "db" })` — record
 attributes win over bound ones.
 
-Attribute keys should follow OpenTelemetry semantic conventions
-(`http.request.method`, `db.system`). The `telo.*` namespace is reserved.
+### Attribute keys
+
+Follow OpenTelemetry semantic conventions where one exists
+(`http.request.method`, `db.query.text`, `file.path`, `process.exit.code`).
+
+Two rules keep that honest:
+
+- **Use OpenTelemetry's name whenever OpenTelemetry names the concept — and its
+  unit with it.** This holds regardless of which signal the convention was
+  written for: metric names and attribute keys are separate namespaces, so
+  `db.client.operation.duration` on a record is fine. What is *not* fine is that
+  name carrying a different magnitude. OTel durations are **seconds, as a
+  double**, so a millisecond value under one of those names is wrong by 1000×
+  to every consumer that knows the convention.
+- **Never put a unit in a key.** The unit belongs to the convention, which is
+  why it is `…request.duration`, not `…request.duration_ms`. A `_ms` suffix is a
+  sign the name is invented.
+- **Never invent a key inside a namespace OpenTelemetry owns.** Where OTel names
+  nothing — `ai.agent.steps`, `sql.migration.name`, `httpserver.request_id`,
+  `cache.key` — use the module's own prefix rather than borrowing `gen_ai.*`,
+  `db.*` or `http.*` for something they do not define.
+- **Don't reuse a convention whose meaning you cannot honour.** `url.full` means
+  the absolute URL; publishing a query-stripped value under it hands a consumer
+  something that silently differs from the request made. Use the attributes that
+  are accurate (`server.address`, `url.path`), or a module-scoped key.
+
+The `telo.*` namespace is reserved for the runtime.
+
+### Naming an event
+
+A record's **message is prose and nothing should ever match on it** — it is the
+one field that differs between a Node, Rust or Go implementation of the same
+kind, because it usually comes from whatever library is underneath.
+
+When a record represents a *class* of event rather than a one-off line, name it
+with `eventName`. That is the stable key a consumer, a test, or a dashboard
+keys on, and it is what lets two implementations of one kind be read by the
+same consumer:
+
+```ts
+ctx.log.info("Request completed", attributes, { eventName: "http.server.request" });
+```
+
+`Http.Server` is the worked example — `http.server.started`,
+`http.server.request`, `http.server.request.started`, `http.server.stopped`.
+A second implementation of that kind emits the same four names with the same
+attributes from its own framework's middleware, and every message string may
+differ without any consumer noticing.
 
 A controller emits diagnostics only through `ctx.log`. Writing to stdout as
 *data* — what the `Console` module does — is a separate concern and is

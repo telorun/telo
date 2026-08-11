@@ -59,6 +59,32 @@ user's authorization down with it. When the server does rotate, the new refresh
 token replaces the stored one; when it does not, the existing one is kept rather
 than being dropped.
 
+## What is logged
+
+A successful refresh logs at `info` with the grant key, the new expiry, and
+whether the server rotated the refresh token. **No token material is ever put on a
+record** — not the access token, not the refresh token.
+
+The grant key *is* on those records, and a grant key is usually a user or tenant
+id. Redact it at the root if that is not acceptable:
+
+```yaml
+logging:
+  redact:
+    paths: ["oauth.key"]
+```
+
+A grant that has expired with no refresh token logs at `warn`: it cannot be
+recovered without a human signing in again, and that is the moment a background
+job silently stops being authorized.
+
+At `debug` you also get which trigger caused a refresh — the stored token being
+expired or inside `refreshSkew`, versus the server having just rejected it
+(`forceRefresh`, the http-client's single retry after a 401) — and each time a
+caller found the refresh claim already held. The distinction is worth having: a
+run of server-rejected tokens points at clock skew or a `refreshSkew` set too
+small, rather than at ordinary expiry.
+
 ## Reading and clearing
 
 `GrantRead` reports what is stored without refreshing anything — use it to decide

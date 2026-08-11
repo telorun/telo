@@ -49,7 +49,6 @@ metadata:
   module: FeedbackApi
 baseUrl: http://localhost:8844
 port: 8844
-logger: false
 openapi:
   info:
     title: Feedback API

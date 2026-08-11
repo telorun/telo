@@ -1,6 +1,7 @@
 import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import {
   InvokeError,
+  SEVERITY,
   parseDurationMs,
   resolveInvocableDispatcher,
 } from "@telorun/sdk";
@@ -62,26 +63,59 @@ class CacheView implements ResourceInstance<ViewInputs, CacheLookupResult> {
     );
     const cached = await store.get(key);
 
-    if (cached.state === "fresh") return cached;
+    if (cached.state === "fresh") {
+      this.logOutcome("served from cache", key, cached.age);
+      return cached;
+    }
 
     if (cached.state === "stale") {
       if (this.revalidate === "background") {
+        this.logOutcome("served stale, revalidating in the background", key, cached.age);
         this.scheduleBackground(key, inputs, store);
         return cached;
       }
       if (this.revalidate === "sync") {
         try {
           const value = await this.loadAndStore(key, inputs, store);
+          this.logOutcome("revalidated before returning", key, cached.age);
           return { state: "stale", value, age: 0 };
-        } catch {
-          return cached; // stale-if-error: keep serving the stale value
+        } catch (err) {
+          // stale-if-error: keep serving the stale value. The caller gets a
+          // successful response and never learns the upstream is down, so this
+          // is the only place the failure can be reported at all.
+          this.ctx.log.warn(
+            "Revalidation failed; serving the stale value",
+            { "cache.key": key, "cache.age": cached.age },
+            { error: err },
+          );
+          return cached;
         }
       }
       // "off": ignore the stale value, reload as for a miss.
     }
 
     const value = await this.loadAndStore(key, inputs, store);
+    this.logOutcome("called through", key);
     return { state: "miss", value, age: 0 };
+  }
+
+  /**
+   * One record per lookup, naming what the view actually DID. `debug`, because
+   * serving a hit is routine — the notable outcome, a revalidation that failed,
+   * warns instead.
+   *
+   * The action is not recoverable from the returned state: a `stale` result may
+   * or may not have triggered a revalidation depending on `revalidate`, and with
+   * `revalidate: off` a stale entry is reported to the caller as a `miss`. It is
+   * also not recoverable from the trace, which is off by default.
+   */
+  private logOutcome(action: string, key: string, age?: number | null): void {
+    if (!this.ctx.log.enabled(SEVERITY.debug)) return;
+    // A null age is "unknown", not a reading — omitted rather than reported.
+    this.ctx.log.debug(
+      action,
+      typeof age === "number" ? { "cache.key": key, "cache.age": age } : { "cache.key": key },
+    );
   }
 
   private scheduleBackground(key: string, inputs: ViewInputs, store: CacheStore): void {
@@ -92,6 +126,17 @@ class CacheView implements ResourceInstance<ViewInputs, CacheLookupResult> {
     this.ctx.runDetached(async () => {
       try {
         await this.loadAndStore(key, inputs, store);
+      } catch (err) {
+        // Reported here rather than rethrown into the kernel's unhandled-detached
+        // net: the key is the actionable half and only this frame has it, and a
+        // background revalidation that fails is the same degraded-but-correct
+        // condition the `sync` branch reports above — the stale value keeps
+        // serving either way, so both modes report it identically.
+        this.ctx.log.warn(
+          "Background revalidation failed; the stale value keeps serving until it expires",
+          { "cache.key": key },
+          { error: err },
+        );
       } finally {
         this.revalidating.delete(key);
       }

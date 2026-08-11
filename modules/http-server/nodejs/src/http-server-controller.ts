@@ -1,5 +1,5 @@
 import cors from "@fastify/cors";
-import { createFastifyTeloLogger } from "./fastify-telo-logger.js";
+import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
 import swagger from "@fastify/swagger";
 import apiReference from "@scalar/fastify-api-reference";
 import {
@@ -11,14 +11,16 @@ import {
 import {
   isInvokeError,
   SEVERITY,
+  severityForLevel,
   type Invocable,
   type KindRef,
+  type LevelName,
   type ResourceContext,
   type ResourceInstance,
   type RuntimeResource,
 } from "@telorun/sdk";
 import addFormats from "ajv-formats";
-import Fastify, { FastifyInstance } from "fastify";
+import Fastify, { FastifyInstance, type FastifyRequest } from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
 
 /** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
@@ -62,6 +64,7 @@ type HttpServerResource = RuntimeResource & {
     // x-telo-ref `Telo.Mount`: Phase 5 replaces this slot with the live mounted
     // instance (Http.Api, Mcp.HttpEndpoint, …), local or imported.
     mount?: Mountable;
+    logging?: { level?: LevelName };
   }>;
   notFoundHandler?: {
     invoke: KindRef<Invocable>;
@@ -81,6 +84,9 @@ type ResolvedHandler = {
 
 class HttpServer implements ResourceInstance {
   private releaseHold: (() => void) | null = null;
+  /** Whether a socket actually opened, so `http.server.stopped` is only emitted
+   *  for a server that emitted `http.server.started`. */
+  private listening = false;
   private pluginsInitialized = false;
   private readonly app: FastifyInstance;
   private readonly host: string;
@@ -113,24 +119,28 @@ class HttpServer implements ResourceInstance {
     // it, the legacy `trustForwardedHeaders` boolean still applies.
     const trustProxy = resource.trustProxy ?? this.trustForwardedHeaders;
     // §13.3: replacement, not bridging — Fastify's Pino instance is swapped for
-    // a Telo-backed adapter, so request records are Telo records at the source
-    // and inherit the root `logging:` block's level, encoding, redaction, and
-    // sinks.
+    // a Telo-backed adapter, so its records are Telo records at the source and
+    // inherit the root `logging:` block's level, encoding, redaction, and sinks.
     //
-    // Whether to instrument requests at all is derived from the resolved scope
-    // threshold, not a manifest flag: Fastify's per-request access lines are
-    // `info`-severity, so we instrument iff `info` is enabled for this server's
-    // scope. Raise the http-server import to `level: warn` and the per-request
-    // work is skipped entirely (Fastify's null logger) rather than built and
-    // discarded per request. This is a construction-time decision — a *runtime*
-    // threshold change (§12.4) still gates output through the adapter, but does
-    // not re-instrument a server booted with logging off.
+    // The adapter is injected UNCONDITIONALLY. It used to be gated on `info`
+    // being enabled, because that was what avoided building a per-request record
+    // at a raised threshold — but `disableRequestLogging` now removes that cost
+    // outright, so the gate's only remaining effect was to hand Fastify its null
+    // logger at `level: warn` and silently drop every diagnostic it owns: the
+    // error handler's own failures, reply-send failures, aborted-request hooks.
+    // Those are exactly the records `warn` is supposed to KEEP. The adapter's
+    // `emit` short-circuits on `log.enabled`, so a quiet server pays one
+    // predicate per suppressed record and keeps its errors.
     //
     // A custom logger *instance* must be passed via Fastify 5's `loggerInstance`
     // option; passing it to `logger:` throws FST_ERR_LOG_INVALID_LOGGER_CONFIG.
-    const requestLogging = this.ctx.log.enabled(SEVERITY.info);
     this.app = Fastify({
-      ...(requestLogging ? { loggerInstance: createFastifyTeloLogger(this.ctx.log) } : {}),
+      loggerInstance: createFastifyTeloLogger(this.ctx.log),
+      // Fastify's own per-request lines are off: this kind emits its own from
+      // `onRequest` / `onResponse` instead (see `installRequestLogging`), so the
+      // access record's shape is this KIND's contract rather than Pino's prose —
+      // which is what lets a Rust or Go implementation emit the same thing.
+      disableRequestLogging: true,
       trustProxy,
       ajv: { customOptions: { useDefaults: true }, plugins: [addFormats.default as any] },
     });
@@ -144,7 +154,115 @@ class HttpServer implements ResourceInstance {
     this.setupRoutes();
   }
 
+  /**
+   * The access log, emitted by this kind rather than by Fastify.
+   *
+   * The contract is `event_name` plus OTel attributes — never the message text,
+   * which is prose and differs per framework. That is what makes the record
+   * readable across runtimes: an axum or net/http implementation registers the
+   * equivalent middleware and emits the same `http.server.request`.
+   *
+   * One `info` record per request, on completion — the convention every access
+   * log follows (nginx, Caddy, tower-http). The received-side record is `debug`
+   * because it carries no outcome; its one real use is a request that HANGS and
+   * never completes, which otherwise leaves no trace at all.
+   */
+  /**
+   * Per-mount access-log floors, longest prefix first so the match is the first
+   * hit. Built once at init rather than per request — the mount set is fixed.
+   *
+   * A mount's `logging.level` exists because the import-scoped threshold (§12.2)
+   * governs a whole module instance: one `Http.Server` is one resource in one
+   * scope, so it cannot quieten `/health` while leaving `/api` alone. This can.
+   */
+  private mountLogFloors(): ReadonlyArray<{ prefix: string; floor: number }> {
+    return (this.resource.mounts ?? [])
+      .flatMap((mount) => {
+        const level = mount.logging?.level;
+        if (!level) return [];
+        return [{ prefix: mount.path || "", floor: severityForLevel(level) }];
+      })
+      .sort((a, b) => b.prefix.length - a.prefix.length);
+  }
+
+  private installRequestLogging() {
+    const log = this.ctx.log;
+    const floors = this.mountLogFloors();
+    /**
+     * `http.route` is the matched TEMPLATE (`/todos/:id`), never the concrete
+     * path: low-cardinality, which is what an access log is aggregated on.
+     *
+     * When nothing matched — every 404 — there IS no template, and the key is
+     * omitted rather than filled with the concrete URL. Falling back would let
+     * an unauthenticated caller write arbitrary strings into the `info`-level
+     * attribute a dashboard groups on: one 404 scan, unbounded cardinality.
+     * Omission is also what OTel requires when there is no match.
+     *
+     * `routeOptions` is a getter that rebuilds an options object on every access,
+     * so it is read once per hook and passed around as the resolved value.
+     */
+    const routeAttribute = (route: string | undefined): { "http.route"?: string } =>
+      route === undefined ? {} : { "http.route": route };
+
+    /** The floor this request must clear: its mount's, or none. Matched on the
+     *  concrete URL, since that is what a mount prefix attaches to. */
+    const floorFor = (request: FastifyRequest): number => {
+      for (const { prefix, floor } of floors) {
+        if (prefix === "" || request.url === prefix || request.url.startsWith(`${prefix}/`)) {
+          return floor;
+        }
+      }
+      return 0;
+    };
+
+    /** A 5xx is not the same class of event as a 200, and both were `info`.
+     *  Deriving severity from the status is also what makes a quietened mount
+     *  safe: `level: warn` on a health check still surfaces it returning 500,
+     *  rather than going blind on the path that matters most.
+     *
+     *  4xx stays `info` deliberately — a 404 or a 401 is ordinary traffic, and
+     *  promoting it would make a scanner walking random URLs read as an incident. */
+    const severityForStatus = (status: number): number =>
+      status >= 500 ? SEVERITY.error : SEVERITY.info;
+
+    this.app.addHook("onRequest", async (request) => {
+      if (!log.enabled(SEVERITY.debug) || SEVERITY.debug < floorFor(request)) return;
+      log.debug(
+        "Request received",
+        {
+          "http.request.method": request.method,
+          ...routeAttribute(request.routeOptions?.url),
+          "url.path": request.url,
+          "httpserver.request_id": String(request.id),
+        },
+        { eventName: "http.server.request.started" },
+      );
+    });
+
+    this.app.addHook("onResponse", async (request, reply) => {
+      const severity = severityForStatus(reply.statusCode);
+      if (!log.enabled(severity) || severity < floorFor(request)) return;
+      log.log(
+        severity,
+        "Request completed",
+        {
+          "http.request.method": request.method,
+          ...routeAttribute(request.routeOptions?.url),
+          "http.response.status_code": reply.statusCode,
+          // OTel's name in OTel's unit: seconds, as a double. Fastify measures in
+          // milliseconds at full `hrtime` precision, so this is rounded to
+          // microseconds — finer than anything an access log needs, and without
+          // it the division prints seventeen digits of float noise.
+          "http.server.request.duration": Math.round(reply.elapsedTime * 1000) / 1e6,
+          "httpserver.request_id": String(request.id),
+        },
+        { eventName: "http.server.request" },
+      );
+    });
+  }
+
   private async setupPlugins() {
+    this.installRequestLogging();
     for (const { contentType, parser, stream } of this.resource.contentTypeParsers ?? []) {
       if (stream) {
         // Raw passthrough: omit `parseAs` so Fastify hands the handler the
@@ -371,7 +489,31 @@ class HttpServer implements ResourceInstance {
   async run(): Promise<void> {
     this.releaseHold = this.ctx.acquireHold();
     try {
-      await this.app.listen({ host: this.host, port: this.port });
+      await this.app.listen({
+        host: this.host,
+        port: this.port,
+        // Fastify announces "Server listening at http://…" through the injected
+        // logger, interpolating the address into prose — unparseable, and exactly
+        // what §4.1 routes into attributes. Replacing the text with a constant
+        // this module owns lets the adapter drop it without pattern-matching
+        // Fastify's wording, which is the thing this kind's own contract forbids.
+        listenTextResolver: () => LISTEN_SUPERSEDED,
+      });
+      this.listening = true;
+      this.ctx.log.info(
+        "Listening",
+        {
+          "server.address": this.host,
+          "server.port": this.port,
+          // The SOCKET's scheme, which this kind only ever opens as plain HTTP —
+          // there is no TLS field on `Http.Server`. `baseUrl` is the ADVERTISED
+          // url and is routinely `https://` behind a terminator, so deriving from
+          // it would claim TLS for a plaintext socket on the most common
+          // production deployment there is.
+          "url.scheme": "http",
+        },
+        { eventName: "http.server.started" },
+      );
       await this.ctx.emitEvent(`${this.resource.metadata.name}.Listening`, {
         port: this.port,
         host: this.host,
@@ -395,6 +537,18 @@ class HttpServer implements ResourceInstance {
       this.releaseHold = null;
     }
     await this.app.close();
+    // Only if a socket actually opened. A server that initialized but was never
+    // listed in `targets:`, or whose `listen()` threw, would otherwise report a
+    // close for something that never started — and a consumer pairing the two
+    // events for uptime or leak detection sees an unmatched close.
+    if (this.listening) {
+      this.listening = false;
+      this.ctx.log.info(
+        "Stopped listening",
+        { "server.address": this.host, "server.port": this.port },
+        { eventName: "http.server.stopped" },
+      );
+    }
   }
 }
 

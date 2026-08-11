@@ -26,7 +26,6 @@ kind: Http.Server
 metadata:
   name: TemplatedApiServer
 port: !cel "ports.http"
-logger: true
 openapi:
   info:
     title: "Templated API Example"

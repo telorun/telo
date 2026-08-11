@@ -1,0 +1,23 @@
+kind: Telo.Library
+metadata:
+  name: LogIdentityFixture
+  version: 1.0.0
+  description: >-
+    Fixture for the log-record resource-identity regression test. Exposes one
+    runnable whose controller emits a record through ctx.log, so a test can
+    assert on a record the real create/boot path produced rather than on a
+    hand-built literal.
+exports:
+  kinds:
+    - Emitter
+---
+kind: Telo.Definition
+metadata:
+  name: Emitter
+  description: Emits a single log record when run.
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./emit.mjs#emit
+schema:
+  type: object
+  additionalProperties: false

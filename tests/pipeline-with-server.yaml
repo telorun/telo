@@ -52,7 +52,6 @@ with:
       name: TestServer
     port: 8845
     baseUrl: http://localhost:8845
-    logger: false
     openapi:
       info:
         title: Test Server

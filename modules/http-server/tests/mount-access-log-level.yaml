@@ -1,0 +1,174 @@
+kind: Telo.Application
+metadata:
+  name: MountAccessLogLevelTest
+  version: 1.0.0
+  description: |
+    A mount's `logging.level` quietens its access records without touching the
+    rest of the server, and a 5xx still surfaces from the quietened mount.
+
+    That pairing is the whole point: the import-scoped threshold governs a module
+    instance, so it cannot silence a health check polled every second while
+    leaving the API alone — and silencing one by severity alone would go blind on
+    the path exactly when it starts failing.
+
+    Records are captured through a Telo.FileSink rather than the console so the
+    assertions can read them back as data.
+logging:
+  level: info
+  sinks:
+    # A literal path: `Telo.FileSink.destination` is not a CEL slot, so it cannot
+    # be derived from a variable.
+    - kind: Telo.FileSink
+      destination: /tmp/telo-mount-access-log.jsonl
+      # Well under the settle window below, so the reader sees a drained file.
+      flush_interval: 20ms
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  JS: ../../javascript
+  Fs: ../../fs
+  Timer: ../../timer
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref TestMountLevels
+---
+kind: JS.Script
+metadata: { name: Ok }
+code: |
+  function main() {
+    return { ok: true };
+  }
+---
+kind: JS.Script
+metadata: { name: Boom }
+code: |
+  function main() {
+    throw new Error("boom");
+  }
+---
+# Polled constantly in production; its access records are the noise this exists
+# to remove.
+kind: Http.Api
+metadata: { name: HealthApi }
+routes:
+  - request: { path: /live, method: GET }
+    handler: !ref Ok
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: !cel "result.ok" }
+  - request: { path: /broken, method: GET }
+    handler: !ref Boom
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+---
+kind: Http.Api
+metadata: { name: BusinessApi }
+routes:
+  - request: { path: /things, method: GET }
+    handler: !ref Ok
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: !cel "result.ok" }
+---
+kind: JS.Script
+metadata: { name: Summarize }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [text]
+    additionalProperties: false
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      quietMountLogged: { type: boolean }
+      loudMountLogged: { type: boolean }
+      quietMountFailureLevel: { type: string }
+    required: [quietMountLogged, loudMountLogged, quietMountFailureLevel]
+    additionalProperties: false
+code: |
+  function main({ text }) {
+    const all = text
+      .split("\n")
+      .filter((line) => line.trim().startsWith("{"))
+      .map((line) => JSON.parse(line));
+    // Scoped to this run: the sink appends to a fixed path, so an earlier run's
+    // records are still in the file. See the note in log-events.yaml.
+    const start = all.findLastIndex((r) => r.event_name === "http.server.started");
+    const records = all
+      .slice(Math.max(0, start))
+      .filter((r) => r.event_name === "http.server.request");
+    const routeOf = (r) => r.attributes?.["http.route"];
+    const failure = records.find((r) => routeOf(r) === "/health/broken");
+    return {
+      quietMountLogged: records.some((r) => routeOf(r) === "/health/live"),
+      loudMountLogged: records.some((r) => routeOf(r) === "/api/things"),
+      quietMountFailureLevel: failure ? failure.level : "(absent)",
+    };
+  }
+---
+kind: Run.Sequence
+metadata:
+  name: TestMountLevels
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8912
+    baseUrl: http://127.0.0.1:8912
+    mounts:
+      - path: /health
+        mount: !ref HealthApi
+        # Access records are `info`, so `warn` is how a mount goes quiet.
+        logging:
+          level: warn
+      - path: /api
+        mount: !ref BusinessApi
+  - kind: HttpClient.Request
+    metadata: { name: Call }
+  - kind: Fs.File
+    metadata: { name: ReadLog }
+targets:
+  - !ref Server
+steps:
+  - name: hitQuiet
+    invoke: !ref Call
+    inputs: { url: "http://127.0.0.1:8912/health/live" }
+  - name: hitLoud
+    invoke: !ref Call
+    inputs: { url: "http://127.0.0.1:8912/api/things" }
+  - name: hitQuietFailure
+    invoke: !ref Call
+    inputs: { url: "http://127.0.0.1:8912/health/broken" }
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "250ms", value: {} }
+  - name: read
+    invoke: !ref ReadLog
+    inputs: { path: /tmp/telo-mount-access-log.jsonl }
+  - name: summary
+    invoke: !ref Summarize
+    inputs: { text: !cel "steps.read.result.content" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.summary.result"
+      expected:
+        # Quietened: a healthy poll of the health mount leaves no record.
+        quietMountLogged: false
+        # Untouched: the business mount still logs at info.
+        loudMountLogged: true
+        # Safe: the same quietened mount still reports its own 500.
+        quietMountFailureLevel: ERROR

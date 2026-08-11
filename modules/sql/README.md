@@ -88,6 +88,12 @@ The engine family is fixed by the kind, not sniffed from a string at runtime. Ke
 
 `Sql.Connection` itself is abstract and has no controller — declaring `kind: Sql.Connection` fails with **"No controller registered"**. Always instantiate a concrete kind (`SqlPostgres.Connection` / `SQLite.Connection`); reference the abstract only in `x-telo-ref` slots (which you don't write — they're in the kind schemas).
 
+## What is logged
+
+Each statement logs at `debug` with `db.query.text`, the row count and the elapsed time, as do transaction start, commit and rollback. **Parameters are never logged** — the bound values *are* the row data. The statement text is safe for a parameterized query, since it is the template with placeholders; it is `debug`-only regardless, because `Sql.Command` can carry inline literals.
+
+`Sql.Migrations` logs **each applied migration at `info`**. A schema change is the least reversible thing an app does at boot, and which migrations a given deployment applied is what you go looking for when a schema is not what you expected.
+
 ## Reusing handlers
 
 `Sql.Query`, `Sql.Command`, and `Sql.Selection` are Invocables: declare one as a **top-level named resource** and reference it by `{ kind, name }` from any number of routes or `Run.Sequence` steps — define a query once, reuse it everywhere. (Inlining a handler on a single route also works for one-offs.)

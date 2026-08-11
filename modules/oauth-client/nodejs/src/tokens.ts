@@ -72,7 +72,15 @@ export async function refreshGrant(
     async () => {
       const existing = await source.readGrant(key);
       if (!existing) return { tokens: null, reason: "no_grant" };
-      if (!existing.tokens.refreshToken) return { tokens: null, reason: "no_refresh_token" };
+      if (!existing.tokens.refreshToken) {
+        // `warn`: the grant is unrecoverable without a human — this is the
+        // moment a background job silently stops being authorized, and the
+        // caller's error only says the token is unavailable.
+        source.log.warn("Grant has no refresh token; the user must sign in again", {
+          "oauth.key": key,
+        });
+        return { tokens: null, reason: "no_refresh_token" };
+      }
 
       const refreshed = await requestTokens(source.client, {
         grant_type: "refresh_token",
@@ -88,6 +96,15 @@ export async function refreshGrant(
         idToken: refreshed.idToken ?? existing.tokens.idToken,
       };
       await source.writeGrant(key, merged);
+      // `info`: a refresh is a real interaction with the authorization server and
+      // the point where a rotated refresh token replaces the stored one. No token
+      // material on the record — only the key, the new deadline, and whether the
+      // server rotated.
+      source.log.info("Access token refreshed", {
+        "oauth.key": key,
+        "oauth.expires_at": merged.expiresAt ?? 0,
+        "oauth.refresh_token_rotated": refreshed.refreshToken != null,
+      });
       return { tokens: merged, reason: null };
     },
     async () => {
@@ -155,6 +172,16 @@ export async function currentAccessToken(
 
   const stale = forceRefresh || isExpired(existing.tokens, Date.now(), source.refreshSkewMs);
   if (!stale) return existing.tokens;
+
+  // Which of the two triggers fired matters: `forceRefresh` means the server
+  // rejected a token this source still believed was valid, so a run of them
+  // points at clock skew or a too-small `refreshSkew` rather than normal expiry.
+  source.log.debug(
+    forceRefresh
+      ? "Refreshing because the server rejected the current token"
+      : "Refreshing because the stored token is expired or inside the skew window",
+    { "oauth.key": key },
+  );
 
   const { tokens, reason } = await refreshGrant(source, key);
   if (tokens) return tokens;

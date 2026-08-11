@@ -36,7 +36,6 @@ with:
     host: 127.0.0.1
     port: 8957
     baseUrl: http://127.0.0.1:8957
-    logger: false
     mounts:
       - path: /
         mount: !ref Lib.Api

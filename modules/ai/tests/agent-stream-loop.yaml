@@ -138,7 +138,6 @@ with:
     host: 127.0.0.1
     port: 8951
     baseUrl: http://127.0.0.1:8951
-    logger: false
     openapi:
       info:
         title: AgentStream test

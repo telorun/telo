@@ -56,7 +56,6 @@ with:
     metadata: { name: Server }
     host: 127.0.0.1
     port: 8971
-    logger: false
     mounts:
       - path: /
         mount: !ref Site

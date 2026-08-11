@@ -68,7 +68,6 @@ kind: Http.Server
 metadata:
   name: Server
 port: !cel "ports.http"
-logger: true
 openapi:
   info:
     title: Feedback API (Repository)

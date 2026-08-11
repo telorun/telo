@@ -1,0 +1,11 @@
+project: http-client
+kind: Added
+body: 'Http.Request logs its outbound calls: each completed request with method, status and
+  http.client.request.duration (OpenTelemetry''s name, in seconds) at debug, a retried network
+  failure at warn, and the re-acquire-and-retry after a 401 at info. Only the final outcome
+  reaches the caller, so a request that failed and was retried — including the common case
+  where the retry succeeds — was previously invisible. The URL is reported as url.scheme,
+  server.address, server.port and url.path: the query string and any userinfo are dropped
+  rather than scrubbed, so no credential can reach a record by construction, and the result
+  is deliberately not published as url.full, which means the absolute URL.'
+time: 2026-08-10T18:54:09.134927Z

@@ -1153,6 +1153,7 @@ export class Kernel implements IKernel {
     args?: ParsedArgs,
     ownerPrefix = "",
     owningContext?: IEvaluationContext,
+    resolvedKind?: string,
   ): ResourceContext {
     return new ResourceContextImpl(
       this,
@@ -1166,6 +1167,7 @@ export class Kernel implements IKernel {
       args,
       ownerPrefix,
       owningContext ?? moduleContext,
+      resolvedKind,
     );
   }
 
@@ -1316,6 +1318,7 @@ export class Kernel implements IKernel {
       // Snapshot publication targets the context that OWNS the instance — for a
       // `with:`-scoped resource that is the per-run scope child, not the module.
       evalContext,
+      resolvedKind,
     );
     const instance = await controller.create(processedResource, ctx);
     if (!instance) return null;

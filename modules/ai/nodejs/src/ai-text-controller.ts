@@ -5,6 +5,7 @@ import type {
   ResourceInstance,
 } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { logCompletion } from "./completion-log.js";
 import { isContentParts } from "./content.js";
 import { withTokenQuantity } from "./usage.js";
 import type {
@@ -37,7 +38,10 @@ const VALID_ROLES = new Set(["system", "user", "assistant"]);
 const VALID_FINISH_REASONS = new Set(["stop", "length", "content-filter", "error", "other"]);
 
 class AiText implements ResourceInstance<AiTextInputs, CompletionResult> {
-  constructor(private readonly resource: AiTextResource) {}
+  constructor(
+    private readonly resource: AiTextResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   async invoke(inputs: AiTextInputs = {}, ctx?: InvokeContext): Promise<CompletionResult> {
     const name = this.resource.metadata.name;
@@ -109,7 +113,9 @@ class AiText implements ResourceInstance<AiTextInputs, CompletionResult> {
     // Stamp the provider-neutral half of usage here rather than asking every
     // provider for it — the token triple already carries the answer, and doing it
     // in the operation keeps existing providers unchanged.
-    return { ...result, usage: withTokenQuantity(result.usage) };
+    const usage = withTokenQuantity(result.usage);
+    logCompletion(this.ctx.log, "Completion finished", usage, result.finishReason);
+    return { ...result, usage };
   }
 
   snapshot(): Record<string, unknown> {
@@ -174,8 +180,8 @@ export function register(_ctx: ControllerContext): void {}
 
 export async function create(
   resource: AiTextResource,
-  _ctx: ResourceContext,
+  ctx: ResourceContext,
 ): Promise<AiText> {
-  return new AiText(resource);
+  return new AiText(resource, ctx);
 }
 

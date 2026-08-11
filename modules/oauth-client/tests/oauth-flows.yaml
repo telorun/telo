@@ -199,7 +199,6 @@ with:
     host: 127.0.0.1
     port: 8991
     baseUrl: !cel "variables.issuer"
-    logger: false
     contentTypeParsers:
       - contentType: application/x-www-form-urlencoded
     mounts:

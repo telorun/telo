@@ -1,0 +1,8 @@
+project: oauth-client
+kind: Added
+body: 'The token lifecycle is logged: a successful refresh at info (carrying the grant key,
+  the new deadline, and whether the server rotated the refresh token — never token material),
+  a grant left with no refresh token at warn, and the refresh trigger plus single-flight claim
+  contention at debug. Which trigger fired matters: a run of server-rejected tokens points
+  at clock skew or too small a refreshSkew rather than normal expiry.'
+time: 2026-08-10T18:34:10.717402Z

@@ -75,6 +75,12 @@ export class ResourceContextImpl implements ResourceContext {
    *  eagerly for every context would allocate per resource for nothing. */
   #log: Logger | undefined;
 
+  /** The resolved kind. It cannot come from `metadata`, which is the resource's
+   *  metadata BLOCK — `kind` is its sibling, not its member, so reading
+   *  `metadata.kind` yielded `undefined` and every controller record went out
+   *  with no resource identity at all (§7.3). */
+  #resolvedKind: string | undefined;
+
   /**
    * The resource's structured logger, stamped with its identity, module, and
    * import-alias scope so a record identifies *which instance* emitted it — the
@@ -83,8 +89,8 @@ export class ResourceContextImpl implements ResourceContext {
    */
   get log(): Logger {
     if (!this.#log) {
-      const kind = this.metadata?.kind as string | undefined;
-      const name = this.metadata?.metadata?.name as string | undefined;
+      const kind = this.#resolvedKind;
+      const name = this.metadata?.name as string | undefined;
       const resource =
         kind && name
           ? { kind, name, id: `${this.ownerPrefix}${kind}.${name}` }
@@ -151,7 +157,17 @@ export class ResourceContextImpl implements ResourceContext {
      * dispatch fails.
      */
     private readonly owningContext: IEvaluationContext = moduleContext,
+    /**
+     * The resolved kind, known long before `create()` runs. Passed here rather
+     * than waited for at `bindResourceIdentity` so `ctx.log` carries resource
+     * identity from the moment the context exists: a controller that captures
+     * `ctx.log` in its constructor — the natural thing to do when the logger is
+     * handed to a helper — would otherwise hold an identity-less logger for the
+     * resource's whole life, and nothing would report that it had.
+     */
+    resolvedKind?: string,
   ) {
+    this.#resolvedKind = resolvedKind;
     // `ctx.env` is the sanctioned host-env channel for controllers — always the
     // real environment (kernel passes its snapshot), never the locked Proxy.
     this.env = env ?? hostEnv();
@@ -348,6 +364,10 @@ export class ResourceContextImpl implements ResourceContext {
     manifest: Record<string, unknown>,
   ): void {
     this.#self = handle;
+    // The kind is NOT restated here. It is set at construction — the single
+    // production site always has it — and `#log` is memoized on first access, so
+    // a late assignment could not reach a logger a controller already holds. A
+    // fallback here would read as a guarantee it cannot provide.
     this.#zones = new ZoneContext({
       resourceName: (this.metadata?.name as string) ?? "<unnamed>",
       resolvedKind,
@@ -425,10 +445,16 @@ export class ResourceContextImpl implements ResourceContext {
     // settlement is already observed here.
     const tracked = this.owningContext
       .runDetached(fn) // bare scope-detach primitive
-      .catch(async (err: unknown) => {
-        const detail =
-          err instanceof Error ? { name: err.name, message: err.message } : { message: String(err) };
-        await this.emitEvent("background.task.error", { resource: this.metadata.name, error: detail });
+      .catch((err: unknown) => {
+        // A detached task has no caller to throw to, so this record is the only
+        // report. It replaces the bus event rather than joining it: `eventName`
+        // IS the bridge to the event bus (§4), and a record already reaches every
+        // sink including the debug wire, so emitting both would ship two copies
+        // of one fact with two payload shapes to keep in step.
+        this.log.error("Detached task failed", undefined, {
+          error: err,
+          eventName: "background.task.error",
+        });
       })
       .finally(() => {
         this.pendingDetached.delete(tracked);
@@ -453,10 +479,12 @@ export class ResourceContextImpl implements ResourceContext {
     await Promise.race([Promise.allSettled([...this.pendingDetached]), timeout]);
     if (timer) clearTimeout(timer);
     if (this.pendingDetached.size > 0) {
-      await this.emitEvent("background.task.abandoned", {
-        resource: this.metadata.name,
-        count: this.pendingDetached.size,
-      });
+      this.log.warn(
+        `Abandoned ${this.pendingDetached.size} background task(s) after waiting ` +
+          `${DETACHED_DRAIN_TIMEOUT_MS}ms for them to drain`,
+        { "telo.detached.abandoned": this.pendingDetached.size },
+        { eventName: "background.task.abandoned" },
+      );
     }
   }
 
