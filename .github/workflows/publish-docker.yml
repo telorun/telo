@@ -443,21 +443,31 @@ jobs:
     # that still depends on someone writing one; publishing every push is what
     # makes staleness structurally impossible rather than merely discouraged.
     #
-    # The embedded telo runtime is the newest published CLI: the just-published
-    # version on a CLI release, otherwise cli/nodejs/package.json — either way
-    # the telorun/node base is live on Docker Hub, so no sha kernel is needed.
+    # The base image is resolved exactly as hub resolves it, and the two halves
+    # are coupled: on a CLI release, FROM telorun/node:<cli-version>-slim pins
+    # the just-published CLI; on a plain push, FROM telorun/node:sha-<short>-slim
+    # pins the same-commit kernel image that kernel-dev builds in this very run.
+    #
+    # It must NOT fall back to cli/nodejs/package.json. That file holds the
+    # IN-DEVELOPMENT version, whose telorun/node image is not published until a
+    # release runs — so the base tag would not exist. That fallback was
+    # previously safe only because this job ran solely on version-move commits,
+    # where a CLI release had just published it; publishing on every push made
+    # it reachable on ordinary commits and broke the build.
+    #
     # The "version packages" commit is skipped on the push path (its base may
     # still be publishing concurrently); it rides the workflow_call release path
     # like the other app images.
-    # `always()` lets this job run when kernel-release was skipped (push path).
+    # `always()` lets this job run when either kernel job was skipped.
     if: |
       always() &&
       (inputs.release ||
        (github.event_name == 'push' &&
         !contains(github.event.head_commit.message, 'chore(release): version packages'))) &&
       needs.context.result == 'success' &&
+      (needs.kernel-dev.result == 'success' || needs.kernel-dev.result == 'skipped') &&
       (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')
-    needs: [context, kernel-release]
+    needs: [context, kernel-dev, kernel-release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -479,10 +489,14 @@ jobs:
             exit 1
           fi
 
+          # On a CLI release commit, pin to the just-published version. On a
+          # plain push, pin to the same-commit dev kernel tag that kernel-dev
+          # built in this run — never cli/nodejs/package.json, which names an
+          # unpublished in-development version.
           if [ -n "$CLI_VERSION" ]; then
             TELO_V="$CLI_VERSION"
           else
-            TELO_V=$(jq -r .version cli/nodejs/package.json)
+            TELO_V="sha-$SHORT_SHA"
           fi
 
           # latest + per-commit sha always; immutable :<version>-slim only when
