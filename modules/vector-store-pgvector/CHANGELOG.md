@@ -1,5 +1,7 @@
 # Changelog
-## 0.9.0 - 2026-08-09
+## 0.9.1 - 2026-08-12
+### Fixed
+* Statements this store runs against Postgres now emit a `debug` log record each, plus records for transaction start, commit and rollback. The behaviour comes from `SqlConnectionBase` in the shared sql library, whose source is inlined into this module's bundled controller — so the published artifact changed without any file under this module changing. Bound parameters are never logged, so an embedding vector never reaches a log. Republished so an import pinned to this module resolves to bytes that match the shared library it was built from.## 0.9.0 - 2026-08-09
 ### Added
 * metadata.name is now VectorStorePgvector, so the module contributes its kinds under the `VectorStorePgvector.<Kind>` canonical prefix instead of `vector-store-pgvector.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.8.0 - 2026-08-08
 ### Added

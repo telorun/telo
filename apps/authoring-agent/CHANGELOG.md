@@ -1,5 +1,7 @@
 # Changelog
-## 0.4.0 - 2026-08-03
+## 0.4.1 - 2026-08-12
+### Fixed
+* The system prompt no longer describes the standard library as living under an `std` namespace. That framing survived the move to hub-based discovery and taught the deprecated bare `namespace/name@VERSION` registry form; the prompt now names `oci://ghcr.io/telorun/<name>` as where the standard library is published, states that `oci://` refs and relative paths are the only sources that may be written, and calls the bare form out as deprecated. Refs are copied verbatim from the hub tools — including an integrity pin when one is returned — rather than composed from a module name. The check loop that runs after every write and edit now passes `-o json`, so the agent reads diagnostics by `code`, `file`, `line` and `column` from a parseable document instead of pattern-matching prose; stdout and stderr are surfaced as separate tool-result fields so the document stays parseable and no message is lost.## 0.4.0 - 2026-08-03
 ### Added
 * System prompt covers the module metadata surface. The primer now documents the descriptive `metadata` fields (`version`, `description`, `repository`, `homepage`, `documentation`, `license`), structured deprecation (`metadata.deprecated: { reason, replacedBy? }`, with the replacement written as an alias-qualified kind on a kind doc and a module ref on a module doc), and that there is no `authors` field because the hub derives a publisher from the ref. It also tells the agent that runtime and language are DERIVED from a kind's controllers rather than declared, and that `search_resources` takes an optional `runtime` argument to avoid being offered kinds the target kernel cannot load.## 0.3.0 - 2026-07-20
 ### Added
