@@ -176,6 +176,14 @@ if (existsSync(UNRELEASED)) {
 // "is under the module directory": for a module that delivers no bundled
 // controller, `nodejs/` is a pure npm package whose release ledger is changesets,
 // and its contents never enter the artifact.
+//
+// `apps/<name>/**` is gated on the same rule, for the same reason one step over:
+// an app's artifact is a Docker image whose publish job keys on `metadata.version`
+// moving, and that version moves only because someone wrote a fragment. Without
+// this, editing `apps/authoring-agent/chat/telo.yaml` — the agent's whole system
+// prompt — merged and shipped to nobody, and the deployed image silently aged.
+// An app has no per-language delivery question: its Dockerfile copies the
+// directory, so every non-doc file is in the image.
 // ---------------------------------------------------------------------------
 
 const baseRef = process.env.CHANGED_SINCE ?? "origin/main";
@@ -205,7 +213,17 @@ function bundlesAController(name) {
   }
 }
 
-let changedModules = new Set();
+/** The two directories holding changie-versioned projects. A project's area
+ *  decides only how its changed files are filtered — the fragment rule itself is
+ *  identical, because both publish an artifact whose version moves solely
+ *  because a fragment moved it. */
+const AREAS = ["modules", "apps"];
+
+// Holds `<area>/<name>` (e.g. `apps/authoring-agent`) — the DIRECTORY, since
+// that is what the version lookup needs. The changie project key is the bare
+// name, so two projects of the same name in different areas would share one
+// fragment. None exist today; if one ever does, the key needs qualifying too.
+let changedProjects = new Set();
 try {
   const diff = execSync(`git diff --name-only ${baseRef}...HEAD`, {
     cwd: ROOT,
@@ -213,9 +231,9 @@ try {
     stdio: ["ignore", "pipe", "ignore"],
   });
   for (const file of diff.split("\n")) {
-    const match = /^modules\/([^/]+)\/(.+)$/.exec(file.trim());
+    const match = /^(modules|apps)\/([^/]+)\/(.+)$/.exec(file.trim());
     if (!match) continue;
-    const [, name, rest] = match;
+    const [, area, name, rest] = match;
     // A docs-only or plan-only edit changes nothing a consumer receives.
     if (rest.startsWith("docs/") || rest.startsWith("plans/") || rest === "README.md") continue;
     if (rest === "CHANGELOG.md") continue;
@@ -227,22 +245,36 @@ try {
     // identical bytes, from whichever module happened to hold the assertion. If a
     // module ever does ship its tests, the publish-time digest gate catches it, the
     // same backstop this path-scoped rule relies on everywhere else.
+    //
+    // An app's tests DO land in its image (its Dockerfile copies the directory),
+    // so this one is a judgement rather than a fact about the artifact: a test
+    // change alters nothing the app does, and demanding a version bump for one
+    // would republish an image whose behaviour is identical. The every-push
+    // `:latest` + `:sha-*` tags carry it either way.
     if (rest.startsWith("tests/")) continue;
-    if (LANGUAGE_DIRS.some((dir) => rest.startsWith(dir)) && !bundlesAController(name)) continue;
-    changedModules.add(name);
+    // Only a module has a per-language delivery question. An app ships as an
+    // image built from its whole directory, so nothing else here is out of the
+    // artifact.
+    if (
+      area === "modules" &&
+      LANGUAGE_DIRS.some((dir) => rest.startsWith(dir)) &&
+      !bundlesAController(name)
+    )
+      continue;
+    changedProjects.add(`${area}/${name}`);
   }
 } catch {
   // No merge base (a shallow clone, a fresh repo) — the gate cannot decide what
   // changed, and guessing would fail PRs at random. The publish-time digest gate
   // still backstops it.
-  changedModules = new Set();
+  changedProjects = new Set();
 }
 
 /** `metadata.version` of a module's manifest at a git ref, or null when the file
  *  or the field is absent there. */
-function manifestVersionAt(ref, name) {
+function manifestVersionAt(ref, dirPath) {
   try {
-    const text = execSync(`git show ${ref}:modules/${name}/telo.yaml`, {
+    const text = execSync(`git show ${ref}:${dirPath}/telo.yaml`, {
       cwd: ROOT,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -257,14 +289,14 @@ function manifestVersionAt(ref, name) {
  *  moved on the branch (the fragment was written and then batched), or the module
  *  does not exist at the base ref at all — a new module has no published
  *  predecessor its change could fail to reach. */
-function releaseAccountedFor(name) {
-  const before = manifestVersionAt(baseRef, name);
+function releaseAccountedFor(dirPath) {
+  const before = manifestVersionAt(baseRef, dirPath);
   if (before === null) return true;
-  const after = manifestVersionAt("HEAD", name);
+  const after = manifestVersionAt("HEAD", dirPath);
   return after !== null && before !== after;
 }
 
-if (changedModules.size > 0) {
+if (changedProjects.size > 0) {
   const pending = new Set();
   if (existsSync(UNRELEASED)) {
     for (const file of readdirSync(UNRELEASED)) {
@@ -273,19 +305,20 @@ if (changedModules.size > 0) {
       if (parsed?.project) pending.add(parsed.project);
     }
   }
-  for (const name of [...changedModules].sort()) {
-    // Only modules changie actually versions; a directory with no project key has
-    // no metadata.version to move.
+  for (const dirPath of [...changedProjects].sort()) {
+    const name = dirPath.slice(dirPath.indexOf("/") + 1);
+    // Only projects changie actually versions; a directory with no project key
+    // has no metadata.version to move.
     if (!projectKeys.includes(name)) continue;
     if (pending.has(name)) continue;
     // A version that already moved on this branch means the fragment was written
     // and then batched — the release happened, and requiring a second fragment
     // would make every long-lived branch fail for work it already accounted for.
-    if (releaseAccountedFor(name)) continue;
+    if (releaseAccountedFor(dirPath)) continue;
     console.error(
-      `::error::modules/${name} changed but no pending changie fragment declares \`project: ${name}\`. ` +
-        `A bundled module publishes nothing to npm, so a fragment is the only thing that moves its ` +
-        `metadata.version — without one the change ships to nobody. Add one with ` +
+      `::error::${dirPath} changed but no pending changie fragment declares \`project: ${name}\`. ` +
+        `Its published artifact carries no npm version, so a fragment is the only thing that moves ` +
+        `its metadata.version — without one the change ships to nobody. Add one with ` +
         `\`changie new --project ${name}\`.`,
     );
     failed = 1;

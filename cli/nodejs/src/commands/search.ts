@@ -1,5 +1,6 @@
 import type { Argv } from "yargs";
 import { createLogger, type Logger } from "../logger.js";
+import { output } from "../output.js";
 
 const DEFAULT_HUB_URL = "https://telo.sh";
 
@@ -44,18 +45,20 @@ async function fetchSearch(
   log: Logger,
 ): Promise<any> {
   const url = `${hubUrl}/search/${endpoint}?q=${encodeURIComponent(query)}`;
+  const out = output();
   let res: Response;
   try {
     res = await fetch(url, { headers: { accept: "application/json" } });
   } catch (err) {
-    console.error(
-      `${log.error("error")}  could not reach the telo hub at ${hubUrl}: ${errMsg(err)}`,
-    );
-    console.error(log.dim("Set TELO_HUB_URL or pass --hub-url to use a different hub."));
+    const message = `could not reach the telo hub at ${hubUrl}: ${errMsg(err)}`;
+    out.errLine(`${log.err.error("error")}  ${message}`);
+    out.errLine(log.err.dim("Set TELO_HUB_URL or pass --hub-url to use a different hub."));
     process.exit(1);
   }
   if (!res.ok) {
-    console.error(`${log.error("error")}  hub returned ${res.status} ${res.statusText} for ${url}`);
+    const message = `hub returned ${res.status} ${res.statusText} for ${url}`;
+    // stdout carries the hub document or nothing; the reason goes to stderr.
+    out.errLine(`${log.err.error("error")}  ${message}`);
     process.exit(1);
   }
   return res.json();
@@ -68,25 +71,29 @@ async function runSearch(argv: {
   json: boolean;
 }): Promise<void> {
   const log = createLogger(false);
+  const out = output();
   const hubUrl = resolveHubUrl(argv.hubUrl);
   const body = await fetchSearch(hubUrl, argv.kinds ? "resources" : "modules", argv.query, log);
 
-  if (argv.json) {
-    console.log(JSON.stringify(body));
+  // `--json` predates the global flag and stays as an alias for it: the hub's
+  // response body IS the contract here, so `-o json` reports the same document
+  // rather than wrapping it in an envelope that would break existing callers.
+  if (argv.json || out.isJson) {
+    out.document(body);
     return;
   }
 
   if (argv.kinds) {
     const hits = (body.hits ?? []) as KindHit[];
     if (hits.length === 0) {
-      console.error(log.dim("no matching resource kinds"));
+      out.errLine(log.err.dim("no matching resource kinds"));
       return;
     }
     const kindWidth = Math.max(...hits.map((h) => h.kind.length));
     const refWidth = Math.max(...hits.map((h) => `${h.module.ref}@${h.module.version}`.length));
     for (const h of hits) {
       const ref = `${h.module.ref}@${h.module.version}`;
-      console.log(
+      out.line(
         `${h.kind.padEnd(kindWidth)}  ${ref.padEnd(refWidth)}   ${log.dim(firstLine(h.description))}`,
       );
     }
@@ -95,20 +102,18 @@ async function runSearch(argv: {
 
   const hits = (body.hits ?? []) as ModuleHit[];
   if (hits.length === 0) {
-    console.error(log.dim("no matching modules"));
+    out.errLine(log.err.dim("no matching modules"));
     return;
   }
   for (const h of hits) {
-    console.log(
-      `${h.module.ref}@${h.module.version}  —  ${firstLine(h.module.description)}`,
-    );
+    out.line(`${h.module.ref}@${h.module.version}  —  ${firstLine(h.module.description)}`);
     const kindWidth = Math.max(...h.matchedKinds.map((k) => k.kind.length));
     const capWidth = Math.max(
       ...h.matchedKinds.map((k) => capabilityLabel(k.capability).length + 2),
     );
     for (const k of h.matchedKinds) {
       const cap = `(${capabilityLabel(k.capability)})`;
-      console.log(
+      out.line(
         `  ${k.kind.padEnd(kindWidth)}  ${log.dim(cap.padEnd(capWidth))}  ${firstLine(k.description)}`,
       );
     }

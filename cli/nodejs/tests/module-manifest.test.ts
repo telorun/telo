@@ -68,7 +68,12 @@ describe("buildManifestJsonPayload", () => {
 
   it("reports null with the reason on stderr when the ref cannot be hashed", async () => {
     stubFetch(() => ({ ok: false }));
-    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    // The warning goes through the `Output` seam, which writes to the stream
+    // directly — `--json` puts the payload on stdout, so the reason must not
+    // land there beside it.
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((() => true) as typeof process.stderr.write);
 
     const payload = await buildManifestJsonPayload(
       "std/console@0.9.0",
@@ -83,7 +88,7 @@ describe("buildManifestJsonPayload", () => {
     // null the tracker stores without explanation.
     expect(payload.integrity).toBeNull();
     expect(payload.manifest).toBe(MANIFEST);
-    expect(stderr).toHaveBeenCalledWith(expect.stringContaining("no integrity hash"));
+    expect(stderr.mock.calls.map((c) => String(c[0])).join("")).toContain("no integrity hash");
     stderr.mockRestore();
   });
 

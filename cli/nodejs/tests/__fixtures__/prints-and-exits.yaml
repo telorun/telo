@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: PrintsAndExits
+  description: >-
+    Writes one line to stdout and exits. Fixture for the `-o json` output
+    contract: `telo run` must leave this stream to the app, so a CLI envelope
+    appended here would make it unparseable.
+imports:
+  Console: ../../../../modules/console
+  Run: ../../../../modules/run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: Say
+    invoke:
+      kind: Console.WriteLine
+    inputs:
+      output: hello from the app
