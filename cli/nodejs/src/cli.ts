@@ -2,6 +2,7 @@
 
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { OUTPUT_FORMATS, configureOutput, parseOutputFormat } from "./output.js";
 import { celCommand } from "./commands/cel.js";
 import { checkCommand } from "./commands/check.js";
 import { installCommand } from "./commands/install.js";
@@ -52,6 +53,17 @@ cli
     describe:
       "Persist the analysis/validator cache to disk. Use --no-cache-write for an ephemeral, read-only run (validates in-memory, reads the baked cache but never writes it).",
   })
+  .option("output", {
+    alias: "o",
+    type: "string",
+    choices: OUTPUT_FORMATS,
+    default: "text" as const,
+    describe:
+      "Output format for the CLI's own output. `json` is a machine contract and never carries colour. Note `telo run` streams the app's stdout/stderr through untouched — the app picks its own encoding via its `logging:` block.",
+  })
+  // Runs before any handler, so a call site deep inside a command reaches the
+  // same decision without the format being threaded through every signature.
+  .middleware((argv) => configureOutput(parseOutputFormat(argv.output)), true)
   .demandCommand(1, "Please specify a command or path to run")
   .strict()
   .help()

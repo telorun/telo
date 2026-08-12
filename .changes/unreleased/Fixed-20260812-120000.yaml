@@ -1,0 +1,13 @@
+project: authoring-agent
+kind: Fixed
+body: 'The system prompt no longer describes the standard library as living under an `std`
+  namespace. That framing survived the move to hub-based discovery and taught the deprecated
+  bare `namespace/name@VERSION` registry form; the prompt now names `oci://ghcr.io/telorun/<name>`
+  as where the standard library is published, states that `oci://` refs and relative paths are
+  the only sources that may be written, and calls the bare form out as deprecated. Refs are
+  copied verbatim from the hub tools — including an integrity pin when one is returned — rather
+  than composed from a module name. The check loop that runs after every write and edit now
+  passes `-o json`, so the agent reads diagnostics by `code`, `file`, `line` and `column` from a
+  parseable document instead of pattern-matching prose; stdout and stderr are surfaced as
+  separate tool-result fields so the document stays parseable and no message is lost.'
+time: 2026-08-12T12:00:00.000000Z

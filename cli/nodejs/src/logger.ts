@@ -2,13 +2,13 @@ import type { AnalysisDiagnostic, LoadedGraph } from "@telorun/analyzer";
 import { DiagnosticSeverity } from "@telorun/analyzer";
 import { findPositions, resolveRange } from "@telorun/ide-support";
 import {
-  decideColor,
   describeBlockedGroup,
   groupBlockedResources,
   type RuntimeDiagnostic,
 } from "@telorun/kernel";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { output } from "./output.js";
 
 /** Render a manifest source for display: a local `file://` URL (how the loader
  *  canonicalizes on-disk manifests) becomes a CWD-relative path, a real remote
@@ -33,40 +33,67 @@ function displaySourcePath(raw: string): string {
  *  Undefined when nothing located it — a diagnostic whose resource is synthetic
  *  and whose file matches no graph source. A pointer to line 1 would be worse
  *  than none: it sends the reader somewhere the error is not. */
-function resolveLocation(
+function resolveLocationParts(
   graph: LoadedGraph,
   d: AnalysisDiagnostic,
   fallbackSource: string,
-): string | undefined {
+): { file: string; line: number; column: number } | undefined {
   const located = findPositions(graph, d.data);
   if (!located && !d.range) return undefined;
   const range = resolveRange(d, {
     positionIndex: located?.positionIndex,
     sourceLine: located?.sourceLine,
   });
-  return `${displaySourcePath(located?.file ?? fallbackSource)}:${range.start.line + 1}:${range.start.character + 1}`;
+  // 1-based for display; the analyzer's own range is 0-based.
+  return {
+    file: displaySourcePath(located?.file ?? fallbackSource),
+    line: range.start.line + 1,
+    column: range.start.character + 1,
+  };
 }
 
+function resolveLocation(
+  graph: LoadedGraph,
+  d: AnalysisDiagnostic,
+  fallbackSource: string,
+): string | undefined {
+  const parts = resolveLocationParts(graph, d, fallbackSource);
+  return parts && `${parts.file}:${parts.line}:${parts.column}`;
+}
+
+/** One diagnostic as `-o json` reports it. The shape is the machine contract
+ *  that replaces parsing the prose form: `code` is what a caller branches on,
+ *  and the location is pre-resolved because deriving it needs the loaded graph,
+ *  which the consumer does not have. */
+export interface JsonDiagnostic {
+  file: string;
+  line: number;
+  column: number;
+  severity: "error" | "warning";
+  code?: string;
+  message: string;
+}
+
+/** The logger's colouring delegates to `Output`'s per-stream palettes.
+ *
+ *  Its methods paint text destined for STDOUT; `log.err` is the same palette
+ *  bound to stderr. Which one a caller wants is decided by where it writes, not
+ *  by the process — `formatDiagnostics` writes to stderr and `check`'s summary
+ *  to stdout, and one shared decision was wrong for whichever stream was
+ *  redirected. Under `-o json` both palettes are plain, so structured output
+ *  cannot carry escapes. */
 export function createLogger(verbose: boolean) {
-  // The color decision follows `kernel/specs/logging.md` §11.2's precedence
-  // order exactly, shared with the `pretty` log encoding rather than
-  // reimplemented here. Notably this adds `NO_COLOR` support, which the CLI
-  // previously ignored, and stops treating a bare `FORCE_COLOR=0` as "on" —
-  // both behavior changes, both required by the spec.
-  //
-  // The decision is made against stdout, which is where this logger writes.
-  const useColor = decideColor({
-    setting: "auto",
-    env: process.env,
-    isTTY: Boolean(process.stdout.isTTY),
-  });
-  const wrap = (code: string, text: string) => (useColor ? `\x1b[${code}m${text}\x1b[0m` : text);
+  const out = output();
   return {
-    info: (...args: any[]) => console.log(...args),
-    ok: (text: string) => wrap("32", text),
-    warn: (text: string) => wrap("33", text),
-    error: (text: string) => wrap("31", text),
-    dim: (text: string) => wrap("2", text),
+    info: (...args: any[]) => {
+      if (!out.isJson) out.line(args.map((a) => String(a)).join(" "));
+    },
+    ok: (text: string) => out.stdout.ok(text),
+    warn: (text: string) => out.stdout.warn(text),
+    error: (text: string) => out.stdout.error(text),
+    dim: (text: string) => out.stdout.dim(text),
+    /** Palette for text written to stderr. */
+    err: out.stderr,
     verbose,
   };
 }
@@ -93,13 +120,17 @@ export function formatDiagnostics(
   // Column the `error`/`warning` label occupies, so a collapsed group line sits
   // under the resource names it summarizes rather than under the label.
   const NAME_COLUMN = " ".repeat("  error  ".length);
+  const out = output();
+  // This renderer writes to stderr throughout, so it paints with the stderr
+  // palette — the stdout one may be coloured when stderr is redirected.
+  const paint = log.err;
 
   const render = (entries: RuntimeDiagnostic[], indent: string): void => {
     for (const d of entries) {
       const skip = d.derived && !log.verbose;
       if (!skip) {
-        const severityLabel = d.severity === "warning" ? log.warn("warning") : log.error("error");
-        const code = d.code ? `  ${log.dim(d.code)}` : "";
+        const severityLabel = d.severity === "warning" ? paint.warn("warning") : paint.error("error");
+        const code = d.code ? `  ${paint.dim(d.code)}` : "";
 
         // A static failure that nothing could locate falls through to the
         // resource / bare-path branches below, which at least name what failed.
@@ -117,7 +148,7 @@ export function formatDiagnostics(
         const printDetails = (detailIndent: string): void => {
           if (!d.details) return;
           for (const line of d.details.split("\n")) {
-            console.error(`${detailIndent}${log.dim(line)}`);
+            out.errLine(`${detailIndent}${paint.dim(line)}`);
           }
         };
 
@@ -125,19 +156,19 @@ export function formatDiagnostics(
           // Static-analysis failure — the position names the exact spot, so it
           // renders exactly as `telo check` does. Repeating the resource here
           // would duplicate it: an analyzer message already names its own.
-          console.error(`${indent}${location}  ${severityLabel}  ${d.message}${code}`);
+          out.errLine(`${indent}${location}  ${severityLabel}  ${d.message}${code}`);
           printDetails(`${indent}  `);
         } else if (d.resource) {
           // Runtime diagnostic — the failure is pinned to a resource, so the
           // entry manifest path adds no information. Show kind + name + message
           // and any structured details indented below.
-          const who = `${d.kind ? `${log.dim(d.kind)} ` : ""}${d.resource}`;
-          console.error(`${indent}  ${severityLabel}  ${who}: ${d.message}${code}`);
+          const who = `${d.kind ? `${paint.dim(d.kind)} ` : ""}${d.resource}`;
+          out.errLine(`${indent}  ${severityLabel}  ${who}: ${d.message}${code}`);
           printDetails(`${indent}${NAME_COLUMN}  `);
         } else {
           // Non-resource diagnostic (e.g. loader/parse failure) — keep the file
           // path since it is the only location cue we have.
-          console.error(`${indent}${displayPath}  ${severityLabel}  ${d.message}${code}`);
+          out.errLine(`${indent}${displayPath}  ${severityLabel}  ${d.message}${code}`);
           printDetails(`${indent}  `);
         }
       }
@@ -150,7 +181,7 @@ export function formatDiagnostics(
 
     if (!log.verbose) {
       for (const [blockedBy, names] of groupBlockedResources(entries)) {
-        console.error(`${indent}${NAME_COLUMN}${log.dim(describeBlockedGroup(blockedBy, names))}`);
+        out.errLine(`${indent}${NAME_COLUMN}${paint.dim(describeBlockedGroup(blockedBy, names))}`);
       }
     }
   };
@@ -166,26 +197,40 @@ export function formatAnalysisDiagnostics(
   graph: LoadedGraph,
   log: Logger,
   entryPath: string,
-): { errorCount: number; warnCount: number } {
+): { errorCount: number; warnCount: number; diagnostics: JsonDiagnostic[] } {
   let errorCount = 0;
   let warnCount = 0;
+  const out = output();
+  const collected: JsonDiagnostic[] = [];
 
   for (const d of diagnostics) {
     // `check` prints one line per diagnostic and has no resource-named form to
     // fall back to, so an unlocatable one still leads with the entry manifest.
-    const loc = resolveLocation(graph, d, entryPath) ?? `${displaySourcePath(entryPath)}:1:1`;
-    const severityLabel =
-      (d.severity ?? DiagnosticSeverity.Warning) <= DiagnosticSeverity.Error
-        ? log.error("error")
-        : log.warn("warning");
+    const parts = resolveLocationParts(graph, d, entryPath) ?? {
+      file: displaySourcePath(entryPath),
+      line: 1,
+      column: 1,
+    };
+    const isError = (d.severity ?? DiagnosticSeverity.Warning) <= DiagnosticSeverity.Error;
+    const severityLabel = isError ? log.error("error") : log.warn("warning");
     const code = d.code ? `  ${log.dim(String(d.code))}` : "";
 
-    console.log(`${loc}  ${severityLabel}  ${d.message}${code}`);
+    // Silent under `-o json`: the structured payload carries the same
+    // diagnostics with their location resolved, so printing here too would
+    // interleave prose into a document a consumer parses.
+    out.line(`${parts.file}:${parts.line}:${parts.column}  ${severityLabel}  ${d.message}${code}`);
 
-    if ((d.severity ?? DiagnosticSeverity.Warning) <= DiagnosticSeverity.Error) errorCount++;
+    collected.push({
+      ...parts,
+      severity: isError ? "error" : "warning",
+      ...(d.code === undefined ? {} : { code: String(d.code) }),
+      message: d.message,
+    });
+
+    if (isError) errorCount++;
     else warnCount++;
   }
 
-  return { errorCount, warnCount };
+  return { errorCount, warnCount, diagnostics: collected };
 }
 

@@ -68,7 +68,14 @@ variables:
     # path). Defaults to the installed `telo` CLI; a test or embedded context
     # overrides it to point at a specific CLI build so the agent validates
     # against the very checker that will judge its output.
-    default: [telo, check]
+    #
+    # `-o json` makes stdout a single parseable document — `{ok, errorCount,
+    # warnCount, diagnostics[]}`, each diagnostic carrying `code`, `file`,
+    # `line`, `column`, `message`. The agent reads diagnostics by CODE instead
+    # of pattern-matching prose, so a rename of a message never silently stops
+    # it self-correcting. stdout and stderr are surfaced SEPARATELY below:
+    # concatenating them would splice human prose into the JSON document.
+    default: [telo, check, -o, json]
 exports:
   resources:
     - initSchema
@@ -277,7 +284,11 @@ steps:
 outputs:
   path: !cel "inputs.path"
   checkExitCode: !cel "steps.Check.result.exitCode"
-  checkOutput: !cel "steps.Check.result.stdout + steps.Check.result.stderr"
+  # stdout is the JSON document; stderr is human prose (a loader failure the
+  # analyzer could not attribute to a position). Kept apart so the document
+  # stays parseable, and both surfaced so no reason is ever swallowed.
+  checkOutput: !cel "steps.Check.result.stdout"
+  checkMessages: !cel "steps.Check.result.stderr"
 ---
 # write_file / edit_file are exposed to the agent through these sequences: every
 # mutation is immediately followed by `telo check` on the same file, and the
@@ -307,7 +318,11 @@ outputs:
   path: !cel "inputs.path"
   bytesWritten: !cel "steps.Write.result.bytesWritten"
   checkExitCode: !cel "steps.Check.result.exitCode"
-  checkOutput: !cel "steps.Check.result.stdout + steps.Check.result.stderr"
+  # stdout is the JSON document; stderr is human prose (a loader failure the
+  # analyzer could not attribute to a position). Kept apart so the document
+  # stays parseable, and both surfaced so no reason is ever swallowed.
+  checkOutput: !cel "steps.Check.result.stdout"
+  checkMessages: !cel "steps.Check.result.stderr"
 ---
 kind: Run.Sequence
 metadata: { name: editFileChecked }
@@ -334,7 +349,11 @@ outputs:
   path: !cel "inputs.path"
   replacements: !cel "steps.Edit.result.replacements"
   checkExitCode: !cel "steps.Check.result.exitCode"
-  checkOutput: !cel "steps.Check.result.stdout + steps.Check.result.stderr"
+  # stdout is the JSON document; stderr is human prose (a loader failure the
+  # analyzer could not attribute to a position). Kept apart so the document
+  # stays parseable, and both surfaced so no reason is ever swallowed.
+  checkOutput: !cel "steps.Check.result.stdout"
+  checkMessages: !cel "steps.Check.result.stderr"
 ---
 kind: Ai.Tools
 metadata: { name: workspaceTools }
@@ -344,8 +363,11 @@ tools:
     description: >-
       Write a file whole, relative to the workspace root (creates parent dirs),
       then automatically run `telo check` on it. The result includes
-      checkExitCode (0 = valid) and checkOutput (the diagnostics); inspect them
-      and keep fixing until checkExitCode is 0.
+      checkExitCode (0 = valid) and checkOutput — a JSON document
+      {ok, errorCount, warnCount, diagnostics[]}, each diagnostic carrying
+      code, file, line, column and message. Read the `code` to decide what to
+      fix; keep fixing until checkExitCode is 0. checkMessages carries any
+      human-readable notes the checker wrote alongside (usually empty).
     parameters:
       type: object
       additionalProperties: false
@@ -358,8 +380,11 @@ tools:
     description: >-
       Replace an exact substring in an existing file (fails if absent or not
       unique), then automatically run `telo check` on it. The result includes
-      checkExitCode (0 = valid) and checkOutput (the diagnostics); inspect them
-      and keep fixing until checkExitCode is 0.
+      checkExitCode (0 = valid) and checkOutput — a JSON document
+      {ok, errorCount, warnCount, diagnostics[]}, each diagnostic carrying
+      code, file, line, column and message. Read the `code` to decide what to
+      fix; keep fixing until checkExitCode is 0. checkMessages carries any
+      human-readable notes the checker wrote alongside (usually empty).
     parameters:
       type: object
       additionalProperties: false
@@ -406,7 +431,8 @@ tools:
       Run `telo check` on a manifest file, relative to the workspace root. Use
       it to re-validate a file you did not just write — e.g. after deleting or
       renaming something it references. The result includes checkExitCode
-      (0 = valid) and checkOutput (the diagnostics).
+      (0 = valid) and checkOutput — the same JSON document
+      {ok, errorCount, warnCount, diagnostics[]} described above.
     parameters:
       type: object
       additionalProperties: false
@@ -774,13 +800,14 @@ system: |
   `source`: `source:` already means "where to fetch a dependency from" inside
   the `imports` map.
 
-  - `imports:` — a NAME-KEYED MAP: PascalCase alias -> source. The source is an
-    OCI ref `oci://host/repo@VERSION` (the version is EXACT — never `@latest`
-    or a range; may carry a `#sha256-…` integrity pin) or a relative path
-    `./lib`. Prefer OCI for every published module — the standard library lives
-    at `oci://ghcr.io/telorun/<name>`. The bare `namespace/name@VERSION`
-    registry form still resolves for already-pinned manifests, but never write
-    a new one. Object form `{ source, variables?, secrets? }`
+  - `imports:` — a NAME-KEYED MAP: PascalCase alias -> source. The ONLY two
+    sources you may write are an OCI ref `oci://host/repo@VERSION` (the version
+    is EXACT — never `@latest` or a range; may carry a `#sha256-…` integrity
+    pin) and a relative path `./lib`. The standard library lives at
+    `oci://ghcr.io/telorun/<name>`, but take the ref from the hub tools rather
+    than composing it. The bare `namespace/name@VERSION` registry form is
+    deprecated — never write one. Object form
+    `{ source, variables?, secrets? }`
     forwards values into the library. Reference an imported kind as
     `kind: <Alias>.<KindName>`, and an imported instance as
     `!ref <Alias>.<name>`.
@@ -1004,12 +1031,15 @@ system: |
       required fields you must produce for each `kind`. Read the `schema`,
       `inputType`, and `outputType` — never invent a field from a kind name alone.
 
-  Standard-library capabilities live under the `std` namespace (http-server,
-  http-client, sql + sql-postgres/sql-sqlite, run, config, console, assert,
-  test, ai + ai-openai, cache + cache-redis, mcp-client/server, s3, timer,
-  scheduler, idempotency, lease, kv-store + kv-store-sql/-redis/
-  -memory, workflow, and many more) — but always confirm the exact module ref,
-  `version`, and field schema via the tools rather than assuming.
+  The standard library is published at `oci://ghcr.io/telorun/<name>`
+  (http-server, http-client, sql + sql-postgres/sql-sqlite, run, config, console,
+  assert, test, ai + ai-openai, cache + cache-redis, mcp-client/server, s3,
+  timer, scheduler, idempotency, lease, kv-store + kv-store-sql/-redis/-memory,
+  workflow, and many more) — but NEVER assemble that ref from the module name.
+  Always take the exact ref, `version`, and field schema from the tools. There is
+  an older bare `namespace/name@VERSION` registry form (`std/http-client@0.8.0`)
+  still resolvable for manifests already pinned to it: it is DEPRECATED and you
+  must never write one.
 
   For pure value logic in the `run` module, pick by shape: `Run.Value` shapes ONE
   value; `Run.Choice` is a first-match decision TABLE (ordered `when → value`
@@ -1066,7 +1096,8 @@ system: |
     2. `get_module_manifest` on the best hit's `module.ref`; record its EXACT
        ref and `metadata.version`, and read every `Telo.Definition`
        schema you will use.
-    3. Add an `imports:` entry `Alias: <ref>@<that exact version>`.
+    3. Add an `imports:` entry `Alias: <ref>@<that exact version>`, the ref
+       verbatim as the tool returned it.
     4. Add resources of `kind: Alias.<KindName>` using ONLY schema-declared
        fields; wire refs/values with `!ref` and `!cel` per the rules above.
     5. List the runnables/services to start in the Application's `targets:`.

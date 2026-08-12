@@ -7,6 +7,7 @@ import semver from "semver";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { createLogger, type Logger } from "../logger.js";
+import { outEmit, outErrLine, outLine, output } from "../output.js";
 import { findModuleDoc, importSourceRefs, type ImportSourceRef } from "./manifest-imports.js";
 
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
@@ -96,7 +97,7 @@ export async function upgradeManifest(args: {
   const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
 
   if (displayName !== undefined) {
-    console.log(`\nUpgrading ${log.dim(displayName)}`);
+    outLine(`\nUpgrading ${log.dim(displayName)}`);
   }
 
   // Collect text-level edits as we walk the parsed docs. We never call
@@ -131,7 +132,7 @@ export async function upgradeManifest(args: {
     version: string,
   ): Promise<void> => {
     if (splitIntegrity(importRef.source).integrity || importRef.integrity) {
-      console.log(`  ${log.ok("=")}  ${label}  ${log.dim(`already at ${version}, pinned`)}`);
+      outLine(`  ${log.ok("=")}  ${label}  ${log.dim(`already at ${version}, pinned`)}`);
       result.unchanged++;
       return;
     }
@@ -140,7 +141,7 @@ export async function upgradeManifest(args: {
     try {
       hash = await transport.manifestHash(pinBase);
     } catch (err) {
-      console.log(
+      outLine(
         `  ${log.warn("!")}  ${label}  ${log.dim(`already at ${version}, left unpinned (${err instanceof Error ? err.message : String(err)})`)}`,
       );
       result.unchanged++;
@@ -148,8 +149,8 @@ export async function upgradeManifest(args: {
     }
     const edit = buildSourceEdit(importRef.node, content, `${pinBase}#${hash}`);
     if (!edit) {
-      console.error(
-        `  ${log.error("✗")}  ${label}  source scalar has no range — skipping`,
+      outErrLine(
+        `  ${log.err.error("✗")}  ${label}  source scalar has no range — skipping`,
       );
       result.errors++;
       return;
@@ -157,7 +158,7 @@ export async function upgradeManifest(args: {
     edits.push(edit);
     result.changed = true;
     result.pinned++;
-    console.log(`  ${log.ok("+")}  ${label}  ${log.dim(`already at ${version},`)} ${log.ok("pinned")}`);
+    outLine(`  ${log.ok("+")}  ${label}  ${log.dim(`already at ${version},`)} ${log.ok("pinned")}`);
   };
 
   for (const importRef of importRefs) {
@@ -168,7 +169,7 @@ export async function upgradeManifest(args: {
     // otherwise report it skipped and point at the flag.
     if (isLocalPathSource(source)) {
       if (!recursive) {
-        console.log(
+        outLine(
           `  ${log.dim("·")}  ${source}  ${log.dim("skipped (local import — use --recursive to follow)")}`,
         );
         result.skipped++;
@@ -180,7 +181,7 @@ export async function upgradeManifest(args: {
     // reconstruction, and hashing — `upgrade` never branches on ref shape.
     const transport = registry.forRef(source);
     if (!transport) {
-      console.log(`  ${log.dim("·")}  ${source}  ${log.dim("skipped (not a remote ref)")}`);
+      outLine(`  ${log.dim("·")}  ${source}  ${log.dim("skipped (not a remote ref)")}`);
       result.skipped++;
       continue;
     }
@@ -189,7 +190,7 @@ export async function upgradeManifest(args: {
     if (rawVersion === null) {
       // Remote but not version-pinned — a bare `https://` URL, or an OCI ref
       // with no explicit reference. Nothing to compare against.
-      console.log(`  ${log.dim("·")}  ${source}  ${log.dim("skipped (not version-pinned)")}`);
+      outLine(`  ${log.dim("·")}  ${source}  ${log.dim("skipped (not version-pinned)")}`);
       result.skipped++;
       continue;
     }
@@ -199,15 +200,15 @@ export async function upgradeManifest(args: {
     try {
       published = await transport.listVersions(source);
     } catch (err) {
-      console.error(
-        `  ${log.error("✗")}  ${label}  ` + (err instanceof Error ? err.message : String(err)),
+      outErrLine(
+        `  ${log.err.error("✗")}  ${label}  ` + (err instanceof Error ? err.message : String(err)),
       );
       result.errors++;
       continue;
     }
 
     if (published === null || published.length === 0) {
-      console.log(
+      outLine(
         `  ${log.warn("!")}  ${label}  ${log.dim("no published versions in registry")}`,
       );
       result.skipped++;
@@ -223,7 +224,7 @@ export async function upgradeManifest(args: {
     const best = pickLatest(normalized, includePrerelease);
     if (!best) {
       // Versions exist but none pass the prerelease filter / semver parser.
-      console.log(
+      outLine(
         `  ${log.warn("!")}  ${label}  ${log.dim("no eligible versions in registry")}`,
       );
       result.skipped++;
@@ -234,7 +235,7 @@ export async function upgradeManifest(args: {
     if (!currentVersion) {
       // A non-SemVer pin — an OCI `sha256:` digest, a moving tag like `latest`.
       // There is no ordering to upgrade along, so leave it untouched.
-      console.log(
+      outLine(
         `  ${log.warn("!")}  ${label}  ${log.dim(`unparseable current version (${rawVersion})`)}`,
       );
       result.skipped++;
@@ -259,7 +260,7 @@ export async function upgradeManifest(args: {
     try {
       newPin = `${newBase}#${await transport.manifestHash(newBase)}`;
     } catch (err) {
-      console.log(
+      outLine(
         `  ${log.warn("!")}  ${label}  ${log.dim(`left unpinned (${err instanceof Error ? err.message : String(err)})`)}`,
       );
     }
@@ -268,8 +269,8 @@ export async function upgradeManifest(args: {
     if (!edit) {
       // No range info — extremely unlikely for a freshly parsed doc, but bail
       // out loudly rather than silently dropping the rewrite.
-      console.error(
-        `  ${log.error("✗")}  ${label}  source scalar has no range — skipping`,
+      outErrLine(
+        `  ${log.err.error("✗")}  ${label}  source scalar has no range — skipping`,
       );
       result.errors++;
       continue;
@@ -281,12 +282,12 @@ export async function upgradeManifest(args: {
 
     if (currentPublished) {
       // Pinned version exists in the registry, just older — straight upgrade.
-      console.log(`  ${log.ok("↑")}  ${label}  ${currentVersion} → ${log.ok(best)}`);
+      outLine(`  ${log.ok("↑")}  ${label}  ${currentVersion} → ${log.ok(best)}`);
     } else {
       // Pinned version NOT in the registry — broken pin, repair to latest
       // regardless of direction.
       const arrow = cmp >= 0 ? log.ok("↑") : log.warn("↓");
-      console.log(
+      outLine(
         `  ${arrow}  ${label}  ${currentVersion} → ${log.ok(best)}  ${log.warn("(pinned version not in registry)")}`,
       );
     }
@@ -376,7 +377,7 @@ export async function upgradeOne(
   const displayPath = path.relative(process.cwd(), filePath);
 
   if (resolveError) {
-    console.error(`${displayPath}  ${log.error("error")}  ${resolveError}`);
+    outErrLine(`${displayPath}  ${log.err.error("error")}  ${resolveError}`);
     return emptyResult(1);
   }
 
@@ -389,8 +390,8 @@ export async function upgradeOne(
   try {
     content = fs.readFileSync(filePath, "utf-8");
   } catch (err) {
-    console.error(
-      `${displayPath}  ${log.error("error")}  cannot read file: ` +
+    outErrLine(
+      `${displayPath}  ${log.err.error("error")}  cannot read file: ` +
         (err instanceof Error ? err.message : String(err)),
     );
     return emptyResult(1);
@@ -411,7 +412,7 @@ export async function upgradeOne(
 
   if (result.changed && dryRun) {
     const count = result.upgrades.length + result.pinned;
-    console.log(`  ${log.dim(`dry-run: ${count} import(s) would be updated`)}`);
+    outLine(`  ${log.dim(`dry-run: ${count} import(s) would be updated`)}`);
   }
 
   // Descend into local sibling manifests, resolving each relative source against
@@ -482,9 +483,23 @@ export async function upgrade(argv: {
   if (totalUnchanged > 0) parts.push(log.dim(`${totalUnchanged} already current`));
   if (totalSkipped > 0) parts.push(log.dim(`${totalSkipped} skipped`));
   if (totalErrors > 0) parts.push(log.error(`${totalErrors} error${totalErrors !== 1 ? "s" : ""}`));
-  console.log(`\n${parts.join(", ")}`);
+  outLine(`\n${parts.join(", ")}`);
 
-  if (totalErrors > 0) process.exit(1);
+  outEmit({
+    ok: totalErrors === 0,
+    dryRun: argv.dryRun ?? false,
+    upgraded: totalUpgrades,
+    pinned: totalPinned,
+    unchanged: totalUnchanged,
+    skipped: totalSkipped,
+    errorCount: totalErrors,
+  });
+
+  // `process.exitCode`, not `process.exit()`: the structured payload was just
+  // written, and on a pipe `write` is asynchronous while `exit` does not flush.
+  // Truncated JSON is a parse failure for the one consumer this format exists
+  // for. Returning lets the event loop drain.
+  if (totalErrors > 0) process.exitCode = 1;
 }
 
 export function upgradeCommand(yargs: Argv): Argv {

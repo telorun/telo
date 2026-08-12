@@ -75,6 +75,35 @@ module once across all of them.
 Because imports resolve through the same cache `telo run` uses, a fully pinned
 manifest needs no network at all on a repeat check.
 
+For a tool rather than a person, `-o json` turns stdout into a single document
+and leaves stderr for the human-readable notes:
+
+```bash
+telo check -o json ./apps/my-app/telo.yaml
+```
+
+```json
+{
+  "ok": false,
+  "errorCount": 1,
+  "warnCount": 0,
+  "diagnostics": [
+    {
+      "file": "apps/my-app/telo.yaml",
+      "line": 12,
+      "column": 5,
+      "severity": "error",
+      "code": "CEL_UNKNOWN_FIELD",
+      "message": "Unknown field 'titel' on request.body"
+    }
+  ]
+}
+```
+
+Branch on `code`, not on the message — the codes are stable, the wording is not.
+The exit code is unchanged, so the same command still works as a gate. Nothing is
+coloured on stdout in this mode, whatever `FORCE_COLOR` is set to.
+
 **4. When you run it.** `telo run` performs the *same* analysis during load and
 refuses to start if it fails — you get the identical message and nothing
 initializes. `telo check` is that gate, earlier and with no side effects.

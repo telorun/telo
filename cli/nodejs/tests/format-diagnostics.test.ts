@@ -3,6 +3,7 @@ import type { RuntimeDiagnostic } from "@telorun/kernel";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createLogger, formatDiagnostics } from "../src/logger.js";
+import { Output, installOutput } from "../src/output.js";
 
 /**
  * `telo run` renders a static failure with the position `telo check` prints, and
@@ -37,17 +38,20 @@ describe("formatDiagnostics", () => {
     } as unknown as LoadedGraph;
   }
 
+  // Diagnostics go through the `Output` seam. The seam takes its streams as
+  // constructor arguments, so this hands it a recorder rather than spying on a
+  // process global — the ambient instance is swapped for the duration.
   function captureErr(fn: () => void): string[] {
-    const lines: string[] = [];
-    const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-      lines.push(args.join(" "));
-    });
+    const stderr = { isTTY: false, text: "", write(c: string) { this.text += c; return true; } };
+    const restore = installOutput(
+      new Output({ format: "text", stdout: { write: () => true }, stderr, env: {} }),
+    );
     try {
       fn();
     } finally {
-      spy.mockRestore();
+      restore();
     }
-    return lines;
+    return stderr.text.split("\n").slice(0, -1);
   }
 
   afterEach(() => vi.restoreAllMocks());

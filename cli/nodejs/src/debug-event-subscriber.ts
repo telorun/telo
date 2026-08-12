@@ -1,5 +1,6 @@
 import * as fs from "fs/promises";
 import * as path from "path";
+import { outErrLine } from "./output.js";
 
 /**
  * The JSONL file sink for `--debug`: one wire-format event per line, appended to
@@ -23,7 +24,9 @@ export class DebugEventSubscriber {
     try {
       await fs.appendFile(this.filePath, line + "\n", "utf-8");
     } catch (error) {
-      console.error("Failed to write event to debug log:", error);
+      outErrLine(
+        `Failed to write event to debug log: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 }

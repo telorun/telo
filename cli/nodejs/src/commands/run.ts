@@ -22,6 +22,7 @@ import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
 import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
+import { outErrLine, output } from "../output.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
 import { teeStdio } from "../stdio-tee.js";
 import { resolveUiBundle } from "../ui-fetch.js";
@@ -489,8 +490,10 @@ async function persistManifestCache(
   } catch (err) {
     // Warnings belong on stderr — stdout is reserved for the manifest's own
     // output (consumers may pipe `telo run` into jq / a downstream process).
-    process.stderr.write(
-      `${log.warn(`[manifest-cache] write failed: ${err instanceof Error ? err.message : String(err)}`)}\n`,
+    outErrLine(
+      log.err.warn(
+        `[manifest-cache] write failed: ${err instanceof Error ? err.message : String(err)}`,
+      ),
     );
   }
 }
@@ -535,10 +538,21 @@ function reportError(argv: RunArgv, error: unknown, log: Logger, kernel?: Kernel
   formatDiagnostics(diags, log, displayPath, kernel?.getLoadedGraph());
   const errorCount = countRootErrors(diags);
   const warnCount = diags.filter((d) => d.severity === "warning").length;
+  const out = output();
   const parts: string[] = [];
-  if (errorCount > 0) parts.push(log.error(`${errorCount} error${errorCount !== 1 ? "s" : ""}`));
-  if (warnCount > 0) parts.push(log.warn(`${warnCount} warning${warnCount !== 1 ? "s" : ""}`));
-  console.error(`\n${parts.join(", ")}`);
+  if (errorCount > 0)
+    parts.push(log.err.error(`${errorCount} error${errorCount !== 1 ? "s" : ""}`));
+  if (warnCount > 0) parts.push(log.err.warn(`${warnCount} warning${warnCount !== 1 ? "s" : ""}`));
+  out.errLine(`\n${parts.join(", ")}`);
+  // No envelope, deliberately: `run` is exempt from `-o json`.
+  //
+  // The kernel runs in-process, and `teeStdio` COPIES the app's stdout/stderr
+  // rather than redirecting them — so the app writes to these same two
+  // descriptors. An envelope appended after arbitrary app output is unparseable
+  // on either stream, which is the exact failure `-o json` exists to remove, and
+  // there is no third descriptor to claim. The machine surface for a run is
+  // `--debug`, whose wire protocol is framed per event precisely because it
+  // shares a stream with the app.
   return errorCount;
 }
 

@@ -1,0 +1,5 @@
+kind: Telo.Application
+metadata:
+  name: UnresolvableImport
+imports:
+  Missing: ./does-not-exist

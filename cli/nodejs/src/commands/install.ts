@@ -20,6 +20,7 @@ import {
   warmModuleLayers,
 } from "../bundle/warm-layers.js";
 import { createLogger, type Logger } from "../logger.js";
+import { outEmit, outErrLine, outLine, output } from "../output.js";
 
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
@@ -98,12 +99,12 @@ async function warmAnalysisCache(
       ],
     });
     await kernel.load(entryPath, { analyzeOnly: true, cacheDir: cacheRoot });
-    console.log(
+    outLine(
       `  ${log.ok("✓")}  warmed analysis cache in ${log.dim(path.relative(process.cwd(), manifestsDir))}`,
     );
   } catch (err) {
-    console.error(
-      `  ${log.warn("⚠")}  analysis cache not warmed: ` +
+    outErrLine(
+      `  ${log.err.warn("⚠")}  analysis cache not warmed: ` +
         (err instanceof Error ? err.message : String(err)),
     );
   }
@@ -143,8 +144,8 @@ async function installOne(
     if (graph.errors.length > 0) throw graph.errors[0].error;
     manifests = flattenForAnalyzer(graph);
   } catch (err) {
-    console.error(
-      `${displayPath}  ${log.error("error")}  ` +
+    outErrLine(
+      `${displayPath}  ${log.err.error("error")}  ` +
         (err instanceof Error ? err.message : String(err)),
     );
     return false;
@@ -167,7 +168,7 @@ async function installOne(
     try {
       const written = await writeManifestCache(graph, entryDir, registryUrl, manifestsDir);
       if (written.length > 0) {
-        console.log(
+        outLine(
           `  ${log.ok("✓")}  cached ${written.length} manifest${written.length !== 1 ? "s" : ""} to ${log.dim(path.relative(process.cwd(), manifestsDir))}`,
         );
       }
@@ -179,18 +180,18 @@ async function installOne(
         registryUrl,
         manifestsDir,
         platform,
-        (msg) => console.error(`  ${log.warn("⚠")}  ${msg}`),
+        (msg) => outErrLine(`  ${log.err.warn("⚠")}  ${msg}`),
       );
       moduleArtifacts = warmed.artifacts;
       if (warmed.materialized > 0) {
-        console.log(
+        outLine(
           `  ${log.ok("✓")}  materialized ${warmed.materialized} module layer${warmed.materialized !== 1 ? "s" : ""} ` +
             `for ${log.dim(describePlatformTarget(platform))}`,
         );
       }
     } catch (err) {
-      console.error(
-        `${displayPath}  ${log.error("error")}  failed to write manifest cache: ` +
+      outErrLine(
+        `${displayPath}  ${log.err.error("error")}  failed to write manifest cache: ` +
           (err instanceof Error ? err.message : String(err)),
       );
       return false;
@@ -200,12 +201,12 @@ async function installOne(
   const jobs = collectControllerJobs(manifests);
 
   if (jobs.length === 0) {
-    console.log(log.ok("✓") + `  ${displayPath}: no controllers to install`);
+    outLine(log.ok("✓") + `  ${displayPath}: no controllers to install`);
     if (entryDir && cacheRoot) await warmAnalysisCache(entryPath, entryDir, registryUrl, log, cacheRoot);
     return true;
   }
 
-  console.log(`Installing ${jobs.length} controller${jobs.length !== 1 ? "s" : ""} for ${log.dim(displayPath)}`);
+  outLine(`Installing ${jobs.length} controller${jobs.length !== 1 ? "s" : ""} for ${log.dim(displayPath)}`);
 
   // The install root is anchored at the entry manifest's directory, mirroring
   // how `kernel.load(...)` records the entry URL at run time. Every controller
@@ -233,26 +234,26 @@ async function installOne(
     const job = jobs[i];
     const result = results[i];
     if (result.status === "fulfilled") {
-      console.log(`  ${log.ok("✓")}  ${job.label}`);
+      outLine(`  ${log.ok("✓")}  ${job.label}`);
     } else {
       failed++;
       const reason = result.reason;
       const msg = reason instanceof Error ? reason.message : String(reason);
-      console.error(`  ${log.error("✗")}  ${job.label}`);
-      console.error(`       ${log.dim(msg)}`);
+      outErrLine(`  ${log.err.error("✗")}  ${job.label}`);
+      outErrLine(`       ${log.err.dim(msg)}`);
       for (const ref of job.definitions) {
-        console.error(`       ${log.dim(`referenced by ${ref.kind} ${ref.name}`)}`);
+        outErrLine(`       ${log.err.dim(`referenced by ${ref.kind} ${ref.name}`)}`);
       }
     }
   }
 
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   if (failed === 0) {
-    console.log(`\n${log.ok("✓")}  ${jobs.length} installed in ${elapsed}s`);
+    outLine(`\n${log.ok("✓")}  ${jobs.length} installed in ${elapsed}s`);
     if (entryDir && cacheRoot) await warmAnalysisCache(entryPath, entryDir, registryUrl, log, cacheRoot);
     return true;
   }
-  console.log(
+  outLine(
     `\n${log.error(`${failed} failed`)}, ${jobs.length - failed} installed in ${elapsed}s`,
   );
   return false;
@@ -271,7 +272,7 @@ export async function install(argv: {
   try {
     platform = parsePlatformTarget(argv.platform);
   } catch (err) {
-    console.error(log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
+    outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   }
 
@@ -284,12 +285,22 @@ export async function install(argv: {
     argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
 
   let failed = false;
+  const installed: string[] = [];
+  const failures: string[] = [];
   for (const p of argv.paths) {
     const ok = await installOne(p, registryUrl, platform, log);
+    (ok ? installed : failures).push(p);
     if (!ok) failed = true;
   }
 
-  if (failed) process.exit(1);
+  outEmit({ ok: !failed, installed, failed: failures });
+
+  // `process.exitCode`, not `process.exit()`: the structured payload was just
+  // written, and on a pipe `write` is asynchronous while `exit` does not flush. A
+  // large diagnostic set exceeds the 64 KB pipe buffer, and truncated JSON is a
+  // parse failure for the one consumer this format exists for. Returning lets
+  // the event loop drain.
+  if (failed) process.exitCode = 1;
 }
 
 export function installCommand(yargs: Argv): Argv {

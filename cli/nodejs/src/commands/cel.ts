@@ -1,11 +1,15 @@
 import { buildCelEnvironment, celFunctionCatalog, type CelFunctionInfo } from "@telorun/templating";
 import { enableBigIntJson, nodeCelHandlers } from "@telorun/kernel";
 import type { Argv } from "yargs";
+import { output } from "../output.js";
 
 function printFunctions(asJson: boolean): void {
   const catalog = celFunctionCatalog();
-  if (asJson) {
-    console.log(JSON.stringify(catalog, null, 2));
+  const out = output();
+  // `--json` predates the global flag and is an alias for it. The catalog array
+  // IS the contract, so it is emitted bare rather than inside an envelope.
+  if (asJson || out.isJson) {
+    out.document(catalog);
     return;
   }
 
@@ -17,18 +21,18 @@ function printFunctions(asJson: boolean): void {
   }
 
   for (const [category, fns] of byCategory) {
-    console.log(`\n${category}`);
+    out.line(`\n${category}`);
     for (const fn of fns) {
       const tags = [
         fn.hostBacked ? "host" : null,
         fn.deterministic ? null : "non-deterministic",
       ].filter(Boolean);
       const suffix = tags.length ? `  [${tags.join(", ")}]` : "";
-      console.log(`  ${fn.signature}${suffix}`);
-      console.log(`      ${fn.summary}`);
+      out.line(`  ${fn.signature}${suffix}`);
+      out.line(`      ${fn.summary}`);
     }
   }
-  console.log();
+  out.line();
 }
 
 function evalExpression(expr: string, contextJson: string | undefined, asJson: boolean): void {
@@ -39,11 +43,16 @@ function evalExpression(expr: string, contextJson: string | undefined, asJson: b
   // identical: hosting a kernel is the only thing that installs it.
   enableBigIntJson();
 
+  const out = output();
   let context: Record<string, unknown>;
   try {
     context = contextJson ? JSON.parse(contextJson) : {};
   } catch (err) {
-    console.error(`Invalid --context JSON: ${err instanceof Error ? err.message : String(err)}`);
+    const message = `Invalid --context JSON: ${err instanceof Error ? err.message : String(err)}`;
+    // Prose on stderr plus a non-zero exit — never an envelope on stdout.
+    // stdout is the document, and an error object there would be
+    // indistinguishable from a CEL expression that evaluated to one.
+    out.errLine(message);
     process.exit(1);
   }
 
@@ -54,14 +63,20 @@ function evalExpression(expr: string, contextJson: string | undefined, asJson: b
   try {
     result = env.parse(expr)(context);
   } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
+    const message = err instanceof Error ? err.message : String(err);
+    // Prose on stderr plus a non-zero exit — never an envelope on stdout.
+    // stdout is the document, and an error object there would be
+    // indistinguishable from a CEL expression that evaluated to one.
+    out.errLine(message);
     process.exit(1);
   }
 
-  if (asJson) {
-    console.log(JSON.stringify(result, null, 2));
+  // The evaluated value IS the contract — emitted bare, exactly as `--json`
+  // already did, so the int64 encoding installed above stays observable.
+  if (asJson || out.isJson) {
+    out.document(result);
   } else {
-    console.log(typeof result === "bigint" ? result.toString() : result);
+    out.line(String(typeof result === "bigint" ? result.toString() : result));
   }
 }
 

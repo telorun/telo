@@ -12,6 +12,7 @@ import { describePartition, partitionLayers } from "../bundle/partition-layers.j
 import { describeDrift, findPayloadDrift } from "../bundle/payload-drift.js";
 import { assertWithinModule, selectFiles } from "../bundle/select-files.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
+import { outEmit, outErrLine, outLine } from "../output.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
 import { getPublisher } from "../publishers/registry.js";
 import { findModuleDoc, importSourceRefs } from "./manifest-imports.js";
@@ -313,7 +314,7 @@ export async function pinImports(
 const STEP_WIDTH = 9; // "publish  " column width
 
 function step(log: Logger, label: string, status: string) {
-  console.log(`    ${label.padEnd(STEP_WIDTH)}${status}`);
+  outLine(`    ${label.padEnd(STEP_WIDTH)}${status}`);
 }
 
 function stepOk(log: Logger, label: string, detail?: string) {
@@ -349,7 +350,7 @@ async function publishOne(
       filePath = path.join(filePath, DEFAULT_MANIFEST_FILENAME);
     }
   } catch {
-    console.error(log.error("error") + `  Cannot read file: ${filePath}`);
+    outErrLine(log.err.error("error") + `  Cannot read file: ${filePath}`);
     return false;
   }
 
@@ -357,7 +358,7 @@ async function publishOne(
   try {
     content = fs.readFileSync(filePath, "utf-8");
   } catch {
-    console.error(log.error("error") + `  Cannot read file: ${filePath}`);
+    outErrLine(log.err.error("error") + `  Cannot read file: ${filePath}`);
     return false;
   }
 
@@ -376,7 +377,7 @@ async function publishOne(
   for (const ctrl of uniqueControllers) {
     const publisher = getPublisher(ctrl.type);
 
-    console.log(`\n  ${log.dim(ctrl.packageName)}`);
+    outLine(`\n  ${log.dim(ctrl.packageName)}`);
 
     if (!publisher) {
       step(log, "publish", log.warn("skipped") + `  no publisher for type "${ctrl.type}"`);
@@ -411,7 +412,7 @@ async function publishOne(
         stepOk(log, "build");
       } catch (err) {
         step(log, "build", log.error("error"));
-        console.error(
+        outErrLine(
           (err instanceof Error ? err.message : String(err))
             .split("\n")
             .map((l) => `      ${l}`)
@@ -460,7 +461,7 @@ async function publishOne(
   }
 
   // --- Manifest ---
-  console.log(`\n  ${log.dim("manifest")}`);
+  outLine(`\n  ${log.dim("manifest")}`);
 
   if (bumpedVersion) {
     if (dryRun) {
@@ -486,8 +487,8 @@ async function publishOne(
     analysisGraph = await analysisLoader.loadGraph(filePath, { desugarImports: true });
     if (analysisGraph.errors.length > 0) throw analysisGraph.errors[0].error;
   } catch (err) {
-    console.error(
-      log.error("error") +
+    outErrLine(
+      log.err.error("error") +
         `  Failed to load manifest for analysis: ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
@@ -515,8 +516,8 @@ async function publishOne(
     (d) => typeof d.code === "string" && PUBLISH_BLOCKING_CODES.has(d.code),
   );
   if (blocking.length > 0) {
-    console.error(
-      `${log.error("error")}  ${blocking.length} metadata problem${blocking.length !== 1 ? "s" : ""} must be fixed before publishing ` +
+    outErrLine(
+      `${log.err.error("error")}  ${blocking.length} metadata problem${blocking.length !== 1 ? "s" : ""} must be fixed before publishing ` +
         `(reported as warnings above). These fields describe the module to everyone who finds it, ` +
         `and this version's copy of them cannot be changed once published.`,
     );
@@ -533,8 +534,8 @@ async function publishOne(
     content = canon.content;
     canonicalizedRefs = canon.refs;
   } catch (err) {
-    console.error(
-      log.error("error") +
+    outErrLine(
+      log.err.error("error") +
         `  Failed to canonicalize relative imports: ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
@@ -552,8 +553,8 @@ async function publishOne(
         if (!transport) throw new Error(`no transport owns '${ref}'`);
         await transport.source.read(ref);
       } catch (err) {
-        console.error(
-          log.error("error") +
+        outErrLine(
+          log.err.error("error") +
             `  relative import canonicalized to '${ref}', which does not resolve at its published ` +
             `location — publish the sibling first. Cause: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -573,8 +574,8 @@ async function publishOne(
         stepOk(log, "pin", `${result.pinned} import(s) pinned, ${result.unresolved.length} unresolved`);
       }
     } catch (err) {
-      console.error(
-        log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
+      outErrLine(
+        log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
       );
       return false;
     }
@@ -589,8 +590,8 @@ async function publishOne(
   try {
     bundledFiles = selectFiles(manifestDir, readFilesPatterns(content));
   } catch (err) {
-    console.error(
-      log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
+    outErrLine(
+      log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
   }
@@ -611,8 +612,8 @@ async function publishOne(
       partition.layers.flatMap((layer) => layer.files),
     );
   } catch (err) {
-    console.error(
-      log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
+    outErrLine(
+      log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
     );
     return false;
   }
@@ -638,13 +639,13 @@ async function publishOne(
     } catch (err) {
       // A registry that could not answer is not a pass. Fail the publish and say
       // why, rather than shipping on the assumption that nothing changed.
-      console.error(
-        log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
+      outErrLine(
+        log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
       );
       return false;
     }
     if (drift && drift.length > 0) {
-      console.error(log.error("error") + `  ${describeDrift(destination, version, drift)}`);
+      outErrLine(log.err.error("error") + `  ${describeDrift(destination, version, drift)}`);
       return false;
     }
     if (drift) stepOk(log, "payload", `matches the published ${version}`);
@@ -668,14 +669,14 @@ async function publishOne(
       {
         token: process.env.TELO_REGISTRY_TOKEN,
         onRetry: ({ reason, attempt, maxAttempts, delayMs }) =>
-          console.error(
-            `    ${"retry".padEnd(STEP_WIDTH)}${log.warn(reason)}  attempt ${attempt}/${maxAttempts - 1}, ` +
+          outErrLine(
+            `    ${"retry".padEnd(STEP_WIDTH)}${log.err.warn(reason)}  attempt ${attempt}/${maxAttempts - 1}, ` +
               `waiting ${Math.round(delayMs / 100) / 10}s`,
           ),
       },
     );
   } catch (err) {
-    console.error(log.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
+    outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
     return false;
   }
 
@@ -716,7 +717,7 @@ export async function publish(argv: {
   frozen: boolean;
 }): Promise<void> {
   if (argv.bump && argv.skipControllers) {
-    console.error("error: --bump and --skip-controllers are mutually exclusive");
+    outErrLine("error: --bump and --skip-controllers are mutually exclusive");
     process.exit(1);
   }
 
@@ -727,7 +728,7 @@ export async function publish(argv: {
   if (paths.length > 0) {
     const kind = classifyDestination(paths[0]);
     if (kind === "http") {
-      console.error(
+      outErrLine(
         "error: publishing to the HTTP Telo registry has been removed. " +
           "Publish to an OCI registry, e.g. `telo publish oci://ghcr.io/<org>/<name> ./telo.yaml`.",
       );
@@ -739,23 +740,25 @@ export async function publish(argv: {
     }
   }
   if (!destination) {
-    console.error(
+    outErrLine(
       "error: no publish destination — pass an OCI repo as the first argument, " +
         "e.g. `telo publish oci://ghcr.io/<org>/<name> ./telo.yaml`.",
     );
     process.exit(1);
   }
   if (paths.length === 0) {
-    console.error("error: no manifest paths to publish");
+    outErrLine("error: no manifest paths to publish");
     process.exit(1);
   }
 
   const log = createLogger(false);
   let failed = false;
+  const published: string[] = [];
+  const failures: string[] = [];
   for (const p of paths) {
     const filePath = path.resolve(process.cwd(), p);
     const relPath = path.relative(process.cwd(), filePath);
-    console.log(`\nPublishing ${log.dim(relPath)}${log.dim(` → ${destination}`)}`);
+    outLine(`\nPublishing ${log.dim(relPath)}${log.dim(` → ${destination}`)}`);
     const ok = await publishOne(
       filePath,
       destination,
@@ -766,10 +769,23 @@ export async function publish(argv: {
       argv.frozen,
       log,
     );
+    (ok ? published : failures).push(relPath);
     if (!ok) failed = true;
   }
-  console.log("");
-  if (failed) process.exit(1);
+  outLine("");
+  outEmit({
+    ok: !failed,
+    destination,
+    dryRun: argv.dryRun ?? false,
+    published,
+    failed: failures,
+  });
+  // `process.exitCode`, not `process.exit()`: the structured payload was just
+  // written, and on a pipe `write` is asynchronous while `exit` does not flush. A
+  // large diagnostic set exceeds the 64 KB pipe buffer, and truncated JSON is a
+  // parse failure for the one consumer this format exists for. Returning lets
+  // the event loop drain.
+  if (failed) process.exitCode = 1;
 }
 
 export function publishCommand(yargs: Argv): Argv {

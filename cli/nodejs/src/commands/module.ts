@@ -23,6 +23,7 @@ import {
   moduleRuntimeReport,
 } from "../controller-runtime.js";
 import { createLogger, type Logger } from "../logger.js";
+import { outErrLine, outLine, output } from "../output.js";
 import { fetchManifestHash } from "../registry-hash.js";
 import { findModuleDoc } from "./manifest-imports.js";
 
@@ -89,8 +90,8 @@ function readFileOrExit(filePath: string, log: Logger): string {
   try {
     return fs.readFileSync(filePath, "utf-8");
   } catch (err) {
-    console.error(
-      `${log.error("error")}  cannot read ${path.relative(process.cwd(), filePath)}: ${errMsg(err)}`,
+    outErrLine(
+      `${log.err.error("error")}  cannot read ${path.relative(process.cwd(), filePath)}: ${errMsg(err)}`,
     );
     process.exit(1);
   }
@@ -99,22 +100,24 @@ function readFileOrExit(filePath: string, log: Logger): string {
 function versionOrExit(text: string, label: string, log: Logger): string {
   const version = declaredVersion(text);
   if (!version) {
-    console.error(`${log.error("error")}  ${label} declares no metadata.version`);
+    outErrLine(`${log.err.error("error")}  ${label} declares no metadata.version`);
     process.exit(1);
   }
   return version;
 }
 
 function emitVersions(versions: string[], json: boolean, log: Logger): void {
-  if (json) {
-    console.log(JSON.stringify(versions));
+  if (json || output().isJson) {
+    // Bare array, not an envelope: this is the shape the hub's tracker already
+    // parses out of `telo module versions --json`.
+    output().document(versions);
     return;
   }
   if (versions.length === 0) {
-    console.error(log.dim("no published versions"));
+    outErrLine(log.err.dim("no published versions"));
     return;
   }
-  for (const v of versions) console.log(v);
+  for (const v of versions) outLine(v);
 }
 
 /** Read a single remote manifest (a direct URL, or any transport-owned ref) and
@@ -128,15 +131,15 @@ async function readRemoteManifest(
   const transport = registry.forRef(ref);
   if (!transport) {
     const base = splitIntegrity(ref).base;
-    console.error(
-      `${log.error("error")}  cannot resolve '${ref}' — registry refs need a version (e.g. '${base}@<version>')`,
+    outErrLine(
+      `${log.err.error("error")}  cannot resolve '${ref}' — registry refs need a version (e.g. '${base}@<version>')`,
     );
     process.exit(1);
   }
   try {
     return (await transport.source.read(ref)).text;
   } catch (err) {
-    console.error(`${log.error("error")}  ${errMsg(err)}`);
+    outErrLine(`${log.err.error("error")}  ${errMsg(err)}`);
     process.exit(1);
   }
 }
@@ -169,18 +172,18 @@ async function runVersions(argv: {
   // 3. Enumerable — a registry `ns/name` or `oci://host/repo` ref.
   const enumRef = refForEnumeration(argv.ref);
   if (!registry.forRef(enumRef)) {
-    console.error(`${log.error("error")}  no transport handles '${argv.ref}'`);
+    outErrLine(`${log.err.error("error")}  no transport handles '${argv.ref}'`);
     process.exit(1);
   }
   let versions: string[] | null;
   try {
     versions = await registry.listVersions(enumRef);
   } catch (err) {
-    console.error(`${log.error("error")}  ${errMsg(err)}`);
+    outErrLine(`${log.err.error("error")}  ${errMsg(err)}`);
     process.exit(1);
   }
   if (versions === null) {
-    console.error(`${log.error("error")}  module not found: ${argv.ref}`);
+    outErrLine(`${log.err.error("error")}  module not found: ${argv.ref}`);
     process.exit(1);
   }
   emitVersions(sortVersionsDesc(versions), argv.json, log);
@@ -255,7 +258,7 @@ async function integrityForRef(
   try {
     return await fetchManifestHash(registryUrl, ref);
   } catch (err) {
-    console.error(`${log.warn("warn")}  no integrity hash for '${ref}': ${errMsg(err)}`);
+    outErrLine(`${log.err.warn("warn")}  no integrity hash for '${ref}': ${errMsg(err)}`);
     return null;
   }
 }
@@ -307,14 +310,14 @@ async function runManifest(argv: {
 }): Promise<void> {
   const log = createLogger(false);
   const text = await loadManifestText(argv.ref, argv.registryUrl, log);
-  if (argv.json) {
+  if (argv.json || output().isJson) {
     const registryUrl = resolveRegistryUrl(argv.registryUrl);
-    console.log(
-      JSON.stringify(await buildManifestJsonPayload(argv.ref, registryUrl, text, log)),
-    );
+    // The hub's tracker parses this document; it is the payload, not a log
+    // line, so it bypasses `outLine` (a no-op under `-o json`).
+    output().document(await buildManifestJsonPayload(argv.ref, registryUrl, text, log));
     return;
   }
-  process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
+  output().raw(text.endsWith("\n") ? text : `${text}\n`);
 }
 
 /** Cheap content-identity digest of one published version — what the discovery
@@ -328,11 +331,11 @@ async function runDigest(argv: {
   const log = createLogger(false);
 
   const emit = (digest: string): void => {
-    if (argv.json) {
-      console.log(JSON.stringify({ ref: argv.ref, digest }));
+    if (argv.json || output().isJson) {
+      output().document({ ref: argv.ref, digest });
       return;
     }
-    console.log(digest);
+    outLine(digest);
   };
 
   // Local module — hash the manifest bytes on disk (same form as the registry
@@ -346,18 +349,18 @@ async function runDigest(argv: {
 
   const registry = defaultTransportRegistry(resolveRegistryUrl(argv.registryUrl));
   if (!registry.forRef(argv.ref)) {
-    console.error(`${log.error("error")}  no transport handles '${argv.ref}'`);
+    outErrLine(`${log.err.error("error")}  no transport handles '${argv.ref}'`);
     process.exit(1);
   }
   let digest: string | null;
   try {
     digest = await registry.digest(argv.ref);
   } catch (err) {
-    console.error(`${log.error("error")}  ${errMsg(err)}`);
+    outErrLine(`${log.err.error("error")}  ${errMsg(err)}`);
     process.exit(1);
   }
   if (digest === null) {
-    console.error(`${log.error("error")}  module not found: ${argv.ref}`);
+    outErrLine(`${log.err.error("error")}  module not found: ${argv.ref}`);
     process.exit(1);
   }
   emit(digest);
@@ -473,15 +476,15 @@ async function runResources(argv: {
 }): Promise<void> {
   const log = createLogger(false);
   const resources = extractResources(parseDocs(await loadManifestText(argv.ref, argv.registryUrl, log)));
-  if (argv.json) {
-    console.log(JSON.stringify(resources));
+  if (argv.json || output().isJson) {
+    output().document(resources);
     return;
   }
   if (resources.length === 0) {
-    console.error(log.dim("no resources declared"));
+    outErrLine(log.err.dim("no resources declared"));
     return;
   }
-  for (const r of resources) console.log(`${r.kind}${r.name ? `  ${log.dim(r.name)}` : ""}`);
+  for (const r of resources) outLine(`${r.kind}${r.name ? `  ${log.dim(r.name)}` : ""}`);
 }
 
 async function runKinds(argv: {
@@ -491,23 +494,23 @@ async function runKinds(argv: {
 }): Promise<void> {
   const log = createLogger(false);
   const kinds = extractKinds(parseDocs(await loadManifestText(argv.ref, argv.registryUrl, log)));
-  if (argv.json) {
-    console.log(JSON.stringify(kinds));
+  if (argv.json || output().isJson) {
+    output().document(kinds);
     return;
   }
   if (kinds.length === 0) {
-    console.error(log.dim("no kinds defined"));
+    outErrLine(log.err.dim("no kinds defined"));
     return;
   }
   // The prefix in a `kind:` field is the consumer's import alias, not the module
   // name — surface a concrete usage hint so the bare suffixes below aren't misread.
   const alias = pascalCase(kinds[0].module) || "Alias";
-  console.error(log.dim(`import as e.g. ${alias}: ${argv.ref} — then write ${alias}.<Kind>`));
+  outErrLine(log.err.dim(`import as e.g. ${alias}: ${argv.ref} — then write ${alias}.<Kind>`));
   for (const k of kinds) {
     const cap = k.abstract ? "abstract" : k.capability;
     const badge = k.exported ? log.ok(" (exported)") : "";
-    console.log(`${k.name}  ${log.dim(cap)}${badge}`);
-    if (k.description) console.log(`    ${log.dim(k.description.split("\n")[0])}`);
+    outLine(`${k.name}  ${log.dim(cap)}${badge}`);
+    if (k.description) outLine(`    ${log.dim(k.description.split("\n")[0])}`);
   }
 }
 

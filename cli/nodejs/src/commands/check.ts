@@ -17,7 +17,14 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import type { Argv } from "yargs";
-import { createLogger, formatAnalysisDiagnostics, formatDiagnostics, type Logger } from "../logger.js";
+import {
+  createLogger,
+  formatAnalysisDiagnostics,
+  formatDiagnostics,
+  type JsonDiagnostic,
+  type Logger,
+} from "../logger.js";
+import { outErrLine, output } from "../output.js";
 import {
   RecordingCacheSource,
   readOriginDigests,
@@ -120,8 +127,8 @@ async function dropStaleEntry(
   try {
     await fs.rm(file, { force: true });
   } catch (err) {
-    process.stderr.write(
-      `${log.warn(
+    outErrLine(
+      `${log.err.warn(
         `[manifest-cache] could not remove stale entry ${file}: ${
           err instanceof Error ? err.message : String(err)
         }`,
@@ -139,6 +146,8 @@ async function dropStaleEntry(
 interface CheckOutcome {
   errorCount: number;
   warnCount: number;
+  /** The same diagnostics the text form printed, as data for `-o json`. */
+  diagnostics: JsonDiagnostic[];
   /** Non-empty when the load was served stale bytes; the caller drops these
    *  files and retries rather than reporting diagnostics derived from them. */
   staleFiles: string[];
@@ -191,6 +200,7 @@ async function checkOne(
         return {
           errorCount: 0,
           warnCount: 0,
+          diagnostics: [],
           staleFiles: freshness.staleFiles,
           digests: freshness.digests,
         };
@@ -228,8 +238,8 @@ async function checkOne(
         );
         await writeOriginDigests(cacheTarget.manifestsDir, digests);
       } catch (err) {
-        process.stderr.write(
-          `${log.warn(`[manifest-cache] write failed: ${err instanceof Error ? err.message : String(err)}`)}\n`,
+        outErrLine(
+          `${log.err.warn(`[manifest-cache] write failed: ${err instanceof Error ? err.message : String(err)}`)}\n`,
         );
       }
     }
@@ -239,12 +249,25 @@ async function checkOne(
     const sourceLine = (err as any).sourceLine as number | undefined;
     const displayPath = isUrl ? entryPath : path.relative(process.cwd(), entryPath);
     const loc = sourceLine !== undefined ? `:${sourceLine + 1}` : "";
-    formatDiagnostics(
-      [{ message: err instanceof Error ? err.message : String(err) }],
-      log,
-      `${displayPath}${loc}`,
-    );
-    return { errorCount: 1, warnCount: 0, staleFiles: [], digests: new Map() };
+    const message = err instanceof Error ? err.message : String(err);
+    formatDiagnostics([{ message }], log, `${displayPath}${loc}`);
+    // A load failure is a diagnostic like any other to a `-o json` consumer;
+    // dropping it there would make the payload disagree with the exit code.
+    return {
+      errorCount: 1,
+      warnCount: 0,
+      diagnostics: [
+        {
+          file: displayPath,
+          line: sourceLine !== undefined ? sourceLine + 1 : 1,
+          column: 1,
+          severity: "error",
+          message,
+        },
+      ],
+      staleFiles: [],
+      digests: new Map(),
+    };
   }
 }
 
@@ -270,6 +293,7 @@ export async function check(argv: {
 
   let totalErrors = 0;
   let totalWarns = 0;
+  const allDiagnostics: JsonDiagnostic[] = [];
 
   for (const p of argv.paths) {
     const cacheTarget = cacheTargetFor(resolveEntryPath(p));
@@ -297,19 +321,36 @@ export async function check(argv: {
 
     totalErrors += outcome.errorCount;
     totalWarns += outcome.warnCount;
+    allDiagnostics.push(...outcome.diagnostics);
   }
 
+  const out = output();
+
   if (totalErrors === 0 && totalWarns === 0) {
-    console.log(log.ok("✓") + "  No issues found");
+    out.line(log.ok("✓") + "  No issues found");
   } else {
     const parts: string[] = [];
     if (totalErrors > 0)
       parts.push(log.error(`${totalErrors} error${totalErrors !== 1 ? "s" : ""}`));
     if (totalWarns > 0) parts.push(log.warn(`${totalWarns} warning${totalWarns !== 1 ? "s" : ""}`));
-    console.log(`\n${parts.join(", ")}`);
+    out.line(`\n${parts.join(", ")}`);
   }
 
-  if (totalErrors > 0) process.exit(1);
+  // Emitted even when clean: an empty `diagnostics` array is the answer, and a
+  // consumer must not have to treat "no output" as success.
+  out.emit({
+    ok: totalErrors === 0,
+    errorCount: totalErrors,
+    warnCount: totalWarns,
+    diagnostics: allDiagnostics,
+  });
+
+  // `process.exitCode`, not `process.exit()`: the structured payload was just
+  // written, and on a pipe `write` is asynchronous while `exit` does not flush. A
+  // large diagnostic set exceeds the 64 KB pipe buffer, and truncated JSON is a
+  // parse failure for the one consumer this format exists for. Returning lets
+  // the event loop drain.
+  if (totalErrors > 0) process.exitCode = 1;
 }
 
 export function checkCommand(yargs: Argv): Argv {
