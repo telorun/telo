@@ -1,4 +1,9 @@
-export { buildCelEnvironment, type CelHandlers } from "./cel/environment.js";
+export {
+  buildCelEnvironment,
+  celBuiltinFunctions,
+  deriveSignatures,
+  type CelHandlers,
+} from "./cel/environment.js";
 export {
   celFunctionCatalog,
   CEL_FUNCTIONS,
@@ -19,7 +24,8 @@ export {
   INDEX_SEGMENT,
   validateChainAgainstSchema,
 } from "./cel/analyze.js";
-export { walkCelExpressions } from "./cel/walk.js";
+export { auditCalls, explainUnresolved, functionIndex, type CallAudit } from "./cel/diagnose.js";
+export { walkCelExpressions, type CelSurface } from "./cel/walk.js";
 
 export { celEngine } from "./engines/cel.js";
 export { literalEngine } from "./engines/literal.js";
@@ -30,7 +36,10 @@ export { TemplatingEngineRegistry } from "./registry.js";
 export { builtinEngines, createDefaultRegistry, defaultRegistry } from "./builtins.js";
 export type {
   AnalyzeEnv,
+  AnalyzeResult,
+  CallSite,
   CompileEnv,
+  DiagnosticFix,
   EngineDiagnostic,
   TemplatingEngine,
 } from "./engine.js";

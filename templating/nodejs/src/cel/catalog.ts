@@ -613,6 +613,33 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     hostBacked: false,
     build: () => () => BigInt(Math.floor(Date.now() / 1000)),
   },
+  // Timestamp conversions. cel-go's standard library defines both and cel-js
+  // ships neither, which is what made an instant a one-way door: timestamp
+  // arithmetic and the `getFullYear` / `getHours` family already work, but
+  // nothing converted the result back into a value a manifest field accepts,
+  // so an expiry could be computed and not stored. Semantics follow cel-go
+  // exactly — RFC 3339 and epoch SECONDS — so `int(timestamp)` and
+  // `timestamp(int)` round-trip in one unit.
+  {
+    name: "string",
+    signature: "string(timestamp): string",
+    register: ["string(google.protobuf.Timestamp): string"],
+    category: "conversion",
+    summary: "Format an instant as RFC 3339 (ISO-8601, UTC).",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (t: Date) => t.toISOString(),
+  },
+  {
+    name: "int",
+    signature: "int(timestamp): int",
+    register: ["int(google.protobuf.Timestamp): int"],
+    category: "conversion",
+    summary: "Epoch seconds of an instant (the unit `timestamp(int)` reads back).",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (t: Date) => BigInt(Math.floor(t.getTime() / 1000)),
+  },
   // UUID
   {
     name: "uuidv1",

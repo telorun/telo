@@ -11,6 +11,6 @@ export const literalEngine: TemplatingEngine = {
   },
 
   analyze() {
-    return [];
+    return { diagnostics: [], calls: [] };
   },
 };

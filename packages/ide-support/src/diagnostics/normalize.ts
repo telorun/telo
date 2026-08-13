@@ -1,23 +1,25 @@
-import type { AnalysisDiagnostic } from "@telorun/analyzer";
+import { diagnosticFix, type AnalysisDiagnostic } from "@telorun/analyzer";
 import type { DiagnosticContext, NormalizedDiagnostic } from "../types.js";
 import { resolveRange } from "./range-resolver.js";
 import { resolveSeverity } from "./severity.js";
 
 /** Converts a raw analyzer diagnostic into a host-ready shape:
  *    - Guarantees `range` and `severity`.
- *    - Surfaces `data.suggestedKind` (stamped by the analyzer for UNDEFINED_KIND)
- *      as a structured `{ kind: "replace-kind", replacement }` entry in
- *      `suggestions`, which editor hosts can wire into CodeActions.
- *  Does not rewrite the message — the analyzer already formatted the human-readable
- *  "Did you mean '…'?" hint, keeping CLI and IDE output in sync. */
+ *    - Surfaces the analyzer's `fix` stamp as a structured `suggestions` entry
+ *      hosts wire into a CodeAction.
+ *  Does not rewrite the message — the analyzer already formatted the
+ *  human-readable hint, keeping CLI and IDE output in sync.
+ *
+ *  One suggestion kind, not one per producer: an unknown kind name and a
+ *  mis-called CEL function are the same gesture at the host (replace the value
+ *  at this range), and a second kind would mean a second action path in every
+ *  editor for no difference the user can see. */
 export function normalizeDiagnostic(
   d: AnalysisDiagnostic,
   ctx: DiagnosticContext,
 ): NormalizedDiagnostic {
-  const suggestedKind = (d.data as { suggestedKind?: string } | undefined)?.suggestedKind;
-  const suggestions = suggestedKind
-    ? [{ kind: "replace-kind" as const, replacement: suggestedKind }]
-    : undefined;
+  const fix = diagnosticFix(d);
+  const suggestions = fix ? [{ kind: "replace" as const, replacement: fix.replacement }] : undefined;
 
   return {
     range: resolveRange(d, ctx),

@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata:
+  name: TimestampRoundTripFixture
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Console: ../../../modules/console
+targets:
+  - !ref Expiry
+---
+# Every conversion an instant needs to be useful in a manifest: arithmetic on a
+# timestamp, back out to a string for a field that stores it, and back out to
+# epoch seconds — the same unit `timestamp(int)` reads.
+kind: Run.Sequence
+metadata:
+  name: Expiry
+steps:
+  - name: Report
+    inputs:
+      output: !cel "'expires ' + string(timestamp(nowSeconds()) + duration('24h'))"
+    invoke: !ref Say
+---
+kind: Console.WriteLine
+metadata:
+  name: Say

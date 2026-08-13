@@ -17,6 +17,6 @@ export const refEngine: TemplatingEngine = {
   },
 
   analyze() {
-    return [];
+    return { diagnostics: [], calls: [] };
   },
 };

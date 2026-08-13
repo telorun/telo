@@ -15,5 +15,5 @@ metadata:
 source: ./__fixtures__/import-value-flow/rejects-resources-input.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
+    - code: CEL_TYPE_ERROR
       message: "No such key: Foo"

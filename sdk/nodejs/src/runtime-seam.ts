@@ -94,6 +94,18 @@ export interface RuntimeCheckOptions {
  *  kernel too. */
 export type CheckDiagnosticSeverity = "error" | "warning" | "info" | "hint";
 
+/** A mechanically applicable repair for a finding: `replacement` is the whole
+ *  corrected value at `path` — never a fragment — so a consumer applies it
+ *  without parsing the language inside.
+ *
+ *  That is why `path` travels with it. `source` / `line` / `column` locate a
+ *  finding for a human reading text; a module applying a repair works on the
+ *  parsed manifest, where a line number is not an address. A repair without its
+ *  anchor is one nothing can apply. */
+export interface CheckDiagnosticFix {
+  replacement: string;
+}
+
 /** One analyzer finding, flattened to data. Positions are zero-based, matching
  *  the analyzer's own range model. */
 export interface CheckDiagnostic {
@@ -104,6 +116,15 @@ export interface CheckDiagnostic {
   source?: string;
   line?: number;
   column?: number;
+  /** `<kind>/<name>` of the resource the finding is pinned to. */
+  resource?: string;
+  /** Dotted path of the offending value within that resource
+   *  (`steps[0].inputs.flag`) — the address `fix` applies at. */
+  path?: string;
+  /** Present only when the repair is decidable — a fix that might not be
+   *  correct is worse than none, since the point of the field is that it can be
+   *  applied without review. */
+  fix?: CheckDiagnosticFix;
 }
 
 export interface RuntimeCheckResult {

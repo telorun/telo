@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: NonDeterministicCompileFieldFixture
+  version: 1.0.0
+imports:
+  Http: ../../../modules/http-server
+ports:
+  http:
+    env: PORT
+    default: 8080
+targets:
+  - !ref Server
+---
+# `host` is `x-telo-eval: compile`, so this `nowIso()` is evaluated once at load
+# and frozen for the process's lifetime. That is occasionally the intent (a boot
+# id), so it warns rather than blocking — but nothing said so at all before, and
+# `deterministic: false` was read only to print a label in `telo cel functions`.
+kind: Http.Server
+metadata:
+  name: Server
+host: !cel "nowIso()"
+port: !cel "ports.http"
+mounts: []

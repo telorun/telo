@@ -31,6 +31,36 @@ export type PositionIndex = Map<string, Range>;
 
 /** LSP-compatible Diagnostic shape. range is optional because parsed YAML may not carry
  *  position info when only the parsed object (not raw text) is available. */
+/** A mechanically applicable repair, carried unchanged from whatever produced
+ *  it (a templating engine, a kind-name suggestion) to every consumer: CLI
+ *  JSON, IDE CodeActions, an agent applying it without re-deriving it from
+ *  prose.
+ *
+ *  `replacement` is the **whole** value at the diagnostic's `path`, corrected —
+ *  never a fragment — so applying it needs no knowledge of the language inside.
+ *  There is deliberately no sub-range: carrying one beside a whole-value
+ *  replacement gives the field two readings, and the minimal-edit reading
+ *  (splice `replacement` at `range`) produces garbage because the two measure
+ *  different strings.
+ *
+ *  One shape rather than one per producer: a `fix` field beside a
+ *  `suggestedKind` field beside a CEL-specific one would leave every host
+ *  wiring a separate action path for what is the same gesture. */
+export interface DiagnosticFix {
+  readonly replacement: string;
+}
+
+/** The `data` stamp diagnostics carry. Loose by design — passes bolt their own
+ *  keys on — but the fields every consumer reads are declared. */
+export interface DiagnosticData {
+  resource?: { kind: string; name: string };
+  filePath?: string;
+  /** Dotted path of the offending value within its resource. */
+  path?: string;
+  fix?: DiagnosticFix;
+  [key: string]: unknown;
+}
+
 export interface AnalysisDiagnostic {
   range?: Range;
   severity?: DiagnosticSeverity;
@@ -40,6 +70,13 @@ export interface AnalysisDiagnostic {
   message: string;
   /** Telo-specific extras such as { resource: { kind, name }, path } */
   data?: unknown;
+}
+
+/** Single reader for a diagnostic's fix, so no consumer re-derives the shape
+ *  by hand-casting `data`. */
+export function diagnosticFix(d: AnalysisDiagnostic): DiagnosticFix | undefined {
+  const fix = (d.data as DiagnosticData | undefined)?.fix;
+  return fix && typeof fix.replacement === "string" ? fix : undefined;
 }
 
 export interface ManifestSource {

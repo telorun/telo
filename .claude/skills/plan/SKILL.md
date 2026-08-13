@@ -5,6 +5,8 @@ argument-hint: Feature idea or description (optional)
 ---
 
 Collaboratively plan a new feature with the user. Do NOT write the plan file until the user explicitly approves.
+When planning architecture is literally all that matters - effort is not a driver, backwards compatibility is not a driver.
+Plan must deliver complete, production ready feature. Delivering "v1" or "MVP" is not acceptable. The plan must be complete and production ready.
 
 ## Phase 0 — Make sure you know what feature to plan
 

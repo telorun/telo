@@ -1,0 +1,8 @@
+project: authoring-agent
+kind: Added
+body: 'Teach the CEL rules an author actually gets wrong: call form is part of a function''s
+  signature (CEL string built-ins are methods, Telo''s stdlib functions are global,
+  a few are both), there is no now() or uuid(), date arithmetic goes through timestamp(nowSeconds())
+  with string()/int() to convert back out, and a non-deterministic call in an x-telo-eval:
+  compile field freezes at load.'
+time: 2026-08-13T09:08:49.560868621Z

@@ -27,11 +27,11 @@ describe("celEngine.compile", () => {
 
 describe("celEngine.analyze", () => {
   it("returns no diagnostics for a syntactically valid expression with an open context", () => {
-    expect(celEngine.analyze("variables.port", { celEnv, contextSchema: null })).toEqual([]);
+    expect(celEngine.analyze("variables.port", { celEnv, contextSchema: null }).diagnostics).toEqual([]);
   });
 
   it("reports CEL_SYNTAX_ERROR with the parser's message", () => {
-    const findings = celEngine.analyze("variables.", { celEnv, contextSchema: null });
+    const findings = celEngine.analyze("variables.", { celEnv, contextSchema: null }).diagnostics;
     expect(findings).toHaveLength(1);
     expect(findings[0].code).toBe("CEL_SYNTAX_ERROR");
   });
@@ -48,7 +48,7 @@ describe("celEngine.analyze", () => {
       },
       additionalProperties: false,
     };
-    const findings = celEngine.analyze("request.missing", { celEnv, contextSchema: closed });
+    const findings = celEngine.analyze("request.missing", { celEnv, contextSchema: closed }).diagnostics;
     expect(findings).toHaveLength(1);
     expect(findings[0].code).toBe("CEL_UNKNOWN_FIELD");
     expect(findings[0].message).toContain("missing");
@@ -56,7 +56,7 @@ describe("celEngine.analyze", () => {
 
   it("ignores well-formed chains against an open `additionalProperties: true` schema", () => {
     const open = { type: "object", properties: {}, additionalProperties: true };
-    expect(celEngine.analyze("anything.goes.here", { celEnv, contextSchema: open })).toEqual([]);
+    expect(celEngine.analyze("anything.goes.here", { celEnv, contextSchema: open }).diagnostics).toEqual([]);
   });
 });
 
@@ -92,7 +92,7 @@ describe("sqlEngine.compile", () => {
 
 describe("sqlEngine.analyze", () => {
   it("reports CEL_SYNTAX_ERROR for a malformed interpolation", () => {
-    const findings = sqlEngine.analyze("SELECT ${{ variables. }}", { celEnv, contextSchema: null });
+    const findings = sqlEngine.analyze("SELECT ${{ variables. }}", { celEnv, contextSchema: null }).diagnostics;
     expect(findings).toHaveLength(1);
     expect(findings[0].code).toBe("CEL_SYNTAX_ERROR");
   });
@@ -112,7 +112,7 @@ describe("sqlEngine.analyze", () => {
     const findings = sqlEngine.analyze("SELECT ${{ request.missing }}", {
       celEnv,
       contextSchema: closed,
-    });
+    }).diagnostics;
     expect(findings).toHaveLength(1);
     expect(findings[0].code).toBe("CEL_UNKNOWN_FIELD");
   });
@@ -125,7 +125,7 @@ describe("literalEngine", () => {
   });
 
   it("analyze always returns an empty diagnostic list", () => {
-    expect(literalEngine.analyze("anything", { celEnv, contextSchema: null })).toEqual([]);
+    expect(literalEngine.analyze("anything", { celEnv, contextSchema: null }).diagnostics).toEqual([]);
   });
 
   it("declares no Monaco language id (intentionally inert)", () => {

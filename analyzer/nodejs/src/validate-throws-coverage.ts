@@ -238,6 +238,7 @@ function checkCatchesCoverage(
   filePath: string | undefined,
   arrayPath: string,
   env: Environment,
+  handler: { kind: string; name?: string } | null,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const declaredCodes = new Set(union.codes.keys());
@@ -288,16 +289,20 @@ function checkCatchesCoverage(
   }
 
   if (!hasCatchAll) {
-    for (const code of declaredCodes) {
-      if (!covered.has(code)) {
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: "UNCOVERED_THROW_CODE",
-          source: SOURCE,
-          message: `Code '${code}' is declared by the handler but not covered by any catches: entry (no matching \`when:\` and no catch-all).`,
-          data: { resource, filePath, path: arrayPath },
-        });
-      }
+    // One diagnostic per block, not per code: every uncovered code sits at the
+    // same `catches:` array, and one catch-all answers all of them at once. A
+    // diagnostic each repeated the same location and the same fix N times.
+    const uncovered = [...declaredCodes].filter((c) => !covered.has(c)).sort();
+    if (uncovered.length > 0) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "UNCOVERED_THROW_CODE",
+        source: SOURCE,
+        message:
+          `handler ${handler?.name ? `\`!ref ${handler.name}\`` : `\`${handler?.kind ?? "?"}\``} can throw ${uncovered.length} code${uncovered.length === 1 ? "" : "s"} that no catches: entry handles: ${uncovered.map((c) => `'${c}'`).join(", ")}. ` +
+          `Give each a matching \`when:\` (e.g. \`when: !cel "error.code == '${uncovered[0]}'"\`), or add a catch-all entry — one with no \`when:\`, placed last.`,
+        data: { resource, filePath, path: arrayPath, uncovered },
+      });
     }
   }
 
@@ -552,7 +557,7 @@ export function validateThrowsCoverage(
         const handlerRef = resolveHandlerRef(siblingData[catchesFor]);
         const union = handlerRefUnion(handlerRef, manifests, resolveCtx, scopeResolver);
         diagnostics.push(
-          ...checkCatchesCoverage(entries, union, resource, filePath, arrayPath, env),
+          ...checkCatchesCoverage(entries, union, resource, filePath, arrayPath, env, handlerRef),
         );
         diagnostics.push(
           ...checkTypedErrorData(entries, union, resource, filePath, arrayPath, env),

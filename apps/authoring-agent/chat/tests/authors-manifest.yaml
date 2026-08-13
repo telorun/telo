@@ -37,18 +37,18 @@ imports:
       # would answer with text instead of calling write_file again.
       dbFile: ":memory:"
       model: gpt-5.2
-      # The agent's fs tools run from ./workspace, so point its check loop at the
-      # repo CLI relative to that cwd. This makes the agent validate against the
-      # exact checker the AssertValid step below uses (not a globally-installed
-      # `telo`, which CI does not have) — so their verdicts always agree. Argv
-      # form (program + args), not a shell string — the file path is appended and
-      # execed directly.
-      checkArgv: [bun, ../cli/nodejs/bin/telo.ts, check]
-  Shell: oci://ghcr.io/telorun/shell@0.10.0#sha256-wV9WPZEHof0fhpT3fUQcPPBZvVG7QWxCPoOL-ILH8kE
+      # The agent's fs tools run from ./workspace, so point its CLI at the repo
+      # entry point relative to that cwd. This makes the agent validate against
+      # the exact checker the AssertValid step below uses (not a globally
+      # installed `telo`, which CI does not have) — so their verdicts always
+      # agree. One variable covers the check loop and the `telo` tool alike.
+      teloProgram: [bun, ../cli/nodejs/bin/telo.ts]
+  Shell: oci://ghcr.io/telorun/shell@0.11.0#sha256-TDelGXTdnjxJ5Larw-X-_2icTAFWSP3pz5zHe57XW4w
   Stream: oci://ghcr.io/telorun/stream@0.9.0#sha256-k0CoTjImJDzzZST1MUyZEQI4QOBt25T3MOXD1yVAp4w
   Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
-  Assert: oci://ghcr.io/telorun/assert@0.15.0#sha256-7xRDeZr8nL5wyC92JtBoXDY6nYBCubZoHZIWkgk8G3M
+  Assert: oci://ghcr.io/telorun/assert@0.16.0#sha256-0a8uEwCZG2ElZ7CxeDYfL3gbDFLj-92_jHEOeJbI6m0
 targets:
+  - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
   - !ref TestAuthors
 ---

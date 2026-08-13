@@ -2,8 +2,10 @@ import {
   Loader,
   StaticAnalyzer,
   collectZoneModuleDocuments,
+  diagnosticFix,
   flattenForAnalyzer,
   type AnalysisDiagnostic,
+  type DiagnosticData,
   type ManifestSource,
   type ZoneModuleDocuments,
 } from "@telorun/analyzer";
@@ -116,6 +118,12 @@ const SEVERITY_NAMES: Record<number, CheckDiagnosticSeverity> = {
  *  read by kernels that speak no LSP. An unlabelled severity is an error: the
  *  analyzer's own default, and the safe reading for a caller gating on it. */
 function toCheckDiagnostic(diagnostic: AnalysisDiagnostic): CheckDiagnostic {
+  // The repair is read through the analyzer's accessor rather than by casting
+  // `data`, so the stamp's shape stays owned by one module. `resource` / `path`
+  // ride along because a repair replaces the value AT `path`; forwarding the
+  // fix without its anchor gives a consumer something it cannot apply.
+  const fix = diagnosticFix(diagnostic);
+  const stamp = diagnostic.data as DiagnosticData | undefined;
   return {
     code: String(diagnostic.code ?? ""),
     message: diagnostic.message,
@@ -123,6 +131,9 @@ function toCheckDiagnostic(diagnostic: AnalysisDiagnostic): CheckDiagnostic {
     source: diagnostic.source,
     line: diagnostic.range?.start?.line,
     column: diagnostic.range?.start?.character,
+    ...(stamp?.resource ? { resource: `${stamp.resource.kind}/${stamp.resource.name}` } : {}),
+    ...(stamp?.path ? { path: stamp.path } : {}),
+    ...(fix ? { fix: { replacement: fix.replacement } } : {}),
   };
 }
 

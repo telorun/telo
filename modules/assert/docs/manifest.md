@@ -45,6 +45,7 @@ expect:
 | `expect.errors` | array | yes | Expected analysis errors. Empty array `[]` asserts that zero errors are produced. |
 | `expect.errors[].code` | string | no | Diagnostic code to match (e.g. `CEL_UNKNOWN_FIELD`, `UNRESOLVED_REFERENCE`). |
 | `expect.errors[].message` | string | no | Substring to match in the diagnostic message. |
+| `expect.errors[].fix` | string | no | Substring to match in the diagnostic's suggested replacement. Matching it also asserts that a repair was offered at all — a diagnostic with no fix never matches. |
 
 ## Behaviour
 
@@ -52,7 +53,20 @@ expect:
 2. Runs `StaticAnalyzer.analyze()` on the loaded manifests.
 3. Filters for error-severity diagnostics.
 4. If `expect.errors` is empty, asserts that zero errors were produced.
-5. If `expect.errors` has entries, matches each against the diagnostics by `code` (exact) and `message` (substring). Unmatched expectations fail the test.
+5. If `expect.errors` has entries, matches each against the diagnostics by `code` (exact), `message` (substring) and `fix` (substring against the suggested replacement). Every declared matcher must hold. Unmatched expectations fail the test.
+
+## Asserting a suggested fix
+
+Some diagnostics carry a mechanically applicable repair — the whole corrected value, not a fragment — which editors offer as a quick fix and agents apply directly. `fix:` asserts it:
+
+```yaml
+expect:
+  errors:
+    - code: CEL_WRONG_CALL_FORM
+      fix: "key.startsWith('uploads/')"
+```
+
+Assert the repair rather than only the message when the repair is the point: a message can read correctly while the replacement is missing, stale, or anchored to the wrong span, and only `fix:` catches that. A diagnostic that deliberately offers no repair (an ambiguous correction, where applying a guess would be worse than none) never matches a `fix:` expectation.
 
 ## Test file conventions
 

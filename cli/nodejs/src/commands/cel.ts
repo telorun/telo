@@ -1,15 +1,52 @@
-import { buildCelEnvironment, celFunctionCatalog, type CelFunctionInfo } from "@telorun/templating";
+import {
+  buildCelEnvironment,
+  celBuiltinFunctions,
+  celFunctionCatalog,
+  type CelFunctionInfo,
+} from "@telorun/templating";
 import { enableBigIntJson, nodeCelHandlers } from "@telorun/kernel";
 import type { Argv } from "yargs";
 import { output } from "../output.js";
 
+/** A CEL built-in, in the same shape as a catalog entry so one listing covers
+ *  both halves of what a manifest may call. `receiver` is what the catalog
+ *  cannot express: a built-in is usually a METHOD, and calling it as a global
+ *  does not type-check. Leaving them out was the reason an author could read
+ *  this command end to end and still write `startsWith(key, 'x')`. */
+interface CelBuiltinInfo {
+  name: string;
+  signature: string;
+  category: "builtin";
+  receiver: string | null;
+}
+
+function builtins(): CelBuiltinInfo[] {
+  return celBuiltinFunctions().map((fn) => ({
+    name: fn.name,
+    signature: fn.signature,
+    category: "builtin" as const,
+    receiver: fn.receiverType,
+  }));
+}
+
+/** The `--json` document: Telo's catalog followed by CEL's built-ins. Exported
+ *  for tests — the listing is what every new CEL diagnostic points a reader at,
+ *  so "does it contain the functions those diagnostics are about" is worth
+ *  asserting without spawning a CLI. */
+export function functionListing(): (CelFunctionInfo | CelBuiltinInfo)[] {
+  return [...celFunctionCatalog(), ...builtins()];
+}
+
 function printFunctions(asJson: boolean): void {
   const catalog = celFunctionCatalog();
   const out = output();
-  // `--json` predates the global flag and is an alias for it. The catalog array
-  // IS the contract, so it is emitted bare rather than inside an envelope.
+  // `--json` predates the global flag and is an alias for it. The array IS the
+  // contract, so it is emitted bare rather than inside an envelope. Built-ins
+  // are appended rather than merged into a new shape: a consumer reading
+  // `signature` and `name` keeps working, and one reading `category` sees a
+  // new value rather than a changed one.
   if (asJson || out.isJson) {
-    out.document(catalog);
+    out.document(functionListing());
     return;
   }
 
@@ -31,6 +68,21 @@ function printFunctions(asJson: boolean): void {
       out.line(`  ${fn.signature}${suffix}`);
       out.line(`      ${fn.summary}`);
     }
+  }
+
+  // Grouped by receiver, because the grouping IS the information: everything
+  // under `on string` must be called on a value, and the globals must not be.
+  const byReceiver = new Map<string, string[]>();
+  for (const fn of builtins()) {
+    const key = fn.receiver ?? "";
+    const list = byReceiver.get(key) ?? [];
+    list.push(fn.signature);
+    byReceiver.set(key, list);
+  }
+  out.line("\nCEL built-ins (provided by CEL itself)");
+  for (const [receiver, signatures] of [...byReceiver].sort(([a], [b]) => a.localeCompare(b))) {
+    out.line(`  ${receiver === "" ? "global functions" : `on ${receiver}`}`);
+    for (const signature of signatures.sort()) out.line(`      ${signature}`);
   }
   out.line();
 }

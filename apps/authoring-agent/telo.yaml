@@ -18,8 +18,8 @@ imports:
       dbFile: ./tmp/authoring-agent.sqlite
       model: gpt-5.2
       budgetLimit: !cel "variables.budgetLimit"
-  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
-  Sse: oci://ghcr.io/telorun/sse-codec@0.10.0#sha256-A9WsfKU9hAePg6xGr0eVMTPdDV0AgS7PFYkic5aET_s
+  Http: oci://ghcr.io/telorun/http-server@0.25.0#sha256-k1n8gCdP8LEwtp1xcm_DcxGk85YLbb2RrPCl6B30TUQ
+  Sse: oci://ghcr.io/telorun/sse-codec@0.10.1#sha256-w5FyA06weTD1q9wqag_Cq7yXFgiQhY1AABrdX5cEb90
 ports:
   http:
     env: PORT
@@ -34,6 +34,7 @@ secrets:
     env: OPENAI_API_KEY
     type: string
 targets:
+  - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
   - !ref Server
 ---

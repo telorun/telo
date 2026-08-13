@@ -1,0 +1,102 @@
+kind: Telo.Application
+metadata:
+  name: CelCallDiagnosticsTests
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref TestWrongCallForm
+  - !ref TestWrongCallFormOffersFix
+  - !ref TestAmbiguousCandidateOffersNoFix
+  - !ref TestUnknownFunction
+  - !ref TestTimestampRoundTrip
+  - !ref TestNonDeterministicCompileField
+---
+# A call written in the wrong form is not a type error, and the whole point of
+# classifying it separately is that no cast repairs it — cel-js reports
+# `no matching overload for 'startsWith(dyn, string)'`, which reads as one.
+#
+# The second expectation is the regression that matters most: BOTH mistakes in
+# the expression are reported in one pass. `check()` stops at its first, so a
+# type-check-only analyzer showed `now()` only after `startsWith` was fixed.
+kind: Assert.Manifest
+metadata:
+  name: TestWrongCallForm
+source: ./__fixtures__/cel-call-diagnostics/wrong-call-form.yaml
+expect:
+  errors:
+    - code: CEL_WRONG_CALL_FORM
+      message: "inputs.key.startsWith('uploads/')"
+    - code: CEL_UNKNOWN_FUNCTION
+      message: "there is no function `now`"
+---
+# The repair itself, asserted end to end: the classifier builds it from the
+# registry entry and the AST offsets, the analyzer re-anchors it to the whole
+# scalar, and it survives the runtime seam into a module. `fix:` matching is
+# what makes that chain observable from a manifest at all — the message can be
+# right while the applicable repair is missing or wrong.
+#
+# Note the replacement is the WHOLE corrected expression, not just the mended
+# call: the second mistake (`now()`) is still in it, because a fix repairs one
+# diagnostic and never silently rewrites the rest of the value.
+kind: Assert.Manifest
+metadata:
+  name: TestWrongCallFormOffersFix
+source: ./__fixtures__/cel-call-diagnostics/wrong-call-form.yaml
+expect:
+  errors:
+    - code: CEL_WRONG_CALL_FORM
+      fix: "inputs.key.startsWith('uploads/') && now() > 5"
+---
+# The candidate LISTING, for the case where no repair is offered: `uuid` has
+# several candidates (`uuidv4`, `uuidv7`, …) and picking one would be a guess,
+# so the author gets names to choose from instead of a fix. That the fix is
+# genuinely absent is asserted in templating's unit tests — `expect:` has no
+# negative matcher, and adding one to assert an absence would be more surface
+# than the fact is worth.
+kind: Assert.Manifest
+metadata:
+  name: TestAmbiguousCandidateOffersNoFix
+source: ./__fixtures__/cel-call-diagnostics/ambiguous-candidates.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FUNCTION
+      message: "there is no function `uuid`"
+---
+# `now` is registered under no call form, so the reading is "no such name" —
+# not "wrong arguments". Candidates come from the registry filtered by call
+# form and arity; edit distance alone never reaches `nowIso` from `now`.
+kind: Assert.Manifest
+metadata:
+  name: TestUnknownFunction
+source: ./__fixtures__/cel-call-diagnostics/wrong-call-form.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FUNCTION
+      message: "nowIso"
+    - code: CEL_UNKNOWN_FUNCTION
+      message: "nowSeconds"
+---
+# An instant must be able to LEAVE an expression: without `string(timestamp)`
+# and `int(timestamp)` an expiry could be computed and not stored, which is
+# also why three encodings of "now" exist. Both conversions follow cel-go —
+# RFC 3339 and epoch seconds — so `int(timestamp)` and `timestamp(int)`
+# round-trip in one unit.
+kind: Assert.Manifest
+metadata:
+  name: TestTimestampRoundTrip
+source: ./__fixtures__/cel-call-diagnostics/timestamp-round-trip.yaml
+expect:
+  errors: []
+---
+# A non-deterministic call in an `x-telo-eval: compile` field is baked once at
+# load. Warning, not error: freezing an instant at boot is sometimes the point.
+kind: Assert.Manifest
+metadata:
+  name: TestNonDeterministicCompileField
+source: ./__fixtures__/cel-call-diagnostics/nondeterministic-compile-field.yaml
+expect:
+  errors: []
+  warnings:
+    - code: CEL_NONDETERMINISTIC_IN_COMPILE_FIELD
+      message: "`nowIso()` is baked in at load"

@@ -115,7 +115,7 @@ describe("cross-doc port wiring", () => {
     ] as unknown as ResourceManifest[];
     return new StaticAnalyzer()
       .analyze(withSyntheticPositions(manifests))
-      .filter((d) => d.code === "SCHEMA_VIOLATION");
+      .filter((d) => d.code === "CEL_TYPE_ERROR");
   }
 
   it("accepts a TcpPort wired into a TcpPort field", () => {
