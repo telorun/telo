@@ -207,6 +207,8 @@ export type {
   PlatformAxis,
   PlatformTarget,
 } from "./artifact-selector.js";
+export { collectModuleFileClaims } from "./module-file-claims.js";
+export type { ModuleFileClaim } from "./module-file-claims.js";
 export {
   LayerIndexError,
   matchControllerLayers,

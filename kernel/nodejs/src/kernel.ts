@@ -52,6 +52,7 @@ import { nodeCelHandlers } from "./cel-handlers.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import { injectAtPath } from "./dependency-injection.js";
+import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-sentinels.js";
 import {
   computeAnalysisSignature,
   readAnalysisStamp,
@@ -137,6 +138,10 @@ export class Kernel implements IKernel {
   private idleResolvers: Array<() => void> = [];
   private _exitCode = 0;
   private readonly sharedSchemaValidator = new SchemaValidator();
+  /** `!include-*` reads, keyed by resolved URI, so two resources embedding the
+   *  same asset read it once. Kernel-scoped: the values are retained by the
+   *  resources holding them anyway, so this deduplicates rather than retains. */
+  private readonly includeCache: IncludeCache = new Map();
   private rootContext!: ModuleContext;
   private staticManifests: ResourceManifest[] = [];
   private _entryUrl?: string;
@@ -1284,6 +1289,19 @@ export class Kernel implements IKernel {
       : { compile: [], runtime: [] };
     const compile = [...parentEval.compile, ...ownEval.compile];
     const runtime = [...parentEval.runtime, ...ownEval.runtime];
+
+    // Embedded files are read here, at the single instance-production site, and
+    // not at manifest load: `telo.yaml` is its own artifact layer so that reading
+    // a manifest cannot pull the payload, and an app loads every imported
+    // library's manifest. Before schema validation, so the schema sees the
+    // resolved value — bytes arrive at an `x-telo-binary` slot as the
+    // `Uint8Array` that annotation demands.
+    await resolveIncludeSentinels(
+      resource,
+      this.findModuleContext(evalContext).source,
+      this,
+      this.includeCache,
+    );
 
     // Schema validation runs before CEL evaluation so it sees the original manifest
     // shape. CompiledValue wrappers (from load-time precompilation) are stripped,

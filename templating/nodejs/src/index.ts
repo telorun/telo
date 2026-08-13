@@ -28,6 +28,12 @@ export { auditCalls, explainUnresolved, functionIndex, type CallAudit } from "./
 export { walkCelExpressions, type CelSurface } from "./cel/walk.js";
 
 export { celEngine } from "./engines/cel.js";
+export {
+  includeBytesEngine,
+  includeTextEngine,
+  normalizeIncludePath,
+  type NormalizedIncludePath,
+} from "./engines/include.js";
 export { literalEngine } from "./engines/literal.js";
 export { refEngine } from "./engines/ref.js";
 export { sqlEngine, isParameterizedSql, type ParameterizedSql } from "./engines/sql.js";
@@ -41,10 +47,20 @@ export type {
   CompileEnv,
   DiagnosticFix,
   EngineDiagnostic,
+  EngineFileClaim,
   TemplatingEngine,
 } from "./engine.js";
 
-export { isRefSentinel, isTaggedSentinel, makeTaggedSentinel, type TaggedSentinel } from "./sentinel.js";
+export {
+  INCLUDE_BYTES_ENGINE,
+  INCLUDE_ENGINE_NAMES,
+  INCLUDE_TEXT_ENGINE,
+  isIncludeSentinel,
+  isRefSentinel,
+  isTaggedSentinel,
+  makeTaggedSentinel,
+  type TaggedSentinel,
+} from "./sentinel.js";
 export { buildCustomTags, defaultCustomTags } from "./yaml-tags.js";
 export {
   MANIFEST_SCHEMA_URI,

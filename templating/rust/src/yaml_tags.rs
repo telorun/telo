@@ -10,12 +10,20 @@
 use serde_json::{Map, Value as Json};
 use serde_yaml::Value as Yaml;
 
+use crate::engines::include::{INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE};
 use crate::sentinel::{make_tagged_sentinel, REF_ENGINE};
 
 /// Engines this kernel recognises. `!cel` is deliberately absent: the Rust
 /// kernel has no expression engine yet, and reading a CEL expression as an
 /// opaque value would evaluate it as a literal.
-const KNOWN_ENGINES: &[&str] = &[REF_ENGINE];
+///
+/// The two `!include-*` tags ARE here, because the tag set is part of what a
+/// manifest means and a kernel that silently skipped them would read an embedded
+/// file as an unresolved marker. `kernel/rust` resolves them at resource
+/// creation; `!include-bytes` fails there with an explicit message, since this
+/// kernel's manifest tree is `serde_json::Value` and has no bytes variant to
+/// carry the result.
+const KNOWN_ENGINES: &[&str] = &[REF_ENGINE, INCLUDE_TEXT_ENGINE, INCLUDE_BYTES_ENGINE];
 
 #[derive(Debug)]
 pub struct TagError {

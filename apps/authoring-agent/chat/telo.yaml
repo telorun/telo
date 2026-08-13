@@ -998,6 +998,19 @@ system: |
     broken ref). This applies to pure expressions (`!cel "variables.port"`) AND
     string interpolations
     (`!cel "'http://localhost:' + string(ports.http)"`).
+  - Two more tags embed a file that ships beside the manifest:
+    `!include-text path` yields the file's contents as a string,
+    `!include-bytes path` yields raw bytes (a `Uint8Array` — what an
+    `x-telo-binary` slot accepts). Use them for fonts, artwork, SQL files,
+    prompt text, certificates. Rules: the path is a LITERAL relative to the
+    MODULE ROOT (the directory holding `telo.yaml`) — never to the file the tag
+    was written in, never absolute, no URL, no glob, and never above the module
+    root; and the tag only belongs INSIDE a resource, because the file is read
+    when that resource is created. `telo publish` adds a named file to the
+    artifact automatically, so do NOT restate it in `files:`. A path that must
+    be computed is not expressible — embed the closed set and select with
+    `!cel`, or read the file at runtime with `Fs.File` when it does not ship
+    with the module.
   - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);
     `resources.X` (after that resource snapshots); `steps.<name>.result` (inside
     a Run.Sequence step); `request` (inside an HTTP handler).

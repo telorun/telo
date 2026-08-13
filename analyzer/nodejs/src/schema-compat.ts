@@ -1,6 +1,13 @@
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
-import { isRefSentinel, isTaggedSentinel, ManifestRootSchema, normalizeRefSlots } from "@telorun/templating";
+import {
+  INCLUDE_BYTES_ENGINE,
+  INCLUDE_ENGINE_NAMES,
+  isRefSentinel,
+  isTaggedSentinel,
+  ManifestRootSchema,
+  normalizeRefSlots,
+} from "@telorun/templating";
 import { binaryKeyword, isBinarySlot } from "./binary-slot.js";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
@@ -563,6 +570,17 @@ export function substituteCelFields(
   // slot expects something else entirely).
   if (isRefSentinel(data)) {
     return data;
+  }
+  // A file embed's type is a CONSTANT of the tag, not a function of the slot:
+  // `!include-text` always produces a string and `!include-bytes` always
+  // produces bytes. Collapsing them to a slot-shaped placeholder like a CEL
+  // expression would make every slot accept both, so a byte embed at a
+  // `type: string` field passed `telo check` and failed at resource creation —
+  // and the reverse (text at an `x-telo-binary` slot) did too. Substituting the
+  // real type lets AJV and the `x-telo-binary` keyword reject both directions
+  // statically, with no new diagnostic code.
+  if (isTaggedSentinel(data) && INCLUDE_ENGINE_NAMES.has(data.engine)) {
+    return data.engine === INCLUDE_BYTES_ENGINE ? new Uint8Array() : "";
   }
   if (isTaggedSentinel(data)) {
     mark();

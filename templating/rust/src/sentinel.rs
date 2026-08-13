@@ -25,6 +25,19 @@ pub fn is_tagged_sentinel(value: &Value) -> bool {
         && value.get("source").and_then(Value::as_str).is_some()
 }
 
+/// The `(engine, source)` pair of any tagged sentinel, or `None` for anything
+/// else. What a consumer needs to dispatch on the tag without re-deriving the
+/// shape check.
+pub fn tagged_sentinel_parts(value: &Value) -> Option<(&str, &str)> {
+    if !is_tagged_sentinel(value) {
+        return None;
+    }
+    Some((
+        value.get("engine")?.as_str()?,
+        value.get("source")?.as_str()?,
+    ))
+}
+
 /// The source text of a `!ref` sentinel, or `None` for anything else.
 pub fn ref_sentinel_source(value: &Value) -> Option<&str> {
     if !is_tagged_sentinel(value) {

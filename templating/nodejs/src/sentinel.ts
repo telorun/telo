@@ -32,3 +32,32 @@ export function makeTaggedSentinel(engine: string, source: string): TaggedSentin
 export function isRefSentinel(v: unknown): v is TaggedSentinel & { engine: "ref" } {
   return isTaggedSentinel(v) && v.engine === "ref";
 }
+
+/** Engine names of the two file-embedding tags. Named here beside the other
+ *  sentinel predicates so the kernel's resolution pass and the engines
+ *  themselves agree on one spelling. */
+export const INCLUDE_TEXT_ENGINE = "include-text";
+export const INCLUDE_BYTES_ENGINE = "include-bytes";
+
+/** Both file-embedding tag names, for a consumer holding an engine NAME rather
+ *  than a value (the analyzer's expression walk reports names). */
+export const INCLUDE_ENGINE_NAMES: ReadonlySet<string> = new Set([
+  INCLUDE_TEXT_ENGINE,
+  INCLUDE_BYTES_ENGINE,
+]);
+
+/** True when `v` is an `!include-text` / `!include-bytes` sentinel — a file
+ *  embed marked at parse time and still unresolved.
+ *
+ *  The kernel's creation-time resolution keys off this the way Phase-5
+ *  injection keys off {@link isRefSentinel}. Both tags survive precompile as
+ *  markers rather than collapsing to a value, because the read is deferred: a
+ *  manifest load must not pull payload layers, and the analyzer that types the
+ *  slot cannot open files at all. */
+export function isIncludeSentinel(
+  v: unknown,
+): v is TaggedSentinel & { engine: typeof INCLUDE_TEXT_ENGINE | typeof INCLUDE_BYTES_ENGINE } {
+  return (
+    isTaggedSentinel(v) && (v.engine === INCLUDE_TEXT_ENGINE || v.engine === INCLUDE_BYTES_ENGINE)
+  );
+}

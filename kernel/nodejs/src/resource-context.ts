@@ -35,6 +35,7 @@ import * as path from "path";
 import { pathToFileURL } from "url";
 import { withBigIntsAsNumbers } from "./bigint-schema-view.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
+import { resolveModuleFileUri } from "./module-file-resolution.js";
 import { hostEnv } from "./host-env.js";
 import type { LoggingHost } from "./logging/logging-host.js";
 import type { ScopeConfig } from "./logging/scope-config.js";
@@ -794,40 +795,7 @@ export class ResourceContextImpl implements ResourceContext {
    * rebased onto the module directory.
    */
   async resolveModuleFile(relative: string): Promise<string> {
-    // An absolute URI names its own location; a bare absolute path is already
-    // resolved and must not be rebased onto the module directory.
-    if (/^[a-z][a-z0-9+.-]*:/i.test(relative)) return relative;
-    if (path.isAbsolute(relative)) return pathToFileURL(relative).href;
-
-    const source = this.moduleContext.source;
-    const artifact = this.kernel.getModuleArtifact(source);
-    if (artifact) {
-      // Both the `assets` layer and `common` — the sink rule puts a file the
-      // author did not claim via `assets:` into `common`, and a module that ships
-      // static files with no bundled controller has no other route to its payload.
-      // Fetching only assets would leave such a module resolving into an empty
-      // directory.
-      await artifact.materializeModuleFiles();
-      return new URL(relative, pathToFileURL(path.join(artifact.directory, "/")).href).href;
-    }
-    // No artifact means no payload to fetch. That is normal for a module already
-    // on disk (development) or one that ships no files — but for a module reached
-    // over a non-local scheme it means the artifact carries no layer index, i.e. it
-    // predates layers. Raise the actionable error here rather than leaving each
-    // caller to invent its own message from a URI it cannot open.
-    if (!source.startsWith("file://") && !path.isAbsolute(source)) {
-      throw new RuntimeError(
-        "ERR_MODULE_FILES_UNAVAILABLE",
-        `Cannot resolve '${relative}' against module '${source}': the module's artifact ` +
-          `carries no layer index, so its files cannot be located. It was published by an ` +
-          `older Telo that wrote a single-blob artifact — republish the module, or import it ` +
-          `from a local path during development.`,
-      );
-    }
-    // Local module: resolve against the manifest URL, the same rule `include:`
-    // and sibling imports follow.
-    const base = source.startsWith("file://") ? source : pathToFileURL(source).href;
-    return new URL(relative, base).href;
+    return resolveModuleFileUri(relative, this.moduleContext.source, this.kernel);
   }
 
   on(event: string, handler: (payload?: any) => void | Promise<void>): void {

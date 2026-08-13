@@ -1,0 +1,19 @@
+kind: Telo.Library
+metadata:
+  name: EmbedLib
+  version: 1.0.0
+  description: |
+    A library that embeds its OWN asset. Its `source` is what every
+    module-relative reference is measured from, so if an import's child context
+    carried the IMPORTER's manifest URL the library would read the consumer's
+    directory — silently returning the consumer's file whenever one happens to
+    sit at the same relative path.
+imports:
+  Run: ../../../../modules/run
+exports:
+  resources: [LibTheme]
+---
+kind: Run.Value
+metadata: { name: LibTheme }
+value:
+  theme: !include-text assets/lib-theme.txt
