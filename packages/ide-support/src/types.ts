@@ -124,7 +124,9 @@ export interface NormalizedDiagnostic {
   code: string;
   source: string;
   message: string;
-  suggestions?: Array<{ kind: "replace-kind"; replacement: string }>;
+  /** Mechanically applicable repairs. `replacement` is the whole corrected
+   *  value at the diagnostic's range — apply it by replacing that range. */
+  suggestions?: Array<{ kind: "replace"; replacement: string }>;
   /** Preserved verbatim from the source `AnalysisDiagnostic`. Carries
    *  resource/path stamps that downstream UIs (popovers, "at <path>" hints,
    *  CodeAction wiring) read after normalization. Opaque on purpose so this

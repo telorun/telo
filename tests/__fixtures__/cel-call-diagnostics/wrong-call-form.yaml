@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata:
+  name: WrongCallFormFixture
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  JavaScript: ../../../modules/javascript
+targets:
+  - !ref BadCalls
+---
+# Two independent mistakes in ONE expression. `check()` reports only its first,
+# so before the call audit the second was invisible until the first was fixed
+# and the manifest re-checked. Both must be reported in a single pass.
+#
+# `startsWith` is registered only as `string.startsWith(string)`, so calling it
+# globally is a CALL FORM error, not a type error — no cast repairs it. `now`
+# is registered under no form at all.
+kind: Run.Sequence
+metadata:
+  name: BadCalls
+steps:
+  - name: Both
+    inputs:
+      flag: !cel "startsWith(inputs.key, 'uploads/') && now() > 5"
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main(input) { return input }

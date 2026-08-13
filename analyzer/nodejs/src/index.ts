@@ -224,10 +224,12 @@ export { documentToAst, parseToAst } from "./yaml-ast.js";
 export type { AstDocument, AstMap, AstNode, AstPair, AstScalar, AstSeq } from "./yaml-ast.js";
 export { CelParseError, buildCelSegments, wrapCelAst } from "./cel-ast.js";
 export type { CelNode, CelSegment } from "./cel-ast.js";
-export { DEFAULT_MANIFEST_FILENAME, DiagnosticSeverity } from "./types.js";
+export { DEFAULT_MANIFEST_FILENAME, DiagnosticSeverity, diagnosticFix } from "./types.js";
 export type {
     AnalysisDiagnostic,
     AnalysisOptions,
+    DiagnosticData,
+    DiagnosticFix,
     LoaderInitOptions,
     LoadOptions,
     ManifestSource,

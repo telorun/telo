@@ -38,22 +38,23 @@ source: ./__fixtures__/untyped-step-access.yaml
 expect:
   errors: []
 ---
-# Invalid CEL method overload (`.slice(int)` instead of `.substring(int)`) —
-# env.check() rejects the expression itself. The analyzer must surface this as
-# SCHEMA_VIOLATION with the type-checker's message.
+# `.slice(int)` is not a CEL method at all (the string method is
+# `.substring(int)`). The call audit resolves that from the function registry,
+# so it reports a missing NAME rather than the type-checker's opaque
+# "no matching overload" — and lists what is callable in that position.
 kind: Assert.Manifest
 metadata:
   name: TestBadCelOverload
 source: ./__fixtures__/bad-cel-overload.yaml
 expect:
-  # Two loose substring expectations instead of an exact upstream phrasing —
-  # @marcbachmann/cel-js wording may change between versions, but both "CEL
-  # type error" (our prefix) and "slice" (the offending method) should remain.
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "CEL type error"
-    - code: SCHEMA_VIOLATION
-      message: "slice"
+    - code: CEL_UNKNOWN_FUNCTION
+      message: "there is no method `slice`"
+    # The listing is derived from the registry, so `substring` appears in it
+    # without anyone writing it down — the regression this guards is the
+    # listing going empty or unfiltered.
+    - code: CEL_UNKNOWN_FUNCTION
+      message: "substring"
 ---
 # Field access on a type's INHERITED (`extends`) property — the analyzer must
 # merge parent schemas exactly like the runtime, so an inherited field is known

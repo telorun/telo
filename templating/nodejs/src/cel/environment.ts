@@ -71,13 +71,29 @@ export function deriveSignatures(signature: string): string[] {
   });
 }
 
+/** cel-go defaults HomogeneousAggregateLiterals OFF: heterogeneous list/map
+ *  literals unify to `dyn` rather than erroring. cel-js flips that default to
+ *  strict; we align with cel-go so manifests (dyn-heavy: request, rows, …)
+ *  don't hit false positives the runtime evaluates fine. */
+const ENVIRONMENT_OPTIONS = {
+  unlistedVariablesAreDyn: true,
+  enableOptionalTypes: true,
+  homogeneousAggregateLiterals: false,
+} as const;
+
+/** The environment before any Telo function is registered — i.e. exactly
+ *  cel-js's own built-ins. Documentation needs to tell the two apart, and
+ *  subtracting by signature TEXT does not work: cel-js normalizes a declared
+ *  `list` to `list<dyn>`, so the catalog's documented spelling and the
+ *  registered one differ for a third of the entries. Asking for the base set
+ *  directly needs no matching at all. */
+export function celBuiltinFunctions(): ReturnType<Environment["getDefinitions"]>["functions"] {
+  return new Environment(ENVIRONMENT_OPTIONS).getDefinitions().functions;
+}
+
 export function buildCelEnvironment(handlers: Partial<CelHandlers> = {}): Environment {
   const h: CelHandlers = { ...STUB_HANDLERS, ...handlers };
-  // cel-go defaults HomogeneousAggregateLiterals OFF: heterogeneous list/map
-  // literals unify to `dyn` rather than erroring. cel-js flips that default to
-  // strict; we align with cel-go so manifests (dyn-heavy: request, rows, …)
-  // don't hit false positives the runtime evaluates fine.
-  let env = new Environment({ unlistedVariablesAreDyn: true, enableOptionalTypes: true, homogeneousAggregateLiterals: false });
+  let env = new Environment(ENVIRONMENT_OPTIONS);
   for (const fn of CEL_FUNCTIONS) {
     const impl = fn.build(h);
     // `register` lists one cel-js signature per arity (overloaded functions).

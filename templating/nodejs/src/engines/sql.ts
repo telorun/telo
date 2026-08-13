@@ -1,7 +1,12 @@
 import { isParameterizedSql, type CompiledValue, type ParameterizedSql } from "@telorun/sdk";
 import { analyzeCelExpression } from "./cel.js";
 import { compileString, toParameterized, TEMPLATE_REGEX } from "../cel/compile.js";
-import type { TemplatingEngine } from "../engine.js";
+import type {
+  CallSite,
+  DiagnosticFix,
+  EngineDiagnostic,
+  TemplatingEngine,
+} from "../engine.js";
 
 export { isParameterizedSql, type ParameterizedSql };
 
@@ -30,15 +35,44 @@ export const sqlEngine: TemplatingEngine = {
   analyze(source, env) {
     // Each `${{ }}` interpolation is its own CEL expression; reuse the shared
     // per-expression analyzer so diagnostics match the `!cel` engine exactly.
-    return expressionsOf(source).flatMap((expr) => analyzeCelExpression(expr, env));
+    // Each interpolation's offset is kept so a fix computed against the bare
+    // expression is re-anchored to the whole SQL scalar — the only thing that
+    // ever made `!sql` fix-less was dropping it here.
+    const diagnostics: EngineDiagnostic[] = [];
+    const calls: CallSite[] = [];
+    for (const { expr, start } of expressionsOf(source)) {
+      const result = analyzeCelExpression(expr, env);
+      for (const d of result.diagnostics) {
+        diagnostics.push(d.fix ? { ...d, fix: reanchor(source, expr, start, d.fix) } : d);
+      }
+      for (const c of result.calls) {
+        calls.push({ ...c, start: start + c.start, end: start + c.end });
+      }
+    }
+    // No `type`: a SQL template is a string built from many expressions, so
+    // there is no single checked type to report.
+    return { diagnostics, calls };
   },
 };
 
-/** Extract each `${{ expr }}` body from a `!sql` template source. */
-function expressionsOf(source: string): string[] {
-  const exprs: string[] = [];
-  for (const m of source.matchAll(TEMPLATE_REGEX)) {
-    exprs.push(m[1]!.trim());
-  }
-  return exprs;
+/** Re-anchor a fix computed against one interpolation onto the full source. */
+function reanchor(source: string, expr: string, start: number, fix: DiagnosticFix): DiagnosticFix {
+  return {
+    replacement: source.slice(0, start) + fix.replacement + source.slice(start + expr.length),
+  };
 }
+
+/** Each `${{ expr }}` body in a `!sql` template, with the body's offset in the
+ *  source. The offset is derived from the opening delimiter and the leading
+ *  whitespace the capture group already trims, never by searching for the
+ *  body text — which a body appearing twice would defeat. */
+function expressionsOf(source: string): { expr: string; start: number }[] {
+  const out: { expr: string; start: number }[] = [];
+  for (const m of source.matchAll(TEMPLATE_REGEX)) {
+    const lead = /^\s*/.exec(m[0]!.slice(OPEN.length))![0]!.length;
+    out.push({ expr: m[1]!, start: m.index! + OPEN.length + lead });
+  }
+  return out;
+}
+
+const OPEN = "${{";

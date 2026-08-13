@@ -1,5 +1,5 @@
 import type { AnalysisDiagnostic, LoadedGraph } from "@telorun/analyzer";
-import { DiagnosticSeverity } from "@telorun/analyzer";
+import { DiagnosticSeverity, diagnosticFix } from "@telorun/analyzer";
 import { findPositions, resolveRange } from "@telorun/ide-support";
 import {
   describeBlockedGroup,
@@ -72,6 +72,14 @@ export interface JsonDiagnostic {
   severity: "error" | "warning";
   code?: string;
   message: string;
+  /** `<kind>/<name>` of the resource the diagnostic is pinned to. */
+  resource?: string;
+  /** Dotted path of the offending value within that resource. */
+  path?: string;
+  /** A mechanically applicable repair: the whole corrected value at `path`.
+   *  Present only when the repair is decidable, so a consumer can apply it
+   *  without re-deriving it from the message. */
+  fix?: { replacement: string };
 }
 
 /** The logger's colouring delegates to `Output`'s per-stream palettes.
@@ -220,11 +228,20 @@ export function formatAnalysisDiagnostics(
     // interleave prose into a document a consumer parses.
     out.line(`${parts.file}:${parts.line}:${parts.column}  ${severityLabel}  ${d.message}${code}`);
 
+    // stdout under `-o json` is the machine surface, and a repair the analyzer
+    // already computed is the most actionable thing on it — dropping it forced
+    // every consumer to re-derive the fix by parsing prose.
+    const stamp = d.data as
+      | { resource?: { kind: string; name: string }; path?: string }
+      | undefined;
     collected.push({
       ...parts,
       severity: isError ? "error" : "warning",
       ...(d.code === undefined ? {} : { code: String(d.code) }),
       message: d.message,
+      ...(stamp?.resource ? { resource: `${stamp.resource.kind}/${stamp.resource.name}` } : {}),
+      ...(stamp?.path ? { path: stamp.path } : {}),
+      ...(diagnosticFix(d) ? { fix: diagnosticFix(d) } : {}),
     });
 
     if (isError) errorCount++;

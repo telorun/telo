@@ -1,5 +1,10 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { isRefSentinel, isTaggedSentinel, walkCelExpressions } from "@telorun/templating";
+import {
+  isRefSentinel,
+  isTaggedSentinel,
+  walkCelExpressions,
+  type CelSurface,
+} from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
@@ -114,6 +119,9 @@ export interface CelSiteEvent {
   contextSchema?: Record<string, any>;
   /** Scope of the matched context (e.g. `$.routes[*].handler`), if matched. */
   matchedScope?: string;
+  /** Where `expr` sits in the scalar at `path`, and the delimiters to restore
+   *  around a corrected expression. See `CelSurface`. */
+  surface: CelSurface;
 }
 
 export interface ManifestVisitor {
@@ -352,7 +360,7 @@ export function visitManifest(
 
     if (wantsCel) {
       const contexts = definition?.schema ? extractContextsFromSchema(definition.schema) : [];
-      walkCelExpressions(r, "", (expr, path, engineName) => {
+      walkCelExpressions(r, "", (expr, path, engineName, surface) => {
         let contextSchema: Record<string, any> | undefined;
         let matchedScope: string | undefined;
         for (const ctx of contexts) {
@@ -362,7 +370,7 @@ export function visitManifest(
             break;
           }
         }
-        visitor.onCel!({ source: r, path, expr, engineName, contextSchema, matchedScope });
+        visitor.onCel!({ source: r, path, expr, engineName, contextSchema, matchedScope, surface });
       });
     }
 

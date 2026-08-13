@@ -10,6 +10,7 @@ import {
   assembleGraphDiagnostics,
   findPositions,
   normalizeDiagnostic,
+  renderFixReplacement,
   type NormalizedDiagnostic,
   DiagnosticSeverity,
 } from "@telorun/ide-support";
@@ -44,8 +45,21 @@ const SEVERITY: Record<number, vscode.DiagnosticSeverity> = {
   [DiagnosticSeverity.Hint]: vscode.DiagnosticSeverity.Hint,
 };
 
-function toVscodeDiagnostic(n: NormalizedDiagnostic): vscode.Diagnostic {
-  const diag = new vscode.Diagnostic(
+/** A `vscode.Diagnostic` carrying the repair the analyzer computed for it.
+ *
+ *  `vscode.Diagnostic` has no field for a suggested edit, so the fix rides on
+ *  the instance. `CodeActionContext.diagnostics` hands back the very objects
+ *  published into the collection — the provider runs in this process, against
+ *  this extension host's objects — so the property survives the round trip.
+ *  Keeping it here rather than in a side map keyed by position means nothing
+ *  has to stay in sync with re-analysis: when the diagnostic is replaced, its
+ *  fix goes with it. */
+interface DiagnosticWithFix extends vscode.Diagnostic {
+  teloFix?: { replacement: string };
+}
+
+function toVscodeDiagnostic(n: NormalizedDiagnostic): DiagnosticWithFix {
+  const diag: DiagnosticWithFix = new vscode.Diagnostic(
     new vscode.Range(
       n.range.start.line,
       n.range.start.character,
@@ -57,7 +71,61 @@ function toVscodeDiagnostic(n: NormalizedDiagnostic): vscode.Diagnostic {
   );
   diag.source = n.source;
   if (n.code) diag.code = n.code;
+  const replace = n.suggestions?.find((s) => s.kind === "replace");
+  if (replace) diag.teloFix = { replacement: replace.replacement };
   return diag;
+}
+
+/** Offers the analyzer's repair as a quick fix.
+ *
+ *  The edit is a whole-value replacement: the diagnostic's range is the value
+ *  node's span (that is what `resolveRange` resolves for a stamped `path`), and
+ *  `replacement` is the corrected value in full. Re-quoting is delegated to
+ *  `renderFixReplacement` so this and the Tauri editor write a repaired scalar
+ *  identically — the span includes the author's quotes but not the YAML tag,
+ *  so a bare replacement would silently unquote the value. */
+class TeloQuickFixProvider implements vscode.CodeActionProvider {
+  static readonly providedCodeActionKinds = [vscode.CodeActionKind.QuickFix];
+
+  provideCodeActions(
+    document: vscode.TextDocument,
+    _range: vscode.Range | vscode.Selection,
+    context: vscode.CodeActionContext,
+  ): vscode.CodeAction[] {
+    const actions: vscode.CodeAction[] = [];
+    for (const diagnostic of context.diagnostics as DiagnosticWithFix[]) {
+      const fix = diagnostic.teloFix;
+      if (!fix) continue;
+
+      // No action when the span cannot be rewritten safely (a block scalar,
+      // whose span carries its indicator and its trailing newline). Offering a
+      // lightbulb that breaks the document is worse than offering none.
+      const replacement = renderFixReplacement(
+        document.getText(diagnostic.range),
+        fix.replacement,
+      );
+      if (replacement === undefined) continue;
+      const action = new vscode.CodeAction(
+        `Replace with ${singleLine(replacement)}`,
+        vscode.CodeActionKind.QuickFix,
+      );
+      action.edit = new vscode.WorkspaceEdit();
+      action.edit.replace(document.uri, diagnostic.range, replacement);
+      action.diagnostics = [diagnostic];
+      // The analyzer only stamps a repair it can decide, so there is never a
+      // second candidate competing for the same diagnostic.
+      action.isPreferred = true;
+      actions.push(action);
+    }
+    return actions;
+  }
+}
+
+/** Action titles sit on one line in the lightbulb menu; a multi-line CEL
+ *  replacement would otherwise render with its newlines swallowed. */
+function singleLine(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > 60 ? `${flat.slice(0, 57)}…` : flat;
 }
 
 function debounce<T extends unknown[]>(fn: (...args: T) => void, ms: number): (...args: T) => void {
@@ -107,6 +175,9 @@ export function activate(context: vscode.ExtensionContext): void {
       TELO_SEMANTIC_LEGEND,
     ),
     vscode.languages.registerDefinitionProvider(teloSelector, definitionProvider),
+    vscode.languages.registerCodeActionsProvider(teloSelector, new TeloQuickFixProvider(), {
+      providedCodeActionKinds: TeloQuickFixProvider.providedCodeActionKinds,
+    }),
     vscode.languages.registerCodeLensProvider(teloSelector, importUpgradeProvider),
     importUpgradeProvider,
     vscode.commands.registerCommand(UPGRADE_IMPORT_COMMAND, (args) =>

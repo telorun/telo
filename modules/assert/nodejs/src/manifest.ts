@@ -3,6 +3,7 @@ import type { CheckDiagnostic, ResourceContext, Runnable } from "@telorun/sdk";
 interface ExpectError {
   code?: string;
   message?: string;
+  fix?: string;
 }
 
 interface ManifestAssertManifest {
@@ -18,7 +19,27 @@ interface ManifestAssertManifest {
 function matchesDiagnostic(diag: CheckDiagnostic, expected: ExpectError): boolean {
   if (expected.code && diag.code !== expected.code) return false;
   if (expected.message && !diag.message.includes(expected.message)) return false;
+  // Substring against the replacement, exactly as `message` matches: a repair
+  // is asserted for WHAT it produces, and pinning the whole corrected scalar
+  // would make every test brittle to an unrelated edit elsewhere in the value.
+  //
+  // The presence check is separate from the substring one so that `fix: ""`
+  // does not match a diagnostic carrying no repair — every string contains the
+  // empty string, which would have made the documented "a diagnostic that
+  // offers no repair never matches" false for exactly that expectation.
+  if (expected.fix !== undefined) {
+    if (diag.fix === undefined) return false;
+    if (!diag.fix.replacement.includes(expected.fix)) return false;
+  }
   return true;
+}
+
+/** How an expectation reads back in a failure line. */
+function describeExpectation(expected: ExpectError): string {
+  const parts: string[] = [];
+  if (expected.message) parts.push(`containing "${expected.message}"`);
+  if (expected.fix !== undefined) parts.push(`fixed by "${expected.fix}"`);
+  return parts.length > 0 ? ` ${parts.join(" and ")}` : "";
 }
 
 export async function create(
@@ -106,12 +127,10 @@ export async function create(
         for (const expected of expectedErrors) {
           const match = errors.find((d) => matchesDiagnostic(d, expected));
           if (match) {
-            matched.push(
-              `${expected.code ?? "*"}${expected.message ? ` (${expected.message})` : ""}`,
-            );
+            matched.push(`${expected.code ?? "*"}${describeExpectation(expected)}`);
           } else {
             failures.push(
-              `expected error ${expected.code ?? "*"}${expected.message ? ` containing "${expected.message}"` : ""} — not found`,
+              `expected error ${expected.code ?? "*"}${describeExpectation(expected)} — not found`,
             );
           }
         }
@@ -125,12 +144,10 @@ export async function create(
         for (const expected of expectedWarnings) {
           const match = warnings.find((d) => matchesDiagnostic(d, expected));
           if (match) {
-            matched.push(
-              `warning ${expected.code ?? "*"}${expected.message ? ` (${expected.message})` : ""}`,
-            );
+            matched.push(`warning ${expected.code ?? "*"}${describeExpectation(expected)}`);
           } else {
             failures.push(
-              `expected warning ${expected.code ?? "*"}${expected.message ? ` containing "${expected.message}"` : ""} — not found`,
+              `expected warning ${expected.code ?? "*"}${describeExpectation(expected)} — not found`,
             );
           }
         }

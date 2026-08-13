@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata:
+  name: AmbiguousCandidatesFixture
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  JavaScript: ../../../modules/javascript
+targets:
+  - !ref MakeId
+---
+# `uuid` is registered under no call form, and several names match the form and
+# arity written (`uuidv1`, `uuidv4`, `uuidv6`, `uuidv7`). The diagnostic lists
+# them, but offers NO fix — applying an arbitrary one would be a guess wearing a
+# repair's clothes.
+kind: Run.Sequence
+metadata:
+  name: MakeId
+steps:
+  - name: Id
+    inputs:
+      value: !cel "uuid()"
+    invoke:
+      kind: JavaScript.Script
+      code: |
+        function main(input) { return input }

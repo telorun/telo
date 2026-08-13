@@ -117,7 +117,7 @@ describe("x-telo-context-element-from (item typed from collection)", () => {
     expect(unknown[0].message).toContain("item.nope");
   });
 
-  it("rejects a statically non-array collection (SCHEMA_VIOLATION)", () => {
+  it("rejects a statically non-array collection (CEL_TYPE_ERROR)", () => {
     const m = {
       kind: "run.Iteration",
       metadata: { name: "It", module: "test" },
@@ -127,6 +127,6 @@ describe("x-telo-context-element-from (item typed from collection)", () => {
     } as unknown as ResourceManifest;
 
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([iterationDef, m]));
-    expect(diagnostics.some((d) => d.code === "SCHEMA_VIOLATION")).toBe(true);
+    expect(diagnostics.some((d) => d.code === "CEL_TYPE_ERROR")).toBe(true);
   });
 });

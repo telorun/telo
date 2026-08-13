@@ -2,7 +2,7 @@ import type { LoadedGraph } from "@telorun/analyzer";
 import type { RuntimeDiagnostic } from "@telorun/kernel";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createLogger, formatDiagnostics } from "../src/logger.js";
+import { createLogger, formatAnalysisDiagnostics, formatDiagnostics } from "../src/logger.js";
 import { Output, installOutput } from "../src/output.js";
 
 /**
@@ -102,5 +102,78 @@ describe("formatDiagnostics", () => {
     const [line] = captureErr(() => formatDiagnostics([d], log, "telo.yaml"));
     expect(line).toContain("api: listen EADDRINUSE");
     expect(line).not.toContain("telo.yaml:");
+  });
+});
+
+/**
+ * `-o json` on stdout is the machine surface, and the whole point of computing a
+ * repair is that a consumer can apply it without re-deriving it from prose. The
+ * payload used to carry `message` alone, so everything structured the analyzer
+ * knew was dropped exactly where it was most useful.
+ */
+describe("formatAnalysisDiagnostics — structured payload", () => {
+  const FILE = "file:///app/telo.yaml";
+  const log = createLogger(false);
+
+  const graph = {
+    modules: new Map([
+      [
+        "app",
+        {
+          owner: {
+            source: FILE,
+            manifests: [{ kind: "Run.Sequence", metadata: { name: "seq" } }],
+            positions: [
+              {
+                sourceLine: 3,
+                positionIndex: new Map([
+                  ["steps[0].inputs.flag", { start: { line: 9, character: 8 }, end: { line: 9, character: 40 } }],
+                ]),
+              },
+            ],
+          },
+          partials: [],
+        },
+      ],
+    ]),
+  } as unknown as LoadedGraph;
+
+  /** Silences the prose line the formatter also writes. */
+  function collect(diagnostics: Parameters<typeof formatAnalysisDiagnostics>[0]) {
+    const sink = { isTTY: false, write: () => true };
+    const restore = installOutput(
+      new Output({ format: "json", stdout: sink, stderr: sink, env: {} }),
+    );
+    try {
+      return formatAnalysisDiagnostics(diagnostics, graph, log, "telo.yaml").diagnostics;
+    } finally {
+      restore();
+    }
+  }
+
+  const withFix = {
+    severity: 1,
+    code: "CEL_WRONG_CALL_FORM",
+    source: "telo-analyzer",
+    message: "`startsWith` is a method",
+    data: {
+      resource: { kind: "Run.Sequence", name: "seq" },
+      path: "steps[0].inputs.flag",
+      fix: { replacement: "key.startsWith('x')", range: { start: 0, end: 22 } },
+    },
+  };
+
+  it("carries the repair, the resource and the path alongside the message", () => {
+    const [d] = collect([withFix] as never);
+    expect(d!.fix).toEqual({ replacement: "key.startsWith('x')", range: { start: 0, end: 22 } });
+    expect(d!.resource).toBe("Run.Sequence/seq");
+    expect(d!.path).toBe("steps[0].inputs.flag");
+  });
+
+  it("omits the fields entirely when a diagnostic has no repair to offer", () => {
+    const [d] = collect([{ severity: 1, code: "X", message: "no stamp" }] as never);
+    expect(d).not.toHaveProperty("fix");
+    expect(d).not.toHaveProperty("resource");
+    expect(d).not.toHaveProperty("path");
   });
 });

@@ -5,11 +5,13 @@ metadata:
   description: |
     The authoring agent's chat backend: an OpenAI-backed Ai.AgentStream with
     workspace-rooted fs tools (write_file / edit_file / read_file / list_dir /
-    delete_file) plus an on-demand telo_check tool. There is NO command / `run`
-    tool — `telo check` runs automatically after every write/edit, and telo_check
-    reuses the same fixed argv (path appended, execed without a shell) as a
-    keyless subprocess (OPENAI_API_KEY unset), so the agent always validates and
-    can never run arbitrary commands or reach the operator's key. Plus live Telo hub discovery tools (an
+    delete_file) plus telo_check and a general `telo` CLI tool. `telo check` runs
+    automatically after every write/edit, so the agent always validates. Every
+    subprocess is execed without a shell as a keyless one (OPENAI_API_KEY unset),
+    and the `telo` tool may only name a subcommand listed in `teloVerbs` —
+    inspection verbs by default, with `run` / `publish` / `install` / `upgrade`
+    absent, so an anonymous prompt can neither execute a manifest on this host nor
+    reach the operator's key or registry credentials. Plus live Telo hub discovery tools (an
     AiMcp.ToolProvider over the hub's MCP endpoint — search_resources /
     get_module_manifest), SQLite conversation history, and the ChatHandler that
     ties them together (persist user turn, replay history, stream the agent's
@@ -17,20 +19,20 @@ metadata:
     its tests drive the same handler. Parameterized by the OpenAI key and the
     SQLite file; the workspace is ./workspace.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.15.0#sha256-dLZuJ0BjQeWkMj7aRPDOE-eFhcF8N3qGqTZY7E-j1F8
+  Ai: oci://ghcr.io/telorun/ai@0.16.0#sha256-k0xXRFY_wE-XEVGXsEaoVNugoj4uEnyIMO03NJuUBqU
   AiOpenai: oci://ghcr.io/telorun/ai-openai@0.15.0#sha256-31u_XsWGqrzeSoxWwN9D-piVU-iH4RkRf-PibIpmt4A
   AiMcp: oci://ghcr.io/telorun/ai-mcp@0.11.0#sha256-X90wiyBHGDJ5RTChi3ee3cWyqX4IRYCGR4cXByhsXl8
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.13.0#sha256-RTVrccTFnPVQqBpteR5VW5qNV3JEA7mzRhJJ6kss0YI
-  Fs: oci://ghcr.io/telorun/fs@0.8.0#sha256-MVHKevW4zsD6o_eyQMR6oxqUvQ93P6PH7WcckOLs9tc
-  Shell: oci://ghcr.io/telorun/shell@0.10.0#sha256-wV9WPZEHof0fhpT3fUQcPPBZvVG7QWxCPoOL-ILH8kE
-  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.14.0#sha256-vatQhfeqbBpp5aWe95odFMPKtuvlDKCATjVDWnFEfFQ
+  Fs: oci://ghcr.io/telorun/fs@0.9.0#sha256-k_t3NTQMnOImqBE9Z65FFMEzpJ-FHyzn5fuMnuSxQzY
+  Shell: oci://ghcr.io/telorun/shell@0.11.0#sha256-TDelGXTdnjxJ5Larw-X-_2icTAFWSP3pz5zHe57XW4w
+  Sql: oci://ghcr.io/telorun/sql@0.21.0#sha256-aasWNQP3KaWbJaFZVg_Zzp0efD4k7rc0FaImt6aHE-k
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
   RecordStream: oci://ghcr.io/telorun/record-stream@0.15.0#sha256-CPunVOEBnzIVR1dLResFHxZppaP64quRBAzHFk4uA_o
   Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
-  Lease: oci://ghcr.io/telorun/lease@0.11.0#sha256-0BAdvQrqIS5MCxWpFg4e071-rdGjNQRUnjy84-yMKeU
+  Lease: oci://ghcr.io/telorun/lease@0.12.0#sha256-lPF5qs0yibKAnPP2XZAm_PUec_6cm3tXrZy3On5DrJA
   KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.6.0#sha256-l476AK3rjoPZ3lDPfWAc0cp6SjCz2ilmkAIKsaXgMbQ
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.8.0#sha256-Vo6BlHCcrdG3JSdDWYv_90wVoYYfErR340o6IdZP6uY
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.11.0#sha256-1f-qF082EYwdfKzx5K5e7eiLFmMn68Q6l1d3-3xImLs
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.0#sha256-cBA_yixkhcC-KdU5TBFPVOBE1_t3BL9SmpZJ73Zp5xc
 secrets:
   openaiApiKey:
     type: string
@@ -59,30 +61,49 @@ variables:
   ipWindow:
     type: string
     default: "1m"
-  checkArgv:
+  teloProgram:
     type: array
     items: { type: string }
-    # The argv (program + fixed args) the write_file/edit_file loop runs to
-    # validate a file; the file path is appended as a final argument and the
-    # whole thing is execed WITHOUT a shell (no injection from an agent-chosen
-    # path). Defaults to the installed `telo` CLI; a test or embedded context
-    # overrides it to point at a specific CLI build so the agent validates
-    # against the very checker that will judge its output.
+    # How to invoke the `telo` CLI: the program, plus any leading arguments it
+    # needs (a test points this at this checkout's entry point, so the agent
+    # validates against the very checker that will judge its output).
     #
-    # `-o json` makes stdout a single parseable document — `{ok, errorCount,
-    # warnCount, diagnostics[]}`, each diagnostic carrying `code`, `file`,
-    # `line`, `column`, `message`. The agent reads diagnostics by CODE instead
-    # of pattern-matching prose, so a rename of a message never silently stops
-    # it self-correcting. stdout and stderr are surfaced SEPARATELY below:
-    # concatenating them would splice human prose into the JSON document.
-    default: [telo, check, -o, json]
+    # ONE variable rather than a separate argv per call site: the check loop and
+    # the `telo` tool must never end up driving different CLI builds, and two
+    # variables is exactly how that happens — an override updates one and the
+    # other silently keeps the globally-installed binary.
+    #
+    # Every call site appends its own subcommand and args, and the whole list is
+    # execed WITHOUT a shell, so an agent-chosen path is one argument and can
+    # inject nothing.
+    default: [telo]
+  teloVerbs:
+    type: array
+    items: { type: string }
+    # Which `telo` subcommands the `telo` tool may invoke. The agent supplies
+    # the whole argv, so this list — not the agent — decides what the CLI is
+    # allowed to do.
+    #
+    # The default is every verb that INSPECTS. Three are deliberately absent:
+    # `run` executes a manifest, which is arbitrary code execution on this host
+    # driven by an anonymous prompt; `publish` pushes to a registry with the
+    # operator's credentials; `install` and `upgrade` fetch and write. Add them
+    # here only for a deployment where the caller is trusted.
+    #
+    # The check is on argv[0] against this list, which also closes the CLI's
+    # default-command hole: `telo ./x.yaml` with no verb means `run ./x.yaml`,
+    # and a bare path matches no entry here, so it is rejected rather than
+    # silently executed.
+    default: [check, cel, module, search]
 exports:
   resources:
+    - ensureWorkspace
     - initSchema
     - chatStart
     - journalSource
     - author
     - readFile
+    - runTelo
     - treeSnapshot
     - treeSync
     - historyQuery
@@ -111,16 +132,14 @@ metadata: { name: model }
 model: !cel "variables.model"
 apiKey: !cel "secrets.openaiApiKey"
 ---
-kind: Mcp.HttpClient
-metadata: { name: hubMcp }
-url: https://telo.sh/mcp
-clientInfo:
-  name: authoring-agent
-  version: 0.0.0
----
 kind: AiMcp.ToolProvider
 metadata: { name: hubTools }
-client: !ref hubMcp
+client:
+  kind: Mcp.HttpClient
+  url: https://telo.sh/mcp
+  clientInfo:
+    name: authoring-agent
+    version: 0.0.0
 ---
 kind: Fs.FileWrite
 metadata: { name: writeFile }
@@ -251,6 +270,25 @@ store: !ref stateStore
 limit: !cel "variables.ipLimit"
 window: !cel "variables.ipWindow"
 ---
+# Every command runs from ./workspace, so that directory must EXIST before the
+# first one spawns: `spawn` with a missing cwd fails ENOENT, which the shell
+# host reports as `interpreter not found: <program>` — a message that sends the
+# reader after the program name rather than the directory. The workspace is
+# runtime scratch and is gitignored, so a fresh checkout or a fresh deployment
+# has none until something makes it. `ensureWorkspace` is a boot target for
+# exactly that; `createParents` makes it idempotent.
+kind: Fs.DirectoryCreation
+metadata: { name: workspaceDir }
+---
+kind: Run.Sequence
+metadata: { name: ensureWorkspace }
+steps:
+  - name: Create
+    invoke: !ref workspaceDir
+    inputs:
+      path: ./workspace
+      createParents: true
+---
 kind: Shell.LocalHost
 metadata: { name: localHost }
 cwd: ./workspace
@@ -266,7 +304,7 @@ metadata: { name: runCommand }
 host: !ref localHost
 ---
 # Standalone `telo check` exposed as a tool. Same fixed argv as the write/edit
-# loops — the agent supplies only the path, appended to `variables.checkArgv`
+# loops — the agent supplies only the path, appended to the fixed check argv
 # and execed WITHOUT a shell — so this grants validation, not command access.
 kind: Run.Sequence
 metadata: { name: checkFile }
@@ -280,7 +318,7 @@ steps:
   - name: Check
     invoke: !ref runCommand
     inputs:
-      args: !cel "variables.checkArgv + [inputs.path]"
+      args: !cel "variables.teloProgram + ['check', '-o', 'json', inputs.path]"
 outputs:
   path: !cel "inputs.path"
   checkExitCode: !cel "steps.Check.result.exitCode"
@@ -289,6 +327,52 @@ outputs:
   # stays parseable, and both surfaced so no reason is ever swallowed.
   checkOutput: !cel "steps.Check.result.stdout"
   checkMessages: !cel "steps.Check.result.stderr"
+---
+# The general `telo` CLI, exposed as one tool. The agent supplies the argv after
+# the program name; `variables.teloVerbs` decides which subcommands it may name.
+#
+# The program comes from `variables.teloProgram`, the same one the write/edit
+# check loop uses, so the two can never drive different CLI builds.
+#
+# Argv is passed as a LIST and execed without a shell, so nothing the agent
+# writes is interpreted: an argument containing `;` or `$(…)` is one argument.
+# What the guard below adds is the verb decision, which argv shape alone cannot
+# make.
+kind: Run.Sequence
+metadata: { name: runTelo }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [args]
+    properties:
+      args:
+        type: array
+        items: { type: string }
+steps:
+  - name: Guard
+    if: !cel "size(inputs.args) == 0 || !(inputs.args[0] in variables.teloVerbs)"
+    then:
+      - name: Reject
+        throw:
+          code: ERR_TELO_VERB_NOT_ALLOWED
+          message: !cel >-
+            'telo ' + (size(inputs.args) == 0 ? '' : inputs.args[0]) +
+            ' is not available here. Allowed subcommands: ' +
+            join(variables.teloVerbs, ', ') +
+            '. Note a bare path means `run`, which is not allowed.'
+  - name: Run
+    invoke: !ref runCommand
+    inputs:
+      args: !cel "variables.teloProgram + inputs.args"
+outputs:
+  exitCode: !cel "steps.Run.result.exitCode"
+  # Kept apart for the same reason as the check loop: under `-o json` stdout is
+  # a parseable document and stderr is human prose, and concatenating them
+  # splices one into the other.
+  output: !cel "steps.Run.result.stdout"
+  messages: !cel "steps.Run.result.stderr"
 ---
 # write_file / edit_file are exposed to the agent through these sequences: every
 # mutation is immediately followed by `telo check` on the same file, and the
@@ -313,7 +397,7 @@ steps:
   - name: Check
     invoke: !ref runCommand
     inputs:
-      args: !cel "variables.checkArgv + [inputs.path]"
+      args: !cel "variables.teloProgram + ['check', '-o', 'json', inputs.path]"
 outputs:
   path: !cel "inputs.path"
   bytesWritten: !cel "steps.Write.result.bytesWritten"
@@ -344,7 +428,7 @@ steps:
   - name: Check
     invoke: !ref runCommand
     inputs:
-      args: !cel "variables.checkArgv + [inputs.path]"
+      args: !cel "variables.teloProgram + ['check', '-o', 'json', inputs.path]"
 outputs:
   path: !cel "inputs.path"
   replacements: !cel "steps.Edit.result.replacements"
@@ -425,6 +509,27 @@ tools:
       properties:
         path: { type: string }
         recursive: { type: boolean }
+  - tool: !ref runTelo
+    name: telo
+    description: >-
+      Run the `telo` CLI. `args` is the argv after the program name, as a list
+      of separate strings — ["module", "manifest", "oci://ghcr.io/telorun/sql"],
+      never one joined string. Available subcommands: `check` (validate
+      manifests), `cel` (`cel functions` lists every CEL function with its
+      signature and CALL FORM; `cel eval "<expr>"` evaluates one), `module`
+      (`versions` / `manifest` / `kinds` / `resources` / `digest` for a module
+      ref — read a kind's exact schema before writing against it), and `search`
+      (find kinds across published modules). Pass `-o json` for a parseable
+      document. Running a manifest is not available here. The result carries
+      exitCode (0 = success), output (stdout) and messages (stderr).
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [args]
+      properties:
+        args:
+          type: array
+          items: { type: string }
   - tool: !ref checkFile
     name: telo_check
     description: >-
@@ -803,7 +908,8 @@ system: |
   - `imports:` — a NAME-KEYED MAP: PascalCase alias -> source. The ONLY two
     sources you may write are an OCI ref `oci://host/repo@VERSION` (the version
     is EXACT — never `@latest` or a range; may carry a `#sha256-…` integrity
-    pin) and a relative path `./lib`. The standard library lives at
+    pin) and a relative path naming a library DIRECTORY
+    (`../../libs/greetings` — see Workspace layout). The standard library lives at
     `oci://ghcr.io/telorun/<name>`, but take the ref from the hub tools rather
     than composing it. The bare `namespace/name@VERSION` registry form is
     deprecated — never write one. Object form
@@ -908,6 +1014,28 @@ system: |
     read is rejected before the app boots. Cross-module reads
     (`resources.<Alias>.<name>.status.<field>`, an imported library's exported
     instance) are checked the same way.
+  - CALL FORM is part of a CEL function's signature and is NOT interchangeable.
+    CEL's built-in string functions are METHODS — `key.startsWith('uploads/')`,
+    `name.endsWith('.jpg')`, `s.contains(x)`, `s.matches(re)`, `s.substring(1)`,
+    `s.indexOf(x)`. Telo's own stdlib functions are GLOBAL — `upper(s)`,
+    `lower(s)`, `replace(s, a, b)`, `join(list, sep)`, `default(v, fallback)`.
+    A few exist in both forms (`trim`, `split`, `size`, `join`). Writing one as
+    the other does not type-check and NO cast repairs it; `telo check` reports
+    it as `CEL_WRONG_CALL_FORM` with the corrected expression. Run
+    `telo cel functions` when unsure.
+  - There is NO `now()` and NO `uuid()`. Current time is `nowIso()` (RFC 3339
+    string), `nowMillis()` or `nowSeconds()` (epoch integers), and `today()`;
+    UUIDs are `uuidv4()`, `uuidv7()`, `uuidv1()`, `uuidv5(name, ns)`. For date
+    ARITHMETIC use the timestamp type: `timestamp(nowSeconds())` takes epoch
+    SECONDS, `+ duration('24h')` shifts it, and `string(...)` / `int(...)`
+    convert back out — e.g. an expiry is
+    `!cel "string(timestamp(nowSeconds()) + duration('24h'))"`. Never pass
+    `nowMillis()` to `timestamp()`: both are integers so it type-checks, then
+    fails at runtime on the unit.
+  - A non-deterministic function in a field annotated `x-telo-eval: compile` is
+    evaluated ONCE at load and frozen for the process's life. Put `nowIso()` /
+    `uuidv4()` where the call happens (a step's `inputs:`, a handler) unless
+    freezing at boot is genuinely what you want.
   - A CEL integer is int64 and needs NO cast to cross a boundary: `!cel
     "size(group)"` serializes to JSON as its exact digits, satisfies a declared
     `type: integer`, and compares equal to an integer literal in an assertion.
@@ -1102,6 +1230,111 @@ system: |
        fields; wire refs/values with `!ref` and `!cel` per the rules above.
     5. List the runnables/services to start in the Application's `targets:`.
 
+  ## Workspace layout — where files go
+
+  Every path you pass to a file tool is relative to the workspace root. That
+  root is shared with the visual editor, which lists modules by scanning for
+  files named exactly `telo.yaml` at any depth — so the layout is a contract
+  with that editor, not a preference.
+
+  - An APPLICATION lives at `apps/<slug>/telo.yaml` — one `Telo.Application`
+    per directory.
+  - That application file is WIRING ONLY: `imports:`, `ports:`, `variables:` /
+    `secrets:`, the server / router that binds them, and `targets:`. The
+    behaviour it wires up — handlers, sequences, domain kinds, queries — belongs
+    in BUSINESS MODULES, one `Telo.Library` per directory beside it:
+
+        apps/my-app/telo.yaml                    # wiring
+        apps/my-app/business-module-1/telo.yaml  # Telo.Library
+        apps/my-app/business-module-2/telo.yaml  # Telo.Library
+
+    Split by domain, not by kind — a module owns one area of behaviour end to
+    end and `exports:` what the app wires. This is what makes the behaviour
+    TESTABLE: a test imports one business module directly, so it never boots the
+    whole application. Logic written straight into `apps/<slug>/telo.yaml` can
+    only be reached by running the app, so put it in a module from the start
+    rather than extracting it later.
+  - A library used by SEVERAL applications lives at `libs/<slug>/telo.yaml` at
+    the workspace root. Move it there only once a second application actually
+    imports it — not in anticipation.
+  - `<slug>` is the lowercase kebab-case form of `metadata.name` (`WeatherApi`
+    -> `weather-api`); `metadata.name` itself stays PascalCase.
+  - Name the file `telo.yaml` when the module has a directory of its own. That
+    is the name a bare DIRECTORY path resolves to — for the CLI and for an
+    import's `source:` alike — so the import names the directory and nothing
+    else: from `apps/todo/telo.yaml`, its own business module is
+    `source: ./ordering`, a shared library `source: ../../libs/greetings`.
+    Any other name (`manifest.yaml`, `hello.yaml`) is valid and runs fine; it
+    just has to be written out in full wherever it is named
+    (`source: ./libs/greetings/manifest.yaml`).
+  - Tests live BESIDE the module they exercise, in its own `tests/` directory:
+    `apps/todo/ordering/tests/*.yaml`. Inputs a test loads rather than runs
+    (fixture manifests, seed data) go in a `__fixtures__/` subdirectory, which
+    suite discovery skips — so a fixture is never executed as a test.
+  - Everything else a module owns sits under that module's own directory:
+    `include:` partials (free-named, since they are not the `telo.yaml`) and
+    the static assets named by `files:`. Both resolve relative to the manifest,
+    so a file outside the module folder cannot be reached.
+  - NEVER write into `.telo/` (the resolved-dependency cache), `node_modules/`,
+    `dist/` or `.git/`. `.telo/` is generated — an edit there is overwritten and
+    changes nothing.
+
+  A loose `hello.yaml` at the workspace root still runs, but it is not a module
+  the editor can open: the scan matches `telo.yaml` alone. Put new work in
+  `apps/` or `libs/`. Before creating either, `list_dir` the root — when
+  `apps/` or `libs/` already holds the module the user means, EDIT that one
+  instead of starting a second copy beside it.
+
+  ## Testing a business module
+
+  A TEST IS AN APPLICATION. There is no test-only file format: a test manifest
+  is a `Telo.Application` whose `targets:` run assertions, so everything you
+  already know about authoring applies to it.
+
+      # apps/todo/ordering/tests/place-order.yaml
+      kind: Telo.Application
+      metadata: { name: PlaceOrderTest, version: 1.0.0 }
+      imports:
+        Ordering: ../                                   # ← the module under test
+        Run: oci://ghcr.io/telorun/run@<version>
+        Assert: oci://ghcr.io/telorun/assert@<version>
+      targets:
+        - !ref TestPlaceOrder
+
+  The load-bearing line is `Ordering: ../` — a test sits one directory below
+  the module it exercises, so it imports it by RELATIVE PATH and gets exactly
+  the exported kinds and instances a real consumer would. That is the whole
+  reason behaviour goes in a business module rather than in the app's wiring
+  file: the app root imports the module and so does the test, so the test
+  exercises the same thing the app runs without standing up ports, servers or
+  secrets.
+
+  Shape each test as a `Run.Sequence` in `targets:` that invokes the exported
+  resource and then asserts. Prefer `Assert.Equals` — it deep-compares a whole
+  result against an expected literal in one step, which reads as a plain
+  expected value:
+
+      kind: Run.Sequence
+      metadata: { name: TestPlaceOrder }
+      steps:
+        - name: Place
+          invoke: !ref Ordering.placeOrder
+          inputs: { sku: ABC, quantity: 2 }
+        - name: Assert
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual: !cel "steps.Place.result"
+            expected: { orderId: "1", total: 20 }
+
+  Write one file per behaviour under test and name it after that behaviour.
+  Read the `assert` module's schemas with the hub tools before writing the
+  assertions — like every other module, take its kinds and fields from the
+  manifest rather than from memory.
+
+  You can `telo_check` a test, but you CANNOT run it: running manifests is not
+  available to you. So state that the tests are ready to run and never claim a
+  test passed — you have not seen it pass.
+
   ## Your file & shell tools
 
     - `write_file` — write a file whole (creates parent dirs). Automatically runs
@@ -1116,9 +1349,23 @@ system: |
     - `telo_check` — run `telo check` on a manifest file on demand. Use it to
       re-validate files you did not just write — e.g. every file that referenced
       something you deleted or renamed.
+    - `telo` — run the `telo` CLI. `args` is the argv after the program name, as
+      SEPARATE strings: `{"args": ["cel", "functions"]}`, never
+      `{"args": ["cel functions"]}`. Add `-o json` when you want to parse the
+      result. Reach for it when you need a fact about the toolchain rather than
+      about a file:
+        - `cel functions` — every CEL function with its signature and CALL FORM.
+          Check here before guessing whether something is `upper(s)` or
+          `s.upper()`; the signature's shape IS the call form.
+        - `cel eval "<expr>"` — evaluate an expression to see what it returns.
+        - `module manifest <ref>` / `module kinds <ref>` / `module versions <ref>`
+          — a published module's exact schemas, kinds and versions.
+        - `search <query>` — find kinds across published modules.
+        - `check <path>` — same as `telo_check`, but takes CLI flags.
 
-  There is no shell / command tool. Validation is automatic (see below); you
-  cannot and need not run arbitrary commands.
+  Only those subcommands are available. Running a manifest is not: there is no
+  `run`, and a bare path (which the CLI would treat as `run`) is rejected too.
+  Do not offer to run what you author — say it is ready to run and stop.
 
   ## Act — do not stop until the file is written and valid
 

@@ -1,0 +1,7 @@
+project: assert
+kind: Added
+body: 'Assert.Manifest gains a `fix:` matcher on expected errors and warnings: a substring
+  against the diagnostic''s suggested replacement, so a test can assert the repair
+  a diagnostic offers and not only its message. A diagnostic that offers no repair
+  never matches, so the matcher also pins that one was produced.'
+time: 2026-08-13T09:44:47.40714383Z

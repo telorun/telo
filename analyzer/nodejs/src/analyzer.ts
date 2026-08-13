@@ -1,7 +1,13 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId, OBSERVED_STATE_KEY } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
-import { defaultRegistry, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import {
+  defaultRegistry,
+  isRefSentinel,
+  isTaggedSentinel,
+  type CelSurface,
+} from "@telorun/templating";
+import type { DiagnosticFix } from "./types.js";
 import {
   AliasResolver,
   moduleScopedDefResolver,
@@ -906,89 +912,62 @@ function celAccessChains(env: Environment, expr: string): string[][] {
 const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
 const CEL_EXPR_RE = /\$\{\{\s*([^}]+?)\s*\}\}/;
 
-/** Recursively walk `data`+`schema` together, type-checking every pure CEL template
- *  string via `env.check()`. Returns `SchemaIssue[]` for any type mismatches found. */
-function collectCelTypeIssues(
+/** Restore the delimiters an engine's fix was computed without, so the
+ *  replacement is the whole scalar rather than a bare expression that would be
+ *  read back as literal text. A tagged scalar carries no wrapper and passes
+ *  through untouched. */
+function rewrapFix(
+  fix: DiagnosticFix | undefined,
+  wrapper: CelSurface["wrapper"],
+): DiagnosticFix | undefined {
+  if (!fix || !wrapper) return fix;
+  return { replacement: wrapper.prefix + fix.replacement + wrapper.suffix };
+}
+
+/** A pure-CEL leaf and the schema of the field it sits in. */
+export interface CelValueSlot {
+  readonly path: string;
+  readonly schema: Record<string, any>;
+}
+
+/** Recursively walk `data`+`schema` together, collecting every pure CEL leaf
+ *  with the schema of the field holding it.
+ *
+ *  Type *checking* is deliberately not done here. It belongs to the templating
+ *  engine, which owns the expression's syntax and now runs it once against the
+ *  environment typed for that path; checking again here would mean two verdicts
+ *  from two environments about one expression — which is exactly how an opaque
+ *  "no matching overload" used to survive next to the diagnostic that explained
+ *  it. What this walk supplies is the half the engine cannot know: the declared
+ *  type of the slot the value flows into. The comparison happens once both are
+ *  in hand (`reportCelReturnMismatches`). */
+function collectCelValueSlots(
   data: unknown,
   schema: Record<string, any>,
   path: string,
-  definition: { schema?: Record<string, any> },
-  manifest: ResourceManifest,
-  baseTypedEnv: Environment,
-  rootEnv: Environment,
-  rootModuleManifest?: ResourceManifest,
-): SchemaIssue[] {
-  const issues: SchemaIssue[] = [];
+): CelValueSlot[] {
+  const slots: CelValueSlot[] = [];
 
-  // A pure CEL value type-checks the same regardless of surface form: a
-  // `${{ … }}` string and a `!cel`-tagged sentinel must behave identically.
+  // A pure CEL value behaves the same regardless of surface form: a
+  // `${{ … }}` string and a `!cel`-tagged sentinel are the same expression.
   let celExpr: string | undefined;
   if (isTaggedSentinel(data)) {
     // Non-CEL engines (e.g. `!literal`) are analyzed by their own engine pass.
-    if (data.engine !== "cel") return issues;
+    if (data.engine !== "cel") return slots;
     celExpr = data.source;
   } else if (typeof data === "string" && CEL_PURE_RE.test(data)) {
     celExpr = data.match(CEL_EXPR_RE)?.[1]?.trim();
   }
 
   if (celExpr !== undefined) {
-    {
-      const expr = celExpr;
-
-      // Merge x-telo-context variables for this path if applicable
-      let typedEnv = baseTypedEnv;
-      if (definition.schema) {
-        for (const ctx of extractContextsFromSchema(definition.schema)) {
-          if (!pathMatchesScope(path, ctx.scope)) continue;
-          typedEnv = buildTypedCelEnvironment(rootEnv, manifest, ctx.schema, rootModuleManifest);
-          break;
-        }
-      }
-
-      let checkResult: ReturnType<typeof typedEnv.check> | undefined;
-      try {
-        checkResult = typedEnv.check(expr);
-      } catch {
-        /* degrade gracefully */
-      }
-
-      if (checkResult?.valid === false && checkResult.error) {
-        // env.check() rejected the expression itself — e.g. wrong method, wrong
-        // argument types, wrong operator overload. Surface the first line of the
-        // error message; the tail is a source-code caret diagram we don't need.
-        const message = String((checkResult.error as { message?: string }).message ?? checkResult.error)
-          .split("\n")[0]
-          .trim();
-        issues.push({ message: `CEL type error: ${message}`, path });
-      } else if (checkResult?.valid && checkResult.type && schema) {
-        const celType = checkResult.type.split("<")[0]!;
-        if (!celTypeSatisfiesJsonSchema(celType, schema)) {
-          const expected = schema["x-telo-type"] ?? schema.type ?? "unknown";
-          issues.push({
-            message: `CEL returns '${checkResult.type}' but field expects '${expected}'`,
-            path,
-          });
-        }
-      }
-    }
-    return issues;
+    if (schema) slots.push({ path, schema });
+    return slots;
   }
 
   if (Array.isArray(data)) {
     const itemSchema = (schema.items ?? {}) as Record<string, any>;
     for (let i = 0; i < data.length; i++) {
-      issues.push(
-        ...collectCelTypeIssues(
-          data[i],
-          itemSchema,
-          `${path}[${i}]`,
-          definition,
-          manifest,
-          baseTypedEnv,
-          rootEnv,
-          rootModuleManifest,
-        ),
-      );
+      slots.push(...collectCelValueSlots(data[i], itemSchema, `${path}[${i}]`));
     }
   } else if (data !== null && typeof data === "object") {
     const props = (schema.properties ?? {}) as Record<string, any>;
@@ -997,22 +976,17 @@ function collectCelTypeIssues(
         ? (schema.additionalProperties as Record<string, any>)
         : {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      issues.push(
-        ...collectCelTypeIssues(
+      slots.push(
+        ...collectCelValueSlots(
           v,
           (props[k] ?? mapValueSchema) as Record<string, any>,
           path ? `${path}.${k}` : k,
-          definition,
-          manifest,
-          baseTypedEnv,
-          rootEnv,
-          rootModuleManifest,
         ),
       );
     }
   }
 
-  return issues;
+  return slots;
 }
 
 export interface StaticAnalyzerOptions {
@@ -1638,6 +1612,19 @@ export class StaticAnalyzer {
       allManifests.find((mm) => mm.kind === "Telo.Application") ??
       allManifests.find((mm) => mm.kind === "Telo.Library");
 
+    // Every pure-CEL leaf, with the slot it flows into. Compared against the
+    // type the engine walk resolves, once both halves exist — see
+    // `collectCelValueSlots`.
+    const celReturnSlots: (CelValueSlot & {
+      manifest: ResourceManifest;
+      resource: { kind: string; name: string };
+      filePath?: string;
+    })[] = [];
+    const celTypeByPath = new Map<ResourceManifest, Map<string, string>>();
+    // Context-free typed environments, one per manifest. Reused across every
+    // expression in it — see the build site for why a matched context opts out.
+    const typedEnvByManifest = new Map<ResourceManifest, Environment>();
+
     // Validate each non-definition, non-system resource
     for (const m of allManifests) {
       const filePath = (m.metadata as { source?: string } | undefined)?.source;
@@ -1722,7 +1709,15 @@ export class StaticAnalyzer {
           code: "UNDEFINED_KIND",
           source: SOURCE,
           message: `No Telo.Definition found for kind '${m.kind}'.${hint}`,
-          data: { resource, filePath, path: "kind", suggestedKind },
+          // `suggestedKind` is kept beside the generic `fix` because it names
+          // what the replacement IS; the fix is how to apply it.
+          data: {
+            resource,
+            filePath,
+            path: "kind",
+            suggestedKind,
+            ...(suggestedKind ? { fix: { replacement: suggestedKind } } : {}),
+          },
         });
         continue;
       }
@@ -1749,37 +1744,12 @@ export class StaticAnalyzer {
                 },
               }
             : authorSchema;
-        // Phase 1: CEL type checking — walk data+schema together, check env.check() return types.
-        // A Telo.Import's variables/secrets are a config-only contract evaluated against the
-        // IMPORTING module's scope, so type them from the owning module doc (matched by
-        // `metadata.module`) and drop `resources`/`env` so referencing them is an error. A
-        // library's own internal import is validated against that library in the library's
-        // standalone analysis; in this flattened app pass the library doc is absent, so the
-        // importer is undefined here and variables/secrets fall back to a permissive `map`
-        // (no false positives) while resources/env stay rejected.
-        const importerModule =
-          m.kind === "Telo.Import"
-            ? allManifests.find(
-                (mm) =>
-                  (mm.kind === "Telo.Application" || mm.kind === "Telo.Library") &&
-                  (mm.metadata as { name?: string } | undefined)?.name ===
-                    (m.metadata as { module?: string } | undefined)?.module,
-              )
-            : undefined;
-        const baseTypedEnv =
-          m.kind === "Telo.Import"
-            ? buildImportInputCelEnvironment(this.celEnv, importerModule)
-            : buildTypedCelEnvironment(this.celEnv, m, undefined, moduleManifest);
-        const celIssues = collectCelTypeIssues(
-          m,
-          schema,
-          "",
-          definition,
-          m,
-          baseTypedEnv,
-          this.celEnv,
-          moduleManifest,
-        );
+        // Phase 1: collect the pure-CEL leaves and the schema of the slot each
+        // flows into. The expression's own type is resolved later, by the
+        // engine walk that owns type-checking; this half only knows the target.
+        for (const slot of collectCelValueSlots(m, schema, "")) {
+          celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
+        }
         // Phase 2+3: AJV on substituted data — CEL fields replaced with typed placeholders
         const ajvIssues = validateAgainstSchema(substituteCelFields(m, schema), schema);
         // Phase 4: value slots that must satisfy a type declared elsewhere on
@@ -1791,7 +1761,7 @@ export class StaticAnalyzer {
           schema,
           allManifests as Record<string, any>[],
         );
-        const issues = [...celIssues, ...ajvIssues, ...valueSchemaIssues];
+        const issues = [...ajvIssues, ...valueSchemaIssues];
         for (const issue of issues) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -2244,42 +2214,104 @@ export class StaticAnalyzer {
             });
             return;
           }
-          const findings = engine.analyze(expr, { celEnv: this.celEnv, contextSchema: effectiveContext });
-          for (const f of findings) {
+          // The engine type-checks, so it gets the environment typed for THIS
+          // path — not the bare base one. A `Telo.Import`'s variables/secrets
+          // are a config-only contract evaluated in the IMPORTING module's
+          // scope, so they type from the owning module doc and drop
+          // `resources`/`env`, making a reference to either an error.
+          //
+          // Cached per manifest when no `x-telo-context` applied, which is most
+          // expressions: the environment then depends only on the manifest, so
+          // rebuilding it per expression is pure waste — a clone plus a
+          // re-registration of every variable, on every keystroke in the IDE.
+          // A matched context makes the environment path-specific (its schema is
+          // resolved against the enclosing array item), so those still build
+          // fresh rather than risk one item's types leaking into another's.
+          const cached = effectiveContext === null ? typedEnvByManifest.get(m) : undefined;
+          const typedEnv =
+            cached ??
+            (m.kind === "Telo.Import"
+              ? buildImportInputCelEnvironment(
+                  this.celEnv,
+                  allManifests.find(
+                    (mm) =>
+                      (mm.kind === "Telo.Application" || mm.kind === "Telo.Library") &&
+                      (mm.metadata as { name?: string } | undefined)?.name ===
+                        (m.metadata as { module?: string } | undefined)?.module,
+                  ),
+                )
+              : buildTypedCelEnvironment(
+                  this.celEnv,
+                  m,
+                  effectiveContext ?? undefined,
+                  moduleManifest,
+                ));
+          if (effectiveContext === null && !cached) typedEnvByManifest.set(m, typedEnv);
+
+          const result = engine.analyze(expr, { celEnv: typedEnv, contextSchema: effectiveContext });
+
+          if (result.type !== undefined) {
+            let byPath = celTypeByPath.get(m);
+            if (!byPath) celTypeByPath.set(m, (byPath = new Map()));
+            byPath.set(path, result.type);
+          }
+
+          // A non-deterministic call in a compile-eval field is baked once at
+          // load: `nowIso()` there freezes at boot. Sometimes that is the
+          // intent (a boot timestamp, a run id), so it warns rather than
+          // blocking. The engine reports which calls re-evaluate; the eval mode
+          // is manifest policy and stays here.
+          if (celRuleApplies && evalPathsCover(celCompilePaths, path)) {
+            const volatile = [
+              ...new Set(result.calls.filter((c) => c.deterministic === false).map((c) => c.name)),
+            ].sort();
+            if (volatile.length > 0) {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Warning,
+                code: "CEL_NONDETERMINISTIC_IN_COMPILE_FIELD",
+                source: SOURCE,
+                message: `${m.kind}/${resource.name}: '${path}' is evaluated once at startup, so ${volatile.map((n) => `\`${n}()\``).join(", ")} ${volatile.length === 1 ? "is" : "are"} baked in at load and never re-evaluated. Move the expression to a field evaluated per call (x-telo-eval: runtime) if it should change over time.`,
+                data: { resource, filePath, path },
+              });
+            }
+          }
+
+          for (const f of result.diagnostics) {
+            // A repair is applicable only when the analyzed expression covers
+            // the whole scalar. For one `${{ }}` among literal text, replacing
+            // the node would drop the text around it, so the correction stays
+            // in the message and no fix is stamped.
+            const fix = e.surface.whole ? rewrapFix(f.fix, e.surface.wrapper) : undefined;
+            const data = { resource, filePath, path, ...(fix ? { fix } : {}) };
             if (f.code === "CEL_SYNTAX_ERROR") {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 code: "CEL_SYNTAX_ERROR",
                 source: SOURCE,
                 message: `CEL syntax error at ${path}: ${f.message}`,
-                data: { resource, filePath, path },
+                data,
               });
-            } else if (f.code === "CEL_UNKNOWN_FIELD") {
+            } else if (f.code === undefined) {
+              // No code from a future engine — pass the message through, tagged
+              // with a generic ENGINE_DIAGNOSTIC code so downstream filters can
+              // still bucket it.
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
-                code: "CEL_UNKNOWN_FIELD",
-                source: SOURCE,
-                message: `${m.kind}/${resource.name}: CEL at '${path}': ${f.message}`,
-                data: { resource, filePath, path },
-              });
-            } else if (f.code === "CEL_NULLABLE_ACCESS") {
-              diagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                code: "CEL_NULLABLE_ACCESS",
-                source: SOURCE,
-                message: `${m.kind}/${resource.name}: CEL at '${path}': ${f.message}`,
-                data: { resource, filePath, path },
-              });
-            } else {
-              // Unknown code from a future engine — pass the message through,
-              // tagged with a generic ENGINE_DIAGNOSTIC code so downstream
-              // filters can still bucket it.
-              diagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                code: f.code ?? "ENGINE_DIAGNOSTIC",
+                code: "ENGINE_DIAGNOSTIC",
                 source: SOURCE,
                 message: `${m.kind}/${resource.name}: !${engineName} at '${path}': ${f.message}`,
-                data: { resource, filePath, path },
+                data,
+              });
+            } else {
+              // Named by ENGINE, not hardcoded to CEL: the seam exists so a
+              // second engine can produce coded findings, and labelling them
+              // `CEL` would misattribute the first one that does.
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: f.code,
+                source: SOURCE,
+                message: `${m.kind}/${resource.name}: !${engineName} at '${path}': ${f.message}`,
+                data,
               });
             }
           }
@@ -2287,6 +2319,24 @@ export class StaticAnalyzer {
       },
       { aliases },
     );
+
+    // The two halves of "does this expression fit the slot it flows into" meet
+    // here: the engine resolved the expression's type during the walk above,
+    // and the schema walk recorded the slot. An expression that failed to check
+    // recorded no type and is already reported by its own diagnostic.
+    for (const slot of celReturnSlots) {
+      const type = celTypeByPath.get(slot.manifest)?.get(slot.path);
+      if (type === undefined) continue;
+      if (celTypeSatisfiesJsonSchema(type.split("<")[0]!, slot.schema)) continue;
+      const expected = slot.schema["x-telo-type"] ?? slot.schema.type ?? "unknown";
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "CEL_TYPE_ERROR",
+        source: SOURCE,
+        message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but the field expects '${expected}'.`,
+        data: { resource: slot.resource, filePath: slot.filePath, path: slot.path },
+      });
+    }
 
     // Validate resource references (Phase 3)
     diagnostics.push(
