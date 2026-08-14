@@ -44,6 +44,9 @@ importers:
       jsonpath-plus:
         specifier: ^10.3.0
         version: 10.4.0
+      packageurl-js:
+        specifier: ^2.0.1
+        version: 2.0.1
       yaml:
         specifier: ^2.8.3
         version: 2.8.3

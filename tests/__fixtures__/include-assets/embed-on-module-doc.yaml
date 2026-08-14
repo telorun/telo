@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: IncludeOnModuleDoc
+  version: 1.0.0
+  description: |
+    A file embed resolves when the resource holding it is created. A module doc
+    is never instantiated, so an embed written here is read by nothing — and
+    nothing else would report it: there is no controller to validate against a
+    schema and no runtime consumer to fail.
+imports:
+  Run: ../../../modules/run
+variables:
+  theme:
+    env: THEME
+    type: string
+    default: !include-text assets/theme.txt
+targets:
+  - !ref Noop
+---
+kind: Run.Value
+metadata: { name: Noop }
+value:
+  ok: true

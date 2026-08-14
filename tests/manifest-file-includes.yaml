@@ -1,0 +1,121 @@
+kind: Telo.Application
+metadata:
+  name: ManifestFileIncludes
+  version: 1.0.0
+  description: |
+    `!include-text` and `!include-bytes` embed a file that ships beside the
+    manifest, resolved when the resource holding them is created.
+
+    Four properties are load-bearing and each is checked here. The path is
+    relative to the MODULE ROOT, not to the file the tag was written in, so it
+    means the same thing after publish inlines every `include:` partial into one
+    `telo.yaml`. Text arrives as a string and bytes arrive as a real
+    `Uint8Array`, not as a plain object — the walk that expands CEL rebuilds
+    plain objects from their entries, so a byte buffer that went through it
+    naively would reach the controller as `{"0":137,…}` with nothing raising.
+    A path that climbs above the module root is refused STATICALLY, from the
+    written path alone, because the analyzer that decides it must load in a
+    browser and cannot ask a filesystem where the path lands. And an embed on a
+    doc that is never instantiated is refused too, because nothing would ever
+    read it and nothing else would report that.
+
+    The read paths themselves — missing file, oversized file, deferral into a
+    nested declaration — are unit-tested in kernel/nodejs/tests/, where the
+    failure can be asserted directly rather than inferred from a boot error.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+  JS: ../modules/javascript
+  Lib: ./__fixtures__/include-assets/lib
+targets:
+  - !ref VerifyIncludes
+  - !ref VerifyLibraryEmbedsItsOwnAsset
+  - !ref VerifyEscapingPathIsRejected
+  - !ref VerifyEmbedOnModuleDocIsRejected
+---
+# Reports on the embedded bytes from inside the running app: length, the PNG
+# magic number, and — the point — whether the value is still a Uint8Array by the
+# time a controller sees it.
+kind: JS.Script
+metadata: { name: DescribeBytes }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      isUint8Array: { type: boolean }
+      length: { type: integer }
+      magic: { type: string }
+    required: [isUint8Array, length, magic]
+code: |
+  async function main(input) {
+    const b = input.bytes;
+    return {
+      isUint8Array: b instanceof Uint8Array,
+      length: b.length,
+      magic:
+        b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
+          ? "png"
+          : "other",
+    };
+  }
+---
+kind: Run.Sequence
+metadata: { name: VerifyIncludes }
+steps:
+  # Text embed, written with a leading `./` and an interior `..` that resolves
+  # back down — both fold away to the same root-relative path.
+  - name: AssertText
+    inputs:
+      actual: !include-text ./__fixtures__/include-assets/assets/../assets/theme.txt
+      expected: "brand-colour: #1B36C4\n"
+    invoke: { kind: Assert.Equals }
+
+  - name: Describe
+    inputs:
+      bytes: !include-bytes __fixtures__/include-assets/assets/logo.png
+    invoke: !ref DescribeBytes
+
+  - name: AssertBytes
+    inputs:
+      actual: !cel "steps.Describe.result"
+      expected:
+        isUint8Array: true
+        length: 20
+        magic: png
+    invoke: { kind: Assert.Equals }
+---
+# Confinement is a pure string check on a root-relative path, so `telo check`
+# rejects an escape without ever touching a filesystem — which is what lets the
+# browser-side analyzer enforce it too.
+kind: Assert.Manifest
+metadata: { name: VerifyEscapingPathIsRejected }
+source: ./__fixtures__/include-assets/escaping-path.yaml
+expect:
+  errors:
+    - code: INCLUDE_PATH_ESCAPES_MODULE
+---
+kind: Assert.Manifest
+metadata: { name: VerifyEmbedOnModuleDocIsRejected }
+source: ./__fixtures__/include-assets/embed-on-module-doc.yaml
+expect:
+  errors:
+    - code: INCLUDE_OUTSIDE_RESOURCE
+---
+# A library embeds its OWN asset. `source` is what every module-relative
+# reference is measured from — `ctx.resolveModuleFile` for a controller, an
+# embed for a manifest value — and an import's child context used to carry the
+# IMPORTER's manifest URL, so a library read the consumer's directory. That is
+# worse than a hard error: a consumer with a file at the same relative path gets
+# theirs, silently. It also contradicted packaging, which is per-module and had
+# already put this file in the library's own artifact.
+kind: Run.Sequence
+metadata: { name: VerifyLibraryEmbedsItsOwnAsset }
+steps:
+  - name: Read
+    invoke: !ref Lib.LibTheme
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Read.result.theme"
+      expected: "LIBRARY-OWN-ASSET\n"
+    invoke: { kind: Assert.Equals }

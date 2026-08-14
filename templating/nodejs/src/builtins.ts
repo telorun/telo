@@ -1,4 +1,5 @@
 import { celEngine } from "./engines/cel.js";
+import { includeBytesEngine, includeTextEngine } from "./engines/include.js";
 import { literalEngine } from "./engines/literal.js";
 import { refEngine } from "./engines/ref.js";
 import { sqlEngine } from "./engines/sql.js";
@@ -13,6 +14,8 @@ import type { TemplatingEngine } from "./engine.js";
  *  another (e.g. `cel + literal`); always ship the same set. */
 export const builtinEngines: readonly TemplatingEngine[] = [
   celEngine,
+  includeBytesEngine,
+  includeTextEngine,
   literalEngine,
   refEngine,
   sqlEngine,

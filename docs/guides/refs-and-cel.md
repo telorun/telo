@@ -220,6 +220,9 @@ The common case is `error` inside a `finally:` block, which is null when the
 
 Rule of thumb: **`!ref` for identity, `!cel` for value, no tag for a literal.**
 
+Two more tags embed a file that ships beside the manifest — `!include-text` and
+`!include-bytes`. See [Embedding files](/learn/embedding-files).
+
 ## When something goes wrong
 
 `telo check` finds all of this before you run anything — see

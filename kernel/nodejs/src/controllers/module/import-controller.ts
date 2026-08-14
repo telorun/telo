@@ -144,7 +144,20 @@ export async function create(
     moduleManifest.secrets ?? {},
   );
   const childCtx = new ModuleContext(
-    ctx.moduleContext.source,
+    // The LIBRARY's own manifest URL, not the importer's. `source` is what every
+    // module-relative file reference is measured from — `ctx.resolveModuleFile`
+    // for a controller, an `!include-*` embed for a manifest value — so carrying
+    // the parent's here made a library read the CONSUMER's directory. That is
+    // worse than a hard error: a consumer who happens to have a file at the same
+    // relative path gets theirs silently. It also contradicted packaging, which
+    // is per-module and had already put the library's file in the library's own
+    // artifact.
+    //
+    // The MANIFEST URL, stamped by the loader — not `resolvedUrl`, which is the
+    // import source as written (`./lib`, a directory). Resolving `assets/x` against
+    // a directory URL with no trailing slash drops its last segment, which is how
+    // the consumer's directory got read in the first place.
+    ((moduleManifest.metadata as { source?: string } | undefined)?.source ?? resolvedUrl),
     importVariables,
     importSecrets,
     {},

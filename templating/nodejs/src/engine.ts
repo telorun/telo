@@ -82,6 +82,27 @@ export interface AnalyzeResult {
   readonly calls: readonly CallSite[];
 }
 
+/** One module-relative file a tagged node embeds, reported by the engine that
+ *  owns the tag.
+ *
+ *  `path` is relative to the module root — the directory holding `telo.yaml` —
+ *  never to the file the tag was written in. That is the rule every other file
+ *  reference in a manifest already follows (a controller's `path=` qualifier,
+ *  `files:` / `assets:` patterns), and it is what makes a claim survive publish:
+ *  publish deletes `include:` and inlines every partial as an extra document
+ *  into the single published `telo.yaml`, so the declaring file does not exist
+ *  in the artifact and a per-file-relative path would change meaning there.
+ *
+ *  The path is ALL an engine reports. Which artifact layer the file belongs in
+ *  is packaging's vocabulary, from a spec this package otherwise knows nothing
+ *  about, and the analyzer already owns that assignment for controller
+ *  candidates — so a new layer role stays a change to one package rather than
+ *  two. An object rather than a bare string so a future hint (eager/lazy, say)
+ *  costs no consumer a signature change. */
+export interface EngineFileClaim {
+  readonly path: string;
+}
+
 /** Per-property templating engine. Matches a YAML tag (`!<name>`); the kernel
  *  and analyzer dispatch through the registry rather than knowing about
  *  specific engines. */
@@ -107,4 +128,19 @@ export interface TemplatingEngine {
    *  return an empty result. The walker accumulates diagnostics across all
    *  values and applies its own policy to `calls` / `type`. */
   analyze(source: string, env: AnalyzeEnv): AnalyzeResult;
+
+  /** Module-relative files this tagged node embeds, if any.
+   *
+   *  The single seam through which payload membership is discovered: publish
+   *  asks the registry what each tag claims rather than recognising tags by
+   *  name, so a future tag that embeds files is a one-file change and no
+   *  consumer downstream grows a second vocabulary for reading a manifest.
+   *  This is the `ref-slot.ts` / `zone-slot.ts` precedent applied to tags.
+   *
+   *  Optional, and absent on every engine that embeds nothing (`cel`, `ref`,
+   *  `literal`, `sql`). Pure string work over the source — it must never read
+   *  the filesystem, because the analyzer that calls it runs in the browser.
+   *  A source the engine considers malformed claims nothing; `analyze` is what
+   *  reports why. */
+  fileClaims?(source: string): readonly EngineFileClaim[];
 }

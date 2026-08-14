@@ -1,14 +1,11 @@
 import {
   describeSelector,
-  selectorFromQualifiers,
   selectorKey,
   type ArtifactSelector,
+  type ModuleFileClaim,
 } from "@telorun/analyzer";
 import { selectByPatterns } from "@telorun/glob";
 import type { PayloadLayer } from "@telorun/kernel";
-import { defaultCustomTags } from "@telorun/templating";
-import { PackageURL } from "packageurl-js";
-import { parseAllDocuments } from "yaml";
 
 /** Manifest-relative POSIX path of a selected file, grouped into the layer it
  *  belongs to. Content is read by the caller — this module decides membership
@@ -27,82 +24,9 @@ export interface Partition {
   /** `assets:` patterns that matched nothing — almost always a typo, and invisible
    *  in `layers` because an empty layer is dropped. */
   unmatchedAssets: string[];
-  /** `siblings=` patterns that matched nothing, with the candidate that declared
+  /** `siblings=` patterns that matched nothing, with the claim that declared
    *  each one. */
-  unmatchedSiblings: Array<{ purl: string; pattern: string }>;
-}
-
-/** `pkg:telo/local/<format>?path=…` — the bundled-controller delivery mode.
- *  Anything else (`pkg:npm`, `pkg:cargo`) fetches from its own ecosystem and
- *  contributes no layer. */
-const BUNDLED_TYPE = "telo";
-const BUNDLED_NAMESPACE = "local";
-
-/** Qualifier naming extra files that belong in a controller's layer — what an
- *  entry point loads but the manifest cannot otherwise see (a `.wasm` beside its
- *  glue, a native library opened at runtime). Comma-separated
- *  `.gitignore`-style patterns, matched through the one glob engine. Optional:
- *  an unclaimed sidecar joins the common layer, which every controller-hosting
- *  kernel pulls, so omitting it costs bytes rather than a broken import. */
-const SIBLINGS_QUALIFIER = "siblings";
-
-interface ControllerClaim {
-  selector: ArtifactSelector;
-  /** Entry-point path exactly as `path=` names it, manifest-relative. */
-  entry: string;
-  /** Sibling patterns declared on the same candidate. */
-  siblings: string[];
-  /** For diagnostics: the PURL this claim came from. */
-  purl: string;
-}
-
-/** Normalize a `path=` / sibling value to the manifest-relative POSIX form
- *  `selectFiles` returns, so membership is a string comparison. */
-function normalizeRelative(value: string): string {
-  return value.replace(/^\.\//, "").replace(/\\/g, "/");
-}
-
-/**
- * Every bundled-controller candidate declared anywhere in the manifest, with its
- * selector and the files it claims. Read from `controllers:` on each doc — the
- * manifest already names each entry point, so the partition is derived rather
- * than declared.
- */
-export function readControllerClaims(manifestText: string): ControllerClaim[] {
-  const claims: ControllerClaim[] = [];
-  for (const doc of parseAllDocuments(manifestText, { customTags: defaultCustomTags() })) {
-    const json = doc.toJSON() as { controllers?: unknown } | null;
-    const candidates = Array.isArray(json?.controllers) ? json.controllers : [];
-    for (const candidate of candidates) {
-      if (typeof candidate !== "string") continue;
-      let parsed: PackageURL;
-      try {
-        parsed = PackageURL.fromString(candidate);
-      } catch {
-        // Not a parseable PURL — publish is not the place to reject it; the
-        // analyzer and the controller loader both report it with better context.
-        continue;
-      }
-      if (parsed.type !== BUNDLED_TYPE || parsed.namespace !== BUNDLED_NAMESPACE) continue;
-      const entry = parsed.qualifiers?.path;
-      if (typeof entry !== "string" || entry === "") continue;
-      const siblings = String(parsed.qualifiers?.[SIBLINGS_QUALIFIER] ?? "")
-        .split(",")
-        .map((p) => p.trim())
-        .filter((p) => p !== "");
-      claims.push({
-        selector: selectorFromQualifiers(
-          parsed.name,
-          parsed.qualifiers,
-          `controller "${candidate}"`,
-        ),
-        entry: normalizeRelative(entry),
-        siblings,
-        purl: candidate,
-      });
-    }
-  }
-  return claims;
+  unmatchedSiblings: Array<{ origin: string; pattern: string }>;
 }
 
 /**
@@ -119,29 +43,38 @@ export function readControllerClaims(manifestText: string): ControllerClaim[] {
  * therefore costs bytes, never a module-not-found at runtime. Both declarations
  * are optional and only ever buy laziness.
  *
- * `files` are the manifest-relative paths `selectFiles` produced; `assetPatterns`
- * is the author's `assets:` list. Every bundled controller's `path=` entry joins
- * the payload whether or not `files:` selected it — the manifest already names
- * it, so restating it would be pure duplication. Layers with no files are
- * dropped, so a controller-only module publishes exactly one payload layer.
+ * `claims` is everything the manifest names — read by `collectModuleFileClaims`,
+ * which asks each syntax's own owner (this module recognises neither a PURL nor
+ * a YAML tag). `files` are the manifest-relative paths `selectFiles` produced;
+ * `assetPatterns` is the author's `assets:` list. A claimed file joins the
+ * payload whether or not `files:` selected it — the manifest already names it,
+ * so restating it would be pure duplication. Layers with no files are dropped,
+ * so a controller-only module publishes exactly one payload layer.
  */
 export function partitionLayers(
-  manifestText: string,
+  claims: readonly ModuleFileClaim[],
   files: string[],
   assetPatterns: string[],
 ): Partition {
-  const claims = readControllerClaims(manifestText);
+  // Narrowing predicates, so the controller branch reaches `selector` and
+  // `siblings` as declared fields rather than through a non-null assertion —
+  // the claim type is a discriminated union precisely so this is checked.
+  const controllers = claims.filter(
+    (claim): claim is Extract<ModuleFileClaim, { role: "controller" }> =>
+      claim.role === "controller",
+  );
+  const claimedAssets = claims.filter((claim) => claim.role === "assets");
 
-  // A controller entry point is part of the payload because `controllers:` names
-  // it, not because `files:` restates it. `files:` keeps its role for everything
-  // the manifest cannot otherwise see — assets, static files, sidecars — and a
-  // module whose only payload is its controller declares no `files:` at all.
+  // A claimed file is part of the payload because the manifest names it, not
+  // because `files:` restates it. `files:` keeps its role for everything the
+  // manifest cannot otherwise see — static files, sidecars — and a module whose
+  // only payload is its controller declares no `files:` at all.
   //
   // Sibling patterns are still matched against `files:` alone: a sibling is a
   // glob over the payload, so a pattern that selects nothing there means the
   // author forgot to include the file, which `unmatchedSiblings` reports.
-  const selected = new Set([...files, ...claims.map((claim) => claim.entry)]);
-  const unclaimed = new Set(files);
+  const selected = new Set([...files, ...claims.map((claim) => claim.path)]);
+  const unclaimed = new Set([...files, ...claimedAssets.map((claim) => claim.path)]);
 
   // Controller layers first: a file an entry point or sibling claims belongs to
   // that selector, never to assets or common, so the layer a kernel skips is
@@ -150,31 +83,36 @@ export function partitionLayers(
   // leaves the later platform's layer missing a file it declared it needs, which
   // would break the "a declaration never costs correctness" guarantee.
   const bySelector = new Map<string, LayerPlan>();
-  const unmatchedSiblings: Array<{ purl: string; pattern: string }> = [];
-  for (const claim of claims) {
+  const unmatchedSiblings: Array<{ origin: string; pattern: string }> = [];
+  for (const claim of controllers) {
     const key = selectorKey(claim.selector);
     let plan = bySelector.get(key);
     if (!plan) {
       plan = { role: "controller", selector: claim.selector, files: [] };
       bySelector.set(key, plan);
     }
-    const siblings = selectByPatterns([...selected], claim.siblings, {
-      applyDefaultIgnore: false,
-    });
-    for (const pattern of claim.siblings) {
+    const patterns = [...claim.siblings];
+    const siblings = selectByPatterns([...selected], patterns, { applyDefaultIgnore: false });
+    for (const pattern of patterns) {
       if (selectByPatterns([...selected], [pattern], { applyDefaultIgnore: false }).length === 0) {
-        unmatchedSiblings.push({ purl: claim.purl, pattern });
+        unmatchedSiblings.push({ origin: claim.origin, pattern });
       }
     }
-    for (const file of [claim.entry, ...siblings]) {
+    for (const file of [claim.path, ...siblings]) {
       unclaimed.delete(file);
       if (!plan.files.includes(file)) plan.files.push(file);
     }
   }
 
-  const assetFiles = selectByPatterns([...unclaimed], assetPatterns, {
-    applyDefaultIgnore: false,
-  });
+  // A file a tag embeds is an asset by declaration, so it needs no `assets:`
+  // pattern to be lazy — the manifest already said what it is. A pattern can
+  // still claim more, and a file claimed both ways is one file.
+  const assetFiles = [
+    ...new Set([
+      ...claimedAssets.map((claim) => claim.path).filter((file) => unclaimed.has(file)),
+      ...selectByPatterns([...unclaimed], assetPatterns, { applyDefaultIgnore: false }),
+    ]),
+  ].sort();
   for (const file of assetFiles) unclaimed.delete(file);
   const unmatchedAssets = assetPatterns.filter(
     (pattern) =>
@@ -211,8 +149,8 @@ export function describePartition(partition: Partition): string[] {
   for (const pattern of partition.unmatchedAssets) {
     lines.push(`assets pattern '${pattern}' matched no file`);
   }
-  for (const { purl, pattern } of partition.unmatchedSiblings) {
-    lines.push(`siblings pattern '${pattern}' matched no file (from ${purl})`);
+  for (const { origin, pattern } of partition.unmatchedSiblings) {
+    lines.push(`siblings pattern '${pattern}' matched no file (from ${origin})`);
   }
   return lines;
 }

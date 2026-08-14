@@ -90,6 +90,7 @@ import {
 import { validateExtends } from "./validate-extends.js";
 import { validateLogging } from "./validate-logging.js";
 import { validateModuleArtifact } from "./validate-module-artifact.js";
+import { validateIncludePlacement } from "./validate-include-placement.js";
 import { validateModuleMetadata } from "./validate-module-metadata.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateInvocationContract } from "./validate-invocation-contract.js";
@@ -1475,6 +1476,9 @@ export class StaticAnalyzer {
       // these fields, which is precisely why they need a check: a mistyped one
       // has no runtime failure mode that would ever surface it.
       diagnostics.push(...validateModuleMetadata(allManifests, defs, aliases));
+      // A file embed resolves at resource creation, so one written on a doc that
+      // is never instantiated is read by nothing and would ship silently.
+      diagnostics.push(...validateIncludePlacement(allManifests));
     }
     resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule);
 

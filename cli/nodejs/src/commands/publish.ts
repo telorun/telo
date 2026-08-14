@@ -2,7 +2,7 @@ import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { pathToFileURL } from "url";
-import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, collectModuleFileClaims, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
 import { LocalFileSource, defaultTransportRegistry } from "@telorun/kernel";
 import { fetchManifestHash } from "../registry-hash.js";
 import { defaultCustomTags } from "@telorun/templating";
@@ -602,7 +602,24 @@ async function publishOne(
   // a sidecar that fell into `common` is not wrong, just not skippable.
   let partition;
   try {
-    partition = partitionLayers(content, bundledFiles, readAssetPatterns(content));
+    // Every module-relative file the manifest names, from every syntax that can
+    // name one — controller candidates and file-embedding tags alike. Publish
+    // recognises neither: it maps a claim's role to a layer, and each syntax's
+    // own owner reads it.
+    const claims = collectModuleFileClaims(content);
+    // A claimed file that does not exist would ship an artifact whose manifest
+    // reads a file the payload does not carry — a failure that surfaces only on
+    // a consumer's machine, which is exactly the class publish exists to catch.
+    const missing = claims
+      .map((claim) => claim.path)
+      .filter((file) => !fs.existsSync(path.join(manifestDir, file)));
+    if (missing.length > 0) {
+      throw new Error(
+        `Manifest names ${missing.length} file(s) that do not exist: ${missing.join(", ")}. ` +
+          `Paths are relative to the module root — the directory holding telo.yaml.`,
+      );
+    }
+    partition = partitionLayers(claims, bundledFiles, readAssetPatterns(content));
     // Every file that will actually ship, including the controller entry points
     // `controllers:` contributed without `files:` naming them. The guard belongs
     // on the partition rather than on the pattern match, since the pattern match

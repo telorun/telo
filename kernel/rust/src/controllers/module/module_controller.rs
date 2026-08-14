@@ -26,6 +26,7 @@ use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
 use crate::kernel::LoadEnv;
 use crate::module_context::ModuleContext;
+use crate::resolve_include_sentinels::{resolve_include_sentinels, IncludeCache};
 use crate::resource_context::create_resource;
 use crate::runtime_registry::ControllerPolicy;
 
@@ -123,18 +124,32 @@ pub fn load_module(
     }
     reject_leftover_references(&context, &documents)?;
 
-    for document in documents.iter().skip(1) {
-        let Some(kind) = kind_of(document) else {
+    let mut includes = IncludeCache::new();
+    for document in documents.iter_mut().skip(1) {
+        // Owned, because reading the kind borrows the document that the embed
+        // resolution below rewrites in place.
+        let Some(kind) = kind_of(document).map(str::to_owned) else {
             return Err(KernelError::manifest_validation_failed(format!(
                 "'{}' contains a document with no `kind:`. Every document after the module doc declares a resource or a {DEFINITION}.",
                 context.source
             )));
         };
+        // Embedded files are read here, immediately before the resource is
+        // built, so a marker never reaches a controller and the schema below
+        // sees the resolved value.
+        //
+        // BEFORE the definition skip, not after: the Node kernel resolves embeds
+        // inside a `Telo.Definition` too, so skipping them here would make one
+        // manifest mean two different things on the two kernels — and the
+        // divergence is silent, because an unresolved marker left in a `schema:`
+        // default is injected verbatim into every consumer's config by AJV's
+        // `useDefaults` with nothing raising.
+        resolve_include_sentinels(document, &context.source, &mut includes)?;
         if kind == DEFINITION {
             continue;
         }
         let name = resource_name(document, &context.source)?;
-        let definition = resolve_resource_kind(&context, kind, name)?;
+        let definition = resolve_resource_kind(&context, &kind, name)?;
         let instance = create_resource(definition, document, name, &env.controllers)?;
         context.resources.set_resource(instance);
     }

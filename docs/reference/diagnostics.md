@@ -74,6 +74,14 @@ how to read a failure, and the debugging flags — see
 | `UNKNOWN_ENGINE` | A `!<tag>` names a templating engine that is not registered. |
 | `UNUSED_DECLARATION` ⚠️ | A declared `variables.*` / `secrets.*` entry is referenced by no CEL expression. Usually a typo at the use site. |
 
+### Embedded files
+
+| Code | What it means and what to do |
+| --- | --- |
+| `INCLUDE_PATH_INVALID` | An `!include-text` / `!include-bytes` path is empty, a URL, or a glob. An embed names exactly one file that ships inside the module; to read a file at runtime from elsewhere, use `Fs.File`. |
+| `INCLUDE_PATH_ESCAPES_MODULE` | The path is absolute, or climbs above the module root. Paths are relative to the directory holding `telo.yaml`, and only a file inside the module can be carried by its artifact. |
+| `INCLUDE_OUTSIDE_RESOURCE` | An embed is written on a doc that is never instantiated (`Telo.Application`, `Telo.Library`, `Telo.Import`), so nothing would ever read it. Move it onto the resource that needs the file. |
+
 ### Invocation contracts
 
 | Code | What it means and what to do |
@@ -148,6 +156,9 @@ how to read a failure, and the debugging flags — see
 | `ERR_RESOURCE_INITIALIZATION_FAILED` | The multi-pass init loop gave up. It reports by **root cause**, not by count: resources that never ran because a dependency failed are classified as *derived* and attributed to the entry that actually broke, so the resource in the headline is the one to fix. Failures inside an imported library nest under that import. See [Resource lifecycle](/reference/kernel/resource-lifecycle). |
 | `ERR_LOCAL_REF_PENDING` / `ERR_CROSS_MODULE_REF_PENDING` | A deferral, not a failure: this resource never ran because a dependency (local, or in an import) was not ready. It is always attributed to a real root cause. |
 | `ERR_DUPLICATE_RESOURCE` | Two resources registered under one name. |
+| `ERR_INCLUDE_FILE_NOT_FOUND` / `ERR_INCLUDE_UNREADABLE` | An `!include-*` path is confined and well-formed but names nothing, or names something that is not a readable file. The path is relative to the module root, not to the file the tag was written in. |
+| `ERR_INCLUDE_FILE_TOO_LARGE` | The embedded file is over 32 MB. An embed is retained for the life of the resource; read a large payload at runtime with `Fs.File` instead. |
+| `ERR_INCLUDE_PATH_INVALID` | Confinement re-checked at runtime, because the kernel does not require that `telo check` ran. |
 | `ERR_REF_REQUIRED` / `ERR_REF_UNRESOLVED` | A required reference slot is empty, or its `!ref` did not resolve to a live instance. |
 | `ERR_SCOPE_RESOURCE_NOT_FOUND` | A cross-module `!ref Alias.name` did not resolve to an instance the library exports. Check `exports.resources`. |
 | `ERR_SCOPE_ENTRY_NOT_INLINE` | A scope block entry is a reference rather than an inline declaration. |

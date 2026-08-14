@@ -1,16 +1,30 @@
-import { selectorKey } from "@telorun/analyzer";
+import { collectModuleFileClaims, selectorKey } from "@telorun/analyzer";
 import { describe, expect, it } from "vitest";
 import { describePartition, partitionLayers } from "../src/bundle/partition-layers.js";
 
-/** A manifest declaring bundled controllers, as `readControllerClaims` reads it. */
-function manifest(...controllers: string[]): string {
-  return [
-    "kind: Telo.Library\nmetadata:\n  name: demo\n  version: 1.0.0\n",
-    ...controllers.map(
-      (purl, i) =>
-        `---\nkind: Telo.Definition\nmetadata:\n  name: K${i}\ncontrollers:\n  - ${purl}\n`,
-    ),
-  ].join("");
+/** A manifest declaring bundled controllers, reduced to the claims
+ *  `partitionLayers` consumes. The tests still speak manifest text — that is
+ *  what an author writes — but the partition itself no longer parses one: it
+ *  recognises neither a PURL nor a YAML tag, and `collectModuleFileClaims` is
+ *  the single reader that does. */
+function manifest(...controllers: string[]): ReturnType<typeof collectModuleFileClaims> {
+  return collectModuleFileClaims(
+    [
+      "kind: Telo.Library\nmetadata:\n  name: demo\n  version: 1.0.0\n",
+      ...controllers.map(
+        (purl, i) =>
+          `---\nkind: Telo.Definition\nmetadata:\n  name: K${i}\ncontrollers:\n  - ${purl}\n`,
+      ),
+    ].join(""),
+  );
+}
+
+/** A manifest whose resource embeds a file with `!include-*`. */
+function manifestWithEmbed(tag: string, filePath: string) {
+  return collectModuleFileClaims(
+    "kind: Telo.Library\nmetadata:\n  name: demo\n  version: 1.0.0\n" +
+      `---\nkind: Demo.Thing\nmetadata:\n  name: t\nasset: !${tag} ${filePath}\n`,
+  );
 }
 
 const layerFor = (p: ReturnType<typeof partitionLayers>, key: string) =>
@@ -159,8 +173,49 @@ describe("partitionLayers", () => {
     );
     expect(p.unmatchedAssets).toEqual(["pubic/**"]);
     expect(p.unmatchedSiblings).toEqual([
-      { purl: "pkg:telo/local/js?path=./nodejs/c.mjs&siblings=./pkg/*.wasm", pattern: "./pkg/*.wasm" },
+      {
+        origin: "pkg:telo/local/js?path=./nodejs/c.mjs&siblings=./pkg/*.wasm",
+        pattern: "./pkg/*.wasm",
+      },
     ]);
     expect(describePartition(p)).toContain("assets pattern 'pubic/**' matched no file");
+  });
+
+  it("puts a file an `!include-*` tag embeds into the assets layer, with no assets: pattern", () => {
+    // The manifest names the file, so it is claimed for the same reason a
+    // controller's `path=` entry is — and lazily, because an embed is read when
+    // the resource holding it is created rather than at load.
+    const p = partitionLayers(manifestWithEmbed("include-bytes", "assets/logo.png"), [], []);
+    expect(layerFor(p, "assets")?.files).toEqual(["assets/logo.png"]);
+    expect(layerFor(p, "common")).toBeUndefined();
+  });
+
+  it("claims an embedded file that `files:` did not select", () => {
+    const p = partitionLayers(manifestWithEmbed("include-text", "assets/bg.svg"), [], []);
+    expect(layerFor(p, "assets")?.files).toEqual(["assets/bg.svg"]);
+  });
+
+  it("normalizes an embedded path, so `./x` and `x` are one file", () => {
+    const claims = [
+      ...manifestWithEmbed("include-text", "./assets/bg.svg"),
+      ...manifestWithEmbed("include-text", "assets/bg.svg"),
+    ];
+    const p = partitionLayers(claims, [], []);
+    expect(layerFor(p, "assets")?.files).toEqual(["assets/bg.svg"]);
+  });
+
+  it("keeps an embedded file out of common even when `files:` also selected it", () => {
+    const p = partitionLayers(
+      manifestWithEmbed("include-text", "assets/bg.svg"),
+      ["assets/bg.svg", "static/other.txt"],
+      [],
+    );
+    expect(layerFor(p, "assets")?.files).toEqual(["assets/bg.svg"]);
+    expect(layerFor(p, "common")?.files).toEqual(["static/other.txt"]);
+  });
+
+  it("ignores an embed whose path is not usable — the engine reports that", () => {
+    expect(partitionLayers(manifestWithEmbed("include-text", "../escape.txt"), [], []).layers)
+      .toEqual([]);
   });
 });

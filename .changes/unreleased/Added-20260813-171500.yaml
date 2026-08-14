@@ -1,0 +1,11 @@
+project: authoring-agent
+kind: Added
+body: 'The system prompt covers the two file-embedding tags: `!include-text` yields a
+  file''s contents as a string and `!include-bytes` yields raw bytes for an
+  x-telo-binary slot, with the rules an author gets wrong — the path is a literal
+  relative to the module root rather than to the file the tag was written in, the tag
+  only belongs inside a resource because the file is read when that resource is
+  created, publish adds the file to the artifact so it is never restated in files:,
+  and a computed path is not expressible (embed the closed set and select with !cel,
+  or read at runtime with Fs.File).'
+time: 2026-08-13T17:15:00.000000000Z

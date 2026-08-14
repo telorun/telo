@@ -317,7 +317,14 @@ function compileWalker(value: unknown): Walker {
       return out;
     };
   }
-  if (value !== null && typeof value === "object") {
+  // Only PLAIN objects are rebuilt. Anything else — a `Uint8Array` embedded by
+  // `!include-bytes`, a class instance — is opaque and passes through by
+  // reference, the same rule `precompileDoc` follows. Rebuilding from
+  // `Object.entries` would turn a byte buffer into `{"0":137,…}` silently, with
+  // no error anywhere: the bytes would simply arrive at the controller as the
+  // wrong shape.
+  const proto = value !== null && typeof value === "object" ? Object.getPrototypeOf(value) : false;
+  if (proto === Object.prototype || proto === null) {
     const entries = Object.entries(value as Record<string, unknown>).map(
       ([k, v]) => [k, compileWalker(v)] as const,
     );

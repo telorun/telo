@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: IncludeEscapingPath
+  version: 1.0.0
+  description: |
+    Confinement is decided from the written path alone — it is a pure string
+    check, because the analyzer that runs it must load in a browser and cannot
+    ask a filesystem where the path lands. A path that climbs above the module
+    root names a file the artifact could never carry.
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref Escape
+---
+kind: Run.Sequence
+metadata: { name: Escape }
+steps:
+  - name: Read
+    inputs:
+      actual: !include-text ../../../../etc/hostname
+      expected: ""
+    invoke: { kind: Assert.Equals }
