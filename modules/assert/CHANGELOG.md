@@ -1,5 +1,7 @@
 # Changelog
-## 0.16.0 - 2026-08-11
+## 0.17.0 - 2026-08-14
+### Added
+* Assert.Manifest gains a `fix:` matcher on expected errors and warnings: a substring against the diagnostic's suggested replacement, so a test can assert the repair a diagnostic offers and not only its message. A diagnostic that offers no repair never matches, so the matcher also pins that one was produced.## 0.16.0 - 2026-08-11
 ### Added
 * Assert.Equals compares a CEL integer against an integer literal. A CEL int is int64 — a BigInt — while an expected: literal comes out of YAML as a plain number, and YAML has no way to write the other, so every integer-valued expression was unassertable without first casting it to a float. Equality is exact in both directions: the literal must be integral and round-trip to the same int64, so 3 matches 3 but neither 3.5 nor a magnitude a double cannot represent.## 0.15.0 - 2026-08-09
 ### Added
