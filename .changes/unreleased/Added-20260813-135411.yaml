@@ -1,9 +1,0 @@
-project: authoring-agent
-kind: Added
-body: 'The system prompt now states the workspace layout the editor enforces: an application
-  at apps/<slug>/telo.yaml, a library at libs/<slug>/telo.yaml, the manifest filename
-  always telo.yaml (so a relative import names the directory), tests beside the module
-  in tests/ with inputs under __fixtures__/, and .telo/ never written by hand. The
-  agent previously chose paths freely, so work could land where the editor''s module
-  scan — which matches telo.yaml alone — would never find it.'
-time: 2026-08-13T13:54:11.144978033Z
