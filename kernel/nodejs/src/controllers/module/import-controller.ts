@@ -88,6 +88,7 @@ export async function create(
   const rawManifests = await ctx.loadModule(resolvedUrl, {
     compile: true,
     desugarImports: true,
+    migrate: true,
   });
 
   // Normalize in the library's own scope: extract inline resources and resolve

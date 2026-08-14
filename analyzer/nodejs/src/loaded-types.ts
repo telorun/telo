@@ -1,5 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { Document } from "yaml";
+import type { FileMigrations } from "./migrations/driver.js";
 import type { DocumentPosition } from "./position-metadata.js";
 import type { AnalysisDiagnostic, Range } from "./types.js";
 import type { AstDocument } from "./yaml-ast.js";
@@ -31,6 +32,12 @@ export interface LoadedFile {
   positions: DocumentPosition[];
   /** Document-level parse errors aggregated from `yaml.Document.errors`. */
   parseErrors: ParseError[];
+  /** What the migration phase rewrote in this file, and the diagnostics for it.
+   *  Empty unless the load opted into `migrate` AND a legacy spelling matched.
+   *  `manifests` above are the POST-migration tree; `documents` / `astDocuments`
+   *  / `positions` / `text` are always the author's file untouched, which is
+   *  what the recorded `legacyPath` resolves against. */
+  migrations: FileMigrations;
 }
 
 export interface ParseError {
@@ -93,6 +100,12 @@ export interface LoadedGraph {
    *  it independently re-resolves an import (the analyzer already sees repointed
    *  `importEdges`). Empty when no module identity appeared at two sources. */
   overrides: Map<string, string>;
+  /** Deprecation diagnostics from the loader's migration phase, scoped to the
+   *  ENTRY's own module (owner + its `include:` partials). A migration rewrites
+   *  always — the runtime must read artifacts published years ago — but reports
+   *  only here, because a published dependency is not the consumer's to fix.
+   *  Empty unless the load opted into `migrate`. */
+  migrationDiagnostics: AnalysisDiagnostic[];
   /** Diagnostics produced while reconciling module versions — one per import
    *  edge redirected to a different version (warning for a same-major hoist,
    *  error for a major mismatch). Surfaced alongside `analyze()` diagnostics by

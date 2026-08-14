@@ -9,6 +9,7 @@ import type {
   LoadedModule,
 } from "./loaded-types.js";
 import { desugarLoadedFile } from "./inline-imports.js";
+import type { MigrationEntry } from "./migrations/types.js";
 import { isModuleKind } from "./module-kinds.js";
 import { parseLoadedFile } from "./parse-loaded-file.js";
 import { reconcileModuleVersions } from "./reconcile-module-versions.js";
@@ -44,6 +45,18 @@ function collectParseDiagnostics(
   return diagnostics;
 }
 
+/** Rewrite always, report locally. Every file in the graph was migrated, but a
+ *  published dependency's manifest is not the consumer's to fix and its author
+ *  is the only person who can — so only the entry module's own files (owner +
+ *  its `include:` partials) report. Same rule `X_TELO_REF_UNRESOLVED` follows. */
+function collectMigrationDiagnostics(entry: LoadedModule): AnalysisDiagnostic[] {
+  const diagnostics: AnalysisDiagnostic[] = [];
+  for (const file of [entry.owner, ...entry.partials]) {
+    diagnostics.push(...file.migrations.diagnostics);
+  }
+  return diagnostics;
+}
+
 const SYSTEM_KINDS = new Set([
   "Telo.Application",
   "Telo.Library",
@@ -51,12 +64,19 @@ const SYSTEM_KINDS = new Set([
   "Telo.Definition",
 ]);
 
-/** File cache variant tags: compile (c/r) × desugarImports (d/n). A desugared
- *  and a raw load of the same file are distinct entries so neither sees the
- *  wrong manifest tree. */
-const CACHE_VARIANTS = ["rn", "rd", "cn", "cd"] as const;
+/** File cache variant tags: compile (c/r) × desugarImports (d/n) × migrate
+ *  (m/x). A desugared and a raw load of the same file are distinct entries so
+ *  neither sees the wrong manifest tree, and the migration axis is there for
+ *  the same reason — the editor's round-trip view and `telo migrate` must see
+ *  the author's spelling, everything else the current one. */
+const CACHE_VARIANTS = [
+  "rnx", "rdx", "cnx", "cdx",
+  "rnm", "rdm", "cnm", "cdm",
+] as const;
 function variantKey(options?: LoadOptions): string {
-  return `${options?.compile ? "c" : "r"}${options?.desugarImports ? "d" : "n"}`;
+  return `${options?.compile ? "c" : "r"}${options?.desugarImports ? "d" : "n"}${
+    options?.migrate ? "m" : "x"
+  }`;
 }
 
 export class Loader {
@@ -76,6 +96,7 @@ export class Loader {
 
   protected sources: ManifestSource[];
   private readonly celEnv: Environment;
+  private readonly migrations?: readonly MigrationEntry[];
 
   /** Sources are resolved in order — the first whose `supports(url)` matches
    *  wins. The caller (composition root) decides which concrete sources exist
@@ -85,6 +106,7 @@ export class Loader {
   constructor(sources: ManifestSource[] = [], options: LoaderInitOptions = {}) {
     this.sources = [...sources];
     this.celEnv = buildCelEnvironment(options.celHandlers);
+    this.migrations = options.migrations;
   }
 
   register(source: ManifestSource): this {
@@ -188,7 +210,13 @@ export class Loader {
    *  caller opted in. Desugaring lives here, not in the pure `parseLoadedFile`,
    *  so round-trip consumers (the editor) keep a raw manifest/AST/position
    *  triple they can pair by index; only resolved consumers that pass
-   *  `desugarImports` see synthetic Telo.Import manifests. */
+   *  `desugarImports` see synthetic Telo.Import manifests.
+ *
+ *  The migration phase runs inside `parseLoadedFile`, i.e. before desugaring —
+ *  a rule must only ever match author-written nodes, and the position is what
+ *  makes that structural rather than a convention. Nothing needs the later
+ *  position: the `imports:` map is read straight off the module manifest and is
+ *  equally available before desugaring. */
   private parseAndMaybeDesugar(
     source: string,
     requestedUrl: string,
@@ -198,6 +226,8 @@ export class Loader {
     const loaded = parseLoadedFile(source, requestedUrl, text, {
       compile: options?.compile,
       celEnv: this.celEnv,
+      migrate: options?.migrate,
+      migrations: this.migrations,
     });
     return options?.desugarImports ? desugarLoadedFile(loaded) : loaded;
   }
@@ -364,6 +394,7 @@ export class Loader {
       modules,
       importEdges,
       overrides,
+      migrationDiagnostics: collectMigrationDiagnostics(entry),
       versionDiagnostics: diagnostics,
       parseDiagnostics: collectParseDiagnostics(modules),
       errors,

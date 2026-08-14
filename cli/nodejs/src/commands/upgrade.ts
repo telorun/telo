@@ -1,4 +1,4 @@
-import { isLocalPathSource, splitIntegrity } from "@telorun/analyzer";
+import { applyTextEdits, isLocalPathSource, splitIntegrity } from "@telorun/analyzer";
 import { defaultTransportRegistry, type Transport } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import * as fs from "fs";
@@ -293,7 +293,7 @@ export async function upgradeManifest(args: {
     }
   }
 
-  return { content: applyEdits(content, edits), result, relativeImports };
+  return { content: applyTextEdits(content, edits), result, relativeImports };
 }
 
 /**
@@ -334,20 +334,6 @@ function buildSourceEdit(
   }
 
   return { start, end, newText };
-}
-
-function applyEdits(
-  content: string,
-  edits: Array<{ start: number; end: number; newText: string }>,
-): string {
-  if (edits.length === 0) return content;
-  // Reverse offset order keeps earlier ranges valid as we splice later ones in.
-  const sorted = [...edits].sort((a, b) => b.start - a.start);
-  let out = content;
-  for (const e of sorted) {
-    out = out.slice(0, e.start) + e.newText + out.slice(e.end);
-  }
-  return out;
 }
 
 function emptyResult(errors = 0): UpgradeResult {

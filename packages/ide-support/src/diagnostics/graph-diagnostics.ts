@@ -1,5 +1,6 @@
 import {
   importResolutionDiagnostics,
+  remapMigratedPaths,
   type AnalysisDiagnostic,
   type LoadedGraph,
 } from "@telorun/analyzer";
@@ -37,9 +38,9 @@ export function compromisedFiles(graph: LoadedGraph): Set<string> {
  * (`suppressed`). The presentation policy lives here — not in the analyzer,
  * which only emits raw channels — so every host applies it identically.
  *
- * `diagnostics` folds parse, version-reconciliation, import-resolution, and the
- * *live* analysis diagnostics (those on non-compromised files) into one list,
- * in that order. `suppressed` carries the analysis cascade dropped from
+ * `diagnostics` folds parse, migration, version-reconciliation,
+ * import-resolution, and the *live* analysis diagnostics (those on
+ * non-compromised files) into one list, in that order. `suppressed` carries the analysis cascade dropped from
  * compromised files, still available to a host that wants to render it dimmed /
  * as related information rather than hide it.
  *
@@ -61,7 +62,12 @@ export function assembleGraphDiagnostics(
   const entrySource = graph.entry.owner.source;
   const live: AnalysisDiagnostic[] = [];
   const suppressed: AnalysisDiagnostic[] = [];
-  for (const d of analysisDiagnostics) {
+  // Analysis ran over the MIGRATED tree, while positions come from the raw
+  // file. Remapping each `data.path` back through the driver's provenance
+  // record is what keeps a squiggle on the author's own line after a key
+  // rename — and what stops a fix among them writing across a parent's span.
+  // A no-op when nothing in the graph was migrated.
+  for (const d of remapMigratedPaths(graph, analysisDiagnostics)) {
     const rawFilePath = (d.data as { filePath?: string } | undefined)?.filePath;
     const file = findPositions(graph, d.data)?.file ?? rawFilePath ?? entrySource;
     (compromised.has(file) ? suppressed : live).push(d);
@@ -70,6 +76,7 @@ export function assembleGraphDiagnostics(
   return {
     diagnostics: [
       ...graph.parseDiagnostics,
+      ...graph.migrationDiagnostics,
       ...graph.versionDiagnostics,
       ...importResolutionDiagnostics(graph),
       ...live,

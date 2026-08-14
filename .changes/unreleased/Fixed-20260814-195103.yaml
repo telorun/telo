@@ -1,0 +1,7 @@
+project: authoring-agent
+kind: Fixed
+body: The teloVerbs comment enumerated the CLI verbs held back from the agent and
+  stopped at three, so 'telo migrate' — which rewrites an author's YAML in place,
+  the job of the agent's own edit tools here — read as an oversight rather than a
+  decision. It names all of them now.
+time: 2026-08-14T19:51:03.518735819Z

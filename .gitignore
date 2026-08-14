@@ -33,6 +33,11 @@ app-dist
 # `pnpm run build:bundles`, packed into the module artifact at publish time.
 modules/*/nodejs/*.mjs
 
+# Migration entries copied in from analyzer/migrations/ by the analyzer's
+# `prepare`. The canonical files live there so every kernel embeds the same
+# bytes; TypeScript can only import a JSON file from inside its own package.
+analyzer/nodejs/src/migrations/entries/
+
 # Python
 python/__pycache__/
 python/*.py[cod]

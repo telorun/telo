@@ -271,7 +271,7 @@ export class Kernel implements IKernel {
   }
 
   async loadManifests(url: string): Promise<ResourceManifest[]> {
-    const graph = await this.loader.loadGraph(url, { desugarImports: true });
+    const graph = await this.loader.loadGraph(url, { desugarImports: true, migrate: true });
     if (graph.errors.length > 0) throw graph.errors[0].error;
     return flattenForAnalyzer(graph);
   }
@@ -447,7 +447,7 @@ export class Kernel implements IKernel {
     // `desugarImports` expands each module's inline `imports:` map into synthetic
     // Telo.Import manifests before discovery walks the graph, so inline imports
     // resolve identically to authored Telo.Import docs.
-    const analysisGraph = await this.loader.loadGraph(sourceUrl, { desugarImports: true });
+    const analysisGraph = await this.loader.loadGraph(sourceUrl, { desugarImports: true, migrate: true });
     if (analysisGraph.errors.length > 0) {
       throw analysisGraph.errors[0].error;
     }
@@ -490,6 +490,20 @@ export class Kernel implements IKernel {
       if (d.code === "MODULE_VERSION_HOISTED") {
         this.logging.kernelLogger().warn(d.message, { "telo.diagnostic.code": d.code });
       }
+    }
+    // A migration rewrites the entry module's own manifest silently otherwise:
+    // `telo check`, VS Code and the editor all report the deprecation, and
+    // `telo run` — the command an author actually uses — would be the only
+    // surface that does not. Already scoped to the entry's own files by the
+    // loader, so a published dependency's spelling never appears here.
+    for (const d of analysisGraph.migrationDiagnostics) {
+      const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
+      this.logging
+        .kernelLogger()
+        .warn(
+          filePath ? `${filePath}: ${d.message}` : d.message,
+          d.code === undefined ? undefined : { "telo.diagnostic.code": d.code },
+        );
     }
     const staticManifests = flattenForAnalyzer(analysisGraph);
     this.staticManifests = staticManifests;
@@ -623,7 +637,7 @@ export class Kernel implements IKernel {
     // routes them to the import-controller, which actually loads and runs them.
     // Without it (analysis-only desugar) inline imports would pass validation
     // and then never execute.
-    const lm = await this.loader.loadModule(sourceUrl, { compile: true, desugarImports: true });
+    const lm = await this.loader.loadModule(sourceUrl, { compile: true, desugarImports: true, migrate: true });
     const allManifests = flattenLoadedModule(lm);
 
     // Phase 2: normalize inline resources — extract inline values from x-telo-ref slots

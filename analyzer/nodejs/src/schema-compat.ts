@@ -6,7 +6,6 @@ import {
   isRefSentinel,
   isTaggedSentinel,
   ManifestRootSchema,
-  normalizeRefSlots,
 } from "@telorun/templating";
 import { binaryKeyword, isBinarySlot } from "./binary-slot.js";
 
@@ -165,13 +164,8 @@ function schemaCompiles(schema: Record<string, any>): boolean {
 export function validateAgainstSchema(data: unknown, schema: Record<string, any>): SchemaIssue[] {
   let validate = compiledSchemaValidators.get(schema);
   if (!validate) {
-    // Normalize outside the try: a fault in our own ref-slot normalization must
-    // surface, never be mistaken for the module author's schema being malformed.
-    // Drop the legacy scalar `type` an older published module may still pin on
-    // its `x-telo-ref` slots so a resolved reference object validates.
-    const normalized = normalizeRefSlots(schema) as Record<string, any>;
     try {
-      validate = ajv.compile(normalized);
+      validate = ajv.compile(schema);
     } catch (err) {
       // The normalized schema didn't compile. If the original schema is itself
       // malformed, that is the module author's error — already surfaced once,

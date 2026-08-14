@@ -484,7 +484,7 @@ async function publishOne(
   try {
     // `desugarImports` so inline `imports:` maps expand into synthetic
     // Telo.Import manifests and the imported kinds resolve during analysis.
-    analysisGraph = await analysisLoader.loadGraph(filePath, { desugarImports: true });
+    analysisGraph = await analysisLoader.loadGraph(filePath, { desugarImports: true, migrate: true });
     if (analysisGraph.errors.length > 0) throw analysisGraph.errors[0].error;
   } catch (err) {
     outErrLine(

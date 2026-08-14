@@ -40,6 +40,7 @@
     "build": "tsc -p tsconfig.lib.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prepare": "node ../../scripts/copy-migration-entries.mjs",
     "prepack": "cp ../../LICENSE . && cp ../../README.md .",
     "postpack": "rm -f LICENSE && rm -f README.md"
   },

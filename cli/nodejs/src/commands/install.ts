@@ -140,7 +140,7 @@ async function installOne(
     // `desugarImports` so inline `imports:` maps expand into synthetic
     // Telo.Import manifests and the graph walk follows them, so every
     // transitive import is discovered, cached, and analyzed.
-    graph = await loader.loadGraph(entryPath, { desugarImports: true });
+    graph = await loader.loadGraph(entryPath, { desugarImports: true, migrate: true });
     if (graph.errors.length > 0) throw graph.errors[0].error;
     manifests = flattenForAnalyzer(graph);
   } catch (err) {

@@ -84,11 +84,12 @@ variables:
     # the whole argv, so this list — not the agent — decides what the CLI is
     # allowed to do.
     #
-    # The default is every verb that INSPECTS. Three are deliberately absent:
+    # The default is every verb that INSPECTS. The rest are deliberately absent:
     # `run` executes a manifest, which is arbitrary code execution on this host
     # driven by an anonymous prompt; `publish` pushes to a registry with the
-    # operator's credentials; `install` and `upgrade` fetch and write. Add them
-    # here only for a deployment where the caller is trusted.
+    # operator's credentials; `install` and `upgrade` fetch and write; `migrate`
+    # rewrites the author's YAML in place, which is the agent's own edit tools'
+    # job here. Add them here only for a deployment where the caller is trusted.
     #
     # The check is on argv[0] against this list, which also closes the CLI's
     # default-command hole: `telo ./x.yaml` with no verb means `run ./x.yaml`,
