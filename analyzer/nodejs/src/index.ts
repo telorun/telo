@@ -99,6 +99,13 @@ export {
 export type { RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
 export { binaryKeyword, isBinarySlot, X_TELO_BINARY } from "./binary-slot.js";
 export {
+  applyTextEdits,
+  isPlainSafe,
+  quoteStyleOf,
+  renderFixReplacement,
+} from "./yaml-source-edit.js";
+export type { QuoteStyle, TextEdit } from "./yaml-source-edit.js";
+export {
   hasProvidesZone,
   hasRequiresZone,
   readProvidesZone,
@@ -139,6 +146,15 @@ export { isModuleKind, MODULE_KINDS } from "./module-kinds.js";
 export type { ModuleKind } from "./module-kinds.js";
 export { parseLoadedFile } from "./parse-loaded-file.js";
 export type { ParseOptions } from "./parse-loaded-file.js";
+export {
+  CORE_MIGRATIONS,
+  migrateFileText,
+  migrateManifests,
+  NO_MIGRATIONS,
+  parseMigrationEntry,
+  remapMigratedPaths,
+} from "./migrations/index.js";
+export type { FileMigrations, MigrationEntry, MigrationRewrite } from "./migrations/index.js";
 export { desugarLoadedFile, inlineImportManifests } from "./inline-imports.js";
 export type { SyntheticImport } from "./inline-imports.js";
 export {

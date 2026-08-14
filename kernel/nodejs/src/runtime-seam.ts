@@ -4,8 +4,10 @@ import {
   collectZoneModuleDocuments,
   diagnosticFix,
   flattenForAnalyzer,
+  remapMigratedPaths,
   type AnalysisDiagnostic,
   type DiagnosticData,
+  type LoadedGraph,
   type ManifestSource,
   type ZoneModuleDocuments,
 } from "@telorun/analyzer";
@@ -224,14 +226,26 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     // `analyze()`'s — carried out of the try so the checks below can see them.
     let parseDiagnostics: AnalysisDiagnostic[] = [];
     let versionDiagnostics: AnalysisDiagnostic[] = [];
+    let migrationDiagnostics: AnalysisDiagnostic[] = [];
     let moduleDocuments: ZoneModuleDocuments[] = [];
+    // Carried out of the try for the same reason the diagnostics are: analysis
+    // runs over the MIGRATED tree while every path a caller resolves points at
+    // the raw file, so the driver's provenance record has to be in hand below.
+    let loadedGraph: LoadedGraph | undefined;
     try {
+      // `migrate` unconditionally: this seam answers "does this manifest load
+      // and check", and the runtime it stands in for reads a legacy spelling
+      // through the same rewrite. A raw view is a round-trip editor's need, not
+      // a supervisor's.
       const graph = await loader.loadGraph(source, {
         desugarImports: options?.desugarImports ?? true,
+        migrate: true,
       });
       if (graph.errors.length > 0) throw graph.errors[0].error;
+      loadedGraph = graph;
       parseDiagnostics = graph.parseDiagnostics;
       versionDiagnostics = graph.versionDiagnostics;
+      migrationDiagnostics = graph.migrationDiagnostics;
       manifests = flattenForAnalyzer(graph);
       // The zone stage derives each imported library's export contracts from
       // its own full documents, which the flattened list drops.
@@ -254,17 +268,29 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     // treating a parse failure as fatal before analysis.
     if (parseDiagnostics.length > 0) {
       return {
-        diagnostics: [...parseDiagnostics, ...versionDiagnostics].map(toCheckDiagnostic),
+        diagnostics: [...parseDiagnostics, ...migrationDiagnostics, ...versionDiagnostics].map(
+          toCheckDiagnostic,
+        ),
       };
     }
 
     // `analyze()` never sees version skew, so without merging these a major
     // mismatch — which `load()` refuses to boot on — would check clean.
-    const diagnostics = new StaticAnalyzer({ celHandlers: nodeCelHandlers }).analyze(manifests, {
+    //
+    // The remap is the same call `assembleGraphDiagnostics` makes for the CLI
+    // and VS Code, and it is not optional here: a caller acts on `path` (a
+    // module's `Assert.Manifest` matches on it), so this seam reporting the
+    // MIGRATED spelling while every other surface reports the author's would
+    // make one manifest mean two things depending on who asked. A no-op when
+    // nothing was migrated.
+    const analysis = new StaticAnalyzer({ celHandlers: nodeCelHandlers }).analyze(manifests, {
       moduleDocuments,
     });
+    const diagnostics = remapMigratedPaths(loadedGraph, analysis);
     return {
-      diagnostics: [...versionDiagnostics, ...diagnostics].map(toCheckDiagnostic),
+      diagnostics: [...migrationDiagnostics, ...versionDiagnostics, ...diagnostics].map(
+        toCheckDiagnostic,
+      ),
     };
   }
 }

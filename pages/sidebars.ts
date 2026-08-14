@@ -60,6 +60,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/extend/templated-definitions", label: "Templated Definitions" },
         { type: "doc", id: "docs/extend/kind-inheritance", label: "Kind Inheritance" },
         { type: "doc", id: "docs/extend/execution-zones", label: "Execution Zones" },
+        { type: "doc", id: "docs/extend/manifest-migrations", label: "Manifest Migrations" },
         {
           type: "category",
           label: "Node.js",

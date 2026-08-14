@@ -25,7 +25,6 @@ import {
   EXACT_TEMPLATE_REGEX,
   isTaggedSentinel,
   ManifestRootSchema,
-  normalizeRefSlots,
 } from "@telorun/templating";
 
 const Ajv = AjvModule.default ?? AjvModule;
@@ -193,9 +192,7 @@ const VALIDATING_ANNOTATIONS = new Set([X_TELO_BINARY]);
  *
  *  Stripping is what makes the key describe the compiled validator and nothing
  *  else, so the two views converge without either side having to agree on an
- *  annotation's spelling. `normalizeRefSlots` runs FIRST and is unaffected: it
- *  reads `x-telo-ref` to drop a legacy scalar `type` at a ref slot, which does
- *  change validation, and it has already done so by the time this runs. */
+ *  annotation's spelling. */
 function stripTeloAnnotations(value: unknown, nameKeyed = false): unknown {
   // An array's items are schema nodes (`allOf`, tuple `items`), never names.
   if (Array.isArray(value)) return value.map((item) => stripTeloAnnotations(item));
@@ -361,12 +358,7 @@ export class SchemaValidator {
           }
         : normalized;
 
-    // Drop the legacy scalar `type` an older published module may still pin on
-    // its `x-telo-ref` slots. Schema validation runs in create() before Phase 5
-    // injection, so a ref slot holds the resolved `{kind, name, alias?}` object
-    // (or an unresolved sentinel) — both objects the stale `type: "string"`
-    // would otherwise reject.
-    const injected = normalizeRefSlots(withImplicit) as typeof withImplicit;
+    const injected = withImplicit;
 
     // Canonicalize CEL/template carriers (an inline `${{ }}` left in a
     // `description`, a `!cel` tag, …) to their bare source text so AJV can

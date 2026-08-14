@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ES2022",
+    // `esnext` rather than `ES2022` for import attributes (`with { type: "json" }`),
+    // which this package sees through @telorun/analyzer's `source` condition —
+    // its migration entries are JSON, and Node requires the attribute on an ESM
+    // JSON import.
+    "module": "esnext",
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,

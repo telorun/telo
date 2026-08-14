@@ -4,6 +4,7 @@ import {
   collectZoneModuleDocuments,
   flattenForAnalyzer,
   importResolutionDiagnostics,
+  remapMigratedPaths,
   type DocumentPosition,
   type LoadedGraph,
   type ManifestSource,
@@ -132,12 +133,25 @@ function analyzeClosure(
   // an export's open requirements. The cache is HOST-lifetime — this registry
   // is fresh per closure per run, so a cache on it would die at the boundary
   // it exists to cross, and the editor re-analyzes on every keystroke.
-  const diagnostics = analyzer.analyze(
-    manifests,
-    { moduleDocuments: collectZoneModuleDocuments(graph) },
-    registry,
-    zoneExportCache,
-  );
+  // Analysis ran over the MIGRATED tree while positions come from the raw file,
+  // so every `data.path` is mapped back through the migration driver's
+  // provenance record before it is routed — the same call
+  // `assembleGraphDiagnostics` makes for the CLI and VS Code. A no-op when
+  // nothing in the closure was migrated. The migration deprecations themselves
+  // carry the author's path already and route by the same resource identity, so
+  // they join the list rather than needing routing of their own.
+  const diagnostics = [
+    ...graph.migrationDiagnostics,
+    ...remapMigratedPaths(
+      graph,
+      analyzer.analyze(
+        manifests,
+        { moduleDocuments: collectZoneModuleDocuments(graph) },
+        registry,
+        zoneExportCache,
+      ),
+    ),
+  ];
 
   // A file that fails to parse (mangled tree) or whose import failed to resolve
   // (broken kind resolution) yields a spurious analyze cascade that would bury
@@ -365,7 +379,7 @@ export async function analyzeWorkspace(
   for (const root of computeClosureRoots(app)) {
     let graph: LoadedGraph;
     try {
-      graph = await loader.loadGraph(root, { desugarImports: true });
+      graph = await loader.loadGraph(root, { desugarImports: true, migrate: true });
     } catch (err) {
       console.error(`Failed to load analysis graph for ${root}:`, err);
       continue;

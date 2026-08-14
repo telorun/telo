@@ -27,6 +27,12 @@ export interface LoadOptions {
    *  inline imports resolve and execute identically to authored `Telo.Import`
    *  documents. Mirrors the analyzer loader's option of the same name. */
   desugarImports?: boolean;
+  /** When true, legacy manifest spellings are rewritten to the current ones
+   *  before the manifests are returned, so a module published years ago loads
+   *  against today's vocabulary. On for every runtime load; off only for a
+   *  round-trip view that must show the author's own text. Mirrors the analyzer
+   *  loader's option of the same name. */
+  migrate?: boolean;
 }
 
 export interface DataValidator {

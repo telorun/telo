@@ -1,0 +1,20 @@
+{
+  "$comment": "See README.md in this directory. `inKind` + `under` are the positive containment: `under` names TOP-LEVEL keys, so this rule can reach nothing but the schema blocks of a kind document — never the `resources:` template body, whose nested config may hold a key spelled `schema` over data. `withSibling` is what makes it precise — a scalar `type:` is stale only because an `x-telo-ref` sits beside it. `notUnder` then narrows within that region, keeping the rule out of the data-bearing keywords where a value may merely look like a schema.",
+  "id": "ref-slot-scalar-type",
+  "code": "X_TELO_REF_SCALAR_TYPE",
+  "severity": "warning",
+  "reason": "A reference is written with the `!ref` tag and resolves to an object, so a reference slot no longer carries the scalar `type:` that plain-string references were pinned to. Leaving it in place makes the slot reject the very value it is declared to accept, and every schema reader has had to know to ignore it.",
+  "rules": [
+    {
+      "match": {
+        "key": "type",
+        "inKind": ["Telo.Definition", "Telo.Abstract"],
+        "under": ["schema", "status", "inputType", "outputType"],
+        "valueOneOf": ["string", "number", "integer", "boolean"],
+        "withSibling": "x-telo-ref",
+        "notUnder": ["const", "default", "enum", "examples"]
+      },
+      "patch": [{ "op": "remove-entry" }]
+    }
+  ]
+}

@@ -326,7 +326,7 @@ export async function buildRemoteImportPlan(
   const rootModule = await loader.loadModule(rootUrl);
   const rootParsed = buildParsedManifest(rootModule.owner.source, flattenLoadedModule(rootModule));
 
-  const graph = await loader.loadGraph(rootUrl, { desugarImports: true });
+  const graph = await loader.loadGraph(rootUrl, { desugarImports: true, migrate: true });
   const rootOrigin = new URL(graph.rootSource).origin;
   const files = collectPlanFiles(graph.rootSource, root.destPath, graph.modules);
 

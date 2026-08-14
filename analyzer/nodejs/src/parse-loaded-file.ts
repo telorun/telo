@@ -4,6 +4,8 @@ import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import { buildCelEnvironment } from "./cel-environment.js";
 import type { LoadedFile, ParseError } from "./loaded-types.js";
+import { migrateManifests, NO_MIGRATIONS } from "./migrations/driver.js";
+import type { MigrationEntry } from "./migrations/types.js";
 import { buildDocumentPositions } from "./position-metadata.js";
 import { precompileDoc } from "./precompile.js";
 import { documentToAst } from "./yaml-ast.js";
@@ -14,6 +16,13 @@ export interface ParseOptions {
   compile?: boolean;
   /** CEL environment for precompile. Defaults to `buildCelEnvironment()`. */
   celEnv?: Environment;
+  /** When true, the migration phase runs over the parsed documents — legacy
+   *  spellings rewritten to the current ones before anything else reads the
+   *  tree. Off by default so a round-trip consumer (the editor) keeps the
+   *  author's vocabulary; see `LoadOptions.migrate`. */
+  migrate?: boolean;
+  /** Migration set. Defaults to the analyzer's own `CORE_MIGRATIONS`. */
+  migrations?: readonly MigrationEntry[];
 }
 
 /** Append an actionable hint to raw yaml-parser messages that are otherwise
@@ -64,26 +73,35 @@ export function parseLoadedFile(
     }
   });
 
-  const manifests: Array<ResourceManifest | null> = [];
-  let env: Environment | undefined;
-  for (const doc of documents) {
+  const manifests: Array<ResourceManifest | null> = documents.map((doc) => {
     const raw = doc.toJSON();
-    if (raw === null || raw === undefined) {
-      manifests.push(null);
-      continue;
-    }
-    if (options?.compile) {
+    return raw === null || raw === undefined ? null : (raw as ResourceManifest);
+  });
+
+  // The migration phase, immediately after parse. It runs BEFORE precompile so
+  // matchers see the values the author wrote rather than `CompiledValue`
+  // wrappers, and — through the loader — before `desugarLoadedFile`, so a rule
+  // only ever matches author-written nodes: a synthetic Telo.Import manifest
+  // has no YAML document to edit, records a path the file never had, and
+  // carries its `variables` / `secrets` by reference from the module doc, so a
+  // match inside one would apply twice.
+  const migrations = options?.migrate
+    ? migrateManifests({ source, manifests, entries: options.migrations })
+    : NO_MIGRATIONS;
+
+  let env: Environment | undefined;
+  if (options?.compile) {
+    for (let i = 0; i < manifests.length; i++) {
+      const raw = manifests[i];
+      if (raw === null) continue;
       env ??= options.celEnv ?? buildCelEnvironment();
       try {
-        const compiled = precompileDoc(raw, env);
-        manifests.push(compiled as ResourceManifest);
+        manifests[i] = precompileDoc(raw, env) as ResourceManifest;
       } catch (error) {
         throw new Error(
           `Failed to compile manifest in ${source}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-    } else {
-      manifests.push(raw as ResourceManifest);
     }
   }
 
@@ -96,5 +114,6 @@ export function parseLoadedFile(
     manifests,
     positions,
     parseErrors,
+    migrations,
   };
 }

@@ -1,5 +1,6 @@
 import {
   buildDocumentPositions,
+  NO_MIGRATIONS,
   parseToAst,
   type LoadedFile,
   type LoadedGraph,
@@ -22,6 +23,7 @@ function loadedFile(source: string, text: string, manifests: unknown[]): LoadedF
     manifests: manifests as LoadedFile["manifests"],
     positions: buildDocumentPositions(text, astDocuments),
     parseErrors: [],
+    migrations: NO_MIGRATIONS,
   };
 }
 

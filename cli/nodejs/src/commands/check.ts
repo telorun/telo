@@ -175,7 +175,7 @@ async function checkOne(
     // `desugarImports` so inline `imports:` maps expand into synthetic
     // Telo.Import manifests before analysis — `telo check` is a static
     // resolution consumer and must see inline imports exactly as the kernel does.
-    const graph = await session.loader.loadGraph(entryPath, { desugarImports: true });
+    const graph = await session.loader.loadGraph(entryPath, { desugarImports: true, migrate: true });
 
     // Freshness before analysis: a verdict computed from a moved tag would be
     // reported as authoritative. Pinned imports make this a no-op.

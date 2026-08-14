@@ -1,6 +1,6 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, and publishes module manifests to the Telo registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, and publishes module manifests to the Telo registry with `telo publish`.
 
 ## Installation
 
@@ -280,6 +280,46 @@ Upgrading apps/my-app/telo.yaml
 
 3 upgraded, 1 already current, 2 skipped
 ```
+
+---
+
+### `telo migrate <paths..>`
+
+Rewrites legacy spellings in a manifest to their current form.
+
+Telo occasionally renames something a manifest can say — a schema annotation, a keyword, a value grammar. Because published artifacts carry the old spelling and cannot be edited, the loader rewrites every legacy spelling **in memory** on the way in: the old form and the new one behave identically, on every kernel. `telo migrate` applies the same rewrites to your file, so the source says what the runtime already reads.
+
+**Running it is never a prerequisite for your manifest to work.** It is a repair of the text, offered because `telo check` reports each legacy spelling as a deprecation warning and a warning you cannot act on is not actionable.
+
+```bash
+telo migrate ./manifest.yaml
+telo migrate ./apps/my-app                  # directory → ./apps/my-app/telo.yaml
+telo migrate ./apps/a ./apps/b
+```
+
+The rewrite operates at the byte level, exactly as `telo upgrade`'s does: comments, indentation, folded block scalars (`>-` / `|`), quote style and every byte outside the rewritten ranges are preserved. A file with nothing to migrate is not touched.
+
+**Scope.** Only the manifest you name and its `include:` partials are rewritten. Imported modules are left alone — a published dependency is not yours to fix, and its author is the only person who can. That is the same rule that decides which deprecation warnings `telo check` shows you.
+
+**Options:**
+
+- `--registry-url <url>` — Base URL for the Telo registry, for resolving imports while loading. Falls back to `TELO_REGISTRY_URL`, then `https://registry.telo.run`.
+
+**Example output:**
+
+```text
+ref-slot-scalar-type  modules/mine/telo.yaml  3 rewrites
+
+3 rewrites in 1 file. Imported modules were not touched.
+```
+
+A rewrite the loader applies in memory can still be unwritable in place — a flow-style sequence has no item line to extend, a block scalar's span covers the newline that ended its mapping entry, and two rewrites whose byte spans overlap cannot both be spliced. Those locations are reported on stderr rather than skipped silently, since the diagnostic that sent you here says to run this command; each needs a hand edit:
+
+```text
+!  ref-slot-scalar-type  modules/mine/telo.yaml  targets  could not be rewritten in place (the YAML there cannot carry the edit) — fix it by hand
+```
+
+Under `-o json` the payload is `{ ok, rewrites, unwritable, files: [{ file, rewrites: [{ migration, count }], unwritable: [{ migration, path }] }] }`.
 
 ---
 

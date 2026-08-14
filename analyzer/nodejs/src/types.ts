@@ -110,12 +110,29 @@ export interface LoadOptions {
    *  pairs manifests to YAML nodes by index. Folded into the file cache key so a
    *  desugared and a raw load of the same file never collide. */
   desugarImports?: boolean;
+  /** When true, the loader's migration phase rewrites legacy spellings in each
+   *  parsed document before anything else reads the tree. On for every resolved
+   *  consumer — the kernel's analysis and runtime loads, `telo check`, the
+   *  analyzer — so one rewrite serves the definition registry, the runtime and
+   *  the editor's analysis alike.
+   *
+   *  **Off for a round-trip view.** The editor pairs manifests to YAML nodes by
+   *  index and writes the pair back on save; migrating one half of that pair
+   *  would silently change the author's file. `telo migrate` is likewise a raw
+   *  consumer — it rewrites the YAML itself and must see the legacy spelling to
+   *  find it. Folded into the file cache key so a migrated and a raw load of
+   *  the same file never collide. */
+  migrate?: boolean;
 }
 
 export interface LoaderInitOptions {
   /** Handlers for CEL stdlib functions (e.g. `sha256`). Analyzer-only callers may
    *  omit this and get throwing stubs; runtime callers (kernel) must supply real impls. */
   celHandlers?: import("./cel-environment.js").CelHandlers;
+  /** Migration set for `LoadOptions.migrate` loads. Defaults to the analyzer's
+   *  own `CORE_MIGRATIONS`. A host supplies its own once module-shipped entries
+   *  are aggregated alongside the core ones. */
+  migrations?: readonly import("./migrations/types.js").MigrationEntry[];
 }
 
 export interface AnalysisOptions {
