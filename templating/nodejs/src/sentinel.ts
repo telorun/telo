@@ -33,11 +33,44 @@ export function isRefSentinel(v: unknown): v is TaggedSentinel & { engine: "ref"
   return isTaggedSentinel(v) && v.engine === "ref";
 }
 
+/** The CEL engine's name. Beside the other sentinel predicates for the same
+ *  reason they are: a consumer that spells an engine name inline is a second
+ *  place the registry's key is written down. */
+export const CEL_ENGINE = "cel";
+
 /** Engine names of the two file-embedding tags. Named here beside the other
  *  sentinel predicates so the kernel's resolution pass and the engines
  *  themselves agree on one spelling. */
 export const INCLUDE_TEXT_ENGINE = "include-text";
 export const INCLUDE_BYTES_ENGINE = "include-bytes";
+
+/**
+ * The dotted chain a value names, or undefined.
+ *
+ * Only a PLAIN CHAIN — `steps.encode.result.output` — in either spelling a
+ * manifest may carry it: a `!cel` sentinel or the `${{ }}` string form. An
+ * expression that COMPUTES rather than names has no schema to read off a context,
+ * so a caller that navigates one gets nothing and reports nothing: silence where
+ * the analyzer knows least is the conservative direction.
+ *
+ * Here rather than in each caller because "is this expression a plain chain" is
+ * one question, and two copies of the answer would eventually disagree about a
+ * shape like `a.b[0]`.
+ */
+export function plainChainOf(value: unknown): string | undefined {
+  const source = isTaggedSentinel(value)
+    ? value.engine === CEL_ENGINE
+      ? value.source
+      : undefined
+    : typeof value === "string"
+      ? /^\s*\$\{\{(.+)\}\}\s*$/.exec(value)?.[1]
+      : undefined;
+  if (typeof source !== "string") return undefined;
+  const trimmed = source.trim();
+  return /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(trimmed)
+    ? trimmed
+    : undefined;
+}
 
 /** Both file-embedding tag names, for a consumer holding an engine NAME rather
  *  than a value (the analyzer's expression walk reports names). */

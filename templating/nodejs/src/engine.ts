@@ -143,4 +143,24 @@ export interface TemplatingEngine {
    *  A source the engine considers malformed claims nothing; `analyze` is what
    *  reports why. */
   fileClaims?(source: string): readonly EngineFileClaim[];
+
+  /** The type this tag ALWAYS produces, as a JSON Schema fragment.
+   *
+   *  Declared by the engine, never recognised by a consumer — the `fileClaims`
+   *  precedent applied to the one fact it left behind. Before this, the analyzer
+   *  hardcoded two tag names to hand an `!include-bytes` a byte placeholder and
+   *  an `!include-text` a string one; the only place a tag's produced type was
+   *  written down was in its consumer, so a future tag producing bytes had to be
+   *  added to a set rather than declaring it.
+   *
+   *  Absent for an engine whose produced type is a function of the SLOT rather
+   *  than of the tag — `!cel`, whose type is only derivable from the expression,
+   *  and `!ref`, which is an identity marker. Their values keep taking a
+   *  slot-shaped placeholder.
+   *
+   *  What falls out is the property this preserves exactly: because an embed's
+   *  type is a constant of the tag, a byte embed at a string slot and text at a
+   *  byte slot both fail statically, through the ordinary schema check and with
+   *  no diagnostic code of their own. */
+  producedType?(): Record<string, unknown>;
 }

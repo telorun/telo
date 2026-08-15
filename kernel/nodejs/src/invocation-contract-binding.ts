@@ -3,7 +3,7 @@ import {
   defaultBearingPaths,
   effectiveContractField,
   type DefResolver,
-  withStreamPropertiesSkipped,
+  withLiveValuesSkipped,
 } from "@telorun/analyzer";
 import type { ResourceDefinition, ResourceInstance, ResourceManifest } from "@telorun/sdk";
 import {
@@ -138,7 +138,7 @@ export function resolveBoundContract(
           `The type is not registered, so the contract cannot be enforced.`,
       );
     }
-    const stripped = withStreamPropertiesSkipped(schema, factory.resolveRef);
+    const stripped = withLiveValuesSkipped(schema, factory.resolveRef);
     paths = defaultBearingPaths(stripped, factory.resolveRef);
     // Compile by NAME whenever the declaration is one, so the type's CEL
     // `rules:` are composed in — including when a stream had to be stripped, in

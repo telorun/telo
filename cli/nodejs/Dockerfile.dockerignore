@@ -2,8 +2,10 @@
 !cli/nodejs
 !kernel/nodejs
 !analyzer/nodejs
+!analyzer/migrations
 !templating/nodejs
 !sdk/nodejs
+!sdk/value-types
 !scripts
 !packages/ide-support
 !packages/debug-wire

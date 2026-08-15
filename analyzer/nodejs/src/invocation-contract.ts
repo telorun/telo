@@ -1,4 +1,4 @@
-import type { ResourceDefinition } from "@telorun/sdk";
+import { isLiveSlot, type ResourceDefinition } from "@telorun/sdk";
 import {
   type ContractDirection,
   contractDeclarer,
@@ -108,33 +108,41 @@ export function resolveContractSchema(
 }
 
 /**
- * A copy of `schema` with every `x-telo-stream`-marked property removed from
- * `properties` and `required`, for validating a runtime value against.
+ * A copy of `schema` with every `live`-typed node left unconstrained, for
+ * validating a runtime value against.
  *
- * Streams travel in BOTH directions — `Codec.Encoder` marks `input` on its
- * `inputType` and lists it in `required`, and `Record.Stream`, `Ai`, `Tar` and
- * `Console` do the same — so a one-directional skip would walk a live `Stream`
- * with AJV on the hottest path in the runtime. That is the same defect as
- * `stripCompiledValues` walking a live `ResourceInstance` in a ref slot: a live
- * object in a declared slot is not data to be traversed. The annotation already
- * marks exactly the properties to leave alone.
+ * Live values travel in BOTH directions — `Codec.Encoder` declares a stream on
+ * its `inputType` and lists it in `required`, and `Record.Stream`, `Ai`, `Tar`
+ * and `Console` do the same — so a one-directional skip would walk a live
+ * `Stream` with AJV on the hottest path in the runtime. That is the same defect
+ * as `stripCompiledValues` walking a live `ResourceInstance` in a ref slot: a
+ * live object in a declared slot is not data to be traversed.
+ *
+ * EXEMPTION IS A PROPERTY OF THE TYPE, not of a position. This used to neutralize
+ * only a key it found in a `properties` map, so an array-OF-streams element was
+ * reached and left constrained even though the walk descended into `items`.
+ * Reading the exemption off the declared value type makes an item, a union branch
+ * and a property the same case, and it is one rule instead of three.
+ *
+ * The exemption is from VALIDATION, never from TYPING: a live type's declared
+ * arguments still travel through every schema-typing walk the analyzer performs.
  *
  * Structural (returns a new object, never mutates), and shared so the analyzer
  * and the kernel exempt the same set.
  */
-export function withStreamPropertiesSkipped(
+export function withLiveValuesSkipped(
   schema: Record<string, any>,
   /** Resolves a `$ref` to the schema it names. Required to see through the
    *  reference form the runtime deliberately KEEPS intact for its validator: a
    *  contract written as `{ $ref: "telo:mod/Type" }` has none of its own
    *  properties, so a walk that cannot follow the reference exempts nothing and
-   *  the stream is traversed after all. */
+   *  the live value is traversed after all. */
   resolveRef?: (ref: string) => Record<string, any> | undefined,
 ): Record<string, any> {
-  return stripStreams(schema, [], resolveRef);
+  return stripLive(schema, [], resolveRef);
 }
 
-function stripStreams(
+function stripLive(
   node: unknown,
   // A PATH-scoped guard, not a global memo: a schema object reached twice from
   // different parents must be stripped twice (a global `seen` would hand the
@@ -145,7 +153,7 @@ function stripStreams(
   if (Array.isArray(node)) {
     let changed = false;
     const items = node.map((item) => {
-      const next = stripStreams(item, path, resolveRef);
+      const next = stripLive(item, path, resolveRef);
       if (next !== item) changed = true;
       return next;
     });
@@ -155,6 +163,14 @@ function stripStreams(
   let schema = node as Record<string, any>;
   if (path.includes(schema)) return schema;
 
+  // The one rule. An empty schema leaves the node DECLARED but unconstrained,
+  // rather than deleted: deleting a property would force `additionalProperties:
+  // false` open, and a closed contract would stop rejecting unknown keys the
+  // moment it grew a stream — trading one exemption for a hole across the whole
+  // shape. `required` is untouched for the same reason: a live value IS present,
+  // it is only not walked.
+  if (isLiveSlot(schema)) return {};
+
   // Follow a whole-document reference to SEE the annotations behind it, but
   // return the original node when nothing behind it was stripped. Substituting
   // the resolved target unconditionally would break schema identity — the
@@ -163,7 +179,7 @@ function stripStreams(
   if (resolveRef && typeof schema.$ref === "string") {
     const target = resolveRef(schema.$ref);
     if (target && !path.includes(target)) {
-      const stripped = stripStreams(target, [...path, schema], resolveRef);
+      const stripped = stripLive(target, [...path, schema], resolveRef);
       if (stripped === target) return node;
       const { $ref: _ref, ...siblings } = schema;
       return Object.keys(siblings).length > 0 ? { ...stripped, ...siblings } : stripped;
@@ -171,44 +187,23 @@ function stripStreams(
   }
   const here = [...path, schema];
 
-  let out: Record<string, any> = schema;
-  const properties = schema.properties as Record<string, any> | undefined;
-  if (properties) {
-    // A stream can be contributed by an `allOf` branch too (how type inheritance
-    // is expressed before the branches are merged), so the marked set is read
-    // from the folded view while the removal is applied here.
-    const streamed = Object.keys(properties).filter(
-      (key) => (properties[key] as Record<string, any> | undefined)?.["x-telo-stream"],
-    );
-    if (streamed.length > 0) {
-      const kept: Record<string, any> = {};
-      for (const [key, value] of Object.entries(properties)) {
-        if (!streamed.includes(key)) kept[key] = value;
-      }
-      // The key stays DECLARED but unconstrained, rather than being deleted.
-      // Deleting it would force `additionalProperties: false` open, and a closed
-      // contract would stop rejecting unknown keys the moment it grew a stream —
-      // trading one exemption for a hole across the whole shape.
-      for (const key of streamed) kept[key] = {};
-      out = { ...schema, properties: kept };
-    }
-  }
-
-  // Recurse: a stream one level down (an item, a branch, a nested object) is as
-  // live as one at the root, and walking it with AJV is the same defect.
+  // Recurse: a live value one level down (a property, an item, a branch, a
+  // nested object) is as live as one at the root, and walking it with AJV is the
+  // same defect. Each is neutralized by the single rule above when the walk
+  // reaches it.
   //
   // `properties` and `$defs` are MAPS of schemas, not schemas — descending into
   // them as if they were would visit nothing, since a map has none of the
   // keywords this walk looks for.
-  let changed = out !== schema;
-  const result: Record<string, any> = { ...out };
+  let changed = false;
+  const result: Record<string, any> = { ...schema };
   for (const key of ["properties", "$defs"] as const) {
-    const map = out[key] as Record<string, any> | undefined;
+    const map = schema[key] as Record<string, any> | undefined;
     if (!map || typeof map !== "object") continue;
     let mapChanged = false;
     const next: Record<string, any> = {};
     for (const [name, child] of Object.entries(map)) {
-      const stripped = stripStreams(child, here, resolveRef);
+      const stripped = stripLive(child, here, resolveRef);
       if (stripped !== child) mapChanged = true;
       next[name] = stripped;
     }
@@ -218,9 +213,9 @@ function stripStreams(
     }
   }
   for (const key of ["items", "allOf", "anyOf", "oneOf"] as const) {
-    const child = out[key];
+    const child = schema[key];
     if (child === undefined) continue;
-    const next = stripStreams(child, here, resolveRef);
+    const next = stripLive(child, here, resolveRef);
     if (next !== child) {
       result[key] = next;
       changed = true;
@@ -237,7 +232,7 @@ function stripStreams(
  *  schema's defaults rather than by the size of the payload. */
 export function defaultBearingPaths(
   schema: Record<string, any>,
-  /** See {@link withStreamPropertiesSkipped} — a contract kept in `$ref` form
+  /** See {@link withLiveValuesSkipped} — a contract kept in `$ref` form
    *  declares its defaults behind the reference, and a walk that cannot follow
    *  it would report none, leaving the caller's data shared where a fill lands. */
   resolveRef?: (ref: string) => Record<string, any> | undefined,

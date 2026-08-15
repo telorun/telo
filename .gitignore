@@ -38,6 +38,10 @@ modules/*/nodejs/*.mjs
 # bytes; TypeScript can only import a JSON file from inside its own package.
 analyzer/nodejs/src/migrations/entries/
 
+# Value-type entries copied in from sdk/value-types/ by the SDK's `prepare`.
+# Same reason, same mechanism: every runtime reads the identical vocabulary.
+sdk/nodejs/src/value-types/entries/
+
 # Python
 python/__pycache__/
 python/*.py[cod]

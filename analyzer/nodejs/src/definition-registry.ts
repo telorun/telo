@@ -127,6 +127,16 @@ export class DefinitionRegistry {
     return this.registeredSchemaIds.has(id) || this.ajv.getSchema(id) !== undefined;
   }
 
+  /** The schema registered under `id`, for a structural comparison that must see
+   *  THROUGH a named shape. Declaring a shape once and referencing it is the
+   *  sanctioned way to reuse one, so a comparator that cannot follow the
+   *  reference judges two opaque nodes and learns nothing. */
+  schemaForId(id: string): Record<string, any> | undefined {
+    const compiled = this.ajv.getSchema(id);
+    const schema = compiled?.schema;
+    return schema && typeof schema === "object" ? (schema as Record<string, any>) : undefined;
+  }
+
   /** Validates data against a schema using this registry's AJV instance, which has all
    *  registered definition schemas loaded — enabling cross-module $ref resolution.
    *  A compile failure returns `[]` here; it is surfaced loudly (once, on the

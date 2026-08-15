@@ -1,5 +1,5 @@
 export { extractAccessChains, validateChainAgainstSchema } from "@telorun/templating";
-import { mergeTypeSchemas } from "@telorun/sdk";
+import { mergeTypeSchemas, parseCanonicalTypeSchemaId } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
 
 export interface ContextResolveOpts {
@@ -89,6 +89,38 @@ export function resolveTypeFieldToSchema(
 
   if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, any>;
+    // A canonical, module-scoped id — what `resolveSchemaTypeRefs` normalizes
+    // both the reference tag and the legacy `telo://` authority form into.
+    //
+    // This is the ALIAS-AWARE path, and it is why the canonical form exists:
+    // the id names the OWNING MODULE, so two libraries declaring a shape of the
+    // same name stay distinct. The bare-name lookup below cannot do that — it
+    // matches the first manifest with that `metadata.name` in a flattened list,
+    // which is how an alias got silently dropped.
+    const canonical = parseCanonicalTypeSchemaId(obj.$ref);
+    if (canonical) {
+      if (ancestry.has(obj.$ref)) return undefined;
+      const owned = allManifests.find(
+        (m) =>
+          (m.metadata as any)?.name === canonical.typeName &&
+          (m.metadata as any)?.module === canonical.moduleName &&
+          isTypeKind(m.kind, allManifests) &&
+          typeof m.schema === "object" &&
+          m.schema !== null,
+      );
+      if (owned) {
+        return applyExtends(
+          owned.schema as Record<string, any>,
+          owned.extends,
+          allManifests,
+          new Set(ancestry).add(obj.$ref),
+        );
+      }
+      // A module that is not in this set — a single-file analysis, or an import
+      // whose library was not forwarded. Fall through to the bare name, which is
+      // what this resolved before the canonical form existed.
+      return resolveTypeFieldToSchema(canonical.typeName, allManifests, ancestry);
+    }
     // Inline type resource: { kind: "Type.JsonSchema", schema: {...} }
     if (obj.schema && typeof obj.schema === "object") {
       return applyExtends(obj.schema as Record<string, any>, obj.extends, allManifests, ancestry);
@@ -97,8 +129,9 @@ export function resolveTypeFieldToSchema(
     if (obj.type || obj.properties) {
       return obj;
     }
-    // Named type reference resolved from a `!ref` → { kind, name } — resolve the
-    // named Telo.Type the same way as the bare-string form.
+    // Named type reference resolved from a `!ref` → { kind, name }. Reached only
+    // where the canonical rewrite could not run (a scope whose aliases are not in
+    // hand); resolves by bare name, as it always has.
     if (typeof obj.name === "string") {
       return resolveTypeFieldToSchema(obj.name, allManifests, ancestry);
     }

@@ -781,21 +781,41 @@ system: |
   disagree. Provider-private state (an open executor) goes on an instance both
   sides hold by reference, never at module scope.
 
-  ## Raw bytes — `x-telo-binary`
+  ## What a value IS — `x-telo-type`
 
-  A slot carrying raw bytes (an encoded image, a decoded payload, file content)
-  is declared `x-telo-binary: true`. Bytes have no JSON Schema type — `type:
-  object` is satisfied by every object, and `type: binary` is not something AJV
-  will compile — so this annotation IS the check: the only `x-telo-*` keyword
-  that validates rather than merely describing.
+  One annotation says what the value at a slot is, beyond what JSON Schema's
+  `type` vocabulary can express. The vocabulary is CLOSED and kernel-owned:
 
-  Two rules follow, both yours to obey when authoring:
+    - `Telo.Bytes` — raw bytes (an encoded image, a decoded payload, file
+      content). Bytes have no JSON Schema type — `type: object` is satisfied by
+      every object, and `type: binary` will not compile — so this annotation IS
+      the check.
+    - `Telo.Stream` — a live handle, consumed by reading. Never validated and
+      never traversed; member access PAST it is an error, so a consumer iterates
+      it or pipes it onward. It takes one optional type argument, `of`, naming
+      the element: `x-telo-type: { name: Telo.Stream, of: Telo.Bytes }`.
+    - `Telo.TcpPort` / `Telo.UdpPort` — nominal identity over an integer, so
+      wiring a UDP port into a TCP slot is a static error.
+
+  A type ARGUMENT is an ordinary schema node, so it nests with no new grammar: a
+  built-in name, an inline shape, another parameterized type, or a `!ref` to a
+  named `Telo.JsonSchema`. An omitted argument means *any*, in both directions —
+  so a producer that declares its element and a consumer that does not still
+  wire cleanly, while two that declare CONFLICTING elements are a hard
+  `CEL_TYPE_ARGUMENT_MISMATCH`.
+
+  A NAME here is always one of the built-ins above. To name a SHAPE, reference
+  it the way you reference anything named — `of: !ref File`, or
+  `of: !ref Ai.ImageResult` for a shape an imported library exports.
+
+  Three rules follow, all yours to obey when authoring:
 
     - NEVER write a byte literal. Bytes always arrive by REFERENCE — a `!cel`
-      reading another step's result, or a `!ref`. A literal at such a slot is a
-      hard `telo check` error, because no manifest literal is ever a byte buffer.
-      To author binary by hand, use the string form the kind offers instead
-      (`Fs.FileWrite` takes `content` plus `encoding: base64`).
+      reading another step's result, a `!ref`, or an `!include-bytes` embed. A
+      literal at such a slot is a hard `telo check` error, because no manifest
+      literal is ever a byte buffer. To author binary by hand, use the string
+      form the kind offers instead (`Fs.FileWrite` takes `content` plus
+      `encoding: base64`).
     - A union with a byte branch uses `anyOf`, NEVER `oneOf`. Tooling that does
       not know the keyword reads that branch as matching anything, so under
       `oneOf` a plain string would match BOTH branches and fail.
@@ -803,7 +823,11 @@ system: |
           content:                 # Fs.FileWrite — text or bytes
             anyOf:
               - type: string
-              - x-telo-binary: true
+              - x-telo-type: Telo.Bytes
+
+    - `x-telo-binary: true` and `x-telo-stream: true` are the OLD spellings. A
+      published module may still carry them and the runtime rewrites them on
+      load, but never WRITE them — write `x-telo-type` instead.
 
   So generating a picture and saving it is plain two-step wiring, with no base64
   hop and no `JS.Script` in between:
@@ -1001,8 +1025,8 @@ system: |
     (`!cel "'http://localhost:' + string(ports.http)"`).
   - Two more tags embed a file that ships beside the manifest:
     `!include-text path` yields the file's contents as a string,
-    `!include-bytes path` yields raw bytes (a `Uint8Array` — what an
-    `x-telo-binary` slot accepts). Use them for fonts, artwork, SQL files,
+    `!include-bytes path` yields raw bytes (a `Uint8Array` — what a
+    `Telo.Bytes` slot accepts). Use them for fonts, artwork, SQL files,
     prompt text, certificates. Rules: the path is a LITERAL relative to the
     MODULE ROOT (the directory holding `telo.yaml`) — never to the file the tag
     was written in, never absolute, no URL, no glob, and never above the module

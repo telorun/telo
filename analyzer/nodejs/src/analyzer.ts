@@ -5,6 +5,7 @@ import {
   defaultRegistry,
   isRefSentinel,
   isTaggedSentinel,
+  plainChainOf,
   type CelSurface,
 } from "@telorun/templating";
 import type { DiagnosticFix } from "./types.js";
@@ -56,11 +57,17 @@ import {
   validateRefSlotDeclarations,
   type RefSlotIssue,
 } from "./validate-ref-slots.js";
+import {
+  validateValueTypeSlots,
+  type ValueTypeSlotIssue,
+} from "./validate-value-type-slots.js";
 import { resolveSchemaTypeRefs } from "./resolve-schema-type-refs.js";
 import { validateSchemaTypeRefs } from "./validate-schema-type-refs.js";
 import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
 import {
   celTypeSatisfiesJsonSchema,
+  checkSchemaCompatibility,
+  navigateSchemaToExprPath,
   substituteCelFields,
   validateAgainstSchema,
   type SchemaIssue,
@@ -1201,6 +1208,18 @@ export class StaticAnalyzer {
     const refConstraintIssues: RefConstraintIssue[] = [];
     const refSlotIssues: RefSlotIssue[] = [];
     const zoneSlotIssues: ZoneSlotIssue[] = [];
+    // `x-telo-type` is checked on EVERY manifest, not only on definition docs: a
+    // schema fragment is written wherever a kind declares a schema-valued field,
+    // so an inline `inputType:` on an ordinary resource carries one just as a
+    // definition's `schema:` does. Same scoping as every other schema issue —
+    // the entry's own modules, since a dependency is not the consumer's to fix.
+    const valueTypeSlotIssues: ValueTypeSlotIssue[] = [];
+    for (const m of manifests) {
+      const declaringModule = (m.metadata as { module?: string } | undefined)?.module;
+      if (!declaringModule || rootModules.has(declaringModule)) {
+        valueTypeSlotIssues.push(...validateValueTypeSlots(m as unknown as ResourceManifest));
+      }
+    }
     for (const m of manifests) {
       if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
       const def = m as unknown as ResourceDefinition;
@@ -1340,6 +1359,26 @@ export class StaticAnalyzer {
       // accessor split; `readRefSlot` stays lenient so surfaces keep working
       // mid-migration, and this reports what leniency would silently absorb.
       for (const issue of refSlotIssues) diagnostics.push(refSlotIssueDiagnostic(issue));
+      // The same split for `x-telo-type`. Its reader returns a slot with no
+      // entry for a name it does not know, which is what an unrecognized brand
+      // used to do SILENTLY — the slot simply lost its identity.
+      for (const issue of valueTypeSlotIssues) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: issue.code,
+          source: SOURCE,
+          message: issue.message,
+          data: {
+            resource: {
+              kind: issue.manifest.kind,
+              name: issue.manifest.metadata?.name as string,
+            },
+            filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
+            path: issue.path,
+            ...(issue.fix ? { fix: issue.fix } : {}),
+          },
+        });
+      }
       // Same split for the two zone annotations. Unreadable ones fail in
       // OPPOSITE directions — a dropped requirement is silently unenforced, a
       // dropped provision invents failures — so neither can be left to
@@ -1625,6 +1664,11 @@ export class StaticAnalyzer {
       filePath?: string;
     })[] = [];
     const celTypeByPath = new Map<ResourceManifest, Map<string, string>>();
+    // The schema an expression RESOLVES TO, beside the CEL type it carries. Both
+    // are needed and neither replaces the other: the CEL type answers "does this
+    // fit the slot at all", the schema answers "do their type arguments agree",
+    // which cel-js cannot express because it types by constructor identity.
+    const celSourceSchemaByPath = new Map<ResourceManifest, Map<string, Record<string, any>>>();
     // Context-free typed environments, one per manifest. Reused across every
     // expression in it — see the build site for why a matched context opts out.
     const typedEnvByManifest = new Map<ResourceManifest, Environment>();
@@ -1962,12 +2006,15 @@ export class StaticAnalyzer {
               defs,
               aliases,
               { aliasesByModule, rootModules },
+              celStepContextSchema,
             )) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
-                code: "CONTRACT_INPUTS_MISMATCH",
+                code: issue.code ?? "CONTRACT_INPUTS_MISMATCH",
                 source: SOURCE,
-                message: `${m.kind}/${stepName}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
+                message: issue.code
+                  ? `${m.kind}/${stepName}: inputs at '${issue.path}' flow into ${issue.targetLabel} with disagreeing type arguments: ${issue.message}`
+                  : `${m.kind}/${stepName}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
                 data: {
                   resource: { kind: m.kind, name: stepName ?? "" },
                   filePath: stepFile,
@@ -2260,6 +2307,30 @@ export class StaticAnalyzer {
             byPath.set(path, result.type);
           }
 
+          // The producer half of the type-argument check. A CEL type is a bare
+          // name — cel-js types by constructor identity, so a byte stream and a
+          // string stream are one CEL type and always will be — so the argument
+          // comparison is a parallel pass over the SCHEMAS the analyzer already
+          // walks. This is where the producer's schema is in hand: navigating
+          // the expression's chain into its context schema is exactly "the
+          // producer's outputType at the expression's tail".
+          //
+          // Only a PLAIN CHAIN is navigated — `steps.encode.result.output`, the
+          // shape a wiring site actually takes. An expression that computes
+          // rather than names has no schema to read off the context, so it
+          // records nothing and no argument check fires: silence where the
+          // analyzer knows least is the conservative direction, and the same one
+          // `x-telo-step-context`'s pure-`value` typing takes.
+          const chain = effectiveContext ? plainChainOf(`\${{${expr}}}`) : undefined;
+          if (chain) {
+            const produced = navigateSchemaToExprPath(effectiveContext!, chain);
+            if (produced) {
+              let byPath = celSourceSchemaByPath.get(m);
+              if (!byPath) celSourceSchemaByPath.set(m, (byPath = new Map()));
+              byPath.set(path, produced);
+            }
+          }
+
           // A non-deterministic call in a compile-eval field is baked once at
           // load: `nowIso()` there freezes at boot. Sometimes that is the
           // intent (a boot timestamp, a run id), so it warns rather than
@@ -2331,13 +2402,35 @@ export class StaticAnalyzer {
     for (const slot of celReturnSlots) {
       const type = celTypeByPath.get(slot.manifest)?.get(slot.path);
       if (type === undefined) continue;
-      if (celTypeSatisfiesJsonSchema(type.split("<")[0]!, slot.schema)) continue;
-      const expected = slot.schema["x-telo-type"] ?? slot.schema.type ?? "unknown";
+      if (!celTypeSatisfiesJsonSchema(type.split("<")[0]!, slot.schema)) {
+        const expected = slot.schema["x-telo-type"] ?? slot.schema.type ?? "unknown";
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "CEL_TYPE_ERROR",
+          source: SOURCE,
+          message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but the field expects '${expected}'.`,
+          data: { resource: slot.resource, filePath: slot.filePath, path: slot.path },
+        });
+        continue;
+      }
+      // The type fits; do its ARGUMENTS agree? Covariant and gradual — an
+      // omitted argument is *any* in both directions, so an unmigrated producer
+      // or consumer is never reported, and only a definite conflict is.
+      const produced = celSourceSchemaByPath.get(slot.manifest)?.get(slot.path);
+      if (!produced) continue;
+      const { compatible, issues } = checkSchemaCompatibility(
+        produced,
+        slot.schema,
+        (ref: string) => defs.schemaForId(ref),
+      );
+      if (compatible) continue;
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
-        code: "CEL_TYPE_ERROR",
+        code: "CEL_TYPE_ARGUMENT_MISMATCH",
         source: SOURCE,
-        message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but the field expects '${expected}'.`,
+        message:
+          `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
+          `whose type arguments disagree with the field's: ${issues.join("; ")}.`,
         data: { resource: slot.resource, filePath: slot.filePath, path: slot.path },
       });
     }

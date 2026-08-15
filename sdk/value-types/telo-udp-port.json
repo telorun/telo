@@ -1,0 +1,6 @@
+{
+  "name": "Telo.UdpPort",
+  "representation": "json",
+  "base": "integer",
+  "description": "A UDP port number. Distinct from a TCP port even though both are integers, so wiring one into the other's slot is a static error."
+}

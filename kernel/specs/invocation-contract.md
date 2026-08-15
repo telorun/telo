@@ -248,11 +248,17 @@ is a property of the destination format, never of the value.
 
 ### 4.5 What validation exempts
 
-Validation MUST skip every property marked `x-telo-stream`, **in both
-directions**. Streams travel on inputs as much as on results, and the value at
-such a property is a live stream object, not data: traversing it is the same
-defect as walking a live resource instance that occupies a declared reference
-slot.
+Validation MUST skip every node whose declared value type is `live`, **in both
+directions**, wherever that node appears — a property, an array item, a union
+branch. Live values travel on inputs as much as on results, and the value at such
+a node is a live object, not data: traversing it is the same defect as walking a
+live resource instance that occupies a declared reference slot.
+
+Exemption is a property of the TYPE, never of a position: a rule that skipped
+only a marked PROPERTY would leave an array-of-streams element constrained even
+while descending into it. It is also exemption from VALIDATION and never from
+TYPING — a live type's declared type arguments remain visible to every static
+check that reads them.
 
 Validation MUST NOT descend into reference-typed properties for the same reason.
 

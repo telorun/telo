@@ -40,6 +40,7 @@ mod error;
 mod invoke_context;
 pub mod logging;
 mod traits;
+pub mod value_type;
 
 pub use error::ControllerError;
 pub use logging::{

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultBearingPaths, withStreamPropertiesSkipped } from "@telorun/analyzer";
+import { defaultBearingPaths, withLiveValuesSkipped } from "@telorun/analyzer";
 import { copyForDefaults, resolveBoundContract } from "../src/invocation-contract-binding.js";
 import type { ContractValidatorFactory } from "../src/invocation-contract-binding.js";
 import { withBigIntsAsNumbers } from "../src/bigint-schema-view.js";
@@ -85,14 +85,14 @@ describe("§4.2 — defaults are filled over a copy deep along default-bearing p
   });
 });
 
-describe("§4.3 — validation exempts x-telo-stream in both directions", () => {
+describe("§4.3 — validation exempts live value types in both directions", () => {
   it("drops a marked property from properties and required", () => {
-    const stripped = withStreamPropertiesSkipped({
+    const stripped = withLiveValuesSkipped({
       type: "object",
       required: ["input", "encoding"],
       additionalProperties: false,
       properties: {
-        input: { "x-telo-stream": true },
+        input: { "x-telo-type": "Telo.Stream" },
         encoding: { type: "string" },
       },
     });
@@ -104,13 +104,13 @@ describe("§4.3 — validation exempts x-telo-stream in both directions", () => 
   });
 
   it("reaches a stream nested below the root", () => {
-    const stripped = withStreamPropertiesSkipped({
+    const stripped = withLiveValuesSkipped({
       type: "object",
       properties: {
         body: {
           type: "object",
           required: ["chunks"],
-          properties: { chunks: { "x-telo-stream": true } },
+          properties: { chunks: { "x-telo-type": "Telo.Stream" } },
         },
       },
     });
@@ -118,9 +118,9 @@ describe("§4.3 — validation exempts x-telo-stream in both directions", () => 
   });
 
   it("reaches a stream contributed by an allOf branch", () => {
-    const stripped = withStreamPropertiesSkipped({
+    const stripped = withLiveValuesSkipped({
       type: "object",
-      allOf: [{ properties: { output: { "x-telo-stream": true } }, required: ["output"] }],
+      allOf: [{ properties: { output: { "x-telo-type": "Telo.Stream" } }, required: ["output"] }],
     });
     expect(stripped.allOf[0].properties.output).toEqual({});
   });
@@ -128,7 +128,7 @@ describe("§4.3 — validation exempts x-telo-stream in both directions", () => 
   it("leaves a stream-free schema untouched by identity", () => {
     const schema = { type: "object", properties: { a: { type: "string" } } };
     // Identity matters: the validator cache is keyed by schema object.
-    expect(withStreamPropertiesSkipped(schema)).toBe(schema);
+    expect(withLiveValuesSkipped(schema)).toBe(schema);
   });
 });
 
@@ -180,7 +180,7 @@ describe("a named type keeps its CEL rules even when a stream is stripped", () =
     const { factory, calls } = stubFactory({
       type: "object",
       required: ["input", "n"],
-      properties: { input: { "x-telo-stream": true }, n: { type: "integer" } },
+      properties: { input: { "x-telo-type": "Telo.Stream" }, n: { type: "integer" } },
     });
     const bound = resolveBoundContract(
       "inputType",

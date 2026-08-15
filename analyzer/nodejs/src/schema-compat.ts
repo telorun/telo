@@ -1,13 +1,20 @@
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import {
-  INCLUDE_BYTES_ENGINE,
-  INCLUDE_ENGINE_NAMES,
   isRefSentinel,
   isTaggedSentinel,
   ManifestRootSchema,
+  producedTypeOf,
 } from "@telorun/templating";
-import { binaryKeyword, isBinarySlot } from "./binary-slot.js";
+import {
+  celBaseOfValueType,
+  celTypeOfValueType,
+  readValueTypeSlot,
+  valueBrandBases,
+  valueTypeOf,
+  valueTypePlaceholder,
+} from "@telorun/sdk";
+import { registerTeloKeywords } from "./value-type-keyword.js";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
 
@@ -24,10 +31,11 @@ export function createAjv(): InstanceType<typeof Ajv> {
   (addFormats as any).default
     ? (addFormats as any).default(instance)
     : (addFormats as any)(instance);
-  // Bytes have no JSON Schema type, so the annotation carries the check. Registered
-  // here and in the kernel's validators from one definition, so a literal at a byte
-  // slot is rejected statically and at dispatch by the identical rule.
-  instance.addKeyword(binaryKeyword());
+  // One registration site for every Telo keyword — the annotations as no-ops and
+  // `x-telo-type` as the one that checks. Registered here and in the kernel's
+  // validators from one definition, so a literal at an instance-typed slot is
+  // rejected statically and at dispatch by the identical rule.
+  registerTeloKeywords(instance);
   instance.addSchema(ManifestRootSchema);
   return instance;
 }
@@ -40,62 +48,170 @@ export interface CompatibilityResult {
   issues: string[];
 }
 
-/** Conservative structural JSON Schema compatibility check.
- *  Only flags definite mismatches: missing required fields and primitive type conflicts.
- *  Ambiguous cases (anyOf/oneOf/etc.) are treated as compatible. */
+/**
+ * Conservative structural JSON Schema compatibility check — is a value shaped
+ * like `source` acceptable where `target` is declared?
+ *
+ * COVARIANT, because the values this compares are consumed by reading: a
+ * narrower element satisfies a slot declaring a wider one. Only DEFINITE
+ * mismatches are flagged — a missing required field, a primitive type conflict,
+ * a disagreeing type argument. Anything ambiguous (`anyOf` / `oneOf` / `allOf`,
+ * an absent `type`, an undeclared argument) is treated as compatible, so an
+ * unmigrated producer and consumer keep checking exactly as they did.
+ *
+ * The traversal is written here rather than reused: the function this replaced
+ * compared only `type` for the names in `target.required` and descended only
+ * into objects, so a stream of arrays of strings and a stream of arrays of
+ * integers both read as `array` and passed — leaving argument checking inert on
+ * exactly the nested shapes it exists for. What survives from it is its posture.
+ *
+ * `resolveRef` sees through a named shape. Declaring a shape once and
+ * referencing it is the sanctioned way to reuse one, so without it two such
+ * arguments present as opaque nodes carrying no information — the same reason
+ * {@link withLiveValuesSkipped} takes one.
+ */
 export function checkSchemaCompatibility(
   source: Record<string, any>,
   target: Record<string, any>,
+  resolveRef?: (ref: string) => Record<string, any> | undefined,
 ): CompatibilityResult {
   const issues: string[] = [];
-  checkObject(source, target, "", issues);
+  compare(source, target, "", issues, resolveRef, new Set());
   return { compatible: issues.length === 0, issues };
 }
 
-function checkObject(
-  source: Record<string, any>,
-  target: Record<string, any>,
+type RefResolver = ((ref: string) => Record<string, any> | undefined) | undefined;
+
+function deref(schema: Record<string, any>, resolveRef: RefResolver): Record<string, any> {
+  if (!resolveRef || typeof schema.$ref !== "string") return schema;
+  return resolveRef(schema.$ref) ?? schema;
+}
+
+function compare(
+  rawSource: Record<string, any>,
+  rawTarget: Record<string, any>,
   path: string,
   issues: string[],
+  resolveRef: RefResolver,
+  seen: Set<string>,
 ): void {
-  const targetRequired: string[] = target.required ?? [];
+  if (!rawSource || !rawTarget || typeof rawSource !== "object" || typeof rawTarget !== "object") {
+    return;
+  }
+  // A recursive shape reached through the same pair of references twice is the
+  // same question again; answering it once terminates and loses nothing.
+  //
+  // The key is the REFERENCE PAIR and deliberately not the path. A path grows on
+  // every descent, so a key containing it is new every time and the guard never
+  // fires — which is a stack overflow on the first self-referential shape, taking
+  // every other diagnostic in the file with it. It also has to be this way to be
+  // correct rather than merely terminating: comparing two schemas gives the same
+  // answer wherever they are reached from, so the second visit has nothing to add.
+  if (typeof rawSource.$ref === "string" && typeof rawTarget.$ref === "string") {
+    const key = `${rawSource.$ref}|${rawTarget.$ref}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+  }
+  const source = deref(rawSource, resolveRef);
+  const target = deref(rawTarget, resolveRef);
+
+  // Value types first: an `instance` representation has no JSON `type` to
+  // compare, so its identity IS the comparison — and its arguments are where the
+  // real information lives.
+  const sourceType = readValueTypeSlot(source);
+  const targetType = readValueTypeSlot(target);
+  if (sourceType && targetType) {
+    if (sourceType.name !== targetType.name) {
+      issues.push(
+        `${path || "/"}: value type mismatch — source is '${sourceType.name}', target expects '${targetType.name}'`,
+      );
+      return;
+    }
+    for (const [argument, targetArg] of Object.entries(targetType.args)) {
+      const sourceArg = sourceType.args[argument];
+      // An omitted argument is *any*, in BOTH directions. That is what keeps a
+      // bare `Telo.Stream` flowing into a typed slot and vice versa, so nothing
+      // that does not declare its element is forced to.
+      if (sourceArg === undefined) continue;
+      compare(
+        sourceArg as Record<string, any>,
+        targetArg as Record<string, any>,
+        `${path}<${argument}>`,
+        issues,
+        resolveRef,
+        seen,
+      );
+    }
+    return;
+  }
+
+  // One side declares a value type and the other does not. A `json`
+  // representation refines a base type, so it is compared through that base — a
+  // `Telo.TcpPort` into a plain `integer` slot is gradual typing working. An
+  // `instance` is not JSON at all, so ANY declared JSON type on the other side is
+  // a definite conflict; a side declaring no type at all is still saying nothing
+  // and stays compatible.
+  if (Boolean(sourceType) !== Boolean(targetType)) {
+    const declared = (sourceType ?? targetType)!;
+    const other = sourceType ? target : source;
+    if (declared.entry && typeof other.type === "string") {
+      const base = celBaseOfValueType(declared.entry);
+      const asJson = base === undefined ? undefined : declared.entry.base;
+      if (asJson !== other.type) {
+        issues.push(
+          `${path || "/"}: value type mismatch — ${
+            sourceType ? "source is" : "target expects"
+          } '${declared.name}', ${sourceType ? "target expects" : "source is"} '${other.type}'`,
+        );
+        return;
+      }
+    }
+  }
+
+  // Only flag definite primitive type clashes; an absent or union `type` says
+  // too little to judge.
+  if (
+    typeof source.type === "string" &&
+    typeof target.type === "string" &&
+    source.type !== target.type
+  ) {
+    issues.push(
+      `${path || "/"}: type mismatch — source is '${source.type}', target expects '${target.type}'`,
+    );
+    return;
+  }
+  if (source.anyOf || source.oneOf || source.allOf) return;
+  if (target.anyOf || target.oneOf || target.allOf) return;
+
+  // An array's element, which the old comparison never looked at — so every
+  // nested shape passed regardless of what it contained.
+  if (target.items && source.items) {
+    compare(
+      source.items as Record<string, any>,
+      target.items as Record<string, any>,
+      `${path}[]`,
+      issues,
+      resolveRef,
+      seen,
+    );
+  }
+
+  const targetRequired: string[] = Array.isArray(target.required) ? target.required : [];
   const sourceProps: Record<string, any> = source.properties ?? {};
   const targetProps: Record<string, any> = target.properties ?? {};
-
   for (const field of targetRequired) {
     if (!(field in sourceProps)) {
+      // Only when the source describes an object at all: a schema with no
+      // `properties` is saying nothing about its shape, not saying it is empty.
+      if (source.properties === undefined) continue;
       issues.push(`${path}/${field}: required by target but missing from source`);
       continue;
     }
     const srcProp = sourceProps[field];
     const tgtProp = targetProps[field];
     if (tgtProp && srcProp) {
-      checkProperty(srcProp, tgtProp, `${path}/${field}`, issues);
+      compare(srcProp, tgtProp, `${path}/${field}`, issues, resolveRef, seen);
     }
-  }
-}
-
-function checkProperty(
-  source: Record<string, any>,
-  target: Record<string, any>,
-  path: string,
-  issues: string[],
-): void {
-  // Only flag definite primitive type clashes; skip anyOf/oneOf/allOf
-  if (
-    source.type &&
-    target.type &&
-    typeof source.type === "string" &&
-    typeof target.type === "string" &&
-    source.type !== target.type
-  ) {
-    issues.push(
-      `${path}: type mismatch — source is '${source.type}', target expects '${target.type}'`,
-    );
-    return;
-  }
-  if (target.type === "object" && source.type === "object") {
-    checkObject(source, target, path, issues);
   }
 }
 
@@ -230,28 +346,36 @@ export function navigateSchemaToExprPath(
 }
 
 /**
- * Recognized `x-telo-type` value brands and the CEL primitive each refines.
+ * Every `json`-represented value type's CEL brand → the primitive it refines.
+ *
  * A brand is a nominal type the analyzer registers (see cel-environment.ts) so
- * structurally-identical values (a `TcpPort` and a `UdpPort` are both integers)
- * stay distinct for static wiring checks. Brands carry no runtime effect — the
- * value flows as its base type. Add new brands here (e.g. `Url: "string"`).
+ * structurally-identical values (a `Telo.TcpPort` and a `Telo.UdpPort` are both
+ * integers) stay distinct for static wiring checks. Brands carry no runtime
+ * effect — the value flows as its base type.
+ *
+ * DERIVED from the value-type vocabulary, never hand-written: a new brand is a
+ * new entry file, and a table here would be a second place to edit that could
+ * silently disagree with the one the runtime reads.
  */
-export const VALUE_BRAND_BASE: Record<string, string> = {
-  TcpPort: "int",
-  UdpPort: "int",
-};
+export const VALUE_BRAND_BASE: Record<string, string> = valueBrandBases();
 
-/** Read a recognized `x-telo-type` brand off a schema, or undefined. */
+/** Read a `json`-represented value type's brand off a schema, or undefined.
+ *  An `instance` type is not a brand — it replaces the JSON layer rather than
+ *  refining it, so it carries its binding's CEL type instead. */
 export function brandOfSchema(schema: Record<string, any> | undefined): string | undefined {
-  const brand = schema?.["x-telo-type"];
-  return typeof brand === "string" && brand in VALUE_BRAND_BASE ? brand : undefined;
+  const entry = valueTypeOf(schema);
+  return entry && entry.representation === "json" ? entry.name : undefined;
 }
 
 /** Map a JSON Schema type annotation to a CEL type string. */
 export function jsonSchemaToCelType(schema: Record<string, any> | undefined): string {
   if (!schema || typeof schema !== "object") return "dyn";
-  const brand = brandOfSchema(schema);
-  if (brand) return brand;
+  // A declared value type IS the type — for an `instance` representation it is
+  // the only thing that says so, since bytes and streams have no JSON Schema
+  // type at all. Before the three annotations were unified, a byte slot's
+  // expression typed as `dyn` because nothing here consulted `x-telo-binary`.
+  const entry = valueTypeOf(schema);
+  if (entry) return celTypeOfValueType(entry);
   if (schema.anyOf || schema.oneOf || schema.allOf) return "dyn";
   if (Array.isArray(schema.type)) return "dyn";
   switch (schema.type) {
@@ -289,6 +413,16 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
     const fieldBrand = brandOfSchema(schema);
     if (fieldBrand) return fieldBrand === celType;
     celType = sourceBase;
+  }
+  // An `instance` representation has no JSON Schema type to compare against, so
+  // an expression carrying its binding's CEL type is accepted on that ground
+  // alone. This ADDS a case and never removes one: a mismatch falls through to
+  // the rules below rather than being rejected here, so nothing that checks
+  // today stops checking, and the `bytes` row still accepts a byte expression at
+  // a plain `type: string` slot.
+  const slotEntry = valueTypeOf(schema);
+  if (slotEntry?.representation === "instance" && celTypeOfValueType(slotEntry) === celType) {
+    return true;
   }
   if (!schema.type && !schema.anyOf && !schema.oneOf && !schema.allOf) return true;
   if (schema.anyOf || schema.oneOf || schema.allOf) return true;
@@ -377,11 +511,15 @@ function foldedConstraints(schema: Record<string, any>): Record<string, any> {
 
 export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown {
   const schema = foldedConstraints(rawSchema);
-  // A byte slot's placeholder must BE bytes: the same keyword validates statically
-  // and at dispatch, so a CEL leaf standing in for a runtime buffer has to satisfy
-  // it. This is what keeps the rule single — a literal is rejected because no YAML
-  // literal is a Uint8Array, while a value arriving by reference passes.
-  if (isBinarySlot(schema)) return new Uint8Array();
+  // An instance-typed slot's placeholder must BE an instance: the same keyword
+  // validates statically and at dispatch, so a CEL leaf standing in for a runtime
+  // value has to satisfy it. This is what keeps the rule single — a literal is
+  // rejected because no YAML literal is a byte buffer, while a value arriving by
+  // reference passes. The stand-in comes from the binding table, so a new
+  // instance type brings its own rather than adding a branch here; a `live` type
+  // declares none, because nothing validates it.
+  const placeholder = valueTypePlaceholder(schema);
+  if (placeholder !== undefined) return placeholder;
   if (schema.default !== undefined) return schema.default;
   // An enum-constrained field needs a placeholder drawn from the enum: the
   // type-based fallbacks below ("" for a string, 0 for a number) satisfy `type`
@@ -565,16 +703,22 @@ export function substituteCelFields(
   if (isRefSentinel(data)) {
     return data;
   }
-  // A file embed's type is a CONSTANT of the tag, not a function of the slot:
-  // `!include-text` always produces a string and `!include-bytes` always
-  // produces bytes. Collapsing them to a slot-shaped placeholder like a CEL
-  // expression would make every slot accept both, so a byte embed at a
-  // `type: string` field passed `telo check` and failed at resource creation —
-  // and the reverse (text at an `x-telo-binary` slot) did too. Substituting the
-  // real type lets AJV and the `x-telo-binary` keyword reject both directions
-  // statically, with no new diagnostic code.
-  if (isTaggedSentinel(data) && INCLUDE_ENGINE_NAMES.has(data.engine)) {
-    return data.engine === INCLUDE_BYTES_ENGINE ? new Uint8Array() : "";
+  // A tag whose produced type is a CONSTANT of the tag rather than a function of
+  // the slot substitutes a placeholder of THAT type: `!include-text` always
+  // produces a string and `!include-bytes` always produces bytes. Collapsing
+  // them to a slot-shaped placeholder like a CEL expression would make every
+  // slot accept both, so a byte embed at a `type: string` field passed
+  // `telo check` and failed at resource creation — and the reverse did too.
+  // Substituting the real type lets AJV and the `x-telo-type` keyword reject
+  // both directions statically, with no new diagnostic code.
+  //
+  // The engine is what says so. This used to branch on two tag names, which was
+  // the only place a tag's produced type was written down and it was written in
+  // the consumer — so a future tag producing bytes had to be added to a set here
+  // rather than declaring it.
+  if (isTaggedSentinel(data)) {
+    const produced = producedTypeOf(data.engine);
+    if (produced) return celPlaceholderForSchema(produced);
   }
   if (isTaggedSentinel(data)) {
     mark();

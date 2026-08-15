@@ -85,14 +85,14 @@ describe("validateChainAgainstSchema", () => {
     expect(validateChainAgainstSchema(["anything"], open)).toBeNull();
   });
 
-  it("flags member access past an x-telo-stream-marked property", () => {
+  it("flags member access past a live-typed property", () => {
     const streamSchema = {
       type: "object",
       properties: {
         result: {
           type: "object",
           properties: {
-            output: { "x-telo-stream": true },
+            output: { "x-telo-type": "Telo.Stream" },
           },
         },
       },

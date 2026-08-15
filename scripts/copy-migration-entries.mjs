@@ -27,13 +27,30 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(ROOT, "analyzer", "migrations");
 const DEST = join(ROOT, "analyzer", "nodejs", "src", "migrations", "entries");
 
-const names = existsSync(SRC)
-  ? readdirSync(SRC)
-      .filter((f) => f.endsWith(".json"))
-      // Lexical order is the set's order, so two entries never depend on
-      // whatever order the filesystem happened to return.
-      .sort()
-  : [];
+// A MISSING source directory is a packaging mistake, not an empty migration set.
+// The difference matters more here than almost anywhere: a migration that
+// succeeds is silent, so a build that ships zero of them is indistinguishable
+// from one where every legacy spelling was already current — until a manifest
+// published years ago stops loading, in a runtime nobody can tell apart from the
+// one that works. It has happened: a Dockerfile-local ignore allowlist named
+// `analyzer/nodejs` and not its sibling data directory.
+//
+// Zero entries in a directory that EXISTS is legitimate — there is a first
+// commit before the first migration.
+if (!existsSync(SRC)) {
+  console.error(
+    `copy-migration-entries: '${SRC}' does not exist. Migration entries are data that ` +
+      `ships beside the language halves — if this is a container or package build, its ` +
+      `file allowlist has to include 'analyzer/migrations'.`,
+  );
+  process.exit(1);
+}
+
+const names = readdirSync(SRC)
+  .filter((f) => f.endsWith(".json"))
+  // Lexical order is the set's order, so two entries never depend on
+  // whatever order the filesystem happened to return.
+  .sort();
 
 // Cleared rather than merged: a deleted entry must disappear from the copy, or
 // retiring a migration would leave it running.

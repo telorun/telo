@@ -1,4 +1,5 @@
 import type { ASTNode } from "@marcbachmann/cel-js";
+import { isLiveSlot } from "@telorun/sdk";
 
 /**
  * Extract all member-access chains from a CEL AST.
@@ -291,7 +292,8 @@ function walkNullable(
  * Check whether a member-access chain accesses only fields declared in a JSON Schema.
  * Returns an error string if a field is unknown in a schema that declares explicit
  * properties without `additionalProperties: true`, or if the chain attempts to
- * reach inside an `x-telo-stream: true` property.
+ * reach inside a `live` value type — one whose consumption has effects, so its
+ * contents exist only for a consumer that drains it.
  * Returns null when the chain is valid or the schema is too open to judge.
  */
 export function validateChainAgainstSchema(
@@ -306,12 +308,7 @@ export function validateChainAgainstSchema(
     if (!props) return null;
     if (key in props) {
       const propSchema = props[key];
-      if (
-        propSchema &&
-        typeof propSchema === "object" &&
-        propSchema["x-telo-stream"] === true &&
-        i < chain.length - 1
-      ) {
+      if (isLiveSlot(propSchema) && i < chain.length - 1) {
         const path = chain.slice(0, i + 1).join(".");
         return `'${path}' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)`;
       }

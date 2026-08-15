@@ -1,0 +1,7 @@
+{
+  "$comment": "Bytes are not expressible in JSON Schema's type vocabulary. `type: object` is satisfied by every object, so a mistyped literal reached the controller instead of failing check; `type: binary` is not an option, since a validator refuses to COMPILE an unknown type and a published telo.yaml would stop being JSON Schema for the hub, the editor and every third-party reader. Declaring the representation instead is what makes the check fall out: no YAML literal is ever a byte buffer, so a literal at a byte slot is rejected statically and a value arriving by reference passes.",
+  "name": "Telo.Bytes",
+  "representation": "instance",
+  "binding": "bytes",
+  "description": "Raw bytes. Never authorable inline — a byte slot is filled by reference (an `!include-bytes` embed, a resource output, a CEL expression), and the runtime asserts the value really is a byte buffer."
+}

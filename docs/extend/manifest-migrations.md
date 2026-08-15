@@ -100,6 +100,17 @@ The vocabulary is closed on purpose. Every operation has a known YAML edit form,
 | `value` / `valueOneOf` | no | the value must equal this / be one of these |
 | `withSibling` | no | a key that must be present in the same mapping |
 | `notUnder` | no | narrows within `under` — e.g. the data-bearing JSON Schema keywords |
+| `inSchema` | no | narrows to a JSON **schema region** — see below |
+
+### The one region a kind list cannot name
+
+An annotation keyword occurs in author-written JSON Schema, and schema fragments are not confined to kind documents: an inline `inputType:` / `outputType:` on **any** kind that declares one, an API route's `request.schema.body`, a `Telo.JsonSchema`'s `schema`. That set of kinds is open, and enumerating the standard library's would put resource-kind knowledge into the analyzer — against the topology-driven constraint, and incomplete the moment a third-party kind declares a schema-valued field.
+
+So a rule may instead declare `inSchema: true`, bounding it to nodes reached through the **kernel's own** schema-valued keys (`schema`, `status`, `inputType`, `outputType`, `itemType`), which no kind owns. Containment is by ancestry rather than by root key, which is what reaches a route's request schema.
+
+With `inSchema`, and **only** with it, `inKind` and `under` may be `["*"]` — and **only** for a rule whose `key` begins with `x-telo-`. Both conditions are refused when the entry is read. That pairing is the containment: the region bounds where the walk may go, and the reserved key bounds what it may touch, since an `x-telo-*` key is Telo vocabulary wherever it appears and cannot mean something else inside a resource's configuration. A module-shipped entry can therefore no more spell `"*"` than it can name another module's kind.
+
+The residue is stated rather than claimed away: a manifest that asserts *about* a schema — a schema literal under a key spelled `schema` inside an assertion's expected value — is reachable, and would be rewritten into its own synonym. That cannot be closed in a data-only matcher without naming kinds. It is accepted because the sites the wildcards reach are exactly the ones no enumeration covers, and the alternative leaves an author reading a deprecation `telo migrate` refuses to act on.
 
 The alternative — walk the whole document and subtract — cannot be made sound, because the set to subtract is unbounded: a `Run.Value` value, an `Assert.Equals` expected, any kind whose config carries a user JSON blob can hold something shaped like the node a rule looks for, and forgetting one corrupts a manifest with no diagnostic. It also cannot express the guarantee the module surface is promised to carry — *a dependency can rename its own field and provably nothing else* — which is a statement about what a rule may **reach**, so it has to be said positively. `notUnder` remains for narrowing inside a region a rule legitimately reaches.
 

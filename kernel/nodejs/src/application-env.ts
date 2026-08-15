@@ -2,7 +2,7 @@ import {
   type DefResolver,
   effectiveAuthorSchema,
   residualEntrySchema,
-  withStreamPropertiesSkipped,
+  withLiveValuesSkipped,
 } from "@telorun/analyzer";
 import type {
   ResourceContext,
@@ -270,7 +270,7 @@ export function precompileDefinitionSchemas(
     try {
       const schema = resolveTypeFieldSchema(declared, lookup);
       if (!schema) return;
-      compile(withStreamPropertiesSkipped(schema, (ref) => lookup(ref) as any));
+      compile(withLiveValuesSkipped(schema, (ref) => lookup(ref) as any));
     } catch {
       // An unresolvable contract is a dispatch-time error, not a warm failure.
     }
