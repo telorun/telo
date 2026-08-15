@@ -25,13 +25,13 @@ metadata:
     The first reply says "fresh", the second "replayed" — and only one order row
     exists. Watch stdout for the sweeper shipping it.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
-  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  Http: oci://ghcr.io/telorun/http-server@0.25.0#sha256-k1n8gCdP8LEwtp1xcm_DcxGk85YLbb2RrPCl6B30TUQ
+  Sql: oci://ghcr.io/telorun/sql@0.21.0#sha256-aasWNQP3KaWbJaFZVg_Zzp0efD4k7rc0FaImt6aHE-k
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
-  Idempotency: oci://ghcr.io/telorun/idempotency@0.8.0#sha256-Y4LsnajKvlVt8fMQNQ1LQBOA9jrK81QELy-U9kpSpRE
+  Idempotency: oci://ghcr.io/telorun/idempotency@0.9.0#sha256-oZr2n4aTkmVqTUz3OcnPTrdtVN1qICjpD-0cm17y2UQ
   KvStore: oci://ghcr.io/telorun/kv-store-memory@0.6.0#sha256-l476AK3rjoPZ3lDPfWAc0cp6SjCz2ilmkAIKsaXgMbQ
-  Schedule: oci://ghcr.io/telorun/scheduler@0.7.0#sha256-9bjOxzQQkxxnPud17NRJrtEK3Hp3UyRURGMrk0wORwE
-  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+  Schedule: oci://ghcr.io/telorun/scheduler@0.8.0#sha256-veZipewmt95YhsMZ_vB0po2vcMOVZ4OhqlNO_wZ3jss
+  Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
   Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
 targets:
   - !ref Migrate

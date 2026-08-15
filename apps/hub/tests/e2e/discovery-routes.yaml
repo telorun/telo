@@ -10,9 +10,9 @@ metadata:
     other test registers). Covers /health, per-resource and per-module
     search, /refs typeahead, and /module/versions including its 404 path.
 imports:
-  HttpClient: oci://ghcr.io/telorun/http-client@0.18.0#sha256-BkJT9iFGMog-V6L055uBn_F2BF2MgdPeNuBvZYX7XOY
-  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
-  Assert: oci://ghcr.io/telorun/assert@0.17.0#sha256-jACJMHUn0IKy5Be2zBzf_ez1SnUfjRzUnXi-ETI5R5E
+  HttpClient: oci://ghcr.io/telorun/http-client@0.20.0#sha256-6f8bOf4bjaylXRWxzegvz1A4i3IQo50bP2N_rJ5US0c
+  Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
+  Assert: oci://ghcr.io/telorun/assert@0.17.1#sha256-CH_DycPrpMJWM4-c9mS2sBE_-ymezo3RMmP06nf3Q68
 targets:
   - !ref Health
   - !ref SearchResources_FindsSeededKind

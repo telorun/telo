@@ -12,11 +12,11 @@ metadata:
         OPENAI_API_KEY=sk-...
 imports:
   AiOpenai: oci://ghcr.io/telorun/ai-openai@0.15.0#sha256-31u_XsWGqrzeSoxWwN9D-piVU-iH4RkRf-PibIpmt4A
-  Ai: oci://ghcr.io/telorun/ai@0.15.0#sha256-dLZuJ0BjQeWkMj7aRPDOE-eFhcF8N3qGqTZY7E-j1F8
-  Http: oci://ghcr.io/telorun/http-client@0.18.0#sha256-BkJT9iFGMog-V6L055uBn_F2BF2MgdPeNuBvZYX7XOY
+  Ai: oci://ghcr.io/telorun/ai@0.16.0#sha256-k0xXRFY_wE-XEVGXsEaoVNugoj4uEnyIMO03NJuUBqU
+  Http: oci://ghcr.io/telorun/http-client@0.20.0#sha256-6f8bOf4bjaylXRWxzegvz1A4i3IQo50bP2N_rJ5US0c
   Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
-  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
-  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
+  Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
+  Sql: oci://ghcr.io/telorun/sql@0.21.0#sha256-aasWNQP3KaWbJaFZVg_Zzp0efD4k7rc0FaImt6aHE-k
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
 targets:
   - !ref InitSchema
