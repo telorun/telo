@@ -28,11 +28,11 @@ imports:
   Sql: oci://ghcr.io/telorun/sql@0.21.0#sha256-aasWNQP3KaWbJaFZVg_Zzp0efD4k7rc0FaImt6aHE-k
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
   RecordStream: oci://ghcr.io/telorun/record-stream@0.15.0#sha256-CPunVOEBnzIVR1dLResFHxZppaP64quRBAzHFk4uA_o
-  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+  Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
   Lease: oci://ghcr.io/telorun/lease@0.12.0#sha256-lPF5qs0yibKAnPP2XZAm_PUec_6cm3tXrZy3On5DrJA
   KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.6.0#sha256-l476AK3rjoPZ3lDPfWAc0cp6SjCz2ilmkAIKsaXgMbQ
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.8.0#sha256-Vo6BlHCcrdG3JSdDWYv_90wVoYYfErR340o6IdZP6uY
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.0#sha256-cBA_yixkhcC-KdU5TBFPVOBE1_t3BL9SmpZJ73Zp5xc
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.1#sha256-XykCGIOp02Le4_l5-XtwThtkehZXT5TqO5-rMM2fAA0
 secrets:
   openaiApiKey:
     type: string

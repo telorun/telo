@@ -20,7 +20,7 @@ imports:
   Http: oci://ghcr.io/telorun/http-server@0.25.0#sha256-k1n8gCdP8LEwtp1xcm_DcxGk85YLbb2RrPCl6B30TUQ
   Sql: oci://ghcr.io/telorun/sql@0.21.0#sha256-aasWNQP3KaWbJaFZVg_Zzp0efD4k7rc0FaImt6aHE-k
   Postgres: oci://ghcr.io/telorun/sql-postgres@0.9.1#sha256-FVsInlJdw-8wjx8NQ4HqzzoEpJjq3i230YA8-HQx0oA
-  Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
+  Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
   Shell: oci://ghcr.io/telorun/shell@0.11.0#sha256-TDelGXTdnjxJ5Larw-X-_2icTAFWSP3pz5zHe57XW4w
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
   Yaml: oci://ghcr.io/telorun/yaml@0.10.0#sha256-DlUb4l3RthpHUwWb6fCiHDl-MZaRGwSG4IWU9IA2Gpo
@@ -31,7 +31,7 @@ imports:
   Embedding: oci://ghcr.io/telorun/embedding@0.11.0#sha256-Ooh1n7qusgRGBVxEwjD8yRjiAMXnnZAUHHzUku7UWy4
   EmbeddingOpenai: oci://ghcr.io/telorun/embedding-openai@0.9.0#sha256-L0lOSIwCUuWp6-CGbMsFuAS_orWcseuuc1c4yZ9p9Mw
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.8.0#sha256-Vo6BlHCcrdG3JSdDWYv_90wVoYYfErR340o6IdZP6uY
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.0#sha256-cBA_yixkhcC-KdU5TBFPVOBE1_t3BL9SmpZJ73Zp5xc
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.1#sha256-XykCGIOp02Le4_l5-XtwThtkehZXT5TqO5-rMM2fAA0
   VectorStore: oci://ghcr.io/telorun/vector-store@0.10.0#sha256-C3xSbXeC1u8b_nzdiiJHUtiHWtn6xEA9JrTxYHd3E4g
   VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.9.1#sha256-WfPGZtfDjJ9WUw3fxfsewfseHV9mc6V3L8bwdyQiAjc
 ports:
