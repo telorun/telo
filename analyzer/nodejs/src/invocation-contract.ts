@@ -1,4 +1,4 @@
-import { isLiveSlot, type ResourceDefinition } from "@telorun/sdk";
+import { isLiveSlot, type ResourceDefinition, valueTypeOf } from "@telorun/sdk";
 import {
   type ContractDirection,
   contractDeclarer,
@@ -267,4 +267,95 @@ export function defaultBearingPaths(
 
   walk(schema, [], []);
   return out;
+}
+
+/** The scalar form a declared node's value takes at runtime. `int64` and
+ *  `double` are the two JSON scalars whose runtime representation is NOT decided
+ *  by the value that arrives: a CEL integer is a BigInt and a CEL double a JS
+ *  number, and both are `typeof "number" | "bigint"` away from what a declaration
+ *  says they are. Everything else — string, boolean, object, array, and every
+ *  `instance` value type — is already its own representation, so it is not
+ *  listed and never rewritten. */
+export type DeclaredScalarForm = "int64" | "double";
+
+export interface DeclaredScalarPath {
+  readonly path: string[];
+  readonly form: DeclaredScalarForm;
+}
+
+/** Every path in `schema` whose declared type fixes a scalar representation —
+ *  the leaves a value must carry in that form for the contract to be TRUE, not
+ *  merely to pass.
+ *
+ *  A declared shape says what the value IS, the same service a JSON Schema gives
+ *  an HTTP response serializer. Telo's CEL layer takes it literally:
+ *  `jsonSchemaToCelType` maps `integer` to CEL `int` and `number` to `double`,
+ *  and a CEL int IS a BigInt — so a controller handing back a plain JS number at
+ *  an `integer` slot makes the declaration a lie that surfaces nowhere until an
+ *  expression composes it, as `result.n + 1` type-checking statically and then
+ *  dying at dispatch with `no such overload: dyn<double> + int`.
+ *
+ *  A VALUE TYPE is read through the same rule rather than beside it: a `json`
+ *  representation refines a JSON type and contributes its `base` (so
+ *  `Telo.TcpPort` is an `int64` slot), while an `instance` representation
+ *  REPLACES the JSON layer — a byte buffer and a stream handle are already their
+ *  own representation, nothing converts to them, and the walk stops there rather
+ *  than descending into a value that is not a plain container.
+ *
+ *  Bounded by the schema's declarations rather than by the size of the payload,
+ *  exactly as {@link defaultBearingPaths} is: a contract declaring no such
+ *  scalar walks nothing at dispatch. A union counts when it names exactly one of
+ *  the two — `["integer", "null"]` is still the integer branch, while
+ *  `["integer", "number"]` fixes nothing and is left alone. */
+export function declaredScalarPaths(
+  schema: Record<string, any>,
+  resolveRef?: (ref: string) => Record<string, any> | undefined,
+): DeclaredScalarPath[] {
+  const out: DeclaredScalarPath[] = [];
+
+  const walk = (node: unknown, path: string[], chain: readonly object[]): void => {
+    if (!node || typeof node !== "object") return;
+    let s = node as Record<string, any>;
+    if (chain.includes(s)) return;
+    if (resolveRef && typeof s.$ref === "string") {
+      const target = resolveRef(s.$ref);
+      if (!target || chain.includes(target)) return;
+      s = { ...target, ...s, $ref: undefined };
+    }
+    const here = [...chain, node as object];
+
+    const entry = valueTypeOf(s);
+    // An `instance` representation replaces the JSON layer: it is its own
+    // representation, so there is nothing to normalize to and nothing below it
+    // that is a plain container to walk.
+    if (entry && entry.representation === "instance") return;
+
+    const form = scalarFormOf(entry && entry.base !== undefined ? entry.base : s.type);
+    if (form && path.length > 0) out.push({ path, form });
+
+    const properties = s.properties as Record<string, any> | undefined;
+    if (properties) {
+      for (const [key, child] of Object.entries(properties)) walk(child, [...path, key], here);
+    }
+    for (const branch of ["allOf", "anyOf", "oneOf"] as const) {
+      const list = s[branch];
+      if (Array.isArray(list)) for (const child of list) walk(child, path, here);
+    }
+    if (s.items) walk(s.items, [...path, "[]"], here);
+  };
+
+  walk(schema, [], []);
+  return out;
+}
+
+function scalarFormOf(declared: unknown): DeclaredScalarForm | undefined {
+  if (declared === "integer") return "int64";
+  if (declared === "number") return "double";
+  if (!Array.isArray(declared)) return undefined;
+  const integer = declared.includes("integer");
+  const number = declared.includes("number");
+  // A union naming both fixes nothing — either representation satisfies it, so
+  // rewriting one into the other would be a choice the declaration never made.
+  if (integer === number) return undefined;
+  return integer ? "int64" : "double";
 }

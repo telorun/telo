@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: AuthoringAgentE2ESuite
+  version: 1.0.0
+  description: |
+    The authoring agent's own tests. Separate from the repo suite because they
+    drive a real model against the live hub and import the standard library at
+    PINNED PUBLISHED versions — so they also fail while a change has landed in
+    this repo but not yet been released and re-pinned, which is a fact about the
+    release sequence rather than about the code under test. Needs OPENAI_API_KEY;
+    the cases skip themselves when it is unset.
+imports:
+  Test: ../../modules/test
+targets:
+  - !ref RunAll
+---
+kind: Test.Suite
+metadata:
+  name: RunAll
+include:
+  - "chat/tests/*.yaml"
+exclude:
+  - "**/__fixtures__/**"

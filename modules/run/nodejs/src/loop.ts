@@ -14,7 +14,12 @@ interface RunLoopManifest {
 /** Repeats its `steps` body while `condition` holds and/or until `maxIterations`
  *  is reached (at least one required). Adds `iteration` (0-based count) and
  *  `previous` (the prior iteration's step map, null on the first) to the body's
- *  CEL scope. Returns its `outputs` (or the last iteration's step map). */
+ *  CEL scope. Returns its `outputs` (or the last iteration's step map).
+ *
+ *  `iteration` crosses into CEL as a BigInt because the schema declares it
+ *  `type: integer` and a CEL int IS a BigInt: as a JS number it typed as a
+ *  double, so `iteration + 1` type-checked statically and then failed at
+ *  dispatch with "no such overload: dyn<double> + int". */
 class RunLoop {
   private readonly engine: StepEngine;
 
@@ -67,13 +72,17 @@ class RunLoop {
         while (iteration < max) {
           if (
             this.resource.condition !== undefined &&
-            !this.ctx.expandValue(this.resource.condition, { iteration, previous, inputs })
+            !this.ctx.expandValue(this.resource.condition, {
+              iteration: BigInt(iteration),
+              previous,
+              inputs,
+            })
           ) {
             break;
           }
           const steps: Record<string, unknown> = {};
           await this.engine.executeSteps(this.resource.steps, steps, undefined, {
-            iteration,
+            iteration: BigInt(iteration),
             previous,
             inputs,
           });
@@ -85,7 +94,7 @@ class RunLoop {
           return this.ctx.expandValue(this.resource.outputs, {
             steps: previous ?? {},
             previous,
-            iteration,
+            iteration: BigInt(iteration),
             inputs,
           });
         }

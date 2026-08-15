@@ -11,10 +11,11 @@ metadata:
 imports:
   McpClient: oci://ghcr.io/telorun/mcp-client@0.13.0#sha256-RTVrccTFnPVQqBpteR5VW5qNV3JEA7mzRhJJ6kss0YI
   Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
-  Assert: oci://ghcr.io/telorun/assert@0.15.0#sha256-7xRDeZr8nL5wyC92JtBoXDY6nYBCubZoHZIWkgk8G3M
+  Assert: oci://ghcr.io/telorun/assert@0.17.0#sha256-jACJMHUn0IKy5Be2zBzf_ez1SnUfjRzUnXi-ETI5R5E
   Yaml: oci://ghcr.io/telorun/yaml@0.10.0#sha256-DlUb4l3RthpHUwWb6fCiHDl-MZaRGwSG4IWU9IA2Gpo
 targets:
   - !ref SearchResources_ReturnsKindHits
+  - !ref SearchResources_CarriesCategoryVocabulary
   - !ref GetModuleManifest_ReturnsCachedYaml
 ---
 kind: McpClient.HttpClient
@@ -83,5 +84,40 @@ steps:
       expected:
         docKind: Telo.Library
         moduleName: Timer
+    invoke:
+      kind: Assert.Equals
+---
+# The facet rides on every tool response, which is the only way an agent learns
+# an open, author-declared vocabulary from inside the discovery loop. Without it
+# a guessed `category` was answered with an empty hit list — indistinguishable
+# from "Telo has no such kind", and enough to send an agent hunting for a
+# capability it had already been shown.
+kind: Run.Sequence
+metadata: { name: SearchResources_CarriesCategoryVocabulary }
+steps:
+  - name: call
+    invoke: !ref McpToolCall
+    inputs:
+      name: search_resources
+      arguments:
+        query: repeat a step while a condition holds
+  - name: parse
+    invoke: !ref ParsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  # `run` is categorized Compute, and Run.Loop is what an app that repeats work
+  # actually needs — the kind an unfiltered search has to surface.
+  - name: assert
+    inputs:
+      actual:
+        dropped: !cel "steps.parse.result.docs[0].categoryFilterDropped"
+        knowsCompute: !cel "steps.parse.result.docs[0].categories.exists(c, c.category == 'compute')"
+        foundRunLoop: !cel >-
+          steps.parse.result.docs[0].hits.exists(h,
+            h.kind == 'Loop' && h.module.ref == 'oci://ghcr.io/telorun/run')
+      expected:
+        dropped: false
+        knowsCompute: true
+        foundRunLoop: true
     invoke:
       kind: Assert.Equals

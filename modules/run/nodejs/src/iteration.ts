@@ -20,7 +20,8 @@ interface RunIterationManifest {
 
 /** Runs its `steps` body once per element of `collection`, for side-effects.
  *  Adds `item` / `index` / `items` to the body's CEL scope; `concurrency`
- *  controls how many elements run at once (default 1 = ordered). No result. */
+ *  controls how many elements run at once (default 1 = ordered). No result.
+ *  `index` crosses as a BigInt — see the note in `loop.ts`. */
 class RunIteration {
   private readonly engine: StepEngine;
 
@@ -68,7 +69,7 @@ class RunIteration {
           await this.engine.executeSteps(this.resource.steps, {}, undefined, {
             inputs,
             item,
-            index,
+            index: BigInt(index),
             items,
           });
         });

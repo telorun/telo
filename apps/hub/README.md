@@ -80,7 +80,7 @@ search API, and the MCP endpoint are all resources in one manifest.
 | `telo search "<query>"` | `GET /search/modules?q=…&category=…&runtime=…&limit=…&offset=…` (grouped by module) |
 | `telo search --kinds "<query>"` | `GET /search/resources?q=…&category=…&runtime=…` (flat kind hits) |
 | ref autocomplete | `GET /refs?q=…` (pg_trgm fuzzy, lexical) |
-| browse the category facet | `GET /categories` (slug + module count) |
+| browse the category facet | `GET /categories` (slug + module and kind counts) |
 | backends of a contract | `GET /implementations?ref=…&kind=…` |
 | everything about one module | `GET /module?ref=…&version=…` |
 | `telo module versions <ref>` | `GET /module/versions?ref=…` |
@@ -96,6 +96,29 @@ stays because it answers a different question (the facet with counts, not a
 module list). `search_resources` takes the same optional `category`. The
 parameter is slugified on the way in, so either the slug the API returns
 (`storage`) or the label an author wrote (`AI`) selects the same group.
+
+**A wrong `category` is answered, never silently applied.** The vocabulary is
+open, so unlike `runtime` it cannot be an enum — and the failure mode is worse,
+since an unrecognized value matches *nothing* rather than a subset: an empty hit
+list reads as "no such kind exists" and sends a caller off to build what it was
+about to find. So both `/search/*` verbs and `search_resources` do three things.
+A category outside the declared vocabulary is a bad argument — HTTP 400,
+JSON-RPC `-32602` — carrying the real slugs. A recognized one that selects
+nothing *for that query* re-runs the search without it and reports
+`categoryFilterDropped: true`, because too narrow a filter is not an absent
+capability. And every response carries the `categories` facet, so one search
+teaches the whole vocabulary instead of leaving a caller to guess the next slug.
+
+**One query owns "what slugs exist".** `CategoryVocabulary` answers `/categories`
+*and* backs the guard (through `RequireKnownCategory`, split out so `/categories`,
+which passes a constant, is not made to catch an unreachable throw). Its set is
+the **union** of module-level and kind-level categories, because a kind doc's
+`categories:` replaces its module's for that kind — so a module whose every kind
+overrides it declares a slug present in no `resource_kinds` row, and a guard
+reading kinds alone would reject a slug the hub advertises one endpoint over.
+Rows are `{ category, label, modules, kinds }` everywhere, `category` being the
+key `/categories` has always used: one concept must not have two key names
+depending on which endpoint answered.
 
 **The semantic arm has a relevance floor** (`VECTOR_MIN_SCORE`, cosine
 similarity, default `0.5`). An ANN search always returns its nearest `topK`

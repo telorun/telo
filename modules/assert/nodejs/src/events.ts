@@ -1,5 +1,6 @@
 import { Static, Type } from "@sinclair/typebox";
 import { ResourceContext } from "@telorun/sdk";
+import { deepEquals } from "./deep-equals.js";
 
 const FilterEntry = Type.Object({
   type: Type.String(),
@@ -45,13 +46,20 @@ function matchesPattern(pattern: string, eventName: string): boolean {
   return true;
 }
 
+/** Subset match: only the keys `expected` names are compared, recursively.
+ *  Leaves go through `deepEquals` rather than `!==` so a CEL integer — an
+ *  int64, i.e. a BigInt — matches the plain number YAML gives an `expected:`
+ *  literal, which is the same reason `Assert.Equals` compares that way. With
+ *  `!==` the two rendered identically in a failure report and compared
+ *  unequal, so any integer-valued expression in an event payload was
+ *  unassertable. */
 function matchesPayload(actual: any, expected: Record<string, any>): boolean {
   for (const [key, value] of Object.entries(expected)) {
     if (actual == null) return false;
     if (typeof value === "object" && value !== null) {
       if (!matchesPayload(actual[key], value)) return false;
     } else {
-      if (actual[key] !== value) return false;
+      if (!deepEquals(actual[key], value)) return false;
     }
   }
   return true;

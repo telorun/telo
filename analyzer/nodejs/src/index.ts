@@ -62,12 +62,19 @@ export {
 export type { ContractDirection, DefResolver } from "./extends-resolution.js";
 export {
   defaultBearingPaths,
+  declaredScalarPaths,
   PERMISSIVE_CONTRACT,
   resolveContract,
   resolveContractSchema,
   withLiveValuesSkipped,
 } from "./invocation-contract.js";
-export type { ContractOrigin, ContractScope, ResolvedContract } from "./invocation-contract.js";
+export type {
+  ContractOrigin,
+  ContractScope,
+  DeclaredScalarForm,
+  DeclaredScalarPath,
+  ResolvedContract,
+} from "./invocation-contract.js";
 export {
   hasIntermediateWildcard,
   parseRedactionPath,

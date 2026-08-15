@@ -28,7 +28,7 @@ The body is the same step grammar as `Run.Sequence` minus the `while` block (the
 
 Inside `condition`, `steps`, and `outputs`, two variables are bound in addition to `inputs`:
 
-- `iteration` — the 0-based iteration count (integer).
+- `iteration` — the 0-based iteration count. A CEL integer is an int64, so it composes with integer literals directly: `!cel "string(iteration + 1)"` needs no `int(...)` or `double(...)` cast.
 - `previous` — the prior iteration's step map, or `null` on the first iteration.
 
 `previous` is what enables poll-until-ready: the condition inspects the last iteration's result to decide whether to continue.

@@ -1,5 +1,8 @@
 import {
   type ContractDirection,
+  declaredScalarPaths,
+  type DeclaredScalarForm,
+  type DeclaredScalarPath,
   defaultBearingPaths,
   effectiveContractField,
   type DefResolver,
@@ -63,6 +66,10 @@ export interface BoundContract {
   /** Paths a default can be written to — how far the caller's value must be
    *  copied before validation runs. Empty when the contract declares none. */
   defaultPaths(): string[][];
+  /** Paths whose declared type fixes a scalar representation — the leaves a
+   *  value is normalized at, in either direction. Empty when the contract
+   *  declares none. */
+  scalarPaths(): DeclaredScalarPath[];
 }
 
 const CONTRACT_ERROR: Record<ContractDirection, string> = {
@@ -123,6 +130,7 @@ export function resolveBoundContract(
 
   let compiled: { validate(value: unknown): void } | undefined;
   let paths: string[][] | undefined;
+  let scalars: DeclaredScalarPath[] | undefined;
 
   const resolve = (): { validate(value: unknown): void } => {
     if (compiled !== undefined) return compiled;
@@ -140,6 +148,7 @@ export function resolveBoundContract(
     }
     const stripped = withLiveValuesSkipped(schema, factory.resolveRef);
     paths = defaultBearingPaths(stripped, factory.resolveRef);
+    scalars = declaredScalarPaths(stripped, factory.resolveRef);
     // Compile by NAME whenever the declaration is one, so the type's CEL
     // `rules:` are composed in — including when a stream had to be stripped, in
     // which case the stream-bearing properties are dropped from the schema the
@@ -158,6 +167,10 @@ export function resolveBoundContract(
     defaultPaths: () => {
       resolve();
       return paths ?? [];
+    },
+    scalarPaths: () => {
+      resolve();
+      return scalars ?? [];
     },
   };
 }
@@ -212,6 +225,91 @@ function copyAlong(node: unknown, segments: readonly string[]): unknown {
   if (!child || typeof child !== "object") return node;
   container[head!] = copyAlong(shallowCopy(child), rest);
   return node;
+}
+
+/**
+ * `value` with every leaf normalized to the representation its declaration
+ * names, copied along the containers above each one so the producer's own object
+ * is not rewritten under it.
+ *
+ * A declared shape says what the value IS, not only what it must pass — the same
+ * service a JSON Schema gives an HTTP response serializer. Telo's CEL layer
+ * takes the declaration literally: `integer` types as CEL `int` and a CEL int is
+ * a BigInt, so a controller handing back a plain JS number at an `integer` slot
+ * makes the contract a lie that surfaces nowhere until an expression composes it
+ * — `result.n + 1` type-checking statically and then dying at dispatch with
+ * `no such overload: dyn<double> + int`. Normalizing at the boundary that
+ * already knows the declared shape closes it for every kind at once, instead of
+ * once per module after each report.
+ *
+ * BOTH DIRECTIONS, deliberately. A controller cannot be written correctly
+ * against a slot that hands it a JS number when the manifest wrote a literal and
+ * a BigInt when CEL computed the same value — it would have to accept either at
+ * every declared-integer field, which is what `typeof x === "number"` guards
+ * around the standard library were quietly relying on. One representation per
+ * declaration is what makes the declared type something a controller can read.
+ *
+ * Only an EXACT conversion is performed: an integral number becomes an int64,
+ * and a BigInt becomes a double only when the round-trip is lossless. A
+ * fractional number at an integer slot, a string, a null, a magnitude no double
+ * can hold — all are left exactly as they arrived, so a value that genuinely
+ * violates the contract is still rejected rather than quietly repaired into
+ * something that passes, and a 64-bit integer is never truncated to reach a
+ * `number` slot (which is the `double(...)` defect this whole line of work
+ * exists to retire).
+ */
+export function normalizeDeclaredScalars(
+  value: unknown,
+  paths: readonly DeclaredScalarPath[],
+): unknown {
+  if (paths.length === 0 || !value || typeof value !== "object") return value;
+  let out: unknown = value;
+  for (const { path, form } of paths) out = normalizeAlong(out, path, form);
+  return out;
+}
+
+function normalizeAlong(
+  node: unknown,
+  segments: readonly string[],
+  form: DeclaredScalarForm,
+): unknown {
+  if (!node || typeof node !== "object") return node;
+  const [head, ...rest] = segments;
+
+  if (head === "[]") {
+    if (!Array.isArray(node)) return node;
+    let changed = false;
+    const next = node.map((item) => {
+      const value = rest.length === 0 ? asForm(item, form) : normalizeAlong(item, rest, form);
+      if (value !== item) changed = true;
+      return value;
+    });
+    return changed ? next : node;
+  }
+
+  const container = node as Record<string, unknown>;
+  if (!(head! in container)) return node;
+  const child = container[head!];
+  const next = rest.length === 0 ? asForm(child, form) : normalizeAlong(child, rest, form);
+  if (next === child) return node;
+  // Copy-on-write, and only once a leaf actually moved: a producer may hand back
+  // an object it retains (a cached record, a live config), and rewriting it in
+  // place would change what it holds.
+  const copy = shallowCopy(container);
+  copy[head!] = next;
+  return copy;
+}
+
+function asForm(value: unknown, form: DeclaredScalarForm): unknown {
+  if (form === "int64") {
+    return typeof value === "number" && Number.isInteger(value) ? BigInt(value) : value;
+  }
+  if (typeof value !== "bigint") return value;
+  const asNumber = Number(value);
+  // Lossless only. Past the safe range a double cannot hold the integer, and
+  // handing back a silently-rounded one is the precision loss the int64 work
+  // exists to remove.
+  return BigInt(asNumber) === value ? asNumber : value;
 }
 
 /**
@@ -306,11 +404,19 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
       let effective = inputs;
       if (input) {
         // Copied only so the validator's default-fill cannot mutate what the
-        // caller still holds. The BigInt normalization a JSON Schema validator
-        // needs (CEL evaluates an integer to one, which AJV does not recognise
-        // as `integer`) belongs to the validator and is applied there — see
-        // `bigint-schema-view.ts`. Doing it here as well would walk every input
-        // tree twice per dispatch, and split one concern across two layers.
+        // caller still holds. Making the value READABLE to a JSON Schema
+        // validator regardless of representation is the validator's own concern
+        // and is applied there (`bigint-schema-view.ts`).
+        //
+        // Deliberately NOT normalized on this side. Normalization states what a
+        // value IS to whoever reads it next, and on the way in that reader is a
+        // controller written in the host language — a declared `integer` reaching
+        // one as an int64 is a change to the authoring surface of every module,
+        // not a repair to a lie. On the way OUT the reader is CEL, which already
+        // types the declaration as `int`, so there the declaration and the value
+        // genuinely disagree. The asymmetry is the point: a controller still sees
+        // whatever the call site produced and must accept both, which is what
+        // `bigint-schema-view.ts` documents.
         effective = copyForDefaults(inputs, input.defaultPaths());
         try {
           input.validate(effective);
@@ -325,6 +431,12 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
         } catch (error) {
           throw contractViolation("outputType", describeTarget, error);
         }
+        // AFTER validation, not before: the validator fills declared defaults,
+        // and a default written as a plain YAML number is exactly the leaf that
+        // has to come out normalized too. Validation itself is indifferent to
+        // which representation arrives (`bigint-schema-view.ts`), so ordering
+        // costs nothing there.
+        return normalizeDeclaredScalars(result, output.scalarPaths());
       }
       return result;
     };
@@ -339,7 +451,7 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
       } catch (error) {
         throw contractViolation("outputType", describeTarget, error);
       }
-      return result;
+      return normalizeDeclaredScalars(result, output.scalarPaths());
     };
   }
 }

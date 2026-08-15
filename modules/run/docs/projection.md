@@ -27,7 +27,7 @@ The body is the same step grammar as [`Run.Sequence`](../README.md) minus the `w
 Inside `steps` and `outputs`, three variables are bound in addition to `inputs`:
 
 - `item` — the current element.
-- `index` — the element's 0-based position (integer).
+- `index` — the element's 0-based position. A CEL integer is an int64, so it composes with integer literals directly: `!cel "index + 1"` needs no cast.
 - `items` — the whole collection.
 
 `item` is **typed automatically** from `collection`'s element type when it is statically known (e.g. a `collection` of `!cel "inputs.ids"` whose contract types `ids` as an array), so `item.<unknownField>` is a static error; otherwise it is permissive. `steps.<name>.result` is statically typed from each step's invoked resource.

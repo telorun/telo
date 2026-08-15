@@ -80,6 +80,8 @@ Deep equality over the JSON-shaped values a Telo step passes around: primitives,
 
 An integer compares by value across its representation. A CEL integer is int64 while an `expected:` literal comes out of YAML as a plain number, and YAML has no way to write the other — so `!cel "size(items)"` equals `3`. The match is exact in both directions: the literal must be integral and round-trip to the same int64, so neither `3.5` nor a magnitude a double cannot represent will match.
 
+`Assert.Events` compares its `payload:` leaves the same way. It is a **subset** match — only the keys the expectation names are compared, recursively — but each leaf it does compare uses the rule above, so an integer-valued expression in an event payload is assertable against a plain YAML number.
+
 ## Reference
 
 - [`Assert.Manifest`](docs/manifest.md)

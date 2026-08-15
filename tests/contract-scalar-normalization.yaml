@@ -1,0 +1,79 @@
+kind: Telo.Application
+metadata:
+  name: ContractScalarNormalization
+  version: 1.0.0
+  description: |
+    A produced value is normalized to the representation its `outputType`
+    declares, so the declaration is true and not merely satisfied: CEL types
+    `type: integer` as `int`, and an int64 composes with an integer literal with
+    no cast. Asserting the value alone cannot catch a regression — Assert.Equals
+    compares an int64 and a plain number equal by design — so every claim here is
+    ARITHMETIC against an int literal, which is the overload that used to fail at
+    dispatch with `no such overload: dyn<double> + int`.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref VerifyNormalization
+---
+# A plain `Run.Value`: its `value:` leaves are YAML literals, so they reach the
+# contract boundary as ordinary JS numbers — the same shape any controller hands
+# back, and the input the normalization exists to correct.
+kind: Run.Value
+metadata:
+  name: Producer
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [port, ratio, counts, nested, label, maybe]
+    properties:
+      # A `json` value type contributes its `base`, so the annotation is read
+      # through the same rule as a bare `type:` rather than beside it.
+      port: { type: integer, x-telo-type: Telo.TcpPort }
+      # The symmetric case: declared `number` is a double, whichever way round.
+      ratio: { type: number }
+      counts: { type: array, items: { type: integer } }
+      nested:
+        type: object
+        properties:
+          deep: { type: integer }
+      # Not an integer slot — a numeric-looking string must survive untouched,
+      # since normalization is to the DECLARED representation, never a parse.
+      label: { type: string }
+      # A union naming one of the two scalars is still that scalar.
+      maybe: { type: [integer, "null"] }
+value:
+  port: 8080
+  ratio: 0.5
+  counts: [1, 2]
+  nested:
+    deep: 7
+  label: "9"
+  maybe: 41
+---
+kind: Run.Sequence
+metadata:
+  name: VerifyNormalization
+steps:
+  - name: produced
+    invoke: !ref Producer
+  - name: check
+    inputs:
+      actual:
+        port: !cel "steps.produced.result.port + 1"
+        item: !cel "steps.produced.result.counts[1] + 1"
+        deep: !cel "steps.produced.result.nested.deep + 1"
+        maybe: !cel "steps.produced.result.maybe + 1"
+        # A double stays a double: `+ 0.25` has no int overload either way.
+        ratio: !cel "steps.produced.result.ratio + 0.25"
+        label: !cel "steps.produced.result.label + '!'"
+      expected:
+        port: 8081
+        item: 3
+        deep: 8
+        maybe: 42
+        ratio: 0.75
+        label: "9!"
+    invoke: { kind: Assert.Equals }
