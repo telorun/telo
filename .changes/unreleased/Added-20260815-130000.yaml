@@ -1,9 +1,0 @@
-project: http-client
-kind: Added
-body: Request bodies can now carry binary. `body` accepts raw bytes and a byte
-  stream alongside a string and an object, with a sibling `bodyEncoding` for a
-  base64 string — the slot `Fs.FileWrite.content` already ships. A byte value used
-  to be JSON-stringified into `{"0":137,...}` with nothing to notice it. A byte
-  stream is sent chunked and is single-shot - any re-send raises
-  ERR_HTTP_BODY_NOT_REPLAYABLE rather than transmitting an empty payload.
-time: 2026-08-15T13:00:00.000000000Z

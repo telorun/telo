@@ -1,5 +1,8 @@
 # Changelog
-## 0.5.1 - 2026-08-15
+## 0.5.2 - 2026-08-15
+### Fixed
+* The primer said nothing about the hub's `category` filter, so the agent passed a guessed slug on every search and read the empty results as missing capabilities — it asked for Run.Loop by name under `coordination` (the module is `Compute`), concluded Telo had no loop, and produced nothing. It is now told to search unfiltered, that an empty result is a reason to broaden rather than a conclusion, and that `run` is composition itself rather than a capability to go hunting for.
+* The primer covered value types but not what the transport does with them, so the agent had no basis for a binary or streamed HTTP call. It now covers byte and stream request bodies (and that a stream body is single-shot), per-call responseType, the success/retryOn/retry classification split, and that Run.Iteration over a stream binds no `items`.## 0.5.1 - 2026-08-15
 ### Fixed
 * The teloVerbs comment enumerated the CLI verbs held back from the agent and stopped at three, so 'telo migrate' — which rewrites an author's YAML in place, the job of the agent's own edit tools here — read as an oversight rather than a decision. It names all of them now.
 * System prompt: value types are one `x-telo-type` annotation, with type arguments and `!ref`-named shapes.## 0.5.0 - 2026-08-14

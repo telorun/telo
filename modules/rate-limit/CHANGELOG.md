@@ -1,5 +1,7 @@
 # Changelog
-## 0.12.0 - 2026-08-11
+## 0.12.1 - 2026-08-15
+### Fixed
+* 'amount' and 'reserved' are declared `type: integer`, so they reach the controller as an int64 whenever CEL or another resource's output produced them — and `Number.isInteger` is false for one while `amount - reserved` throws. A settle fed by the matching reserve's own result was rejected as a non-integer. Both are read through `integerInput`, which accepts either representation.## 0.12.0 - 2026-08-11
 ### Added
 * RateLimit.Guard and RateLimit.Budget log every verdict at debug — a throttle or exhausted budget as well as an allowed call or reservation. Debug rather than info deliberately: absorbing a flood is the job, so a default-visible record per rejection would make the log the amplification target the limiter exists to prevent, and sampling is off by default. Budget also reports the counter compensation that follows a refund landing in a fresh window. ratelimit.key rides on those records.
 ### Fixed

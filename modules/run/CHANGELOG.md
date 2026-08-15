@@ -1,5 +1,9 @@
 # Changelog
-## 0.22.0 - 2026-08-09
+## 0.23.0 - 2026-08-15
+### Added
+* Run.Iteration accepts a stream as well as an array, pulled lazily under the existing concurrency, so a source too large to hold in memory can be iterated. `items` is bound only for a materialized collection - under a stream the only value it could hold is the cursor the loop is pulling from, and passing that to a step would drain the loop's own source and end it early with nothing to notice.
+### Fixed
+* Run.Loop's `iteration` and Run.Iteration / Run.Projection's `index` are declared `type: integer`, but crossed into CEL as JS numbers and so typed as doubles. `iteration + 1` type-checked statically and then failed at dispatch with "no such overload: dyn<double> + int", pushing authors to `double(...)` or `int(...)` casts a CEL int64 should never need. They cross as BigInts now.## 0.22.0 - 2026-08-09
 ### Added
 * metadata.name is now Run, so the module contributes its kinds under the `Run.<Kind>` canonical prefix instead of `run.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.21.0 - 2026-08-08
 ### Added

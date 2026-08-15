@@ -1,5 +1,7 @@
 # Changelog
-## 0.5.0 - 2026-08-11
+## 0.5.1 - 2026-08-15
+### Fixed
+* The AuthorizationServer provider declares `timeoutMs` as `type: integer`, so it crosses that contract as an int64 — and `setTimeout` refuses one, failing every token-endpoint call with a BigInt conversion error. The deadline is read through `integerInput`.## 0.5.0 - 2026-08-11
 ### Added
 * The token lifecycle is logged: a successful refresh at info (carrying the grant key, the new deadline, and whether the server rotated the refresh token — never token material), a grant left with no refresh token at warn, and the refresh trigger plus single-flight claim contention at debug. Which trigger fired matters: a run of server-rejected tokens points at clock skew or too small a refreshSkew rather than normal expiry.## 0.4.0 - 2026-08-08
 ### Added
