@@ -1,7 +1,0 @@
-project: oauth-client
-kind: Fixed
-body: "The AuthorizationServer provider declares `timeoutMs` as `type: integer`,
-  so it crosses that contract as an int64 — and `setTimeout` refuses one, failing
-  every token-endpoint call with a BigInt conversion error. The deadline is read
-  through `integerInput`."
-time: 2026-08-15T13:01:00.000000000Z

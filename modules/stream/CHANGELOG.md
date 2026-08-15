@@ -1,5 +1,7 @@
 # Changelog
-## 0.9.0 - 2026-08-09
+## 0.10.0 - 2026-08-15
+### Added
+* Stream.Chunk re-frames a byte stream into fixed-size pieces, buffering across the boundaries bytes happened to arrive on and splitting any that is too large. Each piece reports its offset, length, index and whether it is last, so a Content-Range header or a sequence number is expressible in CEL at the use site. One piece is held in memory at a time.## 0.9.0 - 2026-08-09
 ### Added
 * metadata.name is now Stream, so the module contributes its kinds under the `Stream.<Kind>` canonical prefix instead of `stream.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.8.0 - 2026-08-01
 ### Added

@@ -1,5 +1,7 @@
 # Changelog
-## 0.17.0 - 2026-08-14
+## 0.17.1 - 2026-08-15
+### Fixed
+* Assert.Events compared payload leaves with `!==`, so a CEL integer — an int64, i.e. a BigInt — never matched the plain number an `expected:` literal comes out of YAML as. The two rendered identically in the failure report while comparing unequal, making any integer-valued expression in an event payload unassertable. Leaves go through the same comparison Assert.Equals uses.## 0.17.0 - 2026-08-14
 ### Added
 * Assert.Manifest gains a `fix:` matcher on expected errors and warnings: a substring against the diagnostic's suggested replacement, so a test can assert the repair a diagnostic offers and not only its message. A diagnostic that offers no repair never matches, so the matcher also pins that one was produced.## 0.16.0 - 2026-08-11
 ### Added

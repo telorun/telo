@@ -1,8 +1,0 @@
-project: run
-kind: Added
-body: Run.Iteration accepts a stream as well as an array, pulled lazily under the
-  existing concurrency, so a source too large to hold in memory can be iterated.
-  `items` is bound only for a materialized collection - under a stream the only
-  value it could hold is the cursor the loop is pulling from, and passing that to a
-  step would drain the loop's own source and end it early with nothing to notice.
-time: 2026-08-15T13:03:00.000000000Z
