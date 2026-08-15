@@ -65,7 +65,7 @@ export {
   PERMISSIVE_CONTRACT,
   resolveContract,
   resolveContractSchema,
-  withStreamPropertiesSkipped,
+  withLiveValuesSkipped,
 } from "./invocation-contract.js";
 export type { ContractOrigin, ContractScope, ResolvedContract } from "./invocation-contract.js";
 export {
@@ -97,7 +97,11 @@ export {
   transfersControl,
 } from "./ref-slot.js";
 export type { RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
-export { binaryKeyword, isBinarySlot, X_TELO_BINARY } from "./binary-slot.js";
+export {
+  ANNOTATION_KEYWORDS,
+  registerTeloKeywords,
+  valueTypeKeyword,
+} from "./value-type-keyword.js";
 export {
   applyTextEdits,
   isPlainSafe,
@@ -130,6 +134,10 @@ export { validateZoneSlotDeclarations } from "./validate-zone-slots.js";
 export type { ZoneSlotIssue } from "./validate-zone-slots.js";
 export { validateDynamicSelectors, validateRefSlotDeclarations } from "./validate-ref-slots.js";
 export type { RefSlotIssue } from "./validate-ref-slots.js";
+export { validateValueTypeSlots } from "./validate-value-type-slots.js";
+export type { ValueTypeSlotIssue } from "./validate-value-type-slots.js";
+export { checkSchemaCompatibility } from "./schema-compat.js";
+export type { CompatibilityResult } from "./schema-compat.js";
 export { visitManifest } from "./manifest-visitor.js";
 export type {
     CelSiteEvent,

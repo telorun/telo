@@ -29,12 +29,43 @@
  *  would delete from it silently. Anchored, `under` names top-level document
  *  keys and a region is a genuine subtree.
  *
+ *  **`inSchema` is the one region a kind list cannot name.** An annotation
+ *  keyword occurs in author-written JSON Schema, and schema fragments are not
+ *  confined to kind documents: an inline `inputType:` / `outputType:` on ANY kind
+ *  that declares one, an API route's `request.schema.body`, a `Telo.JsonSchema`'s
+ *  `schema`. That set of kinds is open — any kind may declare a schema-valued
+ *  field — and enumerating the standard library's would put resource-kind
+ *  knowledge into the analyzer, against the topology-driven constraint. So a rule
+ *  may instead state that it reaches only inside a SCHEMA REGION, named by the
+ *  KERNEL's own schema-valued keys, which no kind owns.
+ *
+ *  With `inSchema`, and only with it, `inKind` / `under` may be `["*"]` — and
+ *  only for a rule keyed on a reserved `x-telo-*` annotation. That pairing IS the
+ *  containment: the region gate bounds where the walk may go, and the reserved-key
+ *  rule bounds what it may touch, since an `x-telo-*` key is Telo vocabulary
+ *  wherever it appears and cannot mean something else in someone's config. Both
+ *  halves are refused at entry-read time, so a module-shipped entry can no more
+ *  spell `"*"` than it can name another module's kind.
+ *
+ *  The residue is stated rather than claimed away: a manifest that asserts ABOUT
+ *  a schema — a schema literal under a key spelled `schema` inside an assertion's
+ *  expected value — is reachable, and would be rewritten into its own synonym.
+ *  That cannot be closed in a data-only matcher without naming kinds. It is
+ *  accepted because the sites the wildcards reach are exactly the ones no
+ *  enumeration covers, and the alternative leaves an author reading a deprecation
+ *  `telo migrate` refuses to act on.
+ *
  *  The vocabulary is closed, which is what makes it a trust boundary once
  *  module-shipped entries are aggregated beside core ones. An unrecognized key
  *  is refused rather than ignored — a selector that silently matches wider than
  *  it reads is the one failure this cannot tolerate. */
 
+import { isInSchemaRegion } from "../schema-region.js";
 import type { MigrationPath } from "./types.js";
+
+/** The wildcard `inKind` / `under` value. Legal only alongside `inSchema`, and
+ *  only for a rule keyed on an `x-telo-*` annotation. */
+export const MATCH_ANY = "*";
 
 export interface MigrationMatch {
   /** The mapping key this rule rewrites. */
@@ -69,6 +100,13 @@ export interface MigrationMatch {
    *  The data-bearing JSON Schema keywords (`const`, `default`, `enum`,
    *  `examples`) hold values that may look like schemas. */
   readonly notUnder?: readonly string[];
+  /** Narrow to a JSON Schema region: the match must be at or below a node
+   *  reached through one of {@link SCHEMA_REGION_KEYS}.
+   *
+   *  A second bound, never a replacement for `inKind` / `under` — it is what
+   *  makes their wildcard forms safe, and it narrows an enumerated region just as
+   *  usefully. See the file header for why an annotation rename needs it. */
+  readonly inSchema?: boolean;
 }
 
 export const MATCH_KEYS = [
@@ -79,6 +117,7 @@ export const MATCH_KEYS = [
   "valueOneOf",
   "withSibling",
   "notUnder",
+  "inSchema",
 ] as const;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -143,6 +182,34 @@ export function readMigrationMatch(describe: string, raw: unknown): MigrationMat
   ) {
     throw new Error(`${describe}: 'match.notUnder' must be a sequence of strings`);
   }
+  if (Object.hasOwn(raw, "inSchema") && typeof raw.inSchema !== "boolean") {
+    throw new Error(`${describe}: 'match.inSchema' must be a boolean`);
+  }
+
+  // The two conditions that make a wildcard safe, refused here rather than
+  // narrowed later: a rule the reader accepts is a rule the driver will run, and
+  // a selector that matches wider than it reads is exactly what this vocabulary
+  // exists to prevent. A module-shipped entry therefore cannot spell `"*"` at
+  // all, because it cannot satisfy both halves for a keyword it does not own.
+  const wildcards = [
+    ...(Array.isArray(raw.inKind) ? (raw.inKind as unknown[]) : []),
+    ...(Array.isArray(raw.under) ? (raw.under as unknown[]) : []),
+  ].filter((value) => value === MATCH_ANY);
+  if (wildcards.length > 0) {
+    if (raw.inSchema !== true) {
+      throw new Error(
+        `${describe}: 'match.inKind' / 'match.under' may only be '${MATCH_ANY}' together with ` +
+          `'inSchema: true' — the schema region is what bounds a walk the wildcard unbounds`,
+      );
+    }
+    if (!(raw.key as string).startsWith("x-telo-")) {
+      throw new Error(
+        `${describe}: '${MATCH_ANY}' is legal only for a rule keyed on an 'x-telo-*' annotation, ` +
+          `which is Telo vocabulary wherever it appears — '${raw.key}' could mean something else ` +
+          `inside a resource's own configuration`,
+      );
+    }
+  }
 
   const match: {
     key: string;
@@ -152,6 +219,7 @@ export function readMigrationMatch(describe: string, raw: unknown): MigrationMat
     valueOneOf?: readonly unknown[];
     withSibling?: string;
     notUnder?: readonly string[];
+    inSchema?: boolean;
   } = {
     key: raw.key,
     inKind: requireStringList(describe, raw, "inKind"),
@@ -161,6 +229,7 @@ export function readMigrationMatch(describe: string, raw: unknown): MigrationMat
   if (Object.hasOwn(raw, "valueOneOf")) match.valueOneOf = raw.valueOneOf as unknown[];
   if (Object.hasOwn(raw, "withSibling")) match.withSibling = raw.withSibling as string;
   if (Object.hasOwn(raw, "notUnder")) match.notUnder = raw.notUnder as string[];
+  if (raw.inSchema === true) match.inSchema = true;
   return match;
 }
 
@@ -229,9 +298,12 @@ export function buildMatchIndex(
   };
 
   // Anchored containment, enforced by where the walk STARTS: everything the
-  // index holds is at or below a top-level key some rule named.
+  // index holds is at or below a top-level key some rule named. A wildcard root
+  // starts everywhere instead — bounded not by where the walk begins but by the
+  // schema region and the reserved key its rule had to declare to earn it.
+  const everywhere = roots.has(MATCH_ANY);
   for (const [key, value] of Object.entries(document)) {
-    if (!roots.has(key)) continue;
+    if (!everywhere && !roots.has(key)) continue;
     stack.push(key);
     if (keys.has(key)) record(key, value, document);
     walk(value);
@@ -252,7 +324,7 @@ export function applicableRules<T extends { readonly match: MigrationMatch }>(
   const roots = new Set<string>();
   if (typeof kind !== "string") return { rules: applicable, keys, roots };
   for (const rule of rules) {
-    if (!rule.match.inKind.includes(kind)) continue;
+    if (!rule.match.inKind.includes(kind) && !rule.match.inKind.includes(MATCH_ANY)) continue;
     applicable.push(rule);
     keys.add(rule.match.key);
     for (const root of rule.match.under) roots.add(root);
@@ -273,18 +345,24 @@ export function selectMatches(
   match: MigrationMatch,
 ): MigrationPath[] {
   const kind = isPlainObject(document) ? document.kind : undefined;
-  if (typeof kind !== "string" || !match.inKind.includes(kind)) return [];
+  if (typeof kind !== "string") return [];
+  if (!match.inKind.includes(kind) && !match.inKind.includes(MATCH_ANY)) return [];
 
   const sites = index.get(match.key);
   if (!sites) return [];
 
+  const anyRoot = match.under.includes(MATCH_ANY);
   const out: MigrationPath[] = [];
   for (const site of sites) {
     // The index may be shared with rules naming other regions, so the anchor is
     // re-checked per rule. A numeric first segment cannot occur — a document is
     // a mapping — but the guard keeps the containment claim independent of that.
     const anchor = site.path[0];
-    if (typeof anchor !== "string" || !match.under.includes(anchor)) continue;
+    if (!anyRoot && (typeof anchor !== "string" || !match.under.includes(anchor))) continue;
+    // The schema region — the same ancestry rule every schema-bounded surface
+    // reads, so the migration and the validators cannot disagree about where a
+    // schema is.
+    if (match.inSchema && !isInSchemaRegion(site.path)) continue;
     // `notUnder` subtracts within the region, so it reads the whole path. A
     // numeric segment never equals a key name, so the raw path is enough.
     if (match.notUnder?.some((segment) => site.path.includes(segment))) continue;

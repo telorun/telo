@@ -128,7 +128,7 @@ schema:
 
 - **`capability`** — the lifecycle role the kernel will drive (`Telo.Invocable` here). See the [capability list](/reference/kernel/capabilities).
 - **`controllers`** — a [Package URL](/reference/kernel/controllers) locating the implementation. `pkg:telo/local/js` means the controller **ships inside the module's own artifact** as a bundle: `path=` is the built `.mjs` a published module carries in its controller layer, and `local_path=` is the TypeScript source it was built from, which the kernel builds on demand while the module is a working copy (Step 3). List one PURL per format or platform to ship a polyglot kind.
-- **`inputType` / `outputType`** — the typed contract the analyzer checks CEL against. `schema` validates the resource's own config fields. Both carry [`x-telo-*` annotations](/reference/kernel/resource-definition) (`x-telo-eval`, `x-telo-ref`, `x-telo-stream`, …) that the analyzer and editor resolve generically.
+- **`inputType` / `outputType`** — the typed contract the analyzer checks CEL against. `schema` validates the resource's own config fields. Both carry [`x-telo-*` annotations](/reference/kernel/resource-definition) (`x-telo-eval`, `x-telo-ref`, `x-telo-type`, …) that the analyzer and editor resolve generically.
 
 ## Step 2 — implement the controller
 

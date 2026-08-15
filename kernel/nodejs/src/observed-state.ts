@@ -1,4 +1,4 @@
-import { binaryKeyword } from "@telorun/analyzer";
+import { registerTeloKeywords } from "@telorun/analyzer";
 import AjvModule from "ajv";
 import { detachSnapshotValue, OBSERVED_STATE_KEY, RuntimeError } from "@telorun/sdk";
 
@@ -58,7 +58,7 @@ function mark(target: Record<string, unknown>, info: ObservedStateInfo): void {
 }
 
 const ajv = new Ajv({ allErrors: true, strict: false });
-ajv.addKeyword(binaryKeyword());
+registerTeloKeywords(ajv);
 // Compiling a status schema costs ~ms and a resource may report repeatedly, so
 // keep the validator keyed on the schema object it came from. The kind's folded
 // `status:` is stamped once at registration, so this hits.

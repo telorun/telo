@@ -22,7 +22,8 @@ background:
 ```
 
 `!include-text` yields a UTF-8 string. `!include-bytes` yields raw bytes — a
-`Uint8Array`, which is exactly what a slot annotated `x-telo-binary` accepts.
+`Uint8Array`, which is exactly what a slot annotated `x-telo-type: Telo.Bytes`
+accepts.
 
 ## Paths are relative to the module root
 
@@ -101,7 +102,7 @@ manifest value.
 
 The Rust kernel supports `!include-text` only: it carries a manifest as JSON,
 which has no representation for raw bytes, and it says so rather than producing
-something an `x-telo-binary` slot would not accept.
+something a `Telo.Bytes` slot would not accept.
 
 ## See also
 

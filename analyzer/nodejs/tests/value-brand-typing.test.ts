@@ -12,32 +12,32 @@ import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 describe("value brands (x-telo-type)", () => {
   it("jsonSchemaToCelType returns the brand when present", () => {
-    expect(jsonSchemaToCelType({ type: "integer", "x-telo-type": "TcpPort" })).toBe("TcpPort");
+    expect(jsonSchemaToCelType({ type: "integer", "x-telo-type": "Telo.TcpPort" })).toBe("Telo.TcpPort");
     expect(jsonSchemaToCelType({ type: "integer" })).toBe("int");
     // Unrecognized brand falls back to the base type, not the brand string.
     expect(jsonSchemaToCelType({ type: "integer", "x-telo-type": "Bogus" })).toBe("int");
   });
 
   it("brandOfSchema reads only recognized brands", () => {
-    expect(brandOfSchema({ "x-telo-type": "TcpPort" })).toBe("TcpPort");
+    expect(brandOfSchema({ "x-telo-type": "Telo.TcpPort" })).toBe("Telo.TcpPort");
     expect(brandOfSchema({ "x-telo-type": "Bogus" })).toBeUndefined();
     expect(brandOfSchema({ type: "integer" })).toBeUndefined();
   });
 
   describe("celTypeSatisfiesJsonSchema", () => {
-    const tcpField = { type: "integer", "x-telo-type": "TcpPort" };
+    const tcpField = { type: "integer", "x-telo-type": "Telo.TcpPort" };
     const plainIntField = { type: "integer" };
 
     it("accepts a matching brand", () => {
-      expect(celTypeSatisfiesJsonSchema("TcpPort", tcpField)).toBe(true);
+      expect(celTypeSatisfiesJsonSchema("Telo.TcpPort", tcpField)).toBe(true);
     });
 
     it("rejects a conflicting brand", () => {
-      expect(celTypeSatisfiesJsonSchema("UdpPort", tcpField)).toBe(false);
+      expect(celTypeSatisfiesJsonSchema("Telo.UdpPort", tcpField)).toBe(false);
     });
 
     it("accepts a branded value into an unbranded field of the base type", () => {
-      expect(celTypeSatisfiesJsonSchema("TcpPort", plainIntField)).toBe(true);
+      expect(celTypeSatisfiesJsonSchema("Telo.TcpPort", plainIntField)).toBe(true);
     });
 
     it("accepts a plain base value into a branded field (gradual typing)", () => {
@@ -65,9 +65,9 @@ describe("ports namespace typing", () => {
 
   it("types ports.<name> by the entry's protocol brand", () => {
     const env = buildTypedCelEnvironment(buildCelEnvironment(), appWithPorts());
-    expect(env.check("ports.http").type).toBe("TcpPort");
-    expect(env.check("ports.dns").type).toBe("UdpPort");
-    expect(env.check("ports.legacy").type).toBe("TcpPort");
+    expect(env.check("ports.http").type).toBe("Telo.TcpPort");
+    expect(env.check("ports.dns").type).toBe("Telo.UdpPort");
+    expect(env.check("ports.legacy").type).toBe("Telo.TcpPort");
   });
 
   it("flags an unknown port name", () => {
@@ -88,7 +88,7 @@ describe("cross-doc port wiring", () => {
         port: {
           type: "integer",
           "x-telo-eval": "compile",
-          "x-telo-type": "TcpPort",
+          "x-telo-type": "Telo.TcpPort",
           minimum: 1,
           maximum: 65535,
         },
@@ -125,7 +125,7 @@ describe("cross-doc port wiring", () => {
   it("rejects a UdpPort wired into a TcpPort field", () => {
     const diags = analyzeWith("${{ ports.dns }}");
     expect(diags.length).toBeGreaterThan(0);
-    expect(diags.some((d) => d.message.includes("UdpPort") && d.message.includes("TcpPort"))).toBe(
+    expect(diags.some((d) => d.message.includes("Telo.UdpPort") && d.message.includes("Telo.TcpPort"))).toBe(
       true,
     );
   });
@@ -133,7 +133,7 @@ describe("cross-doc port wiring", () => {
   // `!cel`-tagged values must behave identically to the `${{ … }}` string form.
   it("rejects a UdpPort via a !cel-tagged value", () => {
     const diags = analyzeWith(makeTaggedSentinel("cel", "ports.dns"));
-    expect(diags.some((d) => d.message.includes("UdpPort") && d.message.includes("TcpPort"))).toBe(
+    expect(diags.some((d) => d.message.includes("Telo.UdpPort") && d.message.includes("Telo.TcpPort"))).toBe(
       true,
     );
   });

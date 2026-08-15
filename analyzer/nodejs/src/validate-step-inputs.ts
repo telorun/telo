@@ -2,7 +2,14 @@ import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { ContractDirection } from "./extends-resolution.js";
 import { resolveContract } from "./invocation-contract.js";
-import { substituteCelFields, validateAgainstSchema } from "./schema-compat.js";
+import {
+  checkSchemaCompatibility,
+  navigateSchemaToExprPath,
+  substituteCelFields,
+  validateAgainstSchema,
+} from "./schema-compat.js";
+import { plainChainOf } from "@telorun/templating";
+import { valueTypeOf } from "@telorun/sdk";
 import {
   analyzerContractScope,
   containerOf,
@@ -16,7 +23,11 @@ export interface StepInputIssue {
   path: string;
   targetLabel: string;
   message: string;
+  /** Set when the issue is a type-argument disagreement rather than a contract
+   *  shape violation — the two read differently and deserve their own code. */
+  code?: "CEL_TYPE_ARGUMENT_MISMATCH";
 }
+
 
 /**
  * Validate every step's `inputs:` against the invoked target's declared input
@@ -40,6 +51,10 @@ export function collectStepInputIssues(
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: ModuleScopes,
+  /** The typed `steps.<name>.result` context for this resource. Supplied by the
+   *  caller because building it is analyzer state; without it the contract check
+   *  still runs and only the type-argument comparison is skipped. */
+  stepContext?: Record<string, any>,
 ): StepInputIssue[] {
   const out: StepInputIssue[] = [];
   const props = defSchema.properties as Record<string, any> | undefined;
@@ -97,6 +112,46 @@ export function collectStepInputIssues(
       const substituted = substituteCelFields(values, contract.schema, undefined, (p) =>
         celPaths.add(p),
       );
+      // The type-argument check, at the one site where a produced value's schema
+      // meets a consuming slot's. A CEL leaf's placeholder says nothing about
+      // what the expression yields, so AJV above is silent here by design — and
+      // that silence is exactly where a stream of the wrong element used to
+      // flow. The comparison is covariant and gradual: an omitted argument is
+      // *any* in both directions, so only a definite conflict is reported.
+      if (stepContext) {
+        for (const [inputName, inputValue] of Object.entries(values)) {
+          const chain = plainChainOf(inputValue);
+          // The step context is rooted at the STEP MAP, so a `steps.` prefix is
+          // the namespace name and not a property of it. Only that namespace is
+          // navigated: `inputs.` and a named binding resolve elsewhere, and
+          // guessing at a root this does not hold would compare the wrong schema.
+          if (!chain?.startsWith("steps.")) continue;
+          const produced = navigateSchemaToExprPath(stepContext, chain.slice("steps.".length));
+          const slotSchema = (contract.schema.properties as Record<string, any> | undefined)?.[
+            inputName
+          ];
+          if (!produced || !slotSchema) continue;
+          // ONLY a type-argument disagreement, which is what the code says. The
+          // comparator is a general structural comparison, so running it on any
+          // pair would report a missing required property as "disagreeing type
+          // arguments" — and would turn every plain-chain wiring site into a
+          // broad new Error-severity check hidden behind an argument-specific
+          // name. Both sides must declare a value type for the question to be
+          // about arguments at all.
+          if (!valueTypeOf(produced) || !valueTypeOf(slotSchema)) continue;
+          const { compatible, issues } = checkSchemaCompatibility(produced, slotSchema, (ref) =>
+            defs.schemaForId(ref),
+          );
+          if (compatible) continue;
+          out.push({
+            path: `${stepPath}.${inputsField}.${inputName}`,
+            targetLabel: invokedName ?? invokedKind ?? "the invoked resource",
+            message: issues.join("; "),
+            code: "CEL_TYPE_ARGUMENT_MISMATCH",
+          });
+        }
+      }
+
       for (const issue of validateAgainstSchema(substituted, contract.schema)) {
         if (celPaths.has(issue.path)) continue;
         // A missing-required issue names the property that ISN'T there, so

@@ -1,0 +1,32 @@
+kind: Telo.Application
+metadata:
+  name: ValueTypeUnknownFixture
+  version: 1.0.0
+  description: |
+    A misspelled value type. Before the three annotations were unified an
+    unrecognized name resolved to `undefined` and the slot quietly lost its
+    identity — the failure `X_TELO_REF_INVALID_USE` exists to prevent for `use`
+    tokens. The vocabulary is closed, so a name is a built-in or it is a mistake.
+imports:
+  Run: ../../modules/run
+targets:
+  - !ref Typo
+---
+kind: Run.Sequence
+metadata: { name: Typo }
+steps:
+  - name: Produce
+    invoke: !ref Misspelled
+---
+kind: Run.Value
+metadata: { name: Misspelled }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-type: Telo.Strem
+    required: [output]
+value:
+  output: !cel "null"

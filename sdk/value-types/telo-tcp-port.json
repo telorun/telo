@@ -1,0 +1,7 @@
+{
+  "$comment": "A `json` representation adds nominal identity to a value the declared schema already validates. A TcpPort and a UdpPort are both integers, so nothing structural tells them apart — the name is the whole difference, and it is what makes wiring one into the other's slot a static error.",
+  "name": "Telo.TcpPort",
+  "representation": "json",
+  "base": "integer",
+  "description": "A TCP port number. Distinct from a UDP port even though both are integers, so wiring one into the other's slot is a static error."
+}

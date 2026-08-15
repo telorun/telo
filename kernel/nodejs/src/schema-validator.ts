@@ -7,7 +7,8 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
-import { binaryKeyword, X_TELO_BINARY } from "@telorun/analyzer";
+import { registerTeloKeywords } from "@telorun/analyzer";
+import { X_TELO_TYPE } from "@telorun/sdk";
 import { mergeFilledDefaults, withBigIntsAsNumbers } from "./bigint-schema-view.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
 
@@ -164,13 +165,19 @@ const NAME_KEYED_SCHEMA_KEYWORDS = new Set([
 const DATA_VALUE_KEYWORDS = new Set(["const", "default", "enum", "examples"]);
 
 /** Annotations that DO emit validation code, and so must survive the strip and stay
- *  in the cache key. `x-telo-binary` is the first: bytes have no JSON Schema type,
+ *  in the cache key. `x-telo-type` is the only one: bytes have no JSON Schema type,
  *  so the keyword is the only thing standing between a byte slot and "accepts any
  *  object". Stripping it would silently reduce the slot to an empty schema — the
  *  precise regression the annotation was introduced to close — and, because the key
  *  is meant to describe the compiled validator, a keyword that changes the validator
- *  belongs in it. */
-const VALIDATING_ANNOTATIONS = new Set([X_TELO_BINARY]);
+ *  belongs in it.
+ *
+ *  Its names need no canonicalization to be safe in a key, unlike `x-telo-ref`'s:
+ *  the vocabulary is closed and `Telo.`-qualified, so an author writes the
+ *  canonical name or none, and a named SHAPE reaches the annotation as a `$ref`
+ *  the loader already resolved. There is nothing here that the analyzer's baked
+ *  view and the runtime could spell differently. */
+const VALIDATING_ANNOTATIONS = new Set([X_TELO_TYPE]);
 
 /** Deep-clone `schema` without its `x-telo-*` annotations — applied, like
  *  {@link collapseSentinelsToSource}, before both AJV compilation and cache
@@ -255,27 +262,12 @@ export class SchemaValidator {
       code: { source: true },
     });
     addFormats.default(this.ajv);
-    for (const kw of [
-      "x-telo-ref",
-      "x-telo-eval",
-      "x-telo-scope",
-      "x-telo-context",
-      "x-telo-context-from",
-      "x-telo-context-ref-from",
-      "x-telo-schema-from",
-      "x-telo-topology-role",
-      "x-telo-step-context",
-      "x-telo-widget",
-      "x-telo-type",
-      "x-telo-inline",
-    ]) {
-      this.ajv.addKeyword(kw);
-    }
-    // Not a no-op like the rest: bytes have no JSON Schema type, so this keyword IS
-    // the check. Defined as codegen in the analyzer so it inlines into the
-    // standalone validators compiled and cached below, rather than needing the
-    // implementation present at load.
-    this.ajv.addKeyword(binaryKeyword());
+    // One registration site for every Telo keyword: the annotations as no-ops
+    // and `x-telo-type` as the one that actually checks. `x-telo-type` is defined
+    // as codegen in the analyzer so it inlines into the standalone validators
+    // compiled and cached below, rather than needing the implementation present
+    // at load.
+    registerTeloKeywords(this.ajv);
     // Register the shared manifest root so module schemas can
     // `$ref: "telo://manifest#/$defs/ResourceRef"` without each manifest
     // bundling its own copy. Mirrors the analyzer's createAjv().

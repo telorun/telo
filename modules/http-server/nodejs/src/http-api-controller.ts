@@ -14,6 +14,7 @@ import {
   InvokeError,
   isCancellationError,
   isInvokeError,
+  isLiveSlot,
   KindRef,
   Ref,
   ResourceContext,
@@ -95,10 +96,16 @@ export class HttpServerApi implements ResourceInstance {
 
     const schema: any = { response: {} };
 
-    // A stream-marked body is delivered as a raw `Stream<Uint8Array>` (see the
+    // A live-typed body is delivered as a raw `Stream<Uint8Array>` (see the
     // server's `contentTypeParsers[].stream`); it is opaque to AJV, so skip
     // body-schema registration and wrap the raw request stream in the handler.
-    const streamBody = route.request.schema?.body?.["x-telo-stream"] === true;
+    //
+    // Read through the SDK accessor rather than by string-matching the keyword.
+    // A module may import `@telorun/sdk` and nothing else, and before the value
+    // types were unified there was nothing on that surface to read — so this was
+    // a literal key comparison, the same shape as the four surfaces that
+    // string-matched `x-telo-ref` before `ref-slot.ts`.
+    const streamBody = isLiveSlot(route.request.schema?.body);
 
     if (route.request.schema?.query) schema.querystring = route.request.schema.query;
     if (route.request.schema?.params) schema.params = route.request.schema.params;

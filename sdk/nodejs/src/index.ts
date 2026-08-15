@@ -34,4 +34,5 @@ export * from "./runtime-event.js";
 export * from "./runtime-resource.js";
 export * from "./stream.js";
 export * from "./types.js";
+export * from "./value-type.js";
 

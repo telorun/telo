@@ -2,7 +2,7 @@ import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 // One definition of the `status:` block's shape, shared with `telo check` — the
 // `required:` restriction is reported by the analyzer, which can name the fix.
-import { binaryKeyword, OBSERVED_STATE_SCHEMA } from "@telorun/analyzer";
+import { OBSERVED_STATE_SCHEMA, registerTeloKeywords } from "@telorun/analyzer";
 const Ajv = AjvModule.default ?? AjvModule;
 
 // Re-export the shared ResourceRef fragment from the templating package
@@ -177,7 +177,7 @@ export const ResourceAbstractSchema = {
 };
 
 const ajv = new Ajv({ allErrors: true, strict: false });
-ajv.addKeyword(binaryKeyword());
+registerTeloKeywords(ajv);
 addFormats.default(ajv);
 
 // Lazy-compile validator: the AJV codegen cost (≈10–15 ms for these

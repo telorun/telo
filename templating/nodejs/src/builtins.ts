@@ -29,6 +29,20 @@ export function createDefaultRegistry(): TemplatingEngineRegistry {
   return registry;
 }
 
+/**
+ * The type a tag always produces, or undefined when its produced type is a
+ * function of the slot rather than of the tag (`!cel`, `!ref`).
+ *
+ * The single reader of `TemplatingEngine.producedType`, so a consumer asks the
+ * registry what a tag produces instead of recognising tag names — the same seam
+ * `fileClaims` opened for payload membership. Reads the default registry
+ * because a produced type is a property of the engine, not of a host's
+ * configuration, and every host ships the same built-in set.
+ */
+export function producedTypeOf(engineName: string): Record<string, unknown> | undefined {
+  return defaultRegistry().get(engineName)?.producedType?.();
+}
+
 let defaultRegistryCache: TemplatingEngineRegistry | undefined;
 
 /** Memoized singleton: returns the default registry. Hosts that don't need

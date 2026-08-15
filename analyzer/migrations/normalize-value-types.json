@@ -1,0 +1,48 @@
+{
+  "$comment": "Three keywords answered one question — what is the value at this slot, beyond what JSON Schema's `type` can say — and each answered it differently. `inSchema` with the wildcard `inKind` / `under` is what makes this reachable at all: these annotations occur in author-written schema fragments inside ORDINARY resource documents (an inline `inputType:` on any kind that declares one, a route's `request.schema.body`), and that set of kinds is open, so enumerating it would be both incomplete and a violation of the topology-driven constraint. The wildcards are earned by the pairing the reader enforces: a schema region bounds where the walk may go, and an `x-telo-*` key — Telo vocabulary wherever it appears — bounds what it may touch. Each rule sets the value BEFORE renaming the key, so both match the frozen pre-migration tree; a rename first would leave the second rule looking for a node that no longer exists. `notUnder` keeps all three out of the data-bearing keywords, where a value may merely look like a schema.",
+  "id": "normalize-value-types",
+  "code": "X_TELO_TYPE_DEPRECATED",
+  "severity": "warning",
+  "reason": "The three value-type annotations were unified into one `x-telo-type`, whose names are `Telo.`-qualified like every other kernel-owned name. `x-telo-binary` and `x-telo-stream` said what a value IS just as `x-telo-type` did, differing only in posture toward the JSON Schema layer — so a fourth kind of value meant a fourth keyword and edits across four packages.",
+  "rules": [
+    {
+      "match": {
+        "key": "x-telo-stream",
+        "inKind": ["*"],
+        "under": ["*"],
+        "inSchema": true,
+        "value": true,
+        "notUnder": ["const", "default", "enum", "examples"]
+      },
+      "patch": [
+        { "op": "set-value", "value": "Telo.Stream" },
+        { "op": "rename-key", "to": "x-telo-type" }
+      ]
+    },
+    {
+      "match": {
+        "key": "x-telo-binary",
+        "inKind": ["*"],
+        "under": ["*"],
+        "inSchema": true,
+        "value": true,
+        "notUnder": ["const", "default", "enum", "examples"]
+      },
+      "patch": [
+        { "op": "set-value", "value": "Telo.Bytes" },
+        { "op": "rename-key", "to": "x-telo-type" }
+      ]
+    },
+    {
+      "match": {
+        "key": "x-telo-type",
+        "inKind": ["*"],
+        "under": ["*"],
+        "inSchema": true,
+        "valueOneOf": ["TcpPort", "UdpPort"],
+        "notUnder": ["const", "default", "enum", "examples"]
+      },
+      "patch": [{ "op": "set-value", "qualify": "Telo." }]
+    }
+  ]
+}

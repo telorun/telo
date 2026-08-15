@@ -33,6 +33,22 @@ export function canonicalTypeSchemaId(moduleName: string, typeName: string): str
   return `telo:${moduleName}/${typeName}`;
 }
 
+/** The inverse of {@link canonicalTypeSchemaId}. Returns null for any other
+ *  string, including the authoring authority form and fragment-bearing built-ins.
+ *
+ *  A resolver reads a named shape through this rather than by bare name: the
+ *  canonical id carries the OWNING MODULE, so two libraries declaring a shape of
+ *  the same name stay distinct. Resolving by name alone was how an alias got
+ *  silently dropped. */
+export function parseCanonicalTypeSchemaId(
+  ref: unknown,
+): { moduleName: string; typeName: string } | null {
+  if (typeof ref !== "string") return null;
+  const match = /^telo:([^/#:]+)\/([^#/]+)$/.exec(ref);
+  if (!match) return null;
+  return { moduleName: match[1]!, typeName: match[2]! };
+}
+
 /** Top-level keywords merged structurally rather than copied wholesale when
  *  resolving `extends`: object shape (`properties` / `required` /
  *  `additionalProperties`) is deep-merged, and composition keywords (`allOf` /

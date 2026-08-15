@@ -122,12 +122,16 @@ export function normalizeIncludePath(source: string): NormalizedIncludePath {
  * `analyze` reports why a path is unusable; `fileClaims` reports the path itself
  * so publish can place the file in a layer without recognising the tag by name.
  */
-function includeEngine(name: string): TemplatingEngine {
+function includeEngine(name: string, produced: Record<string, unknown>): TemplatingEngine {
   return {
     name,
 
     compile(source) {
       return makeTaggedSentinel(name, source);
+    },
+
+    producedType() {
+      return produced;
     },
 
     analyze(source) {
@@ -146,8 +150,15 @@ function includeEngine(name: string): TemplatingEngine {
 }
 
 /** Embeds a file's contents as a UTF-8 string. */
-export const includeTextEngine: TemplatingEngine = includeEngine(INCLUDE_TEXT_ENGINE);
+export const includeTextEngine: TemplatingEngine = includeEngine(INCLUDE_TEXT_ENGINE, {
+  type: "string",
+});
 
-/** Embeds a file's contents as raw bytes — a `Uint8Array`, the shape every
- *  `x-telo-binary` slot accepts. */
-export const includeBytesEngine: TemplatingEngine = includeEngine(INCLUDE_BYTES_ENGINE);
+/** Embeds a file's contents as raw bytes — the shape every `Telo.Bytes` slot
+ *  accepts. The name is written as a literal rather than imported from the SDK:
+ *  templating is the lower package, and a produced type is a schema fragment,
+ *  which is data. What checks it is the registry the analyzer and the kernel both
+ *  read. */
+export const includeBytesEngine: TemplatingEngine = includeEngine(INCLUDE_BYTES_ENGINE, {
+  "x-telo-type": "Telo.Bytes",
+});

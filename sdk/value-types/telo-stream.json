@@ -1,0 +1,14 @@
+{
+  "$comment": "`live` is what separates a stream from bytes: consuming it has effects, so it is EXEMPT from validation rather than asserted — iterating a stream to check its elements is precisely what the exemption forbids. The exemption is from VALIDATION, never from TYPING: `of` still travels through every schema-typing walk, because that is where the argument check reads it.",
+  "name": "Telo.Stream",
+  "representation": "instance",
+  "binding": "stream",
+  "live": true,
+  "parameters": [
+    {
+      "name": "of",
+      "description": "The element the stream yields. Any schema node — an inline shape, a value type, a `!ref` to a named shape, or another parameterized type. Omitted means any element."
+    }
+  ],
+  "description": "A live handle over a sequence of values, consumed by reading. Its elements are never buffered or validated, and member access past it is rejected — a consumer iterates it instead."
+}

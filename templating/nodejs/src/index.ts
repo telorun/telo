@@ -39,7 +39,12 @@ export { refEngine } from "./engines/ref.js";
 export { sqlEngine, isParameterizedSql, type ParameterizedSql } from "./engines/sql.js";
 
 export { TemplatingEngineRegistry } from "./registry.js";
-export { builtinEngines, createDefaultRegistry, defaultRegistry } from "./builtins.js";
+export {
+  builtinEngines,
+  createDefaultRegistry,
+  defaultRegistry,
+  producedTypeOf,
+} from "./builtins.js";
 export type {
   AnalyzeEnv,
   AnalyzeResult,
@@ -52,6 +57,7 @@ export type {
 } from "./engine.js";
 
 export {
+  CEL_ENGINE,
   INCLUDE_BYTES_ENGINE,
   INCLUDE_ENGINE_NAMES,
   INCLUDE_TEXT_ENGINE,
@@ -59,6 +65,7 @@ export {
   isRefSentinel,
   isTaggedSentinel,
   makeTaggedSentinel,
+  plainChainOf,
   type TaggedSentinel,
 } from "./sentinel.js";
 export { buildCustomTags, defaultCustomTags } from "./yaml-tags.js";

@@ -1,0 +1,52 @@
+kind: Telo.Application
+metadata:
+  name: StreamArgumentMismatchFixture
+  version: 1.0.0
+  description: |
+    A byte stream wired into a slot that declares a stream of strings. Both sides
+    name `Telo.Stream`, so the CEL type fits and nothing before this could see the
+    disagreement — cel-js types by constructor identity, so every stream is one
+    CEL type. The type ARGUMENT is what differs, and comparing it is a parallel
+    pass over the schemas.
+imports:
+  Run: ../../modules/run
+targets:
+  - !ref Pipeline
+---
+kind: Run.Value
+metadata: { name: ProduceBytes }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    required: [output]
+value:
+  output: !cel "null"
+---
+kind: Run.Value
+metadata: { name: ConsumeText }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-type:
+          name: Telo.Stream
+          of: { type: string }
+    required: [input]
+value:
+  ok: true
+---
+kind: Run.Sequence
+metadata: { name: Pipeline }
+steps:
+  - name: Produce
+    invoke: !ref ProduceBytes
+  - name: Consume
+    inputs:
+      input: !cel "steps.Produce.result.output"
+    invoke: !ref ConsumeText

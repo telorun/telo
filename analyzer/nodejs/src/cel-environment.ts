@@ -3,10 +3,13 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
 
 /** Transport protocol on a `ports` entry → the nominal CEL brand its resolved
- *  value carries. Mirrors the `protocol` enum in the Application schema. */
+ *  value carries. Mirrors the `protocol` enum in the Application schema, and
+ *  names the value types by their canonical `Telo.`-qualified names — the same
+ *  spelling an author writes at `x-telo-type`, so a branded port and a branded
+ *  field are comparable by name with nothing in between to translate. */
 const PORT_PROTOCOL_BRAND: Record<string, string> = {
-  tcp: "TcpPort",
-  udp: "UdpPort",
+  tcp: "Telo.TcpPort",
+  udp: "Telo.UdpPort",
 };
 
 export { buildCelEnvironment } from "@telorun/templating";

@@ -120,7 +120,7 @@ describe("substituteCelFields — embed types", () => {
     // embed at a `type: string` field passed check and failed at creation.
     const schema = {
       type: "object",
-      properties: { code: { type: "string" }, blob: { "x-telo-binary": true } },
+      properties: { code: { type: "string" }, blob: { "x-telo-type": "Telo.Bytes" } },
     } as Record<string, any>;
     const data = {
       code: makeTaggedSentinel(INCLUDE_BYTES_ENGINE, "assets/x.bin"),
@@ -135,7 +135,7 @@ describe("substituteCelFields — embed types", () => {
   it("accepts each embed at the slot whose type it produces", () => {
     const schema = {
       type: "object",
-      properties: { code: { type: "string" }, blob: { "x-telo-binary": true } },
+      properties: { code: { type: "string" }, blob: { "x-telo-type": "Telo.Bytes" } },
     } as Record<string, any>;
     const data = {
       code: makeTaggedSentinel(INCLUDE_TEXT_ENGINE, "assets/x.txt"),

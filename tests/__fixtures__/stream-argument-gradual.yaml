@@ -1,0 +1,67 @@
+kind: Telo.Application
+metadata:
+  name: StreamArgumentGradualFixture
+  version: 1.0.0
+  description: |
+    Two wirings that must NOT be reported: one where both sides declare the same
+    element, and one where the consumer declares no element at all. An omitted
+    argument is *any* in both directions, which is what keeps every producer and
+    consumer that has not declared an element checking exactly as it did before
+    type arguments existed.
+imports:
+  Run: ../../modules/run
+targets:
+  - !ref Pipeline
+---
+kind: Run.Value
+metadata: { name: ProduceBytes }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    required: [output]
+value:
+  output: !cel "null"
+---
+kind: Run.Value
+metadata: { name: ConsumeBytes }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    required: [input]
+value:
+  ok: true
+---
+kind: Run.Value
+metadata: { name: ConsumeAnything }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-type: Telo.Stream
+    required: [input]
+value:
+  ok: true
+---
+kind: Run.Sequence
+metadata: { name: Pipeline }
+steps:
+  - name: Produce
+    invoke: !ref ProduceBytes
+  - name: MatchingElement
+    inputs:
+      input: !cel "steps.Produce.result.output"
+    invoke: !ref ConsumeBytes
+  - name: UndeclaredElement
+    inputs:
+      input: !cel "steps.Produce.result.output"
+    invoke: !ref ConsumeAnything

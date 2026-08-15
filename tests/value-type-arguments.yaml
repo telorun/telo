@@ -1,0 +1,50 @@
+kind: Telo.Application
+metadata:
+  name: ValueTypeArgumentsTest
+  version: 1.0.0
+  description: |
+    Type arguments on a value type, checked where a produced value meets a
+    consuming slot. Both sides name `Telo.Stream`, so the CEL type fits and
+    nothing before this could see the disagreement — cel-js types by constructor
+    identity, so every stream is one CEL type and always will be. The ARGUMENT is
+    what differs, and comparing it is a parallel structural pass over the schemas
+    the analyzer already walks.
+
+    Covers the mismatch, the gradual case (an omitted argument is *any*, so an
+    unmigrated producer or consumer keeps checking exactly as it did), and the
+    diagnostic reported for a name that is not a value type at all.
+imports:
+  Assert: ../modules/assert
+  Run: ../modules/run
+targets:
+  - !ref TestValueTypeArguments
+---
+kind: Assert.Manifest
+metadata: { name: RejectsArgumentMismatch }
+source: ./__fixtures__/stream-argument-mismatch.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ARGUMENT_MISMATCH
+---
+kind: Assert.Manifest
+metadata: { name: AcceptsMatchingAndOmittedArguments }
+source: ./__fixtures__/stream-argument-gradual.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: RejectsUnknownValueType }
+source: ./__fixtures__/value-type-unknown.yaml
+expect:
+  errors:
+    - code: X_TELO_TYPE_UNKNOWN
+---
+kind: Run.Sequence
+metadata: { name: TestValueTypeArguments }
+steps:
+  - name: Mismatch
+    invoke: !ref RejectsArgumentMismatch
+  - name: Gradual
+    invoke: !ref AcceptsMatchingAndOmittedArguments
+  - name: UnknownName
+    invoke: !ref RejectsUnknownValueType
