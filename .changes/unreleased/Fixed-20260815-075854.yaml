@@ -1,5 +1,0 @@
-project: authoring-agent
-kind: Fixed
-body: 'System prompt: value types are one `x-telo-type` annotation, with type arguments
-  and `!ref`-named shapes.'
-time: 2026-08-15T07:58:54.564408805Z

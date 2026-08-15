@@ -1,5 +1,202 @@
 # @telorun/analyzer
 
+## 0.58.0
+
+### Minor Changes
+
+- a434722: Manifest migrations: one registry and one driver for rewriting a legacy
+  spelling to the current one.
+
+  Telo rewrote a manifest between parsing it and analyzing it in six places, and
+  two different things were tangled there. Most are **normalizations** — sugar
+  folded into the internal form, never written back, correctly invisible. A
+  growing minority are **migrations**: an old spelling rewritten because published
+  artifacts carry it and cannot be edited. Each re-invented the same four things by
+  hand — where to walk, how to report without blaming a dependency the author
+  cannot fix, how an author is meant to _act_ on the warning, and when the code may
+  be deleted. The last two were usually skipped: a deprecation warning told an
+  author something was wrong and offered no repair but hand editing.
+
+  Adding a migration is now one JSON file in `analyzer/migrations/`. **An entry
+  contains no code** — both what a rule matches and what it patches are data, so
+  one file is read identically by every kernel; a predicate expressed in one
+  language would mean one artifact is read two ways, invisibly, since a migration
+  that succeeds is silent. JSON rather than YAML because it is the only format all
+  three runtimes embed with no generation step (Rust `include_str!`, Go
+  `//go:embed`, TypeScript `resolveJsonModule` and nothing else).
+
+  - **The patch names what it targets**: `rename-key`, `set-value`, `set-tag`,
+    `insert-item`, `remove-entry`. Every operation has a known YAML edit form,
+    which is what makes a migration applicable to a _file_ and what lets the driver
+    **derive** whether a quick fix exists — read off the verb, never declared, so a
+    missing repair is stated rather than silent. A lone `set-value` yields a
+    `DiagnosticFix`; anything else says `no quick fix (removes an entry) — run
+\`telo migrate\``instead of offering one that would corrupt the file. A
+written value must be a scalar, refused when the entry is *read*: the file
+applier re-quotes a value in the author's own style at the node's own span,
+which has no meaning for a mapping, so accepting one would hide the limitation
+until a user ran`telo migrate` and was told, permanently, to fix it by hand.
+  - **The matcher's containment is positive and required**: `inKind` names the
+    document kinds a rule may touch and `under` the region within them it may
+    reach; nothing outside is reachable. `under` is **anchored at the document
+    root** — it names top-level keys — which is what makes that claim true rather
+    than decorative: a `Telo.Definition`'s `resources:` template body carries other
+    kinds' configuration, so a rule matching "any path segment spelled `schema`"
+    would reach the very user JSON blob the positive form exists to keep out.
+    Walking everything and subtracting cannot be made sound — the set to subtract
+    is unbounded, since any kind whose config carries a user JSON blob can hold
+    something shaped like the node a rule looks for — and it cannot express the
+    guarantee the module surface is promised to carry. Both halves are closed
+    vocabularies at every level; an unknown token is refused, `$comment` aside.
+    Both gates bound the _walk_ rather than filter its output, so a document no
+    rule targets is never walked and a region no rule names is never descended
+    into — this runs on the kernel's boot path for every file in the graph.
+  - **The phase runs in the loader**, after parse and before both the CEL
+    precompile and import desugaring, so a rule only ever matches author-written
+    nodes — a synthetic import manifest has no YAML document to edit, would record
+    a path the file never had, and shares `variables` / `secrets` by reference with
+    the module doc.
+  - **Composition is the driver's guarantee**: one pass with the match set frozen
+    against the pre-migration tree, rules ordered within an entry, entries
+    independent. Idempotency follows from that rather than from every author
+    getting it right. A patch that cannot apply in full applies not at all. A
+    frozen match reaches through a sequence by index, and an index is not an
+    identity, so a match under an array a sibling patch resized is refused rather
+    than rewriting the element that patch produced.
+  - **Rewrite always, report locally.** Every file in the graph is rewritten, so a
+    module published years ago keeps loading; only the entry module's own files
+    report, because a published dependency is not the consumer's to fix.
+    `LoadedGraph` gains `migrationDiagnostics`, `LoadedFile` gains `migrations`.
+  - **Path provenance is in the driver's contract.** Each rewrite records the path
+    it matched beside the migrated one, and every downstream diagnostic is mapped
+    back through it before its position is resolved — without which a key rename
+    would silently downgrade every squiggle on that node to a parent squiggle, and
+    let a fix among them write across a parent's span. The general index is by
+    FILE, so a diagnostic that names only its file (as many do) and a rewrite in a
+    document with no `metadata.name` (every `Telo.Import`) are both reachable;
+    resource identity narrows within a file rather than being the only key.
+  - **A migration is reported everywhere the manifest is read.** `telo run` warns
+    through the kernel logger, alongside the version-hoist warning it already
+    emitted — otherwise the one command an author actually uses would be the only
+    surface that rewrote their manifest silently. The SDK's `check` seam remaps
+    paths like every other consumer, so a module acting on `path` and an editor
+    rendering a squiggle never disagree about what a manifest says.
+  - **`LoadOptions.migrate`** is a new, opt-in third cache axis beside `compile`
+    and `desugarImports`. Every resolved consumer passes it; a round-trip view must
+    not, since the editor writes its manifest/YAML pair back on save.
+    `ctx.loadModule`'s `LoadOptions` (SDK) gains the same flag.
+  - **`telo migrate <paths..>`** applies pending migrations to a file, through
+    byte-level splices — comments, indentation, block scalars and quote style are
+    preserved, exactly as `telo upgrade`'s rewrite already is. Imported modules are
+    left alone. A location whose YAML cannot carry the edit is reported rather than
+    silently skipped, since the diagnostic that sent the author here says to run
+    this command. Removing a mapping entry that _opens_ a sequence item
+    (`- type: string`, the shape a legacy `anyOf` branch takes) splices out to the
+    following key instead of deleting the line, which would take the `- ` with it.
+
+  - **The scalar re-quoting rule and the byte-splice loop are one primitive**
+    (`yaml-source-edit.ts` in `@telorun/analyzer`, browser-safe), read by the
+    migration applier, `@telorun/ide-support`'s quick fix and `telo upgrade`'s pin
+    rewrite. Three surfaces now write repairs into the same files; two copies of a
+    subtle quoting rule would eventually quote one value two ways and nothing would
+    catch it. `@telorun/ide-support` re-exports `renderFixReplacement`,
+    `quoteStyleOf` and `isPlainSafe` unchanged.
+
+  **Breaking:** `normalizeRefSlots` is removed from `@telorun/templating`. It
+  dropped the legacy scalar `type:` at an `x-telo-ref` slot at every
+  schema-compile site, which the shipped `ref-slot-scalar-type` entry now does once
+  at load. Keeping both would have left one rewrite with two traversals that match
+  different node sets, and it falsified the design's own safety property — a
+  consumer who forgot `migrate` behaved identically apart from the missing warning,
+  so the entry could not prove the mechanism it demonstrates. Nothing outside this
+  repo is known to call it; a manifest still carrying that spelling is repaired by
+  the migration on every load, and `telo migrate` fixes the file.
+
+- c8d457b: One value-type annotation: `x-telo-type` says what a value IS, and the
+  vocabulary is data both runtimes read.
+
+  Three annotations answered one question — _what is the value at this slot, beyond
+  what JSON Schema's `type` vocabulary can say?_ — and each answered it
+  differently: `x-telo-type: TcpPort` (a nominal brand from a closed kernel table),
+  `x-telo-binary: true` (raw bytes, the one annotation that emitted validation
+  code), `x-telo-stream: true` (a live handle, exempt from schema walks). They
+  differ in _posture_ toward the JSON Schema layer — refine, replace, exempt — not
+  in kind, so a fourth cost eleven files across four packages, and three defects
+  followed from the spread: an unrecognized brand degraded silently, a byte slot's
+  expression typed as `dyn` because nothing consulted `x-telo-binary`, and a module
+  string-matched the keyword because a module may import `@telorun/sdk` and there
+  was nothing there to read.
+
+  - **The vocabulary is DATA; the binding to a language is not.** A type is one
+    JSON file under `sdk/value-types/`, copied into the SDK by its `prepare` and
+    embedded by Rust with `include_str!` — the `analyzer/migrations/` arrangement,
+    for the same reason. An entry declares `name`, `representation` (`json` + a
+    `base`, or `instance` + a symbolic `binding`), `live`, `parameters` and a
+    `description`, and nothing about any runtime. Each runtime carries its own
+    table mapping `binding` to its own identity; a binding with **no row is a hard
+    startup error**, never a skipped assertion, because a type that cannot be
+    asserted would silently exempt every slot declaring it.
+  - **`registerTeloKeywords`** replaces five drifted AJV registration sites — the
+    analyzer's `createAjv` and the kernel's `schema-validator`, `resource-context`,
+    `observed-state` and `manifest-schemas`, which registered overlapping lists of
+    twelve, four, one and one. Drift there is not cosmetic: a keyword that emits
+    code was simply missing from any instance that forgot it, so one schema
+    validated two ways depending on which AJV saw it.
+  - **Exemption is a property of the TYPE, not of a position.** The old walk
+    neutralized only a key it found in a `properties` map, so an array-of-streams
+    element was reached and left constrained even though it descended into `items`.
+    Reading liveness off the declared type makes an item, a union branch and a
+    property one case. It is exemption from **validation**, never from **typing**:
+    a live type's arguments still travel through every schema-typing walk.
+  - **Value types are generic.** An entry declares named type parameters and the
+    annotation's object form supplies arguments — `{ name: Telo.Stream, of:
+Telo.Bytes }`. An argument is a schema node, so it nests with no new grammar,
+    and a bare name is sugar for a node carrying only the annotation, normalized in
+    the single reader. Comparison is **covariant and gradual**: an omitted argument
+    is _any_ in both directions, so every producer and consumer that has not
+    declared an element keeps checking exactly as it did. A definite conflict is
+    `CEL_TYPE_ARGUMENT_MISMATCH`, reported where a produced value's schema meets a
+    consuming slot's — a step's `inputs:` against the invoked target's contract,
+    which is the one place both halves are in hand.
+  - **A shape is named with `!ref`**, Telo's one reference grammar, and `use:
+schema` has been in the `x-telo-ref` vocabulary for exactly this relation all
+    along. The loader normalizes it to the canonical `telo:<module>/<Type>` `$ref`
+    — authoring surface and internal form, the split `resolveRefSentinels` and
+    `resolveSchemaRefKinds` already have. Normalizing rather than inlining is what
+    preserves schema identity (the compiled-validator cache is keyed on it) and
+    leaves a recursive shape expressible; carrying the owning module is what makes
+    resolution alias-aware, where matching a bare `metadata.name` across a
+    flattened list silently dropped the alias.
+  - **A tag's produced type is declared by its ENGINE.** `TemplatingEngine` gains
+    `producedType()`; `!include-bytes` declares `Telo.Bytes` and `!include-text`
+    declares `type: string`, and `substituteCelFields` loses its tag-name branch —
+    the only place a tag's produced type was written down, written in the consumer.
+  - **`X_TELO_TYPE_UNKNOWN`** (Levenshtein-suggested) and
+    **`X_TELO_TYPE_ARGUMENT_UNKNOWN`** replace the silent degrade, on every
+    schema-bearing field of every manifest — not only definition docs, since an
+    inline `inputType:` on an ordinary resource carries a schema too.
+  - **The migration selector gains a schema region.** `inSchema: true` bounds a
+    rule to the kernel's own schema-valued keys, and only with it may `inKind` /
+    `under` be `["*"]`, and only for a rule keyed on an `x-telo-*` annotation. That
+    pairing is the containment: an annotation keyword occurs in author-written
+    schema fragments inside ordinary resource documents, and that set of kinds is
+    open, so enumerating it would be both incomplete and a violation of the
+    topology-driven constraint.
+
+  **Breaking:** `x-telo-binary` and `x-telo-stream` are rewritten to `x-telo-type`
+  at load by the `normalize-value-types` migration, so every published manifest
+  keeps working and `telo migrate` repairs a file in place. `binaryKeyword` /
+  `isBinarySlot` / `X_TELO_BINARY` are removed from `@telorun/analyzer` in favour
+  of `registerTeloKeywords` and the SDK accessors; `withStreamPropertiesSkipped` is
+  now `withLiveValuesSkipped`. Value brands are `Telo.`-qualified (`TcpPort` →
+  `Telo.TcpPort`), which the same migration rewrites.
+
+### Patch Changes
+
+- Updated dependencies [a434722]
+- Updated dependencies [c8d457b]
+  - @telorun/templating@0.14.0
+
 ## 0.57.0
 
 ### Minor Changes

@@ -1,5 +1,8 @@
 # Changelog
-## 0.5.0 - 2026-08-14
+## 0.5.1 - 2026-08-15
+### Fixed
+* The teloVerbs comment enumerated the CLI verbs held back from the agent and stopped at three, so 'telo migrate' — which rewrites an author's YAML in place, the job of the agent's own edit tools here — read as an oversight rather than a decision. It names all of them now.
+* System prompt: value types are one `x-telo-type` annotation, with type arguments and `!ref`-named shapes.## 0.5.0 - 2026-08-14
 ### Added
 * Teach the CEL rules an author actually gets wrong: call form is part of a function's signature (CEL string built-ins are methods, Telo's stdlib functions are global, a few are both), there is no now() or uuid(), date arithmetic goes through timestamp(nowSeconds()) with string()/int() to convert back out, and a non-deterministic call in an x-telo-eval: compile field freezes at load.
 * Boot creates the ./workspace directory the shell host runs commands from, so a fresh checkout or deployment no longer fails the first command with `interpreter not found` (spawn reports a missing cwd as ENOENT, which the shell host attributes to the program). The agent gains a general 'telo' tool: it supplies the CLI argv and a new 'teloVerbs' variable decides which subcommands may run, defaulting to the inspection verbs (check, cel, module, search). 'run', 'publish', 'install' and 'upgrade' are absent by default, so an anonymous prompt can neither execute a manifest on the host nor reach the operator's registry credentials; a bare path, which the CLI would treat as 'run', is rejected for the same reason. 'checkArgv' is replaced by 'teloProgram' so the check loop and the new tool cannot drive different CLI builds.
