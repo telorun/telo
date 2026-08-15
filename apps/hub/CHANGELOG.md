@@ -1,5 +1,7 @@
 # Changelog
-## 0.6.2 - 2026-08-15
+## 0.6.3 - 2026-08-15
+### Fixed
+* Import pins moved to the current module releases## 0.6.2 - 2026-08-15
 ### Fixed
 * A `category` outside the declared vocabulary silently selected nothing, and an empty hit list is indistinguishable from "no such kind exists" — the hazard `runtime` is enumerated to avoid, which an open vocabulary cannot fix with an enum. On both /search/resources and /search/modules an unknown category is now a bad argument (400 / JSON-RPC -32602) naming the real slugs; a known one that selects nothing for the query re-runs the search unfiltered and reports `categoryFilterDropped`; and every response carries the `categories` facet, so one search teaches the vocabulary instead of leaving a caller to guess it. One resource now owns "what slugs exist" — it answers /categories and backs the guard, over the union of module-level and kind-level categories, so the hub can no longer reject a slug it advertises.## 0.6.1 - 2026-08-11
 ### Fixed
