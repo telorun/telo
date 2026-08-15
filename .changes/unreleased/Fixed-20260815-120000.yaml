@@ -1,0 +1,8 @@
+project: run
+kind: Fixed
+body: 'Run.Loop''s `iteration` and Run.Iteration / Run.Projection''s `index` are
+  declared `type: integer`, but crossed into CEL as JS numbers and so typed as
+  doubles. `iteration + 1` type-checked statically and then failed at dispatch
+  with "no such overload: dyn<double> + int", pushing authors to `double(...)` or
+  `int(...)` casts a CEL int64 should never need. They cross as BigInts now.'
+time: 2026-08-15T12:00:00.000000000Z

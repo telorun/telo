@@ -14,3 +14,10 @@ include:
   - "**/tests/*.yaml"
 exclude:
   - "**/__fixtures__/**"
+  # An app's tests are the app's, not the standard library's. They pin PUBLISHED
+  # module versions, so they fail whenever a kernel or module change has landed
+  # here but not yet been released and re-pinned — a real signal, but one about
+  # the release sequence rather than about the code under test. Mixing it in
+  # made a red module suite ambiguous. `apps/hub` is already separate this way
+  # (`apps/hub/test-suite-e2e.yaml`); this is the same split for the rest.
+  - "apps/**"

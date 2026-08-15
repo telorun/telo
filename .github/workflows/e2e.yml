@@ -1,8 +1,15 @@
 name: E2E Tests
 
-# Docker-driven end-to-end suites. Run in parallel with the main `test.yml`
-# job so multi-hundred-MB image pulls / compose bring-ups don't extend the
-# unit-test wall time. Each job is self-contained.
+# End-to-end suites that stand up, or reach out to, something real — a
+# docker-compose stack, a live model, the live hub. Run in parallel with the
+# main `test.yml` job so multi-hundred-MB image pulls / compose bring-ups don't
+# extend the unit-test wall time. Each job is self-contained.
+#
+# They are separate from the module suite for a second reason too: an app's
+# tests pin PUBLISHED module versions, so they also fail while a change has
+# landed in this repo but not yet been released and re-pinned. That is a real
+# signal about the release sequence, and it should not make a module-suite
+# failure ambiguous.
 
 on:
   push:
@@ -119,3 +126,51 @@ jobs:
       - name: Stop hub stack
         if: always()
         run: docker compose down -v
+
+  # The authoring agent drives a real model against the live hub and authors a
+  # manifest against PINNED PUBLISHED modules. No stack to bring up — what makes
+  # it e2e is the live model and registry — but it is separated from the module
+  # suite on the same grounds as the hub's: a red run here can mean "not
+  # released and re-pinned yet" rather than "the code is wrong".
+  authoring-agent:
+    name: Authoring Agent E2E
+    runs-on: ubuntu-latest
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run authoring agent e2e suite
+        run: pnpm run test:e2e:authoring-agent

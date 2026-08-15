@@ -17,7 +17,10 @@ steps:
   - name: Notify
     inputs:
       who: !cel "item"
-      idx: !cel "index"
+      # `index + 1`, not a bare `index`: the declared type is `integer`, so a
+      # CEL int64, and only arithmetic against an int literal exercises the
+      # overload that used to fail at dispatch on a JS number.
+      idx: !cel "index + 1"
     invoke:
       kind: Run.Value
       inputs:
@@ -36,12 +39,12 @@ expect:
   - event: "*.Invoked"
     payload:
       ref: { kind: Run.Value }
-      outputs: { notified: a, at: 0 }
+      outputs: { notified: a, at: 1 }
   - event: "*.Invoked"
     payload:
       ref: { kind: Run.Value }
-      outputs: { notified: b, at: 1 }
+      outputs: { notified: b, at: 2 }
   - event: "*.Invoked"
     payload:
       ref: { kind: Run.Value }
-      outputs: { notified: c, at: 2 }
+      outputs: { notified: c, at: 3 }

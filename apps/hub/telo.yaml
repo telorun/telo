@@ -17,11 +17,11 @@ metadata:
     Federated discovery hub: tracks registered module refs across transports,
     caches manifests, and serves per-resource search over HTTP and MCP.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.24.0#sha256-9smTNeAG3kqd69fqYtTC5K1QKSCogC3WA_DnVIUVV8g
-  Sql: oci://ghcr.io/telorun/sql@0.20.0#sha256-PjJyQ7cexRT1y35y0U7YSpMnf8T1Wh3DRrbHU-nyR3k
-  Postgres: oci://ghcr.io/telorun/sql-postgres@0.9.0#sha256-WeK81z2_tvW8AxNKkyOrdyfbRa6RKeJVJkwZ56p2eao
+  Http: oci://ghcr.io/telorun/http-server@0.25.0#sha256-k1n8gCdP8LEwtp1xcm_DcxGk85YLbb2RrPCl6B30TUQ
+  Sql: oci://ghcr.io/telorun/sql@0.21.0#sha256-aasWNQP3KaWbJaFZVg_Zzp0efD4k7rc0FaImt6aHE-k
+  Postgres: oci://ghcr.io/telorun/sql-postgres@0.9.1#sha256-FVsInlJdw-8wjx8NQ4HqzzoEpJjq3i230YA8-HQx0oA
   Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
-  Shell: oci://ghcr.io/telorun/shell@0.10.0#sha256-wV9WPZEHof0fhpT3fUQcPPBZvVG7QWxCPoOL-ILH8kE
+  Shell: oci://ghcr.io/telorun/shell@0.11.0#sha256-TDelGXTdnjxJ5Larw-X-_2icTAFWSP3pz5zHe57XW4w
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
   Yaml: oci://ghcr.io/telorun/yaml@0.10.0#sha256-DlUb4l3RthpHUwWb6fCiHDl-MZaRGwSG4IWU9IA2Gpo
   Mcp: oci://ghcr.io/telorun/mcp-server@0.14.0#sha256-rsHTBqyhpYZYEOIW15suoUwTTjzzOeDztioTqLQJyyU
@@ -31,9 +31,9 @@ imports:
   Embedding: oci://ghcr.io/telorun/embedding@0.11.0#sha256-Ooh1n7qusgRGBVxEwjD8yRjiAMXnnZAUHHzUku7UWy4
   EmbeddingOpenai: oci://ghcr.io/telorun/embedding-openai@0.9.0#sha256-L0lOSIwCUuWp6-CGbMsFuAS_orWcseuuc1c4yZ9p9Mw
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.8.0#sha256-Vo6BlHCcrdG3JSdDWYv_90wVoYYfErR340o6IdZP6uY
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.11.0#sha256-1f-qF082EYwdfKzx5K5e7eiLFmMn68Q6l1d3-3xImLs
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.0#sha256-cBA_yixkhcC-KdU5TBFPVOBE1_t3BL9SmpZJ73Zp5xc
   VectorStore: oci://ghcr.io/telorun/vector-store@0.10.0#sha256-C3xSbXeC1u8b_nzdiiJHUtiHWtn6xEA9JrTxYHd3E4g
-  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.9.0#sha256-eKOkWDTb8YexHzlq-rXGpynTucXU5nK3jMgd-9gMAGo
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.9.1#sha256-WfPGZtfDjJ9WUw3fxfsewfseHV9mc6V3L8bwdyQiAjc
 ports:
   http:
     env: PORT
@@ -1353,9 +1353,150 @@ steps:
 # relational rows — the vectors table is never touched here. Empty query → the
 # vector arm is skipped and results degrade to lexical-only.
 
+# The category vocabulary, and the guard over it — ONE query owns "what slugs
+# exist", because three populations checked by one guard drift. The set is the
+# UNION of module-level and kind-level categories: a kind doc's `categories:`
+# REPLACES its module's for that kind (see the ingest projection), so a module
+# whose every kind overrides it declares a slug that appears in no
+# `resource_kinds` row — and guarding against the kind-level set alone would
+# reject a slug the hub itself advertises over /categories.
+#
+# The vocabulary is open — whatever labels modules declare are the groups — so
+# it is read from the data, never owned as a list here. `selected` is computed
+# in SQL rather than in CEL because only the hub slugifies (`category_slug`),
+# and a second implementation of that rule would have to agree with this one
+# forever.
+#
+# One slug can carry several authored labels (`AI` and `ai` both index as `ai`)
+# and a facet list can print only one. The winner is the label the most MODULES
+# wrote, ties broken lexicographically — deterministic, so a dropdown does not
+# reshuffle between requests — falling back to the kind-level label for a slug
+# no module declares.
+kind: Run.Sequence
+metadata:
+  name: CategoryVocabulary
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      # The caller's category, or '' to just read the facet. Slugified here, so
+      # either the slug the API hands out (`storage`) or the label an author
+      # wrote (`AI`) selects the same group.
+      category: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      categories:
+        type: array
+        items:
+          type: object
+          # `category` rather than `slug`, matching what /categories has always
+          # returned: one concept must not have two key names depending on which
+          # endpoint answered. `selected` says whether this row is the one the
+          # caller's argument slugified to — decided in SQL, because only the
+          # hub slugifies.
+          properties:
+            category: { type: string }
+            label: { type: string }
+            modules: { type: integer }
+            kinds: { type: integer }
+            selected: { type: boolean }
+          required: [category, label, modules, kinds, selected]
+    required: [categories]
+steps:
+  - name: facets
+    invoke: !ref Query
+    inputs:
+      sql: >-
+        WITH mods AS (
+          SELECT c.slug, c.label
+          FROM module_versions mv
+          JOIN modules m ON m.id = mv.module_id AND m.latest_version = mv.version
+          CROSS JOIN LATERAL unnest(mv.categories, mv.category_labels) AS c(slug, label)
+        ),
+        kinds AS (
+          SELECT c.slug, c.label
+          FROM resource_kinds rk
+          JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+          CROSS JOIN LATERAL unnest(rk.categories, rk.category_labels) AS c(slug, label)
+          WHERE rk.exported
+        )
+        SELECT s.slug AS category,
+               COALESCE(
+                 (SELECT m.label FROM mods m WHERE m.slug = s.slug
+                  GROUP BY m.label ORDER BY COUNT(*) DESC, m.label LIMIT 1),
+                 (SELECT k.label FROM kinds k WHERE k.slug = s.slug
+                  GROUP BY k.label ORDER BY COUNT(*) DESC, k.label LIMIT 1)
+               ) AS label,
+               (SELECT COUNT(*)::int FROM mods WHERE mods.slug = s.slug) AS modules,
+               (SELECT COUNT(*)::int FROM kinds WHERE kinds.slug = s.slug) AS kinds,
+               s.slug = category_slug($1) AS selected
+        FROM (SELECT slug FROM mods UNION SELECT slug FROM kinds) s
+        ORDER BY s.slug
+      bindings:
+        - !cel "inputs.category"
+outputs:
+  categories: !cel >-
+    steps.facets.result.rows.map(r, {'category': r.category, 'label': r.label,
+                                     'modules': r.modules, 'kinds': r.kinds,
+                                     'selected': r.selected})
+---
+# The guard, kept separate from the vocabulary it reads so /categories — which
+# passes a constant '' and therefore cannot trip it — is not made to catch an
+# unreachable throw. Every search goes through this one; the vocabulary is
+# forwarded so the caller still gets the facet from the same call.
+kind: Run.Sequence
+metadata:
+  name: RequireKnownCategory
+throws:
+  - code: ERR_UNKNOWN_CATEGORY
+    description: The `category` argument names no slug in the declared vocabulary.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      category: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      categories: { type: array, items: { type: object } }
+    required: [categories]
+steps:
+  - name: vocabulary
+    invoke: !ref CategoryVocabulary
+    inputs:
+      category: !cel "inputs.category"
+  # A category matching no declared slug is a BAD ARGUMENT and is reported as
+  # one. Left to the filter it would simply select nothing, and an empty hit
+  # list is indistinguishable from "Telo has no such kind" — the same hazard
+  # `runtime` is enumerated to avoid, which this facet, being open-ended, cannot
+  # fix with an enum.
+  - name: guard
+    if: !cel "inputs.category != '' && !steps.vocabulary.result.categories.exists(c, c.selected)"
+    then:
+      - name: reject
+        throw:
+          code: ERR_UNKNOWN_CATEGORY
+          message: !cel >-
+            'unknown category "' + inputs.category + '" — known categories: '
+              + join(steps.vocabulary.result.categories.map(c, c.category), ', ')
+outputs:
+  categories: !cel >-
+    steps.vocabulary.result.categories.map(c, {'category': c.category, 'label': c.label,
+                                               'modules': c.modules, 'kinds': c.kinds})
+---
 kind: Run.Sequence
 metadata:
   name: SearchResources
+throws:
+  - code: ERR_UNKNOWN_CATEGORY
+    description: The `category` argument names no slug in the declared vocabulary.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1365,6 +1506,10 @@ inputType:
       category: { type: string }
       runtime: { type: string }
 steps:
+  - name: vocabulary
+    invoke: !ref RequireKnownCategory
+    inputs:
+      category: !cel "inputs.category"
   - name: vector
     if: !cel "inputs.q != ''"
     then:
@@ -1376,109 +1521,153 @@ steps:
         invoke: !ref VectorMatch
         inputs:
           vector: !cel "steps.embed.result.embeddings[0]"
+  # Hoisted out of the binding list so the query below can be run twice (see
+  # `broaden`) off one neighbour set — recomputing it per run would re-filter
+  # the same matches, and duplicating the expression would let the two copies
+  # drift.
+  #
+  # Filtered here rather than in the CTE so the rejected neighbours are never
+  # serialized into the query at all. Survivors keep their relative order,
+  # which is what the CTE's ORDINALITY turns back into a rank.
+  - name: matches
+    value: !cel >-
+      'match' in steps
+        ? json(steps.match.result.matches.filter(m, m.score >= variables.vectorMinScore))
+        : '[]'
+  # Carried as a pure step rather than a YAML anchor: `broaden` re-runs the
+  # identical query with the facet dropped, and two copies would drift — but an
+  # alias has no visual representation, so the editor, which pairs manifest
+  # nodes to YAML nodes and writes the pair back, would expand it into exactly
+  # the two copies the sharing exists to prevent. A `value:` step is the same
+  # sharing expressed as data flow, and it round-trips.
+  #
+  # $1 = query text, $2 = the vector arm's matches as JSON (ordered best-first,
+  # so ORDINALITY is the vector rank; '[]' when the arm was skipped),
+  # $3 = category slug or '' for no facet filter,
+  # $4 = kernel name or '' — see the runtime filter below.
+  #
+  # The facet is a filter on the SAME query, not a second endpoint: an empty
+  # `q` already degrades to an unranked listing, so `?q=&category=storage` is
+  # a browse. It has to be applied INSIDE `lex` (before that arm's cap) as
+  # well as after fusion — filtering only at the end would let the cap drop
+  # rows that the facet was going to select.
+  #
+  # `$3` runs through `category_slug` too, so a caller may pass either the
+  # slug the API hands out (`storage`) or the label an author wrote (`AI`).
+  - name: sql
+    value: >-
+      WITH q AS (
+        SELECT plainto_tsquery('english', $1) AS andq,
+               CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
+                    ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
+      ),
+      vec AS (
+        SELECT (elem->>'id')::bigint AS id, ord::int AS rank
+        FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS t(elem, ord)
+      ),
+      lex AS (
+        SELECT rk.id,
+               ROW_NUMBER() OVER (
+                 ORDER BY (COALESCE(ts_rank(v.vec, q.orq), 0.0)
+                           + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
+                           + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END) DESC, rk.name
+               ) AS rank
+        FROM resource_kinds rk
+        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+        LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
+        CROSS JOIN q
+        CROSS JOIN LATERAL (
+          SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
+        ) v
+        WHERE rk.exported
+          AND ($3 = '' OR rk.categories @> ARRAY[category_slug($3)]::text[])
+          -- A portable kind declares no controllers, so no kernel constraint
+          -- applies and it satisfies every runtime. Written as a flag rather
+          -- than by enumerating kernels into the row, which would go stale.
+          AND ($4 = '' OR rk.portable OR rk.runtimes @> ARRAY[$4]::text[])
+          AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%')
+        ORDER BY rank
+        LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
+      ),
+      fused AS (
+        SELECT id, SUM(1.0 / (60 + rank)) AS score
+        FROM (SELECT id, rank FROM vec UNION ALL SELECT id, rank FROM lex) s
+        GROUP BY id
+      )
+      SELECT rk.name AS kind, rk.capability, rk.description,
+             rk.extends_kind, rk.extends_ref,
+             rk.runtimes, rk.languages, rk.portable,
+             rk.deprecated_reason, rk.replaced_by_kind, rk.replaced_by_ref,
+             -- Facets travel as {slug, label}: a chip prints the label, a
+             -- click filters by the slug. Sending one without the other
+             -- would force the caller to re-derive the missing half.
+             (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
+              FROM unnest(rk.categories, rk.category_labels) AS t(s, l)) AS categories,
+             m.ref, rk.version, COALESCE(mv.module_name, '') AS module_name,
+             COALESCE(mv.description, '') AS module_description,
+             COALESCE(mv.repository, '') AS module_repository,
+             COALESCE(mv.license, '') AS module_license,
+             module_publisher(m.ref, m.transport) AS module_publisher,
+             COALESCE(mv.deprecated_reason, '') AS module_deprecated_reason,
+             (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
+              FROM unnest(mv.categories, mv.category_labels) AS t(s, l)) AS module_categories,
+             f.score::float8 AS score
+      FROM fused f
+      JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
+      JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+      LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
+      WHERE ($3 = '' OR rk.categories @> ARRAY[category_slug($3)]::text[])
+        AND ($4 = '' OR rk.portable OR rk.runtimes @> ARRAY[$4]::text[])
+      ORDER BY f.score DESC, rk.name
+      LIMIT 20
   - name: query
     invoke: !ref Query
     inputs:
-      # $1 = query text, $2 = the vector arm's matches as JSON (ordered best-first,
-      # so ORDINALITY is the vector rank; '[]' when the arm was skipped),
-      # $3 = category slug or '' for no facet filter,
-      # $4 = kernel name or '' — see the runtime filter below.
-      #
-      # The facet is a filter on the SAME query, not a second endpoint: an empty
-      # `q` already degrades to an unranked listing, so `?q=&category=storage` is
-      # a browse. It has to be applied INSIDE `lex` (before that arm's cap) as
-      # well as after fusion — filtering only at the end would let the cap drop
-      # rows that the facet was going to select.
-      #
-      # `$3` runs through `category_slug` too, so a caller may pass either the
-      # slug the API hands out (`storage`) or the label an author wrote (`AI`).
-      sql: >-
-        WITH q AS (
-          SELECT plainto_tsquery('english', $1) AS andq,
-                 CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
-                      ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
-        ),
-        vec AS (
-          SELECT (elem->>'id')::bigint AS id, ord::int AS rank
-          FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS t(elem, ord)
-        ),
-        lex AS (
-          SELECT rk.id,
-                 ROW_NUMBER() OVER (
-                   ORDER BY (COALESCE(ts_rank(v.vec, q.orq), 0.0)
-                             + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
-                             + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END) DESC, rk.name
-                 ) AS rank
-          FROM resource_kinds rk
-          JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-          LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
-          CROSS JOIN q
-          CROSS JOIN LATERAL (
-            SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
-          ) v
-          WHERE rk.exported
-            AND ($3 = '' OR rk.categories @> ARRAY[category_slug($3)]::text[])
-            -- A portable kind declares no controllers, so no kernel constraint
-            -- applies and it satisfies every runtime. Written as a flag rather
-            -- than by enumerating kernels into the row, which would go stale.
-            AND ($4 = '' OR rk.portable OR rk.runtimes @> ARRAY[$4]::text[])
-            AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%')
-          ORDER BY rank
-          LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
-        ),
-        fused AS (
-          SELECT id, SUM(1.0 / (60 + rank)) AS score
-          FROM (SELECT id, rank FROM vec UNION ALL SELECT id, rank FROM lex) s
-          GROUP BY id
-        )
-        SELECT rk.name AS kind, rk.capability, rk.description,
-               rk.extends_kind, rk.extends_ref,
-               rk.runtimes, rk.languages, rk.portable,
-               rk.deprecated_reason, rk.replaced_by_kind, rk.replaced_by_ref,
-               -- Facets travel as {slug, label}: a chip prints the label, a
-               -- click filters by the slug. Sending one without the other
-               -- would force the caller to re-derive the missing half.
-               (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
-                FROM unnest(rk.categories, rk.category_labels) AS t(s, l)) AS categories,
-               m.ref, rk.version, COALESCE(mv.module_name, '') AS module_name,
-               COALESCE(mv.description, '') AS module_description,
-               COALESCE(mv.repository, '') AS module_repository,
-               COALESCE(mv.license, '') AS module_license,
-               module_publisher(m.ref, m.transport) AS module_publisher,
-               COALESCE(mv.deprecated_reason, '') AS module_deprecated_reason,
-               (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
-                FROM unnest(mv.categories, mv.category_labels) AS t(s, l)) AS module_categories,
-               f.score::float8 AS score
-        FROM fused f
-        JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
-        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-        LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
-        WHERE ($3 = '' OR rk.categories @> ARRAY[category_slug($3)]::text[])
-          AND ($4 = '' OR rk.portable OR rk.runtimes @> ARRAY[$4]::text[])
-        ORDER BY f.score DESC, rk.name
-        LIMIT 20
+      sql: !cel "steps.sql.result"
       bindings:
         - !cel "inputs.q"
-        # Filtered here rather than in the CTE so the rejected neighbours are
-        # never serialized into the query at all. Survivors keep their relative
-        # order, which is what the CTE's ORDINALITY turns back into a rank.
-        - !cel >-
-          'match' in steps
-            ? json(steps.match.result.matches.filter(m, m.score >= variables.vectorMinScore))
-            : '[]'
+        - !cel "steps.matches.result"
         - !cel "inputs.category"
         - !cel "inputs.runtime"
+  # A KNOWN category that selects nothing for THIS query is a filter that was
+  # too narrow, not an absent capability — so the search is repeated without it
+  # and the response says which happened (`categoryFilterDropped`). Returning
+  # the empty set instead is what teaches a caller that the kind does not
+  # exist: `Run.Loop` is in `Compute`, and asking for it under `coordination`
+  # answered "no such kind" twice in a row.
+  - name: broaden
+    if: !cel "inputs.category != '' && steps.query.result.rows.size() == 0"
+    then:
+      - name: retry
+        invoke: !ref Query
+        inputs:
+          sql: !cel "steps.sql.result"
+          bindings:
+            - !cel "inputs.q"
+            - !cel "steps.matches.result"
+            - ""
+            - !cel "inputs.runtime"
 outputs:
+  # The facet travels with EVERY response, not only a browse: it is the only
+  # thing that makes an open vocabulary learnable from inside a search, and a
+  # caller that has to fetch it separately will guess instead.
+  categories: !cel "steps.vocabulary.result.categories"
+  # Stated rather than inferred: hits under a category the caller did not ask
+  # to drop would otherwise read as hits WITHIN it.
+  categoryFilterDropped: !cel "'retry' in steps"
   # `deprecated` and `extends` are always present with empty strings when absent,
   # rather than omitted: a fixed response shape is what lets an MCP client and a
   # typed frontend consume this without probing for optional keys.
-  hits: !cel "steps.query.result.rows.map(r, {'kind': r.kind, 'capability': r.capability, 'description': r.description, 'categories': r.categories, 'extends': {'kind': r.extends_kind, 'ref': r.extends_ref}, 'runtime': {'runtimes': r.runtimes, 'languages': r.languages, 'portable': r.portable}, 'deprecated': {'reason': r.deprecated_reason, 'replacedBy': {'kind': r.replaced_by_kind, 'ref': r.replaced_by_ref}}, 'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license, 'publisher': r.module_publisher, 'deprecated': {'reason': r.module_deprecated_reason}, 'categories': r.module_categories}, 'score': r.score})"
+  hits: !cel "('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).map(r, {'kind': r.kind, 'capability': r.capability, 'description': r.description, 'categories': r.categories, 'extends': {'kind': r.extends_kind, 'ref': r.extends_ref}, 'runtime': {'runtimes': r.runtimes, 'languages': r.languages, 'portable': r.portable}, 'deprecated': {'reason': r.deprecated_reason, 'replacedBy': {'kind': r.replaced_by_kind, 'ref': r.replaced_by_ref}}, 'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license, 'publisher': r.module_publisher, 'deprecated': {'reason': r.module_deprecated_reason}, 'categories': r.module_categories}, 'score': r.score})"
 ---
 # Module-first projection: the same fused hits grouped by owning module, with
 # every exported kind included so a module card needs no second manifest fetch.
 kind: Run.Sequence
 metadata:
   name: SearchModules
+throws:
+  - code: ERR_UNKNOWN_CATEGORY
+    description: The `category` argument names no slug in the declared vocabulary.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1490,6 +1679,13 @@ inputType:
       limit: { type: integer }
       offset: { type: integer }
 steps:
+  # Guarded through the SAME vocabulary as /search/resources. Leaving one of the
+  # two endpoints unguarded would just move the original defect: an agent that
+  # falls back from kinds to modules hits the silent empty set again.
+  - name: vocabulary
+    invoke: !ref RequireKnownCategory
+    inputs:
+      category: !cel "inputs.category"
   - name: vector
     if: !cel "inputs.q != ''"
     then:
@@ -1501,165 +1697,192 @@ steps:
         invoke: !ref VectorMatch
         inputs:
           vector: !cel "steps.embed.result.embeddings[0]"
-  - name: query
-    invoke: !ref Query
-    inputs:
-      sql: >-
-        WITH q AS (
-          SELECT plainto_tsquery('english', $1) AS andq,
-                 CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
-                      ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
-        ),
-        vec AS (
-          SELECT (elem->>'id')::bigint AS id, ord::int AS rank
-          FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS t(elem, ord)
-        ),
-        lex AS (
-          SELECT rk.id,
-                 ROW_NUMBER() OVER (
-                   ORDER BY (COALESCE(ts_rank(v.vec, q.orq), 0.0)
-                             + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
-                             + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END) DESC, rk.name
-                 ) AS rank
-          FROM resource_kinds rk
-          JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-          LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
-          CROSS JOIN q
-          CROSS JOIN LATERAL (
-            SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
-          ) v
-          WHERE rk.exported
-            AND ($3 = '' OR mv.categories @> ARRAY[category_slug($3)]::text[])
-            -- Module-level reach: a kernel that runs even one kind keeps the
-            -- module in the result, since the card shows full-vs-partial.
-            AND ($6 = '' OR mv.portable OR mv.runtimes @> ARRAY[$6]::text[])
-            AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%')
-          ORDER BY rank
-          LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
-        ),
-        fused AS (
-          SELECT id, SUM(1.0 / (60 + rank)) AS score
-          FROM (SELECT id, rank FROM vec UNION ALL SELECT id, rank FROM lex) s
-          GROUP BY id
-        ),
-        hits AS (
-          SELECT rk.module_id, rk.version, rk.name, rk.capability, rk.description,
-                 rk.extends_kind, rk.extends_ref,
-                 rk.runtimes AS kind_runtimes, rk.languages AS kind_languages,
-                 rk.portable AS kind_portable, rk.deprecated_reason AS kind_deprecated_reason,
-                 rk.replaced_by_kind, rk.replaced_by_ref,
-                 m.ref, COALESCE(mv.module_name, '') AS module_name,
-                 COALESCE(mv.description, '') AS module_description,
-                 COALESCE(mv.repository, '') AS module_repository,
-                 COALESCE(mv.license, '') AS module_license,
-                 COALESCE(mv.homepage, '') AS module_homepage,
-                 module_publisher(m.ref, m.transport) AS module_publisher,
-                 COALESCE(mv.deprecated_reason, '') AS module_deprecated_reason,
-                 COALESCE(mv.replaced_by, '') AS module_replaced_by,
-                 COALESCE(mv.runtimes, '{}') AS module_runtimes,
-                 mv.runtimes_full AS module_runtimes_full,
-                 mv.languages AS module_languages, mv.portable AS module_portable,
-                 f.score
-          FROM fused f
-          JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
-          JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-          LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
-          WHERE ($3 = '' OR mv.categories @> ARRAY[category_slug($3)]::text[])
-            AND ($6 = '' OR mv.portable OR mv.runtimes @> ARRAY[$6]::text[])
-        )
-        SELECT h.ref, h.version, h.module_name, h.module_description,
+  # Hoisted so `broaden` re-runs off one neighbour set. Filtered here rather
+  # than in the CTE so the rejected neighbours are never serialized into the
+  # query at all; survivors keep their relative order, which is what the CTE's
+  # ORDINALITY turns back into a rank.
+  - name: matches
+    value: !cel >-
+      'match' in steps
+        ? json(steps.match.result.matches.filter(m, m.score >= variables.vectorMinScore))
+        : '[]'
+  # A `value:` step rather than a YAML anchor — see the note on the same step in
+  # SearchResources.
+  - name: sql
+    value: >-
+      WITH q AS (
+      SELECT plainto_tsquery('english', $1) AS andq,
+             CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
+                  ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
+      ),
+      vec AS (
+      SELECT (elem->>'id')::bigint AS id, ord::int AS rank
+      FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS t(elem, ord)
+      ),
+      lex AS (
+      SELECT rk.id,
+               ROW_NUMBER() OVER (
+                 ORDER BY (COALESCE(ts_rank(v.vec, q.orq), 0.0)
+                           + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
+                           + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END) DESC, rk.name
+               ) AS rank
+        FROM resource_kinds rk
+        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+        LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
+        CROSS JOIN q
+        CROSS JOIN LATERAL (
+          SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
+        ) v
+        WHERE rk.exported
+          AND ($3 = '' OR mv.categories @> ARRAY[category_slug($3)]::text[])
+          -- Module-level reach: a kernel that runs even one kind keeps the
+          -- module in the result, since the card shows full-vs-partial.
+          AND ($6 = '' OR mv.portable OR mv.runtimes @> ARRAY[$6]::text[])
+          AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%')
+        ORDER BY rank
+        LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
+      ),
+      fused AS (
+        SELECT id, SUM(1.0 / (60 + rank)) AS score
+        FROM (SELECT id, rank FROM vec UNION ALL SELECT id, rank FROM lex) s
+        GROUP BY id
+      ),
+      hits AS (
+        SELECT rk.module_id, rk.version, rk.name, rk.capability, rk.description,
+               rk.extends_kind, rk.extends_ref,
+               rk.runtimes AS kind_runtimes, rk.languages AS kind_languages,
+               rk.portable AS kind_portable, rk.deprecated_reason AS kind_deprecated_reason,
+               rk.replaced_by_kind, rk.replaced_by_ref,
+               m.ref, COALESCE(mv.module_name, '') AS module_name,
+               COALESCE(mv.description, '') AS module_description,
+               COALESCE(mv.repository, '') AS module_repository,
+               COALESCE(mv.license, '') AS module_license,
+               COALESCE(mv.homepage, '') AS module_homepage,
+               module_publisher(m.ref, m.transport) AS module_publisher,
+               COALESCE(mv.deprecated_reason, '') AS module_deprecated_reason,
+               COALESCE(mv.replaced_by, '') AS module_replaced_by,
+               COALESCE(mv.runtimes, '{}') AS module_runtimes,
+               mv.runtimes_full AS module_runtimes_full,
+               mv.languages AS module_languages, mv.portable AS module_portable,
+               f.score
+        FROM fused f
+        JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
+        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+        LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
+        WHERE ($3 = '' OR mv.categories @> ARRAY[category_slug($3)]::text[])
+          AND ($6 = '' OR mv.portable OR mv.runtimes @> ARRAY[$6]::text[])
+      )
+      SELECT h.ref, h.version, h.module_name, h.module_description,
+             h.module_repository, h.module_license, h.module_homepage,
+             h.module_publisher, h.module_deprecated_reason, h.module_replaced_by,
+             h.module_runtimes, h.module_runtimes_full,
+             h.module_languages, h.module_portable,
+             -- Projected here rather than in `hits` because json has no
+             -- equality operator and so cannot sit in the GROUP BY below.
+             -- Facets travel as {slug, label}: a chip prints the label, a
+             -- click filters by the slug.
+             (SELECT COALESCE(json_agg(json_build_object('slug', t.s, 'label', t.l) ORDER BY t.s), '[]'::json)
+              FROM module_versions mv2, unnest(mv2.categories, mv2.category_labels) AS t(s, l)
+              WHERE mv2.module_id = h.module_id AND mv2.version = h.version) AS module_categories,
+             COUNT(*) OVER ()::int AS total,
+             MAX(h.score)::float8 AS score,
+             json_agg(json_build_object('kind', h.name, 'capability', h.capability,
+                                        'description', h.description, 'score', h.score,
+                                        'extends', json_build_object('kind', h.extends_kind,
+                                                                     'ref', h.extends_ref),
+                                        'runtime', json_build_object('runtimes', h.kind_runtimes,
+                                                                     'languages', h.kind_languages,
+                                                                     'portable', h.kind_portable),
+                                        'deprecated', json_build_object(
+                                          'reason', h.kind_deprecated_reason,
+                                          'replacedBy', json_build_object('kind', h.replaced_by_kind,
+                                                                          'ref', h.replaced_by_ref)))
+                      ORDER BY h.score DESC) AS matched_kinds,
+             /* Full detail for EVERY exported kind, not just the matched
+                ones, so a result card can preview any of them without a
+                second request. The matched subset keeps its own list because
+                only that one carries a relevance score. */
+             (SELECT COALESCE(json_agg(json_build_object(
+                       'kind', rk2.name, 'capability', rk2.capability,
+                       'abstract', rk2.abstract, 'description', rk2.description,
+                       'extends', json_build_object('kind', rk2.extends_kind,
+                                                    'ref', rk2.extends_ref),
+                       'runtime', json_build_object('runtimes', rk2.runtimes,
+                                                    'languages', rk2.languages,
+                                                    'portable', rk2.portable),
+                       'deprecated', json_build_object(
+                         'reason', rk2.deprecated_reason,
+                         'replacedBy', json_build_object('kind', rk2.replaced_by_kind,
+                                                         'ref', rk2.replaced_by_ref)))
+                     ORDER BY rk2.name), '[]'::json)
+              FROM resource_kinds rk2
+              WHERE rk2.module_id = h.module_id AND rk2.version = h.version
+                AND rk2.exported) AS exported_kinds,
+             -- The other half of the public surface: ready-made singleton
+             -- instances an importer references as `!ref <Alias>.<name>`.
+             -- `kind`/`description` are empty for a re-export, whose declaring
+             -- doc belongs to another module.
+             (SELECT COALESCE(json_agg(json_build_object(
+                       'name', mr.name, 'kind', mr.kind,
+                       'description', mr.description, 'declared', mr.declared)
+                     ORDER BY mr.name), '[]'::json)
+              FROM module_resources mr
+              WHERE mr.module_id = h.module_id AND mr.version = h.version)
+               AS exported_resources
+      FROM hits h
+      GROUP BY h.module_id, h.ref, h.version, h.module_name, h.module_description,
                h.module_repository, h.module_license, h.module_homepage,
                h.module_publisher, h.module_deprecated_reason, h.module_replaced_by,
                h.module_runtimes, h.module_runtimes_full,
-               h.module_languages, h.module_portable,
-               -- Projected here rather than in `hits` because json has no
-               -- equality operator and so cannot sit in the GROUP BY below.
-               -- Facets travel as {slug, label}: a chip prints the label, a
-               -- click filters by the slug.
-               (SELECT COALESCE(json_agg(json_build_object('slug', t.s, 'label', t.l) ORDER BY t.s), '[]'::json)
-                FROM module_versions mv2, unnest(mv2.categories, mv2.category_labels) AS t(s, l)
-                WHERE mv2.module_id = h.module_id AND mv2.version = h.version) AS module_categories,
-               COUNT(*) OVER ()::int AS total,
-               MAX(h.score)::float8 AS score,
-               json_agg(json_build_object('kind', h.name, 'capability', h.capability,
-                                          'description', h.description, 'score', h.score,
-                                          'extends', json_build_object('kind', h.extends_kind,
-                                                                       'ref', h.extends_ref),
-                                          'runtime', json_build_object('runtimes', h.kind_runtimes,
-                                                                       'languages', h.kind_languages,
-                                                                       'portable', h.kind_portable),
-                                          'deprecated', json_build_object(
-                                            'reason', h.kind_deprecated_reason,
-                                            'replacedBy', json_build_object('kind', h.replaced_by_kind,
-                                                                            'ref', h.replaced_by_ref)))
-                        ORDER BY h.score DESC) AS matched_kinds,
-               /* Full detail for EVERY exported kind, not just the matched
-                  ones, so a result card can preview any of them without a
-                  second request. The matched subset keeps its own list because
-                  only that one carries a relevance score. */
-               (SELECT COALESCE(json_agg(json_build_object(
-                         'kind', rk2.name, 'capability', rk2.capability,
-                         'abstract', rk2.abstract, 'description', rk2.description,
-                         'extends', json_build_object('kind', rk2.extends_kind,
-                                                      'ref', rk2.extends_ref),
-                         'runtime', json_build_object('runtimes', rk2.runtimes,
-                                                      'languages', rk2.languages,
-                                                      'portable', rk2.portable),
-                         'deprecated', json_build_object(
-                           'reason', rk2.deprecated_reason,
-                           'replacedBy', json_build_object('kind', rk2.replaced_by_kind,
-                                                           'ref', rk2.replaced_by_ref)))
-                       ORDER BY rk2.name), '[]'::json)
-                FROM resource_kinds rk2
-                WHERE rk2.module_id = h.module_id AND rk2.version = h.version
-                  AND rk2.exported) AS exported_kinds,
-               -- The other half of the public surface: ready-made singleton
-               -- instances an importer references as `!ref <Alias>.<name>`.
-               -- `kind`/`description` are empty for a re-export, whose declaring
-               -- doc belongs to another module.
-               (SELECT COALESCE(json_agg(json_build_object(
-                         'name', mr.name, 'kind', mr.kind,
-                         'description', mr.description, 'declared', mr.declared)
-                       ORDER BY mr.name), '[]'::json)
-                FROM module_resources mr
-                WHERE mr.module_id = h.module_id AND mr.version = h.version)
-                 AS exported_resources
-        FROM hits h
-        GROUP BY h.module_id, h.ref, h.version, h.module_name, h.module_description,
-                 h.module_repository, h.module_license, h.module_homepage,
-                 h.module_publisher, h.module_deprecated_reason, h.module_replaced_by,
-                 h.module_runtimes, h.module_runtimes_full,
-                 h.module_languages, h.module_portable
-        /* `ref` breaks the tie so paging is stable: with an empty query every
-           module scores alike, and an unordered page boundary would repeat or
-           skip rows between requests. Block comment, not `--`: this block is a
-           folded YAML scalar, so a line comment at the base indentation joins
-           onto one line and swallows the SQL after it. */
-        ORDER BY MAX(h.score) DESC, h.ref
-        LIMIT $4 OFFSET $5
+               h.module_languages, h.module_portable
+      /* `ref` breaks the tie so paging is stable: with an empty query every
+         module scores alike, and an unordered page boundary would repeat or
+         skip rows between requests. Block comment, not `--`: this block is a
+         folded YAML scalar, so a line comment at the base indentation joins
+         onto one line and swallows the SQL after it. */
+      ORDER BY MAX(h.score) DESC, h.ref
+      LIMIT $4 OFFSET $5
+  - name: query
+    invoke: !ref Query
+    inputs:
+      sql: !cel "steps.sql.result"
       bindings:
         - !cel "inputs.q"
-        # Filtered here rather than in the CTE so the rejected neighbours are
-        # never serialized into the query at all. Survivors keep their relative
-        # order, which is what the CTE's ORDINALITY turns back into a rank.
-        - !cel >-
-          'match' in steps
-            ? json(steps.match.result.matches.filter(m, m.score >= variables.vectorMinScore))
-            : '[]'
+        - !cel "steps.matches.result"
         - !cel "inputs.category"
         - !cel "inputs.limit"
         - !cel "inputs.offset"
         - !cel "inputs.runtime"
+  # Same reduction as /search/resources: a KNOWN category that selects nothing
+  # for THIS query is too narrow a filter, not an absent capability.
+  - name: broaden
+    if: !cel "inputs.category != '' && steps.query.result.rows.size() == 0"
+    then:
+      - name: retry
+        invoke: !ref Query
+        inputs:
+          sql: !cel "steps.sql.result"
+          bindings:
+            - !cel "inputs.q"
+            - !cel "steps.matches.result"
+            - ""
+            - !cel "inputs.limit"
+            - !cel "inputs.offset"
+            - !cel "inputs.runtime"
 outputs:
+  categories: !cel "steps.vocabulary.result.categories"
+  categoryFilterDropped: !cel "'retry' in steps"
   # `total` is the match count before LIMIT/OFFSET — a paging UI needs to know
   # what it is not showing, and a browse that silently stopped at 20 would read
   # as "that's all there is". An empty result carries no row to read it from,
   # hence the fallback.
-  total: !cel "steps.query.result.rows.size() > 0 ? steps.query.result.rows[0].total : 0"
+  total: !cel >-
+    ('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).size() > 0
+      ? ('retry' in steps ? steps.retry.result.rows : steps.query.result.rows)[0].total : 0
   # `runtimes` lists every kernel with at least partial reach and `full` the
   # subset covering every kind, so a caller renders "Rust (partial)" without a
   # second lookup — and a filter still reads one array.
-  hits: !cel "steps.query.result.rows.map(r, {'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license, 'homepage': r.module_homepage, 'publisher': r.module_publisher, 'deprecated': {'reason': r.module_deprecated_reason, 'replacedBy': r.module_replaced_by}, 'runtime': {'runtimes': r.module_runtimes, 'full': r.module_runtimes_full, 'languages': r.module_languages, 'portable': r.module_portable}, 'categories': r.module_categories}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds, 'exportedResources': r.exported_resources})"
+  hits: !cel "('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).map(r, {'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license, 'homepage': r.module_homepage, 'publisher': r.module_publisher, 'deprecated': {'reason': r.module_deprecated_reason, 'replacedBy': r.module_replaced_by}, 'runtime': {'runtimes': r.module_runtimes, 'full': r.module_runtimes_full, 'languages': r.module_languages, 'portable': r.module_portable}, 'categories': r.module_categories}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds, 'exportedResources': r.exported_resources})"
 ---
 # ── Manifest read (MCP get_module_manifest) ──────────────────────────────────
 # Re-keyed off the location ref (an OCI module has no namespace/name). Reads
@@ -1799,7 +2022,18 @@ routes:
               query: !cel "request.query.q"
               category: !cel "request.query.category"
               runtime: !cel "request.query.runtime"
+              categories: !cel "result.categories"
+              categoryFilterDropped: !cel "result.categoryFilterDropped"
               hits: !cel "result.hits"
+    catches:
+      # A category outside the declared vocabulary is the caller's mistake, so
+      # it is a 400 carrying the vocabulary — not a 200 with an empty list.
+      - status: 400
+        when: !cel "error.code == 'ERR_UNKNOWN_CATEGORY'"
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
 
   - request:
       path: /search/modules
@@ -1812,7 +2046,13 @@ routes:
             category:
               type: string
               default: ""
-              description: "Narrow to modules in this category. Empty means no facet filter."
+              # Not an enum — the vocabulary is open. Guarded instead: see the
+              # note on /search/resources.
+              description: >-
+                Narrow to modules in this category. A slug outside the declared
+                vocabulary is a 400, not an empty list; a recognized one that
+                selects nothing for the query is dropped and reported as
+                `categoryFilterDropped`. Empty means no facet filter.
             runtime:
               type: string
               default: ""
@@ -1844,41 +2084,36 @@ routes:
               query: !cel "request.query.q"
               category: !cel "request.query.category"
               runtime: !cel "request.query.runtime"
+              categories: !cel "result.categories"
+              categoryFilterDropped: !cel "result.categoryFilterDropped"
               total: !cel "result.total"
               hits: !cel "result.hits"
+    catches:
+      - status: 400
+        when: !cel "error.code == 'ERR_UNKNOWN_CATEGORY'"
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
 
   # Browse, not search: the categories that actually exist, with how many
-  # modules sit in each. The vocabulary is open — whatever labels modules
-  # declare are the groups, so this is derived from the data, never a list the
-  # hub owns.
-  #
-  # One slug can carry several authored labels (`AI` and `ai` both index as
-  # `ai`), and a facet list can print only one. The winner is the label the
-  # most modules wrote, ties broken lexicographically — deterministic, so the
-  # dropdown doesn't reshuffle between requests.
+  # modules and kinds sit in each. Answered by the SAME resource the search
+  # guard consults, so "what slugs exist" has one definition — publishing a slug
+  # here that the guard would reject was the divergence this collapses.
   - request:
       path: /categories
       method: GET
-    handler:
-      kind: Sql.Query
-      connection: !ref Db
+    handler: !ref CategoryVocabulary
     inputs:
-      sql: >-
-        SELECT c.slug AS category,
-               (SELECT l FROM unnest(array_agg(c.label)) AS l
-                GROUP BY l ORDER BY COUNT(*) DESC, l LIMIT 1) AS label,
-               COUNT(*)::int AS modules
-        FROM module_versions mv
-        JOIN modules m ON m.id = mv.module_id AND m.latest_version = mv.version
-        CROSS JOIN LATERAL unnest(mv.categories, mv.category_labels) AS c(slug, label)
-        GROUP BY c.slug
-        ORDER BY c.slug
+      category: ""
     returns:
       - status: 200
         content:
           application/json:
             body:
-              categories: !cel "result.rows"
+              categories: !cel >-
+                result.categories.map(c, {'category': c.category, 'label': c.label,
+                                          'modules': c.modules, 'kinds': c.kinds})
 
   # Every kind that implements a given contract, across module boundaries — the
   # derived grouping axis. A backend is discoverable from the abstract it
@@ -2202,10 +2437,15 @@ entries:
         category:
           type: string
           default: ""
+          # Not enumerable — the vocabulary is open, so the guard is a hard
+          # error naming the real slugs (see SearchResources' `guard` step) and
+          # every response carries the facet, rather than a silent empty set.
           description: >-
-            Optional domain slug to narrow the search (e.g. `storage`,
-            `transport`). Categories are declared by module authors and open-
-            ended; omit unless the caller named a domain.
+            Optional domain slug to narrow the search. OMIT IT UNLESS YOU KNOW
+            THE SLUG EXISTS: categories are declared by module authors and open-
+            ended, so a guessed one is rejected rather than answered. Every
+            response lists the real vocabulary under `categories`; searching
+            once without this argument is the way to learn it.
         runtime:
           type: string
           default: ""
@@ -2229,7 +2469,20 @@ entries:
     result:
       content:
         - type: text
-          text: !cel "json({'query': request.arguments.query, 'hits': result.hits})"
+          # `categories` rides on every response so one search teaches the whole
+          # facet vocabulary, and `categoryFilterDropped` says the hits are from
+          # a widened search rather than from the requested category.
+          text: !cel >-
+            json({'query': request.arguments.query, 'categories': result.categories,
+                  'categoryFilterDropped': result.categoryFilterDropped, 'hits': result.hits})
+    catches:
+      # -32602 (invalid params), not an empty hit list: a guessed category that
+      # answered "no such kind" is what sent an agent hunting for a capability
+      # it had already found. The message carries the real slugs.
+      - when: !cel "error.code == 'ERR_UNKNOWN_CATEGORY'"
+        error:
+          code: -32602
+          message: !cel "error.message"
 
   # get_module_manifest — keyed off the module's location ref (an OCI module
   # has no namespace/name), serving the tracker-cached telo.yaml.
@@ -2288,8 +2541,10 @@ instructions: !literal |
   ## Tools
   - `search_resources(query, category?)` — find resource KINDS by what they do.
     Each hit carries the kind suffix (`Bucket`), its capability/description, and
-    the owning module's exact location ref + version. `category` narrows to one
-    author-declared domain (`storage`, `transport`, …).
+    the owning module's exact location ref + version. Search UNFILTERED first:
+    `category` is an open, author-declared vocabulary, a guessed slug is
+    rejected outright, and a wrong-but-real one hides the answer. Every response
+    lists the real slugs under `categories`, so one call teaches you the set.
   - `get_module_manifest(ref, version?)` — read a tracked module's `telo.yaml`
     by location ref. Its `Telo.Definition` docs are JSON Schemas: the EXACT
     field shapes you must produce. `version` defaults to `latest`.

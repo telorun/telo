@@ -1,0 +1,44 @@
+kind: Telo.Application
+metadata:
+  name: AssertEventsIntegerPayloadTest
+  version: 1.0.0
+  description: |
+    Assert.Events compares payload leaves the way Assert.Equals compares values,
+    so a CEL integer — an int64, i.e. a BigInt — matches the plain number an
+    `expected:` literal comes out of YAML as. With a raw `!==` the two rendered
+    identically in the failure report and compared unequal, which made every
+    integer-valued expression in an event payload unassertable.
+imports:
+  Assert: ../
+  Run: ../../run
+targets:
+  - !ref EmitIntegers
+  - !ref ExpectIntegerPayload
+---
+kind: Run.Sequence
+metadata: { name: EmitIntegers }
+steps:
+  - name: Count
+    inputs:
+      # `size()` returns an int64; `+ 1` keeps it one. Both cross into the event
+      # payload as BigInts.
+      total: !cel "size(['a', 'b', 'c'])"
+      next: !cel "size(['a', 'b', 'c']) + 1"
+    invoke:
+      kind: Run.Value
+      metadata: { name: Counter }
+      inputs:
+        total: {}
+        next: {}
+      value:
+        total: !cel "inputs.total"
+        next: !cel "inputs.next"
+---
+kind: Assert.Events
+metadata: { name: ExpectIntegerPayload }
+filter:
+  - type: "*"
+expect:
+  - event: "*.Invoked"
+    payload:
+      outputs: { total: 3, next: 4 }

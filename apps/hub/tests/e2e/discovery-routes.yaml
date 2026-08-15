@@ -12,7 +12,7 @@ metadata:
 imports:
   HttpClient: oci://ghcr.io/telorun/http-client@0.18.0#sha256-BkJT9iFGMog-V6L055uBn_F2BF2MgdPeNuBvZYX7XOY
   Run: oci://ghcr.io/telorun/run@0.22.0#sha256-FeYAHs_krf06Dk68n5Mtjp0wLSfOvDLslREHP54BiJM
-  Assert: oci://ghcr.io/telorun/assert@0.15.0#sha256-7xRDeZr8nL5wyC92JtBoXDY6nYBCubZoHZIWkgk8G3M
+  Assert: oci://ghcr.io/telorun/assert@0.17.0#sha256-jACJMHUn0IKy5Be2zBzf_ez1SnUfjRzUnXi-ETI5R5E
 targets:
   - !ref Health
   - !ref SearchResources_FindsSeededKind
@@ -29,6 +29,10 @@ targets:
   - !ref Module_UnknownVersionReturns404
   - !ref SearchResources_RejectsUnknownRuntime
   - !ref SearchResources_AcceptsKnownRuntime
+  - !ref SearchResources_RejectsUnknownCategory
+  - !ref SearchResources_BroadensWhenCategoryExcludesEverything
+  - !ref SearchResources_CarriesCategoryFacet
+  - !ref SearchModules_RejectsUnknownCategory
 ---
 kind: Run.Sequence
 metadata: { name: Health }
@@ -697,3 +701,114 @@ steps:
               hits: { type: array }
             required: [runtime, hits]
         required: [status, body]
+---
+# The category facet is open and author-declared, so it cannot be an enum the way
+# `runtime` is — the guard is a lookup against the declared slugs instead. It has
+# to be a 400: left to the filter, an unknown category selects nothing, and an
+# empty hit list reads as "Telo has no such kind" rather than "bad argument".
+kind: Run.Sequence
+metadata: { name: SearchResources_RejectsUnknownCategory }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitBadCategory }
+      url: "http://localhost:8040/search/resources?q=delay&category=coordination-typo"
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel "steps.hit.result.status"
+      expected: 400
+    invoke:
+      kind: Assert.Equals
+---
+# A KNOWN category that selects nothing for this query re-runs the search without
+# it and says so, rather than returning the empty set.
+#
+# The pair must be picked from what the compose stack SEEDS, not from the
+# standard library at large: the seeded corpus carries only compute,
+# observability, scheduling and storage, so a category outside it takes the
+# 400 path above instead and tests nothing. `console` × `storage` works because
+# `console` matches the seeded console kinds strongly enough that the unfiltered
+# arm is reliably non-empty, while terminal I/O is far enough from key/value
+# storage — lexically and semantically — that the filtered arm is reliably empty.
+kind: Run.Sequence
+metadata: { name: SearchResources_BroadensWhenCategoryExcludesEverything }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitExcludingCategory }
+      url: "http://localhost:8040/search/resources?q=console&category=storage"
+      method: GET
+  - name: assert
+    inputs:
+      actual:
+        status: !cel "steps.hit.result.status"
+        dropped: !cel "steps.hit.result.body.categoryFilterDropped"
+        recovered: !cel "size(steps.hit.result.body.hits) > 0"
+      expected:
+        status: 200
+        dropped: true
+        recovered: true
+    invoke: { kind: Assert.Equals }
+---
+# The facet rides on EVERY response, not just /categories: it is what makes an
+# open vocabulary learnable from inside a search, and a caller who has to fetch
+# it separately guesses instead.
+kind: Run.Sequence
+metadata: { name: SearchResources_CarriesCategoryFacet }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitFacetCarrier }
+      url: "http://localhost:8040/search/resources?q=delay"
+      method: GET
+  - name: assert
+    inputs:
+      status: !cel "steps.hit.result.status"
+      body: !cel "steps.hit.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertFacetCarried }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              categoryFilterDropped: { const: false }
+              categories:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+                  properties:
+                    category: { type: string }
+                    label: { type: string }
+                    modules: { type: integer }
+                    kinds: { type: integer }
+                  required: [category, label, modules, kinds]
+            required: [categories, categoryFilterDropped]
+        required: [status, body]
+---
+# /search/modules is guarded through the same vocabulary. Leaving it unguarded
+# would just relocate the defect: an agent that falls back from kinds to modules
+# would hit the silent empty set again.
+kind: Run.Sequence
+metadata: { name: SearchModules_RejectsUnknownCategory }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitBadCategoryModules }
+      url: "http://localhost:8040/search/modules?q=delay&category=coordination-typo"
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel "steps.hit.result.status"
+      expected: 400
+    invoke:
+      kind: Assert.Equals

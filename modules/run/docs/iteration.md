@@ -24,7 +24,7 @@ sidebar_label: Run.Iteration
 Inside `steps`, three variables are bound in addition to `inputs`:
 
 - `item` — the current element.
-- `index` — the element's 0-based position (integer).
+- `index` — the element's 0-based position. A CEL integer is an int64, so it composes with integer literals directly: `!cel "index + 1"` needs no cast.
 - `items` — the whole collection.
 
 `item` is **typed automatically** from `collection`'s element type when it is statically known — e.g. a `collection` of `!cel "inputs.users"` where the `inputs` contract types `users` as an array makes `item.<unknownField>` a static error. When the element type can't be inferred (a list literal, a computed expression), `item` is permissive. `steps.<name>.result` is statically typed from each step's invoked resource, exactly as in `Run.Sequence`.

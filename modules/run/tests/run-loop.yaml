@@ -7,6 +7,7 @@ imports:
   Assert: ../../assert
 targets:
   - !ref VerifyLoop
+  - !ref VerifyIterationIsInteger
 ---
 kind: Run.Loop
 metadata:
@@ -79,3 +80,42 @@ steps:
             type: object
             properties:
               code: { type: string, const: INVALID_LOOP }
+---
+# `iteration` is declared `type: integer`, and a CEL integer is an int64 — so it
+# must compose with an integer literal with NO cast. Handed to CEL as a JS
+# number it typed as a double, and this expression failed at dispatch with
+# "no such overload: dyn<double> + int" while type-checking statically. Asserting
+# `!cel "iteration"` bare cannot catch that: only arithmetic against an int
+# literal exercises the overload.
+kind: Run.Loop
+metadata:
+  name: CountFromOne
+maxIterations: 3
+steps:
+  - name: Tick
+    inputs:
+      label: !cel "'#' + string(iteration + 1)"
+    invoke:
+      kind: Run.Value
+      inputs:
+        label: {}
+      value:
+        label: !cel "inputs.label"
+outputs:
+  ordinal: !cel "iteration + 1"
+  lastLabel: !cel "previous.Tick.result.label"
+---
+kind: Run.Sequence
+metadata:
+  name: VerifyIterationIsInteger
+steps:
+  - name: Run
+    invoke: !ref CountFromOne
+  - name: Check
+    inputs:
+      actual: !cel "steps.Run.result"
+      expected:
+        ordinal: 4
+        lastLabel: "#3"
+    invoke:
+      kind: Assert.Equals

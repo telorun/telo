@@ -7,6 +7,7 @@ imports:
   Assert: ../../assert
 targets:
   - !ref VerifyProjection
+  - !ref VerifyIndexIsInteger
 ---
 kind: Run.Projection
 metadata:
@@ -46,3 +47,40 @@ steps:
               - { value: 2, at: 0 }
               - { value: 4, at: 1 }
               - { value: 6, at: 2 }
+---
+# `index` is declared `type: integer`, so a CEL int64 — it must compose with an
+# integer literal with no cast. Asserting `!cel "index"` bare (above) passes
+# whether it arrives as an int or a double; only arithmetic against an int
+# literal exercises the overload that used to fail at dispatch.
+kind: Run.Projection
+metadata:
+  name: PositionEach
+collection: !cel "['a', 'b']"
+steps:
+  - name: Label
+    inputs:
+      ordinal: !cel "index + 1"
+    invoke:
+      kind: Run.Value
+      inputs:
+        ordinal: {}
+      value:
+        ordinal: !cel "inputs.ordinal"
+outputs:
+  ordinal: !cel "steps.Label.result.ordinal"
+  next: !cel "index + 1"
+---
+kind: Run.Sequence
+metadata:
+  name: VerifyIndexIsInteger
+steps:
+  - name: Project
+    invoke: !ref PositionEach
+  - name: Check
+    inputs:
+      actual: !cel "steps.Project.result"
+      expected:
+        - { ordinal: 1, next: 1 }
+        - { ordinal: 2, next: 2 }
+    invoke:
+      kind: Assert.Equals

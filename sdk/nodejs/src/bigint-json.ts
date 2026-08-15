@@ -49,3 +49,30 @@ export function bigIntAt(holder: unknown, key: string): bigint | undefined {
   const source = (holder as Record<string, unknown> | null | undefined)?.[key];
   return typeof source === "bigint" ? source : undefined;
 }
+
+/**
+ * A declared-integer input read as a JS number, whichever representation the
+ * call site produced.
+ *
+ * A CEL integer is an int64 — a BigInt — and the kernel normalizes a declared
+ * `type: integer` OUTPUT to that form, so one resource's result reaching another
+ * resource's input arrives as a BigInt while a YAML literal at the same slot
+ * arrives as a plain number. A controller that reads such an input with
+ * `Number.isInteger(...)` or plain arithmetic therefore works for one call site
+ * and throws `Cannot mix BigInt and other types` for the other. Inputs are
+ * deliberately NOT normalized (that would change the authoring surface of every
+ * module rather than repair a false declaration), so this is how a controller
+ * reads one.
+ *
+ * Returns `undefined` for anything that is not an integer in either
+ * representation — including a BigInt too large for a double, since silently
+ * rounding it would be the precision loss int64 support exists to remove — so a
+ * caller's own "must be a non-negative integer" check still rejects what it
+ * should.
+ */
+export function integerInput(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isInteger(value) ? value : undefined;
+  if (typeof value !== "bigint") return undefined;
+  const asNumber = Number(value);
+  return Number.isSafeInteger(asNumber) ? asNumber : undefined;
+}

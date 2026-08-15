@@ -22,7 +22,8 @@ interface RunProjectionManifest {
 /** Runs its `steps` body once per element of `collection` and collects each
  *  element's `outputs` (raw step map when `outputs` is omitted) into an array,
  *  preserving input order even under concurrency. Adds `item` / `index` /
- *  `items` to the body's CEL scope. */
+ *  `items` to the body's CEL scope; `index` crosses as a BigInt — see the note
+ *  in `loop.ts`. */
 class RunProjection {
   private readonly engine: StepEngine;
 
@@ -68,14 +69,21 @@ class RunProjection {
         );
         return mapConcurrent(items, concurrency, async (item, index) => {
           const steps: Record<string, unknown> = {};
+          const celIndex = BigInt(index);
           await this.engine.executeSteps(this.resource.steps, steps, undefined, {
             inputs,
             item,
-            index,
+            index: celIndex,
             items,
           });
           if (this.resource.outputs !== undefined) {
-            return this.ctx.expandValue(this.resource.outputs, { steps, item, index, items, inputs });
+            return this.ctx.expandValue(this.resource.outputs, {
+              steps,
+              item,
+              index: celIndex,
+              items,
+              inputs,
+            });
           }
           return steps;
         });

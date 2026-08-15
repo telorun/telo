@@ -1,4 +1,4 @@
-import { ERR_INVOKE_CANCELLED, InvokeError, RuntimeError } from "@telorun/sdk";
+import { ERR_INVOKE_CANCELLED, InvokeError, integerInput, RuntimeError } from "@telorun/sdk";
 import type { ClientResource } from "./client.js";
 import { parseTokenSet, TokenEndpointError, type TokenSet } from "./token-set.js";
 
@@ -9,12 +9,16 @@ import { parseTokenSet, TokenEndpointError, type TokenSet } from "./token-set.js
  */
 export async function withDeadline<T>(
   url: string,
-  timeoutMs: number,
+  /** The AuthorizationServer provider declares this `type: integer`, so it
+   *  crosses that contract as an int64 — `setTimeout` refuses one. Read through
+   *  `integerInput`, which accepts either representation. */
+  timeoutMs: number | bigint,
   callerSignal: AbortSignal | undefined,
   run: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  const ms = integerInput(timeoutMs);
   const deadline = new AbortController();
-  const timer = setTimeout(() => deadline.abort(), timeoutMs);
+  const timer = setTimeout(() => deadline.abort(), ms);
   const signal = callerSignal
     ? AbortSignal.any([deadline.signal, callerSignal])
     : deadline.signal;
@@ -27,7 +31,7 @@ export async function withDeadline<T>(
     if (deadline.signal.aborted) {
       throw new RuntimeError(
         "ERR_OAUTH_TIMEOUT",
-        `No response from ${url} within ${timeoutMs}ms. Raise 'timeout' on the AuthorizationServer if the provider is legitimately this slow.`,
+        `No response from ${url} within ${ms}ms. Raise 'timeout' on the AuthorizationServer if the provider is legitimately this slow.`,
       );
     }
     throw err;

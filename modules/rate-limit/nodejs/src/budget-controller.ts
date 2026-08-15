@@ -4,6 +4,7 @@ import {
   type ResourceContext,
   type ResourceInstance,
   SEVERITY,
+  integerInput,
   parseDurationMs,
 } from "@telorun/sdk";
 import { type CacheStore, isCacheStore } from "@telorun/cache";
@@ -65,7 +66,12 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
       );
       return { allowed: false, remaining: 0, retryAfter: Math.ceil(this.windowMs / 1000), reserved: 0 };
     }
-    if (!Number.isInteger(inputs.amount) || inputs.amount < 0) {
+    // Read through `integerInput`: a declared `type: integer` reaches a
+    // controller as a JS number from a YAML literal and as an int64 from CEL or
+    // from another resource's normalized output, and plain arithmetic on the
+    // two throws.
+    const amount = integerInput(inputs.amount);
+    if (amount === undefined || amount < 0) {
       throw new Error("RateLimit.Budget: 'amount' input is required and must be a non-negative integer");
     }
     const store = this.ctx.resolveRef(
@@ -77,10 +83,11 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
     const bucketKey = `budget:${this.resource.metadata.name}:${inputs.key}`;
 
     if (inputs.op === "settle") {
-      if (!Number.isInteger(inputs.reserved) || (inputs.reserved as number) < 0) {
+      const reserved = integerInput(inputs.reserved);
+      if (reserved === undefined || reserved < 0) {
         throw new Error("RateLimit.Budget: 'settle' requires the non-negative integer 'reserved' returned by the matching reserve");
       }
-      const delta = inputs.amount - (inputs.reserved as number);
+      const delta = amount - reserved;
       if (delta === 0) return { settled: true, total: await this.currentTotal(store, bucketKey) };
       let total = await store.increment(bucketKey, delta, this.windowMs);
       if (total < 0) {
@@ -102,18 +109,18 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
     }
 
     if (inputs.op === "reserve") {
-      const total = await store.increment(bucketKey, inputs.amount, this.windowMs);
+      const total = await store.increment(bucketKey, amount, this.windowMs);
       if (total > this.resource.limit) {
         // Refund the over-ceiling reservation so an unrelated caller isn't
         // charged for this denial, and deny.
-        await store.increment(bucketKey, -inputs.amount, this.windowMs);
+        await store.increment(bucketKey, -amount, this.windowMs);
         // `debug` for the same reason as RateLimit.Guard's throttle: the denial is
         // per-request and scales with exactly the load the budget exists to shed.
         if (this.ctx.log.enabled(SEVERITY.debug)) {
           this.ctx.log.debug("Budget exhausted; reservation denied and refunded", {
             "ratelimit.key": inputs.key,
             "ratelimit.limit": this.resource.limit,
-            "ratelimit.requested": inputs.amount,
+            "ratelimit.requested": amount,
           });
         }
         return { allowed: false, remaining: 0, retryAfter: Math.ceil(this.windowMs / 1000), reserved: 0 };
@@ -121,11 +128,11 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
       if (this.ctx.log.enabled(SEVERITY.debug)) {
         this.ctx.log.debug("Budget reserved", {
           "ratelimit.key": inputs.key,
-          "ratelimit.reserved": inputs.amount,
+          "ratelimit.reserved": amount,
           "ratelimit.remaining": this.resource.limit - total,
         });
       }
-      return { allowed: true, remaining: this.resource.limit - total, retryAfter: 0, reserved: inputs.amount };
+      return { allowed: true, remaining: this.resource.limit - total, retryAfter: 0, reserved: amount };
     }
 
     throw new Error(`RateLimit.Budget: unknown op '${String(inputs.op)}'; expected 'reserve' or 'settle'`);
