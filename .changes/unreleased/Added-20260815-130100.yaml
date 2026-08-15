@@ -1,0 +1,13 @@
+project: http-client
+kind: Added
+body: Which responses count as success and which are worth retrying are now
+  declared per request. `success` and `retryOn` each take a list of statuses or a
+  CEL predicate over status, headers and body; `retry` carries attempts, backoff,
+  jitter and Retry-After handling, with the client supplying defaults. Retry used
+  to be network-failures-only. Classification runs before redirect-following, so a
+  status a request declares successful is returned rather than chased. `responseType`
+  reads the body as json, text, bytes or a stream, chosen per call - a binary
+  response read as text corrupts. Http.Request also declares its call contract, so
+  step inputs are type-checked against it; `mode` and `retries` are deprecated
+  aliases.
+time: 2026-08-15T13:01:00.000000000Z

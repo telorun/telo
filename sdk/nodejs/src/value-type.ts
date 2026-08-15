@@ -44,6 +44,12 @@ export type ValueTypeRepresentation = "json" | "instance";
  *  second parameter can be added without a migration. */
 export interface ValueTypeParameter {
   readonly name: string;
+  /** This parameter's argument is what ITERATING a value of the type yields.
+   *  Declared here so "what is the element of this collection" is answered by
+   *  the vocabulary rather than by a consumer that knows one type's name — the
+   *  same reason `live` is a field and not a check against `Telo.Stream`. At
+   *  most one parameter per entry may carry it. */
+  readonly element?: boolean;
   readonly description?: string;
 }
 
@@ -136,20 +142,34 @@ function requireString(file: string, node: Record<string, unknown>, key: string)
 function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) throw new ValueTypeEntryError(file, "'parameters' must be a sequence");
-  return raw.map((entry, i) => {
+  const params = raw.map((entry, i) => {
     if (!isPlainObject(entry)) {
       throw new ValueTypeEntryError(file, `parameters[${i}] must be a mapping`);
     }
     for (const key of Object.keys(entry)) {
-      if (key !== "name" && key !== "description") {
+      if (key !== "name" && key !== "description" && key !== "element") {
         throw new ValueTypeEntryError(file, `parameters[${i}] has no key '${key}'`);
       }
     }
+    if (entry.element !== undefined && typeof entry.element !== "boolean") {
+      throw new ValueTypeEntryError(file, `parameters[${i}].element must be a boolean when present`);
+    }
     const name = requireString(file, entry, "name");
-    return entry.description === undefined
-      ? { name }
-      : { name, description: requireString(file, entry, "description") };
+    return {
+      name,
+      ...(entry.element === true ? { element: true as const } : {}),
+      ...(entry.description === undefined
+        ? {}
+        : { description: requireString(file, entry, "description") }),
+    };
   });
+  // Two element parameters would make "the element of this value" ambiguous, and
+  // the reader is the only place that can refuse it — every consumer takes the
+  // first match and would silently pick one.
+  if (params.filter((p) => p.element).length > 1) {
+    throw new ValueTypeEntryError(file, "at most one parameter may declare 'element'");
+  }
+  return params;
 }
 
 /**
@@ -332,6 +352,23 @@ export function isLiveSlot(schema: unknown): boolean {
  *  the values no manifest literal can ever be. */
 export function isInstanceSlot(schema: unknown): boolean {
   return valueTypeOf(schema)?.representation === "instance";
+}
+
+/**
+ * The schema of what iterating a value at this slot yields, or undefined when
+ * the slot declares no value type, or one with no element parameter.
+ *
+ * The whole point of reading it from the entry is that no consumer names a type:
+ * a future iterable value type is covered by declaring `element` on its own
+ * parameter, with nothing to change here or in the analyzer. An element
+ * parameter left unsupplied means *any*, exactly as every other omitted argument
+ * does, so an unparameterized use degrades to permissive rather than to nothing.
+ */
+export function elementSchemaOf(schema: unknown): unknown | undefined {
+  const slot = readValueTypeSlot(schema);
+  const parameter = slot?.entry?.parameters.find((p) => p.element);
+  if (!parameter) return undefined;
+  return slot!.args[parameter.name] ?? {};
 }
 
 /** The binding row for a schema node's declared type, or undefined when it

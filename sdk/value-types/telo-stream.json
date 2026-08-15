@@ -7,6 +7,7 @@
   "parameters": [
     {
       "name": "of",
+      "element": true,
       "description": "The element the stream yields. Any schema node — an inline shape, a value type, a `!ref` to a named shape, or another parameterized type. Omitted means any element."
     }
   ],

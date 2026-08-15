@@ -1,0 +1,8 @@
+project: stream
+kind: Added
+body: Stream.Chunk re-frames a byte stream into fixed-size pieces, buffering across
+  the boundaries bytes happened to arrive on and splitting any that is too large.
+  Each piece reports its offset, length, index and whether it is last, so a
+  Content-Range header or a sequence number is expressible in CEL at the use site.
+  One piece is held in memory at a time.
+time: 2026-08-15T13:02:00.000000000Z

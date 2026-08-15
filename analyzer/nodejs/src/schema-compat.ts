@@ -48,6 +48,16 @@ export interface CompatibilityResult {
   issues: string[];
 }
 
+/** The alternatives a union node declares, or undefined when it is not one.
+ *  `anyOf` and `oneOf` are one question here — which branches could accept this
+ *  value — and their difference (exactly-one vs at-least-one) is a validation
+ *  rule, not a compatibility one. */
+function unionBranches(schema: Record<string, any>): Record<string, any>[] | undefined {
+  const branches = schema.anyOf ?? schema.oneOf;
+  if (!Array.isArray(branches) || branches.length === 0) return undefined;
+  return branches.filter((b) => b && typeof b === "object") as Record<string, any>[];
+}
+
 /**
  * Conservative structural JSON Schema compatibility check — is a value shaped
  * like `source` acceptable where `target` is declared?
@@ -115,6 +125,38 @@ function compare(
   const source = deref(rawSource, resolveRef);
   const target = deref(rawTarget, resolveRef);
 
+  // A union is ALTERNATIVES, so it is compared by distributing over branches on
+  // both sides: a definite conflict is one where no source-branch/target-branch
+  // pair agrees. Returning silently the moment either side was a union — which
+  // is what this did — switched the whole comparison off for any slot that
+  // accepts more than one shape, and those are exactly the slots where a value
+  // type carries the only information distinguishing the branches.
+  //
+  // `allOf` is a conjunction rather than a choice, so it keeps the old posture:
+  // it says too little to judge and stays compatible.
+  if (source.allOf || target.allOf) return;
+  const sourceBranches = unionBranches(source);
+  const targetBranches = unionBranches(target);
+  if (sourceBranches || targetBranches) {
+    const lefts = sourceBranches ?? [source];
+    const rights = targetBranches ?? [target];
+    const reasons: string[] = [];
+    for (const left of lefts) {
+      for (const right of rights) {
+        const probe: string[] = [];
+        // A fresh `seen` per probe: a pair rejected on one branch must not mark
+        // a reference pair visited for the next, which would silently pass it.
+        compare(left, right, path, probe, resolveRef, new Set(seen));
+        if (probe.length === 0) return;
+        reasons.push(...probe);
+      }
+    }
+    issues.push(
+      `${path || "/"}: no alternative matches — ${[...new Set(reasons)].join("; ")}`,
+    );
+    return;
+  }
+
   // Value types first: an `instance` representation has no JSON `type` to
   // compare, so its identity IS the comparison — and its arguments are where the
   // real information lives.
@@ -180,8 +222,6 @@ function compare(
     );
     return;
   }
-  if (source.anyOf || source.oneOf || source.allOf) return;
-  if (target.anyOf || target.oneOf || target.allOf) return;
 
   // An array's element, which the old comparison never looked at — so every
   // nested shape passed regardless of what it contained.
@@ -425,7 +465,14 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
     return true;
   }
   if (!schema.type && !schema.anyOf && !schema.oneOf && !schema.allOf) return true;
-  if (schema.anyOf || schema.oneOf || schema.allOf) return true;
+  // `allOf` is a conjunction and says too little to judge from a single CEL
+  // type. A union is a CHOICE, so it is satisfied by satisfying any branch —
+  // distributed for the same reason `compare` does it: accepting every union
+  // outright turns the check off for exactly the slots that admit more than one
+  // shape, and those are the ones where the branches carry the information.
+  if (schema.allOf) return true;
+  const branches = unionBranches(schema);
+  if (branches) return branches.some((branch) => celTypeSatisfiesJsonSchema(celType, branch));
   const schemaTypes = Array.isArray(schema.type) ? schema.type : [schema.type];
   const accepted: Record<string, string[]> = {
     int: ["integer", "number"],
@@ -528,6 +575,23 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
   // member chosen is irrelevant — only its acceptability to AJV matters, since
   // the real value is checked at runtime once the expression resolves.
   if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0];
+  // A UNION with no `type` of its own. Without this, a whole-field CEL leaf at
+  // such a slot gets `null`, which every branch then rejects — so a field
+  // declared `anyOf: [array, boolean]` could not be written as an expression at
+  // all, while one whose union happens to contain a `live` branch escaped by
+  // accident (nothing validates a live value, so `null` passed). The first
+  // branch that yields a placeholder wins: the same conservative posture
+  // `selectUnionBranch` takes, and enough for AJV, whose question is only
+  // whether SOME branch accepts the stand-in.
+  if (schema.type === undefined) {
+    const branches = unionBranches(schema);
+    if (branches) {
+      for (const branch of branches) {
+        const candidate = celPlaceholderForSchema(branch);
+        if (candidate !== null) return candidate;
+      }
+    }
+  }
   switch (schema.type) {
     case "integer":
     case "number":
@@ -603,7 +667,7 @@ export function resolveRef(schema: Record<string, any>, root: Record<string, any
  * — an ambiguous union is one the analyzer should not resolve on the author's
  * behalf.
  */
-function selectUnionBranch(
+export function selectUnionBranch(
   schema: Record<string, any>,
   data: unknown,
   root: Record<string, any>,

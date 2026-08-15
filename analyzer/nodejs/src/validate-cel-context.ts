@@ -1,5 +1,10 @@
 export { extractAccessChains, validateChainAgainstSchema } from "@telorun/templating";
-import { mergeTypeSchemas, parseCanonicalTypeSchemaId } from "@telorun/sdk";
+import {
+  elementSchemaOf,
+  isLiveSlot,
+  mergeTypeSchemas,
+  parseCanonicalTypeSchemaId,
+} from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
 
 export interface ContextResolveOpts {
@@ -206,23 +211,73 @@ function schemaAtChain(
   return cur && typeof cur === "object" ? cur : undefined;
 }
 
-/** The element schema of a sibling collection expression, when statically known.
- *  Resolves `inputs.*` chains against the resource's `inputs:` contract and
- *  returns the array's `items`. Returns undefined for non-chain or untyped
- *  collections (caller substitutes `dyn`). */
-function resolveCollectionElementSchema(
+/**
+ * The schema of a sibling collection expression, when statically known.
+ *
+ * Resolves `inputs.*` chains against the resource's DECLARED contract, falling
+ * back to the legacy `inputs:` property map some kinds still carry. Reading the
+ * contract is what makes this work at all for a kind that declares `inputType:`
+ * — resolving only the property map left `item` untyped in every such kind,
+ * silently, which reads as "element typing is permissive here" rather than as a
+ * gap. Returns undefined for a non-chain or untyped collection, and the caller
+ * substitutes `dyn` rather than inventing an element type.
+ */
+function resolveCollectionSchema(
   manifestRoot: Record<string, any>,
   field: string,
+  allManifests: Record<string, any>[] | undefined,
 ): Record<string, any> | undefined {
   const chain = purePathChain(manifestRoot?.[field]);
   if (!chain || chain[0] !== "inputs") return undefined;
-  const contract = manifestRoot.inputs;
-  if (!contract || typeof contract !== "object") return undefined;
-  const terminal = schemaAtChain(chain.slice(1), { type: "object", properties: contract });
-  if (terminal && terminal.type === "array" && terminal.items && typeof terminal.items === "object") {
-    return terminal.items as Record<string, any>;
+  const declared = resolveTypeFieldToSchema(manifestRoot.inputType, allManifests ?? []);
+  const root =
+    declared && typeof declared === "object"
+      ? declared
+      : manifestRoot.inputs && typeof manifestRoot.inputs === "object"
+        ? { type: "object", properties: manifestRoot.inputs }
+        : undefined;
+  if (!root) return undefined;
+  return schemaAtChain(chain.slice(1), root);
+}
+
+/**
+ * What ITERATING a collection schema yields.
+ *
+ * An array answers with `items`; anything else answers through the value-type
+ * vocabulary, which is where "what is the element of this" is declared. No type
+ * is named here on purpose: a future iterable value type is covered by declaring
+ * `element` on one of its parameters, with nothing to change in the analyzer.
+ */
+function elementOfCollection(
+  collection: Record<string, any> | undefined,
+): Record<string, any> | undefined {
+  if (!collection || typeof collection !== "object") return undefined;
+  if (collection.type === "array") {
+    return collection.items && typeof collection.items === "object"
+      ? (collection.items as Record<string, any>)
+      : undefined;
   }
-  return undefined;
+  const element = elementSchemaOf(collection);
+  return element && typeof element === "object" ? (element as Record<string, any>) : undefined;
+}
+
+/**
+ * True when a context binding naming this collection must NOT be bound.
+ *
+ * A binding that re-exposes the collection can only hand over the value the
+ * consumer is already draining, and passing that on is an ordinary
+ * pass-through no member-access rule catches — so the drain is silent. `live` is
+ * exactly the property that makes a value unsafe to re-expose, and it is already
+ * in the vocabulary, so no consumer names a type to decide this.
+ */
+function collectionBindingWithheld(
+  schema: Record<string, any>,
+  manifestRoot: Record<string, any>,
+  allManifests: Record<string, any>[] | undefined,
+): boolean {
+  const from = schema?.["x-telo-context-collection-from"] as string | undefined;
+  if (!from) return false;
+  return isLiveSlot(resolveCollectionSchema(manifestRoot, from, allManifests));
 }
 
 /**
@@ -342,8 +397,18 @@ export function resolveContextAnnotations(
   // untyped sources fall back to `dyn` so a wrong element type is never invented.
   const elementFrom = schema["x-telo-context-element-from"] as string | undefined;
   if (elementFrom) {
-    const items = resolveCollectionElementSchema(manifestRoot, elementFrom);
+    const items = elementOfCollection(resolveCollectionSchema(manifestRoot, elementFrom, allManifests));
     return items ?? {};
+  }
+
+  // The collection itself, as opposed to its element. Typed from whatever the
+  // sibling resolves to, so an array binding keeps the precision it has today
+  // instead of degrading to `dyn` now that the slot admits more than one shape.
+  // A `live` collection never reaches here — the property is dropped before
+  // recursion, so the name is simply not in scope.
+  const collectionFrom = schema["x-telo-context-collection-from"] as string | undefined;
+  if (collectionFrom) {
+    return resolveCollectionSchema(manifestRoot, collectionFrom, allManifests) ?? {};
   }
 
   const fromRoot = schema["x-telo-context-from-root"] as string | undefined;
@@ -445,6 +510,10 @@ export function resolveContextAnnotations(
   if (schema.properties) {
     const props: Record<string, any> = {};
     for (const [k, v] of Object.entries(schema.properties)) {
+      // Withholding happens HERE rather than inside the child resolver, because
+      // this is the only level that owns the property map — a child can return a
+      // schema but cannot remove itself from one.
+      if (collectionBindingWithheld(v as Record<string, any>, manifestRoot, allManifests)) continue;
       props[k] = resolveContextAnnotations(v as Record<string, any>, manifestItem, normalizedOpts);
     }
     return { ...schema, properties: props };

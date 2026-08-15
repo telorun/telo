@@ -430,6 +430,81 @@ export async function mapConcurrent<I, O>(
   return results;
 }
 
+/**
+ * Run `fn` over an async iterable with a bounded worker pool, pulling lazily.
+ *
+ * The counterpart to {@link mapConcurrent} for a source with no length: it
+ * cannot pre-size a result array and must not read ahead, because reading ahead
+ * is what draining a stream into memory means — the thing a caller chose a
+ * stream to avoid. Returns nothing, since a source of unknown size has no result
+ * array to build.
+ *
+ * PULLS ARE SERIALIZED even at high concurrency. An async iterator makes no
+ * promise about overlapping `next()` calls and a generator throws on one, so the
+ * workers take turns advancing the source while their bodies still overlap —
+ * which is where the concurrency actually lives.
+ *
+ * Fail-fast, and the source is CLOSED on the way out: a stream abandoned without
+ * `return()` leaves its producer waiting on a consumer that will never read
+ * again, which is a leak rather than a stalled iteration.
+ */
+export async function forEachConcurrent<I>(
+  source: AsyncIterable<I>,
+  concurrency: number,
+  fn: (item: I, index: number) => Promise<void>,
+): Promise<void> {
+  if (!Number.isFinite(concurrency) || concurrency < 1) {
+    throw new InvokeError(
+      "INVALID_CONCURRENCY",
+      `forEachConcurrent: concurrency must be a positive integer, got ${concurrency}`,
+    );
+  }
+  const iterator = source[Symbol.asyncIterator]();
+  const limit = Math.max(1, Math.floor(concurrency));
+  let index = 0;
+  let done = false;
+  let failure: { err: unknown } | undefined;
+  let turn: Promise<void> = Promise.resolve();
+
+  async function pull(): Promise<{ item: I; index: number } | undefined> {
+    const previous = turn;
+    let release!: () => void;
+    turn = new Promise<void>((resolve) => (release = resolve));
+    await previous;
+    try {
+      if (done || failure !== undefined) return undefined;
+      const next = await iterator.next();
+      if (next.done) {
+        done = true;
+        return undefined;
+      }
+      return { item: next.value, index: index++ };
+    } finally {
+      release();
+    }
+  }
+
+  async function worker(): Promise<void> {
+    while (failure === undefined) {
+      const pulled = await pull();
+      if (pulled === undefined) return;
+      try {
+        await fn(pulled.item, pulled.index);
+      } catch (err) {
+        if (failure === undefined) failure = { err };
+        return;
+      }
+    }
+  }
+
+  try {
+    await Promise.all(Array.from({ length: limit }, () => worker()));
+  } finally {
+    if (!done) await iterator.return?.(undefined);
+  }
+  if (failure !== undefined) throw failure.err;
+}
+
 export function pascalCase(s: string): string {
   return s
     .split(/[^a-zA-Z0-9]+/)

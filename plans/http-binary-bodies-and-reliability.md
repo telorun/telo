@@ -10,7 +10,9 @@ object — so a `Uint8Array` from `Octet.Decoder`, `S3.Get` or an embed is sent 
 `{"0":137,…}`, silently. There is no way to stream a request body, so a multi-gigabyte upload
 has nowhere to go. Retry is documented network-errors-only, while Google mandates exponential
 backoff on 429/5xx and per-user quotas are hit routinely. Success is one boolean over all
-4xx/5xx, so a resumable upload cannot treat 308 as the success signal it is. A buffered binary
+4xx/5xx, so a request cannot say which statuses it actually expects — a resumable chunk PUT
+should accept 308 and treat every other 3xx as a failure, and neither half is expressible. A
+buffered binary
 response is read as a raw string and corrupts. And `mode` is a config field, so a kind wrapping
 `Http.Request` cannot vary buffering per call.
 
@@ -19,7 +21,7 @@ Drive module.
 
 ## Solution
 
-Six packages change; the kernel does not.
+Seven packages change; the kernel does not.
 
 **`modules/http-client`** carries most of it. `inputs.body` becomes an `anyOf` over string,
 object, `Telo.Bytes` and `Telo.Stream of Telo.Bytes`, with a sibling `bodyEncoding: utf8 |
@@ -29,9 +31,13 @@ chunked and is **single-shot** (below). `inputs.responseType: json | text | byte
 replaces the config-level `mode`, which stays as a deprecated alias.
 
 `Http.Request` also gains the **invocation contract it has never had**: an `inputType:` declaring
-the request-parameter shape it already documents, with the existing `inputs:` config property
-demoted to per-instance defaults. Without it the step-input validator skips every `Http.Request`
-step outright, so none of the checking below reaches this kind at all.
+the request-parameter shape it already documents, typed and `additionalProperties: false` but
+**declaring nothing required**. Without a contract the step-input validator skips every
+`Http.Request` step outright, so none of the checking below reaches this kind at all; and nothing
+can be required, because the contract is validated against the caller's value before the
+controller layers the instance's own `inputs:` over it, and baking `url` on the instance is the
+dominant existing shape. What that buys is type, unknown-key and type-argument checking — not a
+missing-`url` check.
 
 Response classification becomes one concept. `success:` — a list of statuses or a CEL boolean
 over `{status, headers, body}` — defines what failure *is*; the existing `throwOnHttpError`
@@ -41,8 +47,19 @@ kind's schema has no eval region today, so a predicate on a top-level request wo
 rejected as non-eval and the null guard would never be demanded. `retry:` carries `{attempts,
 honorRetryAfter, initialDelay, factor, maxDelay, jitter}`; `retries:` stays as a deprecated alias
 for `attempts`. `Http.Client` carries defaults for all of them; `Http.Request` overrides.
-Classification runs *before* redirect-following, so a status named by `success:` is returned
-rather than followed — which is the whole of what 308-as-success needs.
+`success:` is evaluated first and a successful response is never retried, so `retryOn:` is
+consulted only for responses already classified as failures — a status named by both is a
+success. Classification runs *before* redirect-following, so a status named by `success:` is
+returned rather than followed.
+
+**`modules/multipart`** is new, and is what makes Drive's single-call create-with-content
+work: `Multipart.Encoder` takes an ordered list of parts, each with its own content type and a
+string or byte-stream body, and returns `{output, contentType}` — the generated boundary has to
+travel with the bytes, so the content type is an output rather than something the caller writes.
+`Multipart.Decoder` is the inbound half for `http-server`. `multipart/form-data` and
+`multipart/related` are the same framing under a different subtype. It is a module rather than a
+`bodyEncoding` branch because the framing is a wire format like any other codec, useful to
+anything that sends or receives one, and independent of HTTP.
 
 **`modules/stream`** gains `Stream.Chunk`: a byte stream in, a stream of
 `{bytes, offset, length, index, last}` records out. Carrying the offset in the record is what
@@ -50,7 +67,10 @@ makes a `Content-Range` header pure CEL.
 
 **`modules/run`**: `Run.Iteration.collection` accepts a stream as well as an array, pulled
 lazily under the existing `concurrency`. Nothing iterates a stream today, and `Stream.Collect`
-buffers, which defeats chunking.
+buffers, which defeats chunking. The kind also gains a declared `inputType:`, without which its
+`item` binding cannot be typed at all (below). `Run.Projection` carries the identical
+`collection` / `item` / `items` shape and stays array-only: it maps a collection to a list, so a
+lazily consumed source has no result to build.
 
 **`sdk/value-types`** gains one optional key: a type parameter may declare itself the **element**
 — what iterating a value of that type yields. `Telo.Stream`'s `of` is the first and only entry to
@@ -63,10 +83,15 @@ as its element, else nothing; and a new `x-telo-context-collection-from` sits be
 the collection binding and withholding it when the resolved type is `live` — the flag the
 vocabulary already carries, and exactly the property that makes a value unsafe to re-expose. No
 value-type name appears in analyzer code, so a future parameterized or live type is covered by
-its entry alone. The third is in `checkSchemaCompatibility`, which today returns silently the
-moment either side is a union: it must distribute over branches instead — compatible when some
-branch matches, a mismatch only when none does — or a four-branch `body` would switch the
-type-argument check off by construction.
+its entry alone. Element resolution additionally has to read the declared contract: it resolves
+today only through a legacy `inputs:` property map on the resource, which `Run.Iteration` does
+not have, so `item` is untyped there already — before any stream is involved. It must resolve
+through `inputType` in every form the rest of the contract machinery accepts (bare name, `!ref`,
+inline, raw schema). The third change is in `checkSchemaCompatibility`, which today returns
+silently the moment either side is a union: it must distribute over branches on **both** sides,
+reporting a mismatch only when no source-branch/target-branch pair is compatible. That keeps its
+existing posture — flag definite conflicts only — while a four-branch `body` would otherwise
+switch the type-argument check off by construction.
 
 **`templating`** adds `slice(dyn, int, int)` over string/bytes/list, plus `bytesFromBase64` and
 `bytesToBase64`.
@@ -80,14 +105,24 @@ type-argument check off by construction.
   vocabulary — the legacy `x-telo-binary` / `x-telo-stream` spellings still visible in shipped
   manifests are rewritten at load by `normalize-value-types`. The `of` argument is what lets a
   step's `inputs:` check a byte stream against this slot.
-- **The static checking this rests on is built, not assumed.** Three things stand between the
+- **The static checking this rests on is built, not assumed.** Four things stand between the
   annotation and an actual diagnostic, and each is scoped in as work rather than asserted: the
   kind declares no `inputType`, so step-input validation skips it entirely; the type-argument
-  comparator goes silent on any union, which a four-branch `body` is; and the classification
-  fields sit in a schema with no eval region, so a CEL predicate there is rejected before it can
-  be type-checked. Rejected: keeping the slot and dropping the claims, enforcing byte-vs-stream
-  at dispatch only — a manifest that type-checks and then fails at run time is the outcome the
-  analyzer exists to prevent.
+  comparator goes silent on any union, which a four-branch `body` is; the classification fields
+  sit in a schema with no eval region, so a CEL predicate there is rejected before it can be
+  type-checked; and element resolution reads only a legacy `inputs:` property map, so `item` is
+  untyped in `Run.Iteration` today. Rejected: keeping the slot and dropping the claims, enforcing
+  byte-vs-stream at dispatch only — a manifest that type-checks and then fails at run time is the
+  outcome the analyzer exists to prevent.
+- **The contract declares no required inputs, and the instance's `inputs:` stays where it is.**
+  Contract validation runs against the caller's value, before the controller layers instance
+  values over it, so a kind cannot both require `url` and let an instance bake it — a request
+  with a baked URL invoked with only a body would be rejected statically and at dispatch.
+  Declaring nothing required keeps every check the rest of this plan needs and gives up only the
+  missing-input one. Rejected: dropping the `inputs:` config field so an instance declares its own
+  `inputType` with `default:` keywords, which is the mechanism the kernel already fills — it
+  turns `inputs: {url: …}` into a nested JSON Schema for the commonest case in the module, and
+  there is no migration path to rewrite existing manifests.
 - **Element typing and materializability are vocabulary-driven, not stream-specific.** The value
   types are data (`sdk/value-types/*.json`) precisely so that consumers derive behaviour from
   declared fields, and the analyzer is under the same no-hardcoded-knowledge rule as it is for
@@ -148,16 +183,20 @@ type-argument check off by construction.
   literal document kind, and a consumer writes `kind: <TheirAlias>.Request` — so no core entry
   can name a standard-library kind, and the module migration surface does not exist yet. The same
   is why `http-server`'s inbound `mode` is left alone rather than aligned to `responseType`.
-- **`Multipart.Encoder` does not extend `Codec.Encoder`.** That abstract's `inputType` is a single
-  `input` stream; a multipart encoder takes N parts with per-part headers. Extending it would
-  claim substitutability at every `Codec.Encoder` slot and be false.
+- **`Multipart.Encoder` does not extend `Codec.Encoder`, and the module is not `-codec`.** That
+  abstract's `inputType` is a single `input` stream; a multipart encoder takes N parts with
+  per-part headers, so extending it would claim substitutability at every `Codec.Encoder` slot and
+  be false. The suffix follows: it is not a marker for codec implementations — `gzip` extends both
+  abstracts and is plain `Gzip` — but a repair for format names that do not stand alone (`octet`,
+  `ndjson`, `sse`, `plain-text`). `multipart` does, and since the suffix lands in `metadata.name`
+  it would put `MultipartCodec.Encoder` in every consumer's `kind:` while being the one deliberate
+  non-member of that family.
 - **`base64Decode` keeps its string→string, UTF-8 semantics.** It silently corrupts non-text, but
   changing it would silently change what existing manifests mean; `bytesFromBase64` is the
   correct alternative and the old one is documented as text-only.
 
-Delivery: `http-client`, `stream`, `run` and `multipart-codec` each need a hand-written changie
-fragment (`Added`); `multipart-codec` needs `scripts/gen-changie-config.mjs` re-run and
-committed; `sdk`, `analyzer` and `templating` need changesets, and the Rust value-type reader
+Delivery: `http-client`, `stream`, `run` and `multipart` each need a hand-written changie
+fragment (`Added`); `multipart` needs `scripts/gen-changie-config.mjs` re-run and committed; `sdk`, `analyzer` and `templating` need changesets, and the Rust value-type reader
 must accept the new optional key. Module docs under
 `modules/<name>/docs/` and the `apps/authoring-agent` system prompt are updated in the same
 change.

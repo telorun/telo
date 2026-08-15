@@ -6,14 +6,16 @@ metadata:
   license: LicenseRef-SustainableUse
   categories: [Streaming]
   description: |
-    The ends of a stream pipeline: turn a list of values into a stream, in order, and
-    drain a stream back into a list once it finishes. Values may be anything the
-    downstream consumer expects — text, records, numbers — so the same pair serves any
+    The ends and the middle of a stream pipeline: turn a list of values into a stream,
+    in order, drain a stream back into a list once it finishes, and re-frame a byte
+    stream into fixed-size chunks carrying their own offset. Values may be anything the
+    downstream consumer expects — text, records, numbers — so the same set serves any
     streaming pipeline.
 exports:
   kinds:
     - Of
     - Collect
+    - Chunk
 ---
 # Emit a list of items as a stream, in order — declared statically or supplied
 # at invoke time.
@@ -62,7 +64,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Stream of the declared items, in order.
     required: [ output ]
     additionalProperties: false
@@ -89,7 +91,7 @@ inputType:
     type: object
     properties:
       input:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable to consume to completion.
     required: [ input ]
     additionalProperties: false
@@ -106,3 +108,88 @@ outputType:
 schema:
   type: object
   additionalProperties: false
+---
+# Stream.Chunk — re-frames a byte stream into fixed-size pieces.
+#
+# The boundaries a byte stream arrives with are an artifact of the transport (a
+# socket read, a file read-ahead) and are never the ones a consumer wants. A
+# resumable upload needs the size the far end mandates; a framed protocol needs
+# its frame size. So this coalesces and splits rather than merely regrouping.
+#
+# Each record carries its OFFSET and whether it is `last`, so positional framing
+# — a `Content-Range` header, a sequence number — is expressible in CEL at the
+# use site. Deriving the offset downstream would mean accumulating state across
+# iterations of a body that has nowhere to keep it.
+kind: Telo.Definition
+metadata:
+  name: Chunk
+  description: >-
+    Re-frames a stream of bytes into consecutive pieces of a fixed size, buffering
+    across the boundaries the bytes happened to arrive on and splitting any piece that
+    is too large. Every piece reports where it starts, how long it is, its position in
+    the sequence and whether it is the final one, so range headers and sequence
+    numbers can be built at the point of use. Only the last piece is short, an empty
+    source yields nothing, and one piece is held in memory at a time.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/chunk-controller.mjs&local_path=./nodejs/src/chunk-controller.ts
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-type:
+          name: Telo.Stream
+          of: Telo.Bytes
+        description: Byte stream to re-frame.
+      size:
+        type: integer
+        minimum: 1
+        description: >-
+          Bytes per piece, overriding the declared `size`. Supplied per call for a
+          size the far end dictates (a resumable upload negotiates one).
+    required: [input]
+    additionalProperties: false
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-type:
+          name: Telo.Stream
+          of:
+            type: object
+            additionalProperties: false
+            required: [bytes, offset, length, index, last]
+            properties:
+              bytes:
+                x-telo-type: Telo.Bytes
+                description: This piece's bytes.
+              offset:
+                type: integer
+                description: Byte offset of this piece from the start of the stream.
+              length:
+                type: integer
+                description: Number of bytes in this piece.
+              index:
+                type: integer
+                description: Zero-based position of this piece in the sequence.
+              last:
+                type: boolean
+                description: True for the final piece, so a consumer can close its framing.
+        description: Stream of fixed-size pieces, in order.
+    required: [output]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    size:
+      title: Size
+      type: integer
+      minimum: 1
+      description: >-
+        Default bytes per piece, used when a call supplies none. Declared here when
+        the size is a property of the destination rather than of the call.

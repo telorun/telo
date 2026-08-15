@@ -55,9 +55,12 @@ describe("unknown functions", () => {
     }
   });
 
+  // The receiver name has to be one the registry does NOT know: `slice` is
+  // registered now, so a mis-arity call on it is classified as a wrong overload
+  // rather than a missing name, and would no longer exercise this path.
   it("filters candidates by arity, so a 1-arg method lists substring", () => {
-    const message = first("s.slice(7)").message;
-    expect(message).toContain("there is no method `slice`");
+    const message = first("s.subst(7)").message;
+    expect(message).toContain("there is no method `subst`");
     expect(message).toContain("substring");
   });
 

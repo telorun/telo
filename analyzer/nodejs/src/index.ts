@@ -143,7 +143,7 @@ export { validateDynamicSelectors, validateRefSlotDeclarations } from "./validat
 export type { RefSlotIssue } from "./validate-ref-slots.js";
 export { validateValueTypeSlots } from "./validate-value-type-slots.js";
 export type { ValueTypeSlotIssue } from "./validate-value-type-slots.js";
-export { checkSchemaCompatibility } from "./schema-compat.js";
+export { checkSchemaCompatibility, selectUnionBranch } from "./schema-compat.js";
 export type { CompatibilityResult } from "./schema-compat.js";
 export { visitManifest } from "./manifest-visitor.js";
 export type {

@@ -170,6 +170,53 @@ const dateInZone = (tz: string): string => {
   return `${p.year}-${p.month}-${p.day}`;
 };
 
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/** Base64 → bytes, written out rather than delegated: `Buffer` is not browser-
+ *  safe and `atob` round-trips through a string, which is the corruption this
+ *  pair exists to avoid. Accepts the URL-safe alphabet and tolerates missing
+ *  padding, both of which appear in real API payloads; a character outside the
+ *  alphabet is a hard error rather than a silently dropped byte. */
+function decodeBase64ToBytes(input: string): Uint8Array {
+  const clean = input.replace(/[\r\n\t ]/g, "").replace(/-/g, "+").replace(/_/g, "/").replace(/=+$/, "");
+  // A remainder of 1 cannot come from any byte sequence: base64 encodes 3 bytes
+  // as 4 characters, so the valid remainders are 0, 2 and 3. Left to the loop it
+  // would leave 6 bits unwritten and return a SHORT buffer — the silently dropped
+  // byte this function refuses for a bad character.
+  if (clean.length % 4 === 1) {
+    throw new Error("bytesFromBase64: input length is not valid base64");
+  }
+  const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
+  let bits = 0;
+  let acc = 0;
+  let written = 0;
+  for (const ch of clean) {
+    const value = BASE64_ALPHABET.indexOf(ch);
+    if (value < 0) throw new Error(`bytesFromBase64: '${ch}' is not a base64 character`);
+    acc = (acc << 6) | value;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[written++] = (acc >> bits) & 0xff;
+    }
+  }
+  return out.subarray(0, written);
+}
+
+function encodeBytesToBase64(input: Uint8Array): string {
+  let out = "";
+  for (let i = 0; i < input.length; i += 3) {
+    const a = input[i]!;
+    const b = i + 1 < input.length ? input[i + 1]! : undefined;
+    const c = i + 2 < input.length ? input[i + 2]! : undefined;
+    out += BASE64_ALPHABET[a >> 2];
+    out += BASE64_ALPHABET[((a & 0x03) << 4) | ((b ?? 0) >> 4)];
+    out += b === undefined ? "=" : BASE64_ALPHABET[((b & 0x0f) << 2) | ((c ?? 0) >> 6)];
+    out += c === undefined ? "=" : BASE64_ALPHABET[c & 0x3f];
+  }
+  return out;
+}
+
 export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
   // Collections
   {
@@ -373,6 +420,37 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     build: () => (s: string, suffix: string) =>
       suffix && s.endsWith(suffix) ? s.slice(0, s.length - suffix.length) : s,
   },
+  // One `slice` over the three sequence types rather than three names: CEL
+  // already treats `size()` that way, and the alternative teaches an author that
+  // slicing bytes is a different operation from slicing a string.
+  //
+  // ONE `dyn` signature rather than a concrete overload per element type. The
+  // concrete set is more precise, but cel-js refuses overloads that overlap, so
+  // it cannot also carry the `dyn` case — and a step result whose producer
+  // declares no output type IS `dyn`, which is the common receiver. With only the
+  // concrete set the checker resolves such a call to whichever overload it tries
+  // first and pins the result to that type, so slicing an untyped byte buffer
+  // came back typed `string`. Precision here would be lost at the CEL boundary
+  // anyway, where type arguments are erased.
+  {
+    name: "slice",
+    signature: "slice(dyn, int, int): dyn",
+    // Not "string": it is the one function over strings, bytes AND lists, and the
+    // category is what groups it in the generated reference — filing it under
+    // strings hides it from the byte and list readers who need it most.
+    category: "collection",
+    summary: "Take the half-open range [start, end) of a string, bytes or list.",
+    deterministic: true,
+    hostBacked: false,
+    // Indices arrive as BigInt (a CEL int is int64), and both `String.slice` and
+    // `TypedArray.subarray` reject one. `subarray` rather than `slice` for bytes:
+    // a view costs no copy, and every consumer treats the result as read-only.
+    build: () => (value: string | Uint8Array | unknown[], start: bigint, end: bigint) => {
+      const from = Number(start);
+      const to = Number(end);
+      return value instanceof Uint8Array ? value.subarray(from, to) : value.slice(from, to);
+    },
+  },
   // Math
   {
     name: "abs",
@@ -487,6 +565,30 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     deterministic: true,
     hostBacked: true,
     build: (h) => (s: string) => h.base64Decode(s),
+  },
+  // Base64 <-> BYTES, as distinct from the two above, which are UTF-8
+  // string<->string and silently corrupt anything that is not text. Those keep
+  // their meaning (changing it would change what shipped manifests mean); these
+  // are the correct path for binary, and the pair a byte-typed slot needs.
+  // Pure-JS on purpose: `Buffer` is what made the string pair host-backed, and
+  // this package has to stay browser-safe.
+  {
+    name: "bytesFromBase64",
+    signature: "bytesFromBase64(string): bytes",
+    category: "encoding",
+    summary: "Decode a base64 string to raw bytes.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (s: string) => decodeBase64ToBytes(s),
+  },
+  {
+    name: "bytesToBase64",
+    signature: "bytesToBase64(bytes): string",
+    category: "encoding",
+    summary: "Encode raw bytes as a base64 string.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (b: Uint8Array) => encodeBytesToBase64(b),
   },
   {
     name: "urlEncode",

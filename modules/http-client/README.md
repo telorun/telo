@@ -93,6 +93,10 @@ When the Telo kernel executes an `Http.Request`, the underlying module must cons
 - **Payload serialization (body):**
   - If the `headers` include `content-type: application/json` (the default when `body` is an object), the module MUST serialize the `body` to a JSON string.
   - If the `content-type` is `application/x-www-form-urlencoded`, the module MUST serialize the object into a URL-encoded string.
+  - **Raw bytes** (`Telo.Bytes`) and a **byte stream** (`Telo.Stream of Telo.Bytes`) MUST be sent verbatim, never serialized. They default the content type to `application/octet-stream` where the request declares none.
+  - A **string** body is sent as-is unless `bodyEncoding: base64`, which decodes it to bytes first — the escape hatch for a payload that reaches the manifest as text.
+
+**A byte-stream body is single-shot.** It has been consumed by the first attempt, so any re-send — a retry, or the credential's 401 re-acquire — MUST raise `ERR_HTTP_BODY_NOT_REPLAYABLE` rather than transmit an empty payload, which a server would answer `200` and which would look like a successful upload. Chunk a large upload (see `Stream.Chunk`) so each request carries replayable bytes.
 
 ### 2. Response contract (output deserialization)
 
@@ -113,18 +117,31 @@ The output of an `Http.Request` becomes available to the Telo engine (e.g. for m
 ```
 
 - **Header normalization:** the module MUST normalize all incoming response headers to lowercase keys.
-- **Body deserialization:**
-  - **JSON:** if the response `content-type` includes `application/json`, the module MUST attempt to parse the body as JSON. If the response is empty (0 bytes) but claims to be JSON, the module MUST return `null` for the body rather than throw.
-  - **Text/other:** for any other content type, or if JSON parsing fails gracefully, the `body` MUST be returned as a raw string.
+- **Body deserialization** is chosen per call by `responseType`:
+  - **`json`** (default): if the response `content-type` includes `application/json`, the module MUST attempt to parse the body as JSON. If the response is empty (0 bytes) but claims to be JSON, the module MUST return `null` rather than throw. For any other content type the `body` is a raw string.
+  - **`text`**: always a string — the honest name for the old fallback, so a caller that wants text says so rather than getting it by omission.
+  - **`bytes`**: the body buffered as raw bytes. Required for any binary payload: reading one as text corrupts it.
+  - **`stream`**: a byte stream, returned as `{ output }` without buffering.
+
+  `responseType` is an INPUT, so a kind wrapping `Http.Request` can vary it per call. The config-level `mode` is deprecated and maps onto it (`buffer` → `json`, `stream` → `stream`) only when a call declares none.
 
 ### 3. Error handling (network vs. HTTP)
 
 It is crucial to differentiate between an HTTP error (the external server responded) and a network error (the kernel couldn't reach the server).
 
-#### 3.1 HTTP status errors (4xx and 5xx)
+#### 3.1 HTTP status errors, and what counts as success
 
-- **Standard:** by default, HTTP status codes like `400`, `404`, or `500` MUST NOT throw a kernel execution error.
-- They are considered successful network executions. The module MUST return the standard Telo Response Object with the respective `status` code. Manifest authors handle these via CEL mappings (e.g. `${{ result.status == 200 ? result.body : throw('API Failed') }}`).
+**`success` defines what a failure IS; `throwOnHttpError` decides what happens to one.** The two are orthogonal — neither implies the other. `success` takes a list of statuses or a CEL boolean over `status`, `headers` and `body`, and defaults to `status < 400`.
+
+- **Standard:** by default, statuses like `400`, `404` or `500` MUST NOT throw. They are successful network executions, returned as the standard Telo Response Object with their `status`.
+- A response classified successful is **never retried** and **never followed as a redirect**. That is what lets a resumable upload declare `success: [200, 201, 308]` and have its `308` returned rather than chased.
+- `body` is `null` when the response is streamed, so a predicate reading it must guard for null — the analyzer requires the guard.
+
+#### 3.1.1 Retrying
+
+`retryOn` names the FAILED responses worth another try — again a status list or a CEL predicate over the same scope — and is consulted only for responses `success` already rejected, so a status named by both is a success and no precedence rule is needed. It defaults to `408, 429, 500, 502, 503, 504` when `retry.attempts` is non-zero.
+
+`retry` carries `attempts`, `initialDelay`, `factor`, `maxDelay`, `jitter` (`full` by default, picking each delay uniformly from `[0, delay]` so a fleet that failed together does not re-attempt together) and `honorRetryAfter` (a `Retry-After` header raises the delay, never lowers it). Network failures and retryable statuses share one attempt counter: an author who says five attempts means five, not five per failure mode. `Http.Client` supplies defaults, since backoff is a property of the API being called rather than of one call; `retries` is a deprecated alias for `retry.attempts`.
 
 #### 3.2 Network and engine errors
 
@@ -146,7 +163,7 @@ Valid `code` values MUST include: `TIMEOUT`, `CONNECTION_REFUSED`, `DNS_RESOLUTI
 ### 4. Execution policies (timeouts and redirects)
 
 - **Timeouts:** the module MUST enforce a default request timeout of 10,000 ms unless overridden. Timeout failures MUST throw a `NetworkError` with code `TIMEOUT`.
-- **Redirects:** the module MUST automatically follow `301` and `302` redirects, up to a maximum of 5, to prevent infinite redirect loops.
+- **Redirects:** the module MUST automatically follow `301` and `302` redirects, up to a maximum of 5, to prevent infinite redirect loops. **Classification runs first:** a status named by `success` is returned rather than followed. Only the status and headers are consulted for that decision — the body is not read yet, and reading it would buffer a response the caller may have asked to stream.
 
 ### 5. What is logged
 

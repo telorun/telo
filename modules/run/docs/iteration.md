@@ -13,7 +13,7 @@ sidebar_label: Run.Iteration
 
 | Field | Description |
 | --- | --- |
-| `collection` | CEL expression resolving to the array iterated over. |
+| `collection` | CEL expression resolving to the array **or stream** iterated over. A stream is pulled lazily — see [Iterating a stream](#iterating-a-stream). |
 | `steps` | The body run once per element. |
 | `concurrency` | Maximum elements processed at once — an integer literal or a `!cel` expression (sees `inputs`). Default `1` (strictly ordered); `>1` runs that many in flight. |
 | `inputType` | Input contract — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. The body reads the values as `!cel "inputs.x"`. |
@@ -21,13 +21,13 @@ sidebar_label: Run.Iteration
 
 ## Body scope
 
-Inside `steps`, three variables are bound in addition to `inputs`:
+Inside `steps`, these variables are bound in addition to `inputs`:
 
 - `item` — the current element.
 - `index` — the element's 0-based position. A CEL integer is an int64, so it composes with integer literals directly: `!cel "index + 1"` needs no cast.
-- `items` — the whole collection.
+- `items` — the whole collection. Bound **only when the collection is an array** (see below).
 
-`item` is **typed automatically** from `collection`'s element type when it is statically known — e.g. a `collection` of `!cel "inputs.users"` where the `inputs` contract types `users` as an array makes `item.<unknownField>` a static error. When the element type can't be inferred (a list literal, a computed expression), `item` is permissive. `steps.<name>.result` is statically typed from each step's invoked resource, exactly as in `Run.Sequence`.
+`item` is **typed automatically** from `collection`'s element type when it is statically known — e.g. a `collection` of `!cel "inputs.users"` where the `inputs` contract types `users` as an array makes `item.<unknownField>` a static error. A stream is typed the same way, from the `of` argument of its `Telo.Stream` annotation. When the element type can't be inferred (a list literal, a computed expression), `item` is permissive. `steps.<name>.result` is statically typed from each step's invoked resource, exactly as in `Run.Sequence`.
 
 ```yaml
 kind: Run.Iteration
@@ -42,6 +42,21 @@ steps:
       to: !cel "item.email"
       n: !cel "index"
 ```
+
+## Iterating a stream
+
+`collection` accepts a byte or record **stream** as well as an array. A stream is pulled lazily — one element at a time per worker, never read ahead — so a source too large to hold in memory can still be iterated. Pairs with [`Stream.Chunk`](../../stream/docs/chunk.md) for a chunked upload.
+
+```yaml
+collection: !cel "steps.Chunks.result.output"
+concurrency: 1
+```
+
+**`items` is not in scope under a stream.** There is no materialized collection to expose: the only value the binding could hold is the cursor this loop is pulling from, and handing it to a step's `inputs:` is an ordinary pass-through no rule catches — the step could drain the loop's own source and end the iteration early, silently.
+
+Referring to `items` where the collection resolves to a stream is a static error. The analyzer withholds the binding, so the diagnostic is the generic `CEL_UNKNOWN_FIELD` — `'items' is not defined (available: … inputs, item, index, steps)` — rather than one explaining that it was withheld deliberately.
+
+Where the collection's type cannot be resolved statically (a comprehension, a `filter(...)`), the analyzer stays quiet and the binding is decided at runtime: `items` is bound only when the expanded collection really is an array. A stream there simply leaves the name unbound, and a body referring to it fails when the expression is evaluated — the enforcement is that a live cursor is never bound on any path, not that the failure is well-labelled.
 
 ## Concurrency
 

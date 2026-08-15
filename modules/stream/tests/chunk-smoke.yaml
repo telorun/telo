@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: StreamChunkSmokeTest
+  version: 1.0.0
+  description: |
+    Smoke test for Stream.Chunk — re-framing a byte stream into fixed-size pieces.
+    The source deliberately emits pieces that align with NO chunk boundary, so the
+    test exercises both halves of the operation: coalescing across an arriving piece
+    that is too small, and splitting one that is too large. Asserts the offsets, the
+    lengths, the short final piece, and that the bytes reassemble to the input.
+imports:
+  Stream: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+# 14 bytes arriving as 2 + 10 + 2, chunked at 5 → 5 / 5 / 4.
+kind: Stream.Of
+metadata: { name: Source }
+items:
+  - "he"
+  - "llo world!"
+  - "s!"
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Src
+    invoke: !ref Source
+  - name: Chunks
+    inputs:
+      input: !cel "steps.Src.result.output"
+      size: 5
+    invoke:
+      kind: Stream.Chunk
+  - name: Collect
+    inputs:
+      input: !cel "steps.Chunks.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: Assert
+    inputs:
+      actual:
+        count: !cel "size(steps.Collect.result.items)"
+        offsets: !cel "steps.Collect.result.items.map(r, r.offset)"
+        lengths: !cel "steps.Collect.result.items.map(r, r.length)"
+        indexes: !cel "steps.Collect.result.items.map(r, r.index)"
+        lastFlags: !cel "steps.Collect.result.items.map(r, r.last)"
+        # Rebuilt from the pieces: proves the split preserved the bytes and their
+        # order, which asserting on offsets alone would not.
+        text: !cel "steps.Collect.result.items.map(r, string(r.bytes)).join('')"
+      expected:
+        count: 3
+        offsets: [0, 5, 10]
+        lengths: [5, 5, 4]
+        indexes: [0, 1, 2]
+        lastFlags: [false, false, true]
+        text: "hello world!s!"
+    invoke:
+      kind: Assert.Equals

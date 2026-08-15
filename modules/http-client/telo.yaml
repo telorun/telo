@@ -126,6 +126,27 @@ schema:
       type: "boolean"
       default: true
       description: "Whether redirects should be followed automatically."
+    throwOnHttpError:
+      title: Throw On HTTP Error
+      type: "boolean"
+      description: >-
+        Default for requests made through this client. An individual request
+        overrides it.
+    retry:
+      title: Retry
+      type: object
+      additionalProperties: false
+      description: >-
+        Default retry policy for requests made through this client — the common
+        case, since backoff is a property of the API being called rather than of
+        one call. An individual request replaces it wholesale.
+      properties:
+        attempts: { type: integer, minimum: 0 }
+        initialDelay: { type: integer, minimum: 0 }
+        factor: { type: number, minimum: 1 }
+        maxDelay: { type: integer, minimum: 0 }
+        jitter: { type: string, enum: [none, full] }
+        honorRetryAfter: { type: boolean }
     credential:
       title: Credential
       x-telo-ref:
@@ -143,11 +164,74 @@ metadata:
   name: "Request"
   description: >-
     Performs an outbound HTTP call — GET, POST, PUT, PATCH, DELETE or any other method
-    — with the URL, query parameters, headers and body supplied per invocation.
-    Returns the status, lowercase-keyed headers and a body parsed as JSON when the
-    content type says so. Can stream the body instead of buffering it, retry network
-    failures, and raise on 4xx and 5xx.
+    — with the URL, query parameters, headers and body supplied per invocation. The
+    body may be text, JSON, raw bytes or a byte stream. Returns the status,
+    lowercase-keyed headers and a body read as JSON, text, bytes or a stream. Which
+    statuses count as success and which are worth retrying are declared per request,
+    with exponential backoff and Retry-After honoured.
 capability: Telo.Invocable
+# The call contract. The request-parameter shape is spelled in two places that
+# say different things: HERE it is what a CALLER may pass, and on `inputs:` below
+# it is what an INSTANCE bakes in. They are not merged before validation — the
+# kernel binds this contract and checks the caller's value before the controller
+# layers the instance's values over it — which is exactly why nothing here is
+# `required`: a request that bakes its own `url` is the commonest shape in the
+# module, and requiring one would reject it. What the contract buys is type,
+# unknown-key and type-argument checking on every call site; without it the
+# step-input validator skips this kind entirely.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      url:
+        type: string
+        description: Absolute URL, or a path resolved against the client's base URL.
+      method:
+        type: string
+        description: HTTP method. Defaults to GET.
+      query:
+        type: object
+        additionalProperties: { type: string }
+        description: Query parameters appended to the URL.
+      headers:
+        type: object
+        additionalProperties: { type: string }
+        description: Request headers, merged over the client's defaults.
+      body:
+        description: >-
+          Payload to send. A string is sent as-is (or decoded first — see
+          `bodyEncoding`); an object is serialized as JSON, or as a form body when
+          the content type says so; bytes and byte streams are sent verbatim.
+          `anyOf` rather than `oneOf`: a reader that does not know `x-telo-type`
+          sees the byte and stream branches as empty schemas matching anything, so
+          under `oneOf` a plain string would match several branches and fail.
+        anyOf:
+          - type: string
+          - type: object
+          - x-telo-type: Telo.Bytes
+          - x-telo-type:
+              name: Telo.Stream
+              of: Telo.Bytes
+      bodyEncoding:
+        type: string
+        enum: [utf8, base64]
+        default: utf8
+        description: >-
+          How a STRING body is interpreted. `base64` decodes it to bytes before
+          sending, which is the escape hatch when the payload reaches the manifest
+          as text. Does not apply to bytes or a byte stream, which are sent as they
+          are. Mirrors `Fs.FileWrite.encoding`.
+      responseType:
+        type: string
+        enum: [json, text, bytes, stream]
+        description: >-
+          How to read the response body. `json` (default) parses when the content
+          type says JSON and falls back to text; `text` always returns a string;
+          `bytes` buffers the body as raw bytes, which is what a binary payload
+          needs — reading one as text corrupts it; `stream` returns a byte stream
+          without buffering. Chosen per call, unlike the deprecated `mode`.
 controllers:
   - pkg:telo/local/js?path=./nodejs/http-request-controller.mjs&local_path=./nodejs/src/http-request-controller.ts
 outputType:
@@ -191,23 +275,128 @@ schema:
       title: Throw On HTTP Error
       type: "boolean"
       default: false
-      description: "If true, HTTP 4xx and 5xx responses will throw a runtime error. If false, they return gracefully."
+      description: >-
+        Whether a response classified as a failure raises. `success` decides WHICH
+        responses those are; this decides what happens to them, so the two are
+        orthogonal and neither implies the other.
+    success:
+      title: Success
+      description: >-
+        Which responses count as successful — a list of status codes, or a CEL
+        boolean over `status`, `headers` and `body`. Defaults to `status < 400`.
+        A successful response is never retried and is never followed as a
+        redirect, which is what lets a resumable upload declare
+        `success: [200, 201, 308]` and have its 308 returned rather than chased.
+        `body` is null when the response is streamed, so a predicate reading it
+        must guard for null — the analyzer requires the guard.
+      anyOf:
+        - type: array
+          items: { type: integer }
+        - type: boolean
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          status: { type: integer }
+          headers:
+            type: object
+            additionalProperties: { type: string }
+          body:
+            type: ["object", "array", "string", "number", "boolean", "null"]
+    retryOn:
+      title: Retry On
+      description: >-
+        Which FAILED responses are worth retrying — a list of status codes, or a
+        CEL boolean over the same scope as `success`. Consulted only for responses
+        `success` already rejected. Defaults to 408, 429, 500, 502, 503 and 504
+        when `retry.attempts` is non-zero. A predicate is what expresses a failure
+        whose meaning is in the body rather than the status.
+      anyOf:
+        - type: array
+          items: { type: integer }
+        - type: boolean
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          status: { type: integer }
+          headers:
+            type: object
+            additionalProperties: { type: string }
+          body:
+            type: ["object", "array", "string", "number", "boolean", "null"]
+    retry:
+      title: Retry
+      type: object
+      additionalProperties: false
+      description: >-
+        How a retryable failure is re-attempted. Network failures are retried
+        whatever `retryOn` says; a response is retried when `retryOn` accepts it.
+      properties:
+        attempts:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Re-attempts after the first try. 0 disables retrying.
+        initialDelay:
+          type: integer
+          minimum: 0
+          default: 250
+          description: Milliseconds to wait before the first re-attempt.
+        factor:
+          type: number
+          minimum: 1
+          default: 2
+          description: Multiplier applied to the delay after each re-attempt.
+        maxDelay:
+          type: integer
+          minimum: 0
+          default: 32000
+          description: Ceiling on the delay between re-attempts, in milliseconds.
+        jitter:
+          type: string
+          enum: [none, full]
+          default: full
+          description: >-
+            `full` picks each delay uniformly from [0, delay], which is what stops
+            a fleet that failed together from re-attempting together.
+        honorRetryAfter:
+          type: boolean
+          default: true
+          description: >-
+            Wait as long as a `Retry-After` header asks, when it asks for longer
+            than the computed delay. The server's number is better information
+            than any local curve.
     retries:
       title: Retries
       type: "integer"
       minimum: 0
       default: 0
-      description: "Number of times to retry on Network Errors (not HTTP errors)"
+      description: >-
+        DEPRECATED — use `retry.attempts`, which this sets when `retry` is absent.
+        Kept because a migration entry matches a literal document kind and a
+        consumer writes `kind: <TheirAlias>.Request`, so no core entry can rewrite
+        it.
     mode:
       title: Mode
       type: "string"
       enum: ["buffer", "stream"]
       default: "buffer"
-      description: "buffer (default): read and deserialize the full response body. stream: return body as a readable stream without buffering."
+      description: >-
+        DEPRECATED — use the per-call `responseType`, which this maps onto
+        (`buffer` → `json`, `stream` → `stream`) when a call declares none. Being
+        config rather than an input is the defect: a kind wrapping Http.Request
+        cannot vary it per call. Kept for the same reason as `retries`.
     inputs:
       title: Inputs
       type: "object"
-      description: "Request parameters, resolved dynamically on each invocation"
+      description: >-
+        Request parameters baked into this instance, layered UNDER whatever a call
+        passes. Spelled out here as well as in `inputType` because the two say
+        different things — this is what the instance supplies, that is what a
+        caller may pass — and nothing merges them before the contract is validated.
       examples:
         - url: https://jsonplaceholder.typicode.com/todos/1
           method: GET
@@ -241,8 +430,24 @@ schema:
             type: "string"
         body:
           title: Body
-          oneOf:
+          description: >-
+            Payload to send. Same shape and same reason for `anyOf` as the `inputType`
+            contract's `body`.
+          anyOf:
             - type: "string"
             - type: "object"
-          description: "Payload to send. Objects are automatically stringified to JSON."
+            - x-telo-type: Telo.Bytes
+            - x-telo-type:
+                name: Telo.Stream
+                of: Telo.Bytes
+        bodyEncoding:
+          title: Body Encoding
+          type: string
+          enum: [utf8, base64]
+          description: How a string `body` is interpreted. See the `inputType` contract.
+        responseType:
+          title: Response Type
+          type: string
+          enum: [json, text, bytes, stream]
+          description: How to read the response body. See the `inputType` contract.
       required: ["url"]
