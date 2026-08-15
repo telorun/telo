@@ -4,6 +4,7 @@ import {
   SEVERITY,
   Stream,
   networkCauseCode,
+  parseDurationMs,
   type InvokeContext,
   type Logger,
   type ResourceContext,
@@ -20,7 +21,7 @@ const DEFAULT_TIMEOUT = 10000;
  *  the default: an author who needs more says so. */
 const DEFAULT_RETRY_STATUSES = [408, 429, 500, 502, 503, 504];
 
-const DEFAULT_RETRY: Required<RetryPolicy> = {
+const DEFAULT_RETRY: ResolvedRetry = {
   attempts: 0,
   initialDelay: 250,
   factor: 2,
@@ -29,6 +30,10 @@ const DEFAULT_RETRY: Required<RetryPolicy> = {
   honorRetryAfter: true,
 };
 
+/** The policy after resolution: `delay` is folded into `initialDelay`, so the
+ *  deprecated spelling exists on the authored shape and nowhere past it. */
+type ResolvedRetry = Required<Omit<RetryPolicy, "delay">>;
+
 interface RetryPolicy {
   attempts?: number;
   initialDelay?: number;
@@ -36,6 +41,12 @@ interface RetryPolicy {
   maxDelay?: number;
   jitter?: "none" | "full";
   honorRetryAfter?: boolean;
+  /** DEPRECATED duration string (`"250ms"`, `"1s"`) — read as `initialDelay`
+   *  when that is absent, exactly as the step leaf reads it. The shared retry
+   *  fragment carries the field, so accepting it here without honouring it would
+   *  make one declared shape mean two different things depending on where it was
+   *  written — and would swallow a backoff the author asked for. */
+  delay?: string;
 }
 
 /** A body that cannot be produced twice. Raised rather than silently re-sending
@@ -294,7 +305,7 @@ interface RequestAttempt {
   headers: Record<string, string>;
   body: OutgoingBody;
   timeout: number;
-  retry: Required<RetryPolicy>;
+  retry: ResolvedRetry;
   log: Logger;
   responseType: ResponseType;
   isSuccess: (status: number, headers: Record<string, string>, body: unknown) => boolean;
@@ -307,7 +318,7 @@ interface RequestAttempt {
  *  failed together must not re-attempt together, and spreading the whole interval
  *  is what actually decorrelates them. */
 function retryDelay(
-  policy: Required<RetryPolicy>,
+  policy: ResolvedRetry,
   resend: number,
   headers: Record<string, string>,
 ): RetryWait {
@@ -797,10 +808,16 @@ class HttpRequestResource implements ResourceInstance {
     // `retries` is the deprecated spelling of exactly one field of `retry`, so it
     // fills that field rather than competing with the policy.
     const declaredRetry = m.retry ?? clientDefaults.retry;
-    const retry: Required<RetryPolicy> = {
+    const retry: ResolvedRetry = {
       ...DEFAULT_RETRY,
       ...(m.retries !== undefined ? { attempts: m.retries } : {}),
       ...declaredRetry,
+      // The deprecated spelling, resolved the way the step leaf resolves it:
+      // `initialDelay` wins when both are present. Applied AFTER the spread so a
+      // policy carrying only `delay` does not silently keep the default.
+      ...(declaredRetry?.initialDelay === undefined && declaredRetry?.delay !== undefined
+        ? { initialDelay: parseDurationMs(declaredRetry.delay) }
+        : {}),
     };
 
     // Classification sees the same scope in both fields, and `retryOn` is

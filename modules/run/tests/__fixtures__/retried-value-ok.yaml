@@ -1,0 +1,32 @@
+# A re-attempt over a value that is NOT live. Replaying it is exactly what retry
+# is for, so nothing is reported.
+kind: Telo.Application
+metadata:
+  name: RetriedValueOk
+  version: 1.0.0
+imports:
+  Run: ../../
+  Stream: ../../../stream
+targets:
+  - !ref Seq
+---
+kind: Run.Sequence
+metadata: { name: Seq }
+steps:
+  - name: Source
+    inputs:
+      items: [a, b]
+    invoke:
+      kind: Stream.Of
+  - name: Collect
+    inputs:
+      input: !cel "steps.Source.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: Replay
+    inputs:
+      items: !cel "steps.Collect.result.items"
+    retry:
+      attempts: 3
+    invoke:
+      kind: Stream.Of

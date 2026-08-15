@@ -3,7 +3,6 @@ import addFormats from "ajv-formats";
 import {
   isRefSentinel,
   isTaggedSentinel,
-  ManifestRootSchema,
   producedTypeOf,
 } from "@telorun/templating";
 import {
@@ -14,6 +13,7 @@ import {
   valueTypeOf,
   valueTypePlaceholder,
 } from "@telorun/sdk";
+import { ManifestRootSchema } from "./manifest-schemas.js";
 import { registerTeloKeywords } from "./value-type-keyword.js";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;

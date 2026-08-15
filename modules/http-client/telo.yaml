@@ -134,19 +134,18 @@ schema:
         overrides it.
     retry:
       title: Retry
-      type: object
-      additionalProperties: false
+      $ref: "telo://manifest#/$defs/RetryPolicy"
       description: >-
         Default retry policy for requests made through this client — the common
         case, since backoff is a property of the API being called rather than of
         one call. An individual request replaces it wholesale.
       properties:
-        attempts: { type: integer, minimum: 0 }
-        initialDelay: { type: integer, minimum: 0 }
-        factor: { type: number, minimum: 1 }
-        maxDelay: { type: integer, minimum: 0 }
-        jitter: { type: string, enum: [none, full] }
-        honorRetryAfter: { type: boolean }
+        honorRetryAfter:
+          type: boolean
+          default: true
+          description: >-
+            Wait as long as a `Retry-After` header asks, when it asks for longer
+            than the computed delay.
     credential:
       title: Credential
       x-telo-ref:
@@ -329,39 +328,14 @@ schema:
             type: ["object", "array", "string", "number", "boolean", "null"]
     retry:
       title: Retry
-      type: object
-      additionalProperties: false
+      # The shared policy plus the one field only a RESPONSE can supply. Merging
+      # the sibling at the `$ref` is what keeps this schema CLOSED — `allOf`
+      # cannot, since a branch only ever sees its own `properties`.
+      $ref: "telo://manifest#/$defs/RetryPolicy"
       description: >-
         How a retryable failure is re-attempted. Network failures are retried
         whatever `retryOn` says; a response is retried when `retryOn` accepts it.
       properties:
-        attempts:
-          type: integer
-          minimum: 0
-          default: 0
-          description: Re-attempts after the first try. 0 disables retrying.
-        initialDelay:
-          type: integer
-          minimum: 0
-          default: 250
-          description: Milliseconds to wait before the first re-attempt.
-        factor:
-          type: number
-          minimum: 1
-          default: 2
-          description: Multiplier applied to the delay after each re-attempt.
-        maxDelay:
-          type: integer
-          minimum: 0
-          default: 32000
-          description: Ceiling on the delay between re-attempts, in milliseconds.
-        jitter:
-          type: string
-          enum: [none, full]
-          default: full
-          description: >-
-            `full` picks each delay uniformly from [0, delay], which is what stops
-            a fleet that failed together from re-attempting together.
         honorRetryAfter:
           type: boolean
           default: true
@@ -371,9 +345,7 @@ schema:
             than any local curve.
     retries:
       title: Retries
-      type: "integer"
-      minimum: 0
-      default: 0
+      $ref: "telo://manifest#/$defs/RetryAttempts"
       description: >-
         DEPRECATED — use `retry.attempts`, which this sets when `retry` is absent.
         Kept because a migration entry matches a literal document kind and a

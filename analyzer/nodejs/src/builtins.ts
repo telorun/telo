@@ -1,3 +1,4 @@
+import { manifestFragment } from "./manifest-schemas.js";
 import type { ResourceDefinition } from "@telorun/sdk";
 import { OBSERVED_STATE_SCHEMA } from "./validate-observed-state.js";
 
@@ -620,48 +621,21 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                 },
                 additionalProperties: false,
               },
-              // Inline flat invoke step: invoke an Invocable / Runnable on boot
-              // with an optional `name` (for steps.<name>.result plumbing),
-              // `when` guard, and `inputs`. Discriminated by the `invoke` key.
-              // Control flow (if/while/switch/try) is not available here —
-              // reach for Run.Sequence. `invoke` is ref-only: a `!ref` that
-              // resolves to the `{ kind, name }` shape below. Requiring `name`
-              // rejects an inline `{ kind }` definition (no name) at analysis
-              // instead of failing at boot with an undefined resource name. The
-              // Invocable/Runnable kind set mirrors Run.Sequence invoke steps.
-              {
-                type: "object",
-                required: ["invoke"],
-                properties: {
-                  name: { type: "string" },
-                  invoke: {
-                    "x-telo-topology-role": "invoke",
-                    "x-telo-ref": {
-                      kind: "Telo.Executable",
-                      use: "call",
-                      inputs: "/inputs",
-                    },
-                    type: "object",
-                    required: ["kind", "name"],
-                    properties: {
-                      kind: { type: "string" },
-                      name: { type: "string" },
-                    },
-                    additionalProperties: true,
-                  },
-                  inputs: {
-                    // Same annotation Run.Sequence steps carry: it is what makes
-                    // a boot target's inputs visible to the call-site contract
-                    // check and to the wiring rule. Without it the kernel would
-                    // validate these at dispatch and nothing before it.
-                    "x-telo-topology-role": "inputs",
-                    type: "object",
-                    additionalProperties: true,
-                  },
-                  when: { type: "string" },
-                },
-                additionalProperties: false,
-              },
+              // Inline flat invoke step, discriminated by the `invoke` key —
+              // THE dispatch site, shared with every `Run` step array rather
+              // than restated here. Restating it is what made `retry:` a schema
+              // error at boot while working one line away in a sequence: not a
+              // decision about boot, just a copy that never grew the field.
+              // Control flow (if/while/switch/try) is still not available here —
+              // reach for Run.Sequence.
+              // An expanded, stamped COPY. `builtins.ts` is not a manifest, so it
+              // never passes through the loader's expansion — embedding the
+              // fragment object itself would leave the nested `retry` as an
+              // unresolved `$ref` with no `x-telo-fragment` stamp, which is
+              // exactly what made LIVE_VALUE_RETRIED silently skip every boot
+              // target. A copy, because this is a module-level singleton and
+              // `resolveSchemaRefKinds` rewrites the `x-telo-ref` inside it.
+              manifestFragment("InvokeStep"),
             ],
           },
         },

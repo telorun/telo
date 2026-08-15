@@ -69,8 +69,3 @@ export {
   type TaggedSentinel,
 } from "./sentinel.js";
 export { buildCustomTags, defaultCustomTags } from "./yaml-tags.js";
-export {
-  MANIFEST_SCHEMA_URI,
-  ManifestRootSchema,
-  ResourceRefSchema,
-} from "./manifest-schemas.js";

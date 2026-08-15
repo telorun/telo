@@ -1,0 +1,46 @@
+# The live value is not produced by an earlier step — it is FORWARDED into this
+# composer through its own declared inputType, which is how an uploaded body
+# reaches a handler. Covering only `steps.` chains missed this shape entirely.
+kind: Telo.Application
+metadata:
+  name: RetriedLiveForwarded
+  version: 1.0.0
+imports:
+  Run: ../../
+  Stream: ../../../stream
+targets:
+  - !ref Boot
+---
+kind: Run.Sequence
+metadata: { name: Boot }
+steps:
+  - name: Source
+    inputs:
+      items: [a, b]
+    invoke:
+      kind: Stream.Of
+  - name: Handle
+    inputs:
+      payload: !cel "steps.Source.result.output"
+    invoke: !ref Handler
+---
+kind: Run.Sequence
+metadata: { name: Handler }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [payload]
+    properties:
+      payload:
+        x-telo-type:
+          name: Telo.Stream
+          of: Telo.Bytes
+steps:
+  - name: Drain
+    inputs:
+      input: !cel "inputs.payload"
+    retry:
+      attempts: 4
+    invoke:
+      kind: Stream.Collect

@@ -1,0 +1,106 @@
+kind: Telo.Application
+metadata:
+  name: RunStepRetryTest
+  version: 1.0.0
+  description: |
+    Step-level `retry:`, which was declared on four Run kinds and honoured by
+    nothing — plumbed to `ctx.invoke` on one of the leaf's four dispatch branches,
+    and read by no kernel path. A manifest could ask for five attempts and get one.
+
+    Both cases here dispatch through a `!ref`, the branch that dropped the policy
+    entirely: a step that fails twice and then succeeds, and one whose budget runs
+    out and propagates.
+imports:
+  Run: ../
+  Assert: ../../assert
+  JS: ../../javascript
+targets:
+  - !ref Test
+---
+# Fails on its first two invocations, succeeds on the third.
+kind: JS.Script
+metadata: { name: FlakyTwice }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [attempt]
+    properties:
+      attempt: { type: integer }
+code: |
+  function main() {
+    globalThis.__flaky = (globalThis.__flaky ?? 0) + 1;
+    if (globalThis.__flaky < 3) throw new Error(`attempt ${globalThis.__flaky} failed`);
+    return { attempt: globalThis.__flaky };
+  }
+---
+kind: JS.Script
+metadata: { name: AlwaysFails }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ok]
+    properties:
+      ok: { type: boolean }
+code: |
+  function main() {
+    globalThis.__always = (globalThis.__always ?? 0) + 1;
+    throw new Error(`always fails (call ${globalThis.__always})`);
+  }
+---
+kind: JS.Script
+metadata: { name: ReadCounter }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [calls]
+    properties:
+      calls: { type: integer }
+code: |
+  function main() {
+    return { calls: globalThis.__always ?? 0 };
+  }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  # Two re-attempts are exactly enough. `attempt: 3` is the assertion that the
+  # step was re-issued rather than merely not raising.
+  - name: Recovers
+    invoke: !ref FlakyTwice
+    retry:
+      attempts: 2
+      initialDelay: 1
+      jitter: none
+  - name: AssertRecovered
+    inputs:
+      actual: !cel "steps.Recovers.result.attempt"
+      expected: 3
+    invoke:
+      kind: Assert.Equals
+
+  # Budget exhausted: the error propagates rather than being swallowed, and the
+  # target was called exactly attempts+1 times.
+  - name: Exhausts
+    try:
+      - name: Doomed
+        invoke: !ref AlwaysFails
+        retry:
+          attempts: 2
+          initialDelay: 1
+          jitter: none
+    catch:
+      - name: Count
+        invoke: !ref ReadCounter
+      - name: AssertExhausted
+        inputs:
+          actual:
+            calls: !cel "steps.Count.result.calls"
+            caught: !cel "error.message.contains('always fails')"
+          expected:
+            calls: 3
+            caught: true
+        invoke:
+          kind: Assert.Equals

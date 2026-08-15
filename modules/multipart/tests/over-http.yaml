@@ -1,0 +1,125 @@
+kind: Telo.Application
+metadata:
+  name: MultipartOverHttpTest
+  version: 1.0.0
+  description: |
+    The payoff: a multipart body sent as an HTTP request, which is what the encoder
+    exists for. Two things only this test can show — that the generated Content-Type
+    reaches the wire with its boundary intact (a hand-written header could not
+    carry it), and that a streamed multipart body survives the transport, since
+    `Http.Request` sends a byte stream chunked rather than buffering it.
+
+    The server DECODES what it received, rather than echoing it back for the
+    client to decode — so this exercises the inbound half too, over the raw byte
+    body the server now accepts for a multipart content type without any
+    `contentTypeParsers` entry.
+imports:
+  Server: ../../http-server
+  Http: ../../http-client
+  Multipart: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+# Named rather than inline at the route: an inline `{kind}` handler from an
+# imported library inside a `with:` scope fails to resolve to a live instance
+# (ERR_RESOURCE_NOT_INVOKABLE) — a pre-existing cross-module mount limitation,
+# unrelated to multipart.
+kind: Multipart.Decoder
+metadata: { name: ServerDecoder }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Server.Api
+    metadata: { name: TestApi }
+    routes:
+      - request:
+          path: /upload
+          method: POST
+          schema:
+            # Raw bytes, which is what a multipart body is — parsing it as text
+            # would corrupt every binary part. The element argument is declared,
+            # not left to the gradual default: this is the wiring site the
+            # type-argument check exists for, and an omitted `of` is *any* in both
+            # directions, so leaving it off would demonstrate the annotation
+            # without exercising it.
+            body:
+              x-telo-type:
+                name: Telo.Stream
+                of: Telo.Bytes
+        inputs:
+          input: !cel "request.body"
+          contentType: !cel "request.headers['content-type']"
+        handler: !ref ServerDecoder
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required: [count, names, texts]
+                  properties:
+                    count: { type: integer }
+                    names: { type: array, items: { type: string } }
+                    texts: { type: array, items: { type: string } }
+                body:
+                  count: !cel "size(result.parts)"
+                  names: !cel "result.parts.map(p, has(p.filename) ? p.filename : 'unnamed')"
+                  texts: !cel "result.parts.map(p, string(p.content))"
+  - kind: Server.Server
+    metadata: { name: TestServer }
+    port: 8873
+    baseUrl: http://localhost:8873
+    # No `contentTypeParsers` entry: the server accepts a multipart body out of
+    # the box, as raw bytes. Declaring one would still work and would take
+    # precedence — this test exercises the default precisely because a 415 here is
+    # what every author used to hit first.
+    openapi:
+      info: { title: Multipart Over HTTP, version: 1.0.0 }
+    mounts:
+      - path: /api
+        mount: !ref TestApi
+targets:
+  - !ref TestServer
+steps:
+  - name: Encode
+    inputs:
+      subtype: related
+      parts:
+        - contentType: application/json
+          content: '{"name":"note.txt"}'
+        - contentType: text/plain
+          filename: note.txt
+          name: file
+          content: hello from a part
+    invoke:
+      kind: Multipart.Encoder
+
+  # The encoder's contentType goes on the request verbatim. Writing
+  # `multipart/related` by hand here would omit the boundary and the server would
+  # find no parts — which is why the encoder returns the header rather than
+  # letting a caller compose one.
+  - name: Post
+    inputs:
+      url: http://localhost:8873/api/upload
+      method: POST
+      headers:
+        content-type: !cel "steps.Encode.result.contentType"
+      body: !cel "steps.Encode.result.output"
+    invoke:
+      kind: Http.Request
+
+  - name: Assert
+    inputs:
+      actual:
+        count: !cel "steps.Post.result.body.count"
+        names: !cel "steps.Post.result.body.names"
+        texts: !cel "steps.Post.result.body.texts"
+      expected:
+        count: 2
+        names: [unnamed, note.txt]
+        texts: ['{"name":"note.txt"}', hello from a part]
+    invoke:
+      kind: Assert.Equals

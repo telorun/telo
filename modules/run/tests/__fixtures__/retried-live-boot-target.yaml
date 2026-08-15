@@ -1,0 +1,29 @@
+# The dispatch site is the same shape at BOOT as in a step, so the check must
+# reach it there too. It did not: `builtins.ts` embeds the fragment rather than
+# `$ref`-ing it, and never passes through the loader that expands one — so the
+# boot target's `retry` kept an unresolved reference and no provenance stamp,
+# and the walk ran over it finding nothing. A check that appears to cover a site
+# and does not is worse than one that plainly skips it.
+kind: Telo.Application
+metadata:
+  name: RetriedLiveBootTarget
+  version: 1.0.0
+imports:
+  Stream: ../../../stream
+targets:
+  - name: Source
+    invoke: !ref Src
+    inputs:
+      items: [a, b]
+  - name: Drain
+    invoke: !ref Sink
+    inputs:
+      input: !cel "steps.Source.result.output"
+    retry:
+      attempts: 3
+---
+kind: Stream.Of
+metadata: { name: Src }
+---
+kind: Stream.Collect
+metadata: { name: Sink }

@@ -873,6 +873,74 @@ system: |
           retryOn: [429, 500, 502, 503, 504]
           retry: { attempts: 5, maxDelay: 32000 }
 
+  ## Multipart bodies
+
+  A file API that takes metadata and content in ONE request (Drive's
+  `uploadType=multipart`, a form upload) needs `Multipart.Encoder`, not CEL string
+  concatenation — which is text-only and whole-payload. It takes an ordered
+  `parts` list, each with `content` (text, bytes or a byte stream) plus optional
+  `contentType`, `name`, `filename` and `headers`.
+
+  Send the `contentType` it RETURNS, never one you write: the boundary is
+  generated and must appear in both the framing and the header, so a hand-written
+  `multipart/related` produces a body the server finds no parts in.
+
+      - name: Encode
+        inputs:
+          subtype: related
+          parts:
+            - contentType: application/json
+              content: '{"name":"report.png"}'
+            - contentType: image/png
+              filename: report.png
+              content: !cel "steps.Render.result.bytes"
+        invoke:
+          kind: Multipart.Encoder
+      - name: Upload
+        inputs:
+          headers:
+            content-type: !cel "steps.Encode.result.contentType"
+          body: !cel "steps.Encode.result.output"
+        invoke: !ref Uploader
+
+  `Multipart.Decoder` is the inbound half; it needs the sender's content type,
+  because the boundary lives there rather than in the bytes. `Http.Server` accepts
+  a multipart body out of the box as raw bytes, so a receiving route needs NO
+  `contentTypeParsers` entry — declare the request body as
+  `x-telo-type: { name: Telo.Stream, of: Telo.Bytes }` and pass `request.body`
+  straight in. `Multipart.Reader` is the same thing read incrementally — a stream
+  of parts, each a stream of bytes — for an upload too large to hold; advancing
+  past a part discards its remainder, so skipping one is safe.
+
+  ## Retrying a step
+
+  Any dispatch site takes `retry:` — `attempts`, `initialDelay`, `factor`,
+  `maxDelay`, `jitter`, the same field names `Http.Request` uses. `attempts` counts
+  re-attempts AFTER the first try. A `Run` step and an Application `targets:`
+  entry are the same shape, so `retry:` is written the same way in both. It retries a domain failure and refuses two
+  things it cannot help: a cancellation, and a contract violation
+  (`ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` / `ERR_CONTRACT_UNRESOLVABLE`),
+  which is a property of the manifest and would fail identically every time. The
+  wait between attempts is cancellable, so a deadline or a disconnected client
+  ends a run parked in a backoff instead of waiting it out.
+
+  NEVER pass a live value — a stream — to a retried dispatch, at the step's policy
+  or the target's. It is consumed by reading, so the re-attempt sends nothing;
+  `telo check` reports `LIVE_VALUE_RETRIED`. Collect it with `Stream.Collect`
+  first when it fits in memory, or chunk it with `Stream.Chunk` so each attempt
+  carries its own replayable piece.
+
+      - name: Charge
+        invoke: !ref PaymentApi
+        inputs:
+          amount: !cel "inputs.amount"
+        retry: { attempts: 3 }
+
+  Retries COMPOSE MULTIPLICATIVELY: a step `retry: { attempts: 3 }` around an
+  Http.Request that itself declares `retry: { attempts: 3 }` is up to 16 requests,
+  and nothing warns. Put the policy at ONE level — the target's when the failure
+  is an HTTP status it can classify with `retryOn`, the step's otherwise.
+
   ## Iterating a stream
 
   `Run.Iteration`'s `collection:` accepts a stream as well as an array, pulled

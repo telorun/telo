@@ -1,0 +1,408 @@
+kind: Telo.Application
+metadata:
+  name: MultipartRoundTripTest
+  version: 1.0.0
+  description: |
+    Encode three parts and decode them back. The round trip is the assertion that
+    matters: framing that a decoder cannot split is framing no server can either.
+
+    The parts are deliberately unlike each other — a JSON document, a named form
+    field, and a file part whose content is BYTES rather than text — because the
+    framing differs per part (Content-Disposition is present only when a part is
+    named) and a single-part test would exercise none of that.
+imports:
+  Multipart: ../
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+  JS: ../../javascript
+targets:
+  - !ref Test
+  - !ref StreamedPart
+  - !ref ReaderSkipsSafely
+  - !ref MinimalParts
+  - !ref ReaderPreservesBytes
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Encode
+    inputs:
+      subtype: related
+      parts:
+        - contentType: application/json
+          content: '{"name":"report.png","parents":["folder-1"]}'
+        - name: field
+          content: plain value
+        - name: file
+          filename: report.png
+          contentType: image/png
+          # Bytes, not text: a byte part is the case the old string-only path
+          # corrupted, and `bytesFromBase64` is how a manifest names bytes at all.
+          content: !cel "bytesFromBase64('iVBORw0KGgo=')"
+    invoke:
+      kind: Multipart.Encoder
+
+  # The content type carries the generated boundary, so it is what the decoder is
+  # given — proving the pair travels together rather than being reassembled.
+  - name: Decode
+    inputs:
+      input: !cel "steps.Encode.result.output"
+      contentType: !cel "steps.Encode.result.contentType"
+    invoke:
+      kind: Multipart.Decoder
+
+  - name: AssertRoundTrip
+    inputs:
+      actual:
+        count: !cel "size(steps.Decode.result.parts)"
+        # The subtype reaches the header, which is what a server dispatches on.
+        related: !cel "steps.Encode.result.contentType.startsWith('multipart/related; boundary=')"
+        firstType: !cel "steps.Decode.result.parts[0].contentType"
+        firstBody: !cel "string(steps.Decode.result.parts[0].content)"
+        # An unnamed part carries no Content-Disposition at all, so it comes back
+        # with no `content-disposition` header rather than an empty one.
+        firstHeaders: !cel "sort(keys(steps.Decode.result.parts[0].headers))"
+        secondName: !cel "steps.Decode.result.parts[1].name"
+        secondBody: !cel "string(steps.Decode.result.parts[1].content)"
+        fileName: !cel "steps.Decode.result.parts[2].filename"
+        # Base64 back out: proves the byte part survived framing unmangled, which
+        # comparing decoded text could not show.
+        fileBytes: !cel "bytesToBase64(steps.Decode.result.parts[2].content)"
+      expected:
+        count: 3
+        related: true
+        firstType: application/json
+        firstBody: '{"name":"report.png","parents":["folder-1"]}'
+        firstHeaders: [content-type]
+        secondName: field
+        secondBody: plain value
+        fileName: report.png
+        fileBytes: iVBORw0KGgo=
+    invoke:
+      kind: Assert.Equals
+---
+# A STREAMED part. This is the case CEL concatenation cannot express at all: the
+# content arrives in pieces and is written through as it is consumed, so a part
+# larger than memory costs no more than one chunk. The round trip proves the
+# framing survives being interleaved with a producer.
+kind: Run.Sequence
+metadata: { name: StreamedPart }
+steps:
+  - name: Source
+    invoke:
+      kind: Stream.Of
+    inputs:
+      items: ["chunk-one|", "chunk-two|", "chunk-three"]
+  - name: Encode
+    inputs:
+      parts:
+        - name: meta
+          content: "before"
+        - name: payload
+          filename: big.bin
+          content: !cel "steps.Source.result.output"
+    invoke:
+      kind: Multipart.Encoder
+  - name: Decode
+    inputs:
+      input: !cel "steps.Encode.result.output"
+      contentType: !cel "steps.Encode.result.contentType"
+    invoke:
+      kind: Multipart.Decoder
+  - name: Assert
+    inputs:
+      actual:
+        count: !cel "size(steps.Decode.result.parts)"
+        # Reassembled from three source chunks, so the part boundary was not
+        # confused with a stream chunk boundary.
+        payload: !cel "string(steps.Decode.result.parts[1].content)"
+        filename: !cel "steps.Decode.result.parts[1].filename"
+        # `form-data` is the default subtype even when a part streams.
+        formData: !cel "steps.Encode.result.contentType.startsWith('multipart/form-data;')"
+      expected:
+        count: 2
+        payload: "chunk-one|chunk-two|chunk-three"
+        filename: big.bin
+        formData: true
+    invoke:
+      kind: Assert.Equals
+---
+# Multipart.Reader — the incremental path. Two things only this can show: a part's
+# body arrives as its own stream (never held whole), and SKIPPING a part is safe.
+# The second is the design's whole claim: the first part's body is never read, and
+# the second part still decodes correctly, because advancing discards the
+# remainder rather than leaving the cursor mid-part.
+kind: Run.Sequence
+metadata: { name: ReaderSkipsSafely }
+steps:
+  - name: Encode
+    inputs:
+      parts:
+        - name: skipped
+          content: "this body is never read"
+        - name: wanted
+          filename: wanted.txt
+          content: "this one is"
+    invoke:
+      kind: Multipart.Encoder
+  - name: Read
+    inputs:
+      input: !cel "steps.Encode.result.output"
+      contentType: !cel "steps.Encode.result.contentType"
+    invoke:
+      kind: Multipart.Reader
+  - name: Walk
+    inputs:
+      parts: !cel "steps.Read.result.parts"
+    invoke: !ref CollectSecond
+  # An iteration has no result, so the accumulator is read back afterwards.
+  - name: Seen
+    invoke: !ref ReadSeen
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Seen.result.seen"
+      expected: ["skipped:", "wanted:this one is"]
+    invoke:
+      kind: Assert.Equals
+---
+# Reads each part's NAME always, but its body only for the second part.
+kind: Run.Iteration
+metadata: { name: CollectSecond }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [parts]
+    properties:
+      parts:
+        x-telo-type:
+          name: Telo.Stream
+          of:
+            type: object
+            properties:
+              name: { type: string }
+              content:
+                x-telo-type:
+                  name: Telo.Stream
+                  of: Telo.Bytes
+collection: !cel "inputs.parts"
+concurrency: 1
+steps:
+  - name: Body
+    if: !cel "item.name == 'wanted'"
+    then:
+      - name: Drain
+        inputs:
+          input: !cel "item.content"
+        invoke:
+          kind: Stream.Collect
+      - name: NoteWanted
+        inputs:
+          label: !cel "item.name"
+          text: !cel "steps.Drain.result.items.map(c, string(c)).join('')"
+        invoke: !ref Note
+    else:
+      - name: NoteSkipped
+        inputs:
+          label: !cel "item.name"
+          text: ""
+        invoke: !ref Note
+---
+kind: JS.Script
+metadata: { name: Note }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [label, text]
+    properties:
+      label: { type: string }
+      text: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [seen]
+    properties:
+      seen: { type: array }
+code: |
+  function main({ label, text }) {
+    globalThis.__multipartSeen ??= [];
+    globalThis.__multipartSeen.push(`${label}:${text}`);
+    return { seen: globalThis.__multipartSeen };
+  }
+---
+kind: JS.Script
+metadata: { name: ReadSeen }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [seen]
+    properties:
+      seen: { type: array }
+code: |
+  function main() {
+    return { seen: globalThis.__multipartSeen ?? [] };
+  }
+---
+# The MINIMAL part — `content` and nothing else, which is all the schema requires
+# and what a plain unnamed form field is. Such a part is framed with NO headers,
+# so its section opens directly with the blank line; a decoder that looks for two
+# consecutive breaks finds none and rejects a payload this module produced.
+#
+# The second part is the other half of the same shape: a file with no form field
+# name, whose Content-Disposition carries `filename=` alone. `name` must come back
+# ABSENT — an unanchored `name=` match reads it out of `filename=` and reports the
+# file name as the field name, which is worse than missing because it is wrong and
+# `has(p.name)` answers yes.
+kind: Run.Sequence
+metadata: { name: MinimalParts }
+steps:
+  - name: Encode
+    inputs:
+      parts:
+        - content: no headers at all
+        - filename: report.png
+          contentType: image/png
+          content: png bytes
+    invoke:
+      kind: Multipart.Encoder
+  - name: Decode
+    inputs:
+      input: !cel "steps.Encode.result.output"
+      contentType: !cel "steps.Encode.result.contentType"
+    invoke:
+      kind: Multipart.Decoder
+  - name: Assert
+    inputs:
+      actual:
+        count: !cel "size(steps.Decode.result.parts)"
+        bodies: !cel "steps.Decode.result.parts.map(p, string(p.content))"
+        names: !cel "steps.Decode.result.parts.map(p, has(p.name) ? p.name : '<absent>')"
+        filenames: !cel "steps.Decode.result.parts.map(p, has(p.filename) ? p.filename : '<absent>')"
+      expected:
+        count: 2
+        bodies: [no headers at all, png bytes]
+        names: ['<absent>', '<absent>']
+        filenames: ['<absent>', report.png]
+    invoke:
+      kind: Assert.Equals
+---
+# The reader's chunk boundaries must not eat content bytes.
+#
+# `readUntil` emits a safe prefix per pulled chunk, holding back only enough to
+# catch a delimiter straddling two chunks — so a part's content leaves in several
+# pieces, and any of them can END on a 0x0D/0x0A that belongs to the content.
+# Trimming the framing break off every piece deletes those: silent corruption,
+# invisible to a round trip whose parts happen to arrive in one chunk.
+#
+# A SHORT fixed boundary is what forces the split — the safe prefix is
+# `buffer.length - (len(delimiter) - 1)`, so a generated 40-character boundary
+# holds back almost everything and the part leaves whole. The first part is also
+# headerless, which exercises the reader's zero-header path against the same
+# payload.
+kind: Run.Sequence
+metadata: { name: ReaderPreservesBytes }
+steps:
+  - name: Source
+    inputs:
+      items: ["abcde\n", f]
+    invoke:
+      kind: Stream.Of
+  - name: Encode
+    inputs:
+      boundary: XY
+      parts:
+        - content: !cel "steps.Source.result.output"
+        - name: after
+          content: tail
+    invoke:
+      kind: Multipart.Encoder
+  - name: Read
+    inputs:
+      input: !cel "steps.Encode.result.output"
+      contentType: !cel "steps.Encode.result.contentType"
+    invoke:
+      kind: Multipart.Reader
+  - name: Walk
+    inputs:
+      parts: !cel "steps.Read.result.parts"
+    invoke: !ref CollectAll
+  - name: Seen
+    invoke: !ref ReadCollected
+  - name: Assert
+    inputs:
+      actual: !cel "steps.Seen.result.seen"
+      expected: ["abcde\nf", tail]
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Iteration
+metadata: { name: CollectAll }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [parts]
+    properties:
+      parts:
+        x-telo-type:
+          name: Telo.Stream
+          of:
+            type: object
+            properties:
+              content:
+                x-telo-type:
+                  name: Telo.Stream
+                  of: Telo.Bytes
+collection: !cel "inputs.parts"
+concurrency: 1
+steps:
+  - name: Drain
+    inputs:
+      input: !cel "item.content"
+    invoke:
+      kind: Stream.Collect
+  - name: Record
+    inputs:
+      text: !cel "steps.Drain.result.items.map(c, string(c)).join('')"
+    invoke: !ref Collected
+---
+kind: JS.Script
+metadata: { name: Collected }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [text]
+    properties:
+      text: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [seen]
+    properties:
+      seen: { type: array }
+code: |
+  function main({ text }) {
+    globalThis.__multipartCollected ??= [];
+    globalThis.__multipartCollected.push(text);
+    return { seen: globalThis.__multipartCollected };
+  }
+---
+kind: JS.Script
+metadata: { name: ReadCollected }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [seen]
+    properties:
+      seen: { type: array }
+code: |
+  function main() {
+    return { seen: globalThis.__multipartCollected ?? [] };
+  }

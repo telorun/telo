@@ -138,7 +138,20 @@ steps:
 
 See [Bindings and pure steps](docs/bindings.md).
 
+## Retrying a step
+
+Any dispatch site takes a `retry:` policy — `attempts`, `initialDelay`, `factor`, `maxDelay`, `jitter`. A step and an Application `targets:` entry are the same kernel-owned shape, so it reads identically in both:
+
+```yaml
+  - name: Charge
+    invoke: !ref PaymentApi
+    retry: { attempts: 3 }
+```
+
+It retries a domain failure and refuses two things it cannot help: a cancellation, and a contract violation, which is a property of the manifest and fails identically every time. The wait between attempts is itself cancellable, so Ctrl-C does not have to outlast the backoff. A **live** value must not be passed to a retried dispatch — a stream is consumed by reading, so a re-attempt would send nothing, and the analyzer reports `LIVE_VALUE_RETRIED` before anything runs. See [Step retry](docs/retry.md).
+
 ## Reference
 
 - [Bindings and pure steps](docs/bindings.md) — naming intermediate values without a dispatch.
+- [Step retry](docs/retry.md) — re-attempting a failed step, and why a stream cannot be one.
 - [Structured Errors](docs/structured-errors.md) — how `try`/`catch` interacts with `InvokeError`.

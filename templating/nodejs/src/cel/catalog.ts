@@ -424,17 +424,25 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
   // already treats `size()` that way, and the alternative teaches an author that
   // slicing bytes is a different operation from slicing a string.
   //
-  // ONE `dyn` signature rather than a concrete overload per element type. The
-  // concrete set is more precise, but cel-js refuses overloads that overlap, so
-  // it cannot also carry the `dyn` case — and a step result whose producer
-  // declares no output type IS `dyn`, which is the common receiver. With only the
-  // concrete set the checker resolves such a call to whichever overload it tries
-  // first and pins the result to that type, so slicing an untyped byte buffer
-  // came back typed `string`. Precision here would be lost at the CEL boundary
-  // anyway, where type arguments are erased.
+  // OVERLOADED BY PARAMETER TYPE, so a wrong receiver is rejected — `slice(42, 0,
+  // 1)` matches nothing. What cannot ALSO be registered is a `dyn` parameter
+  // variant: cel-js refuses overloads that overlap, and a `dyn` first parameter
+  // overlaps all three. That is why the RETURN is `dyn` rather than the input's
+  // own type. A step result whose producer declares no output type is `dyn`, and
+  // with concrete returns the checker resolves such a call to whichever overload
+  // was registered first and pins the result to it — so slicing an untyped byte
+  // buffer came back typed `string`, and a byte consumer downstream reported a
+  // mismatch against perfectly valid CEL. Precision on the way out would be lost
+  // at the CEL boundary anyway, where type arguments are erased; being wrong
+  // about an untyped receiver would not be.
   {
     name: "slice",
     signature: "slice(dyn, int, int): dyn",
+    register: [
+      "slice(bytes, int, int): dyn",
+      "slice(string, int, int): dyn",
+      "slice(list, int, int): dyn",
+    ],
     // Not "string": it is the one function over strings, bytes AND lists, and the
     // category is what groups it in the generated reference — filing it under
     // strings hides it from the byte and list readers who need it most.

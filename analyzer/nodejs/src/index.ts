@@ -270,4 +270,4 @@ export type {
     PositionIndex,
     Range
 } from "./types.js";
-
+export * from "./manifest-schemas.js";

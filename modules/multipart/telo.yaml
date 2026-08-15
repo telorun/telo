@@ -1,0 +1,290 @@
+kind: Telo.Library
+metadata:
+  name: Multipart
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Data, Transport]
+  description: |
+    Multipart bodies: combine several parts — a JSON document, a file, a form field —
+    into one payload with the boundary framing servers expect, and split a received
+    payload back into its parts — either collected whole, or read incrementally so
+    an upload larger than memory can be handled. Covers form uploads and the
+    metadata-plus-content shape file APIs use. Part content may be text or bytes.
+exports:
+  kinds:
+    - Encoder
+    - Decoder
+    - Reader
+---
+# Multipart.Encoder — N parts in, one framed byte stream out.
+#
+# NOT `extends: Codec.Encoder`. That abstract's inputType is a single `input`
+# stream; a multipart encoder takes an ordered LIST of parts, each with its own
+# headers. Extending it would claim substitutability at every Codec.Encoder slot
+# and be false — a consumer holding this as a Codec.Encoder would pass `input`
+# and get nothing back.
+#
+# THE CONTENT TYPE IS AN OUTPUT, not something the caller writes. The boundary is
+# generated here and has to appear in the header (`multipart/form-data;
+# boundary=...`), so a caller that wrote its own Content-Type would produce a body
+# no server could parse. Returning them together makes the pair inseparable.
+kind: Telo.Definition
+metadata:
+  name: Encoder
+  description: >-
+    Combines an ordered list of parts into a single payload with the boundary framing
+    servers expect, for form uploads and for sending a metadata document alongside
+    file content in one request. Each part carries its own media type and optional
+    field and file name. Returns the framed bytes together with the media type to
+    send them under, because the generated boundary must appear in both. Text and
+    byte parts are accepted, and a streamed part is never buffered.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/encoder-controller.mjs&local_path=./nodejs/src/encoder-controller.ts
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [parts]
+    properties:
+      parts:
+        type: array
+        minItems: 1
+        description: The parts to combine, in order. Order is preserved on the wire.
+        items:
+          type: object
+          additionalProperties: false
+          required: [content]
+          properties:
+            content:
+              description: >-
+                This part's payload. A string is encoded as UTF-8; bytes and byte
+                streams are written verbatim. `anyOf` rather than `oneOf`: a reader
+                that does not know `x-telo-type` sees the byte and stream branches
+                as empty schemas matching anything, so under `oneOf` a plain string
+                would match several branches and fail.
+              anyOf:
+                - type: string
+                - x-telo-type: Telo.Bytes
+                - x-telo-type:
+                    name: Telo.Stream
+                    of: Telo.Bytes
+            contentType:
+              type: string
+              description: >-
+                This part's media type (`application/json`, `image/png`). Omitted
+                leaves the part unlabelled, which is what a plain form field wants.
+            name:
+              type: string
+              description: >-
+                Form field name, emitted as `Content-Disposition: form-data;
+                name=...`. Required by `form-data` servers; meaningless for `related`.
+            filename:
+              type: string
+              description: >-
+                Original file name, added to the part's Content-Disposition. Present
+                is what makes a server treat the part as an uploaded file.
+            headers:
+              type: object
+              additionalProperties: { type: string }
+              description: >-
+                Extra headers for this part, merged over the ones derived from the
+                fields above. `Content-Transfer-Encoding` goes here.
+      subtype:
+        type: string
+        default: form-data
+        description: >-
+          The multipart subtype — `form-data` for uploads, `related` for a metadata
+          document sent with its content, `mixed` for anything else. Same framing
+          throughout; only the media type differs.
+      boundary:
+        type: string
+        description: >-
+          Fixed boundary, overriding the generated one. For a reproducible payload
+          (a signed request, a golden test). It is the caller's responsibility that
+          it appears in no part.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output, contentType, boundary]
+    properties:
+      output:
+        x-telo-type:
+          name: Telo.Stream
+          of: Telo.Bytes
+        description: The framed payload, ready to send as a request body.
+      contentType:
+        type: string
+        description: >-
+          The media type to send `output` under, boundary included. Send this
+          verbatim — a Content-Type written by hand cannot carry the generated
+          boundary and the server would find no parts.
+      boundary:
+        type: string
+        description: The boundary used, for a caller that must reproduce the header itself.
+schema:
+  type: object
+  additionalProperties: false
+---
+# Multipart.Decoder — a framed byte stream back into its parts.
+#
+# The inbound half, for a server receiving an upload. Not `extends: Codec.Decoder`
+# for the same reason the encoder does not extend its abstract: that contract's
+# input is `input` alone, and parsing multipart needs the boundary, which lives in
+# the Content-Type header rather than in the bytes.
+kind: Telo.Definition
+metadata:
+  name: Decoder
+  description: >-
+    Splits a received multipart payload back into its parts, reading the boundary
+    from the media type the sender supplied. Each part comes back with its headers,
+    its field and file name where present, and its content as bytes. Parts are
+    returned in the order they appeared.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/decoder-controller.mjs&local_path=./nodejs/src/decoder-controller.ts
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input, contentType]
+    properties:
+      input:
+        x-telo-type:
+          name: Telo.Stream
+          of: Telo.Bytes
+        description: The received payload.
+      contentType:
+        type: string
+        description: >-
+          The media type the sender used, carrying the boundary. Taken from the
+          request's Content-Type header; a value with no `boundary=` parameter is an
+          error, since nothing in the bytes identifies where parts begin.
+      maxPartBytes:
+        type: integer
+        minimum: 1
+        default: 8388608
+        description: >-
+          Largest single part accepted, in bytes. A part is held whole to be
+          returned, so an unbounded payload is an unbounded allocation; a part over
+          the limit fails the decode rather than growing the buffer.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [parts]
+    properties:
+      parts:
+        type: array
+        description: The parts found, in the order they appeared.
+        items:
+          type: object
+          additionalProperties: false
+          required: [content, headers]
+          properties:
+            content:
+              x-telo-type: Telo.Bytes
+              description: This part's payload, as raw bytes.
+            contentType:
+              type: string
+              description: The part's declared media type, when it carried one.
+            name:
+              type: string
+              description: The form field name from the part's Content-Disposition.
+            filename:
+              type: string
+              description: The file name from the part's Content-Disposition, when present.
+            headers:
+              type: object
+              additionalProperties: { type: string }
+              description: Every header the part carried, with lowercase keys.
+schema:
+  type: object
+  additionalProperties: false
+---
+# Multipart.Reader — the incremental counterpart to Decoder.
+#
+# Decoder buffers, which is right for a form's small fields and wrong for a file
+# upload: `maxPartBytes` caps what a server can accept, and raising it only moves
+# the allocation. This reads a stream of parts, each a stream of bytes.
+#
+# The usual objection to that shape is that the source is single-pass, so a
+# consumer that skips a part reads nothing from the next one — a silent
+# use-after-free rather than an error. Advancing the outer stream DISCARDS
+# whatever is left of the current part, so skipping is correct by construction
+# and costs no memory. What would otherwise be an ordering contract a consumer
+# could violate silently becomes an invariant it cannot.
+kind: Telo.Definition
+metadata:
+  name: Reader
+  description: >-
+    Reads a received multipart payload incrementally: a stream of parts, each with
+    its own stream of bytes. For uploads too large to hold in memory, where
+    collecting every part whole is not an option. Parts arrive in order, and moving
+    to the next one discards any of the current one left unread, so a consumer that
+    only wants headers is not obliged to drain the body. Memory is bounded by one
+    chunk regardless of how large a part is.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/reader-controller.mjs&local_path=./nodejs/src/reader-controller.ts
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input, contentType]
+    properties:
+      input:
+        x-telo-type:
+          name: Telo.Stream
+          of: Telo.Bytes
+        description: The received payload.
+      contentType:
+        type: string
+        description: >-
+          The media type the sender used, carrying the boundary. A value with no
+          `boundary=` parameter is an error, since nothing in the bytes identifies
+          where parts begin.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [parts]
+    properties:
+      parts:
+        description: The parts, in order. Consumed by iterating.
+        x-telo-type:
+          name: Telo.Stream
+          of:
+            type: object
+            additionalProperties: false
+            required: [content, headers]
+            properties:
+              content:
+                x-telo-type:
+                  name: Telo.Stream
+                  of: Telo.Bytes
+                description: This part's payload, read incrementally.
+              contentType:
+                type: string
+                description: The part's declared media type, when it carried one.
+              name:
+                type: string
+                description: The form field name from the part's Content-Disposition.
+              filename:
+                type: string
+                description: The file name, when present.
+              headers:
+                type: object
+                additionalProperties: { type: string }
+                description: Every header the part carried, with lowercase keys.
+schema:
+  type: object
+  additionalProperties: false

@@ -1,0 +1,9 @@
+project: authoring-agent
+kind: Fixed
+body: The primer covered value types but not what the transport does with them, so
+  the agent had no basis for a binary, streamed or multipart HTTP call. It now
+  covers byte and stream request bodies (and that a stream body is single-shot),
+  per-call responseType, the success/retryOn/retry classification split, building a
+  multipart body and sending the content type the encoder returns, and that
+  Run.Iteration over a stream binds no `items`.
+time: 2026-08-15T16:00:00.000000000Z

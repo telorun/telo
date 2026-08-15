@@ -1,0 +1,27 @@
+# A live value passed into a step whose OWN `retry:` re-attempts the dispatch.
+# The stream is consumed by the first attempt, so every re-attempt sends nothing.
+kind: Telo.Application
+metadata:
+  name: RetriedLiveStep
+  version: 1.0.0
+imports:
+  Run: ../../
+  Stream: ../../../stream
+targets:
+  - !ref Seq
+---
+kind: Run.Sequence
+metadata: { name: Seq }
+steps:
+  - name: Source
+    inputs:
+      items: [a, b]
+    invoke:
+      kind: Stream.Of
+  - name: Drain
+    inputs:
+      input: !cel "steps.Source.result.output"
+    retry:
+      attempts: 3
+    invoke:
+      kind: Stream.Collect

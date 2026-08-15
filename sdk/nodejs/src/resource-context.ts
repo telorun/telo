@@ -61,16 +61,19 @@ export type ParsedArgs = Partial<Record<string, string | boolean | string[]>> & 
 /**
  * Per-call options for a by-name dispatch.
  *
- * A bag rather than a positional context parameter because this slot already
- * carried one meaning — `retry`, consumed by the step leaf — and
- * `ResourceContext` satisfies `InvokeStepContext` structurally, so a positional
- * `InvokeContext` here silently receives a step's retry options instead.
+ * A bag rather than a positional context parameter, because `ResourceContext`
+ * satisfies `InvokeStepContext` structurally: a positional fourth argument here
+ * is reachable from the step leaf's own `invoke` call, so the two surfaces would
+ * have to agree on its meaning forever. A named key cannot be filled by accident.
+ *
+ * `retry` USED to live here and was read by nobody — the step leaf handed it down
+ * on one of its four dispatch branches and no kernel path looked at it. It now
+ * belongs to the leaf, which is the one place every branch passes through; a key
+ * kept here would be a second, inert way to ask for the same thing.
  */
 export interface InvokeByNameOptions {
   /** Seeds the invocation context, replacing the ambient. */
   ctx?: InvokeContext;
-  /** Retry policy, read by `executeInvokeStep`. */
-  retry?: unknown;
 }
 
 export interface ResourceContext extends ControllerContext {
