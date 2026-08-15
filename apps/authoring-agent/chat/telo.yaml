@@ -829,6 +829,60 @@ system: |
       published module may still carry them and the runtime rewrites them on
       load, but never WRITE them — write `x-telo-type` instead.
 
+  ## Bytes and streams over HTTP
+
+  `Http.Request`'s `body` takes a string, an object (serialized as JSON, or as a
+  form body when the content type says so), raw `Telo.Bytes`, or a
+  `Telo.Stream of Telo.Bytes`. A string body may be declared `bodyEncoding:
+  base64` to be decoded to bytes before sending — the escape hatch when a payload
+  reaches the manifest as text.
+
+  A STREAM body is single-shot. It is consumed by the first attempt, so any
+  re-send — a retry, or the credential's 401 re-acquire — raises
+  `ERR_HTTP_BODY_NOT_REPLAYABLE` rather than silently transmitting an empty
+  payload. For a large upload that must survive a retry, chunk it with
+  `Stream.Chunk` so each request carries replayable bytes.
+
+  `responseType` chooses how the response body is read, PER CALL: `json`
+  (default), `text`, `bytes` (required for binary — reading it as text corrupts
+  it) or `stream`. A streamed response arrives in `body`, the same slot every
+  other response type fills, so `status` and `headers` read identically either
+  way. The older config-level `mode` is deprecated.
+
+  ## Which responses succeed, and which are retried
+
+  `success:` defines what a FAILURE is; `throwOnHttpError:` decides what happens
+  to one. They are orthogonal. `success` takes a list of status codes or a CEL
+  boolean over `status`, `headers` and `body`, and defaults to `status < 400`. A
+  response it accepts is never retried and never followed as a redirect, which is
+  how a resumable upload declares `success: [200, 201, 308]` and reads its 308
+  rather than chasing it. `body` is null when the response is streamed, so a
+  predicate reading it must guard for null.
+
+  `retryOn:` takes the same two spellings and is consulted ONLY for responses
+  `success` rejected, so a status named by both is a success. `retry:` carries
+  `attempts`, `initialDelay`, `factor`, `maxDelay`, `jitter` and
+  `honorRetryAfter`; `Http.Client` supplies defaults for a whole API.
+
+      - name: Fetch
+        inputs:
+          url: !cel "inputs.url"
+        invoke:
+          kind: Http.Request
+          throwOnHttpError: true
+          retryOn: [429, 500, 502, 503, 504]
+          retry: { attempts: 5, maxDelay: 32000 }
+
+  ## Iterating a stream
+
+  `Run.Iteration`'s `collection:` accepts a stream as well as an array, pulled
+  lazily so a source larger than memory can still be iterated. Under a stream the
+  `items` binding (the whole collection) is NOT in scope — only `item` and
+  `index` — because the only value it could hold is the cursor the loop is
+  pulling from, and passing that to a step would drain the loop's own source.
+  Declare the stream's `of` argument on the iteration's `inputType` so `item`
+  stays typed inside the body.
+
   So generating a picture and saving it is plain two-step wiring, with no base64
   hop and no `JS.Script` in between:
 

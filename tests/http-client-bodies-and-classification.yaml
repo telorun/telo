@@ -1,0 +1,281 @@
+kind: Telo.Application
+metadata:
+  name: HttpClientBodiesAndClassification
+  version: 1.0.0
+  description: |
+    The transport surface this plan added, against a local server so the statuses
+    are the test's to choose rather than an upstream API's:
+
+      - a BYTE body reaches the server intact (it used to be JSON-stringified into
+        `{"0":137,...}` with nothing to notice),
+      - `responseType: bytes` buffers a binary response without the corruption a
+        text read causes,
+      - `success:` decides what counts as a failure, so a 308 can be returned
+        rather than treated as one,
+      - `retryOn:` + `retry:` re-attempt a failing status and eventually succeed,
+        which also proves the backoff loop terminates.
+imports:
+  Server: ../modules/http-server
+  Http: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+  JS: ../modules/javascript
+  Stream: ../modules/stream
+targets:
+  - !ref Test
+---
+# Echoes back what it received, so a byte body can be checked for round-trip
+# rather than merely for "the request did not fail".
+kind: JS.Script
+metadata: { name: EchoBody }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [body]
+    properties:
+      body: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [echoed, length]
+    properties:
+      echoed: { type: string }
+      length: { type: integer }
+code: |
+  function main({ body }) {
+    return { echoed: body, length: body.length };
+  }
+---
+# Fails twice, then succeeds. Proves a retry actually re-issues the request and
+# that the loop stops once the response is acceptable.
+kind: JS.Script
+metadata: { name: FlakyCounter }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [attempt]
+    properties:
+      attempt: { type: integer }
+code: |
+  function main() {
+    globalThis.__attempts = (globalThis.__attempts ?? 0) + 1;
+    return { attempt: globalThis.__attempts };
+  }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Server.Api
+    metadata: { name: TestApi }
+    routes:
+      - request:
+          path: /echo
+          method: POST
+          schema:
+            body:
+              type: string
+        inputs:
+          body: !cel "request.body"
+        handler: !ref EchoBody
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required: [echoed, length]
+                  properties:
+                    echoed: { type: string }
+                    length: { type: integer }
+                body:
+                  echoed: !cel "result.echoed"
+                  length: !cel "result.length"
+      # 308 is a SUCCESS signal for a resumable upload, and a 3xx that the client
+      # must not chase. Only 301/302 are followed, so what this really proves is
+      # that `success` governs `throwOnHttpError` rather than the old `>= 400`.
+      - request:
+          path: /resume
+          method: PUT
+        handler: !ref EchoBody
+        inputs:
+          body: !cel "'ignored'"
+        returns:
+          - status: 308
+            content:
+              application/json:
+                schema: { type: object }
+                body: { resume: true }
+      # Always 503, reporting how many requests have reached it. That counter is
+      # what makes the retry assertion exact: three requests means one attempt
+      # plus two re-attempts, rather than "it did not raise".
+      - request:
+          path: /flaky
+          method: GET
+        handler: !ref FlakyCounter
+        returns:
+          - status: 503
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required: [attempt]
+                  properties:
+                    attempt: { type: integer }
+                body:
+                  attempt: !cel "result.attempt"
+  - kind: Server.Server
+    metadata: { name: TestServer }
+    port: 8871
+    baseUrl: http://localhost:8871
+    openapi:
+      info: { title: Bodies And Classification, version: 1.0.0 }
+    mounts:
+      - path: /api
+        mount: !ref TestApi
+targets:
+  - !ref TestServer
+steps:
+  # A byte body, produced by CEL rather than written as a literal — a byte slot is
+  # never authorable inline, which is the point of the value type.
+  - name: PostBytes
+    inputs:
+      url: http://localhost:8871/api/echo
+      method: POST
+      headers: { content-type: application/json }
+      body: !cel "bytesFromBase64('ImhlbGxvIGJ5dGVzIg==')"
+    invoke:
+      kind: Http.Request
+      throwOnHttpError: true
+  - name: AssertBytesRoundTrip
+    inputs:
+      actual: !cel "steps.PostBytes.result.body.echoed"
+      expected: "hello bytes"
+    invoke:
+      kind: Assert.Equals
+
+  # The same call read as raw bytes rather than parsed. `bytesToBase64` proves the
+  # value really is a byte buffer and survived unmangled.
+  - name: ReadAsBytes
+    inputs:
+      url: http://localhost:8871/api/echo
+      method: POST
+      headers: { content-type: application/json }
+      body: '"abc"'
+      responseType: bytes
+    invoke:
+      kind: Http.Request
+      throwOnHttpError: true
+  - name: AssertBytesResponse
+    inputs:
+      actual: !cel "bytesToBase64(slice(steps.ReadAsBytes.result.body, 0, 1))"
+      expected: "ew=="
+    invoke:
+      kind: Assert.Equals
+
+  # 308 declared successful: it neither raises under throwOnHttpError nor is
+  # followed as a redirect.
+  - name: Resume
+    inputs:
+      url: http://localhost:8871/api/resume
+      method: PUT
+    invoke:
+      kind: Http.Request
+      throwOnHttpError: true
+      success: [200, 201, 308]
+  - name: AssertResume
+    inputs:
+      actual: !cel "steps.Resume.result.status"
+      expected: 308
+    invoke:
+      kind: Assert.Equals
+
+  # A 200 that `success` does NOT name is a failure, which is what makes the
+  # field a narrowing rather than a widening.
+  - name: UnexpectedStatus
+    inputs:
+      url: http://localhost:8871/api/echo
+      method: POST
+      headers: { content-type: application/json }
+      body: '"x"'
+    invoke:
+      kind: Http.Request
+      success: [201]
+  - name: AssertUnexpectedNotThrown
+    inputs:
+      actual: !cel "steps.UnexpectedStatus.result.status"
+      expected: 200
+    invoke:
+      kind: Assert.Equals
+
+  # The PREDICATE spelling of `success`, over the same scope as the list form.
+  # A whole-field CEL leaf at a union-typed slot is what the placeholder fix made
+  # writable at all.
+  - name: PredicateSuccess
+    inputs:
+      url: http://localhost:8871/api/echo
+      method: POST
+      headers: { content-type: application/json }
+      body: '"p"'
+    invoke:
+      kind: Http.Request
+      throwOnHttpError: true
+      success: !cel "status == 200 && headers['content-type'].startsWith('application/json')"
+  - name: AssertPredicateSuccess
+    inputs:
+      actual: !cel "steps.PredicateSuccess.result.status"
+      expected: 200
+    invoke:
+      kind: Assert.Equals
+
+  # A streamed response arrives in `body`, the same slot every other response
+  # type fills — one output shape, so `status` and `headers` stay typed.
+  - name: Streamed
+    inputs:
+      url: http://localhost:8871/api/echo
+      method: POST
+      headers: { content-type: application/json }
+      body: '"streamed"'
+      responseType: stream
+    invoke:
+      kind: Http.Request
+      throwOnHttpError: true
+  - name: DrainStream
+    inputs:
+      input: !cel "steps.Streamed.result.body"
+    invoke:
+      kind: Stream.Collect
+  - name: AssertStreamed
+    inputs:
+      actual: !cel "steps.DrainStream.result.items.map(c, string(c)).join('')"
+      expected: '{"echoed":"streamed","length":8}'
+    invoke:
+      kind: Assert.Equals
+
+  # A retryable status is re-attempted and the loop terminates by returning the
+  # last response. The endpoint counts requests, so `attempt == 3` is the exact
+  # statement that one attempt and two re-attempts were issued.
+  - name: Flaky
+    inputs:
+      url: http://localhost:8871/api/flaky
+      method: GET
+    invoke:
+      kind: Http.Request
+      retryOn: [503]
+      retry:
+        attempts: 2
+        initialDelay: 1
+        jitter: none
+        honorRetryAfter: false
+  - name: AssertRetried
+    inputs:
+      actual:
+        status: !cel "steps.Flaky.result.status"
+        requests: !cel "steps.Flaky.result.body.attempt"
+      expected:
+        status: 503
+        requests: 3
+    invoke:
+      kind: Assert.Equals

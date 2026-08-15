@@ -43,6 +43,13 @@ pub enum Representation {
 #[derive(Debug, Clone)]
 pub struct Parameter {
     pub name: String,
+    /// This parameter's argument is what ITERATING a value of the type yields.
+    /// Carried here because both runtimes read the identical entry bytes — a key
+    /// only one half knew about would make the vocabulary language-bound, which
+    /// is the divergence this design exists to prevent. Nothing in the Rust
+    /// kernel consumes it yet; it has no CEL engine and does not type an
+    /// iteration body.
+    pub element: bool,
     pub description: Option<String>,
 }
 
@@ -126,13 +133,25 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
              every slot that declares it"
         );
     }
-    let parameters = obj
+    let parameters: Vec<Parameter> = obj
         .get("parameters")
         .and_then(Value::as_array)
         .map(|items| {
             items
                 .iter()
-                .map(|item| Parameter {
+                .map(|item| {
+                    // Same closed vocabulary as the Node reader: an unknown key is
+                    // an authoring mistake whose only other outcome is a parameter
+                    // that quietly does not mean what it says.
+                    if let Some(map) = item.as_object() {
+                        for key in map.keys() {
+                            assert!(
+                                matches!(key.as_str(), "name" | "description" | "element"),
+                                "Invalid value-type entry '{file}': a parameter has no key '{key}'"
+                            );
+                        }
+                    }
+                    Parameter {
                     name: item
                         .get("name")
                         .and_then(Value::as_str)
@@ -140,14 +159,29 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
                             panic!("Invalid value-type entry '{file}': a parameter needs a 'name'")
                         })
                         .to_owned(),
+                    element: item
+                        .get("element")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
                     description: item
                         .get("description")
                         .and_then(Value::as_str)
                         .map(str::to_owned),
+                    }
                 })
                 .collect()
         })
         .unwrap_or_default();
+
+    // Mirrors the Node reader's arity check. The entries are shared DATA read by
+    // both runtimes, so an entry that is a hard startup error on one and loads
+    // silently on the other reintroduces exactly the divergence a data-only
+    // vocabulary exists to prevent — and two element parameters make "the element
+    // of this value" ambiguous, which every consumer would resolve by taking the
+    // first.
+    if parameters.iter().filter(|p: &&Parameter| p.element).count() > 1 {
+        panic!("Invalid value-type entry '{file}': at most one parameter may declare 'element'");
+    }
 
     ValueType {
         name,

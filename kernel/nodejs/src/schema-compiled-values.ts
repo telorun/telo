@@ -1,4 +1,5 @@
 import { isCompiledValue } from "@telorun/sdk";
+import { selectUnionBranch } from "@telorun/analyzer";
 
 /** Returns a schema-appropriate placeholder value for a CompiledValue field. */
 function placeholderForSchema(schema: Record<string, unknown>): unknown {
@@ -9,6 +10,19 @@ function placeholderForSchema(schema: Record<string, unknown>): unknown {
   // author never wrote. Mirrors `celPlaceholderForSchema` in the analyzer, which
   // performs the same substitution for the static half.
   if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0];
+  // A union with no `type` of its own: take the first branch that yields a
+  // placeholder, so a whole-field CEL leaf at an `anyOf` slot is not handed the
+  // `""` fallback that only a string branch would accept. Mirrors the analyzer's
+  // `celPlaceholderForSchema`, which makes the same substitution for the static
+  // half — the two must agree or one rejects what the other passes.
+  if (schema.type === undefined) {
+    const branches = (schema.anyOf ?? schema.oneOf) as Record<string, unknown>[] | undefined;
+    if (Array.isArray(branches)) {
+      for (const branch of branches) {
+        if (branch && typeof branch === "object") return placeholderForSchema(branch);
+      }
+    }
+  }
   switch (schema.type) {
     case "integer":
     case "number":
@@ -113,7 +127,20 @@ export function stripCompiledValues(
   // that merely appears twice is still stripped both times.
   const ancestors = new Set<object>();
 
-  const walk = (value: unknown, nodeSchema: Record<string, unknown>): unknown => {
+  const walk = (value: unknown, rawNodeSchema: Record<string, unknown>): unknown => {
+    // A UNION carries no `type` / `items` / `properties` of its own, so descending
+    // through one hands every CEL leaf underneath the schema-unaware `""`
+    // placeholder — which the branches then reject, reporting violations against
+    // a value the author never wrote (`/success/1 must be integer` for a `!cel`
+    // inside a list). Resolving the branch first is what lets the leaves be
+    // placed. Shared with the analyzer rather than reimplemented: the static and
+    // dispatch halves must choose the same branch, or one reports what the other
+    // accepts.
+    const nodeSchema = selectUnionBranch(
+      resolveSchemaRef(rawNodeSchema, root),
+      value,
+      root as Record<string, any>,
+    ) as Record<string, unknown>;
     const resolved = resolveSchemaRef(nodeSchema, root);
 
     if (isCompiledValue(value)) return placeholderForSchema(resolved);

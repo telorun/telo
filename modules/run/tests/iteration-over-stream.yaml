@@ -1,0 +1,112 @@
+kind: Telo.Application
+metadata:
+  name: RunIterationOverStreamTest
+  version: 1.0.0
+  description: |
+    Run.Iteration over a STREAM rather than an array. The collection is pulled
+    lazily, so the whole source is never materialized — which is what makes
+    iterating a chunked upload possible at all.
+
+    Two facts the array path cannot show: `item` is typed from the stream's
+    declared element (so `item.bytes` and `item.offset` are checked, not `dyn`),
+    and `items` is not in scope, because the only value it could hold is the
+    cursor this loop is pulling from.
+imports:
+  Stream: ../../stream
+  Run: ../
+  Assert: ../../assert
+  JS: ../../javascript
+targets:
+  - !ref Test
+---
+kind: Stream.Of
+metadata: { name: Source }
+items:
+  - "he"
+  - "llo world!"
+  - "s!"
+---
+# Collects each chunk's offset as a side effect, which is the only way an
+# iteration (no result) can be observed.
+kind: JS.Script
+metadata: { name: Record }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [offset, length, last]
+    properties:
+      offset: { type: integer }
+      length: { type: integer }
+      last: { type: boolean }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [seen]
+    properties:
+      seen: { type: array }
+code: |
+  function main({ offset, length, last }) {
+    globalThis.__seen ??= [];
+    globalThis.__seen.push(`${offset}:${length}:${last}`);
+    return { seen: globalThis.__seen };
+  }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Src
+    invoke: !ref Source
+  - name: Chunks
+    inputs:
+      input: !cel "steps.Src.result.output"
+      size: 5
+    invoke:
+      kind: Stream.Chunk
+  - name: Walk
+    inputs:
+      chunks: !cel "steps.Chunks.result.output"
+    invoke: !ref OverChunks
+---
+kind: Run.Iteration
+metadata: { name: OverChunks }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [chunks]
+    properties:
+      chunks:
+        x-telo-type:
+          name: Telo.Stream
+          of:
+            type: object
+            required: [bytes, offset, length, index, last]
+            properties:
+              bytes: { x-telo-type: Telo.Bytes }
+              offset: { type: integer }
+              length: { type: integer }
+              index: { type: integer }
+              last: { type: boolean }
+collection: !cel "inputs.chunks"
+concurrency: 1
+steps:
+  - name: Note
+    inputs:
+      offset: !cel "item.offset"
+      length: !cel "item.length"
+      last: !cel "item.last"
+    invoke: !ref Record
+  # An iteration has no result, so the assertion runs INSIDE the body on the
+  # final element, where the accumulator holds every element seen. Asserting
+  # per-item only would pass vacuously if the loop ran zero times.
+  - name: OnLast
+    if: !cel "item.last"
+    then:
+      - name: Final
+        inputs:
+          actual: !cel "steps.Note.result.seen"
+          expected: ["0:5:false", "5:5:false", "10:4:true"]
+        invoke:
+          kind: Assert.Equals

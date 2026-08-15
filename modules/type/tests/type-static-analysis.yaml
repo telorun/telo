@@ -38,23 +38,23 @@ source: ./__fixtures__/untyped-step-access.yaml
 expect:
   errors: []
 ---
-# `.slice(int)` is not a CEL method at all (the string method is
-# `.substring(int)`). The call audit resolves that from the function registry,
-# so it reports a missing NAME rather than the type-checker's opaque
-# "no matching overload" — and lists what is callable in that position.
+# `.slice(int)` is not a CEL method. `slice` IS a registered function — it takes
+# a sequence and two indices — so the rejection is a call-form/arity mismatch
+# rather than an unknown name, and the audit answers it from the registry by
+# listing the signatures that do exist.
 kind: Assert.Manifest
 metadata:
   name: TestBadCelOverload
 source: ./__fixtures__/bad-cel-overload.yaml
 expect:
   errors:
-    - code: CEL_UNKNOWN_FUNCTION
-      message: "there is no method `slice`"
-    # The listing is derived from the registry, so `substring` appears in it
-    # without anyone writing it down — the regression this guards is the
+    - code: CEL_TYPE_ERROR
+      message: "no matching overload for 'dyn.slice(int)'"
+    # The listing is derived from the registry, so the real signatures appear in
+    # it without anyone writing them down — the regression this guards is the
     # listing going empty or unfiltered.
-    - code: CEL_UNKNOWN_FUNCTION
-      message: "substring"
+    - code: CEL_TYPE_ERROR
+      message: "slice(dyn, int, int): dyn"
 ---
 # Field access on a type's INHERITED (`extends`) property — the analyzer must
 # merge parent schemas exactly like the runtime, so an inherited field is known

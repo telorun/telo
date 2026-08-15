@@ -15,6 +15,40 @@ import { PassThrough, Readable } from "stream";
 const MAX_REDIRECTS = 5;
 const DEFAULT_TIMEOUT = 10000;
 
+/** What every HTTP client treats as worth another try, and what Google's API
+ *  guidance mandates backoff on. A list rather than a predicate because this is
+ *  the default: an author who needs more says so. */
+const DEFAULT_RETRY_STATUSES = [408, 429, 500, 502, 503, 504];
+
+const DEFAULT_RETRY: Required<RetryPolicy> = {
+  attempts: 0,
+  initialDelay: 250,
+  factor: 2,
+  maxDelay: 32_000,
+  jitter: "full",
+  honorRetryAfter: true,
+};
+
+interface RetryPolicy {
+  attempts?: number;
+  initialDelay?: number;
+  factor?: number;
+  maxDelay?: number;
+  jitter?: "none" | "full";
+  honorRetryAfter?: boolean;
+}
+
+/** A body that cannot be produced twice. Raised rather than silently re-sending
+ *  nothing: a consumed stream re-read yields zero bytes, so the second attempt
+ *  would succeed against an empty payload and look like a successful upload. */
+const ERR_BODY_NOT_REPLAYABLE = "ERR_HTTP_BODY_NOT_REPLAYABLE";
+
+type ResponseType = "json" | "text" | "bytes" | "stream";
+
+/** The bytes to send, already resolved from whatever the manifest declared.
+ *  A stream is kept as a handle, so nothing buffers it on the way in. */
+type OutgoingBody = string | Uint8Array | Readable | undefined;
+
 interface TeloResponse {
   status: number;
   headers: Record<string, string>;
@@ -90,9 +124,10 @@ async function executeRequest(
   url: string,
   method: string,
   headers: Record<string, string>,
-  body: string | undefined,
+  body: OutgoingBody,
   timeout: number,
-  stream = false,
+  responseType: ResponseType,
+  isSuccess: (status: number, headers: Record<string, string>) => boolean,
   callerSignal?: AbortSignal,
 ): Promise<TeloResponse> {
   const controller = new AbortController();
@@ -110,13 +145,30 @@ async function executeRequest(
       const response = await fetch(currentUrl, {
         method,
         headers,
-        body,
+        body: body as BodyInit | undefined,
+        // A Node stream body is half-duplex: without this, undici refuses to
+        // send a request whose body is a stream.
+        ...(body instanceof Readable ? { duplex: "half" } : {}),
         redirect: "manual",
         signal,
+      } as RequestInit);
+
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key.toLowerCase()] = value;
       });
 
-      // Handle redirects manually (limit to MAX_REDIRECTS)
-      if ((response.status === 301 || response.status === 302) && redirectsLeft > 0) {
+      // CLASSIFICATION PRECEDES REDIRECT-FOLLOWING. A status the request
+      // declares successful is an answer, not a detour — which is the whole of
+      // what a resumable upload needs to read a 308 rather than chase it. Only
+      // the status and headers are consulted here: the body is not read yet, and
+      // reading it to decide whether to follow would buffer a response the caller
+      // may have asked to stream.
+      if (
+        (response.status === 301 || response.status === 302) &&
+        redirectsLeft > 0 &&
+        !isSuccess(response.status, responseHeaders)
+      ) {
         const location = response.headers.get("location");
         if (location) {
           currentUrl = location.startsWith("http")
@@ -131,50 +183,11 @@ async function executeRequest(
         }
       }
 
-      // Normalize response headers
-      const responseHeaders: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
-        responseHeaders[key.toLowerCase()] = value;
-      });
-
-      // Stream mode: pump body into a PassThrough eagerly so data flows immediately
-      if (stream) {
-        const webStream = response.body;
-        const body = new PassThrough();
-        (async () => {
-          if (!webStream) {
-            body.end();
-            return;
-          }
-          const reader = webStream.getReader();
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              body.push(Buffer.from(value));
-            }
-            body.end();
-          } catch (err) {
-            body.destroy(err as Error);
-          } finally {
-            reader.releaseLock();
-          }
-        })();
-        return { status: response.status, headers: responseHeaders, body };
-      }
-
-      // Deserialize body
-      const contentType = responseHeaders["content-type"] ?? "";
-      let responseBody: unknown;
-
-      if (contentType.includes("application/json")) {
-        const text = await response.text();
-        responseBody = text.length === 0 ? null : JSON.parse(text);
-      } else {
-        responseBody = await response.text();
-      }
-
-      return { status: response.status, headers: responseHeaders, body: responseBody };
+      return {
+        status: response.status,
+        headers: responseHeaders,
+        body: await readBody(response, responseType, responseHeaders),
+      };
     }
   } catch (err) {
     // Caller cancellation (not the timeout) surfaces as the structured invoke
@@ -186,6 +199,61 @@ async function executeRequest(
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * Read the response body the way the call asked for.
+ *
+ * `bytes` exists because the buffered path used to be "parse when the content
+ * type says JSON, otherwise a raw string", and reading binary as a string
+ * corrupts it — a PNG that survives the wire does not survive `response.text()`.
+ * `text` is the honest name for that old fallback, so a caller that wants a
+ * string says so rather than getting one by omission.
+ */
+async function readBody(
+  response: Response,
+  responseType: ResponseType,
+  responseHeaders: Record<string, string>,
+): Promise<unknown> {
+  if (responseType === "stream") {
+    // Pumped eagerly into a PassThrough so data flows as it arrives rather than
+    // when the consumer first pulls.
+    const webStream = response.body;
+    const out = new PassThrough();
+    void (async () => {
+      if (!webStream) {
+        out.end();
+        return;
+      }
+      const reader = webStream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          out.push(Buffer.from(value));
+        }
+        out.end();
+      } catch (err) {
+        out.destroy(err as Error);
+      } finally {
+        reader.releaseLock();
+      }
+    })();
+    return out;
+  }
+
+  if (responseType === "bytes") {
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  if (responseType === "text") return response.text();
+
+  const contentType = responseHeaders["content-type"] ?? "";
+  if (contentType.includes("application/json")) {
+    const text = await response.text();
+    return text.length === 0 ? null : JSON.parse(text);
+  }
+  return response.text();
 }
 
 /**
@@ -224,34 +292,198 @@ interface RequestAttempt {
   url: string;
   method: string;
   headers: Record<string, string>;
-  body: string | undefined;
+  body: OutgoingBody;
   timeout: number;
-  retries: number;
+  retry: Required<RetryPolicy>;
   log: Logger;
-  stream: boolean;
+  responseType: ResponseType;
+  isSuccess: (status: number, headers: Record<string, string>, body: unknown) => boolean;
+  isRetryable: (status: number, headers: Record<string, string>, body: unknown) => boolean;
   callerSignal?: AbortSignal;
 }
 
-/** Iterative rather than recursive so the attempt counter is the loop variable
- *  instead of a parameter threaded through — it was derivable from the remaining
- *  retries anyway, and two representations of one number drift. */
+/** The wait before re-attempt number `resend` (1-based), and never below what the
+ *  server asked for. Full jitter picks uniformly from [0, delay]: a fleet that
+ *  failed together must not re-attempt together, and spreading the whole interval
+ *  is what actually decorrelates them. */
+function retryDelay(
+  policy: Required<RetryPolicy>,
+  resend: number,
+  headers: Record<string, string>,
+): RetryWait {
+  const backoff = Math.min(
+    policy.maxDelay,
+    policy.initialDelay * Math.pow(policy.factor, Math.max(0, resend - 1)),
+  );
+  const jittered = policy.jitter === "full" ? Math.random() * backoff : backoff;
+  if (!policy.honorRetryAfter) return { delay: jittered };
+  const after = parseRetryAfter(headers["retry-after"]);
+  if (after === undefined) return { delay: jittered };
+  // A server asking for LONGER than the policy's own ceiling is not a delay to
+  // honour — `Retry-After: 86400` would park the invocation for a day, and the
+  // per-attempt timeout does not bound a wait. Past the ceiling the honest answer
+  // is to stop retrying rather than to sleep past a bound the author set.
+  if (after > policy.maxDelay) return { delay: after, exceedsCeiling: true };
+  // Within the ceiling the server's number is better information than any local
+  // curve, so it raises the delay — it never lowers one the policy chose.
+  return { delay: Math.max(jittered, after) };
+}
+
+interface RetryWait {
+  delay: number;
+  /** The server asked for longer than `maxDelay`; the caller stops instead. */
+  exceedsCeiling?: boolean;
+}
+
+/** `Retry-After` is either delta-seconds or an HTTP date. Milliseconds out; an
+ *  unparseable or past value yields undefined rather than 0, which would read as
+ *  "the server asked for no delay". */
+function parseRetryAfter(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return seconds >= 0 ? seconds * 1000 : undefined;
+  const at = Date.parse(value);
+  if (Number.isNaN(at)) return undefined;
+  const delta = at - Date.now();
+  return delta > 0 ? delta : undefined;
+}
+
+/**
+ * Wait, but stay cancellable.
+ *
+ * A bare `setTimeout` parks a cancelled invocation for the whole delay — up to
+ * `maxDelay` per attempt — because the caller's signal is threaded into `fetch`
+ * and nowhere else, and the per-attempt timeout does not bound a sleep. Rejects
+ * with the same structured cancellation the request path raises, so a cancelled
+ * retry and a cancelled request are one error to a caller.
+ */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(new InvokeError(ERR_INVOKE_CANCELLED, "Request cancelled"));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort(): void {
+      clearTimeout(timer);
+      reject(new InvokeError(ERR_INVOKE_CANCELLED, "Request cancelled"));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * One request, re-attempted while the policy allows and the outcome is
+ * retryable.
+ *
+ * Two kinds of outcome are retryable and they arrive differently: a network
+ * failure throws, a rejected response returns. Both run through the same
+ * attempt counter and the same backoff, because an author who says "five
+ * attempts" means five, not five-per-failure-mode.
+ *
+ * A NON-REPLAYABLE BODY IS REFUSED RATHER THAN RE-SENT. A stream has been
+ * consumed by the first attempt, so a second would transmit nothing and a server
+ * would answer 200 to an empty payload — a silent, successful-looking corruption.
+ * Iterative rather than recursive so the attempt counter is the loop variable.
+ */
 async function executeWithRetry(attempt: RequestAttempt): Promise<TeloResponse> {
-  const { url, method, headers, body, timeout, retries, log, stream, callerSignal } = attempt;
+  const {
+    url,
+    method,
+    headers,
+    body,
+    timeout,
+    retry,
+    log,
+    responseType,
+    isSuccess,
+    isRetryable,
+    callerSignal,
+  } = attempt;
+  const successForRedirect = (status: number, h: Record<string, string>): boolean =>
+    isSuccess(status, h, undefined);
+
+  // Checked ONCE, before anything is sent. A stream body with a non-zero attempt
+  // budget is a manifest fault knowable without a request, and raising it here
+  // means the author is told what is wrong instead of learning it only when a
+  // retry is reached — where the error would also have to displace the network
+  // failure that prompted the retry, hiding whether it was a timeout or a refusal.
+  if (retry.attempts > 0) assertReplayable(body, url);
+
   for (let resendCount = 0; ; resendCount++) {
+    const canResend = resendCount < retry.attempts;
     try {
-      return await executeRequest(url, method, headers, body, timeout, stream, callerSignal);
+      const response = await executeRequest(
+        url,
+        method,
+        headers,
+        body,
+        timeout,
+        responseType,
+        successForRedirect,
+        callerSignal,
+      );
+      if (isSuccess(response.status, response.headers, response.body)) return response;
+      if (!canResend || !isRetryable(response.status, response.headers, response.body)) {
+        return response;
+      }
+      const wait = retryDelay(retry, resendCount + 1, response.headers);
+      if (wait.exceedsCeiling) {
+        log.warn("Retry-After exceeds the retry ceiling; returning the response", {
+          "http.request.method": method,
+          ...urlAttributes(url),
+          "http.response.status_code": response.status,
+          "http.request.resend_delay": wait.delay / 1000,
+        });
+        return response;
+      }
+      log.warn("Request returned a retryable status; retrying", {
+        "http.request.method": method,
+        ...urlAttributes(url),
+        "http.response.status_code": response.status,
+        "http.request.resend_count": resendCount + 1,
+        "http.request.resend_delay": wait.delay / 1000,
+      });
+      // A rejected response's body was buffered before this point, so nothing
+      // is left open. A STREAM response is different: the caller asked not to
+      // buffer, so `retryOn` on a streamed call is the author's statement that
+      // the status alone decides, and the abandoned PassThrough is destroyed.
+      if (responseType === "stream") (response.body as PassThrough | undefined)?.destroy();
+      await sleep(wait.delay, callerSignal);
+      continue;
     } catch (err) {
-      if (resendCount >= retries || (err as any).error !== "NetworkError") throw err;
+      if (!canResend || (err as any).error !== "NetworkError") throw err;
       // Only the FINAL failure reaches the caller, so an attempt that failed and
       // was retried is invisible to everything except this record — including the
       // common case where the retry succeeds and the call looks perfectly healthy.
+      const wait = retryDelay(retry, resendCount + 1, {});
       log.warn("Request failed; retrying", {
         "http.request.method": method,
         ...urlAttributes(url),
         "http.request.resend_count": resendCount + 1,
+        "http.request.resend_delay": wait.delay / 1000,
         "error.type": String((err as any).code ?? "NetworkError"),
       });
+      await sleep(wait.delay, callerSignal);
     }
+  }
+}
+
+/** Refuse to re-send what cannot be produced again. Named error rather than a
+ *  bare throw so a manifest can catch it by name, and raised at the moment the
+ *  re-send is decided rather than when the empty request comes back 200. */
+function assertReplayable(body: OutgoingBody, url: string): void {
+  if (body instanceof Readable) {
+    throw new InvokeError(
+      ERR_BODY_NOT_REPLAYABLE,
+      `Http.Request: the body of ${url} is a stream, which has already been consumed and ` +
+        `cannot be re-sent. Retrying it would transmit an empty payload. Buffer the body ` +
+        `(send bytes or a string), or chunk the upload so each request carries a replayable ` +
+        `piece.`,
+      { url },
+    );
   }
 }
 
@@ -260,7 +492,9 @@ interface HttpRequestInputs {
   method?: string;
   query?: Record<string, string>;
   headers?: Record<string, string>;
-  body?: string | Record<string, unknown>;
+  body?: unknown;
+  bodyEncoding?: "utf8" | "base64";
+  responseType?: ResponseType;
 }
 
 interface HttpRequestManifest extends HttpRequestInputs {
@@ -270,9 +504,117 @@ interface HttpRequestManifest extends HttpRequestInputs {
   client?: unknown;
   timeout?: number;
   throwOnHttpError?: boolean;
+  success?: unknown;
+  retryOn?: unknown;
+  retry?: RetryPolicy;
   retries?: number;
   mode?: "buffer" | "stream";
   inputs?: HttpRequestInputs;
+}
+
+/**
+ * Turn the declared body into the bytes to send, and say what content type it
+ * implies.
+ *
+ * Bytes and a byte stream pass through untouched — that is the whole point of
+ * admitting them, and `String(uint8array)` is what used to happen instead,
+ * producing `137,80,78,...` on the wire with nothing to notice it. A string is
+ * text unless `bodyEncoding` says it is base64, which is the escape hatch for a
+ * payload that reached the manifest as text.
+ */
+function serializeBody(
+  body: unknown,
+  encoding: "utf8" | "base64" | undefined,
+  declaredContentType: string | undefined,
+): { body: OutgoingBody; contentType?: string } {
+  if (body === undefined || body === null) return { body: undefined };
+  if (body instanceof Uint8Array) {
+    return { body, contentType: declaredContentType ?? "application/octet-stream" };
+  }
+  if (isNodeReadable(body)) {
+    return { body, contentType: declaredContentType ?? "application/octet-stream" };
+  }
+  // A live Stream handle from another resource — an encoder, a chunker, an S3
+  // get. Adapted rather than buffered: buffering here would defeat the reason
+  // the producer streamed it.
+  if (isAsyncIterable(body)) {
+    return {
+      body: Readable.from(body as AsyncIterable<Uint8Array>),
+      contentType: declaredContentType ?? "application/octet-stream",
+    };
+  }
+  if (typeof body === "object") {
+    const contentType = declaredContentType ?? "application/json";
+    return {
+      body: contentType.includes("application/x-www-form-urlencoded")
+        ? new URLSearchParams(body as Record<string, string>).toString()
+        : JSON.stringify(body),
+      contentType,
+    };
+  }
+  const text = String(body);
+  if (encoding === "base64") {
+    return {
+      body: Buffer.from(text, "base64"),
+      contentType: declaredContentType ?? "application/octet-stream",
+    };
+  }
+  // A plain string implies nothing: it always could have been any media type,
+  // and guessing one here would start setting a header on requests that have
+  // never carried it.
+  return { body: text };
+}
+
+function isNodeReadable(value: unknown): value is Readable {
+  return (
+    !!value &&
+    typeof (value as Readable).pipe === "function" &&
+    typeof (value as Readable).read === "function"
+  );
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return (
+    value != null &&
+    typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
+  );
+}
+
+/**
+ * A response classifier from either spelling of the same field.
+ *
+ * EXPANDED FIRST, then branched on. The field is `x-telo-eval: runtime`, so what
+ * the manifest hands over is a compiled expression whenever the author wrote
+ * CEL — and the expression is free to produce either spelling, since the
+ * declared schema admits both. Branching on the raw declaration instead read a
+ * CEL-produced list as a predicate (never `true`, so every response was
+ * classified a failure, silently) and a CEL leaf inside a literal list as `NaN`
+ * (matching no status). Expansion is per response because the scope is the
+ * response.
+ *
+ * Absent falls back to `fallback`, which is what keeps every existing request
+ * behaving exactly as it did.
+ */
+function classifier(
+  field: string,
+  declared: unknown,
+  expand: (expr: unknown, scope: Record<string, unknown>) => unknown,
+  fallback: (status: number) => boolean,
+): (status: number, headers: Record<string, string>, body: unknown) => boolean {
+  if (declared === undefined || declared === null) return (status) => fallback(status);
+  return (status, headers, body) => {
+    const value = expand(declared, { status, headers, body: body ?? null });
+    if (typeof value === "boolean") return value;
+    if (Array.isArray(value)) return value.some((code) => Number(code) === status);
+    // Neither spelling. Raised rather than read as `false`, which would classify
+    // every response the same way and give no clue why.
+    throw new InvokeError(
+      "ERR_HTTP_CLASSIFIER_INVALID",
+      `Http.Request: '${field}' must resolve to a list of status codes or a boolean, ` +
+        `but produced ${value === null ? "null" : typeof value}.`,
+      { field, value },
+    );
+  };
 }
 
 interface ClientSnapshotInstance {
@@ -384,10 +726,7 @@ class HttpRequestResource implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(
-    input: any,
-    invokeCtx?: InvokeContext,
-  ): Promise<TeloResponse | { output: Stream<Uint8Array> }> {
+  async invoke(input: any, invokeCtx?: InvokeContext): Promise<TeloResponse> {
     const ctx = this.ctx;
     const m = this.manifest;
 
@@ -397,10 +736,20 @@ class HttpRequestResource implements ResourceInstance {
     let clientTimeout = DEFAULT_TIMEOUT;
 
     let applyCredential: CredentialApplier | undefined;
+    // Defaults the client supplies for policy an individual request may restate.
+    // Backoff especially: it is a property of the API being called, not of one
+    // call, so declaring it once per client is the common case.
+    const clientDefaults: { throwOnHttpError?: boolean; retry?: RetryPolicy } = {};
 
     if (m.client) {
       const { config: clientConfig, credential } = resolveClient(m.client, ctx);
       applyCredential = credential;
+      if (typeof clientConfig.throwOnHttpError === "boolean") {
+        clientDefaults.throwOnHttpError = clientConfig.throwOnHttpError;
+      }
+      if (clientConfig.retry && typeof clientConfig.retry === "object") {
+        clientDefaults.retry = clientConfig.retry as RetryPolicy;
+      }
 
       const resolvedBaseUrl = ctx.expandValue(clientConfig.baseUrl ?? "", input ?? {});
       clientBaseUrl = typeof resolvedBaseUrl === "string" ? resolvedBaseUrl : "";
@@ -437,8 +786,32 @@ class HttpRequestResource implements ResourceInstance {
     const query = (resolved.query ?? {}) as Record<string, string>;
     const body = resolved.body;
     const effectiveTimeout = m.timeout ?? clientTimeout;
-    const retries = m.retries ?? 0;
-    const throwOnHttpError = m.throwOnHttpError ?? false;
+    const throwOnHttpError = m.throwOnHttpError ?? clientDefaults.throwOnHttpError ?? false;
+
+    // `mode` is config and `responseType` is an input, so the deprecated field can
+    // only ever be the fallback — a call that states one wins over an instance
+    // that stated the other years ago.
+    const responseType: ResponseType =
+      resolved.responseType ?? (m.mode === "stream" ? "stream" : "json");
+
+    // `retries` is the deprecated spelling of exactly one field of `retry`, so it
+    // fills that field rather than competing with the policy.
+    const declaredRetry = m.retry ?? clientDefaults.retry;
+    const retry: Required<RetryPolicy> = {
+      ...DEFAULT_RETRY,
+      ...(m.retries !== undefined ? { attempts: m.retries } : {}),
+      ...declaredRetry,
+    };
+
+    // Classification sees the same scope in both fields, and `retryOn` is
+    // consulted only for what `success` rejected — so a status named by both is a
+    // success, and nothing has to say which wins.
+    const evaluate = (expr: unknown, scope: Record<string, unknown>): unknown =>
+      ctx.expandValue(expr, { ...callerInput, ...scope });
+    const isSuccess = classifier("success", m.success, evaluate, (status) => status < 400);
+    const isRetryable = classifier("retryOn", m.retryOn, evaluate, (status) =>
+      DEFAULT_RETRY_STATUSES.includes(status),
+    );
 
     // Build URL
     const baseUrl = rawUrl.startsWith("http") ? rawUrl : `${clientBaseUrl}${rawUrl}`;
@@ -464,18 +837,14 @@ class HttpRequestResource implements ResourceInstance {
     const derivedHeaders: Record<string, string> = {};
 
     // Serialize body
-    let serializedBody: string | undefined;
-    if (body !== undefined) {
-      if (typeof body === "object" && body !== null) {
-        const declared = mergedHeaders["content-type"];
-        const contentType = declared ?? "application/json";
-        if (!declared) derivedHeaders["content-type"] = contentType;
-        serializedBody = contentType.includes("application/x-www-form-urlencoded")
-          ? new URLSearchParams(body as Record<string, string>).toString()
-          : JSON.stringify(body);
-      } else {
-        serializedBody = String(body);
-      }
+    const declaredContentType = mergedHeaders["content-type"];
+    const { body: serializedBody, contentType: impliedContentType } = serializeBody(
+      body,
+      resolved.bodyEncoding,
+      declaredContentType,
+    );
+    if (!declaredContentType && impliedContentType) {
+      derivedHeaders["content-type"] = impliedContentType;
     }
 
     /** Fill in derived headers wherever the key is still unset. */
@@ -514,9 +883,11 @@ class HttpRequestResource implements ResourceInstance {
         headers,
         body: serializedBody,
         timeout: effectiveTimeout,
-        retries,
+        retry,
         log: ctx.log,
-        stream: m.mode === "stream",
+        responseType,
+        isSuccess,
+        isRetryable,
         callerSignal: invokeCtx?.cancellation.signal,
       });
       if (ctx.log.enabled(SEVERITY.debug)) {
@@ -547,21 +918,32 @@ class HttpRequestResource implements ResourceInstance {
         "http.request.method": method,
         ...urlAttributes(fullUrl),
       });
-      if (m.mode === "stream") (response.body as PassThrough | undefined)?.destroy();
+      // This re-send is not governed by `retry` — it is the credential contract,
+      // and it fires even at `attempts: 0` — so a non-replayable body has to be
+      // refused here too, or the retry would send an empty payload with a fresh
+      // token and be answered 200.
+      assertReplayable(serializedBody, fullUrl);
+      if (responseType === "stream") (response.body as PassThrough | undefined)?.destroy();
       ({ response, url: fullUrl } = await attempt(true));
     }
 
-    if (throwOnHttpError && response.status >= 400) {
+    if (throwOnHttpError && !isSuccess(response.status, response.headers, response.body)) {
       throw new Error(`HTTP ${response.status} error from ${fullUrl}`);
     }
 
-    if (m.mode === "stream") {
-      // Wrap the upstream Readable in a Stream so the value's constructor is
-      // recognized by CEL and the result fits the streaming-Invocable
-      // convention ({output: Stream<...>}). HTTP server consumers pipe through
-      // a format-codec encoder (Octet.Encoder for raw bytes) to write to the
-      // response.
-      return { output: new Stream(response.body as Readable) };
+    if (responseType === "stream") {
+      // The stream is returned in `body`, the same slot every other response type
+      // fills, so a streamed call has ONE output shape with the rest. Returning
+      // `{output}` instead contradicted the kind's own declared contract — which
+      // requires status/headers/body — so every streamed call failed
+      // ERR_OUTPUT_INVALID and `result.output` was a static unknown field. The
+      // alternative, a union of two output shapes, would degrade `status` and
+      // `headers` to untyped at every call site to describe a mode most calls
+      // never use.
+      // Wrapped in a Stream so the value's constructor is the one CEL has
+      // registered. Consumers pipe it through a codec encoder (Octet.Encoder for
+      // raw bytes) or iterate it.
+      return { ...response, body: new Stream(response.body as Readable) };
     }
 
     return response;

@@ -853,8 +853,16 @@ schema:
         use: schema
     collection:
       title: Collection
-      description: CEL expression resolving to the array iterated over.
-      type: array
+      description: >-
+        CEL expression resolving to the array or stream iterated over. A stream is
+        pulled lazily, one element at a time per worker, so a source too large to
+        hold in memory can still be iterated; `items` is then not in scope (see
+        `steps`). `anyOf` rather than `oneOf`: a reader that does not know
+        `x-telo-type` sees the stream branch as an empty schema matching anything,
+        so under `oneOf` an array would match both branches and fail.
+      anyOf:
+        - type: array
+        - x-telo-type: Telo.Stream
       x-telo-context:
         type: object
         properties:
@@ -899,7 +907,11 @@ schema:
             description: Fallback result returned when this entry matches.
     steps:
       title: Steps
-      description: Body run once per element of collection. Sees item, index, items.
+      description: >-
+        Body run once per element of collection. Sees item and index, plus items
+        (the whole collection) when the collection is an array — a stream has no
+        materialized collection to expose, and re-exposing the cursor this loop
+        pulls from would let a step drain it and end the iteration early.
       x-telo-topology-role: steps
       x-telo-step-context:
         invoke: invoke
@@ -911,7 +923,7 @@ schema:
           inputs: {}
           item: { x-telo-context-element-from: "collection" }
           index: { type: integer }
-          items: { type: array }
+          items: { x-telo-context-collection-from: "collection" }
       type: array
       items:
         $ref: "#/$defs/bodyStep"

@@ -17,6 +17,8 @@ interface HttpClientManifest {
   headers?: Record<string, string>;
   timeout?: number;
   followRedirects?: boolean;
+  throwOnHttpError?: boolean;
+  retry?: Record<string, unknown>;
   credential?: unknown;
 }
 
@@ -54,12 +56,19 @@ class HttpClientResource implements ResourceInstance {
     return this.applier ?? undefined;
   }
 
+  // Policy defaults are published only when DECLARED: `undefined` is what tells a
+  // request "the client said nothing here", and defaulting them would make every
+  // client override a request's own setting with a value nobody wrote.
   snapshot() {
     return {
       baseUrl: this.manifest.baseUrl ?? "",
       headers: this.manifest.headers ?? {},
       timeout: this.manifest.timeout ?? 10000,
       followRedirects: this.manifest.followRedirects ?? true,
+      ...(this.manifest.throwOnHttpError === undefined
+        ? {}
+        : { throwOnHttpError: this.manifest.throwOnHttpError }),
+      ...(this.manifest.retry === undefined ? {} : { retry: this.manifest.retry }),
     };
   }
 }

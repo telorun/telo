@@ -8,9 +8,9 @@ imports:
 targets:
   - !ref TestBadOverload
 ---
-# `.slice(int)` is not a CEL string method — the overload is `string.substring(int)`.
-# The analyzer's env.check() must catch this as a type error and surface a
-# SCHEMA_VIOLATION diagnostic with a "CEL type error" message.
+# `.slice(int)` is not a CEL string method — `slice` is a three-argument function
+# over a sequence, and the string method is `.substring(int)`. The analyzer's
+# env.check() must catch this and the audit must name the signatures that exist.
 kind: Run.Sequence
 metadata:
   name: TestBadOverload
