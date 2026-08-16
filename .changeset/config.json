@@ -11,6 +11,7 @@
   "updateInternalDependencies": "patch",
   "ignore": [
     "@telorun/ai",
+    "@telorun/ai-fixtures",
     "@telorun/ai-mcp-build",
     "@telorun/ai-openai-build",
     "@telorun/assert-build",
