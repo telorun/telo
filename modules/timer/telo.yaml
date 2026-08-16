@@ -27,7 +27,7 @@ metadata:
     wait instead of leaving it pending.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/delay.mjs&local_path=./nodejs/src/delay.ts
+  - pkg:telo/local/js?path=./nodejs/timer.mjs&local_path=./nodejs/src/index.ts#Delay
 inputType:
   kind: Telo.JsonSchema
   schema:

@@ -26,7 +26,7 @@ metadata:
     logged without stopping the schedule.
 capability: Telo.Service
 controllers:
-  - pkg:telo/local/js?path=./nodejs/interval.mjs&local_path=./nodejs/src/interval.ts#interval
+  - pkg:telo/local/js?path=./nodejs/scheduler.mjs&local_path=./nodejs/src/index.ts#interval
 schema:
   type: object
   required: [every, invoke]
@@ -77,7 +77,7 @@ metadata:
     failing run is logged without stopping the schedule.
 capability: Telo.Service
 controllers:
-  - pkg:telo/local/js?path=./nodejs/cron.mjs&local_path=./nodejs/src/cron.ts#cron
+  - pkg:telo/local/js?path=./nodejs/scheduler.mjs&local_path=./nodejs/src/index.ts#cron
 schema:
   type: object
   required: [cron, invoke]

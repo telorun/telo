@@ -222,12 +222,14 @@ export {
 } from "./sources/manifest-cache.js";
 export type { ManifestCacheCoords } from "./sources/manifest-cache.js";
 export {
+  CODE_LAYER_ROLES,
   LAYER_ROLES,
   PLATFORM_AXES,
   ArtifactSelectorError,
   describeSelector,
   isLayerRole,
   normalizeSelector,
+  roleCarriesSelector,
   selectorFromQualifiers,
   selectorKey,
   selectorMatches,
@@ -240,9 +242,16 @@ export type {
 } from "./artifact-selector.js";
 export { collectModuleFileClaims } from "./module-file-claims.js";
 export type { ModuleFileClaim } from "./module-file-claims.js";
+export { readLibraryCandidates } from "./module-library.js";
+export type {
+  LibraryCandidate,
+  LibraryCandidateProblem,
+  LibraryCandidates,
+} from "./module-library.js";
 export {
   LayerIndexError,
-  matchControllerLayers,
+  codeLayerFor,
+  matchCodeLayers,
   parseLayerIndex,
   singletonLayer,
 } from "./artifact-layer-index.js";

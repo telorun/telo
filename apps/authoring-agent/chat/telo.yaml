@@ -1116,6 +1116,18 @@ system: |
     artifact's `common` layer) and is still on disk when a controller runs, so
     omitting `assets:` costs bandwidth, never correctness. NEVER hand-write a
     `layers:` block — `telo publish` generates it.
+  - `exports.code:` (Library only) — OPTIONAL, and needed only when ANOTHER
+    module's controller code imports this one's code. A list of entries, each
+    naming the bare specifier dependents import and the file it resolves to:
+    `- { specifier: "@telorun/kv-store", format: js, path: ./nodejs/kv-store.mjs,
+    source: ./nodejs/src/index.ts }` (`source:` is the TypeScript the kernel
+    builds in a working copy; `os` / `arch` / `libc` narrow a native entry). The
+    kernel then resolves that import to THIS module's entry point instead of
+    copying its source into each dependent's bundle, so the library runs as one
+    module scope everywhere. One specifier and one entry point per format —
+    subpaths (`@telorun/kv-store/claim`) are not representable and are a build
+    error. Nothing to declare on the consumer side: the dependency is already
+    declared as an `imports:` entry.
   - `exports:` (Library only) — `kinds:` (kind names importers may use) and
     `resources:` (instance names importers may `!ref`). Declaring `kinds:` opts
     the library into a gate: ONLY the listed kinds are importable, and using an

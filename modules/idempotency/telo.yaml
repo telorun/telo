@@ -36,7 +36,7 @@ metadata:
     time-bounded and renewed, so a crash frees the key.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/once.mjs&local_path=./nodejs/src/once.ts#once
+  - pkg:telo/local/js?path=./nodejs/idempotency.mjs&local_path=./nodejs/src/index.ts#once
 throws:
   codes:
     # An absent or empty `key` is rejected by `inputType` below, as the kernel's

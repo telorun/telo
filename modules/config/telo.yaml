@@ -23,7 +23,7 @@ metadata:
   description: Provides a schema-typed store of configuration values sourced from environment variables.
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/env-variable-store-controller.mjs&local_path=./nodejs/src/env-variable-store-controller.ts
+  - pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#EnvVariableStoreController
 schema:
   type: "object"
   properties:
@@ -42,7 +42,7 @@ metadata:
   description: Provides non-secret configuration values mapped from keys in a referenced environment variable store.
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/variables-controller.mjs&local_path=./nodejs/src/variables-controller.ts
+  - pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#VariablesController
 schema:
   type: "object"
   properties:
@@ -72,7 +72,7 @@ metadata:
   description: Provides secret configuration values mapped from keys in a referenced environment variable store.
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/secrets-controller.mjs&local_path=./nodejs/src/secrets-controller.ts
+  - pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#SecretsController
 schema:
   type: "object"
   properties:
@@ -106,7 +106,7 @@ metadata:
     resource.
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/env-controller.mjs&local_path=./nodejs/src/env-controller.ts
+  - pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#EnvController
 schema:
   type: object
   properties:

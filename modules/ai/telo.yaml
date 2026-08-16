@@ -22,6 +22,14 @@ exports:
     - AgentStream
     - ImageModel
     - Image
+  # The entry point a dependent module's controller bundle resolves
+  # `@telorun/ai` to, so this module's code is one module scope across every
+  # consumer instead of a copy inlined into each of their bundles.
+  code:
+    - specifier: "@telorun/ai"
+      format: js
+      path: ./nodejs/ai.mjs
+      source: ./nodejs/src/index.ts
 ---
 # Ai.Model — the abstract LLM client every provider implements. Like Sql.Connection
 # or Http.Client, it is a Telo.Provider: a configured handle to a backend (model id,
@@ -58,7 +66,7 @@ metadata:
     prompt and per-call option overrides.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/ai-text-controller.mjs&local_path=./nodejs/src/ai-text-controller.ts
+  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiTextController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -167,7 +175,7 @@ metadata:
     completion; encoding the stream is the consumer's job.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/ai-text-stream-controller.mjs&local_path=./nodejs/src/ai-text-stream-controller.ts
+  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiTextStreamController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -277,7 +285,7 @@ metadata:
 capability: Telo.Mount
 extends: Self.ToolProvider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/ai-tools-controller.mjs&local_path=./nodejs/src/ai-tools-controller.ts
+  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiToolsController
 schema:
   type: object
   properties:
@@ -380,7 +388,7 @@ metadata:
     the final text with accumulated usage and a per-step trace.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/ai-agent-controller.mjs&local_path=./nodejs/src/ai-agent-controller.ts
+  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -546,7 +554,7 @@ metadata:
     buffered loop, shaped for serving live output.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/ai-agent-stream-controller.mjs&local_path=./nodejs/src/ai-agent-stream-controller.ts
+  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentStreamController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -849,7 +857,7 @@ metadata:
     Refused images come back as a short list rather than an error.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/ai-image-controller.mjs&local_path=./nodejs/src/ai-image-controller.ts
+  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiImageController
 throws:
   codes:
     ERR_INVALID_INPUT:

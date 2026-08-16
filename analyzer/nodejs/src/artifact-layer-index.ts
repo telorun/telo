@@ -29,8 +29,10 @@
  */
 
 import {
+  LAYER_ROLES,
   isLayerRole,
   normalizeSelector,
+  roleCarriesSelector,
   selectorKey,
   selectorMatches,
   type ArtifactSelector,
@@ -46,7 +48,7 @@ const CONTENT_DIGEST = /^sha256-[A-Za-z0-9_-]{43}$/;
 
 export interface ArtifactLayer {
   role: LayerRole;
-  /** Present on `controller` layers only. */
+  /** Present on the code-bearing roles (`controller`, `library`) only. */
   selector?: ArtifactSelector;
   /** OCI blob digest — addresses the layer and verifies the transfer. */
   blob: string;
@@ -97,25 +99,35 @@ export function parseLayerIndex(value: unknown, describe = "layers"): ArtifactLa
       throw new LayerIndexError(`${where}: expected an object.`);
     }
     const entry = raw as Record<string, unknown>;
-    if (!isLayerRole(entry.role)) {
+    if (typeof entry.role !== "string" || entry.role === "") {
       throw new LayerIndexError(
-        `${where}: role must be one of 'controller', 'assets', 'common'; got ` +
-          `${entry.role === undefined ? "nothing" : `'${String(entry.role)}'`}.`,
+        `${where}: role is required and must be one of ${LAYER_ROLES.map((r) => `'${r}'`).join(", ")}; ` +
+          `got ${entry.role === undefined ? "nothing" : `'${String(entry.role)}'`}.`,
       );
     }
+    // A role this runtime does not know is SKIPPED, never rejected. Roles are
+    // added over time, and a runtime that cannot name one cannot need it — while
+    // throwing would make the whole manifest unreadable, so a module gaining a
+    // layer for a newer runtime would stop loading on an older one entirely
+    // rather than merely lacking that layer. The error stays for a structurally
+    // invalid entry, which is a malformed index rather than a newer one.
+    if (!isLayerRole(entry.role)) return;
     const role = entry.role;
 
     let selector: ArtifactSelector | undefined;
-    if (role === "controller") {
+    if (roleCarriesSelector(role)) {
       if (entry.selector === undefined) {
-        throw new LayerIndexError(`${where}: a controller layer must declare a selector.`);
+        throw new LayerIndexError(`${where}: a ${role} layer must declare a selector.`);
       }
       selector = normalizeSelector(entry.selector, where);
-      const key = selectorKey(selector);
+      // Scoped by role: a module's `js` controller layer and its `js` library
+      // layer are different layers with the same selector, and only a collision
+      // *within* one role means two layers claim one address.
+      const key = `${role}\0${selectorKey(selector)}`;
       if (seenSelectors.has(key)) {
         throw new LayerIndexError(
-          `${where}: a second controller layer claims the selector ${key}. ` +
-            `Each selector addresses exactly one layer.`,
+          `${where}: a second ${role} layer claims the selector ${selectorKey(selector)}. ` +
+            `Each selector addresses exactly one layer of a role.`,
         );
       }
       seenSelectors.add(key);
@@ -145,18 +157,39 @@ export function parseLayerIndex(value: unknown, describe = "layers"): ArtifactLa
 /** The singleton layer for a role, or undefined when the artifact has none. */
 export function singletonLayer(
   layers: readonly ArtifactLayer[],
-  role: Exclude<LayerRole, "controller">,
+  role: Exclude<LayerRole, "controller" | "library">,
 ): ArtifactLayer | undefined {
   return layers.find((l) => l.role === role);
 }
 
-/** Every controller layer matching `target`, in declaration order. Used by
- *  `telo install` to warm a cache for one platform. */
-export function matchControllerLayers(
+/** The layer of one code role carrying exactly `selector`, or undefined.
+ *
+ *  By exact key rather than by re-matching a host: the candidate being resolved
+ *  already *is* one selector, and it is by construction the key of the layer
+ *  that carries it. */
+export function codeLayerFor(
+  layers: readonly ArtifactLayer[],
+  role: Extract<LayerRole, "controller" | "library">,
+  selector: ArtifactSelector,
+): ArtifactLayer | undefined {
+  const key = selectorKey(selector);
+  return layers.find(
+    (l) => l.role === role && l.selector !== undefined && selectorKey(l.selector) === key,
+  );
+}
+
+/** Every code layer — controller and library alike — matching `target`, in
+ *  declaration order. Used by `telo install` to warm a cache for one platform:
+ *  a library layer is as much a prerequisite of an offline run as the controller
+ *  layer that imports it. */
+export function matchCodeLayers(
   layers: readonly ArtifactLayer[],
   target: PlatformTarget,
 ): ArtifactLayer[] {
   return layers.filter(
-    (l) => l.role === "controller" && l.selector !== undefined && selectorMatches(l.selector, target),
+    (l) =>
+      (l.role === "controller" || l.role === "library") &&
+      l.selector !== undefined &&
+      selectorMatches(l.selector, target),
   );
 }

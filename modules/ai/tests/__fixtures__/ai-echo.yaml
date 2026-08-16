@@ -22,7 +22,7 @@ metadata:
 capability: Telo.Provider
 extends: Ai.Model
 controllers:
-  - pkg:telo/local/js?path=../../nodejs/ai-echo-controller.mjs&local_path=../../nodejs/src/ai-echo-controller.ts
+  - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#AiEchoController
 schema:
   type: object
   properties:
@@ -71,7 +71,7 @@ metadata:
 capability: Telo.Provider
 extends: Ai.ImageModel
 controllers:
-  - pkg:telo/local/js?path=../../nodejs/ai-echo-image-controller.mjs&local_path=../../nodejs/src/ai-echo-image-controller.ts
+  - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#AiEchoImageController
 schema:
   type: object
   properties:
@@ -124,7 +124,7 @@ metadata:
   name: StreamCollector
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=../../nodejs/stream-collector-controller.mjs&local_path=../../nodejs/src/stream-collector-controller.ts
+  - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#StreamCollectorController
 schema:
   type: object
   properties:

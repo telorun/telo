@@ -7,6 +7,7 @@ import {
 import { PackageURL } from "packageurl-js";
 import { parseAllDocuments } from "yaml";
 import { selectorFromQualifiers, selectorKey, type ArtifactSelector } from "./artifact-selector.js";
+import { readLibraryCandidates } from "./module-library.js";
 
 /**
  * One module-relative file a manifest names, and the artifact layer it belongs
@@ -51,6 +52,14 @@ interface ClaimBase {
  * controller claim with no selector that nothing would reject.
  */
 export type ModuleFileClaim =
+  | (ClaimBase & {
+      readonly role: "library";
+      readonly selector: ArtifactSelector;
+      /** The bare specifier a consumer's bundle imports this entry point by. */
+      readonly specifier: string;
+      /** The source `path` was built from, as on a controller claim. */
+      readonly localPath?: string;
+    })
   | (ClaimBase & {
       readonly role: "controller";
       readonly selector: ArtifactSelector;
@@ -121,6 +130,22 @@ function controllerClaims(json: unknown): ModuleFileClaim[] {
   return claims;
 }
 
+/** The library entry points one document's `library:` block names. Unlike a
+ *  controller entry — reached only when this module's own kinds instantiate —
+ *  this one is what a *sibling* resolves a bare specifier to, which is why it
+ *  gets its own layer rather than riding in the controller layer: a consumer
+ *  must reach it without loading this module's controllers. */
+function libraryClaims(json: unknown): ModuleFileClaim[] {
+  return readLibraryCandidates(json).candidates.map((candidate) => ({
+    role: "library",
+    path: candidate.path,
+    selector: candidate.selector,
+    specifier: candidate.specifier,
+    ...(candidate.localPath ? { localPath: candidate.localPath } : {}),
+    origin: candidate.origin,
+  }));
+}
+
 /** Claims contributed by tagged values, asked of the engine that owns each tag.
  *  The walk reaches every tagged scalar in the document, so an engine that
  *  embeds files is discovered wherever its tag was written.
@@ -146,7 +171,8 @@ function taggedClaims(json: unknown, registry: TemplatingEngineRegistry): Module
  *  their layers — dropping one would leave a platform's layer short a file it
  *  declared it needs. */
 function claimKey(claim: ModuleFileClaim): string {
-  const selector = claim.role === "controller" ? selectorKey(claim.selector) : "";
+  const selector =
+    claim.role === "controller" || claim.role === "library" ? selectorKey(claim.selector) : "";
   return `${claim.role}\0${selector}\0${claim.path}`;
 }
 
@@ -167,7 +193,11 @@ export function collectModuleFileClaims(
   const claims: ModuleFileClaim[] = [];
   for (const doc of parseAllDocuments(manifestText, { customTags: defaultCustomTags() })) {
     const json = doc.toJSON() as unknown;
-    for (const claim of [...controllerClaims(json), ...taggedClaims(json, registry)]) {
+    for (const claim of [
+      ...libraryClaims(json),
+      ...controllerClaims(json),
+      ...taggedClaims(json, registry),
+    ]) {
       const key = claimKey(claim);
       if (seen.has(key)) continue;
       seen.add(key);

@@ -26,7 +26,7 @@ Three things follow, and they are the reason for the choice:
 - `telo check` can see the shape, so mistakes surface statically.
 - A provider written in **any language** implements a manifest-declared contract. A TypeScript interface would make image providers Node-only in practice, against the polyglot goal.
 
-`@telorun/ai/types` still exports matching TypeScript types (`AiImageModelInstance`, `ImageInvokeInput`, `ImageGenerationResult`) — they are convenience typing for Node providers, not the contract.
+`@telorun/ai` still exports matching TypeScript types (`AiImageModelInstance`, `ImageInvokeInput`, `ImageGenerationResult`) — they are convenience typing for Node providers, not the contract.
 
 ## Runtime instance contract
 

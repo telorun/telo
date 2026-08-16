@@ -1,0 +1,10 @@
+// Controller entry points. Each kind's `controllers:` candidate selects one of
+// these by PURL fragment, so the whole module is one bundle and its shared
+// state is one module scope.
+export * as Choice from "./choice.js";
+export * as Detach from "./detach.js";
+export * as Iteration from "./iteration.js";
+export * as Loop from "./loop.js";
+export * as Projection from "./projection.js";
+export * as Sequence from "./sequence.js";
+export * as Value from "./value.js";

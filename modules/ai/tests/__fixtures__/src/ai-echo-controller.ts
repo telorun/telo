@@ -1,13 +1,13 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-import { contentToText } from "./content.js";
+import { contentToText } from "@telorun/ai";
 import type {
   AiModelInstance,
   CompletionResult,
   Message,
   ModelInvokeInput,
   StreamPart,
-} from "./types.js";
+} from "@telorun/ai";
 
 /**
  * Ai.EchoModel — hermetic test fixture. Echoes the content of the last message,

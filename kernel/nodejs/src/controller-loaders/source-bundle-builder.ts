@@ -1,8 +1,11 @@
+import { DEFAULT_MANIFEST_FILENAME, type LibraryCandidate } from "@telorun/analyzer";
 import { RuntimeError } from "@telorun/sdk";
+import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
+import { readOwnerManifest } from "../bundle/module-manifest.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
 
@@ -59,13 +62,40 @@ import { REALM_COLLAPSE_NAMES } from "./realm.js";
 const CACHE_DIR = "controller-src";
 
 /**
+ * A module-owned library this bundle must **not** inline: the bare specifier its
+ * sources import it by, and the tree that specifier's code lives in.
+ *
+ * Both halves are load-bearing. The specifier is what esbuild externalizes; the
+ * tree is what the post-build check tests the metafile against, because an import
+ * written some other way — a relative path into a sibling's sources, a subpath, a
+ * transitive dependency that reaches the same file — would sail past an externals
+ * list and silently restore the duplicated module scope this whole mechanism
+ * exists to remove.
+ *
+ * The tree is the directory of the library's **entry source**, not the module's
+ * own directory. A module directory holds its tests, and a test fixture module
+ * nested inside one is a different module whose bundle is its own; taking the
+ * whole directory would report every such fixture as an inlined sibling. What can
+ * actually be inlined is what the entry point reaches, which is what it sits in.
+ */
+export interface SiblingLibrary {
+  readonly specifier: string;
+  /** Absolute directory of the library's entry source. Absent for a published
+   *  sibling, which ships no sources for a consumer's build to reach. */
+  readonly sourceDir?: string;
+}
+
+/**
  * The esbuild options a controller bundle is built with. They must match the
  * flags each module's `build` script passes, because a bundle a contributor runs
  * has to be the bundle that ships.
  *
  * The realm names stay external because the bundle loader symlinks them to the
  * kernel's own copy at load time. Inlining them would duplicate the runtime and
- * break the constructor identity `Stream` / `InvokeError` depend on.
+ * break the constructor identity `Stream` / `InvokeError` depend on. A sibling
+ * module's declared specifier is external for the same reason one step out: the
+ * loader resolves it to that module's own library layer, so every consumer —
+ * and the owning module's own controllers — share one module scope.
  *
  * The banner defines `require` in module scope so esbuild's `__require` shim —
  * emitted for `require(...)` calls inside a bundled CJS dependency — falls
@@ -99,18 +129,31 @@ const CONTROLLER_BUNDLE_OPTIONS = {
 } as const;
 
 /**
- * Fingerprint of the options above, folded into every cache key.
+ * Fingerprint of the options above **and this module's externals**, folded into
+ * every cache key.
  *
  * The output is a function of the inputs *and* how they were built, so a change
  * to the option set has to invalidate the cache the same way an edited source
  * does — otherwise a kernel upgrade that changes the banner or the externals
  * keeps serving bundles built the old way, which is the exact silent-stale-copy
- * failure the content-addressing exists to prevent.
+ * failure the content-addressing exists to prevent. The externals now vary per
+ * module, and they decide whether a library is inlined or resolved at load, so
+ * they belong in the key for exactly the same reason the banner does.
  */
-const OPTIONS_FINGERPRINT = createHash("sha256")
-  .update(JSON.stringify(CONTROLLER_BUNDLE_OPTIONS))
-  .digest("hex")
-  .slice(0, 8);
+function optionsFingerprint(externals: readonly string[]): string {
+  return createHash("sha256")
+    .update(JSON.stringify(CONTROLLER_BUNDLE_OPTIONS))
+    .update("\n")
+    .update(JSON.stringify([...externals].sort()))
+    .digest("hex")
+    .slice(0, 8);
+}
+
+/** The bare specifiers one build externalizes: the realm names plus every
+ *  sibling library, sorted so the fingerprint is order-independent. */
+function externalSpecifiers(libraries: readonly SiblingLibrary[]): string[] {
+  return [...REALM_COLLAPSE_NAMES, ...libraries.map((l) => l.specifier)];
+}
 
 interface BuildIndexEntry {
   /** Absolute paths of every file the last build read, from esbuild's metafile. */
@@ -166,7 +209,7 @@ async function pathExists(p: string): Promise<boolean> {
  * change: the caller rebuilds rather than trusting a signature computed over a
  * file set that no longer exists.
  */
-async function signInputs(inputs: string[]): Promise<string | null> {
+async function signInputs(inputs: string[], externals: readonly string[]): Promise<string | null> {
   const stats = await Promise.all(
     inputs.map(async (file) => {
       try {
@@ -179,7 +222,7 @@ async function signInputs(inputs: string[]): Promise<string | null> {
   );
   if (stats.some((entry) => entry === null)) return null;
   return createHash("sha256")
-    .update(OPTIONS_FINGERPRINT)
+    .update(optionsFingerprint(externals))
     .update("\n")
     .update(stats.join("\n"))
     .digest("hex")
@@ -191,8 +234,23 @@ function indexPath(cacheDir: string, entryFile: string): string {
   return path.join(cacheDir, `${id}.index.json`);
 }
 
+/**
+ * Each build gets its **own directory**, not just its own filename.
+ *
+ * The bundle loader writes a `node_modules/` beside a bundle to make bare
+ * specifiers resolve — the realm names, and one shim per sibling library. Those
+ * are per bundle: two modules can legitimately resolve different versions of one
+ * library, and with every dev build sharing one flat cache directory the second
+ * would overwrite the first's shim and silently hand it the wrong copy. A
+ * directory per content-addressed key makes that unrepresentable, and costs an
+ * inode.
+ */
+function bundleDir(cacheDir: string, key: string): string {
+  return path.join(cacheDir, key);
+}
+
 function bundlePath(cacheDir: string, key: string): string {
-  return path.join(cacheDir, `${key}.mjs`);
+  return path.join(bundleDir(cacheDir, key), "bundle.mjs");
 }
 
 /**
@@ -236,11 +294,13 @@ let tmpCounter = 0;
 export async function buildControllerFromSource(
   entryFile: string,
   cacheRoot: string,
+  libraries: readonly SiblingLibrary[] = [],
 ): Promise<string> {
   const cacheDir = path.join(cacheRoot, CACHE_DIR);
+  const externals = externalSpecifiers(libraries);
   const index = await readIndex(indexPath(cacheDir, entryFile));
   if (index) {
-    const key = await signInputs(index.inputs);
+    const key = await signInputs(index.inputs, externals);
     if (key === index.key) {
       const cached = bundlePath(cacheDir, key);
       if (await pathExists(cached)) return cached;
@@ -249,7 +309,9 @@ export async function buildControllerFromSource(
 
   const inFlight = buildsInFlight.get(entryFile);
   if (inFlight) return inFlight;
-  const work = build(entryFile, cacheDir).finally(() => buildsInFlight.delete(entryFile));
+  const work = build(entryFile, cacheDir, libraries).finally(() =>
+    buildsInFlight.delete(entryFile),
+  );
   buildsInFlight.set(entryFile, work);
   return work;
 }
@@ -272,12 +334,201 @@ export async function buildControllerFromSource(
 export async function buildControllerBundle(
   entryFile: string,
   cacheRoot: string,
+  libraries: readonly SiblingLibrary[] = [],
 ): Promise<{ path: string; inputs: string[] }> {
-  const path = await buildControllerFromSource(entryFile, cacheRoot);
+  const path = await buildControllerFromSource(entryFile, cacheRoot, libraries);
   return { path, inputs: await lastBuildInputs(entryFile, cacheRoot) };
 }
 
-async function build(entryFile: string, cacheDir: string): Promise<string> {
+/**
+ * Refuse a **subpath** of an externalized specifier.
+ *
+ * A module's library surface is one specifier and one entry point — subpaths are
+ * deliberately not representable, since reproducing npm's `exports` map inside
+ * the artifact would pull a package manager's resolution semantics into Telo. Left
+ * alone, `@telorun/ai/content` matches no external, so esbuild inlines it and the
+ * duplicated scope comes back silently. Marking `<specifier>/*` external instead
+ * would trade that for a module-not-found on someone else's machine, so the
+ * honest place to fail is the build.
+ */
+function rejectSubpathImports(libraries: readonly SiblingLibrary[]): import("esbuild").Plugin {
+  return {
+    name: "telo-library-subpath",
+    setup(build) {
+      for (const library of libraries) {
+        const prefix = `${library.specifier}/`;
+        build.onResolve({ filter: new RegExp(`^${escapeRegExp(prefix)}`) }, (args) => ({
+          errors: [
+            {
+              text:
+                `'${args.path}' imports a subpath of the module library '${library.specifier}'. ` +
+                `A module exposes one entry point, so import '${library.specifier}' itself.`,
+            },
+          ],
+        }));
+      }
+    },
+  };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Refuse a bundle that reached into a sibling module's source tree by any route
+ * other than its declared specifier.
+ *
+ * The externals list only governs what the *entry's own* imports resolve to. A
+ * relative path into a sibling's `src/`, or a transitive hop through a third
+ * package, lands the sibling's source in this bundle regardless — one more copy
+ * of a module scope, and nothing else would ever report it. The metafile is the
+ * only place this is visible, so it is checked here, on both the load path and
+ * the publish path, which share this builder.
+ */
+function assertNoInlinedSiblings(
+  entryFile: string,
+  inputs: string[],
+  libraries: readonly SiblingLibrary[],
+): void {
+  assertNoUndeclaredSiblings(entryFile, inputs, libraries);
+  const offenders = new Map<string, string[]>();
+  for (const input of inputs) {
+    for (const library of libraries) {
+      if (!library.sourceDir) continue;
+      const root = library.sourceDir.endsWith(path.sep)
+        ? library.sourceDir
+        : library.sourceDir + path.sep;
+      if (!input.startsWith(root)) continue;
+      const seen = offenders.get(library.specifier) ?? [];
+      seen.push(input);
+      offenders.set(library.specifier, seen);
+    }
+  }
+  if (offenders.size === 0) return;
+  const detail = [...offenders]
+    .map(([specifier, files]) => `  ${specifier}: ${files.slice(0, 5).join(", ")}`)
+    .join("\n");
+  throw new RuntimeError(
+    "ERR_CONTROLLER_BUILD_FAILED",
+    `Controller bundle "${entryFile}" inlines source from a module it imports:\n${detail}\n` +
+      `A module-owned library is resolved at load through the import graph, so its module scope ` +
+      `is shared. Import it by its declared specifier instead of reaching into its files.`,
+  );
+}
+
+/**
+ * Refuse a bundle that inlined a module-owned library it never declared an import
+ * for.
+ *
+ * The check above is derived from the `imports:` edges, so it is vacuous exactly
+ * where the mistake is made: a module whose TypeScript imports `@telorun/sql`
+ * while its manifest never says `Sql: ../sql`. Nothing externalizes the specifier,
+ * the package manager resolves it, esbuild inlines it, and the duplicated module
+ * scope this whole mechanism removes comes back with nothing to report it. The
+ * analyzer cannot see TypeScript sources; the metafile is the only place this is
+ * decidable, so it is decided here — on the run path and the publish path alike,
+ * since both go through this builder.
+ *
+ * Detection needs no workspace registry: an input that is neither under this
+ * module's own root nor inside a `node_modules` tree belongs to *some* other
+ * module, and the nearest enclosing `telo.yaml` says which. A third-party
+ * dependency always resolves inside a `node_modules` directory, so the probe skips
+ * the overwhelming majority of inputs without a filesystem walk.
+ */
+function assertNoUndeclaredSiblings(
+  entryFile: string,
+  inputs: string[],
+  libraries: readonly SiblingLibrary[],
+): void {
+  const declared = new Set(libraries.map((library) => library.specifier));
+  const ownRoot = nearestModuleRoot(path.dirname(entryFile));
+  const offenders = new Map<string, { root: string; files: string[] }>();
+
+  for (const input of inputs) {
+    if (input.includes(`${path.sep}node_modules${path.sep}`)) continue;
+    if (ownRoot && isUnder(input, ownRoot)) continue;
+    const root = nearestModuleRoot(path.dirname(input));
+    if (!root || root === ownRoot) continue;
+    for (const candidate of libraryCandidatesOf(root)) {
+      // A declared specifier is the other check's business — it reports the same
+      // file with the instruction that fits (import it properly, not add it).
+      if (declared.has(candidate.specifier) || !candidate.localPath) continue;
+      if (!isUnder(input, path.dirname(path.resolve(root, candidate.localPath)))) continue;
+      const seen = offenders.get(candidate.specifier) ?? { root, files: [] };
+      seen.files.push(input);
+      offenders.set(candidate.specifier, seen);
+    }
+  }
+  if (offenders.size === 0) return;
+
+  const detail = [...offenders]
+    .map(
+      ([specifier, { root, files }]) =>
+        `  ${specifier} (${root}): ${files.slice(0, 5).join(", ")}`,
+    )
+    .join("\n");
+  throw new RuntimeError(
+    "ERR_CONTROLLER_BUILD_FAILED",
+    `Controller bundle "${entryFile}" inlines a module-owned library it does not import:\n` +
+      `${detail}\n` +
+      `Declare that module in this one's \`imports:\` — the kernel then resolves the specifier ` +
+      `to its own entry point at load, so the library is one module scope. Undeclared, it is ` +
+      `copied into this bundle and any state it keeps becomes a second copy.`,
+  );
+}
+
+function isUnder(file: string, dir: string): boolean {
+  const root = dir.endsWith(path.sep) ? dir : dir + path.sep;
+  return file.startsWith(root);
+}
+
+/** Nearest ancestor directory holding a `telo.yaml` — the module a file belongs
+ *  to. Memoized per directory: a bundle's inputs cluster into a handful of trees,
+ *  and the walk is otherwise repeated per file. */
+const moduleRoots = new Map<string, string | undefined>();
+function nearestModuleRoot(from: string): string | undefined {
+  const cached = moduleRoots.get(from);
+  if (cached !== undefined || moduleRoots.has(from)) return cached;
+  let dir = from;
+  for (;;) {
+    if (existsSync(path.join(dir, DEFAULT_MANIFEST_FILENAME))) {
+      moduleRoots.set(from, dir);
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      moduleRoots.set(from, undefined);
+      return undefined;
+    }
+    dir = parent;
+  }
+}
+
+/** The `library:` candidates a module declares, read once per module root. An
+ *  unreadable or malformed manifest contributes none: this check exists to report
+ *  an inlined library, and the analyzer is what reports a broken manifest. */
+const moduleLibraries = new Map<string, LibraryCandidate[]>();
+function libraryCandidatesOf(root: string): LibraryCandidate[] {
+  const cached = moduleLibraries.get(root);
+  if (cached) return cached;
+  let candidates: LibraryCandidate[] = [];
+  try {
+    candidates = readOwnerManifest(
+      readFileSync(path.join(root, DEFAULT_MANIFEST_FILENAME), "utf8"),
+    ).library;
+  } catch {
+    candidates = [];
+  }
+  moduleLibraries.set(root, candidates);
+  return candidates;
+}
+
+async function build(
+  entryFile: string,
+  cacheDir: string,
+  libraries: readonly SiblingLibrary[],
+): Promise<string> {
   const esbuild = await loadEsbuild();
   if (!esbuild) {
     // Explicit rather than a silent fallthrough: esbuild is an *optional*
@@ -291,14 +542,16 @@ async function build(entryFile: string, cacheDir: string): Promise<string> {
     );
   }
 
+  const externals = externalSpecifiers(libraries);
   let built: import("esbuild").BuildResult<{ write: false; metafile: true }>;
   try {
     built = await esbuild.build({
       ...CONTROLLER_BUNDLE_OPTIONS,
       // esbuild's options are mutable arrays; the shared constant is `as const`
       // so it cannot be edited in place by one caller and read by another.
-      external: [...CONTROLLER_BUNDLE_OPTIONS.external],
+      external: externals,
       conditions: [...CONTROLLER_BUNDLE_OPTIONS.conditions],
+      plugins: [rejectSubpathImports(libraries)],
       entryPoints: [entryFile],
       write: false,
       metafile: true,
@@ -323,13 +576,14 @@ async function build(entryFile: string, cacheDir: string): Promise<string> {
   // Absolute, so the signature is independent of the working directory the next
   // kernel happens to run from.
   const inputs = Object.keys(built.metafile.inputs).map((rel) => path.resolve(rel));
-  const key = (await signInputs(inputs)) ?? createHash("sha256")
+  assertNoInlinedSiblings(entryFile, inputs, libraries);
+  const key = (await signInputs(inputs, externals)) ?? createHash("sha256")
     .update(output.text)
     .digest("hex")
     .slice(0, 32);
   const target = bundlePath(cacheDir, key);
 
-  await fs.mkdir(cacheDir, { recursive: true });
+  await fs.mkdir(path.dirname(target), { recursive: true });
   const index = indexPath(cacheDir, entryFile);
   const superseded = (await readIndex(index))?.key;
   const tmp = `${target}.${process.pid}.${tmpCounter++}.tmp`;
@@ -347,14 +601,17 @@ async function build(entryFile: string, cacheDir: string): Promise<string> {
 /**
  * Drop the bundle this build replaced.
  *
- * Every save mints a new key, so without this a day of editing leaves one `.mjs`
- * per save and the cache grows for the life of the checkout. Pruned *after* the
- * new index is in place, so a concurrent reader is already being pointed at the
- * replacement; on Linux a process that opened the old file keeps reading it
- * through the open handle, and on Windows a failed unlink is swallowed — a stale
- * file costs disk, never correctness.
+ * Every save mints a new key, so without this a day of editing leaves one bundle
+ * directory per save and the cache grows for the life of the checkout. Pruned
+ * *after* the new index is in place, so a concurrent reader is already being
+ * pointed at the replacement; on Linux a process that opened the old file keeps
+ * reading it through the open handle, and on Windows a failed unlink is swallowed
+ * — a stale file costs disk, never correctness.
+ *
+ * The whole directory goes, since it holds the bundle's generated `node_modules/`
+ * as well as the bundle.
  */
 async function prune(cacheDir: string, superseded: string | undefined, current: string): Promise<void> {
   if (!superseded || superseded === current) return;
-  await fs.rm(bundlePath(cacheDir, superseded), { force: true }).catch(() => {});
+  await fs.rm(bundleDir(cacheDir, superseded), { force: true, recursive: true }).catch(() => {});
 }

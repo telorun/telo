@@ -32,7 +32,7 @@ capability: Telo.Invocable
 # policy keeps resolving to it; the Rust kernel's native type is `pkg:cargo`,
 # so it prefers the second entry from the same declaration.
 controllers:
-  - pkg:telo/local/js?path=./nodejs/writeline-controller.mjs&local_path=./nodejs/src/writeline-controller.ts
+  - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#WritelineController
   - pkg:cargo/telorun-console?local_path=./rust#writeline_controller
 inputType:
   kind: Telo.JsonSchema
@@ -62,7 +62,7 @@ metadata:
     `{style content}` markup renders as ANSI on a terminal. Takes no configuration.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/readline-controller.mjs&local_path=./nodejs/src/readline-controller.ts
+  - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#ReadlineController
   - pkg:cargo/telorun-console?local_path=./rust#readline_controller
 inputType:
   kind: Telo.JsonSchema
@@ -98,7 +98,7 @@ metadata:
     controls framing.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/writestream-controller.mjs&local_path=./nodejs/src/writestream-controller.ts
+  - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#WritestreamController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -127,7 +127,7 @@ metadata:
     the forwarded stream, so the sink does the writing.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/streamwait-controller.mjs&local_path=./nodejs/src/streamwait-controller.ts
+  - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#StreamwaitController
 inputType:
   kind: Telo.JsonSchema
   schema:

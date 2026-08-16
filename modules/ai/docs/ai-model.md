@@ -91,7 +91,7 @@ Image content is additive: plain-string messages are unchanged, and a provider t
 
 ## `snapshot()` and secrets
 
-The kernel calls `snapshot()` on every resource and exposes the result via CEL as `resources.<name>`. Provider snapshots **must omit secrets** (API keys, etc) — return the resource config with the secret-bearing fields stripped. Non-secret config (model id, base URL, options) should remain visible; redaction is targeted, not wholesale. Each language SDK ships a helper for this (the Node SDK exports `redact` from `@telorun/ai/redact`).
+The kernel calls `snapshot()` on every resource and exposes the result via CEL as `resources.<name>`. Provider snapshots **must omit secrets** (API keys, etc) — return the resource config with the secret-bearing fields stripped. Non-secret config (model id, base URL, options) should remain visible; redaction is targeted, not wholesale. Each language SDK ships a helper for this (the Node SDK exports `redact` from `@telorun/ai`).
 
 ---
 
@@ -120,7 +120,7 @@ metadata:
 capability: Telo.Provider
 extends: Ai.Model
 controllers:
-  - pkg:telo/local/js?path=./nodejs/model-controller.mjs&local_path=./nodejs/src/model-controller.ts
+  - pkg:telo/local/js?path=./nodejs/<provider>.mjs&local_path=./nodejs/src/index.ts#ModelController
 schema:
   type: object
   properties:

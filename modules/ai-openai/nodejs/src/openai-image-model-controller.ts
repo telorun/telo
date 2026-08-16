@@ -1,5 +1,5 @@
 import { fetchOrThrow } from "@telorun/sdk";
-import { redact } from "@telorun/ai/redact";
+import { redact } from "@telorun/ai";
 import type {
   AiImageModelInstance,
   GeneratedImage,
@@ -8,7 +8,7 @@ import type {
   ImageGenerationResult,
   ImageInvokeInput,
   UsageQuantity,
-} from "@telorun/ai/types";
+} from "@telorun/ai";
 import type {
   ControllerContext,
   InvokeContext,

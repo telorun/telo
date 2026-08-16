@@ -27,7 +27,7 @@ metadata:
     how long until the window frees, instead of raising.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/guard-controller.mjs&local_path=./nodejs/src/guard-controller.ts
+  - pkg:telo/local/js?path=./nodejs/rate-limit.mjs&local_path=./nodejs/src/index.ts#GuardController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -97,7 +97,7 @@ metadata:
     leak budget.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/budget-controller.mjs&local_path=./nodejs/src/budget-controller.ts
+  - pkg:telo/local/js?path=./nodejs/rate-limit.mjs&local_path=./nodejs/src/index.ts#BudgetController
 inputType:
   kind: Telo.JsonSchema
   schema:

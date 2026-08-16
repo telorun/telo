@@ -41,7 +41,7 @@ metadata:
     byte parts are accepted, and a streamed part is never buffered.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/encoder-controller.mjs&local_path=./nodejs/src/encoder-controller.ts
+  - pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#EncoderController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -146,7 +146,7 @@ metadata:
     returned in the order they appeared.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/decoder-controller.mjs&local_path=./nodejs/src/decoder-controller.ts
+  - pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#DecoderController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -232,7 +232,7 @@ metadata:
     chunk regardless of how large a part is.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/reader-controller.mjs&local_path=./nodejs/src/reader-controller.ts
+  - pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#ReaderController
 inputType:
   kind: Telo.JsonSchema
   schema:

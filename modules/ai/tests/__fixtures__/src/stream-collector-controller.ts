@@ -1,6 +1,6 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-import type { AiModelInstance, FinishReason, Message, StreamPart } from "./types.js";
+import type { AiModelInstance, FinishReason, Message, StreamPart } from "@telorun/ai";
 
 /**
  * Test-support Invocable that consumes an `Ai.Model.stream(...)` and collects its output.

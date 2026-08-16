@@ -26,7 +26,7 @@ metadata:
 capability: Telo.Provider
 extends: KvStore.Store
 controllers:
-  - pkg:telo/local/js?path=./nodejs/store.mjs&local_path=./nodejs/src/store.ts#store
+  - pkg:telo/local/js?path=./nodejs/kv-store-memory.mjs&local_path=./nodejs/src/index.ts#store
 schema:
   type: object
   additionalProperties: false

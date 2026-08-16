@@ -35,6 +35,7 @@ import * as path from "path";
 import { pathToFileURL } from "url";
 import { withBigIntsAsNumbers } from "./bigint-schema-view.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
+import type { SiblingLibraryMap } from "./controller-loaders/sibling-libraries.js";
 import { resolveModuleFileUri } from "./module-file-resolution.js";
 import { hostEnv } from "./host-env.js";
 import type { LoggingHost } from "./logging/logging-host.js";
@@ -779,6 +780,13 @@ export class ResourceContextImpl implements ResourceContext {
    *  through {@link ModuleArtifactHost} rather than the SDK surface. */
   getModuleArtifact(source: string | undefined): ModuleArtifact | undefined {
     return this.kernel.getModuleArtifact(source);
+  }
+
+  /** The module-owned libraries the module at `source` imports by bare specifier
+   *  — how a controller bundle's `@telorun/kv-store` finds the module that owns
+   *  it. Kernel-only, on the same seam as {@link getModuleArtifact}. */
+  getSiblingLibraries(source: string | undefined): SiblingLibraryMap {
+    return this.kernel.getSiblingLibraries(source);
   }
 
   /**

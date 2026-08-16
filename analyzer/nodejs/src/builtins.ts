@@ -33,6 +33,33 @@ const ASSETS_FILES_SCHEMA = {
   items: { type: "string" },
 };
 
+/** `exports.code` — the entry point a sibling module's controller bundle resolves
+ *  this library's bare specifier to, one per format.
+ *
+ *  Data rather than a package URL: `controllers:` needs a PURL because it can name
+ *  an ecosystem fetch (`pkg:npm`, `pkg:cargo`), while this always names a file the
+ *  module already ships, so the type/namespace segments would be constant noise —
+ *  and a query string is one opaque box to the visual editor. `format` plus the
+ *  platform axes build the same `ArtifactSelector` a controller candidate does.
+ *  Semantics and diagnostics live in `analyzer/nodejs/src/module-library.ts`. */
+const LIBRARY_CANDIDATES_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    required: ["specifier", "format", "path"],
+    properties: {
+      specifier: { type: "string" },
+      format: { type: "string" },
+      path: { type: "string" },
+      source: { type: "string" },
+      os: { type: "string" },
+      arch: { type: "string" },
+      libc: { type: "string" },
+    },
+    additionalProperties: false,
+  },
+};
+
 /** The published layer index, written by `telo publish` (never hand-authored).
  *  One entry per layer except the manifest layer, which cannot list its own hash
  *  inside itself and is pinned by the importer's `#sha256-...` instead. Shape and
@@ -44,7 +71,7 @@ const LAYER_INDEX_SCHEMA = {
     type: "object",
     required: ["role", "blob", "integrity"],
     properties: {
-      role: { type: "string", enum: ["controller", "assets", "common"] },
+      role: { type: "string", enum: ["controller", "library", "assets", "common"] },
       selector: {
         type: "object",
         required: ["format"],
@@ -846,6 +873,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
               type: "array",
               items: { type: "string", not: { enum: ["variables", "secrets"] } },
             },
+            code: LIBRARY_CANDIDATES_SCHEMA,
           },
           additionalProperties: true,
         },

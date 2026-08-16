@@ -26,7 +26,7 @@ metadata:
 capability: Telo.Provider
 extends: Cache.Store
 controllers:
-  - pkg:telo/local/js?path=./nodejs/store-controller.mjs&local_path=./nodejs/src/store-controller.ts
+  - pkg:telo/local/js?path=./nodejs/cache-memory.mjs&local_path=./nodejs/src/index.ts#StoreController
 schema:
   type: object
   additionalProperties: false

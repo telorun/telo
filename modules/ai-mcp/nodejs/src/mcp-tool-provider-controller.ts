@@ -1,5 +1,5 @@
-import type { ContentPart } from "@telorun/ai/content";
-import type { AiToolProviderInstance, ToolDescriptor } from "@telorun/ai/types";
+import type { ContentPart } from "@telorun/ai";
+import type { AiToolProviderInstance, ToolDescriptor } from "@telorun/ai";
 import type { ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 

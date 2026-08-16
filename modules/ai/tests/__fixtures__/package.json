@@ -1,0 +1,18 @@
+{
+  "name": "@telorun/ai-fixtures",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Test doubles for the ai module's kinds. A workspace package so the fixture controllers type-check against @telorun/ai and @telorun/sdk exactly as a third-party provider module's would — which is the code path they exist to exercise.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@telorun/ai": "workspace:*",
+    "@telorun/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

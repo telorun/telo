@@ -28,7 +28,7 @@ metadata:
 capability: Telo.Provider
 extends: Ai.Model
 controllers:
-  - pkg:telo/local/js?path=./nodejs/openai-model-controller.mjs&local_path=./nodejs/src/openai-model-controller.ts
+  - pkg:telo/local/js?path=./nodejs/ai-openai.mjs&local_path=./nodejs/src/index.ts#OpenaiModelController
 schema:
   type: object
   properties:
@@ -77,7 +77,7 @@ metadata:
 capability: Telo.Provider
 extends: Ai.ImageModel
 controllers:
-  - pkg:telo/local/js?path=./nodejs/openai-image-model-controller.mjs&local_path=./nodejs/src/openai-image-model-controller.ts
+  - pkg:telo/local/js?path=./nodejs/ai-openai.mjs&local_path=./nodejs/src/index.ts#OpenaiImageModelController
 schema:
   type: object
   properties:
