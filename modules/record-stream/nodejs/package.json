@@ -5,7 +5,7 @@
   "description": "Build-only package for the std/record-stream module's bundled controllers. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json && esbuild src/extract-text-controller.ts src/journal-controller.ts src/journal-sink-controller.ts src/journal-source-controller.ts src/on-complete-controller.ts src/tee-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs"
+    "build": "tsc -p tsconfig.lib.json"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",

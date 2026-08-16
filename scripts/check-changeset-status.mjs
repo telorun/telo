@@ -2,17 +2,21 @@
 // PR gate: every changed *published* package carries a changeset.
 //
 // `changeset status --since` used to be this check, but it counts private
-// packages as versionable — which is deliberate and load-bearing, since that is
-// what makes changesets bump the private `@telorun/<name>-build` dependents of a
-// shared TS library and so propagate a fix into the modules that inline it. The
-// consequence is that a module-only PR — a controller edit plus a changie
-// fragment, no npm package touched — fails a check it should pass, and after the
-// bundled migration that is the common shape of a PR.
+// packages as versionable, so a module-only PR failed a check it should pass.
+// This computes the same thing and then filters.
 //
-// So this computes the same thing and then filters: a changed PRIVATE package is
-// satisfied by the changie fragment its module already has to carry (enforced by
-// check-changie-fragments.mjs); only a changed PUBLISHED package with no
-// changeset fails.
+// Two exclusions, for two different reasons:
+//
+//   - A **module-owned** package (anything under `modules/*/nodejs/`) is not on
+//     the changesets ledger at all any more: its version is its MODULE's version,
+//     written by `telo release apply` into `telo.yaml`, `package.json` and
+//     `Cargo.toml` together. The same set is in `.changeset/config.json`'s
+//     `ignore`, so `changeset version` leaves it alone; without this filter every
+//     module PR would fail here demanding a changeset for a version changesets is
+//     no longer allowed to move.
+//   - A **private** package is satisfied by whatever ledger owns it.
+//
+// Only a changed published, non-module package with no changeset fails.
 //
 // Usage: node scripts/check-changeset-status.mjs [base-ref]
 
@@ -90,9 +94,14 @@ const packages = workspacePackages();
 const covered = coveredByChangesets();
 let failed = 0;
 
+/** A package a MODULE owns — its version is the module's, moved by
+ *  `telo release apply`, never by changesets. */
+function moduleOwned(pkg) {
+  return resolve(pkg.dir).startsWith(join(ROOT, "modules") + "/");
+}
+
 for (const pkg of changedPackages(packages)) {
-  // A private `-build` package's release ledger is changie, not changesets; the
-  // module-change gate in check-changie-fragments.mjs already requires a fragment.
+  if (moduleOwned(pkg)) continue;
   if (pkg.private) continue;
   if (covered.has(pkg.name)) continue;
   console.error(

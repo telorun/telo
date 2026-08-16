@@ -42,14 +42,6 @@ jobs:
       - name: Build workspace
         run: pnpm -r --if-present build
 
-      - name: Install changie
-        run: |
-          mkdir -p "$HOME/bin"
-          curl -sSL https://github.com/miniscruff/changie/releases/download/v1.24.0/changie_1.24.0_linux_amd64.tar.gz \
-            | tar xz -C "$HOME/bin" changie
-          echo "$HOME/bin" >> "$GITHUB_PATH"
-          "$HOME/bin/changie" --version
-
       # Modules dual-publish to OCI. The transport reads the ambient Docker
       # credential chain, so logging in here is what authorizes the second push
       # pass; TELO_OCI_REGISTRY below is what enables it.
@@ -84,11 +76,15 @@ jobs:
           # `scripts/publish-oci-backfill.mjs` repairs a partially-pushed mirror.
           TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
 
-  # Fallback for releases that touch zero npm packages (manifest-only / Rust-only modules):
-  # changesets/action never opens a Version PR for them, so module changie fragments have no
-  # changesets PR to ride. This job batches those fragments into a dedicated Module Release PR.
-  # Releases that DO include an npm changeset are handled entirely by `release` above, whose
-  # version step runs changie inline — so this job no-ops whenever npm changesets are pending.
+  # Modules are versioned by `telo release`, not by changesets, and they get their
+  # OWN Version PR — always, independently of whether npm changesets are pending.
+  #
+  # They used to ride the changesets PR whenever one existed, which made a single
+  # review cover two ledgers: approving a patch to one npm package also approved
+  # every module republish in the same commit, and a release routinely republishes
+  # sixty of them because a shared library reached their bundles. Splitting them
+  # means each PR is reviewable against the ledger it moves, and the module PR can
+  # say in its body exactly what merging it will publish.
   module-release:
     name: Module Release PR
     runs-on: ubuntu-latest
@@ -101,37 +97,42 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version-file: package.json
+          cache: pnpm
 
-      - name: Decide whether to run
-        id: gate
-        run: |
-          changesets=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' 2>/dev/null | wc -l)
-          fragments=$(find .changes/unreleased -maxdepth 1 \( -name '*.yaml' -o -name '*.yml' \) 2>/dev/null | wc -l)
-          if [ "$fragments" -gt 0 ] && [ "$changesets" -eq 0 ]; then
-            echo "proceed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "proceed=false" >> "$GITHUB_OUTPUT"
-            echo "Nothing to do (fragments=$fragments, npm changesets=$changesets)."
-          fi
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: Install changie
-        if: steps.gate.outputs.proceed == 'true'
-        run: |
-          mkdir -p "$HOME/bin"
-          curl -sSL https://github.com/miniscruff/changie/releases/download/v1.24.0/changie_1.24.0_linux_amd64.tar.gz \
-            | tar xz -C "$HOME/bin" changie
-          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Build workspace
+        run: pnpm -r --if-present build
 
-      - name: Batch module fragments
-        if: steps.gate.outputs.proceed == 'true'
-        run: node scripts/changie-release.mjs
+      # CAPTURED BEFORE APPLY. `telo release apply` consumes the fragments the
+      # changelog entries come from, so a plan read afterwards can say which
+      # versions moved but not why — which is the half of the body worth reading.
+      - name: Capture the release plan
+        env:
+          TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
+        run: node ./cli/nodejs/bin/telo.mjs release status -o json --base HEAD > /tmp/release-plan.json
+
+      # Writes every planned version into each manifest its module owns, appends
+      # the changelogs, updates the ledger, and deletes the fragments it consumed.
+      # A no-op when nothing drifted, so the PR step below finds no changes and
+      # opens nothing.
+      - name: Apply the release plan
+        env:
+          TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
+        run: node ./cli/nodejs/bin/telo.mjs release apply --base HEAD
+
+      - name: Render the PR body
+        run: node scripts/module-release-pr-body.mjs /tmp/release-plan.json > /tmp/release-body.md
 
       - name: Open Module Release PR
-        if: steps.gate.outputs.proceed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -139,10 +140,7 @@ jobs:
           base: main
           title: "chore(release): version modules"
           commit-message: "chore(release): version modules"
-          body: |
-            Module manifest versions bumped from pending changie fragments
-            (`metadata.version` + per-module CHANGELOG). Merging publishes the
-            changed manifests to the OCI registry.
+          body-path: /tmp/release-body.md
 
   docker:
     name: Publish release Docker images

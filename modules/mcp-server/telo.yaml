@@ -377,6 +377,9 @@ schema:
     serverInfo:
       title: Server Info
       description: Identity advertised to MCP clients during initialize.
+      # A CEL slot so an app can advertise `module.version` instead of restating
+      # its own version in a second place nothing keeps in sync.
+      x-telo-eval: compile
       type: "object"
       additionalProperties: false
       properties:
@@ -441,6 +444,9 @@ schema:
     serverInfo:
       title: Server Info
       description: Identity advertised to MCP clients during initialize.
+      # A CEL slot so an app can advertise `module.version` instead of restating
+      # its own version in a second place nothing keeps in sync.
+      x-telo-eval: compile
       type: "object"
       additionalProperties: false
       properties:

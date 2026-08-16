@@ -100,6 +100,10 @@ export interface ModuleGlobals {
   variables?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
   ports?: Record<string, unknown>;
+  /** The declaring module's own `metadata` — what `module.<field>` reads. Its
+   *  values, not a schema, because the fields are literals in the manifest and
+   *  the module a resource belongs to is fixed at analysis time. */
+  module?: Record<string, unknown>;
 }
 
 /** Read the schema-map blocks off a module doc, or `undefined` when it declares
@@ -119,6 +123,14 @@ function readModuleGlobals(libDoc: ResourceManifest | undefined): ModuleGlobals 
   for (const key of ["variables", "secrets", "ports"] as const) {
     const block = doc[key];
     if (block && typeof block === "object" && !Array.isArray(block)) globals[key] = block;
+  }
+  // `module` is the declaring module's own identity, so it travels with a
+  // forwarded manifest for the same reason the config blocks do: a library's
+  // `module.version` is the LIBRARY's, and typing it from the consumer's entry
+  // doc would report the app's version to the library that asked.
+  const metadata = doc.metadata;
+  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+    globals.module = metadata as Record<string, unknown>;
   }
   return Object.keys(globals).length > 0 ? globals : undefined;
 }

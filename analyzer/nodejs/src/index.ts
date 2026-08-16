@@ -271,3 +271,11 @@ export type {
     Range
 } from "./types.js";
 export * from "./manifest-schemas.js";
+// The release model — module identity, fragments, the ledger, the edge graph and
+// version planning. Pure data in, plan out, so the editor and the CLI release
+// from one model.
+export {
+  DERIVED_METADATA_FIELDS,
+  authoredModuleMetadata,
+} from "./module-metadata-scope.js";
+export * from "./release/index.js";

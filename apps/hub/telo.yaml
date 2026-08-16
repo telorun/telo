@@ -2526,6 +2526,10 @@ metadata:
   name: McpHttp
 serverInfo:
   name: telo-hub
+  # Restated for now. `!cel "module.version"` is what this should be — the
+  # binding exists — but `serverInfo` on the PINNED `mcp-server@0.14.0` is not
+  # yet a CEL slot. The annotation is in this repo's `modules/mcp-server`;
+  # switching here waits on publishing that and moving the pin.
   version: 0.6.2
 instructions: !literal |
   This MCP server is the **Telo hub** — federated discovery over Telo modules

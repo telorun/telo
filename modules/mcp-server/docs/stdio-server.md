@@ -35,6 +35,18 @@ resources: [<Mcp.Resources bundle names>]   # v2 runtime
 prompts: [<Mcp.Prompts bundle names>]       # v2 runtime
 ```
 
+`serverInfo` is a CEL slot, so the advertised version can come from the module's
+own metadata instead of being restated:
+
+```yaml
+serverInfo:
+  name: my-mcp
+  version: !cel "module.version"
+```
+
+That keeps one version in the manifest rather than two that have to be kept in
+sync by hand.
+
 In v1, `resources:` and `prompts:` arrays are accepted in the schema but
 must be empty — runtime dispatch lands in v2.
 

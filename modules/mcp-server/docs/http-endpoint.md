@@ -30,6 +30,18 @@ resources: [<Mcp.Resources bundle names>]   # v2 runtime
 prompts: [<Mcp.Prompts bundle names>]       # v2 runtime
 ```
 
+`serverInfo` is a CEL slot, so the advertised version can come from the module's
+own metadata instead of being restated:
+
+```yaml
+serverInfo:
+  name: my-mcp
+  version: !cel "module.version"
+```
+
+That keeps one version in the manifest rather than two that have to be kept in
+sync by hand.
+
 ### `instructions`
 
 Optional free-form string carried on the SDK `Server`'s `instructions` option.

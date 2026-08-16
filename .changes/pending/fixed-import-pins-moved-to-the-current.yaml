@@ -1,0 +1,4 @@
+modules:
+  apps/hub: Fixed
+  apps/authoring-agent: Fixed
+body: Import pins moved to the current module releases

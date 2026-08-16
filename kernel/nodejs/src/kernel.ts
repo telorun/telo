@@ -1,5 +1,6 @@
 import {
   AnalysisRegistry,
+  authoredModuleMetadata,
   buildEvalPaths,
   collectZoneModuleDocuments,
   flattenForAnalyzer,
@@ -689,6 +690,14 @@ export class Kernel implements IKernel {
           }
         });
         this.rootContext.setTargets(rawTargets as BootTarget[]);
+        // `module.<field>` — the module doc's own metadata, so a manifest reads
+        // its version instead of restating it in a second place nothing keeps in
+        // sync. Set from the module doc rather than the application specifically:
+        // an imported library's context gets its own, which is the only reading
+        // that is true of the resources inside it.
+        this.rootContext.setModuleMetadata(
+          authoredModuleMetadata(manifest.metadata as Record<string, unknown> | undefined),
+        );
         if (manifest.kind === "Telo.Application") {
           rootApplicationManifest = manifest;
           this._appName = (manifest.metadata as { name?: string } | undefined)?.name;

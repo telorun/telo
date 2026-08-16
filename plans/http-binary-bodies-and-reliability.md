@@ -195,9 +195,9 @@ switch the type-argument check off by construction.
   changing it would silently change what existing manifests mean; `bytesFromBase64` is the
   correct alternative and the old one is documented as text-only.
 
-Delivery: `http-client`, `stream`, `run` and `multipart` each need a hand-written changie
-fragment (`Added`); `multipart` needs `scripts/gen-changie-config.mjs` re-run and committed; `sdk`, `analyzer` and `templating` need changesets, and the Rust value-type reader
-must accept the new optional key. Module docs under
+Delivery: `http-client`, `stream`, `run` and `multipart` each need a release fragment
+(`telo release add --module … --kind Added`); `sdk`, `analyzer`, `kernel` and `templating` need
+changesets, and the Rust value-type reader must accept the new optional key. Module docs under
 `modules/<name>/docs/` and the `apps/authoring-agent` system prompt are updated in the same
 change.
 

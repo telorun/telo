@@ -1,5 +1,6 @@
 import { Environment } from "@marcbachmann/cel-js";
 import type { ResourceManifest } from "@telorun/sdk";
+import { authoredModuleMetadata, moduleMetadataSchema } from "./module-metadata-scope.js";
 import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
 
 /** Transport protocol on a `ports` entry → the nominal CEL brand its resolved
@@ -89,6 +90,32 @@ export function buildTypedCelEnvironment(
     env.registerVariable("secrets", "map");
     env.registerVariable("resources", "map");
 
+    // `module` — the declaring module's own `metadata`, so a manifest reads its
+    // version instead of restating it. A resource forwarded from an imported
+    // library reads THAT library's metadata, stamped as
+    // `metadata.moduleGlobals.module`.
+    //
+    // Falls back to an OPEN map, never to `manifest.metadata`: for a resource
+    // doc that is the RESOURCE's metadata (`{name: <resource name>}`), and
+    // closing `module` over it would turn a `module.version` that resolves
+    // perfectly well at runtime into a hard error the author cannot act on. A
+    // static check that is wrong in the rejecting direction is the worse
+    // polarity.
+    const moduleSchema = moduleMetadataSchema(
+      ((manifest.metadata as Record<string, any> | undefined)?.moduleGlobals?.module as
+        | Record<string, unknown>
+        | undefined) ?? (rootModuleManifest?.metadata as Record<string, unknown> | undefined),
+    );
+    if (moduleSchema) {
+      const schema: Record<string, string> = {};
+      for (const [key, property] of Object.entries(moduleSchema.properties as Record<string, any>)) {
+        schema[key] = jsonSchemaToCelType(property);
+      }
+      (env as any).registerVariable({ name: "module", schema });
+    } else {
+      env.registerVariable("module", "map");
+    }
+
     if (extraContextSchema?.properties) {
       for (const [name, propSchema] of Object.entries(
         extraContextSchema.properties as Record<string, any>,
@@ -158,6 +185,16 @@ export function buildImportInputCelEnvironment(
   // surfaces are not part of the config-only import contract.
   for (const name of ["resources", "ports"]) {
     (env as any).registerVariable({ name, schema: {} });
+  }
+  // `module` IS part of it: the importer's own identity is config, and passing
+  // its version down to a child is the case the binding exists for.
+  const metadata = authoredModuleMetadata(mod?.metadata as Record<string, unknown> | undefined);
+  if (Object.keys(metadata).length > 0) {
+    const schema: Record<string, string> = {};
+    for (const key of Object.keys(metadata)) schema[key] = "dyn";
+    (env as any).registerVariable({ name: "module", schema });
+  } else {
+    env.registerVariable("module", "map");
   }
   return env;
 }

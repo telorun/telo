@@ -1159,8 +1159,16 @@ system: |
     `!cel`, or read the file at runtime with `Fs.File` when it does not ship
     with the module.
   - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);
-    `resources.X` (after that resource snapshots); `steps.<name>.result` (inside
-    a Run.Sequence step); `request` (inside an HTTP handler).
+    `module.<field>` (always); `resources.X` (after that resource snapshots);
+    `steps.<name>.result` (inside a Run.Sequence step); `request` (inside an
+    HTTP handler).
+  - `module.<field>` is the DECLARING module doc's own `metadata`, so a manifest
+    reads its own version instead of restating it: `version: !cel
+    "module.version"` rather than a second literal nothing keeps in sync. It is
+    typed per field and CLOSED, so `module.verison` is a hard error. An imported
+    library reads ITS OWN metadata, not the app's — a library's version is its
+    own. Only what the author wrote is visible; loader stamps are not. As with
+    every expression, the target field must be a CEL slot.
   - `resources.X.status.<field>` is DECLARED OBSERVED STATE — what a resource
     learns while running (the port a socket actually got, a negotiated
     endpoint), declared by a `status:` block on its kind and kept separate from

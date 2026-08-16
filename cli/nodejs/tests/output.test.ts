@@ -21,6 +21,22 @@ function recorder(isTTY = false): OutputStream & { text: string } {
   };
 }
 
+/** What a terminal would show: transient lines erased by the sequences that
+ *  erase them, rather than accumulated as raw bytes. */
+function rendered(text: string): string {
+  const lines: string[] = [];
+  let current = "";
+  for (const chunk of text.split(/(\r\x1b\[2K|\n)/)) {
+    if (chunk === "\r\x1b[2K") current = "";
+    else if (chunk === "\n") {
+      lines.push(current);
+      current = "";
+    } else current += chunk;
+  }
+  if (current) lines.push(current);
+  return lines.join("\n");
+}
+
 function build(format: OutputFormat, opts: { outTTY?: boolean; errTTY?: boolean; env?: NodeJS.ProcessEnv } = {}) {
   const stdout = recorder(opts.outTTY ?? false);
   const stderr = recorder(opts.errTTY ?? false);
@@ -36,6 +52,62 @@ describe("Output", () => {
       const { out, stderr } = build(format);
       out.errLine("could not reach the hub");
       expect(stderr.text).toBe("could not reach the hub\n");
+    });
+
+    it("leaves only the findings behind — a tick is transient", () => {
+      // The shape that matters over 59 modules: each tick overwrites the last,
+      // and a real line erases whatever tick is pending, so the terminal ends up
+      // holding the findings alone rather than 59 ticks interleaved with them.
+      const { out, stderr } = build("text", { errTTY: true });
+      out.progress("  [1/2] modules/ai");
+      out.errLine("drift  modules/ai");
+      out.progress("  [2/2] modules/sql");
+      out.emit({ ok: false });
+      expect(rendered(stderr.text)).toBe("drift  modules/ai");
+    });
+
+    it("clears a pending tick before a stdout line, which shares the terminal", () => {
+      const { out, stdout, stderr } = build("text", { errTTY: true });
+      out.progress("  [1/1] modules/ai");
+      out.line("done");
+      expect(stderr.text.endsWith("\r\x1b[2K")).toBe(true);
+      expect(stdout.text).toBe("done\n");
+    });
+
+    it("truncates a tick to the terminal width, ignoring colour escapes", () => {
+      // A wrapped line occupies two rows and the erase sequence clears one, so
+      // the overflow would survive as garbage above the next write.
+      const stderr = recorder(true);
+      (stderr as { columns?: number }).columns = 12;
+      const out = new Output({ format: "text", stdout: recorder(), stderr, env: {} });
+      out.progress("\x1b[2m0123456789abcdef\x1b[0m");
+      // Exactly `columns` printable characters — a row that is full does not
+      // wrap, so this uses the whole width without spilling onto a second one.
+      expect(stderr.text).toBe("\x1b[2m0123456789a…");
+    });
+
+    it("writes a progress tick only when text format meets a TTY", () => {
+      // A tick is not a diagnostic — it explains nothing, so silencing it loses
+      // nothing. It is an affordance of the human-formatted mode, and it needs
+      // BOTH conditions: `-o json` declares the output a contract, so the prose
+      // is unwanted even in a terminal, and a text run redirected to a log has
+      // nobody watching either.
+      const watched = build("text", { errTTY: true });
+      watched.out.progress("  [3/61] modules/sql");
+      // No trailing newline — the line is transient, meant to be overwritten.
+      expect(watched.stderr.text).toBe("  [3/61] modules/sql");
+
+      for (const [format, errTTY] of [
+        ["text", false],
+        ["json", true],
+        ["json", false],
+      ] as const) {
+        const quiet = build(format, { errTTY });
+        quiet.out.progress("  [3/61] modules/sql");
+        expect(quiet.stderr.text, `${format} / errTTY=${errTTY}`).toBe("");
+        // And never on stdout, which is the payload's.
+        expect(quiet.stdout.text, `${format} / errTTY=${errTTY}`).toBe("");
+      }
     });
 
     it("writes prose to stdout in text format", () => {

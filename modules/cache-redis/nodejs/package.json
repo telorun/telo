@@ -5,7 +5,7 @@
   "description": "Build-only package for the std/cache-redis module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json && esbuild src/store-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs"
+    "build": "tsc -p tsconfig.lib.json"
   },
   "dependencies": {
     "@telorun/cache": "workspace:*",
