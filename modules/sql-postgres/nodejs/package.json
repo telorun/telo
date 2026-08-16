@@ -1,6 +1,6 @@
 {
   "name": "@telorun/sql-postgres-build",
-  "version": "0.0.3",
+  "version": "0.9.2",
   "private": true,
   "description": "Build-only package for the std/sql-postgres module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
