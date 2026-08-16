@@ -21,6 +21,14 @@ All are `Telo.Invocable` — invoke them from a `Run.Sequence` or wrap them as
 - **`Fs.DirectoryListing`** — list a directory. `{ path?, recursive? }` →
   `{ entries: [{ name, path, type, size }] }`; each `path` is relative to `cwd`
   so it can be fed straight back as an input.
+
+  **Every emitted `path` is separated with `/`, on every host.** A path that
+  reaches a manifest stops being a host path: an author compares it in CEL
+  (`f.path == 'a/b.txt'`) and that manifest runs everywhere, so a Windows
+  `a\b.txt` would make the same expression match on one platform and miss on
+  another. This matches how the rest of Telo names paths a manifest can see —
+  module refs, `include:` globs, `!include-text`. Inputs are the loose side and
+  accept either separator.
 - **`Fs.DirectoryCreation`** — create a directory. `{ path, createParents? }` →
   `{ created }`. With `createParents` it's idempotent (`created: false` when it
   already existed); without, an existing path or missing parent is an error.

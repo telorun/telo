@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as crypto from "crypto";
+import { realpathSync } from "fs";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
@@ -23,13 +24,20 @@ const sdkPath = path.join(repoRoot, "sdk", "nodejs");
  * versions; this test does not assume one or the other, only that whichever
  * the package manager picked was applied consistently to both controllers.)
  */
+/** GitHub's Windows runners hand back an 8.3 SHORT path from os.tmpdir()
+ *  (`C:\\Users\\RUNNER~1\\AppData\\Local\\Temp`). The `~` survives into the module
+ *  URL the loader imports, where vite's resolver percent-encodes it to `%7E` and
+ *  then cannot find the file. `realpathSync.native` is what expands a short name
+ *  to its long form; the promises API has no `.native` variant. */
+const TMP_ROOT = realpathSync.native(os.tmpdir());
+
 describe("NpmControllerLoader single-realm install", () => {
   let workDir: string;
   let manifestPath: string;
   let manifestUrl: string;
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(path.join(os.tmpdir(), "telo-realm-test-"));
+    workDir = await fs.mkdtemp(path.join(TMP_ROOT, "telo-realm-test-"));
     manifestPath = path.join(workDir, "manifest.yaml");
     await fs.writeFile(manifestPath, "kind: Telo.Application\nmetadata:\n  name: test\n");
     manifestUrl = pathToFileURL(manifestPath).toString();
@@ -198,7 +206,7 @@ describe("NpmControllerLoader single-realm install", () => {
       // the test doesn't pollute the developer's cache. The path inside is
       // still derived from sha256(entryUrl), exactly as a real `pnpm telo
       // https://...yaml` invocation would compute it.
-      const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "telo-remote-cache-"));
+      const cacheDir = await fs.mkdtemp(path.join(TMP_ROOT, "telo-remote-cache-"));
       const originalCacheDir = process.env.TELO_NPM_CACHE_DIR;
       process.env.TELO_NPM_CACHE_DIR = cacheDir;
       try {

@@ -2,7 +2,13 @@ import type { ResourceInstance } from "@telorun/sdk";
 import { createHash } from "node:crypto";
 import { readdir, readFile, lstat } from "node:fs/promises";
 import path from "node:path";
-import { FsManifest, resolveBase, resolveTarget, wrapFsError } from "./fs-support.js";
+import {
+  FsManifest,
+  resolveBase,
+  resolveTarget,
+  toManifestPath,
+  wrapFsError,
+} from "./fs-support.js";
 
 interface TreeSnapshotInput {
   path?: string;
@@ -62,7 +68,7 @@ class TreeSnapshotResource implements ResourceInstance<TreeSnapshotInput, TreeSn
           throw wrapFsError("Fs.TreeSnapshot: cannot read", full, err);
         }
         out.push({
-          path: path.relative(this.base, full),
+          path: toManifestPath(this.base, full),
           hash: createHash("sha256").update(bytes).digest("hex"),
         });
       }

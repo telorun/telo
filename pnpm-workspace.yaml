@@ -28,3 +28,16 @@ onlyBuiltDependencies:
 # drift between them.
 catalog:
   esbuild: ^0.25.12
+
+# The catalog governs what this repo DECLARES; vite brings its own esbuild, and
+# vite 5 (under vitest 2) pins ^0.21.3. esbuild only learned the `es2024` target
+# in 0.24, so that copy rejected the target this repo's tsconfig sets and vitest
+# printed "Unrecognized target environment" for every transformed file — hundreds
+# of lines per run, drowning the failures underneath them.
+#
+# Consolidation onto the version already pinned above, not a fresh upgrade: the
+# repo installed 0.21.5 and 0.25.12 side by side, and this leaves one. It is
+# outside vite 5's declared range, which is the cost — the API vite uses
+# (`transform`) is unchanged across it, and the whole suite is what verifies that.
+overrides:
+  esbuild: ^0.25.12

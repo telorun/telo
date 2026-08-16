@@ -1,7 +1,13 @@
 import type { ResourceInstance } from "@telorun/sdk";
 import { lstat, readdir } from "node:fs/promises";
 import path from "node:path";
-import { FsManifest, resolveBase, resolveTarget, wrapFsError } from "./fs-support.js";
+import {
+  FsManifest,
+  resolveBase,
+  resolveTarget,
+  toManifestPath,
+  wrapFsError,
+} from "./fs-support.js";
 
 interface DirectoryListingInput {
   path?: string;
@@ -55,7 +61,7 @@ class DirectoryListingResource implements ResourceInstance<DirectoryListingInput
         throw wrapFsError("Fs.DirectoryListing: cannot stat", full, err);
       }
       const type = classify(stats);
-      out.push({ name, path: path.relative(this.base, full), type, size: stats.size });
+      out.push({ name, path: toManifestPath(this.base, full), type, size: stats.size });
       if (recursive && type === "directory") await this.walk(full, recursive, out);
     }
   }

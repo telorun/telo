@@ -1,0 +1,33 @@
+# A napi controller is a cdylib whose `napi_*` symbols are supplied by the Node
+# process that loads it — they are never present at link time. GNU ld leaves
+# undefined symbols in a shared library alone, so this links clean on Linux;
+# ld64 resolves every symbol at link time unless told otherwise, so the same
+# build fails on macOS with "Undefined symbols for architecture arm64:
+# _napi_typeof, _napi_wrap, …" and takes every `pkg:cargo` controller with it.
+#
+# `-undefined dynamic_lookup` defers those symbols to load time, which is what
+# napi-rs prescribes for darwin.
+#
+# WHY HERE, and not in the napi loader's cargo invocation: cargo reads this file
+# for every entry point that builds a controller crate — the loader (whose cwd is
+# the crate directory, inside this workspace), `cargo check/test --workspace` in
+# CI, and a plain `cargo build` by hand. Fixing it in the loader would fix one of
+# the three, and doing it by setting RUSTFLAGS in the loader's environment would
+# silently override a contributor's own `build.rustflags`, since the environment
+# variable replaces the config value rather than adding to it.
+#
+# KNOWN BREADTH: config rustflags are per-target, and there is no per-crate-type
+# scoping, so this also reaches the Rust kernel and CLI *binaries* when they are
+# built on macOS — an undefined symbol there links instead of failing. The
+# authoritative link check for those binaries is the Linux `cargo check
+# --workspace` job, which is unaffected. Narrowing this to the controller crates
+# means a `.cargo/config.toml` per crate (the loader would still find it, `cargo
+# --workspace` would not) or a `cargo::rustc-link-arg-cdylib` build script in
+# each; both trade this breadth for per-crate boilerplate that a new Rust
+# controller has to remember.
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]

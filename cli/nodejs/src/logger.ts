@@ -12,10 +12,24 @@ import { output } from "./output.js";
 
 /** Render a manifest source for display: a local `file://` URL (how the loader
  *  canonicalizes on-disk manifests) becomes a CWD-relative path, a real remote
- *  URL (`http(s)://`) is kept absolute, and a bare path is made relative. */
+ *  URL (`http(s)://`) is kept absolute, and a bare path is made relative.
+ *
+ *  A `file://` URL that names no path ON THIS HOST renders as the URL, which is
+ *  what the remote branch below already does. `fileURLToPath` THROWS rather than
+ *  returning null, and on Windows it throws for any file URL without a drive
+ *  letter — so `file:///app/telo.yaml`, perfectly ordinary from a Linux-authored
+ *  manifest or a container path, took down the whole formatter. Nothing is
+ *  swallowed: this function only prettifies a source for display, the raw URL is
+ *  the honest rendering when it cannot be shortened, and the caller's actual
+ *  diagnostic — the thing the user needs — survives instead of being replaced by
+ *  an ERR_INVALID_FILE_URL_PATH from the code trying to report it. */
 function displaySourcePath(raw: string): string {
   if (raw.startsWith("file://")) {
-    return path.relative(process.cwd(), fileURLToPath(raw));
+    try {
+      return path.relative(process.cwd(), fileURLToPath(raw));
+    } catch {
+      return raw;
+    }
   }
   if (raw.includes("://")) return raw;
   return path.relative(process.cwd(), raw);

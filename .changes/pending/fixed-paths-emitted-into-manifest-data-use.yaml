@@ -1,0 +1,9 @@
+modules:
+  modules/fs: Fixed
+  modules/test: Fixed
+body: Paths emitted into manifest data use `/` separators on every host.
+  `Fs.DirectoryListing`'s `entries[].path`, `Fs.TreeSnapshot`'s `files[].path` and
+  `Test.Suite`'s test labels were built with `path.relative` and left unnormalized, so
+  on Windows they came back as `a\b.txt` — a CEL filter like `f.path == 'a/b.txt'`
+  matched on Linux and silently found nothing there. Inputs are unchanged and still
+  accept either separator.

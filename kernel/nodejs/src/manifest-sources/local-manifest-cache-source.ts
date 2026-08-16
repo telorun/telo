@@ -179,13 +179,29 @@ export async function writeManifestCache(
   return written;
 }
 
+/** Matches a URL scheme, as distinct from a Windows drive letter. `D:\src`
+ *  satisfies RFC 3986's scheme grammar, so the second character is required:
+ *  no registered scheme is one letter, and every drive is. */
+const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]+:/;
+
 /** Resolve the entry-anchor directory for the manifest cache.
  *
  * For a file path or `file://` URL: returns the containing directory.
  * For a directory path: returns the directory itself.
- * For an HTTP(S) URL: returns `null` (no local anchor; cache writes skipped). */
+ * For ANY other scheme: returns `null` (no local anchor; cache writes skipped).
+ *
+ * The rule is the scheme, not a list of known ones. Testing only for http(s)
+ * left every other scheme falling through to `path.resolve`, which reads it as
+ * a relative path: a `memory://app/telo.yaml` entry anchored its cache at
+ * `<cwd>/memory:/app/.telo`. On POSIX that is a legal directory name, so the
+ * kernel silently created one inside whatever directory it was run from and the
+ * cache appeared to work; on Windows `:` is illegal in a filename, so the same
+ * load failed at `mkdir`. A transient source has no local anchor by
+ * construction — that is what the whole-scheme test says, and it now covers
+ * `oci://` and any scheme added later without another edit here. */
 export function resolveEntryDir(entryPath: string): string | null {
-  if (entryPath.startsWith("http://") || entryPath.startsWith("https://")) {
+  const scheme = URL_SCHEME.exec(entryPath)?.[0];
+  if (scheme !== undefined && scheme !== "file:") {
     return null;
   }
   let absolute: string;
@@ -208,7 +224,8 @@ export function resolveEntryDir(entryPath: string): string | null {
  *
  *  `TELO_CACHE_DIR` (the relocated root a prebuilt image bakes its deps into)
  *  wins; otherwise the root sits beside the entry at `<entry-dir>/.telo`.
- *  Returns `null` for http(s) entries with no local anchor (disk cache skipped).
+ *  Returns `null` for an entry with no local anchor — an http(s), `memory://`
+ *  or any other non-`file:` scheme — in which case the disk cache is skipped.
  *  Consumers append the conventional subdirs: `manifests/`, `manifests/__validators/`,
  *  `npm/`. */
 export function resolveCacheRoot(entryPath: string): string | null {

@@ -54,17 +54,22 @@ describe("installAlias", () => {
 describe("normalizeFileSpec", () => {
   const installRoot = "/abs/install/root";
 
+  /** `normalizeFileSpec` canonicalizes with `path.resolve`, so an expectation
+   *  spelled with forward slashes asserts the host separator as much as the
+   *  resolution and fails on Windows for a spec that is correct. */
+  const fileSpec = (...segments: string[]) => `file:${path.resolve(...segments)}`;
+
   it("passes registry specs through unchanged", () => {
     expect(normalizeFileSpec("@scope/pkg@1.2.3", installRoot)).toBe("@scope/pkg@1.2.3");
     expect(normalizeFileSpec("plain", installRoot)).toBe("plain");
   });
 
   it("resolves relative file: specs against the install root", () => {
-    expect(normalizeFileSpec("file:../foo", installRoot)).toBe("file:/abs/install/foo");
+    expect(normalizeFileSpec("file:../foo", installRoot)).toBe(fileSpec(installRoot, "../foo"));
   });
 
   it("preserves absolute file: specs (still calls resolve to canonicalize)", () => {
-    expect(normalizeFileSpec("file:/abs/path", installRoot)).toBe("file:/abs/path");
+    expect(normalizeFileSpec("file:/abs/path", installRoot)).toBe(fileSpec("/abs/path"));
   });
 
   it("makes a relative file: spec compare equal to its absolute form when they point at the same place", () => {

@@ -1,0 +1,43 @@
+# The Windows entry point for the manifest suite.
+#
+# Identical to `test-suite.yaml` except for the POSIX-only exclusions at the
+# bottom. Keep the `include` and the shared `exclude` entries in sync with that
+# file — two entry points is the cost of this arrangement, and the only guard
+# against drift is that they sit side by side.
+kind: Telo.Application
+metadata:
+  name: TestSuiteWindows
+  version: 1.0.0
+imports:
+  Test: ./modules/test
+targets:
+  - !ref RunAll
+---
+kind: Test.Suite
+metadata:
+  name: RunAll
+include:
+  - "**/tests/*.yaml"
+exclude:
+  - "**/__fixtures__/**"
+  # An app's tests are the app's, not the standard library's. They pin PUBLISHED
+  # module versions, so they fail whenever a kernel or module change has landed
+  # here but not yet been released and re-pinned — a real signal, but one about
+  # the release sequence rather than about the code under test.
+  - "apps/**"
+
+  # POSIX-only. These three drive the host shell in its own language — `printf`,
+  # `pwd`, and `"$VAR"` expansion — none of which cmd.exe speaks, so on Windows
+  # `printf %s "$GREETING-$NAME"` comes back as its own literal text. That is
+  # cmd behaving correctly, not `Shell.LocalHost` misbehaving: the controller
+  # already resolves `%ComSpec%` and passes `/d /s /c`, and the argv test in the
+  # same file (proving `a; b && echo pwned` is NOT interpreted) passes on
+  # Windows.
+  #
+  # Excluded rather than rewritten, because what they assert IS the host shell's
+  # semantics — reaching for `node -p` to make them portable would test node
+  # instead. Covering the same ground on Windows means cmd.exe counterparts,
+  # which needs a platform gate in `Test.Suite` that does not exist yet.
+  - "modules/shell/tests/run-command.yaml"
+  - "modules/shell/tests/host-behavior.yaml"
+  - "modules/shell/tests/argv-and-env-unset.yaml"
