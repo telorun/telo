@@ -50,6 +50,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-bindings-from",
   "x-telo-catches-for",
   "x-telo-context",
+  "x-telo-context-collection-from",
   "x-telo-context-element-from",
   "x-telo-context-from",
   "x-telo-context-from-ref-kind",

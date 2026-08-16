@@ -66,18 +66,70 @@ function peelCombinators(node: Record<string, any>): Record<string, any>[] {
   return out;
 }
 
+/** One JSON Pointer segment: RFC 6901 escapes, then percent-decoding, which a
+ *  pointer carried in a URI fragment is subject to. A malformed escape is
+ *  returned raw rather than thrown — `decodeURIComponent` raises `URIError`, and
+ *  a stray `%` in someone's `$defs` key must not take completion down. */
+function decodePointerSegment(segment: string): string {
+  const unescaped = segment.replace(/~1/g, "/").replace(/~0/g, "~");
+  try {
+    return decodeURIComponent(unescaped);
+  } catch {
+    return unescaped;
+  }
+}
+
+/**
+ * Follow a document-local `$ref` (`#/$defs/<Name>`) against the schema root.
+ *
+ * The one reference form that occurs inside a kind schema, and the one the
+ * editor's resolver accepts — a schema-valued slot points at the hoisted
+ * `JsonSchema7` / `KindSchema` fragment this way, and the fragment points at
+ * itself to describe a nested schema. Without the hop, completion stopped dead
+ * at the first key of every `schema:` / `status:` block.
+ *
+ * A chain ends at a REPEATED pointer, which is what bounds the walk: a
+ * self-referential fragment is the normal case here, so a cycle must degrade to
+ * "no completion" rather than hang the editor.
+ */
+function resolveLocalRef(
+  node: Record<string, any> | undefined,
+  root: Record<string, any>,
+): Record<string, any> | undefined {
+  let current = node;
+  const seen = new Set<string>();
+  while (current && typeof current.$ref === "string" && current.$ref.startsWith("#/")) {
+    const pointer = current.$ref;
+    if (seen.has(pointer)) return undefined;
+    seen.add(pointer);
+    let target: any = root;
+    for (const segment of pointer.slice(2).split("/")) {
+      target = target?.[decodePointerSegment(segment)];
+    }
+    if (!target || typeof target !== "object") return undefined;
+    // Keep whatever the slot declared beside the `$ref` (its title, its
+    // `x-telo-fragment` stamp) — that is what tells a consumer WHICH shape it
+    // pointed at, and draft-07 drops it at the validation layer only.
+    const { $ref: _, ...siblings } = current;
+    current = { ...target, ...siblings };
+  }
+  return current;
+}
+
 /** Navigate a JSON Schema hierarchy following `path`, auto-descending into
- *  array items and peeling `anyOf` / `oneOf` branches. When multiple peeled
- *  branches define `properties`, returns a synthetic node whose `properties`
- *  is the union (first-wins on key collision) and whose `required` is the
- *  intersection — enough for propKeyCompletions to surface every key a value
- *  at this slot can legally carry. */
+ *  array items, peeling `anyOf` / `oneOf` branches and following document-local
+ *  `$ref`s. When multiple peeled branches define `properties`, returns a
+ *  synthetic node whose `properties` is the union (first-wins on key collision)
+ *  and whose `required` is the intersection — enough for propKeyCompletions to
+ *  surface every key a value at this slot can legally carry. */
 export function navigateSchema(
   schema: Record<string, any>,
   path: string[],
 ): Record<string, any> | undefined {
-  let current: Record<string, any> = schema;
+  let current: Record<string, any> | undefined = schema;
   for (const segment of path) {
+    current = resolveLocalRef(current, schema);
+    if (!current) return undefined;
     const candidates = peelCombinators(current).flatMap((node) => {
       const expanded: Record<string, any>[] = [];
       let cur: Record<string, any> = node;
@@ -93,9 +145,24 @@ export function navigateSchema(
         break;
       }
     }
+    // A map-valued node (a schema's `properties:`, a kind's name-keyed field)
+    // names its entries nowhere, so every segment lands on
+    // `additionalProperties`. Without this the walk stopped one level into a
+    // `schema:` block — at exactly the field the author is writing.
+    if (!next) {
+      for (const cand of candidates) {
+        const additional = cand.additionalProperties;
+        if (additional && typeof additional === "object") {
+          next = additional as Record<string, any>;
+          break;
+        }
+      }
+    }
     if (!next) return undefined;
     current = next;
   }
+  current = resolveLocalRef(current, schema);
+  if (!current) return undefined;
   // Auto-descend through a trailing array at the leaf (e.g. cursor inside `mounts:` items)
   while (current.type === "array" && current.items) {
     current = current.items as Record<string, any>;

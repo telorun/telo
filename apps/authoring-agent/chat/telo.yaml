@@ -643,6 +643,17 @@ system: |
   implementations report; an implementation's own block MERGES with it, and the
   consumer does not need to import the abstract's library to read either half.
 
+  A definition's `schema:`, its `status:` block and a `Telo.JsonSchema`
+  resource's `schema:` are checked AS JSON Schema (draft-07): a misspelled
+  keyword value (`required: name` rather than a list, `type: strng`,
+  `minimum: "3"`) is a `telo check` error on that keyword's own line, not a
+  runtime surprise. Other schema-valued slots — a kind's own `inputType:` /
+  `outputType:`, an `Http.Api` route's `request.schema` — are not checked that
+  way yet, so write them with the same care. The keyword set is open, so
+  `x-telo-*` annotations sit beside the standard keywords; they belong in a
+  KIND's `schema:`, where they configure a slot, and not in a data schema such
+  as a `status:` block, which describes a value nobody configures.
+
   A field in a definition's `schema:` that must hold a reference to another
   resource carries `x-telo-ref`, which states BOTH the accepted kind and what
   this resource DOES with the target:

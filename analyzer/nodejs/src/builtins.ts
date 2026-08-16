@@ -1,6 +1,29 @@
-import { manifestFragment } from "./manifest-schemas.js";
+import { manifestFragment, manifestFragmentRef, withSchemaFragments } from "./manifest-schemas.js";
+
+/** A slot holding author-written JSON Schema. Localized and hoisted by
+ *  {@link withSchemaFragments} on the enclosing schema, which is what makes the
+ *  `#/$defs` pointer resolve inside whatever AJV compiles.
+ *
+ *  `KindSchema` and `JsonSchema7` share a body; the name is the discriminator
+ *  the IDE reads off the `x-telo-fragment` stamp to decide whether the
+ *  `x-telo-*` vocabulary belongs here. A kind's own `schema:` is where it does;
+ *  a `status:` block or an `inputType:` describes plain data, where it does not. */
+const kindSchemaSlot = {
+  title: "Schema",
+  description: "Configuration this kind accepts, as JSON Schema plus `x-telo-*` annotations.",
+  $ref: manifestFragmentRef("KindSchema"),
+};
+
+/** Observed state a kind reports while running, as a data schema. `required:` is
+ *  rejected separately by `validateObservedStateDeclarations`, which can say why
+ *  and what to write instead. */
+const observedStateSlot = {
+  title: "Observed state",
+  description:
+    "What a resource of this kind reports while running, published at `resources.<name>.status.<field>`.",
+  $ref: manifestFragmentRef("JsonSchema7"),
+};
 import type { ResourceDefinition } from "@telorun/sdk";
-import { OBSERVED_STATE_SCHEMA } from "./validate-observed-state.js";
 
 /** Descriptive provenance a module declares about itself, shared by
  *  `Telo.Application` and `Telo.Library`.
@@ -278,13 +301,13 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
     // kernel registers this controller directly at boot, before any lazy
     // resolution — it states truthfully who provides it.
     controllers: [{ runtime: "kernel", entry: "Telo.JsonSchema" }],
-    schema: {
+    schema: withSchemaFragments({
       type: "object",
       properties: {
         schema: {
           title: "Schema",
           description: "JSON Schema definition for the declared data type.",
-          type: "object",
+          $ref: manifestFragmentRef("JsonSchema7"),
         },
         extends: {
           title: "Extends",
@@ -319,13 +342,13 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
       },
       required: ["schema"],
       additionalProperties: false,
-    },
+    }),
   },
   {
     kind: "Telo.Definition",
     metadata: { name: "Abstract", module: "Telo" },
     capability: "Telo.Template",
-    schema: {
+    schema: withSchemaFragments({
       type: "object",
       properties: {
         kind: { type: "string" },
@@ -336,15 +359,15 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           additionalProperties: true,
         },
         capability: { type: "string" },
-        schema: { type: "object", additionalProperties: true },
-        status: OBSERVED_STATE_SCHEMA,
+        schema: kindSchemaSlot,
+        status: observedStateSlot,
       },
       required: ["metadata"],
       // Telo.Abstract is an extension point by design — it must accept forward-compatible
       // fields (e.g. inputType/outputType from the typed-abstracts plan) without requiring
       // the analyzer to enumerate them here.
       additionalProperties: true,
-    },
+    }),
   },
   {
     kind: "Telo.Definition",
@@ -362,11 +385,17 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
     // matching how Run.Sequence steps factor dispatch from data. The dispatch
     // entry-point (`invoke` / `provide` / `run`) determines how `inputs`/`result`
     // are interpreted at runtime. See analyzer/nodejs/plans/template-internal-cel-validation.md.
-    schema: {
+    schema: withSchemaFragments({
       type: "object",
       additionalProperties: true,
       properties: {
-        status: OBSERVED_STATE_SCHEMA,
+        // The kind's own configuration contract. Declared as a slot for the
+        // first time here: it was reachable only as an unnamed extra property,
+        // so nothing could say what belonged in it — no completion inside a
+        // `schema:` block, and a misspelled keyword surviving to a runtime
+        // failure that named a different field.
+        schema: kindSchemaSlot,
+        status: observedStateSlot,
         resources: {
           type: "array",
           items: {
@@ -536,7 +565,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           },
         },
       },
-    },
+    }),
   },
   {
     kind: "Telo.Definition",

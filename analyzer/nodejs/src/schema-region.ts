@@ -20,7 +20,18 @@
  * Browser-safe: no Node built-ins.
  */
 
-/** The kernel's schema-valued manifest keys. */
+/**
+ * The kernel's schema-valued manifest keys.
+ *
+ * TWO CONTAINMENT RULES READ THIS SET, and they are not the same rule. This
+ * file's own {@link isInSchemaRegion} asks "is this node inside a schema" and
+ * answers by ANCESTRY, for the reason argued above. `expandManifestFragments`
+ * asks a different question — "which node will a validator compile, so a
+ * `#/$defs/…` pointer written below it resolves" — and answers by the TOP-LEVEL
+ * key alone, because that is the object handed to AJV; a nested occurrence is a
+ * slot describing a field named `schema`, not a compile root. Neither rule is a
+ * weaker version of the other, so do not "fix" one to match.
+ */
 export const SCHEMA_REGION_KEYS: readonly string[] = [
   "schema",
   "status",

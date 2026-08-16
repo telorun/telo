@@ -1,4 +1,4 @@
-import { readRefSlot } from "@telorun/analyzer";
+import { isSchemaFragment, manifestFragmentOf, readRefSlot } from "@telorun/analyzer";
 import { ArrayObjectField } from "./array-object-field";
 import { CelFieldWrapper } from "./cel-field-wrapper";
 import { getCelEvalMode, type CelEvalMode } from "./cel-utils";
@@ -88,6 +88,14 @@ function isMapValueSchema(value: unknown): value is JsonSchemaProperty {
   return MAP_VALUE_QUALIFIERS.some((key) => key in record);
 }
 
+/** True when this slot holds author-written JSON Schema — a kind's `schema:`, a
+ *  `status:` block, a `Telo.JsonSchema`'s own `schema`. The set of fragments
+ *  that mean this belongs to the analyzer, which owns them; re-spelling it here
+ *  is how the editor would keep rendering a text box for the next one. */
+export function isSchemaFragmentSlot(prop: JsonSchemaProperty): boolean {
+  return isSchemaFragment(manifestFragmentOf(prop));
+}
+
 /** True when the renderer draws its own field title. Callers should omit the
  *  parent label when this is true. */
 export function ownsLabel(prop: JsonSchemaProperty): boolean {
@@ -125,6 +133,17 @@ export function FieldControl({
   const evalMode = getCelEvalMode(prop, rootCelEval);
 
   function renderInner() {
+    // A slot pointing at the shared JSON Schema fragment holds author-written
+    // schema, and the schema editor is what draws one. Asked BEFORE anything
+    // reads `type`: the slot carries a `$ref` and no type of its own, so
+    // `inferType` would fall through to "string" and hand the author a
+    // single-line text box for a nested structure. The stamp says which shape
+    // the slot pointed at, which is the same question the retry-budget
+    // consumers ask of `x-telo-fragment`.
+    if (isSchemaFragmentSlot(prop)) {
+      return <JsonSchemaField value={value} onValueChange={onValueChange} onBlur={onBlur} />;
+    }
+
     if (isPickableRefSlot(prop)) {
       // A ref field that also permits an inline object (e.g. an invocable's
       // `inputType`/`outputType`) gets a Reference/Inline toggle so an empty

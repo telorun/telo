@@ -116,9 +116,34 @@ export class DefinitionRegistry {
   registerNamedTypeSchema(id: string, schema: Record<string, any>): boolean {
     if (this.definitionSchemaIds.has(id)) return false;
     if (this.registeredSchemaIds.has(id) || this.ajv.getSchema(id)) return true;
-    this.ajv.addSchema(schema, id);
+    if (!this.tryAddSchema(schema, id)) return true;
     this.registeredSchemaIds.add(id);
     return true;
+  }
+
+  /**
+   * Register a schema, surviving one AJV refuses.
+   *
+   * `addSchema` META-VALIDATES and THROWS, and a throw here escapes the whole
+   * analyze pass: one author schema with `minimum: "3"` in it aborted the run
+   * with AJV's own unanchored text and took every other diagnostic in the file
+   * down with it — including the anchored one that says exactly which keyword is
+   * wrong. Registration is a lookup table for `$ref` resolution, so failing to
+   * fill one entry costs a reference that could not have resolved anyway.
+   *
+   * Nothing is swallowed: an unregisterable schema is invalid, and the two
+   * checks that report it both run afterwards and both anchor on the offending
+   * line — `SCHEMA_VIOLATION` from the `KindSchema` / `JsonSchema7` fragment the
+   * slot points at, and `SCHEMA_COMPILE_ERROR` from {@link schemaCompileError},
+   * which wraps `compile` for this same reason.
+   */
+  private tryAddSchema(schema: Record<string, any>, id: string): boolean {
+    try {
+      this.ajv.addSchema(schema, id);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** True when a schema is registered under `id` (a canonical `telo://` type id
@@ -187,7 +212,10 @@ export class DefinitionRegistry {
     if (this.ajv.getSchema(id)) {
       throw new Error(`Duplicate definition schema $id: "${id}" is already registered`);
     }
-    this.ajv.addSchema(schema, id);
+    // A schema AJV refuses is left unregistered rather than aborting the pass —
+    // see {@link tryAddSchema}. The id stays claimed either way, so a later
+    // named type cannot quietly take a kind's place.
+    this.tryAddSchema(schema, id);
     this.registeredSchemaIds.add(id);
     this.definitionSchemaIds.add(id);
   }
