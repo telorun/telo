@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.1 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.15.0 - 2026-08-16
 ### Added
 * serverInfo is a CEL slot, so an app can advertise its own module.version instead of restating the version in a second place nothing keeps in sync.

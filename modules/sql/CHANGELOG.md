@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.21.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.21.0 - 2026-08-11
 ### Added
 * SQL connections log each statement at debug with the statement text, row count and db.client.operation.duration (OpenTelemetry's name, in OpenTelemetry's unit: seconds), and transaction start, commit and rollback. Sql.Migrations now reports each applied migration at info — migrateToLatest already returned the per-migration results and they were being discarded, so a run that applied four migrations and one that found none looked identical afterwards; a failed migration is reported at error carrying the underlying cause. Parameters are never logged; the values are the data.## 0.20.0 - 2026-08-09

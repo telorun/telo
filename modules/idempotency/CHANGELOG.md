@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.9.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.9.0 - 2026-08-11
 ### Added
 * Idempotency.Once logs its outcomes: a replay and an in-flight collision at info, a fresh run and a retryable release at debug, a failed claim heartbeat at warn, and a lost claim at error. Both suppressed paths return successfully, so nothing else marks that the body did not run. The heartbeat is warn rather than debug because a failing renew is a store WRITE failing and the leading indicator of ERR_CLAIM_LOST — a level you must raise in advance is no use once the incident is over. idempotency.key rides on those records.

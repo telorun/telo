@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: RecordStream
-  version: 0.15.1
+  version: 0.15.2
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Streaming, Observability]

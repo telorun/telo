@@ -1,4 +1,10 @@
 # Changelog
+
+## 0.10.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+* Paths emitted into manifest data use `/` separators on every host. `Fs.DirectoryListing`'s `entries[].path`, `Fs.TreeSnapshot`'s `files[].path` and `Test.Suite`'s test labels were built with `path.relative` and left unnormalized, so on Windows they came back as `a\b.txt` — a CEL filter like `f.path == 'a/b.txt'` matched on Linux and silently found nothing there. Inputs are unchanged and still accept either separator.
+
 ## 0.10.0 - 2026-08-09
 ### Added
 * metadata.name is now Test, so the module contributes its kinds under the `Test.<Kind>` canonical prefix instead of `test.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.9.0 - 2026-08-01

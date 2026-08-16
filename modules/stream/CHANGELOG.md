@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.10.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.10.0 - 2026-08-15
 ### Added
 * Stream.Chunk re-frames a byte stream into fixed-size pieces, buffering across the boundaries bytes happened to arrive on and splitting any that is too large. Each piece reports its offset, length, index and whether it is last, so a Content-Range header or a sequence number is expressible in CEL at the use site. One piece is held in memory at a time.## 0.9.0 - 2026-08-09

@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.12.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.12.0 - 2026-08-11
 ### Added
 * Cache.View logs the outcome of every lookup at debug: served from cache, served stale while revalidating, revalidated before returning, or called through. The action is not recoverable from the returned state — a stale result may or may not have triggered a revalidation, and with 'revalidate: off' a stale entry is reported to the caller as a miss.

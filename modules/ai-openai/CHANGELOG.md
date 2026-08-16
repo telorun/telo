@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.15.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.15.0 - 2026-08-09
 ### Added
 * AiOpenai.OpenaiImageModel: image generation over the OpenAI images HTTP API, no vendor SDK, on the same key and baseUrl as the chat model. The configured intent picks the endpoint — none goes to /images/generations, edit and inpaint to /images/edits with the mask as its own part, variation to /images/variations — and the kind declares that set as its Intent definition so Ai.Image rejects anything else at telo check time. response_format is sent only to dall-e models, the ones that accept it; an item that comes back as a URL anyway is fetched rather than dropped. Dimensions are read back from the requested size and omitted when it is not pinned; gpt-image-1's token usage is normalized to the provider-neutral quantity. A content refusal is reported as finishReason: content-filter, while every other failure still throws with the provider's message.## 0.14.0 - 2026-08-01

@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.9.3 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.9.1 - 2026-08-12
 ### Fixed
 * Statements run through this connection now emit a `debug` log record each, plus records for transaction start, commit and rollback. The behaviour comes from `SqlConnectionBase`, which this module extends and whose source is inlined into its bundled controller — so the published artifact changed without any file under this module changing. Bound parameters are never logged; the statement text is the parameterized template. Republished so an import pinned to this module resolves to bytes that match the shared library it was built from.## 0.9.0 - 2026-08-09
