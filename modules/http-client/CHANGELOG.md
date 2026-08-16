@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.21.0 - 2026-08-16
+### Added
+* The `retry` blocks on Client and Request, and the deprecated `retries` count, are declared from the shared retry fragments instead of being written out per kind. Client's copy had drifted — it declared no defaults at all, so a client policy and a request policy disagreed about every value but `attempts`. The schemas stay closed; `honorRetryAfter` is merged onto the shared shape rather than composed with allOf, which could not have kept them closed. The controller now reads the deprecated `delay` duration string as `initialDelay`, the way the step leaf does — the shared shape carries the field, so accepting it and ignoring it would have made one declared policy mean two different things.
+
 ## 0.20.0 - 2026-08-15
 ### Added
 * Request bodies can now carry binary. `body` accepts raw bytes and a byte stream alongside a string and an object, with a sibling `bodyEncoding` for a base64 string — the slot `Fs.FileWrite.content` already ships. A byte value used to be JSON-stringified into `{"0":137,...}` with nothing to notice it. A byte stream is sent chunked and is single-shot - any re-send raises ERR_HTTP_BODY_NOT_REPLAYABLE rather than transmitting an empty payload.

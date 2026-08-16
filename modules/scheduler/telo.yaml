@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Scheduler
-  version: 0.8.0
+  version: 0.8.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Scheduling]

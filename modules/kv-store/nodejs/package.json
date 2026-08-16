@@ -1,6 +1,6 @@
 {
   "name": "@telorun/kv-store",
-  "version": "0.3.0",
+  "version": "0.4.1",
   "description": "The Telo KvStore.Store contract — a durable, non-evicting key/value store with atomic conditional writes — plus KeyedClaim, the claim/settle/release protocol implemented once over those primitives so no backend reimplements it.",
   "keywords": [
     "telo",

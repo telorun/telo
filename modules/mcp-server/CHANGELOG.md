@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.15.0 - 2026-08-16
+### Added
+* serverInfo is a CEL slot, so an app can advertise its own module.version instead of restating the version in a second place nothing keeps in sync.
+
 ## 0.14.0 - 2026-08-09
 ### Added
 * metadata.name is now McpServer, so the module contributes its kinds under the `McpServer.<Kind>` canonical prefix instead of `mcp-server.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.13.0 - 2026-08-08
