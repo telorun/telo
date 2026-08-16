@@ -1,5 +1,118 @@
 # @telorun/kernel
 
+## 0.76.0
+
+### Minor Changes
+
+- f4efb4b: A module-owned library is resolved at load through the import graph instead of
+  being copied into every dependent's controller bundle, and a module builds one
+  bundle rather than one per kind.
+
+  Both halves fix the same defect: a bundle is a module graph, so a shared source
+  file compiled into two bundles is two module scopes, and any state a module keeps
+  beside its instances — a registry, a `WeakMap`, a counter — silently becomes two
+  of them. `sql` had six controller bundles and therefore six copies of its
+  connection registry.
+
+  - A module's kinds now select their controllers out of its single bundle with the
+    PURL fragment (`…&local_path=./nodejs/src/index.ts#SqlQueryController`).
+  - A `Telo.Library` may declare `exports.code:` — entries naming the bare
+    specifier dependents import it by and the file that resolves to
+    (`{ specifier, format, path, source }`, plus `os` / `arch` / `libc` for a
+    native entry). The kernel joins that to the consumer's `imports:` during
+    `load()` and resolves the import to that module's own entry point.
+  - The artifact spec gains a `library` layer role, per selector, carrying that
+    entry point; a file claimed as both a controller and a library entry ships in
+    the library layer, and materializing either code role pulls both plus `common`.
+  - Three build-time guards keep the property from decaying: importing a subpath of
+    a declared specifier, reaching a declared library's entry-source directory by
+    any other route, and inlining a module-owned library the manifest never
+    declared an import for — each a hard build error rather than a silent extra
+    copy. The last is the one that matters most: the other two are derived from the
+    `imports:` edges, so they are vacuous exactly where the mistake is made.
+  - An unknown layer role in a published index is now skipped rather than rejected,
+    so a module that gains a layer for a newer runtime does not become unreadable
+    on an older one.
+
+  Deduplication is per (module, resolved version): two dependents pinning different
+  versions of one library still resolve two copies — that is different code — and
+  the kernel warns rather than pretending otherwise.
+
+### Patch Changes
+
+- b8be55b: The disk cache is anchored by whole scheme, so a manifest source with no local
+  anchor no longer invents one. `resolveEntryDir` tested only for `http(s)` and let
+  every other scheme fall through to `path.resolve`, which reads it as a relative
+  path: a `memory://app/telo.yaml` entry anchored its analysis stamp and compiled
+  validators at `<cwd>/memory:/app/.telo`. On POSIX that is a legal directory name,
+  so the kernel silently created one inside whatever directory it was run from and
+  the cache appeared to work — a checkout accumulated a stray `memory:` tree. On
+  Windows `:` is illegal in a filename, so the same load failed at `mkdir` and
+  reported as a best-effort cache warning on every load. `oci://` had the same
+  shape.
+
+  A transient or remote source has no local anchor by construction, which is what
+  the scheme test now says, and it covers any scheme added later. Windows drive
+  letters are excluded by requiring a second character: `D:\src` satisfies RFC
+  3986's scheme grammar, and no registered scheme is one letter.
+
+- b8be55b: Two places converted a `file://` URL to a filesystem path by hand rather than
+  through `fileURLToPath`, and both failed on Windows.
+
+  The napi controller loader sliced the seven-character `file://` prefix off the
+  declaring manifest's URL. A file URL's path is not a filesystem path: on Windows
+  `file:///D:/a/telo/telo.yaml` sliced that way leaves `/D:/a/telo/telo.yaml`, whose
+  leading slash makes `path.resolve` graft the current drive on and produce
+  `D:\D:\a\telo\…`, so every `pkg:cargo` controller resolved to a crate directory
+  that does not exist. It also left percent-escapes undecoded on every platform, so
+  a manifest under a directory with a space resolved to a path that is not there.
+
+  The CLI's diagnostic formatter called `fileURLToPath` unguarded when shortening a
+  manifest source for display. That function throws rather than returning null, and
+  on Windows it throws for any file URL without a drive letter — so
+  `file:///app/telo.yaml`, perfectly ordinary from a Linux-authored manifest or a
+  container path, replaced the diagnostic being reported with an
+  `ERR_INVALID_FILE_URL_PATH` from the code reporting it. A `file://` URL that names
+  no path on this host now renders as the URL, which is what the `http(s)://` branch
+  beside it already did.
+
+- b8be55b: The controller installer spawns its package manager through a shell on Windows.
+  There is no executable named `npm` there — npm, pnpm and every corepack shim are
+  `.cmd` files, which libuv's PATH search (`.com`/`.exe` only) never finds and
+  which Node has refused to spawn without a shell since CVE-2024-27980. Every
+  `pkg:npm` controller was therefore unloadable on Windows, and the failure was
+  reported as `'npm' not found on PATH … Install Node.js`, which told a user with
+  npm already installed to install the thing they had.
+
+  Going through `cmd.exe` moves the quoting obligation to the caller: Node builds
+  `cmd.exe /d /s /c "<file> <args joined by spaces>"` and quotes nothing, so the
+  installer quotes each argument itself. Both hazards are live in the arguments it
+  actually passes — a space in a `file:` install spec would re-split into two
+  arguments, and `^` in a semver range is cmd's escape character and is eaten
+  outside quotes. A literal `"` is rejected rather than escaped, since the escape
+  that restores cmd's quote state differs from the batch shim's own parser.
+
+  The COMMAND is quoted only when it cannot be left bare, because quoting a bare
+  one breaks the shim it resolves to. `npm.cmd` locates the CLI it exists to
+  launch as `%~dp0\node_modules\npm\bin\npm-cli.js`, and cmd substitutes the
+  resolved script path for `%0` only when the token was bare; quoted, `%~dp0`
+  expands against the current directory, so the shim looked for npm inside Telo's
+  own install root and failed with MODULE_NOT_FOUND on a path that never existed.
+  A command that does need quoting is a path rather than a name, and there `%0`
+  already carries a directory — so both cases are correct.
+
+  The not-found detection moved with it. Through a shell the binary always
+  resolves — `cmd.exe` exists — so a genuinely missing package manager arrives as
+  exit 9009 and "is not recognized as an internal or external command", matching
+  neither the `ENOENT` nor the wording the old check looked for; it would have
+  fallen through to the generic install-failure branch and buried the line naming
+  what to install.
+
+  The POSIX path is unchanged in both halves.
+
+- Updated dependencies [f4efb4b]
+  - @telorun/analyzer@0.61.0
+
 ## 0.75.0
 
 ### Minor Changes
