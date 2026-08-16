@@ -1,3 +1,6 @@
+# `test-suite-windows.yaml` is this file plus the POSIX-only exclusions; the
+# Windows CI job runs that one. Changes to `include` or to the shared `exclude`
+# entries below belong in both.
 kind: Telo.Application
 metadata:
   name: TestSuite

@@ -29,45 +29,56 @@ afterEach(async () => {
 
 const REGISTRY_URL = "https://registry.telo.run";
 
+/** The entry-dir the cachePathForCanonical cases below pass in. */
+const ENTRY_DIR = "/srv/app";
+
+/** Build an expected cache path the way the production code does.
+ *
+ *  The layout is assembled with `path.join`, so an expectation spelled with
+ *  forward slashes asserts the host separator as much as the layout and fails on
+ *  Windows for a mapping that is correct. `path.join` normalizes the separators
+ *  in the tail, so the readable single-string form survives. */
+const cachePath = (relative: string) => path.join(ENTRY_DIR, ".telo/manifests", relative);
+
 describe("cachePathForCanonical", () => {
   it("maps a registry-served URL into the registry/host/path/version layout", () => {
     const result = cachePathForCanonical(
       "https://registry.telo.run/std/type/1.0.5/telo.yaml",
-      "/srv/app",
+      ENTRY_DIR,
       REGISTRY_URL,
     );
-    expect(result).toBe("/srv/app/.telo/manifests/registry/registry.telo.run/std/type/1.0.5/telo.yaml");
+    expect(result).toBe(cachePath("registry/registry.telo.run/std/type/1.0.5/telo.yaml"));
   });
 
   it("strips a trailing slash from the configured registry URL", () => {
     const result = cachePathForCanonical(
       "https://registry.telo.run/std/run/0.2.4/telo.yaml",
-      "/srv/app",
+      ENTRY_DIR,
       `${REGISTRY_URL}/`,
     );
-    expect(result).toBe("/srv/app/.telo/manifests/registry/registry.telo.run/std/run/0.2.4/telo.yaml");
+    expect(result).toBe(cachePath("registry/registry.telo.run/std/run/0.2.4/telo.yaml"));
   });
 
   it("maps an arbitrary HTTP URL under the url subtree", () => {
     const result = cachePathForCanonical(
       "https://example.com/lib/v1/telo.yaml",
-      "/srv/app",
+      ENTRY_DIR,
       REGISTRY_URL,
     );
     expect(result).toBe(
-      "/srv/app/.telo/manifests/url/example.com/lib/v1/telo.yaml",
+      cachePath("url/example.com/lib/v1/telo.yaml"),
     );
   });
 
   it("returns null for file:// sources (already on disk)", () => {
     expect(
-      cachePathForCanonical("file:///tmp/foo/telo.yaml", "/srv/app", REGISTRY_URL),
+      cachePathForCanonical("file:///tmp/foo/telo.yaml", ENTRY_DIR, REGISTRY_URL),
     ).toBeNull();
   });
 
   it("returns null for memory:// sources (transient)", () => {
     expect(
-      cachePathForCanonical("memory://app/telo.yaml", "/srv/app", REGISTRY_URL),
+      cachePathForCanonical("memory://app/telo.yaml", ENTRY_DIR, REGISTRY_URL),
     ).toBeNull();
   });
 
@@ -392,7 +403,7 @@ describe("path traversal guard", () => {
   it("rejects a registry ref whose modulePath segments would escape the cache root", () => {
     const result = cachePathForCanonical(
       "foo/../../escape@1.0.0",
-      "/srv/app",
+      ENTRY_DIR,
       REGISTRY_URL,
     );
     expect(result).toBeNull();
@@ -404,11 +415,11 @@ describe("path traversal guard", () => {
     // `/escape/telo.yaml`, which lands inside the url subtree.
     const result = cachePathForCanonical(
       "https://example.com/../../escape/telo.yaml",
-      "/srv/app",
+      ENTRY_DIR,
       REGISTRY_URL,
     );
     expect(result).toBe(
-      "/srv/app/.telo/manifests/url/example.com/escape/telo.yaml",
+      cachePath("url/example.com/escape/telo.yaml"),
     );
   });
 
@@ -429,12 +440,12 @@ describe("query-string disambiguation", () => {
   it("writes distinct cache paths for URLs that differ only in query string", () => {
     const a = cachePathForCanonical(
       "https://example.com/lib/telo.yaml?a=1",
-      "/srv/app",
+      ENTRY_DIR,
       REGISTRY_URL,
     );
     const b = cachePathForCanonical(
       "https://example.com/lib/telo.yaml?a=2",
-      "/srv/app",
+      ENTRY_DIR,
       REGISTRY_URL,
     );
     expect(a).not.toBeNull();
@@ -445,12 +456,12 @@ describe("query-string disambiguation", () => {
   it("writes a distinct path for a fragment", () => {
     const a = cachePathForCanonical(
       "https://example.com/lib/telo.yaml",
-      "/srv/app",
+      ENTRY_DIR,
       REGISTRY_URL,
     );
     const b = cachePathForCanonical(
       "https://example.com/lib/telo.yaml#frag",
-      "/srv/app",
+      ENTRY_DIR,
       REGISTRY_URL,
     );
     expect(a).not.toBeNull();
@@ -498,24 +509,24 @@ describe("registry URL alignment between reader and writer", () => {
     const customRegistry = "https://registry.example.internal";
     const writePath = cachePathForCanonical(
       "https://registry.telo.run/std/foo/1.0.0/telo.yaml",
-      "/srv/app",
+      ENTRY_DIR,
       customRegistry,
     );
     // The default registry URL is NOT the configured one, so this is
     // arbitrary HTTP from the perspective of the cache.
     expect(writePath).toBe(
-      "/srv/app/.telo/manifests/url/registry.telo.run/std/foo/1.0.0/telo.yaml",
+      cachePath("url/registry.telo.run/std/foo/1.0.0/telo.yaml"),
     );
   });
 
   it("registry URL with a path prefix maps correctly", () => {
     const writePath = cachePathForCanonical(
       "https://reg.example.com/r/std/foo/1.0.0/telo.yaml",
-      "/srv/app",
+      ENTRY_DIR,
       "https://reg.example.com/r",
     );
     expect(writePath).toBe(
-      "/srv/app/.telo/manifests/registry/reg.example.com/std/foo/1.0.0/telo.yaml",
+      cachePath("registry/reg.example.com/std/foo/1.0.0/telo.yaml"),
     );
   });
 });

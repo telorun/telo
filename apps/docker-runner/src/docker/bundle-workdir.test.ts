@@ -32,14 +32,22 @@ describe("BundleWorkdir", () => {
     expect(nested).toBe("kind: Telo.Library\n");
   });
 
-  it("chmod 0755 on sessionDir so non-root readers can traverse", async () => {
-    const wd = await BundleWorkdir.create(bundleRoot, "abc123", {
-      entryRelativePath: "telo.yaml",
-      files: [{ relativePath: "telo.yaml", contents: "x" }],
-    });
-    const s = await stat(wd.sessionDir);
-    expect(s.mode & 0o777).toBe(0o755);
-  });
+  // POSIX-only: Windows has no permission bits to assert. Node's `chmod` there
+  // toggles the read-only attribute on files and is a no-op on directories, so
+  // `stat` reports a fixed 0o666 and the assertion measures the platform rather
+  // than this code. Skipped rather than relaxed — a weaker assertion would stop
+  // catching a real regression on the Linux containers that actually run this.
+  it.skipIf(process.platform === "win32")(
+    "chmod 0755 on sessionDir so non-root readers can traverse",
+    async () => {
+      const wd = await BundleWorkdir.create(bundleRoot, "abc123", {
+        entryRelativePath: "telo.yaml",
+        files: [{ relativePath: "telo.yaml", contents: "x" }],
+      });
+      const s = await stat(wd.sessionDir);
+      expect(s.mode & 0o777).toBe(0o755);
+    },
+  );
 
   it("cleanup removes the sessionDir", async () => {
     const wd = await BundleWorkdir.create(bundleRoot, "abc123", {

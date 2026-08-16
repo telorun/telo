@@ -21,9 +21,17 @@ export const npmPublisher: ControllerPublisher = {
   },
 
   async build(localPath: string): Promise<void> {
+    // Windows ships no executable named `npm` — it is `npm.cmd`, which libuv's
+    // PATH search (`.com`/`.exe` only) never finds and which Node refuses to
+    // spawn without a shell since CVE-2024-27980. The `execSync` calls in this
+    // file already route through `ComSpec` and so were never affected; only a
+    // direct spawn needs this. Every argument here is a fixed literal with no
+    // space and no cmd metacharacter, so unlike the kernel's installer this one
+    // needs no per-token quoting — a dynamic argument added later would.
     const result = spawnSync("npm", ["--loglevel=error", "run", "build"], {
       cwd: localPath,
       encoding: "utf-8",
+      shell: process.platform === "win32",
     });
     if (result.status !== 0) {
       const output = [result.stdout, result.stderr].filter(Boolean).join("\n");

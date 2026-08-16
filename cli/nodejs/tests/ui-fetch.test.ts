@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveUiBundle } from "../src/ui-fetch.js";
 
@@ -7,8 +8,11 @@ describe("resolveUiBundle", () => {
   });
 
   it("returns the override path when TELO_DEBUG_UI_PATH points at a real file", async () => {
-    // Any existing file proves the override branch; the resolver only checks existence.
-    process.env.TELO_DEBUG_UI_PATH = new URL(import.meta.url).pathname;
+    // Any existing file proves the override branch; the resolver only checks
+    // existence. `fileURLToPath`, not `.pathname`: on Windows the latter yields
+    // `/D:/a/…`, whose leading slash names no file, so the override silently
+    // reported "unavailable".
+    process.env.TELO_DEBUG_UI_PATH = fileURLToPath(import.meta.url);
     const result = await resolveUiBundle(null);
     expect(result.kind).toBe("ok");
     if (result.kind === "ok") expect(result.path).toBe(process.env.TELO_DEBUG_UI_PATH);

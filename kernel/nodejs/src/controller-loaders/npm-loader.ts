@@ -556,13 +556,83 @@ async function resolveKernelPackageRoot(name: string): Promise<string | null> {
   }
 }
 
+/**
+ * Windows ships no executable named `npm`. npm, pnpm and every corepack shim
+ * are `.cmd` files: libuv's PATH search probes only `.com`/`.exe` so it never
+ * finds one, and Node has refused to spawn `.cmd`/`.bat` without a shell since
+ * CVE-2024-27980. The install therefore has to go through `cmd.exe`.
+ *
+ * Going through cmd.exe makes quoting OURS. Node builds the line as
+ * `cmd.exe /d /s /c "<file> <args joined by single spaces>"` and quotes
+ * nothing, so a `file:` install spec holding a space would be re-split into two
+ * arguments, and cmd's metacharacters (`& ^ | < > ( )`) would be interpreted
+ * before npm ever saw them — `^` is the one that matters here, since it is both
+ * cmd's escape character and legal in the semver ranges a spec carries. Under
+ * `/s` cmd strips the outer pair and takes the remainder verbatim, so quoting
+ * each token individually is what makes the line arrive intact.
+ *
+ * A literal `"` is rejected rather than escaped: it toggles cmd's quote state,
+ * the escape that restores it differs between cmd and the batch shim's own
+ * parser, and no install spec has any business carrying one. Residual cmd
+ * limitation: `%VAR%` still expands inside quotes and cannot be escaped on a
+ * command line (only in a batch file), so an install root under a directory
+ * whose name spells a defined environment variable is not reachable here. A
+ * lone `%` is left alone by cmd and is safe.
+ */
+function quoteForCmd(token: string): string {
+  if (token.includes('"')) {
+    throw new Error(
+      `[telo] cannot pass '${token}' to '${PACKAGE_MANAGER}' on Windows: a literal '"' has no ` +
+        `portable escape through cmd.exe. Move the install root to a path without one.`,
+    );
+  }
+  return `"${token}"`;
+}
+
+/**
+ * The COMMAND is quoted only when it cannot be left bare, where every argument
+ * is quoted unconditionally. The asymmetry is not tidiness — quoting a bare
+ * command name breaks the batch shim it resolves to.
+ *
+ * `npm.cmd` locates the CLI it exists to launch relative to itself:
+ *
+ *   SET "NPM_PREFIX_JS=%~dp0\node_modules\npm\bin\npm-prefix.js"
+ *   SET "NPM_CLI_JS=%~dp0\node_modules\npm\bin\npm-cli.js"
+ *
+ * `%0` is the token as it appeared on the command line, and cmd substitutes the
+ * resolved script path only for a BARE one. Quoted, `%0` stays `"npm"`, so
+ * `%~dp0` — drive and path of a token carrying neither — expands against the
+ * current directory instead. The shim then looked for npm inside Telo's install
+ * root (`<root>/.telo/npm`), found no `node_modules/npm/bin/`, and both `SET`
+ * lines produced a MODULE_NOT_FOUND for a path that was never going to exist.
+ *
+ * A command that genuinely needs quoting is a path rather than a bare name
+ * (`TELO_PKG_MANAGER=C:\Program Files\nodejs\npm.cmd`), and there `%0` already
+ * carries a directory, so `%~dp0` is right whether or not it was quoted. Both
+ * cases are therefore correct, which is what makes this conditional rather than
+ * a preference.
+ */
+const CMD_NEEDS_QUOTING = /[\s&^|<>()]/;
+
 async function runPackageManager(cwd: string, args: string[]): Promise<void> {
+  const viaCmd = process.platform === "win32";
   try {
-    await execFileAsync(PACKAGE_MANAGER, args, { cwd, maxBuffer: 32 * 1024 * 1024, env: hostEnv() });
+    await execFileAsync(
+      viaCmd && CMD_NEEDS_QUOTING.test(PACKAGE_MANAGER)
+        ? quoteForCmd(PACKAGE_MANAGER)
+        : PACKAGE_MANAGER,
+      viaCmd ? args.map(quoteForCmd) : args,
+      { cwd, maxBuffer: 32 * 1024 * 1024, env: hostEnv(), shell: viaCmd },
+    );
   } catch (err: any) {
+    // Through a shell the binary always resolves — cmd.exe itself exists — so a
+    // missing package manager arrives as cmd's own 9009 plus "is not recognized
+    // as an internal or external command" on stderr, never as ENOENT. Matching
+    // only the direct-spawn shape reported that as a generic install failure and
+    // buried the one line saying what to install.
+    const said = `${err?.message ?? ""}\n${err?.stderr ?? ""}`;
     const isMissing =
-      err?.code === "ENOENT" ||
-      /not found|command not recognized/i.test(err?.message ?? "");
+      err?.code === "ENOENT" || err?.code === 9009 || /not found|not recognized/i.test(said);
     if (isMissing) {
       throw new Error(
         `[telo] '${PACKAGE_MANAGER}' not found on PATH. Telo's controller installer requires a ` +

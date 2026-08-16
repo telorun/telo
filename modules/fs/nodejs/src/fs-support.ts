@@ -19,6 +19,21 @@ export function resolveTarget(base: string, target: string): string {
   return path.resolve(base, target);
 }
 
+/** The relative path of `full` under `base`, in the form a MANIFEST sees.
+ *
+ *  A path that crosses into manifest data is not a host path any more: an author
+ *  compares it in CEL (`f.path == 'a/b.txt'`) and the manifest that does so runs
+ *  on every platform, so `path.relative` alone made the same expression match on
+ *  Linux and miss on Windows, where it yields `a\b.txt`. Separators are POSIX
+ *  here for the same reason module refs, `include:` globs and `!include-text`
+ *  paths are — every path the manifest layer can name is written one way.
+ *
+ *  Emission only. Input paths keep going through `resolveTarget`, which accepts
+ *  either separator via `path.resolve`. */
+export function toManifestPath(base: string, full: string): string {
+  return path.relative(base, full).split(path.sep).join("/");
+}
+
 export function requirePath(kind: string, value: unknown): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`${kind}: 'path' input is required and must be a non-empty string`);

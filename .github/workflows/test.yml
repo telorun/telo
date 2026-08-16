@@ -100,7 +100,7 @@ jobs:
         run: pnpm --filter "./ide/vscode" vsix
 
   bun:
-    name: Run telo manifest tests (Bun)
+    name: "Linux: manifest tests (Bun)"
     runs-on: ubuntu-latest
 
     env:
@@ -143,7 +143,7 @@ jobs:
         run: pnpm test
 
   unit:
-    name: Run package unit tests
+    name: "Linux: package unit tests"
     runs-on: ubuntu-latest
 
     env:
@@ -190,6 +190,16 @@ jobs:
 
       # Package unit tests resolve sibling workspace packages to their built
       # dist/, so the build must run before vitest.
+      #
+      # This includes modules, and the module half is NOT a no-op even though the
+      # kernel builds bundled controllers from source at load. 14 of the 56
+      # modules emit dist/: the five `pkg:npm` ones (http-server, sql-sqlite,
+      # image, pdf, starlark), whose controller is resolved as a package EXPORT
+      # SUBPATH (`#./script`) inside the installed node_modules and so must be
+      # staged, plus nine contract packages a third-party implementation compiles
+      # against. The other 42 are `tsc --noEmit` and contribute a type-check only.
+      # Filtering modules out here breaks every manifest test touching one of the
+      # five, with "Controller entry could not be resolved".
       - name: Build for Node.js
         run: pnpm -r run build
 
@@ -197,7 +207,7 @@ jobs:
         run: pnpm -r test
 
   node:
-    name: Run telo manifest tests (Node)
+    name: "Linux: manifest tests (Node)"
     runs-on: ubuntu-latest
 
     env:
@@ -273,7 +283,7 @@ jobs:
           echo "$output" | grep -q "Hello from Telo!"
 
   docker:
-    name: Run telo manifest tests (Docker)
+    name: "Linux: manifest tests (Docker)"
     runs-on: ubuntu-latest
 
     env:
@@ -312,9 +322,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Test setup (not a runtime-image concern): build only the module
-      # controllers and their compile deps so the mounted suite's local_path
-      # controllers resolve to built dist/. The image stays a pure runtime.
+      # Test setup (not a runtime-image concern): build the module controllers
+      # and their compile deps so the mounted suite's local_path controllers
+      # resolve to built dist/. The image stays a pure runtime.
       - name: Build module controllers
         run: pnpm --filter "{./modules/**}..." run build
 
@@ -324,8 +334,175 @@ jobs:
       - name: Run tests (docker image)
         run: docker run --rm -v "$PWD":/workspace -v /workspace/.telo -w /workspace telo:ci ./test-suite.yaml
 
+  # No step is marked `continue-on-error`: a red step fails the job, and a
+  # failure logged by a step that still reports success is the one outcome this
+  # job must never produce.
+  #
+  # `pnpm -r --no-bail test` does NOT soften that — `--no-bail` keeps the
+  # recursive run going past a failing package so one run reports every one of
+  # them, and pnpm still exits non-zero at the end.
+  windows:
+    name: "Windows: unit & manifest tests"
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      # GitHub's Windows runners ship `core.autocrlf=true`, which rewrites every
+      # checked-out LF to CRLF. `!include-text` embeds a file's bytes verbatim, so
+      # the fixture assertions in tests/manifest-file-includes.yaml would fail on
+      # the line endings rather than on anything about Windows. Turned off here
+      # rather than repo-wide because a `.gitattributes` is a separate decision;
+      # that is the real fix, and this keeps the signal honest until it lands.
+      - name: Check out with LF preserved
+        run: git config --global core.autocrlf false
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # The kernel's napi-loader test and several module tests shell out to a
+      # real `cargo build` of fixture crates, so the Rust toolchain is on the
+      # unit-test path here exactly as it is on ubuntu.
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Everything below reads from dist/, so a failure here makes the rest of
+      # the run meaningless rather than merely red. Modules are included: the
+      # five `pkg:npm` ones stage a dist/ their controller entry is resolved
+      # from — see the note in the Linux unit job.
+      - name: Build for Node.js
+        run: pnpm -r run build
+
+      - name: Run package unit tests
+        run: pnpm -r --no-bail test
+
+      # `telo check` is analyze-only — it installs no controller — so this is the
+      # part of the surface expected to work first. Run through bash so the glob
+      # is expanded before the CLI sees it: neither cmd.exe nor pwsh expands one
+      # for a native command, and `telo check` takes literal positionals.
+      - name: Check module manifests
+        shell: bash
+        run: pnpm run check modules/*/telo.yaml
+
+      - name: Check example manifests
+        shell: bash
+        run: pnpm run check examples/*/telo.yaml
+
+      # The manifest suite on the Node entry point. This is the step that
+      # exercises the `pkg:npm` controller installer, which has to reach
+      # `npm.cmd` through cmd.exe here — the one part of the loader with a
+      # Windows-specific path, and so the one most worth running on every PR.
+      #
+      # `test-suite-windows.yaml` is `test-suite.yaml` plus three exclusions:
+      # the `modules/shell` tests that drive the host shell in POSIX's own
+      # language (`printf`, `pwd`, `"$VAR"`), which cmd.exe does not speak. See
+      # the note in that file for why they are excluded rather than rewritten.
+      - name: Run telo manifest tests (Node)
+        run: pnpm run test:node:windows
+
+  # macOS is POSIX, so unlike the Windows job this is not covering a separate
+  # code path — it covers the platform axes that differ underneath one: an
+  # arm64 runner (native prebuilds for esbuild, better-sqlite3 and the cargo
+  # fixture crates), a case-INSENSITIVE default filesystem, and BSD rather than
+  # GNU userland. An import whose casing disagrees with the file on disk passes
+  # here and on Windows, and fails only on Linux; the reverse never happens. So
+  # this job is not redundant with the ubuntu ones, but it is the cheapest of
+  # the three to reason about when it goes red.
+  macos:
+    name: "macOS: unit & manifest tests"
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # The kernel's napi-loader test and several module tests shell out to a
+      # real `cargo build` of fixture crates, so the Rust toolchain is on the
+      # unit-test path here exactly as it is on ubuntu.
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Everything below reads from dist/, so a failure here makes the rest of
+      # the run meaningless rather than merely red. Modules are included: the
+      # five `pkg:npm` ones stage a dist/ their controller entry is resolved
+      # from — see the note in the Linux unit job.
+      - name: Build for Node.js
+        run: pnpm -r run build
+
+      - name: Run package unit tests
+        run: pnpm -r --no-bail test
+
+      - name: Check module manifests
+        run: pnpm run check modules/*/telo.yaml
+
+      - name: Check example manifests
+        run: pnpm run check examples/*/telo.yaml
+
+      - name: Run telo manifest tests (Node)
+        run: pnpm run test:node
+
   rust:
-    name: Run Rust tests
+    name: "Linux: Rust tests"
     runs-on: ubuntu-latest
 
     steps:

@@ -90,8 +90,12 @@ function discoverTests(
   return results;
 }
 
+/** POSIX separators, matching how discovery already normalizes the paths it
+ *  globs against — a label that reads `modules\shell\tests\x.yaml` on one host
+ *  and `modules/shell/tests/x.yaml` on another makes the same failure look like
+ *  two, and is what a user copies back into `--filter`. */
 function labelFor(testPath: string, baseDir: string): string {
-  return path.relative(baseDir, testPath);
+  return path.relative(baseDir, testPath).split(path.sep).join("/");
 }
 
 function tryReadFile(filePath: string): string | null {

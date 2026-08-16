@@ -17,12 +17,24 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const CLI = path.join(ROOT, "cli/nodejs/bin/telo.ts");
 const MODULE = path.join(ROOT, "modules/run");
 
+/** On Windows `bun` on PATH is `bun.CMD` (pnpm's shim): libuv's executable search
+ *  probes only `.com`/`.exe`, and Node has refused to spawn `.cmd`/`.bat` without
+ *  a shell since CVE-2024-27980 — so this spawn produced no stdout at all and
+ *  every case below failed as "expected '' not to be ''". Going through cmd.exe
+ *  makes quoting ours: Node joins the argv with spaces and quotes nothing, and
+ *  these arguments are absolute paths that may contain one. The command itself
+ *  stays bare, because quoting it would leave a batch shim's `%~dp0` resolving
+ *  against the cwd rather than its own directory. */
+const VIA_CMD = process.platform === "win32";
+const quote = (arg: string) => (VIA_CMD ? `"${arg}"` : arg);
+
 function runCli(args: string[]): { stdout: string; status: number } {
   try {
-    const stdout = execFileSync("bun", [CLI, ...args], {
+    const stdout = execFileSync("bun", [CLI, ...args].map(quote), {
       cwd: ROOT,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      shell: VIA_CMD,
       // Would colour the output if any escape leaked into the machine surface.
       env: { ...process.env, FORCE_COLOR: "1" },
     });

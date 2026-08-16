@@ -4,6 +4,7 @@ import * as fs from "fs/promises";
 import { createRequire } from "module";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
+import { fileURLToPath } from "url";
 import { promisify } from "util";
 
 import { hostEnv } from "../host-env.js";
@@ -151,7 +152,13 @@ export class NapiControllerLoader {
       );
     }
 
-    const baseUriPath = baseUri.startsWith("file://") ? baseUri.slice("file://".length) : baseUri;
+    // `fileURLToPath`, never a slice of the prefix. A file URL's path is not a
+    // filesystem path: on Windows `file:///D:/a/telo/telo.yaml` sliced at seven
+    // characters leaves `/D:/a/telo/telo.yaml`, whose leading slash makes
+    // `path.resolve` graft the cwd's drive on and produce `D:\D:\a\telo\…`. It
+    // also leaves percent-escapes undecoded on every platform, so a manifest
+    // under a directory with a space resolved to a path that does not exist.
+    const baseUriPath = baseUri.startsWith("file://") ? fileURLToPath(baseUri) : baseUri;
     const manifestDir = path.dirname(baseUriPath);
     const cratePath = path.resolve(manifestDir, localPath);
 
