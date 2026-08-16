@@ -1,5 +1,34 @@
 # @telorun/cli
 
+## 0.75.0
+
+### Minor Changes
+
+- 58bc988: One release system for Telo modules, in the CLI: `telo release add | status | order | check | apply | verify`, over the modules discovered inside a workspace declared by a `telo-workspace.yaml`. A module has one version across `telo.yaml`, `nodejs/package.json` and `rust/Cargo.toml`, and one changelog.
+
+  A Telo module's artifact **embeds its dependencies** — esbuild inlines a sibling library's source into the controller bundle, and publish pins each relative import to a hash of the sibling's manifest — so bumping the dependents is a correctness requirement rather than a courtesy. Neither previous ledger could see that: changie has no dependency graph, and changesets' stops at the npm boundary. Two mechanisms now cover it. A **payload digest**, exact and taken from the bytes, decides _whether_ a module bumps, so it fires for an inlined sibling, a shared-library fix and a lockfile-only transitive bump alike. An **edge graph**, built from the controller build's own metafile plus in-repo relative `imports:`, decides _at what level_, mirroring a dependency's level onto its dependents. A digest that moved with nothing to attribute it to takes a patch and is reported as unattributed rather than passing silently. Both are recorded in `.changes/ledger.yaml`, so the PR gate and the publish gate compute the same number — and the PR gate needs no credentials, which is what lets a fork run it.
+
+  Three changes make the published bytes a pure function of the commit, which is what makes "the same number" true rather than aspirational. Import pins are **authored and verified, never discovered**: `telo publish` no longer fetches a hash for an unpinned remote import (previously best-effort, so one commit produced different bytes depending on network reachability, and an unresolvable import shipped silently unpinned) — it refuses one, and verifies the pins the author wrote. Manifest re-serialization is unconditional. And a relative sibling's pin is derived from the sibling's own locally-built published bytes, in topological order, so a whole release batch is plannable offline.
+
+  The controller layer is now **built by the kernel on the publish path**, as it already was on the run path (`buildControllerBundle`), instead of read as a prebuilt `.mjs` staged by `pnpm run build:bundles`. The shipped bytes and the digested bytes are the same bytes by construction, and the edge graph gets its metafile from the same run. On this path a host without esbuild is a hard failure rather than a fallthrough to a possibly-stale file.
+
+  New CEL binding **`module.<field>`** — the declaring module's own `metadata`, typed per field and closed, so `module.version` reads a module's version instead of restating it and `module.verison` is a diagnostic. An imported library reads its own metadata, not its importer's; the loader's derived stamps (`source`, `sourceLine`, …) are filtered out.
+
+  `ModuleFileClaim` for a bundled controller now carries `localPath`, the source its entry point is built from. `assertWithinModule` aggregates missing payload files into one message and takes a set of paths whose content the caller supplies in memory — a built controller entry point is gitignored and legitimately absent, so the guard runs _after_ the build rather than demanding a prestep that no longer exists. `--frozen` is removed from `telo publish`: it selected between best-effort pinning and a hard error, and best-effort is gone.
+
+  `Output` gains `progress()`, a stderr write gated on the stream being a TTY. `errLine` must write in every format because silencing it loses the reason a command failed; a progress tick explains nothing, so its gate is whether a human is watching rather than which format was asked for.
+
+### Patch Changes
+
+- Updated dependencies [831c0c4]
+- Updated dependencies [58bc988]
+- Updated dependencies [831c0c4]
+  - @telorun/sdk@0.75.0
+  - @telorun/analyzer@0.60.0
+  - @telorun/templating@0.16.0
+  - @telorun/kernel@0.75.0
+  - @telorun/ide-support@0.13.2
+
 ## 0.74.0
 
 ### Patch Changes
