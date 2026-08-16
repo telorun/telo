@@ -16,6 +16,14 @@ exports:
     - Record
     - Match
     - Removal
+  # The entry point a dependent module's controller bundle resolves
+  # `@telorun/vector-store` to, so this module's code is one module scope across every
+  # consumer instead of a copy inlined into each of their bundles.
+  code:
+    - specifier: "@telorun/vector-store"
+      format: js
+      path: ./nodejs/vector-store.mjs
+      source: ./nodejs/src/index.ts
 ---
 # MetadataFilter — the MongoDB-style filter grammar shared by Match and Removal,
 # declared once and referenced via `$ref: "telo://Self/MetadataFilter"`. Top-level
@@ -82,7 +90,7 @@ metadata:
     replacing any entry that already has that id. Returns the ids written, in order.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/record.mjs&local_path=./nodejs/src/record.ts
+  - pkg:telo/local/js?path=./nodejs/vector-store.mjs&local_path=./nodejs/src/index.ts#Record
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -139,7 +147,7 @@ metadata:
     metadata filter first.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/match.mjs&local_path=./nodejs/src/match.ts
+  - pkg:telo/local/js?path=./nodejs/vector-store.mjs&local_path=./nodejs/src/index.ts#Match
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -204,7 +212,7 @@ metadata:
     how many were removed.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/removal.mjs&local_path=./nodejs/src/removal.ts
+  - pkg:telo/local/js?path=./nodejs/vector-store.mjs&local_path=./nodejs/src/index.ts#Removal
 inputType:
   kind: Telo.JsonSchema
   schema:

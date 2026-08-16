@@ -15,6 +15,7 @@ import {
   type DefResolver,
 } from "@telorun/analyzer";
 import type { ModuleArtifact } from "../../bundle/module-artifact.js";
+import type { SiblingLibraryMap } from "../../controller-loaders/sibling-libraries.js";
 import { ControllerLoader } from "../../controller-loader.js";
 import { formatAjvErrors, validateResourceDefinition } from "../../manifest-schemas.js";
 import { createTemplateController } from "./resource-template-controller.js";
@@ -166,6 +167,10 @@ class ResourceDefinition implements ResourceInstance {
     // ref and the verified layer index, so the loader picks a candidate and asks
     // it for that selector's directory rather than fetching anything itself.
     const artifact = host.getModuleArtifact?.(this.resource.metadata.source);
+    // The libraries of the module that declared this kind, for the same reason:
+    // a bundle's bare `@telorun/kv-store` means whatever THAT module's imports
+    // say it means, never the consumer's.
+    const libraries = host.getSiblingLibraries?.(this.resource.metadata.source);
     ctx.registerDefinition(this.resource);
 
     const moduleName = this.resource.metadata.module;
@@ -187,7 +192,7 @@ class ResourceDefinition implements ResourceInstance {
       kindName,
       async () => {
         const resolved = await loader
-          .resolve(controllers, source, policy, artifact)
+          .resolve(controllers, source, policy, artifact, libraries)
           .catch((err) => {
             if (err instanceof RuntimeError) {
               throw new RuntimeError(err.code, `kind '${moduleName}.${kindName}': ${err.message}`);
@@ -229,6 +234,7 @@ class ResourceDefinition implements ResourceInstance {
  */
 interface KernelResourceContext {
   getModuleArtifact?(source: string | undefined): ModuleArtifact | undefined;
+  getSiblingLibraries?(source: string | undefined): SiblingLibraryMap | undefined;
   getCacheRoot?(): string | undefined;
   registerLazyController(
     moduleName: string,

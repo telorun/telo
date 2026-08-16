@@ -64,12 +64,17 @@ import {
   resolveCacheRoot,
   resolveEntryDir,
 } from "./manifest-sources/local-manifest-cache-source.js";
-import { readOwnerManifest } from "./bundle/module-manifest.js";
+import { readOwnerManifest, type OwnerManifest } from "./bundle/module-manifest.js";
 import {
   moduleArtifactFor,
   moduleDirectoryFor,
   type ModuleArtifact,
 } from "./bundle/module-artifact.js";
+import {
+  NO_SIBLING_LIBRARIES,
+  buildSiblingLibraries,
+  type SiblingLibraryMap,
+} from "./controller-loaders/sibling-libraries.js";
 import { defaultTransportRegistry } from "./transports/transport-registry.js";
 import {
   collectDeclaredEnvKeys,
@@ -159,6 +164,10 @@ export class Kernel implements IKernel {
   /** Per-module artifact handles, keyed by canonical manifest source. Rebuilt on
    *  every `load()`; empty for a graph of purely local / manifest-only modules. */
   private readonly moduleArtifacts = new Map<string, ModuleArtifact>();
+  /** Per-module sibling-library resolution, keyed by the same canonical manifest
+   *  source: which bare specifiers this module's controller bundles import, and
+   *  which module's library layer each resolves to. Rebuilt on every `load()`. */
+  private readonly siblingLibraries = new Map<string, SiblingLibraryMap>();
   private _loadedGraph?: LoadedGraph;
   // Lifecycle state — guards boot/runTargets/teardown/invoke transitions.
   // teardown() is the only idempotent method; everything else throws on misuse.
@@ -1014,7 +1023,9 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Build one {@link ModuleArtifact} per loaded module that ships a payload.
+   * Read every loaded module's owner manifest once, and build from it the two
+   * things a controller resolution needs: the module's artifact, and the sibling
+   * libraries its bundles import by bare specifier.
    *
    * Here, and not inside a controller loader, because this is the only point
    * where both halves are in hand: the **pinned** ref the importer wrote
@@ -1038,25 +1049,47 @@ export class Kernel implements IKernel {
    */
   private buildModuleArtifacts(graph: LoadedGraph, manifestsDir: string | undefined): void {
     this.moduleArtifacts.clear();
+    this.siblingLibraries.clear();
     const transports = defaultTransportRegistry(this.registryUrl);
     const entryDir = this._entryUrl ? resolveEntryDir(this._entryUrl) ?? "" : "";
+    // Parsed once per module and shared with the sibling-library join below: a
+    // `telo.yaml` is a large multi-document file, and re-reading each target's
+    // once per import edge put dozens of redundant full-YAML parses on the boot
+    // path of every standard-library app.
+    const owners = new Map<string, OwnerManifest>();
+    const directories = new Map<string, string | undefined>();
     for (const [, module] of graph.modules) {
       const file = module.owner;
-      if (this.moduleArtifacts.has(file.source)) continue;
+      if (owners.has(file.source)) continue;
+      const owner = readOwnerManifest(file.text);
+      owners.set(file.source, owner);
+      const moduleDir = moduleDirectoryFor(
+        file.requestedUrl,
+        file.source,
+        entryDir,
+        this.registryUrl,
+        manifestsDir,
+      );
+      directories.set(file.source, moduleDir ?? undefined);
       const artifact = moduleArtifactFor({
         pinnedRef: file.requestedUrl,
-        layers: readOwnerManifest(file.text).layers,
-        moduleDir: moduleDirectoryFor(
-          file.requestedUrl,
-          file.source,
-          entryDir,
-          this.registryUrl,
-          manifestsDir,
-        ),
+        layers: owner.layers,
+        moduleDir,
         transports,
         log: this.logging.kernelLogger(),
       });
       if (artifact) this.moduleArtifacts.set(file.source, artifact);
+    }
+
+    // The sibling-library join is a pure function of the graph and these three
+    // lookups; it lives beside the model it produces (`sibling-libraries.ts`).
+    for (const [source, map] of buildSiblingLibraries(graph, {
+      ownerManifests: owners,
+      artifactFor: (source) => this.moduleArtifacts.get(source),
+      directoryFor: (source) => directories.get(source),
+      log: this.logging.kernelLogger(),
+    })) {
+      this.siblingLibraries.set(source, map);
     }
   }
 
@@ -1065,6 +1098,12 @@ export class Kernel implements IKernel {
    *  manifest-only, or not cacheable). */
   getModuleArtifact(source: string | undefined): ModuleArtifact | undefined {
     return source ? this.moduleArtifacts.get(source) : undefined;
+  }
+
+  /** The module-owned libraries the module at `source` imports by bare
+   *  specifier. Empty for a module that imports none. */
+  getSiblingLibraries(source: string | undefined): SiblingLibraryMap {
+    return (source ? this.siblingLibraries.get(source) : undefined) ?? NO_SIBLING_LIBRARIES;
   }
 
   /** Authored `kind` of a declared resource by name, from the static manifest

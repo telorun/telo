@@ -1,5 +1,5 @@
 import { describeSelector, selectorFromQualifiers, selectorMatches } from "@telorun/analyzer";
-import { ControllerInstance, RuntimeError } from "@telorun/sdk";
+import { ControllerInstance, RuntimeError, type Logger } from "@telorun/sdk";
 import { existsSync, readFileSync } from "fs";
 import * as fs from "fs/promises";
 import { createRequire } from "module";
@@ -10,7 +10,16 @@ import { hostPlatformTarget, type ModuleArtifact } from "../bundle/module-artifa
 import type { ControllerResolveSource } from "../controller-loader.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
-import { buildControllerFromSource, canBuildFromSource } from "./source-bundle-builder.js";
+import {
+  buildControllerFromSource,
+  canBuildFromSource,
+  type SiblingLibrary,
+} from "./source-bundle-builder.js";
+import {
+  NO_SIBLING_LIBRARIES,
+  type ResolvedSiblingLibrary,
+  type SiblingLibraryMap,
+} from "./sibling-libraries.js";
 
 /** A base URI whose files are already on disk: a `file://` URL or a bare
  *  absolute path. Everything else (`oci://`, `http(s)://`, `memory://`) names a
@@ -45,6 +54,11 @@ async function pathExists(filePath: string): Promise<boolean> {
 const realmLinkedDirs = new Set<string>();
 async function ensureRealmSymlinks(bundleDir: string): Promise<void> {
   if (realmLinkedDirs.has(bundleDir)) return;
+  await linkRealmNames(bundleDir);
+  realmLinkedDirs.add(bundleDir);
+}
+
+async function linkRealmNames(bundleDir: string): Promise<void> {
   const req = createRequire(import.meta.url);
   for (const name of REALM_COLLAPSE_NAMES) {
     let pkgRoot: string | null = null;
@@ -84,8 +98,167 @@ async function ensureRealmSymlinks(bundleDir: string): Promise<void> {
       // import surfaces the resolution failure.
     }
   }
-  realmLinkedDirs.add(bundleDir);
 }
+
+/**
+ * Make each sibling module's declared specifier resolve, from this bundle, to
+ * that module's own library entry point.
+ *
+ * The realm collapse above points a closed, kernel-owned name at the kernel's own
+ * copy. This is the same move one step out: the name is declared by the library
+ * (`library: [pkg:telo/local/js?…&specifier=@telorun/sql]`), and the copy comes
+ * from that module's artifact rather than from the kernel. What it buys is the
+ * same thing — resolution *and* identity — which here means one module scope for
+ * `@telorun/sql` across its own six controllers and every dependent, instead of
+ * one copy per bundle.
+ *
+ * A **synthesized package** rather than a symlink to the module's directory: a
+ * published artifact ships files, not a `package.json`, so there is nothing to
+ * link to that standard resolution would accept. The generated shim re-exports
+ * the materialized entry by absolute URL, and every consumer's shim re-exports
+ * the *same* file — Node keys its module registry by resolved URL, so the scope
+ * stays single however many shims point at it.
+ *
+ * Written into `node_modules/` beside the bundle, which is per module for a
+ * published artifact and per content-addressed build for a working copy, so two
+ * dependents that legitimately resolve different versions of one library never
+ * write over each other.
+ *
+ * **A slot something else owns is never written.** The bundle directory is not
+ * always the loader's: the prebuilt-`path=` branch imports out of a working copy,
+ * where `node_modules/@telorun/sql` is a package manager's symlink INTO the
+ * library's own source tree — writing through it would replace that package's
+ * real `package.json`. So a slot is written only when it is absent or carries the
+ * marker this loader stamps, which is the posture `linkRealmNames` already takes
+ * ("a real file/dir in the slot is left untouched"). A foreign package in the slot
+ * already resolves the specifier to real code; what it costs is the single-scope
+ * property, so it is reported rather than passed over in silence.
+ */
+const SHIM_MARKER = "x-telo-generated";
+
+async function ensureLibraryShims(
+  bundleDir: string,
+  entries: ReadonlyArray<{ specifier: string; entryFile: string }>,
+  cacheRoot: string | undefined,
+  log?: Logger,
+): Promise<void> {
+  for (const { specifier, entryFile } of entries) {
+    const dir = path.join(bundleDir, "node_modules", ...specifier.split("/"));
+    if (!(await isWritableShimSlot(dir, cacheRoot))) {
+      log?.debug("left an existing package in a sibling-library slot", {
+        "telo.library.specifier": specifier,
+        "telo.library.slot": dir,
+        "telo.library.entry": entryFile,
+      });
+      continue;
+    }
+    const target = pathToFileURL(entryFile).href;
+    await writeIfChanged(
+      path.join(dir, "package.json"),
+      `${JSON.stringify(
+        {
+          name: specifier,
+          version: "0.0.0",
+          type: "module",
+          exports: { ".": "./index.mjs" },
+          [SHIM_MARKER]: "sibling-library-shim",
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    // `export *` and nothing else: these entry points export named bindings, and
+    // a re-exported `default` that does not exist is a hard syntax-level error at
+    // import rather than an absent binding.
+    await writeIfChanged(path.join(dir, "index.mjs"), `export * from ${JSON.stringify(target)};\n`);
+  }
+}
+
+/**
+ * Whether this loader may write the shim slot at `dir`.
+ *
+ * **Location first.** Every legitimate write site is inside the loader's own
+ * cache root — a bundle built from source lives under `<cache>/controller-src/`,
+ * and a published module's layers extract under `<cache>/manifests/` — so a slot
+ * there is ours whatever it currently holds. That is what keeps a shim written by
+ * an earlier kernel version (before the marker existed, or with different
+ * contents) updatable rather than mistaken for someone else's package.
+ *
+ * **Marker second**, for a slot outside the cache: the prebuilt-`path=` branch
+ * imports out of a working copy, where `node_modules/@telorun/sql` is a package
+ * manager's symlink straight into the sibling's own source tree. Reading the
+ * `package.json` **through** whatever is there settles it — a symlink resolves to
+ * the target's, which carries no marker — so one read covers both a link and a
+ * real installed package without caring which it was.
+ */
+async function isWritableShimSlot(dir: string, cacheRoot: string | undefined): Promise<boolean> {
+  if (cacheRoot) {
+    const root = path.resolve(cacheRoot) + path.sep;
+    if (path.resolve(dir).startsWith(root)) return true;
+  }
+  try {
+    const parsed = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    return parsed[SHIM_MARKER] !== undefined;
+  } catch {
+    // Nothing readable there. A symlink with no package.json behind it is still
+    // someone else's, so refuse that too rather than writing through it.
+    try {
+      return !(await fs.lstat(dir)).isSymbolicLink();
+    } catch {
+      return true;
+    }
+  }
+}
+
+/** Everything a bundle's directory needs before the bundle is imported: the
+ *  kernel-owned realm names, and one shim per sibling library. */
+async function prepareBundleDir(
+  bundleDir: string,
+  shims: ReadonlyArray<{ specifier: string; entryFile: string }>,
+  cacheRoot: string | undefined,
+  log?: Logger,
+): Promise<void> {
+  await ensureRealmSymlinks(bundleDir);
+  await ensureLibraryShims(bundleDir, shims, cacheRoot, log);
+}
+
+/** The externals a build of `format` code takes from a sibling-library map: the
+ *  specifier esbuild must not inline, and the source tree the post-build check
+ *  proves was not reached by another route. A published sibling ships no sources,
+ *  so it is externalized with no tree to check — there is nothing there to
+ *  inline. */
+function buildExternals(libraries: SiblingLibraryMap, format: string): SiblingLibrary[] {
+  const out: SiblingLibrary[] = [];
+  for (const library of libraries.values()) {
+    if (library.selector.format !== format) continue;
+    const sourceDir =
+      library.moduleDir && library.localPath
+        ? path.dirname(path.resolve(library.moduleDir, library.localPath))
+        : undefined;
+    out.push({ specifier: library.specifier, ...(sourceDir ? { sourceDir } : {}) });
+  }
+  return out;
+}
+
+/** Write a generated file only when its content would change, through a private
+ *  temp file and an atomic rename — several kernels may populate one cache
+ *  directory at once, and a reader must see a whole file or none. */
+async function writeIfChanged(file: string, content: string): Promise<void> {
+  try {
+    if ((await fs.readFile(file, "utf8")) === content) return;
+  } catch {
+    // Absent or unreadable — write it.
+  }
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.${shimCounter++}.tmp`;
+  await fs.writeFile(tmp, content);
+  await fs.rename(tmp, file);
+}
+
+let shimCounter = 0;
 
 /**
  * Walk up from a resolved entry file to the directory whose package.json `name`
@@ -159,15 +332,145 @@ export class BundleControllerLoader {
   /** Where a dev build from `local_path` is cached (`<cache-root>/controller-src`).
    *  Absent for callers that resolved no cache root, which simply disables the
    *  source path — a prebuilt `path=` still loads. */
-  constructor(private readonly cacheRoot?: string) {}
+  constructor(
+    private readonly cacheRoot?: string,
+    /** Reports what resolution had to leave alone — a sibling-library slot an
+     *  installer already owns, which resolves but not to this module's own copy. */
+    private readonly log?: Logger,
+  ) {}
 
   async load(
     purl: string,
     baseUri: string,
     artifact?: ModuleArtifact,
+    libraries: SiblingLibraryMap = NO_SIBLING_LIBRARIES,
   ): Promise<{ instance: ControllerInstance; source: ControllerResolveSource }> {
-    const { source, importInstance } = await this.resolve(purl, baseUri, artifact);
+    const { source, importInstance } = await this.resolve(purl, baseUri, artifact, libraries);
     return { instance: await importInstance(), source };
+  }
+
+  /**
+   * Resolve every sibling library this bundle imports to a file on disk, and
+   * prepare the module scope each one will run in.
+   *
+   * Filtered to the candidate's own format: a `js` bundle imports the `js` entry
+   * point, and a Rust crate of the same module — a different specifier entirely —
+   * is not its business. The host platform gate is the same one the candidate
+   * itself passed, since a library layer is selected exactly as a controller
+   * layer is.
+   */
+  private async libraryEntries(
+    libraries: SiblingLibraryMap,
+    format: string,
+    purl: string,
+    seen: Set<string>,
+  ): Promise<Array<{ specifier: string; entryFile: string }>> {
+    const host = hostPlatformTarget();
+    const out: Array<{ specifier: string; entryFile: string }> = [];
+    for (const library of libraries.values()) {
+      if (library.selector.format !== format) continue;
+      if (!selectorMatches(library.selector, host)) continue;
+      out.push({
+        specifier: library.specifier,
+        entryFile: await this.prepareLibrary(library, format, purl, seen),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * The file a sibling's specifier resolves to, with that file's own imports made
+   * resolvable in turn.
+   *
+   * A library is delivered exactly as a controller is, so it takes the same two
+   * routes: a published module's entry point comes out of its `library` layer,
+   * and a working copy's is built from `local_path` so an edit is picked up with
+   * no build step. The recursion is real — a library that imports another library
+   * needs its own shims beside it — and `seen` bounds it at one visit per module.
+   */
+  private async prepareLibrary(
+    library: ResolvedSiblingLibrary,
+    format: string,
+    purl: string,
+    seen: Set<string>,
+  ): Promise<string> {
+    const entryFile = await this.libraryEntryFile(library, format, purl);
+    const dir = path.dirname(entryFile);
+    if (!seen.has(library.moduleSource)) {
+      seen.add(library.moduleSource);
+      const nested = await this.libraryEntries(library.libraries, format, purl, seen);
+      await ensureLibraryShims(dir, nested, this.cacheRoot, this.log);
+    }
+    // A library entry imports `@telorun/sdk` like any controller does.
+    await ensureRealmSymlinks(dir);
+    return entryFile;
+  }
+
+  /**
+   * The file a library's specifier resolves to.
+   *
+   * Every failure here is `ControllerEnvMissingError`, and that is a choice worth
+   * defending: it is not "this host lacks an environment" in the ordinary sense.
+   * But a library is resolved **per format**, so a failure is scoped to ONE
+   * candidate — the `js` library being absent says nothing about whether a
+   * `napi` candidate of the same kind can run, and the candidate list is exactly
+   * the mechanism for trying it. Failing hard would abort a list a sibling
+   * candidate could still satisfy. It also matches how the controller path
+   * already treats the same shapes: a missing bundle file and a selector the
+   * artifact ships no layer for are both env-missing there. What must never be
+   * masked this way is a *build* failure or a malformed bundle, and neither is
+   * reachable from here — those keep their hard codes. Each message names the
+   * sibling module and the action, and the aggregated
+   * `ERR_CONTROLLER_NOT_FOUND` carries every one of them.
+   */
+  private async libraryEntryFile(
+    library: ResolvedSiblingLibrary,
+    format: string,
+    purl: string,
+  ): Promise<string> {
+    if (library.artifact) {
+      const resolved = await library.artifact.materializeLibrary(library.selector);
+      if (!resolved) {
+        throw new ControllerEnvMissingError(
+          `pkg:telo controller "${purl}" imports "${library.specifier}", but module ` +
+            `${library.moduleSource} ships no ${format} library layer for it ` +
+            `(has: ${library.artifact.describeLayers()}). Republish that module.`,
+        );
+      }
+      return path.resolve(resolved.layer.dir, library.path);
+    }
+
+    if (!library.moduleDir) {
+      throw new ControllerEnvMissingError(
+        `pkg:telo controller "${purl}" imports "${library.specifier}", but module ` +
+          `${library.moduleSource} has no local directory to resolve its library entry point in.`,
+      );
+    }
+
+    // Working copy: the source is authoritative, exactly as it is for a
+    // controller — a stale checked-in bundle would otherwise shadow the edit.
+    const source = library.localPath
+      ? path.resolve(library.moduleDir, library.localPath)
+      : undefined;
+    if (
+      source !== undefined &&
+      this.cacheRoot !== undefined &&
+      (await pathExists(source)) &&
+      (await canBuildFromSource())
+    ) {
+      return buildControllerFromSource(
+        source,
+        this.cacheRoot,
+        buildExternals(library.libraries, format),
+      );
+    }
+
+    const prebuilt = path.resolve(library.moduleDir, library.path);
+    if (await pathExists(prebuilt)) return prebuilt;
+    throw new ControllerEnvMissingError(
+      `pkg:telo controller "${purl}" imports "${library.specifier}", whose entry point is not at ` +
+        `"${prebuilt}"${source ? ` and whose source "${source}" cannot be built here` : ""}.`,
+    );
   }
 
   /**
@@ -181,6 +484,7 @@ export class BundleControllerLoader {
     purl: string,
     baseUri: string,
     artifact?: ModuleArtifact,
+    libraries: SiblingLibraryMap = NO_SIBLING_LIBRARIES,
   ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     let parsed: PackageURL;
     try {
@@ -252,6 +556,14 @@ export class BundleControllerLoader {
       cacheRoot !== undefined &&
       (await pathExists(sourceFile)) &&
       (await canBuildFromSource());
+    // Every sibling library this bundle imports, resolved before the bundle is:
+    // its `import { KeyedClaim } from "@telorun/kv-store"` has to have a file
+    // behind it, and which file that is depends on the import graph rather than
+    // on anything inside the bundle. Done at resolve time with the other
+    // fail-fast checks, so an unresolvable library reports itself as a candidate
+    // this host cannot run rather than as an opaque module-not-found at import.
+    const shims = await this.libraryEntries(libraries, format, purl, new Set());
+
     if (buildFromSource) {
       // The same file the prebuilt branch would import, kept as the fallback for
       // an environment that stops being able to build between resolve and first
@@ -266,14 +578,18 @@ export class BundleControllerLoader {
         importInstance: async () => {
           let built: string;
           try {
-            built = await buildControllerFromSource(sourceFile!, cacheRoot!);
+            built = await buildControllerFromSource(
+              sourceFile!,
+              cacheRoot!,
+              buildExternals(libraries, format),
+            );
           } catch (err) {
             if (!(err instanceof ControllerEnvMissingError)) throw err;
             if (!(await pathExists(prebuilt))) throw err;
-            await ensureRealmSymlinks(path.dirname(prebuilt));
+            await prepareBundleDir(path.dirname(prebuilt), shims, this.cacheRoot, this.log);
             return importControllerModule(prebuilt, purl, fragment);
           }
-          await ensureRealmSymlinks(path.dirname(built));
+          await prepareBundleDir(path.dirname(built), shims, this.cacheRoot, this.log);
           return importControllerModule(built, purl, fragment);
         },
       };
@@ -321,9 +637,9 @@ export class BundleControllerLoader {
       );
     }
 
-    // Make bare `@telorun/sdk` (etc.) resolve to the kernel's copy before
+    // Make bare `@telorun/sdk` (etc.) and every sibling library resolve before
     // importing the bundle, so authors write normal imports.
-    await ensureRealmSymlinks(path.dirname(absFile));
+    await prepareBundleDir(path.dirname(absFile), shims, this.cacheRoot, this.log);
 
     return {
       source,

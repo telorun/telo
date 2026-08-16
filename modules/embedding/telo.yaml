@@ -16,6 +16,14 @@ exports:
     - Model
     - Query
     - Passage
+  # The entry point a dependent module's controller bundle resolves
+  # `@telorun/embedding` to, so this module's code is one module scope across every
+  # consumer instead of a copy inlined into each of their bundles.
+  code:
+    - specifier: "@telorun/embedding"
+      format: js
+      path: ./nodejs/embedding.mjs
+      source: ./nodejs/src/index.ts
 ---
 # Embedding.Model — the abstract model every embedding backend implements. A
 # Telo.Provider: a configured model, NOT an operation you invoke. Consumers
@@ -74,7 +82,7 @@ metadata:
     vector dimension and token usage.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/query-controller.mjs&local_path=./nodejs/src/query-controller.ts
+  - pkg:telo/local/js?path=./nodejs/embedding.mjs&local_path=./nodejs/src/index.ts#QueryController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -144,7 +152,7 @@ metadata:
     vector dimension and token usage.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/passage-controller.mjs&local_path=./nodejs/src/passage-controller.ts
+  - pkg:telo/local/js?path=./nodejs/embedding.mjs&local_path=./nodejs/src/index.ts#PassageController
 inputType:
   kind: Telo.JsonSchema
   schema:

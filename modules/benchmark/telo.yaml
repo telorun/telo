@@ -24,7 +24,7 @@ metadata:
     report into a pass/fail gate.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/suite.mjs&local_path=./nodejs/src/suite.ts
+  - pkg:telo/local/js?path=./nodejs/benchmark.mjs&local_path=./nodejs/src/index.ts#Suite
 schema:
   type: object
   properties:

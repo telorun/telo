@@ -16,6 +16,14 @@ exports:
     - Lookup
     - Entry
     - View
+  # The entry point a dependent module's controller bundle resolves
+  # `@telorun/cache` to, so this module's code is one module scope across every
+  # consumer instead of a copy inlined into each of their bundles.
+  code:
+    - specifier: "@telorun/cache"
+      format: js
+      path: ./nodejs/cache.mjs
+      source: ./nodejs/src/index.ts
 ---
 # Cache.Store — the abstract backing store every cache backend implements. A
 # Telo.Provider: a configured store, NOT an operation you invoke. Consumers
@@ -43,7 +51,7 @@ metadata:
     along with the stored value and how long ago it was written.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/lookup-controller.mjs&local_path=./nodejs/src/lookup-controller.ts
+  - pkg:telo/local/js?path=./nodejs/cache.mjs&local_path=./nodejs/src/index.ts#LookupController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -92,7 +100,7 @@ metadata:
     long it may still be served as stale afterwards.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/entry-controller.mjs&local_path=./nodejs/src/entry-controller.ts
+  - pkg:telo/local/js?path=./nodejs/cache.mjs&local_path=./nodejs/src/index.ts#EntryController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -152,7 +160,7 @@ metadata:
     fails.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/view-controller.mjs&local_path=./nodejs/src/view-controller.ts
+  - pkg:telo/local/js?path=./nodejs/cache.mjs&local_path=./nodejs/src/index.ts#ViewController
 inputType:
   kind: Telo.JsonSchema
   schema:

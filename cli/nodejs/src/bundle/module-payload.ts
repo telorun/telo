@@ -36,7 +36,13 @@ import {
   type ArtifactSelector,
   type LayerRole,
 } from "@telorun/analyzer";
-import { buildControllerBundle, defaultTransportRegistry, type PayloadFile } from "@telorun/kernel";
+import {
+  buildControllerBundle,
+  defaultTransportRegistry,
+  readOwnerManifest,
+  type PayloadFile,
+  type SiblingLibrary,
+} from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -308,27 +314,38 @@ export class ModulePayloadBuilder {
       readAssetPatterns(manifest),
     );
 
-    // Controller entry points are BUILT, not read: `path=` names a gitignored
+    // Every code entry point is BUILT, not read: `path=` names a gitignored
     // artifact that may not exist at all on a fresh clone, and reading a stale
     // one would digest and ship bytes other than the source the manifest says
-    // they came from.
+    // they came from. A library entry point is built exactly like a controller
+    // one — it is the same bundle, differing only in who imports it.
     //
     // This runs BEFORE the payload guard, because the guard's job is to reject a
     // file that will not be there when the artifact is read — and an entry point
     // this loop just produced WILL be there. Checking first was a latent break:
     // on a checkout with no `.mjs` files, publish refused before the builder ran
     // and told the author to run a build step this design removed.
+    const externals = siblingLibrariesOf(relativeImports);
     const built = new Map<string, Uint8Array>();
     const buildInputs = new Set<string>();
     for (const claim of claims) {
-      if (claim.role !== "controller" || !claim.localPath) continue;
+      if (claim.role !== "controller" && claim.role !== "library") continue;
+      if (!claim.localPath) continue;
+      // One build per entry point, even when several candidates name it: a
+      // module's kinds are selected out of one bundle by PURL fragment, and
+      // building it once per fragment would be the same bytes N times.
+      if (built.has(claim.path)) continue;
       const entry = path.resolve(manifestDir, claim.localPath);
       if (!fs.existsSync(entry)) {
         throw new Error(
-          `controller source '${claim.localPath}' does not exist (from ${claim.origin}).`,
+          `${claim.role} source '${claim.localPath}' does not exist (from ${claim.origin}).`,
         );
       }
-      const bundle = await buildControllerBundle(entry, this.options.cacheRoot);
+      const bundle = await buildControllerBundle(
+        entry,
+        this.options.cacheRoot,
+        externals.filter((library) => library.format === claim.selector.format),
+      );
       built.set(claim.path, fs.readFileSync(bundle.path));
       for (const input of bundle.inputs) buildInputs.add(input);
     }
@@ -357,6 +374,39 @@ export class ModulePayloadBuilder {
       authoredPins,
     };
   }
+}
+
+/**
+ * The module-owned libraries this module's bundles must not inline, read off the
+ * in-repo siblings it imports.
+ *
+ * Scoped to **relative** imports deliberately, which is the plan's own boundary:
+ * a workspace sibling is on disk, so its declared specifier is part of this
+ * commit and the bytes stay a pure function of it. A remote dependency's
+ * manifest is not, and fetching one to decide whether a specifier is external
+ * would make the published bundle depend on network state — the exact leak the
+ * pin rules closed. A remote library is therefore inlined at publish, as it
+ * always has been.
+ */
+function siblingLibrariesOf(
+  relativeImports: readonly { manifestPath: string }[],
+): Array<SiblingLibrary & { format: string }> {
+  const out: Array<SiblingLibrary & { format: string }> = [];
+  for (const entry of relativeImports) {
+    if (!fs.existsSync(entry.manifestPath)) continue;
+    const owner = readOwnerManifest(fs.readFileSync(entry.manifestPath, "utf8"));
+    const siblingDir = path.dirname(entry.manifestPath);
+    for (const candidate of owner.library) {
+      out.push({
+        specifier: candidate.specifier,
+        ...(candidate.localPath
+          ? { sourceDir: path.dirname(path.resolve(siblingDir, candidate.localPath)) }
+          : {}),
+        format: candidate.selector.format,
+      });
+    }
+  }
+  return out;
 }
 
 /** A relative `imports:` source resolved to the sibling's `telo.yaml`. */

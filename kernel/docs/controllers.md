@@ -78,6 +78,74 @@ names it**; it does not have to be restated in `files:`. See the
 [module artifact spec](../specs/module-artifact.md) for how candidates partition
 into layers, and for the `os`/`arch`/`libc` selector axes.
 
+### 1.2 One bundle per module
+
+A module builds **one** bundle, and each of its kinds selects a controller out of
+it with the `#export` fragment:
+
+```yaml
+# modules/sql/telo.yaml — six kinds, one bundle
+controllers:
+  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlQueryController
+```
+
+Not a packaging preference. A bundle is a module graph, so a shared source file
+compiled into two bundles is **two module scopes**, and any state the module keeps
+beside its instances — a registry, a `WeakMap`, a counter — silently becomes two of
+them. Per-kind bundles made that the default for every multi-kind module. One
+bundle makes it unrepresentable: there is no second graph for a second copy to
+live in.
+
+The cost is that laziness is per module rather than per kind — instantiating one
+kind evaluates the module's whole controller surface. In bytes it is a reduction,
+since a dependency shared by two kinds was previously inlined twice.
+
+### 1.3 `exports.code:` — what a *dependent module* imports
+
+A module whose code another module imports declares an entry point for it beside
+the kinds and instances it already exports:
+
+```yaml
+exports:
+  kinds:
+    - Connection
+  code:
+    - specifier: "@telorun/sql"
+      format: js
+      path: ./nodejs/sql.mjs
+      source: ./nodejs/src/index.ts
+```
+
+It sits under `exports:` because that is what it is — a third surface crossing the
+module boundary, gated the same way. Data rather than a PURL because this entry
+never fetches: `controllers:` needs a package URL to be able to name `pkg:npm` or
+`pkg:cargo`, while this always names a file the module already ships, so
+`pkg:telo/local/` would be constant segments before the first real datum. `format`
+plus the optional `os` / `arch` / `libc` build the same selector a controller
+candidate does.
+
+`specifier` is the bare specifier a dependent's sources import — `import
+{ SqlConnectionBase } from "@telorun/sql"`. The kernel joins the two through the
+import graph: the dependent declares `Sql: ../sql`, that module declares what
+`@telorun/sql` means, and the loader resolves the import to **that module's** entry
+point instead of letting the bundler copy its source into the dependent.
+
+Consequences worth knowing:
+
+- The specifier is declared **by the library, once** — never restated per consumer,
+  and never disagreed about by two of them.
+- **One specifier, one entry point.** Subpaths (`@telorun/sql/connection`) are not
+  representable; reproducing npm's `exports` map inside the artifact would import a
+  package manager's resolution semantics into Telo. Importing one is a build error.
+- The entry point is usually the *same file* as the module's controllers, so a
+  library and its own kinds share one module scope, and so does every dependent.
+- Only **module-owned** libraries are resolved this way. A third-party dependency
+  (`kysely`, `pg`) has no module artifact to resolve against and is inlined as
+  before.
+- A build that reaches a sibling library's sources by any other route — a relative
+  path into its tree, a transitive hop — is a hard build error rather than a silent
+  extra copy.
+
 ---
 
 ## 2. Qualifiers
@@ -104,8 +172,12 @@ so the runtime builds from it rather than loading a possibly stale prebuilt arti
   picks the edit up with no build step.
 
   ```
-  pkg:telo/local/js?path=./nodejs/server.mjs&local_path=./nodejs/src/server.ts
+  pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#ServerController
   ```
+
+  It is the module's single entry point (§1.2), so every kind of one module names
+  the same `local_path` and differs only in its fragment. An `exports.code:` entry
+  names it too, through its own `source:` field.
 
 For the bundled mode the gate is the **absence of a module artifact**, not the shape
 of the base URI: a published module served from the on-disk manifest cache also has a
@@ -117,15 +189,29 @@ never affects which layer a host fetches.
 
 ## 3. Entry Points
 
-The `#entry` fragment selects a named export from the package. It maps to a package export
-key of the form `"./<entry>"`.
+The `#entry` fragment selects a controller out of the delivered artifact. What it
+selects differs by delivery mode, because the two artifacts are different things:
 
-```
-pkg:npm/@telorun/http-server@>=0.1.0#http-server-api
-```
+- **`pkg:npm`** — a package **export key** of the form `"./<entry>"`.
 
-resolves the `"./http-server-api"` export key in the package's export map. If no fragment
-is given, the package's default export (`.`) is used.
+  ```
+  pkg:npm/@telorun/http-server@>=0.1.0#http-server-api
+  ```
+
+  resolves the `"./http-server-api"` export key in the package's export map. With
+  no fragment, the package's default export (`.`) is used.
+
+- **`pkg:telo/local/js`** — a **named export of the bundle**. Since a module is one
+  bundle, this is what tells one kind's controller from another's:
+
+  ```
+  pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlQueryController
+  ```
+
+  The export is whatever the entry point exposes under that name — typically a
+  namespace re-export of the controller's own file (`export * as SqlQueryController
+  from "./sql-query-controller.js"`). With no fragment, the whole bundle is the
+  controller, which only makes sense for a module with exactly one.
 
 ---
 
@@ -145,6 +231,24 @@ realm-collapse names into a `node_modules/` beside the bundle, pointing at the
 kernel's own copy; standard resolution then finds them on every runtime. That
 collapses *identity* as well as resolution, so `Stream` / `InvokeError`
 `instanceof` checks hold across the kernel/controller boundary.
+
+**Sibling libraries resolve the same way, one step out** (§1.3). For each specifier
+the declaring module's imports provide, the loader materializes that module's
+`library` layer — or builds its entry from source, when it is a working copy — and
+writes a generated package beside the bundle: a `package.json` and a shim that
+re-exports the materialized entry. A published artifact ships files rather than a
+`package.json`, so there is nothing to link to that standard resolution would
+accept; generating one keeps the whole mechanism inside the loader and off the
+artifact contract. Every consumer's shim re-exports the *same* file, and Node keys
+its module registry by resolved URL, so one library is one module scope however
+many shims point at it.
+
+The generated package sits next to the bundle — per module for a published
+artifact, per content-addressed build for a working copy — so two dependents that
+legitimately resolve *different versions* of one library never write over each
+other. That case is real: the import pin is the granularity, so a graph where two
+dependents pin different versions runs two scopes. It is a warning rather than an
+error, since the two are genuinely different code.
 
 When the module is a working copy and `local_path` resolves on disk, the loader
 builds the bundle from source instead, caching it under

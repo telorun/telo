@@ -14,6 +14,14 @@ metadata:
 exports:
   kinds:
     - Store
+  # The entry point a dependent module's controller bundle resolves
+  # `@telorun/kv-store` to, so this module's code is one module scope across every
+  # consumer instead of a copy inlined into each of their bundles.
+  code:
+    - specifier: "@telorun/kv-store"
+      format: js
+      path: ./nodejs/kv-store.mjs
+      source: ./nodejs/src/index.ts
 ---
 # KvStore.Store — the abstract backing store every kv-store backend implements. A
 # Telo.Provider: a configured store, NOT an operation you invoke. Consumers

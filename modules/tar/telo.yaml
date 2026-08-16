@@ -26,7 +26,7 @@ metadata:
     and its text contents, and emits it as a byte stream ready to compress or write.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/pack-controller.mjs&local_path=./nodejs/src/pack-controller.ts
+  - pkg:telo/local/js?path=./nodejs/tar.mjs&local_path=./nodejs/src/index.ts#PackController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -76,7 +76,7 @@ metadata:
     that pipes into any decoder. A path the archive does not contain raises.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/extract-controller.mjs&local_path=./nodejs/src/extract-controller.ts
+  - pkg:telo/local/js?path=./nodejs/tar.mjs&local_path=./nodejs/src/index.ts#ExtractController
 throws:
   codes:
     ERR_NOT_FOUND:

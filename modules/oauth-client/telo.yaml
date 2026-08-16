@@ -89,7 +89,7 @@ metadata:
     Endpoints given explicitly are used as-is and suppress discovery.
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#authorizationServer
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#authorizationServer
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -161,7 +161,7 @@ metadata:
     useless on its own.
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#client
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#client
 schema:
   type: object
   additionalProperties: false
@@ -229,7 +229,7 @@ metadata:
     grant is addressed by a key, so one source serves many accounts or users.
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#tokenSource
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#tokenSource
 schema:
   type: object
   additionalProperties: false
@@ -299,7 +299,7 @@ metadata:
     once.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#authorization
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#authorization
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -386,7 +386,7 @@ metadata:
     when the surrounding scope ends.
 capability: Telo.Service
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#redirectListener
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#redirectListener
 status:
   type: object
   properties:
@@ -439,7 +439,7 @@ metadata:
     callback is ignored rather than accepted.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#redirectAwait
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#redirectAwait
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -511,7 +511,7 @@ metadata:
     request — so the page can be rendered accordingly.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#callback
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#callback
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -582,7 +582,7 @@ metadata:
     Does not store anything.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#tokenExchange
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#tokenExchange
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -629,7 +629,7 @@ metadata:
     runs at a time, so a rotated token is never presented twice.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#tokenRefresh
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#tokenRefresh
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -674,7 +674,7 @@ metadata:
     same access-token and credential resources serve it.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#clientCredentials
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#clientCredentials
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -719,7 +719,7 @@ metadata:
     operation, which waits for them to finish.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#deviceAuthorization
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#deviceAuthorization
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -776,7 +776,7 @@ metadata:
     approve. A refusal or an expired code is returned as an outcome, not raised.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#deviceToken
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#deviceToken
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -829,7 +829,7 @@ metadata:
     to the client.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#accessToken
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#accessToken
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -873,7 +873,7 @@ metadata:
     whether to prompt someone to sign in.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#grantRead
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#grantRead
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -919,7 +919,7 @@ metadata:
     keeping.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#grantWrite
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#grantWrite
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -962,7 +962,7 @@ metadata:
     anything.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#grantClear
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#grantClear
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1004,7 +1004,7 @@ metadata:
 capability: Telo.Invocable
 extends: Http.Credential
 controllers:
-  - pkg:telo/local/js?path=./nodejs/controllers.mjs&local_path=./nodejs/src/controllers.ts#credential
+  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#credential
 schema:
   type: object
   additionalProperties: false

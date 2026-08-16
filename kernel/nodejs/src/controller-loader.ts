@@ -1,6 +1,10 @@
 import { ControllerInstance, RuntimeError, type Logger } from "@telorun/sdk";
 import { BundleControllerLoader } from "./controller-loaders/bundle-loader.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
+import {
+  NO_SIBLING_LIBRARIES,
+  type SiblingLibraryMap,
+} from "./controller-loaders/sibling-libraries.js";
 import { ControllerEnvMissingError, NapiControllerLoader } from "./controller-loaders/napi-loader.js";
 import { NpmControllerLoader } from "./controller-loaders/npm-loader.js";
 import { ControllerPolicy, DEFAULT_POLICY, POLICY_WILDCARD } from "./runtime-registry.js";
@@ -118,7 +122,7 @@ export class ControllerLoader {
     });
     if (options.log) this.npmLoader.setLogger(options.log);
     this.napiLoader = new NapiControllerLoader();
-    this.bundleLoader = new BundleControllerLoader(options.cacheRoot);
+    this.bundleLoader = new BundleControllerLoader(options.cacheRoot, options.log);
   }
 
   async load(
@@ -126,6 +130,7 @@ export class ControllerLoader {
     baseUri: string,
     policy?: ControllerPolicy,
     artifact?: ModuleArtifact,
+    libraries: SiblingLibraryMap = NO_SIBLING_LIBRARIES,
   ): Promise<ControllerInstance> {
     if (!purlCandidates || purlCandidates.length === 0) {
       throw new RuntimeError("ERR_CONTROLLER_NOT_FOUND", "Missing controller PURL candidates");
@@ -144,7 +149,7 @@ export class ControllerLoader {
       await this.emit?.({ name: "ControllerLoading", payload: { purl } });
       const startedAt = Date.now();
       try {
-        const { instance, source } = await this.dispatchOne(purl, baseUri, artifact);
+        const { instance, source } = await this.dispatchOne(purl, baseUri, artifact, libraries);
         await this.emit?.({
           name: "ControllerLoaded",
           payload: { purl, source, durationMs: Date.now() - startedAt },
@@ -199,6 +204,7 @@ export class ControllerLoader {
     baseUri: string,
     policy?: ControllerPolicy,
     artifact?: ModuleArtifact,
+    libraries: SiblingLibraryMap = NO_SIBLING_LIBRARIES,
   ): Promise<ResolvedController> {
     if (!purlCandidates || purlCandidates.length === 0) {
       throw new RuntimeError("ERR_CONTROLLER_NOT_FOUND", "Missing controller PURL candidates");
@@ -214,7 +220,12 @@ export class ControllerLoader {
     const errors: string[] = [];
     for (const purl of ordered) {
       try {
-        const { source, importInstance } = await this.dispatchResolveOne(purl, baseUri, artifact);
+        const { source, importInstance } = await this.dispatchResolveOne(
+          purl,
+          baseUri,
+          artifact,
+          libraries,
+        );
         return { purl, source, importInstance };
       } catch (err) {
         if (err instanceof ControllerEnvMissingError) {
@@ -233,16 +244,23 @@ export class ControllerLoader {
   private async dispatchOne(
     purl: string,
     baseUri: string,
-    artifact?: ModuleArtifact,
+    artifact: ModuleArtifact | undefined,
+    libraries: SiblingLibraryMap,
   ): Promise<{ instance: ControllerInstance; source: ControllerResolveSource }> {
-    const { source, importInstance } = await this.dispatchResolveOne(purl, baseUri, artifact);
+    const { source, importInstance } = await this.dispatchResolveOne(
+      purl,
+      baseUri,
+      artifact,
+      libraries,
+    );
     return { instance: await importInstance(), source };
   }
 
   private async dispatchResolveOne(
     purl: string,
     baseUri: string,
-    artifact?: ModuleArtifact,
+    artifact: ModuleArtifact | undefined,
+    libraries: SiblingLibraryMap,
   ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     if (purl.startsWith("pkg:npm")) {
       return this.npmLoader.resolve(purl, baseUri);
@@ -251,7 +269,7 @@ export class ControllerLoader {
       return this.napiLoader.resolve(purl, baseUri);
     }
     if (purl.startsWith("pkg:telo")) {
-      return this.bundleLoader.resolve(purl, baseUri, artifact);
+      return this.bundleLoader.resolve(purl, baseUri, artifact, libraries);
     }
     throw new ControllerEnvMissingError(`Unsupported PURL scheme: ${purl}`);
   }

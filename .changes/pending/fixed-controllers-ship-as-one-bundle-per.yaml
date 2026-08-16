@@ -1,0 +1,54 @@
+modules:
+  modules/ai-mcp: Fixed
+  modules/ai-openai: Fixed
+  modules/ai: Fixed
+  modules/assert: Fixed
+  modules/benchmark: Fixed
+  modules/cache-memory: Fixed
+  modules/cache-redis: Fixed
+  modules/cache: Fixed
+  modules/collection: Fixed
+  modules/config: Fixed
+  modules/console: Fixed
+  modules/embedding-openai: Fixed
+  modules/embedding: Fixed
+  modules/fs: Fixed
+  modules/gzip: Fixed
+  modules/http-client: Fixed
+  modules/idempotency: Fixed
+  modules/javascript: Fixed
+  modules/kv-store-memory: Fixed
+  modules/kv-store-redis: Fixed
+  modules/kv-store-sql: Fixed
+  modules/kv-store: Fixed
+  modules/lease: Fixed
+  modules/mcp-client: Fixed
+  modules/mcp-server: Fixed
+  modules/multipart: Fixed
+  modules/ndjson-codec: Fixed
+  modules/oauth-client: Fixed
+  modules/octet-codec: Fixed
+  modules/otlp: Fixed
+  modules/plain-text-codec: Fixed
+  modules/rate-limit: Fixed
+  modules/record-stream: Fixed
+  modules/run: Fixed
+  modules/scheduler: Fixed
+  modules/shell: Fixed
+  modules/sql-postgres: Fixed
+  modules/sql: Fixed
+  modules/sse-codec: Fixed
+  modules/stream: Fixed
+  modules/tar: Fixed
+  modules/test: Fixed
+  modules/timer: Fixed
+  modules/vector-store-memory: Fixed
+  modules/vector-store-pgvector: Fixed
+  modules/vector-store: Fixed
+  modules/workflow-temporal: Fixed
+  modules/yaml: Fixed
+body: Controllers ship as one bundle per module, selected by PURL fragment, and a
+  module-owned library is resolved at load through the import graph instead of being
+  copied into each dependent's bundle. A shared source file compiled into two bundles
+  was two module scopes, so state a module kept beside its instances silently became two
+  of them.

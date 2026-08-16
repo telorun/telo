@@ -19,6 +19,14 @@ exports:
     - Selection
     - Migration
     - Migrations
+  # The entry point a dependent module's controller bundle resolves
+  # `@telorun/sql` to, so this module's code is one module scope across every
+  # consumer instead of a copy inlined into each of their bundles.
+  code:
+    - specifier: "@telorun/sql"
+      format: js
+      path: ./nodejs/sql.mjs
+      source: ./nodejs/src/index.ts
 ---
 # Sql.Connection — the abstract database handle every driver implements. A
 # Telo.Provider: a configured connection to a backend, NOT an operation you
@@ -47,7 +55,7 @@ metadata:
     transaction.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/sql-query-controller.mjs&local_path=./nodejs/src/sql-query-controller.ts
+  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlQueryController
 schema:
   type: object
   description: >-
@@ -128,7 +136,7 @@ metadata:
     open transaction.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/sql-command-controller.mjs&local_path=./nodejs/src/sql-command-controller.ts
+  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlCommandController
 schema:
   type: object
   description: >-
@@ -211,7 +219,7 @@ metadata:
     reference, so a group of writes becomes all-or-nothing.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/sql-transaction-controller.mjs&local_path=./nodejs/src/sql-transaction-controller.ts
+  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlTransactionController
 schema:
   type: object
   required:
@@ -258,7 +266,7 @@ metadata:
     visually editable and injection-safe.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/sql-selection-controller.mjs&local_path=./nodejs/src/sql-selection-controller.ts
+  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlSelectionController
 schema:
   type: object
   required: [from]
@@ -406,7 +414,7 @@ metadata:
     replacedBy: Self.Migrations
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/sql-migration-controller.mjs&local_path=./nodejs/src/sql-migration-controller.ts
+  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlMigrationController
 schema:
   type: object
   required: [sql]
@@ -448,7 +456,7 @@ metadata:
     tracking table so it runs exactly once. Renaming a key makes it a new migration.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/sql-migrations-controller.mjs&local_path=./nodejs/src/sql-migrations-controller.ts
+  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlMigrationsController
 schema:
   type: object
   required: [connection]

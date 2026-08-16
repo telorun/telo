@@ -36,28 +36,47 @@ Every layer has exactly one **role**:
 | --- | --- | --- |
 | `manifest` | exactly one | `telo.yaml`, and nothing else |
 | `controller` | zero or more | the entry-point files of the controller candidates sharing one selector, plus whatever their sibling declarations claim |
+| `library` | zero or more | the entry point this module's `exports.code:` entry of one selector names — what a *dependent module's* code resolves this module's declared specifier to |
 | `assets` | zero or one | the files the author claimed via `assets:` |
 | `common` | zero or one | every remaining file `files:` selected |
 
 `telo.yaml` MUST be its own layer. Without that, reading a manifest would pull
 the whole artifact and selective fetch would be defeated at the first step.
 
-A `controller` layer MUST carry a selector (§2). `assets` and `common` are
-singletons and MUST NOT carry one.
+A `controller` or `library` layer MUST carry a selector (§2). `assets` and
+`common` are singletons and MUST NOT carry one.
 
-### 1.1 The sink rule
+### 1.1 Why `library` is its own role
 
-A controller candidate's entry point is part of the payload because
-`controllers:` names it. A publisher MUST include it whether or not `files:`
+A module's controller entry points are reached only when one of *its* kinds is
+instantiated. Its library entry point is reached when a **dependent** module's
+code imports it, which can happen without this module's kinds being used at all.
+The two are therefore materialized by different events, and a role is exactly the
+thing a runtime keys materialization on.
+
+It is per selector rather than a singleton for the same reason a controller layer
+is: a module's `js` entry point and its future Rust one are different files, and a
+consumer resolves the one its own runtime can import.
+
+A file MAY be named by both an `exports.code:` entry and a `controllers:` candidate
+— that is the normal shape, since a module is one bundle whose controllers are
+selected by PURL fragment. Such a file MUST be placed in the `library` layer. That
+is the weaker precondition: a consumer must reach it without loading this module's
+controllers, while the reverse never holds.
+
+### 1.2 The sink rule
+
+A controller candidate's or an `exports.code:` entry's file is part of the payload
+because the manifest names it. A publisher MUST include it whether or not `files:`
 selects it — the manifest already declares it, and requiring both would mean
 every module restates in `files:` what `controllers:` says. `files:` governs
 what the manifest cannot otherwise name: assets, static files, sidecars.
 
-A file that `files:` selected and that neither a controller candidate nor
-`assets:` claimed MUST be placed in the `common` layer.
+A file that `files:` selected and that no controller candidate, no `exports.code:`
+entry and no `assets:` pattern claimed MUST be placed in the `common` layer.
 
 A runtime MUST materialize the `common` layer whenever it materializes any of that
-module's `controller` layers, **and** whenever it resolves a module-relative file
+module's `controller` or `library` layers, **and** whenever it resolves a module-relative file
 reference (§5.1). Both, because `common` is the sink for two different kinds of
 unclaimed file: a controller's undeclared sidecar, and a static file the author did
 not claim via `assets:`. A module that ships static files but has no bundled
@@ -76,7 +95,8 @@ the platform that needs it.
 
 ## 2. Selectors
 
-A **selector** is the tuple a controller candidate is chosen by:
+A **selector** is the tuple a code entry — a `controllers:` candidate or an
+`exports.code:` entry — is chosen by:
 
 ```
 selector := format , [ os ] , [ arch ] , [ libc ]
@@ -115,7 +135,9 @@ arch=amd64;format=napi;libc=gnu;os=linux
 
 Two selectors are the same selector if and only if their canonical keys are equal.
 An implementation MUST use this equality when grouping files into layers and when
-detecting two layers claiming one selector.
+detecting two layers claiming one selector. Equality of *layers* is `(role,
+selector)`: a module's `js` controller layer and its `js` library layer are two
+layers, and only a repeat within one role is a collision.
 
 ### 2.3 Matching rule
 
@@ -146,12 +168,27 @@ Each entry has:
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `role` | yes | one of `controller`, `assets`, `common` |
-| `selector` | on `controller` only | §2 |
+| `role` | yes | one of `controller`, `library`, `assets`, `common` |
+| `selector` | on `controller` and `library` only | §2 |
 | `blob` | yes | the layer's transport blob digest, `sha256:` + 64 lowercase hex |
 | `integrity` | yes | the layer's content digest, `sha256-` + 43 base64url characters |
 
-### 3.1 Why the index lives in `telo.yaml`
+### 3.1 Unknown roles are skipped, not rejected
+
+An implementation MUST ignore an index entry whose `role` it does not recognize,
+and MUST NOT fail the parse over one. Roles are added over time, and a runtime
+that cannot name a role cannot need its layer — while rejecting would make the
+whole manifest unreadable, so a module that gains a layer for a newer runtime
+would stop loading on an older one entirely rather than merely lacking that layer.
+Reading a manifest is the first step of every resolution, so this is the
+difference between a degraded load and no load at all.
+
+This applies to the role vocabulary only. A structurally invalid entry — a missing
+or non-string `role`, a malformed digest, a selector that violates §2.1, a second
+layer claiming one `(role, selector)` — remains an error: that is a malformed
+index rather than a newer one.
+
+### 3.2 Why the index lives in `telo.yaml`
 
 A Telo import is pinned to a hash of `telo.yaml` and nothing else. In OCI the layer
 list lives one level up, in the OCI manifest, which is fetched by a reference that
@@ -175,7 +212,7 @@ The selector MUST be pinned alongside its digests, i.e. inside the index. A
 selector carried only as transport metadata could be relabelled without changing
 any digest, handing a host a valid layer for the wrong platform.
 
-### 3.2 The two digests
+### 3.3 The two digests
 
 `blob` **addresses** the layer and verifies its transfer. A runtime MUST fetch a
 layer by this digest and MUST verify the received bytes against it before
@@ -192,7 +229,7 @@ is what lets a cache validate an extracted layer without re-archiving it.
 `telo.yaml` MUST be excluded from any `integrity` computation, so the manifest that
 carries the index does not participate in a digest it contains.
 
-### 3.3 Publish ordering
+### 3.4 Publish ordering
 
 A publisher MUST push every payload layer, collect their `blob` digests, inject the
 index into `telo.yaml`, and only then push the manifest layer. This ordering is what
@@ -239,7 +276,7 @@ remove.
 
 ## 5. Materialization
 
-**Materializing** a layer means fetching it, verifying it per §3.2, and extracting
+**Materializing** a layer means fetching it, verifying it per §3.3, and extracting
 its files into the module's local directory. Every layer of one module extracts
 into the same directory, so a module-relative path resolves identically however the
 module was delivered.
@@ -263,11 +300,16 @@ An implementation:
 - A **controller** layer is materialized when a candidate matching its selector
   wins controller resolution — and the platform check of §2.3 MUST run *before*
   materialization, or a candidate list would fetch every platform's layer on the
-  way to the right one.
-- The **common** layer is materialized with any controller layer of that module
-  (§1.1).
+  way to the right one. The module's `library` layer of that same selector MUST be
+  materialized with it, since the winning candidate's file may live there (§1.1).
+- A **library** layer is materialized when a *dependent* module's code resolves
+  this module's declared specifier, at the selector of the code doing the
+  resolving. A runtime MUST NOT require that module's controllers to be loaded
+  first: a library-only module has none.
+- The **common** layer is materialized with any controller or library layer of
+  that module (§1.2).
 - The **assets** layer and the **common** layer are materialized on the first
-  module-relative file access. Assets alone is not sufficient — see §1.1.
+  module-relative file access. Assets alone is not sufficient — see §1.2.
 
 A module whose assets are never read MUST NOT have its `assets` layer fetched. A
 runtime MUST NOT materialize payload layers as a side effect of reading a manifest:

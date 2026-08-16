@@ -1,6 +1,6 @@
 import { fetchOrThrow } from "@telorun/sdk";
-import { redact } from "@telorun/ai/redact";
-import { contentToText, isImagePart, type ImagePart, type MessageContent } from "@telorun/ai/content";
+import { redact } from "@telorun/ai";
+import { contentToText, isImagePart, type ImagePart, type MessageContent } from "@telorun/ai";
 import type {
   AiModelInstance,
   CompletionResult,
@@ -11,7 +11,7 @@ import type {
   ToolCall,
   ToolDefinition,
   Usage,
-} from "@telorun/ai/types";
+} from "@telorun/ai";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { errorMessage, mergeOptions, toOpenAiParams } from "./openai-params.js";
 

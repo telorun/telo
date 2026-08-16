@@ -39,6 +39,7 @@ export {
   buildControllerBundle,
   canBuildFromSource,
   lastBuildInputs,
+  type SiblingLibrary,
 } from "./controller-loaders/source-bundle-builder.js";
 export type {
   PayloadLayer,

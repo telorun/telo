@@ -25,14 +25,25 @@
  * published into OCI descriptors.
  */
 
-/** The role a layer plays in a module artifact. `controller` layers carry a
- *  selector; `assets` and `common` are singletons and carry none. */
-export type LayerRole = "controller" | "assets" | "common";
+/** The role a layer plays in a module artifact. `controller` and `library` layers
+ *  carry a selector; `assets` and `common` are singletons and carry none. */
+export type LayerRole = "controller" | "library" | "assets" | "common";
 
-export const LAYER_ROLES: readonly LayerRole[] = ["controller", "assets", "common"];
+export const LAYER_ROLES: readonly LayerRole[] = ["controller", "library", "assets", "common"];
 
 export function isLayerRole(value: unknown): value is LayerRole {
   return typeof value === "string" && (LAYER_ROLES as readonly string[]).includes(value);
+}
+
+/** The roles that hold executable code, and are therefore per format rather than
+ *  singletons. A `library` layer is per selector for the same reason a
+ *  `controller` layer is: a module's JS entry point and its future Rust one are
+ *  different files, and a consumer resolves the one its own runtime can import.
+ *  A singleton would be wrong the moment a second runtime ships. */
+export const CODE_LAYER_ROLES: readonly LayerRole[] = ["controller", "library"];
+
+export function roleCarriesSelector(role: LayerRole): boolean {
+  return (CODE_LAYER_ROLES as readonly string[]).includes(role);
 }
 
 /** The platform axes, in canonical order. Not a closed vocabulary of *values* —

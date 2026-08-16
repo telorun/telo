@@ -32,7 +32,7 @@ metadata:
     output row with CEL aggregate expressions, optionally ordered by CEL keys.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/group-by-controller.mjs&local_path=./nodejs/src/group-by-controller.ts
+  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#GroupByController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -141,7 +141,7 @@ metadata:
   description: Reduces a whole collection to a single summary object with CEL aggregate expressions over the full set.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/summarize-controller.mjs&local_path=./nodejs/src/summarize-controller.ts
+  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#SummarizeController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -211,7 +211,7 @@ metadata:
     itself when none is declared.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/fold-controller.mjs&local_path=./nodejs/src/fold-controller.ts
+  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#FoldController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -342,7 +342,7 @@ metadata:
   description: Orders a collection by a list of CEL sort keys, each ascending or descending, applied as tie-breakers.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/sort-controller.mjs&local_path=./nodejs/src/sort-controller.ts
+  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#SortController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -414,7 +414,7 @@ metadata:
   description: Keeps the first element for each distinct CEL key tuple, preserving input order.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/distinct-controller.mjs&local_path=./nodejs/src/distinct-controller.ts
+  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#DistinctController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -471,7 +471,7 @@ metadata:
   description: Splits a collection into consecutive batches of at most `size` elements (trailing batch may be shorter).
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/chunk-controller.mjs&local_path=./nodejs/src/chunk-controller.ts
+  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#ChunkController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -524,7 +524,7 @@ metadata:
   description: Joins two collections on a CEL key from each side (inner or left), shaping each output row with a CEL select map.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/join-controller.mjs&local_path=./nodejs/src/join-controller.ts
+  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#JoinController
 inputType:
   kind: Telo.JsonSchema
   schema:

@@ -5,7 +5,7 @@ import type {
   GeneratedImage,
   ImageGenerationResult,
   ImageInvokeInput,
-} from "./types.js";
+} from "@telorun/ai";
 
 /**
  * Internal Ai.ImageModel test fixture — the image counterpart of ai-echo-controller.

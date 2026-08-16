@@ -30,7 +30,7 @@ metadata:
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
-  - pkg:telo/local/js?path=./nodejs/encoder-controller.mjs&local_path=./nodejs/src/encoder-controller.ts
+  - pkg:telo/local/js?path=./nodejs/ndjson-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController
 schema:
   type: object
   additionalProperties: false

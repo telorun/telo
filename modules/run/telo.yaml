@@ -27,7 +27,7 @@ metadata:
 capability: Telo.Runnable
 topology: Sequence
 controllers:
-  - pkg:telo/local/js?path=./nodejs/sequence.mjs&local_path=./nodejs/src/sequence.ts
+  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Sequence
 throws:
   inherit: true
 schema:
@@ -350,7 +350,7 @@ metadata:
   description: Evaluates a CEL expression over typed inputs and returns the shaped value — a declarative value-only script.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/value.mjs&local_path=./nodejs/src/value.ts
+  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Value
 schema:
   type: object
   properties:
@@ -441,7 +441,7 @@ metadata:
   description: First-match decision table — returns the value of the first choice whose predicate holds, or a declared default.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/choice.mjs&local_path=./nodejs/src/choice.ts
+  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Choice
 throws:
   codes:
     ERR_NO_MATCH:
@@ -587,7 +587,7 @@ metadata:
   description: Runs a step body once per collection element with configurable concurrency and whole-operation error catches.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/iteration.mjs&local_path=./nodejs/src/iteration.ts
+  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Iteration
 throws:
   inherit: true
 schema:
@@ -889,7 +889,7 @@ metadata:
   description: Maps each collection element through a step body and CEL outputs into a result array, with configurable concurrency.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/projection.mjs&local_path=./nodejs/src/projection.ts
+  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Projection
 throws:
   inherit: true
 schema:
@@ -1198,7 +1198,7 @@ metadata:
   description: Repeats a step body while a CEL condition holds or up to maxIterations, seeing iteration count and previous result.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/loop.mjs&local_path=./nodejs/src/loop.ts
+  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Loop
 throws:
   inherit: true
 schema:
@@ -1506,7 +1506,7 @@ metadata:
   description: Dispatches a wrapped invocable in the background and returns immediately, off the caller's response path.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/detach.mjs&local_path=./nodejs/src/detach.ts
+  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Detach
 inputType:
   kind: Telo.JsonSchema
   schema:

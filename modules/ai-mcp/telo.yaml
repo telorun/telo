@@ -33,7 +33,7 @@ metadata:
 capability: Telo.Mount
 extends: Ai.ToolProvider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/mcp-tool-provider-controller.mjs&local_path=./nodejs/src/mcp-tool-provider-controller.ts
+  - pkg:telo/local/js?path=./nodejs/ai-mcp.mjs&local_path=./nodejs/src/index.ts#McpToolProviderController
 schema:
   type: object
   properties:

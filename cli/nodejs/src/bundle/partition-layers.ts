@@ -63,7 +63,16 @@ export function partitionLayers(
     (claim): claim is Extract<ModuleFileClaim, { role: "controller" }> =>
       claim.role === "controller",
   );
+  const libraries = claims.filter(
+    (claim): claim is Extract<ModuleFileClaim, { role: "library" }> => claim.role === "library",
+  );
   const claimedAssets = claims.filter((claim) => claim.role === "assets");
+  /** Library entry points, by path: a file claimed as both a controller entry and
+   *  a library entry belongs to the LIBRARY layer. That is the weaker
+   *  precondition — a consumer resolving this module's specifier must reach the
+   *  file without loading this module's controllers — and a module whose
+   *  controllers are selected out of its one bundle is exactly that case. */
+  const libraryFiles = new Set(libraries.map((claim) => claim.path));
 
   // A claimed file is part of the payload because the manifest names it, not
   // because `files:` restates it. `files:` keeps its role for everything the
@@ -84,8 +93,22 @@ export function partitionLayers(
   // would break the "a declaration never costs correctness" guarantee.
   const bySelector = new Map<string, LayerPlan>();
   const unmatchedSiblings: Array<{ origin: string; pattern: string }> = [];
+
+  // Library layers first, so a dual-claimed entry point is already spoken for
+  // when the controller pass runs and is not copied into both.
+  for (const claim of libraries) {
+    const key = `library\0${selectorKey(claim.selector)}`;
+    let plan = bySelector.get(key);
+    if (!plan) {
+      plan = { role: "library", selector: claim.selector, files: [] };
+      bySelector.set(key, plan);
+    }
+    unclaimed.delete(claim.path);
+    if (!plan.files.includes(claim.path)) plan.files.push(claim.path);
+  }
+
   for (const claim of controllers) {
-    const key = selectorKey(claim.selector);
+    const key = `controller\0${selectorKey(claim.selector)}`;
     let plan = bySelector.get(key);
     if (!plan) {
       plan = { role: "controller", selector: claim.selector, files: [] };
@@ -100,6 +123,10 @@ export function partitionLayers(
     }
     for (const file of [claim.path, ...siblings]) {
       unclaimed.delete(file);
+      // A controller entry point that is also this module's library entry point
+      // ships once, in the library layer; the controller layer would be a second
+      // copy of the same bytes under a different digest.
+      if (libraryFiles.has(file)) continue;
       if (!plan.files.includes(file)) plan.files.push(file);
     }
   }

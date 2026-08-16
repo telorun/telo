@@ -110,7 +110,7 @@ metadata:
   name: WriteLine
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/writeline-controller.mjs&local_path=./nodejs/src/writeline-controller.ts
+  - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#WritelineController
 inputType:
   kind: Type.JsonSchema
   schema:
@@ -127,7 +127,9 @@ schema:
 ```
 
 - **`capability`** — the lifecycle role the kernel will drive (`Telo.Invocable` here). See the [capability list](/reference/kernel/capabilities).
-- **`controllers`** — a [Package URL](/reference/kernel/controllers) locating the implementation. `pkg:telo/local/js` means the controller **ships inside the module's own artifact** as a bundle: `path=` is the built `.mjs` a published module carries in its controller layer, and `local_path=` is the TypeScript source it was built from, which the kernel builds on demand while the module is a working copy (Step 3). List one PURL per format or platform to ship a polyglot kind.
+- **`controllers`** — a [Package URL](/reference/kernel/controllers) locating the implementation. `pkg:telo/local/js` means the controller **ships inside the module's own artifact** as a bundle: `path=` is the built `.mjs` a published module carries, and `local_path=` is the TypeScript source it was built from, which the kernel builds on demand while the module is a working copy (Step 3). List one PURL per format or platform to ship a polyglot kind.
+
+  A module is **one bundle**, and `#WritelineController` names the export inside it that this kind's controller is. Every kind of a module therefore points at the same `path=` / `local_path=` and differs only in its fragment. That is what keeps a module's shared state one module scope: two bundles compiled from one source file are two scopes, and anything the module keeps beside its instances — a registry, a `WeakMap` — silently becomes two of them.
 - **`inputType` / `outputType`** — the typed contract the analyzer checks CEL against. `schema` validates the resource's own config fields. Both carry [`x-telo-*` annotations](/reference/kernel/resource-definition) (`x-telo-eval`, `x-telo-ref`, `x-telo-type`, …) that the analyzer and editor resolve generically.
 
 ## Step 2 — implement the controller
@@ -192,6 +194,15 @@ package is **private and never published**. It exists for two reasons only: to
 declare the dependencies esbuild inlines, and to type-check the sources, which
 esbuild does not do.
 
+The module's entry point re-exports one namespace per kind, which is what the PURL
+fragments select:
+
+```ts
+// nodejs/src/index.ts
+export * as WritelineController from "./writeline-controller.js";
+export * as ReadlineController from "./readline-controller.js";
+```
+
 ```json
 {
   "name": "@telorun/console-build",
@@ -199,17 +210,46 @@ esbuild does not do.
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json && esbuild src/writeline-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --outdir=. --out-extension:.js=.mjs"
+    "build": "tsc -p tsconfig.lib.json"
   },
-  "devDependencies": { "@telorun/sdk": "workspace:*", "esbuild": "^0.25.12" }
+  "devDependencies": { "@telorun/sdk": "workspace:*" }
 }
 ```
+
+The `build` script only **type-checks**. The kernel builds the bundle itself — on
+the run path from `local_path`, and on the publish path through the same builder —
+so the bytes a contributor runs are the bytes that ship, with no staged artifact
+to go stale.
 
 `@telorun/sdk` stays **external** rather than inlined: the bundle ships with no
 `node_modules`, so the kernel symlinks the SDK to its own copy beside the bundle
 at load time. That collapses identity as well as resolution, keeping `Stream` /
 `InvokeError` `instanceof` checks true across the kernel/controller boundary.
 Authors write a plain `import { … } from "@telorun/sdk"`.
+
+**A library another module owns is external too.** If your controller imports a
+module you declare in `imports:`, that module's own `exports.code:` entry says
+which bare specifier it is imported by, and the kernel resolves the import to *its*
+entry point rather than copying its source into your bundle — so the library runs
+as one module scope across every consumer. Declaring it on the library side, once,
+beside the kinds it already exports:
+
+```yaml
+# the library's telo.yaml
+exports:
+  kinds:
+    - Store
+  code:
+    - specifier: "@telorun/kv-store"
+      format: js
+      path: ./nodejs/kv-store.mjs
+      source: ./nodejs/src/index.ts
+```
+
+Only module-owned libraries work this way — `kysely` or `pg` have no module
+artifact to resolve against and are inlined as before. Reaching a sibling's sources
+by another route (a relative path into its tree, one of its subpaths) is a build
+error rather than a silent second copy.
 
 **There is no build step during development.** `telo run` against a module on
 disk builds the controller from its `local_path` source on first use and caches
@@ -243,7 +283,7 @@ Throw an `InvokeError` for domain failures that are part of your kind's contract
 
 ## Publish
 
-`telo publish ./modules/<name>/telo.yaml oci://<host>/<repo> --bump=minor` partitions the module into layers — `telo.yaml` alone, one controller layer per selector, assets, and everything else — and pushes them as an OCI artifact to the target registry (e.g. `oci://ghcr.io/acme/telo-console`). Importers then reference it as `oci://<host>/<repo>@<version>`; nothing is fetched from npm at load. A controller's `path=` entry joins the payload automatically, so `files:` is only for what the manifest cannot otherwise name.
+`telo publish ./modules/<name>/telo.yaml oci://<host>/<repo> --bump=minor` partitions the module into layers — `telo.yaml` alone, one controller layer per selector, a `library` layer for the entry point dependents import, assets, and everything else — and pushes them as an OCI artifact to the target registry (e.g. `oci://ghcr.io/acme/telo-console`). Importers then reference it as `oci://<host>/<repo>@<version>`; nothing is fetched from npm at load. A controller's `path=` entry joins the payload automatically, so `files:` is only for what the manifest cannot otherwise name.
 
 Publish refuses to ship changed bytes at an unchanged `metadata.version`: it compares each built layer's content digest against the one already published under that version. A bundle inlines its dependencies, so a fix in a shared library changes a module's bytes while touching no file the module owns — bumping the version is what makes that fix reach consumers.
 

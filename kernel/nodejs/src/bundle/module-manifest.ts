@@ -1,4 +1,9 @@
-import { parseLayerIndex, type ArtifactLayer } from "@telorun/analyzer";
+import {
+  parseLayerIndex,
+  readLibraryCandidates,
+  type ArtifactLayer,
+  type LibraryCandidate,
+} from "@telorun/analyzer";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments, type Document } from "yaml";
 
@@ -32,6 +37,10 @@ export interface OwnerManifest {
   /** Ordered `.gitignore`-style patterns the author claimed as the lazily
    *  materialized `assets` layer. */
   assetPatterns: string[];
+  /** The entry points this module offers a sibling's controller bundle, one per
+   *  format, each naming the bare specifier it is imported by. Empty for a module
+   *  nothing imports the source of. */
+  library: LibraryCandidate[];
   /** True when the owner doc declares a non-empty `files:` list. */
   declaresFiles: boolean;
   /** Descriptive provenance a transport projects into its backend's metadata
@@ -64,6 +73,10 @@ export function readOwnerManifest(text: string): OwnerManifest {
     version: str(md.version),
     layers: parsed?.layers === undefined ? undefined : parseLayerIndex(parsed.layers),
     assetPatterns: patterns(parsed?.assets),
+    // Malformed entries are dropped here and reported by the analyzer, which is
+    // the surface that can point at the line. A dropped candidate leaves the
+    // specifier unresolved at load, which fails loudly rather than silently.
+    library: readLibraryCandidates(parsed).candidates,
     declaresFiles: Array.isArray(parsed?.files) && parsed.files.length > 0,
     description: str(md.description),
     repository: str(md.repository),

@@ -85,11 +85,28 @@ executor it opened.
 
 That mapping **must live on the connection instance** — the object both the
 transaction controller and the operations hold by reference — and never at
-module scope. A module's controllers may ship as separate bundles, each inlining
-its own copy of a shared source file, so module-scoped state is one copy *per
-bundle*: the write and the read never meet, and every lookup silently misses.
-(That was a live bug in this module before zones: `transaction:` threw on every
-path, including inside its own transaction.)
+module scope.
+
+Module-scoped state is a scope per *bundle*, and a bundle is a module graph. A
+module now builds one bundle for all its kinds, and a library another module owns
+is resolved at load rather than copied into each dependent, so one module is one
+scope in the common case. It is not a guarantee you can lean on, and two live
+cases say so:
+
+- **An npm-delivered controller resolves the library from npm.** `sql-sqlite`
+  ships as `pkg:npm`, so its tarball's own `@telorun/sql` is a second scope,
+  separate from the one `sql`'s kinds and the bundled backends share. Nothing
+  reports this — the kernel cannot see inside another delivery mode's package —
+  and it is the split that exists today.
+- **Two dependents pinning different versions** of one library legitimately run
+  two scopes, since that is genuinely different code. The kernel warns about that
+  one, because it can see it.
+
+Holding the mapping on the instance is what makes the write and the read meet
+regardless of either. (Before both — zones, and one bundle per
+module — this was a live bug here: `transaction:` threw on every path, including
+inside its own transaction, because six controller bundles held six copies of the
+map.)
 
 The same rule fixes what a miss must do. When a caller passes an explicit zone
 this connection did not open, **throw** — the caller declared a requirement, and

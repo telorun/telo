@@ -5,7 +5,9 @@ import {
   ArtifactSelectorError,
   PLATFORM_AXES,
   selectorFromQualifiers,
+  selectorKey,
 } from "./artifact-selector.js";
+import { readLibraryCandidates, type LibraryCandidate } from "./module-library.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -38,8 +40,62 @@ export function validateModuleArtifact(manifests: ResourceManifest[]): AnalysisD
   for (const manifest of manifests) {
     validateLayerIndex(manifest, out);
     validateControllerSelectors(manifest, out);
+    validateLibraryCandidates(manifest, out);
   }
   return out;
+}
+
+/**
+ * The `exports.code:` block on a `Telo.Library` doc.
+ *
+ * Reported here rather than left to the loader for the same reason a controller
+ * selector is: an entry that cannot be read names no entry point, so a
+ * consumer's bundle falls back to *inlining* the library — the module scope
+ * duplication this whole mechanism exists to remove — and it does so silently, on
+ * someone else's machine.
+ */
+function validateLibraryCandidates(manifest: ResourceManifest, out: AnalysisDiagnostic[]): void {
+  // `Telo.Library` only. An application is a root with no importer, so it has no
+  // `exports:` block at all — and its schema is `additionalProperties: false`,
+  // so AJV already rejects the key by name in this same pass. A second
+  // diagnostic on that node would be two squiggles saying one thing.
+  if (manifest.kind !== "Telo.Library") return;
+  const metadata = manifest.metadata as { name?: string; source?: string } | undefined;
+  const { candidates, problems } = readLibraryCandidates(manifest);
+  const resource = { kind: manifest.kind, name: metadata?.name };
+
+  for (const problem of problems) {
+    out.push({
+      severity: DiagnosticSeverity.Error,
+      code: "LIBRARY_CANDIDATE_INVALID",
+      source: SOURCE,
+      message: `Telo.Library/${metadata?.name ?? "(unnamed)"}: ${problem.origin}: ${problem.detail}`,
+      data: { resource, filePath: metadata?.source, path: "exports/code" },
+    });
+  }
+
+  // One specifier per selector: two candidates of one format claiming the same
+  // specifier leave the resolution ambiguous, and two specifiers for one format
+  // mean a consumer's import resolves by whichever candidate is read first.
+  const seen = new Map<string, LibraryCandidate>();
+  for (const candidate of candidates) {
+    const key = selectorKey(candidate.selector);
+    const first = seen.get(key);
+    if (first) {
+      out.push({
+        severity: DiagnosticSeverity.Error,
+        code: "LIBRARY_CANDIDATE_DUPLICATE",
+        source: SOURCE,
+        message:
+          `Telo.Library/${metadata?.name ?? "(unnamed)"}: two 'exports.code' entries declare the ` +
+          `selector ${key} ('${first.specifier}' and '${candidate.specifier}'). A module has one ` +
+          `entry point per format — which is what makes "one specifier, one module scope" true.`,
+        data: { resource, filePath: metadata?.source, path: "exports/code" },
+      });
+      continue;
+    }
+    seen.set(key, candidate);
+  }
 }
 
 /** `local_path` names the source `path=` was built from, so a working copy runs

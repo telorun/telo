@@ -96,7 +96,7 @@ metadata:
     and merging their own headers over the client's.
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/http-client-controller.mjs&local_path=./nodejs/src/http-client-controller.ts
+  - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#HttpClientController
 schema:
   type: "object"
   examples:
@@ -232,7 +232,7 @@ inputType:
           needs — reading one as text corrupts it; `stream` returns a byte stream
           without buffering. Chosen per call, unlike the deprecated `mode`.
 controllers:
-  - pkg:telo/local/js?path=./nodejs/http-request-controller.mjs&local_path=./nodejs/src/http-request-controller.ts
+  - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#HttpRequestController
 outputType:
   kind: Telo.JsonSchema
   schema:

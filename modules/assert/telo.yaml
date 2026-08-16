@@ -35,7 +35,7 @@ metadata:
   description: Asserts on the state of a named module's evaluation context during a test.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/module-context.mjs&local_path=./nodejs/src/module-context.ts
+  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#ModuleContext
 schema:
   type: object
   properties:
@@ -79,7 +79,7 @@ metadata:
   description: Asserts that a value conforms to the given JSON Schema.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/schema.mjs&local_path=./nodejs/src/schema.ts
+  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Schema
 schema:
   type: object
   examples:
@@ -109,7 +109,7 @@ metadata:
   description: Asserts emitted events match an ordered sequence of expected patterns and payloads.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/events.mjs&local_path=./nodejs/src/events.ts
+  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Events
 schema:
   type: object
   properties:
@@ -152,7 +152,7 @@ metadata:
   description: Analyzes a manifest file and asserts its expected diagnostics or load failure.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/manifest.mjs&local_path=./nodejs/src/manifest.ts
+  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Manifest
 schema:
   type: object
   properties:
@@ -214,7 +214,7 @@ metadata:
   description: Asserts that a value deep-equals an expected value.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/equals.mjs&local_path=./nodejs/src/equals.ts
+  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Equals
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -248,7 +248,7 @@ metadata:
   description: Asserts that a string matches a JavaScript regular expression pattern.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/matches.mjs&local_path=./nodejs/src/matches.ts
+  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Matches
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -285,7 +285,7 @@ metadata:
   description: Asserts that a string contains a substring or an array contains an element.
 capability: Telo.Runnable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/contains.mjs&local_path=./nodejs/src/contains.ts
+  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Contains
 inputType:
   kind: Telo.JsonSchema
   schema:

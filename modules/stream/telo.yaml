@@ -39,7 +39,7 @@ metadata:
     replayed into a streaming consumer.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/of-controller.mjs&local_path=./nodejs/src/of-controller.ts
+  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#OfController
 schema:
   type: object
   properties:
@@ -84,7 +84,7 @@ metadata:
     inspected or aggregated. Buffered, so it needs a finite stream.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/collect-controller.mjs&local_path=./nodejs/src/collect-controller.ts
+  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#CollectController
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -132,7 +132,7 @@ metadata:
     source yields nothing, and one piece is held in memory at a time.
 capability: Telo.Invocable
 controllers:
-  - pkg:telo/local/js?path=./nodejs/chunk-controller.mjs&local_path=./nodejs/src/chunk-controller.ts
+  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#ChunkController
 inputType:
   kind: Telo.JsonSchema
   schema:

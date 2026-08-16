@@ -1,6 +1,6 @@
 import {
-  matchControllerLayers,
-  selectorKey,
+  codeLayerFor,
+  matchCodeLayers,
   singletonLayer,
   splitIntegrity,
   describeSelector,
@@ -161,7 +161,8 @@ export class ModuleArtifact {
   }
 
   /**
-   * Materialize the layer carrying `selector` exactly, plus the `common` layer.
+   * Materialize the code layers carrying `selector` exactly — `controller` and
+   * `library` both — plus the `common` layer.
    *
    * Looked up by exact selector key rather than by re-matching the host: the
    * candidate being resolved already *is* one selector, and it is by construction
@@ -171,31 +172,60 @@ export class ModuleArtifact {
    * whichever came first regardless of which candidate asked — materializing the
    * wrong layer and then reporting "bundle not found".
    *
+   * **Both code roles**, because a module's controller entry points and its
+   * library entry point are one file whenever it declares both: the file lands in
+   * the `library` layer (the weaker precondition — a consumer must reach it
+   * without loading this module's controllers), so a controller resolution that
+   * fetched only its own role would find nothing. Which of the two holds a given
+   * `path=` is not the loader's business; both being on disk is.
+   *
    * The `common` layer rides along because it is the sink for files no candidate
    * claimed — an undeclared sidecar an entry point loads at runtime. Pulling it
-   * with any controller layer is what makes a forgotten declaration cost bytes
+   * with any code layer is what makes a forgotten declaration cost bytes
    * instead of a module-not-found at import.
    *
-   * Returns `undefined` when the artifact ships no layer for this selector, which
-   * is how a loader learns to fall through to the next candidate.
+   * Returns `undefined` when the artifact ships no code layer for this selector,
+   * which is how a loader learns to fall through to the next candidate.
    */
   async materializeController(
     selector: ArtifactSelector,
   ): Promise<ResolvedControllerLayer | undefined> {
-    const key = selectorKey(selector);
-    const layer = this.layers.find(
-      (l) => l.role === "controller" && l.selector !== undefined && selectorKey(l.selector) === key,
-    );
-    if (!layer) return undefined;
+    return this.materializeCode(selector, ["controller", "library"]);
+  }
+
+  /**
+   * Materialize the `library` layer for `selector`, plus `common`.
+   *
+   * What a *consumer's* bundle loader calls when it resolves a sibling module's
+   * declared specifier: the sibling's controllers are irrelevant there — only its
+   * library entry point is being imported — so this asks for exactly one role.
+   */
+  async materializeLibrary(
+    selector: ArtifactSelector,
+  ): Promise<ResolvedControllerLayer | undefined> {
+    return this.materializeCode(selector, ["library"]);
+  }
+
+  private async materializeCode(
+    selector: ArtifactSelector,
+    roles: ReadonlyArray<"controller" | "library">,
+  ): Promise<ResolvedControllerLayer | undefined> {
+    const wanted = roles
+      .map((role) => codeLayerFor(this.layers, role, selector))
+      .filter((l): l is ArtifactLayer => l !== undefined);
+    if (wanted.length === 0) return undefined;
     const common = await this.materializeCommonTracked();
-    const controller = await this.materializeTracked(layer);
-    // Either half is a transfer the caller waited on: the common layer's bytes
-    // come down on this call too, so they are as much of a wait as the
-    // controller layer's.
-    return {
-      layer: controller.layer,
-      transferred: controller.transferred || (common?.transferred ?? false),
-    };
+    let transferred = common?.transferred ?? false;
+    const files: string[] = [];
+    for (const layer of wanted) {
+      // Every half is a transfer the caller waited on: the common layer's bytes
+      // come down on this call too, so they are as much of a wait as the code
+      // layer's.
+      const resolved = await this.materializeTracked(layer);
+      transferred = resolved.transferred || transferred;
+      files.push(...resolved.layer.files);
+    }
+    return { layer: { dir: this.dir, files: files.sort() }, transferred };
   }
 
   /**
@@ -238,7 +268,7 @@ export class ModuleArtifact {
    */
   async materializeAll(target: PlatformTarget): Promise<MaterializedLayer[]> {
     const wanted = [
-      ...matchControllerLayers(this.layers, target),
+      ...matchCodeLayers(this.layers, target),
       singletonLayer(this.layers, "assets"),
       singletonLayer(this.layers, "common"),
     ].filter((l): l is ArtifactLayer => l !== undefined);
