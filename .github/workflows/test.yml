@@ -44,11 +44,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Wraps `changeset status`: private `-build` packages are versionable (which is
-      # what propagates a shared-library bump into the modules that inline it), so a
-      # module-only PR would otherwise fail a check it should pass. Only a changed
-      # PUBLISHED package with no changeset fails here; a changed module is gated by
-      # its changie fragment instead.
+      # Wraps `changeset status`: private `-build` packages are versionable, and a
+      # module-owned package's version is the MODULE's now (moved by `telo release
+      # apply`, never by changesets), so both are filtered out. Only a changed
+      # published, non-module package with no changeset fails here.
       - name: Check changeset status
         if: github.event_name == 'pull_request'
         run: node scripts/check-changeset-status.mjs origin/${{ github.base_ref }}
@@ -67,27 +66,25 @@ jobs:
           done
           exit $failed
 
-      # Not PR-only: a malformed fragment breaks the release batch whenever it is reached, so it
-      # must never sit on main either. The module-change half of the gate only has a base ref to
-      # diff against on a PR; on main it finds no changed modules and passes.
-      - name: Validate changie fragments
-        env:
-          CHANGED_SINCE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD' }}
-        run: node scripts/check-changie-fragments.mjs
-
-      - name: Disallow major version bumps in changie fragments
-        if: github.event_name == 'pull_request'
-        run: node scripts/check-no-major-module-bump.mjs
-
-      - name: Check changie config is in sync with modules
-        run: |
-          node scripts/gen-changie-config.mjs
-          if [ -n "$(git status --porcelain .changie.yaml .changes)" ]; then
-            echo "::error::.changie.yaml / .changes is out of date. Run 'node scripts/gen-changie-config.mjs' and commit the result."
-            git status --porcelain .changie.yaml .changes
-            git --no-pager diff -- .changie.yaml
-            exit 1
-          fi
+      # The module release gate. It does NOT fail because a payload moved — under a
+      # toolchain bump every module's digest moves, and those ship as unattributed
+      # patches with nobody writing prose. It fails when no consistent plan can be
+      # formed: a fragment naming an unknown module, a major-inducing kind, or a
+      # manifest version that disagrees with its ledger entry.
+      #
+      # Not PR-only: a malformed fragment breaks the release batch whenever it is
+      # reached, so it must never sit on main either. It needs no credentials — the
+      # committed ledger is what it compares against, which is why a fork's PR runs
+      # the identical computation the release job runs.
+      # Run through bun on the TS entry, like every other CLI step in this job.
+      # `bin/telo.mjs` imports `cli/nodejs/dist/`, and this job deliberately does
+      # not build — it is the static-check job, and a full workspace build to run
+      # one gate would be minutes of it. `bun` is a workspace devDependency, so
+      # `pnpm exec` has it on PATH with no toolchain setup.
+      - name: Check the release plan
+        run: >
+          pnpm exec bun ./cli/nodejs/bin/telo.ts release check
+          --base ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD' }}
 
       - name: Check module manifests
         run: pnpm run check modules/*/telo.yaml

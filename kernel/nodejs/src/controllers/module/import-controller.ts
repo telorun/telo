@@ -1,4 +1,4 @@
-import { AnalysisRegistry, DiagnosticSeverity, foldIntegrity, parseExportEntry, StaticAnalyzer } from "@telorun/analyzer";
+import { AnalysisRegistry, DiagnosticSeverity, authoredModuleMetadata, foldIntegrity, parseExportEntry, StaticAnalyzer } from "@telorun/analyzer";
 import type { ResourceInstance } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import { publishedPropsOf } from "../../evaluation-context.js";
@@ -166,6 +166,13 @@ export async function create(
     ctx.moduleContext.createInstance,
     ctx.moduleContext.emit,
   );
+  // `module.<field>` inside the library reads the LIBRARY's own metadata. Its
+  // version is its own — carrying the importer's would make a library reporting
+  // `module.version` report whatever happened to import it.
+  childCtx.setModuleMetadata(
+    authoredModuleMetadata(moduleManifest.metadata as Record<string, unknown> | undefined),
+  );
+
   const child = ctx.moduleContext.spawnChild(childCtx);
 
   // A library references its own kinds via `Self.<Kind>` (e.g. when it declares an

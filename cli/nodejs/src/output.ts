@@ -40,6 +40,11 @@ function paletteFor(isTTY: boolean, env: NodeJS.ProcessEnv): Palette {
  *  in a recording pair, so `Output` never reads process globals. */
 export interface OutputStream {
   isTTY?: boolean;
+  /** Terminal width, when the stream is one. A transient progress line is
+   *  truncated to it: a line that wraps occupies two rows, and the erase
+   *  sequence clears only the row the cursor is on, so the overflow would be
+   *  left on screen for the next line to be written over. */
+  columns?: number;
   write(chunk: string): unknown;
 }
 
@@ -88,20 +93,78 @@ export class Output {
     this.stderr = paletteFor(Boolean(stderr.isTTY), env);
   }
 
+  /** Whether a transient progress line is currently on screen, waiting to be
+   *  overwritten. Owned here because the rule it implies — every other write
+   *  must erase it first — has to hold for every write method, and a call site
+   *  that forgot would leave its output glued to the end of a ticker. */
+  private transient = false;
+
   get isJson(): boolean {
     return this.format === "json";
+  }
+
+  /** Erase a pending transient line, so the next write starts on a clean row.
+   *  `\r` returns to column 0 and `\x1b[2K` clears the row; both are cursor
+   *  control rather than colour, so they are gated on the stream being a TTY and
+   *  not on the palette — a `NO_COLOR` terminal still has a cursor. */
+  private clearTransient(): void {
+    if (!this.transient) return;
+    this.transient = false;
+    this.errStream.write("\r\x1b[2K");
+  }
+
+  /** Drop any pending progress line without writing anything else. For a
+   *  command that finishes without a further write and would otherwise leave the
+   *  shell prompt sitting after a half-drawn ticker. */
+  endProgress(): void {
+    this.clearTransient();
   }
 
   /** Human-readable line on stdout. Suppressed under `-o json`, where stdout is
    *  reserved for the payload. */
   line(text = ""): void {
-    if (this.format === "text") this.outStream.write(`${text}\n`);
+    if (this.format !== "text") return;
+    // Cleared even though this writes to the OTHER stream: both usually land on
+    // one terminal, so a stdout line written over a pending stderr ticker would
+    // start halfway across the row.
+    this.clearTransient();
+    this.outStream.write(`${text}\n`);
   }
 
   /** Human-readable line on stderr. Written in BOTH formats — stderr is not the
    *  machine contract, and silencing it loses the reason a command failed. */
   errLine(text = ""): void {
+    this.clearTransient();
     this.errStream.write(`${text}\n`);
+  }
+
+  /**
+   * A progress tick on stderr, written only in text format and only to a TTY.
+   *
+   * The distinction this draws is between a **diagnostic** and a **progress
+   * indicator**, and it is why the rule is not the one `errLine` follows.
+   * `errLine` must write in every format because silencing it would lose the
+   * reason a command failed — that is error swallowing. A tick explains nothing.
+   * It is an affordance of the human-formatted mode: something for a person
+   * watching a long operation, so that a two-minute build does not look hung.
+   *
+   * BOTH conditions, because either one alone leaves a case wrong. `-o json`
+   * says the output is a contract, and decorating that run with prose the caller
+   * did not ask for is noise in their terminal whether or not they are looking
+   * at it — the format is the caller's statement of intent, not a guess about
+   * where the bytes land. And a text run redirected into a file or a CI log has
+   * nobody watching either, where sixty ticks bury the output the reader came
+   * for.
+   */
+  progress(text: string): void {
+    if (this.format !== "text" || !this.errStream.isTTY) return;
+    this.clearTransient();
+    // No newline: this line is TRANSIENT. The next tick overwrites it and any
+    // real output erases it, so a 59-module run leaves behind only the findings
+    // rather than 59 ticks interleaved with them — which is the whole reason a
+    // ticker is bearable at this length at all.
+    this.errStream.write(truncate(text, this.errStream.columns));
+    this.transient = true;
   }
 
   /** Emit a command's structured RESULT ENVELOPE. A no-op in text mode.
@@ -120,6 +183,10 @@ export class Output {
    *  whose wire protocol is framed per event precisely because it shares a
    *  stream. */
   emit(payload: unknown): void {
+    // Unconditionally, including under `text` where nothing is written: every
+    // command reports its result exactly once, so this is the lifecycle point at
+    // which a leftover ticker has to go.
+    this.clearTransient();
     if (this.format === "json") this.outStream.write(serialize(payload));
   }
 
@@ -131,6 +198,7 @@ export class Output {
    *  must keep working under the default `text` format. One serializer with
    *  `emit`, so the CLI has a single JSON encoding rather than three. */
   document(payload: unknown): void {
+    this.clearTransient();
     this.outStream.write(serialize(payload));
   }
 
@@ -142,8 +210,27 @@ export class Output {
    *  — the `--json` path wraps them in a document instead and never reaches
    *  here. */
   raw(content: string): void {
+    this.clearTransient();
     this.outStream.write(content);
   }
+}
+
+/** Clip to the terminal width, measuring PRINTABLE characters so the escapes a
+ *  palette wrapped the text in do not count toward it. A line that wraps
+ *  occupies two rows and the erase sequence clears one. */
+function truncate(text: string, columns: number | undefined): string {
+  if (!columns || columns < 8) return text;
+  let printable = 0;
+  for (let i = 0; i < text.length; i++) {
+    // Skip a CSI sequence wholesale: `\x1b[` … a final byte in `@`–`~`.
+    if (text[i] === "\x1b" && text[i + 1] === "[") {
+      i += 2;
+      while (i < text.length && !/[@-~]/.test(text[i])) i++;
+      continue;
+    }
+    if (++printable > columns - 1) return `${text.slice(0, i)}…`;
+  }
+  return text;
 }
 
 function serialize(payload: unknown): string {
@@ -194,3 +281,5 @@ export const outLine = (text = ""): void => current.line(text);
 export const outErrLine = (text = ""): void => current.errLine(text);
 export const outEmit = (payload: unknown): void => current.emit(payload);
 export const outDocument = (payload: unknown): void => current.document(payload);
+export const outProgress = (text: string): void => current.progress(text);
+export const outEndProgress = (): void => current.endProgress();

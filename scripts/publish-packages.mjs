@@ -11,7 +11,7 @@
 //          a prior release failed to push. An unchanged, already-published version is never
 //          re-pushed, so a non-release main push (typo, schema edit) still won't republish.
 //    Manifest-only modules (no controllers, no nodejs/package.json) publish on the same footing
-//    as controller modules — PURLs were already synced by version-packages.mjs; this step only
+//    as controller modules — versions and PURLs were already written by `telo release apply`; this step only
 //    runs static analysis and pushes the manifest. Unset TELO_OCI_REGISTRY skips the pass
 //    entirely. Stdlib sibling imports are relative (`../x`) and canonicalize to the OCI
 //    destination, resolving there — no HTTP registry read origin is involved.
@@ -85,7 +85,8 @@ function ociVersions(dest) {
   return parsed;
 }
 
-// Ordering lives in module-publish-order.mjs, shared with the OCI backfill.
+// Ordering lives in module-publish-order.mjs (over `telo release order`), shared
+// with the OCI backfill.
 
 runLive("pnpm changeset publish");
 

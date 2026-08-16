@@ -61,6 +61,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/extend/kind-inheritance", label: "Kind Inheritance" },
         { type: "doc", id: "docs/extend/execution-zones", label: "Execution Zones" },
         { type: "doc", id: "docs/extend/manifest-migrations", label: "Manifest Migrations" },
+        { type: "doc", id: "docs/extend/releasing-modules", label: "Releasing Modules" },
         {
           type: "category",
           label: "Node.js",

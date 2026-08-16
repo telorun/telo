@@ -35,7 +35,11 @@ export {
   type ResolvedControllerLayer,
 } from "./bundle/module-artifact.js";
 export { readOwnerManifest, type OwnerManifest } from "./bundle/module-manifest.js";
-export { lastBuildInputs } from "./controller-loaders/source-bundle-builder.js";
+export {
+  buildControllerBundle,
+  canBuildFromSource,
+  lastBuildInputs,
+} from "./controller-loaders/source-bundle-builder.js";
 export type {
   PayloadLayer,
   PublishBundle,

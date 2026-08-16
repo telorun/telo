@@ -5,7 +5,7 @@
   "description": "Build-only package for the std/octet-codec module's bundled controllers. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json && esbuild src/decoder-controller.ts src/encoder-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs"
+    "build": "tsc -p tsconfig.lib.json"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",

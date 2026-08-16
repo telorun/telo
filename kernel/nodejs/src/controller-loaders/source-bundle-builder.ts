@@ -254,6 +254,29 @@ export async function buildControllerFromSource(
   return work;
 }
 
+/**
+ * The bundle for `entryFile` **and the file set that produced it**.
+ *
+ * The publish and release paths need both halves of one build: the bytes become
+ * the module's controller layer, and the metafile inputs become the release
+ * edge graph — which module's source got inlined into whose artifact. Asking for
+ * them separately would either build twice or read an index written by a
+ * different build.
+ *
+ * Unlike the loader's path there is **no fallthrough here**. A host without
+ * esbuild raises `ControllerEnvMissingError` from the build, and this caller
+ * must let it: selecting the prebuilt `path=` file instead would digest and ship
+ * bytes other than the source it claims to be built from, which is the one
+ * outcome the whole release design exists to prevent.
+ */
+export async function buildControllerBundle(
+  entryFile: string,
+  cacheRoot: string,
+): Promise<{ path: string; inputs: string[] }> {
+  const path = await buildControllerFromSource(entryFile, cacheRoot);
+  return { path, inputs: await lastBuildInputs(entryFile, cacheRoot) };
+}
+
 async function build(entryFile: string, cacheDir: string): Promise<string> {
   const esbuild = await loadEsbuild();
   if (!esbuild) {

@@ -1,21 +1,30 @@
 import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
-import { pathToFileURL } from "url";
-import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, collectModuleFileClaims, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
-import { LocalFileSource, defaultTransportRegistry } from "@telorun/kernel";
-import { fetchManifestHash } from "../registry-hash.js";
+import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
+import { LocalFileSource, defaultTransportRegistry, resolveCacheRoot } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
+import { fetchManifestHash } from "../registry-hash.js";
 import type { Argv } from "yargs";
-import { describePartition, partitionLayers } from "../bundle/partition-layers.js";
+import { findModuleDoc, importSourceRefs } from "./manifest-imports.js";
+import { readOwnerVersion } from "../bundle/manifest-text.js";
+import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
+import { describePartition } from "../bundle/partition-layers.js";
 import { describeDrift, findPayloadDrift } from "../bundle/payload-drift.js";
-import { assertWithinModule, selectFiles } from "../bundle/select-files.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine } from "../output.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
 import { getPublisher } from "../publishers/registry.js";
-import { findModuleDoc, importSourceRefs } from "./manifest-imports.js";
+
+// The manifest-text transforms moved to `bundle/manifest-text.ts` so `telo
+// release` computes the published bytes the same way this command does. Kept
+// exported here because they were part of this module's surface.
+export {
+  expandAndInlineIncludes,
+  readAssetPatterns,
+  readFilesPatterns,
+} from "../bundle/manifest-text.js";
 
 // ---------------------------------------------------------------------------
 // PURL parsing
@@ -104,208 +113,43 @@ function rewritePurls(content: string, packageName: string, newVersion: string):
 }
 
 // ---------------------------------------------------------------------------
-// Include expansion — resolve globs and inline partial file contents
-// ---------------------------------------------------------------------------
-
-export function expandAndInlineIncludes(content: string, manifestDir: string): string {
-  // Parse the first YAML document to extract include patterns
-  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
-  const firstParsed = docs[0]?.toJSON();
-  if (!firstParsed || !Array.isArray(firstParsed.include) || firstParsed.include.length === 0) {
-    return content;
-  }
-
-  const patterns: string[] = firstParsed.include.filter(
-    (p: unknown): p is string => typeof p === "string",
-  );
-  if (patterns.length === 0) return content;
-
-  // Expand globs against the manifest directory. A glob entry is matched with
-  // the shared `ignore` engine (gitignore semantics); a plain path is taken
-  // verbatim and validated to exist (an explicit `include:` of a missing file
-  // is an error, unlike a glob that simply matches nothing).
-  const hasGlobs = patterns.some((p) => /[*?{}\[\]!]/.test(p));
-  let resolvedFiles: string[];
-
-  if (hasGlobs) {
-    resolvedFiles = selectFiles(manifestDir, patterns, { applyDefaultIgnore: false }).map((rel) =>
-      path.resolve(manifestDir, rel),
-    );
-  } else {
-    resolvedFiles = [...new Set(patterns.map((p) => path.resolve(manifestDir, p)))];
-
-    // Validate explicit paths exist and stay within the module directory.
-    const realManifestDir = fs.realpathSync(manifestDir) + path.sep;
-    for (const filePath of resolvedFiles) {
-      if (!fs.existsSync(filePath)) {
-        throw new Error(`Included file not found: ${filePath}`);
-      }
-      const realPath = fs.realpathSync(filePath);
-      if (!realPath.startsWith(realManifestDir)) {
-        throw new Error(
-          `Include path '${filePath}' resolves outside the module directory. ` +
-            `Publishing files from outside the module root is not allowed.`,
-        );
-      }
-    }
-  }
-
-  // Remove include from the first document via AST (preserves formatting/comments)
-  docs[0].deleteIn(["include"]);
-
-  // Inline partial file contents as additional YAML documents
-  let inlined = "";
-  for (const filePath of resolvedFiles) {
-    const partialContent = fs.readFileSync(filePath, "utf-8").trim();
-    if (!partialContent) continue;
-    inlined += "\n---\n" + partialContent + "\n";
-  }
-
-  // Re-serialize all original documents + inlined partials
-  const serialized = docs.map((d) => d.toString()).join("---\n");
-  return serialized + inlined;
-}
-
-/** Read the first doc's `files:` glob patterns (empty when none declared). */
-export function readFilesPatterns(content: string): string[] {
-  return readPatternField(content, "files");
-}
-
-/** Read the first doc's `assets:` glob patterns — the author-claimed subset of
- *  `files:` that ships in the lazily materialized asset layer. */
-export function readAssetPatterns(content: string): string[] {
-  return readPatternField(content, "assets");
-}
-
-/** The owner doc's `metadata.version` — the tag this artifact publishes under,
- *  and so the version the payload-drift gate compares against. */
-function readOwnerVersion(content: string): string | undefined {
-  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
-  const first = docs[0]?.toJSON() as { metadata?: { version?: unknown } } | undefined;
-  const version = first?.metadata?.version;
-  return typeof version === "string" ? version : undefined;
-}
-
-function readPatternField(content: string, field: "files" | "assets"): string[] {
-  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
-  const first = docs[0]?.toJSON();
-  const value = first?.[field];
-  if (!Array.isArray(value)) return [];
-  return value.filter((p: unknown): p is string => typeof p === "string");
-}
-
-// ---------------------------------------------------------------------------
-// Relative import canonicalization — turn an `imports:` entry's relative
-// `../sibling` source into an absolute ref so the published manifest is
-// self-contained. A relative path is only meaningful on the publisher's disk;
-// a published artifact (an OCI blob, or a registry version URL) cannot resolve
-// `..`. The sibling's **location** comes from the publish destination (identity
-// is the ref): the destination's last segment is this module's own directory, so
-// the relative path resolves against it exactly as it does on disk. The
-// **version** always comes from the sibling's own authoritative metadata.
-// ---------------------------------------------------------------------------
-
-export async function canonicalizeRelativeImports(
-  content: string,
-  manifestPath: string,
-  destination: string,
-  loader: Loader,
-  localFileSource: LocalFileSource,
-): Promise<{ content: string; refs: string[] }> {
-  const baseUrl = pathToFileURL(manifestPath).href;
-  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
-  const moduleDoc = findModuleDoc(docs);
-  const refs: string[] = [];
-  if (!moduleDoc) return { content, refs };
-
-  // The destination's transport owns the scheme-specific "where does a sibling
-  // land" rule — publish never branches on transport shape.
-  const transport = defaultTransportRegistry().forRef(destination);
-  if (!transport) {
-    throw new Error(`no transport owns publish destination '${destination}'`);
-  }
-
-  for (const importRef of importSourceRefs(moduleDoc)) {
-    const source = importRef.source;
-    if (!source.startsWith(".") && !source.startsWith("/")) continue;
-
-    const targetUrl = localFileSource.resolveRelative(baseUrl, source);
-    const targetLoaded = await loader.loadModule(targetUrl);
-    const lib = targetLoaded.owner.manifests.find((m) => m?.kind === "Telo.Library");
-    if (!lib) {
-      throw new Error(
-        `import source '${source}' (resolved: '${targetUrl}') has no Telo.Library doc — only libraries can be canonicalized.`,
-      );
-    }
-    const { version } = (lib.metadata ?? {}) as { version?: string };
-    if (!version) {
-      throw new Error(
-        `import source '${source}' (resolved: '${targetUrl}') is missing metadata.version, required for canonicalization.`,
-      );
-    }
-
-    const ref = transport.canonicalizeSiblingRef(destination, source, version);
-    moduleDoc.setIn(importRef.path, ref);
-    refs.push(ref);
-  }
-
-  if (refs.length === 0) return { content, refs };
-  return { content: docs.map((d) => d.toString()).join("---\n"), refs };
-}
-
-// ---------------------------------------------------------------------------
-// Import integrity pinning — rewrite each remote `imports:` ref to carry a
-// `#sha256-...` hash of the dependency's published telo.yaml, so an importer's
-// hash over THIS manifest transitively pins its dependencies (Merkle chain).
+// Import pin verification
 //
-// Best-effort by default: an import that cannot be resolved (dependency not
-// published yet, network error) is warned and left unpinned — publish is never
-// blocked. `frozen` flips that to a hard error. An import the author already
-// pinned is left untouched. Relative/path imports are exempt (not fetched).
+// Pinning is authoring-time work now: `telo install` / `telo upgrade` write a
+// dependency's integrity beside its ref, and the payload builder REFUSES a
+// remote import that carries none. What is left for publish is the other half —
+// checking that the hash the author committed still describes what the registry
+// serves.
+//
+// It replaced a best-effort fetch-and-pin. That branch decided the published
+// bytes from network reachability, and swallowed an unresolvable import into a
+// silently unpinned artifact — an importer's Merkle chain quietly missing a link.
 // ---------------------------------------------------------------------------
 
-export async function pinImports(
-  content: string,
+/** Exported under a test-only name because the check is publish-internal but
+ *  its regression — a comparison that silently never ran — is only observable
+ *  through it. */
+export const verifyImportPinsForTest = verifyImportPins;
+
+async function verifyImportPins(
+  payload: ModulePayload,
   registry: string,
-  frozen: boolean,
   log: Logger,
-): Promise<{ content: string; pinned: number; unresolved: string[] }> {
-  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
-  const moduleDoc = findModuleDoc(docs);
-  const unresolved: string[] = [];
-  let pinned = 0;
-  if (!moduleDoc) return { content, pinned, unresolved };
-
-  for (const importRef of importSourceRefs(moduleDoc)) {
-    const source = importRef.source;
-    if (source.startsWith(".") || source.startsWith("/")) continue; // local, exempt
-    // Author already pinned — via a `#sha256-...` fragment on the source, or an
-    // object-form `integrity:` sibling. Never overwrite an explicit pin.
-    if (splitIntegrity(source).integrity || importRef.integrity) continue;
-
-    let hash: string;
-    try {
-      hash = await fetchManifestHash(registry, source);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (frozen) {
-        throw new Error(`--frozen: could not pin import '${source}': ${message}`);
-      }
-      unresolved.push(source);
-      stepWarn(log, "pin", `${source} — left unpinned (${message})`);
-      continue;
+): Promise<void> {
+  for (const { alias, ref, integrity } of payload.authoredPins) {
+    const actual = await fetchManifestHash(registry, ref);
+    if (actual !== integrity) {
+      throw new Error(
+        `import '${alias}' is pinned to ${integrity}, but ${ref} now serves ${actual}. ` +
+          `A pin is what makes this artifact reproducible, so publishing over the disagreement ` +
+          `would embed a claim that is already false. Re-pin with \`telo upgrade\` if the move ` +
+          `is intended.`,
+      );
     }
-
-    moduleDoc.setIn(importRef.path, `${source}#${hash}`);
-    pinned++;
+    stepOk(log, "pin", `${alias} verified`);
   }
-
-  return {
-    content: pinned > 0 ? docs.map((d) => d.toString()).join("---\n") : content,
-    pinned,
-    unresolved,
-  };
 }
+
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -340,7 +184,6 @@ async function publishOne(
   bump: BumpLevel | undefined,
   dryRun: boolean,
   skipControllers: boolean,
-  frozen: boolean,
   log: Logger,
 ): Promise<boolean> {
   // A directory argument resolves to its telo.yaml — standard Telo path
@@ -525,21 +368,26 @@ async function publishOne(
   }
   stepOk(log, "check", "static analysis passed");
 
-  // Canonicalize relative `imports:` sources to an absolute ref (destination
-  // repo + sibling version) so the published artifact is portable. Done after
-  // analysis so the dev's on-disk manifest (with relative paths) is validated.
-  let canonicalizedRefs: string[] = [];
+  // Build exactly what will be pushed, through the shared payload builder — the
+  // same computation `telo release` digests, so the ledger's number and the
+  // registry's are answers to one question. It canonicalizes relative imports,
+  // derives each sibling's pin from the sibling's own published bytes, refuses a
+  // remote import the author left unpinned, inlines `include:` partials, and
+  // BUILDS every bundled controller from source rather than reading a
+  // gitignored artifact that may be stale or absent.
+  let payload: ModulePayload;
   try {
-    const canon = await canonicalizeRelativeImports(content, filePath, destination, analysisLoader, localFileSource);
-    content = canon.content;
-    canonicalizedRefs = canon.refs;
+    payload = await new ModulePayloadBuilder({
+      registryOrigin: registry,
+      cacheRoot: resolveCacheRoot(filePath) ?? path.join(manifestDir, ".telo"),
+    }).payload(filePath, destination);
   } catch (err) {
-    outErrLine(
-      log.err.error("error") +
-        `  Failed to canonicalize relative imports: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
     return false;
   }
+  content = payload.manifest;
+  const partition = payload.partition;
+  const layers = payload.layers;
 
   // Strict: a published app does not publish its siblings, so every ref derived
   // from a relative import must already resolve at its published location — a
@@ -547,7 +395,7 @@ async function publishOne(
   // invocation). Skipped on --dry-run (nothing is published yet).
   if (!dryRun) {
     const transports = defaultTransportRegistry(registry);
-    for (const ref of canonicalizedRefs) {
+    for (const { ref } of payload.relativeImports) {
       try {
         const transport = transports.forRef(ref);
         if (!transport) throw new Error(`no transport owns '${ref}'`);
@@ -561,88 +409,16 @@ async function publishOne(
         return false;
       }
     }
-  }
 
-  // Pin each remote import to its dependency's telo.yaml hash. Best-effort:
-  // unresolved imports are warned and left unpinned unless --frozen. Runs after
-  // canonicalization so relative siblings are already registry refs.
-  if (!dryRun) {
+    // Every author-written pin still describes what the registry serves.
     try {
-      const result = await pinImports(content, registry, frozen, log);
-      content = result.content;
-      if (result.pinned > 0 || result.unresolved.length > 0) {
-        stepOk(log, "pin", `${result.pinned} import(s) pinned, ${result.unresolved.length} unresolved`);
-      }
+      await verifyImportPins(payload, registry, log);
     } catch (err) {
-      outErrLine(
-        log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
-      );
+      outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
       return false;
     }
   }
 
-  // Expand include globs and inline partial file contents before pushing
-  content = expandAndInlineIncludes(content, manifestDir);
-
-  // Resolve the `files:` payload set. When non-empty the artifact carries payload
-  // layers beside its manifest layer.
-  let bundledFiles: string[];
-  try {
-    bundledFiles = selectFiles(manifestDir, readFilesPatterns(content));
-  } catch (err) {
-    outErrLine(
-      log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
-  }
-
-  // Partition the payload into the layers the artifact ships: one per bundled
-  // controller selector, the author-claimed `assets:` layer, and `common` for
-  // everything unclaimed. Printed so an author can see where each file landed —
-  // a sidecar that fell into `common` is not wrong, just not skippable.
-  let partition;
-  try {
-    // Every module-relative file the manifest names, from every syntax that can
-    // name one — controller candidates and file-embedding tags alike. Publish
-    // recognises neither: it maps a claim's role to a layer, and each syntax's
-    // own owner reads it.
-    const claims = collectModuleFileClaims(content);
-    // A claimed file that does not exist would ship an artifact whose manifest
-    // reads a file the payload does not carry — a failure that surfaces only on
-    // a consumer's machine, which is exactly the class publish exists to catch.
-    const missing = claims
-      .map((claim) => claim.path)
-      .filter((file) => !fs.existsSync(path.join(manifestDir, file)));
-    if (missing.length > 0) {
-      throw new Error(
-        `Manifest names ${missing.length} file(s) that do not exist: ${missing.join(", ")}. ` +
-          `Paths are relative to the module root — the directory holding telo.yaml.`,
-      );
-    }
-    partition = partitionLayers(claims, bundledFiles, readAssetPatterns(content));
-    // Every file that will actually ship, including the controller entry points
-    // `controllers:` contributed without `files:` naming them. The guard belongs
-    // on the partition rather than on the pattern match, since the pattern match
-    // is no longer the only way in.
-    assertWithinModule(
-      manifestDir,
-      partition.layers.flatMap((layer) => layer.files),
-    );
-  } catch (err) {
-    outErrLine(
-      log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
-  }
-
-  const layers = partition.layers.map((layer) => ({
-    role: layer.role,
-    ...(layer.selector ? { selector: layer.selector } : {}),
-    files: layer.files.map((rel) => ({
-      name: rel,
-      content: fs.readFileSync(path.resolve(manifestDir, rel)),
-    })),
-  }));
 
   // Bytes, not a ledger: if this version is already published and its payload
   // differs from what we just built, some dependency changed underneath it and
@@ -731,7 +507,6 @@ export async function publish(argv: {
   bump?: BumpLevel;
   dryRun: boolean;
   skipControllers: boolean;
-  frozen: boolean;
 }): Promise<void> {
   if (argv.bump && argv.skipControllers) {
     outErrLine("error: --bump and --skip-controllers are mutually exclusive");
@@ -783,7 +558,6 @@ export async function publish(argv: {
       argv.bump,
       argv.dryRun,
       argv.skipControllers,
-      argv.frozen,
       log,
     );
     (ok ? published : failures).push(relPath);
@@ -838,13 +612,12 @@ export function publishCommand(yargs: Argv): Argv {
           default: false,
           describe:
             "Skip controller build/publish/PURL rewrite; only run static analysis and push the manifest to the OCI registry",
-        })
-        .option("frozen", {
-          type: "boolean",
-          default: false,
-          describe:
-            "Fail if any remote import cannot be pinned to its dependency's integrity hash (default: best-effort — warn and continue)",
         }),
+    // `--frozen` is gone rather than kept as a no-op: it selected between
+    // best-effort pinning and a hard error, and best-effort no longer exists.
+    // An unpinned remote import is always refused and every author-written pin
+    // is always verified, so the flag named a choice there is nothing left to
+    // make — and its help text said the opposite of what now happens.
     async (argv) => {
       await publish(argv as any);
     },

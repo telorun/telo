@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { moduleMetadataSchema } from "./module-metadata-scope.js";
 import { residualEntrySchemaMap } from "./residual-schema.js";
 import { applyObservedStateNode } from "./validate-observed-state.js";
 
@@ -13,7 +14,13 @@ import { applyObservedStateNode } from "./validate-observed-state.js";
  * by declaring a typed `variables:`/`secrets:` entry with an `env:` binding
  * and referencing `variables.X` / `secrets.X`.
  */
-export const KERNEL_GLOBAL_NAMES = ["variables", "secrets", "resources", "ports"] as const;
+export const KERNEL_GLOBAL_NAMES = [
+  "variables",
+  "secrets",
+  "resources",
+  "ports",
+  "module",
+] as const;
 
 const SYSTEM_KINDS = new Set([
   "Telo.Definition",
@@ -90,6 +97,7 @@ interface ModuleGlobals {
   variables?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
   ports?: Record<string, unknown>;
+  module?: Record<string, unknown>;
 }
 
 function globalsSchema(
@@ -103,8 +111,22 @@ function globalsSchema(
       secrets: buildSchemaMapSchema(doc?.secrets as Record<string, any> | undefined),
       resources: resourcesSchema,
       ports: buildPortsSchema(doc?.ports as Record<string, any> | undefined),
+      module: buildModuleSchema(doc),
     },
   };
+}
+
+/** The `module` namespace. Derived by `moduleMetadataSchema`, the same call the
+ *  CEL environment types from, so the two cannot disagree about which fields
+ *  exist or whether the namespace is closed. */
+function buildModuleSchema(doc: ModuleGlobals | Record<string, any> | undefined): Record<string, any> {
+  return (
+    moduleMetadataSchema(
+      ((doc as ModuleGlobals | undefined)?.module ?? (doc as any)?.metadata) as
+        | Record<string, unknown>
+        | undefined,
+    ) ?? { type: "object", additionalProperties: true }
+  );
 }
 
 /** Every non-system resource name in the set, plus the scope-declared ones. */

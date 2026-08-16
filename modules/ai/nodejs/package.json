@@ -56,7 +56,7 @@
     "src/**"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json && esbuild src/ai-agent-controller.ts src/ai-agent-stream-controller.ts src/ai-echo-controller.ts src/ai-echo-image-controller.ts src/ai-image-controller.ts src/ai-text-controller.ts src/ai-text-stream-controller.ts src/ai-tools-controller.ts src/stream-collector-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs",
+    "build": "tsc -p tsconfig.lib.json",
     "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
     "postpack": "rm -f LICENSE && rm -f README.md"
   },

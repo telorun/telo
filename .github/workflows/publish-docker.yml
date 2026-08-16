@@ -7,7 +7,7 @@ name: Publish Docker Images
 #                       not npm-gated, so they publish both `:latest` and
 #                       `:sha-<short>` on every push.
 #                       authoring-agent publishes an immutable `:<version>-slim`
-#                       per agent release (changie-owned metadata.version) plus
+#                       per agent release (release-owned metadata.version) plus
 #                       a mutable `:latest-slim`. No sha tags; the embedded telo
 #                       runtime is the newest published CLI at build time.
 #  * workflow_call    → release images (semver-tagged, all variants, multi-arch).
@@ -286,7 +286,7 @@ jobs:
           SHORT_SHA: ${{ needs.context.outputs.short-sha }}
         run: |
           # Always publish :latest and the per-commit :sha-*. Add an immutable
-          # :<version> tag only when apps/hub's changie-owned metadata.version
+          # :<version> tag only when apps/hub's release-owned metadata.version
           # actually moved in this commit (the release commit), mirroring how
           # publish-packages.mjs gates module-manifest pushes on HEAD^..HEAD.
           ver() { sed -n 's/^  version: ["'\'']\?\([0-9][0-9.]*\).*/\1/p' | head -1; }
@@ -431,12 +431,12 @@ jobs:
   authoring-agent:
     name: Build telorun/authoring-agent
     # Publishes :latest-slim + :sha-<short>-slim on EVERY push, and adds the
-    # immutable :<version>-slim only when the agent's changie-owned
+    # immutable :<version>-slim only when the agent's release-owned
     # metadata.version moved this commit — the same policy hub, runner and
     # k8s-runner use.
     #
     # It previously published ONLY on a version move, which made the deployed
-    # image silently age: `apps/**` needed no changie fragment, so the version
+    # image silently age: `apps/**` needed no release fragment, so the version
     # never moved, so nothing rebuilt. The agent's system prompt AND its
     # embedded CLI are both baked in here, so a stale image serves a stale
     # primer against a stale runtime. The fragment gate now covers `apps/`, but
@@ -500,7 +500,7 @@ jobs:
           fi
 
           # latest + per-commit sha always; immutable :<version>-slim only when
-          # the changie-owned metadata.version moved this commit.
+          # the release-owned metadata.version moved this commit.
           {
             echo "telo-version=$TELO_V"
             echo 'tags<<EOF'

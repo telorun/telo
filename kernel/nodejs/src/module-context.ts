@@ -75,6 +75,11 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
    *  populated on the root context from the Application's `ports` block;
    *  imported child modules keep this empty. */
   private _ports: Record<string, unknown> = {};
+  /** The module doc's own `metadata`, published as `module.<field>` so a
+   *  manifest can read its own version instead of restating it. Per module, not
+   *  per application: an imported library's resources read the LIBRARY's
+   *  metadata, which is the only reading that is true of them. */
+  private _module: Record<string, unknown> = {};
 
   /** Maps import alias → real module name for kind resolution. */
   private readonly importAliases = new Map<string, string>();
@@ -181,6 +186,10 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return this._ports;
   }
 
+  get module(): Record<string, unknown> {
+    return this._module;
+  }
+
   setVariables(vars: Record<string, unknown>): void {
     this._variables = vars;
     this._rebuildContext();
@@ -188,6 +197,11 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
 
   setPorts(ports: Record<string, unknown>): void {
     this._ports = ports;
+    this._rebuildContext();
+  }
+
+  setModuleMetadata(metadata: Record<string, unknown>): void {
+    this._module = metadata;
     this._rebuildContext();
   }
 
@@ -521,6 +535,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       secrets,
       resources: this._resources,
       ports: this._ports,
+      module: this._module,
     };
   }
 
@@ -530,6 +545,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       secrets: this._secrets,
       resources: this._resources,
       ports: this._ports,
+      module: this._module,
     };
     this._secretValues = collectSecretValues(this._secrets);
   }

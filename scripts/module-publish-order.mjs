@@ -5,48 +5,57 @@
 // Both need the same guarantee: `telo publish` canonicalizes a relative
 // `imports:` source against the destination and then HARD-FAILS if the derived
 // ref does not already resolve there, so a sibling must be pushed before its
-// dependents. Ordering is the only thing that makes a multi-module push
-// succeed.
+// dependents. Ordering is the only thing that makes a multi-module push succeed.
+//
+// The answer now comes from the release model (`telo release order`), which
+// reads the import graph through the real manifest transform. This file used to
+// carry a regex that matched `imports:` in the first YAML document by line
+// shape — it could not see an object-form entry, a folded source, or an import
+// declared anywhere the layout did not anticipate, and a miss here is a failed
+// push rather than a wrong sort.
 
-import { readFileSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { execFileSync } from "node:child_process";
+import { dirname, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
-/** Sibling module names an `imports:` entry of the first YAML document points at
- *  with a relative source (`../<name>`, bare or object `source:` form). */
-export function relativeImportDeps(yamlPath) {
-  const content = readFileSync(yamlPath, "utf8");
-  const docEnd = content.search(/^---\s*$/m);
-  const firstDoc = docEnd === -1 ? content : content.slice(0, docEnd);
-  const block = firstDoc.match(/^imports:\s*\n((?:(?:[ \t]+.*)?\n)+)/m);
-  if (!block) return [];
-  const deps = new Set();
-  for (const line of block[1].split("\n")) {
-    const source = line.match(/:[ \t]*["']?(\.\.?\/[^"'#\s]+)/);
-    if (source) deps.add(basename(source[1].replace(/\/telo\.yaml$/, "").replace(/\/+$/, "")));
-  }
-  return [...deps];
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** A manifest path as the release model keys it: workspace-relative, POSIX. The
+ *  key IS `relative(root, dir)` — reconstructing it from two path segments
+ *  worked only for `<area>/<name>` and dropped anything deeper into the
+ *  unknown-module tail, where a miss is a failed push rather than a wrong sort. */
+function moduleKeyOf(manifestPath) {
+  return relative(ROOT, dirname(resolve(manifestPath))).split(sep).join("/");
 }
 
-/** Depth-first topological order over the batch's relative imports, so a
- *  dependency is pushed before its dependents. Ties and cycle members keep their
- *  incoming (alphabetical) order. */
+/**
+ * `paths` (absolute module manifest paths) sorted so a dependency precedes its
+ * dependents. Modules the release model does not know about keep their incoming
+ * order at the end, so a manifest outside the workspace is still pushed rather
+ * than dropped.
+ */
 export function orderByDependencies(paths) {
-  const byName = new Map(paths.map((p) => [basename(dirname(p)), p]));
-  const ordered = [];
-  const state = new Map();
-  const visit = (name) => {
-    if (state.get(name) === "done") return;
-    if (state.get(name) === "visiting") {
-      console.warn(`  warning: import cycle through module '${name}' — publish order may be wrong`);
-      return;
+  const byKey = new Map(paths.map((p) => [moduleKeyOf(p), p]));
+  const ordered = JSON.parse(
+    execFileSync("node", ["./cli/nodejs/bin/telo.mjs", "release", "order", "-o", "json"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+    }),
+  ).order;
+
+  const sorted = [];
+  for (const key of ordered) {
+    const path = byKey.get(key);
+    if (path) {
+      sorted.push(path);
+      byKey.delete(key);
     }
-    state.set(name, "visiting");
-    for (const dep of relativeImportDeps(byName.get(name))) {
-      if (byName.has(dep)) visit(dep);
-    }
-    state.set(name, "done");
-    ordered.push(byName.get(name));
-  };
-  for (const name of byName.keys()) visit(name);
-  return ordered;
+  }
+  return [...sorted, ...byKey.values()];
+}
+
+/** Absolute manifest path for a workspace-relative module key. */
+export function manifestPathFor(key) {
+  return join(ROOT, key, "telo.yaml");
 }

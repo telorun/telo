@@ -93,6 +93,7 @@ the single most useful table on the page:
 | --- | --- | --- |
 | `variables.<n>`, `secrets.<n>` | anywhere in the module | the module's declared inputs |
 | `ports.<n>` | anywhere in the root application | its `ports:` block |
+| `module.<field>` | anywhere in the declaring module | that module doc's own `metadata` |
 | `resources.<n>.<field>` | anywhere, after that resource publishes | what its author configured |
 | `resources.<n>.status.<field>` | only in fields that resolve *after* it has run | what it observed at runtime |
 | `inputs.<n>` | inside a callable's body | the values passed at the call site |
@@ -104,6 +105,20 @@ the single most useful table on the page:
 
 Everything here is **typed**. `steps.Greet.result.mesage` is a
 `CEL_UNKNOWN_FIELD` error at check time, not `undefined` at 3am.
+
+`module.<field>` is the one that saves you from restating a value you already
+wrote down:
+
+```yaml
+serverInfo:
+  name: my-mcp
+  version: !cel "module.version"     # not a second literal to keep in sync
+```
+
+It is **closed** over the fields the module doc actually declares, so
+`module.verison` is an error rather than an empty string at runtime, and it is
+per **module**: a resource inside an imported library reads that library's
+metadata, not the application's, because a library's version is its own.
 
 ### Naming an intermediate value
 

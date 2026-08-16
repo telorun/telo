@@ -1,11 +1,13 @@
 import {
   describeSelector,
+  layerDigestKey,
   parseLayerIndex,
   selectorKey,
   type ArtifactLayer,
   type ArtifactSelector,
+  type LayerDigests,
 } from "@telorun/analyzer";
-import { computeFilesIntegrity, defaultTransportRegistry, type PayloadFile } from "@telorun/kernel";
+import { computeFilesIntegrity, defaultTransportRegistry } from "@telorun/kernel";
 import { parseAllDocuments } from "yaml";
 
 /**
@@ -36,11 +38,11 @@ export interface LayerDrift {
   built?: string;
 }
 
-export interface BuiltLayer {
-  role: string;
-  selector?: ArtifactSelector;
-  files: PayloadFile[];
-}
+// The shape of a layer built from a working copy is the payload builder's, not
+// this gate's: both this and `telo release` digest exactly what `telo publish`
+// pushes, and two declarations of it would be two chances to disagree.
+import type { BuiltLayer } from "./module-payload.js";
+export type { BuiltLayer };
 
 /** Identity of a layer within an artifact: its role, plus its selector for the
  *  controller layers, of which there is one per selector. */
@@ -100,6 +102,29 @@ async function readPublishedLayers(
 }
 
 /**
+ * The per-layer integrity the registry serves at `<destination>@<version>`, or
+ * `null` when nothing is published there.
+ *
+ * The **registry's own numbers**, read off the published `layers:` index rather
+ * than recomputed from anything local. That is what makes it the authority half
+ * of the ledger's cache: `telo release verify` compares the committed digests
+ * against these, and `--write` records these.
+ */
+export async function readPublishedDigests(
+  destination: string,
+  version: string,
+  registry: string,
+): Promise<LayerDigests | null> {
+  const published = await readPublishedLayers(`${destination}@${version}`, registry);
+  if (published === null) return null;
+  const digests: Record<string, string> = {};
+  for (const layer of published) {
+    digests[layerDigestKey(layer.role, layer.selector)] = layer.integrity;
+  }
+  return digests;
+}
+
+/**
  * Compare the built payload against the published one at the same version.
  *
  * Returns `null` when nothing is published at that ref — a new version, so there
@@ -108,7 +133,7 @@ async function readPublishedLayers(
 export async function findPayloadDrift(
   destination: string,
   version: string,
-  built: BuiltLayer[],
+  built: readonly BuiltLayer[],
   registry: string,
 ): Promise<LayerDrift[] | null> {
   const published = await readPublishedLayers(`${destination}@${version}`, registry);
@@ -155,7 +180,8 @@ export function describeDrift(moduleRef: string, version: string, drift: LayerDr
     lines.join("\n") +
     `\nA bundle inlines its dependencies, so a change in a shared library or the ` +
     `lockfile alters these bytes without touching this module's own files. ` +
-    `Add a changie fragment for this module so metadata.version moves — republishing ` +
-    `over the existing tag would change what an already-pinned import resolves to.`
+    `Run \`telo release status\` to see what would bump and why, then ` +
+    `\`telo release apply\` to move metadata.version — republishing over the ` +
+    `existing tag would change what an already-pinned import resolves to.`
   );
 }

@@ -58,6 +58,12 @@ export type ModuleFileClaim =
        *  `.gitignore`-style globs over the selected files, matched by the
        *  caller, which is the side that knows what was selected. */
       readonly siblings: readonly string[];
+      /** The source `path` was built from (`local_path=`), when the candidate
+       *  names one. The release path builds the entry point rather than reading
+       *  a prebuilt file, so it needs the source — and re-deriving it by parsing
+       *  `origin` would put PURL knowledge back into the consumer, which is
+       *  exactly what this module exists to hold. */
+      readonly localPath?: string;
     })
   | (ClaimBase & { readonly role: "assets" });
 
@@ -97,6 +103,7 @@ function controllerClaims(json: unknown): ModuleFileClaim[] {
     if (parsed.type !== BUNDLED_TYPE || parsed.namespace !== BUNDLED_NAMESPACE) continue;
     const entry = parsed.qualifiers?.path;
     if (typeof entry !== "string" || entry === "") continue;
+    const localPath = parsed.qualifiers?.local_path;
     claims.push({
       role: "controller",
       path: normalizeRelative(entry),
@@ -105,6 +112,9 @@ function controllerClaims(json: unknown): ModuleFileClaim[] {
         .split(",")
         .map((p) => p.trim())
         .filter((p) => p !== ""),
+      ...(typeof localPath === "string" && localPath !== ""
+        ? { localPath: normalizeRelative(localPath) }
+        : {}),
       origin: candidate,
     });
   }

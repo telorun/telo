@@ -36,7 +36,7 @@
     "src/**"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json && esbuild src/entry-controller.ts src/lookup-controller.ts src/view-controller.ts --bundle --format=esm --platform=node --target=node20 --external:@telorun/sdk --conditions=source --outdir=. --banner:js='import { createRequire as __teloCreateRequire } from \"node:module\";const require = __teloCreateRequire(import.meta.url);' --out-extension:.js=.mjs",
+    "build": "tsc -p tsconfig.lib.json",
     "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
     "postpack": "rm -f LICENSE && rm -f README.md"
   },

@@ -27,17 +27,15 @@
     "telo:node": "node ./cli/nodejs/bin/telo.mjs",
     "publish": "bun ./cli/nodejs/bin/telo.ts publish",
     "check": "bun ./cli/nodejs/bin/telo.ts check",
-    "build:bundles": "pnpm --filter \"./modules/**...\" run build",
     "test": "bun ./cli/nodejs/bin/telo.ts ./test-suite.yaml",
     "test:e2e:hub": "bun ./cli/nodejs/bin/telo.ts ./apps/hub/test-suite-e2e.yaml",
     "test:e2e:authoring-agent": "bun ./cli/nodejs/bin/telo.ts ./apps/authoring-agent/test-suite-e2e.yaml",
     "test:node": "node ./cli/nodejs/bin/telo.mjs ./test-suite.yaml",
-    "test:docker": "pnpm run build:bundles && docker build --target rust-slim -f cli/nodejs/Dockerfile -t telo:ci . && docker run --rm --user 1000 -v \"$PWD\":/workspace -w /workspace telo:ci ./test-suite.yaml",
+    "test:docker": "docker build --target rust-slim -f cli/nodejs/Dockerfile -t telo:ci . && docker run --rm --user 1000 -v \"$PWD\":/workspace -w /workspace telo:ci ./test-suite.yaml",
     "ci": "pnpm run check modules/*/telo.yaml && pnpm run check examples/*/telo.yaml && pnpm run check apps/*/telo.yaml && pnpm run check templates/apps/*/telo.yaml && pnpm run check templates/libs/*/telo.yaml && pnpm run check benchmarks/*/api.yaml && pnpm run check benchmarks/*/benchmark.yaml && pnpm run test && pnpm -r --if-present build && pnpm -r test && pnpm run test:node && pnpm run test:docker",
     "upgrade:imports": "node scripts/upgrade-imports.mjs",
-    "version-packages": "node scripts/version-packages.mjs",
     "release": "node scripts/publish-packages.mjs",
-    "check:changie": "node scripts/check-changie-fragments.mjs"
+    "version-packages": "changeset version"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",

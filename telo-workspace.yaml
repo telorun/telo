@@ -1,0 +1,11 @@
+# The release anchor. Its LOCATION is what every module key, ledger entry and
+# fragment path is relative to; `modules:` names the subtrees that may hold
+# modules, which is not derivable — hundreds of manifests elsewhere in this tree
+# carry a `metadata.version`, and a whole-tree scan would read every example and
+# every cached `.telo/manifests` copy as a released module.
+#
+# Read only by `telo release`. Every other command, and the kernel, behave
+# identically with or without it.
+modules:
+  - modules/*
+  - apps/*

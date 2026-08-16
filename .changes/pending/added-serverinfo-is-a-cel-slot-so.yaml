@@ -1,0 +1,4 @@
+modules:
+  modules/mcp-server: Added
+body: serverInfo is a CEL slot, so an app can advertise its own module.version instead
+  of restating the version in a second place nothing keeps in sync.
