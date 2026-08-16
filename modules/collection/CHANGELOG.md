@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.8.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.8.0 - 2026-08-11
 ### Added
 * A count is written as size(group), with no double() cast. A CEL integer now crosses a JSON boundary as its exact digits and satisfies a declared integer slot, so the cast the examples and docs used to teach — which said "float" about a value that is an integer, and truncated past 2^53 — is no longer needed anywhere. Bucket identity for an integer key follows the same encoding: a size()-derived key still matches the same value arriving as a plain JSON int, and two distinct int64s never collide.## 0.7.0 - 2026-08-09

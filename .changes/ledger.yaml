@@ -4,101 +4,101 @@
 registry: oci://ghcr.io/telorun
 modules:
   apps/authoring-agent:
-    version: 0.5.3
+    version: 0.5.4
     layers:
-      image: sha256-eIF1AHzStj3SCmPXHYbnoeskfJ1CumhaKu1YHQ6Tg-8
+      image: sha256-r3seX5PB4Nj6wU36vBQxctMvEczciuYgT94mdGZHphk
   apps/hub:
     version: 0.6.3
     layers:
       image: sha256-qd28EiMu3qGJKBzUWBzF_xsrRzpEZeV_F2PPaH2ILYU
   modules/ai:
-    version: 0.16.1
+    version: 0.16.2
     layers:
-      controller/js: sha256-SCHQj_EXy-Ea02vpaTHprFU-l1IXhCEC3rOQyEuaBlU
-      manifest: sha256-LpDOgQ58gSefcq6JWPK87Zu4ou20nB75maJpEKcfMnI
+      library/js: sha256-cthScLQTlPRwlvBStzp6Zs4AiC0wgzkID_3OFAcdTB4
+      manifest: sha256-dINThz6YBrqE4wvmWCyAuoFkRnW0rkuruN5y-ctTbJQ
   modules/ai-mcp:
-    version: 0.11.1
+    version: 0.11.2
     layers:
-      controller/js: sha256-8Kn3vH5Dwj0nDovwIS6if8rtjsgVIHxT8bju7VUxbB8
-      manifest: sha256-Hn9ZfzWuW7UB_YOQcd6lXrpfEt4yW9Rqhs-aZq6LUbI
+      controller/js: sha256-bFUGXLUdslvL7ecxxDXyGc_FRyMDd_TiRPHXvRH6Opw
+      manifest: sha256-fBf3SlNSBR6O7PScFwnM3slfjDh_AUqF190XbQIQTGQ
   modules/ai-openai:
-    version: 0.15.1
+    version: 0.15.2
     layers:
-      controller/js: sha256-nzhGHUPTmTRjkCDaC_15PkaX1C4EIm2zw1SrY5tG4E8
-      manifest: sha256-iCAfgPN384vXV9XHFfmxGGrvJTOanRAGjZFwDKrD0TM
+      controller/js: sha256-hhL0_y4j37909F2hK_dJEE0EVSPNGj2F15Gbf0VnNdE
+      manifest: sha256-lVI3UZr7WF0Ky4_pe0DGkSwSl5jVTFzXPPrShdWNhZU
   modules/assert:
-    version: 0.17.2
+    version: 0.17.3
     layers:
-      controller/js: sha256-f9dja0AjVVu_0QzsKWw7-qgjBGgJuyE68g7h-j22R2M
-      manifest: sha256-hrNAEV5xneiRmu_8NPDXvlU06XvBld38d5fd03kIoSY
+      controller/js: sha256-Eq4VDryiWYmkUDpGwYYXo0ko89WnryNRTHvvBdva024
+      manifest: sha256-rUiBk8owtn758UpLr9p7w50rdERlKiMDAi-DUw2tYjI
   modules/benchmark:
-    version: 0.10.1
+    version: 0.10.2
     layers:
-      controller/js: sha256-l5FOG3es4LMeNu9FnD6xH-SEoYSU03WJL-XIDBx8DZ0
-      manifest: sha256-Mc-_5O4Ulgz3EJftXoUtc62YHtkp6CZ5YauImm9bQxQ
+      controller/js: sha256-LByBGinDKjy1UI9e3YtNH1yv5TJxTNvl0DxDKqj-vt4
+      manifest: sha256-1PtkPExwmfsak-6rEMgzX2maPiWkWt2OI3Efcj2xixo
   modules/cache:
-    version: 0.12.1
+    version: 0.12.2
     layers:
-      controller/js: sha256-Pjkbojaejnx-05mlOlNo8dMKUGivaaEANqBab_SxlPk
-      manifest: sha256-loTcgxdV5A_8CFHn_zNB0uQXTrnq4iQsr-qwrMM8J_0
+      library/js: sha256-CNnjd6k0vT-zi8DLKU4mPCjW9exBS_1p-QaMPgcQjUI
+      manifest: sha256-W-vfoH4sxMT1zjrxrTh785f5S8r5bsBvs6SfLFjzD9c
   modules/cache-memory:
-    version: 0.8.1
+    version: 0.8.2
     layers:
-      controller/js: sha256-Fc1msTGLurRc330rIH--maS08E5zgqSBk9E3ttv6TgI
-      manifest: sha256-qA1HZz3JTTE_S2ag3tPLqDPlwBuZ7OeQJik7G7Xsl78
+      controller/js: sha256-KGjNLrQJ84kP1QQwoLg5VEKvGFF08BmDwnA3y04Inqo
+      manifest: sha256-dfQbKM3IujeIfkf0rZBTh0WPz40Rv5LHFm5etgfwtK4
   modules/cache-redis:
-    version: 0.10.1
+    version: 0.10.2
     layers:
-      controller/js: sha256-1n8bVHQAGyiho3FJvhcTT3oqFvYE8yQs3uO-wy-Q0io
-      manifest: sha256-zwsAEfeS6kZh7bDRKOFuKHuLbgNwL0KXf2N1_HYPFdY
+      controller/js: sha256-1RfeDrU7-QPgx1eeAb4bKyacPo7IHQ7qbxrvpa1ahvQ
+      manifest: sha256-uoXTKmmHbEwYCgTdbI-GDZsi2POB382y-BwZBUj-aXU
   modules/codec:
     version: 0.8.1
     layers:
       manifest: sha256-mr_vuPfR-6OnADfM75RA7_1hO_0KAOpArcCLwd99sdA
   modules/collection:
-    version: 0.8.1
+    version: 0.8.2
     layers:
-      controller/js: sha256-zmHavkMdxGbBddJmYP-tAdlqiVq1nwPzpZNQcvq_Bxs
-      manifest: sha256-POLxumHViBjgUBBQL5kHQD-wIe7qQdvoVQGPWcB4GTY
+      controller/js: sha256-NylkYZhP8t5JvSuFeljHiRBhzUWrV3ZqOoJKMVlWygw
+      manifest: sha256-3s-GkJWNKG_pZVzB2N7oArRMVqrjYOs6x80V5PDINhU
   modules/config:
-    version: 0.9.1
+    version: 0.9.2
     layers:
-      controller/js: sha256-Z_BUyGPBsRk_c3jfbKTdbpsNGmqqwEEVevJhPZuNbuk
-      manifest: sha256-DXlx6_Uz2hLPUhfC9gHU2r_bFHcxVffgcT2l_JWgNYw
+      controller/js: sha256-3QZLrVznK-LLRz-TR1mHq1x1fMtQlgmLYtbhOWnPmMw
+      manifest: sha256-sQjL-c4JplYvy5-RnmNnDQHQ4YoCdDp8hpRjBDV35Fs
   modules/console:
-    version: 0.17.1
+    version: 0.17.2
     layers:
-      controller/js: sha256-PzA6DxRIuEBP64Cls1oo6ENhyPs-egisnYo0tJOQ6dc
-      manifest: sha256-pd_QR_jFduOO5jaHXvuf7S443EOhBkas7q-9iK8EbKM
+      controller/js: sha256-Avv_y4CsXG3CHZasm76RCuV-v82rKsJyIVIKBsSPVxI
+      manifest: sha256-z6IcJNcl6WqI_fO9w_PbkfmM3wI0fNanVnQ4hZod6jQ
   modules/crud:
-    version: 0.10.0
+    version: 0.10.1
     layers:
-      manifest: sha256-W1wJcrna5j1LJbRzzIol2Y3ptBgXA0RPkyo83F19jTc
+      manifest: sha256-yb_8mCPfKIFnFPeaSaLT_tHgtabE-NE8uHra7Bc0oQQ
   modules/embedding:
-    version: 0.11.1
+    version: 0.11.2
     layers:
-      controller/js: sha256-wVSYfkNewxwIwUlBr0bT2cmln6qJdnpkLXemHHRpRQo
-      manifest: sha256-s0H4uynb8Hv_BZpFMNMTMhpj0epIpoB1YKerxLXlAVs
+      library/js: sha256-foZ_ce_yLV0HD8ME9JJe1VUhunBDxm2m3P8DkBFFGok
+      manifest: sha256-GIB1iMh2JEL57_97I4ZhfXPZEpkCzpkw7I83ZzOerro
   modules/embedding-openai:
-    version: 0.9.1
+    version: 0.9.2
     layers:
-      controller/js: sha256-w9pUbFD0Hvu6iXIjLJoqWwpXuALYlOmqMMYmHMsyk6Y
-      manifest: sha256-syN5TIHDOh8aukXUngYiTRsGWtZcF6bOP2ouMQSpdG8
+      controller/js: sha256-ZZv0nHA3xtWMncvgw7AmKT0AnJ9srEmyh5mwyxupWq8
+      manifest: sha256-Yk4OtjU2x0CNBTRH_Xru7TyvcqA0vqMgLePuihcdzz0
   modules/fs:
-    version: 0.9.1
+    version: 0.9.2
     layers:
-      controller/js: sha256-xiOiiW_Oo3FuysfyhZwM4n6YA2B0NgxEkMwlstzDdac
-      manifest: sha256-J5rhSWJNfFA2fnRjCrhDKlmEGxZLW81RT32d_SX5OY4
+      controller/js: sha256-8JD9ELcP4_RLOlTtEDyhuh_jYpUUrYttjJ7uu_SBAsM
+      manifest: sha256--vL3B_GPz3Yc6h-vwDzrwa2RpNrGKgcyxOZLc3fmK58
   modules/gzip:
-    version: 0.8.1
+    version: 0.8.2
     layers:
-      controller/js: sha256-1zHRZtt9QzBlE4jX3_kTf8qYhFzLMfV6-74aJZW6-Mg
-      manifest: sha256-b7znEPKa-PZFAu-d5Lg_7-Ls3UCmUQRtY4_ALI6LHCo
+      controller/js: sha256-VQ4RamkYhfP7IvX5sc7HDJFPDEZc32RO20v23bTIek4
+      manifest: sha256-bq7f23eRF1jf6ExCvOqBc57W_jvZudlEgSmIZLsTZjo
   modules/http-client:
-    version: 0.21.0
+    version: 0.21.1
     layers:
-      controller/js: sha256-VLqO3fKgRUpgcS9Bt6qV5EW-6pqUCpbJ4UBNM_X9F4Q
-      manifest: sha256-V0mtKJPC50h8YmIa915dqyDpmtg_2mc_ZYF-KAjsduw
+      controller/js: sha256-afbpU9oCIeUWLOCjxB472Qtk9znv5Ze_ZWH_r6ZvNy4
+      manifest: sha256-rUgwudCvBw8P-Trs39JBvqq5Iz9fzBfa75LAZo3A74I
   modules/http-dispatch:
     version: 0.11.1
     layers:
@@ -108,189 +108,190 @@ modules:
     layers:
       manifest: sha256-BKSwoSqZLayjC87tYyigYieiUiLVLo_LiReTKq9Oi8g
   modules/idempotency:
-    version: 0.9.1
+    version: 0.9.2
     layers:
-      controller/js: sha256-yuHTvHX4XaDpvvaEDXMNYSrSoZdxwEpMUwh1NAKpMYM
-      manifest: sha256-HdmLbjhbiE95mZF3g-P8A4mbDgFwW_NFb-whz3N5Ppo
+      controller/js: sha256-H1sk4DZfz7nzFHVFuEdc7200yTUSbaa7ZV34TQJUdjc
+      manifest: sha256-2LyqT8ToGljB7sDWmGAHX_5s-LPzgsjzwwY_Kky44SM
   modules/image:
     version: 0.7.1
     layers:
       manifest: sha256-9J1i9ZYq8T2FQbMLZl3sSCev_OfqinlRHJgby99Te4w
   modules/javascript:
-    version: 0.12.1
+    version: 0.12.2
     layers:
-      controller/js: sha256-bhQ4WNrWc7pfyS-12LyJE-ecXc_Z9eVbNTRnvGt_CyI
-      manifest: sha256-sBRBCqM4Oay8_VOIijK-wGkEs8dIkcktRsMMZaluJMY
+      controller/js: sha256-AJ430JNwi6HtiaZ-6HjdV0boxxokV0hpm83JghRqR5U
+      manifest: sha256-vb7hI5_Dnt9x9u0Ff6ZWQjjzpwnDhUhL7xWSQQRaX7o
   modules/kv-store:
-    version: 0.4.1
+    version: 0.4.2
     layers:
-      manifest: sha256-HTzQAS9KbYERvwMmuCxGhtixZYZ7DdMHz5n0omvstLU
+      library/js: sha256-_mv32McJ3sP_Awgl5BSYX3nCeZiNGzAkbAFFoMIfVgc
+      manifest: sha256-c7D-WxWxAfT-DOYxzc7_RA1cWkXpzbsdkRVP6PC0ZBw
   modules/kv-store-memory:
-    version: 0.6.1
+    version: 0.6.2
     layers:
-      controller/js: sha256-v8u69b6svvjlZ_tyhu7GMgie7v-uF9QVVj2pJUwJkZs
-      manifest: sha256-6oXMHjPnk64aazZZm1aSqkXKQpdV8Q7NhUmDUqQwD80
+      controller/js: sha256-P9-smLNpAVJEZlltpyfxwyO4y_faCArgIEl7CsXL3mo
+      manifest: sha256-8fe9KcJKpA1jGA7O9mgs-xBkly9w465f8-P_U2QDRrs
   modules/kv-store-redis:
+    version: 0.6.2
+    layers:
+      controller/js: sha256-VhB_iw8oPaH3fTRb2TvsrRqdQGIoRSuISscLQrQYe7E
+      manifest: sha256-GQsUyfojTsSytGdOJsbYkn2q3qAOY_-Sm-5m-uYZm8E
+  modules/kv-store-sql:
+    version: 0.7.2
+    layers:
+      controller/js: sha256-7OYZjItU7aZXLtl9Eyh9YMfI4F7ZPWT5QFJv2M_5SlE
+      manifest: sha256-j0seK4iABLDm8Ub3HKPENCMbWP5d4ZoywEEFzEKqHoY
+  modules/lease:
+    version: 0.12.2
+    layers:
+      controller/js: sha256-u6oQ1F3Bc53tL_oNWaMO9bH7TYdSEfDPCjrlHTXStrw
+      manifest: sha256-33sm-C0YjOmkx4SeOwSM597al5gO0YiF_bS4q_ffC7Q
+  modules/mcp-client:
+    version: 0.14.2
+    layers:
+      controller/js: sha256-2kCJl2uF_fjfPZ6v0wKAAB3VW3YWbPlwXyP6sfFfbpM
+      manifest: sha256-gs_LicJ4yB9ZiU0e2jjiWXD3t5x6hOEVubtpPapUiU0
+  modules/mcp-server:
+    version: 0.15.1
+    layers:
+      controller/js: sha256-DHw3JHPAVA7tf3hlllxhq9S7EDWDCux6gJ-MD1uPmQE
+      manifest: sha256-AQkedUeE6Hdkr4cRMlrjuTzaiBwBvCccBc5Fow-mKug
+  modules/multipart:
+    version: 0.2.1
+    layers:
+      controller/js: sha256-F-g_a8A1wD6i-YMX_ku69POYwb067o-WkYEMddsSpZ8
+      manifest: sha256-dGOZ_-2jAf1Ln9TQYvPMYnXTmjlEHEaYe1uXkMI-nRw
+  modules/ndjson-codec:
+    version: 0.9.2
+    layers:
+      controller/js: sha256-PQvZgRT3cLBwin0fhrG_0HHqxL5KuGg6AvGIjbJN1dM
+      manifest: sha256-RqGSnFPZs2cyQnh90c2NO2xXYU2YRPONUK7vFtHfTNo
+  modules/oauth-client:
     version: 0.6.1
     layers:
-      controller/js: sha256-swiYLTSSvxIEjOe--q_8pyYrF8bqC1UoKkeP5vRqucE
-      manifest: sha256-nyzjQGuX9zQXXG2nVFL4FzEVG7MCyBFvZ-Srm7gFspo
-  modules/kv-store-sql:
-    version: 0.7.1
-    layers:
-      controller/js: sha256-6wFxkw4YeQEAoPkkn5zfbBAkw0LcHmDix4cIy0pxn7w
-      manifest: sha256-LwoLtOJxWHBTsCiiQObBbMbbDT06peX7329AeajL8JA
-  modules/lease:
-    version: 0.12.1
-    layers:
-      controller/js: sha256-qAaY-NyjzOrwz1WzRD9bEyTsiP7s693y8g-gNCGcNG4
-      manifest: sha256-6utjreIuMiX9AILM4ndQ0orcb6qHjLguhtEradcWPXw
-  modules/mcp-client:
-    version: 0.14.1
-    layers:
-      controller/js: sha256-QwYAg3Cb0sBXEkFYhVj4LFSkZ058x_ZNvo6ofUga7pc
-      manifest: sha256-q4f3LrV4sp5fPDPSx-BPuBGLLARO3p3r9ErRG1ts5yE
-  modules/mcp-server:
-    version: 0.15.0
-    layers:
-      controller/js: sha256-lwc-9C543Fjo3c7gNjJGUc4Mv3FbV6BDOt0cz0NIP64
-      manifest: sha256-vtorNQ_yGVPAbPg_le7_-U_8yqun1i5zwA9o7l7QXOU
-  modules/multipart:
-    version: 0.2.0
-    layers:
-      controller/js: sha256-98sIPhJ-q9tEAP8XvlWVbC1OOXNKehLJR4KpNTZJ3cY
-      manifest: sha256-hNLfHSNumLtqlZ2wBlVJRLmshMz2zsTpr59VV15UXc8
-  modules/ndjson-codec:
-    version: 0.9.1
-    layers:
-      controller/js: sha256-FrGMhLX1l5_AFX5sINhDFxL4J07kUUZz8jvo3CtWK3c
-      manifest: sha256-4dIFJ4oQj6-u8Uwdsj96hoJQtVgjZTdVZoitg6slH6U
-  modules/oauth-client:
-    version: 0.6.0
-    layers:
-      controller/js: sha256-iZpvtID-UTNUG60hlI3VfG-WopJbqF6OjGezNnniCaQ
-      manifest: sha256-fKGeC9XJXznpAG1SDDqFhvr3UHbdmCj9Ek098p7m1mI
+      controller/js: sha256--ACYT3fbQrcZ8YSDjq5VTv4-0QwECFGDMTZfewUvPQA
+      manifest: sha256-kWxZdHQNXGPdNRtM94IUo4jtA3tcC9Lh7ahAPU-xgxc
   modules/octet-codec:
-    version: 0.10.1
+    version: 0.10.2
     layers:
-      controller/js: sha256-UOVhsTIZkKeV3f5Rz5-FyrYy0_rtK7FO9jgdkHDHZCE
-      manifest: sha256-SeH8P_mn2HDwzegNJ7vCZg4JC1AoHipUj6zsKioSwtc
+      controller/js: sha256-G51aOh9DHHq18qWwUokxyOYwFmMely01pNTmcsBuORY
+      manifest: sha256-uukGxMLzJKIb9ZMuAguU0ywNIy0H453QA56A90du-Ns
   modules/otlp:
-    version: 0.4.1
+    version: 0.4.2
     layers:
-      controller/js: sha256-sLxQg9p0LbBDWVmOrOoA15iOAMj97QygPDekdWFHZ2s
-      manifest: sha256-SPMqzKofK7jOM-ttuCvwm77mKT7cH8uo5ngE_Xx945I
+      controller/js: sha256-2guR_LUAdyfUkizFoIYXVS_MbwHJ-jIVOXl8W4PYy7Y
+      manifest: sha256-5KTK5vZsx0p7eY8uQosA-wrZ1Q0RyViqrFjCcZMraTE
   modules/pdf:
     version: 0.7.1
     layers:
       manifest: sha256-c9GxYFC_2tCE3gm7gpz7FGOQQR-RTvyPOURJanzR-hc
   modules/plain-text-codec:
-    version: 0.10.1
-    layers:
-      controller/js: sha256-yu_ZozVKWpd_REi-p7CoK7zUWMxbOmBgBhSHFIRaajI
-      manifest: sha256-yI_K6BzUEiHkJhbg5-DniBHQetxyWE-1PGi4qWqqtPo
-  modules/rate-limit:
-    version: 0.12.2
-    layers:
-      controller/js: sha256-8QY9gC-z-1bcLq9_BIOh7ZozH-_Z2EC10fbmUoJMrxo
-      manifest: sha256-oGubcZy5-ugMs6n1MoHzDckGZ4dJpd2yGjojfhAwRoA
-  modules/record-stream:
-    version: 0.15.1
-    layers:
-      controller/js: sha256-4TX-8zPH2xNorbXwKWEvUSbt4zSFf9vjivGImTztFb4
-      manifest: sha256-cE8rNUXfBwPalcWZUjOFfLMU9aUDVP21aH98BgV3Ca4
-  modules/run:
-    version: 0.24.0
-    layers:
-      controller/js: sha256-_Cn3y1qkyOzCgUwGdQ8VVUgL8C1Iw5wwjCvkclVXygY
-      manifest: sha256-D4teZ-YqIks0OTk8kusDR2dOxY2Poy4t71cNBaR-ayc
-  modules/scheduler:
-    version: 0.8.1
-    layers:
-      controller/js: sha256-2hOsncMt2aYYN_xRlTrfkQ5J9y_ybA-0bJYb2gVPk3w
-      manifest: sha256-03WEnnivZWSDUAsGlNDsWZ42xelUAqs0W2Y5eI8utSQ
-  modules/shell:
-    version: 0.11.1
-    layers:
-      controller/js: sha256-vsJwH9KKvYaxNZA98c_yAsWfBYHYM90LMacmdVGY3xQ
-      manifest: sha256-pi7J4Fq9NSGViNrhqkl1fFrq0Je2OrFtTDjFJon41eo
-  modules/sql:
-    version: 0.21.1
-    layers:
-      controller/js: sha256-BzCJtiwacsE-_qcq3mw12SSyazCW5qwKqABCD2ICjNY
-      manifest: sha256--fCvx3AI4Gyc9flOP29OO12gIyqg9ukWK3MLXansXws
-  modules/sql-postgres:
-    version: 0.9.2
-    layers:
-      controller/js: sha256-USYRp7ph2RhuE88Xa3iWgYHPDy1wLQIk_hGxtGIl57M
-      manifest: sha256-f-zU3GWZXmXLhnBRXHO0gCzo9q6qxJdSIEisc-bZIYU
-  modules/sql-repository:
-    version: 0.10.1
-    layers:
-      manifest: sha256-_d26Yy_Lqip1iL8J3w2GMqfahG8YDCGW8KQIPrXB9vI
-  modules/sql-sqlite:
-    version: 0.7.1
-    layers:
-      manifest: sha256-z3Nl-dg7ceVVhBUsoxfH_K-zgWlYAfI_TXhp7QLXQsU
-  modules/sse-codec:
     version: 0.10.2
     layers:
-      controller/js: sha256-MmN7T9K8yF-Hh5unE5YVIsB6gfjpgXzxf8auQLV2IMQ
-      manifest: sha256-NjEq6YjTrsUpBTkKE3lP0YPvwgIgZAZF61CNnPzU-Yc
+      controller/js: sha256-mTN4RvGXKei9SStIWFe_AcOhq7ErMGBFaLn55N_ZhrM
+      manifest: sha256-6xIey9g7B4bdfkBjtucyp0946PbGTEjI4oOYDnSyuAw
+  modules/rate-limit:
+    version: 0.12.3
+    layers:
+      controller/js: sha256-t_Iu4HImm66Duux1-mNvvPV65KOtFdmYfqtN_tqzHHc
+      manifest: sha256-bCmxShat-DcHJK5lP8TkjxJ-njqRuBckoYI6FPsuhhI
+  modules/record-stream:
+    version: 0.15.2
+    layers:
+      controller/js: sha256-MhNmhTsHYIzR9Oxk0Vg8BOaYf1_Enbmf8ecBk2n5UCY
+      manifest: sha256-CASCMskaryo2nENiHD3j8CZp3WbJIjhdjlBUsCNl0-M
+  modules/run:
+    version: 0.24.1
+    layers:
+      controller/js: sha256-s91eOsLMEK_AmBRLXvzGfAEjoyk_I_O4SFn8TD9TJRc
+      manifest: sha256-rEtmVOhkME-mGDalTGjt2y759HGCgvge2pu4OvKBhcA
+  modules/scheduler:
+    version: 0.8.2
+    layers:
+      controller/js: sha256-LOzfq3ebi4dUuDw_4GcIj2rt-fjtyibZ35tLGjh66pY
+      manifest: sha256-zqLPqKo6a3zxIrNpz7NZ8TaHtqMwPh2KKfVsQ0LU2Lw
+  modules/shell:
+    version: 0.11.2
+    layers:
+      controller/js: sha256-aBHJMvYc-c8Z_Qb-I3jjlk2KdSZ2jFvO4ZBP1vmkIKU
+      manifest: sha256-zdyync-NbsPjHGwi26ScZ6L6LRX9RFrlsIXZ7558g20
+  modules/sql:
+    version: 0.21.2
+    layers:
+      library/js: sha256-hrfeJJLk01cP9TusDaUgYjFK4CRRkU393Fqo2nc7k3Q
+      manifest: sha256-BWIzA_IE4thiKkqV7yboYOlpz0tlJ_J0lg8DVHfyUU0
+  modules/sql-postgres:
+    version: 0.9.3
+    layers:
+      controller/js: sha256-LyjPhmVQycjx9suo9E5xY8BLugnrhXqOgQ71WHz8AdY
+      manifest: sha256-uPEltImU7n6OlfD1U6YyTPoGh7f-QJDG9j4kSPEopX4
+  modules/sql-repository:
+    version: 0.10.2
+    layers:
+      manifest: sha256-QuBDMEgUx_nUhFsWy-BfEwKcqFgEhRVw3KoVnEtygwg
+  modules/sql-sqlite:
+    version: 0.7.2
+    layers:
+      manifest: sha256--1a9RLZ4cdVIXffHMIGuKmXFEMQC0ZKTZd0VFkwka1g
+  modules/sse-codec:
+    version: 0.10.3
+    layers:
+      controller/js: sha256-IHgHw426EVxkgSpjOwpJL1Yk4TnXKKB2VHfcU6b7Shg
+      manifest: sha256-N0n9MCWlS-odNsgOrLV7XhI4aHDk-5GoBzaeYeOfBm0
   modules/starlark:
     version: 0.12.1
     layers:
       manifest: sha256-AALf4vzXf3eVpVWLuJZ1tqZ_eDnVhbjn9HHSfPvnsLw
   modules/stream:
-    version: 0.10.1
+    version: 0.10.2
     layers:
-      controller/js: sha256-Xjx_Lo_hs5Y2zLL2rV7uOJHzNgf30eHey2V0YHHTjfw
-      manifest: sha256-49CT7Ue5p1JJjpEQlPiJ1Xn6t1daFMz8NJKl92oGXgw
+      controller/js: sha256-iJMqUliT6O9iFzSTVMBF9XTVvTDmi6ZFvyuxGbH9Xa8
+      manifest: sha256-53QeSVE1usKhGomFxIh1ifN7T6OE2BhPGML2oOu48hw
   modules/tar:
-    version: 0.8.1
+    version: 0.8.2
     layers:
-      controller/js: sha256-lLN5zDY1pE-0EBV64EOYJv_CQP7-tOpIHJQtJqhwqCs
-      manifest: sha256-e5sk1tNm13490PLSJOjNncwumalJ8FK1AtZc7yuzquk
+      controller/js: sha256-ql0Q9LT4zVEZVBQy2OORYWPqN7EBX3rb0K7NooGRoL0
+      manifest: sha256-NiqJmiJMkli9S5_ThCkxORCotWzkMAZMNV_yypsw8Js
   modules/test:
-    version: 0.10.1
+    version: 0.10.2
     layers:
-      controller/js: sha256-SlD5sCr5QnYVCMZAxzOJ0Rpebx1yF0eXgwuzx56skGc
-      manifest: sha256-DwrchAUZ4NIYArf6-QvDpd-YZbcM739J_X5Go7a14zE
+      controller/js: sha256-NDmxuyT8YxIEXYABTMg6uMwT4j5lk6bTgEoht-Bu8ZY
+      manifest: sha256-rkUJotgtgBYgBHIcknmeRt8f-iwPedKOXrjb1orgyWk
   modules/timer:
-    version: 0.8.1
+    version: 0.8.2
     layers:
-      controller/js: sha256-LgWUqkH6jv7ZJtZu0i5jaOgifUYoSe7QFn1Ep-zViaM
-      manifest: sha256-BpF-piJhIzTbESUHVPL8v1WzJH7dCr9VY0GaPSw9g3I
+      controller/js: sha256-i-mWaEU2ImH9H1c07yM7_ZDm_3SbaUxotkE0xsX2MOM
+      manifest: sha256-NUmzHHMgq9suITWL0EP-F99GHwLsWOoFfmyMa79m2ZM
   modules/type:
     version: 0.12.1
     layers:
       manifest: sha256-Zm9VaHNPSPp5fAaUIgwwbfILA2F-Qn0oQgR5vz0lmsU
   modules/vector-store:
-    version: 0.10.1
+    version: 0.10.2
     layers:
-      controller/js: sha256-EO8Q72L9HB_oMhifrRl5ue4nBuprCKDrqdc-zfsaXpI
-      manifest: sha256-TgrP9dpkBRq4GxDhqdnbR2Cc0yvS1Zui-OIuvSlLlTU
+      library/js: sha256-B98WYVh0uWP2zRqoU0Egz1aR_-sGQ9Pd5779_3H6Z4w
+      manifest: sha256-JwYOUrh7Rel9r2Thz5BGWjlrQvLLabgfrQW3WzmCvTA
   modules/vector-store-memory:
-    version: 0.7.1
+    version: 0.7.2
     layers:
-      controller/js: sha256-NG9ARsDtAL2llNtEOOoPUTUvd5trieArzuRDfxJq2Qg
-      manifest: sha256-8CTP5OCT944IEM_k-kEx63JBzxSwOcvkYDQdy8OiNQg
+      controller/js: sha256-2LwWhyVdvsd484s6d0p3a4jL7fYEQ2uCsH8gWk8geeo
+      manifest: sha256-SB-EQs-JFp7Hjan7aXYJapINMdUe8A_IvPxtvynV0l4
   modules/vector-store-pgvector:
-    version: 0.9.2
+    version: 0.9.3
     layers:
-      controller/js: sha256-18ywfbK62hK3z3vMBAGyfMJ94XDEfsbEHeupgPNSBwM
-      manifest: sha256-HJRhr-hJXBq-Xh7W_l2PG-HtJdlscLcS6RPusSVf-ps
+      controller/js: sha256-nR6b9i8XANQQsOxmDYahfffn8ZoTWgIdx4_7haDxBcw
+      manifest: sha256-UCL7-vppTeiKpOrtmL0tE2DlLAnjzP8aW4b8RH5X_Sg
   modules/workflow:
     version: 0.5.1
     layers:
       manifest: sha256-UH4V0o72sNlE40Abh-13VCuydo3U1F9e3VpV4G79DGo
   modules/workflow-temporal:
-    version: 0.6.1
+    version: 0.6.2
     layers:
-      controller/js: sha256-2TsF8xfPmRVwq1fQT_hGirnPDmTWRjr7GmQOmkUkWUI
-      manifest: sha256-Q3_CKU6mPx1E0rEy_6YMavgnwdrOVpDG6Ryiz56RbLo
+      controller/js: sha256-yLZAyUObhgjpmQ143292F3P0Q5zxlxFhxe9AbPWIttA
+      manifest: sha256-xdrLQuuadi7VEAEbxm-_nIiAO67FMcTyWigpM9d9yts
   modules/yaml:
-    version: 0.10.1
+    version: 0.10.2
     layers:
-      controller/js: sha256-n1_EI90iPSDirH-OwVxx1APFGMaHU_WkAummmdrVQn8
-      manifest: sha256-gNotYUXq1r6WG5F5aGn5TjvbzUUYl_DqX_Cr0IXnMUM
+      controller/js: sha256-yiZUAuQzFD6cRHhAjhUziyY8nozWWx6VbKzgGg4HbAQ
+      manifest: sha256-J4aibgdssGif5FX3ThF49AnMlVzrnbJMaQPajP-Cf24

@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.17.3 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.17.1 - 2026-08-15
 ### Fixed
 * Assert.Events compared payload leaves with `!==`, so a CEL integer — an int64, i.e. a BigInt — never matched the plain number an `expected:` literal comes out of YAML as. The two rendered identically in the failure report while comparing unequal, making any integer-valued expression in an event payload unassertable. Leaves go through the same comparison Assert.Equals uses.## 0.17.0 - 2026-08-14

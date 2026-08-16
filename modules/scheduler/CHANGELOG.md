@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.8.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.8.0 - 2026-08-11
 ### Added
 * Schedule.Interval and Schedule.Cron log a firing tick, a tick skipped by a closed 'when' gate, and each re-arm at debug. A skipped tick is otherwise indistinguishable from one that never came due — the schedule simply goes quiet. A failing tick now reports the thrown value as the record's structured error, keeping the type, stack and cause chain that the previous message-only attribute discarded.## 0.7.0 - 2026-08-09

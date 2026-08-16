@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.1 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.21.0 - 2026-08-16
 ### Added
 * The `retry` blocks on Client and Request, and the deprecated `retries` count, are declared from the shared retry fragments instead of being written out per kind. Client's copy had drifted — it declared no defaults at all, so a client policy and a request policy disagreed about every value but `attempts`. The schemas stay closed; `honorRetryAfter` is merged onto the shared shape rather than composed with allOf, which could not have kept them closed. The controller now reads the deprecated `delay` duration string as `initialDelay`, the way the step leaf does — the shared shape carries the field, so accepting it and ignoring it would have made one declared policy mean two different things.

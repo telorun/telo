@@ -1,4 +1,10 @@
 # Changelog
+
+## 0.9.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+* Paths emitted into manifest data use `/` separators on every host. `Fs.DirectoryListing`'s `entries[].path`, `Fs.TreeSnapshot`'s `files[].path` and `Test.Suite`'s test labels were built with `path.relative` and left unnormalized, so on Windows they came back as `a\b.txt` — a CEL filter like `f.path == 'a/b.txt'` matched on Linux and silently found nothing there. Inputs are unchanged and still accept either separator.
+
 ## 0.9.0 - 2026-08-11
 ### Added
 * Filesystem operations log what they touched: writes at debug with path and size, Fs.FileRemoval at info with the path, and Fs.TreeSync with one info carrying the number of paths deleted (each path individually at debug, since a routine delta legitimately carries hundreds). A deletion is the one operation with nothing left behind to inspect afterwards — TreeSync's is recursive and force:true, so a mistyped path takes a tree and a path that never existed reports success either way. File contents are never logged.## 0.8.0 - 2026-08-09

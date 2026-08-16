@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.12.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.12.0 - 2026-08-11
 ### Added
 * Lease.Critical logs its outcomes: cancellation at info, and contention, acquire and release at debug. Contention is debug because it is the steady state of a mutex, not an anomaly — the documented cross-replica pattern produces N-1 contended calls on every tick, forever. A cancel refused because the requesting holder is stale is also reported, since the returned value cannot distinguish it from 'nothing was running'. lease.key and lease.holder ride on those records; redact them at the root if that is not acceptable.

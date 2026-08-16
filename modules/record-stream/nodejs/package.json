@@ -1,6 +1,6 @@
 {
   "name": "@telorun/record-stream-build",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "private": true,
   "description": "Build-only package for the std/record-stream module's bundled controllers. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",

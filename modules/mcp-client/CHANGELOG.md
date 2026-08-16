@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.14.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.14.0 - 2026-08-11
 ### Added
 * Mcp.StdioClient logs its connection at info and bridges the child server's stderr into records, mapping the server's own level so a line beginning ERROR: or [warn] becomes a record at that severity with the original spelling preserved. The code previously claimed to forward stderr to the log but emitted only an event, which reaches nothing when no debug consumer is attached, and every line landed at debug — so a server reporting its own failure was invisible at the default level. Teardown now reports the SIGKILL escalation after the shutdown grace period and a close failure, both of which happened silently because teardown has no caller to report to.## 0.13.0 - 2026-08-09

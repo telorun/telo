@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.10.3 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.10.1 - 2026-08-11
 ### Fixed
 * Sse.Encoder logs an upstream failure that happens mid-stream. The terminal 'event: error' frame tells the client, but the stream has already been handed to the transport — the failure never reaches the caller and the response still completes 200, so nothing was reported server-side.## 0.10.0 - 2026-08-09

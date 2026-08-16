@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Multipart
-  version: 0.2.0
+  version: 0.2.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Data, Transport]

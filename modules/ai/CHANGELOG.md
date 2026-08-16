@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.16.2 - 2026-08-16
+### Fixed
+* Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
+
 ## 0.16.0 - 2026-08-11
 ### Added
 * Every completion kind — Ai.Text, Ai.TextStream, Ai.Agent and Ai.AgentStream — logs token usage and finish reason at info. Usage is the metered quantity, what a run costs, and it was reported nowhere by default. Both agents report the aggregate across every turn plus a step count, and an agent that stops at maxSteps with onMaxSteps 'return' warns, since the truncated answer is handed back as an ordinary result. Prompts and completions are never logged.
