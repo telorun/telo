@@ -1,0 +1,48 @@
+kind: Telo.Application
+metadata:
+  name: BootTargetRetryTest
+  version: 1.0.0
+  description: |
+    `retry:` on an Application `targets:` entry.
+
+    A dispatch site is one kernel-owned shape, so `{ invoke, inputs, when, retry }`
+    means the same thing wherever a manifest names a target. It did not always:
+    the shape was hand-restated per composer, and the boot copy never grew
+    `retry:` — so this manifest was a schema error one line away from working
+    inside a `Run.Sequence`, for no reason anyone decided about boot.
+imports:
+  JS: ../../javascript
+  Assert: ../../assert
+targets:
+  # Fails twice, then succeeds — `attempt: 3` is the assertion that the boot
+  # runner re-issued it rather than merely not raising.
+  - name: Recovers
+    invoke: !ref FlakyTwice
+    retry:
+      attempts: 2
+      initialDelay: 1
+      jitter: none
+  - name: Check
+    invoke: !ref CheckEquals
+    inputs:
+      actual: !cel "steps.Recovers.result.attempt"
+      expected: 3
+---
+kind: JS.Script
+metadata: { name: FlakyTwice }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [attempt]
+    properties:
+      attempt: { type: integer }
+code: |
+  function main() {
+    globalThis.__bootFlaky = (globalThis.__bootFlaky ?? 0) + 1;
+    if (globalThis.__bootFlaky < 3) throw new Error(`attempt ${globalThis.__bootFlaky} failed`);
+    return { attempt: globalThis.__bootFlaky };
+  }
+---
+kind: Assert.Equals
+metadata: { name: CheckEquals }

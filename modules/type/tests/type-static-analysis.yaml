@@ -54,7 +54,7 @@ expect:
     # it without anyone writing them down — the regression this guards is the
     # listing going empty or unfiltered.
     - code: CEL_TYPE_ERROR
-      message: "slice(dyn, int, int): dyn"
+      message: "slice(bytes, int, int): dyn"
 ---
 # Field access on a type's INHERITED (`extends`) property — the analyzer must
 # merge parent schemas exactly like the runtime, so an inherited field is known

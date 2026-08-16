@@ -1,4 +1,5 @@
-import { makeTaggedSentinel, MANIFEST_SCHEMA_URI } from "@telorun/templating";
+import { MANIFEST_SCHEMA_URI } from "@telorun/analyzer";
+import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { SchemaValidator } from "../src/schema-validator.js";
 

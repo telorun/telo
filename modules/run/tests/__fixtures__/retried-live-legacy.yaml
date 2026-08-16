@@ -1,0 +1,32 @@
+# The DEPRECATED bare-count spelling of the same policy. Every manifest published
+# before `retry:` existed carries it, so leaving it unannotated would leave the
+# spelling most manifests in the wild still use silently unchecked.
+kind: Telo.Application
+metadata:
+  name: RetriedLiveLegacy
+  version: 1.0.0
+imports:
+  Run: ../../
+  Stream: ../../../stream
+  Http: ../../../http-client
+targets:
+  - !ref Seq
+---
+kind: Http.Request
+metadata: { name: Upload }
+retries: 3
+---
+kind: Run.Sequence
+metadata: { name: Seq }
+steps:
+  - name: Source
+    inputs:
+      items: [a, b]
+    invoke:
+      kind: Stream.Of
+  - name: Post
+    inputs:
+      url: http://example.test/upload
+      method: POST
+      body: !cel "steps.Source.result.output"
+    invoke: !ref Upload

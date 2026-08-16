@@ -1,4 +1,5 @@
 import {
+  type InvokeContext,
   getRefIdentity,
   type ResourceContext,
   type ScopeContext,
@@ -85,7 +86,12 @@ class RunSequence {
     this.engine.resolveInvokes(this.resource.steps);
   }
 
-  async run(): Promise<void> {
+  /**
+   * A boot `targets:` run. The context is the kernel's boot cancellation, which
+   * the CLI's SIGINT handler trips — so forwarding it is what lets Ctrl-C end a
+   * run parked in a retry backoff, rather than only refusing the next dispatch.
+   */
+  async run(invokeCtx?: InvokeContext): Promise<void> {
     if (this.resource.with) {
       await this.resource.with.run(async (scope) => {
         await this.runScopeTargets(scope);
@@ -94,14 +100,34 @@ class RunSequence {
           {},
           scope,
           scopeCel(scope, { inputs: {} }),
+          invokeCtx,
         );
       });
     } else {
-      await this.engine.executeSteps(this.resource.steps, {}, undefined, { inputs: {} });
+      await this.engine.executeSteps(
+        this.resource.steps,
+        {},
+        undefined,
+        { inputs: {} },
+        invokeCtx,
+      );
     }
   }
 
-  async invoke(inputs: Record<string, unknown>): Promise<unknown> {
+  /**
+   * The invocation this run belongs to, forwarded to the step leaf.
+   *
+   * The bound entry point hands every argument through, and dropping this one
+   * left the retry backoff with no cancellation token: every other point in a
+   * sequence is already a cancellation point, because the kernel refuses a
+   * dispatch reached after the tree was cancelled, but a wait between two
+   * attempts is time spent inside the leaf where that gate cannot see it. `run()`
+   * takes none by design — it is a lifecycle start that roots its own trace.
+   */
+  async invoke(
+    inputs: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
+  ): Promise<unknown> {
     const steps: Record<string, unknown> = {};
     // Caller inputs are exposed under the `inputs` CEL variable (not spread
     // flat) so steps read them as `${{ inputs.x }}`, matching the documented
@@ -111,10 +137,16 @@ class RunSequence {
     if (this.resource.with) {
       await this.resource.with.run(async (scope) => {
         await this.runScopeTargets(scope);
-        await this.engine.executeSteps(this.resource.steps, steps, scope, scopeCel(scope, extraCtx));
+        await this.engine.executeSteps(
+          this.resource.steps,
+          steps,
+          scope,
+          scopeCel(scope, extraCtx),
+          invokeCtx,
+        );
       });
     } else {
-      await this.engine.executeSteps(this.resource.steps, steps, undefined, extraCtx);
+      await this.engine.executeSteps(this.resource.steps, steps, undefined, extraCtx, invokeCtx);
     }
 
     if (this.resource.outputs) {

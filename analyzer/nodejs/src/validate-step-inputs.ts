@@ -9,7 +9,8 @@ import {
   validateAgainstSchema,
 } from "./schema-compat.js";
 import { plainChainOf } from "@telorun/templating";
-import { valueTypeOf } from "@telorun/sdk";
+import { isLiveSlot, valueTypeOf } from "@telorun/sdk";
+import { manifestFragmentOf } from "./manifest-schemas.js";
 import {
   analyzerContractScope,
   containerOf,
@@ -25,7 +26,7 @@ export interface StepInputIssue {
   message: string;
   /** Set when the issue is a type-argument disagreement rather than a contract
    *  shape violation — the two read differently and deserve their own code. */
-  code?: "CEL_TYPE_ARGUMENT_MISMATCH";
+  code?: "CEL_TYPE_ARGUMENT_MISMATCH" | "LIVE_VALUE_RETRIED";
 }
 
 
@@ -118,15 +119,30 @@ export function collectStepInputIssues(
       // that silence is exactly where a stream of the wrong element used to
       // flow. The comparison is covariant and gradual: an omitted argument is
       // *any* in both directions, so only a definite conflict is reported.
-      if (stepContext) {
+      // The roots a plain chain may name here, each paired with the schema it is
+      // navigated against. `steps.` is the step map (analyzer state, supplied by
+      // the caller). `inputs.` is the ENCLOSING kind's own declared inputType,
+      // which is how a value produced OUTSIDE this resource reaches a step at
+      // all: an HTTP route maps `request.body` into its handler's inputs, and the
+      // handler forwards `inputs.body` onward — the shape a live value most often
+      // arrives in, and the one covering only `steps.` missed entirely. A root
+      // this cannot resolve contributes nothing rather than guessing at a schema.
+      const roots: Array<[string, Record<string, any>]> = [];
+      if (stepContext) roots.push(["steps.", stepContext]);
+      const ownContract = resolveContract(
+        "inputType",
+        manifest,
+        contractScope.resolveIn(manifest.kind as string, readingModule),
+        contractScope,
+      );
+      if (ownContract) roots.push(["inputs.", ownContract.schema]);
+
+      if (roots.length > 0) {
         for (const [inputName, inputValue] of Object.entries(values)) {
           const chain = plainChainOf(inputValue);
-          // The step context is rooted at the STEP MAP, so a `steps.` prefix is
-          // the namespace name and not a property of it. Only that namespace is
-          // navigated: `inputs.` and a named binding resolve elsewhere, and
-          // guessing at a root this does not hold would compare the wrong schema.
-          if (!chain?.startsWith("steps.")) continue;
-          const produced = navigateSchemaToExprPath(stepContext, chain.slice("steps.".length));
+          const root = chain ? roots.find(([prefix]) => chain.startsWith(prefix)) : undefined;
+          if (!chain || !root) continue;
+          const produced = navigateSchemaToExprPath(root[1], chain.slice(root[0].length));
           const slotSchema = (contract.schema.properties as Record<string, any> | undefined)?.[
             inputName
           ];
@@ -138,6 +154,28 @@ export function collectStepInputIssues(
           // broad new Error-severity check hidden behind an argument-specific
           // name. Both sides must declare a value type for the question to be
           // about arguments at all.
+          // A LIVE value is consumed by reading, so it exists exactly once —
+          // that is what `live` says in the vocabulary, and re-attempting a
+          // dispatch that already read it re-sends nothing. Reported here rather
+          // than through a slot-specific annotation because both facts are
+          // already declared: the value's liveness by its value type, and the
+          // re-attempt by the retry policy. No kind is named.
+          if (isLiveSlot(produced)) {
+            const retry = declaredRetry(step, stepItemSchema, invokedManifest, invokedDef);
+            if (retry !== undefined) {
+              out.push({
+                path: `${stepPath}.${inputsField}.${inputName}`,
+                targetLabel: invokedName ?? invokedKind ?? "the invoked resource",
+                message:
+                  `'${inputName}' is a live value, which is consumed by reading and so exists ` +
+                  `once — but ${retry} re-attempts the dispatch, and a re-attempt would pass ` +
+                  `nothing. Collect it to a value first, or chunk the work so each attempt ` +
+                  `carries its own replayable piece.`,
+                code: "LIVE_VALUE_RETRIED",
+              });
+              continue;
+            }
+          }
           if (!valueTypeOf(produced) || !valueTypeOf(slotSchema)) continue;
           const { compatible, issues } = checkSchemaCompatibility(produced, slotSchema, (ref) =>
             defs.schemaForId(ref),
@@ -170,3 +208,65 @@ export function collectStepInputIssues(
   return out;
 }
 
+/**
+ * Where a re-attempt is declared for this dispatch, described for a diagnostic,
+ * or undefined when none is.
+ *
+ * A field declares one when its schema was expanded from a shared retry fragment
+ * — the shape the author pointed at, rather than a marker they had to remember to
+ * write beside it. Which fragment also says WHERE the budget is, so the two
+ * spellings a kind may carry (a policy object, or the deprecated bare count) need
+ * no guessing between them and no rule about which one wins.
+ *
+ * Two sites are consulted because there are two real ones: the STEP's own policy
+ * — `retry` on the kernel-owned dispatch site — and the TARGET's, a field on an
+ * arbitrary kind, because `Http.Request` re-attempts inside its own `invoke()`
+ * where only it can tell a 429 from a 500. A live value is equally doomed by
+ * either. EVERY retry-bearing field at a site is checked, not the first, since
+ * `Http.Request` carries both spellings and property order must not decide which
+ * is seen.
+ *
+ * Only a STATICALLY KNOWN non-zero budget counts. An `attempts` written as CEL
+ * says nothing here, and guessing would report a conflict against a manifest that
+ * may never retry — the same posture the `use` case-map selector takes.
+ */
+function declaredRetry(
+  step: Record<string, any>,
+  stepItemSchema: Record<string, any> | undefined,
+  invokedManifest: Record<string, any> | undefined,
+  invokedDef: Record<string, any> | undefined,
+): string | undefined {
+  for (const [field, budget] of retryFields(stepItemSchema)) {
+    if (budget(step?.[field]) > 0) return `the step's \`${field}\``;
+  }
+  for (const [field, budget] of retryFields(invokedDef?.schema as Record<string, any>)) {
+    if (budget(invokedManifest?.[field]) > 0) return `the target's \`${field}\``;
+  }
+  return undefined;
+}
+
+/** How each shared retry fragment carries its budget. Keyed on fragment name —
+ *  the analyzer's own built-ins, never a module's kind — so a kind that adopts a
+ *  shape is covered without naming it here. */
+const RETRY_BUDGET: Record<string, (value: unknown) => number> = {
+  RetryPolicy: (value) => {
+    if (!value || typeof value !== "object") return 0;
+    const attempts = (value as Record<string, unknown>).attempts;
+    return typeof attempts === "number" ? attempts : 0;
+  },
+  RetryAttempts: (value) => (typeof value === "number" ? value : 0),
+};
+
+/** Every property of `schema` whose shape came from a retry fragment, paired with
+ *  the reader for that fragment's budget. */
+function retryFields(
+  schema: Record<string, any> | undefined,
+): Array<[string, (value: unknown) => number]> {
+  if (!schema) return [];
+  const out: Array<[string, (value: unknown) => number]> = [];
+  for (const [key, sub] of gatherPropertySchemas(schema)) {
+    const budget = RETRY_BUDGET[manifestFragmentOf(sub) ?? ""];
+    if (budget) out.push([key, budget]);
+  }
+  return out;
+}

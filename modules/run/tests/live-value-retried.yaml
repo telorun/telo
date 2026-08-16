@@ -1,0 +1,101 @@
+kind: Telo.Application
+metadata:
+  name: LiveValueRetriedTest
+  version: 1.0.0
+  description: |
+    `LIVE_VALUE_RETRIED` — a live value passed to a dispatch that may repeat. A
+    stream is consumed by reading, so it exists exactly once and a re-attempt
+    sends nothing; the first attempt's failure is then followed by attempts that
+    cannot possibly differ.
+
+    Neither half of the check names a kind: liveness comes from the value's own
+    value type, repetition from the shape the field was declared with — a shared
+    retry fragment, which also says WHERE the budget is. That genericity is what
+    needs guarding: the check is gated on several conditions coinciding, and any
+    one of them regressing turns it off with no other symptom.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref StepRetry
+  - !ref TargetRetry
+  - !ref LegacyRetries
+  - !ref ForwardedInput
+  - !ref BootTarget
+  - !ref ReplayableValue
+  - !ref NoRetryDeclared
+---
+# The re-attempt is on the STEP.
+kind: Assert.Manifest
+metadata:
+  name: StepRetry
+source: ./__fixtures__/retried-live-step.yaml
+expect:
+  errors:
+    - code: LIVE_VALUE_RETRIED
+      message: "steps[1].inputs.input"
+---
+# The re-attempt is on the TARGET. A live value is doomed by either site, so both
+# are consulted — reading only the step's would miss every `Http.Request` with a
+# client-level policy, which is the common shape.
+kind: Assert.Manifest
+metadata:
+  name: TargetRetry
+source: ./__fixtures__/retried-live-target.yaml
+expect:
+  errors:
+    - code: LIVE_VALUE_RETRIED
+      message: "the target's `retry`"
+---
+# The DEPRECATED bare-count spelling. It is kept precisely because published
+# manifests carry it, so an annotation that only understood the object form would
+# leave the spelling most manifests in the wild still use unchecked.
+kind: Assert.Manifest
+metadata:
+  name: LegacyRetries
+source: ./__fixtures__/retried-live-legacy.yaml
+expect:
+  errors:
+    - code: LIVE_VALUE_RETRIED
+      message: "the target's `retries`"
+---
+# The live value arrives through the composer's OWN declared inputType rather
+# than from an earlier step — how an uploaded body reaches a handler. A check
+# reading only `steps.` chains reports nothing here.
+kind: Assert.Manifest
+metadata:
+  name: ForwardedInput
+source: ./__fixtures__/retried-live-forwarded.yaml
+expect:
+  errors:
+    - code: LIVE_VALUE_RETRIED
+      message: "steps[0].inputs.input"
+---
+# A BOOT TARGET. The same shape as a step, so the check must reach it there too —
+# and it did not, because `builtins.ts` embeds the fragment instead of pointing at
+# it and so never met the loader that expands one.
+kind: Assert.Manifest
+metadata:
+  name: BootTarget
+source: ./__fixtures__/retried-live-boot-target.yaml
+expect:
+  errors:
+    - code: LIVE_VALUE_RETRIED
+      message: "targets[1].inputs.input"
+---
+# A collected list is replayable, which is what retry is FOR. No diagnostic — the
+# check must not fire on the fix it recommends.
+kind: Assert.Manifest
+metadata:
+  name: ReplayableValue
+source: ./__fixtures__/retried-value-ok.yaml
+expect:
+  errors: []
+---
+# A live value with no re-attempt anywhere: the ordinary streaming pipeline, and
+# the false positive that would make the diagnostic unusable.
+kind: Assert.Manifest
+metadata:
+  name: NoRetryDeclared
+source: ./__fixtures__/live-no-retry.yaml
+expect:
+  errors: []

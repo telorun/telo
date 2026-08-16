@@ -1,0 +1,32 @@
+# The re-attempt is declared on the TARGET rather than on the step. A live value
+# is equally doomed by either, so the check consults both sites.
+kind: Telo.Application
+metadata:
+  name: RetriedLiveTarget
+  version: 1.0.0
+imports:
+  Run: ../../
+  Stream: ../../../stream
+  Http: ../../../http-client
+targets:
+  - !ref Seq
+---
+kind: Http.Request
+metadata: { name: Upload }
+retry:
+  attempts: 2
+---
+kind: Run.Sequence
+metadata: { name: Seq }
+steps:
+  - name: Source
+    inputs:
+      items: [a, b]
+    invoke:
+      kind: Stream.Of
+  - name: Post
+    inputs:
+      url: http://example.test/upload
+      method: POST
+      body: !cel "steps.Source.result.output"
+    invoke: !ref Upload

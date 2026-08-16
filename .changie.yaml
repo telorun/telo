@@ -245,6 +245,13 @@ projects:
       - path: modules/mcp-server/telo.yaml
         find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
         replace: '  version: "{{.VersionNoPrefix}}"'
+  - label: multipart
+    key: multipart
+    changelog: modules/multipart/CHANGELOG.md
+    replacements:
+      - path: modules/multipart/telo.yaml
+        find: '^  version: ["'']?\d+\.\d+\.\d+["'']?$'
+        replace: '  version: {{.VersionNoPrefix}}'
   - label: ndjson-codec
     key: ndjson-codec
     changelog: modules/ndjson-codec/CHANGELOG.md

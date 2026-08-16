@@ -3,6 +3,7 @@ import {
   InvokeError,
   isInvokeError,
   type Invocable,
+  type InvokeContext,
   type InvokeStep,
   type KindRef,
   type ResourceContext,
@@ -160,9 +161,10 @@ export class StepEngine {
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
   ): Promise<void> {
     for (const step of stepList) {
-      await this.executeStep(step, steps, scope, extraCtx);
+      await this.executeStep(step, steps, scope, extraCtx, invokeCtx);
     }
   }
 
@@ -171,12 +173,15 @@ export class StepEngine {
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
   ): Promise<void> {
-    if (isInvokeStep(step)) await executeInvokeStep(step, this.ctx, { steps, scope, cel: extraCtx });
-    else if (isIfStep(step)) await this.executeIfStep(step, steps, scope, extraCtx);
-    else if (isWhileStep(step)) await this.executeWhileStep(step, steps, scope, extraCtx);
-    else if (isSwitchStep(step)) await this.executeSwitchStep(step, steps, scope, extraCtx);
-    else if (isTryStep(step)) await this.executeTryStep(step, steps, scope, extraCtx);
+    if (isInvokeStep(step))
+      await executeInvokeStep(step, this.ctx, { steps, scope, cel: extraCtx, invokeCtx });
+    else if (isIfStep(step)) await this.executeIfStep(step, steps, scope, extraCtx, invokeCtx);
+    else if (isWhileStep(step)) await this.executeWhileStep(step, steps, scope, extraCtx, invokeCtx);
+    else if (isSwitchStep(step))
+      await this.executeSwitchStep(step, steps, scope, extraCtx, invokeCtx);
+    else if (isTryStep(step)) await this.executeTryStep(step, steps, scope, extraCtx, invokeCtx);
     else if (isThrowStep(step)) this.executeThrowStep(step, steps, extraCtx);
     else if (isValueStep(step)) this.executeValueStep(step, steps, extraCtx);
     else throw new Error(`Step "${(step as Step).name}" has no recognized type key`);
@@ -187,23 +192,24 @@ export class StepEngine {
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
   ): Promise<void> {
     if (this.ctx.expandValue(step.if, { steps, ...extraCtx })) {
-      await this.executeSteps(step.then, steps, scope, extraCtx);
+      await this.executeSteps(step.then, steps, scope, extraCtx, invokeCtx);
       return;
     }
 
     if (step.elseif) {
       for (const branch of step.elseif) {
         if (this.ctx.expandValue(branch.if, { steps, ...extraCtx })) {
-          await this.executeSteps(branch.then, steps, scope, extraCtx);
+          await this.executeSteps(branch.then, steps, scope, extraCtx, invokeCtx);
           return;
         }
       }
     }
 
     if (step.else) {
-      await this.executeSteps(step.else, steps, scope, extraCtx);
+      await this.executeSteps(step.else, steps, scope, extraCtx, invokeCtx);
     }
   }
 
@@ -212,9 +218,10 @@ export class StepEngine {
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
   ): Promise<void> {
     while (this.ctx.expandValue(step.while, { steps, ...extraCtx })) {
-      await this.executeSteps(step.do, steps, scope, extraCtx);
+      await this.executeSteps(step.do, steps, scope, extraCtx, invokeCtx);
     }
   }
 
@@ -223,12 +230,13 @@ export class StepEngine {
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
   ): Promise<void> {
     const key = String(this.ctx.expandValue(step.switch, { steps, ...extraCtx }));
     if (Object.prototype.hasOwnProperty.call(step.cases, key)) {
-      await this.executeSteps(step.cases[key], steps, scope, extraCtx);
+      await this.executeSteps(step.cases[key], steps, scope, extraCtx, invokeCtx);
     } else if (step.default) {
-      await this.executeSteps(step.default, steps, scope, extraCtx);
+      await this.executeSteps(step.default, steps, scope, extraCtx, invokeCtx);
     } else {
       throw new Error(`Switch step "${step.name}": no matching case for "${key}" and no default`);
     }
@@ -288,6 +296,7 @@ export class StepEngine {
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
   ): Promise<void> {
     if (step.when !== undefined && !this.ctx.expandValue(step.when, { steps, ...extraCtx })) return;
 
@@ -295,7 +304,7 @@ export class StepEngine {
     let tryError: unknown;
 
     try {
-      await this.executeSteps(step.try, steps, scope, extraCtx);
+      await this.executeSteps(step.try, steps, scope, extraCtx, invokeCtx);
     } catch (err) {
       tryFailed = true;
       tryError = err;
@@ -305,30 +314,30 @@ export class StepEngine {
       if (step.catch) {
         const seqErr = toSequenceError(tryError, step.name);
         try {
-          await this.executeSteps(step.catch, steps, scope, { ...extraCtx, error: seqErr });
+          await this.executeSteps(step.catch, steps, scope, { ...extraCtx, error: seqErr }, invokeCtx);
         } catch (catchErr) {
           if (step.finally) {
             await this.executeSteps(step.finally, steps, scope, {
               ...extraCtx,
               error: toSequenceError(catchErr, step.name),
-            });
+            }, invokeCtx);
           }
           throw catchErr;
         }
         if (step.finally) {
-          await this.executeSteps(step.finally, steps, scope, { ...extraCtx, error: null });
+          await this.executeSteps(step.finally, steps, scope, { ...extraCtx, error: null }, invokeCtx);
         }
       } else {
         if (step.finally) {
           await this.executeSteps(step.finally, steps, scope, {
             ...extraCtx,
             error: toSequenceError(tryError, step.name),
-          });
+          }, invokeCtx);
         }
         throw tryError;
       }
     } else if (step.finally) {
-      await this.executeSteps(step.finally, steps, scope, { ...extraCtx, error: null });
+      await this.executeSteps(step.finally, steps, scope, { ...extraCtx, error: null }, invokeCtx);
     }
   }
 }

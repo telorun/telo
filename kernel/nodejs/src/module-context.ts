@@ -1,4 +1,10 @@
-import { deriveContext, executeInvokeStep, getRefIdentity, RuntimeError } from "@telorun/sdk";
+import {
+  deriveContext,
+  executeInvokeStep,
+  getRefIdentity,
+  type InlineInvokeTarget,
+  RuntimeError,
+} from "@telorun/sdk";
 import type { ScopeConfig } from "./logging/scope-config.js";
 import type {
   BootTarget,
@@ -647,16 +653,22 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       // step — only a structural `{ invoke: <ref>, inputs }` spec (no `run`)
       // belongs here; the live instance falls through to the runnable branch.
       if (!isRunnableInstance(target) && "invoke" in target && target.invoke !== undefined) {
+        // SPREAD, not field-by-field. A dispatch site is one kernel-owned shape,
+        // and rebuilding it here by hand is what silently dropped `retry:` —
+        // the schema admitted the field and this reconstruction threw it away, so
+        // a boot target asking for three attempts got one. Forwarding the entry
+        // keeps this correct the next time the shape grows.
+        // A cross-module `!ref Alias.name` stays a `{kind, name, alias}` ref; the leaf's
+        // alias branch resolves it via `resolveImportedInstance` and dispatches through
+        // `invokeResolved` so invocation events and error wrapping still fire.
         const step: InvokeStep = {
+          ...(target as InlineInvokeTarget),
           name: target.name ?? `Target${i}`,
-          when: target.when,
-          // A cross-module `!ref Alias.name` stays a `{kind, name, alias}` ref; the leaf's
-          // alias branch resolves it via `resolveImportedInstance` and dispatches through
-          // `invokeResolved` so invocation events and error wrapping still fire.
           invoke: target.invoke,
-          inputs: target.inputs,
         };
-        await executeInvokeStep(step, stepCtx, { steps });
+        // The boot cancellation, so a target parked in a retry backoff ends on
+        // SIGINT rather than sitting out the remaining delay.
+        await executeInvokeStep(step, stepCtx, { steps, invokeCtx: ctx });
         continue;
       }
       if ("ref" in target && target.ref != null) {

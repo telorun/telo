@@ -1,0 +1,25 @@
+# A live value with NO re-attempt anywhere — the ordinary streaming pipeline, and
+# the false positive the check must not produce.
+kind: Telo.Application
+metadata:
+  name: LiveNoRetry
+  version: 1.0.0
+imports:
+  Run: ../../
+  Stream: ../../../stream
+targets:
+  - !ref Seq
+---
+kind: Run.Sequence
+metadata: { name: Seq }
+steps:
+  - name: Source
+    inputs:
+      items: [a, b]
+    invoke:
+      kind: Stream.Of
+  - name: Drain
+    inputs:
+      input: !cel "steps.Source.result.output"
+    invoke:
+      kind: Stream.Collect

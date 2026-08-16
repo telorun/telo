@@ -1,4 +1,4 @@
-import { InvokeError, type ResourceContext } from "@telorun/sdk";
+import { InvokeError, type InvokeContext, type ResourceContext } from "@telorun/sdk";
 import {
   type CatchEntry,
   forEachConcurrent,
@@ -39,15 +39,36 @@ class RunIteration {
     this.engine.resolveInvokes(this.resource.steps);
   }
 
-  async run(): Promise<void> {
-    await this.execute({});
+  /**
+   * A boot `targets:` run. The context is the kernel's boot cancellation, which
+   * the CLI's SIGINT handler trips — so forwarding it is what lets Ctrl-C end a
+   * run parked in a retry backoff, rather than only refusing the next dispatch.
+   */
+  async run(invokeCtx?: InvokeContext): Promise<void> {
+    await this.execute({}, invokeCtx);
   }
 
-  async invoke(inputs: Record<string, unknown>): Promise<unknown> {
-    return this.execute(inputs ?? {});
+  /**
+   * The invocation this run belongs to, forwarded to the step leaf.
+   *
+   * The bound entry point hands every argument through, and dropping this one
+   * left the retry backoff with no cancellation token: every other point in a
+   * sequence is already a cancellation point, because the kernel refuses a
+   * dispatch reached after the tree was cancelled, but a wait between two
+   * attempts is time spent inside the leaf where that gate cannot see it. `run()`
+   * takes none by design — it is a lifecycle start that roots its own trace.
+   */
+  async invoke(
+    inputs: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
+  ): Promise<unknown> {
+    return this.execute(inputs ?? {}, invokeCtx);
   }
 
-  private async execute(inputs: Record<string, unknown>): Promise<unknown> {
+  private async execute(
+    inputs: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
+  ): Promise<unknown> {
     return withCatches(
       this.ctx,
       this.resource.catches,
@@ -79,7 +100,7 @@ class RunIteration {
             item,
             index: BigInt(index),
             ...(items === undefined ? {} : { items }),
-          });
+          }, invokeCtx);
         };
 
         if (Array.isArray(collection)) {

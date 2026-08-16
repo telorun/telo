@@ -43,43 +43,13 @@ schema:
           description: Unique step name.
           type: string
       oneOf:
+        # THE dispatch site — kernel-owned, shared with an Application's
+        # `targets:` rather than restated per composer. `name` is hoisted to the
+        # enclosing step object above, which is why this branch carries only what
+        # a dispatch itself needs.
         - title: invoke
           description: Invokes an invocable or runnable resource.
-          properties:
-            invoke:
-              title: Invoke
-              description: Resource to invoke for this step.
-              x-telo-topology-role: invoke
-              # A reference is always an object (a `!ref` sentinel or its resolved
-              # `{kind, name}`); requiring an object rejects a bare-string ref —
-              # which `validateReferenceForms` cannot catch at this nested slot —
-              # at `telo check` instead of as an obscure runtime failure.
-              type: object
-              x-telo-ref:
-                kind: Telo.Executable
-                use: call
-                inputs: /inputs
-            inputs:
-              title: Inputs
-              description: Inputs passed to the invoked resource.
-              x-telo-topology-role: inputs
-              type: object
-              additionalProperties: true
-            retry:
-              title: Retry
-              description: Retry policy for step invocation.
-              type: object
-              properties:
-                attempts:
-                  title: Attempts
-                  description: Maximum retry attempts.
-                  type: integer
-                delay:
-                  title: Delay
-                  description: Delay between retries.
-                  type: string
-          required:
-            - invoke
+          $ref: "telo://manifest#/$defs/InvokeStep"
 
         - title: if/then/else
           description: Conditional branch; executes then or else based on a boolean expression.
@@ -633,39 +603,13 @@ schema:
           description: Unique step name.
           type: string
       oneOf:
+        # THE dispatch site — kernel-owned, shared with an Application's
+        # `targets:` rather than restated per composer. `name` is hoisted to the
+        # enclosing step object above, which is why this branch carries only what
+        # a dispatch itself needs.
         - title: invoke
           description: Invokes an invocable or runnable resource.
-          properties:
-            invoke:
-              title: Invoke
-              description: Resource to invoke for this step.
-              x-telo-topology-role: invoke
-              type: object
-              x-telo-ref:
-                kind: Telo.Executable
-                use: call
-                inputs: /inputs
-            inputs:
-              title: Inputs
-              description: Inputs passed to the invoked resource.
-              x-telo-topology-role: inputs
-              type: object
-              additionalProperties: true
-            retry:
-              title: Retry
-              description: Retry policy for step invocation.
-              type: object
-              properties:
-                attempts:
-                  title: Attempts
-                  description: Maximum retry attempts.
-                  type: integer
-                delay:
-                  title: Delay
-                  description: Delay between retries.
-                  type: string
-          required:
-            - invoke
+          $ref: "telo://manifest#/$defs/InvokeStep"
         - title: if/then/else
           description: Conditional branch; executes then or else based on a boolean expression.
           properties:
@@ -961,39 +905,13 @@ schema:
           description: Unique step name.
           type: string
       oneOf:
+        # THE dispatch site — kernel-owned, shared with an Application's
+        # `targets:` rather than restated per composer. `name` is hoisted to the
+        # enclosing step object above, which is why this branch carries only what
+        # a dispatch itself needs.
         - title: invoke
           description: Invokes an invocable or runnable resource.
-          properties:
-            invoke:
-              title: Invoke
-              description: Resource to invoke for this step.
-              x-telo-topology-role: invoke
-              type: object
-              x-telo-ref:
-                kind: Telo.Executable
-                use: call
-                inputs: /inputs
-            inputs:
-              title: Inputs
-              description: Inputs passed to the invoked resource.
-              x-telo-topology-role: inputs
-              type: object
-              additionalProperties: true
-            retry:
-              title: Retry
-              description: Retry policy for step invocation.
-              type: object
-              properties:
-                attempts:
-                  title: Attempts
-                  description: Maximum retry attempts.
-                  type: integer
-                delay:
-                  title: Delay
-                  description: Delay between retries.
-                  type: string
-          required:
-            - invoke
+          $ref: "telo://manifest#/$defs/InvokeStep"
         - title: if/then/else
           description: Conditional branch; executes then or else based on a boolean expression.
           properties:
@@ -1296,39 +1214,13 @@ schema:
           description: Unique step name.
           type: string
       oneOf:
+        # THE dispatch site — kernel-owned, shared with an Application's
+        # `targets:` rather than restated per composer. `name` is hoisted to the
+        # enclosing step object above, which is why this branch carries only what
+        # a dispatch itself needs.
         - title: invoke
           description: Invokes an invocable or runnable resource.
-          properties:
-            invoke:
-              title: Invoke
-              description: Resource to invoke for this step.
-              x-telo-topology-role: invoke
-              type: object
-              x-telo-ref:
-                kind: Telo.Executable
-                use: call
-                inputs: /inputs
-            inputs:
-              title: Inputs
-              description: Inputs passed to the invoked resource.
-              x-telo-topology-role: inputs
-              type: object
-              additionalProperties: true
-            retry:
-              title: Retry
-              description: Retry policy for step invocation.
-              type: object
-              properties:
-                attempts:
-                  title: Attempts
-                  description: Maximum retry attempts.
-                  type: integer
-                delay:
-                  title: Delay
-                  description: Delay between retries.
-                  type: string
-          required:
-            - invoke
+          $ref: "telo://manifest#/$defs/InvokeStep"
         - title: if/then/else
           description: Conditional branch; executes then or else based on a boolean expression.
           properties:

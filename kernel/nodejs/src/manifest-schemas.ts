@@ -5,15 +5,19 @@ import addFormats from "ajv-formats";
 import { OBSERVED_STATE_SCHEMA, registerTeloKeywords } from "@telorun/analyzer";
 const Ajv = AjvModule.default ?? AjvModule;
 
-// Re-export the shared ResourceRef fragment from the templating package
-// so consumers that pull it from the kernel manifest-schemas surface keep
-// working. The canonical home is `@telorun/templating` because the
-// fragment describes the parsed shape of the `!ref` tag's TaggedSentinel.
+// Re-export the shared manifest fragments so consumers reaching them through the
+// kernel's surface keep working. The canonical home is `@telorun/analyzer`: they
+// describe manifest STRUCTURE, and the editor validates in a browser through the
+// analyzer, which must not depend on this package — a fragment here would exist
+// only at runtime, invisible to `telo check` and to the editor.
 export {
+  InvokeStepSchema,
   MANIFEST_SCHEMA_URI,
   ManifestRootSchema,
+  manifestFragmentRef,
   ResourceRefSchema,
-} from "@telorun/templating";
+  RetryPolicySchema,
+} from "@telorun/analyzer";
 
 const metadataSchema = {
   type: "object",

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
-import { registerTeloKeywords } from "@telorun/analyzer";
+import { ManifestRootSchema, registerTeloKeywords } from "@telorun/analyzer";
 import { X_TELO_TYPE } from "@telorun/sdk";
 import { mergeFilledDefaults, withBigIntsAsNumbers } from "./bigint-schema-view.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
@@ -25,7 +25,6 @@ function describeValue(data: unknown): string {
 import {
   EXACT_TEMPLATE_REGEX,
   isTaggedSentinel,
-  ManifestRootSchema,
 } from "@telorun/templating";
 
 const Ajv = AjvModule.default ?? AjvModule;

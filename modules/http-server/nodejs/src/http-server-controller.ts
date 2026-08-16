@@ -261,8 +261,36 @@ class HttpServer implements ResourceInstance {
     });
   }
 
+  /**
+   * Accept a multipart body out of the box.
+   *
+   * Fastify ships parsers for JSON and urlencoded and nothing else, so a route
+   * receiving a file upload answered 415 before any handler ran — a failure that
+   * names a media type the author DID send and points at no fix. Every server
+   * taking an upload had to discover `contentTypeParsers` first.
+   *
+   * Registered as RAW BYTES rather than a string, because that is what a
+   * multipart body is: decoding it as text corrupts every binary part, and the
+   * parts are the point. The handler receives the undrained request stream, which
+   * `Multipart.Decoder` consumes.
+   *
+   * Registered UNCONDITIONALLY, as a regex. Fastify keys a duplicate on the exact
+   * string (or the regex's `toString()`) and consults its string parsers before
+   * its regex ones, so a declared `multipart/form-data` neither collides with this
+   * nor is shadowed by it — it simply wins for its own type. Skipping the default
+   * whenever any multipart parser was declared would instead disable it for the
+   * SIBLING subtypes the author did not customize, so declaring a parser for
+   * `form-data` would silently restore the 415 for `related` and `mixed`.
+   */
+  private installDefaultMultipartParser(): void {
+    this.app.addContentTypeParser(/^multipart\//, (_req, payload, done) => {
+      done(null, payload);
+    });
+  }
+
   private async setupPlugins() {
     this.installRequestLogging();
+    this.installDefaultMultipartParser();
     for (const { contentType, parser, stream } of this.resource.contentTypeParsers ?? []) {
       if (stream) {
         // Raw passthrough: omit `parseAs` so Fastify hands the handler the

@@ -51,6 +51,7 @@ import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
 import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
 import { runZoneAnalysis, type ZoneExportCache } from "./resolve-zone-requirements.js";
+import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
 import { validateZoneSlotDeclarations, type ZoneSlotIssue } from "./validate-zone-slots.js";
 import {
   validateDynamicSelectors,
@@ -316,23 +317,50 @@ export function resolveLocalRef(
     const resolved = root.$defs?.[defName];
     if (resolved && typeof resolved === "object") return resolved as Record<string, any>;
   }
+  // A kernel-owned structural fragment (`telo://manifest#/$defs/InvokeStep`).
+  // Resolved HERE rather than by each walker: this is the one chokepoint every
+  // structural walk already goes through — the step-array walks, the call graph,
+  // the zone projection, the eval-path collector — so a composer that points at a
+  // shared shape stays legible to all of them at once. Nothing is inlined into
+  // the stored schema, which keeps validator-cache identity stable and matches
+  // what `resolveSchemaTypeRefs` does for a named user type.
+  if (typeof ref === "string" && ref.startsWith(BUILTIN_FRAGMENT_PREFIX)) {
+    const defName = ref.slice(BUILTIN_FRAGMENT_PREFIX.length);
+    const resolved = (ManifestRootSchema.$defs as Record<string, unknown>)[defName];
+    if (resolved && typeof resolved === "object") return resolved as Record<string, any>;
+  }
   return schema;
 }
 
+const BUILTIN_FRAGMENT_PREFIX = `${MANIFEST_SCHEMA_URI}#/$defs/`;
+
 /** Gather property schemas from a (possibly variant-bearing) object schema:
- *  top-level `properties` plus every `oneOf` / `anyOf` / `allOf` branch. */
-export function gatherPropertySchemas(schema: Record<string, any>): Array<[string, Record<string, any>]> {
+ *  top-level `properties` plus every `oneOf` / `anyOf` / `allOf` branch.
+ *
+ *  Each branch is resolved through {@link resolveLocalRef} first, so a branch
+ *  that points at a shared shape — a `oneOf` arm that IS the kernel's dispatch
+ *  site — contributes its properties like an inline one. Without that, pointing a
+ *  composer at a shared shape would silently empty every role-driven lookup that
+ *  reads this (the inputs slot, the retry policy, the eval paths), which is a
+ *  failure with no diagnostic attached to it. */
+export function gatherPropertySchemas(
+  schema: Record<string, any>,
+  root?: Record<string, any>,
+): Array<[string, Record<string, any>]> {
   const out: Array<[string, Record<string, any>]> = [];
-  if (schema.properties && typeof schema.properties === "object") {
-    for (const [k, v] of Object.entries(schema.properties as Record<string, any>)) {
+  const base = resolveLocalRef(schema, root ?? schema) ?? schema;
+  if (base.properties && typeof base.properties === "object") {
+    for (const [k, v] of Object.entries(base.properties as Record<string, any>)) {
       out.push([k, v as Record<string, any>]);
     }
   }
   for (const variantKey of ["oneOf", "anyOf", "allOf"] as const) {
-    const arr = schema[variantKey];
+    const arr = base[variantKey];
     if (!Array.isArray(arr)) continue;
-    for (const variant of arr) {
-      if (variant && typeof variant === "object" && variant.properties) {
+    for (const raw of arr) {
+      if (!raw || typeof raw !== "object") continue;
+      const variant = resolveLocalRef(raw as Record<string, any>, root ?? schema) ?? raw;
+      if (variant.properties) {
         for (const [k, v] of Object.entries(variant.properties as Record<string, any>)) {
           out.push([k, v as Record<string, any>]);
         }
@@ -2012,9 +2040,12 @@ export class StaticAnalyzer {
                 severity: DiagnosticSeverity.Error,
                 code: issue.code ?? "CONTRACT_INPUTS_MISMATCH",
                 source: SOURCE,
-                message: issue.code
-                  ? `${m.kind}/${stepName}: inputs at '${issue.path}' flow into ${issue.targetLabel} with disagreeing type arguments: ${issue.message}`
-                  : `${m.kind}/${stepName}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
+                message:
+                  issue.code === "LIVE_VALUE_RETRIED"
+                    ? `${m.kind}/${stepName}: at '${issue.path}', ${issue.message}`
+                    : issue.code
+                      ? `${m.kind}/${stepName}: inputs at '${issue.path}' flow into ${issue.targetLabel} with disagreeing type arguments: ${issue.message}`
+                      : `${m.kind}/${stepName}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
                 data: {
                   resource: { kind: m.kind, name: stepName ?? "" },
                   filePath: stepFile,

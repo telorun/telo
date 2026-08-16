@@ -7,6 +7,7 @@ import type { LoadedFile, ParseError } from "./loaded-types.js";
 import { migrateManifests, NO_MIGRATIONS } from "./migrations/driver.js";
 import type { MigrationEntry } from "./migrations/types.js";
 import { buildDocumentPositions } from "./position-metadata.js";
+import { expandManifestFragments } from "./manifest-schemas.js";
 import { precompileDoc } from "./precompile.js";
 import { documentToAst } from "./yaml-ast.js";
 
@@ -88,6 +89,21 @@ export function parseLoadedFile(
   const migrations = options?.migrate
     ? migrateManifests({ source, manifests, entries: options.migrations })
     : NO_MIGRATIONS;
+
+  // Shared structural fragments (`telo://manifest#/$defs/InvokeStep`) are
+  // expanded for EVERY consumer, deliberately ungated.
+  //
+  // They are not authoring sugar the way `imports:` or a `!ref` tag is — they are
+  // the analyzer's own closed set, and nothing downstream is equipped to meet one
+  // unresolved: the editor's schema resolver handles document-local `#/` refs
+  // only and THROWS on anything else, so a gated expansion took every canvas that
+  // renders a `Run` step down. Round-tripping is unaffected because a save writes
+  // the YAML documents the editor holds separately (`saveModuleFromDocuments`),
+  // never a manifest object — so unlike `migrate`, no expansion here can reach an
+  // author's file.
+  for (const manifest of manifests) {
+    if (manifest) expandManifestFragments(manifest);
+  }
 
   let env: Environment | undefined;
   if (options?.compile) {
