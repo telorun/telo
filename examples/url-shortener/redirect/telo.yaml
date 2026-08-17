@@ -13,13 +13,13 @@ variables:
     type: string
     description: Path to the shared SQLite database file.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.25.0#sha256-k1n8gCdP8LEwtp1xcm_DcxGk85YLbb2RrPCl6B30TUQ
-  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.10.0#sha256-kLSJ6yaEYzV4ji9hxmWGURIPx1--l7_TOJCavrXdZys
-  Sql: oci://ghcr.io/telorun/sql@0.21.0#sha256-aasWNQP3KaWbJaFZVg_Zzp0efD4k7rc0FaImt6aHE-k
-  Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
-  Cache: oci://ghcr.io/telorun/cache@0.12.0#sha256-ouwFQBfk1k3WQ-KjFSAZIU46K_hBhq9v5Hwx55R0vag
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.8.0#sha256-Vo6BlHCcrdG3JSdDWYv_90wVoYYfErR340o6IdZP6uY
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.1#sha256-XykCGIOp02Le4_l5-XtwThtkehZXT5TqO5-rMM2fAA0
+  Http: oci://ghcr.io/telorun/http-server@0.26.0#sha256-qCiZuU7_9wnxCn2QuA0oKM0H7OyvSd2aFcoXSv3vgFo
+  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.10.3#sha256-EAkSFjd_ULYi_99svU4J6DD4tjBp49zNdeYfB9WeHG0
+  Sql: oci://ghcr.io/telorun/sql@0.21.3#sha256-wPgugWO72ulGwO8Xhu9WUPyUimpO6QS0Owadfrn98hc
+  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
+  Cache: oci://ghcr.io/telorun/cache@0.12.3#sha256-I0qWCtgYcCwQQOvwqQn0s1IOnxVCjkmIWHcVaLDEmcQ
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.8.3#sha256-H6QmUc-FDP_J621CLdXq4ph0qLWIagLvdq4TEOx2vHc
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.4#sha256-_E2AqSEEsTotJXiSmk9GBqlnlwW8JRXNJXZWbx-olxY
   Database:
     source: ../database
     variables:

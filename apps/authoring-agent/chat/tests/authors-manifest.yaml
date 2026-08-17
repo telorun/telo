@@ -43,10 +43,10 @@ imports:
       # installed `telo`, which CI does not have) — so their verdicts always
       # agree. One variable covers the check loop and the `telo` tool alike.
       teloProgram: [bun, ../cli/nodejs/bin/telo.ts]
-  Shell: oci://ghcr.io/telorun/shell@0.11.0#sha256-TDelGXTdnjxJ5Larw-X-_2icTAFWSP3pz5zHe57XW4w
-  Stream: oci://ghcr.io/telorun/stream@0.10.0#sha256-uxEF26JUWuMS8t6NBDNysJvL1SejFe_T8SCnAjRAH3s
-  Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
-  Assert: oci://ghcr.io/telorun/assert@0.17.1#sha256-CH_DycPrpMJWM4-c9mS2sBE_-ymezo3RMmP06nf3Q68
+  Shell: oci://ghcr.io/telorun/shell@0.11.3#sha256-2nHwf4idwCDgFrqLFcwTsNypqLaHJHMmYiO8cWYbmZA
+  Stream: oci://ghcr.io/telorun/stream@0.10.3#sha256-Xnotv4oDInD7fP1keD0Flwhy1X7RUb741fGrvd0A9PQ
+  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
+  Assert: oci://ghcr.io/telorun/assert@0.17.4#sha256-dgMgHGwUzhmSzbxkxjpKMBsLx9IDSNxuNCjY6ReoxH0
 targets:
   - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema

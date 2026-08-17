@@ -9,10 +9,10 @@ metadata:
     the exact module location ref, and `get_module_manifest(ref)` returns the
     tracker-cached telo.yaml for that ref.
 imports:
-  McpClient: oci://ghcr.io/telorun/mcp-client@0.14.0#sha256-vatQhfeqbBpp5aWe95odFMPKtuvlDKCATjVDWnFEfFQ
-  Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
-  Assert: oci://ghcr.io/telorun/assert@0.17.1#sha256-CH_DycPrpMJWM4-c9mS2sBE_-ymezo3RMmP06nf3Q68
-  Yaml: oci://ghcr.io/telorun/yaml@0.10.0#sha256-DlUb4l3RthpHUwWb6fCiHDl-MZaRGwSG4IWU9IA2Gpo
+  McpClient: oci://ghcr.io/telorun/mcp-client@0.14.3#sha256-aKULlBjNPeDoxlWYH3IzgxtLPNrre40dxTHkX-vpYB8
+  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
+  Assert: oci://ghcr.io/telorun/assert@0.17.4#sha256-dgMgHGwUzhmSzbxkxjpKMBsLx9IDSNxuNCjY6ReoxH0
+  Yaml: oci://ghcr.io/telorun/yaml@0.10.3#sha256-xgWF987hJC2tA6q4SP3BUhSzZz2eSbVmVUK4DVOGupk
 targets:
   - !ref SearchResources_ReturnsKindHits
   - !ref SearchResources_CarriesCategoryVocabulary

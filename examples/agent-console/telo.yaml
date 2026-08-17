@@ -16,15 +16,15 @@ metadata:
         OPENAI_API_KEY=sk-...
   version: 1.0.0
 imports:
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.15.0#sha256-31u_XsWGqrzeSoxWwN9D-piVU-iH4RkRf-PibIpmt4A
-  Ai: oci://ghcr.io/telorun/ai@0.16.0#sha256-k0xXRFY_wE-XEVGXsEaoVNugoj4uEnyIMO03NJuUBqU
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.11.0#sha256-X90wiyBHGDJ5RTChi3ee3cWyqX4IRYCGR4cXByhsXl8
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.14.0#sha256-vatQhfeqbBpp5aWe95odFMPKtuvlDKCATjVDWnFEfFQ
-  Http: oci://ghcr.io/telorun/http-client@0.20.0#sha256-6f8bOf4bjaylXRWxzegvz1A4i3IQo50bP2N_rJ5US0c
-  Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
-  Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
-  Sql: oci://ghcr.io/telorun/sql@0.21.0#sha256-aasWNQP3KaWbJaFZVg_Zzp0efD4k7rc0FaImt6aHE-k
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
+  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.15.3#sha256-BblwExnkE-f4Zi2u4MOd48gauYVR6Z1c76ozzIvkGBU
+  Ai: oci://ghcr.io/telorun/ai@0.16.3#sha256-pKOpAuQqUQkTP1sNmJ4t_tRp5JJoeAGb9XmdL2vF7CQ
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.11.3#sha256-LUwA3XAfLdQXhxZVqsNxp5oO1vDVdzUPReQ69tyf9M8
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.14.3#sha256-aKULlBjNPeDoxlWYH3IzgxtLPNrre40dxTHkX-vpYB8
+  Http: oci://ghcr.io/telorun/http-client@0.21.2#sha256-9n-zEKDe8J6T_pfQ0XCcjtUt_dVW5G3APow5BQlmZWE
+  Console: oci://ghcr.io/telorun/console@0.17.3#sha256-KaCBcFJ13vtXO6I-N06kpjRFm85AcemNEbdVN4tgDhQ
+  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
+  Sql: oci://ghcr.io/telorun/sql@0.21.3#sha256-wPgugWO72ulGwO8Xhu9WUPyUimpO6QS0Owadfrn98hc
+  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.3#sha256-AdpaRCphd3vnfMVoyMZGpsUZ7y5xAo4w72i1j8_ZCVg
 targets:
   - !ref initSchema
   - !ref chatLoop
