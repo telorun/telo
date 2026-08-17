@@ -29,11 +29,11 @@ exports:
     - Routes
 ---
 kind: CacheMemory.Store
-metadata: { name: Mem }
+metadata: { name: mem }
 ---
 kind: RateLimit.Guard
-metadata: { name: Limit }
-store: !ref Mem
+metadata: { name: limit }
+store: !ref mem
 limit: 60
 window: "60s"
 ---
@@ -47,7 +47,7 @@ table: links
 # background`), so a redirect never waits on the database.
 kind: Cache.View
 metadata: { name: LinkView }
-store: !ref Mem
+store: !ref mem
 invoke: !ref LookupLink
 ttl: "300s"
 staleTtl: "3600s"
@@ -80,7 +80,7 @@ inputType:
       ip: { type: string }
 steps:
   - name: guard
-    invoke: !ref Limit
+    invoke: !ref limit
     inputs:
       key: !cel "inputs.ip"
   - name: maybeInsert
@@ -99,7 +99,7 @@ outputs:
   code: !cel "inputs.code"
 ---
 kind: Run.Sequence
-metadata: { name: ResolveAndRedirect }
+metadata: { name: resolveAndRedirect }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -109,7 +109,7 @@ inputType:
       ip: { type: string }
 steps:
   - name: guard
-    invoke: !ref Limit
+    invoke: !ref limit
     inputs:
       key: !cel "inputs.ip"
   - name: maybeResolve
@@ -178,7 +178,7 @@ routes:
           required: [code]
           properties:
             code: { type: string }
-    handler: !ref ResolveAndRedirect
+    handler: !ref resolveAndRedirect
     inputs:
       code: !cel "request.params.code"
       ip: !cel "request.ip"

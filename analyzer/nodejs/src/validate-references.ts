@@ -195,32 +195,11 @@ export function validateReferences(
       });
     }
   }
-  // A resource name must contain no dot. The `!ref` resolver splits the tag's source on
-  // the first dot to separate an import alias from the resource name, so a dotted name
-  // would mis-resolve into a cross-module lookup. This is the load-bearing invariant of
-  // the reference grammar, so it is enforced here rather than left to the (unenforced)
-  // casing convention.
-  for (const [name, list] of byNameAll) {
-    if (!name.includes(".")) continue;
-    for (const r of list) {
-      const m = r.metadata as { source?: string; sourceLine?: number } | undefined;
-      const range =
-        typeof m?.sourceLine === "number"
-          ? {
-              start: { line: m.sourceLine, character: 0 },
-              end: { line: m.sourceLine, character: Number.MAX_SAFE_INTEGER },
-            }
-          : undefined;
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        code: "INVALID_RESOURCE_NAME",
-        source: SOURCE,
-        message: `${r.kind}/${name}: resource name must not contain '.' — in a '!ref' the '.' separates an import alias from the resource name`,
-        ...(range ? { range } : {}),
-        data: { resource: { kind: r.kind, name }, filePath: m?.source, path: "metadata.name" },
-      });
-    }
-  }
+  // The dot rule that used to live here is now the strictest special case of
+  // the identifier grammar in `validate-identifier-names.ts` — a dot is one of
+  // several characters that make a name unreferenceable, and checking one of
+  // them here while the rest went unchecked is what let a hyphenated name
+  // through to silently evaluate as arithmetic.
 
   // Single-resource map for the resolution / scope lookups below — when a
   // collision exists, falling back to the first occurrence keeps the rest

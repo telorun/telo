@@ -219,7 +219,7 @@ inputType:
             createdAt: { type: string }
 collection: !cel "inputs.messages"
 steps:
-  - name: Insert
+  - name: insert
     inputs:
       sql: "INSERT OR IGNORE INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)"
       bindings:
@@ -284,7 +284,7 @@ metadata: { name: workspaceDir }
 kind: Run.Sequence
 metadata: { name: ensureWorkspace }
 steps:
-  - name: Create
+  - name: create
     invoke: !ref workspaceDir
     inputs:
       path: ./workspace
@@ -316,18 +316,18 @@ inputType:
     properties:
       path: { type: string }
 steps:
-  - name: Check
+  - name: check
     invoke: !ref runCommand
     inputs:
       args: !cel "variables.teloProgram + ['check', '-o', 'json', inputs.path]"
 outputs:
   path: !cel "inputs.path"
-  checkExitCode: !cel "steps.Check.result.exitCode"
+  checkExitCode: !cel "steps.check.result.exitCode"
   # stdout is the JSON document; stderr is human prose (a loader failure the
   # analyzer could not attribute to a position). Kept apart so the document
   # stays parseable, and both surfaced so no reason is ever swallowed.
-  checkOutput: !cel "steps.Check.result.stdout"
-  checkMessages: !cel "steps.Check.result.stderr"
+  checkOutput: !cel "steps.check.result.stdout"
+  checkMessages: !cel "steps.check.result.stderr"
 ---
 # The general `telo` CLI, exposed as one tool. The agent supplies the argv after
 # the program name; `variables.teloVerbs` decides which subcommands it may name.
@@ -352,10 +352,10 @@ inputType:
         type: array
         items: { type: string }
 steps:
-  - name: Guard
+  - name: guard
     if: !cel "size(inputs.args) == 0 || !(inputs.args[0] in variables.teloVerbs)"
     then:
-      - name: Reject
+      - name: reject
         throw:
           code: ERR_TELO_VERB_NOT_ALLOWED
           message: !cel >-
@@ -363,17 +363,17 @@ steps:
             ' is not available here. Allowed subcommands: ' +
             join(variables.teloVerbs, ', ') +
             '. Note a bare path means `run`, which is not allowed.'
-  - name: Run
+  - name: run
     invoke: !ref runCommand
     inputs:
       args: !cel "variables.teloProgram + inputs.args"
 outputs:
-  exitCode: !cel "steps.Run.result.exitCode"
+  exitCode: !cel "steps.run.result.exitCode"
   # Kept apart for the same reason as the check loop: under `-o json` stdout is
   # a parseable document and stderr is human prose, and concatenating them
   # splices one into the other.
-  output: !cel "steps.Run.result.stdout"
-  messages: !cel "steps.Run.result.stderr"
+  output: !cel "steps.run.result.stdout"
+  messages: !cel "steps.run.result.stderr"
 ---
 # write_file / edit_file are exposed to the agent through these sequences: every
 # mutation is immediately followed by `telo check` on the same file, and the
@@ -389,25 +389,25 @@ inputType:
       path: { type: string }
       content: { type: string }
 steps:
-  - name: Write
+  - name: write
     invoke: !ref writeFile
     inputs:
       path: !cel "inputs.path"
       content: !cel "inputs.content"
       createParents: true
-  - name: Check
+  - name: check
     invoke: !ref runCommand
     inputs:
       args: !cel "variables.teloProgram + ['check', '-o', 'json', inputs.path]"
 outputs:
   path: !cel "inputs.path"
-  bytesWritten: !cel "steps.Write.result.bytesWritten"
-  checkExitCode: !cel "steps.Check.result.exitCode"
+  bytesWritten: !cel "steps.write.result.bytesWritten"
+  checkExitCode: !cel "steps.check.result.exitCode"
   # stdout is the JSON document; stderr is human prose (a loader failure the
   # analyzer could not attribute to a position). Kept apart so the document
   # stays parseable, and both surfaced so no reason is ever swallowed.
-  checkOutput: !cel "steps.Check.result.stdout"
-  checkMessages: !cel "steps.Check.result.stderr"
+  checkOutput: !cel "steps.check.result.stdout"
+  checkMessages: !cel "steps.check.result.stderr"
 ---
 kind: Run.Sequence
 metadata: { name: editFileChecked }
@@ -420,25 +420,25 @@ inputType:
       oldString: { type: string }
       newString: { type: string }
 steps:
-  - name: Edit
+  - name: edit
     invoke: !ref editFile
     inputs:
       path: !cel "inputs.path"
       oldString: !cel "inputs.oldString"
       newString: !cel "inputs.newString"
-  - name: Check
+  - name: check
     invoke: !ref runCommand
     inputs:
       args: !cel "variables.teloProgram + ['check', '-o', 'json', inputs.path]"
 outputs:
   path: !cel "inputs.path"
-  replacements: !cel "steps.Edit.result.replacements"
-  checkExitCode: !cel "steps.Check.result.exitCode"
+  replacements: !cel "steps.edit.result.replacements"
+  checkExitCode: !cel "steps.check.result.exitCode"
   # stdout is the JSON document; stderr is human prose (a loader failure the
   # analyzer could not attribute to a position). Kept apart so the document
   # stays parseable, and both surfaced so no reason is ever swallowed.
-  checkOutput: !cel "steps.Check.result.stdout"
-  checkMessages: !cel "steps.Check.result.stderr"
+  checkOutput: !cel "steps.check.result.stdout"
+  checkMessages: !cel "steps.check.result.stderr"
 ---
 kind: Ai.Tools
 metadata: { name: workspaceTools }
@@ -875,7 +875,7 @@ system: |
   `attempts`, `initialDelay`, `factor`, `maxDelay`, `jitter` and
   `honorRetryAfter`; `Http.Client` supplies defaults for a whole API.
 
-      - name: Fetch
+      - name: fetch
         inputs:
           url: !cel "inputs.url"
         invoke:
@@ -896,7 +896,7 @@ system: |
   generated and must appear in both the framing and the header, so a hand-written
   `multipart/related` produces a body the server finds no parts in.
 
-      - name: Encode
+      - name: encode
         inputs:
           subtype: related
           parts:
@@ -904,15 +904,15 @@ system: |
               content: '{"name":"report.png"}'
             - contentType: image/png
               filename: report.png
-              content: !cel "steps.Render.result.bytes"
+              content: !cel "steps.render.result.bytes"
         invoke:
           kind: Multipart.Encoder
-      - name: Upload
+      - name: upload
         inputs:
           headers:
-            content-type: !cel "steps.Encode.result.contentType"
-          body: !cel "steps.Encode.result.output"
-        invoke: !ref Uploader
+            content-type: !cel "steps.encode.result.contentType"
+          body: !cel "steps.encode.result.output"
+        invoke: !ref uploader
 
   `Multipart.Decoder` is the inbound half; it needs the sender's content type,
   because the boundary lives there rather than in the bytes. `Http.Server` accepts
@@ -941,8 +941,8 @@ system: |
   first when it fits in memory, or chunk it with `Stream.Chunk` so each attempt
   carries its own replayable piece.
 
-      - name: Charge
-        invoke: !ref PaymentApi
+      - name: charge
+        invoke: !ref paymentApi
         inputs:
           amount: !cel "inputs.amount"
         retry: { attempts: 3 }
@@ -965,14 +965,14 @@ system: |
   So generating a picture and saving it is plain two-step wiring, with no base64
   hop and no `JS.Script` in between:
 
-      - name: Generate
+      - name: generate
         inputs: { prompt: A lighthouse in a storm }
-        invoke: !ref Draw
-      - name: Save
+        invoke: !ref draw
+      - name: save
         inputs:
           path: ./poster.png
-          content: !cel "steps.Generate.result.images[0].data"
-        invoke: !ref SaveImage
+          content: !cel "steps.generate.result.images[0].data"
+        invoke: !ref saveImage
 
   ## Authenticating outbound HTTP
 
@@ -980,9 +980,9 @@ system: |
   wrapper" resource around `Http.Request`. Authentication attaches to the CLIENT:
 
     kind: Http.Client
-    metadata: { name: Sheets }
+    metadata: { name: sheets }
     baseUrl: https://sheets.googleapis.com/v4
-    credential: !ref GoogleAuth
+    credential: !ref googleAuth
 
   Every `Http.Request` through that client is then authenticated by construction,
   and there is no unauthenticated inner resource for anything to invoke and bypass
@@ -1234,8 +1234,25 @@ system: |
     when an integer takes part in arithmetic with a double
     (`double(size(x)) / total`, since there is no `int OP double` overload). It
     is never a serialization step; never write it to make a value encodable.
-  - A resource `metadata.name` must contain NO dot — the `!ref` grammar splits
-    on the first dot to separate alias from name.
+  - NAMING IS ENFORCED, and the rule is one sentence: case encodes what a name
+    DENOTES. PascalCase names a TYPE — a module `metadata.name`, a kind
+    (`Telo.Definition` / `Telo.Abstract`) name, an import alias, and a named
+    shape (a resource whose capability is `Telo.Type`, e.g. a
+    `Telo.JsonSchema`). camelCase names a VALUE — a resource instance
+    `metadata.name`, a step `name:`, a `variables:` / `secrets:` / `ports:` key,
+    and a CEL binding. That is what distinguishes `!ref Console.writeLine` (an
+    instance) from `kind: Console.WriteLine` (its kind); the two grammars are
+    otherwise identical. Only the FIRST character is checked, so `httpApi`,
+    `oauth2Client` and an all-acronym type name (`SQL`, `AI`) are all fine.
+    A miscased type name is an ERROR (`INVALID_TYPE_NAME`); a miscased value
+    name is a warning (`NAME_CASE_CONVENTION`) — write camelCase anyway.
+  - EVERY name must be a plain identifier — `^[A-Za-z_][A-Za-z0-9_]*$` and not
+    a CEL keyword (`in`, `for`, `true`, `package`, …) — or it is a hard
+    `INVALID_NAME`. Never a hyphen: a name becomes a CEL identifier, and CEL
+    reads `-` as subtraction, so `resources.my-server.url` parses as
+    `resources.my` MINUS `server.url` and can evaluate to a wrong number with no
+    error at all. Never a dot either: the `!ref` grammar splits on the first one
+    to separate alias from name.
   - Write object / array fields as real YAML maps / lists, never JSON strings;
     tag only the dynamic leaves with `!cel`, never a whole inline collection.
 
@@ -1247,7 +1264,7 @@ system: |
 
   ```yaml
   kind: Run.Sequence
-  metadata: { name: Greet }
+  metadata: { name: greet }
   inputType:                      # the CONTRACT — a schema
     kind: Telo.JsonSchema         # a kernel built-in; needs no import
     schema:
@@ -1256,9 +1273,9 @@ system: |
       properties:
         name: { type: string }
   steps:
-    - name: Say
-      invoke: !ref WriteLine
-      inputs:                     # VALUES sent to WriteLine
+    - name: say
+      invoke: !ref writeLine
+      inputs:                     # VALUES sent to writeLine
         output: !cel "'Hello ' + inputs.name"
   ```
 
@@ -1513,7 +1530,7 @@ system: |
         Run: oci://ghcr.io/telorun/run@<version>
         Assert: oci://ghcr.io/telorun/assert@<version>
       targets:
-        - !ref TestPlaceOrder
+        - !ref testPlaceOrder
 
   The load-bearing line is `Ordering: ../` — a test sits one directory below
   the module it exercises, so it imports it by RELATIVE PATH and gets exactly
@@ -1529,15 +1546,15 @@ system: |
   expected value:
 
       kind: Run.Sequence
-      metadata: { name: TestPlaceOrder }
+      metadata: { name: testPlaceOrder }
       steps:
-        - name: Place
+        - name: place
           invoke: !ref Ordering.placeOrder
           inputs: { sku: ABC, quantity: 2 }
-        - name: Assert
+        - name: assert
           invoke: { kind: Assert.Equals }
           inputs:
-            actual: !cel "steps.Place.result"
+            actual: !cel "steps.place.result"
             expected: { orderId: "1", total: 20 }
 
   Write one file per behaviour under test and name it after that behaviour.
@@ -1624,7 +1641,7 @@ inputType:
       records: {}
       context: {}
 steps:
-  - name: Insert
+  - name: insert
     inputs:
       sql: "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'assistant', ?)"
       bindings:
@@ -1637,7 +1654,7 @@ steps:
   # Settle the reservation to the turn's actual token usage (from the finish
   # record), refunding the unused remainder. Fires on normal completion; an
   # errored turn keeps its worst-case reservation.
-  - name: Settle
+  - name: settle
     invoke: !ref budget
     inputs:
       op: settle
@@ -1662,25 +1679,25 @@ inputType:
       clientIp: { type: string }
 steps:
   # Per-IP throttle first — a rate-limited client doesn't touch the budget.
-  - name: Guard
+  - name: guard
     invoke: !ref ipGuard
     inputs:
       key: !cel "inputs.clientIp"
-  - name: Gate
-    if: !cel "steps.Guard.result.allowed"
+  - name: gate
+    if: !cel "steps.guard.result.allowed"
     then:
       # Reserve worst-case spend up front. A denied reserve refunds itself, so an
       # over-ceiling request is a clean 429 with no turn started.
-      - name: Reserve
+      - name: reserve
         invoke: !ref budget
         inputs:
           op: reserve
           key: "global"
           amount: !cel "variables.reservePerTurn"
-      - name: Admit
-        if: !cel "steps.Reserve.result.allowed"
+      - name: admit
+        if: !cel "steps.reserve.result.allowed"
         then:
-          - name: InsertUser
+          - name: insertUser
             inputs:
               sql: "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', ?) RETURNING id"
               bindings:
@@ -1690,34 +1707,34 @@ steps:
             invoke:
               kind: Sql.Query
               connection: !ref chatDb
-          - name: StartTurn
+          - name: startTurn
             invoke: !ref turnLock
             inputs:
               key: !cel "inputs.conversationId"
-              holder: !cel "string(steps.InsertUser.result.rows[0].id)"
+              holder: !cel "string(steps.insertUser.result.rows[0].id)"
               inputs:
                 conversationId: !cel "inputs.conversationId"
-                turnId: !cel "string(steps.InsertUser.result.rows[0].id)"
-                reserved: !cel "steps.Reserve.result.reserved"
+                turnId: !cel "string(steps.insertUser.result.rows[0].id)"
+                reserved: !cel "steps.reserve.result.reserved"
           # Overlapping turn (409) — refund the reservation since no turn runs.
-          - name: MaybeRefund
-            if: !cel "!steps.StartTurn.result.acquired"
+          - name: maybeRefund
+            if: !cel "!steps.startTurn.result.acquired"
             then:
-              - name: Refund
+              - name: refund
                 invoke: !ref budget
                 inputs:
                   op: settle
                   key: "global"
                   amount: 0
-                  reserved: !cel "steps.Reserve.result.reserved"
+                  reserved: !cel "steps.reserve.result.reserved"
 outputs:
   # allowed=false → 429 (per-IP throttle OR spend ceiling); allowed && !acquired
   # → 409 (turn in flight, holder is its turnId); allowed && acquired → 200.
-  allowed: !cel "steps.Guard.result.allowed && steps.Reserve.result.allowed"
-  retryAfter: !cel "steps.Guard.result.allowed ? steps.Reserve.result.retryAfter : steps.Guard.result.retryAfter"
-  acquired: !cel "steps.Guard.result.allowed && steps.Reserve.result.allowed && steps.StartTurn.result.acquired"
-  turnId: !cel "(steps.Guard.result.allowed && steps.Reserve.result.allowed) ? string(steps.InsertUser.result.rows[0].id) : ''"
-  activeTurnId: !cel "(steps.Guard.result.allowed && steps.Reserve.result.allowed) ? steps.StartTurn.result.holder : ''"
+  allowed: !cel "steps.guard.result.allowed && steps.reserve.result.allowed"
+  retryAfter: !cel "steps.guard.result.allowed ? steps.reserve.result.retryAfter : steps.guard.result.retryAfter"
+  acquired: !cel "steps.guard.result.allowed && steps.reserve.result.allowed && steps.startTurn.result.acquired"
+  turnId: !cel "(steps.guard.result.allowed && steps.reserve.result.allowed) ? string(steps.insertUser.result.rows[0].id) : ''"
+  activeTurnId: !cel "(steps.guard.result.allowed && steps.reserve.result.allowed) ? steps.startTurn.result.holder : ''"
 ---
 # The detached turn body: replay history, stream the agent, persist the assistant
 # turn at end-of-stream (Tap), and journal every record under the turnId (Sink)
@@ -1734,7 +1751,7 @@ inputType:
       turnId: { type: string }
       reserved: { type: integer }
 steps:
-  - name: ReadHistory
+  - name: readHistory
     inputs:
       sql: "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id ASC"
       bindings:
@@ -1742,19 +1759,19 @@ steps:
     invoke:
       kind: Sql.Query
       connection: !ref chatDb
-  - name: Ask
+  - name: ask
     invoke: !ref author
     inputs:
-      messages: !cel "steps.ReadHistory.result.rows"
-  - name: Tap
+      messages: !cel "steps.readHistory.result.rows"
+  - name: tap
     invoke: !ref persist
     inputs:
-      input: !cel "steps.Ask.result.output"
+      input: !cel "steps.ask.result.output"
       context:
         conversationId: !cel "inputs.conversationId"
         reserved: !cel "inputs.reserved"
-  - name: Sink
+  - name: sink
     invoke: !ref journalSink
     inputs:
       key: !cel "inputs.turnId"
-      input: !cel "steps.Tap.result.output"
+      input: !cel "steps.tap.result.output"

@@ -38,11 +38,11 @@ ports:
     env: PORT
     default: 8080
 targets:
-  - !ref SetupDb
-  - !ref Server
+  - !ref setupDb
+  - !ref server
 ---
 kind: Sql.Migrations
-metadata: { name: SetupDb }
+metadata: { name: setupDb }
 connection: !ref Database.connection
 migrations:
   20260618_init:
@@ -51,7 +51,7 @@ migrations:
       - "CREATE TABLE IF NOT EXISTS clicks (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, ip TEXT, clicked_at TEXT DEFAULT CURRENT_TIMESTAMP)"
 ---
 kind: Http.Server
-metadata: { name: Server }
+metadata: { name: server }
 port: !cel "ports.http"
 trustProxy: true
 openapi:

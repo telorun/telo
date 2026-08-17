@@ -4,4 +4,5 @@ export * from "./diagnostics/index.js";
 export * from "./hover/index.js";
 export * from "./semantic-tokens/index.js";
 export * from "./definition/index.js";
+export * from "./rename/index.js";
 export * from "./import-upgrades/index.js";

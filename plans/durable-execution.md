@@ -289,14 +289,21 @@ runtime reads the entry through. **A decision is serialized under the same rule*
 is a CEL value, so a decision carrying something unserializable (a live `Stream`, an
 instance) is the same defect as an unjournalable result and is reported the same way.
 
-**Target identity is normative too, and without it `step()` would be theatre.** A step's
-target arrives at the engine as a *live instance* — Phase-5 injection has already
-replaced the `!ref` sentinel — and instance identity is process-local by construction
-(`ResourceHandle.ref` is declaration-site *diagnostics*, and the spec forbids a reverse
-handle→instance mapping). A backend asked to execute a step elsewhere therefore has
-nothing to resolve, which would make the remote half of the seam unreachable and reduce
-`step(path, target, inputs)` to lookup-plus-record under a longer name. So the spec
-pins a **serializable target identity**, derivable identically by the analyzer and at
+**Target identity is what keeps `step()` from being theatre — the seam fixes its shape,
+the spec pins its encoding later.** A step's target arrives at the engine as a *live
+instance* — Phase-5 injection has already replaced the `!ref` sentinel — and instance
+identity is process-local by construction (`ResourceHandle.ref` is declaration-site
+*diagnostics*, and the spec forbids a reverse handle→instance mapping). A backend asked
+to execute a step elsewhere therefore has nothing to resolve, which would make the
+remote half of the seam unreachable and reduce `step(path, target, inputs)` to
+lookup-plus-record under a longer name.
+
+So `step` takes a **declaration-site identity** rather than the live instance alone, and
+*that* is the part nothing may move later — it lands with the seam. The **encoding** is
+written in the slice that first sends one across a process boundary, because this plan's
+own sequencing rule is that a normative format is written where something exercises it,
+and a local backend resolves the identity in-process without ever serializing it. The
+shape it will take is known, and is derivable identically by the analyzer and at
 runtime:
 
 - a module-level resource — `(module ref, resource name)`; names are dot-free by the
@@ -309,6 +316,12 @@ runtime:
 - an **inline-declared** target — `(module ref, declaring resource name, JSON pointer
   to the declaration)`. Anonymous in the manifest, not anonymous in the graph: the call
   graph already gives an inline declaration its own node.
+
+Sketched here so the seam's target parameter is designed against a real encoding rather
+than an open question — but it is a sketch until the slice that ships remote execution
+writes it into `kernel/specs/durable-execution.md`. Freezing three encodings normatively
+in the slice that cannot exercise any of them is the failure the sequencing rule exists
+to prevent.
 
 **Locality is decided by zones, not by a list of exceptions.** A step whose dispatch
 sits inside any open zone *other than the durable zone itself* MUST execute locally —
@@ -477,24 +490,24 @@ is lost on either side. That is what Temporal's child workflows and Restate's on
 `send` already are. The check keys off the dispatch being detached rather than off
 `Run.Detach` as a kind, so it also covers `Lease.Critical`'s `detach: true`.
 
-**Retry moves into the step engine, and grows to engine parity.** `retry:` on an
-invoke step is currently a no-op: `executeInvokeStep` passes it as a fourth argument
-that `ResourceContext.invoke`'s three-parameter signature silently drops, and nothing
-in the kernel reads it. The engine takes the attempt loop, so the chokepoint grows no
-policy, each attempt gets its own span, and a long retry delay can suspend instead of
-holding the process.
+**Retry already lives in the step engine; what it lacks is engine parity.** The attempt
+loop has landed in the SDK's step leaf — `attempts`, `initialDelay`, `factor`,
+`maxDelay` and `jitter`, consumed at the leaf rather than handed downstream, so every
+dispatch branch reads it and the chokepoint grew no policy. That settles the structural
+half this plan depends on: the policy is owned where the journal will be, which is what
+lets a long delay suspend rather than block.
 
-`{ attempts, delay }` is not enough for either engine. It gains **exponential
-backoff** (`backoff` coefficient, `maxDelay`) and **non-retryable classification**
-(`nonRetryable: [<error code>]`) — Temporal's retry policy with non-retryable error
-types, and Restate's terminal-versus-retryable distinction, are the same two knobs, and
-without them every failing step retries a policy violation to exhaustion. Steps also
-gain a **`timeout:`**, which both engines require (Temporal's start-to-close, Restate's
-handler timeout) and which the `step(path, target, inputs)` seam makes actionable: a
-backend that chooses *where* a step executes needs to know how long it may take —
-Temporal runs a short one as a local activity and a long one as an activity, a choice
-the manifest should not have to make. Under a lookup-plus-record seam a backend had no
-such choice and this justification did not hold.
+Two knobs are still missing, and neither engine works without them.
+**Non-retryable classification** (`nonRetryable: [<error code>]`) — Temporal's retry
+policy with non-retryable error types and Restate's terminal-versus-retryable
+distinction are the same knob, and without it every failing step retries a policy
+violation to exhaustion. And a step **`timeout:`**, which both engines require
+(Temporal's start-to-close, Restate's handler timeout) and which the
+`step(path, target, inputs)` seam makes actionable: a backend that chooses *where* a
+step executes needs to know how long it may take — Temporal runs a short one as a local
+activity and a long one as an activity, a choice the manifest should not have to make.
+Under a lookup-plus-record seam a backend had no such choice and this justification did
+not hold.
 
 **Attempt state is journaled, not just the final outcome.** The obvious reading —
 "only the outcome matters, so journal once" — is wrong the moment a backoff suspends:
@@ -632,7 +645,7 @@ alias-qualified and does need its import, because there the dependency is real.
 `Telo.replayed` is built-in for a second reason that decides where code lives: **the
 analyzer must name whatever the durable checks key off**, since a module cannot
 contribute an analyzer pass. Naming a built-in attribute is the analyzer using its own
-vocabulary — the same standing it has to name `Telo.Executable` or `x-telo-stream`.
+vocabulary — the same standing it has to name `Telo.Executable` or `x-telo-type`.
 Naming a module-owned `Durable.replayed` would make `modules/durable` part of the
 analyzer's surface, and naming `Durable.Run` would be the hardcoded kind knowledge the
 topology constraint forbids. The same argument covers `run`'s step engine reading
@@ -756,9 +769,12 @@ mitigation is unchanged: an idempotent body, or `Idempotency.Once` around it.
 All topology-driven, no kind named in analyzer code — every rule below keys off a
 built-in **zone attribute**, and all of them live in the analyzer.
 
-From `Telo.replayed`, which is what marks a zone durable: an `x-telo-stream` property
-in a journaled result or decision (`DURABLE_UNJOURNALABLE_RESULT` — a live stream is
-not a recordable value in either position); and a **detached dispatch**
+From `Telo.replayed`, which is what marks a zone durable: a **`live`-representation
+value** in a journaled result or decision (`DURABLE_UNJOURNALABLE_RESULT` — a live
+handle is not a recordable value in either position). The rule keys off the `live` field
+of the `x-telo-type` vocabulary rather than off `Telo.Stream`, for the reason that
+vocabulary is data: a live type added later is covered by its entry alone, and the
+analyzer names a representation rather than a type. And a **detached dispatch**
 (`DURABLE_DETACH_FORBIDDEN`, naming the nested durable run as the replacement). The
 latter belongs here and not under `Telo.noSuspend`: the defect is that the journal
 would record a completion for work that has not run, which is a *journaling* failure
@@ -787,7 +803,19 @@ kind of problem.
 previously described as needing no configuration, which was wrong in a way the check
 exposed: what a delivery carries is per-instance by nature, and an await that cannot
 describe its own payload cannot be type-checked by anything downstream either.
-`Durable.Deliver` takes the matching `inputType:`.
+
+**The delivering side is native, so the tie is a ref, not a second contract.** There is
+no shared `Durable.Deliver` to carry the matching `inputType:` — waking a run is
+`DurableLocal.Deliver`, `Restate.Awakeable` resolution or a `Temporal.Signal`. Each
+backend's deliver kind instead takes an **`await:` ref slot** and derives its payload
+schema from that resource's declared `outputType` through the sibling-ref schema
+derivation (`x-telo-schema-from`), reading the *instance's* narrowed type — the same
+layer-1 per-instance resolution `steps.<name>.result` typing already performs. The await
+declares the shape once and the delivery is checked against it, with no analyzer code
+naming a durable kind. A delivery that names no await — a token addressed from outside
+the manifest — is unchecked by construction and validated at the await when it arrives,
+which is the *enforced at runtime, warned early* division this plan takes everywhere
+else.
 
 **`DURABLE_NONDETERMINISM` keys on `Telo.idempotent`, where it says something true.**
 Impure CEL in a *journaled* position is not a defect — it is the correct semantic:
@@ -949,16 +977,20 @@ shared verb pretending they are interchangeable.
   is cheaper today and unfixable later. The conformance rule that keeps it honest: a
   step executed anywhere MUST go through that side's invocation chokepoint, so
   contracts, tracing, zones and observed state hold wherever it ran.
-- **Target identity is serializable and normative, defined beside the key scheme** —
-  a target reaches the step engine as a live instance, and instance identity is
-  process-local (`ResourceHandle.ref` is diagnostics-only and there is deliberately no
-  handle→instance mapping), so without a declaration-site identity the remote half of
-  `step()` is unreachable and the seam collapses back into lookup-plus-record. Module
-  ref plus resource name; scope owner, scope site and step path added for a scoped
-  instance; a JSON pointer for an inline declaration, which is anonymous in the
-  manifest but not in the call graph. Rejected: leaving `target` opaque and scoping the
-  seam to in-process — that would be honest only if the Temporal-isolate rationale were
-  dropped with it, since it is doing work the design could not otherwise cash.
+- **Target identity is a declaration-site identity in the seam, pinned normatively only
+  where it crosses a process** — a target reaches the step engine as a live instance,
+  and instance identity is process-local (`ResourceHandle.ref` is diagnostics-only and
+  there is deliberately no handle→instance mapping), so without a declaration-site
+  identity the remote half of `step()` is unreachable and the seam collapses back into
+  lookup-plus-record. What lands with the seam is therefore the *shape* — `step` takes
+  an identity, not the instance alone — while the encoding (module ref plus resource
+  name; scope owner, scope site and step path for a scoped instance; a JSON pointer for
+  an inline declaration) is written in the remote-execution slice. Rejected: leaving
+  `target` opaque and scoping the seam to in-process — that would be honest only if the
+  Temporal-isolate rationale were dropped with it, since it is doing work the design
+  could not otherwise cash. Rejected also: freezing all three encodings normatively in
+  the slice that introduces the seam, which would declare a format nothing in that slice
+  can exercise — the failure this plan's own sequencing rule names.
 - **Execution locality is decided by open zones, not by an exception list** — a step
   dispatched inside any zone but the durable one MUST run locally, because a zone is
   ambient process state and a remote executor has none of it. One rule, resting on
@@ -1010,7 +1042,7 @@ shared verb pretending they are interchangeable.
   it owns the providing annotation, the zone, the run handle's installation and run
   identity. Rejected: a shared dispatch kind delegating to a backend, which is exactly
   the union contract under another name.
-- **`modules/durable` holds the four shared kinds, not the kernel** — the kernel
+- **`modules/durable` holds the five shared kinds, not the kernel** — the kernel
   carries the run handle without ever calling it, so it needs no contract; and what
   justified a kernel-owned `Telo.LogSink` (every controller logs, plus a conformance
   requirement) has no analogue. Rejected: a kernel-owned `Telo.Journal`; and a
@@ -1127,7 +1159,7 @@ shared verb pretending they are interchangeable.
   `ERR_DURABLE_UNJOURNALABLE_VALUE` at the producing step path, as actionable and true
   regardless of declarations — the *enforced at runtime, warned early* division already
   chosen for containment. Rejected: a cross-module `outputType` sweep, which would block
-  every slice behind a change with a changie fragment per module; and scoping the hard
+  every slice behind a change with a release fragment per module; and scoping the hard
   error to relocating backends, which would make a manifest's validity depend on which
   backend later reads its journal.
 - **`DURABLE_NONDETERMINISM` keys on `Telo.idempotent`, not `Telo.atomic`** — on the
@@ -1144,10 +1176,17 @@ shared verb pretending they are interchangeable.
   as the fix for nondeterminism inside a collapsed region, so a collapse that silenced
   all recording would make the prescribed fix impossible. A direct `decide` records
   regardless; only per-step entries for the steps inside are suppressed.
-- **`Durable.Await` declares its own `outputType`** — what a delivery carries is
-  per-instance by nature (the `JS.Script` narrowing pattern), and the earlier "needs no
-  configuration" framing meant an await's result could not be type-checked by anything
-  downstream. `Durable.Deliver` takes the matching `inputType`.
+- **`Durable.Await` declares its own `outputType`, and the backend's deliver kind refs
+  the await rather than restating it** — what a delivery carries is per-instance by
+  nature (the `JS.Script` narrowing pattern), and the earlier "needs no configuration"
+  framing meant an await's result could not be type-checked by anything downstream. But
+  delivery is native, so there is no shared kind to hold the matching `inputType`, and a
+  hand-copied one would be a second declaration of the same shape with nothing keeping
+  the two agreed. An `await:` ref slot whose payload schema derives from the referenced
+  instance's `outputType` (`x-telo-schema-from`) is one declaration checked at both ends.
+  Rejected: a shared `Durable.Deliver`, which would put the half of the lifecycle that
+  most differs per engine back into the shared module; and leaving the delivery side
+  untyped, which types the await against a payload nothing is held to.
 - **The attributes are read back through `ctx.zoneAttributes`, uninterpreted, not off
   the entry** — a `ZoneEntry` is three identities so it stays ABI-serializable and no
   module reads another's state off the stack; the kernel resolves the declaring kind's
@@ -1248,13 +1287,16 @@ shared verb pretending they are interchangeable.
   own module and the step grammar stays `run`'s. `modules/temporal` is where
   `workflow-temporal` was trying to go. Published
   versions stay resolvable, so a pinned consumer is unaffected. Removal covers the
-  module directories, their `.changie.yaml` projects, the `workflow-temporal/nodejs`
+  module directories, their `.changes/ledger.yaml` entries, the `workflow-temporal/nodejs`
   workspace entry, the Workflow topology doc, its `pages/sidebars.ts` entry and the
-  reference in `kernel/docs/topology.md`. The workflow canvas that doc describes was
-  never built, so no editor code is affected. **No changie fragment is filed for
-  either** — `Removed` auto-bumps to 1.0.0 and `check-no-major-module-bump` rejects
-  it; a deleted module has no version to move, and regenerating `.changie.yaml`
-  drops its project in the same change.
+  reference in `kernel/docs/topology.md`. Both are published (0.5.1 and 0.6.2), so their
+  ledger entries record layer digests for artifacts nothing will build again — a stale
+  entry the moment the directories go, and the reconciliation `telo release verify`
+  cannot perform for a module the workspace scan no longer discovers. The workflow canvas
+  that doc describes was never built, so no editor code is affected. **No release
+  fragment is filed for either** — `Removed` is a major-inducing kind that
+  `telo release check` rejects, and a module that no longer exists has no version to
+  move.
 
 ## Complete example — the local backend
 
@@ -1354,7 +1396,9 @@ that body would be the exception that proves the scope: not rolled back, so repl
 
 `approval` is a `Durable.Await`: the run parks on its token, releases its kernel hold,
 and the application may exit. A `Local.Deliver` call carrying that token — from an
-HTTP route, days later, in a different process — wakes it. The resumer re-enters
+HTTP route, days later, in a different process — wakes it; it holds `await: !ref approval`,
+so the payload it carries is type-checked against that await's `outputType` rather than
+against nothing. The resumer re-enters
 `onboard`, which replays: `createAccount` returns its recorded result without
 re-running the transaction, and execution continues at `sendWelcome`. The step list
 carries **no collapse opt-out** and needs none — nothing wraps it in a
@@ -1632,29 +1676,36 @@ Sliced out first because it is the largest analyzer change in the plan and it st
 alone: nothing here mentions a journal, and the registry is generically useful the day
 it lands. Reviewing it against durability's noise would be the expensive way to do it.
 
-### 2 — step-engine retry
+### 2 — retry parity
 
-The attempt loop, exponential backoff, `maxDelay`, `nonRetryable` and `timeout`.
-**This fixes a live bug** — `retry:` on an invoke step is silently dropped today,
-because `executeInvokeStep` passes it where `ResourceContext.invoke` has no parameter
-for it. That has independent value, no durability dependency, and no reason to wait
-behind a spec. The one part deferred to slice 3 is a *suspending* backoff, which needs
-a suspension to exist.
+**The attempt loop has already landed**, in the SDK's step leaf: `attempts`,
+`initialDelay`, `factor`, `maxDelay` and `jitter`, consumed at the leaf so every
+dispatch branch reads them. What this slice adds is the parity the hosted engines need —
+`nonRetryable` classification and a step `timeout:`. Independent value, no durability
+dependency, no reason to wait behind a spec. Deferred to slice 3 is a *suspending*
+backoff, which needs a suspension to exist, and to slice 4 the attempt-state journaling
+that keeps a bounded policy bounded across a resume.
 
 ### 3 — the seam, the spec, and `durable-journal-file` together
 
 The `durable` member on `InvokeContext`, the run-handle interface in `@telorun/sdk`,
-`kernel/specs/durable-execution.md` (determinism contract, key scheme, entry format,
-target identity), the step engine's journaling / `decide` / collapse,
-`Telo.replayed` and the durable checks, `durable-local`'s `Workflow` + `Journal`
-abstract + `Resumer`, and **`durable-journal-file` in the same slice**.
+`kernel/specs/durable-execution.md` (determinism contract, key scheme, entry format),
+the step engine's journaling / `decide` / collapse, `Telo.replayed` and the durable
+checks, `durable-local`'s `Workflow` + `Journal` abstract + `Resumer`, and
+**`durable-journal-file` in the same slice**.
 
-The file journal is here rather than after because of the reviewer's point and it is
-decisive: the key scheme, entry format and target identity are declared *normative*, and
-a format whose only consumer is an in-process fixture has been frozen without being
-tested. Landing the simplest durable store alongside means the format survives a real
-restart at the moment it is written, and what fails is the format rather than a database
-driver. This is the first slice that demonstrates the property the feature exists for.
+`step`'s target parameter takes a declaration-site identity here — that is the seam's
+shape and it cannot move later — but its **encoding is not specified in this slice**.
+Nothing here sends one anywhere: the local backend resolves it in-process, so a
+normative encoding would be a format frozen with no consumer, which is the rule below
+applied to itself. It is written in slice 7.
+
+The file journal, by contrast, is here rather than after, and that is decisive: the key
+scheme and entry format *are* declared normative in this slice, and a format whose only
+consumer is an in-process fixture has been frozen without being tested. Landing the
+simplest durable store alongside means the format survives a real restart at the moment
+it is written, and what fails is the format rather than a database driver. This is the
+first slice that demonstrates the property the feature exists for.
 
 Suspension is deliberately **not** here: a run that cannot park can still crash and
 resume, which is the whole of what this slice must prove.
@@ -1663,8 +1714,10 @@ resume, which is the whole of what this slice must prove.
 
 `Durable.Sleep`, `Durable.Await` (with its `outputType:`) and `Durable.Value`; the
 suspension signal, its latch and `ERR_DURABLE_SUSPENSION_SWALLOWED`; branch-level
-parking under `concurrency`; suspending retry backoff; `Telo.noSuspend` enforcement;
-and `durable-local`'s `Deliver`, `Status`, `Result`, `Cancel`, `Schedule` and `Resume`.
+parking under `concurrency`; suspending retry backoff and its journaled attempt state;
+`Telo.noSuspend` enforcement; and `durable-local`'s `Deliver` — taking the `await:` ref
+whose `outputType` types its payload — plus `Status`, `Result`, `Cancel`, `Schedule` and
+`Resume`.
 
 Separate from slice 3 because suspension is the harder half — the latch, the swallow
 surface and the settle-all-branches semantics are where the subtle failures live, and
@@ -1698,12 +1751,15 @@ younger engine.
 ### 7 — `modules/temporal`
 
 The only slice that exercises **remote step execution**, and therefore the only one that
-tests the half of `step(path, target, inputs)` that motivated it: serializable target
-identity, the zone-based locality rule, and the step engine running somewhere the
-resource graph does not. Last because it is the largest unknown — nobody has yet built
-a Telo step engine inside a workflow isolate — and because a failure here should be
-able to invalidate *Temporal as a backend* without invalidating anything shipped in
-slices 1–6.
+tests the half of `step(path, target, inputs)` that motivated it: the zone-based
+locality rule, and the step engine running somewhere the resource graph does not. **This
+is where the target-identity encoding is written into
+`kernel/specs/durable-execution.md`** — the three forms sketched above, normative
+because this is the slice where one crosses a process boundary and a second runtime must
+derive the same string. Last because it is the largest unknown — nobody has yet built a
+Telo step engine inside a workflow isolate — and because a failure here should be able
+to invalidate *Temporal as a backend* without invalidating anything shipped in slices
+1–6, which is exactly what deferring the encoding to here protects.
 
 **What the order buys.** Every slice ships on its own, and the first two deliver value
 with no durability in them at all. Nothing before slice 6 depends on a hosted engine

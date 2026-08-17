@@ -11,8 +11,8 @@ one of them, so they are worth ten minutes up front.
 ## `!ref` — point at a resource
 
 ```yaml
-handler: !ref Greet              # a resource in this module
-mount:   !ref Api                # same
+handler: !ref greet              # a resource in this module
+mount:   !ref api                # same
 output:  !ref Console.writeLine  # an instance exported by the import aliased `Console`
 ```
 
@@ -21,8 +21,12 @@ The rules are short:
 - **`!ref <name>`** resolves a resource declared in the same module scope.
 - **`!ref <Alias>.<name>`** resolves an instance an imported library exports.
   The part before the **first dot** is the import alias.
-- A resource name **must not contain a dot** — that is what the split above
-  reserves it for (`INVALID_RESOURCE_NAME`).
+- A resource name must be a plain identifier — `^[A-Za-z_][A-Za-z0-9_]*$`, and
+  not a CEL keyword (`INVALID_NAME`). A dot is what the split above reserves;
+  a hyphen is read by CEL as subtraction. The alias is `PascalCase` and the
+  resource `camelCase`, which is what distinguishes `!ref Console.writeLine`
+  from `kind: Console.WriteLine` — see the
+  [style guide](./style-guide.md).
 - **The tag is mandatory.** A bare string (`handler: Greet`) or the old object
   form (`handler: { kind: Run.Value, name: Greet }`) is rejected with
   `INVALID_REFERENCE_FORM`.

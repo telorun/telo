@@ -20,34 +20,9 @@ export interface BindingSites {
   scopeNames: Set<string>;
 }
 
-/**
- * CEL keywords. A binding named after one is unreachable — `true` lexes as a
- * literal, `in` as an operator — so it is reserved alongside the scope names,
- * which turns silence into a diagnostic.
- */
-export const CEL_RESERVED_WORDS: readonly string[] = [
-  "as",
-  "break",
-  "const",
-  "continue",
-  "else",
-  "false",
-  "for",
-  "function",
-  "if",
-  "import",
-  "in",
-  "let",
-  "loop",
-  "namespace",
-  "null",
-  "package",
-  "return",
-  "true",
-  "var",
-  "void",
-  "while",
-];
+// CEL keywords live in `identifier-name.ts` — a binding named after one is
+// unreachable for exactly the reason a resource or step named after one is, so
+// the list belongs to the identifier vocabulary rather than to this file.
 
 /** Locate a kind's bindings field and the scope names its annotated contexts
  *  declare. Returns undefined for a kind that declares no bindings region. */

@@ -1,6 +1,6 @@
 # Telo for VS Code
 
-Language support for [Telo](https://telo.run) manifests — diagnostics, completions, hover docs, go-to-definition and import upgrades, all computed from the same static analyzer the `telo check` CLI uses.
+Language support for [Telo](https://telo.run) manifests — diagnostics, completions, hover docs, go-to-definition, rename and import upgrades, all computed from the same static analyzer the `telo check` CLI uses.
 
 Telo is a declarative runtime for backend applications: YAML manifests describe desired state, and the kernel resolves the dependency graph and runs a controller for each resource kind. Because manifests are statically analyzable, most mistakes are catchable before anything runs — this extension is where you see them.
 
@@ -29,6 +29,20 @@ Context-aware, driven entirely by the resolved schemas — nothing about specifi
 ### Hover and go-to-definition
 
 Hover a kind or a reference for its description and schema. Go-to-definition jumps to a resource's declaration, across module boundaries into imported libraries.
+
+### Rename
+
+<kbd>F2</kbd> on a resource instance, a `Run` step name, or a `variables:` / `secrets:` / `ports:` key renames it together with every reference — `!ref` targets, `targets:` entries and the identifier inside each CEL expression, across every file in the module. Only the identifier moves: renaming a step rewrites `steps.<name>` inside a `${{ … }}` interpolation without touching the rest of the string.
+
+Renaming is a refactor rather than a repair, so it is not offered as a quick fix on a naming diagnostic — a fix rewrites one node, and a rename is only correct when every reference moves with it.
+
+Some names are deliberately refused, with the reason shown in the rename box:
+
+- An instance listed in `exports.resources`, or a library's `variables:` / `secrets:` key. These are the module's public surface — consumers reference them from files your workspace may not contain — so renaming one is a breaking change to version, not an edit to apply.
+- A name declared twice in reach (a `with:`-scoped resource shadowing a module-level one, two steps in one resource sharing a spelling). References resolve to different declarations, and no edit set is right for both.
+- A kind name, a module name or an import alias — not supported yet.
+
+The new name is checked against the [naming rules](https://telo.run/learn/style-guide) before anything is written, so a rename cannot introduce a name `telo check` would reject.
 
 ### Import upgrades
 

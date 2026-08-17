@@ -34,7 +34,9 @@ how to read a failure, and the debugging flags — see
 | `KIND_NOT_EXPORTED` | The alias resolves, but the target library does not list that kind in `exports.kinds`. It is private to that module — you cannot construct it. |
 | `MISSING_KIND_OR_NAME` | Every resource doc needs `kind:` and `metadata.name`. |
 | `DUPLICATE_RESOURCE_NAME` | Two resources in one module scope share a name; the kernel would fail with `ERR_DUPLICATE_RESOURCE`. Rename one. |
-| `INVALID_RESOURCE_NAME` | A resource name contains `.`, which `!ref` uses to split alias from name. Remove the dot. |
+| `INVALID_NAME` | A name is not `^[A-Za-z_][A-Za-z0-9_]*$`, or is a CEL keyword — so it cannot be referenced. A `-` is read by CEL as subtraction (and where a bare name is in scope, silently evaluates instead of failing); a `.` is what `!ref` splits alias from name on. Applies to resources, kinds, modules, import aliases, step names and `variables:` / `secrets:` / `ports:` keys. |
+| `INVALID_TYPE_NAME` | A type-level name (module, kind, import alias, or a `Telo.Type` resource) does not start with an uppercase letter. The alias-qualified `<Alias>.<Kind>` grammar accepts only PascalCase, so nothing could `extends:` it. |
+| `NAME_CASE_CONVENTION` ⚠️ | A value-level name (resource instance, step, `variables:` / `secrets:` / `ports:` key, CEL binding) does not start with a lowercase letter. camelCase names a value, PascalCase names a type — see the [style guide](../guides/style-guide.md). |
 | `EXTENDS_MALFORMED` | `extends:` must be the string form `<Alias>.<Kind>` (use `Self.<Kind>` for a kind in the same library). |
 | `EXTENDS_UNKNOWN_TARGET` | The `extends:` target is not an exported kind of that alias. |
 | `EXTENDS_CAPABILITY_MISMATCH` | A child declares a different `capability:` than its ancestor. Capability is inherited and immutable — omit it, or restate it identically. |

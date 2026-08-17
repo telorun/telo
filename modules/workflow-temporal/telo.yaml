@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: workflow-temporal
+  name: WorkflowTemporal
   version: 0.6.2
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse

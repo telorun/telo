@@ -813,7 +813,7 @@ steps:
           moduleId: !cel "item.id"
           ref: !cel "item.ref"
     catch:
-      - name: record-failure
+      - name: recordFailure
         invoke: !ref Exec
         inputs:
           sql: UPDATE modules SET last_error = $2, last_tracked_at = NOW() WHERE id = $1

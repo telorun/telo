@@ -1,6 +1,6 @@
 kind: Telo.Library
 metadata:
-  name: workflow
+  name: Workflow
   version: 0.5.1
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
