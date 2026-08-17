@@ -82,7 +82,9 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   description: string;
   /** Namespace where session Pods/Services/Ingresses are created. */
   sessionNamespace: string;
-  /** Default image for spawned session Pods (telorun/node). */
+  /** Default image for spawned session Pods (telorun/node). Baked into the runner
+   *  image as `RUNNER_IMAGE` at build time (the kernel version the runner was
+   *  built against); the literal fallback below is for a source checkout only. */
   defaultImage: string;
   /** Small image for the bundle/build-context fetch initContainer (needs wget + tar). */
   initImage: string;

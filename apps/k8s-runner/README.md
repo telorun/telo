@@ -80,7 +80,7 @@ image is single-tenant, so install scripts run normally inside the trusted build
 | `RUNNER_APP_MAX_TTL_SECONDS` | `21600` | Wall-clock TTL for predefined-app pods (agent sessions are long-lived) |
 | `RUNNER_APP_MAX_EPHEMERAL_STORAGE` | `1Gi` | Ephemeral-storage ceiling for predefined-app pods |
 | `RUNNER_SESSION_NAMESPACE` | `telo-sessions` | Namespace for session objects |
-| `RUNNER_IMAGE` | `telorun/node:latest-slim` | Default base image; always offered in the picker and the fallback when the catalog is unreachable |
+| `RUNNER_IMAGE` | _(baked at build: the CLI version for a released runner, `telorun/node:latest-slim` for a dev build)_ | Default base image; always offered in the picker and the fallback when the catalog is unreachable. Leave the chart's `session.image` empty to keep the session kernel in lockstep with the runner |
 | `RUNNER_INIT_IMAGE` | `busybox:stable` | Build-context fetch initContainer image (wget + tar) |
 | `RUNNER_RUNTIME_CLASS` | _(unset → runc)_ | Sandbox RuntimeClass (gvisor/kata) |
 | `SESSION_INGRESS_BASE_DOMAIN` | _(unset → logs-only)_ | Wildcard base for per-session ingress |

@@ -1,5 +1,5 @@
 // Dependency ordering for module manifest pushes, shared by the release publish
-// (`publish-packages.mjs`, the changed set) and the OCI backfill
+// (`publish-modules.mjs`, the changed set) and the OCI backfill
 // (`publish-oci-backfill.mjs`, the whole tree).
 //
 // Both need the same guarantee: `telo publish` canonicalizes a relative

@@ -3,7 +3,7 @@
 // dependency order.
 //
 // Why this exists — the release path alone cannot bootstrap an OCI mirror.
-// `publish-packages.mjs` only pushes manifests whose `metadata.version` moved in
+// `publish-modules.mjs` only pushes manifests whose `metadata.version` moved in
 // HEAD^..HEAD, but `telo publish` hard-fails when a canonicalized relative
 // import does not already resolve at the destination. 22 of the stdlib's 52
 // modules import a sibling relatively (`cache-redis` → `../cache`), so on an

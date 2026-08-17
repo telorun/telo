@@ -76,8 +76,10 @@ spec:
               value: {{ include "telo-k8s-runner.selfUrl" . | quote }}
             - name: RUNNER_SESSION_NAMESPACE
               value: {{ .Values.sessionNamespace | quote }}
+            {{- if .Values.session.image }}
             - name: RUNNER_IMAGE
               value: {{ .Values.session.image | quote }}
+            {{- end }}
             - name: RUNNER_INIT_IMAGE
               value: {{ .Values.session.initImage | quote }}
             - name: RUNNER_BASE_IMAGE_CATALOG_ENABLED
