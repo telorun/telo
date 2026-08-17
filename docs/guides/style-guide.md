@@ -9,67 +9,94 @@ Welcome to the Telo Style Guide! While the Telo engine is designed to be highly 
 
 More importantly, **how you name your resources directly affects how you write CEL (Common Expression Language) expressions.**
 
-## 1. The Golden Rule of Telo Identifiers
+## 1. The rule, in one sentence
 
-**Resource names and import aliases must not contain hyphens (`-`).** In CEL a
-hyphen is the subtraction operator, so naming a resource `my-server` makes
-`!cel "resources.my-server.url"` unreadable — the expression parses as
-`resources.my` _minus_ `server.url`.
+**Case encodes what a name denotes.** `PascalCase` names a **type** — something
+you can write in a `kind:`, `extends:`, or type slot. `camelCase` names a
+**value** — something that holds data at runtime and is read through a CEL scope
+(`resources.`, `steps.`, `variables.`).
 
-Nothing rejects a hyphenated name at load time: `telo check` accepts it, and
-the resource initializes. What you lose is the ability to reference it from any
-CEL expression, which usually surfaces much later as a confusing type error.
-Keep instance names to `^[a-zA-Z_][a-zA-Z0-9_]*$` and the problem cannot arise.
+That single distinction is what tells `kind: Console.WriteLine` (a type) apart
+from `!ref Console.writeLine` (an instance of it). The two are otherwise
+character-identical, and the pair is common: a library declares
+`kind: Self.WriteLine`, exports the *instance* and withholds the kind, so both
+names exist side by side.
 
-**One name rule _is_ enforced:** a resource name must not contain a dot
-(`INVALID_RESOURCE_NAME`). In a `!ref` the first dot separates the import alias
-from the resource name (`!ref Console.writeLine`), so a dotted name would
-mis-resolve.
+## 2. What is enforced
+
+Unlike Rust, Telo has no lexer — a name is a YAML scalar, so nothing rejects its
+shape where you write it. `telo check` therefore enforces the rule in three
+tiers:
+
+| Diagnostic | Severity | What it catches |
+| --- | --- | --- |
+| `INVALID_NAME` | error | A name that is not `^[A-Za-z_][A-Za-z0-9_]*$`, or is a CEL keyword. |
+| `INVALID_TYPE_NAME` | error | A type-level name not starting uppercase. |
+| `NAME_CASE_CONVENTION` | warning | A value-level name not starting lowercase. |
+
+The first tier is an error because the name is otherwise **unreferenceable, or
+silently mis-referenced**. A hyphen is the case that matters: CEL reads `-` as
+subtraction, so `!cel "resources.my-server.url"` parses as `resources.my` _minus_
+`server.url`. Where a bare name happens to be in scope — which named
+[CEL bindings](./refs-and-cel.md) make possible — that **evaluates to a wrong
+number with no diagnostic at all**. A dot is the same class: in a `!ref` the
+first dot separates the import alias from the name.
+
+The second tier is an error because the alias-qualified `<Alias>.<Kind>` grammar
+already accepts only PascalCase, so a lowercase kind is one nothing can
+`extends:`.
+
+The third is only a **warning**, deliberately. A name is occasionally dictated
+from outside, and Telo has no way to silence a diagnostic locally, so the
+convention applies pressure without becoming a wall.
+
+**Only the first character is checked.** `httpApi` and `httpAPI` are both fine,
+as are `OAuthClient` and `OauthClient`; an all-acronym type name like `SQL` or
+`AI` passes unchanged. The first character carries the type/value signal, and a
+stricter rule would only relitigate spellings nobody needs settled.
+
+There is no automatic fix. A rename is correct only when every reference moves
+with it, and a quick fix rewrites one node — so renaming is a refactor, not a
+repair.
 
 ---
 
-## 2. Recommended Naming Conventions
+## 3. The conventions in full
 
-While the engine permits any valid alphanumeric string for instances, the official Telo modules (`ghcr.io/telorun/*`) and documentation strictly adhere to the following stylistic rules. We highly recommend you do the same.
+### 🟢 `camelCase` for instances, steps and properties
 
-### 🟢 `PascalCase` for Instances (Resources & Imports)
+Everything read through a CEL scope: resource `metadata.name`, `Run` step names,
+and the keys of `variables:` / `secrets:` / `ports:`.
 
-Treat your declarative resources and imports as major architectural components (Logical IDs), similar to how AWS CloudFormation names its resources.
+- **Do:** `mainServer`, `usersDb`, `buildMessage`, `dbPassword`, `maxRetries`
+- **Don't:** `MainServer`, `users_db`, `prod-api`, `DB_PASSWORD`
+- **CEL usage:** `!cel "resources.mainServer.url"`, `!cel "secrets.dbPassword"`
 
-- **Do:** MainServer, UsersDb, ProdApi
-- **Don't:** mainServer, users_db, prod-api
-- **CEL Usage:** `${{ resources.MainServer.url }}`
+The `env:` key a `variables:` / `secrets:` / `ports:` entry binds to is a host
+environment variable, and follows the platform convention instead:
+`SCREAMING_SNAKE_CASE`.
 
-### 🟢 `PascalCase` for Resource Types (`kind`)
+### 🟢 `PascalCase` for kinds, modules and import aliases
 
-Resource types represent the "Class" or "Blueprint" being instantiated. They should always be capitalized, including namespaces separated by dots.
+Resource types are the "class" being instantiated; a module name is the
+canonical kind prefix (`MyModule.Thing`); an import alias stands for a module,
+so it is the namespace you write that prefix as.
 
-- **Do:** `Http.Server`, `Db.Postgres`, `Import`, `Module`
-- **Don't:** `http.server`, `db.Postgres`
+- **Do:** `Http.Server`, `OAuthClient`, `HttpServer`, `Console: oci://…`
+- **Don't:** `http.server`, `db.Postgres`, `console: oci://…`
 
-### 🟢 `camelCase` for Properties (`variables`, `secrets`, `exports`)
+A module's `metadata.name` is **not** a locator — imports resolve by `source`,
+and `!ref` targets are named by import alias — so treat it as a name, not a
+slug.
 
-Data inputs and outputs behave exactly like object properties in JSON/JavaScript.
+### 🟢 `PascalCase` for a named shape
 
-- **Do:** `dbPassword`, `maxRetries`, `apiUrl`
-- **Don't:** `DB_PASSWORD`, `max_retries`, `ApiUrl`
-- **CEL Usage:** `!cel "secrets.dbPassword"`
+A resource whose kind's capability is `Telo.Type` (a `Telo.JsonSchema`, say) has
+no runtime instance: its name denotes a shape, referenced from `inputType:` /
+`outputType:`. So it is type-level despite being declared as a resource.
 
-The `env:` key those entries bind to is a host environment variable, and follows
-the platform convention instead: `SCREAMING_SNAKE_CASE`.
-
-### 🟢 `PascalCase` for a module's `metadata.name`
-
-A module's `metadata.name` becomes the canonical kind prefix (`MyModule.Thing`)
-and is what diagnostics print. It is **not** a locator — imports resolve by
-`source`, and `!ref` targets are named by import alias — so treat it as a name,
-not a slug.
-
-- **Do:** `OAuthClient`, `HttpServer`
-- **Don't:** anything containing a dot — the `!ref` grammar splits on the first one
-
-Older standard-library modules still carry the historical kebab-case form
-(`http-server`), which keeps working; new modules should use PascalCase.
+- **Do:** `Order`, `CreateUserRequest`
+- **Don't:** `order`, `createUserRequest`
 
 ### 🟢 `kebab-case` for directories and published repository names
 
@@ -82,7 +109,7 @@ name.
 
 ---
 
-## 3. Always write CEL with the `!cel` tag
+## 4. Always write CEL with the `!cel` tag
 
 Every dynamic value is written `!cel "<expression>"` — pure expressions and
 string interpolation alike:
@@ -96,12 +123,12 @@ Do not use the inline `"${{ … }}"` string form in new manifests. The formatter
 normalizes to `!cel`, and the inline form does not survive a round-trip through
 tooling intact.
 
-## 4. Putting It All Together
+## 5. Putting it all together
 
 A complete manifest applying every rule above:
 
 ```yaml
-# Module name: PascalCase
+# Module name: PascalCase — it is the canonical kind prefix
 kind: Telo.Application
 metadata:
   name: MyAwesomeApp
@@ -111,31 +138,31 @@ imports:
   Console: oci://ghcr.io/telorun/console@<version>
   Run: oci://ghcr.io/telorun/run@<version>
 variables:
-  # Property names: camelCase. The env var they bind to: SCREAMING_SNAKE_CASE.
+  # Declaration names: camelCase. The env var they bind to: SCREAMING_SNAKE_CASE.
   apiBaseUrl:
     env: API_BASE_URL
     type: string
     default: https://api.example.com
 targets:
-  - !ref AnnounceStartup
+  - !ref announceStartup
 ---
 # Kind: PascalCase, prefixed by the import alias
 kind: Run.Sequence
 metadata:
-  # Instance name: PascalCase, so it reads cleanly in CEL
-  name: AnnounceStartup
+  # Instance name: camelCase — it names a value, read as resources.announceStartup
+  name: announceStartup
 steps:
-  - name: BuildMessage
-    invoke: !ref StartupMessage
-  - name: Print
+  - name: buildMessage
+    invoke: !ref startupMessage
+  - name: print
     inputs:
-      # steps.<StepName>.result — the step name is PascalCase for the same reason
-      output: !cel "steps.BuildMessage.result.text"
+      # steps.<stepName>.result — camelCase for the same reason
+      output: !cel "steps.buildMessage.result.text"
     invoke: !ref Console.writeLine
 ---
 kind: Run.Value
 metadata:
-  name: StartupMessage
+  name: startupMessage
 outputType:
   kind: Telo.JsonSchema
   schema:

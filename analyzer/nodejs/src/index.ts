@@ -34,6 +34,12 @@ export {
 } from "./cel-bindings.js";
 export type { BindingSites } from "./cel-bindings.js";
 export {
+  CEL_RESERVED_WORDS,
+  TYPE_LEVEL_DOC_KINDS,
+  checkName,
+} from "./identifier-name.js";
+export type { NameLevel, NameViolation } from "./identifier-name.js";
+export {
   applyObservedStateNode,
   buildObservedStateIndex,
   buildObservedStateResourcesSchema,

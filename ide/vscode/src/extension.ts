@@ -21,6 +21,7 @@ import { TeloAnalysisCache } from "./analysis-cache.js";
 import { TeloCompletionProvider } from "./completion.js";
 import { TeloDefinitionProvider } from "./definition.js";
 import { TeloHoverProvider } from "./hover.js";
+import { TeloRenameProvider } from "./rename.js";
 import {
   REFRESH_IMPORT_UPGRADES_COMMAND,
   TeloImportUpgradeLensProvider,
@@ -153,6 +154,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const hoverProvider = new TeloHoverProvider(cache);
   const semanticTokensProvider = new TeloSemanticTokensProvider(cache);
   const definitionProvider = new TeloDefinitionProvider(cache);
+  const renameProvider = new TeloRenameProvider(cache);
   // Background failures that no squiggle can carry — a hub the editor could not
   // reach while checking import versions. `console` is not a channel an author
   // ever opens; this one is reachable from the failure notification.
@@ -175,6 +177,7 @@ export function activate(context: vscode.ExtensionContext): void {
       TELO_SEMANTIC_LEGEND,
     ),
     vscode.languages.registerDefinitionProvider(teloSelector, definitionProvider),
+    vscode.languages.registerRenameProvider(teloSelector, renameProvider),
     vscode.languages.registerCodeActionsProvider(teloSelector, new TeloQuickFixProvider(), {
       providedCodeActionKinds: TeloQuickFixProvider.providedCodeActionKinds,
     }),

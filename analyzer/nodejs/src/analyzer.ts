@@ -89,12 +89,13 @@ import {
   BINDINGS_ANNOTATION,
   bindingContextProperties,
   bindingPathChain,
-  CEL_RESERVED_WORDS,
   findBindingSites,
   resolveBindingOrder,
   schemaAtChain,
   type BindingSites,
 } from "./cel-bindings.js";
+import { CEL_RESERVED_WORDS, checkName } from "./identifier-name.js";
+import { validateIdentifierNames } from "./validate-identifier-names.js";
 import { validateExtends } from "./validate-extends.js";
 import { validateLogging } from "./validate-logging.js";
 import { validateModuleArtifact } from "./validate-module-artifact.js";
@@ -1543,6 +1544,19 @@ export class StaticAnalyzer {
       // these fields, which is precisely why they need a check: a mistyped one
       // has no runtime failure mode that would ever surface it.
       diagnostics.push(...validateModuleMetadata(allManifests, defs, aliases));
+      // Every author-written name. Telo has no lexer, so a name's shape is
+      // unchecked where it is declared and its consequences land at whichever
+      // CEL site reads it — for a hyphen, sometimes as silent arithmetic. Takes
+      // the call graph for step names rather than re-walking the step arrays.
+      diagnostics.push(
+        ...validateIdentifierNames(
+          allManifests as unknown as ResourceManifest[],
+          defs,
+          aliases,
+          rootModules,
+          getCallGraph(),
+        ),
+      );
       // A file embed resolves at resource creation, so one written on a doc that
       // is never instantiated is read by nothing and would ship silently.
       diagnostics.push(...validateIncludePlacement(allManifests));
@@ -2109,14 +2123,33 @@ export class StaticAnalyzer {
 
               for (const name of Object.keys(declared)) {
                 const shadows = inScope.has(name);
-                if (!shadows && !keywords.has(name)) continue;
+                if (shadows || keywords.has(name)) {
+                  diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    code: "BINDING_NAME_RESERVED",
+                    source: SOURCE,
+                    message: shadows
+                      ? `${m.kind}/${bindingsName}: binding '${name}' shadows a variable already in scope here (${[...inScope].sort().join(", ")}). Rename the binding — a scope variable always wins, so this one would never be read.`
+                      : `${m.kind}/${bindingsName}: binding '${name}' is a CEL keyword, so no expression can read it as a reference. Rename the binding.`,
+                    data: {
+                      resource: resourceRef,
+                      filePath: bindingsFile,
+                      path: `${celBindingSites.field}.${name}`,
+                    },
+                  });
+                  continue;
+                }
+                // A binding is read by bare name, so it lives in the same
+                // identifier space as a resource or step name and breaks the
+                // same way. The keyword tier is unreachable here — the check
+                // above owns it, and can also say what is being shadowed.
+                const violation = checkName(name, "value", "binding name");
+                if (!violation) continue;
                 diagnostics.push({
-                  severity: DiagnosticSeverity.Error,
-                  code: "BINDING_NAME_RESERVED",
+                  severity: violation.severity,
+                  code: violation.code,
                   source: SOURCE,
-                  message: shadows
-                    ? `${m.kind}/${bindingsName}: binding '${name}' shadows a variable already in scope here (${[...inScope].sort().join(", ")}). Rename the binding — a scope variable always wins, so this one would never be read.`
-                    : `${m.kind}/${bindingsName}: binding '${name}' is a CEL keyword, so no expression can read it as a reference. Rename the binding.`,
+                  message: `${m.kind}/${bindingsName}: ${violation.message}`,
                   data: {
                     resource: resourceRef,
                     filePath: bindingsFile,
