@@ -1,4 +1,8 @@
-import type { AnalysisRegistry } from "@telorun/analyzer";
+import {
+  manifestFragmentOf,
+  TELO_SCHEMA_ANNOTATIONS,
+  type AnalysisRegistry,
+} from "@telorun/analyzer";
 import type { CompletionResult } from "../types.js";
 import { navigateSchema } from "./detect-context.js";
 
@@ -52,9 +56,26 @@ export function propKeyCompletions(
   const properties =
     yamlPath.length === 0
       ? { ...ROOT_IMPLICIT_PROPS, ...(targetSchema.properties as Record<string, any>) }
-      : (targetSchema.properties as Record<string, any>);
+      : { ...(targetSchema.properties as Record<string, any>), ...annotationKeys(targetSchema) };
 
   return buildItems(properties, existingKeys, required);
+}
+
+/**
+ * The `x-telo-*` vocabulary, offered only inside a KIND's own schema.
+ *
+ * Read off the fragment stamp rather than the position: a kind schema nests, so
+ * "am I inside one" is a fact about the node, not about how deep the cursor
+ * sits. A plain data schema — an `inputType:`, a `status:` block — stamps
+ * `JsonSchema7` and gets nothing, because an annotation there configures a slot
+ * that does not exist.
+ *
+ * The vocabulary lives on the analyzer side and never enters a manifest: a
+ * `properties` map holding a literal `x-telo-ref` key reads to the annotation
+ * walkers as an annotated node.
+ */
+function annotationKeys(node: Record<string, any>): Record<string, any> {
+  return manifestFragmentOf(node) === "KindSchema" ? TELO_SCHEMA_ANNOTATIONS : {};
 }
 
 function buildItems(

@@ -280,6 +280,9 @@ export type {
     Range
 } from "./types.js";
 export * from "./manifest-schemas.js";
+// The JSON Schema vocabulary a manifest may write, as data — the source both the
+// validating fragments and the IDE's completion are built from.
+export * from "./schema-keywords.js";
 // The release model — module identity, fragments, the ledger, the edge graph and
 // version planning. Pure data in, plan out, so the editor and the CLI release
 // from one model.

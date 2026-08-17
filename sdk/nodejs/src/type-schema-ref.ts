@@ -59,6 +59,14 @@ const STRUCTURAL_KEYS = new Set([
   "properties",
   "required",
   "additionalProperties",
+  // `$defs` is a NAMESPACE, not a value: last-wins would drop every definition
+  // the other side declared, and a `$ref` pointing at one would then resolve to
+  // nothing. That is not hypothetical — a schema-valued slot is localized to
+  // `#/$defs/telo:<Fragment>` and hoisted here, so a child declaring any `$defs`
+  // of its own would erase the parent's hoisted entry and leave the parent's
+  // slots pointing at a definition that no longer exists.
+  "$defs",
+  "definitions",
   "allOf",
   "oneOf",
   "anyOf",
@@ -92,6 +100,7 @@ export function mergeTypeSchemas(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const properties: Record<string, unknown> = {};
+  const defs: Record<string, Record<string, unknown>> = { $defs: {}, definitions: {} };
   const required = new Set<string>();
   let additionalProperties: unknown;
   let hasAdditionalProperties = false;
@@ -106,6 +115,10 @@ export function mergeTypeSchemas(
     }
     const props = (schema as { properties?: unknown }).properties;
     if (props && typeof props === "object") Object.assign(properties, props);
+    for (const key of ["$defs", "definitions"] as const) {
+      const declared = (schema as Record<string, unknown>)[key];
+      if (declared && typeof declared === "object") Object.assign(defs[key], declared);
+    }
     const req = (schema as { required?: unknown }).required;
     if (Array.isArray(req)) for (const name of req) required.add(name as string);
     if ("additionalProperties" in schema) {
@@ -121,6 +134,9 @@ export function mergeTypeSchemas(
   }
 
   if (Object.keys(properties).length > 0) out.properties = properties;
+  for (const key of ["$defs", "definitions"] as const) {
+    if (Object.keys(defs[key]).length > 0) out[key] = defs[key];
+  }
   if (required.size > 0) out.required = [...required];
   if (hasAdditionalProperties) out.additionalProperties = additionalProperties;
   if (composition.length > 0) out.allOf = composition;

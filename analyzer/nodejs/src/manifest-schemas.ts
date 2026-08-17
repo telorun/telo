@@ -28,6 +28,9 @@
  * and `$ref`-ing it from module schemas. Browser-safe: no Node built-ins.
  */
 
+import { jsonSchemaKeywords } from "./schema-keywords.js";
+import { SCHEMA_REGION_KEYS } from "./schema-region.js";
+
 export const MANIFEST_SCHEMA_URI = "telo://manifest";
 
 /** `$ref` to a fragment in this set, as a module schema writes it. */
@@ -247,6 +250,94 @@ export const InvokeStepSchema = {
   },
 };
 
+/**
+ * A JSON Schema an author writes as a manifest VALUE — an `inputType:`, an
+ * `outputType:`, a `status:` block, an API route's `request.schema`.
+ *
+ * Declared so the surfaces that read a slot's schema learn what lives there. A
+ * slot spelled `type: object` told them "some object": completion offered
+ * nothing from the first key down, hover had nothing to show, and a misspelled
+ * keyword travelled to a runtime failure that named the wrong field.
+ *
+ * OPEN, deliberately (`additionalProperties: true`, `type` admitting the
+ * boolean form a nested `additionalProperties: false` takes). The keyword set
+ * below is draft-07's — the dialect AJV actually runs — and everything outside
+ * it, every `x-telo-*` annotation included, passes through untouched. Closing
+ * this would reject the next annotation the moment a module invented one, for a
+ * check nobody asked for; what it buys as it stands is the value of a keyword
+ * an author DID write (`required: "name"`, `type: 5`) being wrong at
+ * `telo check` rather than at dispatch.
+ *
+ * RECURSIVE, which is why it is not expanded in place like the fragments above
+ * it: a schema's properties hold schemas. `expandManifestFragments` rewrites a
+ * reference to this to the document-local `#/$defs/JsonSchema7` and hoists one
+ * copy to the enclosing schema's root, so the pointer resolves inside whatever
+ * AJV compiles, and the editor's local-only `$ref` resolver keeps working.
+ */
+export const JsonSchema7Schema = {
+  title: "JSON Schema",
+  description: "The shape of a value, as JSON Schema (draft-07).",
+  type: ["object", "boolean"],
+  properties: jsonSchemaKeywords(hoistedDefKey("JsonSchema7")),
+  additionalProperties: true,
+};
+
+/**
+ * The schema a KIND declares for its own configuration — a `Telo.Definition`'s
+ * `schema:` block.
+ *
+ * The same body as {@link JsonSchema7Schema}, under its own name because the
+ * name is the discriminator: a kind's schema is where the `x-telo-*` vocabulary
+ * belongs (`x-telo-eval`, `x-telo-ref`, `x-telo-scope`, …) and a plain data
+ * schema is where it does not. Completion reads the `x-telo-fragment` stamp to
+ * decide which vocabulary to offer, exactly as a retry-budget consumer reads
+ * which of `RetryPolicy` / `RetryAttempts` a slot pointed at.
+ *
+ * The annotations are NOT properties here — see `schema-keywords.ts` for why a
+ * literal `x-telo-*` key inside a hoisted `properties` map would read to the
+ * annotation walkers as a slot the author never wrote.
+ */
+export const KindSchemaSchema = {
+  title: "Kind schema",
+  description:
+    "The configuration a resource of this kind accepts, as JSON Schema plus the `x-telo-*` annotations that say how each field behaves.",
+  type: ["object", "boolean"],
+  properties: jsonSchemaKeywords(hoistedDefKey("KindSchema")),
+  additionalProperties: true,
+};
+
+/** The fragments that describe author-written JSON Schema, whichever vocabulary
+ *  they admit. They are also exactly the RECURSIVE ones — a schema is the only
+ *  shape in this set that contains itself — so a reference to one is localized
+ *  and hoisted rather than expanded in place ({@link localizeRecursiveFragment});
+ *  should a self-containing fragment that is not a schema ever land, the two
+ *  ideas split and this set stays the one about schemas. */
+const SCHEMA_FRAGMENTS = new Set(["JsonSchema7", "KindSchema"]);
+
+/** True when a slot's `x-telo-fragment` stamp says it holds author-written JSON
+ *  Schema — a kind's `schema:`, a `status:` block, a `Telo.JsonSchema`'s own
+ *  `schema`. The one accessor every consumer asks, so no surface re-spells the
+ *  set. */
+export function isSchemaFragment(name: string | undefined): boolean {
+  return name !== undefined && SCHEMA_FRAGMENTS.has(name);
+}
+
+/**
+ * The `$defs` key a hoisted fragment is written under, and the one its own
+ * self-reference points at.
+ *
+ * NAMESPACED so a collision is unrepresentable rather than diagnosable: `$defs`
+ * is the author's namespace, and a kind declaring its own `$defs: { KindSchema:
+ * … }` beside a slot pointing at the fragment would otherwise have its shape
+ * silently validate every such slot — a wrong-but-plausible validation, which is
+ * worse than a loud failure and impossible to see. With a reserved key the two
+ * coexist, and "already present" can only mean a previous hoist of the same
+ * fragment, which is what makes {@link hoistFragmentDef}'s skip provably safe.
+ */
+function hoistedDefKey(name: string): string {
+  return `telo:${name}`;
+}
+
 /** Recursively freeze, so the fragment set cannot be edited through any of the
  *  references handed out. `fragmentFor` clones precisely because downstream
  *  passes rewrite schemas in place — `resolveSchemaRefKinds` rewrites the very
@@ -271,6 +362,8 @@ export const ManifestRootSchema = {
     RetryPolicy: RetryPolicySchema,
     RetryAttempts: RetryAttemptsSchema,
     InvokeStep: InvokeStepSchema,
+    JsonSchema7: JsonSchema7Schema,
+    KindSchema: KindSchemaSchema,
   },
 };
 
@@ -284,6 +377,16 @@ export function manifestFragment(name: string): Record<string, unknown> {
   const fragment = (ManifestRootSchema.$defs as Record<string, unknown>)[name];
   if (!fragment || typeof fragment !== "object") {
     throw new Error(`Unknown manifest fragment '${name}'`);
+  }
+  if (SCHEMA_FRAGMENTS.has(name)) {
+    // A recursive fragment has no expanded form — that is the whole reason it is
+    // localized instead. Embedding one would hand the consumer a body whose
+    // `#/$defs` pointers resolve against nothing.
+    throw new Error(
+      `Manifest fragment '${name}' is recursive and cannot be embedded — ` +
+        `point a slot at it with $ref: "${manifestFragmentRef(name)}" and pass the ` +
+        `enclosing schema through withSchemaFragments().`,
+    );
   }
   const copy = structuredClone(fragment) as Record<string, unknown>;
   expandManifestFragments(copy);
@@ -314,24 +417,140 @@ const FRAGMENT_PREFIX = `${MANIFEST_SCHEMA_URI}#/$defs/`;
  */
 export function expandManifestFragments(node: unknown, seen = new Set<object>()): void {
   if (!node || typeof node !== "object") return;
+  walkFragments(node, seen, { hoistTarget: node as Record<string, unknown>, depth: 0 });
+}
+
+/** Where a hoisted recursive fragment's `$defs` entry goes, and how deep the
+ *  walk is — the two facts {@link walkFragments} carries down. */
+interface ExpandContext {
+  /** The nearest enclosing node AJV will compile as a schema: a document's
+   *  top-level schema-valued key, else the node expansion started from. */
+  readonly hoistTarget: Record<string, unknown>;
+  readonly depth: number;
+}
+
+/**
+ * Descend one key. A TOP-LEVEL schema-valued key (`schema:`, `inputType:`,
+ * `status:`, …) opens a new hoist target, because that node is what a validator
+ * compiles: a `#/$defs/…` pointer written below it resolves against IT, not
+ * against the document. Depth-anchored for the reason migrations anchor `under`
+ * at top-level keys — a slot DESCRIBING a field named `schema` is not itself a
+ * schema region, and treating it as one would scatter `$defs` blocks into the
+ * middle of a kind's property map.
+ */
+function childContext(ctx: ExpandContext, key: string, value: unknown): ExpandContext {
+  if (ctx.depth === 0 && SCHEMA_REGION_KEYS.includes(key) && isPlainObject(value)) {
+    return { hoistTarget: value, depth: 1 };
+  }
+  return { hoistTarget: ctx.hoistTarget, depth: ctx.depth + 1 };
+}
+
+function walkFragments(node: unknown, seen: Set<object>, ctx: ExpandContext): void {
+  if (!node || typeof node !== "object") return;
   if (seen.has(node as object)) return;
   seen.add(node as object);
 
   if (Array.isArray(node)) {
     for (let i = 0; i < node.length; i++) {
-      const fragment = fragmentFor(node[i]);
-      if (fragment) node[i] = fragment;
-      else expandManifestFragments(node[i], seen);
+      const localized = localizeRecursiveFragment(node[i], ctx);
+      if (localized) node[i] = localized;
+      else {
+        const fragment = fragmentFor(node[i]);
+        if (fragment) node[i] = fragment;
+        else walkFragments(node[i], seen, { ...ctx, depth: ctx.depth + 1 });
+      }
     }
     return;
   }
 
   const obj = node as Record<string, unknown>;
   for (const [key, value] of Object.entries(obj)) {
+    const localized = localizeRecursiveFragment(value, ctx);
+    if (localized) {
+      obj[key] = localized;
+      continue;
+    }
     const fragment = fragmentFor(value);
     if (fragment) obj[key] = fragment;
-    else expandManifestFragments(value, seen);
+    else walkFragments(value, seen, childContext(ctx, key, value));
   }
+}
+
+/**
+ * Rewrite a reference to a RECURSIVE fragment to the document-local pointer,
+ * hoisting one copy of the fragment into the enclosing schema's `$defs`.
+ *
+ * Localized rather than inlined because the shape contains itself: inlining
+ * cannot terminate, which is what the "closed, non-recursive set" caveat above
+ * says. Localized rather than left pointing at `telo://manifest` because two
+ * consumers cannot follow a foreign URI — the editor's resolver throws on any
+ * `$ref` that does not start with `#/`, and that throw takes the whole canvas
+ * down, exactly as gating fragment expansion once did.
+ *
+ * Siblings written beside the `$ref` are kept, but draft-07 makes `$ref`
+ * exclusive, so they reach the human surfaces (completion, hover, the editor)
+ * and not AJV. A slot adds a `title` / `description` that way; a slot narrowing
+ * the shape would be silently ignored and should declare its own schema.
+ */
+function localizeRecursiveFragment(
+  value: unknown,
+  ctx: ExpandContext,
+): Record<string, unknown> | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const ref = value.$ref;
+  if (typeof ref !== "string" || !ref.startsWith(FRAGMENT_PREFIX)) return undefined;
+  const name = ref.slice(FRAGMENT_PREFIX.length);
+  if (!SCHEMA_FRAGMENTS.has(name)) return undefined;
+
+  hoistFragmentDef(ctx.hoistTarget, name);
+  return { ...value, $ref: `#/$defs/${hoistedDefKey(name)}`, [X_TELO_FRAGMENT]: name };
+}
+
+/** Add `name` (and anything it references in turn) to `target.$defs`, cloned —
+ *  the fragment set is frozen, and later passes rewrite schemas in place. */
+function hoistFragmentDef(target: Record<string, unknown>, name: string): void {
+  const defs = (target.$defs ??= {}) as Record<string, unknown>;
+  const pending = [name];
+  while (pending.length > 0) {
+    const next = pending.pop() as string;
+    const key = hoistedDefKey(next);
+    if (defs[key]) continue;
+    const fragment = (ManifestRootSchema.$defs as Record<string, unknown>)[next];
+    if (!fragment || typeof fragment !== "object") continue;
+    // Stamped on the hoisted body, not only on the slot that pointed at it: a
+    // schema nests, so the node a consumer resolves two levels down is the
+    // fragment reached through its own self-reference, with no slot in sight.
+    // That node is exactly where an annotation like `x-telo-eval` is written,
+    // so it is where the stamp has to be readable.
+    defs[key] = { ...(structuredClone(fragment) as object), [X_TELO_FRAGMENT]: next };
+    for (const nested of SCHEMA_FRAGMENTS) {
+      if (nested !== next && referencesLocalDef(defs[key], nested)) pending.push(nested);
+    }
+  }
+}
+
+/** Does a hoisted fragment point at another one? Cheap and structural: the set
+ *  is small and a missed edge would leave an unresolvable pointer, which AJV
+ *  reports loudly rather than silently skipping. */
+function referencesLocalDef(node: unknown, name: string): boolean {
+  if (!node || typeof node !== "object") return false;
+  if (Array.isArray(node)) return node.some((item) => referencesLocalDef(item, name));
+  const obj = node as Record<string, unknown>;
+  if (obj.$ref === `#/$defs/${hoistedDefKey(name)}`) return true;
+  return Object.values(obj).some((value) => referencesLocalDef(value, name));
+}
+
+/**
+ * Expand fragments in a schema that never passes through the loader —
+ * `builtins.ts` is not a manifest, so its slots have to arrive already
+ * localized, with the hoisted `$defs` at the root of the schema AJV compiles.
+ *
+ * Returns the same object, expanded in place, for use as a declaration
+ * initializer.
+ */
+export function withSchemaFragments<T extends Record<string, unknown>>(schema: T): T {
+  expandManifestFragments(schema);
+  return schema;
 }
 
 /**

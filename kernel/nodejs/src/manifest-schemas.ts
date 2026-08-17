@@ -1,7 +1,9 @@
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
-// One definition of the `status:` block's shape, shared with `telo check` — the
-// `required:` restriction is reported by the analyzer, which can name the fix.
+// The loader's shape check for a `status:` block. `telo check` narrows it
+// further through the `JsonSchema7` fragment, which can name the offending
+// keyword and its line; keeping this permissive is what stops a sloppy keyword
+// in an already-published manifest from becoming a boot failure.
 import { OBSERVED_STATE_SCHEMA, registerTeloKeywords } from "@telorun/analyzer";
 const Ajv = AjvModule.default ?? AjvModule;
 
@@ -12,11 +14,15 @@ const Ajv = AjvModule.default ?? AjvModule;
 // only at runtime, invisible to `telo check` and to the editor.
 export {
   InvokeStepSchema,
+  isSchemaFragment,
+  JsonSchema7Schema,
+  KindSchemaSchema,
   MANIFEST_SCHEMA_URI,
   ManifestRootSchema,
   manifestFragmentRef,
   ResourceRefSchema,
   RetryPolicySchema,
+  withSchemaFragments,
 } from "@telorun/analyzer";
 
 const metadataSchema = {
