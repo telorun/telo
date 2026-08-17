@@ -1,19 +1,26 @@
 name: Publish Docker Images
 
-# Two triggers:
+# Three triggers:
 #  * push:main        → dev images. The kernel image publishes sha-tagged
-#                       slim variants only (amd64-only) and does NOT mutate
-#                       `:latest`. Application artifacts (docker-runner) are
-#                       not npm-gated, so they publish both `:latest` and
-#                       `:sha-<short>` on every push.
+#                       slim variants only (amd64-only). Application artifacts
+#                       (docker-runner) are not npm-gated, so they publish both
+#                       `:latest` and `:sha-<short>` on every push.
 #                       authoring-agent publishes an immutable `:<version>-slim`
 #                       per agent release (release-owned metadata.version) plus
 #                       a mutable `:latest-slim`. No sha tags; the embedded telo
 #                       runtime is the newest published CLI at build time.
+#                       A push ALSO builds the release tag set when the workspace
+#                       CLI version is live on npm and has no image yet — see
+#                       `Determine build context` below.
 #  * workflow_call    → release images (semver-tagged, all variants, multi-arch).
 #                       Caller passes `published-packages` (the
 #                       changesets/action `publishedPackages` JSON output) so
 #                       per-image jobs can gate on the package they ship.
+#  * workflow_dispatch → build the release tag set for an already-published CLI
+#                       version by hand. The recovery path: when the release run
+#                       failed after npm publish, there was previously NO way to
+#                       ship the images for a live version short of another
+#                       release.
 
 on:
   push:
@@ -31,6 +38,12 @@ on:
       - "analyzer/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/publish-docker.yml"
+  workflow_dispatch:
+    inputs:
+      cli-version:
+        description: 'Published @telorun/cli version to build the release tag set for (e.g. 0.76.0). Empty → derive from the workspace version, if it is published and has no image.'
+        type: string
+        default: ''
   workflow_call:
     inputs:
       release:
@@ -56,13 +69,50 @@ jobs:
       rust-version: ${{ steps.compute.outputs.rust-version }}
       short-sha: ${{ steps.compute.outputs.short-sha }}
       release-cli: ${{ steps.compute.outputs.release-cli }}
+      # Ref the kernel RELEASE tag set is built from. Empty on every ordinary
+      # path (= this commit); set only when the self-healing gate is rebuilding a
+      # version already on npm, where the code must come from that version's tag.
+      build-ref: ${{ steps.compute.outputs.build-ref }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Tags are what the self-healing gate resolves a published version to;
+          # `ls-remote` is the fallback, but a local check is cheaper.
+          fetch-depth: 0
+          fetch-tags: true
 
       - id: compute
         env:
           PUBLISHED: ${{ inputs.published-packages }}
+          DISPATCH_CLI_VERSION: ${{ inputs.cli-version }}
         run: |
+          # Does telorun/node:<version>-slim exist? Anonymous pull token, so this
+          # needs no docker login. A probe that cannot ANSWER (network, rate limit,
+          # auth) reports "present": a missed build heals on the next push, while a
+          # false "missing" would re-tag `latest` from an arbitrary commit.
+          kernel_image_missing() {
+            # `pipefail` inside the function, so the `|| return 1` below is a real
+            # guard rather than a decorative one. The default runner shell is
+            # `bash -e` WITHOUT pipefail, and `jq` exits 0 on empty input — so a
+            # failed token fetch produced an empty token, exit status 0, and the
+            # guard never fired. The probe then reported "present" via the
+            # subsequent 401, which is the safe answer, so the intent held purely
+            # by accident. The whole point of this probe is that its failure mode
+            # is decided rather than incidental.
+            local tag="$1-slim" token code
+            set -o pipefail
+            token=$(curl -fsSL "https://auth.docker.io/token?service=registry.docker.io&scope=repository:telorun/node:pull" | jq -r .token) || return 1
+            [ -n "$token" ] && [ "$token" != "null" ] || return 1
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer $token" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json' \
+              -H 'Accept: application/vnd.docker.distribution.manifest.list.v2+json' \
+              -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
+              -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
+              "https://registry-1.docker.io/v2/telorun/node/manifests/$tag") || return 1
+            [ "$code" = "404" ]
+          }
+
           PUBLISHED="${PUBLISHED:-[]}"
 
           if [ "${{ inputs.release }}" = "true" ]; then
@@ -71,15 +121,75 @@ jobs:
             MODE=dev
           fi
 
-          CLI_VERSION=$(echo "$PUBLISHED" | jq -r '[.[] | select(.name=="@telorun/cli")][0].version // ""')
           RUST_VERSION=$(grep -E '^ARG RUST_VERSION=' cli/nodejs/Dockerfile | head -1 | cut -d= -f2)
           SHORT_SHA=$(git rev-parse --short HEAD)
+
+          # The release tag set is built for exactly one CLI version, from the most
+          # specific source available: what the release run just published, then an
+          # explicit workflow_dispatch input, then the self-healing gate below.
+          CLI_VERSION=$(echo "$PUBLISHED" | jq -r '[.[] | select(.name=="@telorun/cli")][0].version // ""')
+          if [ -z "$CLI_VERSION" ]; then
+            CLI_VERSION="${DISPATCH_CLI_VERSION:-}"
+          fi
+
+          # SELF-HEALING GATE. `latest*` used to move only when the release run
+          # reported @telorun/cli in `publishedPackages`, so ANY later failure in
+          # that run — including one about modules rather than the CLI — left every
+          # deployment pulling a kernel image releases behind, with nothing
+          # reporting it. Image existence is now a function of what is on npm: a
+          # published CLI version with no image gets one, whatever happened in the
+          # run that published it.
+          #
+          # @telorun/sdk is checked too because the Dockerfile's `--prod deploy`
+          # resolves it from npm. cli and sdk publish in one `changeset publish`
+          # pass with no ordering guarantee between them, so a live cli alone is not
+          # proof the build can resolve its peer — which is the race the kernel-dev
+          # job skips the "version packages" commit for.
+          # BUILD_REF is what the kernel jobs check out. Empty means "this
+          # commit", which is right for every path except the self-healing gate
+          # below.
+          BUILD_REF=""
+
+          if [ -z "$CLI_VERSION" ]; then
+            V=$(jq -r .version cli/nodejs/package.json)
+            SDK=$(jq -r .version sdk/nodejs/package.json)
+            if npm view "@telorun/cli@$V" version >/dev/null 2>&1 \
+               && npm view "@telorun/sdk@$SDK" version >/dev/null 2>&1; then
+              if kernel_image_missing "$V"; then
+                # The image is built from the WORKSPACE TREE (`COPY . /build`),
+                # not from npm — so healing at whatever commit happens to be HEAD
+                # would tag `telorun/node:<V>`, `:latest` and the rest with code
+                # that is not what `@telorun/cli@<V>` contains. Release at commit
+                # A publishes 0.77.0 and its image build fails; five feature
+                # commits land; the next push would ship F's kernel as 0.77.0 and
+                # move `latest` to an arbitrary commit — the exact outcome the
+                # probe's own comment claims to prevent, and the same class of bug
+                # (an artifact whose identity does not match its contents) the
+                # rest of this change exists to fix.
+                #
+                # So the build is pinned to the tag changesets pushed for that
+                # version. No tag, no heal: an operator can still select any ref
+                # via workflow_dispatch, which is the deliberate path for a
+                # version whose tag is missing or renamed.
+                TAG="@telorun/cli@$V"
+                if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1 \
+                   || git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+                  echo "@telorun/cli@$V is live on npm but telorun/node:$V-slim is missing — building the release tag set from tag $TAG."
+                  CLI_VERSION="$V"
+                  BUILD_REF="refs/tags/$TAG"
+                else
+                  echo "@telorun/cli@$V is live on npm and telorun/node:$V-slim is missing, but tag '$TAG' does not exist — refusing to heal from HEAD, which would tag the release with a different commit's code. Use workflow_dispatch with the intended ref."
+                fi
+              fi
+            fi
+          fi
 
           {
             echo "mode=$MODE"
             echo "cli-version=$CLI_VERSION"
             echo "rust-version=$RUST_VERSION"
             echo "short-sha=$SHORT_SHA"
+            echo "build-ref=$BUILD_REF"
             [ -n "$CLI_VERSION" ] && echo "release-cli=true" || echo "release-cli=false"
           } >> "$GITHUB_OUTPUT"
 
@@ -139,7 +249,14 @@ jobs:
     needs: context
     runs-on: ubuntu-latest
     steps:
+      # `build-ref` is set ONLY by the self-healing gate, to the tag changesets
+      # pushed for the version being rebuilt. The image is built from the
+      # workspace tree, so building at HEAD would tag `:<version>` and `:latest`
+      # with code that is not what that npm version contains. Empty on every other
+      # path, where the default checkout (this commit) is correct.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.context.outputs.build-ref || github.sha }}
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -288,7 +405,7 @@ jobs:
           # Always publish :latest and the per-commit :sha-*. Add an immutable
           # :<version> tag only when apps/hub's release-owned metadata.version
           # actually moved in this commit (the release commit), mirroring how
-          # publish-packages.mjs gates module-manifest pushes on HEAD^..HEAD.
+          # publish-modules.mjs gates module-manifest pushes on HEAD^..HEAD.
           ver() { sed -n 's/^  version: ["'\'']\?\([0-9][0-9.]*\).*/\1/p' | head -1; }
           NOW=$(ver < apps/hub/telo.yaml)
           PREV=$(git show HEAD^:apps/hub/telo.yaml 2>/dev/null | ver || true)
@@ -351,7 +468,7 @@ jobs:
           # Always publish :latest and the per-commit :sha-*. Add an immutable
           # :<version> tag only when apps/docker-runner's package.json version
           # actually moved in this commit (the release commit), mirroring how
-          # publish-packages.mjs gates module-manifest pushes on HEAD^..HEAD.
+          # publish-modules.mjs gates module-manifest pushes on HEAD^..HEAD.
           NOW=$(jq -r .version apps/docker-runner/package.json)
           PREV=$(git show HEAD^:apps/docker-runner/package.json 2>/dev/null | jq -r .version 2>/dev/null || true)
           {
@@ -382,11 +499,23 @@ jobs:
     # post-publish workflow_call (`release: true`) path instead. Gate on
     # `inputs.release` — github.event_name is the caller's event inside a called
     # workflow, never 'workflow_call'.
+    #
+    # It also WAITS ON THE KERNEL JOBS, because it bakes one of their tags as its
+    # session default. Run concurrently, a failed `kernel-release` would ship
+    # `k8s-runner:latest` and `:<version>` with a default pointing at a
+    # `telorun/node:<v>-slim` that never gets built — a default that cannot
+    # resolve, where the old `latest-slim` always could. `always()` plus the
+    # per-job result test is the shape `hub` and `authoring-agent` already use, so
+    # a legitimately SKIPPED kernel job still does not block this one.
     if: |
-      inputs.release ||
-      (github.event_name == 'push' &&
-       !contains(github.event.head_commit.message, 'chore(release): version packages'))
-    needs: context
+      always() &&
+      (inputs.release ||
+       (github.event_name == 'push' &&
+        !contains(github.event.head_commit.message, 'chore(release): version packages'))) &&
+      needs.context.result == 'success' &&
+      (needs.kernel-dev.result == 'success' || needs.kernel-dev.result == 'skipped') &&
+      (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')
+    needs: [context, kernel-dev, kernel-release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -402,6 +531,7 @@ jobs:
         id: imgtags
         env:
           SHORT_SHA: ${{ needs.context.outputs.short-sha }}
+          CLI_VERSION: ${{ needs.context.outputs.cli-version }}
         run: |
           # latest + per-commit sha always; immutable :<version> only when
           # apps/k8s-runner's package.json version moved this commit (release).
@@ -417,6 +547,25 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
+          # The kernel image spawned for each session, baked into this build so a
+          # RELEASED runner's tested kernel and its runtime kernel are the same
+          # artifact. It is a default an operator can override, not a FROM, so it
+          # need not exist yet when this builds.
+          #
+          # Set ONLY on the release path. A dev build leaves it empty so the
+          # Dockerfile's own `ARG TELO_SESSION_IMAGE=telorun/node:latest-slim`
+          # stands, and that is not a detail: `kernel-dev` builds its sha tags
+          # `linux/amd64` only, so baking `telorun/node:sha-<sha>-slim` — which is
+          # what every ordinary push to main produces — put an amd64-only kernel
+          # behind `k8s-runner:latest`, the chart's default with `pullPolicy:
+          # Always`. Sessions on arm64 nodes could not pull it. `latest-slim` is
+          # multi-arch. Lockstep is only meaningful for an immutable runner tag
+          # anyway: for `:latest` both sides are mutable, so pinning a sha bought
+          # nothing and cost a platform.
+          if [ -n "$CLI_VERSION" ]; then
+            echo "session-image=telorun/node:${CLI_VERSION}-slim" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build & push k8s-runner
         uses: docker/build-push-action@v6
         with:
@@ -424,6 +573,11 @@ jobs:
           file: apps/k8s-runner/Dockerfile
           target: production
           push: true
+          # Empty on a dev build, and an empty `build-args` line is ignored by
+          # buildx — so the Dockerfile's multi-arch default applies rather than a
+          # blank override.
+          build-args: |
+            ${{ steps.imgtags.outputs.session-image && format('TELO_SESSION_IMAGE={0}', steps.imgtags.outputs.session-image) || '' }}
           tags: ${{ steps.imgtags.outputs.tags }}
           cache-from: type=gha,scope=k8s-runner
           cache-to: type=gha,mode=max,scope=k8s-runner

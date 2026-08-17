@@ -152,7 +152,7 @@ function mentionsManifest(output: string, manifestPath: string): boolean {
  * module and an unreachable npm should not stop a publish.
  *
  * **Memoized for the process**, because `telo publish` runs per module and
- * `scripts/publish-packages.mjs` publishes the whole standard library in one
+ * `scripts/publish-modules.mjs` publishes the whole standard library in one
  * pass: without this, one release is ~60 `npm view` round trips (each with a
  * 60-second timeout) for a single answer that cannot change mid-run. The failed
  * lookup is cached too — a registry unreachable for the first module is
