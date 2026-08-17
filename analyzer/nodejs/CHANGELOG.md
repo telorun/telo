@@ -1,5 +1,145 @@
 # @telorun/analyzer
 
+## 0.62.0
+
+### Minor Changes
+
+- 17584a7: Every author-written name is now checked, and the convention behind it is stated
+  in one sentence: **case encodes what a name denotes.** PascalCase names a type —
+  a module `metadata.name`, a kind name, an import alias, or a resource whose
+  capability is `Telo.Type`. camelCase names a value — a resource instance, a `Run`
+  step, a `variables:` / `secrets:` / `ports:` key, a CEL binding.
+
+  That distinction is the only thing separating `kind: Console.WriteLine` from
+  `!ref Console.writeLine`, which are character-identical grammars, and the pair is
+  not hypothetical: it is the sanctioned singleton shape, where a library declares
+  `kind: Self.WriteLine`, exports the instance and withholds the kind. The docs
+  previously recommended PascalCase for instances on a CloudFormation logical-ID
+  analogy — the wrong precedent, since CFN logical IDs sit in a dedicated `!Ref`
+  slot with no expression language beside them, while a Telo name _is_ a CEL
+  identifier and sits next to `variables.` in the same expression.
+
+  Three tiers, each with a different severity, because they fail in different ways:
+
+  - `INVALID_NAME` (error, every surface) — not `^[A-Za-z_][A-Za-z0-9_]*$`, or a
+    CEL keyword.
+  - `INVALID_TYPE_NAME` (error) — a type-level name not starting uppercase.
+  - `NAME_CASE_CONVENTION` (warning) — a value-level name not starting lowercase.
+
+  The grammar tier is an error because the name is otherwise unreferenceable _or
+  silently mis-referenced_. Probed against the CEL engine the runtime actually
+  uses: `resources.in` and `resources.2fa` are ParseErrors, but
+  `resources.my-server.url` **evaluates**, as `resources.my - server.url`. Where a
+  bare name is in scope — which `x-telo-bindings-from` deliberately makes possible
+  — a hyphenated resource name therefore yields a wrong number with no diagnostic
+  anywhere. This replaces the old dot-only `INVALID_RESOURCE_NAME`, which was the
+  strictest special case of the same rule; checking one character while the rest
+  went unchecked is what left the hole. The reserved set is the whole keyword list
+  rather than the subset today's parser rejects in field position (`for` and
+  `package` currently parse) — which keywords tokenize there is a property of a
+  dependency, and a name that breaks on a parser upgrade was never safe.
+
+  The type-case tier is an error rather than a warning because half the reference
+  grammar already rejected the alternative: `EXTENDS_ALIAS_PATTERN` hard-rejects
+  `extends: foo.Bar`, while nothing rejected the `metadata.name: foo` that produced
+  it. A lowercase kind is a kind nothing can extend, so this only moves an existing
+  failure to where it is fixable. Value-level case stays a warning, Rust's
+  `non_snake_case` posture: a name is occasionally dictated from outside and Telo
+  has no way to silence a diagnostic locally.
+
+  Only the **first character** is checked. The type/value signal is all it carries,
+  and a full pattern would relitigate `httpApi` vs `httpAPI` and `OAuthClient` vs
+  `OauthClient` while rejecting an all-acronym type name like `SQL` or `AI`. There
+  is deliberately no quick fix: a `DiagnosticFix` is a whole-value replacement for
+  one node, and a rename is correct only when every reference moves with it.
+
+  Scoped to the entry's own modules at every tier, errors included — a published
+  dependency's naming is not the consumer's to fix — and a name synthesized by
+  inline extraction is skipped, since the author never wrote it. Step names come
+  from the call graph rather than a walk of their own, which already owns the
+  analyzer's only step-array recursion and carries each step's name, owner and
+  concrete path.
+
+  Two latent bugs surfaced in this repo: the `workflow` and `workflow-temporal`
+  modules were stragglers from the module-name PascalCase migration, and a hub step
+  named `record-failure` could never have been read as `steps.record-failure.result`.
+
+- 987decd: A slot that holds author-written JSON Schema now says so, instead of being
+  declared `type: object` and nothing more. `telo://manifest#/$defs/JsonSchema7`
+  (plain data — an `inputType:`, a `status:` block, an API route's
+  `request.schema`) and `#/$defs/KindSchema` (a kind's own `schema:`, where the
+  `x-telo-*` vocabulary belongs) join the shared fragment set, and the built-in
+  `Telo.Definition` / `Telo.Abstract` / `Telo.JsonSchema` slots point at them.
+
+  The gain is that every surface reading a kind schema now knows what lives there:
+  completion offers the keyword set from the first key down and recurses into a
+  property's own schema, hover has titles and descriptions to show, and a `status:`
+  block is checked as a schema at `telo check` — anchored on the offending
+  keyword's line — rather than at dispatch. Which vocabulary a slot admits is the
+  fragment NAME, read off the derived `x-telo-fragment` stamp: the annotations are
+  offered inside a kind's schema and withheld inside a data schema, where they
+  would configure a slot that does not exist.
+
+  Wired at the built-in slots only — `Telo.Definition` / `Telo.Abstract`'s
+  `schema:` and `status:`, and `Telo.JsonSchema.schema`. A module's own
+  schema-valued slots still declare `type: object`: `inputType:` / `outputType:`
+  are `x-telo-ref` slots accepting four forms and need an `anyOf` branch rather
+  than a replacement, and a slot reached through `x-telo-schema-from` is
+  transplanted into the consumer's schema, where a document-local pointer resolves
+  against a root that has no such entry.
+
+  These two are the first RECURSIVE fragments, so they are not expanded in place
+  like the others — a shape containing itself has no expanded form. A reference is
+  rewritten to the document-local `#/$defs/telo:<Name>` pointer with one copy
+  hoisted to the root of the schema a validator compiles, which is the only
+  reference form the editor's resolver accepts and the one AJV resolves natively.
+  The key is reserved rather than plain, so a kind declaring its own
+  `$defs: { KindSchema: … }` cannot silently become what every slot pointing at the
+  fragment validates against; for the same reason `mergeTypeSchemas` now merges
+  `$defs` key-wise like `properties`, since an `extends` child declaring any would
+  otherwise erase the parent's hoisted entry. Siblings written beside the `$ref`
+  reach the human surfaces but not AJV, which draft-07 makes exclusive; a slot may
+  add a title, not narrow the shape.
+
+  Landing the check surfaced an abort that predates it: AJV's `addSchema`
+  meta-validates and THROWS, and the throw escaped the whole analyze pass, so one
+  author schema carrying `minimum: "3"` ended the run with AJV's unanchored text
+  and took every other diagnostic in the file with it. A schema AJV refuses is now
+  left unregistered — a `$ref` lookup entry that could not have resolved anyway —
+  and reported by the anchored checks that run afterwards.
+
+  The fragment body stays open (`additionalProperties: true`) and carries no
+  literal `x-telo-*` property names. Both are load-bearing rather than incidental:
+  closing it would reject the next annotation a module invents, and a `properties`
+  map holding a key spelled `x-telo-ref` reads to the annotation walkers as an
+  annotated node, inventing diagnostics about a slot nobody wrote. The vocabulary
+  completion offers therefore lives in the analyzer (`schema-keywords.ts`), on the
+  side of the boundary no manifest walk reaches.
+
+- d08c3bd: Add declared runtime requirements: a module states, in a top-level `requires:` block,
+  the range of Telo it is verified against.
+
+  Telo closes every extension vocabulary and rejects an unknown token, which is right for
+  a typo and wrong for a version — so a module adopting new syntax broke on older runtimes
+  with a message blaming its own author. A declared range turns that into one accurate
+  diagnostic (`MODULE_REQUIRES_NEWER_RUNTIME`), and stops `telo upgrade` selecting versions
+  the running Telo cannot read at all.
+
+  `telo:` is a semver range over the manifest surface generation — one scale every kernel
+  reports, so there is no range per kernel — and host requirements nest under `host:`, where
+  `node` is the only axis for now, since an axis is added when something compares it and not
+  before. `^` and `~` are rejected: pre-1.0 they allow only one minor, and Telo
+  ships breaking changes as minor bumps, so they would pin a module to a single release
+  generation. An upper bound must name a version that already exists.
+
+  The claim is verified by running the CLI at each edge of the declared range, in
+  `telo publish`'s preflight and across the workspace in `telo release check`. A module
+  declaring nothing carries no requirement.
+
+### Patch Changes
+
+- @telorun/templating@0.16.0
+
 ## 0.61.0
 
 ### Minor Changes
