@@ -1,5 +1,122 @@
 # @telorun/ide-support
 
+## 0.14.0
+
+### Minor Changes
+
+- 17584a7: Rename, as an editor operation: `prepareRename` resolves the symbol under the
+  cursor, `buildRename` returns the edit set for it across every file in the
+  module. The VS Code extension wires both to <kbd>F2</kbd>.
+
+  **A rename is a refactor, not a fix**, which is why it lives here rather than
+  behind a `DiagnosticFix`. A fix is a whole-value replacement for ONE node,
+  verified by the diagnostic that produced it; a rename is only correct when every
+  reference moves with it, so its unit is the reference graph. Rewriting
+  `metadata.name` alone leaves every `!ref`, `resources.<name>` and
+  `steps.<name>.result` pointing at a name that no longer exists — a rename offered
+  as a quick fix would break the file it claimed to repair.
+
+  Edits are precise sub-spans, not whole scalars. A `!ref` scalar's own AST range
+  is its value (the tag excluded), and a CEL identifier's span comes from
+  `CelNode.propertyRange` — which the analyzer's node model has carried since it
+  was written, commented "for a future rename". So renaming a step inside
+  `output: "Username: ${{ steps.readUsername.result.value }}, Password: ${{ … }}"`
+  rewrites that one identifier and leaves the rest of the string, including a
+  second interpolation, untouched.
+
+  Three renameable surfaces, chosen because their reference set is enumerable from
+  the workspace: a resource instance, a `Run` step name, and a `variables:` /
+  `secrets:` / `ports:` key. Everything else is an explicit refusal carrying its
+  reason, never an empty result — a refusal here usually means the name has too
+  many references, which is the opposite of what "nothing to rename" says:
+
+  - An instance in `exports.resources`, or a `Telo.Library`'s declared config key.
+    These are the module's public surface, referenced from files the workspace may
+    not contain and, for a published consumer, cannot. That is a breaking change to
+    version, not an edit to apply, and a rename box that silently shipped one would
+    be the worst available framing.
+  - A name declared twice in reach — a `with:`-scoped resource shadowing a
+    module-level one, two steps in one resource sharing a spelling. References
+    resolve to different declarations and no edit set is right for both.
+  - A kind name, a module name or an import alias: their references are
+    alias-qualified halves of `kind:` / `extends:` / `x-telo-ref` / `exports.kinds`
+    values, a materially larger surface that wants its own pass.
+
+  The new name is checked through the analyzer's own `checkName`, so a rename
+  cannot introduce a name `telo check` would then reject. A step's edit set is
+  document-scoped, because `steps.<name>.result` is readable only inside the
+  resource whose body declares the step and a resource is one YAML document — which
+  is also what makes two same-named steps in one document the ambiguity to refuse.
+  The live buffer always stands in for the current file's snapshot: the graph is
+  taken at the last analysis, so edits computed against it would otherwise write
+  stale offsets into a file the author has since changed.
+
+  `chainAt` / `flattenChain` / `celChildren` moved out of
+  `definition/resolve-cel-target.ts` into a shared `cel-chain.ts` rather than being
+  copied. The exhaustive `celChildren` switch is the reason: an unhandled `CelNode`
+  variant fails the build there, and a second copy would mean the failure is caught
+  for go-to-definition (a missed jump) but not for rename (a reference left
+  pointing at the old name).
+
+- 987decd: A slot that holds author-written JSON Schema now says so, instead of being
+  declared `type: object` and nothing more. `telo://manifest#/$defs/JsonSchema7`
+  (plain data — an `inputType:`, a `status:` block, an API route's
+  `request.schema`) and `#/$defs/KindSchema` (a kind's own `schema:`, where the
+  `x-telo-*` vocabulary belongs) join the shared fragment set, and the built-in
+  `Telo.Definition` / `Telo.Abstract` / `Telo.JsonSchema` slots point at them.
+
+  The gain is that every surface reading a kind schema now knows what lives there:
+  completion offers the keyword set from the first key down and recurses into a
+  property's own schema, hover has titles and descriptions to show, and a `status:`
+  block is checked as a schema at `telo check` — anchored on the offending
+  keyword's line — rather than at dispatch. Which vocabulary a slot admits is the
+  fragment NAME, read off the derived `x-telo-fragment` stamp: the annotations are
+  offered inside a kind's schema and withheld inside a data schema, where they
+  would configure a slot that does not exist.
+
+  Wired at the built-in slots only — `Telo.Definition` / `Telo.Abstract`'s
+  `schema:` and `status:`, and `Telo.JsonSchema.schema`. A module's own
+  schema-valued slots still declare `type: object`: `inputType:` / `outputType:`
+  are `x-telo-ref` slots accepting four forms and need an `anyOf` branch rather
+  than a replacement, and a slot reached through `x-telo-schema-from` is
+  transplanted into the consumer's schema, where a document-local pointer resolves
+  against a root that has no such entry.
+
+  These two are the first RECURSIVE fragments, so they are not expanded in place
+  like the others — a shape containing itself has no expanded form. A reference is
+  rewritten to the document-local `#/$defs/telo:<Name>` pointer with one copy
+  hoisted to the root of the schema a validator compiles, which is the only
+  reference form the editor's resolver accepts and the one AJV resolves natively.
+  The key is reserved rather than plain, so a kind declaring its own
+  `$defs: { KindSchema: … }` cannot silently become what every slot pointing at the
+  fragment validates against; for the same reason `mergeTypeSchemas` now merges
+  `$defs` key-wise like `properties`, since an `extends` child declaring any would
+  otherwise erase the parent's hoisted entry. Siblings written beside the `$ref`
+  reach the human surfaces but not AJV, which draft-07 makes exclusive; a slot may
+  add a title, not narrow the shape.
+
+  Landing the check surfaced an abort that predates it: AJV's `addSchema`
+  meta-validates and THROWS, and the throw escaped the whole analyze pass, so one
+  author schema carrying `minimum: "3"` ended the run with AJV's unanchored text
+  and took every other diagnostic in the file with it. A schema AJV refuses is now
+  left unregistered — a `$ref` lookup entry that could not have resolved anyway —
+  and reported by the anchored checks that run afterwards.
+
+  The fragment body stays open (`additionalProperties: true`) and carries no
+  literal `x-telo-*` property names. Both are load-bearing rather than incidental:
+  closing it would reject the next annotation a module invents, and a `properties`
+  map holding a key spelled `x-telo-ref` reads to the annotation walkers as an
+  annotated node, inventing diagnostics about a slot nobody wrote. The vocabulary
+  completion offers therefore lives in the analyzer (`schema-keywords.ts`), on the
+  side of the boundary no manifest walk reaches.
+
+### Patch Changes
+
+- Updated dependencies [17584a7]
+- Updated dependencies [987decd]
+- Updated dependencies [d08c3bd]
+  - @telorun/analyzer@0.62.0
+
 ## 0.13.3
 
 ### Patch Changes
