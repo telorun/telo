@@ -49,6 +49,7 @@ import { ambientInvokeContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { mintResourceHandle } from "./resource-handle.js";
+import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
@@ -556,7 +557,11 @@ export class Kernel implements IKernel {
       // Imported libraries' full documents, for the zone stage's per-library
       // export derivation: `flattenForAnalyzer` forwards only each library's
       // export surface, never its internal dispatch chain.
-      { skipValidation, moduleDocuments: collectZoneModuleDocuments(analysisGraph) },
+      {
+        skipValidation,
+        moduleDocuments: collectZoneModuleDocuments(analysisGraph),
+        hostVersions: nodeHostVersions(),
+      },
       this.registry,
     );
     if (errors.length > 0) {

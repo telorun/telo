@@ -1,0 +1,15 @@
+# A module declaring a Telo range no released runtime satisfies. The gate must
+# report the version skew — and must SUPPRESS the diagnostics that skew would
+# otherwise produce, which is what the second resource here exists to prove: an
+# undefined kind is a real error in this file, and reporting it beside the gate
+# would bury the one message naming the actual cause.
+kind: Telo.Application
+metadata:
+  name: RequiresFutureTelo
+  version: 1.0.0
+requires:
+  telo: ">=999.0.0"
+---
+kind: NotImported.Missing
+metadata:
+  name: wouldNotResolve

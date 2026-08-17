@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: RequiresNewerRuntimeTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref testRequiresNewerRuntime
+---
+# End-to-end proof that the gate fires through the real load + analyze path.
+#
+# `expect.errors` matches by PRESENCE — extra errors are not failures here — so
+# this does not assert the suppression of the fixture's other diagnostics. That
+# property is asserted where it can be stated exactly, in
+# `analyzer/nodejs/tests/requires-block.test.ts`.
+kind: Assert.Manifest
+metadata:
+  name: testRequiresNewerRuntime
+source: ./__fixtures__/requires-future-telo.yaml
+expect:
+  errors:
+    - code: MODULE_REQUIRES_NEWER_RUNTIME
+      message: "requires telo '>=999.0.0'"

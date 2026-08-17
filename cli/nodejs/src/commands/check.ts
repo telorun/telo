@@ -7,6 +7,7 @@ import {
 import { assembleGraphDiagnostics } from "@telorun/ide-support";
 import {
   LocalManifestCacheSource,
+  nodeHostVersions,
   resolveCacheRoot,
   resolveEntryDir,
   writeManifestCache,
@@ -221,6 +222,7 @@ async function checkOne(
     // the CLI analyzes once per process.
     const analysis = new StaticAnalyzer().analyze(flattenForAnalyzer(graph), {
       moduleDocuments: collectZoneModuleDocuments(graph),
+      hostVersions: nodeHostVersions(),
     });
     const { diagnostics } = assembleGraphDiagnostics(graph, analysis);
     const counts = formatAnalysisDiagnostics(diagnostics, graph, log, entryPath);

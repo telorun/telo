@@ -22,6 +22,7 @@ import {
   type RuntimeSeam,
 } from "@telorun/sdk";
 import { Writable } from "stream";
+import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import type { Kernel } from "./kernel.js";
 import { defaultTransportRegistry } from "./transports/transport-registry.js";
@@ -285,6 +286,7 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     // nothing was migrated.
     const analysis = new StaticAnalyzer({ celHandlers: nodeCelHandlers }).analyze(manifests, {
       moduleDocuments,
+      hostVersions: nodeHostVersions(),
     });
     const diagnostics = remapMigratedPaths(loadedGraph, analysis);
     return {

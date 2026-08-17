@@ -1,5 +1,12 @@
-import { applyTextEdits, isLocalPathSource, splitIntegrity } from "@telorun/analyzer";
-import { defaultTransportRegistry, type Transport } from "@telorun/kernel";
+import {
+  TELO_SURFACE_VERSION,
+  applyTextEdits,
+  evaluateRequires,
+  isLocalPathSource,
+  readRequires,
+  splitIntegrity,
+} from "@telorun/analyzer";
+import { defaultTransportRegistry, nodeHostVersions, type Transport } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import * as fs from "fs";
 import * as path from "path";
@@ -29,6 +36,112 @@ export function pickLatest(versions: string[], includePrerelease: boolean): stri
   if (eligible.length === 0) return null;
   // semver.rcompare puts the highest precedence first.
   return [...eligible].sort(semver.rcompare)[0];
+}
+
+/**
+ * How a candidate version answered the compatibility question.
+ *
+ * `unknown` — the manifest could not be read — is never treated as
+ * incompatible, since an unreachable registry must not silently freeze a
+ * consumer's imports.
+ *
+ * The two rejecting answers are kept APART because they call for different
+ * actions and the user is told which one applies: `too-new` is fixed by
+ * upgrading telo, `unreadable` cannot be fixed by the consumer at all. Collapsing
+ * them into one `"no"` and then printing "requires a newer telo" would assert a
+ * cause the check never established, and point at a runtime upgrade that will not
+ * help.
+ */
+type Compatibility = "yes" | "too-new" | "unreadable" | "unknown";
+
+/**
+ * Read a candidate version's declared `requires.telo` and decide whether this
+ * runtime can host it.
+ *
+ * The manifest is its own artifact layer, so this costs a `telo.yaml` fetch and
+ * never pulls a payload. A module that declares nothing is compatible — the
+ * bootstrap rule, permanent for everything published before the mechanism
+ * existed.
+ */
+async function versionCompatibility(
+  transport: Transport,
+  source: string,
+  version: string,
+): Promise<Compatibility> {
+  let text: string;
+  try {
+    ({ text } = await transport.source.read(transport.withVersion(source, version)));
+  } catch {
+    return "unknown";
+  }
+  try {
+    const docs = parseAllDocuments(text, { customTags: defaultCustomTags });
+    const moduleDoc = findModuleDoc(docs);
+    if (!moduleDoc) return "unknown";
+    const { block, issues } = readRequires(moduleDoc.toJS() as Record<string, unknown>);
+    // A malformed declaration is not a licence to install: the module claims a
+    // requirement it failed to state, and guessing which way it pointed is how a
+    // consumer ends up on a version that cannot load.
+    // The load gate warns about this same manifest, so the two halves agree.
+    if (issues.some((i) => !i.unknownAxis)) return "unreadable";
+    return evaluateRequires(block, TELO_SURFACE_VERSION, nodeHostVersions()).satisfied
+      ? "yes"
+      : "too-new";
+  } catch {
+    return "unknown";
+  }
+}
+
+interface Selection {
+  /** The newest version this runtime can host, or `null` when none can be. */
+  best: string | null;
+  /** The newest version overall, when it is NOT `best` — what was held back. */
+  heldBack: string | null;
+  /** Why `heldBack` was rejected, so the message states the cause it actually
+   *  established rather than assuming a version skew. */
+  reason: Exclude<Compatibility, "yes"> | null;
+}
+
+/**
+ * The newest version whose declared range accepts this runtime.
+ *
+ * Walks newest-first and stops at the first satisfied candidate, so the common
+ * case — the newest version is compatible — costs a single manifest fetch. The
+ * held-back version is reported rather than swallowed: without it `upgrade` says
+ * "up to date" while newer versions exist, which is a silent ceiling and a worse
+ * report than the failure this whole mechanism replaces.
+ */
+async function selectCompatible(
+  transport: Transport,
+  source: string,
+  versions: string[],
+  includePrerelease: boolean,
+): Promise<Selection> {
+  const eligible = (
+    includePrerelease ? versions : versions.filter((v) => semver.prerelease(v) === null)
+  )
+    .slice()
+    .sort(semver.rcompare);
+  if (eligible.length === 0) return { best: null, heldBack: null, reason: null };
+
+  let firstReason: Exclude<Compatibility, "yes"> | null = null;
+  for (const version of eligible) {
+    const verdict = await versionCompatibility(transport, source, version);
+    if (verdict === "too-new" || verdict === "unreadable") {
+      firstReason ??= verdict;
+      continue;
+    }
+    const held = version === eligible[0] ? null : eligible[0]!;
+    return { best: version, heldBack: held, reason: held ? firstReason : null };
+  }
+  return { best: null, heldBack: eligible[0]!, reason: firstReason };
+}
+
+/** How a rejected candidate reads in the held-back line. */
+function describeReason(reason: Exclude<Compatibility, "yes"> | null): string {
+  if (reason === "unreadable") return "its declared requirement cannot be read";
+  if (reason === "too-new") return `it requires a newer telo than ${TELO_SURFACE_VERSION}`;
+  return "it could not be checked";
 }
 
 interface ImportUpgrade {
@@ -221,16 +334,6 @@ export async function upgradeManifest(args: {
       .map((v) => semver.valid(v))
       .filter((v): v is string => v !== null);
 
-    const best = pickLatest(normalized, includePrerelease);
-    if (!best) {
-      // Versions exist but none pass the prerelease filter / semver parser.
-      outLine(
-        `  ${log.warn("!")}  ${label}  ${log.dim("no eligible versions in registry")}`,
-      );
-      result.skipped++;
-      continue;
-    }
-
     const currentVersion = semver.valid(rawVersion);
     if (!currentVersion) {
       // A non-SemVer pin — an OCI `sha256:` digest, a moving tag like `latest`.
@@ -240,6 +343,54 @@ export async function upgradeManifest(args: {
       );
       result.skipped++;
       continue;
+    }
+
+    // Nothing to select when the newest published version is the one already
+    // pinned: there is no candidate to move to, so the compatibility question
+    // has no bearing and asking it would cost a manifest fetch per import on the
+    // path that changes nothing. A pin the runtime cannot read is the LOAD
+    // gate's to report, not this command's — `upgrade` moves pins forward, it
+    // does not walk anyone backwards.
+    const plainLatest = pickLatest(normalized, includePrerelease);
+    if (plainLatest && semver.eq(plainLatest, currentVersion)) {
+      await ensurePinned(importRef, transport, label, currentVersion);
+      continue;
+    }
+
+    // Compatibility-aware selection: the highest version whose declared
+    // `requires.telo` accepts this runtime, not the highest full stop. Without
+    // it a consumer is handed syntax their runtime cannot read, which is the
+    // failure the requirement declaration exists to prevent reaching at all.
+    const { best, heldBack, reason } = await selectCompatible(
+      transport,
+      source,
+      normalized,
+      includePrerelease,
+    );
+    if (!best) {
+      if (heldBack) {
+        // Every published version declares a runtime this one is not — the
+        // abandoned-module case a closed upper bound exists for. Reporting it as
+        // "up to date" would be a lie in the most expensive direction.
+        outLine(
+          `  ${log.warn("!")}  ${label}  ` +
+            log.warn(
+              `no published version is usable here — newest is ${heldBack}, and ` +
+                `${describeReason(reason)}`,
+            ),
+        );
+      } else {
+        // Versions exist but none pass the prerelease filter / semver parser.
+        outLine(`  ${log.warn("!")}  ${label}  ${log.dim("no eligible versions in registry")}`);
+      }
+      result.skipped++;
+      continue;
+    }
+    if (heldBack) {
+      outLine(
+        `  ${log.dim("·")}  ${label}  ` +
+          log.dim(`${heldBack} available — ${describeReason(reason)}`),
+      );
     }
 
     const currentPublished = normalized.some((v) => semver.eq(v, currentVersion));

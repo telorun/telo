@@ -1139,6 +1139,20 @@ system: |
     subpaths (`@telorun/kv-store/claim`) are not representable and are a build
     error. Nothing to declare on the consumer side: the dependency is already
     declared as an `imports:` entry.
+  - `requires:` — the runtime range this module is verified against, on either
+    module kind. `telo:` is a semver range over the MANIFEST SURFACE GENERATION
+    (`requires: {telo: ">=0.80.0"}`), one scale every kernel reports; host
+    requirements nest under `host:`, where `node` is the only axis today (an
+    axis exists only once something compares it). Bare versions and
+    `^` / `~` are REJECTED — pre-1.0 the caret allows only one minor and Telo
+    ships breaking changes as minor bumps, so it would pin the module to a
+    single release generation; write `>=X.Y.Z`. Ranges are open above unless a
+    module is known broken on a newer Telo, and an upper bound must name a
+    version that already exists. A module declaring nothing carries no
+    requirement. Declare it on a library you publish; on an application only
+    when it is distributed (a template, an example, a deployed app). When you
+    author a manifest for a user, do NOT invent a bound — omit the block unless
+    the user states the Telo version they target.
   - `exports:` (Library only) — `kinds:` (kind names importers may use) and
     `resources:` (instance names importers may `!ref`). Declaring `kinds:` opts
     the library into a gate: ONLY the listed kinds are importable, and using an

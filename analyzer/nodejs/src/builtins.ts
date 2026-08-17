@@ -47,6 +47,32 @@ const PROVENANCE_METADATA = {
   documentation: { type: "string" },
 };
 
+/** The declared runtime requirements block, shared by `Telo.Application` and
+ *  `Telo.Library` — the two module kinds, whose schemas are otherwise
+ *  independent and would drift.
+ *
+ *  **Deliberately says only "these are objects", and nothing about the values.**
+ *  The grammar belongs to `requires-block.ts`, which is the single reader, and
+ *  every rule that matters — `^` and `~` refused, a bare version refused, bounds
+ *  that must not exclude each other, an upper bound that must name a version that
+ *  exists — needs a parse and a comparison, not a schema. Adding `type: "string"`
+ *  here bought nothing and cost a duplicate: `telo: 80` then produced BOTH a
+ *  `SCHEMA_VIOLATION` and a `REQUIRES_INVALID` for one node, one of them phrased
+ *  by a layer that does not know what the value is for.
+ *
+ *  Left open at both tiers for the same reason. An unrecognized axis is reported
+ *  by the reader with the vocabulary it knows — a far better message than AJV's —
+ *  and, critically, is SUPPRESSED while the `telo` requirement is itself unmet,
+ *  since an older runtime not knowing a newer axis is a consequence of the
+ *  version skew rather than a second defect. AJV cannot express that ordering. */
+const REQUIRES_SCHEMA = {
+  type: "object",
+  properties: {
+    host: { type: "object" },
+  },
+  additionalProperties: true,
+};
+
 /** Author-declared subset of `files:` that ships in the artifact's lazily
  *  materialized `assets` layer. Optional: an unclaimed file joins the `common`
  *  layer, which is pulled alongside any controller layer, so omitting this costs
@@ -816,6 +842,9 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         // CLI flag — so a level derived from the host environment goes through a
         // `variables:` entry read with `!cel`. See kernel/specs/logging.md §12.
         logging: ROOT_LOGGING_SCHEMA,
+        // The runtime range this module is verified against. See
+        // `analyzer/nodejs/src/requires-block.ts`.
+        requires: REQUIRES_SCHEMA,
       },
       required: ["metadata"],
       additionalProperties: false,
@@ -906,6 +935,9 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           },
           additionalProperties: true,
         },
+        // The runtime range this module is verified against. See
+        // `analyzer/nodejs/src/requires-block.ts`.
+        requires: REQUIRES_SCHEMA,
       },
       required: ["metadata"],
       additionalProperties: false,

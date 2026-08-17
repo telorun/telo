@@ -15,6 +15,7 @@
 import {
   LEDGER_PATH,
   LOCALLY_DERIVED_LAYERS,
+  TELO_SURFACE_VERSION,
   diffLayerDigests,
   isFragmentKind,
   orderByImports,
@@ -35,6 +36,7 @@ import { ModulePayloadBuilder } from "../bundle/module-payload.js";
 import { createLogger, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine, outProgress } from "../output.js";
 import { recordLedger, writePlannedVersions } from "../release/apply-plan.js";
+import { checkWorkspaceRequires } from "../release/check-requires.js";
 import { collectEvidence, destinationFor, digestPayload } from "../release/evidence.js";
 import {
   deleteFragment,
@@ -197,11 +199,35 @@ async function status(argv: CommonArgv): Promise<void> {
  */
 async function check(argv: CommonArgv): Promise<void> {
   const log = createLogger(false);
-  const { plan } = await buildPlan(argv, log);
+  const { workspace, plan } = await buildPlan(argv, log);
   for (const line of renderPlan(plan, log)) outLine(line);
   const errors = reportDiagnostics(plan, log);
-  outEmit({ ok: errors === 0, ...(planPayload(plan) as object) });
-  if (errors > 0) process.exitCode = 1;
+
+  // Declared runtime requirements, verified by RUNNING the CLI at each edge of
+  // each declared range. This is where an adoption of new syntax without a
+  // matching bound is caught: the low-edge CLI cannot read it and says so. It is
+  // self-maintaining — nothing has to be annotated, and no list can go stale.
+  const requires = await checkWorkspaceRequires(workspace, TELO_SURFACE_VERSION);
+  for (const c of requires.checks) {
+    const label = `telo ${c.edge}`;
+    const count = `${c.modules.length} module${c.modules.length === 1 ? "" : "s"}`;
+    if (c.status === "passed") {
+      outLine(`${log.ok("✓")}  ${label}  ${log.dim(`${count} verified`)}`);
+    } else if (c.status === "unavailable") {
+      // Unproven, not disproven — CI that cannot reach npm must not invent a
+      // verdict, and must not silently claim one either.
+      outErrLine(`${log.warn("!")}  ${label}  could not run (${c.detail ?? "unknown"})`);
+    } else {
+      outErrLine(
+        `${log.err.error("✗")}  ${label}  rejects ${count} declaring it: ${c.modules.join(", ")}`,
+      );
+      if (c.detail) outErrLine(c.detail);
+    }
+  }
+
+  const ok = errors === 0 && !requires.refuted;
+  outEmit({ ok, ...(planPayload(plan) as object), requires: requires.checks });
+  if (!ok) process.exitCode = 1;
 }
 
 // ---------------------------------------------------------------------------
