@@ -231,9 +231,21 @@ carries the index does not participate in a digest it contains.
 
 ### 3.4 Publish ordering
 
-A publisher MUST push every payload layer, collect their `blob` digests, inject the
-index into `telo.yaml`, and only then push the manifest layer. This ordering is what
-keeps the index non-circular: it names only layers pushed before it.
+A publisher MUST write the index into `telo.yaml` **before pushing anything**, then
+push every payload layer, then push the manifest layer last. The ordering keeps the
+index non-circular: it names only layers other than the one carrying it.
+
+The index MUST NOT be written after the manifest bytes have been handed to the
+push. An importer's pin is a hash of the published `telo.yaml`, and a dependent
+derives that hash from the bytes its dependency's builder produced — so a rewrite
+between the two makes every such pin name bytes no registry serves.
+
+A `blob` digest is therefore known before the blob is pushed, which requires the
+layer's archive framing to be a **pure function of the files it covers**: a
+publisher MUST NOT let a clock, a path outside the layer, or any other ambient
+input reach the framed bytes. A publisher SHOULD verify each pushed blob against
+the digest the index already claims and MUST fail rather than correct a
+disagreement, since the manifest may already be pinned.
 
 ## 4. OCI mapping
 

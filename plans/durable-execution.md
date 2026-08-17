@@ -8,12 +8,20 @@ satisfaction walk is the mirror of, and the registered zone attributes a zone us
 forbid what a requirement cannot express.
 
 **Depends on `plans/step-grammar-in-sdk.md`**, which moves step execution into
-`@telorun/sdk` and makes the step schema built-in vocabulary. Two things here rest on
+`@telorun/sdk` and makes the step schema built-in vocabulary. Three things here rest on
 it: every backend's `Workflow` kind carries `steps:` natively rather than pointing a
 lone `invoke:` at a separate `Run.Sequence`, and *"the step engine must not fork"* —
 the premise the whole backend seam is built on — becomes a structural fact rather than
 an argument this plan has to win, because the SDK is symlinked into every controller
 bundle instead of inlined.
+
+The third is a **safety** dependency rather than a structural one, and it is easy to
+read past: the containment residue below — a body reached through an edge the analyzer
+cannot see runs journal-free steps up to its first parking point — has exactly one real
+mitigation, which is the body having no name of its own to invoke. That is native
+`steps:`. Shipping durability on a `Run.Sequence` the workflow points an `invoke:` at
+would leave the hole open with only a warning over it, so the prerequisite is not merely
+tidier here; it is what turns a diagnosed shape into an unreachable one.
 
 ## Problem
 
@@ -124,7 +132,7 @@ a step executes*, which is genuinely per-backend. So the seam is sized to that:
 - **`Durable.Value`** — pin one impure evaluation, so a region that re-runs reuses the
   value rather than computing a new one.
 - **`Durable.Idempotent`** — a body whose re-execution is a no-op, declaring
-  `Telo.idempotent` with the author's reason. This is what collapses a region to one
+  `idempotent` with the author's reason. This is what collapses a region to one
   journal entry (see *Granularity*), and it is a kind rather than a field because
   collapse is a property of a region and a region with a property is a zone. It carries
   its body as native `steps:`.
@@ -135,11 +143,35 @@ it only declares. Everything with an opinion about *identity, scheduling, delive
 cancellation* is backend-native, because that is where the engines actually differ and
 flattening the differences costs fidelity in both directions.
 
+**They are shared in kind and semantics, not in controller**, and the difference is the
+visible price of the kernel being a pure conduit. `zones` crosses the ABI; `durable`
+deliberately does not, so a parking kind reaches the handle *its own kernel* threads and
+a single portable controller cannot serve both. Each parking kind therefore ships a
+candidate per kernel — the arrangement `console` already has, derived from the PURL
+types rather than declared:
+
+```yaml
+kind: Telo.Definition
+metadata:
+  name: Sleep
+  description: Parks the current durable run until a time, releasing the kernel hold.
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/telorun-durable?local_path=./rust#sleep
+  - pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#SleepController
+```
+
+A Rust-hosted controller inside a durable run can already *see* the `replayed` zone
+entry, since zone entries are ABI-serializable by construction — so the gap is not
+knowing it is in a replayed region, it is reaching the handle to park. Stated here
+because "shared because they talk to nothing but the ambient run handle" otherwise reads
+as a stronger portability claim than it is.
+
 ### What each backend owns
 
 A backend module ships whatever its engine really has, named as its engine names it.
 The one thing every backend owes: its `Workflow` kind extends `Durable.Run` **and**
-declares `Telo.replayed` on its body slot — the marker so parking kinds resolve, the
+declares `replayed` on its body slot — the marker so parking kinds resolve, the
 attribute so the static checks look inside.
 
 - **`modules/durable-local`** — `Workflow` (extends `Durable.Run`; holds the body,
@@ -173,7 +205,7 @@ the production path differ in scale rather than in guarantee.
 
 **The static checks do not care.** They are topology-driven and key off the
 `x-telo-provides-zone` annotation, never off a kind — so `DURABLE_NONDETERMINISM`,
-`Telo.noSuspend` containment, the `outputType` warning and zone-driven collapse all
+`noSuspend` containment, the `outputType` warning and zone-driven collapse all
 apply unchanged to `Restate.Workflow` and `Temporal.Workflow`
 without the analyzer knowing either exists. This is what makes native backends
 affordable: going native costs a module, not an analyzer change.
@@ -318,10 +350,62 @@ runtime:
   graph already gives an inline declaration its own node.
 
 Sketched here so the seam's target parameter is designed against a real encoding rather
-than an open question — but it is a sketch until the slice that ships remote execution
-writes it into `kernel/specs/durable-execution.md`. Freezing three encodings normatively
-in the slice that cannot exercise any of them is the failure the sequencing rule exists
-to prevent.
+than an open question — but it is a sketch until something sends one across a process
+boundary and writes it into `kernel/specs/durable-execution.md`. Freezing three encodings
+normatively in the slice that cannot exercise any of them is the failure the sequencing
+rule exists to prevent.
+
+**That slice is 5, not 7, and a fixture rather than an engine is what makes it so.** The
+remote half of `step()` is the whole reason the seam is not lookup-plus-record, and
+leaving its only consumer in the last and least certain slice puts the cost in 3–6 and
+the evidence in 7 — a bet, not a derivation. It does not need a hosted engine to be
+exercised, only a real process boundary, and the runtime seam already provides one:
+`ctx.runtime.run` starts a child kernel isolated from the caller's, so a fixture backend
+shipping each step there has **no shared instance graph to cheat with** and works only if
+the identity genuinely serializes. Its crudeness is the point — the failure it can
+produce is a target that does not survive encoding, which is precisely what slice 7 would
+otherwise be the first to discover.
+
+```yaml
+# tests/__fixtures__/durable-remote/telo.yaml — excluded from test discovery
+kind: Telo.Definition
+metadata:
+  name: Workflow
+  description: >-
+    A durable backend that ships every step to a child kernel. Exists to hold the remote
+    half of the step seam under load before a hosted engine does.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable-remote.mjs&local_path=./nodejs/src/index.ts#WorkflowController
+schema:
+  type: object
+  required: [journal, steps]
+  properties:
+    journal:
+      x-telo-ref: { kind: DurableLocal.Journal, use: dependency }
+    steps:
+      x-telo-ref: { kind: Telo.Executable, use: call, inputs: /inputs }
+      x-telo-provides-zone:
+        replayed: every step is shipped to a child kernel and replayed from the journal
+```
+
+The controller is the seam and nothing else — the identity is all the child receives, and
+the zone-locality rule gets its first honest test against an executor that provably holds
+none of the caller's zones:
+
+```ts
+async step(path: string, target: TargetIdentity, inputs: unknown) {
+  const recorded = await this.journal.at(path);
+  if (recorded) return recorded.result;
+  if (this.ctx.zoneAttributes().some((z) => z.kind !== this.zoneKind)) {
+    return this.local(path, target, inputs);   // any open zone but the durable one
+  }
+  const child = this.ctx.runtime.run(this.dispatcherManifest, {
+    env: { TELO_STEP_TARGET: encodeTargetIdentity(target), TELO_STEP_INPUTS: JSON.stringify(inputs) },
+  });
+  return this.journal.append(path, await collectResult(child));
+}
+```
 
 **Locality is decided by zones, not by a list of exceptions.** A step whose dispatch
 sits inside any open zone *other than the durable zone itself* MUST execute locally —
@@ -333,7 +417,7 @@ the backend's choice.
 
 **The durable zone, and containment, come from the zone mechanism.** Each backend's
 workflow kind carries the *providing* annotation on the slot holding the body, with
-the **`Telo.replayed` attribute** on it — that attribute, and nothing else, is what
+the **`replayed` attribute** on it — that attribute, and nothing else, is what
 makes a zone durable to the static checks. `Durable.Sleep` / `Durable.Await` carry the
 *requiring* annotation naming `Durable.Run`, the marker abstract; Liskov acceptance
 does the rest, so an open `Restate.Workflow` zone satisfies a `Durable.Run`
@@ -370,8 +454,8 @@ below asks the opposite question — "what is inside this zone" — so the analy
 a **containment walk**: from a providing field carrying a given attribute, follow
 `call` edges of the shared graph to everything the body reaches. It is a second
 consumer of the same call graph, not a second graph, and it is parameterized over
-**which attribute** opens the region, so the durable zone (`Telo.replayed`) and the
-constraint zones (`Telo.noSuspend`, `Telo.atomic`) share one traversal. It resolves an
+**which attribute** opens the region, so the durable zone (`replayed`) and the
+constraint zones (`noSuspend`, `atomic`) share one traversal. It resolves an
 attribute name and nothing else — never `Durable.Run`, which would be the hardcoded
 kind knowledge the topology constraint forbids — so nothing is marked durable by hand
 and a nested sequence cannot be forgotten.
@@ -548,138 +632,126 @@ x-telo-provides-zone: true                    # unchanged
 x-telo-provides-zone: /connection             # unchanged
 x-telo-provides-zone:                         # new: correlation + attributes
   key: /connection
-  attributes:
-    Telo.atomic: a rollback erases writes a journal recorded as done
-    Telo.noSuspend: the transaction holds a connection a parked run would lose
+  atomic: a rollback erases writes a journal recorded as done
+  noSuspend: the transaction holds a connection a parked run would lose
 ```
 
-**The attribute vocabulary is a registry with namespaced extensions** — the pattern
-JSON Schema spells `$vocabulary`, IANA spells as a registry (RFC 6648 having
-deprecated the `X-` free-for-all that is the alternative), and OpenTelemetry spells as
-owner-namespaced semantic conventions. The split it buys is the one this needs: **the
-name and shape are registered and validated; the meaning stays with the consumer**,
-exactly as IANA registers header names without knowing what any endpoint does with
-them. The cautionary half is Kubernetes' `metadata.annotations` — an open string map
-where a typo is silent, which is why extension there moved to structural schemas.
+**The vocabulary is CLOSED and it is DATA** — one JSON file per attribute under
+`sdk/zone-attributes/`, copied into the SDK by a script and embedded by Rust with
+`include_str!`. That is the arrangement `sdk/value-types/` and `analyzer/migrations/`
+already have, adopted here for the same reason it was adopted there: both kernels must
+agree on what the names mean, and a vocabulary written in TypeScript is readable by one
+of them. An entry declares its name, its value schema, its `requires:` dependencies and
+a description, and **no code** — there is nothing per entry to implement, since the
+meaning lives entirely with the consumer that reads it.
 
-A name is either **built-in** (`Telo.atomic`, `Telo.noSuspend`) or **alias-qualified**
-(`<Alias>.<name>`), and either way it resolves through the grammar `extends`,
-`x-telo-ref`'s `kind` and `x-telo-requires-zone`'s `zone` already use: resolved in the
-**declaring** module's scope, canonicalized to `<module>.<name>` at registration by
-`resolveSchemaRefKinds`. No new resolution machinery.
-
-An attribute is declared by a new built-in doc kind:
-
-```yaml
-kind: Telo.ZoneAttribute
-metadata:
-  name: noSuspend
-  description: >-
-    The zone holds something bounded that cannot outlive the current process — a
-    connection, a lease, a claim. The value is the consequence, quoted in diagnostics.
-schema:
-  type: string
-  minLength: 1
----
-kind: Telo.ZoneAttribute
-metadata:
-  name: atomic
-  description: >-
-    Effects inside are discarded together on failure, so a consumer recording them
-    individually would record work a rollback erases.
-schema:
-  type: string
-  minLength: 1
-requires:
-  - Telo.noSuspend
----
-kind: Telo.ZoneAttribute
-metadata:
-  name: idempotent
-  description: >-
-    Re-executing the zone is observably a no-op — the same writes land, or land
-    once. Distinct from atomic: nothing is discarded, so there is no rollback for a
-    consumer's own records to participate in.
-schema:
-  type: string
-  minLength: 1
----
-kind: Telo.ZoneAttribute
-metadata:
-  name: replayed
-  description: >-
-    Execution inside the zone may be re-run from a record of a previous execution,
-    so it must reach the same decisions and its results must be serializable.
-schema:
-  type: string
-  minLength: 1
+```json
+// sdk/zone-attributes/atomic.json
+{
+  "name": "atomic",
+  "requires": ["noSuspend"],
+  "description": "Effects inside are discarded together on failure, so a consumer recording them individually would record work a rollback erases.",
+  "value": { "type": "string", "minLength": 1 }
+}
 ```
 
-**`Telo.replayed` is what makes a zone durable — nothing else does.** Without it the
+The four shipped entries:
+
+| Attribute | Means |
+| --- | --- |
+| `atomic` | Effects inside are discarded together on failure. Requires `noSuspend`. |
+| `idempotent` | Re-executing the zone is observably a no-op — the same writes land, or land once. Distinct from `atomic`: nothing is discarded, so there is no rollback for a consumer's own records to participate in. |
+| `noSuspend` | The zone holds something bounded that cannot outlive the current process — a connection, a lease, a claim. |
+| `replayed` | Execution inside may be re-run from a record of a previous execution, so it must reach the same decisions and its results must be serializable. |
+
+**Closed rather than open, and the nearest neighbour settles it.** `x-telo-ref`'s `use`
+is a closed set on the same annotation family, validated by `X_TELO_REF_INVALID_USE`,
+and nothing has needed to extend it; capabilities are closed; value types are closed.
+Making this the one open vocabulary among them needs a reason, and the tempting one —
+`CLAUDE.md`'s objection to a closed *category* vocabulary — is backwards here.
+`metadata.categories` is open precisely because **nothing branches on it**: it is a
+display label for hub search. Every zone attribute exists to be branched on, and all
+four readers below are core.
+
+**The decisive asymmetry is that a third-party attribute could only ever be half an
+attribute.** A module cannot contribute an analyzer pass, so an attribute a module
+declared would get a runtime reader through `ctx.zoneAttributes()` and **no static
+check** — while the failure directions that justify validating this vocabulary at all
+are exactly the ones only a static check catches. An unread `noSuspend` parks a run
+inside a lease; an unread `atomic` journals a statement a rollback will erase. An open
+tier would hand those out in the weaker half only, which is worse than not offering
+them.
+
+**The reason-as-value design is what keeps the set small enough to close.** One
+attribute serves many providers because the prose carries the variation: `noSuspend` is
+worn by a transaction holding a connection, a lease that lapses, an idempotency claim,
+and later a deadline scope whose bound would elapse while parked — four providers, four
+different reasons, one name. Without the prose value the pressure would be to invent
+`connectionHeld`, `leaseHeld` and `deadlineBound` as separate entries. So the vocabulary
+grows with kinds of *hazard*, not kinds of provider, and the survey of plausible future
+providers turns up two more of those at most (a `deferred` for buffered or outbox
+regions whose effects are not yet visible, and a `compensable` for sagas) — both core,
+both with core readers. Adding one is a data file and a release, which is a cheap enough
+door to leave shut.
+
+**Names are bare, not `Telo.`-qualified.** The position already implies the namespace —
+everything inside this annotation is a zone attribute — and with a closed set there is
+no second namespace to disambiguate against. The cost is stated rather than hidden: it
+forecloses ever mixing built-in and alias-qualified names in one block, so reopening the
+vocabulary later means a prefixed spelling and a migration, not a new key beside the old
+ones.
+
+**`replayed` is what makes a zone durable — nothing else does.** Without it the
 static-check story does not close: `x-telo-provides-zone` is worn by every
 `Sql.Transaction` today and by leases and idempotency claims after this plan, so a
 walk keyed on the bare annotation would apply `DURABLE_NONDETERMINISM` and its
 siblings to the inside of every transaction in the ecosystem. Each backend's workflow
 kind declares it on the slot holding the body, beside its providing annotation, and
 every durable check keys off it exactly as the suspension check keys off
-`Telo.noSuspend`. That is what makes "one containment walk parameterized over the
+`noSuspend`. That is what makes "one containment walk parameterized over the
 attribute that opens the region" literally true rather than nearly true, and it is why
-no check names `Durable.Run`.
+no check names `Durable.Run`. The closed vocabulary also disposes of a question the
+open version had to answer at length: **the analyzer must name whatever the durable
+checks key off**, and with every attribute core-owned that is the analyzer using its own
+vocabulary, the same standing it has to name `Telo.Executable` or `x-telo-type`. A
+module-owned `Durable.replayed` would have made `modules/durable` part of the analyzer's
+surface. The same holds for `run`'s step engine reading `atomic` without importing
+anything.
 
 `requires:` keeps the completeness rule out of analyzer code: it compiles to JSON
 Schema's **`dependentRequired`**, the standard keyword for "if this property is
-present, those must be too". The analyzer composes one object schema from the resolved
-entries — each contributes its property and its `dependentRequired` clause, and the
-whole gets `additionalProperties: false` — so `atomic ⇒ noSuspend` is a declaration in
-the registry rather than a hardcoded pair of names.
-
-**Why the four shipped attributes are built-ins.** The same argument that makes
-`Telo.JsonSchema` one: they are too fundamental to require an import. Were `atomic`
-owned by `modules/durable`, `modules/sql` would have to import durability to describe
-its own transaction — the dependency inversion that keeps provide/require clean. And
-it would be a lie about ownership: "effects inside are discarded together" is true of
-a transaction whether or not anything is journaling it. Durability is a *consumer* of
-that fact, not its owner. A third-party attribute (`Saga.compensable`) is
-alias-qualified and does need its import, because there the dependency is real.
-
-`Telo.replayed` is built-in for a second reason that decides where code lives: **the
-analyzer must name whatever the durable checks key off**, since a module cannot
-contribute an analyzer pass. Naming a built-in attribute is the analyzer using its own
-vocabulary — the same standing it has to name `Telo.Executable` or `x-telo-type`.
-Naming a module-owned `Durable.replayed` would make `modules/durable` part of the
-analyzer's surface, and naming `Durable.Run` would be the hardcoded kind knowledge the
-topology constraint forbids. The same argument covers `run`'s step engine reading
-`Telo.atomic` without importing anything.
+present, those must be too". The analyzer composes one object schema from the entries —
+each contributes its property and its `dependentRequired` clause, and the whole gets
+`additionalProperties: false` — so `atomic ⇒ noSuspend` is a declaration in the data
+rather than a hardcoded pair of names, and the closed set is enforced by the composed
+schema rather than by a list in the validator.
 
 Each value is the **reason**, required by being the value itself rather than a sibling
 of a boolean, and diagnostics print it verbatim. That is also what makes a type check
-possible at all — there is no `true` to accept, so `Telo.atomic: true` fails the
-declared schema.
+possible at all — there is no `true` to accept, so `atomic: true` fails the declared
+schema.
 
 Validation lands in the annotation's strict half (`validate-zone-slots.ts`), reading
-through its single accessor (`zone-slot.ts`) as the one-accessor rule requires: every
-name must resolve to a registered attribute, and every value AJV-checks against that
-attribute's schema. Three new codes — `ZONE_ATTRIBUTE_UNKNOWN` (naming the owner and
-its declared attributes, the `KIND_NOT_EXPORTED` shape), `ZONE_ATTRIBUTE_INCOMPLETE`
-(a `requires:` dependency unmet), and `DURABLE_ZONE_UNMARKED` (a kind extending
-`Durable.Run` whose body slot omits `Telo.replayed`, so parking kinds would resolve
-against a zone the checks never look inside) — plus the existing
-`ZONE_ANNOTATION_INVALID` for a value of the wrong shape. Like the other zone
-validations it is **entry-module-scoped**: a published dependency's attributes are not
-the consumer's to fix.
-
-The failure directions are the asymmetry that file exists for. An unread `noSuspend`
-parks a run inside a lease; an unread `atomic` journals a statement a rollback will
-erase. Neither may be silent, which is the whole reason the vocabulary is registered
-rather than free-form.
+through its single accessor (`zone-slot.ts`) as the one-accessor rule requires. Three
+codes — `ZONE_ATTRIBUTE_UNKNOWN` (a name outside the vocabulary, listing it and
+Levenshtein-suggesting, exactly as `X_TELO_TYPE_UNKNOWN` does for the value-type
+vocabulary it is modelled on), `ZONE_ATTRIBUTE_INCOMPLETE` (a `requires:` dependency
+unmet) and `DURABLE_ZONE_UNMARKED` (a kind extending `Durable.Run` whose body slot omits
+`replayed`, so parking kinds would resolve against a zone the checks never look inside) —
+plus the existing `ZONE_ANNOTATION_INVALID` for a value of the wrong shape. The composed
+`additionalProperties: false` would already reject an unknown name; the dedicated code
+earns its place by naming the six valid ones instead of reporting a schema violation on
+a key the author thought was real. Like the other zone validations it is
+**entry-module-scoped**: a published dependency's attributes are not the consumer's to
+fix.
 
 Four shipped consumers, in three distinct combinations. `Sql.Transaction.steps` — which
-already carries `x-telo-provides-zone: /connection` — declares `Telo.atomic` and
-`Telo.noSuspend`. `Idempotency.Once.invoke` declares `Telo.idempotent` and
-`Telo.noSuspend`: its claim genuinely makes re-execution a no-op, so it *earns* the
-attribute rather than asserting it. `Lease.Critical.invoke` declares `Telo.noSuspend`
+already carries `x-telo-provides-zone: /connection` — declares `atomic` and
+`noSuspend`. `Idempotency.Once.invoke` declares `idempotent` and
+`noSuspend`: its claim genuinely makes re-execution a no-op, so it *earns* the
+attribute rather than asserting it. `Lease.Critical.invoke` declares `noSuspend`
 alone — a lease makes nothing idempotent. `Durable.Idempotent.invoke` declares
-`Telo.idempotent` on the author's word, which is the whole reason the kind exists: the
+`idempotent` on the author's word, which is the whole reason the kind exists: the
 hot-loop case where a durable claim per iteration would cost more than the journal
 writes it saves.
 
@@ -696,22 +768,23 @@ feeds the parent's body through `base:` CEL.
 interprets nothing.** The declaring controller already opens its zone with `withZone`
 (`sql` does; `lease` and `idempotency` start doing so), and the attributes are read
 back off the ambient stack through a new SDK method, **`ctx.zoneAttributes(ctx?)`** —
-per open zone, its kind plus the declared bag keyed by canonical name. The kernel
-resolves each entry's `kind` to its schema and hands the bag over uninterpreted; it
-never branches on a name, exactly as `readRefSlot` hands back `use` without acting on
-it.
+per open zone, its kind plus the attributes that zone declared. A closed vocabulary lets
+that be a **typed record** rather than a string-keyed bag, which is a readability gain
+and not a semantic one: the kernel still interprets nothing and branches on no name,
+exactly as `readRefSlot` hands back `use` without acting on it.
 
 **Who reads which string, stated once, because they are three different places:**
 
 | Attribute | Read by | Where |
 | --- | --- | --- |
-| `Telo.atomic` | the step engine, to collapse a zone into one entry *unless the run handle attests its writes are inside it* | `modules/run` |
-| `Telo.idempotent` | the step engine, to collapse unconditionally; and the containment walk, for `DURABLE_NONDETERMINISM` | `modules/run`, `analyzer` |
-| `Telo.noSuspend` | `Durable.Sleep` / `Durable.Await`, raising `ERR_DURABLE_SUSPEND_FORBIDDEN` with the declared reason | `modules/durable` |
-| `Telo.replayed` | the containment walk, to find what is inside a durable zone | `analyzer` |
+| `atomic` | the step engine, to collapse a zone into one entry *unless the run handle attests its writes are inside it* | `modules/run` |
+| `idempotent` | the step engine, to collapse unconditionally; and the containment walk, for `DURABLE_NONDETERMINISM` | `modules/run`, `analyzer` |
+| `noSuspend` | `Durable.Sleep` / `Durable.Await`, raising `ERR_DURABLE_SUSPEND_FORBIDDEN` with the declared reason | `modules/durable` |
+| `replayed` | the containment walk, to find what is inside a durable zone | `analyzer` |
 
-None of the three is a kernel branch and none is an import: a built-in attribute name
-is a string every layer may spell, which is exactly what the built-in tier is for.
+None of the three is a kernel branch and none is an import: a core attribute name is a
+string every layer may spell, which is the whole point of the vocabulary being core-owned
+data rather than any module's property.
 
 ### Exactly-once, where the journal shares the transaction
 
@@ -735,14 +808,14 @@ append while the transaction zone is open is **already writing inside it**. Noth
 zone entry, not on the pool.
 
 **What has to change is the collapse rule.** As written, `Sql.Transaction` declares
-`Telo.atomic`, the step engine collapses, and the inner steps get no entries at
+`atomic`, the step engine collapses, and the inner steps get no entries at
 all — which forecloses the very thing that would make them exactly-once. So:
 
 > **Collapse an atomic zone unless the run handle attests that its entries land inside
 > that zone's atomicity.**
 
 This is not an override of the attribute; it is the attribute read correctly.
-`Telo.atomic` says *effects inside are discarded together* — collapse follows only when
+`atomic` says *effects inside are discarded together* — collapse follows only when
 the journal's own writes are **not** among them. When they are, per-step journaling is
 consistent by construction, and it is strictly better: finer replay granularity and no
 re-running a committed transaction. The attestation is one question the run handle
@@ -764,19 +837,62 @@ its journal entry is, so replay repeats it. Exactly-once is a property of *effec
 the same database as the journal* — not of durable execution in general — and the
 mitigation is unchanged: an idempotent body, or `Idempotency.Once` around it.
 
+**Which regime a deployment actually got is REPORTED, because it is not visible in the
+manifest.** Making the attestation static was rejected for good reason — declaring the
+shared connection on the journal kind hardcodes a runtime property and is wrong the
+moment pooling or routing changes underneath it — but the consequence cannot be left
+where that rejection leaves it. Whether a manifest is exactly-once or at-least-once then
+turns on whether the journal's connection *is* the transaction's connection at runtime,
+and "point the journal at a different database and nothing breaks" is true in the sense
+that matters least: nothing errors, and the guarantee silently degrades. A durability
+feature whose guarantee is decided by an invisible runtime coincidence has to say which
+way it resolved.
+
+Two altitudes, because the question is asked twice. The step engine emits one structured
+record per atomic zone at the moment it resolves collapse, which is where the decision
+already is:
+
+```
+INFO  durable.zone.mode  run=onboard:ada@example.com  path=createAccount
+      zone=Sql.Transaction  attribute=atomic  mode=perStep  attestation=writesInside
+```
+
+`mode=collapsed` rides the same record rather than a louder one — collapse is the
+correct and expected resolution under the file journal, so warning on it would be noise
+on every development run; what an operator wants is one field to filter a dashboard on,
+not an alert nobody tunes. And the per-run summary is **observed state** on each
+backend's workflow kind, so the answer is queryable without a log pipeline:
+
+```yaml
+status:
+  type: object
+  properties:
+    collapsedRegions:
+      type: integer
+      description: >-
+        Atomic zones this run journaled as one entry because the journal's writes land
+        outside their atomicity. Each re-runs whole on resume, so a non-zero count is
+        the at-least-once regime.
+```
+
+Zero when the journal shares the transaction, non-zero the moment someone repoints it —
+the degradation made visible without putting a runtime property in the manifest. It also
+suits observed state exactly: a reading the resource learns while running, not something
+its author configured.
+
 ### Static checks
 
 All topology-driven, no kind named in analyzer code — every rule below keys off a
 built-in **zone attribute**, and all of them live in the analyzer.
 
-From `Telo.replayed`, which is what marks a zone durable: a **`live`-representation
+From `replayed`, which is what marks a zone durable: a **`live`-representation
 value** in a journaled result or decision (`DURABLE_UNJOURNALABLE_RESULT` — a live
 handle is not a recordable value in either position). The rule keys off the `live` field
 of the `x-telo-type` vocabulary rather than off `Telo.Stream`, for the reason that
 vocabulary is data: a live type added later is covered by its entry alone, and the
 analyzer names a representation rather than a type. And a **detached dispatch**
 (`DURABLE_DETACH_FORBIDDEN`, naming the nested durable run as the replacement). The
-latter belongs here and not under `Telo.noSuspend`: the defect is that the journal
+latter belongs here and not under `noSuspend`: the defect is that the journal
 would record a completion for work that has not run, which is a *journaling* failure
 and has nothing to do with parking.
 
@@ -817,21 +933,21 @@ the manifest — is unchecked by construction and validated at the await when it
 which is the *enforced at runtime, warned early* division this plan takes everywhere
 else.
 
-**`DURABLE_NONDETERMINISM` keys on `Telo.idempotent`, where it says something true.**
+**`DURABLE_NONDETERMINISM` keys on `idempotent`, where it says something true.**
 Impure CEL in a *journaled* position is not a defect — it is the correct semantic:
 `!cel "now()"` in a step's inputs is recorded on first execution and replayed
 identically, which is what a durable timestamp should do and what `workflow.now()`
 means on Temporal. So the rule needs the case where CEL is re-evaluated *and* the
 divergence matters, and that case has a name now.
 
-A `Telo.idempotent` region re-runs on resume with its prior effects **intact**, because
+A `idempotent` region re-runs on resume with its prior effects **intact**, because
 nothing discarded them — the region's whole claim is that re-running is a no-op. Impure
 CEL falsifies exactly that claim: `!cel "uuid()"` as an idempotency key writes record A
 on the first pass and record B on the second, so the re-run is not a no-op and the
 assertion the author signed is false. The diagnostic can say precisely that, and
 `Durable.Value` makes it true again by pinning the value.
 
-`Telo.atomic` is the wrong trigger, in both directions. Too wide: since collapse became
+`atomic` is the wrong trigger, in both directions. Too wide: since collapse became
 conditional on the attestation, an atomic zone sharing the journal's transaction is not
 collapsed and its decisions *are* journaled, so a static trigger fires on the
 configuration this plan recommends and has authors rewriting correct manifests. Too
@@ -841,20 +957,20 @@ documented rather than checked: a non-transactional effect inside a transactiona
 is not rolled back, so with impure CEL it re-runs divergently, and which effects are
 transactional is not statically determinable.
 
-From `Telo.noSuspend`: any target in the zone carrying a suspension requirement. That
+From `noSuspend`: any target in the zone carrying a suspension requirement. That
 is one rule rather than an enumeration of forbidden kinds, so a suspension kind added
 later is covered without touching the check. One step-level check stays separate, being
 a property of the step rather than of its target: a retry whose delay would suspend.
 
-Nothing keys off `Telo.atomic` statically. The contradiction check it used to need —
+Nothing keys off `atomic` statically. The contradiction check it used to need —
 `requireCheckpoints` declared inside an atomic zone — went with the field, which is what
 happens when two mechanisms answering one question are replaced by one. The
-`atomic ⇒ noSuspend` completeness rule is not a walk either: it is the registry's
-`requires:` compiled to `dependentRequired`, checked at the annotation.
+`atomic ⇒ noSuspend` completeness rule is not a walk either: it is the vocabulary
+entry's `requires:` compiled to `dependentRequired`, checked at the annotation.
 
 Every check above is a consumer of the one containment walk, **parameterized over the
-attribute that opens the region** — `Telo.replayed`, `Telo.noSuspend` or
-`Telo.idempotent`. The zones differ in what they forbid, not in how their contents are
+attribute that opens the region** — `replayed`, `noSuspend` or
+`idempotent`. The zones differ in what they forbid, not in how their contents are
 found, and the walk itself resolves nothing but an attribute name.
 
 ### Granularity, failures, and bounds
@@ -866,7 +982,7 @@ reason; the opposite polarity from *everything journaled by default* (collapse
 permitted unless someone remembers to forbid it, and forgetting is silent); a veto that
 existed only on `Run.Sequence`, so collapsing a `JS.Script` or an imported invocable had
 no protection at all; and a contradiction check needed to reconcile it with
-`Telo.atomic`. Underneath all four, collapse was sold as a cost lever while being a
+`atomic`. Underneath all four, collapse was sold as a cost lever while being a
 correctness decision — it silently converts exactly-once into at-least-once.
 
 **Collapse is a property of a region, so it is declared the way every other region
@@ -884,22 +1000,22 @@ reason: every write is an upsert keyed on the source id, so a re-run overwrites 
 ```
 
 Three providers, differing in whether they **enforce** the property or **assert** it.
-`Sql.Transaction` declares `Telo.atomic` and the database enforces it.
-`Idempotency.Once` declares `Telo.idempotent` and its claim enforces it.
-`Durable.Idempotent` declares `Telo.idempotent` and takes the author's word — which is
+`Sql.Transaction` declares `atomic` and the database enforces it.
+`Idempotency.Once` declares `idempotent` and its claim enforces it.
+`Durable.Idempotent` declares `idempotent` and takes the author's word — which is
 the point of it existing: a hot loop where a durable claim per iteration would cost more
 than the journal writes it saves.
 
-**The new attribute cannot be `Telo.atomic`, and the distinction is load-bearing.**
-`Telo.atomic` means *effects discarded together*, and the exactly-once machinery depends
+**The new attribute cannot be `atomic`, and the distinction is load-bearing.**
+`atomic` means *effects discarded together*, and the exactly-once machinery depends
 on that literally — per-step journaling is safe inside a transaction precisely because a
 rollback erases the entries too. A `Durable.Idempotent` region rolls nothing back, so
-borrowing `Telo.atomic` would make the attestation relax collapse for it and journal
+borrowing `atomic` would make the attestation relax collapse for it and journal
 per-step, recording entries for effects that will re-run. Hence:
 
-- **`Telo.atomic`** — collapse *unless* the run handle attests it writes inside that
+- **`atomic`** — collapse *unless* the run handle attests it writes inside that
   atomicity.
-- **`Telo.idempotent`** — collapse, full stop: there is nothing for the journal to be
+- **`idempotent`** — collapse, full stop: there is nothing for the journal to be
   inside, and re-running is a no-op either way.
 
 **Collapse suppresses per-step entries, not the journal.** A direct `decide` — what
@@ -929,6 +1045,36 @@ live run. `DurableLocal.Resume` is the operator's answer — it force-resumes a 
 run against current code, recording the override as a journal entry so a divergent run
 is identifiable afterwards rather than indistinguishable from a clean one. Parking is a
 hold, not a grave.
+
+**The digest is CHECKED against the journal, not trusted, because it consumes that call
+graph at the opposite safety polarity from the walk.** Reusing the derivation is right;
+inheriting the walk's tolerance for an incomplete answer is not. The walk may
+under-approximate without becoming unsound — a dynamically dispatched edge degrades to
+the runtime error. The digest degrades the other way: an edge it cannot see is code
+inside the run's real reachable set whose change moves nothing, so the run replays
+against it silently, which is the exact divergence `ERR_DURABLE_MANIFEST_CHANGED` exists
+to catch. Same graph, one direction fail-safe and one fail-silent.
+
+The check needs no new derivation and no new annotation, because **divergence can only
+affect entries that will be *replayed*, and every replayed entry recorded its target** —
+the identity the key scheme already requires for `ERR_JOURNAL_ENTRY_MISMATCH`. A step
+not yet reached executes fresh against current code, which is correct by definition. So
+on resume the journaled targets are differenced against the statically reachable set:
+empty means the narrow digest provably covered everything this run will replay,
+non-empty means the static set was incomplete *for this run* and it widens to a
+whole-manifest digest. The run record carries which scope it was admitted under:
+
+```yaml
+run: "onboard:ada@example.com"
+manifestDigest: sha256-9f2c…          # over the statically reachable subgraph
+digestScope: reachable                 # `reachable` | `manifest`
+```
+
+Complete by construction rather than conservative, and per-run rather than global: an
+app with no dispatch the analyzer cannot see never widens. `digestScope: manifest` is
+also a signal worth having on its own — it names the runs whose reachable set the
+analyzer could not fully derive, which is the same blindness the containment residue
+describes, made observable instead of argued about.
 
 **All of which is `durable-local`'s, and nobody else's.** Restate pins an invocation to
 the deployment it started on and Temporal has worker versioning, so in-flight runs
@@ -985,7 +1131,11 @@ shared verb pretending they are interchangeable.
   lookup-plus-record. What lands with the seam is therefore the *shape* — `step` takes
   an identity, not the instance alone — while the encoding (module ref plus resource
   name; scope owner, scope site and step path for a scoped instance; a JSON pointer for
-  an inline declaration) is written in the remote-execution slice. Rejected: leaving
+  an inline declaration) is written in slice 5, where a fixture backend over
+  `ctx.runtime` first sends one across a process boundary. Deferring it to the Temporal
+  slice instead would have left the seam's whole justifying half with its cost in
+  slices 3–6 and its evidence in 7 — a bet rather than a derivation — when a child
+  kernel exercises the same boundary for a fraction of the price. Rejected: leaving
   `target` opaque and scoping the seam to in-process — that would be honest only if the
   Temporal-isolate rationale were dropped with it, since it is doing work the design
   could not otherwise cash. Rejected also: freezing all three encodings normatively in
@@ -1082,27 +1232,27 @@ shared verb pretending they are interchangeable.
   effectful step re-executes it on replay, which is the failure nobody notices.
   Opt-out puts the burden on the cheap case instead. Rejected: opt-in per step.
 - **Collapse is a kind, not a field on either side** — `Durable.Idempotent` wraps a
-  body and declares `Telo.idempotent` with a required reason. The fields it replaces
+  body and declares `idempotent` with a required reason. The fields it replaces
   (`checkpoint: collapse` at the caller, `requireCheckpoints:` as the callee's veto)
   were wrong four ways: a boolean where every neighbouring annotation carries a reason;
   the opposite polarity from *everything journaled by default*, so forgetting to veto
   was silent; a veto available only on `Run.Sequence`, leaving a collapsed `JS.Script`
   or imported invocable unprotected; and a contradiction check to reconcile it with
-  `Telo.atomic`. A region with a property is a zone, and the zone mechanism already
+  `atomic`. A region with a property is a zone, and the zone mechanism already
   expresses it — so the veto does not move, it disappears: nothing collapses a sequence
   because nothing wrapped it, and a wrap is a visible resource carrying a written
   justification rather than a key buried in a step. Rejected: keeping a caller-side
   field with a mandatory reason, which fixes the boolean and the veto but leaves
   collapse expressible on any call site without the callee's knowledge.
-- **`Telo.idempotent` is a separate attribute from `Telo.atomic`** — atomic means
+- **`idempotent` is a separate attribute from `atomic`** — atomic means
   effects are *discarded together*, and the exactly-once machinery reads it literally:
   per-step journaling is safe inside a transaction because a rollback erases the
   entries too. A `Durable.Idempotent` region rolls nothing back, so borrowing
-  `Telo.atomic` would make the attestation relax collapse for it and journal per-step,
+  `atomic` would make the attestation relax collapse for it and journal per-step,
   recording entries for effects that will re-run. Atomic collapses *unless* the journal
   is inside it; idempotent collapses full stop.
 - **Enforcement and assertion are different kinds, not a flag** — `Idempotency.Once`
-  earns `Telo.idempotent` through its claim; `Durable.Idempotent` asserts it. Both
+  earns `idempotent` through its claim; `Durable.Idempotent` asserts it. Both
   declare the same attribute because the *region's* property is the same; which one an
   author reaches for is a cost decision, and it is visible in the manifest as a
   different kind rather than a boolean on one.
@@ -1114,30 +1264,47 @@ shared verb pretending they are interchangeable.
   kind-level flag, which cannot say *which* field holds the body without hardcoded
   per-kind knowledge (a sibling `afterCommit:` legitimately sits outside the
   transaction).
-- **The attribute vocabulary is a registry with namespaced extensions, not an open map
-  and not a closed enum** — an open string map makes a typo silent, and a silent
-  `noSuspend` is a run parking inside a lease (Kubernetes' `metadata.annotations` is
-  the worked example of that failure, and structural schemas were its fix). A closed
-  enum in the analyzer validates but makes Telo's release cadence the bottleneck on
-  anyone adding a zone property — the objection `CLAUDE.md` already raises against a
-  closed category vocabulary. The registry is the third answer, and the one JSON
-  Schema (`$vocabulary`), IANA (RFC 6648) and OpenTelemetry all converged on: names are
-  registered and validated, meanings stay with consumers. Rejected also:
-  consumer-declares-what-it-reads, under which a zone's validity would depend on which
-  consumers happen to be in the manifest — the same annotation validating in one app
-  and failing in another.
-- **`Telo.atomic` and `Telo.noSuspend` are built-ins, not `modules/durable`'s** — the
-  `Telo.JsonSchema` argument: requiring an import to state a property of your own zone
-  is the wrong shape, and here it would additionally invert the dependency
-  (`modules/sql` importing durability to describe a transaction). It is also true on
-  the merits — "effects inside are discarded together" holds whether or not anything
-  journals them, so durability is a consumer of the fact rather than its owner.
-- **`Telo.replayed` is what marks a zone durable, not the `Durable.Run` kind** — the
+- **The attribute vocabulary is a CLOSED set shipped as data, not an open registry and
+  not an enum in analyzer code** — the data half is the `sdk/value-types/` and
+  `analyzer/migrations/` precedent, and it is what keeps one vocabulary readable by both
+  kernels instead of one written in TypeScript. The closed half rests on two things. The
+  nearest neighbour is closed: `x-telo-ref`'s `use` is a closed set on the same
+  annotation family and nothing has needed to extend it, as are capabilities and value
+  types. And the argument for openness inverts on inspection — it borrowed `CLAUDE.md`'s
+  objection to a closed *category* vocabulary, but categories are open precisely because
+  nothing branches on them, while every zone attribute exists to be branched on and
+  every reader is core. **A third-party attribute could only ever be half an attribute**:
+  a module cannot contribute an analyzer pass, so it would get a runtime reader and no
+  static check, and the failure directions that justify validating this vocabulary at all
+  — an unread `noSuspend` parking a run inside a lease, an unread `atomic` journaling a
+  statement a rollback erases — are exactly the ones only a static check catches.
+  Rejected: `Telo.ZoneAttribute` as a manifest doc kind with alias-qualified names, which
+  bought that half-attribute at the price of a fifth naming tier, its own resolution and
+  export gate, and namespaced map keys — the one reference form in Telo that is a key
+  rather than a value, so it gets no completion, no hover and no rename. Rejected also:
+  an open string map (a typo is silent, the Kubernetes `metadata.annotations` failure)
+  and consumer-declares-what-it-reads (a zone's validity would depend on which consumers
+  happen to be in the manifest).
+- **The set is expected to reach six, and that is what makes closing it cheap** — a
+  survey of plausible future providers (savepoints, distributed locks, deadline scopes,
+  outboxes, batch windows, sagas, tenancy scopes) turns up two more hazards rather than
+  an ecosystem: `deferred` for regions whose effects are not visible until exit, and
+  `compensable` for sagas. Both are core with core readers. The reason-as-value design is
+  why the count stays low — one name absorbs many providers because the prose carries the
+  variation — and adding one is a data file, so the door is cheap to reopen and cheaper
+  to leave shut.
+- **The attributes are core-owned, not `modules/durable`'s** — the `Telo.JsonSchema`
+  argument: requiring an import to state a property of your own zone is the wrong shape,
+  and here it would additionally invert the dependency (`modules/sql` importing
+  durability to describe a transaction). It is also true on the merits — "effects inside
+  are discarded together" holds whether or not anything journals them, so durability is a
+  consumer of the fact rather than its owner.
+- **`replayed` is what marks a zone durable, not the `Durable.Run` kind** — the
   providing annotation alone cannot serve: transactions wear it today and leases and
   idempotency claims will, so a walk keyed on the bare annotation would apply
   `DURABLE_NONDETERMINISM` inside every `Sql.Transaction` in the ecosystem. An
   attribute makes "one containment walk parameterized over the attribute that opens the
-  region" literally true, and keeps the analyzer naming only built-in vocabulary.
+  region" literally true, and keeps the analyzer naming only core vocabulary.
   Rejected: keying the durable checks off the marker abstract resolved through
   `extends` — cheaper, but it puts a kind in analyzer code and `modules/durable` in the
   analyzer's surface.
@@ -1146,8 +1313,8 @@ shared verb pretending they are interchangeable.
   enumerating the swallowers is unbounded and stale on the next module. Latching at
   throw and failing when an invocation returns normally with the latch set is O(1),
   needs no cooperation, and converts a silent duplicated effect into one loud error.
-- **`atomic ⇒ noSuspend` is declared in the registry, not checked in code** —
-  `requires:` on the attribute compiles to JSON Schema's `dependentRequired`, so the
+- **`atomic ⇒ noSuspend` is declared in the vocabulary, not checked in code** —
+  `requires:` on the entry compiles to JSON Schema's `dependentRequired`, so the
   rule lives beside the thing it constrains and the analyzer stays free of the pair.
   Rejected: a silent implication, which would leave the suspension diagnostic with a
   generic message — exactly what the required reason exists to prevent.
@@ -1162,7 +1329,7 @@ shared verb pretending they are interchangeable.
   every slice behind a change with a release fragment per module; and scoping the hard
   error to relocating backends, which would make a manifest's validity depend on which
   backend later reads its journal.
-- **`DURABLE_NONDETERMINISM` keys on `Telo.idempotent`, not `Telo.atomic`** — on the
+- **`DURABLE_NONDETERMINISM` keys on `idempotent`, not `atomic`** — on the
   idempotent attribute it states something true and specific: you asserted re-running
   this region is a no-op, and `uuid()` inside it makes that false. On the atomic
   attribute it was wrong twice — too wide, because collapse is conditional on a runtime
@@ -1191,9 +1358,11 @@ shared verb pretending they are interchangeable.
   the entry** — a `ZoneEntry` is three identities so it stays ABI-serializable and no
   module reads another's state off the stack; the kernel resolves the declaring kind's
   schema instead, which is the one place that lookup is already available, and hands
-  the bag over without branching on a name. Rejected: an attribute field on the entry;
-  and a kernel accessor shaped around `atomic` / `noSuspend`, which would have put two
-  durability words in a runtime that has no journal to interpret them against.
+  the attributes over without branching on a name — typed by the closed vocabulary, which
+  makes the accessor readable without making it interpretive. Rejected: an attribute
+  field on the entry; and a kernel accessor shaped around `atomic` / `noSuspend`
+  specifically, which would have put two durability words in a runtime that has no
+  journal to interpret them against.
 - **Retry in the step engine, not the kernel** — retry is a composer concern and
   the chokepoint should grow no policy; co-locating it with the journal is what
   lets a long delay suspend rather than block. Rejected: a retry option on
@@ -1234,10 +1403,20 @@ shared verb pretending they are interchangeable.
   that journals only the outcome restarts its policy on resume, turning a bounded
   retry into an unbounded one. This one *is* shared, because it lives in the step
   engine rather than in a backend.
-- **The manifest digest is `durable-local`'s alone** — replaying against changed code
-  is divergence with no error, so the local backend takes a digest over the run's
-  reachable subgraph (a whole-manifest digest would park every run on every deploy) and
-  `DurableLocal.Resume` force-resumes with the override journaled. The hosted engines
+- **The manifest digest is `durable-local`'s alone, and is checked rather than trusted**
+  — replaying against changed code is divergence with no error, so the local backend
+  takes a digest over the run's reachable subgraph (a whole-manifest digest would park
+  every run on every deploy) and `DurableLocal.Resume` force-resumes with the override
+  journaled. It reuses the containment walk's call graph but **not its tolerance**: the
+  walk may under-approximate and degrade to a runtime error, while a digest that
+  under-approximates degrades to silent replay against changed code — the same
+  derivation at opposite safety polarities, and only the safe one is self-evidently
+  sound. So on resume the journaled targets are differenced against the reachable set
+  and a target outside it widens that run to a whole-manifest digest. The check is
+  complete rather than conservative, because divergence can only affect replayed
+  entries and every replayed entry recorded its target. Rejected: parking on any
+  unresolved edge, which would strand runs in every app with dynamic dispatch to close
+  a hole the journal can prove is absent. The hosted engines
   pin deployments and need none of it — under the union contract that asymmetry needed
   a declared capability flag; natively the machinery just does not exist outside the
   module that needs it. Rejected: auto-branching, a versioning feature, not this one.
@@ -1278,9 +1457,11 @@ shared verb pretending they are interchangeable.
 - **Sagas are out of scope, and depend on this** — compensation needs the journal to
   know which steps completed, so it is a later kind built on top, not an
   alternative. Recorded here because collapse reads like atomicity and is not. A
-  `Saga.compensable` zone attribute is where it would land — and under the registry
-  that is a declaration in the saga module, not an amendment to this spec, which is
-  the point of the extension tier existing before anyone needs it.
+  `compensable` zone attribute is where it would land, and it is one of the two entries
+  the vocabulary is expected to gain: a data file plus a reader in the step engine, since
+  compensation is a stdlib concern rather than a third party's. That it needs a *core*
+  reader is itself the evidence for the closed vocabulary — a saga module could declare
+  the name and could not check it.
 - **`workflow` and `workflow-temporal` are removed, not deprecated in place** —
   neither was implemented, and the good idea in them (engine support) survives, but
   inverted: instead of one engine-shaped grammar in the manifest, each engine gets its
@@ -1386,7 +1567,10 @@ opened its zone on, its appends land inside that transaction — so `accountTx`'
 steps are journaled individually rather than collapsed, and each write and its entry
 commit or roll back together. Point the journal at a different database and nothing
 breaks: the attestation fails, the zone collapses to one entry, and you are back to the
-at-least-once behaviour with the whole transaction re-running on resume.
+at-least-once behaviour with the whole transaction re-running on resume. Which of the
+two you got is not left to be inferred from the topology — the run reports
+`status.collapsedRegions` and the step engine logs `durable.zone.mode` per zone, so a
+deployment that silently lost exactly-once says so.
 
 `accountTx` is a `Sql.Transaction`, so a crash inside it rolls back its writes *and*
 their entries together, and replay re-runs exactly the statements that did not land.
@@ -1406,7 +1590,7 @@ carries **no collapse opt-out** and needs none — nothing wraps it in a
 the safe direction. Wrapping it would be a written claim that re-running it is a no-op,
 and it is not: it would create a second account and send a second email. Moving
 `approval` inside `accountTx` would fail `telo check`, printing the transaction zone's
-own `Telo.noSuspend` reason.
+own `noSuspend` reason.
 
 An HTTP route triggers this by invoking `onboard`, which admits the run, dispatches the
 body detached under a fresh cancellation scope, and returns the run id — so the
@@ -1603,10 +1787,12 @@ invocation chokepoint, so contracts, tracing and zones hold there exactly as in
 process.
 
 **What remains unvalidated, stated rather than glossed:** nobody has yet built a Telo
-step engine inside a Temporal workflow isolate, and the seam is shaped by the axis
-being real rather than by that experiment having succeeded. If it turns out the isolate
-cannot host the engine at all, what changes is Temporal's status as a backend — not
-the seam, which a remote-execution backend of any kind would need identically.
+step engine inside a Temporal workflow isolate. What is *no longer* unvalidated by the
+time this slice starts is the seam itself — slice 5's fixture backend has already sent a
+target identity across a process boundary and taken the locality rule through an executor
+holding none of the caller's zones. So if the isolate cannot host the engine at all, what
+changes is Temporal's status as a backend, and that claim now rests on a shipped
+consumer rather than on the axis merely being real.
 
 ### Where the line falls
 
@@ -1617,8 +1803,8 @@ the seam, which a remote-execution backend of any kind would need identically.
   and so behaves identically everywhere. (`Run.Detach` stays portable Telo, but is a
   diagnostic *inside* a durable body; the nested durable run replaces it.);
 - `Durable.Sleep`, `Durable.Await`, `Durable.Value`, `Durable.Idempotent`;
-- transactions, leases and idempotency claims, and the `Telo.atomic` /
-  `Telo.idempotent` / `Telo.noSuspend` zone attributes that govern them — including
+- transactions, leases and idempotency claims, and the `atomic` /
+  `idempotent` / `noSuspend` zone attributes that govern them — including
   which regions collapse, since that is now derived from a declared property rather
   than chosen at a call site;
 - step `retry` with backoff, `nonRetryable` and `timeout`, because retry lives in the
@@ -1626,8 +1812,8 @@ the seam, which a remote-execution backend of any kind would need identically.
 - the journaled decisions themselves — a run's replay-closed state has the same shape
   on every backend, which is what makes the closure property a property of Telo rather
   than of one journal;
-- every static check — `DURABLE_NONDETERMINISM` (`Telo.idempotent` regions),
-  `Telo.noSuspend` containment, the detached-dispatch and suspending-retry rules, and
+- every static check — `DURABLE_NONDETERMINISM` (`idempotent` regions),
+  `noSuspend` containment, the detached-dispatch and suspending-retry rules, and
   the `outputType` warning.
 
 **Native — written in the engine's own words, once per backend:**
@@ -1659,21 +1845,25 @@ What *does* move unchanged is the part that took the work to build.
 Seven slices, ordered so that **each one puts the previous under load rather than
 merely adding to it**, and sized so that **nothing normative is frozen before something
 exercises it**. Two rules produced this shape. Work with standalone value and no
-dependency on durability ships on its own rather than riding along. And the spec is
-written in the same slice as the backend that first makes its format cross a process
-boundary — a normative document expected to move is not one.
+dependency on durability ships on its own rather than riding along. And a format is
+written in the same slice as the first thing that makes it cross a process boundary — a
+normative document expected to move is not one. That second rule cuts both ways, which
+is why the target-identity encoding sits in slice 5 rather than 7: deferring a format
+past the point where something can exercise it is the same defect as freezing one early,
+and a fixture exercises it as truly as an engine does.
 
 ### 1 — zone attributes and the containment walk
 
-`Telo.ZoneAttribute`, the registry, alias resolution, `dependentRequired` composition,
-`validate-zone-slots` extensions and the `ZONE_ATTRIBUTE_*` diagnostics; the analyzer's
-containment walk; `Telo.atomic` / `Telo.noSuspend` declared on `Sql.Transaction.steps`,
+The `sdk/zone-attributes/` entries and their copy script, the composed annotation schema
+(`dependentRequired` from `requires:`, `additionalProperties: false` from the closed
+set), `validate-zone-slots` extensions and the `ZONE_ATTRIBUTE_*` diagnostics; the
+analyzer's containment walk; `atomic` / `noSuspend` declared on `Sql.Transaction.steps`,
 `Lease.Critical.invoke` and `Idempotency.Once.invoke`, with the latter two becoming zone
 providers and gaining their `withZone` calls. Also the `workflow` / `workflow-temporal`
 removal, which depends on nothing.
 
 Sliced out first because it is the largest analyzer change in the plan and it stands
-alone: nothing here mentions a journal, and the registry is generically useful the day
+alone: nothing here mentions a journal, and the vocabulary is generically useful the day
 it lands. Reviewing it against durability's noise would be the expensive way to do it.
 
 ### 2 — retry parity
@@ -1690,7 +1880,7 @@ that keeps a bounded policy bounded across a resume.
 
 The `durable` member on `InvokeContext`, the run-handle interface in `@telorun/sdk`,
 `kernel/specs/durable-execution.md` (determinism contract, key scheme, entry format),
-the step engine's journaling / `decide` / collapse, `Telo.replayed` and the durable
+the step engine's journaling / `decide` / collapse, `replayed` and the durable
 checks, `durable-local`'s `Workflow` + `Journal` abstract + `Resumer`, and
 **`durable-journal-file` in the same slice**.
 
@@ -1698,7 +1888,7 @@ checks, `durable-local`'s `Workflow` + `Journal` abstract + `Resumer`, and
 shape and it cannot move later — but its **encoding is not specified in this slice**.
 Nothing here sends one anywhere: the local backend resolves it in-process, so a
 normative encoding would be a format frozen with no consumer, which is the rule below
-applied to itself. It is written in slice 7.
+applied to itself. It is written in slice 5.
 
 The file journal, by contrast, is here rather than after, and that is decisive: the key
 scheme and entry format *are* declared normative in this slice, and a format whose only
@@ -1715,7 +1905,7 @@ resume, which is the whole of what this slice must prove.
 `Durable.Sleep`, `Durable.Await` (with its `outputType:`) and `Durable.Value`; the
 suspension signal, its latch and `ERR_DURABLE_SUSPENSION_SWALLOWED`; branch-level
 parking under `concurrency`; suspending retry backoff and its journaled attempt state;
-`Telo.noSuspend` enforcement; and `durable-local`'s `Deliver` — taking the `await:` ref
+`noSuspend` enforcement; and `durable-local`'s `Deliver` — taking the `await:` ref
 whose `outputType` types its payload — plus `Status`, `Result`, `Cancel`, `Schedule` and
 `Resume`.
 
@@ -1724,20 +1914,34 @@ surface and the settle-all-branches semantics are where the subtle failures live
 they are much easier to reason about against a crash-recovery path already known to
 work.
 
-### 5 — `durable-journal-postgres`
+### 5 — `durable-journal-postgres`, and the remote half of the seam
 
-Two things at once. Concurrency: `FOR UPDATE SKIP LOCKED` claiming, advisory locks,
+Three things at once. Concurrency: `FOR UPDATE SKIP LOCKED` claiming, advisory locks,
 `LISTEN`/`NOTIFY` wakeups, several resumers against one journal. Slice 3 proved the
 format; this proves the protocol under contention, which a single-process file journal
 cannot.
 
-And **exactly-once**, because this is the first journal that can share a transaction
-with the writes it records. Concretely: the journal answers `writesInside(zone)` with
-the connection's existing `hasOpenTransaction()`, and the step engine stops collapsing
+**Exactly-once**, because this is the first journal that can share a transaction with
+the writes it records. Concretely: the journal answers `writesInside(zone)` with the
+connection's existing `hasOpenTransaction()`, and the step engine stops collapsing
 atomic zones when it does. Nothing in `modules/sql` changes — the executor already
 resolves an undeclared statement onto the ambient zone's transaction. The conditional
 collapse is written in slice 3 with the attestation permanently false (the file journal
 answers no), so this slice turns on a path that already exists rather than adding one.
+With it come the two reporting halves, since this is the slice where the answer stops
+being constant: the `durable.zone.mode` record and `collapsedRegions` observed state.
+
+And **remote step execution**, through the `tests/__fixtures__/durable-remote` backend
+over `ctx.runtime` — which is where **the target-identity encoding is written into
+`kernel/specs/durable-execution.md`**, the three forms sketched above. This is the
+sequencing rule applied evenly rather than selectively: the encoding is written in the
+slice where one first crosses a process boundary, and a child kernel crosses one just as
+truly as a workflow isolate does, for a fraction of the cost. Leaving it to slice 7 put
+the seam's entire justifying half — the identity, the locality rule, the
+dispatch-through-your-own-chokepoint conformance requirement — behind the plan's largest
+unknown, so slices 3–6 paid for a parameter nothing had yet used. A fixture is enough
+because the property under test is that the identity survives encoding at all, and a
+child kernel shares no instance graph with its parent, so nothing can pass by accident.
 
 ### 6 — `modules/restate`
 
@@ -1750,16 +1954,19 @@ younger engine.
 
 ### 7 — `modules/temporal`
 
-The only slice that exercises **remote step execution**, and therefore the only one that
-tests the half of `step(path, target, inputs)` that motivated it: the zone-based
-locality rule, and the step engine running somewhere the resource graph does not. **This
-is where the target-identity encoding is written into
-`kernel/specs/durable-execution.md`** — the three forms sketched above, normative
-because this is the slice where one crosses a process boundary and a second runtime must
-derive the same string. Last because it is the largest unknown — nobody has yet built a
-Telo step engine inside a workflow isolate — and because a failure here should be able
-to invalidate *Temporal as a backend* without invalidating anything shipped in slices
-1–6, which is exactly what deferring the encoding to here protects.
+The first slice that exercises remote step execution against a **real engine**, and the
+only one where the step engine runs somewhere the resource graph does not at all. What
+it puts under load is what slice 5's fixture could not: an isolate that performs no I/O,
+an activity round trip as the transport for `step()`, and a second runtime deriving the
+same target identity from the encoding that slice froze. Last because it is the largest
+unknown — nobody has yet built a Telo step engine inside a workflow isolate — and
+because a failure here should be able to invalidate *Temporal as a backend* without
+invalidating anything shipped in slices 1–6.
+
+**Moving the encoding to slice 5 is what makes that containment real rather than
+asserted.** With it written here, a Temporal failure would have taken the seam's
+justifying half down with it, since nothing else had ever sent an identity anywhere; the
+fixture is what turns "Temporal did not work out" into a statement about one backend.
 
 **What the order buys.** Every slice ships on its own, and the first two deliver value
 with no durability in them at all. Nothing before slice 6 depends on a hosted engine

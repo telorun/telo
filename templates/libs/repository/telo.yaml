@@ -14,19 +14,19 @@ imports:
   SqlRepository: oci://ghcr.io/telorun/sql-repository@0.10.0#sha256-kLSJ6yaEYzV4ji9hxmWGURIPx1--l7_TOJCavrXdZys
 exports:
   resources:
-    - Migrate
-    - CreateNote
-    - ListNotes
+    - migrate
+    - createNote
+    - listNotes
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ./tmp/notes.sqlite
 ---
 kind: Sql.Migrations
 metadata:
-  name: Migrate
-connection: !ref Db
+  name: migrate
+connection: !ref db
 migrations:
   0001_create_notes:
     statement: |
@@ -39,12 +39,12 @@ migrations:
 ---
 kind: SqlRepository.Create
 metadata:
-  name: CreateNote
-connection: !ref Db
+  name: createNote
+connection: !ref db
 table: notes
 ---
 kind: SqlRepository.Read
 metadata:
-  name: ListNotes
-connection: !ref Db
+  name: listNotes
+connection: !ref db
 table: notes

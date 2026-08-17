@@ -23,8 +23,8 @@ imports:
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
   SqlRepository: oci://ghcr.io/telorun/sql-repository@0.10.0#sha256-kLSJ6yaEYzV4ji9hxmWGURIPx1--l7_TOJCavrXdZys
 targets:
-  - !ref Migrate
-  - !ref Server
+  - !ref migrate
+  - !ref server
 ports:
   http:
     env: PORT
@@ -32,13 +32,13 @@ ports:
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ./feedback.db
 ---
 kind: Sql.Migrations
 metadata:
-  name: Migrate
-connection: !ref Db
+  name: migrate
+connection: !ref db
 migrations:
   0001_create_feedback:
     statement: |
@@ -50,23 +50,23 @@ migrations:
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
 ---
-# One repository resource per operation, not per route: `ReadFeedback` serves
+# One repository resource per operation, not per route: `readFeedback` serves
 # both the list and the by-id route — the `filters:` differ at the call site.
 kind: SqlRepository.Create
 metadata:
-  name: InsertFeedback
-connection: !ref Db
+  name: insertFeedback
+connection: !ref db
 table: feedback
 ---
 kind: SqlRepository.Read
 metadata:
-  name: ReadFeedback
-connection: !ref Db
+  name: readFeedback
+connection: !ref db
 table: feedback
 ---
 kind: Http.Server
 metadata:
-  name: Server
+  name: server
 port: !cel "ports.http"
 openapi:
   info:
@@ -74,11 +74,11 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /v1
-    mount: !ref FeedbackRoutes
+    mount: !ref feedbackRoutes
 ---
 kind: Http.Api
 metadata:
-  name: FeedbackRoutes
+  name: feedbackRoutes
 routes:
   # POST /v1/feedback — insert a new entry. The request schema is the validation:
   # a rating outside 1–5 never reaches the database.
@@ -100,7 +100,7 @@ routes:
               type: integer
               minimum: 1
               maximum: 5
-    handler: !ref InsertFeedback
+    handler: !ref insertFeedback
     inputs:
       data:
         text: !cel "request.body.text"
@@ -118,7 +118,7 @@ routes:
   - request:
       path: /feedback
       method: GET
-    handler: !ref ReadFeedback
+    handler: !ref readFeedback
     inputs:
       filters: {}
     returns:
@@ -138,7 +138,7 @@ routes:
             id:
               type: integer
           required: [ id ]
-    handler: !ref ReadFeedback
+    handler: !ref readFeedback
     inputs:
       filters:
         id: !cel "request.params.id"

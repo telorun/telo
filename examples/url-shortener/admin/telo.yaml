@@ -21,23 +21,23 @@ imports:
       dbFile: !cel "variables.dbFile"
 exports:
   resources:
-    - Routes
+    - routes
 ---
 kind: Sql.Query
-metadata: { name: ListLinks }
+metadata: { name: listLinks }
 connection: !ref Database.connection
 ---
 kind: Sql.Query
-metadata: { name: LinkStats }
+metadata: { name: linkStats }
 connection: !ref Database.connection
 ---
 kind: Http.Api
-metadata: { name: Routes }
+metadata: { name: routes }
 routes:
   - request:
       path: /links
       method: GET
-    handler: !ref ListLinks
+    handler: !ref listLinks
     inputs:
       sql: "SELECT l.code, l.target, COUNT(c.id) AS clicks FROM links l LEFT JOIN clicks c ON c.code = l.code GROUP BY l.code, l.target ORDER BY clicks DESC"
       bindings: []
@@ -56,7 +56,7 @@ routes:
           required: [code]
           properties:
             code: { type: string }
-    handler: !ref LinkStats
+    handler: !ref linkStats
     inputs:
       sql: "SELECT code, target, (SELECT COUNT(*) FROM clicks WHERE clicks.code = links.code) AS clicks FROM links WHERE code = ?"
       bindings:

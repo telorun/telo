@@ -7,20 +7,20 @@ imports:
   JavaScript: oci://ghcr.io/telorun/javascript@0.12.0#sha256-HG9Ydrm-jnzR6H1phgJy_PUKxAtSUEy76QxmMn1VcLY
   Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
 targets:
-  - name: Step1
-    invoke: !ref MultiplyBy2
+  - name: step1
+    invoke: !ref multiplyBy2
     inputs:
       value: 42
-  - name: PrintResult
+  - name: printResult
     invoke: !ref Console.writeLine
     inputs:
       output: |
         Evaluated JavaScript code.
-        Result is: ${{ steps.Step1.result.result }}
+        Result is: ${{ steps.step1.result.result }}
 ---
 kind: JavaScript.Script
 metadata:
-  name: MultiplyBy2
+  name: multiplyBy2
 code: |
   function main({ value }) {
     return { result: value * 2 }

@@ -26,8 +26,8 @@ imports:
   Sql: oci://ghcr.io/telorun/sql@0.21.0#sha256-aasWNQP3KaWbJaFZVg_Zzp0efD4k7rc0FaImt6aHE-k
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
 targets:
-  - !ref InitSchema
-  - !ref ChatLoop
+  - !ref initSchema
+  - !ref chatLoop
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
@@ -35,13 +35,13 @@ secrets:
 ---
 # --- Persistence -----------------------------------------------------------
 kind: SQLite.Connection
-metadata: { name: ChatDb }
+metadata: { name: chatDb }
 file: ./tmp/agent-history.sqlite
 
 ---
 kind: Sql.Migrations
-metadata: { name: InitSchema }
-connection: !ref ChatDb
+metadata: { name: initSchema }
+connection: !ref chatDb
 migrations:
   20260601_create_messages:
     statement: |
@@ -54,7 +54,7 @@ migrations:
 ---
 # --- AI provider -----------------------------------------------------------
 kind: AiOpenai.OpenaiModel
-metadata: { name: Gpt4oMini }
+metadata: { name: gpt4oMini }
 model: gpt-4o-mini
 apiKey: !cel "secrets.openaiApiKey"
 ---
@@ -62,32 +62,32 @@ apiKey: !cel "secrets.openaiApiKey"
 # Streamable-HTTP MCP client pointed at the Telo registry server. AiMcp.ToolProvider
 # turns it into an Ai.ToolProvider; the agent never learns it is MCP.
 kind: Mcp.HttpClient
-metadata: { name: RegistryMcp }
+metadata: { name: registryMcp }
 url: https://registry.telo.run/mcp
 clientInfo: { name: agent-console, version: 1.0.0 }
 ---
 kind: AiMcp.ToolProvider
-metadata: { name: RegistryTools }
-client: !ref RegistryMcp
+metadata: { name: registryTools }
+client: !ref registryMcp
 ---
 # --- Tool: a regular invocable (HTTP weather lookup) -----------------------
 kind: Http.Client
-metadata: { name: OpenMeteo }
+metadata: { name: openMeteo }
 baseUrl: https://api.open-meteo.com
 ---
 # Static request config; the latitude/longitude/query are supplied per call by the
 # Ai.Tools `inputs:` mapping below.
 kind: Http.Request
-metadata: { name: GetWeather }
-client: !ref OpenMeteo
+metadata: { name: getWeather }
+client: !ref openMeteo
 throwOnHttpError: true
 ---
 # Wrap the HTTP request as a tool. The model produces { latitude, longitude }; the
 # `inputs:` mapping shapes them into the open-meteo request.
 kind: Ai.Tools
-metadata: { name: WeatherTools }
+metadata: { name: weatherTools }
 tools:
-  - tool: !ref GetWeather
+  - tool: !ref getWeather
     name: get_weather
     description: Get the current weather at a latitude/longitude (open-meteo).
     parameters:
@@ -108,68 +108,68 @@ tools:
 ---
 # --- Agent -----------------------------------------------------------------
 kind: Ai.Agent
-metadata: { name: Assistant }
-model: !ref Gpt4oMini
+metadata: { name: assistant }
+model: !ref gpt4oMini
 system: |
   You are a helpful CLI assistant. Use the available tools when they help answer;
   don't guess at facts you can look up. Keep replies brief.
 maxSteps: 6
 toolProviders:
-  - provider: !ref WeatherTools
-  - provider: !ref RegistryTools
+  - provider: !ref weatherTools
+  - provider: !ref registryTools
     prefix: "registry_"
 ---
 # --- REPL ------------------------------------------------------------------
 kind: Run.Sequence
-metadata: { name: ChatLoop }
+metadata: { name: chatLoop }
 steps:
-  - name: Read
+  - name: read
     invoke: !ref Console.readLine
     inputs:
       prompt: "{cyan.bold you} › "
-  - name: Loop
-    while: !cel "steps.Read.result.value != '/exit'"
+  - name: converse
+    while: !cel "steps.read.result.value != '/exit'"
     do:
-      - name: InsertUser
+      - name: insertUser
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: [ "user", "${{ steps.Read.result.value }}" ]
+          bindings: [ "user", "${{ steps.read.result.value }}" ]
         invoke:
           kind: Sql.Command
-          connection: !ref ChatDb
-      - name: ReadHistory
+          connection: !ref chatDb
+      - name: readHistory
         inputs:
           sql: "SELECT role, content FROM messages ORDER BY id ASC"
         invoke:
           kind: Sql.Query
-          connection: !ref ChatDb
-      - name: Ask
-        invoke: !ref Assistant
+          connection: !ref chatDb
+      - name: ask
+        invoke: !ref assistant
         inputs:
-          messages: !cel "steps.ReadHistory.result.rows"
-      - name: ShowTools
-        if: !cel "steps.Ask.result.steps.exists(s, s.toolCalls.size() > 0)"
+          messages: !cel "steps.readHistory.result.rows"
+      - name: showTools
+        if: !cel "steps.ask.result.steps.exists(s, s.toolCalls.size() > 0)"
         then:
-          - name: PrintTools
+          - name: printTools
             invoke: !ref Console.writeLine
             inputs:
               output: >-
-                {dim 🔧 ${{ steps.Ask.result.steps
+                {dim 🔧 ${{ steps.ask.result.steps
                   .map(s, s.toolCalls.map(tc, tc.name).join(', '))
                   .filter(line, line != '')
                   .join(' → ') }}}
-      - name: Print
+      - name: print
         invoke: !ref Console.writeLine
         inputs:
-          output: "{magenta.bold ai}  › ${{ steps.Ask.result.text }}"
-      - name: InsertAssistant
+          output: "{magenta.bold ai}  › ${{ steps.ask.result.text }}"
+      - name: insertAssistant
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: [ "assistant", "${{ steps.Ask.result.text }}" ]
+          bindings: [ "assistant", "${{ steps.ask.result.text }}" ]
         invoke:
           kind: Sql.Command
-          connection: !ref ChatDb
-      - name: Read
+          connection: !ref chatDb
+      - name: read
         invoke: !ref Console.readLine
         inputs:
           prompt: "{cyan.bold you} › "

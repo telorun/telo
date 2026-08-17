@@ -20,23 +20,23 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
   Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
 targets:
-  - !ref Demo
+  - !ref demo
 ---
-# Instances of the kinds the library defined. `Deploys` is the general kind;
-# `TeamChat` is the specialised one — it takes `webhookUrl` and nothing else,
+# Instances of the kinds the library defined. `deploys` is the general kind;
+# `teamChat` is the specialised one — it takes `webhookUrl` and nothing else,
 # because `base:` fills in the rest.
 kind: Notify.Webhook
-metadata: { name: Deploys }
+metadata: { name: deploys }
 url: http://127.0.0.1:8033/hooks/generic
 headers:
   x-source: telo-example
 ---
 kind: Notify.Slack
-metadata: { name: TeamChat }
+metadata: { name: teamChat }
 webhookUrl: http://127.0.0.1:8033/hooks/slack
 ---
 kind: Run.Sequence
-metadata: { name: Demo }
+metadata: { name: demo }
 with:
   - kind: Http.Server
     metadata: { name: Receiver }
@@ -48,19 +48,19 @@ with:
         version: 1.0.0
     mounts:
       - path: /hooks
-        mount: !ref Inbox
+        mount: !ref inbox
 targets:
   - !ref Receiver
 steps:
   - name: generic
-    invoke: !ref Deploys
+    invoke: !ref deploys
     inputs:
       payload:
         event: deploy.finished
         service: checkout
         version: "2026.8.1"
   - name: slack
-    invoke: !ref TeamChat
+    invoke: !ref teamChat
     inputs:
       text: "checkout 2026.8.1 is live"
   - name: report
@@ -73,12 +73,12 @@ steps:
 # The stand-in receiver: prints whatever arrives so you can see both payload
 # shapes — the generic one verbatim, and Slack's `{text: …}` built by `base:`.
 kind: Http.Api
-metadata: { name: Inbox }
+metadata: { name: inbox }
 routes:
   - request:
       path: /generic
       method: POST
-    handler: !ref Echo
+    handler: !ref echo
     inputs:
       label: generic
       body: !cel "request.body"
@@ -90,7 +90,7 @@ routes:
   - request:
       path: /slack
       method: POST
-    handler: !ref Echo
+    handler: !ref echo
     inputs:
       label: slack
       body: !cel "request.body"
@@ -101,7 +101,7 @@ routes:
             body: { ok: true }
 ---
 kind: Run.Sequence
-metadata: { name: Echo }
+metadata: { name: echo }
 inputType:
   kind: Telo.JsonSchema
   schema:

@@ -101,15 +101,14 @@ against it. Those are different questions: the working copy differs from what is
 published on any commit after a release, which is normal and is what `check`
 plans a bump for.
 
-One key is deliberately outside that reconciliation. The `manifest` digest is
-**locally derived and unverifiable**: the published `layers:` index lives inside
-`telo.yaml`, so it cannot carry that file's own digest, and hashing what the
-registry serves would not match either, because the transport injects the index
-at push time. It stays in the ledger regardless — it is the only thing that sees
-a **manifest-only change** (a schema edit, a new kind, a dependency's version
-moving into a pin), none of which touch a controller byte. So `verify` compares
-and rewrites the layers the registry can answer for and preserves that one;
-`apply` is what writes it.
+One key is deliberately outside that reconciliation. The `manifest` digest has no
+entry in the published `layers:` index — that index lives inside `telo.yaml`, so
+it cannot carry that file's own digest — and the index is what `verify` reads. It
+stays in the ledger regardless: it is the only thing that sees a **manifest-only
+change** (a schema edit, a new kind, a dependency's version moving into a pin),
+none of which touch a controller byte. So `verify` compares and rewrites the
+layers the registry can answer for and preserves that one; `apply` is what writes
+it.
 
 The base is recorded because canonicalization writes the destination into every
 relative import, so digests taken against another base are digests of different

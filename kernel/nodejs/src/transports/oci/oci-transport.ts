@@ -5,25 +5,25 @@ import {
   sha256Base64Url,
   verifyIntegrity,
   type ArtifactLayer,
+  type ArtifactSelector,
   type ManifestCacheCoords,
   type ManifestSource,
 } from "@telorun/analyzer";
-import { createHash } from "node:crypto";
-
 import {
   computeFilesIntegrity,
-  injectLayerIndex,
   type PayloadFile,
 } from "../../bundle/files-integrity.js";
 import { readOwnerManifest, type OwnerManifest } from "../../bundle/module-manifest.js";
 import { makeTarGz, readTarGz, toPayloadFiles } from "../../bundle/tar.js";
 import type {
+  PayloadLayer,
   PublishBundle,
   PublishOptions,
   PublishResult,
   Transport,
 } from "../transport.js";
 import {
+  blobDigest,
   OciClient,
   OCI_MANIFEST_MEDIA_TYPE,
   TELO_LAYER_ROLE_ANNOTATION,
@@ -41,6 +41,21 @@ import {
   parseVersionedRef,
   withRefVersion,
 } from "./oci-ref.js";
+
+/** A layer's identity within one artifact: role plus, for a controller layer,
+ *  its selector. Role alone is not it — there is one controller layer per
+ *  selector. Same shape the release ledger keys on. */
+function layerKey(role: string, selector?: ArtifactSelector): string {
+  return selector ? `${role}/${selectorKey(selector)}` : role;
+}
+
+/** The `layers:` index the bundle's own manifest declares, keyed for lookup.
+ *  Read back out of the text rather than passed alongside it, because the text
+ *  is what ships — anything else would be a second copy to keep in agreement. */
+function declaredLayerIndex(bundle: PublishBundle): Map<string, ArtifactLayer> {
+  const declared = readOwnerManifest(bundle.manifest).layers ?? [];
+  return new Map(declared.map((layer) => [layerKey(layer.role, layer.selector), layer]));
+}
 
 /**
  * Pull only the **manifest layer** and return its verified `telo.yaml` text.
@@ -211,17 +226,17 @@ export class OciTransport implements Transport {
    *  republish that reorders layers is simply invisible here rather than a
    *  failure. Content verification is the artifact handle's, which holds the
    *  expected `integrity`. */
-  async fetchLayer(ref: string, blobDigest: string): Promise<PayloadFile[]> {
+  async fetchLayer(ref: string, digest: string): Promise<PayloadFile[]> {
     const { host, repo } = parseOciRef(ref);
-    const tar = await this.readClient(host, repo).pullBlob(blobDigest);
+    const tar = await this.readClient(host, repo).pullBlob(digest);
     // Verify the transfer against the digest that addressed it. A registry is
     // not trusted to return the blob that was asked for, and this is the only
     // place the pushed bytes exist — the content digest checked after extraction
     // covers the file set, not the archive that carried it.
-    const actual = `sha256:${createHash("sha256").update(tar).digest("hex")}`;
-    if (actual !== blobDigest) {
+    const actual = blobDigest(tar);
+    if (actual !== digest) {
       throw new IntegrityError(
-        `Blob digest mismatch fetching a layer of ${ref}: requested ${blobDigest}, ` +
+        `Blob digest mismatch fetching a layer of ${ref}: requested ${digest}, ` +
           `received ${actual}. The registry returned different bytes than were addressed.`,
       );
     }
@@ -258,6 +273,27 @@ export class OciTransport implements Transport {
     return Object.fromEntries(mapped.filter((e): e is [string, string] => Boolean(e[1])));
   }
 
+  /** The index as it will be published: `blob` over the gzipped tar this
+   *  transport pushes, `integrity` over the layer's file contents. Both are
+   *  computed from the files alone, which is what lets the payload builder
+   *  write the index into `telo.yaml` before a single byte is pushed. */
+  async layerIndex(layers: readonly PayloadLayer[]): Promise<ArtifactLayer[]> {
+    const index: ArtifactLayer[] = [];
+    for (const layer of layers) {
+      if (layer.files.length === 0) continue;
+      const tar = await makeTarGz(
+        layer.files.map((f) => ({ name: f.name, content: Buffer.from(f.content) })),
+      );
+      index.push({
+        role: layer.role,
+        ...(layer.selector ? { selector: layer.selector } : {}),
+        blob: blobDigest(tar),
+        integrity: await computeFilesIntegrity(layer.files),
+      });
+    }
+    return index;
+  }
+
   async publish(
     destination: string,
     bundle: PublishBundle,
@@ -285,17 +321,42 @@ export class OciTransport implements Transport {
     const tag = identity.version;
     const client = new OciClient(host, repo);
 
-    // Push every payload layer first, collecting the digests that address them.
-    // This ordering is what keeps the index non-circular: the manifest layer is
-    // pushed last and names only the layers pushed before it, never itself.
+    // Push every payload layer first. This ordering is what keeps the index
+    // non-circular: the manifest layer is pushed last and names only the layers
+    // pushed before it, never itself.
+    //
+    // The index is NOT written here — `bundle.manifest` already carries it, and
+    // rewriting the manifest at this point is precisely the bug this replaced:
+    // the bytes a dependent hashed to derive its pin would then never be the
+    // bytes pushed. So each pushed blob is CHECKED against what the manifest
+    // already claims, which is also the standing test that framing stayed
+    // deterministic — a claim nobody can satisfy is a hard failure, not a
+    // silently corrected index.
+    const declared = declaredLayerIndex(bundle);
     const payloadDescriptors: OciDescriptor[] = [];
-    const index: ArtifactLayer[] = [];
     for (const layer of bundle.layers) {
       if (layer.files.length === 0) continue;
+      const key = layerKey(layer.role, layer.selector);
       const tar = await makeTarGz(
         layer.files.map((f) => ({ name: f.name, content: Buffer.from(f.content) })),
       );
       const blob = await client.pushBlob(tar);
+      const claim = declared.get(key);
+      if (!claim) {
+        throw new Error(
+          `layer '${key}' is being pushed but the manifest's 'layers:' index does not name it. ` +
+            `The index is written by the payload builder before publish, so a layer missing ` +
+            `from it would be unaddressable by any importer.`,
+        );
+      }
+      if (claim.blob !== blob) {
+        throw new Error(
+          `layer '${key}' framed to ${blob}, but the manifest's 'layers:' index claims ` +
+            `${claim.blob}. The published telo.yaml is hashed into every dependent's import ` +
+            `pin, so it cannot be corrected here — the archive framing must be a pure ` +
+            `function of the layer's files.`,
+        );
+      }
       payloadDescriptors.push({
         mediaType: TELO_PAYLOAD_LAYER_MEDIA_TYPE,
         digest: blob,
@@ -307,18 +368,11 @@ export class OciTransport implements Transport {
             : {}),
         },
       });
-      index.push({
-        role: layer.role,
-        ...(layer.selector ? { selector: layer.selector } : {}),
-        blob,
-        integrity: await computeFilesIntegrity(layer.files),
-      });
     }
 
-    // Inject the index, then push telo.yaml as its own layer so a manifest read
-    // never has to pull a payload.
-    const manifestText =
-      index.length > 0 ? injectLayerIndex(bundle.manifest, index) : bundle.manifest;
+    // Push telo.yaml as its own layer so a manifest read never has to pull a
+    // payload. Verbatim — these are the bytes importers pin.
+    const manifestText = bundle.manifest;
     const manifestTar = await makeTarGz([
       { name: DEFAULT_MANIFEST_FILENAME, content: manifestText },
     ]);

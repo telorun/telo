@@ -71,6 +71,13 @@ export interface OciManifest {
   annotations?: Record<string, string>;
 }
 
+/** A blob's OCI digest, as `pushBlob` addresses it. Exported because the
+ *  `layers:` index has to name a layer's digest BEFORE it is pushed — a second
+ *  spelling of this would be a second answer to what a blob is called. */
+export function blobDigest(bytes: Uint8Array): string {
+  return `sha256:${sha256Hex(bytes)}`;
+}
+
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -270,7 +277,7 @@ export class OciClient {
    *  `sha256:<hex>` digest. Two-step upload: obtain a session, then PUT with
    *  the digest. */
   async pushBlob(bytes: Uint8Array): Promise<string> {
-    const digest = `sha256:${sha256Hex(bytes)}`;
+    const digest = blobDigest(bytes);
 
     const head = await this.authedFetch(
       `${this.base()}/blobs/${digest}`,

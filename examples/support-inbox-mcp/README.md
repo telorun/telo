@@ -5,11 +5,11 @@ Two front doors onto the same two handlers:
 ```
 Http.Server (:8066)
 ├── /api → Http.Api          ─┐
-└── /mcp → Mcp.HttpEndpoint  ─┴─► SearchTickets (Sql.Query)
-                                  CloseTicket   (Run.Sequence → Sql.Command)
+└── /mcp → Mcp.HttpEndpoint  ─┴─► searchTickets (Sql.Query)
+                                  closeTicket   (Run.Sequence → Sql.Command)
 ```
 
-`SearchTickets` and `CloseTicket` are declared once. The HTTP route describes
+`searchTickets` and `closeTicket` are declared once. The HTTP route describes
 them for a browser (`request.query` → SQL bindings → JSON body); the MCP tool
 entry describes them for a model (`argumentsSchema` → `inputs:` → a rendered
 `content` block). Neither surface is a wrapper around the other, and there is no

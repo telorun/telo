@@ -20,11 +20,11 @@ imports:
   JS: oci://ghcr.io/telorun/javascript@0.12.0#sha256-HG9Ydrm-jnzR6H1phgJy_PUKxAtSUEy76QxmMn1VcLY
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
 targets:
-  - !ref Main
+  - !ref main
 ---
 # GET /users/{id} → returns a greeting by id.
 kind: Run.Value
-metadata: { name: GreetById }
+metadata: { name: greetById }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -37,7 +37,7 @@ value:
 # POST /orders → echoes the parsed JSON body; throws ValidationError on
 # missing fields so the route's catches: block can render a 400.
 kind: JS.Script
-metadata: { name: PlaceOrder }
+metadata: { name: placeOrder }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -58,7 +58,7 @@ code: |
   }
 ---
 kind: Lambda.HttpApi
-metadata: { name: Web }
+metadata: { name: web }
 cors:
   origin: "*"
   methods: [ GET, POST ]
@@ -67,7 +67,7 @@ routes:
   - request:
       method: GET
       path: "/users/{id}"
-    handler: !ref GreetById
+    handler: !ref greetById
     inputs:
       id: !cel "request.params.id"
     returns:
@@ -78,7 +78,7 @@ routes:
   - request:
       method: POST
       path: "/orders"
-    handler: !ref PlaceOrder
+    handler: !ref placeOrder
     inputs:
       body: !cel "request.body"
     returns:
@@ -97,6 +97,6 @@ routes:
                 message: !cel "error.message"
 ---
 kind: Lambda.Function
-metadata: { name: Main }
+metadata: { name: main }
 handlers:
-  - !ref Web
+  - !ref web

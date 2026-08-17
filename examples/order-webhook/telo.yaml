@@ -34,9 +34,9 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
   Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
 targets:
-  - !ref Migrate
-  - !ref Server
-  - !ref Sweeper
+  - !ref migrate
+  - !ref server
+  - !ref sweeper
 ports:
   http:
     env: PORT
@@ -54,12 +54,12 @@ secrets:
     default: local-dev-token
 ---
 kind: SQLite.Connection
-metadata: { name: Db }
+metadata: { name: db }
 file: ./orders.db
 ---
 kind: Sql.Migrations
-metadata: { name: Migrate }
-connection: !ref Db
+metadata: { name: migrate }
+connection: !ref db
 migrations:
   0001_orders:
     statements:
@@ -81,19 +81,19 @@ migrations:
 # Where the idempotency keys live. Swap this one line for kv-store-redis and the
 # guarantee survives a restart and spans every replica — nothing else changes.
 kind: KvStore.Store
-metadata: { name: Claims }
+metadata: { name: claims }
 ---
 kind: Sql.Command
-metadata: { name: Exec }
-connection: !ref Db
+metadata: { name: exec }
+connection: !ref db
 ---
 kind: Sql.Query
-metadata: { name: Query }
-connection: !ref Db
+metadata: { name: query }
+connection: !ref db
 ---
 # The body that must run at most once per delivery.
 kind: Run.Sequence
-metadata: { name: RecordOrder }
+metadata: { name: recordOrder }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -105,7 +105,7 @@ inputType:
       currency: { type: string }
 steps:
   - name: insertOrder
-    invoke: !ref Exec
+    invoke: !ref exec
     inputs:
       sql: "INSERT INTO orders (order_id, amount_cents, currency) VALUES (?, ?, ?)"
       bindings:
@@ -113,7 +113,7 @@ steps:
         - !cel "inputs.amountCents"
         - !cel "inputs.currency"
   - name: enqueueFulfilment
-    invoke: !ref Exec
+    invoke: !ref exec
     inputs:
       sql: "INSERT INTO fulfilments (order_id) VALUES (?)"
       bindings:
@@ -124,14 +124,14 @@ outputs:
 # claimTtl bounds a crashed in-flight attempt; ttl is how long a completed
 # delivery stays replayable — a provider that retries for a day needs a day.
 kind: Idempotency.Once
-metadata: { name: RecordOrderOnce }
-store: !ref Claims
+metadata: { name: recordOrderOnce }
+store: !ref claims
 claimTtl: "30s"
 ttl: "24h"
-invoke: !ref RecordOrder
+invoke: !ref recordOrder
 ---
 kind: Run.Sequence
-metadata: { name: HandleDelivery }
+metadata: { name: handleDelivery }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -152,7 +152,7 @@ steps:
           code: ERR_WEBHOOK_UNAUTHORIZED
           message: bad or missing webhook token
   - name: record
-    invoke: !ref RecordOrderOnce
+    invoke: !ref recordOrderOnce
     inputs:
       key: !cel "inputs.deliveryId"
       inputs:
@@ -164,7 +164,7 @@ outputs:
   orderId: !cel "steps.record.result.result.orderId"
 ---
 kind: Http.Api
-metadata: { name: WebhookRoutes }
+metadata: { name: webhookRoutes }
 routes:
   - request:
       path: /orders
@@ -184,7 +184,7 @@ routes:
             orderId: { type: string, minLength: 1 }
             amountCents: { type: integer, minimum: 1 }
             currency: { type: string, minLength: 3, maxLength: 3 }
-    handler: !ref HandleDelivery
+    handler: !ref handleDelivery
     inputs:
       token: !cel "request.headers.authorization"
       deliveryId: !cel "request.body.deliveryId"
@@ -226,7 +226,7 @@ routes:
               error: !cel "error.code"
 ---
 kind: Http.Server
-metadata: { name: Server }
+metadata: { name: server }
 port: !cel "ports.http"
 openapi:
   info:
@@ -234,15 +234,15 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /webhooks
-    mount: !ref WebhookRoutes
+    mount: !ref webhookRoutes
 ---
 # The background half. Same app, no queue broker, no worker process: a schedule
 # is a resource, so it is declared beside the route it drains for.
 kind: Run.Sequence
-metadata: { name: ShipPending }
+metadata: { name: shipPending }
 steps:
   - name: pending
-    invoke: !ref Query
+    invoke: !ref query
     inputs:
       sql: "SELECT id, order_id FROM fulfilments WHERE status = 'pending' ORDER BY id LIMIT 20"
       bindings: []
@@ -250,7 +250,7 @@ steps:
     if: !cel "size(steps.pending.result.rows) > 0"
     then:
       - name: mark
-        invoke: !ref Exec
+        invoke: !ref exec
         inputs:
           sql: "UPDATE fulfilments SET status = 'sent', sent_at = CURRENT_TIMESTAMP WHERE status = 'pending'"
           bindings: []
@@ -260,6 +260,6 @@ steps:
           output: !cel "'{dim shipped ' + string(size(steps.pending.result.rows)) + ' fulfilment(s)}'"
 ---
 kind: Schedule.Interval
-metadata: { name: Sweeper }
+metadata: { name: sweeper }
 every: !cel "variables.sweepEvery"
-invoke: !ref ShipPending
+invoke: !ref shipPending

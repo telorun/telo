@@ -12,11 +12,11 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
 exports:
   resources:
-    - HelloApi
+    - helloApi
 ---
 kind: Http.Api
 metadata:
-  name: HelloApi
+  name: helloApi
 routes:
   - request:
       path: /hello
@@ -28,7 +28,7 @@ routes:
             name:
               type: string
           required: [ "name" ]
-    handler: !ref SayHello
+    handler: !ref sayHello
     inputs:
       name: !cel "request.query.name"
     returns:
@@ -46,7 +46,7 @@ routes:
 ---
 kind: Run.Value
 metadata:
-  name: SayHello
+  name: sayHello
 inputType:
   kind: Telo.JsonSchema
   schema:

@@ -27,8 +27,8 @@ imports:
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
 targets:
-  - !ref Migrate
-  - !ref Server
+  - !ref migrate
+  - !ref server
 ports:
   http:
     env: PORT
@@ -36,12 +36,12 @@ ports:
     default: 8055
 ---
 kind: SQLite.Connection
-metadata: { name: Db }
+metadata: { name: db }
 file: ":memory:"
 ---
 kind: Sql.Migrations
-metadata: { name: Migrate }
-connection: !ref Db
+metadata: { name: migrate }
+connection: !ref db
 migrations:
   0001_accounts:
     statements:
@@ -55,9 +55,9 @@ migrations:
       - "INSERT OR IGNORE INTO accounts (id, owner, balance_cents) VALUES (2, 'grace', 5000)"
 ---
 kind: Sql.Transaction
-metadata: { name: TransferTx }
-connection: !ref Db
-steps: !ref TransferWrites
+metadata: { name: transferTx }
+connection: !ref db
+steps: !ref transferWrites
 inputs:
   from: !cel "inputs.from"
   to: !cel "inputs.to"
@@ -67,7 +67,7 @@ inputs:
 # read — so no one can spend the same money twice between the check and the
 # debit. A throw anywhere rolls the whole thing back.
 kind: Run.Sequence
-metadata: { name: TransferWrites }
+metadata: { name: transferWrites }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -79,18 +79,18 @@ inputType:
       amountCents: { type: integer }
 steps:
   - name: balance
-    invoke: !ref ReadBalance
+    invoke: !ref readBalance
     inputs:
       sql: !sql "SELECT balance_cents FROM accounts WHERE id = ${{ inputs.from }}"
   - name: settle
     if: !cel "size(steps.balance.result.rows) > 0 && steps.balance.result.rows[0].balance_cents >= inputs.amountCents"
     then:
       - name: debit
-        invoke: !ref MoveMoney
+        invoke: !ref moveMoney
         inputs:
           sql: !sql "UPDATE accounts SET balance_cents = balance_cents - ${{ inputs.amountCents }} WHERE id = ${{ inputs.from }}"
       - name: credit
-        invoke: !ref MoveMoney
+        invoke: !ref moveMoney
         inputs:
           sql: !sql "UPDATE accounts SET balance_cents = balance_cents + ${{ inputs.amountCents }} WHERE id = ${{ inputs.to }}"
 outputs:
@@ -98,29 +98,29 @@ outputs:
   moved: !cel "inputs.amountCents"
 ---
 # `transaction:` instead of `connection:` is the whole trick: this statement
-# declares that it must be reached through TransferTx's body. Invoking it from
+# declares that it must be reached through transferTx's body. Invoking it from
 # a plain step is ZONE_REQUIREMENT_UNSATISFIED at check time.
 kind: Sql.Command
-metadata: { name: MoveMoney }
-transaction: !ref TransferTx
+metadata: { name: moveMoney }
+transaction: !ref transferTx
 ---
 kind: Sql.Query
-metadata: { name: ReadBalance }
-transaction: !ref TransferTx
+metadata: { name: readBalance }
+transaction: !ref transferTx
 ---
 # Reads outside the transfer are ordinary: this one takes `connection:`, so it
 # carries no zone requirement and can be called from any route.
 kind: Sql.Query
-metadata: { name: ListAccounts }
-connection: !ref Db
+metadata: { name: listAccounts }
+connection: !ref db
 ---
 kind: Http.Api
-metadata: { name: BankRoutes }
+metadata: { name: bankRoutes }
 routes:
   - request:
       path: /accounts
       method: GET
-    handler: !ref ListAccounts
+    handler: !ref listAccounts
     inputs:
       sql: "SELECT id, owner, balance_cents FROM accounts ORDER BY id"
       bindings: []
@@ -142,7 +142,7 @@ routes:
             from: { type: integer }
             to: { type: integer }
             amountCents: { type: integer, minimum: 1 }
-    handler: !ref TransferTx
+    handler: !ref transferTx
     inputs:
       from: !cel "request.body.from"
       to: !cel "request.body.to"
@@ -165,7 +165,7 @@ routes:
               movedCents: !cel "result.moved"
 ---
 kind: Http.Server
-metadata: { name: Server }
+metadata: { name: server }
 port: !cel "ports.http"
 openapi:
   info:
@@ -173,4 +173,4 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /
-    mount: !ref BankRoutes
+    mount: !ref bankRoutes

@@ -26,7 +26,7 @@ imports:
       dbFile: !cel "variables.dbFile"
 exports:
   resources:
-    - Routes
+    - routes
 ---
 kind: CacheMemory.Store
 metadata: { name: mem }
@@ -38,7 +38,7 @@ limit: 60
 window: "60s"
 ---
 kind: SqlRepository.Read
-metadata: { name: LookupLink }
+metadata: { name: lookupLink }
 connection: !ref Database.connection
 table: links
 ---
@@ -46,30 +46,30 @@ table: links
 # entry is served immediately and refreshed in the background (`revalidate:
 # background`), so a redirect never waits on the database.
 kind: Cache.View
-metadata: { name: LinkView }
+metadata: { name: linkView }
 store: !ref mem
-invoke: !ref LookupLink
+invoke: !ref lookupLink
 ttl: "300s"
 staleTtl: "3600s"
 revalidate: background
 ---
 kind: Sql.Command
-metadata: { name: InsertLink }
+metadata: { name: insertLink }
 connection: !ref Database.connection
 ---
 kind: SqlRepository.Create
-metadata: { name: InsertClick }
+metadata: { name: insertClick }
 connection: !ref Database.connection
 table: clicks
 ---
 # Analytics must never delay the redirect: Run.Detach hands the insert to the
 # kernel and returns immediately, so the 302 goes out without waiting for it.
 kind: Run.Detach
-metadata: { name: RecordClick }
-invoke: !ref InsertClick
+metadata: { name: recordClick }
+invoke: !ref insertClick
 ---
 kind: Run.Sequence
-metadata: { name: CreateLink }
+metadata: { name: createLink }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -87,7 +87,7 @@ steps:
     if: !cel "steps.guard.result.allowed"
     then:
       - name: insert
-        invoke: !ref InsertLink
+        invoke: !ref insertLink
         inputs:
           sql: "INSERT OR REPLACE INTO links (code, target) VALUES (?, ?)"
           bindings:
@@ -116,7 +116,7 @@ steps:
     if: !cel "steps.guard.result.allowed"
     then:
       - name: resolve
-        invoke: !ref LinkView
+        invoke: !ref linkView
         inputs:
           key: !cel "inputs.code"
           filters:
@@ -125,7 +125,7 @@ steps:
         if: !cel "size(steps.resolve.result.value.rows) > 0"
         then:
           - name: click
-            invoke: !ref RecordClick
+            invoke: !ref recordClick
             inputs:
               data:
                 code: !cel "inputs.code"
@@ -137,7 +137,7 @@ outputs:
   target: !cel "has(steps.resolve) && size(steps.resolve.result.value.rows) > 0 ? steps.resolve.result.value.rows[0].target : ''"
 ---
 kind: Http.Api
-metadata: { name: Routes }
+metadata: { name: routes }
 routes:
   - request:
       path: /links
@@ -149,7 +149,7 @@ routes:
           properties:
             code: { type: string, minLength: 1 }
             url: { type: string, minLength: 1 }
-    handler: !ref CreateLink
+    handler: !ref createLink
     inputs:
       code: !cel "request.body.code"
       url: !cel "request.body.url"

@@ -4,7 +4,7 @@ metadata:
   version: 1.0.0
   description: |
     Imports `library.yaml` as a `Telo.Library` and mounts its
-    `HelloApi` twice on the same `Http.Server` — under `/v1` and `/v2`.
+    `helloApi` twice on the same `Http.Server` — under `/v1` and `/v2`.
     Shows that a single library-defined kind can be reused across multiple
     mount points without duplicating the route definition.
 
@@ -20,11 +20,11 @@ ports:
     protocol: tcp
     default: 8845
 targets:
-  - !ref TemplatedApiServer
+  - !ref templatedApiServer
 ---
 kind: Http.Server
 metadata:
-  name: TemplatedApiServer
+  name: templatedApiServer
 port: !cel "ports.http"
 openapi:
   info:
@@ -32,6 +32,6 @@ openapi:
     version: "1.0.0"
 mounts:
   - path: /v1
-    mount: !ref Templated.HelloApi
+    mount: !ref Templated.helloApi
   - path: /v2
-    mount: !ref Templated.HelloApi
+    mount: !ref Templated.helloApi

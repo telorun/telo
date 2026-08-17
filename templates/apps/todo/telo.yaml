@@ -16,8 +16,8 @@ imports:
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
   Crud: oci://ghcr.io/telorun/crud@0.9.0#sha256-mhAY-K234E-y-ROkKtHxIjwKHlHVfkyjq8N-fvC2CYY
 targets:
-  - !ref Migrate
-  - !ref Server
+  - !ref migrate
+  - !ref server
 files:
   - public/app.js
   - public/index.html
@@ -30,13 +30,13 @@ ports:
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ./todo.db
 ---
 kind: Sql.Migrations
 metadata:
-  name: Migrate
-connection: !ref Db
+  name: migrate
+connection: !ref db
 migrations:
   0001_create_todos:
     statement: |
@@ -49,7 +49,7 @@ migrations:
 ---
 kind: Http.Server
 metadata:
-  name: Server
+  name: server
 port: !cel "ports.http"
 openapi:
   info:
@@ -59,7 +59,7 @@ mounts:
   - path: /api/todos
     mount:
       kind: Crud.Resource
-      connection: !ref Db
+      connection: !ref db
       plural: todos
       singular: todo
       model:
@@ -73,9 +73,9 @@ mounts:
             isDone: { type: boolean }
 
   - path: /
-    mount: !ref Ui
+    mount: !ref ui
 ---
 kind: Http.Static
 metadata:
-  name: Ui
+  name: ui
 root: ./public

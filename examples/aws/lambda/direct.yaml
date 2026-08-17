@@ -20,11 +20,11 @@ imports:
   Lambda: oci://ghcr.io/telorun/aws/lambda@0.9.1#sha256-j3T4Xg1dDA-6h8kQjJMxPLwf83cieI5A45DJht3XdD4
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
 targets:
-  - !ref Main
+  - !ref main
 ---
 # User handler: greets the caller by name.
 kind: Run.Value
-metadata: { name: Greet }
+metadata: { name: greet }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -37,12 +37,12 @@ value:
 # Lambda.Direct catches the raw AWS event, maps it into the handler's
 # inputs via CEL, and returns the handler's result.
 kind: Lambda.Direct
-metadata: { name: GreetDirect }
-handler: !ref Greet
+metadata: { name: greetDirect }
+handler: !ref greet
 inputs:
   name: !cel "event.name"
 ---
 kind: Lambda.Function
-metadata: { name: Main }
+metadata: { name: main }
 handlers:
-  - !ref GreetDirect
+  - !ref greetDirect

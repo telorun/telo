@@ -29,9 +29,13 @@ export const MANIFEST_LAYER = "manifest";
  * Exactly one today, and for a structural reason rather than an omission: the
  * published `layers:` index lives *inside* `telo.yaml`, so it cannot carry that
  * file's own digest — the entry would have to be computed over bytes containing
- * it. Nor can the digest be recovered by hashing what the registry serves, since
- * the transport injects the index at push time and the published text is
- * therefore not the text the payload builder produced.
+ * it. `readPublishedDigests` reads that index, so it has no answer for this key.
+ *
+ * It is no longer *unknowable*, though, only absent from the index: the payload
+ * builder now writes the index, so its manifest is the published text and this
+ * digest is what hashing the served `telo.yaml` yields. Reconciling it would
+ * mean fetching the manifest per module rather than reading one index — worth
+ * doing, and a separate change from the one that made it possible.
  *
  * It stays in the ledger regardless, because it is the only thing that sees a
  * **manifest-only change**: a schema edit, a new kind, a description, a
