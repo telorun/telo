@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.5 - 2026-08-17
+### Fixed
+* The manifest-authoring primer named the schema-valued slots `telo check` actually validates as JSON Schema — a kind's `schema:`, its `status:` block and a `Telo.JsonSchema`'s `schema:` — and says plainly that a kind's own `inputType:`/`outputType:` and an API route's `request.schema` are not checked that way yet. The earlier wording claimed every schema block was covered, which would have had the agent trusting a diagnostic that never fires.
+
 ## 0.5.3 - 2026-08-16
 ### Fixed
 * Import pins moved to the current module releases
