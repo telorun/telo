@@ -111,3 +111,4 @@ export type {
 } from "./logging/index.js";
 export { KernelLogging } from "./logging/kernel-logging.js";
 export type { LoggingHost } from "./logging/logging-host.js";
+export { nodeHostVersions } from "./host-versions.js";

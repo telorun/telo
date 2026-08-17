@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
-import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, flattenForAnalyzer, splitIntegrity } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, TELO_SURFACE_VERSION, flattenForAnalyzer, splitIntegrity, type LoadedGraph } from "@telorun/analyzer";
 import { LocalFileSource, defaultTransportRegistry, resolveCacheRoot } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
@@ -16,6 +16,11 @@ import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.
 import { outEmit, outErrLine, outLine } from "../output.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
 import { getPublisher } from "../publishers/registry.js";
+import {
+  publishedTeloVersions,
+  unpublishedUpperBound,
+  verifyRequires,
+} from "../release/verify-requires.js";
 
 // The manifest-text transforms moved to `bundle/manifest-text.ts` so `telo
 // release` computes the published bytes the same way this command does. Kept
@@ -171,6 +176,98 @@ function stepWarn(log: Logger, label: string, detail: string) {
 
 function stepDry(log: Logger, label: string, detail: string) {
   step(log, label, log.dim(`dry-run  ${detail}`));
+}
+
+/**
+ * Verify the entry module's declared `requires.telo` before publishing it.
+ *
+ * Two rules, failing in opposite directions on purpose:
+ *
+ *  - **A refuted range is fatal.** The edge CLI ran and rejected the manifest,
+ *    so the declaration is false and publishing it would put a claim in the
+ *    registry that `upgrade` and every consumer's load gate then act on.
+ *  - **An unverifiable one warns.** A CLI that could not be installed leaves the
+ *    claim unproven, not disproven, and blocking a publish on registry
+ *    reachability trades one failure for a worse one.
+ *
+ * The upper-bound existence check follows the same split: a bound naming a
+ * version npm does not have is fatal (an unverifiable bound is what the grammar
+ * forbids), while an unreachable registry warns, since the rule gates a bound
+ * absent from almost every module.
+ */
+async function verifyDeclaredRequirements(
+  filePath: string,
+  graph: LoadedGraph,
+  log: Logger,
+): Promise<boolean> {
+  const ownerDoc = graph.entry.owner.manifests.find(
+    (m) => m?.kind === "Telo.Application" || m?.kind === "Telo.Library",
+  );
+  if (!ownerDoc) return true;
+
+  const result = await verifyRequires(filePath, ownerDoc as unknown as Record<string, unknown>, {
+    currentVersion: TELO_SURFACE_VERSION,
+  });
+  if (!result.declared) {
+    // Absent means no requirement — permanent for everything published before
+    // this mechanism existed, and correct, since none of it uses syntax that did
+    // not yet exist.
+    return true;
+  }
+
+  const refuted = result.outcomes.filter((o) => o.status === "failed");
+  for (const outcome of refuted) {
+    outErrLine(
+      `${log.err.error("error")}  requires.telo '${result.declared.raw}' is not true: ` +
+        `telo ${outcome.edge} rejects this manifest.`,
+    );
+    outErrLine(indent(outcome.output));
+  }
+  if (refuted.length > 0) {
+    outErrLine(
+      `${log.err.dim("")}  Raise the bound to a version that accepts it, or stop using the ` +
+        `syntax that version cannot read.`,
+    );
+    return false;
+  }
+
+  const published = await publishedTeloVersions();
+  const missing = unpublishedUpperBound(result.declared, published);
+  if (missing) {
+    outErrLine(
+      `${log.err.error("error")}  requires.telo '${result.declared.raw}' bounds above ` +
+        `${missing}, which is not a published telo version. An upper bound must name a version ` +
+        `that already exists — a bound nothing can run is a bound nothing can verify.`,
+    );
+    return false;
+  }
+
+  const unavailable = result.outcomes.filter((o) => o.status === "unavailable");
+  for (const outcome of unavailable) {
+    stepWarn(log, "requires", `could not run telo ${outcome.edge} (${outcome.reason})`);
+  }
+  if (published === null) {
+    stepWarn(log, "requires", "could not reach npm to check the upper bound");
+  }
+  if (unavailable.length === 0 && result.outcomes.length > 0) {
+    stepOk(
+      log,
+      "requires",
+      `telo ${result.declared.raw} verified at ${result.outcomes.map((o) => o.edge).join(", ")}`,
+    );
+  } else if (result.outcomes.length === 0) {
+    // Open above and the low edge is this CLI: HEAD is the only edge, and the
+    // static analysis that just passed IS that check.
+    stepOk(log, "requires", `telo ${result.declared.raw}`);
+  }
+  return true;
+}
+
+function indent(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => `    ${line}`)
+    .join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -367,6 +464,17 @@ async function publishOne(
     return false;
   }
   stepOk(log, "check", "static analysis passed");
+
+  // Declared runtime requirements: verify the module's own `requires.telo` range
+  // by RUNNING the CLI at each edge of it. Publishing is where the claim becomes
+  // consequential — a consumer resolves against it and is told, at load, that
+  // this version needs a newer runtime — so it is where an unverified claim must
+  // be caught. Without this the declaration is only as honest as each
+  // publisher's CI, and a wrong one hands a consumer a confusing failure instead
+  // of a clear one, which is the exact outcome the mechanism exists to remove.
+  if (!(await verifyDeclaredRequirements(filePath, analysisGraph, log))) {
+    return false;
+  }
 
   // Build exactly what will be pushed, through the shared payload builder — the
   // same computation `telo release` digests, so the ledger's number and the

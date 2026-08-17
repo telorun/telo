@@ -1,3 +1,5 @@
+import type { HostVersions } from "./requires-block.js";
+
 import type { ZoneModuleDocuments } from "./zone-module-documents.js";
 /** Matches LSP DiagnosticSeverity values exactly.
  *  https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnosticSeverity */
@@ -156,6 +158,36 @@ export interface AnalysisOptions {
    *  (on-disk stamp) attests that the manifests passed a real analyze
    *  pass at the same analyzer / kernel version. */
   skipValidation?: boolean;
+  /** The manifest SURFACE GENERATION the runtime performing this analysis
+   *  implements, against which every module's `requires.telo` range is checked.
+   *
+   *  Defaults to this build's own (`TELO_SURFACE_VERSION`), which is the right
+   *  answer for the kernel, the CLI and the editor alike. In a browser no kernel
+   *  is running, so the only well-posed question is whether the runtime *doing
+   *  the analysis* can read the module — and that is exactly the case where the
+   *  diagnostic is needed, since an editor too old to parse a construct
+   *  otherwise produces vocabulary errors it cannot explain.
+   *
+   *  The kernel deliberately does NOT override with its own package version.
+   *  The constant is generated from the linked kernel version, so the two are
+   *  the same number by construction; where they can drift — a kernel resolving
+   *  an older analyzer than it was released with — the analyzer is the half that
+   *  PARSES, and claiming a generation higher than the bundled parser implements
+   *  would be a claim the stack cannot honour.
+   *
+   *  So this exists for checking against a DIFFERENT target than oneself: a CI
+   *  matrix, or an editor setting naming the version a team deploys on.
+   *
+   *  Defaulted rather than optional-and-silent on purpose: there is no "caller
+   *  forgot to pass it, check silently skipped" path. */
+  teloVersion?: string;
+  /** Versions of the HOST the analysis is being performed for, against which a
+   *  module's `requires.host.*` ranges are checked.
+   *
+   *  Absent in a browser, where there is no host to speak for, and an axis with
+   *  no supplied version is skipped rather than guessed. The kernel and the CLI
+   *  supply it because they are the host. */
+  hostVersions?: HostVersions;
 }
 
 /** Pre-seeded state for incremental analysis. Passed to StaticAnalyzer.analyze() so it does

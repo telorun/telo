@@ -122,6 +122,31 @@ export {
   renderFixReplacement,
 } from "./yaml-source-edit.js";
 export type { QuoteStyle, TextEdit } from "./yaml-source-edit.js";
+export { KNOWN_HOST_AXES, evaluateRequires, readRequires } from "./requires-block.js";
+export type {
+  HostAxis,
+  HostVersions,
+  ReadRequiresResult,
+  RequiresBlock,
+  RequiresIssue,
+  RequiresVerdict,
+} from "./requires-block.js";
+export { TELO_SURFACE_VERSION } from "./telo-version.js";
+export { validateRequires } from "./validate-requires.js";
+export type { ValidateRequiresOptions } from "./validate-requires.js";
+export {
+  isUnsatisfiable,
+  lowerBound,
+  parseVersionRange,
+  rangeAccepts,
+  upperBound,
+} from "./version-range.js";
+export type {
+  ComparatorOperator,
+  VersionComparator,
+  VersionRange,
+  VersionRangeResult,
+} from "./version-range.js";
 export {
   hasProvidesZone,
   hasRequiresZone,

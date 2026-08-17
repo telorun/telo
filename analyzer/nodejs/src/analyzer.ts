@@ -8,7 +8,7 @@ import {
   plainChainOf,
   type CelSurface,
 } from "@telorun/templating";
-import type { DiagnosticFix } from "./types.js";
+import type { DiagnosticData, DiagnosticFix } from "./types.js";
 import {
   AliasResolver,
   moduleScopedDefResolver,
@@ -101,6 +101,7 @@ import { validateLogging } from "./validate-logging.js";
 import { validateModuleArtifact } from "./validate-module-artifact.js";
 import { validateIncludePlacement } from "./validate-include-placement.js";
 import { validateModuleMetadata } from "./validate-module-metadata.js";
+import { validateRequires } from "./validate-requires.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateInvocationContract } from "./validate-invocation-contract.js";
 import { collectStepInputIssues } from "./validate-step-inputs.js";
@@ -1030,6 +1031,86 @@ export interface StaticAnalyzerOptions {
   celHandlers?: CelHandlers;
 }
 
+/**
+ * Files belonging to a module this runtime declared itself unable to read.
+ *
+ * Attribution is by FILE rather than by resource identity, the same choice
+ * `remapMigratedPaths` makes and for the same reason: a diagnostic carries at
+ * most two routing facts and routinely only one, so indexing by resource would
+ * leave every diagnostic without `data.resource` unreachable.
+ *
+ * **A module NAME is not a graph-unique key.** Names are module-scoped, so two
+ * libraries may both be called `Store` — CLAUDE.md names this exact hazard for
+ * migration provenance ("two libraries declaring a Store would share one
+ * bucket"), where the answer is to narrow or not remap at all. Same answer here:
+ * the gated doc's own `metadata.source` is always suppressed, and a name is used
+ * to reach its `include:` partials only when that name identifies exactly ONE
+ * module doc in the set. Where it does not, the partials keep their diagnostics
+ * rather than risk silencing an unrelated library's — a stray extra diagnostic is
+ * a far cheaper failure than a hidden one.
+ *
+ * A module doc with no `source` contributes nothing — suppressing on a guess
+ * would hide diagnostics belonging to files nobody named.
+ */
+function filesOfUnreadableModules(
+  manifests: ResourceManifest[],
+  requiresDiagnostics: AnalysisDiagnostic[],
+): ReadonlySet<string> {
+  const files = new Set<string>();
+  const gatedNames = new Set<string>();
+
+  for (const d of requiresDiagnostics) {
+    if (d.code !== "MODULE_REQUIRES_NEWER_RUNTIME") continue;
+    const data = d.data as DiagnosticData | undefined;
+    // The gated document itself, addressed by the file it was declared in.
+    if (typeof data?.filePath === "string" && data.filePath) files.add(data.filePath);
+    const name = data?.resource?.name;
+    if (typeof name === "string") gatedNames.add(name);
+  }
+  if (files.size === 0 && gatedNames.size === 0) return files;
+
+  // How many module docs answer to each gated name — the ambiguity test.
+  const docsPerName = new Map<string, number>();
+  for (const m of manifests) {
+    if (m.kind !== "Telo.Application" && m.kind !== "Telo.Library") continue;
+    const name = (m.metadata as { name?: string } | undefined)?.name;
+    if (typeof name === "string" && gatedNames.has(name)) {
+      docsPerName.set(name, (docsPerName.get(name) ?? 0) + 1);
+    }
+  }
+
+  for (const m of manifests) {
+    const metadata = (m.metadata ?? {}) as Record<string, unknown>;
+    const owner = metadata.module;
+    if (typeof owner !== "string" || !gatedNames.has(owner)) continue;
+    if (docsPerName.get(owner) !== 1) continue; // ambiguous — do not guess
+    if (typeof metadata.source === "string" && metadata.source) files.add(metadata.source);
+  }
+  return files;
+}
+
+/**
+ * Drop every diagnostic anchored in a file whose module this runtime cannot
+ * read, except the gate diagnostic itself.
+ *
+ * A filter rather than a guard on each validator: threading "skip this module"
+ * through thirty validators would make each one responsible for a rule none of
+ * them owns, and a validator added later would silently opt out of it. A
+ * diagnostic with no `filePath` is KEPT — suppression must never be the default
+ * for something it cannot attribute.
+ */
+function suppressUnreadableModuleDiagnostics(
+  diagnostics: AnalysisDiagnostic[],
+  unreadableFiles: ReadonlySet<string>,
+): AnalysisDiagnostic[] {
+  if (unreadableFiles.size === 0) return diagnostics;
+  return diagnostics.filter((d) => {
+    if (d.code === "MODULE_REQUIRES_NEWER_RUNTIME") return true;
+    const filePath = (d.data as DiagnosticData | undefined)?.filePath;
+    return typeof filePath !== "string" || !unreadableFiles.has(filePath);
+  });
+}
+
 export class StaticAnalyzer {
   private readonly celEnv: Environment;
 
@@ -1528,6 +1609,25 @@ export class StaticAnalyzer {
         });
       }
     }
+    // Declared runtime requirements, FIRST among the validators and suppressing
+    // the rest for any module this runtime cannot read. A module that adopted
+    // newer syntax also produces the vocabulary errors that syntax causes here —
+    // an unknown `use` token, an object where a zone annotation expects a
+    // pointer, an `additionalProperties` violation against a kernel-owned
+    // schema — every one of which is true and blames the module's author for a
+    // version skew. Reporting them beside the gate would bury the one message
+    // that names the actual cause and the actual fix.
+    const requiresDiagnostics = validateRequires(allManifests as unknown as ResourceManifest[], {
+      teloVersion: options?.teloVersion,
+      hostVersions: options?.hostVersions,
+      entryModules: rootModules,
+    });
+    const unreadableFiles = filesOfUnreadableModules(
+      allManifests as unknown as ResourceManifest[],
+      requiresDiagnostics,
+    );
+    diagnostics.push(...requiresDiagnostics);
+
     if (!options?.skipValidation) {
       diagnostics.push(
         ...validateSchemaTypeRefs(allManifests, defs, aliases, aliasesByModule, rootModules),
@@ -1570,7 +1670,7 @@ export class StaticAnalyzer {
     // normalisation have already run above; that's all downstream
     // consumers (prepare, init loop) require.
     if (options?.skipValidation) {
-      return diagnostics;
+      return suppressUnreadableModuleDiagnostics(diagnostics, unreadableFiles);
     }
 
     // Build a name→manifest map for looking up referenced resources
@@ -2547,7 +2647,10 @@ export class StaticAnalyzer {
 
     // Reroute diagnostics on synthetic (inline-extracted) resources back to
     // the chain root so position-index lookups land on the parent doc.
-    return rewriteSyntheticOrigins(diagnostics, allManifests);
+    return rewriteSyntheticOrigins(
+      suppressUnreadableModuleDiagnostics(diagnostics, unreadableFiles),
+      allManifests,
+    );
   }
 
   analyzeErrors(

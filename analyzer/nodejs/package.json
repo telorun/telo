@@ -37,6 +37,7 @@
     "src/**"
   ],
   "scripts": {
+    "prepare": "node ../../scripts/generate-telo-version.mjs",
     "build": "tsc -p tsconfig.lib.json",
     "test": "vitest run",
     "test:watch": "vitest",
