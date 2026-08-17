@@ -9,15 +9,15 @@ metadata:
 imports:
   Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
 targets:
-  - name: ReadUsername
+  - name: readUsername
     invoke: !ref Console.readLine
     inputs:
       prompt: "Username: "
-  - name: ReadPassword
+  - name: readPassword
     invoke: !ref Console.readLine
     inputs:
       prompt: "Password: "
-  - name: WriteResult
+  - name: writeResult
     invoke: !ref Console.writeLine
     inputs:
-      output: "Username: ${{ steps.ReadUsername.result.value }}, Password: ${{ steps.ReadPassword.result.value }}"
+      output: "Username: ${{ steps.readUsername.result.value }}, Password: ${{ steps.readPassword.result.value }}"

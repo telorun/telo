@@ -1,4 +1,5 @@
 import type {
+  ArtifactLayer,
   ArtifactSelector,
   LayerRole,
   ManifestCacheCoords,
@@ -19,10 +20,10 @@ export interface PayloadLayer {
 
 /** The module bundle handed to a transport for publishing: the final,
  *  already-analyzed / pinned / canonicalized `telo.yaml` bytes plus the payload
- *  partitioned into layers (empty for a manifest-only module). The transport
- *  pushes each layer as its own blob, injects the resulting `layers:` index into
- *  the manifest, and only then pushes the manifest layer — the order that keeps
- *  the index non-circular. */
+ *  partitioned into layers (empty for a manifest-only module), whose `layers:`
+ *  index the manifest already carries. The transport pushes each layer as its
+ *  own blob, checks the digest against what the index claims, and only then
+ *  pushes the manifest layer — the order that keeps the index non-circular. */
 export interface PublishBundle {
   manifest: string;
   layers: PayloadLayer[];
@@ -151,9 +152,29 @@ export interface Transport {
    *  verifies. */
   manifestHash(ref: string): Promise<string>;
 
+  /** The `layers:` index `layers` will be published under: each entry's
+   *  `integrity` over the layer's file contents and its `blob` over the exact
+   *  bytes this transport will push.
+   *
+   *  On the interface, and called BEFORE anything is pushed, because the index
+   *  goes *inside* `telo.yaml` and a dependent's import pin is a hash of that
+   *  file. Injecting the index at push time — which is what this replaced —
+   *  meant the payload builder's manifest was never the published one, so every
+   *  sibling pin derived from it named bytes the registry does not have. The
+   *  builder therefore needs the index up front, and only the transport knows
+   *  the framing a `blob` digest covers.
+   *
+   *  Requires the framing to be a pure function of the files (see `makeTarGz`),
+   *  since `publish` re-frames the same layers and hard-fails if a digest moved.
+   *  Returns `[]` for an empty layer set; throws when this transport cannot
+   *  publish payload layers at all. */
+  layerIndex(layers: readonly PayloadLayer[]): Promise<ArtifactLayer[]>;
+
   /** Push `bundle` to `destination` (a base ref / repo whose scheme this
    *  transport owns), pinning the payload and writing the transport-native
-   *  artifact shape. Throws on failure. Used by `telo publish`. */
+   *  artifact shape. `bundle.manifest` already carries the `layers:` index this
+   *  transport returned from {@link layerIndex}; publish verifies rather than
+   *  rewrites it. Throws on failure. Used by `telo publish`. */
   publish(
     destination: string,
     bundle: PublishBundle,

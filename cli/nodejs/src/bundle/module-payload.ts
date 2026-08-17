@@ -22,6 +22,12 @@
  *    so its published manifest is *derived* — recursively, through this same
  *    builder — which is what lets a whole release batch be planned offline, with
  *    post-bump versions the registry has never seen.
+ * 4. **The derived manifest was not the published one.** The `layers:` index was
+ *    injected during the push, so what this builder returned was a document no
+ *    registry ever holds — and a sibling pin, being a hash of it, named bytes
+ *    that do not exist. The index is written here now, which is what makes
+ *    `publishedManifest()` true to its name and requires layer framing to be a
+ *    pure function of the files it covers.
  *
  * The publish destination stays an input, because canonicalization writes it
  * into the manifest. It is not derivable, so the ledger records which base its
@@ -39,6 +45,7 @@ import {
 import {
   buildControllerBundle,
   defaultTransportRegistry,
+  injectLayerIndex,
   readOwnerManifest,
   type PayloadFile,
   type SiblingLibrary,
@@ -62,7 +69,9 @@ export interface BuiltLayer {
 }
 
 export interface ModulePayload {
-  /** The `telo.yaml` that ships: canonicalized, pinned, includes inlined. */
+  /** The `telo.yaml` that ships, byte for byte: canonicalized, pinned, includes
+   *  inlined, `layers:` index written. A dependent's import pin is a hash of
+   *  exactly this. */
   readonly manifest: string;
   readonly layers: BuiltLayer[];
   readonly partition: Partition;
@@ -121,13 +130,14 @@ export interface PayloadBuilderOptions {
  * Memoized because a release digests every module in a workspace and the
  * standard library's import graph is dense — `modules/sql`'s published manifest
  * is needed by five dependents to derive their pins, and re-deriving it per
- * dependent would rebuild its controller each time.
+ * dependent would rebuild its controller each time. One memo, not two: a
+ * module's published manifest carries its `layers:` index, so producing the
+ * text and producing the payload are the same computation.
  */
 export class ModulePayloadBuilder {
-  private readonly manifests = new Map<string, Promise<string>>();
   private readonly payloads = new Map<string, Promise<ModulePayload>>();
-  /** Manifest paths currently being derived, so an import cycle is reported
-   *  rather than overflowing the stack. */
+  /** Manifest paths whose payload is in flight, so an import cycle is reported
+   *  rather than deadlocking on a memo entry that is awaiting itself. */
   private readonly deriving = new Set<string>();
 
   /**
@@ -155,9 +165,14 @@ export class ModulePayloadBuilder {
   async payload(manifestPath: string, destination: string): Promise<ModulePayload> {
     const key = path.resolve(manifestPath);
     this.claimDestination(key, destination);
+    // The cycle check precedes the memo lookup, and has to: a memo entry for a
+    // manifest still being derived is exactly the cyclic case, and awaiting it
+    // would hang rather than report.
+    this.assertNotDeriving(key);
     const existing = this.payloads.get(key);
     if (existing) return existing;
-    const work = this.buildPayload(key);
+    this.deriving.add(key);
+    const work = this.buildPayload(key).finally(() => this.deriving.delete(key));
     this.payloads.set(key, work);
     return work;
   }
@@ -181,22 +196,26 @@ export class ModulePayloadBuilder {
     return (await this.transformManifest(key)).relativeImports;
   }
 
-  /** The published `telo.yaml` text alone — what a dependent needs to derive its
-   *  pin, without building the dependency's controller layers. */
+  /**
+   * The published `telo.yaml` text — byte for byte what the transport pushes,
+   * which is what a dependent hashes to derive its pin.
+   *
+   * It builds the module's layers, because the `layers:` index is inside that
+   * text and each entry's `blob` covers framed bytes. Deriving the manifest
+   * alone was cheaper and wrong: the number it produced was of a document that
+   * is never published.
+   */
   async publishedManifest(manifestPath: string): Promise<string> {
     const key = path.resolve(manifestPath);
-    const existing = this.manifests.get(key);
-    if (existing) return existing;
-    if (this.deriving.has(key)) {
-      throw new Error(
-        `Import cycle through '${key}': a module's published manifest embeds a hash of its ` +
-          `dependency's, so a cycle has no fixed point.`,
-      );
-    }
-    this.deriving.add(key);
-    const work = this.deriveManifest(key).finally(() => this.deriving.delete(key));
-    this.manifests.set(key, work);
-    return work;
+    return (await this.payload(key, this.destinationOf(key))).manifest;
+  }
+
+  private assertNotDeriving(manifestPath: string): void {
+    if (!this.deriving.has(manifestPath)) return;
+    throw new Error(
+      `Import cycle through '${manifestPath}': a module's published manifest embeds a hash of ` +
+        `its dependency's, so a cycle has no fixed point.`,
+    );
   }
 
   private claimDestination(manifestPath: string, destination: string): void {
@@ -219,9 +238,16 @@ export class ModulePayloadBuilder {
     return destination;
   }
 
-  private async deriveManifest(manifestPath: string): Promise<string> {
-    const { text } = await this.transformManifest(manifestPath);
-    return text;
+  /** The transport that owns where this manifest publishes. It decides both the
+   *  ref a sibling import canonicalizes to and the framing a layer's `blob`
+   *  digest covers, so both halves of the published manifest come from one. */
+  private transportFor(manifestPath: string) {
+    const destination = this.destinationOf(manifestPath);
+    const transport = defaultTransportRegistry(this.options.registryOrigin).forRef(destination);
+    if (!transport) {
+      throw new Error(`no transport owns publish destination '${destination}'`);
+    }
+    return transport;
   }
 
   /**
@@ -242,10 +268,7 @@ export class ModulePayloadBuilder {
 
     if (moduleDoc) {
       const destination = this.destinationOf(manifestPath);
-      const transport = defaultTransportRegistry(this.options.registryOrigin).forRef(destination);
-      if (!transport) {
-        throw new Error(`no transport owns publish destination '${destination}'`);
-      }
+      const transport = this.transportFor(manifestPath);
 
       for (const entry of importSourceRefs(moduleDoc)) {
         const source = entry.source;
@@ -365,8 +388,25 @@ export class ModulePayloadBuilder {
       })),
     }));
 
+    // The `layers:` index is part of the published manifest, so it is written
+    // HERE and not by the transport at push time.
+    //
+    // A dependent's pin is a hash of this module's published `telo.yaml`, and
+    // that hash is taken from what this builder returns. While the index was
+    // injected during the push, the builder's manifest was never the published
+    // one — so every sibling pin in the standard library named bytes that do
+    // not exist at any registry, and each of those dependents failed to resolve
+    // its dependency at load. Nothing caught it: the payload-drift gate compares
+    // layer digests, which injection does not move, and the ledger's manifest
+    // digest was taken pre-injection on both sides.
+    //
+    // The transport still owns the framing a `blob` digest covers, so the index
+    // comes from it; publish re-frames the same layers and hard-fails if a
+    // digest moved.
+    const index = await this.transportFor(manifestPath).layerIndex(layers);
+
     return {
-      manifest,
+      manifest: index.length > 0 ? injectLayerIndex(manifest, index) : manifest,
       layers,
       partition,
       buildInputs: [...buildInputs],

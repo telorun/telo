@@ -14,8 +14,8 @@ imports:
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
   Crud: oci://ghcr.io/telorun/crud@0.9.0#sha256-mhAY-K234E-y-ROkKtHxIjwKHlHVfkyjq8N-fvC2CYY
 targets:
-  - !ref Migrate
-  - !ref Server
+  - !ref migrate
+  - !ref server
 # Ship the frontend into the published module artifact so `Http.Static root:
 # ./public` resolves after `telo publish` / install, not just locally.
 files:
@@ -30,13 +30,13 @@ ports:
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ./todo.db
 ---
 kind: Sql.Migrations
 metadata:
-  name: Migrate
-connection: !ref Db
+  name: migrate
+connection: !ref db
 migrations:
   0001_create_todos:
     statement: |
@@ -49,7 +49,7 @@ migrations:
 ---
 kind: Http.Server
 metadata:
-  name: Server
+  name: server
 port: !cel "ports.http"
 openapi:
   info:
@@ -61,7 +61,7 @@ mounts:
       # The entire REST API: CRUD over the `todos` table. Mounted at /api/todos, it
       # serves GET / (list), GET /{id}, POST /, PUT /{id}, DELETE /{id}.
       kind: Crud.Resource
-      connection: !ref Db
+      connection: !ref db
       plural: todos
       singular: todo
       # The model is the request contract too: a POST without `text`, or with a
@@ -78,9 +78,9 @@ mounts:
             isDone: { type: boolean }
 
   - path: /
-    mount: !ref Ui
+    mount: !ref ui
 ---
 kind: Http.Static
 metadata:
-  name: Ui
+  name: ui
 root: ./public

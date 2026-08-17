@@ -27,10 +27,10 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
   Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
 targets:
-  - !ref Migrate
-  - !ref BuildReport
-  - !ref Nightly
-  - !ref Server
+  - !ref migrate
+  - !ref buildReport
+  - !ref nightly
+  - !ref server
 ports:
   http:
     env: PORT
@@ -43,12 +43,12 @@ variables:
     default: "0 3 * * *"
 ---
 kind: SQLite.Connection
-metadata: { name: Db }
+metadata: { name: db }
 file: ":memory:"
 ---
 kind: Sql.Migrations
-metadata: { name: Migrate }
-connection: !ref Db
+metadata: { name: migrate }
+connection: !ref db
 migrations:
   0001_orders:
     statements:
@@ -67,12 +67,12 @@ migrations:
       - "INSERT INTO orders (region, status, total_cents) VALUES ('apac', 'paid', 30500)"
 ---
 kind: Run.Sequence
-metadata: { name: BuildReport }
+metadata: { name: buildReport }
 steps:
   - name: orders
     invoke:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
     inputs:
       sql: "SELECT region, status, total_cents FROM orders"
       bindings: []
@@ -121,7 +121,7 @@ outputs:
 # to. Here that is the server, which is also what makes the report available on
 # demand instead of only on the hour.
 kind: Http.Server
-metadata: { name: Server }
+metadata: { name: server }
 port: !cel "ports.http"
 openapi:
   info:
@@ -129,15 +129,15 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /
-    mount: !ref ReportRoutes
+    mount: !ref reportRoutes
 ---
 kind: Http.Api
-metadata: { name: ReportRoutes }
+metadata: { name: reportRoutes }
 routes:
   - request:
       path: /report
       method: GET
-    handler: !ref BuildReport
+    handler: !ref buildReport
     inputs: {}
     returns:
       - status: 200
@@ -146,7 +146,7 @@ routes:
             body: !cel "result.rows"
 ---
 kind: Schedule.Cron
-metadata: { name: Nightly }
+metadata: { name: nightly }
 cron: !cel "variables.reportCron"
 timezone: UTC
-invoke: !ref BuildReport
+invoke: !ref buildReport

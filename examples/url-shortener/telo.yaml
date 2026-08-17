@@ -58,6 +58,6 @@ openapi:
   info: { title: URL Shortener, version: 1.0.0 }
 mounts:
   - path: /
-    mount: !ref Redirect.Routes
+    mount: !ref Redirect.routes
   - path: /admin
-    mount: !ref Admin.Routes
+    mount: !ref Admin.routes

@@ -17,7 +17,7 @@ imports:
   Http: oci://ghcr.io/telorun/http-server@0.25.0#sha256-k1n8gCdP8LEwtp1xcm_DcxGk85YLbb2RrPCl6B30TUQ
   JavaScript: oci://ghcr.io/telorun/javascript@0.12.0#sha256-HG9Ydrm-jnzR6H1phgJy_PUKxAtSUEy76QxmMn1VcLY
 targets:
-  - !ref PaymentServer
+  - !ref paymentServer
 ports:
   http:
     env: PORT
@@ -33,7 +33,7 @@ secrets:
 ---
 kind: Http.Api
 metadata:
-  name: PaymentApi
+  name: paymentApi
 routes:
   - request:
       path: /charge
@@ -61,7 +61,7 @@ routes:
 ---
 kind: Http.Server
 metadata:
-  name: PaymentServer
+  name: paymentServer
 openapi:
   info:
     title: Configurable HTTP server
@@ -69,4 +69,4 @@ openapi:
 port: !cel "ports.http"
 mounts:
   - path: /v1
-    mount: !ref PaymentApi
+    mount: !ref paymentApi

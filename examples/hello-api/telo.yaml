@@ -14,7 +14,7 @@ imports:
   Http: oci://ghcr.io/telorun/http-server@0.25.0#sha256-k1n8gCdP8LEwtp1xcm_DcxGk85YLbb2RrPCl6B30TUQ
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
 targets:
-  - !ref ExampleServer
+  - !ref exampleServer
 ports:
   http:
     env: PORT
@@ -23,7 +23,7 @@ ports:
 ---
 kind: Http.Server
 metadata:
-  name: ExampleServer
+  name: exampleServer
 port: !cel "ports.http"
 openapi:
   info:
@@ -31,11 +31,11 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /v1
-    mount: !ref HelloApi
+    mount: !ref helloApi
 ---
 kind: Http.Api
 metadata:
-  name: HelloApi
+  name: helloApi
 routes:
   - request:
       path: /hello
@@ -47,7 +47,7 @@ routes:
             name:
               type: string
           required: [ "name" ]
-    handler: !ref SayHello
+    handler: !ref sayHello
     inputs:
       name: "${{ request.query.name }}" # CEL expression
     returns:
@@ -67,7 +67,7 @@ routes:
 ---
 kind: Run.Value
 metadata:
-  name: SayHello
+  name: sayHello
 inputType:
   kind: Telo.JsonSchema
   schema:

@@ -10,11 +10,11 @@ metadata:
 imports:
   Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
 targets:
-  - name: ReadName
+  - name: readName
     invoke: !ref Console.readLine
     inputs:
       prompt: "What's your name? "
-  - name: Greet
+  - name: greet
     invoke: !ref Console.writeLine
     inputs:
-      output: !cel "'Hello, ' + steps.ReadName.result.value + '! Welcome to Telo.'"
+      output: !cel "'Hello, ' + steps.readName.result.value + '! Welcome to Telo.'"

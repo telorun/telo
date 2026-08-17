@@ -8,8 +8,8 @@ metadata:
     API for your app, and an MCP endpoint so an assistant (Claude Desktop,
     Cursor, any MCP client) can search and close tickets itself.
 
-    The two surfaces share the resources, not just the database — `SearchTickets`
-    and `CloseTicket` are each declared once and referenced by both the HTTP route
+    The two surfaces share the resources, not just the database — `searchTickets`
+    and `closeTicket` are each declared once and referenced by both the HTTP route
     and the MCP tool entry. Exposing an existing app to a model is a mount and a
     tool bundle, not a second service to keep in sync.
 
@@ -26,8 +26,8 @@ imports:
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
 targets:
-  - !ref Migrate
-  - !ref Server
+  - !ref migrate
+  - !ref server
 ports:
   http:
     env: PORT
@@ -35,12 +35,12 @@ ports:
     default: 8066
 ---
 kind: SQLite.Connection
-metadata: { name: Db }
+metadata: { name: db }
 file: ./tickets.db
 ---
 kind: Sql.Migrations
-metadata: { name: Migrate }
-connection: !ref Db
+metadata: { name: migrate }
+connection: !ref db
 migrations:
   0001_tickets:
     statements:
@@ -58,8 +58,8 @@ migrations:
 # The two operations. Each is a plain Telo.Invocable — nothing about them knows
 # whether the caller is a browser or a language model.
 kind: Sql.Query
-metadata: { name: SearchTickets }
-connection: !ref Db
+metadata: { name: searchTickets }
+connection: !ref db
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -76,7 +76,7 @@ outputType:
             status: { type: string }
 ---
 kind: Run.Sequence
-metadata: { name: CloseTicket }
+metadata: { name: closeTicket }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -88,7 +88,7 @@ steps:
   - name: close
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
     inputs:
       sql: !sql "UPDATE tickets SET status = 'closed' WHERE id = ${{ inputs.id }}"
 outputs:
@@ -97,7 +97,7 @@ outputs:
 ---
 # Front door 1: REST, for your own frontend.
 kind: Http.Api
-metadata: { name: TicketRoutes }
+metadata: { name: ticketRoutes }
 routes:
   - request:
       path: /tickets
@@ -107,7 +107,7 @@ routes:
           type: object
           properties:
             q: { type: string }
-    handler: !ref SearchTickets
+    handler: !ref searchTickets
     inputs:
       sql: "SELECT id, subject, body, status FROM tickets WHERE subject LIKE ? OR body LIKE ? ORDER BY id"
       bindings:
@@ -137,7 +137,7 @@ entries:
         query:
           type: string
           description: Text to look for in the subject or body.
-    handler: !ref SearchTickets
+    handler: !ref searchTickets
     inputs:
       sql: "SELECT id, subject, body, status FROM tickets WHERE subject LIKE ? OR body LIKE ? ORDER BY id"
       bindings:
@@ -161,7 +161,7 @@ entries:
         id:
           type: integer
           description: The ticket id, as returned by search_tickets.
-    handler: !ref CloseTicket
+    handler: !ref closeTicket
     inputs:
       id: !cel "request.arguments.id"
     result:
@@ -172,7 +172,7 @@ entries:
       isError: !cel "!result.closed"
 ---
 kind: Mcp.HttpEndpoint
-metadata: { name: McpEndpoint }
+metadata: { name: mcpEndpoint }
 serverInfo:
   name: support-inbox
   version: 1.0.0
@@ -183,7 +183,7 @@ tools:
   - !ref InboxTools
 ---
 kind: Http.Server
-metadata: { name: Server }
+metadata: { name: server }
 port: !cel "ports.http"
 openapi:
   info:
@@ -191,6 +191,6 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /api
-    mount: !ref TicketRoutes
+    mount: !ref ticketRoutes
   - path: /mcp
-    mount: !ref McpEndpoint
+    mount: !ref mcpEndpoint

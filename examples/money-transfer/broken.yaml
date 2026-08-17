@@ -2,8 +2,8 @@
 #
 #     telo check ./examples/money-transfer/broken.yaml
 #
-# `MoveMoney` declares `transaction: !ref TransferTx`, so it may only be reached
-# through that transaction's body. `Payout` calls it directly, which is a write
+# `moveMoney` declares `transaction: !ref transferTx`, so it may only be reached
+# through that transaction's body. `payout` calls it directly, which is a write
 # outside the transaction — reported as ZONE_REQUIREMENT_UNSATISFIED before the
 # app ever starts. Everything else here is identical to `telo.yaml`.
 kind: Telo.Application
@@ -19,21 +19,21 @@ imports:
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
 targets:
-  - !ref Payout
+  - !ref payout
 ---
 kind: SQLite.Connection
-metadata: { name: Db }
+metadata: { name: db }
 file: ":memory:"
 ---
 kind: Sql.Transaction
-metadata: { name: TransferTx }
-connection: !ref Db
-steps: !ref TransferWrites
+metadata: { name: transferTx }
+connection: !ref db
+steps: !ref transferWrites
 inputs:
   amountCents: !cel "inputs.amountCents"
 ---
 kind: Run.Sequence
-metadata: { name: TransferWrites }
+metadata: { name: transferWrites }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -42,20 +42,20 @@ inputType:
       amountCents: { type: integer }
 steps:
   - name: debit
-    invoke: !ref MoveMoney
+    invoke: !ref moveMoney
     inputs:
       sql: !sql "UPDATE accounts SET balance_cents = balance_cents - ${{ inputs.amountCents }} WHERE id = 1"
 ---
 kind: Sql.Command
-metadata: { name: MoveMoney }
-transaction: !ref TransferTx
+metadata: { name: moveMoney }
+transaction: !ref transferTx
 ---
 # The bug: a second caller that reaches the statement directly. At runtime this
 # would move money outside the transaction — silently, and only sometimes.
 kind: Run.Sequence
-metadata: { name: Payout }
+metadata: { name: payout }
 steps:
   - name: sneak
-    invoke: !ref MoveMoney
+    invoke: !ref moveMoney
     inputs:
       sql: "UPDATE accounts SET balance_cents = balance_cents - 100 WHERE id = 1"

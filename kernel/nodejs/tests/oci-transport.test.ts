@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OciTransport } from "../src/transports/oci/oci-transport.js";
+import type { PayloadLayer } from "../src/transports/transport.js";
 import { parseOciRef, isOciRef } from "../src/transports/oci/oci-ref.js";
 import {
   OciClient,
@@ -11,7 +12,7 @@ import {
   TELO_PAYLOAD_LAYER_MEDIA_TYPE,
 } from "../src/transports/oci/oci-client.js";
 import { makeTarGz } from "../src/bundle/tar.js";
-import { computeFilesIntegrity } from "../src/bundle/files-integrity.js";
+import { computeFilesIntegrity, injectLayerIndex } from "../src/bundle/files-integrity.js";
 import { readOwnerManifest } from "../src/bundle/module-manifest.js";
 
 async function toBytes(body: unknown): Promise<Buffer> {
@@ -183,6 +184,20 @@ describe("OciTransport pure methods", () => {
   });
 });
 
+/**
+ * What the payload builder hands the transport: the `layers:` index is already
+ * in the manifest, because that text is what a dependent hashes to derive its
+ * import pin. A bundle whose manifest omits it is refused at publish — the
+ * transport no longer rewrites the bytes it was given.
+ */
+async function bundleFor(manifest: string, layers: PayloadLayer[]) {
+  const index = await new OciTransport().layerIndex(layers);
+  return {
+    manifest: index.length > 0 ? injectLayerIndex(manifest, index) : manifest,
+    layers,
+  };
+}
+
 describe("OciTransport round-trip against a mock registry", () => {
   it("publishes, then reads and fetches the artifact back", async () => {
     process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
@@ -190,12 +205,10 @@ describe("OciTransport round-trip against a mock registry", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
     const t = new OciTransport();
 
-    const result = await t.publish("oci://reg.test/aws/telo-s3", {
-      manifest: MANIFEST,
-      layers: [
-        { role: "assets", files: [{ name: "public/x.txt", content: Buffer.from("hi") }] },
-      ],
-    });
+    const bundle = await bundleFor(MANIFEST, [
+      { role: "assets", files: [{ name: "public/x.txt", content: Buffer.from("hi") }] },
+    ]);
+    const result = await t.publish("oci://reg.test/aws/telo-s3", bundle);
     expect(result.url).toBe("oci://reg.test/aws/telo-s3@1.2.0");
 
     // Reading a manifest pulls the manifest layer alone — the payload is a
@@ -219,15 +232,54 @@ describe("OciTransport round-trip against a mock registry", () => {
     expect(await t.listVersions("oci://reg.test/aws/telo-s3@1.2.0")).toEqual(["1.2.0"]);
   });
 
+  it("publishes the manifest bytes it was handed, verbatim", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+
+    const bundle = await bundleFor(MANIFEST, [
+      { role: "assets", files: [{ name: "public/x.txt", content: Buffer.from("hi") }] },
+    ]);
+    await t.publish("oci://reg.test/aws/telo-s3", bundle);
+
+    // The whole point. A dependent derives its pin by hashing the manifest its
+    // dependency's payload builder produced, so any rewrite between there and
+    // the registry makes that pin name bytes nobody serves — which is what
+    // injecting the index at push time did to 18 standard-library modules.
+    const read = await t.source.read("oci://reg.test/aws/telo-s3@1.2.0");
+    expect(read.text).toBe(bundle.manifest);
+  });
+
+  it("refuses to publish when a pushed layer contradicts the manifest's index", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+
+    // An index built for different files: the manifest promises a digest the
+    // layer being pushed does not have. Correcting it here is not available —
+    // the manifest is already pinned by whoever hashed it — so publish fails.
+    const bundle = await bundleFor(MANIFEST, [
+      { role: "assets", files: [{ name: "a.txt", content: Buffer.from("declared") }] },
+    ]);
+    await expect(
+      t.publish("oci://reg.test/aws/telo-s3", {
+        manifest: bundle.manifest,
+        layers: [{ role: "assets", files: [{ name: "a.txt", content: Buffer.from("actual") }] }],
+      }),
+    ).rejects.toThrow(/'layers:' index claims/);
+  });
+
   it("gives each controller selector its own layer and leaves telo.yaml alone in its own", async () => {
     process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
     const reg = mockRegistry();
     vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
     const t = new OciTransport();
 
-    await t.publish("oci://reg.test/aws/telo-s3", {
-      manifest: MANIFEST,
-      layers: [
+    await t.publish(
+      "oci://reg.test/aws/telo-s3",
+      await bundleFor(MANIFEST, [
         {
           role: "controller",
           selector: { format: "js" },
@@ -239,8 +291,8 @@ describe("OciTransport round-trip against a mock registry", () => {
           files: [{ name: "rust/c.node", content: Buffer.from("binary") }],
         },
         { role: "common", files: [{ name: "rust/lib.so", content: Buffer.from("sidecar") }] },
-      ],
-    });
+      ]),
+    );
 
     const ociManifest = reg.manifestJson("aws/telo-s3", "1.2.0");
     // The manifest layer comes first and is the only one located by media type.
@@ -302,10 +354,12 @@ describe("OciTransport round-trip against a mock registry", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
     const t = new OciTransport();
 
-    await t.publish("oci://reg.test/aws/telo-s3", {
-      manifest: MANIFEST,
-      layers: [{ role: "assets", files: [{ name: "a.txt", content: Buffer.from("a") }] }],
-    });
+    await t.publish(
+      "oci://reg.test/aws/telo-s3",
+      await bundleFor(MANIFEST, [
+        { role: "assets", files: [{ name: "a.txt", content: Buffer.from("a") }] },
+      ]),
+    );
     const index = readOwnerManifest((await t.source.read("oci://reg.test/aws/telo-s3@1.2.0")).text)
       .layers!;
 

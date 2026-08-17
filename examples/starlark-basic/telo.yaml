@@ -7,20 +7,20 @@ imports:
   Starlark: oci://ghcr.io/telorun/starlark@0.12.0#sha256-Q9ZwjRws5ZDyFc_9PxoBtUcFOn6rM69GVG_Ugln5A7U
   Console: oci://ghcr.io/telorun/console@0.17.0#sha256-KqtPsRldzuy143cbP7H-z0jWgbju-NuP59ItFjkWUg4
 targets:
-  - name: Step1
-    invoke: !ref ExampleStarlarkScript
+  - name: step1
+    invoke: !ref exampleStarlarkScript
     inputs:
       value: 42
-  - name: Step2
+  - name: step2
     invoke: !ref Console.writeLine
     inputs:
       output: |
         Evaluated starlark code.
-        Result is: ${{ steps.Step1.result.result }}
+        Result is: ${{ steps.step1.result.result }}
 ---
 kind: Starlark.Script
 metadata:
-  name: ExampleStarlarkScript
+  name: exampleStarlarkScript
 code: |
   def run(input):
     result = input["value"] * 2

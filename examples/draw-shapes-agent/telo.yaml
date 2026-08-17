@@ -30,7 +30,7 @@ imports:
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
 targets:
-  - !ref Server
+  - !ref server
 ports:
   http:
     env: PORT
@@ -65,7 +65,7 @@ secrets:
 ---
 kind: AiOpenai.OpenaiModel
 metadata:
-  name: VisionModel
+  name: visionModel
 model: !cel "variables.modelId"
 apiKey: !cel "secrets.openaiApiKey"
 options:
@@ -73,7 +73,7 @@ options:
 ---
 kind: S3.Bucket
 metadata:
-  name: Store
+  name: store
 bucketName: !cel "variables.s3Bucket"
 endpoint: !cel "variables.s3Endpoint"
 accessKeyId: !cel "secrets.s3AccessKeyId"
@@ -85,12 +85,12 @@ createIfMissing: true
 # (the shapes) is the only state that changes between turns.
 kind: Image.Blank
 metadata:
-  name: Canvas
+  name: canvas
 color: "#FFFFFF"
 ---
 kind: Image.Overlay
 metadata:
-  name: DrawBoxes
+  name: drawBoxes
 stroke:
   color: "#1D4ED8"
   width: 3
@@ -101,13 +101,13 @@ label:
 ---
 kind: S3.Put
 metadata:
-  name: PutObject
-bucketRef: !ref Store
+  name: putObject
+bucketRef: !ref store
 ---
 kind: S3.PresignedUrl
 metadata:
-  name: PresignGet
-bucketRef: !ref Store
+  name: presignGet
+bucketRef: !ref store
 operation: get
 expiresIn: 3600
 ---
@@ -116,7 +116,7 @@ expiresIn: 3600
 # handler can hand the SAME id to the agent and later presign it.
 kind: Run.Value
 metadata:
-  name: MakeId
+  name: makeId
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -130,7 +130,7 @@ value:
 # Run.Sequence (a Telo.Runnable) wrapped as a single tool — the widened Ai.Tools slot.
 kind: Run.Sequence
 metadata:
-  name: DrawTool
+  name: drawTool
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -150,33 +150,33 @@ inputType:
             color: { type: string }
           required: [x, y, width, height]
 steps:
-  - name: Blank
-    invoke: !ref Canvas
+  - name: blank
+    invoke: !ref canvas
     inputs:
       width: 1024
       height: 768
-  - name: Mark
-    invoke: !ref DrawBoxes
+  - name: mark
+    invoke: !ref drawBoxes
     inputs:
-      image: !cel "steps.Blank.result.image"
+      image: !cel "steps.blank.result.image"
       shapes: !cel "inputs.shapes"
-  - name: Store
-    invoke: !ref PutObject
+  - name: store
+    invoke: !ref putObject
     inputs:
       key: !cel "inputs.documentId"
-      body: !cel "steps.Mark.result.image"
-      contentType: !cel "steps.Mark.result.mediaType"
+      body: !cel "steps.mark.result.image"
+      contentType: !cel "steps.mark.result.mediaType"
 outputs:
-  image: !cel "steps.Mark.result.image"
-  mediaType: !cel "steps.Mark.result.mediaType"
+  image: !cel "steps.mark.result.image"
+  mediaType: !cel "steps.mark.result.mediaType"
 ---
 # Independent reviewer for the validation loop. A vision Ai.Text that is shown the
 # rendered image (in a multimodal user message) and the original request, and judges
 # whether they match — a second opinion the drawing agent must satisfy before finishing.
 kind: Ai.Text
 metadata:
-  name: Critic
-model: !ref VisionModel
+  name: critic
+model: !ref visionModel
 system: |
   You are a strict visual QA reviewer. You are given a drawing request and the
   rendered image. If the image satisfies the request, reply with exactly: PASS
@@ -185,12 +185,12 @@ system: |
 options:
   temperature: 0
 ---
-# The `validate` tool: re-render the current shapes and have the Critic review the
+# The `validate` tool: re-render the current shapes and have the `critic` review the
 # image against the request. Re-rendering from the same shapes is deterministic, so
 # the reviewed image is identical to what `draw` stored.
 kind: Run.Sequence
 metadata:
-  name: ValidateTool
+  name: validateTool
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -210,18 +210,18 @@ inputType:
             color: { type: string }
           required: [x, y, width, height]
 steps:
-  - name: Blank
-    invoke: !ref Canvas
+  - name: blank
+    invoke: !ref canvas
     inputs:
       width: 1024
       height: 768
-  - name: Mark
-    invoke: !ref DrawBoxes
+  - name: mark
+    invoke: !ref drawBoxes
     inputs:
-      image: !cel "steps.Blank.result.image"
+      image: !cel "steps.blank.result.image"
       shapes: !cel "inputs.shapes"
-  - name: Review
-    invoke: !ref Critic
+  - name: review
+    invoke: !ref critic
     inputs:
       messages:
         - role: user
@@ -229,16 +229,16 @@ steps:
             - type: text
               text: !cel "'Drawing request: ' + inputs.request + '. Does the rendered image satisfy it? Reply PASS, or FAIL with concrete fixes.'"
             - type: image
-              data: !cel "steps.Mark.result.image"
-              mediaType: !cel "steps.Mark.result.mediaType"
+              data: !cel "steps.mark.result.image"
+              mediaType: !cel "steps.mark.result.mediaType"
 outputs:
-  verdict: !cel "steps.Review.result.text"
+  verdict: !cel "steps.review.result.text"
 ---
 kind: Ai.Tools
 metadata:
-  name: DrawTools
+  name: drawTools
 tools:
-  - tool: !ref DrawTool
+  - tool: !ref drawTool
     name: draw
     description: >-
       Render the given rectangles onto a blank 1024×768 canvas and save it. Returns
@@ -272,7 +272,7 @@ tools:
     # form is type-checked against that schema and would be rejected. The schema
     # is fixed in `modules/ai` — switch this to `!cel` once ai republishes.
     result: "${{ {'type': 'image', 'data': result.image, 'mediaType': result.mediaType} }}"
-  - tool: !ref ValidateTool
+  - tool: !ref validateTool
     name: validate
     description: >-
       Independently check whether the current shapes produce an image that satisfies
@@ -304,8 +304,8 @@ tools:
 ---
 kind: Ai.Agent
 metadata:
-  name: ShapeArtist
-model: !ref VisionModel
+  name: shapeArtist
+model: !ref visionModel
 system: |
   You place rectangles on a 1024×768 canvas to satisfy a drawing request.
   Coordinates are pixels, with the origin at the top-left.
@@ -322,12 +322,12 @@ system: |
   Always pass the documentId unchanged. The last `draw` call is the one that is saved.
 maxSteps: 16
 toolProviders:
-  - provider: !ref DrawTools
+  - provider: !ref drawTools
 ---
 # HTTP handler: mint an id → run the agent (id carried in the prompt) → presign the key.
 kind: Run.Sequence
 metadata:
-  name: HandleDraw
+  name: handleDraw
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -335,26 +335,26 @@ inputType:
     properties:
       prompt: { type: string }
 steps:
-  - name: GenId
-    invoke: !ref MakeId
+  - name: genId
+    invoke: !ref makeId
     inputs:
       seed: !cel "uuidv4()"
-  - name: Draw
-    invoke: !ref ShapeArtist
+  - name: draw
+    invoke: !ref shapeArtist
     inputs:
-      prompt: !cel "'Document id: ' + steps.GenId.result.documentId + '. Drawing request: ' + inputs.prompt"
-  - name: Link
-    invoke: !ref PresignGet
+      prompt: !cel "'Document id: ' + steps.genId.result.documentId + '. Drawing request: ' + inputs.prompt"
+  - name: link
+    invoke: !ref presignGet
     inputs:
-      key: !cel "steps.GenId.result.documentId"
+      key: !cel "steps.genId.result.documentId"
 outputs:
-  url: !cel "steps.Link.result.url"
-  expiresAt: !cel "steps.Link.result.expiresAt"
-  summary: !cel "steps.Draw.result.text"
+  url: !cel "steps.link.result.url"
+  expiresAt: !cel "steps.link.result.expiresAt"
+  summary: !cel "steps.draw.result.text"
 ---
 kind: Http.Server
 metadata:
-  name: Server
+  name: server
 port: !cel "ports.http"
 openapi:
   info:
@@ -362,11 +362,11 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /v1
-    mount: !ref DrawRoutes
+    mount: !ref drawRoutes
 ---
 kind: Http.Api
 metadata:
-  name: DrawRoutes
+  name: drawRoutes
 routes:
   - request:
       path: /drawings
@@ -379,7 +379,7 @@ routes:
               type: string
               minLength: 1
           required: [prompt]
-    handler: !ref HandleDraw
+    handler: !ref handleDraw
     inputs:
       prompt: !cel "request.body.prompt"
     returns:

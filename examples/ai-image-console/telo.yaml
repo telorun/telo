@@ -30,39 +30,39 @@ secrets:
     env: OPENAI_API_KEY
     type: string
 targets:
-  - name: Ask
+  - name: ask
     invoke: !ref Console.readLine
     inputs:
       prompt: "{cyan.bold describe an image} › "
 
-  - name: Generate
-    invoke: !ref Draw
+  - name: generate
+    invoke: !ref draw
     inputs:
-      prompt: !cel "steps.Ask.result.value"
+      prompt: !cel "steps.ask.result.value"
 
-  - name: Save
-    when: !cel "size(steps.Generate.result.images) > 0"
-    invoke: !ref SaveImage
+  - name: save
+    when: !cel "size(steps.generate.result.images) > 0"
+    invoke: !ref saveImage
     inputs:
       path: ./image.png
-      content: !cel "steps.Generate.result.images[0].data"
+      content: !cel "steps.generate.result.images[0].data"
 
-  - name: Report
-    when: !cel "size(steps.Generate.result.images) > 0"
+  - name: report
+    when: !cel "size(steps.generate.result.images) > 0"
     invoke: !ref Console.writeLine
     inputs:
-      output: !cel "'{green ✔} wrote ' + string(steps.Save.result.bytesWritten) + ' bytes to ./image.png'"
+      output: !cel "'{green ✔} wrote ' + string(steps.save.result.bytesWritten) + ' bytes to ./image.png'"
 
   # An empty `images` array with finishReason `content-filter` is the model
   # declining the prompt — a normal outcome to report, not a failure to raise.
-  - name: Refused
-    when: !cel "size(steps.Generate.result.images) == 0"
+  - name: refused
+    when: !cel "size(steps.generate.result.images) == 0"
     invoke: !ref Console.writeLine
     inputs:
-      output: !cel "'{red ✖} no image produced (' + steps.Generate.result.finishReason + ')'"
+      output: !cel "'{red ✖} no image produced (' + steps.generate.result.finishReason + ')'"
 ---
 kind: AiOpenai.OpenaiImageModel
-metadata: { name: Painter }
+metadata: { name: painter }
 model: gpt-image-1
 apiKey: !cel "secrets.openaiApiKey"
 options:
@@ -70,10 +70,10 @@ options:
   quality: low
 ---
 kind: Ai.Image
-metadata: { name: Draw }
-model: !ref Painter
+metadata: { name: draw }
+model: !ref painter
 ---
 # No `cwd`, so the path resolves against the process working directory —
 # ./image.png is where you ran the app from.
 kind: Fs.FileWrite
-metadata: { name: SaveImage }
+metadata: { name: saveImage }

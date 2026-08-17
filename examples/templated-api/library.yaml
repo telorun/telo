@@ -3,8 +3,8 @@ metadata:
   name: TemplatedServer
   version: 1.0.0
   description: |
-    Reusable Telo.Library that defines a single `HelloApi` (`Http.Api`) plus
-    the `SayHello` handler it dispatches to. Importers receive `HelloApi`
+    Reusable Telo.Library that defines a single `helloApi` (`Http.Api`) plus
+    the `sayHello` handler it dispatches to. Importers receive `helloApi`
     under their chosen alias and can mount it on any `Http.Server`. Paired
     with `telo.yaml`, which mounts the same library twice
     under `/v1` and `/v2` to show import + mount reuse.
@@ -13,11 +13,11 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
 exports:
   resources:
-    - HelloApi
+    - helloApi
 ---
 kind: Http.Api
 metadata:
-  name: HelloApi
+  name: helloApi
 routes:
   - request:
       path: /hello
@@ -29,7 +29,7 @@ routes:
             name:
               type: string
           required: [ "name" ]
-    handler: !ref SayHello
+    handler: !ref sayHello
     inputs:
       name: "${{ request.query.name }}" # CEL expression
     returns:
@@ -49,9 +49,13 @@ routes:
 ---
 kind: Run.Value
 metadata:
-  name: SayHello
-inputs:
-  name: { type: string }
+  name: sayHello
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      name: { type: string }
 value:
   message: !cel "'Hello ' + inputs.name + '!'"
 ---

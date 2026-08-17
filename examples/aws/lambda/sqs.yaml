@@ -20,12 +20,12 @@ imports:
   Lambda: oci://ghcr.io/telorun/aws/lambda@0.9.1#sha256-j3T4Xg1dDA-6h8kQjJMxPLwf83cieI5A45DJht3XdD4
   JS: oci://ghcr.io/telorun/javascript@0.12.0#sha256-HG9Ydrm-jnzR6H1phgJy_PUKxAtSUEy76QxmMn1VcLY
 targets:
-  - !ref Main
+  - !ref main
 ---
 # User handler: receives the full batch and reports per-message failures
 # via the batchItemFailures shape AWS expects.
 kind: JS.Script
-metadata: { name: ProcessOrders }
+metadata: { name: processOrders }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -71,17 +71,17 @@ code: |
 # queue.queueName / batchSize are informational — your AWS deploy template
 # wires the event-source mapping. The runtime doesn't consult them.
 kind: Lambda.Sqs
-metadata: { name: Orders }
+metadata: { name: orders }
 queue:
   queueName: orders
   queueArn: arn:aws:sqs:us-east-1:000000000000:orders
 batchSize: 10
 partialBatchResponse: true
-handler: !ref ProcessOrders
+handler: !ref processOrders
 inputs:
   records: !cel "event.Records"
 ---
 kind: Lambda.Function
-metadata: { name: Main }
+metadata: { name: main }
 handlers:
-  - !ref Orders
+  - !ref orders

@@ -23,16 +23,16 @@ imports:
   JS: oci://ghcr.io/telorun/javascript@0.12.0#sha256-HG9Ydrm-jnzR6H1phgJy_PUKxAtSUEy76QxmMn1VcLY
   Run: oci://ghcr.io/telorun/run@0.23.0#sha256-i8pfFjUbGiIA3ylf6iB6KcNcrN0h3Nwg5jZppoFbo4c
 targets:
-  - !ref Main
+  - !ref main
 ---
 # Three handlers — one per event source.
 kind: Run.Value
-metadata: { name: GetHealth }
+metadata: { name: getHealth }
 value:
   status: ok
 ---
 kind: JS.Script
-metadata: { name: ProcessEvents }
+metadata: { name: processEvents }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -55,7 +55,7 @@ code: |
   }
 ---
 kind: Run.Value
-metadata: { name: AdminPing }
+metadata: { name: adminPing }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -67,12 +67,12 @@ value:
 ---
 # HTTP API v2 events → HttpApi handler (matched on event.requestContext.http).
 kind: Lambda.HttpApi
-metadata: { name: Web }
+metadata: { name: web }
 routes:
   - request:
       method: GET
       path: "/health"
-    handler: !ref GetHealth
+    handler: !ref getHealth
     inputs: {}
     returns:
       - status: 200
@@ -82,17 +82,17 @@ routes:
 ---
 # SQS events → Sqs handler (matched on Records[0].eventSource === "aws:sqs").
 kind: Lambda.Sqs
-metadata: { name: EventQueue }
+metadata: { name: eventQueue }
 queue:
   queueName: app-events
-handler: !ref ProcessEvents
+handler: !ref processEvents
 inputs:
   records: !cel "event.Records"
 ---
 # Anything else (direct SDK invokes, Step Functions, internal RPC) → Direct.
 kind: Lambda.Direct
-metadata: { name: Admin }
-handler: !ref AdminPing
+metadata: { name: admin }
+handler: !ref adminPing
 inputs:
   caller: !cel "event.caller"
 ---
@@ -100,8 +100,8 @@ inputs:
 # handlers and dispatches accordingly. AWS-side, bind API Gateway and the
 # SQS event source mapping to this Lambda's ARN.
 kind: Lambda.Function
-metadata: { name: Main }
+metadata: { name: main }
 handlers:
-  - !ref Web
-  - !ref EventQueue
-  - !ref Admin
+  - !ref web
+  - !ref eventQueue
+  - !ref admin

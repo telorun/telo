@@ -21,8 +21,8 @@ imports:
   Sql: oci://ghcr.io/telorun/sql@0.21.0#sha256-aasWNQP3KaWbJaFZVg_Zzp0efD4k7rc0FaImt6aHE-k
   SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.0#sha256-0Yg6NzMGDXyPRnbRLMrEwsF10MKHMZyO1mirH3frvRI
 targets:
-  - !ref InitSchema
-  - !ref ChatLoop
+  - !ref initSchema
+  - !ref chatLoop
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
@@ -30,12 +30,12 @@ secrets:
 ---
 # --- Persistence -----------------------------------------------------------
 kind: SQLite.Connection
-metadata: { name: ChatDb }
+metadata: { name: chatDb }
 file: ./tmp/chat-history.sqlite
 ---
 kind: Sql.Migrations
-metadata: { name: InitSchema }
-connection: !ref ChatDb
+metadata: { name: initSchema }
+connection: !ref chatDb
 migrations:
   20260501_create_messages:
     statement: |
@@ -48,19 +48,19 @@ migrations:
 ---
 # --- AI provider -----------------------------------------------------------
 kind: AiOpenai.OpenaiModel
-metadata: { name: Gpt54Nano }
+metadata: { name: gpt54Nano }
 model: gpt-5.4-nano
 apiKey: !cel "secrets.openaiApiKey"
 ---
 kind: Ai.TextStream
-metadata: { name: ChatStream }
-model: !ref Gpt54Nano
+metadata: { name: chatStream }
+model: !ref gpt54Nano
 system: "You are a helpful CLI assistant. Keep replies brief — one or two sentences."
 ---
 # --- Stream pipeline -------------------------------------------------------
 # Project StreamPart records to plain text-delta strings.
 kind: RecordStream.ExtractText
-metadata: { name: Deltas }
+metadata: { name: deltas }
 discriminator: type
 records:
   text-delta: { do: emit, field: delta }
@@ -70,16 +70,16 @@ records:
 # Fan the model's stream out: one branch prints to stdout, the other captures
 # the assistant text for the history INSERT.
 kind: RecordStream.Tee
-metadata: { name: ModelTee }
+metadata: { name: modelTee }
 ---
 kind: Console.WriteStream
-metadata: { name: Stdout }
+metadata: { name: stdout }
 ---
 # Animated wait indicator: paints `ai  ›` with a braille spinner while the
 # model is preparing the first token, clears the spinner cell on the first
 # delta, then forwards every item unchanged.
 kind: Console.StreamWait
-metadata: { name: ChatSpinner }
+metadata: { name: chatSpinner }
 prefix: "{magenta.bold ai}  › "
 ---
 # Drain the captured branch of the tee into a single string for the
@@ -87,79 +87,79 @@ prefix: "{magenta.bold ai}  › "
 # as a pass-through (treats each chunk as UTF-8) and concatenates into a
 # single `{text}` — exactly the "drain a string stream" primitive we need.
 kind: PlainText.Decoder
-metadata: { name: AssistantText }
+metadata: { name: assistantText }
 ---
 # --- REPL ------------------------------------------------------------------
 kind: Run.Sequence
-metadata: { name: ChatLoop }
+metadata: { name: chatLoop }
 steps:
-  # do-while via shared step name `Read`: pre-loop initializes; the in-body
-  # `Read` overwrites it each iteration. Pattern matches modules/run/tests/run-sequence-while.yaml.
-  - name: Read
+  # do-while via shared step name `read`: pre-loop initializes; the in-body
+  # `read` overwrites it each iteration. Pattern matches modules/run/tests/run-sequence-while.yaml.
+  - name: read
     invoke: !ref Console.readLine
     inputs:
       prompt: "{cyan.bold you} › "
-  - name: Loop
-    while: !cel "steps.Read.result.value != '/exit'"
+  - name: converse
+    while: !cel "steps.read.result.value != '/exit'"
     do:
       # Insert the user message FIRST, then SELECT — the SELECT now
       # returns the freshly-inserted user row as the last element, so
       # the messages array passed to Ai.TextStream is just the rows
       # verbatim. No client-side composition step needed.
-      - name: InsertUser
+      - name: insertUser
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: [ "user", "${{ steps.Read.result.value }}" ]
+          bindings: [ "user", "${{ steps.read.result.value }}" ]
         invoke:
           kind: Sql.Command
-          connection: !ref ChatDb
-      - name: ReadHistory
+          connection: !ref chatDb
+      - name: readHistory
         inputs:
           sql: "SELECT role, content FROM messages ORDER BY id ASC"
         invoke:
           kind: Sql.Query
-          connection: !ref ChatDb
-      - name: Stream
-        invoke: !ref ChatStream
+          connection: !ref chatDb
+      - name: stream
+        invoke: !ref chatStream
         inputs:
-          messages: !cel "steps.ReadHistory.result.rows"
-      - name: Project
-        invoke: !ref Deltas
+          messages: !cel "steps.readHistory.result.rows"
+      - name: project
+        invoke: !ref deltas
         inputs:
-          input: !cel "steps.Stream.result.output"
-      - name: Tee
-        invoke: !ref ModelTee
+          input: !cel "steps.stream.result.output"
+      - name: tee
+        invoke: !ref modelTee
         inputs:
-          input: !cel "steps.Project.result.output"
-      - name: Spin
-        invoke: !ref ChatSpinner
+          input: !cel "steps.project.result.output"
+      - name: spin
+        invoke: !ref chatSpinner
         inputs:
-          input: !cel "steps.Tee.result.outputA"
-      - name: Print
-        invoke: !ref Stdout
+          input: !cel "steps.tee.result.outputA"
+      - name: print
+        invoke: !ref stdout
         inputs:
-          input: !cel "steps.Spin.result.output"
-      - name: Collect
-        invoke: !ref AssistantText
+          input: !cel "steps.spin.result.output"
+      - name: collect
+        invoke: !ref assistantText
         inputs:
-          input: !cel "steps.Tee.result.outputB"
-      - name: InsertAssistant
+          input: !cel "steps.tee.result.outputB"
+      - name: insertAssistant
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: [ "assistant", "${{ steps.Collect.result.text }}" ]
+          bindings: [ "assistant", "${{ steps.collect.result.text }}" ]
         invoke:
           kind: Sql.Command
-          connection: !ref ChatDb
-      # Move cursor to a fresh line so the next Read's TTY readline
+          connection: !ref chatDb
+      # Move cursor to a fresh line so the next read's TTY readline
       # interface doesn't refresh-erase the assistant's reply (readline
       # in TTY mode emits `\r\x1b[K` when re-prompting on a non-empty
       # current line — without this newline, the model's text gets wiped
       # the moment we ask for the next user input).
-      - name: Newline
+      - name: newline
         invoke: !ref Console.writeLine
         inputs:
           output: ""
-      - name: Read
+      - name: read
         invoke: !ref Console.readLine
         inputs:
           prompt: "{cyan.bold you} › "

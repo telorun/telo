@@ -16,12 +16,12 @@ curl -s -XPOST localhost:8055/transfers -H 'content-type: application/json' \
 
 ## The part that is not just "we have transactions"
 
-`MoveMoney` is declared with `transaction:` rather than `connection:`:
+`moveMoney` is declared with `transaction:` rather than `connection:`:
 
 ```yaml
 kind: Sql.Command
-metadata: { name: MoveMoney }
-transaction: !ref TransferTx
+metadata: { name: moveMoney }
+transaction: !ref transferTx
 ```
 
 `Sql.Command`'s schema marks that slot `x-telo-requires-zone`, and
@@ -34,9 +34,9 @@ the statement directly. It never runs:
 
 ```
 $ telo check ./examples/money-transfer/broken.yaml
-error  Sql.Command 'MoveMoney' requires a SQL.Transaction zone on
-       SQLite.Connection 'Db', and the path
-       MoveMoney → Payout → MoneyTransferBroken.targets[0]
+error  Sql.Command 'moveMoney' requires a SQL.Transaction zone on
+       SQLite.Connection 'db', and the path
+       moveMoney → payout → MoneyTransferBroken.targets[0]
        reaches the application's boot targets, which nothing encloses.
        the statement would execute outside any transaction.
        ZONE_REQUIREMENT_UNSATISFIED

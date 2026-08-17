@@ -8,6 +8,7 @@ import {
   sha256Base64Url,
   withRefVersion,
   splitIntegrity,
+  type ArtifactLayer,
   type ManifestCacheCoords,
   type ManifestSource,
 } from "@telorun/analyzer";
@@ -17,6 +18,7 @@ import { createHash } from "crypto";
 import type { PayloadFile } from "../bundle/files-integrity.js";
 import { assertPublicEgress } from "./egress-guard.js";
 import type {
+  PayloadLayer,
   PublishBundle,
   PublishOptions,
   PublishResult,
@@ -276,6 +278,18 @@ export class RegistryTransport implements Transport {
     throw new Error(
       `Cannot fetch layer ${blobDigest} of ${ref}: the Telo registry serves manifests only. ` +
         `A module with a bundled payload is published as an OCI artifact (oci://host/repo).`,
+    );
+  }
+
+  async layerIndex(layers: readonly PayloadLayer[]): Promise<ArtifactLayer[]> {
+    // Same boundary `fetchLayer` and `publish` draw: the HTTP registry serves
+    // manifests only, so it frames no layer and can name no blob. An empty set
+    // is not a payload, so it answers rather than throws — a manifest-only
+    // module builds its payload through this transport during analysis.
+    if (layers.every((layer) => layer.files.length === 0)) return [];
+    throw new Error(
+      "The Telo registry serves manifests only, so it cannot index payload layers. " +
+        "A module with a bundled payload is published as an OCI artifact (oci://host/repo).",
     );
   }
 
