@@ -1,6 +1,6 @@
 {
   "name": "@telorun/http-client-build",
-  "version": "0.21.1",
+  "version": "0.21.2",
   "private": true,
   "description": "Build-only package for the std/http-client module's bundled controllers. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",

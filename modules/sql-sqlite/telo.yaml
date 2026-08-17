@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: SQLite
-  version: 0.7.2
+  version: 0.7.3
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Storage]
