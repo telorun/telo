@@ -4,8 +4,9 @@ import {
   type ResourceContext,
   type ScopeContext,
   type ScopeHandle,
+  type Step,
+  StepEngine,
 } from "@telorun/sdk";
-import { pascalCase, type Step, StepEngine } from "./engine.js";
 
 /** Read the referenced resource name from a `targets` entry. After `!ref`
  *  resolution the entry is a `{kind, name}` reference; an unresolved `!ref`
@@ -79,7 +80,10 @@ class RunSequence {
     private readonly ctx: ResourceContext,
     public readonly resource: RunSequenceManifest,
   ) {
-    this.engine = new StepEngine(ctx, `Sequence${pascalCase(String(resource.metadata.name))}`);
+    this.engine = new StepEngine(ctx, {
+      kind: "Sequence",
+      resourceName: String(resource.metadata.name),
+    });
   }
 
   async init(): Promise<void> {

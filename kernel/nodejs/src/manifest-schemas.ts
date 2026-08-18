@@ -22,6 +22,7 @@ export {
   manifestFragmentRef,
   ResourceRefSchema,
   RetryPolicySchema,
+  StepSchema,
   withSchemaFragments,
 } from "@telorun/analyzer";
 

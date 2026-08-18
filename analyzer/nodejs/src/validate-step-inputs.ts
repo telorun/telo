@@ -19,6 +19,7 @@ import {
   resolveLocalRef,
   walkStepArray,
 } from "./analyzer.js";
+import { readStepSlot } from "./step-slot.js";
 
 export interface StepInputIssue {
   path: string;
@@ -42,7 +43,8 @@ export interface StepInputIssue {
  * CEL leaves are replaced by schema-shaped placeholders first (`substituteCelFields`),
  * so an expression is never a false positive — only structural disagreement is
  * reported. Nothing is hardcoded about `Run.Sequence`: the invoke field comes
- * from `x-telo-step-context`, and the paired inputs field from whichever sibling
+ * from the step slot (the shared grammar, or the legacy `x-telo-step-context`),
+ * and the paired inputs field from whichever sibling
  * property carries `x-telo-topology-role: inputs`.
  */
 export function collectStepInputIssues(
@@ -65,8 +67,8 @@ export function collectStepInputIssues(
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
 
   for (const [fieldName, fieldSchema] of Object.entries(props)) {
-    const stepCtx = fieldSchema["x-telo-step-context"] as Record<string, string> | undefined;
-    if (!stepCtx?.invoke) continue;
+    const stepCtx = readStepSlot(fieldSchema);
+    if (!stepCtx) continue;
     const steps = manifest[fieldName];
     if (!Array.isArray(steps)) continue;
 

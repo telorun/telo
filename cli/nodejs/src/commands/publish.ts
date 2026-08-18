@@ -205,8 +205,14 @@ async function verifyDeclaredRequirements(
   );
   if (!ownerDoc) return true;
 
+  // The published list is fetched BEFORE the edges run, so an edge naming a
+  // version that does not exist yet is reported as pending rather than spawning
+  // an `npx` that can only ETARGET. Memoized process-wide, so publishing the
+  // whole standard library asks once.
+  const published = await publishedTeloVersions();
   const result = await verifyRequires(filePath, ownerDoc as unknown as Record<string, unknown>, {
     currentVersion: TELO_SURFACE_VERSION,
+    publishedVersions: published,
   });
   if (!result.declared) {
     // Absent means no requirement — permanent for everything published before
@@ -231,7 +237,23 @@ async function verifyDeclaredRequirements(
     return false;
   }
 
-  const published = await publishedTeloVersions();
+  // A lower bound above everything published is fatal HERE and informational at
+  // `telo release check`, and the asymmetry is the release order: npm publishes
+  // before modules do, so by the time a module is pushed its declared minimum
+  // exists. If it does not, the release is out of order — and the module would
+  // land at the registry declaring a floor no runtime can satisfy, which every
+  // consumer's `telo upgrade` would then refuse.
+  const pending = result.outcomes.find((o) => o.status === "pending");
+  if (pending?.status === "pending") {
+    outErrLine(
+      `${log.err.error("error")}  requires.telo '${result.declared.raw}' needs telo ` +
+        `${pending.edge}, which is not published — the latest is ${pending.latestPublished}. ` +
+        `Publish the CLI release that carries it first, or lower the bound to a version that ` +
+        `exists.`,
+    );
+    return false;
+  }
+
   const missing = unpublishedUpperBound(result.declared, published);
   if (missing) {
     outErrLine(

@@ -121,7 +121,7 @@ inputType:
         # there while still rejecting a non-byte, non-string value here.
         anyOf:
           - type: string
-          - x-telo-binary: true
+          - x-telo-type: Telo.Bytes
       encoding:
         title: Encoding
         description: >-
@@ -473,7 +473,7 @@ inputType:
               # anyOf for the same reason as Fs.FileWrite's `content` — see there.
               anyOf:
                 - type: string
-                - x-telo-binary: true
+                - x-telo-type: Telo.Bytes
             encoding:
               description: >-
                 How a string `content` is interpreted. `base64` decodes it to binary

@@ -175,7 +175,7 @@ outputType:
     required: [output]
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: >-
           Async iterable of records: `{type: stdout|stderr, chunk}` then a
           terminal `{type: exit, exitCode, signal}` or `{type: error, error}`.

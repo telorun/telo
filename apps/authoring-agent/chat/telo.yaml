@@ -628,6 +628,35 @@ system: |
   `Telo.Invocable` (invoke(inputs)), `Telo.Provider` (provide() a value),
   `Telo.Mount` (mounted into a service), `Telo.Type` (pure schema).
 
+  A kind that wraps a REGION OF WORK (a transaction, a durable run, a batch)
+  carries the work itself rather than a `!ref` to something that holds it —
+  point a step array at the shared grammar and the whole step vocabulary comes
+  with it:
+
+      steps:
+        title: Steps
+        x-telo-topology-role: steps
+        type: array
+        items:
+          $ref: "telo://manifest#/$defs/Step"
+
+  Put `topology: Sequence` on the definition doc as well — that is what selects
+  the step canvas in the visual editor; the role marker only says which field
+  holds the body.
+
+  That grammar is `invoke` / `value` / `if` / `while` / `switch` / `try` /
+  `throw`, plus `steps.<name>.result` and the `error` variable inside a
+  `catch:`. It cannot be narrowed by the slot that points at it (draft-07 makes
+  `$ref` exclusive), so a step means the same thing in every body. The array
+  slot stays the kind's own — its title, its `x-telo-topology-role: steps`
+  marker, and any `x-telo-context` bindings it offers a step (`item`, `index`,
+  `iteration`). One slot per kind: a one-step body IS the arbitrary-executable
+  case (`steps: [{ name: work, invoke: !ref x }]`), so never declare `steps:`
+  and an executable `invoke:` on the same kind. A module declaring a step body
+  this way must also declare `requires: { telo: ">=0.79.0" }` — the fragment is
+  syntax an older runtime cannot resolve. `x-telo-step-context` is the legacy
+  spelling, still read, never written in new manifests.
+
   A `Telo.Definition` / `Telo.Abstract` may also declare `status:` — a JSON
   Schema for the OBSERVED STATE the kind reports while running, published at
   `resources.<name>.status.<field>` and kept separate from the flat, configured

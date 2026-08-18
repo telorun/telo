@@ -220,7 +220,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable of StreamPart records (text-delta | finish | error).
     required: [output]
     additionalProperties: false
@@ -599,7 +599,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: >-
           Async iterable of AgentStreamPart records: `text-delta` (assistant text),
           `tool-call` (a tool the model requested), `tool-result` (its execution
@@ -724,7 +724,7 @@ schema:
         properties:
           data:
             description: Encoded image bytes, ready to write, overlay, or send back to a model.
-            x-telo-binary: true
+            x-telo-type: Telo.Bytes
           mediaType:
             description: MIME type of the encoded bytes (image/png, image/jpeg, image/webp).
             type: string
@@ -818,7 +818,7 @@ inputType:
           properties:
             data:
               description: Encoded image bytes.
-              x-telo-binary: true
+              x-telo-type: Telo.Bytes
             mediaType: { type: string }
       mask:
         description: Which region to repaint, as an image whose transparent area marks the target. Required under an inpainting intent.
@@ -828,7 +828,7 @@ inputType:
         properties:
           data:
             description: Encoded mask bytes.
-            x-telo-binary: true
+            x-telo-type: Telo.Bytes
           mediaType: { type: string }
       options:
         description: Request options, already merged by the operation from its own and the caller's.
@@ -892,7 +892,7 @@ inputType:
           properties:
             data:
               description: Encoded image bytes.
-              x-telo-binary: true
+              x-telo-type: Telo.Bytes
             mediaType: { type: string }
       mask:
         description: Which region to repaint, as an image whose transparent area marks the target. Required under an inpainting intent.
@@ -902,7 +902,7 @@ inputType:
         properties:
           data:
             description: Encoded mask bytes.
-            x-telo-binary: true
+            x-telo-type: Telo.Bytes
           mediaType: { type: string }
       options:
         description: Per-call option overrides. Shallow-merged over this resource's `options`; the call wins.

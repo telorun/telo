@@ -1,0 +1,58 @@
+# `while/do` in a body that is not a sequence.
+#
+# Three of the four step-schema copies dropped the `while` branch with "the kind
+# is itself the loop" — an editorial nudge, never a soundness rule: the engine
+# ran it either way, and a nested loop inside a for-each body is ordinary control
+# flow. One shared grammar cannot be narrowed by the slot pointing at it, so the
+# branch is admitted everywhere; this is the manifest that used to be a schema
+# error one kind away from valid.
+kind: Telo.Application
+metadata:
+  name: WhileInIterationBody
+  version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
+targets:
+  - !ref countUp
+  - !ref expectTotals
+---
+kind: Run.Iteration
+metadata:
+  name: countUp
+collection: !cel "[2, 3]"
+steps:
+  - name: total
+    value: !cel "0"
+  - name: countToItem
+    while: !cel "steps.total.result < item"
+    do:
+      - name: total
+        value: !cel "steps.total.result + 1"
+  - name: report
+    inputs:
+      limit: !cel "item"
+      reached: !cel "steps.total.result"
+    invoke:
+      kind: Run.Value
+      inputs:
+        limit: {}
+        reached: {}
+      value:
+        limit: !cel "inputs.limit"
+        reached: !cel "inputs.reached"
+---
+kind: Assert.Events
+metadata:
+  name: expectTotals
+filter:
+  - type: "*"
+expect:
+  - event: "*.Invoked"
+    payload:
+      ref: { kind: Run.Value }
+      outputs: { limit: 2, reached: 2 }
+  - event: "*.Invoked"
+    payload:
+      ref: { kind: Run.Value }
+      outputs: { limit: 3, reached: 3 }

@@ -15,6 +15,7 @@ import {
 } from "./resolve-throws-union.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
+import { isStepSlot } from "./step-slot.js";
 
 const SOURCE = "telo-analyzer";
 const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
@@ -457,9 +458,11 @@ function checkCelChainAgainstDataSchema(
 }
 
 /** Rule 8 extension: `inherit: true` only makes sense on a definition whose
- *  schema contains at least one `x-telo-step-context` array — the annotation
- *  that drives the resolver's generic step traversal. A definition with
- *  `inherit: true` and no such array has no invocables to inherit from. */
+ *  schema declares at least one STEP BODY — an array whose items point at the
+ *  shared grammar, or, for a module published before that fragment existed, one
+ *  carrying the legacy `x-telo-step-context` annotation. That is what drives the
+ *  resolver's generic step traversal; a definition with `inherit: true` and no
+ *  such array has no invocables to inherit from. */
 function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   for (const m of manifests) {
@@ -475,7 +478,11 @@ function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiag
           severity: DiagnosticSeverity.Error,
           code: "INHERIT_WITHOUT_STEP_CONTEXT",
           source: SOURCE,
-          message: `Telo.Definition '${name}' declares throws.inherit: true but its schema has no field annotated with x-telo-step-context. inherit is only meaningful on definitions that drive invocables via step arrays.`,
+          message:
+            `Telo.Definition '${name}' declares throws.inherit: true but its schema declares no step ` +
+            `body. inherit is only meaningful on a definition that drives invocables through steps — ` +
+            `give an array field 'items: { $ref: "telo://manifest#/$defs/Step" }' (the legacy ` +
+            `x-telo-step-context annotation is also recognised).`,
           data: { resource: { kind: m.kind, name }, filePath, path: "throws.inherit" },
         });
       }
@@ -486,7 +493,7 @@ function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiag
 
 function schemaHasStepContext(schema: Record<string, any> | undefined): boolean {
   if (!schema || typeof schema !== "object") return false;
-  if ("x-telo-step-context" in schema) return true;
+  if (isStepSlot(schema)) return true;
   const props = schema.properties;
   if (props && typeof props === "object") {
     for (const v of Object.values(props as Record<string, any>)) {

@@ -112,6 +112,34 @@ In a workspace where modules import siblings by relative path, propagation is au
 when a sibling adopts new syntax, every dependent fails its own edge check until its
 range moves too.
 
+### Declaring a release that has not happened yet
+
+Adopting new syntax means declaring the version that will carry it — which, on the commit
+that does so, is not published. That is the expected state, not a mistake, and it is
+reported as its own outcome rather than as a failed install:
+
+```
+·  telo 0.79.0  1 module pending — not published yet (latest: 0.78.0)
+```
+
+No CLI is fetched: an unpublished version has one possible outcome, and npm's `ETARGET`
+arrives wrapped in install noise indistinguishable from being offline. The latest
+published version is printed beside the bound because that is what makes a **typo**
+visible — `>=0.790.0` next to a latest of `0.78.0` reads wrong at a glance, where "could
+not run" would read the same for a typo and for tomorrow's release.
+
+`pending` is informational in `telo release check` and **fatal in `telo publish`**. The
+asymmetry is the release order: npm publishes before modules do, so by the time a module
+is pushed its declared floor exists. If it does not, the release is out of order, and the
+module would land at the registry declaring a minimum no runtime can satisfy — which
+every consumer's `telo upgrade` would then refuse.
+
+Two things this does not cover. A version *below* the latest that is nevertheless absent
+(yanked, never published) still reports as "could not run": that is honest, and guessing
+at why it is missing would be a second rule with nothing behind it. And when npm cannot
+be reached at all, nothing is classified — a guess about what exists is worse than the
+run's own verdict.
+
 ## Who declares
 
 **Libraries declare always, and open above.** The lower bound moves only when
