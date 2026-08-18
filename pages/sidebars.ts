@@ -59,6 +59,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/extend/authoring-a-module", label: "Authoring a Module" },
         { type: "doc", id: "docs/extend/templated-definitions", label: "Templated Definitions" },
         { type: "doc", id: "docs/extend/kind-inheritance", label: "Kind Inheritance" },
+        { type: "doc", id: "docs/extend/step-bodies", label: "Step Bodies" },
         { type: "doc", id: "docs/extend/execution-zones", label: "Execution Zones" },
         { type: "doc", id: "docs/extend/manifest-migrations", label: "Manifest Migrations" },
         {

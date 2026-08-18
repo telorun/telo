@@ -1,13 +1,12 @@
-import { InvokeError, type InvokeContext, type ResourceContext } from "@telorun/sdk";
 import {
-  type CatchEntry,
-  mapConcurrent,
-  pascalCase,
-  resolveConcurrency,
+  InvokeError,
+  type InvokeContext,
+  type ResourceContext,
   type Step,
   StepEngine,
-  withCatches,
-} from "./engine.js";
+} from "@telorun/sdk";
+import { type CatchEntry, withCatches } from "./catches.js";
+import { mapConcurrent, resolveConcurrency } from "./concurrency.js";
 
 interface RunProjectionManifest {
   metadata: Record<string, string | number | boolean>;
@@ -31,7 +30,7 @@ class RunProjection {
     private readonly ctx: ResourceContext,
     private readonly resource: RunProjectionManifest,
   ) {
-    this.engine = new StepEngine(ctx, `Projection${pascalCase(String(resource.metadata.name))}`);
+    this.engine = new StepEngine(ctx, { kind: "Projection", resourceName: String(resource.metadata.name) });
   }
 
   async init(): Promise<void> {

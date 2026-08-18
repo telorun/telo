@@ -6,6 +6,7 @@ import {
   parseCanonicalTypeSchemaId,
 } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { isStepSlot } from "./step-slot.js";
 
 export interface ContextResolveOpts {
   /** When provided, used to resolve `x-telo-context-from-root` annotations against the
@@ -568,7 +569,9 @@ export function extractContextsFromSchema(
 }
 
 /** Schema keys that declare a CEL-bearing region: a field carrying any of these
- *  is evaluated at runtime, so a `!cel` inside it (or a descendant) is live. */
+ *  is evaluated at runtime, so a `!cel` inside it (or a descendant) is live. A
+ *  STEP BODY is one too, and says so through the grammar its items point at
+ *  rather than through a key — {@link isStepSlot} reads either spelling. */
 const CEL_REGION_KEYS = [
   "x-telo-context",
   "x-telo-step-context",
@@ -587,7 +590,7 @@ export function extractCelRegionScopes(schema: Record<string, any>, path = "$"):
   if (!schema || typeof schema !== "object") return [];
   const out: string[] = [];
 
-  if (CEL_REGION_KEYS.some((k) => schema[k])) out.push(path);
+  if (CEL_REGION_KEYS.some((k) => schema[k]) || isStepSlot(schema)) out.push(path);
 
   if (schema.properties) {
     for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {

@@ -3,7 +3,7 @@ import { Loader, type ManifestSource } from "@telorun/analyzer";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { getVariants } from "./schema-utils.js";
+import { getStepSchema, getVariants } from "./schema-utils.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -26,6 +26,11 @@ const diskSource: ManifestSource = {
  * building its model — with nothing in the analyzer or the manifest to indicate
  * why, because both were correct.
  *
+ * The step grammar has since become a fragment of its own, reached through the
+ * `steps:` slot rather than a `$defs` entry the module declares — so the walk
+ * starts where the canvas starts, at the field annotated `x-telo-topology-role:
+ * steps`, and passes through the localized self-reference the hoist leaves.
+ *
  * This loads the real module the way the editor does — bare, no options — and
  * asserts the branch is readable. It is deliberately not a unit test over a
  * hand-written schema: the regression lived in the seam between how the module
@@ -43,8 +48,9 @@ describe("Run step schema reaches the editor resolved", () => {
     ) as Record<string, any> | undefined;
     expect(sequence, "Run.Sequence definition").toBeDefined();
 
-    const stepSchema = sequence!.schema.$defs.step as Record<string, unknown>;
-    const variants = getVariants(stepSchema, sequence!.schema);
+    const stepSchema = getStepSchema(sequence!.schema);
+    expect(stepSchema, "step schema behind the steps slot").toBeDefined();
+    const variants = getVariants(stepSchema!, sequence!.schema);
 
     const invoke = variants.find((v) => v.title === "invoke");
     expect(invoke, "invoke variant — a throw here is the resolver refusing a shared fragment").toBeDefined();

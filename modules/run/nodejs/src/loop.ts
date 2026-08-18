@@ -1,5 +1,11 @@
-import { InvokeError, type InvokeContext, type ResourceContext } from "@telorun/sdk";
-import { type CatchEntry, pascalCase, type Step, StepEngine, withCatches } from "./engine.js";
+import {
+  InvokeError,
+  type InvokeContext,
+  type ResourceContext,
+  type Step,
+  StepEngine,
+} from "@telorun/sdk";
+import { type CatchEntry, withCatches } from "./catches.js";
 
 interface RunLoopManifest {
   metadata: Record<string, string | number | boolean>;
@@ -27,7 +33,7 @@ class RunLoop {
     private readonly ctx: ResourceContext,
     private readonly resource: RunLoopManifest,
   ) {
-    this.engine = new StepEngine(ctx, `Loop${pascalCase(String(resource.metadata.name))}`);
+    this.engine = new StepEngine(ctx, { kind: "Loop", resourceName: String(resource.metadata.name) });
   }
 
   async init(): Promise<void> {

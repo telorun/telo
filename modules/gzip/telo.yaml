@@ -53,7 +53,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Decompressed byte stream (gunzipped `input`).
     required: [ output ]
     additionalProperties: false

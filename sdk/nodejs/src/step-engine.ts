@@ -1,14 +1,44 @@
-import {
-  executeInvokeStep,
-  InvokeError,
-  isInvokeError,
-  type Invocable,
-  type InvokeContext,
-  type InvokeStep,
-  type KindRef,
-  type ResourceContext,
-  type ScopeContext,
-} from "@telorun/sdk";
+/**
+ * The step grammar and its execution: `invoke` / `value` / `if` / `while` /
+ * `switch` / `try` / `throw`, the `steps.<name>.result` accumulator, and the
+ * nested-scope walk that resolves an inline `invoke:` into a named resource.
+ *
+ * WHY THE SDK OWNS THIS. The leaf ({@link executeInvokeStep}) has always lived
+ * here; everything above it lived in `modules/run` for no reason anyone chose,
+ * and that is what made a step body something only `run`'s own kinds could have.
+ * `@telorun/sdk` is the single name in the bundle loader's `REALM_COLLAPSE_NAMES`
+ * — symlinked onto the KERNEL's own copy rather than inlined — so it is one
+ * version per process whatever anyone pins, and it is reachable from a controller
+ * bundle and from the kernel's own boot runner alike. A module library
+ * (`exports.code:`) is no longer copied per consumer, but it is still one scope
+ * per pinned version, it is outside the seam entirely for an npm-delivered
+ * controller, and the kernel cannot reach one at all. For a component whose
+ * contract is determinism across a durable run, one implementation is the whole
+ * premise.
+ *
+ * The context is STRUCTURAL ({@link StepEngineContext}), the property the leaf
+ * already proved: `ResourceContext` satisfies it, and so does a kernel-side
+ * adapter. Nothing here imports the kernel or `run`.
+ */
+
+import type { Invocable } from "./capabilities/invokable.js";
+import type { InvokeContext } from "./cancellation.js";
+import { InvokeError, isInvokeError } from "./invoke-error.js";
+import { executeInvokeStep, type InvokeStep, type InvokeStepContext } from "./invoke-step.js";
+import type { KindRef, ScopeContext } from "./ref.js";
+
+/**
+ * What the engine needs beyond the leaf's own contract: turning an inline
+ * `invoke: { kind, … }` into a named reference.
+ *
+ * Widened from {@link InvokeStepContext} rather than replaced, so one interface
+ * describes a step site whether or not control flow is involved. Satisfied
+ * structurally by `ResourceContext`; a host that composes steps in code supplies
+ * its own.
+ */
+export interface StepEngineContext extends InvokeStepContext {
+  ensureKindRef(value: any, resourceName?: string): KindRef;
+}
 
 export interface IfStep {
   name: string;
@@ -71,7 +101,8 @@ export type Step =
  *  The analyzer's throws resolver mirrors this constant. */
 export const PLAIN_ERROR_CODE = "INTERNAL_ERROR";
 
-interface SequenceError {
+/** The `error` variable a `catch:` / `catches:` branch sees. */
+export interface SequenceError {
   message: string;
   code: string;
   data?: unknown;
@@ -100,19 +131,39 @@ function isValueStep(step: Step): step is ValueStep {
   return "value" in step;
 }
 
-/** Shared step-execution engine for `Run.Sequence` and the binding-wrapper kinds
- *  (`Run.Loop`, `Run.Iteration`, `Run.Projection`). It owns the full step grammar
- *  — `invoke` / `if` / `while` / `switch` / `try` / `throw` — and runs a step list
- *  against an `extraCtx` CEL scope. The wrapper kinds inject extra scope variables
- *  (`item`, `index`, `iteration`, `previous`, …) via `extraCtx`; their schemas
- *  simply omit the `while` block, but the engine handling it stays whole. */
+/**
+ * Who is running this body — the two facts the generated name of an inline
+ * `invoke:` is built from.
+ *
+ * Taken as identity rather than as a finished prefix because that name is
+ * MANIFEST-VISIBLE topology: it is what `steps.<name>.result`, a trace span and
+ * an `ERR_RESOURCE_NOT_FOUND` all print. Every caller used to spell the recipe
+ * itself (`` `Iteration${pascalCase(name)}` ``), which is the half of a
+ * must-not-fork component that forked anyway — the fifth composer would get the
+ * casing subtly wrong, or collide with the fourth.
+ */
+export interface StepBodyOwner {
+  /** The owning kind's suffix (`Sequence`, `Iteration`, `Transaction`). */
+  kind: string;
+  /** The owning resource's `metadata.name`. */
+  resourceName: string;
+}
+
+/** Runs a step list against an `extraCtx` CEL scope, owning the full grammar —
+ *  `invoke` / `value` / `if` / `while` / `switch` / `try` / `throw`. A composing
+ *  kind injects its own scope variables (`item`, `index`, `iteration`,
+ *  `previous`, …) through `extraCtx`; the engine knows none of them. */
 export class StepEngine {
+  /** Prefix for generated inline-invoke resource names; unique per host resource
+   *  (`SequenceMySeq`, `LoopPollUntilReady`). */
+  private readonly namePrefix: string;
+
   constructor(
-    private readonly ctx: ResourceContext,
-    /** Prefix for generated inline-invoke resource names; keeps names unique per
-     *  host resource (e.g. `SequenceMySeq`, `LoopPollUntilReady`). */
-    private readonly namePrefix: string,
-  ) {}
+    private readonly ctx: StepEngineContext,
+    owner: StepBodyOwner,
+  ) {
+    this.namePrefix = `${pascalCase(owner.kind)}${pascalCase(owner.resourceName)}`;
+  }
 
   resolveInvokes(stepList: Step[], path: string[] = ["steps"]): void {
     for (const [index, step] of stepList.entries()) {
@@ -342,179 +393,11 @@ export class StepEngine {
   }
 }
 
-export interface CatchEntry {
-  when?: string;
-  value?: unknown;
-}
 
-/** Whole-operation error contract shared by the binding-wrapper kinds. Runs
- *  `body`; if it throws and a `catches` entry's `when` matches (CEL over `error`
- *  + `inputs`), resolves to that entry's `value` instead of propagating. An
- *  unmatched throw (or no `catches`) propagates — fail-fast. */
-export async function withCatches<T>(
-  ctx: ResourceContext,
-  catches: CatchEntry[] | undefined,
-  inputs: Record<string, unknown>,
-  operationName: string,
-  body: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await body();
-  } catch (err) {
-    if (!catches?.length) throw err;
-    const error = toSequenceError(err, operationName);
-    for (const entry of catches) {
-      const matched = entry.when === undefined ? true : ctx.expandValue(entry.when, { error, inputs });
-      if (matched) {
-        return ctx.expandValue(entry.value ?? null, { error, inputs }) as T;
-      }
-    }
-    throw err;
-  }
-}
-
-/** Resolve a `concurrency` field — a raw CEL value (`!cel`) or literal — to a
- *  positive integer. The schema does not auto-eval the field, so the controller
- *  must expand it itself (mirroring Run.Loop's `maxIterations`); reading it raw
- *  leaves a CompiledValue that `mapConcurrent` would turn into zero workers and a
- *  silent `[null, …]`. Defaults to 1 when omitted. */
-export function resolveConcurrency(
-  ctx: ResourceContext,
-  raw: unknown,
-  inputs: Record<string, unknown>,
-  operationName: string,
-): number {
-  if (raw === undefined) return 1;
-  const resolved = ctx.expandValue(raw, { inputs });
-  const value = Number(resolved);
-  if (!Number.isInteger(value) || value < 1) {
-    throw new InvokeError(
-      "INVALID_CONCURRENCY",
-      `${operationName}: concurrency must resolve to an integer >= 1, got ${JSON.stringify(resolved)}`,
-    );
-  }
-  return value;
-}
-
-/** Map `items` through `fn` with a bounded worker pool. `concurrency` 1 runs
- *  strictly ordered; `>1` runs that many in flight. Results are written by index
- *  so the returned array preserves input order regardless of completion order.
- *  Fail-fast: on the first rejection no further items are scheduled and the
- *  first error propagates (in-flight items settle but their results are dropped). */
-export async function mapConcurrent<I, O>(
-  items: readonly I[],
-  concurrency: number,
-  fn: (item: I, index: number) => Promise<O>,
-): Promise<O[]> {
-  if (!Number.isFinite(concurrency) || concurrency < 1) {
-    // Defence in depth: callers resolve concurrency to a validated integer. A
-    // non-finite value here would zero the worker pool and silently return a
-    // sparse array — surface it instead.
-    throw new InvokeError(
-      "INVALID_CONCURRENCY",
-      `mapConcurrent: concurrency must be a positive integer, got ${concurrency}`,
-    );
-  }
-  const results: O[] = new Array(items.length);
-  const limit = Math.max(1, Math.floor(concurrency));
-  let next = 0;
-  let failure: { err: unknown } | undefined;
-
-  async function worker(): Promise<void> {
-    while (failure === undefined) {
-      const i = next++;
-      if (i >= items.length) return;
-      try {
-        results[i] = await fn(items[i], i);
-      } catch (err) {
-        if (failure === undefined) failure = { err };
-        return;
-      }
-    }
-  }
-
-  const workerCount = Math.min(limit, items.length);
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
-  if (failure !== undefined) throw failure.err;
-  return results;
-}
-
-/**
- * Run `fn` over an async iterable with a bounded worker pool, pulling lazily.
- *
- * The counterpart to {@link mapConcurrent} for a source with no length: it
- * cannot pre-size a result array and must not read ahead, because reading ahead
- * is what draining a stream into memory means — the thing a caller chose a
- * stream to avoid. Returns nothing, since a source of unknown size has no result
- * array to build.
- *
- * PULLS ARE SERIALIZED even at high concurrency. An async iterator makes no
- * promise about overlapping `next()` calls and a generator throws on one, so the
- * workers take turns advancing the source while their bodies still overlap —
- * which is where the concurrency actually lives.
- *
- * Fail-fast, and the source is CLOSED on the way out: a stream abandoned without
- * `return()` leaves its producer waiting on a consumer that will never read
- * again, which is a leak rather than a stalled iteration.
- */
-export async function forEachConcurrent<I>(
-  source: AsyncIterable<I>,
-  concurrency: number,
-  fn: (item: I, index: number) => Promise<void>,
-): Promise<void> {
-  if (!Number.isFinite(concurrency) || concurrency < 1) {
-    throw new InvokeError(
-      "INVALID_CONCURRENCY",
-      `forEachConcurrent: concurrency must be a positive integer, got ${concurrency}`,
-    );
-  }
-  const iterator = source[Symbol.asyncIterator]();
-  const limit = Math.max(1, Math.floor(concurrency));
-  let index = 0;
-  let done = false;
-  let failure: { err: unknown } | undefined;
-  let turn: Promise<void> = Promise.resolve();
-
-  async function pull(): Promise<{ item: I; index: number } | undefined> {
-    const previous = turn;
-    let release!: () => void;
-    turn = new Promise<void>((resolve) => (release = resolve));
-    await previous;
-    try {
-      if (done || failure !== undefined) return undefined;
-      const next = await iterator.next();
-      if (next.done) {
-        done = true;
-        return undefined;
-      }
-      return { item: next.value, index: index++ };
-    } finally {
-      release();
-    }
-  }
-
-  async function worker(): Promise<void> {
-    while (failure === undefined) {
-      const pulled = await pull();
-      if (pulled === undefined) return;
-      try {
-        await fn(pulled.item, pulled.index);
-      } catch (err) {
-        if (failure === undefined) failure = { err };
-        return;
-      }
-    }
-  }
-
-  try {
-    await Promise.all(Array.from({ length: limit }, () => worker()));
-  } finally {
-    if (!done) await iterator.return?.(undefined);
-  }
-  if (failure !== undefined) throw failure.err;
-}
-
-export function pascalCase(s: string): string {
+/** The naming recipe for a generated inline-invoke resource. Module-private: it
+ *  is the engine's own, and a bare `pascalCase` on the SDK's flat surface is a
+ *  utility nobody should be reimplementing a name from. */
+function pascalCase(s: string): string {
   return s
     .split(/[^a-zA-Z0-9]+/)
     .filter(Boolean)
@@ -522,6 +405,9 @@ export function pascalCase(s: string): string {
     .join("");
 }
 
+/** Normalize any caught failure to the `error` shape a `catch:` branch reads.
+ *  Shared with the composers' whole-operation `catches:`, so one caught failure
+ *  has one shape wherever it is read. */
 export function toSequenceError(err: unknown, stepName: string): SequenceError {
   if (isInvokeError(err)) {
     // InvokeError.code is not validated non-empty at construction, so fall back

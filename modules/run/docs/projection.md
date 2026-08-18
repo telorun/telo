@@ -9,7 +9,7 @@ sidebar_label: Run.Projection
 
 `Run.Projection` is a `Telo.Invocable` that runs its `steps` body **once per element** of a collection and collects each element's `outputs` into an array — the declarative map over a collection. Input order is preserved even under concurrency. For pure side-effects with no collected result, use [`Run.Iteration`](./iteration.md).
 
-The body is the same step grammar as [`Run.Sequence`](../README.md) minus the `while` block (the kind is itself the loop).
+The body is the shared step grammar, the same one every step body carries — a nested `while` included.
 
 ## Fields
 

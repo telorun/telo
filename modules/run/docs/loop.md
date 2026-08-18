@@ -7,9 +7,9 @@ sidebar_label: Run.Loop
 
 > Examples below assume this module is imported with an `imports:` entry under alias `Run`. Kind references (`Run.Loop`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
-`Run.Loop` is a `Telo.Runnable` that repeats its `steps` body while `condition` holds and/or until `maxIterations` is reached. It is the standalone, referenceable loop — the in-sequence inline `while` block still lives in [`Run.Sequence`](../README.md); `Run.Loop` adds iteration scope, a returnable result, and use as a `target`.
+`Run.Loop` is a `Telo.Runnable` that repeats its `steps` body while `condition` holds and/or until `maxIterations` is reached. It is the standalone, referenceable loop: where an inline `while` step repeats work inside a body, `Run.Loop` adds iteration scope, a returnable result, and use as a `target`.
 
-The body is the same step grammar as `Run.Sequence` minus the `while` block (the kind is itself the loop).
+The body is the shared step grammar, the same one every step body carries — a nested `while` included.
 
 ## Fields
 

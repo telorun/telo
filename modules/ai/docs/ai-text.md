@@ -108,7 +108,7 @@ steps:
         bindings: ["${{ inputs.summary }}"]
 ```
 
-`steps.Summarize.result.{text,usage,finishReason}` is fully typed — the analyzer's `x-telo-step-context` derives it from `Ai.Text`'s own declared `outputType`.
+`steps.Summarize.result.{text,usage,finishReason}` is fully typed — the analyzer derives it from `Ai.Text`'s own declared `outputType`.
 
 ## What's NOT here
 

@@ -54,7 +54,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Tar archive byte stream.
     required: [ output ]
     additionalProperties: false
@@ -89,7 +89,7 @@ inputType:
     type: object
     properties:
       input:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Tar archive byte stream.
       path:
         type: string
@@ -102,7 +102,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Byte stream of the extracted entry's contents.
     required: [ output ]
     additionalProperties: false

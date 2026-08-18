@@ -17,6 +17,12 @@
  * dependency. When a sibling adopts new syntax, every dependent fails its own
  * edge check until its range moves. Nothing walks a graph — the check is the
  * walk.
+ *
+ * **A forward-declared edge is not a failure here.** A module adopting new syntax
+ * declares the release that will carry it, and on the commit that does so that
+ * release does not exist yet — which is the point of declaring the bound before
+ * it. Such an edge is reported `pending` and never runs; `publish` is where it
+ * becomes fatal, by which time npm has published and the version exists.
  */
 
 import { lowerBound, readRequires, upperBound } from "@telorun/analyzer";
@@ -26,6 +32,7 @@ import { promisify } from "node:util";
 import { parseAllDocuments } from "yaml";
 import { defaultCustomTags } from "@telorun/templating";
 
+import { publishedTeloVersions, unreleasedEdge } from "./verify-requires.js";
 import type { DiscoveredModule, Workspace } from "./workspace.js";
 
 const run = promisify(execFile);
@@ -39,7 +46,10 @@ export interface EdgeCheck {
   edge: string;
   /** Module keys checked at this edge. */
   modules: string[];
-  status: "passed" | "failed" | "unavailable";
+  /** `pending` means the edge names a version newer than anything published, so
+   *  there was nothing to install — see `unreleasedEdge`. It is informational
+   *  here and fatal at publish. */
+  status: "passed" | "failed" | "pending" | "unavailable";
   detail?: string;
 }
 
@@ -105,8 +115,25 @@ export async function checkWorkspaceRequires(
     }
   }
 
+  // Asked ONCE for the whole workspace, before any edge runs: the normal way new
+  // syntax lands is a module declaring the range of the release that will carry
+  // it, and until that release ships there is nothing to install. Spawning `npx`
+  // at such an edge has one possible outcome, and npm's ETARGET arrives wrapped
+  // in install noise indistinguishable from being offline.
+  const published = byEdge.size > 0 ? await publishedTeloVersions() : null;
+
   const checks: EdgeCheck[] = [];
   for (const [edge, modules] of [...byEdge].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const latestPublished = unreleasedEdge(edge, published);
+    if (latestPublished !== undefined) {
+      checks.push({
+        edge,
+        modules: modules.map((m) => m.key),
+        status: "pending",
+        detail: latestPublished,
+      });
+      continue;
+    }
     checks.push(...(await checkEdge(edge, modules)));
   }
   return { checks, refuted: checks.some((c) => c.status === "failed") };

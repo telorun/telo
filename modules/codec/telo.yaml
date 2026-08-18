@@ -35,7 +35,7 @@ inputType:
     type: object
     properties:
       input:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable of records (or bytes) to encode.
     required: [input]
     additionalProperties: false
@@ -45,7 +45,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable of Uint8Array chunks ready for transport.
     required: [output]
     additionalProperties: false
@@ -70,7 +70,7 @@ inputType:
     type: object
     properties:
       input:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable of Uint8Array chunks to decode.
     required: [input]
     additionalProperties: false

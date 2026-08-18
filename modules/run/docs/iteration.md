@@ -7,7 +7,7 @@ sidebar_label: Run.Iteration
 
 > Examples below assume this module is imported with an `imports:` entry under alias `Run`. Kind references (`Run.Iteration`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
-`Run.Iteration` is a `Telo.Runnable` that runs its `steps` body **once per element** of a collection, for side-effects. It produces no collected result (use [`Run.Projection`](./projection.md) when you need the per-element values). The body is the same step grammar as [`Run.Sequence`](../README.md) — `invoke`, `if`, `switch`, `try`, `throw` — minus the `while` block (the kind is itself the loop).
+`Run.Iteration` is a `Telo.Runnable` that runs its `steps` body **once per element** of a collection, for side-effects. It produces no collected result (use [`Run.Projection`](./projection.md) when you need the per-element values). The body is the shared step grammar — `invoke`, `value`, `if`, `while`, `switch`, `try`, `throw` — the same one every step body carries, including a nested `while` (a loop inside a for-each body is ordinary control flow).
 
 ## Fields
 

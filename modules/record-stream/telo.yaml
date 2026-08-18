@@ -44,7 +44,7 @@ inputType:
     type: object
     properties:
       input:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable of records to project.
     required: [input]
     additionalProperties: false
@@ -54,7 +54,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable of strings produced by the configured projection.
     required: [output]
     additionalProperties: false
@@ -114,7 +114,7 @@ inputType:
     type: object
     properties:
       input:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable to fan out.
     required: [input]
     additionalProperties: false
@@ -124,10 +124,10 @@ outputType:
     type: object
     properties:
       outputA:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: First fan-out branch — every item from `input` in order.
       outputB:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Second fan-out branch — every item from `input` in order.
     required: [outputA, outputB]
     additionalProperties: false
@@ -158,7 +158,7 @@ inputType:
     type: object
     properties:
       input:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable to forward and observe.
       context:
         description: Opaque caller data forwarded to the completion handler as `context`.
@@ -170,7 +170,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Every item from `input`, in order.
     required: [output]
     additionalProperties: false
@@ -236,7 +236,7 @@ inputType:
         type: string
         description: Buffer key to append under (e.g. a turn id).
       input:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable of records to journal.
 outputType:
   kind: Telo.JsonSchema
@@ -298,7 +298,7 @@ outputType:
     required: [output]
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable of `{ id, data }` entries, then live tail until done.
 schema:
   type: object

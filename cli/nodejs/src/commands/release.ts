@@ -213,6 +213,16 @@ async function check(argv: CommonArgv): Promise<void> {
     const count = `${c.modules.length} module${c.modules.length === 1 ? "" : "s"}`;
     if (c.status === "passed") {
       outLine(`${log.ok("✓")}  ${label}  ${log.dim(`${count} verified`)}`);
+    } else if (c.status === "pending") {
+      // The declared floor is a release that has not happened yet — the normal
+      // state on the commit that adopts new syntax. Naming the latest published
+      // version is what makes a TYPO'd bound visible: `>=0.790.0` beside a latest
+      // of `0.78.0` reads wrong at a glance, where "could not run" would not.
+      outLine(
+        `${log.dim("·")}  ${label}  ${log.dim(
+          `${count} pending — not published yet (latest: ${c.detail ?? "unknown"})`,
+        )}`,
+      );
     } else if (c.status === "unavailable") {
       // Unproven, not disproven — CI that cannot reach npm must not invent a
       // verdict, and must not silently claim one either.

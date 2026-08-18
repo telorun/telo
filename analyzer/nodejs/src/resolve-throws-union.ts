@@ -2,6 +2,7 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
 import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { readStepSlot } from "./step-slot.js";
 
 export interface ThrowsCodeMeta {
   data?: Record<string, any>;
@@ -174,8 +175,8 @@ function resolveInherited(
   if (!props) return result;
 
   for (const [fieldName, fieldSchema] of Object.entries(props)) {
-    const stepCtx = fieldSchema["x-telo-step-context"] as Record<string, string> | undefined;
-    if (!stepCtx?.invoke) continue;
+    const stepCtx = readStepSlot(fieldSchema);
+    if (!stepCtx) continue;
     const steps = (manifest as Record<string, any>)[fieldName];
     if (!Array.isArray(steps)) continue;
     unionInto(result, collectStepArrayThrows(steps, stepCtx.invoke, undefined, ctx, ownerModule));
@@ -205,7 +206,7 @@ function collectStepArrayThrows(
 /** Walk one step, dispatching by shape. Generic for any Run.Sequence-style
  *  composer: the step keys it recognises (`try` / `catch` / `finally` / `then`
  *  / `else` / `elseif` / `do` / `cases` / `default`) are the same set already
- *  traversed by the analyzer's `x-telo-step-context` schema builder, so future
+ *  traversed by the analyzer's step-body walk, so future
  *  composers that reuse those shape conventions work without changes here. */
 function collectStepThrows(
   step: Record<string, any>,

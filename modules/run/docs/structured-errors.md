@@ -77,7 +77,7 @@ Any other CEL expression is an analyzer error — the throw union would be unbou
 
 A definition with `inherit: true` declares that its effective throw union is the union of everything it calls. `Run.Sequence` uses this: its declared throws is empty at the definition level; the actual union is computed per-manifest from the steps it runs.
 
-The analyzer's dataflow pass walks every field on the definition annotated with `x-telo-step-context` (so future composers like `Run.Parallel` opt in the same way — no analyzer changes needed). For each step:
+The analyzer's dataflow pass walks every field on the definition that holds a step body — a field whose items point at the shared grammar (`$ref: "telo://manifest#/$defs/Step"`), or, for a module published before that fragment existed, one annotated `x-telo-step-context`. Either way a future composer opts in without an analyzer change. For each step:
 
 1. If the step has a `throw:` block, resolve the thrown code at this call site.
 2. Otherwise, resolve the step's `invoke.kind` via the definition registry.
@@ -87,7 +87,7 @@ The analyzer's dataflow pass walks every field on the definition annotated with 
 
 Inside a `try` / `catch`, the catch block's throws *replace* the try block's (a `catch` that runs to completion has absorbed the try error; a `catch` that ends in a `throw:` re-raises whatever it decides).
 
-`inherit: true` is only legal on definitions whose schema declares at least one `x-telo-step-context` array — the analyzer rejects it otherwise.
+`inherit: true` is only legal on definitions whose schema declares at least one step body — the analyzer rejects it otherwise.
 
 ## Rules the analyzer enforces
 

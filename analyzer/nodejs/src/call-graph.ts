@@ -55,6 +55,7 @@ import {
   type RefUse,
   type RefUseCases,
 } from "./ref-slot.js";
+import { isStepSlot } from "./step-slot.js";
 import { isRefEntry, resolveFieldEntries, type RefFieldEntry } from "./reference-field-map.js";
 import { DEPENDENCY_GRAPH_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 
@@ -290,12 +291,6 @@ function resolveUseAtSite(
       ? "absent"
       : "unmatched";
   return { use: possibleUses(slot), unresolved: entry.useCases, unresolvedReason };
-}
-
-/** Names the step-list annotation on an array property, if any. */
-function stepContextOf(schema: Record<string, any> | undefined): Record<string, any> | undefined {
-  const annotation = schema?.["x-telo-step-context"];
-  return annotation && typeof annotation === "object" ? annotation : undefined;
 }
 
 /** A resolved plain reference value (`{kind, name}`, optionally `alias`) — the
@@ -545,8 +540,7 @@ export function buildCallGraph(
     if (!schema) return;
     const collected: StepGraphNode[] = [];
     for (const [key, propSchema] of propertySchemas(schema)) {
-      const annotation = stepContextOf(propSchema);
-      if (!annotation) continue;
+      if (!isStepSlot(propSchema)) continue;
       const value = (node.manifest as Record<string, unknown>)[key];
       if (!Array.isArray(value)) continue;
       walkSteps(value, key, undefined, {

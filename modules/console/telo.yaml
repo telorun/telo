@@ -105,7 +105,7 @@ inputType:
     type: object
     properties:
       input:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable of strings or Uint8Array chunks to write to stdout.
     required: [input]
     additionalProperties: false
@@ -134,7 +134,7 @@ inputType:
     type: object
     properties:
       input:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: Async iterable to forward; the animation runs until the first item arrives.
     required: [input]
     additionalProperties: false
@@ -144,7 +144,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-stream: true
+        x-telo-type: Telo.Stream
         description: |
           Forwarded stream. The head of the stream carries the prefix, the
           reserved-cell setup, animation frames, and a clear sequence; after

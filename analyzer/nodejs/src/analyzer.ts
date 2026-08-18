@@ -111,6 +111,7 @@ import { validateReferences } from "./validate-references.js";
 import { validateReferenceForms } from "./validate-reference-forms.js";
 import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
+import { readStepSlot } from "./step-slot.js";
 
 const SELF_PREFIX = "Self.";
 
@@ -373,7 +374,7 @@ export function gatherPropertySchemas(
 }
 
 /**
- * Generic, role-driven walk over an `x-telo-step-context` step array. Calls
+ * Generic, role-driven walk over a step array. Calls
  * `visit(step, stepPath)` for every step — top-level and nested through the
  * `x-telo-topology-role` forms (`branch`, `branch-list`, `case-map`). This is
  * the single definition of how steps nest, shared by `buildStepContextSchema`
@@ -440,7 +441,7 @@ export function walkStepArray(
 }
 
 /**
- * Build a `steps` context schema from `x-telo-step-context` annotation.
+ * Build a `steps` context schema for a kind's step body.
  * Walks each step in the manifest array, resolves the invoked resource's output
  * contract, and builds `steps.<name>.result` context entries.
  *
@@ -461,7 +462,7 @@ export function walkStepArray(
  *                    sub-properties (e.g. elseif: [{ if, then }]).
  *   - `case-map`   — value is an object whose values are step arrays (e.g. cases).
  * No specific Run.Sequence field name is hardcoded; any kind that uses
- * `x-telo-step-context` and tags its branch fields with these roles works.
+ * a step body and tags its branch fields with these roles works.
  */
 function buildStepContextSchema(
   manifest: Record<string, any>,
@@ -478,7 +479,7 @@ function buildStepContextSchema(
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
 
   for (const [fieldName, fieldSchema] of Object.entries(props)) {
-    const stepCtx = fieldSchema["x-telo-step-context"] as Record<string, string> | undefined;
+    const stepCtx = readStepSlot(fieldSchema);
     if (!stepCtx) continue;
 
     const invokeField = stepCtx.invoke;
@@ -647,7 +648,7 @@ const NO_ENTRY_POINT_CAPABILITIES = new Set([
 ]);
 
 /**
- * Validate `x-telo-step-context` step `invoke` references (e.g. `Run.Sequence`
+ * Validate step `invoke` references (e.g. `Run.Sequence`
  * steps).
  *
  * The reference field map deliberately does NOT descend into step `invoke`
@@ -666,7 +667,7 @@ const NO_ENTRY_POINT_CAPABILITIES = new Set([
  *     contract has no entry point → `REFERENCE_KIND_MISMATCH` (runtime
  *     `ERR_RESOURCE_NOT_INVOKABLE`).
  *
- * Generic and topology-driven — it walks steps via the same `x-telo-step-context`
+ * Generic and topology-driven — it walks steps via the same step-slot
  * / `x-telo-topology-role` annotations `buildStepContextSchema` uses (through the
  * shared `walkStepArray`), so nested branches (then/else/do/catch/cases) are
  * covered and no `Run.Sequence` field name is hardcoded. The cross-module
@@ -795,8 +796,7 @@ function validateStepInvokeReferences(
     for (const [fieldName, fieldSchema] of Object.entries(
       defSchema.properties as Record<string, any>,
     )) {
-      const stepCtx = fieldSchema["x-telo-step-context"] as Record<string, string> | undefined;
-      const invokeField = stepCtx?.invoke;
+      const invokeField = readStepSlot(fieldSchema)?.invoke;
       if (!invokeField) continue;
       const steps = m[fieldName];
       if (!Array.isArray(steps)) continue;

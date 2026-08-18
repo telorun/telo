@@ -110,6 +110,8 @@ export {
   transfersControl,
 } from "./ref-slot.js";
 export type { RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
+export { isStepSlot, readStepSlot, STEP_FRAGMENT } from "./step-slot.js";
+export type { StepSlot } from "./step-slot.js";
 export {
   ANNOTATION_KEYWORDS,
   registerTeloKeywords,

@@ -29,9 +29,38 @@
  * and blocking a publish on network reachability trades one failure for a worse
  * one. A CLI that runs and rejects the manifest is evidence, and evidence is
  * what this gate is for.
+ *
+ * **A FORWARD-DECLARED lower bound is a third state, not an infrastructure
+ * failure.** The normal way new syntax lands is: a module adopts it and declares
+ * the range of the release that will carry it — a version that, until that
+ * release publishes, does not exist. Spawning `npx @telorun/cli@<unpublished>`
+ * can only ETARGET, and reporting *"could not run"* buries a routine, expected,
+ * self-resolving state under npm's install noise, in the same bucket as being
+ * offline. So the registry is asked FIRST and such an edge is reported
+ * `pending`, skipping a run that has no possible outcome. The latest published
+ * version rides along in the report, because that is what makes a TYPO visible:
+ * `pending against 0.790.0 (latest published: 0.78.0)` reads wrong at a glance,
+ * where a bare "could not run" reads the same for a typo and for tomorrow's
+ * release.
+ *
+ * The states are asymmetric between the two callers, and deliberately. At
+ * `telo release check` a pending edge is informational — the release that
+ * publishes the version has not happened yet, which is the entire point of
+ * declaring the bound before it. At **publish** it is fatal, for the reason an
+ * unpublished UPPER bound is: publication runs npm before modules, so by the
+ * time a module is pushed its declared minimum exists — and if it does not, the
+ * release is out of order and every consumer's `telo upgrade` would refuse the
+ * version it is about to receive.
  */
 
-import { readRequires, lowerBound, upperBound, type VersionRange } from "@telorun/analyzer";
+import {
+  isNewerModuleVersion,
+  lowerBound,
+  newestModuleVersion,
+  readRequires,
+  upperBound,
+  type VersionRange,
+} from "@telorun/analyzer";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -46,6 +75,9 @@ export type EdgeOutcome =
   | { edge: string; status: "passed" }
   /** The edge CLI ran and rejected it — the declared range is false. */
   | { edge: string; status: "failed"; output: string }
+  /** The edge names a version NEWER than anything published: there is nothing to
+   *  install, and the claim becomes verifiable the moment that version ships. */
+  | { edge: string; status: "pending"; latestPublished: string }
   /** The edge CLI could not be run. The claim is unverified, not disproven. */
   | { edge: string; status: "unavailable"; reason: string };
 
@@ -55,6 +87,12 @@ export interface VerifyRequiresResult {
   outcomes: EdgeOutcome[];
   /** True when at least one edge produced evidence the declaration is false. */
   refuted: boolean;
+}
+
+/** True when the range names an edge no released CLI can satisfy yet. Read by
+ *  `publish`, where it is fatal, and by `release check`, where it is not. */
+export function hasPendingEdge(result: VerifyRequiresResult): boolean {
+  return result.outcomes.some((o) => o.status === "pending");
 }
 
 /**
@@ -68,7 +106,14 @@ export interface VerifyRequiresResult {
 export async function verifyRequires(
   manifestPath: string,
   moduleDoc: Record<string, unknown>,
-  options: { currentVersion: string } ,
+  options: {
+    currentVersion: string;
+    /** Published `@telorun/cli` versions, for telling a forward-declared edge
+     *  from an unreachable one. `null` / omitted when the registry could not be
+     *  asked, in which case no edge is classified `pending` — a guess about what
+     *  exists is worse than the run's own verdict. */
+    publishedVersions?: string[] | null;
+  },
 ): Promise<VerifyRequiresResult> {
   const { block } = readRequires(moduleDoc);
   const declared = block.telo;
@@ -93,6 +138,11 @@ export async function verifyRequires(
     // report a spurious "could not run" against every module.
     if (edge === options.currentVersion) {
       outcomes.push({ edge, status: "passed" });
+      continue;
+    }
+    const latestPublished = unreleasedEdge(edge, options.publishedVersions ?? null);
+    if (latestPublished !== undefined) {
+      outcomes.push({ edge, status: "pending", latestPublished });
       continue;
     }
     outcomes.push(await runEdge(manifestPath, edge));
@@ -134,6 +184,29 @@ async function runEdge(manifestPath: string, edge: string): Promise<EdgeOutcome>
     }
     return { edge, status: "failed", output: output || (e.message ?? "check failed") };
   }
+}
+
+/**
+ * The latest published version when `edge` names something NEWER than it — a
+ * forward-declared bound, whose verification is pending that release rather than
+ * failed or unavailable. `undefined` when the edge exists, when it is older than
+ * the latest (a yanked version is deliberately left to the run, whose "could not
+ * run" is honest about it), or when the registry could not be asked.
+ *
+ * Deciding this from the registry rather than from the spawn's failure is the
+ * whole point: `npx @telorun/cli@<unpublished>` has one possible outcome, and
+ * npm's ETARGET arrives wrapped in install noise that reads exactly like being
+ * offline.
+ */
+export function unreleasedEdge(edge: string, published: string[] | null): string | undefined {
+  if (published === null) return undefined;
+  const normalized = published.map((v) => (v.startsWith("v") ? v.slice(1) : v));
+  if (normalized.includes(edge)) return undefined;
+  // Prereleases included: an `-rc` build is installable, so the newest thing
+  // that exists is the honest comparison point for "does this edge exist yet".
+  const latest = newestModuleVersion(normalized, { includePrerelease: true });
+  if (latest === undefined) return undefined;
+  return isNewerModuleVersion(edge, latest) ? latest : undefined;
 }
 
 /** Whether the edge CLI's output actually concerns the manifest under test.
