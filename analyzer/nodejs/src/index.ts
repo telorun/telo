@@ -155,6 +155,7 @@ export {
   providedZoneAttributes,
   readProvidesZone,
   readRequiresZone,
+  readViolatesZone,
   rewriteRequiresZoneKind,
 } from "./zone-slot.js";
 export type { ProvidesZoneSlot, RequiresZoneSlot } from "./zone-slot.js";
@@ -173,6 +174,7 @@ export type {
 export type { ZoneModuleDocuments } from "./zone-module-documents.js";
 export { validateZoneSlotDeclarations } from "./validate-zone-slots.js";
 export { validateDurableRegions } from "./validate-durable-regions.js";
+export { validateZoneViolations } from "./validate-zone-violations.js";
 export {
   containmentIndex,
   findZoneRegions,

@@ -2,8 +2,9 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { visitManifest } from "./manifest-visitor.js";
 import { isInlineResource, resolveFieldEntries, resolveFieldValues, type RefFieldEntry } from "./reference-field-map.js";
-import { navigateJsonPointer } from "./schema-compat.js";
+import { navigateJsonPointer, substituteCelFields } from "./schema-compat.js";
 import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
+import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } from "./types.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -496,6 +497,54 @@ export function validateReferences(
 
           const refVal = anchorVal as Record<string, unknown>;
           if (typeof refVal.kind !== "string") continue;
+
+          // THE INSTANCE FIRST, then the kind — the layering
+          // `x-telo-context-ref-from` already uses, and for the same reason. A
+          // kind that declares one fixed shape declares it on its definition; a
+          // kind whose shape is per instance declares it as a FIELD, and reading
+          // only the definition would type every instance against nothing. A
+          // `Durable.Await`'s `outputType:` is exactly the second: what a
+          // delivery carries is a property of that await and of no other, so a
+          // delivery naming it must be checked against the instance's own.
+          const target =
+            typeof refVal.name === "string" ? byName.get(refVal.name) : undefined;
+          const perInstance =
+            target === undefined
+              ? undefined
+              : navigateJsonPointer(target as Record<string, unknown>, jsonPointer);
+          if (perInstance !== undefined) {
+            const instanceSchema = resolveTypeFieldToSchema(
+              perInstance,
+              resources as Record<string, any>[],
+            );
+            if (instanceSchema) {
+              // CEL leaves become schema-shaped placeholders first. A payload is
+              // overwhelmingly written as expressions over the call's inputs, so
+              // validating it raw would report every one of them as a type
+              // error — the check would fire only on the literal case, which is
+              // the case nobody writes. What survives substitution is exactly
+              // what is worth reporting: a missing required field, an unknown
+              // property, a literal of the wrong type. The same treatment
+              // `x-telo-value-schema-from` documents.
+              const substituted = substituteCelFields(
+                fieldValue,
+                instanceSchema as Record<string, any>,
+              );
+              for (const issue of registry.validateWithRefs(
+                substituted,
+                instanceSchema as Record<string, any>,
+              )) {
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: "DEPENDENT_SCHEMA_MISMATCH",
+                  source: SOURCE,
+                  message: `${resourceLabel}: '${concretePath}' does not match the schema '${refVal.name}' declares at '${jsonPointer}': ${issue}`,
+                  data: { resource: resourceData, filePath, path: concretePath },
+                });
+              }
+              continue;
+            }
+          }
 
           const refResolvedKind = aliases.resolveKind(refVal.kind) ?? refVal.kind;
           const refDef = registry.resolve(refVal.kind) ?? registry.resolve(refResolvedKind);

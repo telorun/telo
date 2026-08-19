@@ -74,8 +74,9 @@ The object form carries that pointer as `key` beside the zone's **attributes**
 
 ### `x-telo-requires-zone`
 
-On a resource's field. The string form (`x-telo-requires-zone: Self.Batch`)
-names the zone kind and asserts nothing else. The object form adds:
+On a resource's field, **or at your kind's schema root**. The string form
+(`x-telo-requires-zone: Self.Batch`) names the zone kind and asserts nothing
+else. The object form adds:
 
 - **`key`** — one self-relative JSON pointer or an ordered list tried in order,
   first hit winning. A pointer may traverse a `!ref` into the referenced
@@ -83,6 +84,22 @@ names the zone kind and asserts nothing else. The object form adds:
   *uncorrelated* — any zone of the right kind satisfies it.
 - **`reason`** — optional; the runtime consequence, quoted after the path in
   diagnostics.
+- **`attributes`** — optional; the attributes (below) the satisfying zone must
+  declare.
+
+**Field or root?** A field requirement applies only when that field is set —
+`Sql.Command.transaction` means "*when you name a transaction, one must be
+open*". A root requirement is unconditional: every instance of the kind needs
+it. Put it at the root when your kind only makes sense inside a region at all,
+because attaching such a requirement to some arbitrary field would read
+"…when you set this option".
+
+**`attributes` asks what the zone guarantees, not merely what kind it is.** A
+kind can extend the abstract you require — passing every kind check — while its
+body omits the attribute you actually depend on. `Durable.Sleep` requires
+`Durable.Run` *with `replayed`*, because a workflow kind whose body does not
+declare that is a region nothing replays, and parking inside it parks against
+nothing.
 
 ## Why a key is a list
 
@@ -226,6 +243,45 @@ if (held) {
 Note what the kernel does NOT do: it never branches on a name. It resolves the
 declaring kind's schema — the one place that lookup is already available — and
 hands the values over uninterpreted, exactly as `readRefSlot` returns `use`.
+
+### Saying you cannot honour one
+
+The check above is the enforcement, and it only fires when your controller
+actually runs. `x-telo-violates-zone` is how you say the same thing where
+`telo check` can see it:
+
+```yaml
+kind: Telo.Definition
+metadata: { name: Await }
+schema:
+  type: object
+  x-telo-violates-zone:
+    noSuspend: >-
+      this waits for a delivery from outside the run, which may be days away
+  properties: { … }
+```
+
+At the schema root, because it is a property of the kind rather than of one of
+its slots: a kind that suspends suspends however it is configured.
+
+This is the third relation, and the other two cannot express it. `provides` says
+what your region guarantees about its contents; `requires` says what you need of
+the region around you; neither says *I break that guarantee*. Without it the
+requirement is not enough to tell hazards apart — `Durable.Value` requires the
+same replaying region `Durable.Await` does and parks nothing.
+
+The diagnostic prints both sentences, which is why both are required as prose:
+
+```
+Durable.Await 'approval' is inside a Lease.Critical 'guarded' region that
+declares 'noSuspend' (the lease expires on its own TTL and is renewed only
+while this body runs…), but Durable.Await cannot honour it: this waits for a
+delivery from outside the run, which may be days away…
+```
+
+Declare it **as well as** the runtime refusal, not instead of it. The check is a
+downward walk from the providing slot and may miss an edge it cannot see
+statically; your controller is what makes the guarantee real.
 
 ## Writing the controller
 

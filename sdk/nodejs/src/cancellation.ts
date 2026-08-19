@@ -131,7 +131,12 @@ export function deriveContext(base: InvokeContext, overrides: Partial<InvokeCont
 }
 
 /** Terminal status of a span — maps to OpenTelemetry span status. */
-export type SpanOutcome = "ok" | "failed" | "rejected" | "cancelled";
+/** How an invocation ended.
+ *
+ *  `parked` is its own outcome and not a flavour of failure: a suspended
+ *  invocation neither succeeded nor failed, and recording it as failed would
+ *  make a trace say the run broke every time it waited. */
+export type SpanOutcome = "ok" | "failed" | "rejected" | "cancelled" | "parked";
 
 /** Options for {@link ResourceContext.openSpan}. */
 export interface OpenSpanOptions {

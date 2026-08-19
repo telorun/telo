@@ -1,0 +1,241 @@
+kind: Telo.Application
+metadata:
+  name: DurableLocalParkTest
+  version: 1.0.0
+  description: |
+    The property suspension exists for: work stops, the process is free to go away, and
+    something delivered from outside picks it up where it left off.
+
+    The whole round trip in one manifest — park, deliver, resume — and the assertion is
+    again THE KERNEL'S OWN DISPATCH RECORD. `before` is dispatched exactly ONCE across
+    the two executions: the first run performs it and parks, and the resumed execution
+    replays it from the journal rather than re-running it. Two would mean the resume
+    re-executed everything up to the park, which is the failure durability exists to
+    prevent and the one a naive implementation produces.
+
+    `after` is dispatched exactly once too, and that is the other half: it had never run
+    when the process parked, so the resume must genuinely execute it.
+
+    NO RESUMER HERE, and the reason is worth stating: a resumer holds the kernel for
+    as long as it polls, which is right for an app whose job is recovery and wrong for
+    a test, which has to finish. The run is continued instead through the OTHER path
+    that continues one — submitting the same run id again, which attaches, takes the
+    lapsed claim and replays. That is the same `execute` the resumer calls, so what is
+    under test here is replay-after-delivery rather than the poller.
+
+    THE TOKEN IS AUTHORED, not minted, and that is what makes the test a fair model of
+    the real shape rather than a convenience: an approval link has to exist before the
+    wait starts, so a body that hands its own address out needs the address to be a
+    property of its inputs.
+imports:
+  Durable: ../../durable
+  Local: ../
+  Journal: ../../durable-journal-file
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: DURABLE_PARK_TEST_DIR
+    type: string
+    default: .telo/durable-park-test
+targets:
+  - !ref test
+  - !ref dispatches
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+# The two effects the assertion counts. They keep no state: what happened to them
+# is read off the dispatch record, not from inside the work.
+kind: Run.Value
+metadata: { name: before }
+value: { stage: before }
+---
+kind: Run.Value
+metadata: { name: after }
+value: { stage: after }
+---
+# What the delivery carries. Declared here and nowhere else, which is what lets
+# the delivery below be checked against it and the step after it be typed.
+kind: Durable.Await
+metadata: { name: approval }
+token: !cel "'approve:' + inputs.ticket"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [approvedBy]
+    additionalProperties: false
+    properties:
+      approvedBy: { type: string }
+---
+kind: Local.Workflow
+metadata: { name: onboard }
+journal: !ref journal
+runId: !cel "'park:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - name: opened
+    invoke: !ref before
+  - name: waitForApproval
+    invoke: !ref approval
+    inputs:
+      ticket: !cel "inputs.ticket"
+  - name: closed
+    invoke: !ref after
+---
+kind: Local.Status
+metadata: { name: status }
+journal: !ref journal
+---
+kind: Local.Deliver
+metadata: { name: approve }
+journal: !ref journal
+# Naming the await is what type-checks `payload:` against the shape that await
+# declared. A delivery addressed from outside the manifest names nothing and is
+# validated when it arrives instead.
+await: !ref approval
+token: !cel "'approve:' + inputs.ticket"
+payload:
+  approvedBy: !cel "inputs.by"
+---
+# Same wait, a payload that does not match what it declared.
+kind: Local.Deliver
+metadata: { name: approveWrong }
+journal: !ref journal
+await: !ref approval
+token: !cel "'approve:' + inputs.ticket"
+payload:
+  approvedBy: !cel "42"
+---
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 15s
+---
+kind: Assert.Events
+metadata: { name: dispatches }
+filter:
+  - type: "before.Invoked"
+  - type: "after.Invoked"
+expect:
+  # ONCE each. `before` ran on the first execution and was REPLAYED on the
+  # resumed one; `after` had never run, so the resume genuinely executed it.
+  - event: before.Invoked
+    times: 1
+  - event: after.Invoked
+    times: 1
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # One ticket per process, so a journal directory left behind by an earlier run
+  # holds nothing this run could replay from.
+  - name: ticket
+    value: !cel "'t' + string(nowMillis())"
+
+  - name: start
+    invoke: !ref onboard
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  # Wait for the run to reach its park. Polled rather than assumed: the start is
+  # detached, so the body is still on its way to the wait when this returns.
+  #
+  # Read once BEFORE the loop, because `while:` is a pre-test — its predicate is
+  # evaluated before the body has produced anything to read.
+  - name: parked
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParked
+    while: !cel "steps.parked.result.status != 'parked'"
+    maxIterations: 200
+    do:
+      - name: parked
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+  - name: assertParked
+    inputs:
+      actual:
+        status: !cel "steps.parked.result.status"
+        waitingAt: !cel "steps.parked.result.parked.path"
+        waitingOn: !cel "steps.parked.result.parked.resource"
+      expected:
+        status: parked
+        waitingAt: steps/waitForApproval
+        waitingOn: approval
+    invoke: { kind: Assert.Equals }
+
+  # The delivery: a token, a payload, and no knowledge of the body at all.
+  - name: deliver
+    invoke: !ref approve
+    inputs:
+      ticket: !cel "steps.ticket.result"
+      by: ada
+  - name: assertDelivered
+    inputs:
+      actual: !cel "steps.deliver.result.delivered"
+      expected: true
+    invoke: { kind: Assert.Equals }
+
+  # Continue the run by submitting the same id again: the run is no longer
+  # parked and nobody holds its claim, so this attaches, takes it and replays —
+  # the identical path the resumer takes.
+  - name: resume
+    invoke: !ref onboard
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  # The delivered payload IS the step's result — recorded at the park's own
+  # path, so a replay returns it without the await ever being reached again.
+  - name: finished
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: assertCompleted
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        approvedBy: !cel "steps.finished.result.result.steps.waitForApproval.result.approvedBy"
+        closed: !cel "steps.finished.result.result.steps.closed.result.stage"
+      expected:
+        status: completed
+        approvedBy: ada
+        closed: after
+    invoke: { kind: Assert.Equals }
+
+  # A payload of the wrong shape is refused AT THE DELIVERY. It has to be:
+  # a delivered value enters the record without being dispatched, so nothing
+  # downstream would ever have looked at it — the work would simply have read
+  # the wrong shape.
+  - name: badPayload
+    try:
+      - name: send
+        invoke: !ref approveWrong
+        inputs:
+          ticket: !cel "steps.ticket.result"
+    catch:
+      - name: caught
+        value: !cel "error.code"
+  - name: assertRefused
+    inputs:
+      actual: !cel "steps.caught.result"
+      expected: ERR_DURABLE_PAYLOAD_INVALID
+    invoke: { kind: Assert.Equals }
+
+  # A second delivery on a spent token wakes nothing. An approval clicked twice
+  # is an ordinary outcome of a public endpoint, not a failure to page on.
+  - name: again
+    invoke: !ref approve
+    inputs:
+      ticket: !cel "steps.ticket.result"
+      by: grace
+  - name: assertNotDelivered
+    inputs:
+      actual: !cel "steps.again.result.delivered"
+      expected: false
+    invoke: { kind: Assert.Equals }

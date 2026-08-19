@@ -68,6 +68,13 @@ steps:
   - name: two
     invoke: !ref secondBody
 ---
+# A start is detached and returns a run id, so the body's own result is read
+# back through the run record.
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 10s
+---
 kind: Run.Sequence
 metadata: { name: test }
 steps:
@@ -77,11 +84,15 @@ steps:
     invoke: !ref run
     inputs:
       token: !cel "steps.token.result"
+  - name: outcome
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.go.result.runId"
   - name: assertDistinct
     inputs:
       actual:
-        one: !cel "steps.go.result.result.steps.one.result.from"
-        two: !cel "steps.go.result.result.steps.two.result.from"
+        one: !cel "steps.outcome.result.result.steps.one.result.from"
+        two: !cel "steps.outcome.result.result.steps.two.result.from"
       expected:
         one: alpha
         two: beta

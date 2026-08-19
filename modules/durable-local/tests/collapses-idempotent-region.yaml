@@ -64,6 +64,14 @@ steps:
   - name: bulk
     invoke: !ref importAll
 ---
+# A start is detached, so the run's own report is read back with the outcome —
+# `collapsedRegions` is a fact about the RUN, and the run record is where it
+# lives now that no caller is holding the body's return value.
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 10s
+---
 kind: Run.Sequence
 metadata: { name: test }
 steps:
@@ -75,11 +83,15 @@ steps:
     invoke: !ref importer
     inputs:
       batch: !cel "'b' + steps.token.result"
+  - name: outcome
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.run.result.runId"
   - name: assertCollapsed
     inputs:
       actual:
-        regions: !cel "steps.run.result.collapsedRegions"
-        reason: !cel "steps.run.result.collapseReasons[0]"
+        regions: !cel "steps.outcome.result.collapsedRegions"
+        reason: !cel "steps.outcome.result.collapseReasons[0]"
         # The wrapping resource's own justification, which is per instance by
         # nature — a consumer reading the zone off the ambient stack learns what
         # KIND of promise it is, while this is why this particular author

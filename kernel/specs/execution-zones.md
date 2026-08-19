@@ -156,10 +156,16 @@ schema. It MUST NOT branch on any attribute name: interpreting one is entirely
 the consumer's, and a runtime that acted on `noSuspend` would be a runtime with
 an opinion about a feature it does not implement.
 
-### 4.2 `x-telo-requires-zone: <kind> | { zone, key?, reason? }`
+### 4.2 `x-telo-requires-zone: <kind> | { zone, key?, reason?, attributes? }`
 
-On a resource's field: the resource must be reached through such a zone. The
-string form names the zone kind, uncorrelated. The object form adds:
+On a resource's field, **or at the kind's schema root**: the resource must be
+reached through such a zone. A root annotation is **unconditional** — every
+instance of the kind requires it, whatever it is configured with, which is what a
+kind that only makes sense inside a region actually means. A field annotation
+applies only when that field is set, so putting an unconditional requirement on
+one would read "…when you set this option".
+
+The string form names the zone kind, uncorrelated. The object form adds:
 
 - `key` — one self-relative JSON pointer or an ordered list tried in order,
   first hit winning. A pointer MAY traverse a `!ref` into the referenced
@@ -168,10 +174,62 @@ string form names the zone kind, uncorrelated. The object form adds:
   kind satisfies it; a runtime MUST NOT invent a correlation the manifest does
   not state.
 - `reason` — optional; the runtime consequence, quoted in failures.
+- `attributes` — optional; a list of attribute names (§4.1.1) the satisfying
+  zone MUST declare.
+
+**`attributes` asks what the zone GUARANTEES, which the kind test cannot
+answer.** A kind may extend the required abstract — satisfying every kind check —
+while its body slot omits the attribute the requirer actually depends on. A
+durable workflow whose body does not declare `replayed` is a zone the durable
+checks never look inside, and a run parking there parks against nothing. A
+requirement naming an attribute a discharging zone does not declare is an error
+at the discharging slot; the requirement is still discharged, because the zone
+genuinely is open, and reporting it unsatisfied as well would name one defect
+twice with opposite words.
 
 The zone kind uses the alias-qualified grammar `extends` and `x-telo-ref` use
 (`Self.<Kind>`, `<Alias>.<Kind>`, `Telo.<Kind>`), resolved in the **declaring**
 module's scope and rewritten to canonical `<module>.<Kind>` at registration.
+
+**A zone slot is discharged whichever shape the body takes.** A body may be a
+`!ref` to an executable held at the annotated slot, or a step array declared
+natively at it. In the second case the dispatch originates at a *step inside* the
+array while the annotation sits on the array, so a runtime or analyzer that looks
+only at the dispatching slot finds no annotation — and every requirement inside a
+natively-bodied zone becomes unsatisfiable. Both shapes MUST discharge.
+
+### 4.3 `x-telo-violates-zone: { …attributes }`
+
+At a kind's **schema root**: this kind cannot honour these guarantees about a
+region it is placed inside.
+
+The third relation, and the one the other two cannot express. `provides` states
+what a region guarantees about its contents; `requires` states what a resource
+needs of the region around it. Neither says *this resource breaks that
+guarantee* — so without it an attribute has a promise and nothing able to name
+what falsifies it, and two kinds with identical requirements are
+indistinguishable when only one of them is a hazard (`Durable.Value` needs the
+same replaying region `Durable.Await` does, and parks nothing).
+
+Values are the author's **reason**, as on `provides`, and for a sharper purpose:
+the diagnostic prints the region's promise beside the resource's rebuttal, and
+neither sentence is anything a tool could generate.
+
+```yaml
+x-telo-violates-zone:
+  noSuspend: >-
+    this waits for a delivery from outside the run, which may be days away
+```
+
+Declared at the root because it is a property of the KIND rather than of one of
+its slots: a kind that suspends suspends however it is configured.
+
+A resource declaring a violation, reached inside a region declaring that
+attribute, is an **error**. Both halves are declarations, so nothing about the
+runtime can reconcile them. The check is a **downward walk** from the providing
+slot and may under-approximate — an edge the call graph cannot see is invisible —
+so the runtime refusal in the violating controller remains the enforcement, in
+the *enforced at runtime, warned early* division this document takes throughout.
 
 ## 5. The controller surface
 
@@ -293,3 +351,16 @@ references.
 `ERR_ZONE_REQUIRED` is raised by a controller on its own behalf and MAY be
 declared in a kind's `throws:`; the other two are runtime defects and MUST NOT
 be.
+
+A controller that declares `x-telo-violates-zone` raises on its own behalf too,
+with a code of its own choosing, quoting the zone's declared reason verbatim —
+the sentence belongs to the author who made the promise, and a generated message
+is exactly what requiring a reason exists to prevent. `Durable.Sleep` and
+`Durable.Await` raise `ERR_DURABLE_SUSPEND_FORBIDDEN` this way.
+
+Static diagnostics, for reference: `ZONE_REQUIREMENT_UNSATISFIED`,
+`ZONE_REQUIREMENT_DEFERRED`, `ZONE_EXPORT_UNSATISFIABLE`,
+`ZONE_PROVIDER_UNRESOLVED`, `ZONE_ANNOTATION_INVALID`, `ZONE_ATTRIBUTE_UNKNOWN`,
+`ZONE_ATTRIBUTE_INCOMPLETE`, **`ZONE_ATTRIBUTE_MISSING`** (§4.2 — a discharging
+zone that does not declare a required attribute) and **`ZONE_ATTRIBUTE_VIOLATED`**
+(§4.3).

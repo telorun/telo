@@ -16,6 +16,7 @@
  */
 import {
   SEVERITY,
+  isSuspension,
   parseDurationMs,
   type ResourceContext,
   type ResourceManifest,
@@ -74,14 +75,32 @@ export class ResumerController {
     try {
       const workflow = this.workflow();
       const journal = workflow.journal();
-      for (const run of await journal.interruptedRuns(BATCH)) {
+      for (const run of await journal.dueRuns(Date.now(), BATCH)) {
         // Claim before continuing, so several pollers against one store do not
         // both resume the same run and duplicate every unrecorded effect in it.
         if (!(await journal.claimRun(run, this.#holder, CLAIM_TTL_MS))) continue;
         try {
-          await workflow.execute(run, journal, { inputs: {} });
+          // A SCHEDULED run has never executed, so there is no journaled inputs
+          // decision to replay and no caller to derive one from — what it was
+          // scheduled with is the only source. A resumed run ignores this: its
+          // inputs were recorded on the first pass and `decide` hands them back.
+          const record = await journal.readRun(run);
+          // Renewed under THIS poller's holder, which is the one that took the
+          // claim — renewing as the workflow would fail and the run would be
+          // taken out from under a body still executing it.
+          await workflow.execute(
+            run,
+            journal,
+            { inputs: record?.inputs ?? {} },
+            undefined,
+            this.#holder,
+          );
           this.ctx.log.info("Resumed an interrupted run", { "durable.run": run });
         } catch (err) {
+          // A run that parked again is working exactly as intended — it moved
+          // forward and is now waiting on the next thing. Reporting it as a
+          // failure would fill an operator's log with successful waits.
+          if (isSuspension(err)) continue;
           // A resumed run that fails again is the run's own failure, already
           // settled in the journal by `execute`. It is reported and the sweep
           // continues — one bad run must not stop recovery of the others.

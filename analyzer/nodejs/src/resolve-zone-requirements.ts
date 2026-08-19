@@ -50,6 +50,11 @@ export interface ZoneRequirementSpec {
    *  check compares against `exports.resources`. */
   correlationName?: string;
   reason?: string;
+  /** Attributes the satisfying zone must declare. Carried across the export
+   *  boundary with the rest of the requirement: a consumer discharging a
+   *  library's open requirement must meet the same guarantee the library's own
+   *  internals would have. */
+  attributes?: string[];
   /** Label of the requiring resource (`sql.Command 'charge'`). */
   origin: string;
   /** Resource names on the propagation path so far, origin first. */
@@ -78,6 +83,9 @@ interface Requirement {
   zone: string;
   /** Kinds that discharge it: the zone kind plus everything extending it. */
   accepted: ReadonlySet<string>;
+  /** Attributes the discharging zone must declare — the GUARANTEE half of the
+   *  requirement, checked at the slot that would otherwise discharge it. */
+  attributes: string[];
   correlation?: string;
   correlationLabel?: string;
   correlationName?: string;
@@ -368,6 +376,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
       if (!bucket.some((r) => `${r.zone}\0${r.correlation ?? ""}` === req.key)) {
         bucket.push({
           zone: req.zone,
+          ...(req.attributes.length > 0 ? { attributes: req.attributes } : {}),
           correlation: req.correlation,
           correlationLabel: req.correlationLabel,
           correlationName: req.correlationName,
@@ -392,19 +401,57 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
       // site. Checked BEFORE termination, so a terminating provider slot
       // (a detached durable body) still discharges its own zone.
       const callerDef = resolveDef(caller.kind, moduleOf(caller));
+      // WHICH slot establishes the zone depends on the body's SHAPE, and both
+      // shapes are real. A ref body annotates the slot the edge itself names
+      // (`Sql.Transaction.steps`, holding a `!ref` to an executable). A NATIVE
+      // body annotates the step ARRAY, while the edge comes from a step inside
+      // it and names that step's own `invoke:` — so looking only at `edge.slot`
+      // finds no annotation and the enclosing zone never discharges anything.
+      // Handling one shape would make every requirement inside a natively-bodied
+      // zone unsatisfiable, which is exactly what a durable workflow's body is.
+      const bodySlot =
+        from.type === "step" ? from.array.replace(/\[\d+\].*$/, "") : edge.slot;
       const slotSchema = schemaNodeAt(
         callerDef?.schema as Record<string, any> | undefined,
-        edge.slot,
+        bodySlot,
       );
       const provides = readProvidesZone(slotSchema);
       if (provides && callerDef && req.accepted.has(canonicalOf(callerDef))) {
+        // A native body's annotation sits on the array, whose enclosing object
+        // IS the resource root — so its correlation pointer anchors there,
+        // rather than at the step item the edge happens to come from.
         const providerKey = provides.key
-          ? resolveProviderKey(caller, edge, provides.key, resolveName)
+          ? from.type === "step"
+            ? resolveStaticKey(caller, [provides.key], resolveName)
+            : resolveProviderKey(caller, edge, provides.key, resolveName)
           : undefined;
         const discharged =
           req.correlation === undefined ||
           (providerKey !== undefined && correlationIdOf(providerKey) === req.correlation);
-        if (discharged) continue;
+        if (discharged) {
+          // The zone is the right KIND but may not make the promise the
+          // requirement is built on. Reported here rather than at the providing
+          // module, because this is the only point where both halves are in
+          // hand: the requirement's demanded attributes and the slot that would
+          // satisfy it. The requirement still discharges — the zone IS open, so
+          // reporting it unsatisfied as well would name the same defect twice
+          // with opposite words.
+          const missing = req.attributes.filter((a) => !(a in provides.attributes));
+          if (missing.length > 0) {
+            emit(
+              DiagnosticSeverity.Error,
+              "ZONE_ATTRIBUTE_MISSING",
+              edge,
+              caller,
+              req,
+              via,
+              `reaches a ${canonicalOf(callerDef)} zone that does not declare ` +
+                `${missing.join(", ")}, so the guarantee this requirement is built on ` +
+                `does not hold inside it`,
+            );
+          }
+          continue;
+        }
       }
 
       // A dynamic selector is already a hard diagnostic (validate-ref-slots);
@@ -567,13 +614,24 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     if (meta?.forwardedExport) continue;
     const def = resolveDef(node.kind, meta?.module);
     const schema = def?.schema as Record<string, any> | undefined;
-    if (!def || !schema?.properties) continue;
+    if (!def || !schema) continue;
+    // A requirement at the SCHEMA ROOT is unconditional: every instance of the
+    // kind must be inside the zone, whatever it is configured with. A parking
+    // kind is exactly that shape — it has no option that turns the requirement
+    // on — and a field-level annotation would have to be attached to some
+    // arbitrary property and would then read "…when you set this one".
+    const slots: [Record<string, any>, string | undefined][] = [[schema, undefined]];
     for (const [field, propSchema] of Object.entries(
-      schema.properties as Record<string, Record<string, any>>,
+      (schema.properties ?? {}) as Record<string, Record<string, any>>,
     )) {
-      const requires = readRequiresZone(propSchema);
+      slots.push([propSchema, field]);
+    }
+    for (const [slotSchema, field] of slots) {
+      const requires = readRequiresZone(slotSchema);
       if (!requires) continue;
-      if ((node.manifest as Record<string, unknown>)[field] === undefined) continue;
+      if (field !== undefined && (node.manifest as Record<string, unknown>)[field] === undefined) {
+        continue;
+      }
       const zoneDef = resolveDef(requires.zone, def.metadata.module);
       if (!zoneDef) continue; // ZONE_PROVIDER_UNRESOLVED is reported at registration
       const zone = canonicalOf(zoneDef);
@@ -581,6 +639,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
       const req: Requirement = {
         zone,
         accepted: acceptedFor(zone),
+        attributes: requires.attributes,
         correlation: target ? correlationIdOf(target) : undefined,
         correlationLabel: target ? labelOf(target) : undefined,
         correlationName: target?.name,
@@ -609,6 +668,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
         const req: Requirement = {
           zone: spec.zone,
           accepted: zoneDef ? acceptedFor(spec.zone) : new Set([spec.zone]),
+          attributes: spec.attributes ?? [],
           correlation: spec.correlation,
           correlationLabel: spec.correlationLabel,
           correlationName: spec.correlationName,

@@ -6,9 +6,11 @@ import {
   isCompiledValue,
   isInvokeError,
   isCancellationError,
+  isSuspension,
   resourceKey,
   UNCANCELLABLE_CONTEXT,
   type EvaluationContext as IEvaluationContext,
+  type SpanOutcome,
   type EmitEvent,
   type InstanceFactory,
   type InvokeContext,
@@ -1138,7 +1140,7 @@ export class EvaluationContext implements IEvaluationContext {
     traceId: string | undefined,
     capability: "invoke" | "run" | "provide" | "request",
     phase: "start" | "end",
-    outcome: "ok" | "failed" | "rejected" | "cancelled" | undefined,
+    outcome: SpanOutcome | undefined,
     detail: Record<string, unknown>,
   ): Record<string, unknown> {
     return {
@@ -1192,7 +1194,7 @@ export class EvaluationContext implements IEvaluationContext {
     const rootScope = tracing && parentInvocationId === undefined ? this.traceRootScope() : undefined;
     const span = (
       phase: "start" | "end",
-      outcome: "ok" | "failed" | "rejected" | "cancelled" | undefined,
+      outcome: SpanOutcome | undefined,
       detail: Record<string, unknown>,
     ) =>
       this.tracePayload(
@@ -1257,6 +1259,25 @@ export class EvaluationContext implements IEvaluationContext {
       if (isCancellationError(err)) {
         const reason = err instanceof Error ? err.message : String(err);
         await this.emit(`${name}.InvokeCancelled`, span("end", "cancelled", { inputs, reason }));
+        throw err;
+      }
+      // A SUSPENSION passes through untouched, exactly as a cancellation does,
+      // and for a sharper reason. It is not a failure — it is the run leaving —
+      // and the chokepoint is the one swallower that cannot be worked around:
+      // EVERY dispatch between a parking kind and the workflow that owns the run
+      // goes through here, so wrapping it once converts a park into an
+      // `ERR_EXECUTION_FAILED` at every hop. The latch would then catch the
+      // corruption at the boundary, which is a loud failure where nothing was
+      // wrong.
+      //
+      // Reported as its own outcome rather than as a rejection: a parked
+      // invocation neither succeeded nor failed, and a trace that recorded it
+      // as failed would say the run broke every time it waited.
+      if (isSuspension(err)) {
+        await this.emit(
+          `${name}.InvokeParked`,
+          span("end", "parked", { inputs, path: err.path, resource: err.resource }),
+        );
         throw err;
       }
       if (isInvokeError(err)) {
@@ -1394,7 +1415,7 @@ export class EvaluationContext implements IEvaluationContext {
     };
     const payload = (
       phase: "start" | "end",
-      outcome: "ok" | "failed" | "rejected" | "cancelled" | undefined,
+      outcome: SpanOutcome | undefined,
       extra: Record<string, unknown> = {},
     ) =>
       this.tracePayload(

@@ -13,8 +13,15 @@ import {
   durableHandleOf,
   journalingSuppressed,
   stepPath,
+  type DurableRunHandle,
   type DurableTarget,
 } from "./durable-run.js";
+import {
+  SUSPENDING_BACKOFF_MS,
+  assertMaySuspend,
+  isSuspension,
+  parkRun,
+} from "./durable-suspension.js";
 import type { OpenZoneAttributes } from "./zone-attribute.js";
 import { tryParseDurationMs } from "./duration.js";
 import { InvokeError } from "./invoke-error.js";
@@ -242,12 +249,17 @@ export async function executeInvokeStep(
   // step body of its own hangs those paths under this one rather than starting
   // over at the root. Set only inside a durable run: outside one there is no
   // path to carry, and deriving a context would be a rebuild for nothing.
+  // Derived from the RAW handle, not the collapse-suppressed one: collapse
+  // suppresses the engine's own per-step entries, never the journal. A
+  // `Durable.Value` or a parking kind inside a collapsed region still records
+  // directly, and it keys off this path — so dropping it here would give every
+  // such resource in the region ONE key inherited from an enclosing level.
   const stepCtx =
-    handle && state.invokeCtx
+    rawHandle && state.invokeCtx
       ? deriveContext(state.invokeCtx, { durablePath: path })
       : state.invokeCtx;
   const execute = () =>
-    withStepRetry(step, stepCtx, (attemptCtx) =>
+    withStepRetry(step, stepCtx, ctx, rawHandle, path, (attemptCtx) =>
       withStepTimeout(step, attemptCtx, (dispatchCtx) =>
         dispatch(raw, inputs, ctx, { ...state, invokeCtx: dispatchCtx }),
       ),
@@ -322,15 +334,15 @@ function targetIdentityOf(raw: unknown): DurableTarget | undefined {
 async function withStepRetry<T>(
   step: InvokeStep,
   invokeCtx: InvokeContext | undefined,
+  ctx: InvokeStepContext,
+  handle: DurableRunHandle | undefined,
+  path: string,
   dispatch: (ctx: InvokeContext | undefined) => Promise<T>,
 ): Promise<T> {
   const policy = step.retry;
   const attempts = policy?.attempts ?? 0;
   if (!policy || attempts <= 0) return dispatch(invokeCtx);
 
-  const initial = policy.initialDelay ?? parseDuration(policy.delay) ?? 250;
-  const factor = policy.factor ?? 2;
-  const maxDelay = policy.maxDelay ?? 32_000;
   const jitter = policy.jitter ?? "full";
 
   for (let resend = 0; ; resend++) {
@@ -338,15 +350,71 @@ async function withStepRetry<T>(
       return await dispatch(invokeCtx);
     } catch (err) {
       if (resend >= attempts || !isRetryable(err, policy.nonRetryable)) throw err;
-      const backoff = Math.min(maxDelay, initial * Math.pow(factor, resend));
-      await waitBeforeResend(
-        jitter === "full" ? Math.random() * backoff : backoff,
-        invokeCtx?.cancellation,
-        step,
-        err,
-      );
+      // The UN-JITTERED backoff, which is a pure function of the declared policy
+      // and the attempt index — and which is therefore what the park decision
+      // below turns on. Deciding on the jittered value instead would put
+      // `Math.random()` on a control-flow branch inside a determinism contract:
+      // the same attempt could sleep on one pass and park on the next, for no
+      // reason a reader of the manifest could see. It would also make the static
+      // check unstateable, since the analyzer cannot know which way a coin
+      // landed. Jitter still does its whole job — spreading re-attempts — on the
+      // duration itself, in both branches.
+      const backoff = retryBackoffMs(policy, resend);
+      const delay = jitter === "full" ? Math.random() * backoff : backoff;
+
+      // A LONG backoff inside a durable run suspends rather than sleeps, and the
+      // attempt state is journaled with it. The obvious reading — only the
+      // outcome matters, so journal once — is wrong the moment a backoff
+      // suspends: a run that parks mid-retry and resumes in another process must
+      // know which attempt it was on, or it restarts the policy from zero and a
+      // three-attempt cap becomes unbounded.
+      //
+      // ONE DECISION PER ATTEMPT, holding when that attempt was due, is the
+      // whole mechanism. It needs nothing beyond `decide`: on resume the loop
+      // re-runs from attempt zero, each recorded attempt hands back a due time
+      // already in the past and is therefore consumed without waiting, and the
+      // first UNRECORDED attempt computes a fresh one and parks. The budget is
+      // preserved because the replayed attempts still count against it.
+      if (handle && backoff >= SUSPENDING_BACKOFF_MS) {
+        const attemptPath = stepPath(path, "retry", resend);
+        const dueAt = (await handle.decide(attemptPath, "value", () => Date.now() + delay)) as number;
+        if (Date.now() < dueAt) {
+          // Refused inside a region that promised nothing in it suspends. The
+          // check is here rather than at the policy, because a short backoff
+          // never suspends and rejecting one would forbid a retry that is
+          // perfectly safe in a lease.
+          assertMaySuspend(ctx, invokeCtx, { resource: step.name ?? path });
+          await parkRun(handle, { path: attemptPath, resource: step.name ?? path }, { at: dueAt });
+        }
+        continue;
+      }
+
+      await waitBeforeResend(delay, invokeCtx?.cancellation, step, err);
     }
   }
+}
+
+/**
+ * The backoff before attempt `resend + 1`, before jitter.
+ *
+ * ONE formula, exported because the analyzer needs the same number: it decides
+ * statically whether a step's declared policy would park inside a region that
+ * cannot be held open, and a second copy of exponential-backoff arithmetic in
+ * the analyzer would be a rule that drifts from the behaviour it describes the
+ * first time either side gains a knob.
+ *
+ * Jitter is deliberately NOT applied here. It belongs to the duration, not to
+ * the shape of the policy, and the two consumers want the shape: the runtime
+ * branches on it (see `withStepRetry`) and the analyzer reports on it.
+ *
+ * The `??` fallbacks are the floor for a caller that assembled a policy in code;
+ * a manifest gets its defaults from the schema.
+ */
+export function retryBackoffMs(policy: InvokeStepRetry, resend: number): number {
+  const initial = policy.initialDelay ?? parseDuration(policy.delay) ?? 250;
+  const factor = policy.factor ?? 2;
+  const maxDelay = policy.maxDelay ?? 32_000;
+  return Math.min(maxDelay, initial * Math.pow(factor, resend));
 }
 
 /** Kernel verdicts on the CALL rather than on the work, beyond the ambient
@@ -356,6 +424,10 @@ const UNRETRYABLE_CODES = new Set(["ERR_RESOURCE_NOT_FOUND", "ERR_RESOURCE_NOT_I
 
 function isRetryable(err: unknown, nonRetryable?: string[]): boolean {
   if (isCancellationError(err)) return false;
+  // A suspension is not a failure — it is the run leaving. Re-attempting it
+  // would park again under the same policy until the budget ran out, and the
+  // last attempt would propagate a park the earlier ones had already recorded.
+  if (isSuspension(err)) return false;
   const code = (err as { code?: unknown } | null | undefined)?.code;
   if (typeof code !== "string") return true;
   // The author's own exclusions, checked beside the built-in ones rather than

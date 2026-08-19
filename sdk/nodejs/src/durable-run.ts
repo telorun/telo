@@ -152,11 +152,19 @@ export interface DurableRunHandle {
   /**
    * Suspend the run until a time or a token.
    *
-   * Slice 4. Declared here because a backend implements the interface as a
-   * whole, and because leaving it out would let a backend look complete while
-   * being unable to park.
+   * **A park is recorded, not merely thrown.** `where` is what makes it
+   * recoverable: the step path is where a resume re-enters and where a delivery
+   * writes its payload, so a backend that took only `until` could wake a run
+   * without knowing what it was waiting at. The parking resource's name rides
+   * along for diagnostics, since "run 41 is parked" is not an operator's answer.
+   *
+   * Called through {@link parkRun}, never directly — the latch that catches a
+   * swallowed suspension is set there, so a backend cannot forget it.
    */
-  park(until: { readonly at?: number; readonly token?: string }): Promise<never>;
+  park(
+    where: { readonly path: string; readonly resource: string },
+    until: { readonly at?: number; readonly token?: string },
+  ): Promise<never>;
 
   /**
    * Does this handle's own recording land inside the given zone's atomicity?

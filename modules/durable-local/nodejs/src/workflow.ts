@@ -8,8 +8,10 @@
 import {
   InvokeError,
   StepEngine,
+  assertNotSwallowed,
   deriveContext,
   isCancellationError,
+  isSuspension,
   type InvokeContext,
   type ResourceContext,
   type ResourceManifest,
@@ -26,10 +28,18 @@ interface WorkflowManifest extends ResourceManifest {
   inputs?: Record<string, unknown>;
 }
 
-/** How long this instance owns a run it took over from a dead holder. Bounded
- *  for the reason every claim in this repo is: a process that dies must free the
- *  run rather than wedge it. */
+/** How long this instance owns a run it is working. Bounded for the reason every
+ *  claim in this repo is: a process that dies must free the run rather than wedge
+ *  it. */
 const CLAIM_TTL_MS = 60_000;
+
+/** How often a running body renews its claim. A third of the TTL, so two
+ *  renewals may be lost — to a slow journal, to a pause — before another poller
+ *  is entitled to take the run. Without renewal the bound is not a safety net
+ *  but a deadline: any body outliving it would be picked up and executed a
+ *  second time WHILE the first was still running, which is the duplication the
+ *  claim exists to prevent. */
+const CLAIM_RENEW_MS = Math.floor(CLAIM_TTL_MS / 3);
 
 export class WorkflowController {
   private readonly engine: StepEngine;
@@ -75,7 +85,7 @@ export class WorkflowController {
       // doing the work again — which is what makes a caller-chosen run id an
       // idempotent start.
       if (existing?.status === "completed") {
-        return { runId, replayed: true, result: existing.result };
+        return { runId, attached: true, status: "completed", result: existing.result };
       }
       if (existing?.status === "failed") {
         throw new InvokeError(
@@ -96,11 +106,62 @@ export class WorkflowController {
       // to take it means someone is actively working the run, and the honest
       // answer is to say so rather than to invent a result or to join in.
       if (!(await journal.claimRun(runId, this.#holder, CLAIM_TTL_MS))) {
-        return { runId, replayed: true, running: true };
+        return { runId, attached: true, status: existing?.status ?? "running" };
       }
+    } else if (!(await journal.claimRun(runId, this.#holder, CLAIM_TTL_MS))) {
+      // A FRESH admission still claims, and skipping it was a race with the
+      // recovery path rather than a missing nicety: an admitted run is recorded
+      // `running`, which is exactly what a poller looks for, so between the
+      // admission and the body finishing its first step the resumer could take
+      // the run and execute a second copy of it. Admit-before-execute is what
+      // makes a run recoverable; the claim is what says it does not need
+      // recovering yet.
+      //
+      // Losing this race means another process admitted the same id in the
+      // window — the `attach` answer, reached by a different route.
+      return { runId, attached: true, status: "running" };
     }
 
-    return this.execute(runId, journal, cel, invokeCtx);
+    // DISPATCHED DETACHED, not awaited. A run outlives whatever triggered it —
+    // that is what parking makes real — so an HTTP route that starts one gets
+    // its run id back immediately and the body keeps going. Awaiting it would
+    // also be unable to answer: a body that parks does not return, so the
+    // caller would hang until the deadline of a wait measured in days.
+    //
+    // The outcome is not lost by not being returned: it is in the journal, and
+    // `DurableLocal.Result` is how a caller that wants it asks.
+    this.start(runId, journal, cel);
+    return { runId, started: true, status: "running" };
+  }
+
+  /**
+   * Run the body detached, holding the kernel while it executes.
+   *
+   * Two properties, both load-bearing. The HOLD is what stops a one-shot
+   * application exiting the moment its trigger returned, mid-run — and it is
+   * released when the body settles, *including when it parks*, because a parked
+   * run is precisely the state in which the process is free to go away. Holding
+   * through a park would keep an application alive for a 72-hour approval.
+   *
+   * And `runDetached` replaces the ambient cancellation scope with the
+   * uncancellable root, so the run is not cancelled the moment the triggering
+   * request completes.
+   */
+  private start(runId: string, journal: DurableJournal, cel: { inputs: unknown }): void {
+    const release = this.ctx.acquireHold(`durable run ${runId}`);
+    this.ctx.runDetached(async () => {
+      try {
+        await this.execute(runId, journal, cel);
+      } catch (err) {
+        // A park is not a failure. It reached here because the signal unwinds to
+        // the boundary that owns the run, which is exactly what it is for, and
+        // the journal already records where the run is waiting.
+        if (isSuspension(err)) return;
+        throw err;
+      } finally {
+        release();
+      }
+    });
   }
 
   /**
@@ -116,8 +177,34 @@ export class WorkflowController {
     journal: DurableJournal,
     cel: { inputs: unknown },
     invokeCtx?: InvokeContext,
+    /** The claim holder to renew under. The resumer claimed the run as itself,
+     *  so renewing as this workflow would fail and the run would be taken from
+     *  under it mid-body. */
+    holder: string = this.#holder,
   ): Promise<unknown> {
     const handle = await LocalRunHandle.open(runId, journal);
+    // The claim is held for as long as the body runs, and a body may run far
+    // longer than one TTL. Unref'd, so a renewal timer never keeps the process
+    // alive on its own — the kernel hold is what does that, and it is released
+    // the moment the run settles or parks.
+    const renew = setInterval(() => {
+      void journal.claimRun(runId, holder, CLAIM_TTL_MS).catch(() => {});
+    }, CLAIM_RENEW_MS);
+    renew.unref?.();
+    try {
+      return await this.runBody(runId, journal, cel, invokeCtx, handle);
+    } finally {
+      clearInterval(renew);
+    }
+  }
+
+  private async runBody(
+    runId: string,
+    journal: DurableJournal,
+    cel: { inputs: unknown },
+    invokeCtx: InvokeContext | undefined,
+    handle: LocalRunHandle,
+  ): Promise<unknown> {
 
     // The BODY's inputs are journaled like any other decision, and this one is
     // load-bearing twice over. It is CEL over the call's inputs, so re-deriving
@@ -150,6 +237,11 @@ export class WorkflowController {
         durable,
       );
     } catch (err) {
+      // A SUSPENSION is the run leaving, not failing. The park is already
+      // recorded, so settling it here would overwrite a live run with a terminal
+      // verdict and strand it — the same shape as the cancellation case below,
+      // for a different reason.
+      if (isSuspension(err)) throw err;
       // A CANCELLED run is interrupted, not failed, and the distinction is the
       // whole of whether it can be recovered. Cancellation is how a process
       // going away reaches the body — Ctrl-C, a shutdown, a drained container —
@@ -173,21 +265,24 @@ export class WorkflowController {
       throw err;
     }
 
+    // THE LATCH. A body that returned normally while a suspension is latched
+    // swallowed one: something between the parking kind and here caught the
+    // signal and continued, so every step after the park ran outside the journal
+    // and this run is about to be recorded as completed. Checked before the
+    // settlement, so the false record is never written.
+    assertNotSwallowed(handle);
+
     const result = { steps };
-    await journal.completeRun(runId, { status: "completed", result });
-    // What the run learned about itself, carried in the OUTCOME.
-    //
-    // It belongs in observed state — it is a reading, not something the author
-    // configured — and it will move there. It cannot live there yet: the kernel
-    // marks a resource started only for a `run()` dispatch, so a Telo.Invocable
-    // reporting observed state is rejected before it has said anything.
-    //
-    // `collapsedRegions` is the one an operator needs, because whether a
-    // deployment got exactly-once or at-least-once turns on whether the
-    // journal's writes land inside the transaction's atomicity — invisible in
-    // the manifest, and silently degrading if someone repoints the journal.
-    // `collapseReasons` carries the AUTHOR's sentence for each, so the answer to
-    // "why is this at-least-once" is the manifest's own words.
+    await journal.completeRun(runId, {
+      status: "completed",
+      result,
+      collapsedRegions: handle.observations.collapsedRegions,
+      collapseReasons: handle.observations.collapseReasons,
+    });
+    // Returned to whoever called `execute` directly — the resumer, and a start
+    // that took over a lapsed claim. A caller that STARTED the run gets a run id
+    // and reads the outcome through `DurableLocal.Result`, which reads the same
+    // facts off the run record this just settled.
     return {
       runId,
       replayed: handle.observations.replayedSteps > 0,

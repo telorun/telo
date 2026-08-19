@@ -39,6 +39,7 @@ export interface ZoneSlotIssue {
 
 const PROVIDES = "x-telo-provides-zone";
 const REQUIRES = "x-telo-requires-zone";
+const VIOLATES = "x-telo-violates-zone";
 
 /** A self-relative JSON Pointer, the only correlation-key spelling both halves
  *  read identically. `""` (whole document) is meaningless as a key, so a
@@ -91,6 +92,7 @@ function checkAttributes(
   definition: ResourceManifest,
   path: string,
   issues: ZoneSlotIssue[],
+  annotation: string = PROVIDES,
 ): void {
   const declared = new Set<string>();
 
@@ -104,7 +106,7 @@ function checkAttributes(
         manifest: definition,
         path,
         message:
-          `${PROVIDES} at '${path}' declares '${name}', which is not a zone attribute. ` +
+          `${annotation} at '${path}' declares '${name}', which is not a zone attribute. ` +
           (suggestion ? `Did you mean '${suggestion}'? ` : "") +
           `The vocabulary is closed: ${zoneAttributeNames().join(", ")}. An attribute ` +
           `states a property of everything executed inside this zone, and every reader ` +
@@ -122,7 +124,7 @@ function checkAttributes(
         manifest: definition,
         path,
         message:
-          `${PROVIDES} at '${path}' declares '${name}' as ${describe(value)}. Every zone ` +
+          `${annotation} at '${path}' declares '${name}' as ${describe(value)}. Every zone ` +
           `attribute's value is the author's REASON — a non-empty sentence, quoted verbatim ` +
           `by the diagnostics that enforce it (${entry.description}).`,
       });
@@ -131,6 +133,11 @@ function checkAttributes(
     declared.add(name);
   }
 
+  // The completeness rule is about what a region PROMISES: declaring `atomic`
+  // without `noSuspend` is an incomplete promise. A VIOLATION is not a promise —
+  // breaking one guarantee implies nothing about breaking another — so the rule
+  // does not apply there.
+  if (annotation !== PROVIDES) return;
   // `requires:` lives in the vocabulary entry rather than as a hardcoded pair of
   // names here, so the completeness rule sits beside the thing it constrains.
   for (const name of declared) {
@@ -247,15 +254,72 @@ function checkRequires(
     fail(`${REQUIRES} at '${path}' declares a non-string 'reason'.`);
   }
 
+  // `attributes` is the GUARANTEE half — what the satisfying zone must declare,
+  // as opposed to which kind it is. It is a list of NAMES with no reasons: the
+  // reason belongs to whoever makes the promise, and a requirer restating it
+  // would be a second sentence to keep in step with the one that is enforced.
+  if (obj.attributes !== undefined) {
+    if (!Array.isArray(obj.attributes) || obj.attributes.length === 0) {
+      fail(
+        `${REQUIRES} at '${path}' declares 'attributes' as ${describe(obj.attributes)}. It ` +
+          `takes a non-empty list of zone attribute names; omit it to require the kind alone.`,
+      );
+    } else {
+      for (const name of obj.attributes) {
+        if (typeof name === "string" && ZONE_ATTRIBUTES.has(name)) continue;
+        const suggestion = typeof name === "string" ? suggestAttribute(name) : undefined;
+        issues.push({
+          code: "ZONE_ATTRIBUTE_UNKNOWN",
+          manifest: definition,
+          path,
+          message:
+            `${REQUIRES} at '${path}' requires '${String(name)}', which is not a zone ` +
+            `attribute. ` +
+            (suggestion ? `Did you mean '${suggestion}'? ` : "") +
+            `The vocabulary is closed: ${zoneAttributeNames().join(", ")}.`,
+        });
+      }
+    }
+  }
+
   for (const key of Object.keys(obj)) {
-    if (key === "zone" || key === "key" || key === "reason") {
+    if (key === "zone" || key === "key" || key === "reason" || key === "attributes") {
       continue;
     }
     fail(
       `${REQUIRES} at '${path}' declares an unknown property '${key}'. The object form takes ` +
-        `'zone', 'key' and 'reason'.`,
+        `'zone', 'key', 'reason' and 'attributes'.`,
     );
   }
+}
+
+/**
+ * The third annotation: what this kind cannot honour.
+ *
+ * Only the object form, because a violation without a reason is exactly the
+ * shape the vocabulary refuses everywhere else — the diagnostic that fires on it
+ * prints the region's promise and this resource's rebuttal side by side, and one
+ * of the two would otherwise be a generated sentence.
+ */
+function checkViolates(
+  raw: unknown,
+  definition: ResourceManifest,
+  path: string,
+  issues: ZoneSlotIssue[],
+): void {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    issues.push({
+      code: "ZONE_ANNOTATION_INVALID",
+      manifest: definition,
+      path,
+      message:
+        `${VIOLATES} at '${path}' is ${describe(raw)}. It takes a map of zone attribute ` +
+        `names to the reason this kind cannot honour each — ` +
+        `\`noSuspend: this waits for a delivery that may be days away\`.`,
+    });
+    return;
+  }
+  checkAttributes(raw as Record<string, unknown>, definition, path, issues, VIOLATES);
 }
 
 /** Walk a definition schema, reporting every zone annotation it cannot read.
@@ -277,8 +341,10 @@ function walkSchema(
   const obj = node as Record<string, unknown>;
   if (obj[PROVIDES] !== undefined) checkProvides(obj[PROVIDES], definition, path, issues);
   if (obj[REQUIRES] !== undefined) checkRequires(obj[REQUIRES], definition, path, issues);
+  if (obj[VIOLATES] !== undefined) checkViolates(obj[VIOLATES], definition, path, issues);
   for (const [key, value] of Object.entries(obj)) {
-    if (key === PROVIDES || key === REQUIRES || key === "examples" || key === "default") continue;
+    if (key === PROVIDES || key === REQUIRES || key === VIOLATES) continue;
+    if (key === "examples" || key === "default") continue;
     walkSchema(value, path ? `${path}.${key}` : key, visited, definition, issues);
   }
 }

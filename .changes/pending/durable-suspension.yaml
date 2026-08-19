@@ -1,0 +1,17 @@
+# One body, several modules — a suspension is a property of the whole stack
+# rather than of any one of them.
+modules:
+  modules/durable: Added
+  modules/durable-local: Added
+  modules/durable-journal-file: Added
+  modules/run: Added
+body: >-
+  Work can now wait — for a duration, until a time, or for a value delivered from outside
+  — and the process is free to exit while it does. Durable.Sleep, Durable.Await and
+  Durable.Value are backend-neutral and name no engine; DurableLocal.Deliver, Status,
+  Result, Cancel, Schedule and Resume address a run from outside. A start no longer
+  blocks: it records the run and returns its id, and Result is how a caller that wants
+  the outcome asks for it, with an optional wait. Waiting inside a region that declares
+  it cannot be held open — a transaction, a lease — is refused at telo check and at
+  runtime, quoting both the region's promise and the wait's reason. A wait inside a
+  concurrent fan-out parks its own branch and lets its siblings finish.

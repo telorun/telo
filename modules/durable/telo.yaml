@@ -17,6 +17,9 @@ exports:
   kinds:
     - Run
     - Idempotent
+    - Sleep
+    - Await
+    - Value
 ---
 # Durable.Run — a MARKER, and deliberately nothing else.
 #
@@ -122,3 +125,210 @@ schema:
         type: object
         properties:
           inputs: {}
+---
+# Durable.Sleep — park until a time.
+#
+# Backend-neutral because it talks to NOTHING but the ambient run handle: the
+# same document parks a local workflow, a Restate invocation and a Temporal
+# workflow, since each installs its own handle before dispatching the body. It
+# names no run and refs no backend.
+#
+# The requirement is declared at the SCHEMA ROOT rather than on a field, and that
+# is the honest placement: every instance of this kind must be inside a durable
+# run, whatever it is configured with. A field-level requirement would say
+# "…when you set this option", which is not what is true here.
+kind: Telo.Definition
+metadata:
+  name: Sleep
+  description: >-
+    Waits for a stated duration, or until a stated time, in a way that survives the
+    process going away: the wake time is recorded once, so a restart during the wait
+    continues to the original deadline instead of starting the clock again. The run
+    releases its hold while waiting, so the application may exit and be restarted.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#sleep
+inputType:
+  type: object
+  additionalProperties: true
+outputType:
+  type: object
+  additionalProperties: false
+  required: [wokeAt]
+  properties:
+    wokeAt:
+      type: integer
+      description: The deadline this wait was pinned to, in epoch milliseconds.
+schema:
+  type: object
+  additionalProperties: false
+  # Exactly one of the two, because they are two ways of saying the same thing
+  # and accepting both would leave the precedence to be discovered.
+  oneOf:
+    - required: [for]
+    - required: [until]
+  # What a satisfying zone must GUARANTEE, not merely which kind it is. A kind
+  # extending Durable.Run whose body slot omits `replayed` would satisfy the kind
+  # test while being a zone the durable checks never look inside — the run would
+  # park against a region nothing replays.
+  x-telo-requires-zone:
+    zone: Self.Run
+    attributes: [replayed]
+    reason: the wait would block the process instead of parking the run
+  # What this kind cannot honour about a region it is placed inside. A wait that
+  # may outlive the process is exactly what a `noSuspend` region promises will
+  # not happen inside it, so the two claims collide and one of them has to move.
+  x-telo-violates-zone:
+    noSuspend: >-
+      the run releases its hold and the process may exit while this waits, so nothing
+      held open for the duration of the region would still be held when it resumes
+  properties:
+    for:
+      title: For
+      description: How long to wait, as a duration (`30s`, `72h`).
+      type: string
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    until:
+      title: Until
+      description: >-
+        When to wake, as a timestamp or epoch milliseconds. Use this when the deadline
+        is a property of the data rather than of when the wait started.
+      type: string
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+---
+# Durable.Await — park until something outside the run delivers a value.
+#
+# The waiting half is shared; the DELIVERING half is native, and deliberately so.
+# Waking a run is a `DurableLocal.Deliver`, a Restate awakeable resolution or a
+# Temporal signal — genuinely different operations, and a shared deliver kind
+# would put the half of the lifecycle where engines differ most back into a
+# common contract.
+#
+# The tie between the two is a ref, not a second contract: each backend's deliver
+# kind takes an `await:` ref and derives its payload schema from THIS resource's
+# `outputType`, so the shape is declared once, here, and checked at the delivery.
+kind: Telo.Definition
+metadata:
+  name: Await
+  description: >-
+    Waits for a value delivered from outside the run — an approval, a webhook, a human
+    decision — for as long as it takes, surviving restarts in between. Declares the shape
+    of what the delivery carries, so the steps that read it are type-checked. An optional
+    deadline turns an unanswered wait into a failure rather than a run that waits forever.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#awaitDelivery
+throws:
+  codes:
+    ERR_DURABLE_AWAIT_TIMEOUT:
+      description: >-
+        The deadline passed with nothing delivered. Raised rather than returned, because
+        an author who declared a deadline declared that going unanswered is a failure —
+        an empty result would look like an answer to every step after it. Only possible
+        when `timeout:` (or a per-call `inputs.timeout`) is set.
+inputType:
+  type: object
+  additionalProperties: true
+  properties:
+    timeout:
+      type: string
+      description: Overrides this instance's deadline for this one wait.
+schema:
+  type: object
+  additionalProperties: false
+  x-telo-requires-zone:
+    zone: Self.Run
+    attributes: [replayed]
+    reason: there would be nothing to park, so the wait could never be delivered to
+  x-telo-violates-zone:
+    noSuspend: >-
+      this waits for a delivery from outside the run, which may be days away and will
+      almost never arrive inside the lifetime of anything the region is holding
+  properties:
+    outputType:
+      title: Output type
+      description: >-
+        What a delivery to this await carries. Per instance, because that is what it is —
+        and without it the steps reading this result would type-check against nothing.
+      x-telo-ref:
+        kind: Telo.JsonSchema
+        use: schema
+    token:
+      title: Token
+      description: >-
+        The address a delivery must carry, as an expression over the call's inputs. Write
+        one when something has to hand the address out BEFORE the wait begins — an
+        approval email carries the link, and the step that sends it runs first. Omit it
+        and one is generated, for the case where the address is handed out by whatever
+        reads the work rather than by the work itself.
+      type: string
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    timeout:
+      title: Timeout
+      description: >-
+        How long to wait before giving up, at which point the work fails with
+        ERR_DURABLE_AWAIT_TIMEOUT. Measured from the moment the wait begins and pinned
+        then, so a restart part-way through counts toward the same deadline rather than
+        starting the clock again. Omit to wait indefinitely.
+      type: string
+      x-telo-eval: compile
+---
+# Durable.Value — pin one impure evaluation.
+#
+# Redundant everywhere except the one place it is essential. An ordinary `value:`
+# step is journaled already; inside a COLLAPSED region — a Durable.Idempotent, or
+# a transaction whose journal writes land outside its atomicity — the engine
+# records nothing of its own, because the region re-runs whole. A `uuid()` there
+# yields a different value the second time and falsifies the region's own claim.
+#
+# Collapse suppresses per-step entries, never the journal, so this records
+# directly and replays where everything around it does not.
+kind: Telo.Definition
+metadata:
+  name: Value
+  description: >-
+    Records the result of an expression the first time it is evaluated and returns that
+    same value on every re-run, so a generated id, a random choice or a timestamp stays
+    fixed for the life of the work. Use it inside a region that may re-run, where a fresh
+    value each time would make the re-run produce different records.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#value
+inputType:
+  type: object
+  additionalProperties: true
+schema:
+  type: object
+  required: [value]
+  additionalProperties: false
+  x-telo-requires-zone:
+    zone: Self.Run
+    attributes: [replayed]
+    reason: there would be no record to pin the value in, so every re-run would differ
+  properties:
+    value:
+      title: Value
+      description: The expression to evaluate once and record.
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    outputType:
+      title: Output type
+      description: The shape of the recorded value, so steps reading it type-check.
+      x-telo-ref:
+        kind: Telo.JsonSchema
+        use: schema

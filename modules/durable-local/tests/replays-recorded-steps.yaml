@@ -121,6 +121,15 @@ expect:
   - event: sendMail.Invoked
     times: 2
 ---
+# A start is DETACHED — it returns a run id, not an outcome — so the test asks
+# for the outcome the way any caller does. `wait:` is what makes that possible
+# without the start having to block: the choice to wait belongs to whoever wants
+# the answer, not to the work.
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 10s
+---
 kind: Run.Sequence
 metadata: { name: test }
 steps:
@@ -136,30 +145,40 @@ steps:
   - name: token
     value: !cel "string(nowMillis())"
 
-  # First execution: everything runs.
+  # First execution: everything runs. The start reports that it STARTED one —
+  # the outcome is asked for separately, below.
   - name: first
     invoke: !ref onboard
     inputs:
       email: !cel "'ada+' + steps.token.result + '@example.com'"
-  - name: assertRan
+  - name: assertStarted
     inputs:
-      actual: !cel "steps.first.result.replayed"
-      expected: false
+      actual: !cel "steps.first.result.started"
+      expected: true
+    invoke: { kind: Assert.Equals }
+  - name: firstOutcome
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.first.result.runId"
+  - name: assertCompleted
+    inputs:
+      actual: !cel "steps.firstOutcome.result.status"
+      expected: completed
     invoke: { kind: Assert.Equals }
 
-  # Second execution of the SAME run id. The run is already settled, so it
-  # answers with what it produced rather than doing the work again.
+  # Second submission of the SAME run id. The run is already settled, so it
+  # attaches and answers with what it produced rather than doing the work again.
   - name: second
     invoke: !ref onboard
     inputs:
       email: !cel "'ada+' + steps.token.result + '@example.com'"
   - name: assertAttached
     inputs:
-      actual: !cel "steps.second.result.replayed"
+      actual: !cel "steps.second.result.attached"
       expected: true
     invoke: { kind: Assert.Equals }
 
-  # The replayed run answers with the SAME result the first produced, rather than
+  # The attached run answers with the SAME result the first produced, rather than
   # a fresh one — a re-execution would have produced its own.
   - name: assertSameResult
     inputs:
@@ -173,8 +192,12 @@ steps:
     invoke: !ref onboard
     inputs:
       email: !cel "'grace+' + steps.token.result + '@example.com'"
-  - name: assertOtherRan
+  - name: otherOutcome
+    invoke: !ref outcome
     inputs:
-      actual: !cel "steps.other.result.replayed"
-      expected: false
+      run: !cel "steps.other.result.runId"
+  - name: assertOtherCompleted
+    inputs:
+      actual: !cel "steps.otherOutcome.result.status"
+      expected: completed
     invoke: { kind: Assert.Equals }

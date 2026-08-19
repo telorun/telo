@@ -4,7 +4,7 @@ different manifests — they would corrupt durable state, because a journal
 outlives the process that wrote it and is read back by whatever is running then.
 -->
 
-# Telo Durable Execution Specification (v1.0)
+# Telo Durable Execution Specification (v1.1)
 
 ## 0. Status, scope, and how to read this
 
@@ -24,8 +24,10 @@ What is normative here is only what two runtimes must agree on:
 
 MUST / MUST NOT / SHOULD are as in RFC 2119.
 
-**Suspension is out of scope for v1.0.** A run that cannot park can still crash
-and resume, which is the whole of what this version specifies.
+**v1.1 adds suspension**: `park`, the swallow latch, branch-level parking under
+concurrency and suspending retry (§2, §5.2, §7, §9). v1.0 specified a run that
+could crash and resume but not wait; a run that can wait is what makes durable
+execution useful for work measured in days rather than in retries.
 
 ## 1. What durable execution is here
 
@@ -53,7 +55,10 @@ kind and not a kernel type:
   now, or shipped elsewhere and awaited).
 - **`decide(path, kind, compute)`** — a control-flow decision, recorded on first
   execution and returned verbatim on replay.
-- **`park(until)`** — suspend the run. (v1.1.)
+- **`park(where, until)`** — suspend the run, recording WHERE it parked. A
+  backend MUST write the park before it unwinds: the signal only unwinds the
+  calling process's stack, so a park that threw first leaves a run marked
+  running with nothing executing it, and its wake token lost. (§7.)
 - **`writesInside(zone)`** — a *question*: does this handle's own recording land
   inside the given zone's atomicity? (§8.)
 
@@ -121,7 +126,7 @@ as a contract rather than relying on it as an assumption is what lets a backend
 that matches replayed frames against re-issued calls assert something real.
 
 **Every decision point MUST be journaled.** The set is closed by the grammar, and
-for v1.0 it is exactly:
+for v1.1 it is exactly:
 
 | Decision | Journaled as |
 | --- | --- |
@@ -130,6 +135,7 @@ for v1.0 it is exactly:
 | a `while` condition, per turn | `condition` |
 | a `switch` key | `switch` |
 | a `value:` step's expression | `value` |
+| a park's wake time, token, or retry attempt | `value` |
 | a collection a composer iterates | `collection` |
 
 **The tempting claim — "a run's entire mutable state is the `steps` map" — is
@@ -253,8 +259,18 @@ value: true
 run: "onboard:ada@example.com"
 manifestDigest: sha256-9f2c…
 digestScope: reachable        # `reachable` | `manifest`
-status: running               # running | completed | failed | parked
+status: running               # scheduled | running | parked | completed | failed | cancelled
+parked:                       # present while `status: parked`
+  path: steps/waitForApproval # where a resume re-enters, and where a delivery writes
+  resource: approval          # what it is waiting on, for an operator
+  token: 0f3c…                # the address a delivery must carry
+  at: 1787159304535           # when it becomes due with no delivery
 ```
+
+`cancelled` is deliberately distinct from `failed`: a failed run earned a
+verdict, a cancelled one was called off, and collapsing them makes every
+cancelled run indistinguishable from a broken one in the report an operator
+reads to find out which happened.
 
 **Journal on completion** is the rule the whole format rests on, and it is what
 makes `with:` scopes work unchanged: a scope target that completed is skipped on
@@ -283,7 +299,7 @@ runtime:
   pointer to the declaration)`. Anonymous in the manifest, not anonymous in the
   graph.
 
-**The ENCODING — how one is written into bytes — is NOT specified in v1.0.**
+**The ENCODING — how one is written into bytes — is NOT specified in v1.1.**
 Nothing in this version sends an identity across a process boundary: a local
 backend resolves it in process. It is written in the version that first does, and
 freezing a format nothing can exercise is the failure this document's own
@@ -344,6 +360,33 @@ Every backend, whatever its vocabulary:
    resume skips it and a crash loses it — durability's exact inverse. The
    replacement is a nested durable run started without awaiting, whose run id is
    itself a journalable value.
+7. **A suspension is a signal, not an error, and it MUST NOT be absorbed.** It
+   unwinds to the workflow that owns the run, so a `try:` step, a composer's
+   `catches:` and a retry policy MUST all let it pass — and a runtime's own
+   dispatch chokepoint MUST NOT wrap it, since every hop between the parking kind
+   and the workflow goes through one.
+
+   **Naming the known absorbers is not a defence.** The signal passes through
+   every controller in between, including third-party ones with a `catch (e)` in
+   them; a swallowed suspension converts a park into a completed step and
+   duplicates every effect after it, and a pure-conduit kernel cannot see that
+   happen. So it MUST be **latched** when raised, and a workflow kind MUST treat
+   *an invocation that returned normally while a suspension is latched* as
+   `ERR_DURABLE_SUSPENSION_SWALLOWED`, **before** settling the run. Detection is
+   O(1) and needs no cooperation from the absorber.
+8. **Parking inside a concurrent region parks the BRANCH.** A fan-out settles
+   every branch — resolved, rejected, or parked — and propagates the suspension
+   only once all of them have. Unwinding on the first park tears its siblings
+   down mid-step, and because a step is journaled on completion they have no
+   entry: every one re-runs whole on resume, making parallel fan-out routinely
+   at-least-once. The semantics need no new machinery, because a branch's step
+   paths are already index-qualified and each branch is therefore an
+   independently resumable subtree.
+9. **A suspending retry MUST journal its attempt state.** A backoff long enough
+   to park records which attempt it was on and when the next is due; without it a
+   run that parks mid-retry and resumes elsewhere restarts the policy from zero
+   and a bounded budget becomes unbounded. A backoff short enough to sleep in
+   process still journals only the outcome.
 
 ## 8. Collapse, and exactly-once
 
@@ -416,11 +459,12 @@ has to say which way it resolved.
 | `ERR_JOURNAL_ENTRY_MISMATCH` | replay reaches a different target than the entry at that key records |
 | `ERR_DURABLE_MANIFEST_CHANGED` | a resume would replay against changed code (backend-specific; see the backend's own docs) |
 | `ERR_DURABLE_NO_RUN` | a kind requiring a durable run was dispatched with no handle ambient |
+| `ERR_DURABLE_SUSPENDED` | not an error — the suspension SIGNAL, carried on an `Error` so it unwinds. It MUST reach the workflow that owns the run |
+| `ERR_DURABLE_SUSPENSION_SWALLOWED` | a body returned normally while a suspension was latched (§7) |
+| `ERR_DURABLE_SUSPEND_FORBIDDEN` | a park was attempted inside a zone declaring `noSuspend`, quoting that zone's own reason |
 
-## 10. What v1.0 deliberately leaves out
+## 10. What v1.1 deliberately leaves out
 
-- **Suspension** (`park`), its swallow latch, and branch-level parking under
-  concurrency. A run that cannot park can still crash and resume.
 - **The target-identity encoding** (§5.3), until something sends one across a
   process boundary.
 - **Remote step execution**, for the same reason.

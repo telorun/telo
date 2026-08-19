@@ -37,8 +37,8 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 | Module | Description |
 | --- | --- |
 | [run](./run/README.md) | Unified sequence execution with invoke, if, while, switch, and try steps. |
-| [durable](./durable/README.md) | Backend-neutral pieces for work that survives process death. |
-| [durable-local](./durable-local/README.md) | Durable execution with no engine to deploy: records progress, resumes after a crash. |
+| [durable](./durable/README.md) | Backend-neutral pieces for work that survives process death, including waits measured in days. |
+| [durable-local](./durable-local/README.md) | Durable execution with no engine to deploy: records progress, waits, and resumes after a crash. |
 | [durable-journal-file](./durable-journal-file/README.md) | Stores durable runs as append-only files in a directory. |
 
 ### Encoding & Streams

@@ -36,6 +36,7 @@ export * from "./runtime-resource.js";
 export * from "./stream.js";
 export * from "./types.js";
 export * from "./durable-run.js";
+export * from "./durable-suspension.js";
 export * from "./value-type.js";
 export * from "./zone-attribute.js";
 
