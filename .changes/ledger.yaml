@@ -281,15 +281,6 @@ modules:
     layers:
       controller/js: sha256-nR6b9i8XANQQsOxmDYahfffn8ZoTWgIdx4_7haDxBcw
       manifest: sha256-Jwu-1DuXR_9o_RggDV1BauSaeQfrgoya7TM2XOo4uig
-  modules/workflow:
-    version: 0.5.2
-    layers:
-      manifest: sha256-9e7Tvn-fTLJ9Qoj2Dr2qPxSIwbbm4FJPekhny8YQXHo
-  modules/workflow-temporal:
-    version: 0.6.3
-    layers:
-      controller/js: sha256-yLZAyUObhgjpmQ143292F3P0Q5zxlxFhxe9AbPWIttA
-      manifest: sha256-a3oYxSF73GL06WcEJ-WByAnSnpRiPisGaqqNYWXEukw
   modules/yaml:
     version: 0.10.3
     layers:

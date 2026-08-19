@@ -121,3 +121,22 @@ Both take a keyed claim from the same store, and they are not the same thing:
 | Use for | Cron-overlap prevention, singleflight, migrations | Payments, outbound webhooks, mail |
 
 Use a lease to stop concurrent work. Use idempotency to stop repeated work.
+
+## The body runs inside an idempotent zone
+
+Dispatching through `invoke:` establishes an `Idempotency.Once` [execution
+zone](https://telo.run/extend/execution-zones) around the body — uncorrelated,
+since the claim is on a key rather than on a resource a pointer could name.
+
+It declares two attributes:
+
+| Attribute    | Reason a consumer quotes                                                                                        |
+| ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `idempotent` | the claim settles the key with this body's result, so a second execution replays it rather than running the body.   |
+| `noSuspend`  | the claim is renewed on a heartbeat only while this body runs, so a parked body resumes after the key was released.  |
+
+`idempotent` here is **earned rather than asserted**: the claim is what makes
+re-execution a no-op, so a consumer collapsing the region to one record is
+relying on a mechanism, not on an author's word. (The other way to declare it —
+taking the author's word for a body that is naturally an upsert — is a different
+kind, so which one you got stays visible in the manifest.)

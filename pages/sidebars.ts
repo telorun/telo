@@ -141,7 +141,6 @@ const sidebars: SidebarsConfig = {
                 { type: "doc", id: "kernel/docs/topology", label: "Overview" },
                 { type: "doc", id: "kernel/docs/topologies/sequence", label: "Sequence" },
                 { type: "doc", id: "kernel/docs/topologies/router", label: "Router" },
-                { type: "doc", id: "kernel/docs/topologies/workflow", label: "Workflow" },
               ],
             },
             {

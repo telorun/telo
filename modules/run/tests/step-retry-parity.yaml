@@ -1,0 +1,150 @@
+kind: Telo.Application
+metadata:
+  name: RunStepRetryParityTest
+  version: 1.0.0
+  description: |
+    The two knobs a retry policy needs before a durable backend can honour it:
+    `nonRetryable:` classification and a per-attempt `timeout:`.
+
+    Both are properties of the STEP rather than of the target. Without
+    `nonRetryable`, a terminal domain failure consumes the whole budget — which
+    for a non-idempotent target is N extra attempts at a side effect, not merely
+    wasted time. Without `timeout`, a step has no way to say how long one call
+    may take, which is exactly what a backend choosing WHERE to run it needs.
+
+    HOW MANY ATTEMPTS HAPPENED IS READ OFF THE DISPATCH RECORD. Every failed call
+    emits `<name>.InvokeRejected` through the invocation chokepoint, so the retry
+    loop's behaviour is observable from outside the work — the targets below hold
+    no state and count nothing about themselves. A target that had to remember
+    how often it was called would be testing its own bookkeeping as much as the
+    loop's.
+imports:
+  Run: ../
+  Assert: ../../assert
+  Timer: ../../timer
+targets:
+  - !ref test
+  # Runs after the sequence, reporting on the stream it captured from boot.
+  - !ref attempts
+---
+# Always fails with a code an author would classify as terminal — re-presenting a
+# declined card changes nothing, which is a fact about the domain the retry loop
+# has no way to see.
+kind: Run.Sequence
+metadata: { name: declines }
+steps:
+  - name: boom
+    throw:
+      code: ERR_PAYMENT_DECLINED
+      message: declined
+---
+# Always fails with a DIFFERENT code, so the same policy still retries it — the
+# classification has to be per-code, not a blanket off switch.
+#
+# It never succeeds, deliberately: "did the loop re-attempt?" is answered by
+# counting dispatches, so there is no need for a target that fails N times and
+# then recovers — which could only be built by having it remember its own call
+# count.
+kind: Run.Sequence
+metadata: { name: flaky }
+steps:
+  - name: boom
+    throw:
+      code: ERR_UPSTREAM_UNAVAILABLE
+      message: upstream hiccup
+---
+# Sleeps far past the bound the step below puts on it. `Timer.Delay` honours
+# cancellation, which is what makes the timeout a stop rather than an
+# abandonment — the call ends, it does not run on unobserved.
+kind: Timer.Delay
+metadata: { name: slow }
+---
+kind: Assert.Events
+metadata: { name: attempts }
+filter:
+  - type: "declines.InvokeRejected"
+  - type: "flaky.InvokeRejected"
+expect:
+  # ONE rejection: the code is declared non-retryable, so the budget of 2 is
+  # never spent. Without the classification this would be 3.
+  - event: declines.InvokeRejected
+    times: 1
+  # FOUR: the first attempt plus a budget of 3, because this code is not in the
+  # list. Together with the line above, this is what shows `nonRetryable`
+  # narrows the loop rather than disabling it.
+  - event: flaky.InvokeRejected
+    times: 4
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # A declared non-retryable code ends the loop at its first failure, and
+  # propagates unchanged.
+  - name: terminal
+    try:
+      - name: declined
+        invoke: !ref declines
+        retry:
+          attempts: 2
+          initialDelay: 1
+          jitter: none
+          nonRetryable: [ERR_PAYMENT_DECLINED]
+    catch:
+      - name: assertPropagated
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_PAYMENT_DECLINED
+        invoke:
+          kind: Assert.Equals
+
+  # The same policy shape still retries a code it does not name. The budget is
+  # spent and the failure propagates; how many attempts it took is the event
+  # count above.
+  - name: retried
+    try:
+      - name: unavailable
+        invoke: !ref flaky
+        retry:
+          attempts: 3
+          initialDelay: 1
+          jitter: none
+          nonRetryable: [ERR_PAYMENT_DECLINED]
+    catch:
+      - name: assertExhausted
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_UPSTREAM_UNAVAILABLE
+        invoke:
+          kind: Assert.Equals
+
+  # A step whose attempt exceeds its bound fails ERR_STEP_TIMEOUT — a code of
+  # its own rather than a cancellation, because the two want opposite follow-ups
+  # and `catch` can only tell them apart by code.
+  - name: tooSlow
+    try:
+      - name: sleeps
+        invoke: !ref slow
+        inputs:
+          duration: 5s
+        timeout: 50
+    catch:
+      - name: assertTimedOut
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_STEP_TIMEOUT
+        invoke:
+          kind: Assert.Equals
+
+  # A step that finishes inside its bound is untouched, and the bound does not
+  # leak into the result.
+  - name: fastEnough
+    invoke: !ref slow
+    inputs:
+      duration: 1ms
+    timeout: 5000
+  - name: assertCompleted
+    inputs:
+      actual: !cel "steps.fastEnough.result != null"
+      expected: true
+    invoke:
+      kind: Assert.Equals

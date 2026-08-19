@@ -11,6 +11,12 @@ metadata:
     retries, concurrent callers and process restarts; later calls replay the stored
     result instead of repeating it, and a caller that dies frees the key rather than
     wedging it.
+requires:
+  # The zone-attribute object form of `x-telo-provides-zone` is syntax an older
+  # analyzer reads as a malformed annotation, so it would reject this module and
+  # blame its author. Declaring the floor turns that into one message naming the
+  # cause. Forward-declared: 0.79.0 is the release that carries the form.
+  telo: ">=0.79.0"
 imports:
   KvStore: ../kv-store
 exports:
@@ -128,3 +134,19 @@ schema:
         kind: Telo.Executable
         use: call
         inputs: /inputs
+      # The claim makes this region genuinely re-runnable, so it EARNS
+      # `idempotent` rather than asserting it: a second pass finds the settled
+      # result and replays it instead of executing the body again. That is what
+      # lets a consumer collapse the whole region to one record.
+      #
+      # `noSuspend` alongside, and required by neither attribute — declared
+      # because it is true: the claim is a bounded lease on the key, renewed on a
+      # heartbeat only while this process runs the body.
+      x-telo-provides-zone:
+        idempotent: >-
+          the claim settles the key with this body's result, so a second
+          execution replays that result instead of running the body again
+        noSuspend: >-
+          the claim is renewed on a heartbeat only while this body runs, so a
+          body that parked here would resume after the key had already been
+          released to another caller

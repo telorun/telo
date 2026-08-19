@@ -17,6 +17,7 @@ import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeResource } from "./runtime-resource.js";
 import type { RuntimeSeam } from "./runtime-seam.js";
+import type { OpenZoneAttributes } from "./zone-attribute.js";
 
 export interface LoadOptions {
   /** When true, `${{ }}` templates are replaced with CompiledValue wrappers
@@ -150,6 +151,28 @@ export interface ResourceContext extends ControllerContext {
    *  one). No kind parameter: the provider's own per-instance map already
    *  discriminates — a zone this instance's owner did not open simply misses. */
   zonesFor(instance: ResourceInstance, ctx?: InvokeContext): readonly ZoneEntry[];
+  /**
+   * Every open zone with what it DECLARES about its contents, innermost first —
+   * the runtime half of `x-telo-provides-zone`'s attributes.
+   *
+   * Read off the declaring kind's schema, never off the entry: a
+   * {@link ZoneEntry} is three identities *because* that keeps it
+   * ABI-serializable and stops any module reading another's private state off
+   * the stack, and hanging attributes on it would trade that away for every
+   * zone. The kernel resolves the schema instead — the one place that lookup is
+   * already available — and hands the attributes over WITHOUT branching on a
+   * name, exactly as `readRefSlot` returns `use` without acting on it.
+   *
+   * The vocabulary is closed (`sdk/zone-attributes/`), which is what lets this
+   * be a typed record rather than a string-keyed bag. That is a readability
+   * gain and not a semantic one: interpreting an attribute is entirely the
+   * caller's — the step engine reads `atomic` to decide collapse, a parking kind
+   * reads `noSuspend` to refuse, and the kernel reads neither.
+   *
+   * Each value is the author's REASON, so a controller refusing on an attribute
+   * quotes the manifest's own sentence instead of inventing a generic message.
+   */
+  zoneAttributes(ctx?: InvokeContext): readonly OpenZoneAttributes[];
   /** The root context for runtime-driven inbound work (request, timer, queue
    *  message): inherits nothing from whatever ambient happens to be live at the
    *  registration site — no zones, no trace parent, no caller token. An inbound

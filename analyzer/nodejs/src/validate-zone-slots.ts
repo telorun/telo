@@ -26,10 +26,11 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import type { ResourceManifest } from "@telorun/sdk";
+import { ZONE_ATTRIBUTES, zoneAttributeNames, type ResourceManifest } from "@telorun/sdk";
+import { distance } from "./levenshtein.js";
 
 export interface ZoneSlotIssue {
-  code: "ZONE_ANNOTATION_INVALID";
+  code: "ZONE_ANNOTATION_INVALID" | "ZONE_ATTRIBUTE_UNKNOWN" | "ZONE_ATTRIBUTE_INCOMPLETE";
   manifest: ResourceManifest;
   /** Schema path of the annotated slot. */
   path: string;
@@ -53,6 +54,101 @@ function describe(value: unknown): string {
   return typeof value;
 }
 
+/** The closest declared attribute name within an edit-distance threshold, or
+ *  undefined. Mirrors `suggestValueType`: case-sensitive, and silent on a tie,
+ *  because a coin-flip suggestion is worse than none. */
+function suggestAttribute(name: string): string | undefined {
+  if (!name) return undefined;
+  const threshold = Math.min(3, Math.floor(name.length / 3));
+  if (threshold < 1) return undefined;
+  let best: string | undefined;
+  let bestDist = threshold + 1;
+  let tied = false;
+  for (const candidate of ZONE_ATTRIBUTES.keys()) {
+    const d = distance(name, candidate);
+    if (d < bestDist) {
+      best = candidate;
+      bestDist = d;
+      tied = false;
+    } else if (d === bestDist) {
+      tied = true;
+    }
+  }
+  return !best || bestDist > threshold || tied ? undefined : best;
+}
+
+/**
+ * The attributes half of the object form.
+ *
+ * The composed `additionalProperties: false` schema would already reject an
+ * unknown name; the dedicated code earns its place by NAMING the valid ones and
+ * suggesting a spelling, instead of reporting a schema violation on a key the
+ * author believed was real — the same standing `X_TELO_TYPE_UNKNOWN` has over
+ * the value-type vocabulary it is modelled on.
+ */
+function checkAttributes(
+  obj: Record<string, unknown>,
+  definition: ResourceManifest,
+  path: string,
+  issues: ZoneSlotIssue[],
+): void {
+  const declared = new Set<string>();
+
+  for (const [name, value] of Object.entries(obj)) {
+    if (name === "key") continue;
+    const entry = ZONE_ATTRIBUTES.get(name);
+    if (!entry) {
+      const suggestion = suggestAttribute(name);
+      issues.push({
+        code: "ZONE_ATTRIBUTE_UNKNOWN",
+        manifest: definition,
+        path,
+        message:
+          `${PROVIDES} at '${path}' declares '${name}', which is not a zone attribute. ` +
+          (suggestion ? `Did you mean '${suggestion}'? ` : "") +
+          `The vocabulary is closed: ${zoneAttributeNames().join(", ")}. An attribute ` +
+          `states a property of everything executed inside this zone, and every reader ` +
+          `of one is core — a name outside the set would be read by nothing.`,
+      });
+      continue;
+    }
+    // Each value is the REASON, and it is required by being the value itself
+    // rather than a sibling of a boolean. That is also what makes a type check
+    // possible at all: there is no `true` to accept, so `atomic: true` is caught
+    // here rather than reading as a valid declaration with nothing to say.
+    if (typeof value !== "string" || !value) {
+      issues.push({
+        code: "ZONE_ANNOTATION_INVALID",
+        manifest: definition,
+        path,
+        message:
+          `${PROVIDES} at '${path}' declares '${name}' as ${describe(value)}. Every zone ` +
+          `attribute's value is the author's REASON — a non-empty sentence, quoted verbatim ` +
+          `by the diagnostics that enforce it (${entry.description}).`,
+      });
+      continue;
+    }
+    declared.add(name);
+  }
+
+  // `requires:` lives in the vocabulary entry rather than as a hardcoded pair of
+  // names here, so the completeness rule sits beside the thing it constrains.
+  for (const name of declared) {
+    for (const dependency of ZONE_ATTRIBUTES.get(name)!.requires) {
+      if (declared.has(dependency)) continue;
+      issues.push({
+        code: "ZONE_ATTRIBUTE_INCOMPLETE",
+        manifest: definition,
+        path,
+        message:
+          `${PROVIDES} at '${path}' declares '${name}' without '${dependency}', which it ` +
+          `requires. ${ZONE_ATTRIBUTES.get(dependency)!.description} Declare it with its own ` +
+          `reason — a generic message is exactly what the required reason exists to prevent.`,
+      });
+    }
+  }
+}
+
 function checkProvides(
   raw: unknown,
   definition: ResourceManifest,
@@ -61,16 +157,38 @@ function checkProvides(
 ): void {
   if (raw === true) return;
   if (isPointer(raw)) return;
+
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>;
+    // `key` keeps the meaning it has in the scalar spelling; only its absence is
+    // legitimate here (an uncorrelated zone that still declares attributes).
+    if (obj.key !== undefined && !isPointer(obj.key)) {
+      issues.push({
+        code: "ZONE_ANNOTATION_INVALID",
+        manifest: definition,
+        path,
+        message:
+          `${PROVIDES} at '${path}' declares the correlation key ${describe(obj.key)}, which ` +
+          `is not a self-relative JSON Pointer. Write '/connection'. A bare field name is ` +
+          `read as a pointer by the runtime but skipped by the checker, so the two halves ` +
+          `would disagree about what this manifest means.`,
+      });
+    }
+    checkAttributes(obj, definition, path, issues);
+    return;
+  }
+
   issues.push({
     code: "ZONE_ANNOTATION_INVALID",
     manifest: definition,
     path,
     message:
       `${PROVIDES} at '${path}' is ${describe(raw)}. It takes 'true' (the zone is ` +
-      `uncorrelated) or a self-relative JSON Pointer naming this kind's own field ` +
+      `uncorrelated), a self-relative JSON Pointer naming this kind's own field ` +
       `whose resolved reference the zone carries as its correlation payload ` +
-      `(e.g. '/connection'). It never names the zone — the zone a slot provides ` +
-      `is always the declaring kind.`,
+      `(e.g. '/connection'), or an object carrying that pointer as 'key' beside the ` +
+      `zone attributes this region declares (${zoneAttributeNames().join(", ")}). It ` +
+      `never names the zone — the zone a slot provides is always the declaring kind.`,
   });
 }
 

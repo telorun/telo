@@ -129,7 +129,10 @@ schema:
     expect:
       title: Expect
       type: array
-      description: Ordered sequence of events to assert
+      description: >-
+        What the event stream must show. An entry without `times` asserts that the
+        event OCCURRED, matched in order against the entries around it; an entry with
+        `times` asserts HOW MANY there were in total. The two can be mixed.
       items:
         type: object
         properties:
@@ -141,6 +144,18 @@ schema:
             title: Payload
             type: object
             description: Partial payload to match against (only declared fields are checked)
+          times:
+            title: Times
+            type: integer
+            minimum: 0
+            description: >-
+              Exactly how many matching events the stream must hold, counted over the
+              whole capture rather than from wherever the ordered entries have reached
+              — so the number does not change when an unrelated expectation moves.
+              An entry with `times` does not consume a position, so ordered and counted
+              entries can sit in one list without either changing what the other means.
+              `times: 0` asserts the event never happened, which the ordered form cannot
+              express because absence is its failure rather than its success.
         required:
           - event
   required:

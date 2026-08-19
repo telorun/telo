@@ -62,4 +62,3 @@ Capabilities and topology describe different things and may be combined freely:
 
 - [Sequence](topologies/sequence.md) — ordered step execution; each step invokes an invocable and may pipe outputs into subsequent steps
 - [Router](topologies/router.md) — matcher-to-handler dispatch; entries are evaluated in order and the first match is invoked
-- [Workflow](topologies/workflow.md) — directed graph of task nodes; control flow via gateway node kinds (`Flow.If`, `Flow.While`, `Flow.Switch`)

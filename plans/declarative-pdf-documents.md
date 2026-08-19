@@ -15,15 +15,17 @@ A new `modules/pdfmake` (`metadata.name: PdfMake`), a **typed binding to pdfmake
 
 **Where pdfmake takes a function, we cannot mirror it.** Table `layout`, `background`, `header`, `footer` and `pageBreakBefore` are callbacks, manifests hold no functions, and pdfmake invokes them synchronously during layout so CEL cannot fill them either. These become declarative instead: a `layout` object (line widths and colours, cell padding, header fill, alternating row bands) plus an optional per-row `style` key carried in the data. The totals row in a report is then simply a row tagged with a different style — data-driven, statically typed, no callbacks. This divergence is documented as the one place the binding is not a mirror.
 
+**Composite documents get a provider seam, not more carrier `$defs`.** A carrier is closed by construction, so nothing outside this module can contribute a node — which is fine for the leaf vocabulary and wrong the moment someone wants an invoice, a statement or a `Crud.Report` shipped by the module that owns the data. `plans/declarative-ui.md` solves the identical problem with `Ui.Node`: an abstract whose capability is `Telo.Provider` and whose `outputType` is the carrier root, plus **one carrier `$def` variant that is a reference to such a provider**. `PdfMake.Node` is that abstract here, and it is the only extension hole — composite kinds are real kinds carrying config and refs, everything below them stays plain data, and `content` remains one recursive grammar. A template-form definition with a `provide:` body gets a synthesized `provide()`, so a composite document kind needs no controller.
+
 **Assets** come from the `!include-*` tags: brand fonts as `!include-bytes` into the `fonts` map, background artwork as `!include-text` into an SVG node. Roboto ships as the default font so a document renders with no font configuration at all.
 
-**Charts compose by value.** The application invokes a `Chart.SvgWriter` in a step and passes the resulting markup into an SVG node; `modules/pdfmake` never learns that `modules/chart` exists.
+**Charts compose by value.** A chart kind is one invocable that returns `result.svg` — `plans/svg-charts.md` deliberately rejected a chart/writer split, so there is no separate writer to invoke. A step invokes the chart and passes its markup into an SVG node; `modules/pdfmake` never learns that `modules/chart` exists.
 
 **Delivery is bundled, and this was verified rather than assumed.** pdfkit's Node entry reads the standard-font AFM metrics from a sibling `js/data/` directory and declares a `brfs` browserify transform, which esbuild does not run — precisely the "resolves a file beside itself" trap that pins `pdf` and `image` to `pkg:npm`. pdfmake's self-contained `build/pdfmake.js` has that data and the linebreak trie already inlined and resolves nothing beside itself, so it bundles. If it proves unusable under Node, the fallback is `pkg:npm` alongside its siblings, at no cost to the rest of the design.
 
 Ships with `modules/pdfmake/docs/` per kind (mandatory), a test suite rendering fixtures and asserting structure by re-reading the output through `Pdf.Rasterizer`, a changie fragment, a `scripts/gen-changie-config.mjs` re-run, and the authoring-agent system prompt update CLAUDE.md requires.
 
-**Depends on** the `!include-text` / `!include-bytes` tags plan (fonts and artwork) and the schema-error-diagnostics plan (union messages); composes with the charts plan but does not depend on it.
+**Depends on** the schema-error-diagnostics plan (union messages). The `!include-text` / `!include-bytes` tags it uses for fonts and artwork have **landed** (`templating/nodejs/src/engines/include.ts`), so that dependency is discharged. Composes with the charts plan but does not depend on it.
 
 ## Decisions
 
@@ -33,6 +35,8 @@ Ships with `modules/pdfmake/docs/` per kind (mandatory), a test suite rendering 
 - **Few carriers with many `$defs`, not a kind per node type** — the convention the two existing schema-only modules already follow.
 - **Discrimination by which key is present, mirroring pdfmake, with no added `type:` field.** This is what keeps copy-paste literal. Its cost is that a malformed node fails a keyless union, which is why this plan depends on the union reduction in the schema-error-diagnostics plan rather than paying for message quality with a discriminator property.
 - **No raw document-definition escape hatch.** Passing an unchecked object through would void static validation and visual editing for the whole document — the two properties the typed carrier exists to provide. Coverage gaps get closed in the carrier schema instead.
+- **A provider hole in the carrier, not a closed vocabulary.** Without it no other module can contribute a document node, which is the failure mode a document toolkit reaches first; one `$def` variant costs nothing and keeps the grammar single.
+- **Theme tokens stay per-medium.** This module keeps `styles` / `defaultStyle`; `modules/ui` keeps `Ui.Theme` and `modules/chart` keeps `palette`. A neutral token module shared across all three was considered and rejected — it couples three modules' release cadence to one vocabulary before any has shipped, and the duplication is a handful of literals.
 - **Implementation risk, named up front:** anchoring a `$defs` subtree across kinds must rebase its internal `#/$defs/…` pointers onto the carrier, or the recursion that containers depend on silently resolves against the wrong document.
 
 ## Example after the change
@@ -70,4 +74,4 @@ content:
       - svg: !cel "inputs.chartSvg"
 ```
 
-`inputs.rows` carries a `style` key per row, so the totals row renders as `totalsRow`; `inputs.chartSvg` is the markup an earlier step got from a `Chart.SvgWriter`.
+`inputs.rows` carries a `style` key per row, so the totals row renders as `totalsRow`; `inputs.chartSvg` is the `result.svg` an earlier step got from a chart invocable.

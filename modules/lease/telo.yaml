@@ -11,6 +11,12 @@ metadata:
     who has it instead of running anything. Leases are time-bounded, so a holder that
     dies frees the key on expiry. Use it for cron overlap, migrations, single-flight
     and one-background-job-per-key.
+requires:
+  # The zone-attribute object form of `x-telo-provides-zone` is syntax an older
+  # analyzer reads as a malformed annotation, so it would reject this module and
+  # blame its author. Declaring the floor turns that into one message naming the
+  # cause. Forward-declared: 0.79.0 is the release that carries the form.
+  telo: ">=0.79.0"
 imports:
   KvStore: ../kv-store
 exports:
@@ -134,3 +140,16 @@ schema:
         use:
           by: /detach
           cases: { false: call, true: detached }
+      # "You are inside my body" is exactly the relation zones express, and a
+      # lease is one — held for the body's duration and released at its terminal.
+      # Uncorrelated: what the lease holds is a key it minted, not a resource a
+      # pointer could name.
+      #
+      # `noSuspend` and NOT `idempotent`: a lease makes nothing idempotent. It
+      # excludes concurrent holders; it says nothing about whether re-running the
+      # body a second time is a no-op.
+      x-telo-provides-zone:
+        noSuspend: >-
+          the lease expires on its own TTL and is renewed only while this body
+          runs, so a body that parked here would resume after another holder had
+          already been granted the same key

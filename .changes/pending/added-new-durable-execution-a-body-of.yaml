@@ -1,0 +1,12 @@
+modules:
+  modules/durable: Added
+  modules/durable-local: Added
+  modules/durable-journal-file: Added
+body: "New: durable execution. A body of steps records what each step returned AND every
+  decision it reached, so a crash and a restart continue where the work stopped rather
+  than repeating every effect or losing them all. Durable.Run is a marker a backend
+  extends; Durable.Idempotent wraps a region the author asserts is safe to re-run so it
+  is recorded as one entry; DurableLocal.Workflow holds the body and drives replay, with
+  DurableLocal.Journal as its storage seam and DurableLocal.Resumer as the recovery
+  path; DurableJournalFile.Journal stores runs as append-only files. Suspension is not
+  in this version — a run that cannot park can still crash and resume."

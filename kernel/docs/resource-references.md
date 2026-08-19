@@ -187,30 +187,30 @@ Every `Telo.Definition` schema is automatically assigned an `$id` by the analyze
 ```yaml
 kind: Telo.Definition
 metadata:
-  name: Backend
-  module: Temporal
-extends: Workflow.Backend
+  name: Connection
+  module: SQLPostgres
+extends: Sql.Connection
 schema:
-  # $id: "telo://workflow-temporal/Backend" — assigned automatically by the analyzer
+  # $id: "telo://sql-postgres/Connection" — assigned automatically by the analyzer
   properties:
-    namespace: { type: string }
+    url: { type: string }
   $defs:
-    NodeOptions:
+    PoolOptions:
       type: object
       properties:
-        scheduleToClose: { type: string }
-        retryPolicy:
+        max: { type: integer }
+        idleTimeout:
           type: object
           properties:
-            maxAttempts: { type: integer }
+            millis: { type: integer }
 ```
 
-`$defs` entries are type definitions, not instance properties — a `Temporal.Backend` resource instance only declares `namespace`. `NodeOptions` is exposed for consumers and never appears in instance data.
+`$defs` entries are type definitions, not instance properties — a `SQLPostgres.Connection` resource instance only declares `url`. `PoolOptions` is exposed for consumers and never appears in instance data.
 
 Any definition schema can reference types from another module using a standard `$ref`:
 
 ```yaml
-$ref: "telo://workflow-temporal/Backend#/$defs/NodeOptions"
+$ref: "telo://sql-postgres/Connection#/$defs/PoolOptions"
 $ref: "telo://http-server/Server#/properties/headers"
 ```
 
@@ -223,39 +223,43 @@ Static `$ref` requires the target type to be known at definition authoring time.
 `x-telo-schema-from` is a custom JSON Schema keyword that resolves a field's schema dynamically by following a property path to the referenced resource's definition schema:
 
 ```yaml
+# Illustrative: a statement whose pooling options are typed by whichever
+# engine's connection it happens to reference.
 kind: Telo.Definition
 metadata:
-  name: Graph
-  module: Workflow
+  name: Query
+  module: SQL
 schema:
   properties:
-    backend:
-      x-telo-ref: Workflow.Backend
-    nodes:
+    connection:
+      x-telo-ref:
+        kind: Self.Connection
+        use: dependency
+    statements:
       type: array
       items:
         type: object
         properties:
-          options:
-            x-telo-schema-from: "backend/$defs/NodeOptions"
+          pool:
+            x-telo-schema-from: "connection/$defs/PoolOptions"
 ```
 
-`backend/$defs/NodeOptions` is a path expression: `backend` names an `x-telo-ref` property, `/$defs/NodeOptions` is a JSON Pointer into the resolved kind's schema. When `backend` references a `Temporal.Backend` resource, `options` validates against `Temporal.Backend`'s `NodeOptions`. When it references a `Prefect.Backend` resource — defined in a third-party module written after `Workflow.Graph` — it validates against `Prefect.Backend`'s `NodeOptions` instead.
+`connection/$defs/PoolOptions` is a path expression: `connection` names an `x-telo-ref` property, `/$defs/PoolOptions` is a JSON Pointer into the resolved kind's schema. When `connection` references a `SQLPostgres.Connection` resource, `pool` validates against that kind's `PoolOptions`. When it references a connection kind from a third-party module written long after `SQL.Query` — an engine nobody had in mind here — it validates against *that* kind's `PoolOptions` instead. That open set is the whole point: a static `$ref` would have to name every engine in advance.
 
 **Path scope:** the first segment is resolved relative to the schema location where `x-telo-schema-from` appears. A leading `/` makes the path absolute — resolved from the resource root. No leading `/` means relative — resolved from the nearest enclosing `properties` block (sibling).
 
 Relative — `x-telo-ref` is a sibling property at the same schema level:
 
 ```yaml
-nodes:
+statements:
   type: array
   items:
     type: object
     properties:
-      backend:
-        x-telo-ref: Workflow.Backend
-      options:
-        x-telo-schema-from: "backend/$defs/NodeOptions" # relative: sibling backend
+      connection:
+        x-telo-ref: { kind: Self.Connection, use: dependency }
+      pool:
+        x-telo-schema-from: "connection/$defs/PoolOptions" # relative: sibling connection
 ```
 
 Absolute — `x-telo-ref` is at the resource root:
@@ -263,15 +267,15 @@ Absolute — `x-telo-ref` is at the resource root:
 ```yaml
 schema:
   properties:
-    backend:
-      x-telo-ref: Workflow.Backend
-    nodes:
+    connection:
+      x-telo-ref: { kind: Self.Connection, use: dependency }
+    statements:
       type: array
       items:
         type: object
         properties:
-          options:
-            x-telo-schema-from: "/backend/$defs/NodeOptions" # absolute: root backend
+          pool:
+            x-telo-schema-from: "/connection/$defs/PoolOptions" # absolute: root connection
 ```
 
 AJV ignores this keyword during its standard validation pass — the dependent schema check is an explicit Phase 3 step run by the analyzer after all references are resolved (see Section 9).
@@ -279,15 +283,15 @@ AJV ignores this keyword during its standard validation pass — the dependent s
 The abstract base kind acts as a nominal type tag — it constrains the `x-telo-ref` slot without declaring any schema contract:
 
 ```yaml
-kind: Telo.Definition
+kind: Telo.Abstract
 metadata:
-  name: Backend
-  module: Workflow
-extends: Telo.Provider
-# no controllers — cannot be instantiated directly
+  name: Connection
+  module: SQL
+capability: Telo.Provider
+# a Telo.Abstract never declares controllers — it cannot be instantiated
 ```
 
-Concrete backends extend it and declare their `$defs` slots independently. If a backend does not declare the expected `$defs` path, `x-telo-schema-from` resolution fails at validation time.
+Concrete implementations extend it and declare their `$defs` slots independently. If one does not declare the expected `$defs` path, `x-telo-schema-from` resolution fails at validation time.
 
 ---
 

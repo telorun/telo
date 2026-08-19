@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata:
+  name: DurableDetachProbe
+  version: 1.0.0
+  description: >-
+    A detached dispatch inside a durable body. Never run — it exists so a test can
+    assert that `telo check` rejects the shape, and it lives under __fixtures__ so
+    test discovery does not try to execute it.
+imports:
+  Local: ../../
+  Journal: ../../../durable-journal-file
+  Run: ../../../run
+targets:
+  - name: start
+    invoke: !ref importer
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: .telo/probe
+---
+kind: Run.Value
+metadata: { name: work }
+value: {}
+---
+kind: Run.Detach
+metadata: { name: fireAndForget }
+invoke: !ref work
+---
+kind: Local.Workflow
+metadata: { name: importer }
+journal: !ref journal
+steps:
+  - name: spawn
+    invoke: !ref fireAndForget

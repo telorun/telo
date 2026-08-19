@@ -9,6 +9,7 @@ const FilterEntry = Type.Object({
 const ExpectEntry = Type.Object({
   event: Type.String(),
   payload: Type.Optional(Type.Record(Type.String(), Type.Any())),
+  times: Type.Optional(Type.Integer({ minimum: 0 })),
 });
 
 const schema = Type.Object({
@@ -31,7 +32,9 @@ type ExpectEntry = Static<typeof ExpectEntry>;
 type MatchResult =
   | { status: "matched"; entry: ExpectEntry; actual: CapturedEvent }
   | { status: "payload-mismatch"; entry: ExpectEntry; actual: CapturedEvent }
-  | { status: "not-found"; entry: ExpectEntry };
+  | { status: "not-found"; entry: ExpectEntry }
+  | { status: "counted"; entry: ExpectEntry; count: number }
+  | { status: "count-mismatch"; entry: ExpectEntry; count: number };
 
 function matchesPattern(pattern: string, eventName: string): boolean {
   if (pattern === "*") return true;
@@ -74,11 +77,43 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
   const yellow = (t: string) => c("33", t);
   const dim = (t: string) => c("2", t);
 
+  /**
+   * An entry with `times:` asserts HOW MANY, over the whole captured stream;
+   * an entry without it asserts THAT ONE OCCURRED, at or after the position the
+   * previous ordered entry reached.
+   *
+   * The two are different questions and only one of them has an answer that
+   * depends on position. Counting is why: the ordered walk consumes the stream
+   * as it goes, so a count taken from wherever it happened to stop would depend
+   * on which other entries were written beside it — the same manifest reporting
+   * a different number because an unrelated expectation moved. So a counted
+   * entry reads the whole capture and does not advance the ordered position,
+   * which also lets the two be mixed in one `expect:` list without either
+   * changing what the other means.
+   *
+   * `times: 0` is the negative assertion, and it falls out rather than being a
+   * second feature: it is the one thing the ordered form structurally cannot
+   * express, because "not found" is its failure rather than its success.
+   */
   function buildReport(name: string, captured: CapturedEvent[], expect: ExpectEntry[]) {
     const results: MatchResult[] = [];
     let pos = 0;
 
     for (const entry of expect) {
+      if (entry.times !== undefined) {
+        const count = captured.filter(
+          (ev) =>
+            matchesPattern(entry.event, ev.name) &&
+            (!entry.payload || matchesPayload(ev.payload, entry.payload)),
+        ).length;
+        results.push({
+          status: count === entry.times ? "counted" : "count-mismatch",
+          entry,
+          count,
+        });
+        continue;
+      }
+
       let found = false;
       while (pos < captured.length) {
         const ev = captured[pos++];
@@ -97,7 +132,7 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
       }
     }
 
-    const failures = results.filter((r) => r.status !== "matched");
+    const failures = results.filter((r) => r.status !== "matched" && r.status !== "counted");
 
     let report =
       bold(
@@ -117,6 +152,14 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
         report += `  ${red("✗")} ${result.actual.name}\n`;
         report += `       ${dim("expected payload:")} ${yellow(JSON.stringify(result.entry.payload))}\n`;
         report += `       ${dim("actual payload:  ")} ${red(JSON.stringify(result.actual.payload))}\n`;
+      } else if (result.status === "counted") {
+        report += `  ${green("✓")} ${dim(`${result.entry.event} ×${result.count}`)}\n`;
+      } else if (result.status === "count-mismatch") {
+        report += `  ${red("✗")} ${result.entry.event}  ${dim("← wrong number of occurrences")}\n`;
+        report += `       ${dim("expected:")} ${yellow(`×${result.entry.times}`)}  ${dim("actual:")} ${red(`×${result.count}`)}\n`;
+        if (result.entry.payload) {
+          report += `       ${dim("matching payload:")} ${yellow(JSON.stringify(result.entry.payload))}\n`;
+        }
       }
     }
 

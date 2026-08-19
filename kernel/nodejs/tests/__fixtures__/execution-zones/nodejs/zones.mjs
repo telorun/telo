@@ -107,7 +107,19 @@ export const probe = {
       async init() {},
       async invoke(inputs, invokeCtx) {
         const seen = ((invokeCtx ?? {}).zones ?? []).map((z) => z.kind);
-        observations.push({ kind: "probe", label: inputs?.label ?? "", zones: seen });
+        // What each open zone DECLARES about its contents, read off the
+        // declaring kind's schema rather than off the entry — which stays three
+        // identities so it remains ABI-serializable.
+        const attributes = ctx.zoneAttributes(invokeCtx).map((z) => ({
+          kind: z.kind,
+          attributes: z.attributes,
+        }));
+        observations.push({
+          kind: "probe",
+          label: inputs?.label ?? "",
+          zones: seen,
+          attributes,
+        });
         return { zones: seen };
       },
       snapshot() {

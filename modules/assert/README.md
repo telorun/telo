@@ -82,6 +82,38 @@ An integer compares by value across its representation. A CEL integer is int64 w
 
 `Assert.Events` compares its `payload:` leaves the same way. It is a **subset** match — only the keys the expectation names are compared, recursively — but each leaf it does compare uses the rule above, so an integer-valued expression in an event payload is assertable against a plain YAML number.
 
+## Asserting *that* something happened, and *how many times*
+
+`Assert.Events` entries come in two forms, and they answer different questions.
+
+Without `times:`, an entry asserts the event **occurred**, matched in order against the entries around it. This is a subsequence match: it scans forward and ignores everything else, so extra events never fail it.
+
+```yaml
+expect:
+  - event: chargeCard.Invoked      # happened, at some point after the previous entry
+```
+
+With `times:`, an entry asserts **how many** there were, counted over the whole capture:
+
+```yaml
+filter:
+  - type: "chargeCard.Invoked"
+expect:
+  - event: chargeCard.Invoked
+    times: 1                       # exactly once — twice fails
+```
+
+That is the assertion the ordered form cannot make, and it is worth having because the kernel already records every dispatch: "did this run a second time?" is answerable from the event stream rather than from a counter kept inside the work. A global in a script only proves a function body ran; the event proves the step was **dispatched**, which is the distinction that matters wherever something may return a cached, memoised or replayed result without executing.
+
+Two properties follow from counting over the whole capture rather than from wherever the ordered walk has reached:
+
+- the number does not change when an unrelated expectation moves — a manifest reporting a different count because a neighbouring entry was reordered would be unusable;
+- a counted entry **does not consume a position**, so ordered and counted entries mix freely in one list without either changing what the other means.
+
+`times: 0` asserts the event never happened. It falls out of the same rule rather than being a separate feature — and it is the one thing the ordered form structurally cannot express, since absence is its *failure* rather than its success.
+
+Narrow `filter:` alongside a count when the pattern is a wildcard: the filter decides what is captured, and counting what you did not intend to capture is the one way to get a confidently wrong number.
+
 ## Reference
 
 - [`Assert.Manifest`](docs/manifest.md)

@@ -28,9 +28,16 @@ import {
   type ResourceDefinition,
   type ResourceHandle,
   type ResourceInstance,
+  type OpenZoneAttributes,
+  type ZoneAttributes,
   type ZoneEntry,
 } from "@telorun/sdk";
-import { readProvidesZone, readRequiresZone, type RequiresZoneSlot } from "@telorun/analyzer";
+import {
+  effectiveAuthorSchema,
+  readProvidesZone,
+  readRequiresZone,
+  type RequiresZoneSlot,
+} from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ambientInvokeContext, runWithAmbientContext } from "./evaluation-context.js";
 import { handleOfInstance } from "./resource-handle.js";
@@ -77,6 +84,10 @@ export class ZoneContext {
   readonly #requirements = new Map<string, ResolvedRequirement>();
   /** Slot → resolved correlation handle for a providing slot. */
   readonly #providers = new Map<string, { key?: ResourceHandle }>();
+  /** Providing kind → what the zone it provides declares about its contents.
+   *  Keyed by kind rather than by slot because the question a caller asks is
+   *  about an OPEN zone, which is reached by its entry's kind. */
+  readonly #attributes = new Map<string, ZoneAttributes>();
 
   constructor(host: ZoneHost) {
     this.#host = host;
@@ -130,6 +141,64 @@ export class ZoneContext {
       if (entry.key && sameResource(entry.key, handle)) out.push(entry);
     }
     return out;
+  }
+
+  zoneAttributes(ctx?: InvokeContext): readonly OpenZoneAttributes[] {
+    const zones = (ctx ?? ambientInvokeContext())?.zones;
+    if (!zones || zones.length === 0) return [];
+    const out: OpenZoneAttributes[] = [];
+    // Innermost first, matching `match` and `zonesFor` — a nested zone's
+    // constraint is the one a controller meets first.
+    for (let i = zones.length - 1; i >= 0; i--) {
+      const entry = zones[i]!;
+      out.push({ kind: entry.kind, attributes: this.attributesOfKind(entry.kind), entry });
+    }
+    return out;
+  }
+
+  /**
+   * What the zone a kind provides declares, read off that kind's own schema.
+   *
+   * NOT off the entry: a `ZoneEntry` is three identities precisely so it stays
+   * ABI-serializable and no module can read another's private state off the
+   * stack, and an attributes field on it would trade that away for every zone.
+   * The kernel is the one place the declaring kind's schema is already
+   * reachable, so it resolves and hands the values over — branching on no name,
+   * exactly as `readRefSlot` returns `use` without acting on it.
+   *
+   * Memoized per kind: this sits behind every dispatch a durable step engine
+   * makes, and the answer is fixed once definitions are registered.
+   */
+  private attributesOfKind(kind: string): ZoneAttributes {
+    const cached = this.#attributes.get(kind);
+    if (cached) return cached;
+    const def = this.#host.resolveDefinition(kind);
+    // A kind that does not resolve is NOT cached: definitions are registered
+    // during init and this is called at dispatch, so an unresolved lookup is a
+    // transient state — caching the empty answer would make it permanent, and a
+    // zone would silently declare nothing for the life of the process.
+    if (!def) return {};
+    // Resolved along `extends`, so a child that inherits its parent's
+    // zone-providing slot reports the attributes that slot declares. Reading the
+    // own schema alone would have a child's zone silently constrain nothing.
+    const properties = (effectiveAuthorSchema(def, (k) => this.#host.resolveDefinition(k)) as
+      | { properties?: Record<string, unknown> }
+      | undefined)?.properties;
+    const merged: Record<string, string> = {};
+    for (const slotSchema of Object.values(properties ?? {})) {
+      // Every providing slot of one kind provides that same kind's zone — the
+      // annotation never names a zone — so their attributes describe one region
+      // and merge. First declaration wins, so the reading is stable rather than
+      // dependent on property order.
+      for (const [name, reason] of Object.entries(
+        readProvidesZone(slotSchema as Record<string, any>)?.attributes ?? {},
+      )) {
+        if (!(name in merged) && typeof reason === "string") merged[name] = reason;
+      }
+    }
+    const attributes = merged as ZoneAttributes;
+    this.#attributes.set(kind, attributes);
+    return attributes;
   }
 
   // ── resolution ────────────────────────────────────────────────────────────

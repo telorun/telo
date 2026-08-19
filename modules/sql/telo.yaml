@@ -10,6 +10,12 @@ metadata:
     parameters bound safely, build a SELECT from structured parts instead of raw text,
     group writes into an all-or-nothing transaction, and apply versioned schema
     migrations at start-up.
+requires:
+  # The zone-attribute object form of `x-telo-provides-zone` is syntax an older
+  # analyzer reads as a malformed annotation, so it would reject this module and
+  # blame its author. Declaring the floor turns that into one message naming the
+  # cause. Forward-declared: 0.79.0 is the release that carries the form.
+  telo: ">=0.79.0"
 exports:
   kinds:
     - Connection
@@ -242,7 +248,18 @@ schema:
         kind: Telo.Executable
         use: call
         inputs: /inputs
-      x-telo-provides-zone: /connection
+      x-telo-provides-zone:
+        key: /connection
+        # What the region GUARANTEES about its contents, in the closed
+        # zone-attribute vocabulary (`sdk/zone-attributes/`). Each value is the
+        # reason, quoted verbatim by whatever enforces it.
+        atomic: >-
+          a rollback discards these writes, so a consumer that recorded them
+          individually would be holding records of work the database erased
+        noSuspend: >-
+          the transaction holds this connection open, and a body that parked here
+          would resume in a process where neither the connection nor the
+          transaction exists
     inputs:
       title: Inputs
       type: object

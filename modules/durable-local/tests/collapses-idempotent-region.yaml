@@ -1,0 +1,95 @@
+kind: Telo.Application
+metadata:
+  name: DurableCollapseTest
+  version: 1.0.0
+  description: |
+    Collapse: a region the author declares safe to re-run is recorded as ONE entry
+    rather than one per step.
+
+    The assertion is what the run reports about itself. `collapsedRegions` is 1 and
+    `collapseReasons` carries the author's own sentence — which matters because
+    whether a deployment is exactly-once or at-least-once turns on facts the manifest
+    cannot show, so the run has to say which way it resolved rather than leaving it to
+    be inferred from the topology.
+
+    Note the polarity the design chose: everything is journaled by DEFAULT, and
+    nothing collapses a body because nothing wrapped it. Collapse is a visible
+    resource carrying a written justification, not a key buried in a step.
+imports:
+  Durable: ../../durable
+  Local: ../
+  Journal: ../../durable-journal-file
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: DURABLE_COLLAPSE_DIR
+    type: string
+    default: .telo/durable-collapse-test
+targets:
+  - !ref test
+---
+kind: Journal.Journal
+metadata: { name: journal }
+# Fixed: `directory` is a startup field, so an expression here is evaluated once
+# at load. Isolation between runs of this test comes from the run id below.
+directory: !cel "variables.journalDir"
+---
+# A stand-in write. What matters about it is only that a step DISPATCHES
+# something, so it holds no state and reports nothing about itself.
+kind: Run.Value
+metadata: { name: upsert }
+value: { ok: true }
+---
+# The wrap. Its `steps:` slot declares `idempotent` with the reason below, and
+# that declaration — not a field at any call site — is what collapses the region.
+kind: Durable.Idempotent
+metadata: { name: importAll }
+reason: every write is an upsert keyed on the source id, so a re-run overwrites itself
+steps:
+  - name: writeOne
+    invoke: !ref upsert
+  - name: writeTwo
+    invoke: !ref upsert
+---
+kind: Local.Workflow
+metadata: { name: importer }
+journal: !ref journal
+runId: !cel "'import:' + inputs.batch"
+steps:
+  # Outside the wrap: journaled per step, which is the default.
+  - name: prepare
+    invoke: !ref upsert
+  # Inside it: one entry for the whole region.
+  - name: bulk
+    invoke: !ref importAll
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # One token per process, computed at RUNTIME, so a journal left behind by an
+  # earlier run of this test holds no entry this run's id could replay from.
+  - name: token
+    value: !cel "string(nowMillis())"
+  - name: run
+    invoke: !ref importer
+    inputs:
+      batch: !cel "'b' + steps.token.result"
+  - name: assertCollapsed
+    inputs:
+      actual:
+        regions: !cel "steps.run.result.collapsedRegions"
+        reason: !cel "steps.run.result.collapseReasons[0]"
+        # The wrapping resource's own justification, which is per instance by
+        # nature — a consumer reading the zone off the ambient stack learns what
+        # KIND of promise it is, while this is why this particular author
+        # believes it.
+        why: !cel "resources.importAll.reason"
+      expected:
+        regions: 1
+        reason: >-
+          Durable.Idempotent (idempotent): the author asserts re-running this region is
+          observably a no-op; this resource's `reason:` states why
+        why: >-
+          every write is an upsert keyed on the source id, so a re-run overwrites itself
+    invoke: { kind: Assert.Equals }

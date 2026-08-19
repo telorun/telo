@@ -144,6 +144,52 @@ describe("execution zones — a correlated zone answers only its own key", () =>
   });
 });
 
+describe("execution zones — zone attributes", () => {
+  it("reports what an open zone declares about its contents, read off the declaring kind", async () => {
+    const kernel = await bootKernel(false);
+    await kernel.invoke("ZoneFixture.Batch.batchAroundProbe", { label: "attributes" });
+    const seen = (await observations(kernel)).find((o) => o.label === "attributes");
+    expect(seen!.attributes).toEqual([
+      {
+        kind: "ZoneFixture.Batch",
+        attributes: {
+          atomic: "a rollback discards the whole batch, entries included",
+          noSuspend: "the batch holds an open handle that cannot outlive this process",
+        },
+      },
+    ]);
+    await kernel.teardown();
+  });
+
+  it("carries the author's REASON, so a refusal quotes the manifest rather than inventing one", async () => {
+    const kernel = await bootKernel(false);
+    await kernel.invoke("ZoneFixture.Batch.batchAroundProbe", { label: "reason" });
+    const seen = (await observations(kernel)).find((o) => o.label === "reason");
+    // This is the whole point of the value being the reason rather than `true`:
+    // a `noSuspend` reader has a sentence to print at the refusal.
+    expect(seen!.attributes[0].attributes.noSuspend).toMatch(/cannot outlive this process/);
+    await kernel.teardown();
+  });
+
+  it("reports an empty record for a zone whose slot declares no attributes", async () => {
+    const kernel = await bootKernel(false);
+    // `Ambient` provides an uncorrelated zone with the bare `true` spelling,
+    // which says nothing about its contents.
+    await kernel.invoke("ZoneFixture.Ambient.ambientBatch", { label: "bare" });
+    const seen = (await observations(kernel)).find((o) => o.label === "bare");
+    expect(seen!.attributes).toEqual([{ kind: "ZoneFixture.Ambient", attributes: {} }]);
+    await kernel.teardown();
+  });
+
+  it("is empty outside every zone", async () => {
+    const kernel = await bootKernel(false);
+    await kernel.invoke("ZoneFixture.Probe.probe", { label: "unzoned" });
+    const seen = (await observations(kernel)).find((o) => o.label === "unzoned");
+    expect(seen!.attributes).toEqual([]);
+    await kernel.teardown();
+  });
+});
+
 describe("execution zones — instance identity", () => {
   it("gives every live instance a distinct, stable handle", async () => {
     const kernel = await bootKernel(false);

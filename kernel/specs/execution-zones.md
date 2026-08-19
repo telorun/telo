@@ -86,13 +86,75 @@ assert this. (Node kernel: `deriveContext(base, overrides)` in the SDK.)
 Both sit beside a slot's `x-telo-ref` in the declaring kind's `schema:`. Neither
 classifies dispatch — the slot's `use` already did.
 
-### 4.1 `x-telo-provides-zone: true | <pointer>`
+### 4.1 `x-telo-provides-zone: true | <pointer> | { key?, …attributes }`
 
 On a body slot: dispatching through it establishes the declaring kind's zone.
 The value is the **correlation key**, never the zone: `true` establishes it
 uncorrelated; a self-relative JSON pointer names the kind's own field whose
 resolved reference the zone carries as its correlation payload
 (`Sql.Transaction.steps` declares `/connection`).
+
+The **object form** carries that same pointer as `key` (absent = uncorrelated)
+beside the zone's **attributes** — what the region GUARANTEES about everything
+executed inside it:
+
+```yaml
+x-telo-provides-zone:
+  key: /connection
+  atomic: a rollback erases writes a journal recorded as done
+  noSuspend: the transaction holds a connection a parked run would lose
+```
+
+An attribute is what lets a region forbid something a *requirement* cannot
+express. A requirement says "I must be inside a zone of kind X"; an attribute
+says "whatever runs inside me must respect this", which is a statement about
+contents rather than about ancestry, and the two are not interchangeable —
+parking inside a `Lease.Critical` body is wrong even though every enclosing-zone
+requirement it carries is satisfied.
+
+**They are attributes on this annotation rather than a second annotation family
+because a slot that constrains its contents is a slot that already establishes a
+zone.** A separate family would restate the zone's location, its `extends`
+resolution and its runtime open call, and a kind-level flag could not say WHICH
+field holds the body without per-kind knowledge (a sibling `afterCommit:`
+legitimately sits outside the transaction).
+
+#### 4.1.1 The attribute vocabulary
+
+The vocabulary is **CLOSED**, and it is **DATA**: one JSON file per attribute
+under `sdk/zone-attributes/`, which every runtime reads identically (Rust with
+`include_str!`, Node through a copy the build makes). An entry declares its
+`name`, a `value` schema, its `requires:` dependencies and a `description`, and
+**no code** — the meaning lives entirely with the consumer that reads it.
+
+| Attribute     | Means                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `atomic`      | Effects inside are discarded together on failure. **Requires `noSuspend`.**                                             |
+| `idempotent`  | Re-executing the zone is observably a no-op. Nothing is discarded, so there is no rollback for a consumer to join.       |
+| `noSuspend`   | The zone holds something bounded that cannot outlive the current process — a connection, a lease, a claim.               |
+| `replayed`    | Execution inside may be re-run from a record of a previous one, so it must reach the same decisions and serialize.       |
+
+**Each value is the author's REASON**, required by being the value itself rather
+than a sibling of a boolean. A consumer refusing on an attribute quotes that
+sentence verbatim, and there is no `true` to accept — so `atomic: true` fails the
+declared schema rather than reading as a valid declaration with nothing to say.
+It is also what keeps the set small: one name serves many providers because the
+prose carries the variation, so the vocabulary grows with kinds of *hazard*
+rather than kinds of provider.
+
+**`requires:` compiles to JSON Schema's `dependentRequired`**, so `atomic ⇒
+noSuspend` is a declaration in the data beside the thing it constrains rather
+than a hardcoded pair of names in a validator.
+
+Names are **bare, not `Telo.`-qualified**: the position already implies the
+namespace, and a closed set has no second namespace to disambiguate against. The
+cost is stated rather than hidden — reopening the vocabulary later means a
+prefixed spelling and a migration, not a new key beside the old ones.
+
+A runtime MUST reject an unknown attribute name and a value failing its entry's
+schema. It MUST NOT branch on any attribute name: interpreting one is entirely
+the consumer's, and a runtime that acted on `noSuspend` would be a runtime with
+an opinion about a feature it does not implement.
 
 ### 4.2 `x-telo-requires-zone: <kind> | { zone, key?, reason? }`
 
@@ -140,6 +202,14 @@ A runtime MUST expose on the resource context:
   `instance`, innermost first. The undeclared case: a statement with no
   `transaction:` still joins an open transaction. No kind parameter — the
   provider's own per-instance map discriminates.
+- **`zoneAttributes(ctx?)`** — every open zone paired with what it DECLARES
+  about its contents (§4.1.1), innermost first. Resolved off the **declaring
+  kind's schema**, never off the entry: an entry is three identities *because*
+  that keeps it ABI-serializable and stops any module reading another's private
+  state off the stack, and attributes on it would trade that away for every
+  zone. The runtime resolves and returns them **without branching on a name**,
+  exactly as `readRefSlot` returns `use` without acting on it. A zone whose slot
+  declares no attributes reports an empty record, never absence.
 - **`rootContext(opts?)`** — a context inheriting **nothing** from the ambient:
   no zones, no trace parent, no caller token (optionally a cancellation
   source's). See §7.

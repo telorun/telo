@@ -62,12 +62,15 @@ schema:
 Note what the `transaction:` slot is: a `dependency`, not a call. Control never
 transfers through it. What it carries is the *requirement*.
 
-### `x-telo-provides-zone: true | <pointer>`
+### `x-telo-provides-zone: true | <pointer> | { key?, …attributes }`
 
 On a body slot. The value is the **correlation key**, never the zone: `true`
 establishes the zone uncorrelated, and a self-relative JSON pointer names the
 kind's own field whose resolved reference the zone carries as its correlation
 payload.
+
+The object form carries that pointer as `key` beside the zone's **attributes**
+— see [Zones that constrain their contents](#zones-that-constrain-their-contents).
 
 ### `x-telo-requires-zone`
 
@@ -155,6 +158,74 @@ enforcement; static analysis moves the failure earlier for the paths it can see.
   unreadable provision invents failures — and a bare-name key would be read by
   the runtime but skipped by the checker, so the two would disagree about what
   the manifest means.
+- **`ZONE_ATTRIBUTE_UNKNOWN`** (error) — an attribute name outside the closed
+  vocabulary. Lists the valid names and suggests a spelling, rather than leaving
+  a typo to read as an attribute nothing enforces.
+- **`ZONE_ATTRIBUTE_INCOMPLETE`** (error) — an attribute declared without one its
+  entry `requires:` (today: `atomic` without `noSuspend`).
+
+All of these are **entry-module-scoped**: a published dependency's annotations
+are not the consumer's to fix.
+
+## Zones that constrain their contents
+
+Some bodies must forbid what a *requirement* cannot express. A requirement says
+"I must be inside a zone of kind X" — a statement about ancestry. What a
+transaction needs to say is different in kind: *whatever runs inside me must not
+park*, because the connection it holds cannot outlive this process. That is a
+statement about contents, and no requirement spells it.
+
+So a providing slot may declare **attributes** — a closed vocabulary shipped as
+data under `sdk/zone-attributes/`, which both kernels read identically:
+
+```yaml
+steps:
+  x-telo-ref: { kind: Telo.Executable, use: call }
+  x-telo-provides-zone:
+    key: /connection
+    atomic: >-
+      a rollback discards these writes, so a consumer that recorded them
+      individually would be holding records of work the database erased
+    noSuspend: >-
+      the transaction holds this connection open, and a body that parked here
+      would resume in a process where neither it nor the transaction exists
+```
+
+| Attribute     | Declare it when                                                                          |
+| ------------- | ----------------------------------------------------------------------------------------- |
+| `atomic`      | failure discards everything inside together. Requires `noSuspend`.                          |
+| `idempotent`  | re-running the region is observably a no-op — the same writes land, or land once.           |
+| `noSuspend`   | the region holds something bounded that cannot outlive this process.                        |
+| `replayed`    | execution inside may be re-run from a record of a previous one.                             |
+
+**The value is your reason, not `true`.** Whatever refuses on your attribute
+quotes that sentence at the author, so write the consequence rather than the
+condition — "the lease lapses unrenewed while the run sleeps, so another holder
+may already be running" beats "leases cannot suspend". This is also what keeps
+the vocabulary small: `noSuspend` is worn by a transaction, a lease, a claim and
+later a deadline scope — four providers, four reasons, one name.
+
+**The vocabulary is closed on purpose.** Every attribute exists to be branched
+on, and a module cannot contribute an analyzer pass — so a third-party attribute
+would get a runtime reader and no static check, which is exactly the half that
+does not catch the failures worth catching. Adding one is a data file plus a
+core reader.
+
+Reading them back at runtime is `ctx.zoneAttributes()`:
+
+```ts
+const held = this.ctx.zoneAttributes(invokeCtx).find((z) => z.attributes.noSuspend);
+if (held) {
+  throw new InvokeError(
+    "ERR_DURABLE_SUSPEND_FORBIDDEN",
+    `cannot park inside ${held.kind}: ${held.attributes.noSuspend}`,
+  );
+}
+```
+
+Note what the kernel does NOT do: it never branches on a name. It resolves the
+declaring kind's schema — the one place that lookup is already available — and
+hands the values over uninterpreted, exactly as `readRefSlot` returns `use`.
 
 ## Writing the controller
 

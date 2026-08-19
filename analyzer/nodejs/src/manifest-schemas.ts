@@ -246,6 +246,39 @@ export const InvokeStepSchema = {
     retry: {
       title: "Retry",
       $ref: `${MANIFEST_SCHEMA_URI}#/$defs/RetryPolicy`,
+      // A sibling of the shared policy rather than a member of it, the way
+      // `Http.Request.retry` adds `honorRetryAfter` — fragment expansion merges
+      // siblings, so the policy stays closed and each consumer's surface stays
+      // honest. `nonRetryable` matches an ERROR CODE, which is what a step's
+      // failures carry; an HTTP retry classifies on a response STATUS and has
+      // `retryOn` for it, so putting this on the shared shape would advertise a
+      // field there that nothing could read.
+      properties: {
+        nonRetryable: {
+          title: "Non-retryable codes",
+          description:
+            "Error codes that end the loop immediately instead of consuming the budget. " +
+            "The built-in exclusions are the ones decidable without judgement — a " +
+            "cancellation, and the kernel's verdicts on the shape of the call; whether a " +
+            "DOMAIN failure is worth re-attempting only the author knows, and without " +
+            "this every terminal one is retried to exhaustion — for a non-idempotent " +
+            "target, N extra attempts at a side effect.",
+          type: "array",
+          items: { type: "string" },
+          default: [],
+        },
+      },
+    },
+    timeout: {
+      title: "Timeout",
+      description:
+        "How long ONE attempt may take, in milliseconds; on elapse the dispatch is " +
+        "cancelled and the step fails ERR_STEP_TIMEOUT. Per attempt rather than for " +
+        "the whole retry loop, so what a single call is allowed to take does not " +
+        "depend on how slow the earlier attempts were. It belongs to the step rather " +
+        "than the target because the target does not know who is waiting.",
+      type: "integer",
+      minimum: 1,
     },
   },
 };

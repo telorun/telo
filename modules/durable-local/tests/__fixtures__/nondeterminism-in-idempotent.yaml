@@ -1,0 +1,44 @@
+kind: Telo.Application
+metadata:
+  name: DurableNondeterminismProbe
+  version: 1.0.0
+  description: >-
+    Impure CEL inside a region declared idempotent. Never run — it exists so a test
+    can assert `telo check` rejects the claim, and it lives under __fixtures__ so
+    test discovery does not execute it.
+imports:
+  Durable: ../../../durable
+  Local: ../../
+  Journal: ../../../durable-journal-file
+  Run: ../../../run
+targets:
+  - name: start
+    invoke: !ref importer
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: .telo/probe
+---
+kind: Run.Value
+metadata: { name: upsert }
+value: {}
+---
+# The claim and its counter-example in one document: re-running this region is
+# asserted to be a no-op, while the key it writes under is freshly minted on
+# every pass — so the second pass writes a different record and the assertion is
+# false.
+kind: Durable.Idempotent
+metadata: { name: importAll }
+reason: every write is an upsert keyed on the source id, so a re-run overwrites itself
+steps:
+  - name: write
+    invoke: !ref upsert
+    inputs:
+      key: !cel "uuidv4()"
+---
+kind: Local.Workflow
+metadata: { name: importer }
+journal: !ref journal
+steps:
+  - name: bulk
+    invoke: !ref importAll

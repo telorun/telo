@@ -42,6 +42,10 @@ analyzer/nodejs/src/migrations/entries/
 # Same reason, same mechanism: every runtime reads the identical vocabulary.
 sdk/nodejs/src/value-types/entries/
 
+# Zone-attribute entries copied in from sdk/zone-attributes/ by the root
+# `prepare`. Same reason, same mechanism: both kernels read one vocabulary.
+sdk/nodejs/src/zone-attributes/entries/
+
 # Manifest surface generation, generated from the linked kernel version by the
 # root `prepare`. Committing it would be a second place the version lives.
 analyzer/nodejs/src/telo-version.ts

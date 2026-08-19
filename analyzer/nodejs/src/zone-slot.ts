@@ -10,6 +10,10 @@
  *
  *   x-telo-provides-zone: true            # uncorrelated — the zone is the kind
  *   x-telo-provides-zone: /connection     # correlation-key pointer (own field)
+ *   x-telo-provides-zone:                 # correlation key + zone attributes
+ *     key: /connection
+ *     atomic: a rollback erases writes a journal recorded as done
+ *     noSuspend: the transaction holds a connection a parked run would lose
  *
  *   x-telo-requires-zone: Self.Transaction        # uncorrelated string form
  *   x-telo-requires-zone:                          # object form
@@ -17,6 +21,8 @@
  *     key: [/connection, /transaction/connection]  # ordered, first hit wins
  *     reason: the statement would execute outside any transaction
  */
+
+import { ZONE_ATTRIBUTES, type ZoneAttributes } from "@telorun/sdk";
 
 const PROVIDES = "x-telo-provides-zone";
 const REQUIRES = "x-telo-requires-zone";
@@ -29,6 +35,16 @@ export interface ProvidesZoneSlot {
    *  reference the zone carries as its correlation payload. Absent =
    *  uncorrelated (`true`). */
   key?: string;
+  /** What this zone declares about everything executed inside it, keyed by the
+   *  closed vocabulary's bare names with the author's REASON as each value (see
+   *  `sdk/zone-attributes/`). Empty for the two scalar spellings, which say
+   *  nothing about their contents.
+   *
+   *  Read here and interpreted nowhere in this file: an attribute's meaning is
+   *  entirely its consumer's — the containment walk, the step engine's collapse
+   *  rule, the parking kinds — exactly as `readRefSlot` hands back `use` without
+   *  acting on it. */
+  attributes: ZoneAttributes;
 }
 
 /** A field declaring that its resource must be reached through a zone. */
@@ -59,9 +75,36 @@ function isPointer(value: unknown): value is string {
  *  none or the value is malformed (`validate-zone-slots` reports those). */
 export function readProvidesZone(node: Record<string, any> | undefined): ProvidesZoneSlot | undefined {
   const raw = node?.[PROVIDES];
-  if (raw === true) return {};
-  if (isPointer(raw)) return { key: raw };
-  return undefined;
+  if (raw === true) return { attributes: {} };
+  if (isPointer(raw)) return { key: raw, attributes: {} };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+
+  const obj = raw as Record<string, unknown>;
+  // A `key` that is present but unreadable makes the object form MEAN something
+  // different to the two halves — the correlation the author wrote is dropped
+  // here while the kernel's walk still resolves a bare name — so the whole
+  // annotation is refused rather than read as uncorrelated. Absent `key` is the
+  // legitimate uncorrelated case.
+  if (obj.key !== undefined && !isPointer(obj.key)) return undefined;
+
+  const attributes: Record<string, string> = {};
+  for (const [name, value] of Object.entries(obj)) {
+    if (name === "key") continue;
+    // Unknown names and wrong-shaped values are reported by
+    // `validate-zone-slots`; skipped here so a typo degrades to an attribute
+    // this zone does not declare rather than to a consumer reading a name that
+    // means nothing to it.
+    if (!ZONE_ATTRIBUTES.has(name) || typeof value !== "string" || !value) continue;
+    attributes[name] = value;
+  }
+  return { ...(isPointer(obj.key) ? { key: obj.key } : {}), attributes: attributes as ZoneAttributes };
+}
+
+/** The attributes the zone a slot provides declares, or an empty record when the
+ *  node provides no zone. The shape every containment consumer wants, so none of
+ *  them repeats the `readProvidesZone(...)?.attributes ?? {}` dance. */
+export function providedZoneAttributes(node: Record<string, any> | undefined): ZoneAttributes {
+  return readProvidesZone(node)?.attributes ?? {};
 }
 
 /** True when the node carries `x-telo-provides-zone` in any shape, valid or not

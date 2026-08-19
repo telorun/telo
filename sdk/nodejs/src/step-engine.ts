@@ -23,6 +23,13 @@
 
 import type { Invocable } from "./capabilities/invokable.js";
 import type { InvokeContext } from "./cancellation.js";
+import {
+  durableHandleOf,
+  journalingSuppressed,
+  stepPath,
+  type DurableDecisionKind,
+  type DurableRunHandle,
+} from "./durable-run.js";
 import { InvokeError, isInvokeError } from "./invoke-error.js";
 import { executeInvokeStep, type InvokeStep, type InvokeStepContext } from "./invoke-step.js";
 import type { KindRef, ScopeContext } from "./ref.js";
@@ -207,16 +214,81 @@ export class StepEngine {
     return `${this.namePrefix}${path}${step}`;
   }
 
+  /**
+   * @param path Journal key prefix for this list — see {@link stepPath}. A
+   *   composer that repeats a body (an iteration element, a loop turn) qualifies
+   *   it with the index, which is what makes each repetition an independently
+   *   resumable subtree. Omitted, it is derived from the ambient step path, so a
+   *   NESTED body nests its keys instead of restarting at the root — see
+   *   {@link baseStepPath}.
+   */
   async executeSteps(
     stepList: Step[],
     steps: Record<string, unknown>,
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
     invokeCtx?: InvokeContext,
+    path?: string,
   ): Promise<void> {
+    const base = path ?? baseStepPath(invokeCtx);
     for (const step of stepList) {
-      await this.executeStep(step, steps, scope, extraCtx, invokeCtx);
+      await this.executeStep(step, steps, scope, extraCtx, invokeCtx, base);
     }
+  }
+
+  /**
+   * The journal key of one step.
+   *
+   * Composed from the WRITTEN structure — the enclosing list's path plus this
+   * step's own name — never from execution order. A per-run call ordinal would
+   * be simpler and is wrong: two branches of a concurrent fan-out interleave
+   * their dispatches, so an ordinal numbers them differently on every run while
+   * these paths stay fixed.
+   */
+  private pathOf(path: string, step: Step): string {
+    // A missing name is refused rather than defaulted. The shared `Step` schema
+    // declares `name` required, so a manifest cannot reach this — but a caller
+    // assembling steps in code can, and an empty segment would give two such
+    // steps ONE journal key, where first-writer-wins hands the second the
+    // first's result. Silent, and indistinguishable from a correct replay.
+    if (!step.name) {
+      throw new InvokeError(
+        "ERR_STEP_NAME_REQUIRED",
+        `A step at '${path}' has no name. A name is what identifies the step in the run's ` +
+          `record, so two unnamed steps would share one key and the second would be handed ` +
+          `the first's result.`,
+        { path },
+      );
+    }
+    return stepPath(path, step.name);
+  }
+
+  /** The run handle to journal through, or undefined when this body is not
+   *  inside a durable run — in which case the engine behaves exactly as it did
+   *  before durability existed, and pays nothing for it. */
+  private handle(invokeCtx?: InvokeContext): DurableRunHandle | undefined {
+    return durableHandleOf(invokeCtx);
+  }
+
+  /**
+   * Evaluate a control-flow decision, journaling it when a run is durable.
+   *
+   * EVERY decision goes through here, which is the closure property the whole
+   * design rests on: a predicate, a loop condition and a switch key are all read
+   * from a CEL scope carrying live readings, so re-deriving one in a fresh
+   * process can send the replay down a different branch than the run took —
+   * silently, because the journal would then hand back a recorded result under a
+   * key the run reached for a different reason.
+   */
+  private async decide<T>(
+    invokeCtx: InvokeContext | undefined,
+    path: string,
+    kind: DurableDecisionKind,
+    compute: () => T,
+  ): Promise<T> {
+    const handle = this.handle(invokeCtx);
+    if (!handle || journalingSuppressed(this.ctx, invokeCtx, handle)) return compute();
+    return handle.decide(path, kind, compute);
   }
 
   private async executeStep(
@@ -225,16 +297,26 @@ export class StepEngine {
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
     invokeCtx?: InvokeContext,
+    path = "steps",
   ): Promise<void> {
+    const here = this.pathOf(path, step);
     if (isInvokeStep(step))
-      await executeInvokeStep(step, this.ctx, { steps, scope, cel: extraCtx, invokeCtx });
-    else if (isIfStep(step)) await this.executeIfStep(step, steps, scope, extraCtx, invokeCtx);
-    else if (isWhileStep(step)) await this.executeWhileStep(step, steps, scope, extraCtx, invokeCtx);
+      await executeInvokeStep(step, this.ctx, {
+        steps,
+        scope,
+        cel: extraCtx,
+        invokeCtx,
+        journalPath: here,
+      });
+    else if (isIfStep(step)) await this.executeIfStep(step, steps, scope, extraCtx, invokeCtx, here);
+    else if (isWhileStep(step))
+      await this.executeWhileStep(step, steps, scope, extraCtx, invokeCtx, here);
     else if (isSwitchStep(step))
-      await this.executeSwitchStep(step, steps, scope, extraCtx, invokeCtx);
-    else if (isTryStep(step)) await this.executeTryStep(step, steps, scope, extraCtx, invokeCtx);
+      await this.executeSwitchStep(step, steps, scope, extraCtx, invokeCtx, here);
+    else if (isTryStep(step))
+      await this.executeTryStep(step, steps, scope, extraCtx, invokeCtx, here);
     else if (isThrowStep(step)) this.executeThrowStep(step, steps, extraCtx);
-    else if (isValueStep(step)) this.executeValueStep(step, steps, extraCtx);
+    else if (isValueStep(step)) await this.executeValueStep(step, steps, extraCtx, invokeCtx, here);
     else throw new Error(`Step "${(step as Step).name}" has no recognized type key`);
   }
 
@@ -244,23 +326,37 @@ export class StepEngine {
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
     invokeCtx?: InvokeContext,
+    path = "steps",
   ): Promise<void> {
-    if (this.ctx.expandValue(step.if, { steps, ...extraCtx })) {
-      await this.executeSteps(step.then, steps, scope, extraCtx, invokeCtx);
+    // Each predicate is journaled under its own key, so replay takes the branch
+    // the RUN took rather than the branch the predicate would evaluate to now.
+    if (await this.decide(invokeCtx, stepPath(path, "if"), "predicate", () =>
+      this.ctx.expandValue(step.if, { steps, ...extraCtx }),
+    )) {
+      await this.executeSteps(step.then, steps, scope, extraCtx, invokeCtx, stepPath(path, "then"));
       return;
     }
 
     if (step.elseif) {
-      for (const branch of step.elseif) {
-        if (this.ctx.expandValue(branch.if, { steps, ...extraCtx })) {
-          await this.executeSteps(branch.then, steps, scope, extraCtx, invokeCtx);
+      for (const [index, branch] of step.elseif.entries()) {
+        if (await this.decide(invokeCtx, stepPath(path, "elseif", index), "predicate", () =>
+          this.ctx.expandValue(branch.if, { steps, ...extraCtx }),
+        )) {
+          await this.executeSteps(
+            branch.then,
+            steps,
+            scope,
+            extraCtx,
+            invokeCtx,
+            stepPath(path, "elseif", index, "then"),
+          );
           return;
         }
       }
     }
 
     if (step.else) {
-      await this.executeSteps(step.else, steps, scope, extraCtx, invokeCtx);
+      await this.executeSteps(step.else, steps, scope, extraCtx, invokeCtx, stepPath(path, "else"));
     }
   }
 
@@ -270,9 +366,24 @@ export class StepEngine {
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
     invokeCtx?: InvokeContext,
+    path = "steps",
   ): Promise<void> {
-    while (this.ctx.expandValue(step.while, { steps, ...extraCtx })) {
-      await this.executeSteps(step.do, steps, scope, extraCtx, invokeCtx);
+    // The turn index qualifies both the condition's key and the body's, so each
+    // turn is an independently resumable subtree and a resume re-enters the turn
+    // it stopped in rather than restarting the loop.
+    for (let turn = 0; ; turn++) {
+      const go = await this.decide(invokeCtx, stepPath(path, "while", turn), "condition", () =>
+        this.ctx.expandValue(step.while, { steps, ...extraCtx }),
+      );
+      if (!go) return;
+      await this.executeSteps(
+        step.do,
+        steps,
+        scope,
+        extraCtx,
+        invokeCtx,
+        stepPath(path, "do", turn),
+      );
     }
   }
 
@@ -282,12 +393,31 @@ export class StepEngine {
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
     invokeCtx?: InvokeContext,
+    path = "steps",
   ): Promise<void> {
-    const key = String(this.ctx.expandValue(step.switch, { steps, ...extraCtx }));
+    const key = String(
+      await this.decide(invokeCtx, stepPath(path, "switch"), "switch", () =>
+        this.ctx.expandValue(step.switch, { steps, ...extraCtx }),
+      ),
+    );
     if (Object.prototype.hasOwnProperty.call(step.cases, key)) {
-      await this.executeSteps(step.cases[key], steps, scope, extraCtx, invokeCtx);
+      await this.executeSteps(
+        step.cases[key],
+        steps,
+        scope,
+        extraCtx,
+        invokeCtx,
+        stepPath(path, "cases", key),
+      );
     } else if (step.default) {
-      await this.executeSteps(step.default, steps, scope, extraCtx, invokeCtx);
+      await this.executeSteps(
+        step.default,
+        steps,
+        scope,
+        extraCtx,
+        invokeCtx,
+        stepPath(path, "default"),
+      );
     } else {
       throw new Error(`Switch step "${step.name}": no matching case for "${key}" and no default`);
     }
@@ -297,13 +427,24 @@ export class StepEngine {
    *  `steps.<name>.result`, the same shape an invoke step records — so a
    *  downstream step cannot tell how the value was produced. Nothing is
    *  dispatched, so there is no span and no topology edge. */
-  private executeValueStep(
+  private async executeValueStep(
     step: ValueStep,
     steps: Record<string, unknown>,
     extraCtx: Record<string, unknown>,
-  ): void {
+    invokeCtx?: InvokeContext,
+    path = "steps",
+  ): Promise<void> {
     try {
-      steps[step.name] = { result: this.ctx.expandValue(step.value, { steps, ...extraCtx }) };
+      // Journaled like any other decision: a pure step's expression may be
+      // impure (`now()`, `uuid()`), and its value becomes `steps.<name>.result`
+      // that later steps read — so re-deriving it on replay would change the
+      // run's state without any dispatch having differed. This is also what lets
+      // a `Durable.Value` work INSIDE a collapsed region: collapse suppresses
+      // per-step entries, never a direct decision.
+      const result = await this.decide(invokeCtx, path, "value", () =>
+        this.ctx.expandValue(step.value, { steps, ...extraCtx }),
+      );
+      steps[step.name] = { result };
     } catch (err) {
       // Attribute the failure the way every other step branch does — a bare
       // expression error names no step, no resource and no line, which is the
@@ -348,14 +489,22 @@ export class StepEngine {
     scope: ScopeContext | undefined,
     extraCtx: Record<string, unknown>,
     invokeCtx?: InvokeContext,
+    path = "steps",
   ): Promise<void> {
-    if (step.when !== undefined && !this.ctx.expandValue(step.when, { steps, ...extraCtx })) return;
+    if (
+      step.when !== undefined &&
+      !(await this.decide(invokeCtx, stepPath(path, "when"), "predicate", () =>
+        this.ctx.expandValue(step.when, { steps, ...extraCtx }),
+      ))
+    ) {
+      return;
+    }
 
     let tryFailed = false;
     let tryError: unknown;
 
     try {
-      await this.executeSteps(step.try, steps, scope, extraCtx, invokeCtx);
+      await this.executeSteps(step.try, steps, scope, extraCtx, invokeCtx, stepPath(path, "try"));
     } catch (err) {
       tryFailed = true;
       tryError = err;
@@ -365,30 +514,59 @@ export class StepEngine {
       if (step.catch) {
         const seqErr = toSequenceError(tryError, step.name);
         try {
-          await this.executeSteps(step.catch, steps, scope, { ...extraCtx, error: seqErr }, invokeCtx);
+          await this.executeSteps(
+            step.catch,
+            steps,
+            scope,
+            { ...extraCtx, error: seqErr },
+            invokeCtx,
+            stepPath(path, "catch"),
+          );
         } catch (catchErr) {
           if (step.finally) {
-            await this.executeSteps(step.finally, steps, scope, {
-              ...extraCtx,
-              error: toSequenceError(catchErr, step.name),
-            }, invokeCtx);
+            await this.executeSteps(
+              step.finally,
+              steps,
+              scope,
+              { ...extraCtx, error: toSequenceError(catchErr, step.name) },
+              invokeCtx,
+              stepPath(path, "finally"),
+            );
           }
           throw catchErr;
         }
         if (step.finally) {
-          await this.executeSteps(step.finally, steps, scope, { ...extraCtx, error: null }, invokeCtx);
+          await this.executeSteps(
+            step.finally,
+            steps,
+            scope,
+            { ...extraCtx, error: null },
+            invokeCtx,
+            stepPath(path, "finally"),
+          );
         }
       } else {
         if (step.finally) {
-          await this.executeSteps(step.finally, steps, scope, {
-            ...extraCtx,
-            error: toSequenceError(tryError, step.name),
-          }, invokeCtx);
+          await this.executeSteps(
+            step.finally,
+            steps,
+            scope,
+            { ...extraCtx, error: toSequenceError(tryError, step.name) },
+            invokeCtx,
+            stepPath(path, "finally"),
+          );
         }
         throw tryError;
       }
     } else if (step.finally) {
-      await this.executeSteps(step.finally, steps, scope, { ...extraCtx, error: null }, invokeCtx);
+      await this.executeSteps(
+        step.finally,
+        steps,
+        scope,
+        { ...extraCtx, error: null },
+        invokeCtx,
+        stepPath(path, "finally"),
+      );
     }
   }
 }
@@ -418,4 +596,21 @@ export function toSequenceError(err: unknown, stepName: string): SequenceError {
   }
   const message = (err instanceof Error ? err.message : String(err)) || "Unknown error";
   return { message, code: PLAIN_ERROR_CODE, data: undefined, step: stepName };
+}
+
+/**
+ * Where a step list's journal keys hang from.
+ *
+ * At the top of a durable run there is no ambient path and the base is `steps`.
+ * Inside one, it is the path of the step that dispatched this body — so a nested
+ * sequence's `work` becomes `steps/importAll/work` rather than a second
+ * `steps/work`, and two nested bodies can no longer collide.
+ *
+ * The dispatching step's path is used directly rather than with a `steps`
+ * segment appended: the parent path already names one dispatch site, and every
+ * other segment the grammar produces (`then`, `do[2]`, `cases/x`) is distinct
+ * from a step name, so nothing else can generate the same key.
+ */
+function baseStepPath(invokeCtx?: InvokeContext): string {
+  return invokeCtx?.durablePath ?? "steps";
 }

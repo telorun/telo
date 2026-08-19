@@ -768,6 +768,57 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  modules/durable-journal-file/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+
+  modules/durable-local/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+
+  modules/durable/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/embedding-openai/nodejs:
     dependencies:
       '@telorun/embedding':
@@ -1536,21 +1587,6 @@ importers:
         version: 5.9.3
 
   modules/vector-store/nodejs:
-    devDependencies:
-      '@telorun/sdk':
-        specifier: workspace:*
-        version: link:../../../sdk/nodejs
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.30
-      esbuild:
-        specifier: ^0.25.12
-        version: 0.25.12
-      typescript:
-        specifier: ^5.0.0
-        version: 5.9.3
-
-  modules/workflow-temporal/nodejs:
     devDependencies:
       '@telorun/sdk':
         specifier: workspace:*

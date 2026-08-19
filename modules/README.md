@@ -1,6 +1,6 @@
 # Telo Standard Library
 
-The Telo standard library is the collection of modules that ship with the kernel — ready-to-import building blocks for AI, HTTP, storage, workflow orchestration, encoding, runtime targets, scripting, and ops. Each module is self-contained, declared by its own `telo.yaml`, and composes into your application through `Telo.Import`.
+The Telo standard library is the collection of modules that ship with the kernel — ready-to-import building blocks for AI, HTTP, storage, durable execution, encoding, runtime targets, scripting, and ops. Each module is self-contained, declared by its own `telo.yaml`, and composes into your application through `Telo.Import`.
 
 For how modules are defined, imported, and composed, see the [Module Specification](../kernel/docs/modules.md).
 
@@ -37,8 +37,9 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 | Module | Description |
 | --- | --- |
 | [run](./run/README.md) | Unified sequence execution with invoke, if, while, switch, and try steps. |
-| [workflow](./workflow/README.md) | Workflow orchestration primitives with pluggable backends. |
-| [workflow-temporal](./workflow-temporal/README.md) | Temporal backend for `Workflow.Graph`. |
+| [durable](./durable/README.md) | Backend-neutral pieces for work that survives process death. |
+| [durable-local](./durable-local/README.md) | Durable execution with no engine to deploy: records progress, resumes after a crash. |
+| [durable-journal-file](./durable-journal-file/README.md) | Stores durable runs as append-only files in a directory. |
 
 ### Encoding & Streams
 

@@ -3,6 +3,7 @@ import {
   SEVERITY,
   parseDurationMs,
   resolveInvocableDispatcher,
+  type InvokeContext,
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
@@ -69,7 +70,7 @@ class IdempotencyOnce implements ResourceInstance<OnceInputs, OnceResult> {
   // here because nothing enforced the contract; keeping it now would double-check
   // the same condition and shadow the kernel's message, which names the target
   // and the offending value.
-  async invoke(inputs: OnceInputs): Promise<OnceResult> {
+  async invoke(inputs: OnceInputs, invokeCtx?: InvokeContext): Promise<OnceResult> {
     const name = this.resource.metadata.name;
 
     const store = this.ctx.resolveRef(
@@ -147,7 +148,17 @@ class IdempotencyOnce implements ResourceInstance<OnceInputs, OnceResult> {
     // precisely the double execution this kind exists to prevent.
     let result: unknown;
     try {
-      result = await dispatch(inputs.inputs ?? {});
+      // The claim is what makes this region genuinely re-runnable, so the zone
+      // it opens EARNS its `idempotent` attribute rather than asserting it: a
+      // second pass finds the settled result and replays it. A consumer reading
+      // the ambient stack (a durable step engine deciding collapse) sees that,
+      // and sees `noSuspend` beside it — the claim is renewed on a heartbeat
+      // only while this process runs the body.
+      result = await this.ctx.withZone(
+        "invoke",
+        (zoneCtx) => dispatch(inputs.inputs ?? {}, zoneCtx),
+        invokeCtx,
+      );
     } catch (err) {
       // The body failed, so nothing happened that must not happen twice: free the
       // key and let the caller retry. The error propagates untouched.
