@@ -7,6 +7,7 @@
  * entire extent of what the backends share.
  */
 import {
+  DurableSuspension,
   InvokeError,
   assertJournalable,
   type DurableDecisionKind,
@@ -112,18 +113,32 @@ export class LocalRunHandle implements DurableRunHandle {
     return (await this.#write({ path, kind: "decision", decision: kind, value: compute() })) as T;
   }
 
-  async park(): Promise<never> {
-    // Suspension is v1.1. Refusing loudly is the only honest answer: a park that
-    // silently returned would convert a wait into a completed step and duplicate
-    // every effect after it, which is the exact corruption durability exists to
-    // prevent.
-    throw new InvokeError(
-      "ERR_DURABLE_PARK_UNSUPPORTED",
-      `Run '${this.runId}': this backend cannot park a run yet. Suspension is not part ` +
-        `of durable execution v1.0 — a run that cannot park can still crash and resume, ` +
-        `which is what this version provides.`,
-      { run: this.runId },
-    );
+  /**
+   * Record the park, then unwind.
+   *
+   * Recorded FIRST, and that ordering is the whole of whether a park is
+   * recoverable: the signal only unwinds this process's stack, so a park that
+   * threw before writing would leave a run marked `running` with nothing
+   * executing it — recovered eventually by the resumer, but as an interrupted
+   * run replayed from its last step rather than as a run waiting at a known
+   * point, and with its wake token lost.
+   *
+   * The throw here is what the seam's own guard makes redundant — `parkRun`
+   * throws its latched signal if this returns — and it is kept because a
+   * backend's park should be correct on its own terms, not only inside the
+   * helper that calls it.
+   */
+  async park(
+    where: { path: string; resource: string },
+    until: { at?: number; token?: string },
+  ): Promise<never> {
+    await this.journal.parkRun(this.runId, {
+      path: where.path,
+      resource: where.resource,
+      ...(until.at === undefined ? {} : { at: until.at }),
+      ...(until.token === undefined ? {} : { token: until.token }),
+    });
+    throw new DurableSuspension(this.runId, where.path, where.resource, until);
   }
 
   /** Counted per DISTINCT region rather than per suppressed step: the reported

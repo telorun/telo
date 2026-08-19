@@ -837,6 +837,19 @@ system: |
   `Lease.Critical.invoke` (noSuspend alone — a lease makes nothing idempotent)
   and every durable backend's body slot (`replayed`).
 
+  A THIRD annotation completes the set. `x-telo-provides-zone` says what a region
+  guarantees about its contents; `x-telo-requires-zone` says what a resource
+  needs of the region around it — and it takes an optional `attributes:` list, so
+  a requirement can demand what the zone GUARANTEES rather than only which kind
+  it is. Neither says "I BREAK that guarantee", which is
+  `x-telo-violates-zone: { <attribute>: <reason> }`, declared at the kind's
+  SCHEMA ROOT because a kind that suspends suspends however it is configured.
+  `Durable.Await` declares it for `noSuspend`; `Durable.Value` needs the same
+  replaying region and declares none, which is why a violation has to be its own
+  statement rather than something inferable from the requirement. A requirement
+  is also legal at the schema root, where it means EVERY instance needs the zone
+  (a field-level one applies only when that field is set).
+
   A module declaring the OBJECT form must also declare
   `requires: { telo: ">=0.79.0" }` — an older analyzer reads the object as a
   malformed annotation and rejects the module, blaming its own author. The two
@@ -874,10 +887,55 @@ system: |
   because they are read from a scope carrying live readings and re-deriving one
   in a fresh process could send a replay down a branch the run never took.
 
+  A START DOES NOT BLOCK. `Local.Workflow` records the run and returns
+  `{ runId, started }`; the body keeps going. A caller that wants the outcome
+  asks for it with `Local.Result` (optional `wait:`), which is also how a test
+  reads one. That split is what waiting makes necessary — a body that parks for
+  an approval does not return for days.
+
   Kinds: `Durable.Run` (a marker a backend's workflow extends — never
   instantiated), `Durable.Idempotent` (wraps a region you assert is safe to
   re-run, so it is recorded as ONE entry; takes a required prose `reason:`),
-  `Local.Workflow` / `Local.Journal` / `Local.Resumer`.
+  `Durable.Sleep` / `Durable.Await` / `Durable.Value` (below),
+  `Local.Workflow` / `Local.Journal` / `Local.Resumer`, and the kinds that
+  address a run from outside: `Local.Deliver` / `Status` / `Result` / `Cancel` /
+  `Schedule` / `Resume`.
+
+  ### Waiting
+
+  A body can stop and wait, and the process is free to exit while it does.
+
+      kind: Durable.Sleep
+      metadata: { name: cooldown }
+      for: 24h
+      ---
+      kind: Durable.Await
+      metadata: { name: approval }
+      token: !cel "'approve:' + inputs.ticket"   # the address a delivery carries
+      outputType:                                 # what the delivery carries
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [approvedBy]
+          properties: { approvedBy: { type: string } }
+
+  These name NOTHING — no run ref, no backend import. They reach the run they are
+  inside off the invocation context, so the same document works under every
+  engine.
+
+  The delivering half is NATIVE, tied by a ref rather than a shared contract:
+
+      kind: Local.Deliver
+      metadata: { name: approve }
+      journal: !ref runs        # the JOURNAL, not the workflow
+      await: !ref approval      # names the wait ⇒ payload is type-checked
+      token: !cel "inputs.token"
+      payload: { approvedBy: !cel "inputs.by" }
+
+  `Local.Deliver` writes the value at the wait's own position (making it that
+  step's result) and does NOT continue the run — a `Local.Resumer`, or a second
+  submission of the same `runId`, does. That is what lets a delivery arrive in a
+  process that will never execute the body.
 
   When you AUTHOR a durable manifest:
     - EVERYTHING IS RECORDED BY DEFAULT. Do not reach for `Durable.Idempotent`
@@ -893,8 +951,21 @@ system: |
       ordinary durable step is FINE: it is recorded once and replayed.
     - Do not stream inside a durable body: a live value cannot be recorded
       (DURABLE_UNJOURNALABLE_RESULT).
-    - There is NO suspension yet — no "sleep three days", no "wait for approval".
-      A run that cannot park can still crash and resume.
+    - Give `Durable.Await` an `outputType:`, and write a `token:` when something
+      must hand the address out BEFORE the wait starts (an approval email). Omit
+      `token:` only when whatever reads the run hands the address out.
+    - Do NOT put a wait inside a region that declares it cannot be held open — a
+      `Sql.Transaction` body, a `Lease.Critical` body, an `Idempotency.Once`
+      body. `telo check` rejects it (ZONE_ATTRIBUTE_VIOLATED), quoting both the
+      region's promise and the wait's reason. The same applies to a step `retry:`
+      whose backoff reaches 30s, which waits by PARKING rather than sleeping.
+    - Use `Durable.Value` to pin an impure expression inside a
+      `Durable.Idempotent` region — that is the repair for DURABLE_NONDETERMINISM,
+      since collapse suppresses per-step records but never a direct one.
+    - A wait inside a `concurrency:` fan-out parks its OWN BRANCH; the siblings
+      finish first. Nothing to declare — it is how it behaves.
+    - A `Local.Resumer` holds the process open for as long as it polls. That is
+      right for an app whose job is recovery, and wrong for a one-shot script.
 
   When you AUTHOR a manifest using such kinds:
     - Wire a transaction's `steps:` at a `Run.Sequence` (or any Telo.Executable),

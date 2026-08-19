@@ -31,11 +31,23 @@ interface JournalEntry {
   value: unknown;
 }
 
+interface ParkRecord {
+  path: string;
+  resource: string;
+  at?: number;
+  token?: string;
+}
+
 interface RunRecord {
   run: string;
-  status: "running" | "completed" | "failed";
+  status: "scheduled" | "running" | "parked" | "completed" | "failed" | "cancelled";
+  dueAt?: number;
+  parked?: ParkRecord;
+  inputs?: unknown;
   result?: unknown;
   error?: { code: string; message: string };
+  collapsedRegions?: number;
+  collapseReasons?: string[];
 }
 
 /** A run id is a caller-chosen string (`onboard:ada@example.com`), and it becomes
@@ -48,6 +60,55 @@ function fileFor(directory: string, run: string): string {
 
 function runOf(fileName: string): string {
   return decodeURIComponent(fileName.replace(/\.ndjson$/, ""));
+}
+
+/**
+ * The run's current state, from its lines.
+ *
+ * LAST run line wins, unlike an entry: the header is written at admission and
+ * the terminal is appended at settlement, so the most recent one is the run's
+ * current state. Entries are the opposite (first wins) because they record facts
+ * that must never change once recorded.
+ */
+function recordOf(lines: { type?: string }[]): RunRecord | undefined {
+  let record: RunRecord | undefined;
+  for (const line of lines) {
+    if (line.type === "run") record = line as unknown as RunRecord;
+  }
+  return record;
+}
+
+/** Has something already been recorded at this position? For a parked run that
+ *  means its answer has arrived — see `dueRuns`. */
+function hasEntryAt(lines: { type?: string }[], path: string | undefined): boolean {
+  if (!path) return false;
+  return lines.some(
+    (line) => line.type === "entry" && (line as { entry?: { path?: string } }).entry?.path === path,
+  );
+}
+
+/**
+ * Is this run something a poller should pick up now?
+ *
+ * Four states with one answer, because they are one question. `running` is a run
+ * whose process died — admitted and never settled. `parked` is due when its
+ * deadline has passed, or when a delivery already cleared the park (which
+ * `unparkRun` records as `running`, so it arrives here through the first case).
+ * `scheduled` is due when its time has come. Everything terminal is not.
+ */
+function isDue(record: RunRecord, now: number, answered: () => boolean): boolean {
+  if (record.status === "running") return true;
+  if (record.status === "scheduled") return record.dueAt !== undefined && record.dueAt <= now;
+  if (record.status === "parked") {
+    // The answer already being recorded outranks the deadline. A delivery writes
+    // the payload and then clears the park; a crash in between would otherwise
+    // strand a run that holds its answer and has no deadline to wake it. The
+    // entry is the fact that matters, so reading it is what makes the pair
+    // recoverable without being atomic.
+    if (answered()) return true;
+    return record.dueAt !== undefined && record.dueAt <= now;
+  }
+  return false;
 }
 
 interface ClaimState {
@@ -81,9 +142,17 @@ class FileJournalController {
     return this;
   }
 
-  async admitRun(run: string): Promise<{ admitted: boolean; existing?: RunRecord }> {
+  async admitRun(
+    run: string,
+    init?: { status?: "running" | "scheduled"; dueAt?: number; inputs?: unknown },
+  ): Promise<{ admitted: boolean; existing?: RunRecord }> {
     const file = fileFor(this.resource.directory, run);
-    const header: RunRecord = { run, status: "running" };
+    const header: RunRecord = {
+      run,
+      status: init?.status ?? "running",
+      ...(init?.dueAt === undefined ? {} : { dueAt: init.dueAt }),
+      ...(init?.inputs === undefined ? {} : { inputs: init.inputs }),
+    };
     try {
       // `wx` is the whole admission: an exclusive create either wins or reports
       // that the run already exists. Checking existence and then writing would
@@ -136,17 +205,73 @@ class FileJournalController {
     this.#claims.delete(run);
   }
 
-  async interruptedRuns(limit: number): Promise<string[]> {
+  /**
+   * Record a park.
+   *
+   * Written as a new `run` line rather than as an entry, because it is the run's
+   * STATE and the last one wins — a park that is later woken must not leave two
+   * records competing to describe where the run is.
+   */
+  async parkRun(run: string, park: ParkRecord): Promise<void> {
+    const current = await this.readRun(run);
+    await this.appendLine(run, {
+      type: "run",
+      ...(current ?? { run }),
+      run,
+      status: "parked",
+      parked: park,
+      ...(park.at === undefined ? {} : { dueAt: park.at }),
+    });
+    // The claim goes with the park: the run is no longer being worked on, and
+    // holding it would make the parked run invisible to every poller — including
+    // this process's own, after a delivery — until the TTL lapsed.
+    this.#claims.delete(run);
+  }
+
+  async unparkRun(run: string): Promise<void> {
+    const current = await this.readRun(run);
+    if (!current) return;
+    const { parked: _parked, dueAt: _dueAt, ...rest } = current;
+    await this.appendLine(run, { type: "run", ...rest, run, status: "running" });
+  }
+
+  /**
+   * The run parked on a token.
+   *
+   * A directory scan, and stated rather than hidden: a file journal has no index
+   * to consult, so this is O(runs in the directory) per delivery. That is the
+   * honest cost of this store, and it is exactly what a journal over a database
+   * — where a token is a column with an index on it — exists to improve. A
+   * deployment doing enough deliveries for this to matter has outgrown the
+   * directory for other reasons first.
+   */
+  async runParkedOn(token: string): Promise<{ run: string; park: ParkRecord } | undefined> {
+    await this.#ready;
+    for (const file of await readdir(this.resource.directory)) {
+      if (!file.endsWith(".ndjson")) continue;
+      const run = runOf(file);
+      const record = await this.readRun(run);
+      if (record?.status !== "parked" || record.parked?.token !== token) continue;
+      return { run, park: record.parked };
+    }
+    return undefined;
+  }
+
+  async dueRuns(now: number, limit: number): Promise<string[]> {
     await this.#ready;
     const out: string[] = [];
     for (const file of await readdir(this.resource.directory)) {
       if (!file.endsWith(".ndjson")) continue;
       const run = runOf(file);
-      const record = await this.readRun(run);
-      // Admitted and never settled: the run whose process died. A completed or
-      // failed run has its terminal record, and one currently claimed is
-      // someone's — a poller that took it may still be working through it.
-      if (record?.status !== "running") continue;
+      // ONE read answers both halves. The record and the entries are lines of
+      // the same file, so asking whether a parked run's answer has already
+      // arrived costs nothing beyond what reading its status already cost.
+      const lines = await this.readLines(run);
+      const record = recordOf(lines);
+      if (!record || !isDue(record, now, () => hasEntryAt(lines, record.parked?.path))) continue;
+      // A run someone is actively working is not due: a poller that took it may
+      // still be moving through it, and taking it again would duplicate every
+      // unrecorded effect in flight.
       const claim = this.#claims.get(run);
       if (claim && claim.until > Date.now()) continue;
       out.push(run);
@@ -179,17 +304,8 @@ class FileJournalController {
     return { directory: this.resource.directory };
   }
 
-  private async readRun(run: string): Promise<RunRecord | undefined> {
-    const lines = await this.readLines(run);
-    let record: RunRecord | undefined;
-    // LAST run line wins, unlike an entry: the header is written at admission
-    // and the terminal is appended at settlement, so the most recent one is the
-    // run's current state. Entries are the opposite (first wins) because they
-    // record facts that must never change once recorded.
-    for (const line of lines) {
-      if (line.type === "run") record = line as unknown as RunRecord;
-    }
-    return record;
+  async readRun(run: string): Promise<RunRecord | undefined> {
+    return recordOf(await this.readLines(run));
   }
 
   private async readLines(run: string): Promise<{ type?: string }[]> {

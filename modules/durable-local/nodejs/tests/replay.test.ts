@@ -19,6 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Stream, UNCANCELLABLE_CONTEXT, deriveContext, type ZoneEntry } from "@telorun/sdk";
+import { assertNotSwallowed, parkRun } from "@telorun/sdk";
 import { LocalRunHandle } from "../src/run-handle.js";
 import { create as createJournal } from "../../../durable-journal-file/nodejs/src/journal.js";
 import type { DurableJournal } from "../src/journal.js";
@@ -187,14 +188,68 @@ describe("LocalRunHandle — replaying an interrupted run", () => {
     expect(handle.writesInside({ kind: "Sql.Transaction" } as unknown as ZoneEntry)).toBe(false);
   });
 
-  it("refuses to park, rather than silently continuing", async () => {
+  it("records where a run parked before it unwinds", async () => {
     await journal.admitRun("run-7");
     const handle = await LocalRunHandle.open("run-7", journal);
-    // Suspension is v1.1. A park that returned would convert a wait into a
-    // completed step and duplicate every effect after it.
-    await expect(handle.park()).rejects.toMatchObject({
-      code: "ERR_DURABLE_PARK_UNSUPPORTED",
-    });
+    // RECORDED FIRST, then thrown. The signal only unwinds this process's
+    // stack, so a park that threw before writing would leave a run marked
+    // running with nothing executing it — and with its wake token lost.
+    await expect(
+      handle.park({ path: "steps/approval", resource: "approval" }, { token: "tok-1" }),
+    ).rejects.toMatchObject({ code: "ERR_DURABLE_SUSPENDED" });
+
+    const record = await journal.readRun("run-7");
+    expect(record?.status).toBe("parked");
+    expect(record?.parked).toMatchObject({ path: "steps/approval", token: "tok-1" });
+    // Addressable by the token, which is the whole of how a delivery finds it.
+    expect((await journal.runParkedOn("tok-1"))?.run).toBe("run-7");
+  });
+
+  it("offers a parked run whose answer is already recorded, even with no deadline", async () => {
+    await journal.admitRun("run-10");
+    const handle = await LocalRunHandle.open("run-10", journal);
+    await expect(
+      handle.park({ path: "steps/approval", resource: "approval" }, { token: "tok-3" }),
+    ).rejects.toMatchObject({ code: "ERR_DURABLE_SUSPENDED" });
+
+    // A delivery writes the payload and THEN clears the park. Simulating the
+    // crash in between is simply not doing the second half — and without this
+    // rule the run holds its answer, has no deadline, and waits forever.
+    await journal.append("run-10", { path: "steps/approval", kind: "step", value: { ok: true } });
+
+    expect(await journal.dueRuns(Date.now(), 10)).toContain("run-10");
+  });
+
+  it("catches a swallowed suspension at the boundary that owns the run", async () => {
+    await journal.admitRun("run-9");
+    const handle = await LocalRunHandle.open("run-9", journal);
+
+    // The swallower stands in for an unbounded set — an HTTP handler, an agent
+    // tool loop, any third-party controller with a `catch (e)` in it. Nothing
+    // enumerable, which is why the defence is a latch rather than a list.
+    try {
+      await parkRun(handle, { path: "steps/wait", resource: "wait" }, { token: "tok-2" });
+    } catch {
+      // swallowed, exactly as the failure mode does
+    }
+
+    // The run "returned normally" while a suspension was latched. Raised before
+    // the run is settled, so the false `completed` record is never written.
+    expect(() => assertNotSwallowed(handle)).toThrowError(
+      /parked the run at step 'steps\/wait'/,
+    );
+  });
+
+  it("offers a parked run to a poller once its deadline has passed, and not before", async () => {
+    await journal.admitRun("run-8");
+    const handle = await LocalRunHandle.open("run-8", journal);
+    const at = Date.now() + 60_000;
+    await expect(
+      handle.park({ path: "steps/wait", resource: "wait" }, { at }),
+    ).rejects.toMatchObject({ code: "ERR_DURABLE_SUSPENDED" });
+
+    expect(await journal.dueRuns(Date.now(), 10)).not.toContain("run-8");
+    expect(await journal.dueRuns(at + 1, 10)).toContain("run-8");
   });
 });
 
@@ -209,7 +264,7 @@ describe("an interrupted run stays resumable", () => {
     await handle.step("steps/a", TARGET, {}, async () => ({ ok: true }));
     // …process dies here; nothing calls completeRun.
 
-    expect(await journal.interruptedRuns(10)).toContain("run-killed");
+    expect(await journal.dueRuns(Date.now(), 10)).toContain("run-killed");
     const resumed = await LocalRunHandle.open("run-killed", journal);
     // What finished is replayed; what did not, runs.
     let ran = false;
@@ -226,7 +281,7 @@ describe("an interrupted run stays resumable", () => {
   it("does not offer a settled run to the resumer", async () => {
     await journal.admitRun("run-done");
     await journal.completeRun("run-done", { status: "completed", result: {} });
-    expect(await journal.interruptedRuns(10)).not.toContain("run-done");
+    expect(await journal.dueRuns(Date.now(), 10)).not.toContain("run-done");
   });
 });
 
@@ -256,9 +311,9 @@ describe("an in-flight run is not started twice", () => {
 
   it("stops offering a claimed run to a poller", async () => {
     await journal.admitRun("run-swept");
-    expect(await journal.interruptedRuns(10)).toContain("run-swept");
+    expect(await journal.dueRuns(Date.now(), 10)).toContain("run-swept");
     await journal.claimRun("run-swept", "holder-a", 60_000);
-    expect(await journal.interruptedRuns(10)).not.toContain("run-swept");
+    expect(await journal.dueRuns(Date.now(), 10)).not.toContain("run-swept");
   });
 });
 

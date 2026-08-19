@@ -15,6 +15,9 @@
  *     atomic: a rollback erases writes a journal recorded as done
  *     noSuspend: the transaction holds a connection a parked run would lose
  *
+ *   x-telo-violates-zone:                 # what this kind cannot honour
+ *     noSuspend: this waits for a delivery that may be days away
+ *
  *   x-telo-requires-zone: Self.Transaction        # uncorrelated string form
  *   x-telo-requires-zone:                          # object form
  *     zone: Self.Transaction
@@ -26,6 +29,7 @@ import { ZONE_ATTRIBUTES, type ZoneAttributes } from "@telorun/sdk";
 
 const PROVIDES = "x-telo-provides-zone";
 const REQUIRES = "x-telo-requires-zone";
+const VIOLATES = "x-telo-violates-zone";
 
 /** A body slot that establishes the declaring kind's zone when dispatched
  *  through. The zone's identity is always the declaring kind — the annotation
@@ -59,6 +63,22 @@ export interface RequiresZoneSlot {
   key: string[];
   /** The runtime consequence, quoted after the path in diagnostics. */
   reason?: string;
+  /**
+   * Zone attributes the satisfying zone must DECLARE — what it must guarantee,
+   * as opposed to which kind it is.
+   *
+   * The two are different questions and the kind test alone cannot answer the
+   * second. A kind may extend the required abstract, and so satisfy every kind
+   * check, while its body slot omits the attribute the requirer actually depends
+   * on — a durable workflow whose body does not declare `replayed` is a zone the
+   * durable checks never look inside, and a run parking there parks against
+   * nothing. Naming the attribute is what makes the requirement say what it
+   * means.
+   *
+   * Names come from the closed vocabulary (`sdk/zone-attributes/`), so the
+   * analyzer reads its own words here and no module's kind is named.
+   */
+  attributes: string[];
 }
 
 /** A self-relative JSON Pointer — the only correlation-key spelling the
@@ -117,15 +137,61 @@ export function hasProvidesZone(node: Record<string, any> | undefined): boolean 
  *  none or the value is malformed (`validate-zone-slots` reports those). */
 export function readRequiresZone(node: Record<string, any> | undefined): RequiresZoneSlot | undefined {
   const raw = node?.[REQUIRES];
-  if (typeof raw === "string" && raw) return { zone: raw, key: [] };
+  if (typeof raw === "string" && raw) return { zone: raw, key: [], attributes: [] };
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.zone !== "string" || !obj.zone) return undefined;
   // One filter for both spellings — see `isPointer`.
   const key = (Array.isArray(obj.key) ? obj.key : [obj.key]).filter(isPointer);
-  const slot: RequiresZoneSlot = { zone: obj.zone, key };
+  // Unknown names are dropped here and reported by `validate-zone-slots`, the
+  // lenient-reader / strict-validator split this file has throughout: a typo
+  // degrades to a guarantee this requirement does not ask for, never to a
+  // consumer matching against a name that means nothing.
+  const attributes = (Array.isArray(obj.attributes) ? obj.attributes : []).filter(
+    (a): a is string => typeof a === "string" && ZONE_ATTRIBUTES.has(a),
+  );
+  const slot: RequiresZoneSlot = { zone: obj.zone, key, attributes };
   if (typeof obj.reason === "string") slot.reason = obj.reason;
   return slot;
+}
+
+/**
+ * What this kind CANNOT honour about a region it is placed inside.
+ *
+ * The third relation, and the one the other two cannot express. `provides`
+ * declares what a region guarantees about its contents; `requires` declares what
+ * a resource needs of the region around it. Neither says *this resource breaks
+ * that guarantee* — and without it a zone attribute has a promise and no way to
+ * name what falsifies it: `noSuspend` would be enforced only when a parking kind
+ * happened to reach its runtime check, and `Durable.Sleep` would be
+ * indistinguishable from `Durable.Value`, which needs the same journal and parks
+ * nothing.
+ *
+ * Declared at the kind's SCHEMA ROOT, because it is a property of the kind
+ * rather than of one of its slots — a kind that suspends suspends however it is
+ * configured.
+ *
+ * Values are the author's REASON, exactly as on `provides`: a diagnostic prints
+ * the region's promise and this resource's rebuttal side by side, and both are
+ * their own authors' words.
+ */
+export function readViolatesZone(node: Record<string, any> | undefined): ZoneAttributes {
+  const raw = node?.[VIOLATES];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+    // Lenient, like every reader here: `validate-zone-slots` reports a typo, and
+    // dropping it degrades to a violation nobody declared rather than to a
+    // consumer matching a name that means nothing.
+    if (!ZONE_ATTRIBUTES.has(name) || typeof value !== "string" || !value) continue;
+    out[name] = value;
+  }
+  return out as ZoneAttributes;
+}
+
+/** True when the node carries `x-telo-violates-zone` in any shape, valid or not. */
+export function hasViolatesZone(node: Record<string, any> | undefined): boolean {
+  return node?.[VIOLATES] !== undefined;
 }
 
 /** True when the node carries `x-telo-requires-zone` in any shape. */

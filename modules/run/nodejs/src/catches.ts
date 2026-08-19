@@ -1,4 +1,4 @@
-import { type ResourceContext, toSequenceError } from "@telorun/sdk";
+import { isSuspension, type ResourceContext, toSequenceError } from "@telorun/sdk";
 
 /** The whole-operation error contract the wrapper kinds share: a `catches:` list
  *  maps a throw that escaped the entire body to a fallback result. Distinct from
@@ -24,6 +24,10 @@ export async function withCatches<T>(
   try {
     return await body();
   } catch (err) {
+    // A suspension is the run leaving, not an error the operation can map. A
+    // `when:` of `true` would otherwise catch it and hand back a fallback value
+    // for work that has not happened.
+    if (isSuspension(err)) throw err;
     if (!catches?.length) throw err;
     const error = toSequenceError(err, operationName);
     for (const entry of catches) {

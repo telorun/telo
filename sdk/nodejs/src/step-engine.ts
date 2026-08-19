@@ -30,6 +30,7 @@ import {
   type DurableDecisionKind,
   type DurableRunHandle,
 } from "./durable-run.js";
+import { isSuspension } from "./durable-suspension.js";
 import { InvokeError, isInvokeError } from "./invoke-error.js";
 import { executeInvokeStep, type InvokeStep, type InvokeStepContext } from "./invoke-step.js";
 import type { KindRef, ScopeContext } from "./ref.js";
@@ -446,6 +447,10 @@ export class StepEngine {
       );
       steps[step.name] = { result };
     } catch (err) {
+      // A suspension is not this step's failure — it is the run leaving —
+      // so it passes through unattributed rather than being rewritten into an
+      // InvokeError a `catches:` list could name.
+      if (isSuspension(err)) throw err;
       // Attribute the failure the way every other step branch does — a bare
       // expression error names no step, no resource and no line, which is the
       // one thing a `catch:` and a stack trace both need.
@@ -506,6 +511,12 @@ export class StepEngine {
     try {
       await this.executeSteps(step.try, steps, scope, extraCtx, invokeCtx, stepPath(path, "try"));
     } catch (err) {
+      // `try:` must NOT catch a suspension. The signal unwinds to the workflow
+      // that owns the run; absorbing it here would run the `catch:` branch and
+      // then continue, converting a park into a completed step and duplicating
+      // every effect after it. The latch would catch that at the boundary, but
+      // a hard error is a worse answer than simply not swallowing it.
+      if (isSuspension(err)) throw err;
       tryFailed = true;
       tryError = err;
     }

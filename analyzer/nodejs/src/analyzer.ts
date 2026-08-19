@@ -52,6 +52,7 @@ import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
 import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
 import { runZoneAnalysis, type ZoneExportCache } from "./resolve-zone-requirements.js";
 import { validateDurableRegions } from "./validate-durable-regions.js";
+import { validateZoneViolations } from "./validate-zone-violations.js";
 import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
 import { validateZoneSlotDeclarations, type ZoneSlotIssue } from "./validate-zone-slots.js";
 import {
@@ -1574,14 +1575,23 @@ export class StaticAnalyzer {
       // a backend that ships its own workflow kind is covered without the
       // analyzer knowing it exists: going native costs a module, not a change
       // here.
+      const resolveRegionDef = (kind: string, module?: string) => {
+        const scope = (module ? aliasesByModule.get(module) : undefined) ?? aliases;
+        const canonical = scope.resolveKind(kind);
+        return defs.resolve(kind) ?? (canonical ? defs.resolve(canonical) : undefined);
+      };
       diagnostics.push(
         ...validateDurableRegions({
           graph: getCallGraph(),
-          resolveDef: (kind, module) => {
-            const scope = (module ? aliasesByModule.get(module) : undefined) ?? aliases;
-            const canonical = scope.resolveKind(kind);
-            return defs.resolve(kind) ?? (canonical ? defs.resolve(canonical) : undefined);
-          },
+          resolveDef: resolveRegionDef,
+          reportModules: rootModules,
+        }),
+        // The same walk once more, over EVERY attribute rather than the two
+        // durability names — a region must not contain a resource that declares
+        // it cannot honour what the region promises.
+        ...validateZoneViolations({
+          graph: getCallGraph(),
+          resolveDef: resolveRegionDef,
           reportModules: rootModules,
         }),
       );

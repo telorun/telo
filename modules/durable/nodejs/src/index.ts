@@ -7,3 +7,6 @@
  * and any state kept beside the instances silently becomes two of them.
  */
 export * as idempotent from "./idempotent.js";
+export * as sleep from "./sleep.js";
+export * as awaitDelivery from "./await-delivery.js";
+export * as value from "./value.js";
