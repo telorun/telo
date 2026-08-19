@@ -1,0 +1,182 @@
+kind: Telo.Library
+metadata:
+  name: DurableLocal
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Reliability, Coordination]
+  description: |
+    Runs a body of steps so that a crash and a restart continue where the work stopped,
+    with no engine to deploy: progress is recorded to a store you choose, and a poller
+    picks up runs the process died in the middle of. Records what each step returned and
+    every decision the body reached, so a resume takes the same branches it took before.
+requires:
+  telo: ">=0.79.0"
+imports:
+  Durable: ../durable
+exports:
+  kinds:
+    - Workflow
+    - Journal
+    - Resumer
+---
+# DurableLocal.Workflow — the single body-dispatch site of this backend.
+#
+# Whatever the engine, exactly one kind holds the body, carries the providing
+# annotation, installs the run handle and drives replay. Everything else in a
+# backend's module addresses runs from OUTSIDE: start, status, result, cancel.
+#
+# It carries `steps:` natively rather than pointing an `invoke:` at a separate
+# sequence, and that is a SAFETY property rather than a convenience. A named body
+# is a body anything can invoke directly — running journal-free steps up to its
+# first parking point, through an edge no static check can see. With the grammar
+# built in there is no second resource to misuse: the shape is unreachable rather
+# than merely diagnosed.
+kind: Telo.Definition
+metadata:
+  name: Workflow
+  description: >-
+    Runs a body of steps durably: records the run before executing it, records what each
+    step returned and every decision the body reached, and on a restart replays those
+    records instead of re-running the work. Takes a caller-chosen run id, so submitting
+    the same operation twice attaches to the live run rather than starting a second one.
+capability: Telo.Invocable
+extends: Durable.Run
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#workflow
+# NO `status:` block, and the reason is a kernel limitation rather than a
+# choice. Observed state is illegal before a resource has started, and the kernel
+# marks a Telo.Invocable started only when it is a pure Runnable reached through
+# an invoke slot — so an Invocable cannot report observed state at all today.
+# The run's own observations therefore ride its RESULT for now:
+#
+#   { runId, replayed, collapsedRegions, collapseReasons, result }
+#
+# `collapsedRegions` is the one that matters to an operator, because whether a
+# deployment got exactly-once or at-least-once turns on whether the journal's
+# writes land inside the transaction's atomicity — a runtime coincidence the
+# manifest cannot show. It belongs in observed state, which is where it goes once
+# an invocable can report; the answer is constant (always collapsed) until a
+# journal that shares a transaction exists, so nothing is lost by waiting.
+schema:
+  type: object
+  required: [journal, steps]
+  additionalProperties: false
+  properties:
+    journal:
+      title: Journal
+      description: Where this workflow's runs and their progress are recorded.
+      x-telo-ref:
+        kind: Self.Journal
+        use: dependency
+    runId:
+      title: Run id
+      description: >-
+        CEL over the call's inputs, producing this run's identity. Submitting the same id
+        again attaches to the live or completed run instead of starting a second one —
+        which is how an idempotent start is expressed. Omit it and one is minted.
+      type: string
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    onConflict:
+      title: On conflict
+      description: >-
+        What to do when the run id is already taken. `attach` returns the existing run's
+        id; `reject` fails. Spelled in this backend's own words — each engine's policy
+        has its own states, and a shared three-value enum was a lossy translation of all
+        of them.
+      type: string
+      enum: [attach, reject]
+      default: attach
+    steps:
+      title: Steps
+      description: The body. Every step's outcome is recorded as it completes.
+      x-telo-topology-role: steps
+      type: array
+      items:
+        $ref: "telo://manifest#/$defs/Step"
+      # `replayed` — and nothing else — is what marks this zone durable to the
+      # static checks. Keying them on the bare providing annotation would apply
+      # them inside every transaction in the ecosystem; keying them on a KIND
+      # would put this module into the analyzer's surface.
+      x-telo-provides-zone:
+        replayed: >-
+          every step's outcome and every decision the body reaches is recorded, and a
+          resume returns those records instead of re-executing the work
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    inputs:
+      title: Inputs
+      type: object
+      additionalProperties: true
+      description: Values forwarded into the body, read there as `inputs.<field>`.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+---
+# DurableLocal.Journal — this backend's storage seam, and NOT everyone's.
+#
+# It sits inside this module rather than standing alone for two reasons. A
+# standalone `journal` module would collide with `record-stream`'s existing
+# `Journal` kinds on name, alias and hub search. And more importantly it is one
+# backend's mechanism: a hosted engine has no journal to configure, so an abstract
+# at the shared level would be a contract two of three backends implement by
+# leaving it empty.
+#
+# The operations that matter are NOT "a table with rows in it": they are claiming
+# due runs without two resumers taking the same one, and waking promptly. That is
+# why a backend implements this rather than a generic key/value store being reused
+# — `KvStore.Store` is deliberately point-access only, and widening it to answer a
+# range query would weaken a contract four modules already depend on.
+kind: Telo.Abstract
+metadata:
+  name: Journal
+  description: >-
+    Durable storage for runs and their progress: appends a record per completed step and
+    per decision, reads a run's records back in order, and finds runs that stopped
+    mid-flight so a poller can continue them. First writer wins at a given key, so two
+    processes racing on the same step cannot both record it.
+capability: Telo.Provider
+---
+# DurableLocal.Resumer — the recovery and wake path, and NOT the scheduler.
+#
+# A start does its own first execution in the process that received it (see the
+# workflow's `admit before executing`), so this does not balance starts across
+# workers; it picks up runs whose process died. The trade is recorded rather than
+# hidden: routing every start through this poll interval would put seconds of
+# latency on a request-triggered run for no gain in recovery, since admitting
+# before dispatch already makes an in-between crash recoverable.
+kind: Telo.Definition
+metadata:
+  name: Resumer
+  description: >-
+    Polls for runs that stopped mid-flight and continues them, which is what turns a
+    recorded run into a recovered one after the process holding it died. Claims each run
+    before continuing it, so several pollers against one store do not both take the same
+    one.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#resumer
+schema:
+  type: object
+  required: [workflow]
+  additionalProperties: false
+  properties:
+    workflow:
+      title: Workflow
+      description: The workflow whose interrupted runs this poller continues.
+      x-telo-ref:
+        kind: Self.Workflow
+        use: [call]
+    interval:
+      title: Interval
+      description: How often to look for interrupted runs.
+      type: string
+      x-telo-eval: compile
+      default: 5s

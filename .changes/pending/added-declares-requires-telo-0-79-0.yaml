@@ -1,0 +1,8 @@
+modules:
+  modules/sql: Added
+  modules/lease: Added
+  modules/idempotency: Added
+body: Declares requires.telo >=0.79.0. The zone-attribute object form of
+  x-telo-provides-zone is syntax an older analyzer reads as a malformed annotation, so
+  without the bound this module would be rejected on an older runtime with a message
+  blaming its own author; the bound turns that into one message naming the cause.

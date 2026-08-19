@@ -1,0 +1,6 @@
+{
+  "$comment": "This attribute, and nothing else, is what makes a zone durable to the static checks. Keying them on the bare `x-telo-provides-zone` annotation would apply DURABLE_NONDETERMINISM and its siblings inside every Sql.Transaction in the ecosystem, since transactions, leases and idempotency claims all provide zones. Keying them on a `Durable.Run` kind would instead put a module's kind into analyzer code.",
+  "name": "replayed",
+  "value": { "type": "string", "minLength": 1 },
+  "description": "Execution inside may be re-run from a record of a previous execution, so it must reach the same decisions on every pass and the values it produces must be serializable."
+}

@@ -1,0 +1,80 @@
+kind: Telo.Application
+metadata:
+  name: AssertEventsTimesTest
+  version: 1.0.0
+  description: |
+    `times:` asserts HOW MANY, where an entry without it asserts THAT ONE OCCURRED.
+
+    The ordered form is a subsequence matcher: it scans forward for each expected
+    entry and ignores everything else, so it can say "was invoked" and never "was
+    invoked exactly once". That gap is why tests reached for a counter kept inside
+    the work itself — a global in a script's realm standing in for a fact the kernel
+    already records on every dispatch.
+
+    A counted entry reads the WHOLE capture and does not consume a position, so the
+    number does not change when an unrelated expectation moves, and the two forms can
+    be mixed in one list without either changing what the other means.
+imports:
+  Assert: ../
+  Run: ../../run
+targets:
+  - !ref emit
+  - !ref counted
+  - !ref mixed
+  - !ref negative
+---
+# Dispatched three times; its neighbour once. Nothing here records anything about
+# itself — what happened is read off the dispatch stream.
+kind: Run.Value
+metadata: { name: tick }
+value: { ok: true }
+---
+kind: Run.Value
+metadata: { name: once }
+value: { ok: true }
+---
+kind: Run.Sequence
+metadata: { name: emit }
+steps:
+  - name: a
+    invoke: !ref tick
+  - name: b
+    invoke: !ref tick
+  - name: c
+    invoke: !ref tick
+  - name: d
+    invoke: !ref once
+---
+kind: Assert.Events
+metadata: { name: counted }
+filter:
+  - type: "tick.Invoked"
+  - type: "once.Invoked"
+expect:
+  - event: tick.Invoked
+    times: 3
+  - event: once.Invoked
+    times: 1
+---
+kind: Assert.Events
+metadata: { name: mixed }
+filter:
+  - type: "*.Invoked"
+expect:
+  # An ordered entry and a counted one in one list. The counted entry does not
+  # advance the ordered position, so the entry after it still matches from where
+  # the ordered walk had reached rather than from the end of the stream.
+  - event: tick.Invoked
+  - event: tick.Invoked
+    times: 3
+  - event: once.Invoked
+---
+kind: Assert.Events
+metadata: { name: negative }
+filter:
+  - type: "*.Invoked"
+expect:
+  # `times: 0` is the assertion the ordered form structurally cannot express,
+  # because absence is its FAILURE rather than its success.
+  - event: neverCalled.Invoked
+    times: 0

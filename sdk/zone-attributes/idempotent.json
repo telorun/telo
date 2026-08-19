@@ -1,0 +1,6 @@
+{
+  "$comment": "Worn by a provider that ENFORCES the property (Idempotency.Once, whose claim makes it true) and by one that merely ASSERTS it on the author's word (Durable.Idempotent). Which one an author reaches for is a cost decision, visible in the manifest as a different kind rather than as a flag on one.",
+  "name": "idempotent",
+  "value": { "type": "string", "minLength": 1 },
+  "description": "Re-executing the zone is observably a no-op — the same writes land, or land once. Nothing is discarded, so unlike an atomic region there is no rollback for a consumer's own records to participate in."
+}

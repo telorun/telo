@@ -1,0 +1,124 @@
+kind: Telo.Library
+metadata:
+  name: Durable
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Reliability, Coordination]
+  description: |
+    Work that survives process death: a body of steps whose progress is recorded as it
+    runs, so a crash and a restart continue where the work stopped instead of repeating
+    every effect or losing them all. Backend-neutral — an engine module supplies the
+    recording and the resumption; this module supplies the pieces a body uses whatever
+    engine is underneath.
+requires:
+  telo: ">=0.79.0"
+exports:
+  kinds:
+    - Run
+    - Idempotent
+---
+# Durable.Run — a MARKER, and deliberately nothing else.
+#
+# It declares no schema, no controller and no contract. Its entire job is to give
+# the kinds that must be inside a durable run ONE kind to require, after which
+# Liskov acceptance (an entry satisfies a requirement when its kind is, or
+# transitively extends, the required kind) makes every backend's workflow kind
+# satisfy it for free — with no per-backend rule anywhere.
+#
+# Giving it a schema or a controller would immediately start re-accumulating the
+# union surface this design exists to replace: identity policy, schedule overlap,
+# cancel-versus-terminate, deployment pinning. Every engine has an opinion about
+# each, and they do not agree.
+#
+# Note what marks a zone DURABLE to the static checks: not this kind, but the
+# `replayed` zone attribute a backend declares on the slot holding its body. Those
+# are two different questions — this is how a kind NAMES the zone it must be
+# inside, while the attribute is how the analyzer recognises which zones replay —
+# and keying the checks off a kind would put a module into the analyzer's surface.
+kind: Telo.Abstract
+metadata:
+  name: Run
+  description: >-
+    A body of work whose progress is recorded as it runs, so a restart continues where
+    it stopped. Implemented by an engine module; nothing instantiates this directly.
+    Kinds that only make sense inside such a body name it as the region they require.
+capability: Telo.Invocable
+---
+# Durable.Idempotent — a region the author ASSERTS is safe to re-run.
+#
+# Everything is journaled by default, and collapse is what this kind buys: a
+# region that re-runs safely needs one entry rather than one per step. It exists
+# for the hot-loop case, where a durable claim per iteration would cost more than
+# the journal writes it saves.
+#
+# It is a KIND rather than a field, and that is the whole point. The field version
+# was a caller-side `checkpoint: collapse` plus a callee-side veto, wrong four
+# ways at once: a boolean where every neighbouring annotation carries a reason;
+# the opposite polarity from everything-journaled-by-default, so forgetting to
+# veto was silent; a veto available on one kind only, leaving a collapsed script
+# unprotected; and a contradiction check to reconcile it with atomicity. A region
+# with a property is a zone, and the zone mechanism already expresses it — so the
+# veto does not move, it disappears: nothing collapses a body because nothing
+# wrapped it, and a wrap is a visible resource carrying a written justification.
+#
+# It ASSERTS `idempotent` where `Idempotency.Once` EARNS it. Both declare the same
+# attribute because the region's property is the same; which one an author reaches
+# for is a cost decision, and it stays visible in the manifest as a different kind
+# rather than as a boolean on one.
+kind: Telo.Definition
+metadata:
+  name: Idempotent
+  description: >-
+    Marks a body of steps as safe to re-run, so a recorder keeps one record for the
+    whole region instead of one per step. Takes the author's written reason for the
+    claim. Use it for a hot loop whose every write is an upsert, where a durable claim
+    per iteration would cost more than it saves.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#idempotent
+schema:
+  type: object
+  required: [reason, steps]
+  additionalProperties: false
+  properties:
+    reason:
+      title: Reason
+      type: string
+      minLength: 1
+      description: >-
+        Why re-running this region is a no-op, in your own words. Required, and
+        required as prose rather than as a boolean: whatever reports on this region
+        quotes it verbatim, and a claim with no stated basis is the one shape that
+        cannot be reviewed.
+    steps:
+      title: Steps
+      description: The body whose re-execution you are asserting is safe.
+      x-telo-topology-role: steps
+      type: array
+      items:
+        $ref: "telo://manifest#/$defs/Step"
+      # The attribute's value is the CLASS of claim, which is all a kind can state
+      # once for every instance of it; the specific justification is this
+      # resource's own `reason:`, which is per instance by nature and readable as
+      # `resources.<name>.reason`. Both are wanted: a consumer reading the zone
+      # off the ambient stack sees what kind of promise it is, and a reviewer
+      # reading the manifest sees why this particular author believes it.
+      x-telo-provides-zone:
+        idempotent: >-
+          the author asserts re-running this region is observably a no-op; this
+          resource's `reason:` states why
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    inputs:
+      title: Inputs
+      type: object
+      additionalProperties: true
+      description: >-
+        Values forwarded into the body, read there as `inputs.<field>`.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}

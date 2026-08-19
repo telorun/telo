@@ -152,6 +152,7 @@ export type {
 export {
   hasProvidesZone,
   hasRequiresZone,
+  providedZoneAttributes,
   readProvidesZone,
   readRequiresZone,
   rewriteRequiresZoneKind,
@@ -171,6 +172,16 @@ export type {
 } from "./resolve-zone-requirements.js";
 export type { ZoneModuleDocuments } from "./zone-module-documents.js";
 export { validateZoneSlotDeclarations } from "./validate-zone-slots.js";
+export { validateDurableRegions } from "./validate-durable-regions.js";
+export {
+  containmentIndex,
+  findZoneRegions,
+  regionManifests,
+  type ContainedNode,
+  type DefinitionLookup,
+  type RegionBoundary,
+  type ZoneRegion,
+} from "./resolve-zone-containment.js";
 export type { ZoneSlotIssue } from "./validate-zone-slots.js";
 export { validateDynamicSelectors, validateRefSlotDeclarations } from "./validate-ref-slots.js";
 export type { RefSlotIssue } from "./validate-ref-slots.js";

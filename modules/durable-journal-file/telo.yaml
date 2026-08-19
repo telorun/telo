@@ -1,0 +1,57 @@
+kind: Telo.Library
+metadata:
+  name: DurableJournalFile
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Reliability, Storage]
+  description: |
+    Records durable runs to a directory on disk: one append-only file per run, written
+    and flushed as each step completes, so a process that dies leaves everything already
+    finished on disk. Single-machine storage for one process at a time, and genuinely
+    durable — the development path and the production path differ in scale rather than
+    in guarantee.
+requires:
+  telo: ">=0.79.0"
+imports:
+  DurableLocal: ../durable-local
+exports:
+  kinds:
+    - Journal
+---
+# A file journal, and NOT a memory one.
+#
+# The memory version is the tempting thing to ship for development and it is the
+# one thing that must not exist here: a journal that dies with the process has no
+# durability to demonstrate, and shipping one invites developing against a thing
+# that lacks the single property being built. This is genuinely durable, so the
+# dev path and the production path differ in scale rather than in guarantee.
+#
+# What it deliberately does not attempt: claiming due runs across processes. The
+# claim here is advisory and single-machine, which is honest for a directory of
+# files — a store whose claiming is real answers that with the database's own
+# primitives rather than with a lock file this module would have to invent.
+kind: Telo.Definition
+metadata:
+  name: Journal
+  description: >-
+    Stores durable runs as append-only files in a directory, one per run, flushed as each
+    record is written so nothing finished is lost to a crash. Reads a run's records back
+    in order and finds runs that stopped mid-flight. Single-machine; use a database-backed
+    store when several machines record to one place.
+capability: Telo.Provider
+extends: DurableLocal.Journal
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable-journal-file.mjs&local_path=./nodejs/src/index.ts#journal
+schema:
+  type: object
+  required: [directory]
+  additionalProperties: false
+  properties:
+    directory:
+      title: Directory
+      type: string
+      x-telo-eval: compile
+      description: >-
+        Where run files are written. Created if absent. Everything under it belongs to
+        this journal — a run id becomes a file name there.

@@ -3,9 +3,19 @@ import {
   type CancellationToken,
   ERR_INVOKE_CANCELLED,
   type InvokeContext,
+  UNCANCELLABLE_CONTEXT,
+  createCancellationSource,
+  deriveContext,
   isCancellationError,
 } from "./cancellation.js";
 import { isAmbientContractErrorCode } from "./contract-errors.js";
+import {
+  durableHandleOf,
+  journalingSuppressed,
+  stepPath,
+  type DurableTarget,
+} from "./durable-run.js";
+import type { OpenZoneAttributes } from "./zone-attribute.js";
 import { tryParseDurationMs } from "./duration.js";
 import { InvokeError } from "./invoke-error.js";
 import type { KindRef, ScopeContext } from "./ref.js";
@@ -40,6 +50,26 @@ export interface InvokeStepRetry {
   jitter?: "none" | "full";
   /** DEPRECATED duration string (`"250ms"`, `"1s"`) — read as `initialDelay`. */
   delay?: string;
+  /**
+   * Error codes that end the loop immediately instead of consuming the budget.
+   *
+   * The leaf's built-in exclusions are the ones decidable WITHOUT judgement —
+   * cancellation, and the kernel's verdicts on the shape of the call. Whether a
+   * DOMAIN failure is worth re-attempting is not decidable here at all: an
+   * `ERR_PAYMENT_DECLINED` and an `ERR_UPSTREAM_TIMEOUT` are the same shape to
+   * this loop, and only the author knows that re-presenting a declined card
+   * changes nothing. Without this, every terminal domain failure is retried to
+   * exhaustion — which is not merely wasted time but, for a non-idempotent
+   * target, N extra attempts at a side effect.
+   *
+   * Named by CODE rather than by a predicate because a code is what crosses
+   * every boundary this has to survive: a manifest declares it, `catches:`
+   * already matches on it, and a relocating backend ships it as data. Both
+   * hosted engines express the same knob — Temporal's non-retryable error types,
+   * Restate's terminal-versus-retryable split — so a policy written here means
+   * the same thing wherever the step ends up executing.
+   */
+  nonRetryable?: string[];
 }
 
 /**
@@ -53,6 +83,29 @@ export interface InvokeStep {
   invoke: KindRef<Invocable> | Invocable;
   inputs?: Record<string, unknown>;
   retry?: InvokeStepRetry;
+  /**
+   * How long ONE attempt may take, in milliseconds. On elapse the dispatch is
+   * cancelled and the step fails `ERR_STEP_TIMEOUT`.
+   *
+   * Per attempt rather than for the whole loop, matching Temporal's
+   * start-to-close: a budget spanning the retries would make the last attempt's
+   * allowance depend on how slow the earlier ones were, so an author could not
+   * state what any single call is allowed to take. A whole-operation bound is a
+   * different thing and belongs to whatever owns the operation.
+   *
+   * It bounds the step rather than the target because the target does not know
+   * who is waiting: the same `Http.Request` is a 30-second batch call from one
+   * step and a 500ms call on a request path from another. It is also what a
+   * backend that chooses WHERE a step executes needs in order to choose —
+   * Temporal runs a short step as a local activity and a long one as an
+   * activity, which is not a decision a manifest should have to make.
+   *
+   * Enforced by cancellation, never by abandoning the call: the timeout source
+   * is linked to the caller's token and threaded into the dispatch, so a target
+   * that honours cancellation stops working rather than continuing unobserved
+   * past a deadline nobody is waiting on any more.
+   */
+  timeout?: number;
 }
 
 /** An inline flat invoke step on an Application's `targets`. Same as an
@@ -87,11 +140,21 @@ export type BootTarget =
 export interface InvokeStepContext {
   expandValue(value: any, context: Record<string, any>): any;
   invoke<TInputs>(kind: string, name: string, inputs: TInputs, options?: any): Promise<any>;
+  /** Open zones with what each declares about its contents — how the leaf and
+   *  the engine read the collapse rule. Optional so the structural context stays
+   *  satisfiable by a host with no zone machinery; ABSENT MEANS "no zone is
+   *  open", which is the direction that journals MORE rather than less, and so
+   *  the safe one. */
+  zoneAttributes?(ctx?: InvokeContext): readonly OpenZoneAttributes[];
   invokeResolved<TInputs>(
     kind: string,
     name: string,
     instance: ResourceInstance,
     inputs: TInputs,
+    /** Seeds the dispatch's invocation context, replacing the ambient — how a
+     *  step `timeout:` reaches the target it bounds. Optional so a leaf caller
+     *  that never sets one is unchanged. */
+    ctx?: InvokeContext,
   ): Promise<any>;
   /** Resolve a cross-module exported instance (`!ref Alias.name`) to its live instance.
    *  Optional — providers that pre-resolve cross-module refs before reaching the leaf
@@ -127,6 +190,16 @@ export interface InvokeStepState {
    * invocation to forward.
    */
   invokeCtx?: InvokeContext;
+  /**
+   * This step's journal key, when the composer tracks one — see
+   * {@link stepPath}. Absent for a caller that assembled a step in code, and for
+   * the boot runner, whose targets are not a durable body.
+   *
+   * Supplied by the composer rather than derived here because a path is a
+   * property of the enclosing STRUCTURE (which branch, which loop turn, which
+   * fan-out element), and the leaf sees one step.
+   */
+  journalPath?: string;
 }
 
 /**
@@ -143,13 +216,77 @@ export async function executeInvokeStep(
   const cel = { steps: state.steps, ...state.cel };
   if (step.when !== undefined && !ctx.expandValue(step.when, cel)) return;
 
-  const inputs = ctx.expandValue(step.inputs ?? {}, cel) as Record<string, unknown>;
+  const rawHandle = durableHandleOf(state.invokeCtx);
+  // Inside a collapsed region the engine records NOTHING of its own: the region
+  // re-runs whole on resume, so per-step entries would describe work that is
+  // about to happen again. A resource inside it may still journal directly —
+  // which is what lets `Durable.Value` pin an impure evaluation there rather
+  // than be a prescription with nowhere to write.
+  const handle =
+    rawHandle && journalingSuppressed(ctx, state.invokeCtx, rawHandle) ? undefined : rawHandle;
+  const path = state.journalPath ?? step.name;
+
+  // The RESOLVED inputs are journaled, not re-derived. They are read from a CEL
+  // scope carrying live readings — `resources.<name>.status` is republished on
+  // every dispatch by design — so a fresh process can compute different
+  // arguments for the same step and hand them to a target the journal will then
+  // answer for, with no mismatch to detect.
+  const inputs = (handle
+    ? await handle.decide(stepPath(path, "inputs"), "inputs", () =>
+        ctx.expandValue(step.inputs ?? {}, cel),
+      )
+    : ctx.expandValue(step.inputs ?? {}, cel)) as Record<string, unknown>;
+
   const raw = step.invoke as unknown;
-  const result = await withStepRetry(step, state.invokeCtx, () =>
-    dispatch(raw, inputs, ctx, state),
-  );
+  // The dispatch carries THIS step's path, so anything it reaches that runs a
+  // step body of its own hangs those paths under this one rather than starting
+  // over at the root. Set only inside a durable run: outside one there is no
+  // path to carry, and deriving a context would be a rebuild for nothing.
+  const stepCtx =
+    handle && state.invokeCtx
+      ? deriveContext(state.invokeCtx, { durablePath: path })
+      : state.invokeCtx;
+  const execute = () =>
+    withStepRetry(step, stepCtx, (attemptCtx) =>
+      withStepTimeout(step, attemptCtx, (dispatchCtx) =>
+        dispatch(raw, inputs, ctx, { ...state, invokeCtx: dispatchCtx }),
+      ),
+    );
+
+  // Retry and the timeout sit INSIDE the handed-over effect, not around it: a
+  // re-attempt is part of performing this step once, so a backend that ships the
+  // step elsewhere ships its policy with it rather than re-attempting a remote
+  // dispatch it does not own. This is also what keeps the attempt loop's own
+  // rule intact — the journal records the OUTCOME of the step, and a step whose
+  // third attempt succeeded completed once.
+  const result = handle
+    ? await handle.step(path, targetIdentityOf(raw), inputs, execute)
+    : await execute();
 
   state.steps[step.name] = { result };
+}
+
+/**
+ * The target's DECLARATION-SITE identity, for a backend that may execute the
+ * step somewhere the instance does not exist.
+ *
+ * Derived from the `!ref` identity the kernel stamps at Phase-5 injection, which
+ * is the only declaration-site fact a resolved target carries — instance
+ * identity is process-local by construction. Undefined when the step dispatches
+ * something with no stamp (a truly anonymous instance), which a local backend
+ * handles by simply running `execute` and a relocating one must refuse rather
+ * than guess.
+ */
+function targetIdentityOf(raw: unknown): DurableTarget | undefined {
+  if (raw && typeof raw === "object") {
+    const stamped = getRefIdentity(raw as object);
+    if (stamped) return { kind: stamped.kind, name: stamped.name };
+    const ref = raw as Partial<KindRef>;
+    if (typeof ref.kind === "string" && typeof ref.name === "string") {
+      return { kind: ref.kind, name: ref.name };
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -185,11 +322,11 @@ export async function executeInvokeStep(
 async function withStepRetry<T>(
   step: InvokeStep,
   invokeCtx: InvokeContext | undefined,
-  dispatch: () => Promise<T>,
+  dispatch: (ctx: InvokeContext | undefined) => Promise<T>,
 ): Promise<T> {
   const policy = step.retry;
   const attempts = policy?.attempts ?? 0;
-  if (!policy || attempts <= 0) return dispatch();
+  if (!policy || attempts <= 0) return dispatch(invokeCtx);
 
   const initial = policy.initialDelay ?? parseDuration(policy.delay) ?? 250;
   const factor = policy.factor ?? 2;
@@ -198,9 +335,9 @@ async function withStepRetry<T>(
 
   for (let resend = 0; ; resend++) {
     try {
-      return await dispatch();
+      return await dispatch(invokeCtx);
     } catch (err) {
-      if (resend >= attempts || !isRetryable(err)) throw err;
+      if (resend >= attempts || !isRetryable(err, policy.nonRetryable)) throw err;
       const backoff = Math.min(maxDelay, initial * Math.pow(factor, resend));
       await waitBeforeResend(
         jitter === "full" ? Math.random() * backoff : backoff,
@@ -217,11 +354,75 @@ async function withStepRetry<T>(
  *  re-issuing it re-resolves the same name against the same registry. */
 const UNRETRYABLE_CODES = new Set(["ERR_RESOURCE_NOT_FOUND", "ERR_RESOURCE_NOT_INVOKABLE"]);
 
-function isRetryable(err: unknown): boolean {
+function isRetryable(err: unknown, nonRetryable?: string[]): boolean {
   if (isCancellationError(err)) return false;
   const code = (err as { code?: unknown } | null | undefined)?.code;
   if (typeof code !== "string") return true;
+  // The author's own exclusions, checked beside the built-in ones rather than
+  // before or after them: they are the same question — is re-issuing this call
+  // capable of a different answer — asked about a domain failure the leaf has no
+  // way to classify. A step timeout is never in this set by default; whether a
+  // slow call is worth re-attempting is exactly the judgement an author makes.
+  if (nonRetryable?.includes(code)) return false;
   return !isAmbientContractErrorCode(code) && !UNRETRYABLE_CODES.has(code);
+}
+
+/**
+ * Bound ONE attempt, by cancellation rather than by abandonment.
+ *
+ * A `Promise.race` that simply rejects would leave the call running, holding its
+ * connection and eventually completing a side effect nobody is waiting on — the
+ * failure mode a timeout is usually adopted to prevent. So a timeout mints a
+ * cancellation source, LINKS it to the caller's token (or the caller's
+ * cancellation would stop propagating the moment a step declared a bound), and
+ * threads its context into the dispatch. A target that honours cancellation
+ * stops; one that does not is no worse off than before.
+ *
+ * The elapse is reported as `ERR_STEP_TIMEOUT` rather than as a cancellation,
+ * because the two want opposite follow-ups: a cancelled run was asked to stop,
+ * while a timed-out step is a target that is too slow for this call site — and
+ * `catches:` can only tell them apart if they carry different codes.
+ */
+async function withStepTimeout<T>(
+  step: InvokeStep,
+  invokeCtx: InvokeContext | undefined,
+  dispatch: (ctx: InvokeContext | undefined) => Promise<T>,
+): Promise<T> {
+  const ms = step.timeout;
+  if (ms === undefined || !(ms > 0)) return dispatch(invokeCtx);
+
+  const source = createCancellationSource();
+  const base = invokeCtx ?? UNCANCELLABLE_CONTEXT;
+  // Everything else on the context — zones, tracing, and whatever a later
+  // member adds — rides across unchanged. Rebuilding it as a literal here is
+  // the drop `deriveContext` exists to prevent.
+  const scoped = deriveContext(base, { cancellation: source.token });
+  const unlink = invokeCtx?.cancellation.onCancelled((reason) => source.cancel(reason));
+
+  let elapsed = false;
+  source.cancelAfter(ms);
+  const timedOut = source.token.onCancelled(() => {
+    if (!invokeCtx?.cancellation.isCancelled) elapsed = true;
+  });
+
+  try {
+    return await dispatch(scoped);
+  } catch (err) {
+    if (elapsed && isCancellationError(err)) {
+      throw new InvokeError(
+        "ERR_STEP_TIMEOUT",
+        `Step '${step.name}' exceeded its timeout of ${ms}ms and was cancelled`,
+        { step: step.name, timeout: ms },
+      );
+    }
+    throw err;
+  } finally {
+    timedOut();
+    unlink?.();
+    // Releases the pending deadline timer, so a step that finished early does
+    // not pin a timer alive until its bound elapses.
+    source.dispose();
+  }
 }
 
 /**
@@ -299,6 +500,13 @@ async function dispatch(
 ): Promise<unknown> {
   let result: unknown;
 
+  // The context this attempt runs under: the step's timeout scope when it
+  // declares one, else whatever the composer forwarded. Threaded explicitly
+  // rather than installed as ambient because the SDK leaf has no ambient store
+  // to install into — that is one runtime's mechanism, and a second-language
+  // leaf has no `AsyncLocalStorage`.
+  const attemptCtx = state.invokeCtx;
+
   if (raw && typeof (raw as Invocable).invoke === "function") {
     // A pre-injected live instance (a `!ref` resolved at Phase 5). Route it
     // through the traced chokepoint using the identity the kernel stamped at
@@ -306,8 +514,14 @@ async function dispatch(
     // A truly anonymous instance (no stamp) falls back to a direct call.
     const identity = getRefIdentity(raw as object);
     result = identity
-      ? await ctx.invokeResolved(identity.kind, identity.name, raw as ResourceInstance, inputs)
-      : await (raw as Invocable).invoke(inputs);
+      ? await ctx.invokeResolved(
+          identity.kind,
+          identity.name,
+          raw as ResourceInstance,
+          inputs,
+          attemptCtx,
+        )
+      : await (raw as Invocable).invoke(inputs, attemptCtx);
   } else {
     const ref = raw as KindRef<Invocable>;
     if (ref.alias && ref.alias !== "Self") {
@@ -320,12 +534,12 @@ async function dispatch(
           `Cross-module reference '${ref.alias}.${ref.name}' did not resolve to an exported instance.`,
         );
       }
-      result = await ctx.invokeResolved(ref.kind, ref.name, instance, inputs);
+      result = await ctx.invokeResolved(ref.kind, ref.name, instance, inputs, attemptCtx);
     } else if (state.scope) {
       const instance = state.scope.getInstance(ref.name) as unknown as ResourceInstance;
-      result = await ctx.invokeResolved(ref.kind, ref.name, instance, inputs);
+      result = await ctx.invokeResolved(ref.kind, ref.name, instance, inputs, attemptCtx);
     } else {
-      result = await ctx.invoke(ref.kind, ref.name, inputs);
+      result = await ctx.invoke(ref.kind, ref.name, inputs, { ctx: attemptCtx });
     }
   }
   return result;

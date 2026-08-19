@@ -65,7 +65,6 @@
     "@telorun/vector-store",
     "@telorun/vector-store-memory-build",
     "@telorun/vector-store-pgvector-build",
-    "@telorun/workflow-temporal-build",
     "@telorun/yaml-build"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {

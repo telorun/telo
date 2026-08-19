@@ -71,3 +71,26 @@ The optional `holder` input is an opaque token identifying this holder; it's ret
 ## Composition
 
 `Lease.Critical` handles only mutual exclusion; it composes with the other coordination primitives rather than absorbing them. A resumable, cost-bounded background operation wires: `Lease.Critical` (one turn per key) + `RateLimit.Budget` (reserve/settle cost) + `RecordStream.Journal` (resumable stream) + `Run.Detach` semantics (built into the detach mode).
+
+## The body runs inside the lease's zone
+
+Dispatching through `invoke:` establishes a `Lease.Critical` [execution
+zone](https://telo.run/extend/execution-zones) around the body, in both the
+inline and the detached mode. "You are inside my body" is exactly the relation
+zones express, and a lease is one — held for the body's duration, released at
+its terminal.
+
+The zone is **uncorrelated**: what a lease holds is a key it minted, not a
+resource a pointer could name.
+
+It declares one attribute, `noSuspend`, with the reason a consumer will quote:
+
+> the lease expires on its own TTL and is renewed only while this body runs, so a
+> body that parked here would resume after another holder had already been
+> granted the same key
+
+That is what a durable run reads to refuse parking inside a critical section —
+the failure it prevents is silent, because a lapsed lease looks exactly like a
+lease that was never contended. Note what is deliberately **not** declared:
+`idempotent`. A lease excludes concurrent holders; it says nothing about whether
+running the body a second time is a no-op.

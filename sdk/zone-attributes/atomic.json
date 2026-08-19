@@ -1,0 +1,7 @@
+{
+  "$comment": "Distinct from `idempotent`, and the exactly-once machinery reads the difference literally: per-step journaling is safe inside a transaction PRECISELY because a rollback erases the journal's own entries too. A region that rolls nothing back has no such property, so it declares `idempotent` instead — borrowing this name there would let a journal's attestation relax collapse and record entries for effects that will re-run.",
+  "name": "atomic",
+  "requires": ["noSuspend"],
+  "value": { "type": "string", "minLength": 1 },
+  "description": "Effects inside are discarded together on failure, so a consumer recording them individually would record work a rollback erases."
+}

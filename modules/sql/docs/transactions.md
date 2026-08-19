@@ -42,6 +42,27 @@ and `telo check` say. Nesting follows the same rule: a nested
 so a later failure rolls the whole thing back), while one on a different
 connection opens its own.
 
+## What the zone guarantees about its body
+
+Beyond correlating on the connection, `Sql.Transaction.steps` declares two
+**zone attributes** — what the region promises about everything executed inside
+it. Neither is read by `sql` itself; both exist so that a consumer *inside* the
+body can refuse something the transaction cannot survive:
+
+| Attribute   | What it tells a consumer                                                                                       |
+| ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `atomic`    | a rollback discards these writes, so anything recording them individually would hold records the database erased.  |
+| `noSuspend` | the connection is held open, so a body that parked here would resume where neither it nor the transaction exists.  |
+
+The sharp case is a durable run: park inside a transaction body and the process
+that resumes it has no connection, no transaction and no way to know the writes
+were rolled back. `noSuspend` is what turns that into a refusal quoting this
+manifest's own sentence, rather than a corruption nothing detects.
+
+Nothing changes for ordinary use — the attributes are a declaration, not a
+restriction on statements — and `atomic` requires `noSuspend`, which the checker
+enforces from the vocabulary entry rather than from a rule in code.
+
 ## What `transaction:` declares
 
 `Sql.Query`, `Sql.Command` and `Sql.Selection` each take an optional

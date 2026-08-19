@@ -6,6 +6,7 @@
 !templating/nodejs
 !sdk/nodejs
 !sdk/value-types
+!sdk/zone-attributes
 !scripts
 !packages/ide-support
 !packages/debug-wire

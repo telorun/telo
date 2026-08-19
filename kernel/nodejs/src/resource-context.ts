@@ -26,6 +26,7 @@ import {
   type ResourceHandle,
   type RuntimeSeam,
   type TypeRule,
+  type OpenZoneAttributes,
   type ZoneEntry,
 } from "@telorun/sdk";
 import { registerTeloKeywords } from "@telorun/analyzer";
@@ -424,6 +425,10 @@ export class ResourceContextImpl implements ResourceContext {
 
   zonesFor(instance: ResourceInstance, ctx?: InvokeContext): readonly ZoneEntry[] {
     return this.zoneContext().zonesFor(instance, ctx);
+  }
+
+  zoneAttributes(ctx?: InvokeContext): readonly OpenZoneAttributes[] {
+    return this.zoneContext().zoneAttributes(ctx);
   }
 
   /** The root context for runtime-driven inbound work — inherits nothing from

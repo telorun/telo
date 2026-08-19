@@ -1,0 +1,11 @@
+modules:
+  modules/durable-journal-file: Fixed
+body: "A record torn by an abrupt exit no longer breaks the journal. Appending after a
+  partial final line fused the two records into one unparseable line in the MIDDLE of
+  the file — which the reader must refuse, since dropping a record there would skip work
+  that may have happened — so a journal that was resumable a moment earlier became
+  permanently unresumable, and the failure path then settled the run as failed. The
+  partial line is now removed before anything is written after it, which is the same
+  verdict the reader already reaches. The removal works in bytes rather than characters:
+  records carry multi-byte text, so a character index would land inside an earlier
+  record and tear a line that was intact."

@@ -63,7 +63,7 @@ describe("checkName", () => {
   it("gives a type-level name the kind-grammar reason, not the CEL one", () => {
     // A module name is a kind prefix and never becomes a CEL identifier, so
     // citing CEL at it would be a confidently wrong explanation.
-    const v = checkName("workflow-temporal", "type", "module name");
+    const v = checkName("sql-postgres", "type", "module name");
     expect(v?.code).toBe("INVALID_NAME");
     expect(v?.message).toMatch(/<Alias>\.<Kind>/);
     expect(v?.message).not.toMatch(/CEL/);

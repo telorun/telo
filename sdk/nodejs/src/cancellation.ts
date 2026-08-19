@@ -1,4 +1,5 @@
 import { InvokeError } from "./invoke-error.js";
+import type { DurableRunHandle } from "./durable-run.js";
 import type { ResourceHandle } from "./resource-instance.js";
 
 /**
@@ -72,6 +73,49 @@ export interface InvokeContext {
   readonly traceId?: string;
   /** Zones open around this invocation, outermost first. Absent = none. */
   readonly zones?: readonly ZoneEntry[];
+  /**
+   * The durable run this invocation is executing inside, when there is one —
+   * the replay seam the step engine journals through
+   * (`kernel/specs/durable-execution.md`).
+   *
+   * **Its own member, not a `ZoneEntry` payload.** The durable zone IS a real
+   * zone and rides the stack above, but an entry is three identities *because*
+   * that keeps it ABI-serializable and stops any controller reading another
+   * module's open state off the stack. A run handle is a live object with
+   * methods, and hanging it on the entry would trade that property away for
+   * every zone, durable or not. The landed payload rule (provider-private state
+   * lives on an instance injected across the boundary) cannot carry it either —
+   * a nested `Run.Sequence` holds no durable reference, so a sequence two levels
+   * down has no injected instance to read from.
+   *
+   * The consequence, stated rather than implied: unlike {@link zones}, this
+   * member does **not** cross the ABI. The kernel is a pure conduit — it carries
+   * the handle and never calls it — so a second runtime threads a handle it
+   * owns rather than deserializing this one.
+   *
+   * Picked up by every nested dispatch, which is what makes nesting work with no
+   * per-module effort: a nested sequence, in this module or across an import
+   * boundary, journals its steps under the outer step's path, so a crash inside
+   * it resumes inside it.
+   */
+  readonly durable?: DurableRunHandle;
+  /**
+   * The journal path of the step whose dispatch led here, when this invocation
+   * is inside a durable run.
+   *
+   * The other half of carriage, and without it nesting is silently wrong rather
+   * than merely unsupported: a nested step body that started its own paths at
+   * `steps` would record `steps/<name>` for every body in the run, so two nested
+   * bodies with a same-named step share one key. First-writer-wins then hands
+   * the second the first's RESULT — and when both dispatch the same target there
+   * is no mismatch to detect, so the run continues with a value produced for a
+   * different step.
+   *
+   * A nested engine reads this as the base its own step paths hang under, which
+   * is what makes "a crash inside a nested body resumes inside it" true. Absent
+   * at the top of a run, where the base is `steps`.
+   */
+  readonly durablePath?: string;
 }
 
 /**

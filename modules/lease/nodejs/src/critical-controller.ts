@@ -78,7 +78,7 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
     this.ttlMs = parseDurationMs(resource.ttl);
   }
 
-  async invoke(inputs: CriticalInputs, _ctx?: InvokeContext): Promise<CriticalResult> {
+  async invoke(inputs: CriticalInputs, invokeCtx?: InvokeContext): Promise<CriticalResult> {
     const name = this.resource.metadata.name;
     if (!inputs || typeof inputs.key !== "string" || inputs.key.length === 0) {
       // Fail closed: an empty key must not collapse every caller into one lease.
@@ -139,7 +139,14 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
       this.active.set(inputs.key, { holder, source });
       this.ctx.runDetached(async () => {
         try {
-          await dispatch(bodyInputs, source.context);
+          // The lease's zone is layered onto the DETACHED body's own context,
+          // never the caller's: `runDetached` sheds the ambient, and the hold
+          // this zone advertises belongs to the body that outlives this call.
+          await this.ctx.withZone(
+            "invoke",
+            (zoneCtx) => dispatch(bodyInputs, zoneCtx),
+            source.context,
+          );
         } catch (err) {
           // A body ending because this instance cancelled it is the expected
           // `op: cancel` terminal, not a failure; every other error still
@@ -156,7 +163,16 @@ class LeaseCritical implements ResourceInstance<CriticalInputs, CriticalResult> 
     }
 
     try {
-      const result = await dispatch(bodyInputs);
+      // "You are inside my body" — the relation the schema declares with
+      // `x-telo-provides-zone`, opened here so a `noSuspend` reader (a durable
+      // parking kind) finds the lease on the ambient stack and refuses with the
+      // manifest's own reason. Uncorrelated: the lease holds a key it minted,
+      // not a resource a pointer could name.
+      const result = await this.ctx.withZone(
+        "invoke",
+        (zoneCtx) => dispatch(bodyInputs, zoneCtx),
+        invokeCtx,
+      );
       return { acquired: true, holder: null, result };
     } finally {
       await mutex.release(inputs.key, version);

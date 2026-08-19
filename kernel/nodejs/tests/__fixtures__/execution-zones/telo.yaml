@@ -56,7 +56,13 @@ schema:
       x-telo-ref:
         kind: Telo.Executable
         use: call
-      x-telo-provides-zone: /session
+      # Attributes ride the object form beside the correlation key. The kernel
+      # interprets none of them — it resolves them off this schema and hands
+      # them back through `ctx.zoneAttributes()`, which is what the probe reads.
+      x-telo-provides-zone:
+        key: /session
+        atomic: a rollback discards the whole batch, entries included
+        noSuspend: the batch holds an open handle that cannot outlive this process
 ---
 # The requirer. Its `batch` field declares the requirement; the correlation key
 # tries its own `/session` first, then derives one through the batch it names —

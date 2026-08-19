@@ -32,10 +32,84 @@ describe("validate-zone-slots — x-telo-provides-zone", () => {
     expect(readProvidesZone({ "x-telo-provides-zone": "connection" })).toBeUndefined();
   });
 
-  it("rejects `false`, a number and an object", () => {
-    for (const value of [false, 1, { key: "/connection" }]) {
+  it("rejects `false`, a number and a list", () => {
+    for (const value of [false, 1, ["/connection"]]) {
       expect(messages(withSlot({ "x-telo-provides-zone": value }))).toHaveLength(1);
     }
+  });
+});
+
+describe("validate-zone-slots — zone attributes", () => {
+  it("accepts the object form, with and without a correlation key", () => {
+    expect(
+      messages(
+        withSlot({
+          "x-telo-provides-zone": {
+            key: "/connection",
+            atomic: "a rollback erases writes a journal recorded as done",
+            noSuspend: "the transaction holds a connection a parked run would lose",
+          },
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      messages(
+        withSlot({ "x-telo-provides-zone": { noSuspend: "the lease lapses unrenewed" } }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("reads the attributes back off the accepted form", () => {
+    const slot = readProvidesZone({
+      "x-telo-provides-zone": { key: "/connection", noSuspend: "the connection would be gone" },
+    });
+    expect(slot).toEqual({
+      key: "/connection",
+      attributes: { noSuspend: "the connection would be gone" },
+    });
+    // The two scalar spellings say nothing about their contents, so a consumer
+    // reading attributes off one gets an empty record rather than undefined.
+    expect(readProvidesZone({ "x-telo-provides-zone": true })).toEqual({ attributes: {} });
+  });
+
+  it("names the closed vocabulary and suggests a spelling for an unknown attribute", () => {
+    const found = messages(
+      withSlot({ "x-telo-provides-zone": { noSuspemd: "one character out" } }),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatch(/Did you mean 'noSuspend'/);
+    expect(found[0]).toMatch(/atomic, idempotent, noSuspend, replayed/);
+  });
+
+  it("enforces `requires:` from the vocabulary entry, not from a pair of names in code", () => {
+    const found = messages(
+      withSlot({ "x-telo-provides-zone": { atomic: "a rollback erases the entries too" } }),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatch(/declares 'atomic' without 'noSuspend'/);
+  });
+
+  it("rejects a boolean value — the value IS the reason, so there is no `true` to accept", () => {
+    const found = messages(withSlot({ "x-telo-provides-zone": { noSuspend: true } }));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatch(/author's REASON/);
+    // And the reader drops it, so no consumer sees an attribute with nothing to
+    // quote — the degrade the diagnostic above is what makes visible.
+    expect(
+      readProvidesZone({ "x-telo-provides-zone": { noSuspend: true } })?.attributes,
+    ).toEqual({});
+  });
+
+  it("refuses the whole annotation when a present `key` is unreadable", () => {
+    // Same reason the scalar spelling refuses one: the kernel's walk resolves a
+    // bare name while this reader drops it, so the halves would disagree about
+    // what the manifest means.
+    expect(
+      readProvidesZone({ "x-telo-provides-zone": { key: "connection", noSuspend: "held" } }),
+    ).toBeUndefined();
+    expect(
+      messages(withSlot({ "x-telo-provides-zone": { key: "connection", noSuspend: "held" } })),
+    ).toHaveLength(1);
   });
 });
 

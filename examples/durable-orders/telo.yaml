@@ -1,0 +1,219 @@
+kind: Telo.Application
+metadata:
+  name: DurableOrders
+  version: 1.0.0
+  categories: [Reliability, Coordination]
+  description: |
+    Fulfilling an order in four steps, so that killing the process half way and
+    starting it again continues from where it stopped — instead of charging the
+    card a second time.
+
+    The demo is the interruption. Run it, hit Ctrl-C while it is charging, look
+    at the journal file it left behind, then run it again with the same order id:
+    the steps that already finished do not print, because they are not re-run.
+    Their results come back from the record.
+
+        pnpm run telo examples/durable-orders/telo.yaml
+        # …Ctrl-C somewhere in the middle…
+
+        cat .telo/orders/*.ndjson        # one line per completed step
+        pnpm run telo examples/durable-orders/telo.yaml    # picks up where it stopped
+
+        ORDER_ID=A-2 pnpm run telo examples/durable-orders/telo.yaml   # a new order runs fresh
+
+    What makes that work is not that the results are cached. Each step's outcome
+    is recorded WHEN IT COMPLETES, so a step interrupted mid-flight has no record
+    and runs again — while one that finished is never re-entered. Recording on
+    dispatch instead would mark the charge done the instant it was attempted, and
+    an interruption one line later would skip it forever.
+
+    Imports are relative because these modules are not published yet; they become
+    pinned `oci://` refs like every other example once they are.
+imports:
+  Durable: ../../modules/durable
+  Local: ../../modules/durable-local
+  Journal: ../../modules/durable-journal-file
+  Run: ../../modules/run
+  Console: ../../modules/console
+  Timer: ../../modules/timer
+variables:
+  orderId:
+    env: ORDER_ID
+    type: string
+    default: A-1
+    description: Change it to watch a fresh order run from the top.
+targets:
+  - !ref fulfil
+---
+# WHERE THE RUN IS RECORDED. One append-only file per run, flushed as each record
+# is written — which is what makes a `kill -9` lose nothing that had already
+# finished. Open it between runs; it is newline-delimited JSON and meant to be
+# read.
+kind: Journal.Journal
+metadata: { name: orders }
+directory: ./.telo/orders
+---
+kind: Console.WriteLine
+metadata: { name: say }
+---
+kind: Timer.Delay
+metadata: { name: pause }
+---
+# Each step is slow on purpose, so there is time to interrupt it. `Timer.Delay`
+# honours cancellation, so Ctrl-C stops the wait rather than sitting it out.
+kind: Run.Sequence
+metadata: { name: reserveStock }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties: { order: { type: string } }
+steps:
+  - name: announce
+    invoke: !ref say
+    inputs:
+      output: !cel "'  {yellow reserving stock} for order ' + inputs.order + '…'"
+  - name: work
+    invoke: !ref pause
+    inputs: { duration: 2s }
+  - name: done
+    invoke: !ref say
+    inputs: { output: "  {green ✓ stock reserved}" }
+outputs:
+  reserved: true
+---
+kind: Run.Sequence
+metadata: { name: chargeCard }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties: { order: { type: string } }
+steps:
+  - name: announce
+    invoke: !ref say
+    inputs:
+      output: !cel "'  {yellow charging card} for order ' + inputs.order + '…'"
+  - name: work
+    invoke: !ref pause
+    inputs: { duration: 4s }
+  - name: done
+    invoke: !ref say
+    inputs: { output: "  {green ✓ card charged}  ← the one you do not want to happen twice" }
+outputs:
+  charged: true
+---
+kind: Run.Sequence
+metadata: { name: shipOrder }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties: { order: { type: string } }
+steps:
+  - name: announce
+    invoke: !ref say
+    inputs:
+      output: !cel "'  {yellow shipping} order ' + inputs.order + '…'"
+  - name: work
+    invoke: !ref pause
+    inputs: { duration: 3s }
+  - name: done
+    invoke: !ref say
+    inputs: { output: "  {green ✓ shipped}" }
+outputs:
+  shipped: true
+---
+kind: Run.Sequence
+metadata: { name: notifyCustomer }
+steps:
+  - name: announce
+    invoke: !ref say
+    inputs: { output: "  {yellow emailing the customer}…" }
+  - name: work
+    invoke: !ref pause
+    inputs: { duration: 2s }
+  - name: done
+    invoke: !ref say
+    inputs: { output: "  {green ✓ customer notified}" }
+outputs:
+  notified: true
+---
+# THE DURABLE BODY.
+#
+# `runId` is derived from the order, which is what makes re-running the same
+# order continue it rather than start a second one — an idempotent start. A
+# different order id is a different run and executes from the top.
+kind: Local.Workflow
+metadata: { name: order }
+journal: !ref orders
+runId: !cel "'order:' + inputs.order"
+onConflict: attach
+inputs:
+  order: !cel "inputs.order"
+steps:
+  - name: reserve
+    invoke: !ref reserveStock
+    inputs:
+      order: !cel "inputs.order"
+
+  # A retry policy lives on the step, and `nonRetryable` is what stops a
+  # terminal failure spending the whole budget — for a card charge, three extra
+  # attempts is three extra chances to double-charge, not merely wasted time.
+  - name: charge
+    invoke: !ref chargeCard
+    inputs:
+      order: !cel "inputs.order"
+    retry:
+      attempts: 3
+      initialDelay: 500
+      nonRetryable: [ERR_PAYMENT_DECLINED, ERR_CARD_EXPIRED]
+
+  - name: ship
+    invoke: !ref shipOrder
+    inputs:
+      order: !cel "inputs.order"
+
+  # Wrapped because re-sending this mail is harmless — so the whole region is
+  # ONE record instead of one per step. The reason is required as prose, and
+  # whatever reports on the region quotes it back.
+  - name: notify
+    invoke: !ref notifyAtMostTwice
+---
+kind: Durable.Idempotent
+metadata: { name: notifyAtMostTwice }
+reason: the mail is keyed on the order id, so a re-send replaces the queued copy
+steps:
+  - name: send
+    invoke: !ref notifyCustomer
+---
+kind: Run.Sequence
+metadata: { name: fulfil }
+steps:
+  - name: intro
+    invoke: !ref say
+    inputs:
+      output: !cel "'\\n{bold Fulfilling order ' + variables.orderId + '}  (Ctrl-C any time)\\n'"
+
+  - name: run
+    invoke: !ref order
+    inputs:
+      order: !cel "variables.orderId"
+
+  # `replayed` is true when at least one step came back from the record rather
+  # than executing — i.e. this run continued an interrupted one.
+  - name: outcome
+    invoke: !ref say
+    inputs:
+      output: !cel >-
+        steps.run.result.replayed
+          ? '\n{green Done} — order ' + variables.orderId
+            + ' finished, and the steps already recorded were not run again.'
+          : '\n{green Done} — order ' + variables.orderId + ' fulfilled from the top.'
+
+  - name: whereToLook
+    invoke: !ref say
+    inputs:
+      output: !cel >-
+        '{dim The record is at ./.telo/orders/} '
+          + '{dim — one line per completed step. Delete it to start over.}\n'

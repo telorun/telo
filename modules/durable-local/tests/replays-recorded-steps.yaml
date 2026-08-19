@@ -1,0 +1,180 @@
+kind: Telo.Application
+metadata:
+  name: DurableLocalReplayTest
+  version: 1.0.0
+  description: |
+    The property durable execution exists for: a body that already ran does not run
+    again.
+
+    A crash is simulated the honest way — by running the SAME run id twice against a
+    journal that outlives the first execution. That is not an approximation of a
+    resume; it IS one. `execute` is the only code path either takes, precisely so
+    that resuming is not a second implementation of replay that could drift.
+
+    THE ASSERTION IS THE KERNEL'S OWN DISPATCH RECORD. Every dispatch emits
+    `<name>.Invoked` through the invocation chokepoint, so "did this step execute
+    again?" is answerable from what the runtime recorded rather than from a counter
+    the work kept on the side. That is both stronger evidence and a smaller test: a
+    global only proves a function body ran, while the event proves the step was
+    dispatched — and a replay that returned a recorded value without dispatching is
+    exactly the thing under test.
+
+    Three runs happen here, two of them for one id. `chargeCard` and `sendMail` are
+    each dispatched TWICE — once for ada, once for grace. Three would mean the
+    replay re-executed.
+
+    WHAT THIS FILE CANNOT ASSERT, stated so nobody looks for it here: that a
+    journaled DECISION is returned rather than re-derived. The second submission
+    of a settled run answers from the run record and never re-enters the step
+    engine, so no predicate is re-reached on this path — a probe that changed its
+    answer would simply never be asked twice. Driving a run that was interrupted
+    MID-BODY needs a process that stops half way, which is
+    `nodejs/tests/replay.test.ts`, where the handle is stepped directly and the
+    decision case is asserted properly.
+imports:
+  Durable: ../../durable
+  Local: ../
+  Journal: ../../durable-journal-file
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: DURABLE_TEST_DIR
+    type: string
+    default: .telo/durable-replay-test
+targets:
+  - !ref test
+  # Runs after the sequence, reporting on the stream it captured from boot.
+  - !ref dispatches
+---
+kind: Journal.Journal
+metadata: { name: journal }
+# A FIXED directory. Isolation between runs of this test comes from the run ids
+# below being unique per process, not from a clock baked into a startup field —
+# which is what `directory` is, so an expression there would be evaluated once at
+# load and mean something different from what it looks like.
+directory: !cel "variables.journalDir"
+---
+# The effects. They keep no state of their own: what happened to them is read
+# off the dispatch record, so they are exactly as trivial as the test needs.
+kind: Run.Value
+metadata: { name: chargeCard }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [charged]
+    properties:
+      charged: { type: boolean }
+value: { charged: true }
+---
+kind: Run.Value
+metadata: { name: sendMail }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [sent]
+    properties:
+      sent: { type: boolean }
+value: { sent: true }
+---
+kind: Local.Workflow
+metadata: { name: onboard }
+journal: !ref journal
+# A caller-chosen id is what makes a second submission of the same operation
+# attach to the existing run instead of starting a second one.
+runId: !cel "'onboard:' + inputs.email"
+onConflict: attach
+inputs:
+  email: !cel "inputs.email"
+steps:
+  # A branch inside a durable body, so the run journals a predicate as well as
+  # its step results. The predicate reads the run's own inputs and is therefore
+  # deterministic — see the note in this file's description about where the
+  # "a decision must not be re-derived" property is actually asserted.
+  - name: gate
+    if: !cel "inputs.email.contains('@')"
+    then:
+      - name: createAccount
+        invoke: !ref chargeCard
+    else:
+      - name: skipped
+        throw:
+          code: ERR_UNREACHABLE_BRANCH
+          message: the gate predicate is a property of the run's own inputs
+  - name: welcome
+    invoke: !ref sendMail
+---
+# The whole-run assertion, over the kernel's dispatch record.
+kind: Assert.Events
+metadata: { name: dispatches }
+filter:
+  - type: "chargeCard.Invoked"
+  - type: "sendMail.Invoked"
+expect:
+  # Two distinct runs execute; the third submission replays. Without the journal
+  # every one of these would be 3 — which is precisely what the counters this
+  # replaced were approximating, from inside the work rather than outside it.
+  - event: chargeCard.Invoked
+    times: 2
+  - event: sendMail.Invoked
+    times: 2
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # One token per process, computed at RUNTIME and reused by every submission
+  # below. That is what keeps a previous run of this test out of the way: the run
+  # ids are `onboard:ada+<token>@…`, so a journal directory left behind by an
+  # earlier run holds no entry any of these ids could replay from.
+  #
+  # Deliberately a step rather than a field on the journal: `steps.<name>.result`
+  # is evaluated per run and read by everything after it, while a resource's
+  # configuration is evaluated once at load — and a clock there would be a value
+  # that looks fresh and is not.
+  - name: token
+    value: !cel "string(nowMillis())"
+
+  # First execution: everything runs.
+  - name: first
+    invoke: !ref onboard
+    inputs:
+      email: !cel "'ada+' + steps.token.result + '@example.com'"
+  - name: assertRan
+    inputs:
+      actual: !cel "steps.first.result.replayed"
+      expected: false
+    invoke: { kind: Assert.Equals }
+
+  # Second execution of the SAME run id. The run is already settled, so it
+  # answers with what it produced rather than doing the work again.
+  - name: second
+    invoke: !ref onboard
+    inputs:
+      email: !cel "'ada+' + steps.token.result + '@example.com'"
+  - name: assertAttached
+    inputs:
+      actual: !cel "steps.second.result.replayed"
+      expected: true
+    invoke: { kind: Assert.Equals }
+
+  # The replayed run answers with the SAME result the first produced, rather than
+  # a fresh one — a re-execution would have produced its own.
+  - name: assertSameResult
+    inputs:
+      actual: !cel "steps.second.result.result.steps.createAccount.result"
+      expected: { charged: true }
+    invoke: { kind: Assert.Equals }
+
+  # A DIFFERENT run id is a different run, so it executes — the replay must be
+  # keyed on the run, not a blanket "already did this once".
+  - name: other
+    invoke: !ref onboard
+    inputs:
+      email: !cel "'grace+' + steps.token.result + '@example.com'"
+  - name: assertOtherRan
+    inputs:
+      actual: !cel "steps.other.result.replayed"
+      expected: false
+    invoke: { kind: Assert.Equals }

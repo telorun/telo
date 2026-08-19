@@ -1470,7 +1470,8 @@ shared verb pretending they are interchangeable.
   versions stay resolvable, so a pinned consumer is unaffected. Removal covers the
   module directories, their `.changes/ledger.yaml` entries, the `workflow-temporal/nodejs`
   workspace entry, the Workflow topology doc, its `pages/sidebars.ts` entry and the
-  reference in `kernel/docs/topology.md`. Both are published (0.5.1 and 0.6.2), so their
+  reference in `kernel/docs/topology.md` — plus the two kernel docs that used the
+  pair as their only worked example, rewritten against `sql` / `sql-postgres`. Both are published (0.5.1 and 0.6.2), so their
   ledger entries record layer digests for artifacts nothing will build again — a stale
   entry the moment the directories go, and the reconciliation `telo release verify`
   cannot perform for a module the workspace scan no longer discovers. The workflow canvas
@@ -1852,7 +1853,7 @@ is why the target-identity encoding sits in slice 5 rather than 7: deferring a f
 past the point where something can exercise it is the same defect as freezing one early,
 and a fixture exercises it as truly as an engine does.
 
-### 1 — zone attributes and the containment walk
+### 1 — zone attributes and the containment walk — **LANDED**
 
 The `sdk/zone-attributes/` entries and their copy script, the composed annotation schema
 (`dependentRequired` from `requires:`, `additionalProperties: false` from the closed
@@ -1866,7 +1867,7 @@ Sliced out first because it is the largest analyzer change in the plan and it st
 alone: nothing here mentions a journal, and the vocabulary is generically useful the day
 it lands. Reviewing it against durability's noise would be the expensive way to do it.
 
-### 2 — retry parity
+### 2 — retry parity — **LANDED**
 
 **The attempt loop has already landed**, in the SDK's step leaf: `attempts`,
 `initialDelay`, `factor`, `maxDelay` and `jitter`, consumed at the leaf so every
@@ -1876,7 +1877,47 @@ dependency, no reason to wait behind a spec. Deferred to slice 3 is a *suspendin
 backoff, which needs a suspension to exist, and to slice 4 the attempt-state journaling
 that keeps a bounded policy bounded across a resume.
 
-### 3 — the seam, the spec, and `durable-journal-file` together
+### 3 — the seam, the spec, and `durable-journal-file` together — **LANDED**
+
+Shipped with three deviations, each recorded where it bites rather than as a
+footnote:
+
+- **A workflow AWAITS its body** instead of dispatching it detached. The plan's
+  reason for not awaiting is specifically that *an awaited call cannot survive a
+  suspend* — and suspension is slice 4, so in v1.0 awaiting loses nothing and is
+  what makes the property this slice exists to prove observable at all. The
+  detached start lands with parking, where its justification becomes real.
+- **`collapsedRegions` rides the run's RESULT, not observed state.** The kernel
+  marks a resource started only for a `run()` dispatch, so a `Telo.Invocable`
+  reporting observed state is rejected before it has said anything. It moves to
+  `status:` when that is resolved; the answer is constant until slice 5 anyway,
+  so nothing is lost by waiting.
+- **`DURABLE_ZONE_UNMARKED` is not implemented.** The plan describes it as
+  "a kind extending `Durable.Run` whose body slot omits `replayed`", which
+  requires the analyzer to name a module's kind — the one thing the
+  topology-driven constraint forbids, and which every other rule here avoids. The
+  runtime failure it would have anticipated is already loud (a parking kind with
+  no ambient handle raises), so it is left for a decision rather than
+  implemented against the constraint.
+
+**`noSuspend` ships with no reader yet**, which is worth naming against this
+repo's own `requires:` doctrine ("a declared requirement nothing compares reads
+as protection and protects nobody"). The difference is that its reader is
+specified and scheduled — the parking kinds in slice 4 — and it is already
+comparable today through `ctx.zoneAttributes()`, declared on three shipped kinds
+and documented as taking effect with parking. It is a vocabulary entry landing
+one slice ahead of its consumer, not a claim nothing can ever check.
+
+The `workflow` / `workflow-temporal` removal is done: both module directories,
+their `.changes/ledger.yaml` entries, the `@telorun/workflow-temporal-build`
+entry in `.changeset/config.json`, the two `modules/README.md` rows, the Workflow
+topology doc and its `pages/sidebars.ts` entry, and the reference in
+`kernel/docs/topology.md`. `kernel/docs/inheritance.md` and
+`kernel/docs/resource-references.md` were built entirely on the
+`workflow` / `workflow-temporal` pair as their worked example and are rewritten
+against `sql` / `sql-postgres`, which is a real shipped abstract-and-implementation
+pair of the same shape. No release fragment, as planned: `Removed` is a
+major-inducing kind and a module that no longer exists has no version to move.
 
 The `durable` member on `InvokeContext`, the run-handle interface in `@telorun/sdk`,
 `kernel/specs/durable-execution.md` (determinism contract, key scheme, entry format),

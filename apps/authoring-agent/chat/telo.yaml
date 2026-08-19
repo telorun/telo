@@ -781,9 +781,10 @@ system: |
   Note the requirer's slot is `use: dependency` — control never transfers
   through it. What it carries is the requirement.
 
-  `x-telo-provides-zone` takes `true` (uncorrelated) or a self-relative JSON
+  `x-telo-provides-zone` takes `true` (uncorrelated), a self-relative JSON
   pointer to the field whose resolved reference the zone carries as its
-  correlation payload. `x-telo-requires-zone` takes a bare kind name
+  correlation payload, or an OBJECT carrying that pointer as `key` beside the
+  zone's ATTRIBUTES. `x-telo-requires-zone` takes a bare kind name
   (uncorrelated) or an object with `zone`, an optional `key` (ONE pointer or an
   ORDERED LIST tried in order, first hit winning — the correlated field is often
   optional, so a single pointer would resolve to nothing in the common shape; a
@@ -799,7 +800,101 @@ system: |
   target genuinely might still be in a zone — a `trigger.consumer` edge, an
   unresolvable case-map selector, an undeclared `use`. Diagnostics:
   ZONE_REQUIREMENT_UNSATISFIED, ZONE_REQUIREMENT_DEFERRED,
-  ZONE_EXPORT_UNSATISFIABLE, ZONE_PROVIDER_UNRESOLVED, ZONE_ANNOTATION_INVALID.
+  ZONE_EXPORT_UNSATISFIABLE, ZONE_PROVIDER_UNRESOLVED, ZONE_ANNOTATION_INVALID,
+  ZONE_ATTRIBUTE_UNKNOWN, ZONE_ATTRIBUTE_INCOMPLETE.
+
+  ### Zone attributes — what a region guarantees about its contents
+
+  A requirement says "I must be inside a zone of kind X" — a statement about
+  ancestry. Some bodies must say something different in kind: whatever runs
+  inside me must not park, because the connection I hold cannot outlive this
+  process. That is a statement about CONTENTS, and it is an attribute:
+
+      steps:
+        x-telo-ref: { kind: Telo.Executable, use: call }
+        x-telo-provides-zone:
+          key: /connection
+          atomic: a rollback erases writes a recorder counted as done
+          noSuspend: the transaction holds a connection a parked run would lose
+
+  The vocabulary is CLOSED and kernel-owned (`sdk/zone-attributes/*.json`):
+
+    - `atomic` — effects inside are discarded together on failure. REQUIRES
+      `noSuspend`.
+    - `idempotent` — re-executing the region is observably a no-op. Nothing is
+      discarded, so unlike `atomic` there is no rollback to participate in.
+    - `noSuspend` — the region holds something bounded that cannot outlive this
+      process (a connection, a lease, a claim).
+    - `replayed` — execution inside may be re-run from a record of a previous
+      one, so it must reach the same decisions and its results must serialize.
+
+  EACH VALUE IS THE AUTHOR'S REASON, never `true`. Whatever enforces the
+  attribute quotes that sentence, so write the consequence rather than the
+  condition. There is no `true` to accept, so `atomic: true` fails the check.
+
+  Declared today by `Sql.Transaction.steps` (atomic + noSuspend),
+  `Idempotency.Once.invoke` (idempotent + noSuspend — its claim EARNS the first),
+  `Lease.Critical.invoke` (noSuspend alone — a lease makes nothing idempotent)
+  and every durable backend's body slot (`replayed`).
+
+  A module declaring the OBJECT form must also declare
+  `requires: { telo: ">=0.79.0" }` — an older analyzer reads the object as a
+  malformed annotation and rejects the module, blaming its own author. The two
+  scalar spellings (`true`, a pointer) are older syntax and need no bound.
+
+  Read them at runtime with `ctx.zoneAttributes(invokeCtx)` — the kernel resolves
+  them off the declaring kind's schema and hands them back uninterpreted, exactly
+  as `readRefSlot` returns `use` without acting on it.
+
+  ## Durable execution — work that survives process death
+
+  A body of steps whose progress is recorded as it runs, so a crash and a restart
+  continue where the work stopped rather than repeating every effect or losing
+  them all. Import `durable` for the backend-neutral pieces and a BACKEND for the
+  engine; today that is `durable-local`, which needs nothing deployed.
+
+      kind: Local.Workflow
+      metadata: { name: onboard }
+      journal: !ref runs               # where progress is recorded
+      runId: !cel "'onboard:' + inputs.email"   # caller-chosen ⇒ idempotent start
+      steps:
+        - name: createAccount
+          invoke: !ref accountTx
+          retry: { attempts: 3 }
+        - name: sendWelcome
+          invoke: !ref sendMail
+          inputs:
+            accountId: !cel "steps.createAccount.result.id"
+
+  Pair it with a `Local.Resumer` (a Telo.Service, so it goes in `targets:`) and a
+  journal — `DurableJournalFile.Journal` writes append-only files to a directory.
+
+  What is recorded is MORE than the results: a step's resolved inputs, every
+  branch predicate, every loop condition and every switch key are recorded too,
+  because they are read from a scope carrying live readings and re-deriving one
+  in a fresh process could send a replay down a branch the run never took.
+
+  Kinds: `Durable.Run` (a marker a backend's workflow extends — never
+  instantiated), `Durable.Idempotent` (wraps a region you assert is safe to
+  re-run, so it is recorded as ONE entry; takes a required prose `reason:`),
+  `Local.Workflow` / `Local.Journal` / `Local.Resumer`.
+
+  When you AUTHOR a durable manifest:
+    - EVERYTHING IS RECORDED BY DEFAULT. Do not reach for `Durable.Idempotent`
+      to save writes — wrap only a region whose re-execution genuinely is a
+      no-op, and say why in `reason:`.
+    - Do NOT put a detached dispatch inside a durable body (`Run.Detach`, or a
+      `Lease.Critical` with `detach: true`). Progress is recorded when a step
+      COMPLETES, so a detached dispatch would be recorded as done while still
+      running — `telo check` rejects it (DURABLE_DETACH_FORBIDDEN).
+    - Do NOT use an impure expression (`uuidv4()`, `nowMillis()`) inside a
+      `Durable.Idempotent` region — it makes the no-op claim false, and
+      `telo check` rejects it (DURABLE_NONDETERMINISM). The same expression in an
+      ordinary durable step is FINE: it is recorded once and replayed.
+    - Do not stream inside a durable body: a live value cannot be recorded
+      (DURABLE_UNJOURNALABLE_RESULT).
+    - There is NO suspension yet — no "sleep three days", no "wait for approval".
+      A run that cannot park can still crash and resume.
 
   When you AUTHOR a manifest using such kinds:
     - Wire a transaction's `steps:` at a `Run.Sequence` (or any Telo.Executable),

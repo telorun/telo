@@ -1,0 +1,88 @@
+kind: Telo.Application
+metadata:
+  name: DurableNestedPathsTest
+  version: 1.0.0
+  description: |
+    A nested body's records hang under the step that dispatched it.
+
+    Two nested sequences here have a step of the same name. If a nested body
+    started its own paths at the root, both would record under `steps/work` — and
+    first-writer-wins would hand the second the first's RESULT. Here that is
+    caught by the target-identity check, because the two dispatch different
+    resources; had they dispatched the SAME one there would be nothing to detect
+    and the run would simply continue with a value produced for another step.
+
+    The fix is that the dispatching step's path rides the invocation context, so
+    a nested engine hangs its keys under it: `steps/one/work` and
+    `steps/two/work`. That is also what makes "a crash inside a nested body
+    resumes inside it" true rather than aspirational.
+imports:
+  Local: ../
+  Journal: ../../durable-journal-file
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: PROBE_DIR
+    type: string
+    default: .telo/durable-nested-paths
+targets:
+  - !ref test
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+kind: Run.Value
+metadata: { name: alpha }
+value: { from: alpha }
+---
+kind: Run.Value
+metadata: { name: beta }
+value: { from: beta }
+---
+# Two nested bodies, each with a step called `work`.
+kind: Run.Sequence
+metadata: { name: firstBody }
+steps:
+  - name: work
+    invoke: !ref alpha
+outputs:
+  from: !cel "steps.work.result.from"
+---
+kind: Run.Sequence
+metadata: { name: secondBody }
+steps:
+  - name: work
+    invoke: !ref beta
+outputs:
+  from: !cel "steps.work.result.from"
+---
+kind: Local.Workflow
+metadata: { name: run }
+journal: !ref journal
+runId: !cel "'probe:' + inputs.token"
+steps:
+  - name: one
+    invoke: !ref firstBody
+  - name: two
+    invoke: !ref secondBody
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: token
+    value: !cel "string(nowMillis())"
+  - name: go
+    invoke: !ref run
+    inputs:
+      token: !cel "steps.token.result"
+  - name: assertDistinct
+    inputs:
+      actual:
+        one: !cel "steps.go.result.result.steps.one.result.from"
+        two: !cel "steps.go.result.result.steps.two.result.from"
+      expected:
+        one: alpha
+        two: beta
+    invoke: { kind: Assert.Equals }

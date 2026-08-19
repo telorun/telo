@@ -1,0 +1,9 @@
+modules:
+  modules/assert: Added
+body: "Assert.Events entries take an optional times:, asserting how many matching events
+  the stream holds rather than merely that one occurred. The ordered form is a
+  subsequence match that ignores extras, so it could never express 'exactly once' — the
+  assertion a test needs when something may return a cached, memoised or replayed result
+  without dispatching. Counted over the whole capture and consuming no position, so
+  ordered and counted entries mix without either changing what the other means; times: 0
+  asserts the event never happened."

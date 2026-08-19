@@ -1,0 +1,6 @@
+{
+  "$comment": "The clearest case for the reason-as-value design: one name is worn by a transaction holding a connection, a lease that lapses unrenewed, an idempotency claim, and later a deadline scope whose bound would elapse while parked. Four providers, four different reasons, one attribute — without the prose the pressure would be to invent `connectionHeld`, `leaseHeld` and `deadlineBound` as separate entries.",
+  "name": "noSuspend",
+  "value": { "type": "string", "minLength": 1 },
+  "description": "The zone holds something bounded that cannot outlive the current process — a connection, a lease, a claim — so execution inside it must not park and resume elsewhere."
+}

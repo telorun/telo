@@ -51,6 +51,7 @@ import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
 import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
 import { runZoneAnalysis, type ZoneExportCache } from "./resolve-zone-requirements.js";
+import { validateDurableRegions } from "./validate-durable-regions.js";
 import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
 import { validateZoneSlotDeclarations, type ZoneSlotIssue } from "./validate-zone-slots.js";
 import {
@@ -1565,6 +1566,23 @@ export class StaticAnalyzer {
           rootModules,
           moduleDocuments: options?.moduleDocuments,
           cache: zoneExportCache,
+        }),
+      );
+
+      // Durable regions — the SAME graph again, walked DOWNWARD this time.
+      // Every rule here keys off a zone attribute rather than off any kind, so
+      // a backend that ships its own workflow kind is covered without the
+      // analyzer knowing it exists: going native costs a module, not a change
+      // here.
+      diagnostics.push(
+        ...validateDurableRegions({
+          graph: getCallGraph(),
+          resolveDef: (kind, module) => {
+            const scope = (module ? aliasesByModule.get(module) : undefined) ?? aliases;
+            const canonical = scope.resolveKind(kind);
+            return defs.resolve(kind) ?? (canonical ? defs.resolve(canonical) : undefined);
+          },
+          reportModules: rootModules,
         }),
       );
     }
