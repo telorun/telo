@@ -9,7 +9,7 @@ import {
   resolveEntryDir,
   writeManifestCache,
 } from "@telorun/kernel";
-import type { ModuleArtifact } from "@telorun/kernel";
+import type { ModuleArtifact, SiblingLibraryMap } from "@telorun/kernel";
 import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "path";
 import { pathToFileURL } from "url";
@@ -159,6 +159,11 @@ async function installOne(
   // job fails on a module `telo run` loads fine.
   let moduleArtifacts: Map<string, ModuleArtifact> | undefined;
 
+  // The sibling libraries each module's bundles import by bare specifier. A
+  // bundle externalizes `@telorun/cache`, so installing its controller without
+  // this map fails to import a module `telo run` loads fine.
+  let moduleLibraries: Map<string, SiblingLibraryMap> | undefined;
+
   // Persist every imported manifest to `<entry-dir>/.telo/manifests/` so the
   // boot path (`telo run`) can resolve every import from disk and skip
   // the registry round-trip. The Dockerfile `COPY --from=build /srv /srv`
@@ -183,6 +188,7 @@ async function installOne(
         (msg) => outErrLine(`  ${log.err.warn("⚠")}  ${msg}`),
       );
       moduleArtifacts = warmed.artifacts;
+      moduleLibraries = warmed.libraries;
       if (warmed.materialized > 0) {
         outLine(
           `  ${log.ok("✓")}  materialized ${warmed.materialized} module layer${warmed.materialized !== 1 ? "s" : ""} ` +
@@ -225,7 +231,13 @@ async function installOne(
   // `getModuleArtifact` uses at run time).
   const results = await Promise.allSettled(
     jobs.map((job) =>
-      controllerLoader.load(job.purls, job.baseUri, undefined, moduleArtifacts?.get(job.baseUri)),
+      controllerLoader.load(
+        job.purls,
+        job.baseUri,
+        undefined,
+        moduleArtifacts?.get(job.baseUri),
+        moduleLibraries?.get(job.baseUri),
+      ),
     ),
   );
 

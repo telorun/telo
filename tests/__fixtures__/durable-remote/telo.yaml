@@ -1,0 +1,129 @@
+# A durable backend that ships every step to a CHILD KERNEL — the remote half of
+# the step seam, under load before a hosted engine exists.
+#
+# A fixture rather than a module, deliberately. What it proves is that a step's
+# TARGET survives being written down and resolves in a process that shares no
+# instance graph with the one that declared it. A child kernel is a real boundary
+# for that purpose and costs a fraction of an engine; what it cannot prove —
+# crash recovery, waiting, contention — is proven by `durable-local` against a
+# real store, and re-proving it here would make this a second backend to keep
+# correct rather than one seam under test.
+kind: Telo.Library
+metadata:
+  name: DurableRemote
+  version: 0.0.0
+  description: >-
+    Test fixture: a durable backend that executes each step in a child kernel, addressed
+    only by the step target's encoded declaration-site identity.
+imports:
+  Durable: ../../../modules/durable
+exports:
+  kinds:
+    - Workflow
+    - Dispatch
+    - Echo
+  resources:
+    # Exported as an INSTANCE so both kernels reach the same declaration: the
+    # parent names it in a step, the child resolves the name that arrives. A kind
+    # each side instantiated separately would prove nothing — two resources that
+    # merely agree are not one identity.
+    - greet
+---
+kind: Telo.Definition
+metadata:
+  name: Workflow
+  description: Runs a durable body, shipping each step to a child kernel.
+capability: Telo.Invocable
+extends: Durable.Run
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable-remote.mjs&local_path=./nodejs/src/index.ts#workflow
+schema:
+  type: object
+  required: [steps, dispatcher]
+  additionalProperties: false
+  properties:
+    dispatcher:
+      title: Dispatcher
+      description: >-
+        The child manifest one shipped step runs in, relative to the module DECLARING
+        this workflow. Configured rather than resolved beside the controller because
+        `ctx.resolveModuleFile` answers for the module that declared the resource, which
+        is the consumer's — a fixture is the right place to accept that rather than to
+        widen the surface for it.
+      type: string
+      x-telo-eval: compile
+    steps:
+      title: Steps
+      description: The durable body.
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+      x-telo-topology-role: steps
+      x-telo-provides-zone:
+        replayed: >-
+          every step is shipped to a child kernel and its result recorded, so a step
+          reached twice is answered from the record rather than executed again
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+---
+# The child kernel's half. It receives an ENCODED IDENTITY and nothing else, so a
+# target that resolves here resolved from what was written down.
+kind: Telo.Definition
+metadata:
+  name: Dispatch
+  description: Resolves a step target from its encoded identity and invokes it.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable-remote.mjs&local_path=./nodejs/src/index.ts#dispatch
+schema:
+  type: object
+  required: [targets, encodedTarget, encodedInputs]
+  additionalProperties: false
+  properties:
+    targets:
+      title: Targets
+      description: Every target this kernel can execute, keyed by declared name.
+      type: object
+      additionalProperties:
+        x-telo-ref:
+          kind: Telo.Executable
+          use: call
+    encodedTarget:
+      title: Encoded Target
+      type: string
+      x-telo-eval: compile
+    encodedInputs:
+      title: Encoded Inputs
+      type: string
+      x-telo-eval: compile
+---
+kind: Telo.Definition
+metadata:
+  name: Echo
+  description: A step target that echoes its inputs.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable-remote.mjs&local_path=./nodejs/src/index.ts#echo
+inputType:
+  type: object
+  properties:
+    text: { type: string }
+outputType:
+  type: object
+  required: [echoed]
+  properties:
+    echoed: { type: string }
+    via: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    prefix:
+      title: Prefix
+      type: string
+      x-telo-eval: compile
+---
+kind: Self.Echo
+metadata: { name: greet }
+prefix: "hello, "

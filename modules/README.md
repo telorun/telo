@@ -40,6 +40,7 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 | [durable](./durable/README.md) | Backend-neutral pieces for work that survives process death, including waits measured in days. |
 | [durable-local](./durable-local/README.md) | Durable execution with no engine to deploy: records progress, waits, and resumes after a crash. |
 | [durable-journal-file](./durable-journal-file/README.md) | Stores durable runs as append-only files in a directory. |
+| [durable-journal-postgres](./durable-journal-postgres/README.md) | Stores durable runs in PostgreSQL: several machines record to one place, claiming and waking are the database's own. |
 
 ### Encoding & Streams
 

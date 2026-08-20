@@ -27,6 +27,7 @@ import {
   ResourceDefinition,
   ResourceInstance,
   ResourceManifest,
+  stampRefIdentity,
   RuntimeError,
   RuntimeEvent,
   type BootTarget,
@@ -50,10 +51,7 @@ import { ambientInvokeContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { mintResourceHandle } from "./resource-handle.js";
-import {
-  declarationOfInstance,
-  recordInstanceDeclaration,
-} from "./instance-declaration.js";
+import { declarationOfInstance, recordInstanceDeclaration } from "./instance-declaration.js";
 import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
@@ -1423,6 +1421,17 @@ export class Kernel implements IKernel {
       (processedResource.metadata?.name as string | undefined) ?? "<unnamed>",
     );
     recordInstanceDeclaration(instance, processedResource);
+    // Stamp the DECLARATION SITE here rather than at Phase-5 injection, because
+    // this is the only point where the instance and the context that declared it
+    // are both in hand: injection sees the consumer's context, not the target's,
+    // so a module stamped there would be whoever referenced it. Without it a
+    // durable step could not name its target anywhere the instance does not
+    // exist — the whole reason `step()` takes an identity at all.
+    const originPointer = originPointerOf(processedResource);
+    stampRefIdentity(instance, resolvedKind, processedResource.metadata?.name ?? "<unnamed>", {
+      ...(moduleCtx?.source ? { module: moduleCtx.source } : {}),
+      ...(originPointer === undefined ? {} : { pointer: originPointer }),
+    });
     (ctx as ResourceContextImpl).bindResourceIdentity(handle, resolvedKind, processedResource);
 
     // Bind the resolved invocation contract to the instance, here at the kernel's
@@ -1616,4 +1625,29 @@ export class Kernel implements IKernel {
       },
     );
   }
+}
+
+/**
+ * The JSON pointer to an inline declaration, from the origin the loader stamped.
+ *
+ * `xTeloOrigin.pathFromParent` is a dotted path with `[N]` indices — the loader's
+ * own spelling, which addresses the manifest tree and nothing else. A pointer is
+ * what crosses a boundary, so the conversion happens here rather than being left
+ * to each recipient to reinvent: segments are identifiers and indices, so the
+ * rewrite is mechanical and total.
+ */
+function originPointerOf(resource: ResourceManifest): string | undefined {
+  const origin = resource.metadata?.xTeloOrigin as
+    | { parentName?: unknown; pathFromParent?: unknown }
+    | undefined;
+  if (typeof origin?.parentName !== "string" || typeof origin.pathFromParent !== "string") {
+    return undefined;
+  }
+  const pointer = origin.pathFromParent
+    .replace(/\[(\d+)\]/g, ".$1")
+    .split(".")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => segment.replace(/~/g, "~0").replace(/\//g, "~1"))
+    .join("/");
+  return `${origin.parentName}#/${pointer}`;
 }

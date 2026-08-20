@@ -14,6 +14,9 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
+// Type-only: the loader that supplies this reporter imports the artifact, so
+// the cycle is erased at compile time.
+import type { ControllerWorkReporter } from "../controller-loader.js";
 import { withDirectoryLock } from "../directory-lock.js";
 import { cachePathForCanonical } from "../manifest-sources/local-manifest-cache-source.js";
 import type { TransportRegistry } from "../transports/transport-registry.js";
@@ -189,8 +192,9 @@ export class ModuleArtifact {
    */
   async materializeController(
     selector: ArtifactSelector,
+    report?: ControllerWorkReporter,
   ): Promise<ResolvedControllerLayer | undefined> {
-    return this.materializeCode(selector, ["controller", "library"]);
+    return this.materializeCode(selector, ["controller", "library"], report);
   }
 
   /**
@@ -209,19 +213,20 @@ export class ModuleArtifact {
   private async materializeCode(
     selector: ArtifactSelector,
     roles: ReadonlyArray<"controller" | "library">,
+    report?: ControllerWorkReporter,
   ): Promise<ResolvedControllerLayer | undefined> {
     const wanted = roles
       .map((role) => codeLayerFor(this.layers, role, selector))
       .filter((l): l is ArtifactLayer => l !== undefined);
     if (wanted.length === 0) return undefined;
-    const common = await this.materializeCommonTracked();
+    const common = await this.materializeCommonTracked(report);
     let transferred = common?.transferred ?? false;
     const files: string[] = [];
     for (const layer of wanted) {
       // Every half is a transfer the caller waited on: the common layer's bytes
       // come down on this call too, so they are as much of a wait as the code
       // layer's.
-      const resolved = await this.materializeTracked(layer);
+      const resolved = await this.materializeTracked(layer, report);
       transferred = resolved.transferred || transferred;
       files.push(...resolved.layer.files);
     }
@@ -256,9 +261,11 @@ export class ModuleArtifact {
   /** As `materializeCommon`, reporting whether this call transferred it — the
    *  controller path rides the common layer along and has to count its bytes as
    *  part of the wait. One lookup, so "common comes too" is encoded once. */
-  private async materializeCommonTracked(): Promise<ResolvedControllerLayer | undefined> {
+  private async materializeCommonTracked(
+    report?: ControllerWorkReporter,
+  ): Promise<ResolvedControllerLayer | undefined> {
     const layer = singletonLayer(this.layers, "common");
-    return layer ? this.materializeTracked(layer) : undefined;
+    return layer ? this.materializeTracked(layer, report) : undefined;
   }
 
   /**
@@ -298,10 +305,13 @@ export class ModuleArtifact {
    * transfer to all of them would print one progress line per candidate for a
    * single download. The call that started the work owns the report.
    */
-  private materializeTracked(layer: ArtifactLayer): Promise<ResolvedControllerLayer> {
+  private materializeTracked(
+    layer: ArtifactLayer,
+    report?: ControllerWorkReporter,
+  ): Promise<ResolvedControllerLayer> {
     const pending = this.inFlight.get(layer.blob);
     if (pending) return pending.then((r) => ({ layer: r.layer, transferred: false }));
-    const work = this.materializeUncached(layer).catch((err) => {
+    const work = this.materializeUncached(layer, report).catch((err) => {
       // Drop the rejection so a transient fetch failure is retried rather than
       // cached for the lifetime of the module.
       this.inFlight.delete(layer.blob);
@@ -319,7 +329,10 @@ export class ModuleArtifact {
     return path.join(this.dir, `.telo-layer-${layer.role}-${short}`);
   }
 
-  private async materializeUncached(layer: ArtifactLayer): Promise<ResolvedControllerLayer> {
+  private async materializeUncached(
+    layer: ArtifactLayer,
+    report?: ControllerWorkReporter,
+  ): Promise<ResolvedControllerLayer> {
     const marker = this.markerPath(layer);
     if (existsSync(marker)) {
       return { layer: { dir: this.dir, files: await readMarker(marker) }, transferred: false };
@@ -335,6 +348,10 @@ export class ModuleArtifact {
           return { layer: { dir: this.dir, files: await readMarker(marker) }, transferred: false };
         }
 
+        // Both re-checks are behind us, so this call really does go to the
+        // network — the one point at which a transfer is a fact rather than a
+        // possibility, and the same place `transferred: true` is decided.
+        await report?.("layer-fetch");
         const files = await this.transports.fetchLayer(this.pinnedRef, layer.blob);
         const actual = await computeFilesIntegrity(files);
         if (actual !== layer.integrity) {

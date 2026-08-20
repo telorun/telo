@@ -8,6 +8,8 @@ import { fileURLToPath } from "url";
 import { promisify } from "util";
 
 import { hostEnv } from "../host-env.js";
+// Type-only, so the cycle with the dispatcher that imports this loader is erased.
+import type { ControllerWorkReporter } from "../controller-loader.js";
 
 const execFileAsync = promisify(execFile);
 const requireFromHere = createRequire(import.meta.url);
@@ -140,6 +142,7 @@ export class NapiControllerLoader {
   async resolve(
     purl: string,
     baseUri: string,
+    report?: ControllerWorkReporter,
   ): Promise<{ source: NapiResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     const [, , name, , qualifiers, entry] = PackageURL.parseString(purl);
     const localPath = (qualifiers as any)?.get("local_path");
@@ -199,6 +202,9 @@ export class NapiControllerLoader {
           const { rawModule } = await existingInFlight;
           return project(rawModule, entry, cratePath);
         }
+        // Nothing above this line compiles — the cache and the in-flight gate
+        // both return without cargo running.
+        await report?.("cargo-build");
         const buildPromise = build(cratePath, crateName, cacheKey);
         _napiInFlight.set(cacheKey, buildPromise);
         let rawModule: any;

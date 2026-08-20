@@ -35,6 +35,27 @@ export const TEARDOWN_LAST = 1000;
 export interface RefIdentity {
   kind: string;
   name: string;
+  /**
+   * Where the instance was DECLARED, for a consumer that must name it somewhere
+   * the instance does not exist — a durable step shipped to another process.
+   *
+   * Optional because it is derived from the declaration and an instance stamped
+   * by a path that has none is still dispatchable; a consumer that genuinely
+   * needs it refuses rather than guessing (see `encodeDurableTarget`). Kept ON
+   * the identity rather than in a second table because it answers the same
+   * question the identity does — *which declaration is this* — one level more
+   * precisely.
+   */
+  origin?: RefOrigin;
+}
+
+/** The declaration site behind a live instance. `module` is the source of the
+ *  module that declared it, which is what tells two libraries' same-named
+ *  resources apart; `pointer` is set when the declaration is inline, and is a
+ *  JSON pointer into its declaring resource. */
+export interface RefOrigin {
+  module?: string;
+  pointer?: string;
 }
 
 /**
@@ -69,10 +90,19 @@ export const REF_IDENTITY: unique symbol = Symbol.for("telo.refIdentity");
 
 /** Stamp the resolved kind+name onto an injected instance. Idempotent — an
  *  instance has exactly one identity, so re-injection into other slots is a no-op. */
-export function stampRefIdentity(instance: object, kind: string, name: string): void {
+export function stampRefIdentity(
+  instance: object,
+  kind: string,
+  name: string,
+  origin?: RefOrigin,
+): void {
   if (!(REF_IDENTITY in instance)) {
     Object.defineProperty(instance, REF_IDENTITY, {
-      value: { kind, name } satisfies RefIdentity,
+      value: {
+        kind,
+        name,
+        ...(origin && (origin.module || origin.pointer) ? { origin } : {}),
+      } satisfies RefIdentity,
       enumerable: false,
       configurable: true,
       writable: false,

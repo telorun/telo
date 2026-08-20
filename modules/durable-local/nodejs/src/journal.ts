@@ -16,6 +16,7 @@
  * only — "which runs are due" is a range query, and widening that contract to
  * answer it would weaken something four modules already depend on.
  */
+import type { ZoneEntry } from "@telorun/sdk";
 
 /** One recorded fact about a run. Written on COMPLETION, never on dispatch —
  *  the rule the whole format rests on, and what makes an interrupted step
@@ -186,7 +187,7 @@ export interface DurableJournal {
    * transaction whose effects it records answers true, and its region is
    * journaled per step — which is what closes the at-least-once window.
    */
-  writesInside?(zone: unknown): boolean;
+  writesInside?(zone: ZoneEntry): boolean;
 }
 
 /** Structural test, so a mis-wired `journal:` fails with a message naming the

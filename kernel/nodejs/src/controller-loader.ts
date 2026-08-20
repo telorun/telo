@@ -39,10 +39,44 @@ export interface ResolvedController {
   purl: string;
   source: ControllerResolveSource;
   importInstance: () => Promise<ControllerInstance>;
+  /**
+   * How long the caller has waited for this controller, measured from the
+   * first {@link ControllerWorkKind} branch it entered — or, when it entered
+   * none, from the `importInstance()` call. Resolution is what installs,
+   * compiles and fetches, so timing only the import reports a 40-second
+   * install as a few milliseconds.
+   */
+  waitedMs: () => number;
 }
 
+/**
+ * A branch that makes the caller wait: a registry install, a compile, or a
+ * layer transfer. Reported by the sub-loader that is about to enter it, which
+ * is the only place that knows — a resolve's `source` is a verdict available
+ * only afterwards, and a warm start enters no branch at all, so nothing is
+ * announced for it. Reported for work in the resolve *and* the import phase:
+ * a dev-mode `pkg:telo` build and a `cargo build` are both paid inside
+ * `importInstance`.
+ */
+export type ControllerWorkKind = "npm-install" | "cargo-build" | "source-build" | "layer-fetch";
+
+/**
+ * Sub-loader hook, invoked immediately before entering a {@link
+ * ControllerWorkKind} branch. Awaited, so a consumer that renders progress has
+ * its line on screen before the wait starts rather than after it.
+ */
+export type ControllerWorkReporter = (work: ControllerWorkKind) => void | Promise<void>;
+
 export type ControllerLoaderEvent =
-  | { name: "ControllerLoading"; payload: { purl: string } }
+  /**
+   * A resolved controller is about to be imported. `source` names the branch
+   * the resolve took, so a consumer can tell a warm start (`cache` / `local`)
+   * from work someone waited for (`npm-install`, `cargo-build`, `bundle`)
+   * *before* rendering anything. The event is emitted after resolution
+   * precisely so this is known: resolution is what fetches, installs and
+   * builds, and an event emitted ahead of it could only speculate.
+   */
+  | { name: "ControllerLoading"; payload: { purl: string; source: ControllerResolveSource } }
   | {
       name: "ControllerLoaded";
       payload: { purl: string; source: ControllerResolveSource; durationMs: number };
@@ -55,7 +89,15 @@ export type ControllerLoaderEvent =
    * which is non-recoverable. Consumers that opened a UI element on the
    * matching `ControllerLoading` should close it out here.
    */
-  | { name: "ControllerLoadSkipped"; payload: { purl: string; reason: string } };
+  | { name: "ControllerLoadSkipped"; payload: { purl: string; reason: string } }
+  /**
+   * Real work has started for `purl` — an install, a compile or a transfer is
+   * about to run. This is the *only* in-progress signal, and it fires solely
+   * on the branch that does the work, so a warm start emits nothing rather
+   * than something a consumer has to take back. Closed by the matching
+   * `ControllerLoaded` / `ControllerLoadFailed`.
+   */
+  | { name: "ControllerWorkStarted"; payload: { purl: string; work: ControllerWorkKind } };
 
 /**
  * The dispatcher awaits each emission, so the callback may be async without
@@ -104,9 +146,13 @@ export interface ControllerLoaderOptions {
  * next candidate. User-code failures (`RuntimeError("ERR_CONTROLLER_BUILD_FAILED" | "ERR_CONTROLLER_INVALID")`)
  * fail hard regardless of remaining candidates.
  *
- * Lifecycle events are emitted per *attempt*, so a fallback chain produces one
- * `ControllerLoading` per candidate tried plus a final `ControllerLoaded` (or
- * `ControllerLoadFailed`) for the one that won.
+ * Lifecycle events follow resolution: a candidate this environment cannot host
+ * produces a `ControllerLoadSkipped` and nothing else, and only the candidate
+ * that resolved gets a `ControllerLoading` (carrying its resolve `source`)
+ * followed by `ControllerLoaded` / `ControllerLoadFailed`. In between, the
+ * sub-loader announces each branch that makes the caller wait as
+ * `ControllerWorkStarted` — the only in-progress signal, and the only one that
+ * cannot be emitted for a warm start.
  */
 export class ControllerLoader {
   private readonly emit: ControllerLoaderEmit | undefined;
@@ -132,56 +178,28 @@ export class ControllerLoader {
     artifact?: ModuleArtifact,
     libraries: SiblingLibraryMap = NO_SIBLING_LIBRARIES,
   ): Promise<ControllerInstance> {
-    if (!purlCandidates || purlCandidates.length === 0) {
-      throw new RuntimeError("ERR_CONTROLLER_NOT_FOUND", "Missing controller PURL candidates");
-    }
-    const effectivePolicy = policy ?? DEFAULT_POLICY;
-    const ordered = orderCandidates(purlCandidates, effectivePolicy);
-    if (ordered.length === 0) {
-      throw new RuntimeError(
-        "ERR_CONTROLLER_NOT_FOUND",
-        `No controllers match runtime selection [${effectivePolicy.load.join(", ")}]; declared: ${purlCandidates.join(", ")}`,
-      );
-    }
-
-    const errors: string[] = [];
-    for (const purl of ordered) {
-      await this.emit?.({ name: "ControllerLoading", payload: { purl } });
-      const startedAt = Date.now();
-      try {
-        const { instance, source } = await this.dispatchOne(purl, baseUri, artifact, libraries);
-        await this.emit?.({
-          name: "ControllerLoaded",
-          payload: { purl, source, durationMs: Date.now() - startedAt },
-        });
-        return instance;
-      } catch (err) {
-        if (err instanceof ControllerEnvMissingError) {
-          errors.push(`${purl}: ${err.message}`);
-          // Env-missing isn't a hard failure — the dispatcher will try the
-          // next candidate. We still emit a terminal event for *this* attempt
-          // so consumers (notably the CLI progress renderer) can close out
-          // the UI state opened by the matching ControllerLoading. Without
-          // this, every fallback attempt would leak a pending `⬇` line.
-          await this.emit?.({
-            name: "ControllerLoadSkipped",
-            payload: { purl, reason: err.message },
-          });
-          continue;
-        }
-        await this.emit?.({
-          name: "ControllerLoadFailed",
-          payload: { purl, error: err instanceof Error ? err.message : String(err) },
-        });
-        throw err;
-      }
-    }
-    const aggregated = `No controller resolved. Tried ${ordered.length} candidate(s):\n${errors.join("\n")}`;
+    // Resolution — which is what installs, compiles and fetches — reports its
+    // own work and its own candidate fallthrough, so this is the import half
+    // and the announcement of what resolution decided.
+    const resolved = await this.resolve(purlCandidates, baseUri, policy, artifact, libraries);
     await this.emit?.({
-      name: "ControllerLoadFailed",
-      payload: { purl: ordered[ordered.length - 1], error: aggregated },
+      name: "ControllerLoading",
+      payload: { purl: resolved.purl, source: resolved.source },
     });
-    throw new RuntimeError("ERR_CONTROLLER_NOT_FOUND", aggregated);
+    try {
+      const instance = await resolved.importInstance();
+      await this.emit?.({
+        name: "ControllerLoaded",
+        payload: { purl: resolved.purl, source: resolved.source, durationMs: resolved.waitedMs() },
+      });
+      return instance;
+    } catch (err) {
+      await this.emit?.({
+        name: "ControllerLoadFailed",
+        payload: { purl: resolved.purl, error: err instanceof Error ? err.message : String(err) },
+      });
+      throw err;
+    }
   }
 
   /**
@@ -194,10 +212,12 @@ export class ControllerLoader {
    * registers fine and errors only when a resource of it is declared (matching
    * the Rust kernel's deferral).
    *
-   * Silent by design — no lifecycle events here; the caller emits
-   * ControllerLoading/Loaded around `importInstance` so the events fire when the
-   * load actually happens. A total resolution failure throws, mirroring
-   * {@link load}'s aggregated error.
+   * Emits `ControllerWorkStarted` whenever a sub-loader enters a branch that
+   * makes the caller wait, and `ControllerLoadSkipped` per candidate this
+   * environment cannot host. It does NOT announce the load itself: the caller
+   * emits ControllerLoading/Loaded around `importInstance`, so those fire when
+   * the load actually happens, with the resolved `source` already in hand. A
+   * total resolution failure throws, mirroring {@link load}'s aggregated error.
    */
   async resolve(
     purlCandidates: string[],
@@ -219,41 +239,54 @@ export class ControllerLoader {
     }
     const errors: string[] = [];
     for (const purl of ordered) {
+      // First work only: an install followed by a compile is one wait, and the
+      // clock the caller reads has to start where that wait did. The reporter
+      // outlives resolution because the import phase does work too.
+      let workStartedAt: number | undefined;
+      const report: ControllerWorkReporter = async (work) => {
+        workStartedAt ??= Date.now();
+        await this.emit?.({ name: "ControllerWorkStarted", payload: { purl, work } });
+      };
       try {
         const { source, importInstance } = await this.dispatchResolveOne(
           purl,
           baseUri,
           artifact,
           libraries,
+          report,
         );
-        return { purl, source, importInstance };
+        let importStartedAt: number | undefined;
+        return {
+          purl,
+          source,
+          importInstance: () => {
+            importStartedAt ??= Date.now();
+            return importInstance();
+          },
+          waitedMs: () => Date.now() - (workStartedAt ?? importStartedAt ?? Date.now()),
+        };
       } catch (err) {
         if (err instanceof ControllerEnvMissingError) {
           errors.push(`${purl}: ${err.message}`);
+          await this.emit?.({
+            name: "ControllerLoadSkipped",
+            payload: { purl, reason: err.message },
+          });
           continue;
         }
+        await this.emit?.({
+          name: "ControllerLoadFailed",
+          payload: { purl, error: err instanceof Error ? err.message : String(err) },
+        });
         throw err;
       }
     }
-    throw new RuntimeError(
-      "ERR_CONTROLLER_NOT_FOUND",
-      `No controller resolved. Tried ${ordered.length} candidate(s):\n${errors.join("\n")}`,
-    );
-  }
-
-  private async dispatchOne(
-    purl: string,
-    baseUri: string,
-    artifact: ModuleArtifact | undefined,
-    libraries: SiblingLibraryMap,
-  ): Promise<{ instance: ControllerInstance; source: ControllerResolveSource }> {
-    const { source, importInstance } = await this.dispatchResolveOne(
-      purl,
-      baseUri,
-      artifact,
-      libraries,
-    );
-    return { instance: await importInstance(), source };
+    const aggregated = `No controller resolved. Tried ${ordered.length} candidate(s):\n${errors.join("\n")}`;
+    await this.emit?.({
+      name: "ControllerLoadFailed",
+      payload: { purl: ordered[ordered.length - 1], error: aggregated },
+    });
+    throw new RuntimeError("ERR_CONTROLLER_NOT_FOUND", aggregated);
   }
 
   private async dispatchResolveOne(
@@ -261,15 +294,16 @@ export class ControllerLoader {
     baseUri: string,
     artifact: ModuleArtifact | undefined,
     libraries: SiblingLibraryMap,
+    report: ControllerWorkReporter,
   ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     if (purl.startsWith("pkg:npm")) {
-      return this.npmLoader.resolve(purl, baseUri);
+      return this.npmLoader.resolve(purl, baseUri, report);
     }
     if (purl.startsWith("pkg:cargo")) {
-      return this.napiLoader.resolve(purl, baseUri);
+      return this.napiLoader.resolve(purl, baseUri, report);
     }
     if (purl.startsWith("pkg:telo")) {
-      return this.bundleLoader.resolve(purl, baseUri, artifact, libraries);
+      return this.bundleLoader.resolve(purl, baseUri, artifact, libraries, report);
     }
     throw new ControllerEnvMissingError(`Unsupported PURL scheme: ${purl}`);
   }

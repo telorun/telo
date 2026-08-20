@@ -91,3 +91,35 @@ histories stay apart; two on one connection naming the same one are refused.
 
 See [Declarative schema](../sql/docs/declarative-schema.md) for tombstoning,
 reclamation, renames and the ledger rule.
+
+## Notifications (`LISTEN` / `NOTIFY`)
+
+A connection can subscribe to a PostgreSQL notification channel and send on one.
+This is not part of `Sql.Connection` — that contract is what every backend
+implements, and a method only one of them could answer would be a contract
+satisfied by throwing — so a consumer reaches it the way `Ai.Model`'s `invoke`
+and a connection's own `query()` are reached: structurally, testing for the
+method rather than for a type.
+
+```ts
+const stop = await connection.listen("jobs_ready", (payload) => wake(payload));
+await connection.notify("jobs_ready", jobId);
+await stop();
+```
+
+The subscription gets its **own connection**, not one from the pool: a listener
+holds its connection for as long as it is subscribed, so taking a pooled one
+would permanently consume one of `pool.max`. It is opened on first use, so an
+application that never subscribes never pays for it, and closed at teardown.
+
+A dropped connection reconnects on a bounded backoff and **replays every
+subscription** — `LISTEN` is a property of the connection that carried it, so a
+listener that reconnected without replaying would be attached and deaf. The
+reconnect is reported rather than raised: a lost notification is a lost
+optimisation, and taking an application down over one would be the wrong trade.
+Design around that — a notification makes a poller prompt, it does not make it
+correct. [`durable-journal-postgres`](../durable-journal-postgres/README.md) is
+the worked example.
+
+Failing to subscribe in the first place is *not* swallowed: `listen()` rejects,
+because a subscription nobody established is one the caller thinks it has.

@@ -1523,7 +1523,9 @@ steps:
       accountId: !cel "steps.createAccount.result.id"
 ---
 # extends DurableLocal.Journal — this backend's storage seam. Postgres rather than
-# generic SQL because claiming due runs is FOR UPDATE SKIP LOCKED and waking is NOTIFY.
+# generic SQL because claiming due runs is FOR UPDATE SKIP LOCKED and waking is NOTIFY,
+# and `postgres` rather than the deprecated `sql-postgres`, whose prefix restated the
+# abstract `extends` already records.
 kind: JournalPg.Journal
 metadata:
   name: runJournal
@@ -1547,7 +1549,7 @@ outputType:
   additionalProperties: false
 ```
 
-`appDb` (a `SqlPostgres.Connection`), `accountTx`'s inner statements and `sendMail` are
+`appDb` (a `Postgres.Connection`), `accountTx`'s inner statements and `sendMail` are
 ordinary resources, elided here. **`Local.Workflow` carries its own `steps:`** — the
 prerequisite makes the grammar built-in, so there is no companion `Run.Sequence` and no
 `!ref` from the workflow to its own body. A body that is *not* a step list is still
@@ -1955,7 +1957,52 @@ surface and the settle-all-branches semantics are where the subtle failures live
 they are much easier to reason about against a crash-recovery path already known to
 work.
 
-### 5 — `durable-journal-postgres`, and the remote half of the seam
+### 5 — `durable-journal-postgres`, and the remote half of the seam — **LANDED**
+
+Shipped with three deviations, each recorded where it bites rather than as a
+footnote:
+
+- **`collapsedRegions` stays on the RUN RECORD, not observed state.** The
+  slice-3 deviation is not outstanding — it was resolved in the other
+  direction, and the reason survives inspection: a workflow serves many runs at
+  once, so observed state on the resource would have one slot for all of them
+  and report whichever finished last. Whether a run got exactly-once is a fact
+  about that run. `ERR_OBSERVED_STATE_BEFORE_START` for an invocable is
+  therefore no longer blocking anything here.
+
+- **A `with:`-SCOPED target is encodable but not yet DERIVED.** The scope tuple
+  needs the step path at which the scope run was opened, and a scope handle is
+  built with no knowledge of the invocation that opens it. So the kernel derives
+  the module-level and inline forms, and a scoped one is REFUSED at the encoder.
+  That refusal needs its own flag (`DurableTarget.scoped`) rather than the
+  tuple's absence, and the reason is the whole point of the identity: the step
+  engine knows a name resolved inside a scope — the resolution is what answers it
+  — and a target that recorded only the missing tuple would be indistinguishable
+  from a module-level one, so it would ship and resolve, at the far end, to a
+  different resource that merely shares the name.
+
+- **The fixture keeps no journal.** `tests/__fixtures__/durable-remote` records
+  a run in a map that dies with the process. What it exists to prove is that a
+  target survives being written down and resolves where no instance of it
+  exists; crash recovery is proven by `durable-local` against a real store, and
+  re-proving it there would have made the fixture a second backend to keep
+  correct rather than one seam under test.
+
+One thing the slice added that was not planned: **deriving the identity is real
+work, and it is where this could have quietly done nothing.** A step's `invoke:`
+slot is not a Phase-5 injection site — it resolves at dispatch — so a step target
+arrives as a reference carrying no stamp, and the first working version encoded
+`(kind, name)` with no module at all. The declaration site is recovered by
+resolving the reference the same way the dispatch does, and the kernel stamps it
+at `create()`, the one point where an instance and the context that DECLARED it
+are both in hand: at injection the context is the consumer's, so a module stamped
+there would name whoever referenced it.
+
+Also landed here, unplanned and load-bearing for the Postgres half: a
+`listen`/`notify` surface on `Postgres.Connection` (`LISTEN` needs a connection
+of its own, and kysely hands out no raw client), and `SqlConnection.bindsZone`,
+which is what lets the journal attest membership of the NAMED zone rather than of
+whatever transaction happens to be ambient.
 
 Three things at once. Concurrency: `FOR UPDATE SKIP LOCKED` claiming, advisory locks,
 `LISTEN`/`NOTIFY` wakeups, several resumers against one journal. Slice 3 proved the
