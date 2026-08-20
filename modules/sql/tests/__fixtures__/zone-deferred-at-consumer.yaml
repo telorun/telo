@@ -11,7 +11,7 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../../
-  SQLite: ../../../sql-sqlite
+  SQLite: ../../../sqlite
   RecordStream: ../../../record-stream
 # No `targets:` — `OnComplete` takes a stream input, so it cannot be started by
 # a boot `run()`. What this fixture exercises is the EDGE, which the projection

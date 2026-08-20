@@ -14,6 +14,8 @@ import {
   stampCrateVersion,
   stampManifestVersion,
   stampPackageVersion,
+  stampSelfNpmPins,
+  VersionStampError,
   type Ledger,
   type LedgerEntry,
   type ModuleKey,
@@ -64,6 +66,29 @@ export function writePlannedVersions(
  * shape that cannot be rewritten in place throws instead, because leaving a
  * module's manifests disagreeing about its own version is worse than stopping.
  */
+/**
+ * The package a module ships itself, when it has one that is published.
+ *
+ * A missing file means the module ships no package — the ordinary answer for the
+ * bundled majority. A MALFORMED one is a different fact and must not read as the
+ * same: this is what decides whether the manifest's self-pin gets stamped, so
+ * swallowing a parse error silently skips exactly the stamping this exists to
+ * guarantee, and the module ships naming a version of itself that never moved.
+ */
+function readPackageName(file: string): string | undefined {
+  if (!fs.existsSync(file)) return undefined;
+  let pkg: { name?: string; private?: boolean };
+  try {
+    pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (err) {
+    throw new VersionStampError(
+      `${file} is not valid JSON: ${(err as Error).message}. It decides whether this ` +
+        `module's manifest pins its own package, so it cannot be skipped.`,
+    );
+  }
+  return pkg.private ? undefined : pkg.name;
+}
+
 function stampVersion(dir: string, version: string): string[] {
   const targets: Array<[string, (text: string, v: string, where: string) => string | undefined]> = [
     ["telo.yaml", stampManifestVersion],
@@ -79,6 +104,21 @@ function stampVersion(dir: string, version: string): string[] {
     if (after === undefined || after === before) continue;
     fs.writeFileSync(file, after, "utf8");
     written.push(relative);
+  }
+
+  // A module delivering its controller from npm pins its OWN package in the
+  // manifest, and that pin is part of its version too. Left behind it would name
+  // a tarball older than the module describing it — which is how one came to
+  // point at a years-old version of itself.
+  const ownPackage = readPackageName(path.join(dir, "nodejs", "package.json"));
+  const manifest = path.join(dir, "telo.yaml");
+  if (ownPackage && fs.existsSync(manifest)) {
+    const before = fs.readFileSync(manifest, "utf8");
+    const after = stampSelfNpmPins(before, ownPackage, version);
+    if (after !== before) {
+      fs.writeFileSync(manifest, after, "utf8");
+      if (!written.includes("telo.yaml")) written.push("telo.yaml");
+    }
   }
   return written;
 }

@@ -44,19 +44,45 @@ schema:
         use: dependency
     table:
       title: Table
-      description: Database table name.
-      type: string
+      description: >-
+        The table this repository reads and writes. A reference rather than a name,
+        so the declared columns type this kind's call signature: a misspelled filter
+        or a column that does not exist fails `telo check` instead of the query.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
 resources:
   - kind: Sql.Query
     metadata:
       name: "${{ self.name }}-query"
     connection: "${{ self.connection }}"
 inputs:
-  sql: "${{ 'SELECT * FROM ' + self.table + (keys(inputs.filters).size() > 0 ? ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') : '') }}"
+  sql: "${{ 'SELECT * FROM ' + self.table.table + (keys(inputs.filters).size() > 0 ? ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') : '') }}"
   bindings: "${{ keys(inputs.filters).map(k, inputs.filters[k]) }}"
 invoke:
   kind: Sql.Query
   name: "${{ self.name }}-query"
+inputType:
+  type: object
+  properties:
+    filters:
+      title: Filters
+      description: >-
+        Column/value pairs ANDed into a WHERE clause. Typed from the referenced
+        table, so a column that does not exist is a static error.
+      x-telo-schema-projection-from: /table
+outputType:
+  type: object
+  properties:
+    rows:
+      title: Rows
+      description: The matching rows, typed from the referenced table's declaration.
+      type: array
+      items:
+        x-telo-schema-projection-from: /table
+    rowCount:
+      title: Row Count
+      type: integer
 
 ---
 kind: Telo.Definition
@@ -84,8 +110,13 @@ schema:
         use: dependency
     table:
       title: Table
-      description: Database table name.
-      type: string
+      description: >-
+        The table this repository reads and writes. A reference rather than a name,
+        so the declared columns type this kind's call signature: a misspelled filter
+        or a column that does not exist fails `telo check` instead of the query.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
 resources:
   - kind: Sql.Command
     metadata:
@@ -93,8 +124,18 @@ resources:
     connection: "${{ self.connection }}"
 invoke: "${{ self.name }}-exec"
 inputs:
-  sql: "${{ 'INSERT INTO ' + self.table + ' (' + join(keys(inputs.data), ', ') + ') VALUES (' + join(keys(inputs.data).map(k, '?'), ', ') + ')' }}"
+  sql: "${{ 'INSERT INTO ' + self.table.table + ' (' + join(keys(inputs.data), ', ') + ') VALUES (' + join(keys(inputs.data).map(k, '?'), ', ') + ')' }}"
   bindings: "${{ keys(inputs.data).map(k, inputs.data[k]) }}"
+inputType:
+  type: object
+  required: [data]
+  properties:
+    data:
+      title: Data
+      description: >-
+        The row to insert, as column/value pairs. Typed from the referenced table.
+      minProperties: 1
+      x-telo-schema-projection-from: /table
 
 ---
 kind: Telo.Definition
@@ -121,8 +162,13 @@ schema:
         use: dependency
     table:
       title: Table
-      description: Database table name.
-      type: string
+      description: >-
+        The table this repository reads and writes. A reference rather than a name,
+        so the declared columns type this kind's call signature: a misspelled filter
+        or a column that does not exist fails `telo check` instead of the query.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
 resources:
   - kind: Sql.Command
     metadata:
@@ -130,8 +176,19 @@ resources:
     connection: "${{ self.connection }}"
 invoke: "${{ self.name }}-exec"
 inputs:
-  sql: "${{ 'DELETE FROM ' + self.table + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') }}"
+  sql: "${{ 'DELETE FROM ' + self.table.table + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') }}"
   bindings: "${{ keys(inputs.filters).map(k, inputs.filters[k]) }}"
+inputType:
+  type: object
+  required: [filters]
+  properties:
+    filters:
+      title: Filters
+      description: >-
+        Column/value pairs ANDed into a WHERE clause. At least one is required, so a
+        call can never delete the whole table by omission.
+      minProperties: 1
+      x-telo-schema-projection-from: /table
 
 ---
 kind: Telo.Definition
@@ -159,8 +216,13 @@ schema:
         use: dependency
     table:
       title: Table
-      description: Database table name.
-      type: string
+      description: >-
+        The table this repository reads and writes. A reference rather than a name,
+        so the declared columns type this kind's call signature: a misspelled filter
+        or a column that does not exist fails `telo check` instead of the query.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
 resources:
   - kind: Sql.Command
     metadata:
@@ -168,5 +230,21 @@ resources:
     connection: "${{ self.connection }}"
 invoke: "${{ self.name }}-exec"
 inputs:
-  sql: "${{ 'UPDATE ' + self.table + ' SET ' + join(keys(inputs.data).map(k, k + ' = ?'), ', ') + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') }}"
+  sql: "${{ 'UPDATE ' + self.table.table + ' SET ' + join(keys(inputs.data).map(k, k + ' = ?'), ', ') + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') }}"
   bindings: "${{ keys(inputs.data).map(k, inputs.data[k]) + keys(inputs.filters).map(k, inputs.filters[k]) }}"
+inputType:
+  type: object
+  required: [data, filters]
+  properties:
+    data:
+      title: Data
+      description: The columns to set, typed from the referenced table.
+      minProperties: 1
+      x-telo-schema-projection-from: /table
+    filters:
+      title: Filters
+      description: >-
+        Column/value pairs ANDed into a WHERE clause. At least one is required, so a
+        call can never update every row by omission.
+      minProperties: 1
+      x-telo-schema-projection-from: /table

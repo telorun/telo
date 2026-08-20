@@ -4,11 +4,12 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../../sql
-  SQLite: ../../sql-sqlite
+  SQLite: ../../sqlite
   SqlRepository: ../
   Run: ../../run
   Assert: ../../assert
 targets:
+  - !ref appSchema
   - !ref TestCrud
 ---
 kind: SQLite.Connection
@@ -16,35 +17,43 @@ metadata:
   name: Db
 file: ":memory:"
 ---
+kind: SQLite.Table
+metadata:
+  name: users
+table: users
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  name: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata:
+  name: appSchema
+connection: !ref Db
+version: !cel "module.version"
+tables: [!ref users]
+---
 kind: SqlRepository.Create
 metadata:
   name: InsertUser
 connection: !ref Db
-table: users
+table: !ref users
 ---
 kind: SqlRepository.Read
 metadata:
   name: GetUsers
 connection: !ref Db
-table: users
+table: !ref users
 ---
 kind: SqlRepository.Delete
 metadata:
   name: DeleteUser
 connection: !ref Db
-table: users
+table: !ref users
 ---
 kind: Run.Sequence
 metadata:
   name: TestCrud
 steps:
-  - name: Setup
-    inputs:
-      sql: "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)"
-    invoke:
-      kind: Sql.Command
-      connection: !ref Db
-
   - name: Insert
     inputs:
       data:

@@ -232,6 +232,121 @@ const completedInstances = new WeakSet<object>();
  * `kind` is already canonical (`<module>.<Kind>`) on that path, so the resolver
  * needs no alias table.
  */
+/**
+ * The last published reading for an instance, by identity.
+ *
+ * CEL reads a resource through its PUBLISHED STATE — that is what
+ * `resources.<name>.<field>` has always meant — and a resource reached through a
+ * ref slot is no different: `self.table.table` and `resources.users.table` name
+ * the same fact and must answer the same way. A ref slot holds the live
+ * instance, which CEL cannot read a member off at all, so this is the table that
+ * makes the two agree.
+ *
+ * Keyed by instance rather than by name because a ref slot carries no name, and
+ * a `with:`-scoped resource has one published reading per scope run. Weak, so
+ * nothing here extends an instance's lifetime, and deliberately one-directional
+ * — an entry is a reading OF an instance, never a way to obtain one.
+ */
+const publishedByInstance = new WeakMap<object, Record<string, unknown>>();
+
+/** The published reading for an instance, or undefined if it has never
+ *  published — a resource that has not been created yet, or a foreign object. */
+export function publishedPropsForInstance(
+  instance: unknown,
+): Record<string, unknown> | undefined {
+  return instance && typeof instance === "object"
+    ? publishedByInstance.get(instance as object)
+    : undefined;
+}
+
+/**
+ * The CEL-facing view of a template's `self`.
+ *
+ * Ref slots hold live instances after Phase-5 injection; each is replaced by its
+ * published reading so a template body can read a scalar off a resource it
+ * references. A slot whose instance has never published is left as it is — a
+ * value CEL will reject on member access, which is the honest outcome rather
+ * than an invented empty object that would make a typo evaluate to null.
+ */
+/**
+ * A memoized `self` view, beside the exact readings it substituted.
+ *
+ * Invalidation is per view, checked against the reading each substituted
+ * instance currently has — `publishedPropsOf` publishes a NEW props object every
+ * time, so identity IS the version. A process-global counter was wrong twice
+ * over: every `invoke()` republishes, so under any concurrency the memo was
+ * defeated and the walk was back on the per-request path it was added for; and
+ * the counter is shared across in-process kernels, so one app's traffic
+ * invalidated another app's views.
+ *
+ * The check is O(substituted slots) — the refs, not the fields — and a view that
+ * substituted nothing has an empty source list and is therefore always valid,
+ * which is the common case.
+ */
+interface SelfView {
+  readonly view: Record<string, unknown>;
+  readonly sources: readonly [object, Record<string, unknown>][];
+}
+
+const selfViews = new WeakMap<object, SelfView>();
+
+function viewIsCurrent(cached: SelfView): boolean {
+  for (const [instance, props] of cached.sources) {
+    if (publishedByInstance.get(instance) !== props) return false;
+  }
+  return true;
+}
+
+export function celSelfView(self: Record<string, unknown>): Record<string, unknown> {
+  // A template's `invoke` expands its body on EVERY dispatch, so this sits on
+  // the per-request path: without the memo a repository rebuilt the whole view
+  // per call.
+  const cached = selfViews.get(self);
+  if (cached && viewIsCurrent(cached)) return cached.view;
+
+  const sources: [object, Record<string, unknown>][] = [];
+  let view: Record<string, unknown> | undefined;
+  for (const [key, value] of Object.entries(self)) {
+    const substituted = celValueView(value, sources);
+    if (substituted === value) continue;
+    view ??= { ...self };
+    view[key] = substituted;
+  }
+  const resolved = view ?? self;
+  selfViews.set(self, { view: resolved, sources });
+  return resolved;
+}
+
+/**
+ * A ref slot holds one instance or a LIST of them (`tables: [!ref a, !ref b]`),
+ * and both are ref slots — so converting only the first would make
+ * `self.tables[0].name` mean something different from `self.table.name`, which
+ * is the inconsistency this rule exists to remove.
+ *
+ * Arrays only: the walk stops at any other object, because a nested plain object
+ * in a manifest is the author's own data and a resource's published reading is
+ * not something to graft into the middle of it.
+ */
+function celValueView(
+  value: unknown,
+  sources: [object, Record<string, unknown>][],
+): unknown {
+  const published = publishedPropsForInstance(value);
+  if (published) {
+    sources.push([value as object, published]);
+    return published;
+  }
+  if (!Array.isArray(value)) return value;
+  let copy: unknown[] | undefined;
+  for (let i = 0; i < value.length; i++) {
+    const substituted = celValueView(value[i], sources);
+    if (substituted === value[i]) continue;
+    copy ??= [...value];
+    copy[i] = substituted;
+  }
+  return copy ?? value;
+}
+
 export async function publishedPropsOf(
   kind: string,
   name: string,
@@ -242,7 +357,7 @@ export async function publishedPropsOf(
     typeof instance.snapshot === "function"
       ? ((await Promise.resolve(instance.snapshot())) as Record<string, unknown> | undefined)
       : undefined;
-  return buildPublishedProps(snap, {
+  const props = buildPublishedProps(snap, {
     kind,
     name,
     module: kind.split(".")[0],
@@ -251,6 +366,8 @@ export async function publishedPropsOf(
     started: startedInstances.has(instance),
     completed: completedInstances.has(instance),
   });
+  publishedByInstance.set(instance, props);
+  return props;
 }
 
 /**
@@ -382,6 +499,19 @@ export class EvaluationContext implements IEvaluationContext {
 
   /** Resources queued for initialization on this context node. */
   private pendingResources: ResourceManifest[] = [];
+
+  /**
+   * Every manifest ever registered on this node, by name — kept after the
+   * resource has been created, unlike `pendingResources`, which drains.
+   *
+   * A DECLARATION-derived contract (`x-telo-schema-projection-from`) is resolved
+   * when the kernel binds a contract, which happens during create — so the
+   * pending queue has already given the target up by then. The declaration is
+   * what the projection reads (a table's `columns:`), not the instance, so this
+   * is the record it needs. Manifests only, one direction: nothing here yields
+   * an instance, and nothing here extends one's lifetime.
+   */
+  protected readonly declaredManifests = new Map<string, ResourceManifest>();
 
   /** Per-resource dependency names, captured at create() time — BEFORE Phase-5
    *  injection swaps refs for live instances, so the walk sees plain objects and
@@ -525,18 +655,17 @@ export class EvaluationContext implements IEvaluationContext {
       | Record<string, unknown>
       | undefined;
     const kind = entry.resource.kind as string;
-    this.onResourceSnapshotted(
+    const props = buildPublishedProps(snap, {
+      kind,
       name,
-      buildPublishedProps(snap, {
-        kind,
-        name,
-        module: entry.resource.metadata?.module as string | undefined,
-        statusSchema: this.statusSchemaOf(kind),
-        status: reportedStatus.get(entry.instance),
-        started: startedInstances.has(entry.instance),
-        completed: completedInstances.has(entry.instance),
-      }),
-    );
+      module: entry.resource.metadata?.module as string | undefined,
+      statusSchema: this.statusSchemaOf(kind),
+      status: reportedStatus.get(entry.instance),
+      started: startedInstances.has(entry.instance),
+      completed: completedInstances.has(entry.instance),
+    });
+    publishedByInstance.set(entry.instance, props);
+    this.onResourceSnapshotted(name, props);
   }
 
   get context(): Record<string, unknown> {
@@ -582,6 +711,35 @@ export class EvaluationContext implements IEvaluationContext {
       throw new RuntimeError("ERR_DUPLICATE_RESOURCE", `Resource '${name}' is already registered`);
     }
     this.pendingResources.push(resource);
+    this.declaredManifests.set(name, resource);
+  }
+
+  /**
+   * The manifest a name was DECLARED with, resolved scope-local first and then
+   * up the enclosing chain — the order `getInstance` and the CEL `resources`
+   * layering already use, so a declaration lookup and an instance lookup agree
+   * about what a name means inside a scope.
+   *
+   * `alias` routes into an import's exported instances, the one shape a bare
+   * name cannot reach. Returns undefined rather than throwing: a caller here is
+   * typing a contract, and a name that resolves to nothing is reported by the
+   * check that owns that failure, not by a lookup.
+   */
+  resolveDeclaredManifest(name: string, alias?: string): ResourceManifest | undefined {
+    if (alias && alias !== "Self") return this.resolveImportedManifest(alias, name);
+    let node: EvaluationContext | undefined = this;
+    while (node) {
+      const found = node.declaredManifests.get(name);
+      if (found) return found;
+      node = node.parent as EvaluationContext | undefined;
+    }
+    return undefined;
+  }
+
+  /** The manifest half of {@link resolveImportedInstance}. Overridden by
+   *  `ModuleContext`, which is the only node that has imports. */
+  resolveImportedManifest(alias: string, name: string): ResourceManifest | undefined {
+    return undefined;
   }
 
   /**
@@ -627,6 +785,7 @@ export class EvaluationContext implements IEvaluationContext {
       this.emit,
     );
     child.resolveImportedInstance = (alias, name) => this.resolveImportedInstance(alias, name);
+    child.resolveImportedManifest = (alias, name) => this.resolveImportedManifest(alias, name);
     child.kindResolver = (kind) => this.resolveKindSafe(kind);
     return this.spawnChild(child);
   }

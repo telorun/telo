@@ -109,9 +109,10 @@ with:
   - kind: SQLite.Connection
     metadata: { name: Db }
     file: ":memory:"
-  - kind: Sql.Migrations
+  - kind: SQLite.Schema
     metadata: { name: Migrate }
     connection: !ref Db
+    version: !cel "module.version"
     migrations:
       "001-users":
         statement: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"

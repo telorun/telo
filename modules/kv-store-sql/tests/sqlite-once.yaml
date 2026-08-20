@@ -13,7 +13,7 @@ metadata:
 imports:
   Idempotency: ../../idempotency
   KvStoreSql: ../
-  SQLite: ../../sql-sqlite
+  SQLite: ../../sqlite
   Cache: ../../cache
   CacheMemory: ../../cache-memory
   Run: ../../run

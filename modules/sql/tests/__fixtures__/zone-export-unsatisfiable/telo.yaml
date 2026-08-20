@@ -17,7 +17,7 @@ metadata:
     sequence whose open requirement correlates on an unexported connection.
 imports:
   Sql: ../../../
-  SQLite: ../../../../sql-sqlite
+  SQLite: ../../../../sqlite
   Run: ../../../../run
 exports:
   resources:

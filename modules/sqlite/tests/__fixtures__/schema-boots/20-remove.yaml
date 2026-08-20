@@ -1,0 +1,80 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 2.0.0
+  description: |
+    Boot 2 of 4 — the release that stops declaring `nickname`. This is the boot the
+    whole design exists for: the column is TOMBSTONED, no DDL is emitted, and the
+    version still running keeps reading it. A separate process from the boot that
+    declared it, reading the ledger the earlier one wrote.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  email: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref users]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertTombstoned
+    invoke: !ref assertTombstoned
+    inputs:
+      actual: !cel "resources.appSchema.status.tombstoned"
+      expected: ["column users.nickname"]
+  # The declaration no longer mentions the column, and the data is still there.
+  - name: read
+    invoke: !ref readUsers
+    inputs:
+      sql: "SELECT nickname FROM users WHERE id = 1"
+  - name: assertHeld
+    invoke: !ref assertHeld
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected: [{ nickname: ada }]
+  # No policy is declared, so nothing is ever dropped — and the ledger still
+  # reports what it is holding.
+  - name: assertReported
+    invoke: !ref assertReported
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected:
+        - object: "column users.nickname"
+          missingSinceVersion: "2.0.0"
+          versionsRemaining: null
+          msRemaining: null
+          eligible: false
+---
+kind: Sql.Query
+metadata: { name: readUsers }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertTombstoned }
+---
+kind: Assert.Equals
+metadata: { name: assertHeld }
+---
+kind: Assert.Equals
+metadata: { name: assertReported }

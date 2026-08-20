@@ -1,0 +1,85 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 8.0.0
+  description: |
+    Boot 10 of 10 — a second schema resource over the SAME database, owning a table
+    of its own.
+
+    Nothing it declares mentions `users`, and nothing the first one declares
+    mentions `notes`. Each keeps its own history by keeping its own LEDGER — the
+    separation `flyway.table` and Alembic's `version_table` provide — so a
+    namespace reached by two schema resources, whether two libraries in one app or
+    two applications over one database, has two independent sets of objects, two
+    clocks and two migration histories. Sharing one ledger would make this boot
+    record `notes` as the whole truth, read `users` as removed, and drop it once
+    the window elapsed; declaring the same ledger twice on one connection is
+    refused for exactly that reason.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref otherSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: notes }
+table: notes
+columns:
+  id: { type: integer, primaryKey: true }
+  body: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: otherSchema }
+connection: !ref db
+version: !cel "module.version"
+ledger: notes
+tables: [!ref notes]
+# A policy that would reclaim anything eligible, so the isolation is load-bearing
+# rather than incidental: were `users` tombstoned here, it would be dropped.
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertNothingTombstoned
+    invoke: !ref assertNothingTombstoned
+    inputs:
+      actual: !cel "resources.otherSchema.status.tombstoned"
+      expected: []
+  - name: assertNothingReclaimed
+    invoke: !ref assertNothingReclaimed
+    inputs:
+      actual: !cel "resources.otherSchema.status.reclaimed"
+      expected: []
+  # The other owner's table and its data are untouched.
+  - name: read
+    invoke: !ref readUsers
+    inputs:
+      sql: "SELECT email FROM users WHERE id = 1"
+  - name: assertOtherOwnerIntact
+    invoke: !ref assertOtherOwnerIntact
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected: [{ email: "a@example.com" }]
+---
+kind: Sql.Query
+metadata: { name: readUsers }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertNothingTombstoned }
+---
+kind: Assert.Equals
+metadata: { name: assertNothingReclaimed }
+---
+kind: Assert.Equals
+metadata: { name: assertOtherOwnerIntact }

@@ -4,7 +4,7 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../../../
-  SQLite: ../../../../sql-sqlite
+  SQLite: ../../../../sqlite
 exports:
   resources: [ Db, Migrate ]
 ---
@@ -13,10 +13,11 @@ metadata:
   name: Db
 file: ":memory:"
 ---
-kind: Sql.Migrations
+kind: SQLite.Schema
 metadata:
   name: Migrate
 connection: !ref Db
+version: !cel "module.version"
 migrations:
   20260401_create_users:
     statements:

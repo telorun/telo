@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: SqliteSchemaAcrossBoots
+  version: 1.0.0
+  description: |
+    Deferred reclamation across REAL boots.
+
+    Each fixture is a separate application at its own released version, run in its
+    own kernel by the suite below, against one database file on disk — so the
+    ledger each boot reads is one an earlier PROCESS wrote, and `module.version`
+    genuinely moves between them. The sequence covers every state a schema object
+    can pass through: declared, dropped from the declaration and HELD, reclaimed,
+    verifiably gone; then renamed (expand-contract, with the data copied), a
+    rename whose source was already reclaimed and is therefore INERT, and a
+    tombstone REVIVED by re-declaring the column while a policy that would
+    otherwise have dropped it is in force.
+
+    Ordering is the point, so the fixtures are numbered and the suite runs one at a
+    time: discovery sorts by path, and `concurrency: 1` keeps that order.
+imports:
+  Test: ../../test
+targets:
+  - !ref boots
+---
+kind: Test.Suite
+metadata: { name: boots }
+include:
+  - "__fixtures__/schema-boots/*.yaml"
+# These fixtures ARE the test, so the default fixture exclusion is dropped — it
+# exists to stop the workspace suite running them directly, which is still true
+# of the suite above this one.
+exclude: []
+concurrency: 1

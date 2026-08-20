@@ -3,7 +3,7 @@
 A backend (`sql-postgres`, `sql-sqlite`, …) is a module that declares a kind
 extending `Sql.Connection` and ships a controller producing a live connection.
 This module owns the operations — `Sql.Query`, `Sql.Command`, `Sql.Selection`,
-`Sql.Transaction`, `Sql.Migrations` — and knows nothing about which databases
+`Sql.Transaction` — and knows nothing about which databases
 exist: no driver enum, no branch on a database name. Everything specific to a
 database lives in the backend implementing it.
 

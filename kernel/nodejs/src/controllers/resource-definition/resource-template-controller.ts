@@ -7,6 +7,7 @@ import type {
 } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
+import { celSelfView } from "../../evaluation-context.js";
 
 /** CEL variables that are only bound at call time (request handling, step
  *  chaining, error branches) — never at a template's init(). A persistent
@@ -168,7 +169,13 @@ export function createTemplateController(definition: {
             for (const key of path[1].split(".").slice(1)) cur = cur?.[key];
             return cur;
           }
-          return definingContext.expandWith(value, { self: getSelf() });
+          // CEL cannot read a member off a live instance, and a ref slot holds
+          // one after Phase-5 injection. `celSelfView` replaces each with its
+          // published reading, so `self.<ref>.<field>` answers exactly as
+          // `resources.<name>.<field>` does. The pure-`self.<path>` form above
+          // is navigated directly and still yields the instance itself, which is
+          // what a ref slot passed straight through (`connection:`) needs.
+          return definingContext.expandWith(value, { self: celSelfView(getSelf()) });
         }
         if (isRefSentinel(value)) {
           const source = value.source;
@@ -215,10 +222,10 @@ export function createTemplateController(definition: {
               throw capabilityError(entry, invokeTarget, "invoke", "Telo.Invocable");
             }
             const invokeInputs =
-              definition.inputs != null ? expand(definition.inputs, { self: getSelf(), inputs }) : inputs;
+              definition.inputs != null ? expand(definition.inputs, { self: celSelfView(getSelf()), inputs }) : inputs;
             const raw = await entry.instance.invoke(invokeInputs);
             if (definition.result == null) return raw;
-            return expand(definition.result, { self: getSelf(), result: raw });
+            return expand(definition.result, { self: celSelfView(getSelf()), result: raw });
           },
         }),
 
@@ -239,10 +246,10 @@ export function createTemplateController(definition: {
               throw capabilityError(entry, provideTarget, "provide", "Telo.Invocable");
             }
             const provideInputs: any =
-              definition.inputs != null ? expand(definition.inputs, { self: getSelf() }) : {};
+              definition.inputs != null ? expand(definition.inputs, { self: celSelfView(getSelf()) }) : {};
             const raw = await entry.instance.invoke(provideInputs);
             if (definition.result == null) return raw;
-            return expand(definition.result, { self: getSelf(), result: raw });
+            return expand(definition.result, { self: celSelfView(getSelf()), result: raw });
           },
         }),
 

@@ -276,6 +276,30 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
     description: "Derive this field's validation schema from a sibling ref's definition schema.",
     type: "string",
   },
+  "x-telo-schema-map": {
+    title: "Schema map",
+    description:
+      "On the field a projection keys on: the JSON Schema node each of its values means. A lookup, never a computed expression.",
+    type: "object",
+  },
+  "x-telo-schema-projection": {
+    title: "Schema projection",
+    description:
+      "How a collection of typed entries projects to a JSON Schema object — which collection, which field keys it, and which fields modify it. Belongs on the kind DOCUMENT, beside 'schema:' rather than inside it, because it describes the whole declaration and not one field; written here it still works and is reported so it can be moved.",
+    type: "object",
+  },
+  "x-telo-resource-rules": {
+    title: "Resource rules",
+    description:
+      "Relationships between this kind's own fields that JSON Schema cannot state, as CEL over `self` (the resource) and `this` (the element `in:` iterates). `condition` is TRUE when the rule holds.",
+    type: "array",
+  },
+  "x-telo-schema-projection-from": {
+    title: "Schema projection from",
+    description:
+      "Replace this node with the projection of the entry collection declared by the kind referenced at the named field.",
+    type: "string",
+  },
   "x-telo-value-schema-from": {
     title: "Value schema from",
     description:

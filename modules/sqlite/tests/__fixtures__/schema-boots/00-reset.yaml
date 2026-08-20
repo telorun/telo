@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 1.0.0
+  description: |
+    Boot 0 of 4 — start from no database, so the sequence of observed versions is
+    the one this test asserts about rather than whatever a previous run left.
+    Removing a file that is not there is an error by design, so the absence is
+    caught rather than tested for.
+imports:
+  Fs: ../../../../fs
+  Run: ../../../../run
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref reset
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: removeStaleDatabase
+    try:
+      - name: remove
+        invoke: !ref removeFile
+        inputs:
+          path: !cel "variables.dbFile"
+    catch:
+      # There being no database to remove is the normal case on a first run, and
+      # it is the only failure this step can have.
+      - name: alreadyGone
+        value: true
+---
+kind: Fs.FileRemoval
+metadata: { name: removeFile }

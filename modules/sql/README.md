@@ -1,18 +1,19 @@
 # SQL
 
-Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw queries, a declarative SELECT builder, transactions, and migrations. Concrete drivers ship as their own modules — [`sql-postgres`](../sql-postgres/README.md) (`SqlPostgres.Connection`) and [`sql-sqlite`](../sql-sqlite/README.md) (`SQLite.Connection`) — and `extend` `Sql.Connection`, mirroring the `cache` / `cache-*` family. The `sql` core depends on no database driver.
+Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw queries, a declarative SELECT builder, transactions, and the `Sql.Table` / `Sql.Schema` contracts behind declarative schema. Concrete drivers ship as their own modules — [`postgres`](../postgres/README.md) (`Postgres.Connection`) and [`sqlite`](../sqlite/README.md) (`SQLite.Connection`) — and `extend` `Sql.Connection`, mirroring the `cache` / `cache-*` family. The `sql` core depends on no database driver.
 
 ## Why use this
 
-- **Two backends, one shape** — `SqlPostgres.Connection` (pg + Kysely) and `SQLite.Connection` (Node SQLite) implement the same `Sql.Connection` abstract, so every other kind references a connection driver-agnostically.
+- **Two backends, one shape** — `Postgres.Connection` (pg + Kysely) and `SQLite.Connection` (Node SQLite) implement the same `Sql.Connection` abstract, so every other kind references a connection driver-agnostically.
 - **Safe inline values** — write bound parameters directly in SQL with the `!sql` tag (`WHERE id = ${{ x }}`); each interpolation is bound, never spliced — dialect-neutral and injection-safe.
 - **Raw and structured** — `Sql.Query` / `Sql.Command` for hand-written SQL; `Sql.Selection` for declarative SELECTs as data.
 - **Implicit transactions, checked statically** — `Sql.Transaction` opens an execution zone around its body; every statement reached through it joins automatically, per connection. A statement that names a `transaction:` declares a *requirement*, and `telo check` reports a path that reaches it outside one — see [Transactions](docs/transactions.md).
-- **Idempotent migrations** — `Sql.Migrations` applies its keyed migration entries in lexicographic key order and tracks applied versions in a metadata table.
-- **Tunable pooling** — each backend exposes its own connection and pool settings; see [`sql-postgres`](../sql-postgres/README.md).
+- **Declarative schema with deferred reclamation** — declare the table, not the DDL. A removal is recorded rather than executed, and reclaimed only once a stated number of released versions and a stated time have passed — see [Declarative schema](docs/declarative-schema.md).
+- **Tunable pooling** — each backend exposes its own connection and pool settings; see [`postgres`](../postgres/README.md).
 
 ## Docs
 
+- [Declarative schema](docs/declarative-schema.md) — declaring tables instead of migrating to them, and how tombstoning and reclamation work.
 - [Transactions](docs/transactions.md) — how membership works (ambient, per connection), what `transaction:` actually declares, and what `telo check` reports.
 - [Writing a SQL backend](docs/writing-a-backend.md) — what a backend owes in any language: the kind, the connection behaviours, the dialect, the lifecycle.
 - [Node backends](docs/nodejs-backend.md) — the `@telorun/sql` helper library (`SqlConnection` / `SqlDialect` / `SqlConnectionBase`) for backends written in TypeScript.
@@ -22,14 +23,14 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 | Kind | Purpose |
 | --- | --- |
 | `Sql.Connection` | **Abstract** database-connection contract; reference it from any consumer (`x-telo-ref: Sql.Connection`). |
-| `SqlPostgres.Connection` | PostgreSQL connection (pool + `sslmode`); implements `Sql.Connection`. |
+| `Postgres.Connection` | PostgreSQL connection (pool + `sslmode`); implements `Sql.Connection`. |
 | `SQLite.Connection` | SQLite connection (`file` or in-memory); implements `Sql.Connection`. |
 | `Sql.Query` | SQL returning rows plus row count; inline `!sql` binding or `bindings` escape hatch. |
 | `Sql.Command` | Same shape as `Sql.Query` for statements that do not return rows. |
 | `Sql.Selection` | Declarative SELECT builder — columns, filters, ordering, pagination, grouping. |
 | `Sql.Transaction` | Wraps an executable in a database transaction; a nested transaction on the same connection joins the enclosing one. |
-| `Sql.Migrations` | Boot-time runner holding a keyed `migrations` map; applies pending entries in key order. |
-| `Sql.Migration` | **Deprecated** — standalone migration entry, discovered and merged by `Sql.Migrations`. Prefer the inline map. |
+| `Sql.Table` | **Abstract** declared table; each backend supplies its own (`Postgres.Table`, `SQLite.Table`) in its own type vocabulary. |
+| `Sql.Schema` | **Abstract** schema-change contract — the clock (`version:`), the reclamation policy and the observed state it reports. Backends supply `Postgres.Schema` / `SQLite.Schema`. |
 
 ## Example
 
@@ -38,61 +39,48 @@ kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.13.0
-  SqlPostgres: oci://ghcr.io/telorun/sql-postgres@0.4.0
-targets: [ !ref Migrate ]
+  Postgres: oci://ghcr.io/telorun/postgres@0.1.0
+targets: [ !ref appSchema ]
 secrets:
   DATABASE_URL: { env: DATABASE_URL, type: string }
 ---
-kind: SqlPostgres.Connection
+kind: Postgres.Connection
 metadata: { name: Db }
 connectionString: !cel "secrets.DATABASE_URL"
 pool: { min: 2, max: 20, idleTimeoutMs: 10000 }
 ---
-kind: Sql.Migrations
-metadata: { name: Migrate }
-connection: !ref Db
-migrations:
-  20260401120000_CreateUsers:
-    statement: |
-      CREATE TABLE users (
-        id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email      TEXT UNIQUE NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-  20260402090000_IndexEmail:
-    statements:
-      - CREATE INDEX users_email ON users(email)
-      - CREATE INDEX users_created_at ON users(created_at)
+kind: Postgres.Table
+metadata: { name: users }
+table: users
+columns:
+  id:    { type: uuid, primaryKey: true, defaultExpression: "gen_random_uuid()" }
+  email: { type: text, nullable: false, unique: true }
 ---
-kind: Sql.Selection
-metadata: { name: ActiveUsers }
+kind: Postgres.Schema
+metadata: { name: appSchema }
 connection: !ref Db
-from: users
-columns: [ id, email ]
-where:
-  - { column: deleted_at, op: is_null }
-orderBy:
-  - { column: created_at, direction: desc }
-limit: 50
+version: !cel "module.version"
+tables: [ !ref users ]
+reclaim: { afterVersions: 3, afterDuration: 30d }
 ```
 
 ## Connections
 
 `Sql.Connection` is an abstract contract; pick the concrete kind for your driver. Every other kind references the connection by name (`connection: !ref Db`) and stays driver-agnostic.
 
-**`SqlPostgres.Connection`** — `connectionString` is a `postgres://` / `postgresql://` URL (e.g. `postgres://user:pass@host:5432/db`). TLS uses the standard libpq `sslmode` query parameter: `?sslmode=require` encrypts without verifying the server certificate (suitable for managed Postgres that self-signs), while `?sslmode=verify-ca` / `?sslmode=verify-full` verify it; omitting it (or `?sslmode=disable`) connects without TLS. The `pool` knobs (`min`, `max`, `idleTimeoutMs`, `connectionTimeoutMs`) tune the connection pool.
+**`Postgres.Connection`** — `connectionString` is a `postgres://` / `postgresql://` URL (e.g. `postgres://user:pass@host:5432/db`). TLS uses the standard libpq `sslmode` query parameter: `?sslmode=require` encrypts without verifying the server certificate (suitable for managed Postgres that self-signs), while `?sslmode=verify-ca` / `?sslmode=verify-full` verify it; omitting it (or `?sslmode=disable`) connects without TLS. The `pool` knobs (`min`, `max`, `idleTimeoutMs`, `connectionTimeoutMs`) tune the connection pool.
 
 **`SQLite.Connection`** — `file` is the database path (e.g. `./data.db`); its parent directory is auto-created on connect. Omit `file`, or set `:memory:`, for an ephemeral in-memory database.
 
-The engine family is fixed by the kind, not sniffed from a string at runtime. Keep the connection *target* in the environment as usual — e.g. `SqlPostgres.Connection` with `connectionString: !cel "secrets.DATABASE_URL"`.
+The engine family is fixed by the kind, not sniffed from a string at runtime. Keep the connection *target* in the environment as usual — e.g. `Postgres.Connection` with `connectionString: !cel "secrets.DATABASE_URL"`.
 
-`Sql.Connection` itself is abstract and has no controller — declaring `kind: Sql.Connection` fails with **"No controller registered"**. Always instantiate a concrete kind (`SqlPostgres.Connection` / `SQLite.Connection`); reference the abstract only in `x-telo-ref` slots (which you don't write — they're in the kind schemas).
+`Sql.Connection` itself is abstract and has no controller — declaring `kind: Sql.Connection` fails with **"No controller registered"**. Always instantiate a concrete kind (`Postgres.Connection` / `SQLite.Connection`); reference the abstract only in `x-telo-ref` slots (which you don't write — they're in the kind schemas).
 
 ## What is logged
 
 Each statement logs at `debug` with `db.query.text`, the row count and the elapsed time, as do transaction start, commit and rollback. **Parameters are never logged** — the bound values *are* the row data. The statement text is safe for a parameterized query, since it is the template with placeholders; it is `debug`-only regardless, because `Sql.Command` can carry inline literals.
 
-`Sql.Migrations` logs **each applied migration at `info`**. A schema change is the least reversible thing an app does at boot, and which migrations a given deployment applied is what you go looking for when a schema is not what you expected.
+A schema resource logs **each applied migration, each reconciled object and each reclamation at `info`**. A schema change is the least reversible thing an app does at boot, and which migrations a given deployment applied is what you go looking for when a schema is not what you expected.
 
 ## Reusing handlers
 
@@ -139,14 +127,28 @@ inputs:
 
 Drivers accept only primitives (string, number, bigint, null, bytes) — serialize an object/array first, e.g. `!cel "json(request.body)"`, to store it in a TEXT/JSON column. A `!sql` template and `bindings` cannot be combined.
 
-## Migrations
+## Schema
 
-`Sql.Migrations` owns its migrations as a keyed `migrations` map. Each **key** is the durable ledger id: it is written to the migrations tracking table, decides run order (lexicographic over keys), and identifies the migration forever after — renaming a key makes the migrator think it's a new migration and try to re-run it. Conventionally a timestamp-prefixed slug (e.g. `20260419100200_CreateTokens`). The key is both order and identity, so there is no separate `version` field.
+Declare the table, not the DDL. A backend's `Table` kind states columns, indexes
+and foreign keys in that engine's own vocabulary, and its `Schema` kind brings
+the database to what is declared at start-up: creating what is absent, applying
+imperative migrations before and after the pass, and **recording** a removal
+rather than executing it.
 
-Each value is **either** a single `statement` **or** an ordered list of `statements` (exactly one). Use `statements` when a logical migration needs several SQL statements. Values may contain `${{ }}` CEL expressions, evaluated at compile time.
+A removed object is tombstoned and dropped only once the declared policy has been
+met — N released versions observed and T elapsed — so the version still running
+keeps reading it. The clock is the `version:` you write, conventionally
+`!cel "module.version"`.
 
-**All pending migrations run in a single transaction** — every statement of every entry commits together, or the whole batch rolls back on the first failure (PostgreSQL natively; SQLite via a transactional-DDL adapter). Note: statements that cannot run inside a transaction block (e.g. PostgreSQL `CREATE INDEX CONCURRENTLY`) are therefore not supported here.
+Imperative migrations still live here, on the same resource, so their order
+relative to the reconciliation pass is defined: `beforeMigrations:` runs before
+it, `migrations:` after. Keys are unique across both and identify a migration
+forever after; renaming one makes it a new migration.
 
-Make the Application `targets` list include the `Sql.Migrations` resource so schema evolution happens before services start serving traffic.
+Make the Application `targets` list include the schema resource so schema
+evolution happens before services start serving traffic.
 
-The standalone `Sql.Migration` kind is **deprecated** but still supported: any `Sql.Migration` resource in the same module scope is discovered and merged into the runner's migration set, keyed by its `version` (falling back to `metadata.name`). Entries in the inline `migrations` map take precedence on a key collision. New manifests should use the inline map.
+See [Declarative schema](docs/declarative-schema.md) for tombstoning, reclamation,
+renames, ownership of an adopted database, and why there is no neutral type
+vocabulary.
+

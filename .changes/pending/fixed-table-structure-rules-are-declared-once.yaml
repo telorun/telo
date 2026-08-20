@@ -1,0 +1,13 @@
+modules:
+  modules/sql: Fixed
+  modules/postgres: Fixed
+  modules/sqlite: Fixed
+body: "The six table-structure rules — an index or foreign key naming an undeclared
+  column, foreign-key arity, renamedFrom naming itself or a column still declared, and
+  a composite primary key — are declared once on Sql.Table instead of per backend. They
+  check relationships the shared reconciler already enforces at boot for every backend,
+  so declaring them per backend meant each new engine shipped without them: the
+  identical table was two telo check errors on Postgres and clean on SQLite. The
+  abstract now carries the structural half of the declaration (the fields the reconciler
+  reads) so the rules' pointers resolve there; each engine still owns its whole type
+  vocabulary."

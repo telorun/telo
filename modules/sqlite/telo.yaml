@@ -1,0 +1,352 @@
+kind: Telo.Library
+metadata:
+  name: SQLite
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Storage]
+  description: |
+    Connects an application to a SQLite database — a file on disk, or an in-memory one
+    that lives only as long as the process — with transactional schema changes. The
+    database travels with the application, so it suits local development, tests,
+    single-node deployments and embedded storage.
+imports:
+  Sql: ../sql
+exports:
+  kinds:
+    - Connection
+    - Table
+    - Schema
+---
+kind: Telo.Definition
+metadata:
+  name: Connection
+  description: >-
+    A connection to a SQLite database held in a file or entirely in memory, opened on
+    start-up and shared by every operation that references it.
+capability: Telo.Provider
+extends: Sql.Connection
+controllers:
+  - pkg:npm/@telorun/sqlite@0.1.0?local_path=./nodejs#connection
+schema:
+  type: object
+  examples:
+    - file: ./data.db
+    - file: ":memory:"
+  properties:
+    file:
+      title: File
+      type: string
+      description: >-
+        Path to the SQLite database file (e.g. `./data.db`). The parent
+        directory is created if missing. Omit, or use `:memory:`, for an
+        in-memory database.
+---
+# SQLite.Table — SQLite's own vocabulary, which is honestly smaller than
+# PostgreSQL's because the engine is: five storage classes, no arrays, no
+# namespaces. `x-telo-schema-map` on `type` declares the JSON Schema each
+# storage class projects to, so the analyzer performs a lookup and never learns
+# what a storage class is.
+kind: Telo.Definition
+metadata:
+  name: Table
+  description: >-
+    One SQLite table stated as what it is — named columns over the five storage
+    classes, named indexes, named foreign keys. Reconciled by the Schema resource
+    that lists it: absent tables and columns are created, and a removal is recorded
+    rather than executed.
+capability: Telo.Provider
+extends: Sql.Table
+controllers:
+  - pkg:npm/@telorun/sqlite@0.1.0?local_path=./nodejs#table
+x-telo-schema-projection:
+  entries: /columns
+  key: type
+  nullable: nullable
+  array: array
+schema:
+  type: object
+  additionalProperties: false
+  required: [table, columns]
+  examples:
+    - table: users
+      columns:
+        id: { type: integer, primaryKey: true }
+        email: { type: text, nullable: false, unique: true }
+  properties:
+    table:
+      title: Table
+      description: The physical table name.
+      type: string
+      minLength: 1
+    columns:
+      title: Columns
+      description: >-
+        Columns keyed by name. The key is durable identity — tombstones key on it
+        and a rename is expand-contract, never a native RENAME — so column order
+        carries no meaning and a duplicate name is structurally unrepresentable.
+      type: object
+      minProperties: 1
+      propertyNames:
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [type]
+        # A typed literal and a backend SQL expression are separate fields
+        # because nothing can tell a function call from a string by looking at
+        # it — so exactly one may be set, and saying so here means `telo check`
+        # reports it instead of the boot.
+        not:
+          required: [default, defaultExpression]
+        # A primary key cannot hold NULL, and the engine enforces that whether
+        # or not the declaration says so. Declaring the opposite is a
+        # contradiction, and left standing it would make every boot after the
+        # first plan a DROP NOT NULL on the key.
+        allOf:
+          - if:
+              required: [primaryKey, nullable]
+              properties:
+                primaryKey: { const: true }
+                nullable: { const: true }
+            then: false
+        properties:
+          type:
+            title: Type
+            description: >-
+              SQLite storage class. There is no date, boolean or UUID type — those
+              are conventions over these five.
+            type: string
+            enum: [integer, real, text, blob, numeric]
+            x-telo-schema-map:
+              integer: { type: integer }
+              real: { type: number }
+              text: { type: string }
+              blob: { x-telo-type: Telo.Bytes }
+              numeric: { type: number }
+          nullable:
+            title: Nullable
+            type: boolean
+            default: true
+          primaryKey:
+            title: Primary Key
+            type: boolean
+            default: false
+          unique:
+            title: Unique
+            type: boolean
+            default: false
+          identity:
+            title: Identity
+            description: >-
+              `always` makes an INTEGER PRIMARY KEY auto-increment. SQLite has one
+              such mode, so the field names it rather than offering a choice.
+            type: string
+            enum: [always]
+          default:
+            title: Default
+            description: >-
+              A typed literal, checkable against the column's own type. Mutually
+              exclusive with `defaultExpression`: nothing can tell a SQL function
+              from a string by looking at it.
+          defaultExpression:
+            title: Default Expression
+            description: Raw SQLite expression evaluated by the database (`datetime('now')`).
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code
+          renamedFrom:
+            title: Renamed From
+            description: >-
+              The column this one supersedes. The pass adds this column, copies the
+              old one into it and tombstones the old one — a native rename would take
+              effect immediately and break the version still running.
+            type: string
+    indexes:
+      title: Indexes
+      description: Indexes keyed by name, which is their durable identity.
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [columns]
+        properties:
+          columns:
+            title: Columns
+            type: array
+            minItems: 1
+            items: { type: string }
+          unique:
+            title: Unique
+            type: boolean
+            default: false
+          where:
+            title: Where
+            description: Partial-index predicate.
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code
+    foreignKeys:
+      title: Foreign Keys
+      description: >-
+        Foreign keys keyed by name. Table-level rather than a column-level clause
+        because composite keys are table-level in SQL regardless, and because a name
+        is the durable identity reconciliation diffs on. SQLite has no ADD
+        CONSTRAINT, so these are emitted only when the table is created; changing one
+        afterwards is refused with the reason.
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [columns, references]
+        properties:
+          columns:
+            title: Columns
+            type: array
+            minItems: 1
+            items: { type: string }
+          references:
+            title: References
+            type: object
+            additionalProperties: false
+            required: [table, columns]
+            properties:
+              table:
+                title: Table
+                x-telo-ref:
+                  kind: Self.Table
+                  use: schema
+              columns:
+                title: Columns
+                type: array
+                minItems: 1
+                items: { type: string }
+          onDelete:
+            title: On Delete
+            type: string
+            enum: [cascade, restrict, "set null", "set default", "no action"]
+          onUpdate:
+            title: On Update
+            type: string
+            enum: [cascade, restrict, "set null", "set default", "no action"]
+---
+# SQLite.Schema — the single schema-change kind. SQLite has exactly one
+# namespace, so unlike the PostgreSQL kind there is no `schema:` to name.
+kind: Telo.Definition
+metadata:
+  name: Schema
+  description: >-
+    Brings a SQLite database to the declared schema at start-up: creates what is
+    absent, applies imperative migrations before and after the reconciliation pass,
+    and records what has been removed instead of dropping it. A removal is reclaimed
+    only once the declared number of released versions and the declared time have
+    passed.
+capability: Telo.Runnable
+extends: Sql.Schema
+controllers:
+  - pkg:npm/@telorun/sqlite@0.1.0?local_path=./nodejs#schema
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection]
+  # The version is the reclamation clock and nothing else reads it, so it is
+  # required exactly when a policy is declared — an app that only runs
+  # migrations writes neither.
+  dependencies:
+    reclaim: [version]
+  examples:
+    - connection: !ref Db
+      version: !cel "module.version"
+      tables: [!ref users]
+      reclaim: { afterVersions: 3, afterDuration: 30d }
+  properties:
+    connection:
+      title: Connection
+      description: Reference to the SQLite connection this schema lives in.
+      x-telo-ref:
+        kind: Self.Connection
+        use: dependency
+    # Restated from Sql.Schema so the field is a CEL slot here: eval paths are
+    # read from a kind's own schema, not from the abstract it extends, and the
+    # conventional value is an expression.
+    version:
+      title: Version
+      description: >-
+        The released version this deployment is running, conventionally
+        `!cel "module.version"`. The clock reclamation is gated on: the number of
+        distinct versions observed since an object went missing is the primary
+        eligibility signal. Required when `reclaim:` is declared and pointless
+        without it. Checked for emptiness by the pass rather than here: this is a
+        CEL slot, and an expression reaches validation as a placeholder.
+      type: string
+      x-telo-eval: compile
+    tables:
+      title: Tables
+      description: >-
+        The tables this schema declares. Reconciled in one pass, so declaration
+        order is never load-bearing: cross-table constraints are deferred until every
+        table exists.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Table
+          use: dependency
+    ledger:
+      title: Ledger
+      description: >-
+        Names this schema's history, kept as `telo_schema_<ledger>_*` tables in
+        the namespace (`telo_schema_*` when omitted). Two schema resources over
+        one namespace must name different ledgers. Durable identity: changing it
+        abandons the history under the old name.
+      type: string
+      pattern: "^[a-z][a-z0-9_]*$"
+    beforeMigrations:
+      title: Before Migrations
+      description: >-
+        Migrations that run BEFORE the reconciliation pass, in key order. The rare
+        deliberate case of preparing ground the pass would otherwise refuse —
+        truncating values that will not fit a narrowed column, say. Keys are unique
+        across both maps and the ledger stores the key alone, so moving an entry
+        between the two does not re-run it.
+      type: object
+      x-telo-eval: compile
+      propertyNames:
+        pattern: "^[A-Za-z0-9_.-]+$"
+      additionalProperties:
+        $ref: "#/$defs/migration"
+    migrations:
+      title: Migrations
+      description: >-
+        Migrations that run AFTER the reconciliation pass, in key order — backfills
+        and cleanups. The common case: an app with no declared tables writes this
+        field alone.
+      type: object
+      x-telo-eval: compile
+      propertyNames:
+        pattern: "^[A-Za-z0-9_.-]+$"
+      additionalProperties:
+        $ref: "#/$defs/migration"
+  $defs:
+    migration:
+      title: Migration
+      description: >-
+        Either a single `statement` or an ordered list of `statements` — exactly one.
+        All statements in an entry run together.
+      type: object
+      oneOf:
+        - required: [statement]
+        - required: [statements]
+      properties:
+        statement:
+          title: Statement
+          type: string
+          contentMediaType: application/sql
+          x-telo-widget: code
+        statements:
+          title: Statements
+          type: array
+          minItems: 1
+          items:
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code

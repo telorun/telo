@@ -26,10 +26,19 @@ export const ERR_OUTPUT_INVALID = "ERR_OUTPUT_INVALID";
  *  quietly switch itself off. */
 export const ERR_CONTRACT_UNRESOLVABLE = "ERR_CONTRACT_UNRESOLVABLE";
 
+/** A contract slot declaring `x-telo-schema-projection-from` named a declaration
+ *  that could not be projected. The same failure as {@link
+ *  ERR_CONTRACT_UNRESOLVABLE} one level down: the slot promises the shape of a
+ *  referenced declaration, so leaving it unprojected enforces nothing exactly
+ *  where it claims to enforce something. Its own code because the repair is
+ *  different — fix the reference, not the type registration. */
+export const ERR_SCHEMA_PROJECTION_UNRESOLVED = "ERR_SCHEMA_PROJECTION_UNRESOLVED";
+
 export const AMBIENT_CONTRACT_ERROR_CODES = [
   ERR_INPUT_INVALID,
   ERR_OUTPUT_INVALID,
   ERR_CONTRACT_UNRESOLVABLE,
+  ERR_SCHEMA_PROJECTION_UNRESOLVED,
 ] as const;
 
 export type AmbientContractErrorCode = (typeof AMBIENT_CONTRACT_ERROR_CODES)[number];

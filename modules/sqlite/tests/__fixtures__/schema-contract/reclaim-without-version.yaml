@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: ReclaimWithoutVersion
+  version: 1.0.0
+  description: |
+    A reclamation policy with no version to count against. The version is the
+    clock, so this policy could never fire — every boot would look like the same
+    release. Rejected statically rather than running forever holding tombstones
+    nobody is waiting on.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref users]
+reclaim: { afterVersions: 3, afterDuration: 30d }

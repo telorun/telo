@@ -9,6 +9,12 @@ import { fetchManifestHash } from "../registry-hash.js";
 import type { Argv } from "yargs";
 import { findModuleDoc, importSourceRefs } from "./manifest-imports.js";
 import { readOwnerVersion } from "../bundle/manifest-text.js";
+import {
+  describeVersionSkew,
+  isPublished,
+  ownedNpmPackages,
+  publishPackage,
+} from "../release/npm-controller-package.js";
 import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
 import { describePartition } from "../bundle/partition-layers.js";
 import { describeDrift, findPayloadDrift } from "../bundle/payload-drift.js";
@@ -572,6 +578,40 @@ async function publishOne(
       return false;
     }
     if (drift) stepOk(log, "payload", `matches the published ${version}`);
+  }
+
+  // A module whose controller is delivered from npm has to push that tarball
+  // too, and before the manifest that names it — otherwise the artifact points
+  // at a version npm has never seen. Skipped with `--skip-controllers`, which
+  // already names this step.
+  if (!skipControllers) {
+    const owned = ownedNpmPackages(controllers, path.dirname(filePath));
+    for (const pkg of owned) {
+      const skew = describeVersionSkew(pkg, version);
+      if (skew) {
+        outErrLine(log.err.error("error") + `  ${skew}`);
+        return false;
+      }
+      if (await isPublished(pkg.name, pkg.packageVersion)) {
+        stepOk(log, "npm", `${pkg.name}@${pkg.packageVersion} already published`);
+        continue;
+      }
+      if (dryRun) {
+        stepDry(log, "npm", `publish ${pkg.name}@${pkg.packageVersion}`);
+        continue;
+      }
+      try {
+        await publishPackage(pkg);
+      } catch (err) {
+        outErrLine(
+          log.err.error("error") +
+            `  npm publish ${pkg.name}@${pkg.packageVersion} failed: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+        return false;
+      }
+      stepOk(log, "npm", `${pkg.name}@${pkg.packageVersion} published`);
+    }
   }
 
   if (dryRun) {

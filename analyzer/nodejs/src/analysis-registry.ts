@@ -174,6 +174,12 @@ export class AnalysisRegistry {
   ): Record<string, unknown> | undefined {
     const def = this.resolveDefinition(kind);
     if (!def) return undefined;
+    // A KIND-level query: there is no instance, so a DECLARATION-derived slot
+    // (`x-telo-schema-projection-from`) has no reference to project from and is
+    // left as the kind declared it. That is the honest answer here — the
+    // projected shape is a property of one instance, not of the kind — and it is
+    // why passing no manifest cannot silently drop a projection: the per-resource
+    // analysis pass is what resolves and reports them.
     return resolveContract(direction, undefined, def, {
       resolveDefinition: this.scopedDefResolver(),
       typeManifestsFor: () => [],

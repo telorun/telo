@@ -11,7 +11,7 @@ targets:
   - !ref Lib.Migrate
   - !ref VerifyCrossModule
 ---
-# Regression: an imported library's `Sql.Migrations` holds `connection: !ref Db`
+# Regression: an imported library's schema resource holds `connection: !ref Db`
 # to a sibling resource in its own scope. The library's `!ref` must be resolved
 # (normalized to {kind, name}) when the import-controller registers it, or the
 # migration's controller receives a raw ref sentinel and throws

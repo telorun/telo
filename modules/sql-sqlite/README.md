@@ -1,3 +1,7 @@
+> **Deprecated — use [`sqlite`](oci://ghcr.io/telorun/sqlite) instead.** The `sql-` prefix restated the
+> abstract this module implements, which `extends` already records. The `Connection`
+> kind is unchanged: change the `imports:` entry to `oci://ghcr.io/telorun/sqlite` and keep your alias.
+
 # SQL SQLite
 
 `SQLite.Connection` — a SQLite backend for the [`sql`](../sql/README.md) module's `Sql.Connection` abstract. Opens a file-backed or in-memory database (`better-sqlite3` on Node, `bun:sqlite` on Bun) with transactional DDL; the `sql` core itself depends on no driver.

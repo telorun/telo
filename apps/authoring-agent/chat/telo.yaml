@@ -859,6 +859,48 @@ system: |
   them off the declaring kind's schema and hands them back uninterpreted, exactly
   as `readRefSlot` returns `use` without acting on it.
 
+  ## Resource rules — fields of one resource that must agree
+
+  A kind's schema types each field on its own; it cannot say that an index names
+  a column the table declares, or that a foreign key's two sides are the same
+  length. `x-telo-resource-rules`, inside the kind's `schema:` block, declares
+  those relationships as CEL so `telo check` reports them instead of the boot.
+
+      schema:
+        type: object
+        properties:
+          columns: { type: object, additionalProperties: { type: object } }
+          indexes: { type: array, items: { type: object } }
+        x-telo-resource-rules:
+          - in: /indexes
+            condition: !cel "this.columns.all(c, c in self.columns)"
+            code: SQL_INDEX_UNKNOWN_COLUMN
+            message: names a column this table does not declare.
+          - condition: !cel "!has(self.reclaim) || self.reclaim.afterDuration != '0ms'"
+            code: SQL_RECLAIM_DURATION_DISABLED
+            severity: warning
+            message: switches off the time backstop on an irreversible drop.
+
+  `condition` is TRUE when the rule HOLDS — the same polarity as
+  `Telo.JsonSchema.rules`, whose `condition` / `code` / `message` vocabulary this
+  borrows. `in:` names the collection to iterate AND is the diagnostic's anchor,
+  so the rule runs per element and the squiggle lands on it; omit `in:` and the
+  rule is about the resource as a whole. In scope: `self` (the resource), `this`
+  (the element — a map entry's VALUE), `key` (its map key). `self` stays visible
+  inside the loop, which is how an element correlates against the whole.
+
+  Guard optional fields — an unguarded missing key THROWS, and `has()` does not
+  work under an iterated key. Write `'renamedFrom' in this` or
+  `this.?renamedFrom.orValue('')`.
+
+  Rules may not call host-backed functions (`sha256`, `hmac`, `base64Encode`, …
+  — the kernel injects those at boot, so the analyzer has only throwing stubs)
+  or non-deterministic ones (`nowIso`, `uuidv4`). Violations report as
+  `RESOURCE_RULE_VIOLATED` with your `code` in `data.rule`.
+
+  A rule moves a failure earlier; keep the controller's own guard, because a
+  library caller reaching the module directly never passed through `telo check`.
+
   ## Durable execution — work that survives process death
 
   A body of steps whose progress is recorded as it runs, so a crash and a restart
@@ -1279,10 +1321,28 @@ system: |
   - `targets:` (Application only) — a flat boot list of `!ref`s to the
     Runnables / Services to start after resources init. ORDER MATTERS: a Service
     prepares in `init()` but does not begin accepting events until it is run
-    from here, so list a migration or seed target BEFORE the server or schedule
+    from here, so list a schema or seed target BEFORE the server or schedule
     that must not race it. Every inbound source works this way — `Http.Server`,
     `Mcp.StdioServer`, and both `scheduler` kinds. A Service is never
     self-starting; a schedule left out of `targets:` never ticks.
+  - **SQL schema is DECLARED, not migrated to.** `sql` holds the abstracts
+    (`Sql.Connection`, `Sql.Table`, `Sql.Schema`); the backend modules own
+    everything instantiable — `postgres` (`Postgres.Connection` / `.Table` /
+    `.Schema`) and `sqlite` (`SQLite.*`). `Sql.Migrations` and `Sql.Migration`
+    NO LONGER EXIST: a backend's `Schema` kind absorbed them and owns both the
+    declared `tables:` and the imperative `beforeMigrations:` / `migrations:`
+    maps, so the order between them is defined rather than left to `targets:`.
+    Write a `Table` per table (columns keyed by name, in that engine's own type
+    vocabulary — `varchar` with a `length`, never `varchar(64)`), one `Schema`
+    listing them, and put the `Schema` in `targets:` before anything that reads
+    the database. `version:` is REQUIRED and conventionally
+    `!cel "module.version"` — it is the clock that gates reclamation. Deleting a
+    column emits no DDL: it is tombstoned and dropped only once the optional
+    `reclaim: { afterVersions, afterDuration }` policy has been met, and with no
+    policy nothing is ever dropped. A rename is `renamedFrom:`, never a native
+    RENAME. `SQLite.Schema` has no `schema:` field (one namespace);
+    `Postgres.Schema` names one, defaulting to `public`. The old `sql-postgres`
+    / `sql-sqlite` modules are deprecated — use the unprefixed refs.
   - `with:` / `targets:` (Run.Sequence) — `with:` is a LIST of full resource
     declarations whose lifetime is that one sequence run: created when it starts,
     torn down when it ends, referenced by `!ref` from its steps. `targets:` (the
@@ -1583,7 +1643,7 @@ system: |
       `inputType`, and `outputType` — never invent a field from a kind name alone.
 
   The standard library is published at `oci://ghcr.io/telorun/<name>`
-  (http-server, http-client, sql + sql-postgres/sql-sqlite, run, config, console,
+  (http-server, http-client, sql + postgres/sqlite, run, config, console,
   assert, test, ai + ai-openai, cache + cache-redis, mcp-client/server, s3,
   timer, scheduler, idempotency, lease, kv-store + kv-store-sql/-redis/-memory,
   workflow, and many more) — but NEVER assemble that ref from the module name.

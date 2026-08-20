@@ -1,0 +1,36 @@
+kind: Telo.Application
+metadata:
+  name: SqliteSchemaContract
+  version: 1.0.0
+  description: |
+    The version and the reclamation policy are required together: the version is
+    the clock the policy counts on, and nothing else reads it. A policy without
+    one could never fire, so it is a static error rather than a schema that holds
+    tombstones for ever.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref reclaimNeedsVersion
+  - !ref columnContradictions
+---
+kind: Assert.Manifest
+metadata: { name: reclaimNeedsVersion }
+source: ./__fixtures__/schema-contract/reclaim-without-version.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "version"
+---
+# A primary key declared nullable, and a literal default beside a SQL
+# expression. Both are decidable from the YAML, so the kind's own schema says so
+# and `telo check` reports them — the controller still explains them in full if
+# one is somehow reached at boot.
+kind: Assert.Manifest
+metadata: { name: columnContradictions }
+source: ./__fixtures__/schema-contract/column-contradictions.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/columns/id"
+    - code: SCHEMA_VIOLATION
+      message: "/columns/createdAt"

@@ -18,6 +18,8 @@ clock is the app's own `metadata.version`.
 This plan assumes the settled direction that `sql` becomes a contract-only
 module: `Query` / `Command` / `Selection` / `Transaction` move to the backends
 and `kysely` leaves core. Schema is planned here; that move is its own change.
+The backends they move into are the new `postgres` and `sqlite` modules, not
+today's `sql-postgres` / `sql-sqlite`, which are deprecated in place.
 
 ## Solution
 
@@ -26,9 +28,12 @@ and `kysely` leaves core. Schema is planned here; that move is its own change.
 library shipped through the existing `exports.code:` entry — the `KeyedClaim`
 arrangement in `@telorun/kv-store`. Backends implement everything else in full
 isolation. Shared *library*, not shared *kind*: a backend never asks permission
-to render a statement, only whether a tombstone has aged out.
+to render a statement, only whether a tombstone has aged out. Throughout this
+plan a `Sql.*` name is an abstract in `sql` and is never instantiated; every
+instantiable kind is a backend kind (`Postgres.*`, `SQLite.*`), which is what
+the example writes.
 
-**Tables are backend kinds.** `SqlPostgres.Table` declares a table in the full
+**Tables are backend kinds.** `Postgres.Table` declares a table in the full
 Postgres vocabulary (`varchar` with a `length`, `jsonb`, `uuid`, `citext`,
 arrays, enums, partial and GIN indexes, identity columns); `SQLite.Table` in
 SQLite's, which is honestly smaller because the engine is. Types are
@@ -44,24 +49,34 @@ generic `text` says nothing.
 **The `Sql.Table` abstract contracts a JSON Schema projection**, not native
 types, and the projection is **declared as data by each backend** — the analyzer
 performs a lookup and never learns that `citext` exists, per the topology rule.
-Two annotations carry it: `x-telo-schema-map` on the field a projection keys on,
-giving the schema node each value means, and `x-telo-schema-projection` on the
+Three annotations carry it: `x-telo-schema-map` on the field a projection keys
+on, giving the schema node each value means; `x-telo-schema-projection` on the
 kind, naming the entries collection (`entries`), the keying field (`type`), an
-optional `key` for array-shaped entries, and the `nullable` / `array` modifiers.
-`SqlPostgres.Table` says `citext → string` and `bigint → integer`; `SQLite.Table`
+optional `name` for array-shaped entries, and the `nullable` / `array`
+modifiers; and `x-telo-schema-projection-from` on a CONSUMER's slot, naming the
+ref whose target declares the projection. The third is what makes the projection
+reach anything: the first two say what a declaration means, and nothing else
+says where that meaning is wanted.
+`Postgres.Table` says `citext → string` and `bigint → integer`; `SQLite.Table`
 declares its own storage classes; nothing in the analyzer changes between them.
 A consumer needing Postgres specifically pins the concrete kind.
 
-Typing `SqlRepository.*` from a table is a **scoped follow-up**, not a free
-consequence: its `table:` is a plain string today, so it has to become an
-`x-telo-ref` (`use: schema`), the ref has to resolve, the projection has to run
-and its result has to reach that kind's CEL environment. The annotations and the
-schema kinds land first; the repository wiring is its own step.
+**Typing `SqlRepository.*` from a table lands in this change**, not as a
+follow-up: its `table:` becomes an `x-telo-ref` (`use: schema`) at the table
+kind, the ref resolves in the declaring scope, the projection runs, and its
+result reaches that kind's CEL environment so a row field is type-checked at
+`telo check`. It is required rather than optional because the projection is only
+justified by a CEL environment that reads it — shipping the annotations with no
+consumer would fix the shape of a new declaration-derived typing family before
+its one use case had exercised it, and would put a `requires:` floor on both
+backends for a mechanism that does nothing.
 
-**`Sql.Schema` is the single schema-change kind**, absorbing `Sql.Migrations`
-entirely. It *is* one namespace — `schema:` names it, defaulting to `public` —
-and carries `connection`, `tables`, `version`, `beforeMigrations`, `migrations`
-and `reclaim`. One boot pass: take the dialect-native advisory lock, run pending
+**The backend schema kind is the single schema-change kind**, absorbing
+`Sql.Migrations` entirely. It *is* one namespace — `schema:` names it,
+defaulting to `public` — and carries `connection`, `tables`, `version`,
+`beforeMigrations`, `migrations` and `reclaim`. Of those, the `Sql.Schema`
+abstract contracts only `version:`, `reclaim:` and the `status:` shape, which
+is the whole backend-neutral surface; everything else is the backend's. One boot pass: take the dialect-native advisory lock, run pending
 `beforeMigrations` in key order, reconcile every table in one pass, run pending
 `migrations` in key order, reclaim what has aged out, record the version. Imperative and declarative schema
 change need the same lock, the same bookkeeping and a defined order between
@@ -98,8 +113,7 @@ signal, time the backstop, since N versions can land in an afternoon.
 **Reclamation is the last phase of the boot pass**, gated by the declared
 policy: before-migrations, reconcile, migrations, reclaim. Declaring no
 `reclaim:` block means nothing is ever dropped, so it is opt-in by declaration
-rather than by invocation, and `reclaim.dryRun` reports eligibility without
-acting. What the pass tombstoned and what is now eligible is reported as
+rather than by invocation. What the pass tombstoned and what is now eligible is reported as
 structured logging and observed state (`status:`) on the schema resource, so
 there is nothing to invoke to see it. A `telo sql …` CLI verb was rejected —
 the CLI's verbs are module-agnostic, so a `sql` namespace breaks the topology
@@ -143,6 +157,18 @@ reclamation kinds were rejected with it.
 - **An applied key with no declaration is ignored and reported, never an error.**
   Deleting decade-old migrations from a manifest is normal; kysely's corrupted-
   history error is wrong here.
+- **`Sql.Schema` contracts the backend-neutral half only: `version:`,
+  `reclaim:` and the `status:` shape.** Tables, migrations, the statement
+  vocabulary and the runner are backend-owned, and a consumer needing Postgres
+  pins the concrete kind — so contracting the full six-field vocabulary would be
+  duplication wearing a contract's clothes, two backends re-declaring identical
+  fields with no polymorphic use. What a `!ref` to an `Sql.Schema` slot buys is
+  precisely the grace-window surface: the clock the drop is gated on, the policy
+  gating it, and the observed state reporting what is pending — so reclamation
+  observability and any tooling built on it are backend-neutral, while nothing
+  neutral is claimed about DDL. Rejected: making it concrete with `extends`/
+  `base:` per backend, which would declare the six fields once at the cost of
+  putting a shared runner behind them, the ORM layer the dialect split removed.
 - **Tables and reconcilers are backend kinds; `sql` holds abstracts only.** A
   neutral column-type vocabulary reintroduces the ORM layer the dialect split
   removed. Rejected: a generic kind with a `dialectOptions` escape hatch.
@@ -180,21 +206,47 @@ reclamation kinds were rejected with it.
   level. CEL needs the type, nullability and repetition; the database enforces
   the rest. The alternative is a per-column schema rich enough to double as a
   validator, which would move SQL semantics into the type layer.
-- **The two annotations widen the manifest surface**, so `sql-postgres` and
-  `sql-sqlite` declare a `requires: telo: ">=<release>"` floor, verified by
-  running the previous published CLI against them per the mandatory rule.
+- **The backends are new modules: `postgres` and `sqlite`; `sql-postgres` and
+  `sql-sqlite` are deprecated, not extended.** The prefix restated the abstract
+  a backend implements, which is already structured metadata (`extends`), and it
+  stops being true the moment a backend carries more than SQL — a Postgres module
+  owns `LISTEN`/`NOTIFY`, advisory locks and its own schema vocabulary, none of
+  which is a `sql` kind. The new modules take `metadata.name: Postgres` / `SQLite`
+  so kinds read `Postgres.Table`, `SQLite.Table`. This is also the change that
+  carries the settled `sql` contract-only split — `Query` / `Command` /
+  `Selection` / `Transaction` land in the new modules rather than being moved
+  inside the old ones and renamed again later. The old modules get
+  `metadata.deprecated: { reason, replacedBy }` pointing at the new refs and are
+  not republished with schema support; consumers move by changing one `imports:`
+  entry and an alias.
+- **No `requires:` floor is declared for the projection annotations.** The
+  expectation was that they widen the manifest surface and so need one, but
+  verification refuted it: the previous published CLI accepts all three modules
+  unchanged, because a `KindSchema` body is open and an unrecognized `x-telo-*`
+  key on a definition doc is tolerated. An older analyzer therefore IGNORES the
+  projection rather than rejecting it — graceful degradation, exactly what an
+  open body is for. Declaring a bound anyway would be a claim nothing checks,
+  which is the failure class the mechanism exists to remove.
 - **Reclamation runs automatically, gated by the declared policy.** The design's
   premise is that eligibility is computable; requiring a human to confirm it says
   we do not trust our own gate, and the remedy is a longer window, not an
   operator. A manual step also means it never runs, leaving dead columns forever
   — the failure mode of every tool that refuses removal, which is what this
   exists to fix. The control is declaring the policy at all; absent means never,
-  `dryRun` reports without acting, and with no policy the ledger still reports
-  what would be eligible through observed state.
+  and with no policy the ledger still records tombstones and reports what would
+  be eligible through observed state — so a schema can run indefinitely with
+  reclamation declared nowhere and still show what it would reclaim.
 - **Removal tombstones, never drops.** Rejected: refusing removal forever (every
   existing tool), which never reclaims anything.
-- **The clock is a required `version:` field the author writes**, conventionally
-  `!cel "module.version"`. A controller cannot read the root Application's
+- **The clock is a `version:` field the author writes**, conventionally
+  `!cel "module.version"`, required exactly when `reclaim:` is declared —
+  nothing else reads it, so a migrations-only app declares neither and looks
+  exactly like the imperative kind it replaces. Rejected: deriving it from a
+  build id or a manifest digest. Both distort what `afterVersions` counts — a
+  digest misses the ordinary release that changes only application code, so the
+  budget stalls; a per-build id advances on rebuilds that shipped nothing, so it
+  drops EARLIER than asked — and both replace a release version with an opaque
+  id in the observed state an operator reads. A controller cannot read the root Application's
   version, and `module.*` is scoped to the *declaring* module — so a schema
   resource inside a library would silently clock on the library's version. Since
   this value gates an irreversible drop, whose version it is must be visible in
@@ -215,9 +267,17 @@ reclamation kinds were rejected with it.
   narrowing, `NOT NULL` over existing NULLs, a new non-nullable column with no
   default, `UNIQUE` over duplicates and primary-key changes all depend on live
   database state, and the declaration is the only artifact so there is no static
-  baseline. The analyzer validates the table document; `reclaim.dryRun` is the
-  pre-deploy check and is honest because it has the database. Unsafe changes fail
-  hard, naming table, column and reason — never applied, never skipped.
+  baseline. The analyzer validates the table document; the live classification
+  happens where the database is, and it is deliberately the running pass that
+  performs it. Unsafe changes fail hard, naming table, column and reason — never
+  applied, never skipped, so the release stops rather than proceeding on a guess.
+- **There is no dry-run mode.** A `reclaim.dryRun` flag was rejected: with
+  reconciliation happening as a boot pass, exercising it means editing the
+  manifest and deploying a *different artifact* than the one that will run, so it
+  is a canary deploy wearing the name of a pre-deploy check — the least honest
+  shape available. What it was meant to provide is already carried by observed
+  state, which reports every tombstone and its remaining budget on every boot,
+  under the policy the release actually declares.
 - **A literal default and a SQL default expression are separate fields.**
   `default:` is a typed literal, `defaultExpression:` is raw backend SQL, and
   declaring both is an analyzer error. Nothing can tell `gen_random_uuid` the
@@ -237,6 +297,20 @@ reclamation kinds were rejected with it.
   never load-bearing and foreign-key ordering is never the author's problem.
 - **The mechanism is generic over schema objects** — indexes, tables, namespaces
   and enum values tombstone identically.
+- **Ownership is RECORDED, not inferred from presence.** The version row carries
+  the whole declaration, not only its digest, so "which objects does this
+  resource own" is answerable from the ledger. An object in the namespace that
+  has never appeared in a snapshot — a legacy table, another application's, one
+  predating adoption — is invisible to both the diff and to reclamation.
+  Inferring ownership from presence would make adopting an existing database a
+  data-loss event, which is the one outcome the deferral exists to prevent.
+  Recording the declaration rather than a fourth table also supplies a
+  tombstone's last-known definition for free.
+- **A `Table` is a backend kind with no `schema:` field of its own; the namespace
+  belongs to the schema resource.** SQLite has exactly one namespace, so
+  `SQLite.Schema` has no `schema:` field at all — the abstract contracts only the
+  backend-neutral half, so a backend omitting a field the other one needs is
+  expressible rather than a special case.
 
 **Known limitation, documented:** when versions are skipped, a `beforeMigrations`
 entry from a later release runs before the pass while a `migrations` entry from

@@ -10,6 +10,15 @@ metadata:
     that lives only as long as the process — with transactional schema changes. The
     database travels with the application, so it suits local development, tests,
     single-node deployments and embedded storage.
+  deprecated:
+    reason: >-
+      Superseded by `oci://ghcr.io/telorun/sqlite`, which carries the same `Connection` kind plus
+      declarative schema (`Table`, `Schema`) and reclamation. The prefix restated
+      the abstract this module implements, which `extends` already records, and it
+      stops being true now that the module owns SQLite-specific surface that is
+      not a `sql` kind. Change the `imports:` entry to the new ref; the alias and
+      every `kind:` spelling are unchanged.
+    replacedBy: oci://ghcr.io/telorun/sqlite
 imports:
   Sql: ../sql
 exports:

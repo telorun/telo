@@ -15,6 +15,7 @@ import type {
   InvokeStepContext,
   ModuleContext as IModuleContext,
   ResourceInstance,
+  ResourceManifest,
 } from "@telorun/sdk";
 import type { EmitEvent, InstanceFactory } from "@telorun/sdk";
 import { EvaluationContext } from "./evaluation-context.js";
@@ -106,7 +107,11 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       names: Set<string>;
       terminal: (
         name: string,
-      ) => (() => { kind: string; instance: ResourceInstance } | undefined) | undefined;
+      ) =>
+        | (() =>
+            | { kind: string; instance: ResourceInstance; manifest?: ResourceManifest }
+            | undefined)
+        | undefined;
     }
   >();
 
@@ -292,7 +297,11 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     names: string[],
     terminal: (
       name: string,
-    ) => (() => { kind: string; instance: ResourceInstance } | undefined) | undefined,
+    ) =>
+      | (() =>
+          | { kind: string; instance: ResourceInstance; manifest?: ResourceManifest }
+          | undefined)
+      | undefined,
   ): void {
     this.importedScopes.set(alias, { names: new Set(names), terminal });
   }
@@ -369,7 +378,11 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         const kind = rawKind.startsWith("Self.")
           ? `${moduleName}.${rawKind.slice("Self.".length)}`
           : rawKind;
-        return { kind, instance: inst.instance };
+        // The manifest rides along because a DECLARATION-derived contract
+        // (`x-telo-schema-projection-from`) reads the target's own declaration,
+        // and a re-export forwards this getter verbatim — so carrying it here
+        // makes it reachable at any depth with no second table.
+        return { kind, instance: inst.instance, manifest: inst.resource };
       });
     }
     for (const k of kindEntries) {
@@ -405,6 +418,14 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     const scope = this.importedScopes.get(alias);
     if (!scope || !scope.names.has(name)) return undefined;
     return scope.terminal(name)?.()?.instance;
+  }
+
+  /** The manifest half of `resolveImportedInstance` — what a name was DECLARED
+   *  with, for a contract typed from a referenced declaration. */
+  override resolveImportedManifest(alias: string, name: string): ResourceManifest | undefined {
+    const scope = this.importedScopes.get(alias);
+    if (!scope || !scope.names.has(name)) return undefined;
+    return scope.terminal(name)?.()?.manifest;
   }
 
   /** Like `resolveImportedInstance`, but returns the `{kind, name}` ref (canonical kind)

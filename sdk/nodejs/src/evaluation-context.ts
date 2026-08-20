@@ -115,6 +115,23 @@ export interface EvaluationContext {
 
   preInitHook?: PreInitHook;
 
+  /**
+   * The manifest a name was DECLARED with, resolved scope-local first and then
+   * up the enclosing chain; `alias` routes into that import's exported
+   * instances. Undefined when the name resolves to nothing.
+   *
+   * A DECLARATION, not an instance — nothing here yields one. It is what a
+   * contract typed from a referenced declaration reads
+   * (`x-telo-schema-projection-from`), which the pending-resource queue cannot
+   * answer because it has drained by the time a contract is bound.
+   *
+   * Optional, like every other kernel-supplied hook on this interface
+   * (`getDefinition?`, `preInitHook?`) and for the same reason: a third-party
+   * implementation must keep compiling. Absent reads as "no declaration in
+   * scope", which leaves a projected slot as its author wrote it.
+   */
+  resolveDeclaredManifest?(name: string, alias?: string): ResourceManifest | undefined;
+
   /** Looks up a registered resource definition by fully-qualified kind.
    *  Set by the kernel; used for declared-throw-union checks. */
   getDefinition?: (kind: string) => ResourceDefinition | undefined;

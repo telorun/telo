@@ -1,0 +1,58 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 1.0.0
+  description: |
+    Boot 1 of 4 — the first release. The declaration has a `nickname` column and
+    the pass creates the table; a row is written so later boots can prove the
+    DATA survives a removal, not merely the column.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref appSchema
+  - !ref seed
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  email: { type: text, nullable: false }
+  nickname: { type: text }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+# The clock is the app's own released version, which is what moves between these
+# boots and what reclamation is gated on.
+version: !cel "module.version"
+tables: [!ref users]
+---
+kind: Run.Sequence
+metadata: { name: seed }
+steps:
+  - name: insert
+    invoke: !ref writeUser
+    inputs:
+      sql: "INSERT INTO users (id, email, nickname) VALUES (1, 'a@example.com', 'ada')"
+  - name: assertNothingHeld
+    invoke: !ref assertNothingHeld
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []
+---
+kind: Sql.Command
+metadata: { name: writeUser }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertNothingHeld }

@@ -66,6 +66,64 @@ export function stampManifestVersion(
   return spliceScalar(text, node, version, where);
 }
 
+/**
+ * `pkg:npm/<name>@<version>` candidates naming the module's OWN package.
+ *
+ * A module has one version, and its manifest pins the package it ships itself —
+ * so the pin has to move with the rest of it. Left behind, the manifest names a
+ * tarball older than the module describing it, which is exactly how an
+ * npm-delivered module came to point at a years-old version of itself.
+ *
+ * Anchored on the `controllers:` SCALARS the YAML actually holds, not on a free
+ * text match: this file's whole rule is find the scalar, splice its span, touch
+ * nothing else, and a bare regex over the document would also reach a PURL
+ * written in a description, an example or a comment. Matched by exact package
+ * name, so a PURL naming a DIFFERENT package — a real dependency, pinned
+ * deliberately — is untouched.
+ */
+export function stampSelfNpmPins(
+  text: string,
+  packageName: string,
+  version: string,
+  where = "controllers",
+): string {
+  const docs = parseAllDocuments(text, { customTags: defaultCustomTags() });
+  const prefix = `pkg:npm/${packageName}@`;
+  const edits: { start: number; end: number; newText: string }[] = [];
+
+  for (const doc of docs) {
+    const controllers = doc.get("controllers", true);
+    const items = (controllers as { items?: unknown[] } | undefined)?.items;
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      if (!isScalar(item) || typeof item.value !== "string") continue;
+      const purl = item.value;
+      if (!purl.startsWith(prefix)) continue;
+      // Everything from the version up to the first qualifier or fragment is the
+      // pin; the rest of the PURL (`?local_path=…#Export`) is carried through.
+      const rest = purl.slice(prefix.length);
+      const tail = rest.search(/[?#]/);
+      const rewritten = `${prefix}${version}${tail === -1 ? "" : rest.slice(tail)}`;
+      if (rewritten === purl) continue;
+      const range = item.range;
+      if (!range) {
+        throw new VersionStampError(`${where}: a controller PURL carries no source range.`);
+      }
+      const [start, end] = range;
+      const replacement = renderFixReplacement(text.slice(start, end), rewritten);
+      if (replacement === undefined) {
+        throw new VersionStampError(
+          `${where}: the controller PURL '${purl}' cannot be rewritten in place. ` +
+            `Write it as a plain or quoted scalar on one line.`,
+        );
+      }
+      edits.push({ start, end, newText: replacement });
+    }
+  }
+
+  return edits.length === 0 ? text : applyTextEdits(text, edits);
+}
+
 /** Read the module doc's `metadata.version` without rewriting it. */
 export function readManifestVersion(text: string): string | undefined {
   const docs = parseAllDocuments(text, { customTags: defaultCustomTags() });

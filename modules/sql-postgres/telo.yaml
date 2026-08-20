@@ -9,6 +9,15 @@ metadata:
     Connects an application to a PostgreSQL database over a standard `postgres://`
     URL, with TLS modes and a pooled set of connections shared by every query,
     statement, transaction and migration the application runs.
+  deprecated:
+    reason: >-
+      Superseded by `oci://ghcr.io/telorun/postgres`, which carries the same `Connection` kind plus
+      declarative schema (`Table`, `Schema`) and reclamation. The prefix restated
+      the abstract this module implements, which `extends` already records, and it
+      stops being true now that the module owns PostgreSQL-specific surface that is
+      not a `sql` kind. Change the `imports:` entry to the new ref; the alias and
+      every `kind:` spelling are unchanged.
+    replacedBy: oci://ghcr.io/telorun/postgres
 imports:
   Sql: ../sql
 exports:

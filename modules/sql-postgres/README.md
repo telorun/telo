@@ -1,3 +1,7 @@
+> **Deprecated — use [`postgres`](oci://ghcr.io/telorun/postgres) instead.** The `sql-` prefix restated the
+> abstract this module implements, which `extends` already records. The `Connection`
+> kind is unchanged: change the `imports:` entry to `oci://ghcr.io/telorun/postgres` and keep your alias.
+
 # SQL Postgres
 
 `SqlPostgres.Connection` — a PostgreSQL backend for the [`sql`](../sql/README.md) module's `Sql.Connection` abstract. Backed by a `pg` connection pool and Kysely; the `sql` core itself depends on no driver.

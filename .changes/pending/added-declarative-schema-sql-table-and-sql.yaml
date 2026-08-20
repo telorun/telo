@@ -1,0 +1,12 @@
+modules:
+  modules/sql: Added
+body: "Declarative schema. Sql.Table and Sql.Schema are the backend-neutral contracts
+  behind it: Sql.Table for a declared table whose row shape projects to JSON Schema, and
+  Sql.Schema for the grace-window surface — the version clock an irreversible drop is
+  gated on, the reclamation policy gating it, and the observed state reporting what is
+  still held. The shared runner ships through the module library: the diff, the ledger,
+  the tombstones and the ordering are here, while every type vocabulary, DDL rendering,
+  introspection and lock is the backend's. Sql.Migrations and Sql.Migration are removed
+  and absorbed into each backend's Schema kind, which owns both migration phases as well
+  as the declared tables, so the order between imperative and declarative schema change
+  is defined rather than left to the author's targets list."

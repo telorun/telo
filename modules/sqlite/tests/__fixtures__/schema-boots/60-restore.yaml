@@ -1,0 +1,102 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 6.0.0
+  description: |
+    Boot 6 of 7 — the rename is called off. `email` is declared again while its
+    tombstone is still outstanding, so the tombstone is CLEARED and its budget
+    discarded rather than counted down: the column was never dropped, and the
+    declaration is authoritative again. The data it held throughout is still
+    there, which is the property the whole deferral exists to preserve.
+
+    `displayName` keeps the column the previous boot copied into, and drops its
+    `renamedFrom:` — the source is a declared column again, so the mention would
+    now describe a rename that is not happening.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  # Restated exactly as boot 1 declared it: SQLite cannot change nullability in
+  # place, so a restored column has to come back as the column that is there.
+  email: { type: text, nullable: false }
+  displayName: { type: text }
+  handle: { type: text }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref users]
+# A policy is declared, so a still-outstanding tombstone WOULD be eligible by
+# now — which is what makes the revival load-bearing rather than incidental.
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertRevived
+    invoke: !ref assertRevived
+    inputs:
+      actual: !cel "resources.appSchema.status.revived"
+      expected: ["column users.email"]
+  - name: assertNothingReclaimed
+    invoke: !ref assertNothingReclaimed
+    inputs:
+      actual: !cel "resources.appSchema.status.reclaimed"
+      expected: []
+  - name: assertNothingHeld
+    invoke: !ref assertNothingHeld
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []
+  - name: assertNoInertRenames
+    invoke: !ref assertNoInertRenames
+    inputs:
+      actual: !cel "resources.appSchema.status.inertRenames"
+      expected: []
+  - name: read
+    invoke: !ref readUsers
+    inputs:
+      sql: "SELECT email, displayName FROM users WHERE id = 1"
+  - name: assertDataIntact
+    invoke: !ref assertDataIntact
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected:
+        - email: "a@example.com"
+          displayName: "a@example.com"
+---
+kind: Sql.Query
+metadata: { name: readUsers }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertRevived }
+---
+kind: Assert.Equals
+metadata: { name: assertNothingReclaimed }
+---
+kind: Assert.Equals
+metadata: { name: assertNothingHeld }
+---
+kind: Assert.Equals
+metadata: { name: assertNoInertRenames }
+---
+kind: Assert.Equals
+metadata: { name: assertDataIntact }

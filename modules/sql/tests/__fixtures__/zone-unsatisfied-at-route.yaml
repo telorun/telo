@@ -11,7 +11,7 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../../
-  SQLite: ../../../sql-sqlite
+  SQLite: ../../../sqlite
   Http: ../../../http-server
 ports:
   http:

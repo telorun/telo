@@ -14,7 +14,7 @@ imports:
   JS: ../../javascript
   Run: ../../run
   Sql: ../../sql
-  SQLite: ../../sql-sqlite
+  SQLite: ../../sqlite
   Assert: ../../assert
 targets:
   - !ref InitSchema
@@ -25,9 +25,10 @@ kind: SQLite.Connection
 metadata: { name: Db }
 file: ":memory:"
 ---
-kind: Sql.Migrations
+kind: SQLite.Schema
 metadata: { name: InitSchema }
 connection: !ref Db
+version: !cel "module.version"
 migrations:
   create_turns:
     statement: |
