@@ -56,6 +56,24 @@ import { validateZoneViolations } from "./validate-zone-violations.js";
 import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
 import { validateZoneSlotDeclarations, type ZoneSlotIssue } from "./validate-zone-slots.js";
 import {
+  validateSchemaProjection,
+  type SchemaProjectionIssue,
+} from "./validate-schema-projection.js";
+import {
+  evaluateResourceRules,
+  reportResourceRules,
+  reportUnexercisedRule,
+  ruleExercised,
+  validateResourceRuleDeclarations,
+  type ResourceRuleDiagnostic,
+  type ResourceRuleIssue,
+} from "./validate-resource-rules.js";
+import { readResourceRules, type ResourceRule } from "./resource-rule.js";
+import {
+  describeProjectionFailure,
+  type ProjectionFailure,
+} from "./schema-projection.js";
+import {
   validateDynamicSelectors,
   validateRefSlotDeclarations,
   type RefSlotIssue,
@@ -1320,6 +1338,38 @@ export class StaticAnalyzer {
     const refConstraintIssues: RefConstraintIssue[] = [];
     const refSlotIssues: RefSlotIssue[] = [];
     const zoneSlotIssues: ZoneSlotIssue[] = [];
+    // One place a rule report becomes a diagnostic. The pass decided WHAT and
+    // WHERE; this only carries it across to the diagnostic shape.
+    const SEVERITY = {
+      error: DiagnosticSeverity.Error,
+      warning: DiagnosticSeverity.Warning,
+      information: DiagnosticSeverity.Information,
+    } as const;
+    const resourceRuleDiagnostic = (report: ResourceRuleDiagnostic): AnalysisDiagnostic => ({
+      severity: SEVERITY[report.severity],
+      code: report.code,
+      source: SOURCE,
+      message: report.message,
+      data: {
+        resource: {
+          kind: report.manifest.kind,
+          name: report.manifest.metadata?.name as string,
+        },
+        filePath: (report.manifest.metadata as { source?: string } | undefined)?.source,
+        path: report.path,
+        rule: report.rule,
+      },
+    });
+    const projectionIssues: SchemaProjectionIssue[] = [];
+    const resourceRuleIssues: ResourceRuleIssue[] = [];
+    // A rule that never had anything to iterate is never proven — the second way
+    // coverage varies invisibly, beside the dynamic-leaf skip. Tracked across the
+    // whole run and reported once, since "empty on every resource" is not a fact
+    // any single resource can establish.
+    const ruleExercise = new Map<
+      string,
+      { manifest: ResourceManifest; rule: ResourceRule; exercised: boolean; seen: boolean }
+    >();
     // `x-telo-type` is checked on EVERY manifest, not only on definition docs: a
     // schema fragment is written wherever a kind declares a schema-valued field,
     // so an inline `inputType:` on an ordinary resource carries one just as a
@@ -1352,6 +1402,24 @@ export class StaticAnalyzer {
         refConstraintIssues.push(...issues);
         refSlotIssues.push(...validateRefSlotDeclarations(m as unknown as ResourceManifest));
         zoneSlotIssues.push(...validateZoneSlotDeclarations(m as unknown as ResourceManifest));
+        projectionIssues.push(...validateSchemaProjection(m as unknown as ResourceManifest));
+        // Checked against the MERGED schema, so an `in:` pointer naming an
+        // inherited field resolves — which is what lets a rule shared by every
+        // backend be declared once on the abstract they extend.
+        resourceRuleIssues.push(
+          ...validateResourceRuleDeclarations(
+            m as unknown as ResourceManifest,
+            effectiveAuthorSchema(m as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
+          ),
+        );
+        for (const rule of readResourceRules((m as Record<string, unknown>).schema)) {
+          ruleExercise.set(`${m.metadata?.module}.${m.metadata?.name}#${rule.code}`, {
+            manifest: m as unknown as ResourceManifest,
+            rule,
+            exercised: false,
+            seen: false,
+          });
+        }
       }
       const resolvedCapability = def.capability
         ? (scopeResolver.resolveKind(def.capability) ?? def.capability)
@@ -1495,6 +1563,41 @@ export class StaticAnalyzer {
       // OPPOSITE directions — a dropped requirement is silently unenforced, a
       // dropped provision invents failures — so neither can be left to
       // leniency.
+      // A projection nothing can read does not fail — it stops typing the
+      // consumers counting on it, which puts a misspelled field back where the
+      // projection exists to catch it earlier.
+      for (const issue of resourceRuleIssues) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: issue.code,
+          source: SOURCE,
+          message: issue.message,
+          data: {
+            resource: {
+              kind: issue.manifest.kind,
+              name: issue.manifest.metadata?.name as string,
+            },
+            filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
+            path: issue.path,
+          },
+        });
+      }
+      for (const issue of projectionIssues) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: issue.code,
+          source: SOURCE,
+          message: issue.message,
+          data: {
+            resource: {
+              kind: issue.manifest.kind,
+              name: issue.manifest.metadata?.name as string,
+            },
+            filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
+            path: issue.path,
+          },
+        });
+      }
       for (const issue of zoneSlotIssues) {
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
@@ -1991,6 +2094,31 @@ export class StaticAnalyzer {
         }
       }
 
+      // Resource rules — relationships between this resource's own fields that
+      // JSON Schema cannot state, declared by the kind as CEL over `self` and
+      // `this`. Read off the AUTHOR-FACING schema, so an `extends` child without
+      // `base:` inherits its parent's rules and one that declares its own
+      // replaces them, exactly as the rest of the config contract merges.
+      // The finding→diagnostic mapping lives with the finding vocabulary in
+      // `validate-resource-rules.ts`, the shape every neighbouring pass uses:
+      // issues out, one emit here.
+      const ruleDeclarer = (definition.metadata as { module?: string } | undefined)?.module;
+      for (const report of reportResourceRules(
+        m as unknown as ResourceManifest,
+        definition as unknown as ResourceManifest,
+        evaluateResourceRules(m as unknown as ResourceManifest, authorSchema),
+        !ruleDeclarer || rootModules.has(ruleDeclarer),
+      )) {
+        diagnostics.push(resourceRuleDiagnostic(report));
+      }
+      for (const rule of readResourceRules(authorSchema)) {
+        const key = `${definition.metadata?.module}.${definition.metadata?.name}#${rule.code}`;
+        const tracked = ruleExercise.get(key);
+        if (!tracked) continue;
+        tracked.seen = true;
+        if (ruleExercised(m as unknown as ResourceManifest, rule)) tracked.exercised = true;
+      }
+
       // Validate inline resources nested inside this resource's body (e.g. a
       // Run.Sequence step's `invoke: { kind, ...config }`). These sit at
       // x-telo-ref slots reached only through local `$ref`s, which the
@@ -2024,6 +2152,18 @@ export class StaticAnalyzer {
       }
 
       // (Invocation context compatibility check is handled via x-telo-context in the CEL pass below)
+    }
+
+    // A rule whose collection was empty on every resource of its kind is a rule
+    // nothing proved. `check()` types `self` only shallowly (cel-js takes a flat
+    // field map, so `columns` is `map`), which means a typo below the first level
+    // survives declaration validation and is caught only by evaluation — so a
+    // rule that never evaluated has been verified by nothing at all. Reported
+    // only when the kind HAS resources here: a kind nobody instantiated in this
+    // workspace says nothing about the rule.
+    for (const tracked of ruleExercise.values()) {
+      if (!tracked.seen || tracked.exercised) continue;
+      diagnostics.push(resourceRuleDiagnostic(reportUnexercisedRule(tracked.manifest, tracked.rule)));
     }
 
     // Template-body structural validations: check that template entry-points produce
@@ -2117,6 +2257,40 @@ export class StaticAnalyzer {
         if (contract) {
           emitTargetMismatch(contractOwnerLabel(md, contract), contract.schema, md.result, "result");
         }
+      }
+    }
+
+    // A consumer's slot typed from a referenced declaration
+    // (`x-telo-schema-projection-from`) fails in the direction that is hardest
+    // to notice: the contract silently reopens, so a misspelled field passes
+    // `telo check` exactly as it did before the projection existed. That is the
+    // failure the projection exists to move earlier, so it is reported here
+    // rather than left to degrade. Entry-module-scoped, like
+    // `X_TELO_REF_UNRESOLVED` — a published dependency's slot is not the
+    // consumer's to fix.
+    for (const m of allManifests) {
+      const md = m as Record<string, any>;
+      if (typeof md.kind !== "string" || md.kind.startsWith("Telo.")) continue;
+      const ownModule = (md.metadata as { module?: string } | undefined)?.module;
+      if (ownModule && !rootModules.has(ownModule)) continue;
+      const definition = contractScope.resolveIn(md.kind, ownModule);
+      if (!definition) continue;
+      const failures: ProjectionFailure[] = [];
+      for (const direction of ["inputType", "outputType"] as const) {
+        resolveContract(direction, md, definition, contractScope, failures);
+      }
+      for (const failure of failures) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "SCHEMA_PROJECTION_FROM_UNRESOLVED",
+          source: SOURCE,
+          message: `${md.kind}: ${describeProjectionFailure(failure)}`,
+          data: {
+            resource: { kind: md.kind, name: (md.metadata as any)?.name as string },
+            filePath: (md.metadata as { source?: string } | undefined)?.source,
+            path: failure.pointer.replace(/^\//, ""),
+          },
+        });
       }
     }
 

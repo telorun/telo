@@ -10,7 +10,7 @@ metadata:
 imports:
   Crud: ../
   Sql: ../../sql
-  SQLite: ../../sql-sqlite
+  SQLite: ../../sqlite
   Http: ../../http-server
   HttpClient: ../../http-client
   Run: ../../run
@@ -23,9 +23,10 @@ kind: SQLite.Connection
 metadata: { name: Db }
 file: ":memory:"
 ---
-kind: Sql.Migrations
+kind: SQLite.Schema
 metadata: { name: Migrate }
 connection: !ref Db
+version: !cel "module.version"
 migrations:
   0001_todos:
     statement: |

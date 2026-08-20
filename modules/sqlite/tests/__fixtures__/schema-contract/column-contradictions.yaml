@@ -1,0 +1,31 @@
+kind: Telo.Application
+metadata:
+  name: ColumnContradictions
+  version: 1.0.0
+  description: |
+    Two column declarations that contradict themselves. Both are decidable from
+    the YAML, so both are reported by `telo check` rather than by booting against
+    a database.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns:
+  # A primary key that cannot hold NULL, declared nullable.
+  id: { type: integer, primaryKey: true, nullable: true }
+  # A typed literal and a backend expression at once.
+  createdAt: { type: text, default: "now", defaultExpression: "datetime('now')" }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref users]

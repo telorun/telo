@@ -239,3 +239,18 @@ packages own no module manifest and stay on **changesets**. Every package under
 module's, written by `telo release apply` — and is listed in
 `.changeset/config.json`'s `ignore` so the two systems never write the same
 field.
+
+Most of those packages are private: the controller is bundled into the module
+artifact, so nothing is fetched at load and there is no tarball to push. A module
+that cannot be bundled — one whose driver resolves a native binary relative to
+its own package directory — names `pkg:npm/<name>@<version>` in `controllers:`
+instead, and that tarball has to exist for any consumer outside this checkout.
+
+**`telo publish` pushes it**, before the manifest that names it, and skips it
+when npm already has that exact version. It is the same step `--skip-controllers`
+turns off. Being on the module ledger, the pin, the package and the module all
+carry one version: `telo release apply` rewrites the module's own `pkg:npm` pin
+along with `metadata.version`, and publish refuses when the three disagree rather
+than shipping a manifest that names a tarball nobody has. That is the failure
+this closed — an npm-delivered module went on pointing at a years-old version of
+itself after its package moved to the module ledger and no publisher took over.

@@ -1,0 +1,74 @@
+kind: Telo.Application
+metadata:
+  name: SqliteDeclarativeSchema
+  version: 1.0.0
+  description: |
+    A declared table is created by the boot pass, an after-migration seeds it, and
+    the schema reports what it reconciled as observed state.
+imports:
+  Sql: ../../sql
+  SQLite: ../
+  Assert: ../../assert
+  Run: ../../run
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  email: { type: text, nullable: false, unique: true }
+  plan: { type: text, nullable: false, default: free }
+indexes:
+  usersPlan: { columns: [plan] }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref users]
+migrations:
+  20260401_seed:
+    statement: "INSERT INTO users (id, email) VALUES (1, 'a@example.com')"
+reclaim: { afterVersions: 3, afterDuration: 30d }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: read
+    invoke: !ref readUsers
+    inputs:
+      sql: "SELECT id, email, plan FROM users ORDER BY id"
+  - name: assertRows
+    invoke: !ref assertRows
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected:
+        - { id: 1, email: "a@example.com", plan: free }
+  - name: assertStatus
+    invoke: !ref assertStatus
+    inputs:
+      actual:
+        migrationsApplied: !cel "resources.appSchema.status.migrationsApplied"
+        tombstoned: !cel "resources.appSchema.status.tombstoned"
+        reclaimed: !cel "resources.appSchema.status.reclaimed"
+      expected:
+        migrationsApplied: ["20260401_seed"]
+        tombstoned: []
+        reclaimed: []
+---
+kind: Sql.Query
+metadata: { name: readUsers }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertRows }
+---
+kind: Assert.Equals
+metadata: { name: assertStatus }

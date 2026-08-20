@@ -1,0 +1,477 @@
+kind: Telo.Library
+metadata:
+  name: Postgres
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Storage]
+  description: |
+    Connects an application to a PostgreSQL database over a standard `postgres://`
+    URL, with TLS modes and a pooled set of connections shared by every query,
+    statement, transaction and migration the application runs.
+imports:
+  Sql: ../sql
+exports:
+  kinds:
+    - Connection
+    - Table
+    - Schema
+---
+kind: Telo.Definition
+metadata:
+  name: Connection
+  description: >-
+    A pooled connection to a PostgreSQL database, configured by a `postgres://` URL
+    with the usual TLS modes and pool sizing, and shared by every operation that
+    references it.
+capability: Telo.Provider
+extends: Sql.Connection
+controllers:
+  - pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#ConnectionController
+schema:
+  type: object
+  additionalProperties: false
+  required:
+    - connectionString
+  examples:
+    - connectionString: postgres://user:password@localhost:5432/mydb?sslmode=require
+    - connectionString: postgres://user:password@localhost:5432/mydb
+      pool:
+        min: 2
+        max: 20
+  properties:
+    connectionString:
+      title: Connection String
+      type: string
+      description: >-
+        PostgreSQL connection URL — `postgres://` or `postgresql://`. TLS is
+        configured with the standard libpq `?sslmode=` query parameter
+        (`disable`, `require`, `verify-ca`, `verify-full`).
+    pool:
+      title: Pool
+      description: Database connection pool configuration.
+      type: object
+      additionalProperties: false
+      properties:
+        min:
+          title: Min
+          description: Minimum number of connections in the pool.
+          type: integer
+          default: 1
+        max:
+          title: Max
+          description: Maximum number of connections in the pool.
+          type: integer
+          default: 10
+        idleTimeoutMs:
+          title: Idle Timeout Ms
+          description: Milliseconds before idle connections are closed.
+          type: integer
+        connectionTimeoutMs:
+          title: Connection Timeout Ms
+          description: Milliseconds to wait for a new connection.
+          type: integer
+        maxLifetimeMs:
+          title: Max Lifetime Ms
+          description: >-
+            Milliseconds before a connection is retired and replaced, however
+            healthy it looks. Bounds how long any single connection can have been
+            broken without anyone noticing. Unset leaves connections unlimited.
+          type: integer
+          minimum: 0
+        healthCheckMs:
+          title: Health Check Ms
+          description: >-
+            Milliseconds between liveness probes of idle connections. A peer that
+            disappears without closing the socket — an evicted NAT mapping, a
+            blackholed route — reports nothing, so it is only discovered by
+            sending something; the probe discards dead connections before a
+            request picks one up, and tops the pool back up to `min`. `0`
+            disables probing.
+          type: integer
+          minimum: 0
+          default: 60000
+---
+# Postgres.Table — the full PostgreSQL vocabulary, deliberately not a neutral
+# subset. `x-telo-schema-map` on `type` declares the JSON Schema each type
+# projects to, so the analyzer performs a lookup and never learns that `citext`
+# exists. The projection is lossy on purpose: length, precision, collation and
+# check constraints do not reach it, because CEL needs the type, nullability and
+# repetition and the database enforces the rest.
+kind: Telo.Definition
+metadata:
+  name: Table
+  description: >-
+    One PostgreSQL table stated as what it is — named columns in the engine's own
+    type vocabulary, named indexes, named foreign keys. Reconciled by the Schema
+    resource that lists it: absent tables and columns are created, widening changes
+    are applied, and a removal is recorded rather than executed.
+capability: Telo.Provider
+extends: Sql.Table
+controllers:
+  - pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#TableController
+x-telo-schema-projection:
+  entries: /columns
+  key: type
+  nullable: nullable
+  array: array
+schema:
+  type: object
+  additionalProperties: false
+  required: [table, columns]
+  # The cross-field rules are inherited from `Sql.Table`: they check relationships
+  # the shared reconciler enforces at boot for EVERY backend, so a copy here would
+  # be a second one to keep in step — and a backend that forgot to make it would
+  # ship with no static check at all. Anything genuinely PostgreSQL-specific would
+  # be declared here beside them. The controller keeps its runtime guards either
+  # way: a library caller reaching `runSchemaPass` directly never passed through
+  # `telo check`.
+  examples:
+    - table: users
+      columns:
+        id: { type: uuid, primaryKey: true, defaultExpression: "gen_random_uuid()" }
+        email: { type: citext, nullable: false, unique: true }
+        displayName: { type: varchar, length: 64, nullable: false }
+  properties:
+    table:
+      title: Table
+      description: The physical table name.
+      type: string
+      minLength: 1
+    columns:
+      title: Columns
+      description: >-
+        Columns keyed by name. The key is durable identity — tombstones key on it
+        and a rename is expand-contract, never a native RENAME — so column order
+        carries no meaning and a duplicate name is structurally unrepresentable.
+      type: object
+      minProperties: 1
+      propertyNames:
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [type]
+        # A typed literal and a backend SQL expression are separate fields
+        # because nothing can tell a function call from a string by looking at
+        # it — so exactly one may be set, and saying so here means `telo check`
+        # reports it instead of the boot.
+        not:
+          required: [default, defaultExpression]
+        # A primary key cannot hold NULL, and the engine enforces that whether
+        # or not the declaration says so. Declaring the opposite is a
+        # contradiction, and left standing it would make every boot after the
+        # first plan a DROP NOT NULL on the key.
+        allOf:
+          - if:
+              required: [primaryKey, nullable]
+              properties:
+                primaryKey: { const: true }
+                nullable: { const: true }
+            then: false
+        properties:
+          type:
+            title: Type
+            description: >-
+              PostgreSQL type. Parameters are structured fields (`length`,
+              `precision`, `scale`), never spelled into this value, so nothing has
+              to parse a type back apart.
+            type: string
+            enum:
+              [text, varchar, char, citext, uuid, json, jsonb, boolean, smallint,
+               integer, bigint, numeric, real, doublePrecision, date, time,
+               timestamp, timestamptz, interval, bytea, inet, cidr, macaddr,
+               tsvector]
+            x-telo-schema-map:
+              text: { type: string }
+              varchar: { type: string }
+              char: { type: string }
+              citext: { type: string }
+              uuid: { type: string }
+              # A JSON column holds any JSON value — an array or a scalar as
+              # readily as an object — so `{type: object}` would make a valid
+              # row a static type error. Unconstrained is the honest projection.
+              json: {}
+              jsonb: {}
+              boolean: { type: boolean }
+              smallint: { type: integer }
+              integer: { type: integer }
+              bigint: { type: integer }
+              numeric: { type: number }
+              real: { type: number }
+              doublePrecision: { type: number }
+              date: { type: string }
+              time: { type: string }
+              timestamp: { type: string }
+              timestamptz: { type: string }
+              interval: { type: string }
+              bytea: { x-telo-type: Telo.Bytes }
+              inet: { type: string }
+              cidr: { type: string }
+              macaddr: { type: string }
+              tsvector: { type: string }
+          length:
+            title: Length
+            description: Character length for `varchar` / `char`.
+            type: integer
+            minimum: 1
+          precision:
+            title: Precision
+            description: Total digits for `numeric`.
+            type: integer
+            minimum: 1
+          scale:
+            title: Scale
+            description: Fractional digits for `numeric`.
+            type: integer
+            minimum: 0
+          array:
+            title: Array
+            description: >-
+              Declares the column as a one-dimensional array of `type`.
+              Multi-dimensional arrays project as one level.
+            type: boolean
+            default: false
+          nullable:
+            title: Nullable
+            type: boolean
+            default: true
+          primaryKey:
+            title: Primary Key
+            type: boolean
+            default: false
+          unique:
+            title: Unique
+            type: boolean
+            default: false
+          identity:
+            title: Identity
+            description: >-
+              Makes the column `GENERATED … AS IDENTITY`. `always` refuses a
+              caller-supplied value; `by default` allows one.
+            type: string
+            enum: [always, "by default"]
+          default:
+            title: Default
+            description: >-
+              A typed literal, checkable against the column's own type. Mutually
+              exclusive with `defaultExpression`: nothing can tell
+              `gen_random_uuid` the function from the string by looking at it.
+          defaultExpression:
+            title: Default Expression
+            description: >-
+              Raw PostgreSQL expression evaluated by the database
+              (`gen_random_uuid()`, `now()`).
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code
+          renamedFrom:
+            title: Renamed From
+            description: >-
+              The column this one supersedes. The pass adds this column, copies the
+              old one into it and tombstones the old one — a native rename would take
+              effect immediately and break the version still running. During the
+              window writes land only in the new column, so a rollback reads stale
+              data.
+            type: string
+    indexes:
+      title: Indexes
+      description: Indexes keyed by name, which is their durable identity.
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [columns]
+        properties:
+          columns:
+            title: Columns
+            type: array
+            minItems: 1
+            items: { type: string }
+          unique:
+            title: Unique
+            type: boolean
+            default: false
+          method:
+            title: Method
+            description: Index method (`btree`, `gin`, `gist`, `hash`, `brin`).
+            type: string
+            enum: [btree, gin, gist, hash, brin, spgist]
+          where:
+            title: Where
+            description: Partial-index predicate.
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code
+    foreignKeys:
+      title: Foreign Keys
+      description: >-
+        Foreign keys keyed by name. Table-level rather than a column-level clause:
+        composite keys are table-level in SQL regardless, so a column-level form
+        would be a second spelling of a subset — two shapes to normalize before
+        diffing — and a name is the durable identity reconciliation diffs and
+        tombstones on.
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [columns, references]
+        properties:
+          columns:
+            title: Columns
+            type: array
+            minItems: 1
+            items: { type: string }
+          references:
+            title: References
+            type: object
+            additionalProperties: false
+            required: [table, columns]
+            properties:
+              table:
+                title: Table
+                x-telo-ref:
+                  kind: Self.Table
+                  use: schema
+              columns:
+                title: Columns
+                type: array
+                minItems: 1
+                items: { type: string }
+          onDelete:
+            title: On Delete
+            type: string
+            enum: [cascade, restrict, "set null", "set default", "no action"]
+          onUpdate:
+            title: On Update
+            type: string
+            enum: [cascade, restrict, "set null", "set default", "no action"]
+---
+# Postgres.Schema — the single schema-change kind, and exactly one namespace.
+kind: Telo.Definition
+metadata:
+  name: Schema
+  description: >-
+    Brings one PostgreSQL namespace to the declared schema at start-up: creates the
+    namespace and what is absent in it, applies imperative migrations before and
+    after the reconciliation pass, and records what has been removed instead of
+    dropping it. A removal is reclaimed only once the declared number of released
+    versions and the declared time have passed.
+capability: Telo.Runnable
+extends: Sql.Schema
+controllers:
+  - pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#SchemaController
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection]
+  # The version is the reclamation clock and nothing else reads it, so it is
+  # required exactly when a policy is declared — an app that only runs
+  # migrations writes neither.
+  dependencies:
+    reclaim: [version]
+  examples:
+    - connection: !ref Db
+      schema: app
+      version: !cel "module.version"
+      tables: [!ref users, !ref orders]
+      reclaim: { afterVersions: 3, afterDuration: 30d }
+  properties:
+    connection:
+      title: Connection
+      description: Reference to the PostgreSQL connection this schema lives in.
+      x-telo-ref:
+        kind: Self.Connection
+        use: dependency
+    schema:
+      title: Schema
+      description: >-
+        The namespace this resource owns, created if absent. Every statement is
+        schema-qualified: relying on `search_path` would let a role or session
+        default decide where DDL lands, with no error when it lands wrong.
+      type: string
+      default: public
+    # Restated from Sql.Schema so the field is a CEL slot here: eval paths are
+    # read from a kind's own schema, not from the abstract it extends, and the
+    # conventional value is an expression.
+    version:
+      title: Version
+      description: >-
+        The released version this deployment is running, conventionally
+        `!cel "module.version"`. The clock reclamation is gated on: the number of
+        distinct versions observed since an object went missing is the primary
+        eligibility signal. Required when `reclaim:` is declared and pointless
+        without it. Checked for emptiness by the pass rather than here: this is a
+        CEL slot, and an expression reaches validation as a placeholder.
+      type: string
+      x-telo-eval: compile
+    tables:
+      title: Tables
+      description: >-
+        The tables this schema declares. Reconciled in one pass, so declaration
+        order is never load-bearing: cross-table constraints are deferred until
+        every table exists, and foreign-key ordering is never the author's problem.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Table
+          use: dependency
+    ledger:
+      title: Ledger
+      description: >-
+        Names this schema's history, kept as `telo_schema_<ledger>_*` tables in
+        the namespace (`telo_schema_*` when omitted). Two schema resources over
+        one namespace must name different ledgers. Durable identity: changing it
+        abandons the history under the old name.
+      type: string
+      pattern: "^[a-z][a-z0-9_]*$"
+    beforeMigrations:
+      title: Before Migrations
+      description: >-
+        Migrations that run BEFORE the reconciliation pass, in key order. The rare
+        deliberate case of preparing ground the pass would otherwise refuse —
+        making values fit a column that is about to narrow, backfilling one that is
+        about to become NOT NULL. Keys are unique across both maps and the ledger
+        stores the key alone, so moving an entry between the two does not re-run it.
+      type: object
+      x-telo-eval: compile
+      propertyNames:
+        pattern: "^[A-Za-z0-9_.-]+$"
+      additionalProperties:
+        $ref: "#/$defs/migration"
+    migrations:
+      title: Migrations
+      description: >-
+        Migrations that run AFTER the reconciliation pass, in key order — backfills
+        and cleanups. The common case: an app with no declared tables writes this
+        field alone and looks exactly like an imperative migration set.
+      type: object
+      x-telo-eval: compile
+      propertyNames:
+        pattern: "^[A-Za-z0-9_.-]+$"
+      additionalProperties:
+        $ref: "#/$defs/migration"
+  $defs:
+    migration:
+      title: Migration
+      description: >-
+        Either a single `statement` or an ordered list of `statements` — exactly
+        one. All statements in an entry run together.
+      type: object
+      oneOf:
+        - required: [statement]
+        - required: [statements]
+      properties:
+        statement:
+          title: Statement
+          type: string
+          contentMediaType: application/sql
+          x-telo-widget: code
+        statements:
+          title: Statements
+          type: array
+          minItems: 1
+          items:
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code

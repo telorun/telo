@@ -1,0 +1,137 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 7.0.0
+  description: |
+    Boot 7 of 9 — a name reused at a different type.
+
+    `email` is live and holds text. Re-declaring the same NAME as an integer is a
+    change to that column, not a new one — the data is still in there, so the pass
+    must never quietly drop and recreate it. SQLite cannot alter a column in
+    place, so it is refused BEFORE any DDL runs and the database is left exactly
+    as boot 6 left it.
+
+    Also: two schema resources naming one ledger. Their histories would merge and
+    each would then read the other's tables as removed.
+
+    A schema resource is `Telo.Runnable`, so these are invoked from steps rather
+    than listed in `targets:` — that is what makes a refusal observable from
+    inside the manifest instead of taking the whole boot down with it.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: retypedUsers }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  email: { type: integer, nullable: false }
+  displayName: { type: text }
+  handle: { type: text }
+---
+kind: SQLite.Schema
+metadata: { name: retypedSchema }
+connection: !ref db
+version: !cel "module.version"
+# Its own ledger: this is an alternative declaration of a table another boot
+# manages, and two schema resources on a connection may not share a history.
+ledger: retype_probe
+tables: [!ref retypedUsers]
+---
+kind: SQLite.Table
+metadata: { name: clashTableA }
+table: clash_probe_a
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: clashTableB }
+table: clash_probe_b
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: SQLite.Schema
+metadata: { name: clashA }
+connection: !ref db
+version: !cel "module.version"
+ledger: clash
+tables: [!ref clashTableA]
+---
+kind: SQLite.Schema
+metadata: { name: clashB }
+connection: !ref db
+version: !cel "module.version"
+ledger: clash
+tables: [!ref clashTableB]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: attemptRetype
+    try:
+      - name: reconcileRetype
+        invoke: !ref retypedSchema
+    catch:
+      - name: retypeRefusal
+        value: !cel "error.message"
+  - name: assertRetypeRefused
+    invoke: !ref assertRetypeRefused
+    inputs:
+      actual: !cel "steps.retypeRefusal.result.contains('cannot change a column')"
+      expected: true
+
+  - name: attemptSharedLedger
+    try:
+      - name: reconcileClashA
+        invoke: !ref clashA
+      - name: reconcileClashB
+        invoke: !ref clashB
+    catch:
+      - name: sharedLedgerRefusal
+        value: !cel "error.message"
+  - name: assertSharedLedgerRefused
+    invoke: !ref assertSharedLedgerRefused
+    inputs:
+      actual: !cel "steps.sharedLedgerRefusal.result.contains('share the ledger')"
+      expected: true
+
+  # `email` is still text, not integer: the refusal applied no part of its plan.
+  # A refusal is decided before any DDL runs, so a half-applied change is not a
+  # state this can reach.
+  - name: describeTable
+    invoke: !ref readColumns
+    inputs:
+      sql: "SELECT name, type FROM pragma_table_info('users') ORDER BY name"
+  - name: assertUnchanged
+    invoke: !ref assertUnchanged
+    inputs:
+      actual: !cel "steps.describeTable.result.rows"
+      expected:
+        - { name: displayName, type: TEXT }
+        - { name: email, type: TEXT }
+        - { name: handle, type: TEXT }
+        - { name: id, type: INTEGER }
+---
+kind: Sql.Query
+metadata: { name: readColumns }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertRetypeRefused }
+---
+kind: Assert.Equals
+metadata: { name: assertSharedLedgerRefused }
+---
+kind: Assert.Equals
+metadata: { name: assertUnchanged }

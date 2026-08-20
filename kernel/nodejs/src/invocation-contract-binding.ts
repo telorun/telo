@@ -1,10 +1,14 @@
 import {
   type ContractDirection,
+  type ProjectionScope,
   declaredScalarPaths,
   type DeclaredScalarForm,
   type DeclaredScalarPath,
   defaultBearingPaths,
   effectiveContractField,
+  describeProjectionFailure,
+  resolveSchemaProjections,
+  type ProjectionFailure,
   type DefResolver,
   withLiveValuesSkipped,
 } from "@telorun/analyzer";
@@ -13,6 +17,7 @@ import {
   ERR_CONTRACT_UNRESOLVABLE,
   ERR_INPUT_INVALID,
   ERR_OUTPUT_INVALID,
+  ERR_SCHEMA_PROJECTION_UNRESOLVED,
   InvokeError,
 } from "@telorun/sdk";
 
@@ -120,6 +125,19 @@ export function resolveBoundContract(
   definition: ResourceDefinition | undefined,
   resolveDef: DefResolver,
   factory: ContractValidatorFactory,
+  /**
+   * Resolves a DECLARATION-derived slot (`x-telo-schema-projection-from`) to the
+   * shape the referenced declaration projects to.
+   *
+   * The kernel resolves it for the same reason the analyzer does, and it must be
+   * the SAME resolution: a projected contract enforced statically and not at
+   * dispatch is a contract with a hole exactly where a value is computed rather
+   * than written — `telo check` rejects a misspelled column in a literal and the
+   * identical key arriving from a CEL expression reaches the database. Omitted
+   * only by callers with no scope to resolve against, where the annotated node
+   * stays as it was.
+   */
+  projections?: ProjectionScope,
 ): BoundContract | undefined {
   const own = (manifest as unknown as Record<string, unknown>)[direction];
   const declared =
@@ -146,13 +164,43 @@ export function resolveBoundContract(
           `The type is not registered, so the contract cannot be enforced.`,
       );
     }
-    const stripped = withLiveValuesSkipped(schema, factory.resolveRef);
+    let projected = schema;
+    if (projections) {
+      const failures: ProjectionFailure[] = [];
+      projected = resolveSchemaProjections(
+        schema,
+        manifest as unknown as Record<string, any>,
+        projections,
+        failures,
+      ) as Record<string, any>;
+      if (failures.length > 0) {
+        // A slot that opted into a projection and got none is a DEFECT, not a
+        // default: leaving it means the contract silently reopens to the slot's
+        // own schema, which for a projected slot constrains nothing — the exact
+        // reopening this mechanism exists to prevent. The analyzer reports the
+        // same set, but only for the entry's own modules, so a dependency's
+        // consumer slot would otherwise be unreported at BOTH ends. Same rule as
+        // `ERR_CONTRACT_UNRESOLVABLE` above, for the same reason.
+        throw new InvokeError(
+          ERR_SCHEMA_PROJECTION_UNRESOLVED,
+          `declared \`${direction}\` could not be projected: ` +
+            failures.map(describeProjectionFailure).join(" ") +
+            ` The slot declares 'x-telo-schema-projection-from', so leaving it unresolved ` +
+            `would enforce nothing where it promises a declared shape.`,
+        );
+      }
+    }
+    const stripped = withLiveValuesSkipped(projected, factory.resolveRef);
     paths = defaultBearingPaths(stripped, factory.resolveRef);
     scalars = declaredScalarPaths(stripped, factory.resolveRef);
     // Compile by NAME whenever the declaration is one, so the type's CEL
     // `rules:` are composed in — including when a stream had to be stripped, in
     // which case the stream-bearing properties are dropped from the schema the
     // named validator sees rather than the reference being abandoned.
+    // A named type compiles BY NAME so its CEL `rules:` compose in — but only
+    // while the schema is untouched. Stripping a stream or resolving a
+    // projection both produce a different schema, so both take the
+    // rules-preserving path rather than the bare name.
     compiled = !isNamedTypeReference(declared)
       ? factory(stripped)
       : stripped === schema

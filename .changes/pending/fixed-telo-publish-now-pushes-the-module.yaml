@@ -1,0 +1,8 @@
+modules:
+  modules/sqlite: Fixed
+body: telo publish now pushes the module's own npm package before the manifest that
+  names it, and refuses when the manifest pin, the package and the module disagree about
+  the version. A module delivering its controller from npm had no publisher after those
+  packages moved to the module ledger, so it could ship a manifest naming a version of
+  itself npm had never seen; telo release apply now moves that pin with the rest of the
+  module's version.

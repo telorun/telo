@@ -1,10 +1,10 @@
 kind: Telo.Application
 metadata:
-  name: CanRunMigrations
+  name: SqliteImperativeMigrations
   version: 1.0.0
 imports:
-  Sql: ../
-  SQLite: ../../sql-sqlite
+  Sql: ../../sql
+  SQLite: ../
   Run: ../../run
   Assert: ../../assert
 targets:
@@ -16,10 +16,13 @@ metadata:
   name: Db
 file: ":memory:"
 ---
-kind: Sql.Migrations
+kind: SQLite.Schema
 metadata:
   name: Migrate
 connection: !ref Db
+# No `version:` and no `reclaim:` — this app only runs migrations, so it looks
+# exactly like the imperative kind it replaced. The version is the reclamation
+# clock and nothing else reads it.
 migrations:
   20260401_create_users:
     statements:
@@ -62,7 +65,7 @@ steps:
 
   - name: SelectLedger
     inputs:
-      sql: "SELECT name FROM migrations ORDER BY name"
+      sql: "SELECT key FROM telo_schema_migrations ORDER BY key"
     invoke:
       kind: Sql.Query
       connection: !ref Db

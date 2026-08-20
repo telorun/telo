@@ -1,0 +1,77 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 7.8.0
+  description: |
+    Boot 9 of 10 — a constraint added to a column that already exists.
+
+    `email` is live and not unique. Declaring `unique: true` is a promise about
+    the DATA, so it cannot be applied by silence: either the constraint is created
+    — which fails if duplicates are already there, the check you want — or the
+    author is told it cannot be. This is the drift the pass used to be blind to,
+    because a column was compared on its type, its nullability and its default
+    and on nothing else, while the ledger recorded the new declaration as owned.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  email: { type: text, nullable: false, unique: true }
+  displayName: { type: text }
+  handle: { type: text }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref users]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: attemptConstraint
+    try:
+      - name: reconcile
+        invoke: !ref appSchema
+    catch:
+      - name: constraintRefusal
+        value: !cel "error.message"
+  - name: assertRefused
+    invoke: !ref assertRefused
+    inputs:
+      actual: !cel "steps.constraintRefusal.result.contains('column constraint in place')"
+      expected: true
+  # Refused, so no index was created behind the declaration's back either.
+  - name: describeIndexes
+    invoke: !ref readIndexes
+    inputs:
+      sql: "SELECT count(*) AS n FROM pragma_index_list('users') WHERE origin = 'u'"
+  - name: assertNoIndex
+    invoke: !ref assertNoIndex
+    inputs:
+      actual: !cel "steps.describeIndexes.result.rows"
+      expected: [{ n: 0 }]
+---
+kind: Sql.Query
+metadata: { name: readIndexes }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertRefused }
+---
+kind: Assert.Equals
+metadata: { name: assertNoIndex }

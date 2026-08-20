@@ -133,7 +133,7 @@ other is an init-order cycle, while a step's `invoke:` resolves at dispatch.
 
 ## Migrations
 
-`Sql.Migrations` runs all pending migrations in a single transaction — every
+A schema resource runs each pending migration in a transaction — every
 statement of every entry commits together, or the whole batch rolls back on the
 first failure. Statements that cannot run inside a transaction block (e.g.
 PostgreSQL `CREATE INDEX CONCURRENTLY`) are therefore not supported there.

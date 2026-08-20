@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "files": [],
+  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "types": ["node", "bun"]
+  },
+  "references": [
+    {
+      "path": "tsconfig.lib.json"
+    }
+  ]
+}

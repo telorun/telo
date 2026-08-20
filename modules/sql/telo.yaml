@@ -23,8 +23,8 @@ exports:
     - Command
     - Transaction
     - Selection
-    - Migration
-    - Migrations
+    - Table
+    - Schema
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/sql` to, so this module's code is one module scope across every
   # consumer instead of a copy inlined into each of their bundles.
@@ -36,8 +36,8 @@ exports:
 ---
 # Sql.Connection — the abstract database handle every driver implements. A
 # Telo.Provider: a configured connection to a backend, NOT an operation you
-# invoke. Consumers (Sql.Query / Sql.Command / Sql.Selection / Sql.Migrations /
-# Sql.Transaction) reference it via `x-telo-ref: Self.Connection` and a
+# invoke. Consumers (Sql.Query / Sql.Command / Sql.Selection / Sql.Transaction,
+# and each backend's Schema kind) reference it via `x-telo-ref: Self.Connection` and a
 # concrete implementation (SqlPostgres.Connection / SQLite.Connection)
 # satisfies the ref. Each implementation also fixes the driver-native bind
 # placeholder style, so inline `${{ }}` parameters in queries are dialect-neutral.
@@ -416,123 +416,273 @@ schema:
         kind: Telo.Type
         use: schema
 ---
-kind: Telo.Definition
+# Sql.Table — a declared table. The abstract carries no column vocabulary,
+# deliberately: a neutral type language is a lowest-common-denominator one,
+# which is the ORM abstraction this design rejects. What crosses the boundary
+# instead is a JSON Schema projection of the row, declared as data by each
+# backend, so a consumer can type a row without anything here learning that
+# `citext` exists.
+kind: Telo.Abstract
 metadata:
-  name: Migration
+  name: Table
   description: >-
-    A single standalone schema-migration script, identified by a durable version key
-    recorded in the tracking table so it runs at most once.
-  deprecated:
-    reason: >-
-      Declare migrations inline in the keyed `migrations` map on Sql.Migrations
-      instead — move this entry under that map with the `version` value as its
-      key. A standalone Sql.Migration is still discovered and merged, so existing
-      manifests keep working.
-    replacedBy: Self.Migrations
+    One declared database table — its columns, indexes and foreign keys stated as
+    what the table IS rather than as the steps that built it. Each engine supplies
+    its own, in its own full type vocabulary, and projects the row shape to JSON
+    Schema so consumers can type the rows they read.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlMigrationController
+# The STRUCTURAL half of a table declaration, and only that half: the fields
+# `normalizeTable` reads to decide whether the declaration is coherent. Every
+# engine restates each of these in its own full vocabulary — a column's `type:`
+# and its parameters are the backend's, and a child's `properties` entry replaces
+# the parent's wholesale — so nothing here constrains what an engine may declare.
+#
+# It exists so the cross-field rules below can live here ONCE. They are checks on
+# relationships the shared reconciler enforces at boot for every backend
+# (`validateTable`), so declaring them per backend means each new engine silently
+# ships without them: the identical manifest was two `telo check` errors on
+# Postgres and clean on SQLite, which is precisely the failure the rules exist to
+# move earlier. Same reasoning as `Sql.Schema`'s reclaim warning, which is
+# already declared once for every backend.
 schema:
   type: object
-  required: [sql]
-  deprecated: true
+  properties:
+    table:
+      title: Table
+      description: The physical table name.
+      type: string
+    columns:
+      title: Columns
+      description: >-
+        Columns keyed by name. The key is the column's identity, which is what a
+        rename is stated against.
+      type: object
+    indexes:
+      title: Indexes
+      description: Indexes keyed by name, which is their durable identity.
+      type: object
+    foreignKeys:
+      title: Foreign Keys
+      description: Foreign keys keyed by name, which is their durable identity.
+      type: object
+  # `condition` is TRUE when the rule holds; `this` is the element `in:` iterates
+  # and `key` its map key, `self` the whole table. Each is decidable by reading
+  # the YAML, and otherwise only at boot — several of them after
+  # `beforeMigrations:` has already changed the database.
+  x-telo-resource-rules:
+    - in: /indexes
+      condition: !cel "this.columns.all(c, c in self.columns)"
+      code: SQL_INDEX_UNKNOWN_COLUMN
+      message: >-
+        names a column this table does not declare. The index cannot be created,
+        and the engine's complaint would name a generated statement.
+    - in: /foreignKeys
+      condition: !cel "this.columns.all(c, c in self.columns)"
+      code: SQL_FOREIGN_KEY_UNKNOWN_COLUMN
+      message: names a column this table does not declare.
+    - in: /foreignKeys
+      condition: !cel "size(this.columns) == size(this.references.columns)"
+      code: SQL_FOREIGN_KEY_ARITY_MISMATCH
+      message: >-
+        lists a different number of columns on each side. A foreign key maps its
+        columns one for one.
+    - in: /columns
+      condition: !cel "this.?renamedFrom.orValue('') != key"
+      code: SQL_RENAME_FROM_SELF
+      message: declares renamedFrom itself, which describes no rename.
+    - in: /columns
+      condition: !cel "!(this.?renamedFrom.orValue('') in self.columns)"
+      code: SQL_RENAME_SOURCE_STILL_DECLARED
+      message: >-
+        renames from a column this table also declares. A rename's source is the
+        column being retired, so declaring both would copy one live column into
+        another and retire neither.
+    - condition: !cel "size(self.columns.filter(c, self.columns[c].?primaryKey.orValue(false))) <= 1"
+      code: SQL_COMPOSITE_PRIMARY_KEY
+      message: >-
+        marks more than one column as primaryKey. A composite primary key is not
+        expressible as a per-column flag — declare one column as the key, or
+        create the constraint in a 'migrations:' entry.
+---
+# Sql.Schema — the backend-neutral half of a schema resource, and only that
+# half. Tables, migrations, the statement vocabulary and the runner are the
+# backend's; what a `!ref` to this abstract buys is the grace-window surface —
+# the clock an irreversible drop is gated on, the policy gating it, and the
+# observed state reporting what is still held. Contracting the full field
+# vocabulary would be two backends re-declaring identical fields with no
+# polymorphic use.
+kind: Telo.Abstract
+metadata:
+  name: Schema
   description: >-
-    [Deprecated] Use the keyed `migrations` map on `Sql.Migrations` instead —
-    move this entry under `Sql.Migrations.migrations` with the `version` value
-    as its key and the `sql` as its value (`{ "<version>": { sql: ... } }`). A
-    standalone `Sql.Migration` is still discovered by any `Sql.Migrations` in
-    the same module scope and merged into its set, so existing manifests keep
-    working; new manifests should declare migrations inline.
+    Brings a database to the declared schema at start-up and reclaims what has been
+    removed only once it is provably safe. Removal is recorded rather than executed:
+    an object dropped from the declaration is held until a stated number of released
+    versions and a stated time have passed, and is reported with its remaining budget
+    until then.
+capability: Telo.Runnable
+schema:
+  type: object
   properties:
     version:
       title: Version
+      description: >-
+        The released version this deployment is running, conventionally
+        `!cel "module.version"`. It is the clock reclamation is gated on: the
+        number of distinct versions observed since an object went missing is the
+        primary eligibility signal. Required when `reclaim:` is declared, and
+        read by nothing else — an app that only runs migrations declares neither. Written by the author rather than injected,
+        because `module.*` is scoped to the DECLARING module — a schema resource
+        inside a library would silently clock on the library's version — and this
+        value gates an irreversible drop.
       type: string
-      description: >-
-        Durable ledger key written to the migrations tracking table. Must be
-        unique across all migrations in the run and MUST NOT change after the
-        migration has been applied anywhere — renaming it would cause the
-        migration to re-run. Conventionally a timestamp-prefixed slug
-        (e.g. `20260419100200_CreateTokens`). Distinct from `metadata.name`,
-        which is the in-manifest resource handle. When omitted, the controller
-        falls back to `metadata.name` for backwards compatibility.
-    sql:
-      title: SQL
-      type: string
-      description: >-
-        SQL to execute for this migration. The body runs as a script, so it
-        may contain multiple `;`-separated statements (any SQL).
-      contentMediaType: application/sql
-      x-telo-widget: code
----
-kind: Telo.Definition
-metadata:
-  name: Migrations
-  description: >-
-    Applies versioned schema migrations at start-up: a map of migrations keyed by a
-    durable id, applied in key order, each in its own transaction and recorded in a
-    tracking table so it runs exactly once. Renaming a key makes it a new migration.
-capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlMigrationsController
-schema:
-  type: object
-  required: [connection]
-  examples:
-    - connection: !ref Db
-      migrations:
-        20260401_create_users:
-          statements:
-            - "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
-            - "CREATE UNIQUE INDEX users_name ON users(name)"
-        20260402_seed_admin:
-          statement: "INSERT INTO users (id, name) VALUES (1, 'Alice')"
-  properties:
-    connection:
-      title: Connection
-      description: Reference to the SQL connection resource.
-      x-telo-ref:
-        kind: Self.Connection
-        use: dependency
-    migrations:
-      title: Migrations
-      description: >-
-        Ordered set of migrations keyed by their durable ledger id. Each key is
-        written to the migrations tracking table, decides run order
-        (lexicographic) and identifies the migration forever after — renaming a
-        key makes the migrator treat it as a new migration and re-run it.
-        Conventionally a timestamp-prefixed slug (e.g. `20260419100200_CreateTokens`).
-      type: object
       x-telo-eval: compile
-      propertyNames:
-        pattern: "^[A-Za-z0-9_.-]+$"
-      additionalProperties:
-        title: Migration
-        description: >-
-          A migration is either a single `statement` or an ordered list of
-          `statements` — exactly one. All statements run inside the single
-          migration transaction, in order.
+    ledger:
+      title: Ledger
+      description: >-
+        Names the history this schema keeps — its applied migrations, its observed
+        versions and its tombstones — as `telo_schema_<ledger>_*` tables in the
+        namespace. Omitted, they are `telo_schema_*`.
+
+        Two schema resources over one namespace MUST name different ledgers: the
+        ledger records what its schema DECLARES, so a shared one would make each
+        read the other's tables as removed and eventually drop them. This is the
+        same separation `flyway.table` and Alembic's `version_table` provide, and
+        it has the property an identity column would not: because it is written
+        down, renaming the resource that declares it changes nothing.
+
+        Durable identity — changing it abandons the history under the old name,
+        so every migration re-runs against the new one.
+      type: string
+      pattern: "^[a-z][a-z0-9_]*$"
+    reclaim:
+      title: Reclaim
+      description: >-
+        When a tombstoned object may actually be dropped. Both conditions must
+        hold. Declaring no policy means nothing is ever dropped, so reclamation is
+        opt-in by declaration; the ledger still records tombstones and reports what
+        would be eligible through observed state.
+      type: object
+      additionalProperties: false
+      required: [afterVersions, afterDuration]
+      properties:
+        afterVersions:
+          title: After Versions
+          description: >-
+            How many distinct released versions must be observed after the object
+            went missing. A rollback resets this count rather than pausing it:
+            booting a version seen at or before the removal proves older code is
+            still live.
+          type: integer
+          minimum: 1
+        afterDuration:
+          title: After Duration
+          description: >-
+            How much time must pass after the object went missing (`30d`, `12h`).
+            The backstop to `afterVersions`, since several versions can land in an
+            afternoon. `0ms` switches it off, leaving `afterVersions` alone to gate
+            an irreversible drop — allowed, and reported at boot when it happens.
+          type: string
+          pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h|d)\\s*$"
+  # The version is the reclamation clock and nothing else reads it, so an
+  # implementation must require it exactly when a policy is declared.
+  dependencies:
+    reclaim: [version]
+  # `0ms` is legal — the tests need it, and an author may genuinely want
+  # `afterVersions` alone gating the drop — but it switches off the backstop that
+  # exists because several releases can land in an afternoon. Said out loud
+  # rather than passing silently. Inherited by every backend's Schema kind,
+  # which extends this abstract without declaring rules of its own.
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.reclaim) || self.reclaim.afterDuration != '0ms'"
+      code: SQL_RECLAIM_DURATION_DISABLED
+      severity: warning
+      message: >-
+        sets reclaim.afterDuration to 0ms, switching off the time backstop. An
+        object removed from the declaration is then dropped as soon as
+        afterVersions is met, which several releases in one afternoon can reach.
+status:
+  type: object
+  properties:
+    version:
+      title: Version
+      description: The version recorded for this boot.
+      type: string
+    digest:
+      title: Digest
+      description: Digest of the declaration this boot reconciled to.
+      type: string
+    sequence:
+      title: Sequence
+      description: This version's position in the observed deployment sequence.
+      type: integer
+    migrationsApplied:
+      title: Migrations Applied
+      description: Migration keys applied by this boot, in the order they ran.
+      type: array
+      items: { type: string }
+    orphanedMigrations:
+      title: Orphaned Migrations
+      description: >-
+        Applied keys with no declaration left. Reported, never an error — deleting
+        decade-old migrations from a manifest is normal.
+      type: array
+      items: { type: string }
+    tombstoned:
+      title: Tombstoned
+      description: Objects this boot recorded as removed. No DDL was emitted for them.
+      type: array
+      items: { type: string }
+    revived:
+      title: Revived
+      description: Tombstoned objects the declaration brought back, so their budget is discarded.
+      type: array
+      items: { type: string }
+    inertRenames:
+      title: Inert Renames
+      description: >-
+        `renamedFrom:` mentions that can no longer do anything — the source column
+        is neither present nor held by a tombstone, so the rename has finished
+        everywhere and the mention is dead manifest text that can be deleted.
+      type: array
+      items: { type: string }
+    reclaimed:
+      title: Reclaimed
+      description: Objects dropped by this boot, having aged out of the declared policy.
+      type: array
+      items: { type: string }
+    pendingReclamation:
+      title: Pending Reclamation
+      description: >-
+        Every tombstone still held, with what is left of its budget — so what the
+        schema is holding, and for how much longer, is visible without invoking
+        anything.
+      type: array
+      items:
         type: object
-        oneOf:
-          - required: [statement]
-          - required: [statements]
         properties:
-          statement:
-            title: Statement
-            description: >-
-              A single SQL statement to execute. May contain CEL template
-              expressions, evaluated at compile time.
+          object:
+            title: Object
             type: string
-            contentMediaType: application/sql
-            x-telo-widget: code
-          statements:
-            title: Statements
+          missingSinceVersion:
+            title: Missing Since Version
+            type: string
+          versionsRemaining:
+            title: Versions Remaining
+            description: Null when no policy is declared — nothing is ever dropped, so there is no budget.
+            type: [integer, "null"]
+          msRemaining:
+            title: Ms Remaining
+            description: Null when no policy is declared.
+            type: [integer, "null"]
+          eligible:
+            title: Eligible
+            type: boolean
+          unreclaimable:
+            title: Unreclaimable
             description: >-
-              An ordered list of SQL statements, each executed in turn within
-              the migration transaction. Each entry may contain CEL template
-              expressions, evaluated at compile time.
-            type: array
-            minItems: 1
-            items:
-              type: string
-              contentMediaType: application/sql
-              x-telo-widget: code
+              Present when this engine cannot drop an object of this kind at all.
+              The tombstone stands and this says what has to happen instead —
+              attempting it would fail this boot and, since the tombstone stays
+              eligible, every boot after it.
+            type: [string, "null"]

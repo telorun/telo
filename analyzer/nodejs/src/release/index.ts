@@ -59,6 +59,7 @@ export {
   readManifestVersion,
   stampCrateVersion,
   stampManifestVersion,
+  stampSelfNpmPins,
   stampPackageVersion,
 } from "./version-stamp.js";
 

@@ -1,0 +1,22 @@
+{
+  "name": "@telorun/postgres-build",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build-only package for the std/postgres module's bundled controller. Never published \u2014 the controller ships inside the module artifact. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json"
+  },
+  "dependencies": {
+    "@telorun/sql": "workspace:*",
+    "pg": "^8.20.0",
+    "kysely": "^0.28.15"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0"
+  }
+}

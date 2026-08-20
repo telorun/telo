@@ -6,6 +6,11 @@ import {
   effectiveContractField,
 } from "./extends-resolution.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
+import {
+  manifestListScope,
+  resolveSchemaProjections,
+  type ProjectionFailure,
+} from "./schema-projection.js";
 
 export type { ContractDirection };
 
@@ -80,11 +85,20 @@ export function resolveContract(
   manifest: Record<string, any> | undefined,
   definition: ResourceDefinition | undefined,
   scope: ContractScope,
+  /** Collects declaration-derived slots that could not be projected. Omitted by
+   *  every caller that only wants the schema; the one pass that REPORTS them
+   *  passes an array. */
+  projectionFailures?: ProjectionFailure[],
 ): ResolvedContract | undefined {
   const own = manifest?.[direction];
   if (own !== undefined && own !== null) {
     const schema = resolveTypeFieldToSchema(own, scope.typeManifestsFor(definition));
-    if (schema) return { schema, origin: "instance" };
+    if (schema) {
+      return {
+        schema: projectionResolved(schema, manifest, scope, definition, projectionFailures),
+        origin: "instance",
+      };
+    }
   }
 
   const declared = effectiveContractField(definition, scope.resolveDefinition, direction);
@@ -92,7 +106,36 @@ export function resolveContract(
   const declarer = contractDeclarer(definition, scope.resolveDefinition, direction);
   const schema = resolveTypeFieldToSchema(declared, scope.typeManifestsFor(declarer));
   if (!schema) return undefined;
-  return { schema, origin: "kind", declaredBy: declarer };
+  return {
+    schema: projectionResolved(schema, manifest, scope, declarer, projectionFailures),
+    origin: "kind",
+    declaredBy: declarer,
+  };
+}
+
+/**
+ * A contract may be DECLARATION-derived: a kind whose `outputType` projects the
+ * declaration of a resource it references (a repository typing its rows from
+ * the table it reads). The manifest is in hand here and nowhere later, so this
+ * is where the projection is resolved — and it is resolved for a kind-declared
+ * contract and an instance-declared one alike, since either may carry one.
+ */
+function projectionResolved(
+  schema: Record<string, any>,
+  manifest: Record<string, any> | undefined,
+  scope: ContractScope,
+  declarer: ResourceDefinition | undefined,
+  failures?: ProjectionFailure[],
+): Record<string, any> {
+  return resolveSchemaProjections(
+    schema,
+    manifest,
+    manifestListScope(
+      scope.typeManifestsFor(declarer),
+      (kind) => scope.resolveDefinition(kind) as Record<string, any> | undefined,
+    ),
+    failures,
+  ) as Record<string, any>;
 }
 
 /** {@link resolveContract}, falling back to {@link PERMISSIVE_CONTRACT}. For

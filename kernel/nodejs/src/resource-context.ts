@@ -519,6 +519,19 @@ export class ResourceContextImpl implements ResourceContext {
     return this.moduleContext.resolveImportedInstance(alias, name);
   }
 
+  /**
+   * The manifest a name was DECLARED with, resolved in the context that OWNS
+   * this resource — scope-local first, enclosing module as the fallback, an
+   * alias routing into that import's exports. The same order `resolveRef` and
+   * the CEL `resources` layering use, so a declaration lookup cannot disagree
+   * with them about what a name means.
+   *
+   * Used to resolve a DECLARATION-derived contract slot at bind time.
+   */
+  resolveDeclaredManifest(name: string, alias?: string): ResourceManifest | undefined {
+    return this.owningContext.resolveDeclaredManifest?.(name, alias);
+  }
+
   resolveRef<T>(
     value: unknown,
     guard: (candidate: unknown) => candidate is T,

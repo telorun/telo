@@ -1,0 +1,83 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 7.5.0
+  description: |
+    Boot 8 of 9 — a rename that also changes the type.
+
+    `nickname2` is new, so adding it is fine; copying text values into an integer
+    column is the unsafe half. SQLite would accept that and store them
+    unconverted, because it applies affinity rather than rejecting — so nothing
+    later would report it. Refused instead, before any DDL runs.
+
+    Its own boot, and its own ledger: one physical table has one schema resource
+    that manages it, so an alternative declaration of `users` cannot sit beside
+    the real one in a single process.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: retypedRenameUsers }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  displayName: { type: text }
+  handle: { type: text }
+  # A proper rename — `email` is retired by it, so it is not declared here — but
+  # the target's type differs from the source's.
+  nickname2: { type: integer, renamedFrom: email }
+---
+kind: SQLite.Schema
+metadata: { name: retypedRenameSchema }
+connection: !ref db
+version: !cel "module.version"
+ledger: rename_probe
+tables: [!ref retypedRenameUsers]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: attemptRetypedRename
+    try:
+      - name: reconcileRetypedRename
+        invoke: !ref retypedRenameSchema
+    catch:
+      - name: retypedRenameRefusal
+        value: !cel "error.message"
+  - name: assertRenameRefused
+    invoke: !ref assertRenameRefused
+    inputs:
+      actual: !cel "steps.retypedRenameRefusal.result.contains('would store them unconverted')"
+      expected: true
+
+  # Neither the new column nor a copy of the data reached the database.
+  - name: describeTable
+    invoke: !ref readColumns
+    inputs:
+      sql: "SELECT name FROM pragma_table_info('users') ORDER BY name"
+  - name: assertUnchanged
+    invoke: !ref assertUnchanged
+    inputs:
+      actual: !cel "steps.describeTable.result.rows"
+      expected: [{ name: displayName }, { name: email }, { name: handle }, { name: id }]
+---
+kind: Sql.Query
+metadata: { name: readColumns }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertRenameRefused }
+---
+kind: Assert.Equals
+metadata: { name: assertUnchanged }

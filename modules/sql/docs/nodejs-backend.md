@@ -87,7 +87,7 @@ parameters (`kv-store-sql`) reads it from the dialect.
 
 `SqlConnection.kysely` is declared optional so the contract stays implementable
 by a driver kysely does not support. `SqlConnectionBase` always provides it.
-`Sql.Migrations` is the one kind that needs it — it drives kysely's `Migrator` —
+The schema runner is what needs it — it groups DDL and each migration atomically —
 and fails with an explicit message when a connection does not have one. Every
 other operation goes through `execute` / `executeTemplate`.
 

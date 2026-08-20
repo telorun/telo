@@ -1,0 +1,83 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 5.0.0
+  description: |
+    Boot 5 of 7 — two renames at once, in the two states a rename can be in.
+
+    `displayName` renames a LIVE column: expand-contract, so the pass adds it,
+    copies `email` into it and tombstones the source — a native RENAME would
+    break version 4, which is still running and still reads `email`.
+
+    `handle` renames `nickname`, which boot 3 reclaimed. There is nothing left to
+    copy and nothing left to hold, so the mention is INERT and reported as such —
+    that is how the author learns the `renamedFrom:` can be deleted. It must not
+    put the vanished column back on the books.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  displayName: { type: text, renamedFrom: email }
+  handle: { type: text, renamedFrom: nickname }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref users]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: read
+    invoke: !ref readUsers
+    inputs:
+      sql: "SELECT displayName, handle, email FROM users WHERE id = 1"
+  - name: assertCopied
+    invoke: !ref assertCopied
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected:
+        # Copied by the pass; `handle` is empty because its source was reclaimed.
+        - displayName: "a@example.com"
+          handle: null
+          email: "a@example.com"
+  - name: assertTombstoned
+    invoke: !ref assertTombstoned
+    inputs:
+      actual: !cel "resources.appSchema.status.tombstoned"
+      expected: ["column users.email"]
+  - name: assertInert
+    invoke: !ref assertInert
+    inputs:
+      actual: !cel "resources.appSchema.status.inertRenames"
+      expected: ["column users.handle (renamedFrom nickname)"]
+---
+kind: Sql.Query
+metadata: { name: readUsers }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertCopied }
+---
+kind: Assert.Equals
+metadata: { name: assertTombstoned }
+---
+kind: Assert.Equals
+metadata: { name: assertInert }

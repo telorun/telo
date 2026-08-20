@@ -99,5 +99,5 @@ mounts:
 
 - The primary key column is assumed to be named `id`, surfaced as the configurable `{<idParam>}` path parameter (default `<singular>Id`). `idParam` renames only the URL parameter, not the column.
 - Set `openapi:` on the `Http.Server` to emit the documented spec — operations are named from `singular`/`plural` (`listTodos`, `getTodo`, …) and tagged with `plural`. Response schemas are not yet named (the `model` excludes `id`, so the response shape differs from the write model).
-- Columns are the **snake_case** form of the model's camelCase properties (see *Column naming*). `Crud.Resource` does not create or migrate the table — declare it with `Sql.Migrations` (or your own DDL), naming the columns in snake_case to match.
+- Columns are the **snake_case** form of the model's camelCase properties (see *Column naming*). `Crud.Resource` does not create or migrate the table — declare it with your backend's `Table` / `Schema` kinds (or your own DDL), naming the columns in snake_case to match.
 - For bespoke queries (joins, computed columns, custom status logic) reach for an `Http.Api` with `Sql.Query` handlers directly; `Crud.Resource` covers the common single-table case.

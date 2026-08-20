@@ -7,6 +7,7 @@ import {
 } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
 import { isStepSlot } from "./step-slot.js";
+import { withRefSlotsAsReadings } from "./ref-slot-reading.js";
 
 export interface ContextResolveOpts {
   /** When provided, used to resolve `x-telo-context-from-root` annotations against the
@@ -433,7 +434,17 @@ export function resolveContextAnnotations(
         // so the variable is typed by the CONTRACT rather than by the wrapper
         // around it. A raw JSON Schema resolves to itself, and a plain property
         // map (a transport scope) resolves to nothing and is used verbatim.
-        return resolveTypeFieldToSchema(navigated, allManifests ?? []) ?? navigated;
+        const resolved = resolveTypeFieldToSchema(navigated, allManifests ?? []) ?? navigated;
+        // A ref slot inside it holds a live instance at runtime, which the
+        // kernel substitutes with that resource's published reading before
+        // evaluating (`celSelfView`). Type it the same way, or `self.<ref>` is
+        // the annotation node — a shape nothing can be read off.
+        return defs
+          ? (withRefSlotsAsReadings(resolved, {
+              resolve: (kind) => defs.resolve(kind),
+              resolveKind: (kind) => aliases?.resolveKind(kind),
+            }) as Record<string, any>)
+          : resolved;
       }
     }
     if (defs) {

@@ -1,0 +1,74 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 3.0.0
+  description: |
+    Boot 3 of 4 — a release later, with a policy of one version and no waiting. The
+    tombstone has aged out, so this boot drops the column and clears the ledger
+    entry. `afterDuration: 0ms` is what makes the time backstop a no-op for the
+    test; a real deployment states days.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  email: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref users]
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertReclaimed
+    invoke: !ref assertReclaimed
+    inputs:
+      actual: !cel "resources.appSchema.status.reclaimed"
+      expected: ["column users.nickname"]
+  - name: assertNothingHeld
+    invoke: !ref assertNothingHeld
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []
+  # The row survives; only the dropped column is gone.
+  - name: read
+    invoke: !ref readUsers
+    inputs:
+      sql: "SELECT email FROM users WHERE id = 1"
+  - name: assertRowIntact
+    invoke: !ref assertRowIntact
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected: [{ email: "a@example.com" }]
+---
+kind: Sql.Query
+metadata: { name: readUsers }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertReclaimed }
+---
+kind: Assert.Equals
+metadata: { name: assertNothingHeld }
+---
+kind: Assert.Equals
+metadata: { name: assertRowIntact }

@@ -17,6 +17,7 @@ import {
   type ContractValidatorFactory,
   resolveBoundContract,
 } from "./invocation-contract-binding.js";
+import { readProjectionRef, type ProjectionScope } from "@telorun/analyzer";
 import {
   ControllerContext,
   ControllerPolicy,
@@ -49,6 +50,10 @@ import { ambientInvokeContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { mintResourceHandle } from "./resource-handle.js";
+import {
+  declarationOfInstance,
+  recordInstanceDeclaration,
+} from "./instance-declaration.js";
 import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
@@ -1417,6 +1422,7 @@ export class Kernel implements IKernel {
       resolvedKind,
       (processedResource.metadata?.name as string | undefined) ?? "<unnamed>",
     );
+    recordInstanceDeclaration(instance, processedResource);
     (ctx as ResourceContextImpl).bindResourceIdentity(handle, resolvedKind, processedResource);
 
     // Bind the resolved invocation contract to the instance, here at the kernel's
@@ -1491,8 +1497,43 @@ export class Kernel implements IKernel {
     const resolveDef: DefResolver = (kind, from) =>
       this.registry.resolveDefinitionIn(kind, from?.metadata?.module);
 
-    const input = resolveBoundContract("inputType", resource, definition, resolveDef, factory);
-    const output = resolveBoundContract("outputType", resource, definition, resolveDef, factory);
+    // A DECLARATION-derived slot is resolved against the context that OWNS this
+    // resource, so a bare name means the same thing here as it does to `!ref`
+    // and to CEL — scope-local first, enclosing module as the fallback — and an
+    // alias routes into that import's exported instances.
+    const projections: ProjectionScope = {
+      resolveDefinition: (kind) =>
+        this.controllers.getDefinition(kind) as unknown as Record<string, any> | undefined,
+      // The slot holds the LIVE INSTANCE by now — Phase-5 injection runs before
+      // create — so the declaration is recovered by instance identity. The ref
+      // shape is still accepted, because a ref slot on a `with:`-scoped resource
+      // is not an injection site and reaches the controller unresolved.
+      resolveManifest: (value) => {
+        const injected = declarationOfInstance(value);
+        if (injected) return { manifest: injected as unknown as Record<string, any> };
+        const ref = readProjectionRef(value);
+        if (!ref) return undefined;
+        const found = impl.resolveDeclaredManifest(ref.name, ref.alias);
+        return found ? { manifest: found as unknown as Record<string, any> } : undefined;
+      },
+    };
+
+    const input = resolveBoundContract(
+      "inputType",
+      resource,
+      definition,
+      resolveDef,
+      factory,
+      projections,
+    );
+    const output = resolveBoundContract(
+      "outputType",
+      resource,
+      definition,
+      resolveDef,
+      factory,
+      projections,
+    );
     if (!input && !output) return;
 
     bindContract(instance, {

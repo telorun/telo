@@ -7,7 +7,7 @@ metadata:
   version: 1.0.0
 imports:
   Sql: ../modules/sql
-  SQLite: ../modules/sql-sqlite
+  SQLite: ../modules/sqlite
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
@@ -18,10 +18,11 @@ metadata:
   name: Db
 file: ":memory:"
 ---
-kind: Sql.Migrations
+kind: SQLite.Schema
 metadata:
   name: Migrate
 connection: !ref Db
+version: !cel "module.version"
 migrations:
   init:
     statements:

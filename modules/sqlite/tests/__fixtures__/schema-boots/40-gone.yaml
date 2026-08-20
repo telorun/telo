@@ -1,0 +1,44 @@
+kind: Telo.Application
+metadata:
+  name: SchemaBoots
+  version: 4.0.0
+  description: |
+    Boot 4 of 4 — the column really is gone from the database, not merely from the
+    ledger. Asserted from a fresh process by a statement that must fail, so the
+    evidence is the engine's rather than the schema resource's own report.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+targets:
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # Asked of the engine's own catalogue rather than of the schema resource's
+  # report, so the evidence that the column is gone is independent of the code
+  # that dropped it.
+  - name: describeTable
+    invoke: !ref readColumns
+    inputs:
+      sql: "SELECT name FROM pragma_table_info('users') ORDER BY name"
+  - name: assertColumns
+    invoke: !ref assertColumns
+    inputs:
+      actual: !cel "steps.describeTable.result.rows"
+      expected: [{ name: email }, { name: id }]
+---
+kind: Sql.Query
+metadata: { name: readColumns }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertColumns }

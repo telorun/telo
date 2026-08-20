@@ -39,7 +39,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
     "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md"
+    "postpack": "rm -f LICENSE && rm -f README.md",
+    "test": "vitest run"
   },
   "dependencies": {
     "kysely": "^0.28.15"
@@ -48,7 +49,8 @@
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "esbuild": "catalog:",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
   },
   "peerDependencies": {
     "@telorun/sdk": "*"

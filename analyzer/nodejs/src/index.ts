@@ -173,6 +173,42 @@ export type {
 } from "./resolve-zone-requirements.js";
 export type { ZoneModuleDocuments } from "./zone-module-documents.js";
 export { validateZoneSlotDeclarations } from "./validate-zone-slots.js";
+export {
+  RESOURCE_RULES_ANNOTATION,
+  readResourceRules,
+  readRawResourceRules,
+  resolveRuleSubjects,
+  findDynamicLeaf,
+  type ResourceRule,
+  type ResourceRuleSeverity,
+  type RuleSubject,
+} from "./resource-rule.js";
+export {
+  validateResourceRuleDeclarations,
+  evaluateResourceRules,
+  ruleExercised,
+  RESOURCE_RULE_BUDGET_MS,
+  type ResourceRuleIssue,
+  type ResourceRuleFinding,
+} from "./validate-resource-rules.js";
+export {
+  readSchemaProjection,
+  readSchemaMap,
+  readProjectionFrom,
+  readProjectionRef,
+  manifestListScope,
+  projectionKeyMap,
+  projectEntries,
+  resolveSchemaProjections,
+  describeProjectionFailure,
+  type SchemaProjection,
+  type SchemaMap,
+  type ProjectionRef,
+  type ProjectionLookup,
+  type ProjectionScope,
+  type ProjectionFailure,
+} from "./schema-projection.js";
+export { validateSchemaProjection, type SchemaProjectionIssue } from "./validate-schema-projection.js";
 export { validateDurableRegions } from "./validate-durable-regions.js";
 export { validateZoneViolations } from "./validate-zone-violations.js";
 export {
