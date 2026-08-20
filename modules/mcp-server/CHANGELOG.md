@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.3 - 2026-08-20
+### Fixed
+* Switch off Fastify's own per-request log lines through the `logController` option and require fastify 5.12, removing the FSTDEP023 deprecation warning the top-level `disableRequestLogging` option now emits. A numeric `trustProxy` hop count is passed to Fastify as the predicate it means, since fastify 5.12 no longer honours the numeric form.
+
 ## 0.15.1 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.

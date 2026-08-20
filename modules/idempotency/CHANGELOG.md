@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.0 - 2026-08-20
+### Added
+* Body slots that establish an execution zone now declare what the region guarantees about its contents, in the new closed zone-attribute vocabulary: Sql.Transaction.steps declares atomic and noSuspend, Idempotency.Once.invoke declares idempotent and noSuspend, and Lease.Critical.invoke declares noSuspend. Lease.Critical and Idempotency.Once become zone providers, opening their zone around the dispatched body. Each attribute's value is the author's reason, which whatever enforces it quotes verbatim.
+* Declares requires.telo >=0.79.0. The zone-attribute object form of x-telo-provides-zone is syntax an older analyzer reads as a malformed annotation, so without the bound this module would be rejected on an older runtime with a message blaming its own author; the bound turns that into one message naming the cause.
+
 ## 0.9.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.

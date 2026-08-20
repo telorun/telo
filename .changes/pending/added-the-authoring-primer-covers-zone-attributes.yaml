@@ -1,4 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The authoring primer covers zone attributes, durable execution and the runtime
-  floor the zone-attribute object form requires.

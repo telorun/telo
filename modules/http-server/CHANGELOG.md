@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.27.0 - 2026-08-20
+### Added
+* Http.Reference declares a referrer rule requiring the server that mounts it to declare an openapi: block, so a reference with nothing to render is a telo check error on the server's mount slot rather than a failure at boot.
+* `Http.Reference` serves the API documentation as a mountable router: the OpenAPI document the server collects is rendered at the prefix its mount declares, alongside the document itself as JSON and YAML. A mount entry now also takes `when:`, resolved once at startup, so the docs — or any other router — can be left out of a production deployment entirely rather than registered and hidden. BREAKING: declaring `openapi:` no longer serves anything by itself; the fixed /reference route is gone, and an app that wants the docs mounts an Http.Reference where it wants them.
+### Fixed
+* An Http.Server that failed to initialize reported Fastify's duplicate-route error instead of the reason it failed. The multi-pass init loop calls init() again on a resource that failed — which is how a mount not yet injected gets its second chance — while a route registers exactly once, so the second pass raised FST_ERR_DUPLICATED_ROUTE and buried the first failure. Route registration is now resumable: each mount records that it attached and a later pass registers only what is still missing, so a retry that can succeed still does and one that cannot reports its real cause.
+* Switch off Fastify's own per-request log lines through the `logController` option and require fastify 5.12, removing the FSTDEP023 deprecation warning the top-level `disableRequestLogging` option now emits. A numeric `trustProxy` hop count is passed to Fastify as the predicate it means, since fastify 5.12 no longer honours the numeric form.
+
 ## 0.26.0 - 2026-08-16
 ### Added
 * A multipart request body is accepted out of the box, as raw bytes. Fastify ships parsers for JSON and urlencoded only, so a route receiving a file upload answered 415 before any handler ran — naming a media type the author really did send and pointing at no fix. Raw rather than text because decoding a multipart body as a string corrupts every binary part. A `contentTypeParsers` entry for an exact multipart type still works and takes precedence for that type alone — Fastify consults exact-string parsers before pattern ones — so customizing form-data leaves related and mixed on the default.

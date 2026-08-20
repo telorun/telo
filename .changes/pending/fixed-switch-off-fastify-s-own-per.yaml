@@ -1,8 +1,0 @@
-modules:
-  modules/http-server: Fixed
-  modules/mcp-server: Fixed
-body: Switch off Fastify's own per-request log lines through the `logController` option
-  and require fastify 5.12, removing the FSTDEP023 deprecation warning the top-level
-  `disableRequestLogging` option now emits. A numeric `trustProxy` hop count is passed
-  to Fastify as the predicate it means, since fastify 5.12 no longer honours the numeric
-  form.

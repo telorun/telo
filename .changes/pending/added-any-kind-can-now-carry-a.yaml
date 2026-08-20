@@ -1,8 +1,0 @@
-modules:
-  modules/run: Added
-  apps/authoring-agent: Added
-body: 'Any kind can now carry a step body: the grammar is a shared fragment (`$ref:
-  "telo://manifest#/$defs/Step"`) instead of four `$defs` copies declared here, and
-  `StepEngine` moved to `@telorun/sdk`. Two breaking consequences: `while/do` is now
-  legal in an iteration, projection and loop body, not only a sequence; and reading the
-  grammar requires telo >=0.79.0, which the module now declares.'

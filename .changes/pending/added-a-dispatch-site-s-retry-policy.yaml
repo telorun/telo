@@ -1,7 +1,0 @@
-modules:
-  modules/run: Added
-body: "A dispatch site's retry policy gains nonRetryable: a list of error codes that end
-  the loop at the first failure instead of consuming the budget, which for a
-  non-idempotent target is the difference between one side effect and N. And a step
-  gains a per-attempt timeout: (milliseconds), enforced by cancellation rather than by
-  abandoning the call, failing ERR_STEP_TIMEOUT on elapse."

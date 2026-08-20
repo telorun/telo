@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0 - 2026-08-20
+### Added
+* Any kind can now carry a step body: the grammar is a shared fragment (`$ref: "telo://manifest#/$defs/Step"`) instead of four `$defs` copies declared here, and `StepEngine` moved to `@telorun/sdk`. Two breaking consequences: `while/do` is now legal in an iteration, projection and loop body, not only a sequence; and reading the grammar requires telo >=0.79.0, which the module now declares.
+* The authoring primer covers zone attributes, durable execution and the runtime floor the zone-attribute object form requires.
+
 ## 0.5.5 - 2026-08-17
 ### Fixed
 * The manifest-authoring primer named the schema-valued slots `telo check` actually validates as JSON Schema — a kind's `schema:`, its `status:` block and a `Telo.JsonSchema`'s `schema:` — and says plainly that a kind's own `inputType:`/`outputType:` and an API route's `request.schema` are not checked that way yet. The earlier wording claimed every schema block was covered, which would have had the agent trusting a diagnostic that never fires.
