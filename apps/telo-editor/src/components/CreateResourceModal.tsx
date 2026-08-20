@@ -140,9 +140,11 @@ export function CreateResourceModal({ open, onOpenChange, kinds, onCreate }: Cre
                             <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
                               {kind.fullKind}
                             </span>
-                            <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
-                              {capabilityLabel(kind.capability)}
-                            </span>
+                            {kind.capability && (
+                              <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-xs text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
+                                {capabilityLabel(kind.capability)}
+                              </span>
+                            )}
                           </button>
                         ))}
                       </div>

@@ -4,7 +4,7 @@ services:
   proxy:
     image: caddy
     ports:
-      - "8060:8060"
+      - "${PROXY_PORT:-8060}:8060"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
     # Network aliases so containers on the compose network (e.g. runner-spawned
@@ -88,7 +88,7 @@ services:
       start_period: 30s
 
   editor:
-    image: node:24
+    image: node:24-slim
     command: 'sh -c "corepack enable && exec pnpm run --filter @telorun/editor dev"'
     init: true
     volumes:
@@ -99,13 +99,13 @@ services:
       # browser, which cannot resolve compose service names. The Caddy proxy
       # routes `*.telo.localhost:8060` to the matching compose service, and
       # any `*.localhost` hostname resolves to 127.0.0.1 in the browser.
-      VITE_TELO_RUNNER_URL: http://runner.telo.localhost:8060
+      VITE_TELO_RUNNER_URL: http://runner.telo.localhost:${PROXY_PORT:-8060}
     depends_on:
       runner:
         condition: service_healthy
 
   hub-web:
-    image: node:24
+    image: node:24-slim
     command: 'sh -c "corepack enable && exec pnpm run --filter @telorun/hub-web dev"'
     init: true
     volumes:
@@ -117,13 +117,13 @@ services:
       # `telo.localhost:8060` to the hub API service (see Caddyfile), so the
       # registration form POSTs there cross-origin — mirroring prod (hub.telo.run
       # SPA → telo.sh API).
-      VITE_HUB_API: http://telo.localhost:8060
+      VITE_HUB_API: http://telo.localhost:${PROXY_PORT:-8060}
     depends_on:
       hub:
         condition: service_healthy
 
   pages:
-    image: node:24
+    image: node:24-slim
     command: 'sh -c "rm -rf /telo/pages/.docusaurus-docker /telo/pages/node_modules/.cache && cd pages && ./node_modules/.bin/docusaurus start --host 0.0.0.0 --port 3000 --poll 1000"'
     init: true
     user: ${UID:-1000}:${GID:-1000}
@@ -159,7 +159,7 @@ services:
       # announces per-port URLs (http://<port>-<sessionId>.run.telo.localhost:8060)
       # so the editor links to the reachable app, not the runner host. The proxy
       # routes these to telo-run-<sessionId> on the shared network (see Caddyfile).
-      RUNNER_PUBLIC_BASE_URL: http://run.telo.localhost:8060
+      RUNNER_PUBLIC_BASE_URL: http://run.telo.localhost:${PROXY_PORT:-8060}
     # No published port — the runner is reached via the Caddy proxy at
     # http://runner.telo.localhost:8060 (see Caddyfile).
     healthcheck:

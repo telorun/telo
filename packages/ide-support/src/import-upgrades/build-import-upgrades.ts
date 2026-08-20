@@ -1,4 +1,5 @@
 import {
+  TELO_SURFACE_VERSION,
   buildLineOffsets,
   foldIntegrity,
   isCanonicalIntegrity,
@@ -14,6 +15,11 @@ import {
   type Range,
 } from "@telorun/analyzer";
 import { findImportEntries, type ImportEntry } from "./find-import-entries.js";
+import {
+  selectCompatibleVersion,
+  type IncompatibilityReason,
+  type VersionCompatibilityCheck,
+} from "./version-compatibility.js";
 
 /** One version of a module, as the hub reports it.
  *
@@ -40,6 +46,23 @@ export interface ModuleVersion {
  *  `GET /module/versions` and passes the body through
  *  {@link parseModuleVersions}. */
 export type ModuleVersionLookup = (baseRef: string) => Promise<ModuleVersion[]>;
+
+/** Everything an upgrade needs from its host: what versions exist, and whether
+ *  this runtime can host one.
+ *
+ *  `isCompatible` is required rather than optional so no host can quietly skip
+ *  the check and walk an author onto a version their telo cannot load — the gap
+ *  this package existed with. A host that genuinely cannot fetch candidate
+ *  manifests passes {@link uncheckedVersionCompatibility}, which says so
+ *  instead of pretending. */
+export interface ImportUpgradeEnvironment {
+  listVersions: ModuleVersionLookup;
+  isCompatible: VersionCompatibilityCheck;
+  /** Offer prereleases as automatic upgrade targets. Off by default, matching
+   *  `telo upgrade`: an upgrade nobody asked for must not walk a caller onto an
+   *  `-rc` build. */
+  includePrerelease?: boolean;
+}
 
 /** A source edit a host applies verbatim to upgrade an import. Ranges never
  *  overlap, within an upgrade or across a batch, so a host may apply the whole
@@ -69,6 +92,11 @@ export interface ImportUpgrade {
    *  means no pin was available for the target version — a host should say so
    *  when `wasPinned`, since the rewrite silently drops a hash the author had. */
   repinned: boolean;
+  /** A newer version that exists but this runtime cannot host, when
+   *  `latestVersion` is not the newest published. Surfacing it is not optional:
+   *  an upgrade that quietly stops short of the newest version, with no reason
+   *  given, reads as a bug in the tooling. */
+  heldBack?: { version: string; reason: IncompatibilityReason };
   /** Span of the alias key — where a per-entry affordance anchors. */
   keyRange: Range;
   /** Apply all of these to upgrade this one import. */
@@ -100,8 +128,18 @@ export interface ImportUpgradeSkip {
   latestVersion: string;
   /** Span of the alias key — where a per-entry affordance anchors. */
   keyRange: Range;
-  /** Author-facing sentence: what was not done, and what to run instead. */
-  reason: string;
+  /** Which decision this was, for a host that styles or filters them.
+   *  `incompatible` — every newer version declares a telo this runtime is not;
+   *  `stale-inline-pin` — the rewrite could not carry or drop the author's pin. */
+  code: "incompatible" | "stale-inline-pin";
+  /** Which rejection produced an `incompatible` skip, so a host can phrase its
+   *  own affordance without re-deriving one. Carried BESIDE `code` because the
+   *  code says what was not done while this says why, and the remedies differ:
+   *  updating telo cannot fix a requirement the module failed to state. Absent
+   *  for `stale-inline-pin`, which is not a compatibility decision at all. */
+  reason?: IncompatibilityReason;
+  /** Author-facing sentence: what was not done, and what to do instead. */
+  message: string;
 }
 
 export interface ImportUpgradeSet {
@@ -122,6 +160,13 @@ export interface ImportUpgradeSet {
  * re-point it — plus every entry already at the newest version that carries no
  * integrity pin, and the edits that pin it.
  *
+ * The target is the newest version this runtime can HOST, which is not always
+ * the newest one published: each candidate's declared `requires.telo` is checked
+ * newest-first, and a newer version that was held back is reported on the
+ * upgrade rather than dropped. An import whose every newer version needs a newer
+ * telo produces a `skipped` entry instead, since the alternative — offering it
+ * anyway — is a manifest that fails at the load gate.
+ *
  * Skips what carries no upgradeable version: local path imports, bare URLs,
  * untagged refs, and pins that are not SemVer (an OCI digest, a moving tag like
  * `latest`) — `parseVersionedRef` and `isNewerModuleVersion` both decline to
@@ -133,7 +178,7 @@ export interface ImportUpgradeSet {
  */
 export async function buildImportUpgrades(
   text: string,
-  listVersions: ModuleVersionLookup,
+  env: ImportUpgradeEnvironment,
   docs?: AstDocument[],
 ): Promise<ImportUpgradeSet | undefined> {
   const lineOffsets = buildLineOffsets(text);
@@ -149,7 +194,7 @@ export async function buildImportUpgrades(
   const failures: Array<{ baseRef: string; message: string }> = [];
   const known = await resolveVersions(
     [...new Set(candidates.map((c) => c.ref.baseRef))],
-    listVersions,
+    env.listVersions,
     failures,
   );
 
@@ -160,7 +205,9 @@ export async function buildImportUpgrades(
   for (const { entry, ref } of candidates) {
     const versions = known.get(ref.baseRef);
     if (!versions) continue;
-    const newest = newestModuleVersion(versions.map((v) => v.version));
+    const newest = newestModuleVersion(versions.map((v) => v.version), {
+      includePrerelease: env.includePrerelease,
+    });
     if (!newest) continue;
 
     if (!isNewerModuleVersion(newest, ref.version)) {
@@ -169,7 +216,40 @@ export async function buildImportUpgrades(
       continue;
     }
 
-    const integrity = integrityFor(versions, newest);
+    // The target is the newest version this runtime can actually host, not
+    // simply the newest one published. An upgrade the author's telo cannot load
+    // is not an upgrade — it is a load failure they were walked into.
+    const { best, heldBack } = await selectCompatibleVersion(
+      ref.baseRef,
+      versions,
+      ref.version,
+      env.isCompatible,
+      { includePrerelease: env.includePrerelease },
+    );
+
+    // `heldBack` is non-null whenever a candidate existed, which `newest` being
+    // newer than the current version already established. Narrowed rather than
+    // defaulted: a reason nothing established is exactly what the four-verdict
+    // split exists to keep out of a message.
+    if (!best) {
+      if (!heldBack) continue;
+      skipped.push({
+        alias: entry.alias,
+        currentVersion: ref.version,
+        latestVersion: newest,
+        keyRange: entry.keyRange,
+        code: "incompatible",
+        reason: heldBack.reason,
+        message:
+          `'${entry.alias}' has newer versions (up to ${newest}), but none runs on telo ` +
+          `${TELO_SURFACE_VERSION} — ${describeReason(heldBack.reason)}. ` +
+          describeRemedy(heldBack.reason),
+      });
+      continue;
+    }
+
+    const target = best.version;
+    const integrity = integrityFor(versions, target);
     // A stale pin that can be neither replaced nor removed is the one case left
     // that has to be declined: re-pointing the source while leaving a hash for
     // the version it replaced turns the next install into a tamper error.
@@ -177,31 +257,55 @@ export async function buildImportUpgrades(
       skipped.push({
         alias: entry.alias,
         currentVersion: ref.version,
-        latestVersion: newest,
+        latestVersion: target,
         keyRange: entry.keyRange,
-        reason:
+        code: "stale-inline-pin",
+        message:
           `'${entry.alias}' carries an inline 'integrity:' that shares a line with other ` +
-          `fields, and no pin is published for ${newest}, so the stale one cannot be ` +
+          `fields, and no pin is published for ${target}, so the stale one cannot be ` +
           `removed by a line edit. Run \`telo upgrade\`.`,
       });
       continue;
     }
 
-    const newSource = withRefVersion(entry.source, newest);
+    const newSource = withRefVersion(entry.source, target);
     upgrades.push({
       alias: entry.alias,
       source: entry.source,
       currentVersion: ref.version,
-      latestVersion: newest,
+      latestVersion: target,
       newSource: foldIntegrity(newSource, integrity),
       wasPinned: ref.integrity != null,
       repinned: integrity != null,
       keyRange: entry.keyRange,
+      ...(heldBack ? { heldBack } : {}),
       edits: buildEdits(entry, newSource, integrity),
     });
   }
 
   return { importsKeyRange: block.keyRange, upgrades, pins, skipped, failures };
+}
+
+/** How a held-back version reads in a sentence, with the version itself as the
+ *  implied subject. Names the cause the check actually established.
+ *
+ *  The parameter is REQUIRED, so a caller cannot reach a sentence for a cause
+ *  nothing established — defaulting an absent reason to "requires a newer telo"
+ *  is precisely the invented verdict the four-way split exists to prevent. */
+export function describeReason(reason: IncompatibilityReason): string {
+  return reason === "unreadable"
+    ? "its declared requirement cannot be read"
+    : "it requires a newer telo";
+}
+
+/** What the author can do about it. Split from {@link describeReason} because
+ *  the two rejections have DIFFERENT remedies: an unreadable requirement is not
+ *  a version skew, so telling the author to update telo would send them after a
+ *  fix that cannot work — only the module's own author can repair it. */
+export function describeRemedy(reason: IncompatibilityReason): string {
+  return reason === "unreadable"
+    ? "Only the module's author can fix that."
+    : "Update telo to upgrade it.";
 }
 
 /** The edits that re-point an entry at `newSource` and settle its pin.

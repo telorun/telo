@@ -4,7 +4,19 @@ import {
   parseModuleVersions,
   type ImportUpgradeEdit,
   type ModuleVersionLookup,
+  type VersionCompatibilityCheck,
 } from "../src/import-upgrades/index.js";
+
+/** A runtime that can host anything. These cases are about which version an
+ *  upgrade picks and how it rewrites the YAML; compatibility filtering has its
+ *  own file. */
+const anyVersionRuns: VersionCompatibilityCheck = async () => "yes";
+
+/** The builder as these tests exercise it: version lookup varies per case, the
+ *  compatibility answer does not. */
+function build(text: string, listVersions: ModuleVersionLookup) {
+  return buildImportUpgrades(text, { listVersions, isCompatible: anyVersionRuns });
+}
 
 /** A well-formed pin: `sha256-` plus 43 base64url characters, the form
  *  `sha256Base64Url` emits. The fixtures need real ones because a pin is
@@ -73,7 +85,7 @@ describe("buildImportUpgrades", () => {
       "",
     ].join("\n");
 
-    const set = await buildImportUpgrades(text, versions);
+    const set = await build(text, versions);
 
     expect(set?.upgrades).toHaveLength(1);
     expect(set?.upgrades[0]).toMatchObject({
@@ -99,7 +111,7 @@ describe("buildImportUpgrades", () => {
       "",
     ].join("\n");
 
-    const set = await buildImportUpgrades(text, versions);
+    const set = await build(text, versions);
 
     expect(set?.upgrades[0]).toMatchObject({
       newSource: `std/console@1.0.0#${NEW_PIN}`,
@@ -125,7 +137,7 @@ describe("buildImportUpgrades", () => {
       "",
     ].join("\n");
 
-    const set = await buildImportUpgrades(text, versions);
+    const set = await build(text, versions);
     const result = applyEdits(text, set!.upgrades[0].edits);
 
     expect(set?.upgrades[0]).toMatchObject({
@@ -148,7 +160,7 @@ describe("buildImportUpgrades", () => {
       "",
     ].join("\n");
 
-    const set = await buildImportUpgrades(text, versions);
+    const set = await build(text, versions);
 
     expect(set?.skipped).toEqual([]);
     expect(applyEdits(text, set!.upgrades[0].edits)).toContain(
@@ -164,7 +176,7 @@ describe("buildImportUpgrades", () => {
       "",
     ].join("\n");
 
-    const set = await buildImportUpgrades(text, versions);
+    const set = await build(text, versions);
 
     expect(set?.upgrades).toEqual([]);
     expect(set?.pins).toHaveLength(1);
@@ -189,7 +201,7 @@ describe("buildImportUpgrades", () => {
       "",
     ].join("\n");
 
-    const set = await buildImportUpgrades(text, versions);
+    const set = await build(text, versions);
 
     expect(set?.upgrades).toEqual([]);
     expect(set?.pins).toEqual([]);
@@ -203,7 +215,7 @@ describe("buildImportUpgrades", () => {
       "",
     ].join("\n");
 
-    const set = await buildImportUpgrades(text, async () => [
+    const set = await build(text, async () => [
       { version: "latest", integrity: pin("Zz9_") },
       { version: "2.1.0", integrity: TIMER_NEW_PIN },
     ]);
@@ -222,7 +234,7 @@ describe("buildImportUpgrades", () => {
 
     // A hostile or buggy hub. Anything spliced into the source scalar verbatim
     // would corrupt the manifest, which no install-time verification can catch.
-    const set = await buildImportUpgrades(text, async () => [
+    const set = await build(text, async () => [
       { version: "1.0.0", integrity: 'sha256-x"\n  Evil: ../pwned' },
       { version: "0.9.0", integrity: "sha256-short" },
     ]);
@@ -246,7 +258,7 @@ describe("buildImportUpgrades", () => {
       "",
     ].join("\n");
 
-    const set = await buildImportUpgrades(text, versions);
+    const set = await build(text, versions);
 
     expect(set?.upgrades).toEqual([]);
     expect(set?.pins).toEqual([]);
@@ -256,7 +268,7 @@ describe("buildImportUpgrades", () => {
   it("never offers a prerelease as the upgrade target", async () => {
     const text = ["kind: Telo.Application", "imports:", "  P: std/pre@1.0.0", ""].join("\n");
 
-    const set = await buildImportUpgrades(text, async () => [
+    const set = await build(text, async () => [
       { version: "1.1.0-rc.1" },
       { version: "1.0.0" },
     ]);
@@ -267,7 +279,7 @@ describe("buildImportUpgrades", () => {
   it("supersedes a prerelease pin with the newest release", async () => {
     const text = ["kind: Telo.Application", "imports:", "  P: std/pre@1.0.0-rc.1", ""].join("\n");
 
-    const set = await buildImportUpgrades(text, async () => [
+    const set = await build(text, async () => [
       { version: "1.0.0" },
       { version: "1.0.0-rc.1" },
     ]);
@@ -284,7 +296,7 @@ describe("buildImportUpgrades", () => {
       "",
     ].join("\n");
 
-    const set = await buildImportUpgrades(text, versions);
+    const set = await build(text, versions);
 
     expect(set?.upgrades.map((u) => u.alias)).toEqual(["Console"]);
     expect(set?.failures).toEqual([
@@ -297,7 +309,7 @@ describe("buildImportUpgrades", () => {
 
     // `latest` sorts first from the hub but cannot be ordered; the newest
     // comparable release still has to win.
-    const set = await buildImportUpgrades(text, async () => [
+    const set = await build(text, async () => [
       { version: "latest" },
       { version: "0.9.0" },
       { version: "1.0.0" },
@@ -307,9 +319,9 @@ describe("buildImportUpgrades", () => {
   });
 
   it("returns undefined for a file with no module doc or no imports", async () => {
-    expect(await buildImportUpgrades("kind: Run.Sequence\n", versions)).toBeUndefined();
+    expect(await build("kind: Run.Sequence\n", versions)).toBeUndefined();
     expect(
-      await buildImportUpgrades("kind: Telo.Application\nmetadata:\n  name: App\n", versions),
+      await build("kind: Telo.Application\nmetadata:\n  name: App\n", versions),
     ).toBeUndefined();
   });
 
@@ -323,7 +335,7 @@ describe("buildImportUpgrades", () => {
         "",
       ].join("\n");
 
-      const set = await buildImportUpgrades(text, unpinnedVersions);
+      const set = await build(text, unpinnedVersions);
 
       expect(set?.upgrades[0]).toMatchObject({
         newSource: "std/console@1.0.0",
@@ -341,7 +353,7 @@ describe("buildImportUpgrades", () => {
         "",
       ].join("\n");
 
-      const set = await buildImportUpgrades(text, unpinnedVersions);
+      const set = await build(text, unpinnedVersions);
 
       expect(set?.upgrades[0]).toMatchObject({ wasPinned: true, repinned: false });
       expect(applyEdits(text, set!.upgrades[0].edits)).toContain(
@@ -361,7 +373,7 @@ describe("buildImportUpgrades", () => {
         "",
       ].join("\n");
 
-      const set = await buildImportUpgrades(text, unpinnedVersions);
+      const set = await build(text, unpinnedVersions);
       const result = applyEdits(text, set!.upgrades[0].edits);
 
       expect(set?.upgrades[0]).toMatchObject({ wasPinned: true, repinned: false });
@@ -378,7 +390,7 @@ describe("buildImportUpgrades", () => {
         "",
       ].join("\n");
 
-      const set = await buildImportUpgrades(text, unpinnedVersions);
+      const set = await build(text, unpinnedVersions);
 
       expect(set?.upgrades).toEqual([]);
       expect(set?.skipped[0]).toMatchObject({

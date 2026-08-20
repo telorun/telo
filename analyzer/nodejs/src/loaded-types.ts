@@ -70,9 +70,11 @@ export interface ImportEdge {
    *  this (minus its version), since it names the module's location
    *  independently of what the module declares about itself. */
   targetRef: string;
-  /** Target library's `metadata.name`, or `null` when the target had no
-   *  Telo.Library doc (an error case captured in `LoadedGraph.errors`). */
-  targetModuleName: string | null;
+  /** Target library's `metadata.name`. Never absent: an import whose target
+   *  names no library identity registers no edge at all and is reported in
+   *  `LoadedGraph.errors`, so an edge that exists is one every consumer can
+   *  resolve a kind through. */
+  targetModuleName: string;
   /** DEPRECATED. Target library's `metadata.namespace`, or `null` when it
    *  declares none. Feeds only the legacy `<namespace>/<module>#<Kind>` form
    *  of `x-telo-ref`; nothing else reads it. */
@@ -137,5 +139,12 @@ export interface GraphLoadError {
   alias?: string;
   /** Line of the `Telo.Import` doc in `fromSource`, for position fallback. */
   sourceLine?: number;
+  /** Why this import is unusable. `"unresolved"` (the default) means the target
+   *  was never obtained — an unreachable or unrecognizable source, which the
+   *  author fixes in their own file. `"unusable-target"` means it WAS obtained
+   *  and is not an importable library, which is a defect in the target module.
+   *  Kept apart because the two call for different actions; consumers phrase
+   *  them differently rather than asserting one cause for both. */
+  reason?: "unresolved" | "unusable-target";
   error: Error;
 }

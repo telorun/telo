@@ -104,16 +104,66 @@ describe("Loader.loadGraph — error sourceLine", () => {
     });
     const loader = new Loader([source]);
 
-    // assertImportTargetIsLibrary throws synchronously on Application targets.
-    // The thrown error carries `sourceLine` for hosts that pin diagnostics.
-    let caught: unknown;
-    try {
-      await loader.loadGraph("/ws/telo.yaml");
-    } catch (e) {
-      caught = e;
-    }
-    expect(caught, "expected loadGraph to throw on Application import target").toBeTruthy();
+    // An application target is reported like any other unusable import — an
+    // error against that import, not an aborted load — so the rest of the graph
+    // still analyzes and the failure pins to the import's own line.
+    const graph = await loader.loadGraph("/ws/telo.yaml");
+
+    expect(graph.errors).toHaveLength(1);
+    const err = graph.errors[0];
+    expect(err.reason).toBe("unusable-target");
+    expect(err.alias).toBe("Other");
+    expect(err.fromSource).toBe("/ws/telo.yaml");
+    expect(err.error.message).toContain("Only Telo.Library modules may be imported");
     // Telo.Import block starts at line 5.
-    expect((caught as { sourceLine?: number }).sourceLine).toBe(5);
+    expect(err.sourceLine).toBe(5);
+    expect((err.error as { sourceLine?: number }).sourceLine).toBe(5);
+    // No edge: an unusable target contributes no alias for kinds to resolve
+    // through, which is what stops the failure resurfacing as somebody else's.
+    expect(graph.importEdges.get("/ws/telo.yaml")?.get("Other")).toBeUndefined();
+  });
+
+  it("reports an import that points back at the entry application", async () => {
+    // The entry is already visited, so a target-shape check made once per
+    // distinct module would skip this import entirely and register a nameless
+    // edge — which is how an unresolvable alias used to reach analysis.
+    const libText = [
+      "kind: Telo.Library",
+      "metadata:",
+      "  name: lib",
+      "  version: 1.0.0",
+      "---",
+      "kind: Telo.Import",
+      "metadata:",
+      "  name: Root",
+      "source: ../telo.yaml",
+      "",
+    ].join("\n");
+
+    const appText = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "  version: 1.0.0",
+      "---",
+      "kind: Telo.Import",
+      "metadata:",
+      "  name: Lib",
+      "source: ./lib",
+      "",
+    ].join("\n");
+
+    const source = inMemorySource({
+      "/ws/telo.yaml": appText,
+      "/ws/lib/telo.yaml": libText,
+    });
+    const graph = await new Loader([source]).loadGraph("/ws/telo.yaml");
+
+    expect(graph.errors).toHaveLength(1);
+    expect(graph.errors[0].alias).toBe("Root");
+    expect(graph.errors[0].fromSource).toBe("/ws/lib/telo.yaml");
+    expect(graph.errors[0].reason).toBe("unusable-target");
+    // The valid import in the same graph is unaffected.
+    expect(graph.importEdges.get("/ws/telo.yaml")?.get("Lib")?.targetModuleName).toBe("lib");
   });
 });

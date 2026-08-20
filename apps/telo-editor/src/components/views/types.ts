@@ -52,6 +52,10 @@ export interface ViewProps {
    *  only version source: a browser cannot enumerate OCI tags itself. Undefined
    *  resolves to the public default. */
   hubUrl: string | undefined;
+  /** Static manifest-cache base URL (from settings) — where the Imports view
+   *  reads a candidate version's own `telo.yaml` to find out whether this telo
+   *  can host it. Undefined resolves to the public default. */
+  manifestCacheUrl: string | undefined;
   /** Adds an import to the active module (Imports view). */
   onAddImport: (source: string, alias: string) => Promise<void>;
   /** Workspace-local libraries the active module can import directly, offered

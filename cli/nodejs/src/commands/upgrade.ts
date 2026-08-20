@@ -1,10 +1,10 @@
 import {
   TELO_SURFACE_VERSION,
   applyTextEdits,
-  evaluateRequires,
   isLocalPathSource,
-  readRequires,
+  manifestCompatibility,
   splitIntegrity,
+  type ModuleCompatibility,
 } from "@telorun/analyzer";
 import { defaultTransportRegistry, nodeHostVersions, type Transport } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
@@ -38,30 +38,19 @@ export function pickLatest(versions: string[], includePrerelease: boolean): stri
   return [...eligible].sort(semver.rcompare)[0];
 }
 
-/**
- * How a candidate version answered the compatibility question.
- *
- * `unknown` — the manifest could not be read — is never treated as
- * incompatible, since an unreachable registry must not silently freeze a
- * consumer's imports.
- *
- * The two rejecting answers are kept APART because they call for different
- * actions and the user is told which one applies: `too-new` is fixed by
- * upgrading telo, `unreadable` cannot be fixed by the consumer at all. Collapsing
- * them into one `"no"` and then printing "requires a newer telo" would assert a
- * cause the check never established, and point at a runtime upgrade that will not
- * help.
- */
-type Compatibility = "yes" | "too-new" | "unreadable" | "unknown";
+/** How a candidate version answered the compatibility question. The verdict
+ *  vocabulary and the rule behind it are the analyzer's, shared with every IDE
+ *  that filters upgrade candidates — see `manifestCompatibility`. */
+type Compatibility = ModuleCompatibility;
 
 /**
  * Read a candidate version's declared `requires.telo` and decide whether this
  * runtime can host it.
  *
  * The manifest is its own artifact layer, so this costs a `telo.yaml` fetch and
- * never pulls a payload. A module that declares nothing is compatible — the
- * bootstrap rule, permanent for everything published before the mechanism
- * existed.
+ * never pulls a payload. Unlike an IDE, the CLI runs on the host that will
+ * execute the manifest, so it reports its own host versions and the host axes
+ * are checked too.
  */
 async function versionCompatibility(
   transport: Transport,
@@ -74,22 +63,7 @@ async function versionCompatibility(
   } catch {
     return "unknown";
   }
-  try {
-    const docs = parseAllDocuments(text, { customTags: defaultCustomTags });
-    const moduleDoc = findModuleDoc(docs);
-    if (!moduleDoc) return "unknown";
-    const { block, issues } = readRequires(moduleDoc.toJS() as Record<string, unknown>);
-    // A malformed declaration is not a licence to install: the module claims a
-    // requirement it failed to state, and guessing which way it pointed is how a
-    // consumer ends up on a version that cannot load.
-    // The load gate warns about this same manifest, so the two halves agree.
-    if (issues.some((i) => !i.unknownAxis)) return "unreadable";
-    return evaluateRequires(block, TELO_SURFACE_VERSION, nodeHostVersions()).satisfied
-      ? "yes"
-      : "too-new";
-  } catch {
-    return "unknown";
-  }
+  return manifestCompatibility(text, TELO_SURFACE_VERSION, nodeHostVersions());
 }
 
 interface Selection {

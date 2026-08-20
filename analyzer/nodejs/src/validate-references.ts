@@ -421,11 +421,17 @@ export function validateReferences(
 
           const targetKind = ownerScope.resolveKind(anchorName);
           if (!targetKind) {
+            // Names the ALIAS, not the whole kind path: the alias is what an
+            // author declares, and the usual cause is the import that binds it
+            // having failed — which is reported on its own line.
+            const aliasName = anchorName.slice(0, anchorName.indexOf("."));
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               code: "SCHEMA_FROM_MISSING_PATH",
               source: SOURCE,
-              message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → cannot resolve alias '${anchorName}'`,
+              message:
+                `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → cannot resolve alias ` +
+                `'${aliasName}' (in '${anchorName}'). Check the import that declares it.`,
               data: { resource: resourceData, filePath, path: fieldPath },
             });
             return;

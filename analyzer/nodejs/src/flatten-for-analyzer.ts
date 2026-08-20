@@ -204,7 +204,7 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
     const alias = m.metadata?.name as string | undefined;
     if (!owner || !alias) continue;
     const edge = graph.importEdges.get(owner)?.get(alias);
-    if (!edge?.targetModuleName) continue;
+    if (!edge) continue;
 
     const newMetadata: Record<string, unknown> = {
       ...m.metadata,
