@@ -120,8 +120,20 @@ describe("nested inline resource validation", () => {
     // `Console.ReadLine` must resolve through `aliases.resolveKind` to
     // `console.ReadLine` before its config is validated.
     const app = { kind: "Telo.Application", metadata: { name: "app" }, targets: [] };
-    const runImport = { kind: "Telo.Import", metadata: { name: "Run" }, source: "run" };
-    const consoleImport = { kind: "Telo.Import", metadata: { name: "Console" }, source: "console" };
+    // `resolvedModuleName` is what the loader stamps once it has read the
+    // target's Telo.Library doc. Stated explicitly here because nothing ever
+    // derives a module name from the source string — an import with no resolved
+    // identity registers no alias at all.
+    const runImport = {
+      kind: "Telo.Import",
+      metadata: { name: "Run", resolvedModuleName: "run" },
+      source: "run",
+    };
+    const consoleImport = {
+      kind: "Telo.Import",
+      metadata: { name: "Console", resolvedModuleName: "console" },
+      source: "console",
+    };
     const seq = {
       kind: "Run.Sequence",
       metadata: { name: "Loop" },

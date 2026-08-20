@@ -195,6 +195,47 @@ describe("x-telo-schema-from with import-aliased absolute paths", () => {
     expect(missing!.message).toContain("Bogus.Kind");
   });
 
+  it("blames the unresolved import, not the dependency, when the import has no resolved identity", () => {
+    // The loader stamps `resolvedModuleName` once it has read the target's
+    // library doc; an import that never resolved carries none. Nothing derives
+    // a name from the source string, so the alias is simply unregistered —
+    // where a guess would have produced a canonical kind no registry can hold
+    // ("http-dispatch@0.11.1#sha256-….Outcomes") and reported the DEPENDENCY as
+    // schemaless, which is a defect in a module the author cannot fix.
+    const unresolvedImport: ResourceManifest = {
+      kind: "Telo.Import",
+      metadata: { name: "HttpDispatch", module: "consumer" },
+      source: "oci://ghcr.io/telorun/http-dispatch@0.11.1",
+    } as unknown as ResourceManifest;
+
+    const resource: ResourceManifest = {
+      kind: "Cons.Endpoint",
+      metadata: { name: "Ep" },
+      returns: [{ status: 200, mode: "buffer" }],
+    } as unknown as ResourceManifest;
+
+    const diagnostics = new StaticAnalyzer().analyze(
+      withSyntheticPositions([
+        userApp,
+        userImportOfConsumer,
+        consumerLibrary,
+        unresolvedImport,
+        consumerDef,
+        carrierLibrary,
+        carrierDef,
+        resource,
+      ]),
+    );
+
+    const missing = diagnostics.find((d) => d.code === "SCHEMA_FROM_MISSING_PATH");
+    expect(missing).toBeDefined();
+    expect(missing!.message).toContain("cannot resolve alias 'HttpDispatch'");
+    expect(missing!.message).toContain("Check the import that declares it");
+    expect(missing!.message).not.toContain("has no schema");
+    // Nothing anywhere names a module derived from the ref.
+    expect(diagnostics.some((d) => d.message.includes("http-dispatch@0.11.1"))).toBe(false);
+  });
+
   it("normalizes inline resources nested behind an x-telo-schema-from path", () => {
     // The encoder lives inside HttpDispatch.Outcomes/$defs/Returns and the
     // consumer never spells the slot out in its own schema. Without schema-from

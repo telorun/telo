@@ -56,7 +56,9 @@ Applying an upgrade rewrites the source ref and re-pins it to the new version's 
 
 Where the hub has no pin for the target version, the upgrade still applies and the stale pin is removed — it hashes the `telo.yaml` of the version being replaced — with a notification saying so. Run `telo upgrade` to re-pin from the origin.
 
-Version lookups are memoized so lens resolution stays off the keystroke path. Run **Telo: Check Imports for Updates** to drop the memo and re-check. Hub failures go to the `Telo` output channel.
+A lens only ever offers a version this Telo can run. Each candidate's own `telo.yaml` is read from the manifest cache (`telo.manifestCacheUrl`) and its declared [`requires.telo`](https://telo.run/extend/declaring-runtime-requirements) range checked, newest-first, so an upgrade stops at the newest hostable version instead of walking you into a manifest the load gate rejects. When a newer version was held back the lens says so (`↑ 0.9.0 → 1.0.0 ⚠`, with the reason in its tooltip); when nothing newer can run, the entry shows `⚠ … · update telo to upgrade` rather than silently reading as up to date. A candidate that cannot be read is never treated as incompatible — an unreachable cache must not freeze your imports.
+
+Version lookups and compatibility answers are memoized so lens resolution stays off the keystroke path. Run **Telo: Check Imports for Updates** to drop the memo and re-check. Hub failures go to the `Telo` output channel.
 
 ### Syntax highlighting
 

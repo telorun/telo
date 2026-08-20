@@ -133,6 +133,8 @@ export type {
   RequiresIssue,
   RequiresVerdict,
 } from "./requires-block.js";
+export { manifestCompatibility } from "./module-compatibility.js";
+export type { ModuleCompatibility } from "./module-compatibility.js";
 export { TELO_SURFACE_VERSION } from "./telo-version.js";
 export { validateRequires } from "./validate-requires.js";
 export type { ValidateRequiresOptions } from "./validate-requires.js";

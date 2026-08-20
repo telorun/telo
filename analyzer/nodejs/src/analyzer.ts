@@ -1273,14 +1273,18 @@ export class StaticAnalyzer {
           }
           seen.add(alias);
         }
-        if (alias && source) {
-          const targetModule =
-            resolvedModuleName ?? source.split("/").filter(Boolean).pop() ?? source;
+        // An import whose target identity was never established registers NO
+        // alias. The name is never guessed from the source string: a guess that
+        // is usually right is what turned "this import did not resolve" into an
+        // assertion that a published dependency was malformed, naming a module
+        // no registry could ever hold. With no alias, every use degrades to
+        // "cannot resolve alias '<X>'" — which points at the import the author
+        // has to fix, and which the loader has already reported on its own line.
+        if (alias && source && resolvedModuleName) {
+          const targetModule = resolvedModuleName;
           // Module identity is registered globally so x-telo-ref resolution sees
           // transitively-imported modules regardless of which scope brought them in.
-          if (resolvedModuleName) {
-            defs.registerModuleIdentity(resolvedNamespace ?? null, resolvedModuleName);
-          }
+          defs.registerModuleIdentity(resolvedNamespace ?? null, resolvedModuleName);
           // `metadata.reExportedKinds` (stamped by flattenForAnalyzer / the editor projection)
           // maps an exported suffix to the true owning module's canonical kind for kinds this
           // import transitively re-exports (`exports.kinds: [Alias.Kind]`).

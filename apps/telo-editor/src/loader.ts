@@ -85,6 +85,7 @@ export {
   getImportableLibraries,
   hasApplicationImporter,
   isWorkspaceModule,
+  resolveCapability,
   resolveContract,
 } from "./loader/queries";
 export type { ImportableLibrary } from "./loader/queries";

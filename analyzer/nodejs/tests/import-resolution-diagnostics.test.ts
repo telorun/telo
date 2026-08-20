@@ -87,4 +87,46 @@ describe("importResolutionDiagnostics", () => {
     // detail may still name the resolved path — that's the real cause).
     expect(diags[0].message).toContain("import 'Lib' → './nope'");
   });
+
+  it("codes a target that is not an importable library as INVALID_IMPORT_TARGET", async () => {
+    const loader = new Loader([
+      inMemorySource({
+        "/ws/telo.yaml": appWithImport("Other", "./other"),
+        "/ws/other/telo.yaml": [
+          "kind: Telo.Application",
+          "metadata:",
+          "  name: other",
+          "  version: 1.0.0",
+          "",
+        ].join("\n"),
+      }),
+    ]);
+    const graph = await loader.loadGraph("/ws/telo.yaml");
+
+    const diags = importResolutionDiagnostics(graph);
+    expect(diags).toHaveLength(1);
+    // NOT "cannot resolve": the target was fetched, so telling the author to
+    // fix the ref would point at the wrong thing.
+    expect(diags[0].code).toBe("INVALID_IMPORT_TARGET");
+    expect(diags[0].message).toContain("Cannot use import 'Other'");
+    expect(diags[0].message).toContain("Only Telo.Library modules may be imported");
+    expect(diags[0].data).toMatchObject({ filePath: "/ws/telo.yaml", path: "imports.Other" });
+  });
+
+  it("reports a library that names no module, rather than letting the alias resolve to nothing", async () => {
+    const loader = new Loader([
+      inMemorySource({
+        "/ws/telo.yaml": appWithImport("Lib", "./lib"),
+        "/ws/lib/telo.yaml": ["kind: Telo.Library", "metadata:", "  version: 1.0.0", ""].join("\n"),
+      }),
+    ]);
+    const graph = await loader.loadGraph("/ws/telo.yaml");
+
+    const diags = importResolutionDiagnostics(graph);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].code).toBe("INVALID_IMPORT_TARGET");
+    expect(diags[0].message).toContain("declares no 'metadata.name'");
+    // No edge, so nothing downstream can resolve `Lib.*` to an invented module.
+    expect(graph.importEdges.get("/ws/telo.yaml")?.get("Lib")).toBeUndefined();
+  });
 });

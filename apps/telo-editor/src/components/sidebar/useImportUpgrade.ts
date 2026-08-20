@@ -1,6 +1,14 @@
 import { parseVersionedRef } from "@telorun/analyzer";
+import {
+  markVersionCompatibility,
+  noneRunnableReason,
+  type IncompatibilityReason,
+  type MarkedVersion,
+  type ModuleVersionLookup,
+  type VersionCompatibilityCheck,
+} from "@telorun/ide-support";
 import { useCallback, useRef, useState } from "react";
-import { fetchHubVersions, type ModuleVersion } from "../../hub-search";
+import type { ModuleVersion } from "../../hub-search";
 import type { ParsedImport } from "../../model";
 import { isImportPinned, upgradedImportSource } from "./import-pin";
 
@@ -8,8 +16,15 @@ export interface ImportUpgradeState {
   /** Name of the import whose versions are currently loaded, or null. */
   activeName: string | null;
   /** Versions for that import, newest first (the hub's ordering), each with the
-   *  integrity pin the hub publishes for it. */
-  versions: ModuleVersion[];
+   *  integrity pin the hub publishes for it and this runtime's verdict on it.
+   *  Every version is listed — a picker is a deliberate choice, and an author
+   *  may knowingly pin a version for a telo they are about to have — but one
+   *  this telo cannot host is marked rather than offered silently. */
+  versions: MarkedVersion[];
+  /** Why nothing in `versions` can run here, or null when something can. A list
+   *  where every row is marked explains nothing on its own, so the picker states
+   *  it outright — and the two causes call for different actions. */
+  noneRunnable: IncompatibilityReason | null;
   loading: boolean;
   /** Why the version list could not be loaded. Rendered inside the dropdown
    *  that asked for it. */
@@ -53,12 +68,14 @@ function pinDroppedMessage(count: number): string {
 }
 
 export function useImportUpgrade(
-  hubUrl: string | undefined,
+  listVersions: ModuleVersionLookup,
+  isCompatible: VersionCompatibilityCheck,
   onUpgradeImport: (name: string, newSource: string) => Promise<void>,
   onUpgradeAllImports: (updates: { name: string; newSource: string }[]) => Promise<void>,
 ): ImportUpgradeState {
   const [activeName, setActiveName] = useState<string | null>(null);
-  const [versions, setVersions] = useState<ModuleVersion[]>([]);
+  const [versions, setVersions] = useState<MarkedVersion[]>([]);
+  const [noneRunnable, setNoneRunnable] = useState<IncompatibilityReason | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -81,15 +98,21 @@ export function useImportUpgrade(
       const id = ++requestId.current;
       setActiveName(imp.name);
       setVersions([]);
+      setNoneRunnable(null);
       setError(null);
       setLoading(true);
 
       try {
         // Kept whole rather than mapped to names: the dropdown renders the
         // version, and picking one writes the pin that came with it.
-        const result = await fetchHubVersions(hubUrl, ref.baseRef);
+        const result = await listVersions(ref.baseRef);
+        // Every entry is asked, not just the newest: this list is a deliberate
+        // pick, so the rows nothing would auto-select still have to be marked.
+        // The answers are memoized per version, so a second open costs nothing.
+        const marked = await markVersionCompatibility(ref.baseRef, result, isCompatible);
         if (requestId.current !== id) return;
-        setVersions(result);
+        setVersions(marked);
+        setNoneRunnable(noneRunnableReason(marked));
         if (result.length === 0) setError("Not tracked by the hub");
       } catch (err) {
         if (requestId.current !== id) return;
@@ -98,7 +121,7 @@ export function useImportUpgrade(
         if (requestId.current === id) setLoading(false);
       }
     },
-    [hubUrl],
+    [listVersions, isCompatible],
   );
 
   // Both apply paths share one wrapper so neither can lose an error: the
@@ -152,6 +175,7 @@ export function useImportUpgrade(
   return {
     activeName,
     versions,
+    noneRunnable,
     loading,
     error,
     submitting,

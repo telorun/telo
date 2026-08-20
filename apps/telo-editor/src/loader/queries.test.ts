@@ -112,6 +112,51 @@ describe("getAvailableKinds", () => {
     expect(kinds.find((k) => k.fullKind === "RecordStream.Sink")?.contract).toBeUndefined();
   });
 
+  it("inherits the capability an implementation kind omits, across library boundaries", () => {
+    const cache = library("/ws/cache/telo.yaml", "cache", {
+      resources: [
+        { kind: "Telo.Abstract", name: "Store", fields: { capability: "Telo.Provider" } },
+      ],
+    });
+    // Omitting `capability:` to inherit the ancestor's is the sanctioned
+    // spelling, so reading the field alone leaves this kind with none.
+    const redis = library("/ws/cache-redis/telo.yaml", "cache-redis", {
+      imports: [{ name: "Upstream", resolvedPath: "/ws/cache/telo.yaml" }],
+      resources: [definition("Store", { extends: "Upstream.Store" })],
+    });
+
+    const { workspace, manifest } = consumer([cache, redis]);
+    const kinds = getAvailableKinds(workspace, manifest);
+
+    expect(kinds.find((k) => k.fullKind === "CacheRedis.Store")?.capability).toBe("Telo.Provider");
+  });
+
+  it("leaves the capability empty when the chain leaves the workspace", () => {
+    const stream = library("/ws/record-stream/telo.yaml", "record-stream", {
+      resources: [definition("Sink", { extends: "Telo.LogSink" })],
+    });
+
+    const { workspace, manifest } = consumer([stream]);
+    const kinds = getAvailableKinds(workspace, manifest);
+
+    expect(kinds.find((k) => k.fullKind === "RecordStream.Sink")?.capability).toBe("");
+  });
+
+  it("terminates on an `extends` cycle", () => {
+    const loop = library("/ws/loop/telo.yaml", "loop", {
+      resources: [
+        definition("A", { extends: "Self.B" }),
+        definition("B", { extends: "Self.A" }),
+      ],
+    });
+
+    const { workspace, manifest } = consumer([loop]);
+
+    expect(getAvailableKinds(workspace, manifest).find((k) => k.kindName === "A")?.capability).toBe(
+      "",
+    );
+  });
+
   it("falls back to the module's categories, and lets a kind override them", () => {
     const run = library("/ws/run/telo.yaml", "run", {
       categories: ["compute"],

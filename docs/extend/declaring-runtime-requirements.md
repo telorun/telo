@@ -26,6 +26,14 @@ runtime cannot read, and when you reach one anyway — a hand-written pin, a ref
 from the hub — you are told exactly that, instead of meeting a schema error inside a
 module you do not own.
 
+The same rule drives every upgrade affordance in an IDE: the Telo editor's Imports view
+and the VS Code import lenses read each candidate version's own `telo.yaml`, newest
+first, and offer the newest one your Telo can host. A newer version that was held back
+is named along with the reason, so a pin never becomes a silent ceiling; a version list
+offered for a deliberate pick still shows every version, marking the ones that need a
+newer Telo rather than hiding them. A candidate that cannot be read or reached is never
+treated as incompatible.
+
 ## The grammar
 
 Each axis is a semver range, and **every bound must be testable**.
@@ -69,7 +77,9 @@ kernel rather than the Node.js runtime. Position disambiguates where no word can
 
 The tiers also differ in how they are established: `telo` is verified by running the
 CLI, while a host axis is asserted by you and compared against the version the running
-host reports. The editor checks neither host axis, because it is not the host.
+host reports. An IDE checks neither host axis, because it is not the host — it speaks
+for the Telo surface and nothing else, and a host requirement it cannot judge still
+surfaces at the load gate when the manifest actually runs.
 
 `telo` is always checked first. That is what keeps the block extensible: a module using
 an axis introduced in Telo 0.85 also requires `telo: ">=0.85.0"`, so an older runtime

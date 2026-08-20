@@ -1,5 +1,13 @@
+import { parseVersionedRef, withRefVersion } from "@telorun/analyzer";
+import {
+  describeReason,
+  selectCompatibleVersion,
+  type IncompatibilityReason,
+  type ModuleVersionLookup,
+  type VersionCompatibilityCheck,
+} from "@telorun/ide-support";
 import { useEffect, useRef, useState } from "react";
-import { Check, FolderOpen, Loader2, Search } from "lucide-react";
+import { Check, FolderOpen, Loader2, Search, TriangleAlert } from "lucide-react";
 import { type ImportableLibrary, toPascalCase } from "../loader";
 import { type HubModuleHit, importSourceForHit, searchHubModules } from "../hub-search";
 import { Button } from "./ui/button";
@@ -21,9 +29,31 @@ interface AddImportDialogProps {
   /** Aliases already bound in the active module — an add must not reuse one
    *  (a duplicate alias would silently repoint the existing import). */
   existingAliases: string[];
+  /** Version enumeration, shared with the rest of the Imports view so one
+   *  module is looked up once however many affordances ask about it. */
+  listVersions: ModuleVersionLookup;
+  /** Whether this telo can host a given version — shared with the rest of the
+   *  Imports view so its per-version answers are asked once. An import added at
+   *  a version this runtime cannot load is a manifest that fails at the load
+   *  gate seconds later, so the choice is made here rather than discovered
+   *  there. */
+  isCompatible: VersionCompatibilityCheck;
   /** Adds the import — resolves once persisted, rejects with a surfaced message. */
   onSubmit: (source: string, alias: string) => Promise<void>;
 }
+
+/** What the dialog resolved the selected candidate's version to.
+ *
+ *  `downgraded` — the newest published version needs a newer telo, so an older
+ *  one is offered instead. `none` — nothing published runs here; the newest is
+ *  still offered, because refusing to add anything would leave the author with
+ *  no way to express the dependency at all, and the load gate reports it
+ *  loudly. Either way the dialog says so before the click. */
+type VersionResolution =
+  | { status: "checking" }
+  | { status: "ok" }
+  | { status: "downgraded"; version: string; held: string; reason: IncompatibilityReason }
+  | { status: "none"; held: string; reason: IncompatibilityReason };
 
 /** Suggests an unused alias by suffixing `2`, `3`, … when `base` is taken. */
 function dedupeAlias(base: string, used: string[]): string {
@@ -36,6 +66,12 @@ function dedupeAlias(base: string, used: string[]): string {
 /** A selectable import target — either a workspace library or a hub hit,
  *  normalized to the source string and a suggested alias. */
 interface Candidate {
+  /** Stable identity of the offered module, independent of which version the
+   *  dialog settles on. Selection is tracked by this, not by `source`, which
+   *  moves when the version check re-points the candidate at an older
+   *  release — comparing sources there would silently drop the highlight off
+   *  the row the user just clicked. */
+  key: string;
   source: string;
   alias: string;
   label: string;
@@ -52,11 +88,12 @@ function deriveAlias(ref: string): string {
 }
 
 function candidateForLibrary(lib: ImportableLibrary): Candidate {
-  return { source: lib.source, alias: lib.alias, label: lib.name };
+  return { key: lib.source, source: lib.source, alias: lib.alias, label: lib.name };
 }
 
 function candidateForHit(hit: HubModuleHit): Candidate {
   return {
+    key: hit.module.ref,
     source: importSourceForHit(hit),
     alias: deriveAlias(hit.module.ref),
     label: hit.module.ref,
@@ -69,6 +106,8 @@ export function AddImportDialog({
   hubUrl,
   libraries,
   existingAliases,
+  listVersions,
+  isCompatible,
   onSubmit,
 }: AddImportDialogProps) {
   const [query, setQuery] = useState("");
@@ -80,7 +119,11 @@ export function AddImportDialog({
   const [aliasEdited, setAliasEdited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resolution, setResolution] = useState<VersionResolution>({ status: "ok" });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Only the newest selection may paint its resolution — selecting a second
+  // candidate while the first is still resolving must not adopt its answer.
+  const resolveId = useRef(0);
 
   // Debounced hub search; a fresh keystroke aborts the in-flight request so a
   // slow earlier response can't overwrite a newer one.
@@ -125,6 +168,7 @@ export function AddImportDialog({
     setAlias("");
     setAliasEdited(false);
     setError(null);
+    setResolution({ status: "ok" });
     setSearchError(null);
     setSubmitting(false);
     setSearching(false);
@@ -141,6 +185,55 @@ export function AddImportDialog({
     // Suggest an alias that doesn't collide with an existing import, so the
     // default never silently clobbers one (e.g. a second `Console` → `Console2`).
     if (!aliasEdited) setAlias(dedupeAlias(candidate.alias, existingAliases));
+    void resolveVersion(candidate);
+  }
+
+  /** Re-points a versioned candidate at the newest version this telo can host.
+   *  A workspace library (a path, no version) resolves to itself. */
+  async function resolveVersion(candidate: Candidate) {
+    const id = ++resolveId.current;
+    const ref = parseVersionedRef(candidate.source);
+    if (!ref) {
+      setResolution({ status: "ok" });
+      return;
+    }
+    setResolution({ status: "checking" });
+    try {
+      const versions = await listVersions(ref.baseRef);
+      const { best, heldBack } = await selectCompatibleVersion(
+        ref.baseRef,
+        versions,
+        null,
+        isCompatible,
+      );
+      if (resolveId.current !== id) return;
+      if (!best) {
+        // Nothing published runs here. The newest is still what gets added —
+        // refusing outright would leave the author unable to express the
+        // dependency at all — but the dialog says so before the click.
+        setResolution(
+          heldBack
+            ? { status: "none", held: heldBack.version, reason: heldBack.reason }
+            : { status: "ok" },
+        );
+        return;
+      }
+      setSelected({ ...candidate, source: withRefVersion(candidate.source, best.version) });
+      setResolution(
+        heldBack
+          ? {
+              status: "downgraded",
+              version: best.version,
+              held: heldBack.version,
+              reason: heldBack.reason,
+            }
+          : { status: "ok" },
+      );
+    } catch {
+      // An unreachable hub must not block adding an import: the candidate keeps
+      // the version the search reported, and the load gate still checks it.
+      if (resolveId.current === id) setResolution({ status: "ok" });
+    }
   }
 
   async function submit() {
@@ -200,7 +293,7 @@ export function AddImportDialog({
                   <FolderOpen className="size-3" /> This workspace
                 </div>
                 {localMatches.map((lib) => {
-                  const active = selected?.source === lib.source;
+                  const active = selected?.key === lib.source;
                   return (
                     <button
                       key={lib.filePath}
@@ -248,7 +341,7 @@ export function AddImportDialog({
             )}
             {hits.map((hit) => {
               const candidate = candidateForHit(hit);
-              const active = selected?.source === candidate.source;
+              const active = selected?.key === candidate.key;
               return (
                 <button
                   key={hit.module.ref}
@@ -318,6 +411,27 @@ export function AddImportDialog({
             </div>
           )}
 
+          {selected && resolution.status === "downgraded" && (
+            <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                Adding {resolution.version} — {resolution.held} is newer but{" "}
+                {describeReason(resolution.reason)}.
+              </span>
+            </p>
+          )}
+
+          {selected && resolution.status === "none" && (
+            <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                No published version runs on this telo ({resolution.held} is the newest and{" "}
+                {describeReason(resolution.reason)}). Adding it anyway will not load until telo is
+                updated.
+              </span>
+            </p>
+          )}
+
           {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
 
           <div className="flex justify-end gap-2">
@@ -332,9 +446,11 @@ export function AddImportDialog({
             <Button
               size="sm"
               onClick={() => void submit()}
-              disabled={!selected || !alias.trim() || submitting}
+              // Held while the version resolves: clicking early would write the
+              // version the search reported rather than the one that runs here.
+              disabled={!selected || !alias.trim() || submitting || resolution.status === "checking"}
             >
-              {submitting ? "Adding…" : "Add import"}
+              {submitting ? "Adding…" : resolution.status === "checking" ? "Checking…" : "Add import"}
             </Button>
           </div>
         </div>

@@ -97,6 +97,11 @@
           "type": "string",
           "default": "https://telo.sh",
           "description": "Base URL of the Telo hub used for federated import-source autocomplete (ref search and version lists)."
+        },
+        "telo.manifestCacheUrl": {
+          "type": "string",
+          "default": "https://manifests.telo.sh",
+          "description": "Base URL of the static manifest cache used to read a candidate version's telo.yaml when checking whether an import upgrade can run on this telo. Point at a self-hosted hub's cache to check privately published modules."
         }
       }
     }

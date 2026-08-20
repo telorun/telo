@@ -57,6 +57,62 @@ function collectMigrationDiagnostics(entry: LoadedModule): AnalysisDiagnostic[] 
   return diagnostics;
 }
 
+/** The identity an import target contributes to its importer, or the reason it
+ *  contributes none.
+ *
+ *  Every way an import can be unusable answers here, in one place and without
+ *  throwing: the target is an application, it carries no library document at
+ *  all, or it carries one that never names itself. A name is not decoration —
+ *  it is the kind prefix every `Alias.Kind` in the importer resolves through —
+ *  so a target that has none is as unusable as one that was never fetched, and
+ *  is reported the same way rather than left to surface later as an invented
+ *  module nobody declared. */
+type ImportTargetIdentity =
+  | { name: string; namespace: string | null }
+  | { unusable: string };
+
+function importTargetIdentity(target: LoadedModule, importSource: string): ImportTargetIdentity {
+  const library = target.owner.manifests.find((m) => m?.kind === "Telo.Library");
+  const application = target.owner.manifests.find((m) => m?.kind === "Telo.Application");
+
+  if (!library && application) {
+    return {
+      unusable:
+        `Telo.Import target '${importSource}' is a Telo.Application. ` +
+        `Only Telo.Library modules may be imported. Applications are run directly, not imported. ` +
+        `Point this import at a library, or drop it and run that application on its own.`,
+    };
+  }
+
+  if (!library) {
+    const kinds = target.owner.manifests
+      .map((m) => m?.kind)
+      .filter((k): k is string => typeof k === "string");
+    const detail = kinds.length
+      ? `Fetched ${target.owner.manifests.length} document(s) with kinds [${kinds.join(", ")}].`
+      : `Fetched manifest contained no recognizable Telo documents — check that the source ` +
+        `serves a Telo.Library manifest and not an upstream error page.`;
+    return {
+      unusable:
+        `Telo.Import target '${importSource}' did not resolve to a Telo.Library. ` +
+        `Fetched from: ${target.owner.source}. ${detail}`,
+    };
+  }
+
+  const name = library.metadata?.name;
+  if (typeof name !== "string" || name === "") {
+    return {
+      unusable:
+        `Telo.Import target '${importSource}' resolved to a Telo.Library that declares no ` +
+        `'metadata.name'. Fetched from: ${target.owner.source}. A library's name is the kind ` +
+        `prefix its importers reference, so it cannot be imported until the target declares one.`,
+    };
+  }
+
+  const namespace = (library.metadata as { namespace?: string | null } | undefined)?.namespace;
+  return { name, namespace: typeof namespace === "string" ? namespace : null };
+}
+
 const SYSTEM_KINDS = new Set([
   "Telo.Application",
   "Telo.Library",
@@ -320,10 +376,10 @@ export class Loader {
           // Resolve the file we'll fetch through the source chain to get the
           // canonical `source` URL — same identity used as the modules-map key.
           let targetCanonical: string;
-          let targetModule: LoadedModule | undefined;
+          let targetModule: LoadedModule;
           if (modules.has(resolvedTarget)) {
             targetCanonical = resolvedTarget;
-            targetModule = modules.get(resolvedTarget);
+            targetModule = modules.get(resolvedTarget)!;
           } else {
             try {
               const loaded = await this.loadModule(resolvedTarget, options);
@@ -332,7 +388,7 @@ export class Loader {
                 modules.set(targetCanonical, loaded);
                 targetModule = loaded;
               } else {
-                targetModule = modules.get(targetCanonical);
+                targetModule = modules.get(targetCanonical)!;
               }
             } catch (err) {
               const e = err instanceof Error ? err : new Error(String(err));
@@ -349,32 +405,42 @@ export class Loader {
             }
           }
 
-          // Resolve target identity from its Telo.Library doc and stamp it
-          // on the edge — flattenForAnalyzer reads from the edge directly,
-          // never re-deriving from manifest.metadata.
-          let targetModuleName: string | null = null;
-          let targetNamespace: string | null = null;
-          if (targetModule) {
-            const lib = targetModule.owner.manifests.find(
-              (d) => d?.kind === "Telo.Library",
-            );
-            const libName = lib?.metadata?.name;
-            if (typeof libName === "string") targetModuleName = libName;
-            const libNs = (lib?.metadata as { namespace?: string | null } | undefined)
-              ?.namespace;
-            if (typeof libNs === "string") targetNamespace = libNs;
+          // Resolve target identity from its Telo.Library doc and stamp it on
+          // the edge — flattenForAnalyzer reads from the edge directly, never
+          // re-deriving from manifest.metadata.
+          //
+          // Checked per IMPORT rather than per distinct target: an import
+          // pointing at a module something else already reached (the entry
+          // application above all) would otherwise skip the check entirely and
+          // register a nameless edge. An unusable target is recorded exactly
+          // like an unfetchable one — an error against this import, no edge,
+          // and the rest of the graph still loads — so no consumer has to know
+          // the difference between the two ways an import can fail.
+          const identity = importTargetIdentity(targetModule, importSource);
+          if ("unusable" in identity) {
+            const e = new Error(identity.unusable);
+            (e as { sourceLine?: number }).sourceLine = sourceLine;
+            errors.push({
+              url: targetCanonical,
+              source: importSource,
+              fromSource: file.source,
+              alias,
+              sourceLine,
+              reason: "unusable-target",
+              error: e,
+            });
+            continue;
           }
 
           aliases.set(alias, {
             targetSource: targetCanonical,
             targetRef: importSource,
-            targetModuleName,
-            targetNamespace,
+            targetModuleName: identity.name,
+            targetNamespace: identity.namespace,
           });
 
-          if (targetModule && !visited.has(targetCanonical)) {
+          if (!visited.has(targetCanonical)) {
             visited.add(targetCanonical);
-            this.assertImportTargetIsLibrary(targetModule, importSource, sourceLine);
             queue.push(targetModule);
           }
         }
@@ -441,40 +507,6 @@ export class Loader {
             `Only the owner telo.yaml may declare ${kind} resources.`,
         );
       }
-    }
-  }
-
-  private assertImportTargetIsLibrary(
-    target: LoadedModule,
-    importSource: string,
-    sourceLine: number,
-  ): void {
-    const importedLibrary = target.owner.manifests.find((m) => m?.kind === "Telo.Library");
-    const importedApplication = target.owner.manifests.find(
-      (m) => m?.kind === "Telo.Application",
-    );
-    if (importedApplication) {
-      const e = new Error(
-        `Telo.Import target '${importSource}' is a Telo.Application. ` +
-          `Only Telo.Library modules may be imported. Applications are run directly, not imported.`,
-      );
-      (e as { sourceLine?: number }).sourceLine = sourceLine;
-      throw e;
-    }
-    if (!importedLibrary) {
-      const kinds = target.owner.manifests
-        .map((m) => m?.kind)
-        .filter((k): k is string => typeof k === "string");
-      const detail = kinds.length
-        ? `Fetched ${target.owner.manifests.length} document(s) with kinds [${kinds.join(", ")}].`
-        : `Fetched manifest contained no recognizable Telo documents — check that the source ` +
-          `serves a Telo.Library manifest and not an upstream error page.`;
-      const e = new Error(
-        `Telo.Import target '${importSource}' did not resolve to a Telo.Library. ` +
-          `Fetched from: ${target.owner.source}. ${detail}`,
-      );
-      (e as { sourceLine?: number }).sourceLine = sourceLine;
-      throw e;
     }
   }
 

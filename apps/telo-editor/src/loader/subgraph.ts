@@ -125,13 +125,19 @@ export async function reconcileImports(
   const resolvedImports: ParsedImport[] = [];
   for (const imp of manifest.imports) {
     let resolvedPath = imp.resolvedPath ?? resolveDepPath(adapter, modulePath, imp.source);
+    // Why this import did not resolve, when it did not. Carried onto the import
+    // so the Imports view can say so; the workspace still opens either way,
+    // since one unreachable dependency must not stop the author editing.
+    let loadError: string | undefined;
 
     if (!modules.has(resolvedPath)) {
       try {
+        // `graph.errors` here are failures of imports declared INSIDE the
+        // sub-graph. They belong to the files that declare them, where the
+        // analysis pass reports them on their own line — repeating them against
+        // this import would attribute them to the wrong file, which is the same
+        // mistake as inventing an identity for one.
         const graph = await loader.loadGraph(resolvedPath);
-        for (const e of graph.errors) {
-          console.error(`Failed to load module ${e.url}:`, e.error);
-        }
         // Registry/remote adapters may resolve `resolvedPath` to a different URL.
         resolvedPath = graph.rootSource;
         for (const [canonical, lm] of graph.modules) {
@@ -162,12 +168,19 @@ export async function reconcileImports(
             }
           }
         }
-      } catch {
-        // Import loading failed — leave it unresolved at the originally-resolved path.
+      } catch (err) {
+        // Non-fatal by design — the rest of the workspace still loads — but not
+        // silent: the message rides on the import so the view can show which
+        // dependency is missing and why, rather than a row that resolves to
+        // nothing for no stated reason.
+        loadError = err instanceof Error ? err.message : String(err);
       }
     }
 
-    resolvedImports.push({ ...imp, resolvedPath });
+    // Written unconditionally: this list is read back on the next reconcile, so
+    // spreading `imp` and only setting the key on failure would carry a stale
+    // error past the load that fixed it.
+    resolvedImports.push({ ...imp, resolvedPath, loadError });
     deps.add(resolvedPath);
 
     if (!importedBy.has(resolvedPath)) importedBy.set(resolvedPath, new Set());

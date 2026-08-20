@@ -1529,6 +1529,7 @@ export function Editor() {
                       onWriteRef: handleWriteRef,
                       onCreateResource: () => setCreateResourceOpen(true),
                       hubUrl: settings.hubUrl,
+                      manifestCacheUrl: settings.manifestCacheUrl,
                       onAddImport: handleAddImport,
                       importableLibraries,
                       onRemoveImport: handleRemoveImport,

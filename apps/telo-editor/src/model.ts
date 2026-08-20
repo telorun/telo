@@ -155,6 +155,14 @@ export interface ParsedImport {
    *  rather than its own `Telo.Import` document. Determines where AST
    *  write-back (add/remove/upgrade) edits — the map entry vs. a separate doc. */
   inline?: boolean;
+  /** Why loading this import's sub-graph into the workspace failed, when it
+   *  did. Recorded rather than swallowed: the workspace still opens (one
+   *  unreachable dependency must not block editing), but the Imports view says
+   *  which import is unresolved and why, instead of leaving a row that silently
+   *  resolves to nothing. Analysis reports the same failure on the import's own
+   *  line — this is the workspace half of it, and the two agree because both
+   *  come from the loader. */
+  loadError?: string;
 }
 
 export interface ParsedResource {

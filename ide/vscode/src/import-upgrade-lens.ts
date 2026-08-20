@@ -1,10 +1,15 @@
 import {
   buildImportUpgrades,
+  createVersionCompatibility,
+  describeReason,
+  moduleManifestCacheUrl,
   type ImportUpgradeEdit,
   type ImportUpgradeSet,
+  type ImportUpgradeSkip,
   type ModuleVersion,
   type ModuleVersionLookup,
   type Range as TeloRange,
+  type VersionCompatibilityCheck,
 } from "@telorun/ide-support";
 import * as vscode from "vscode";
 import { TeloAnalysisCache } from "./analysis-cache.js";
@@ -85,6 +90,42 @@ class VersionCache {
   }
 }
 
+/** Reads a candidate version's `telo.yaml` from the hub's static manifest
+ *  cache, so a lens only ever offers a version this telo can host. Not routed
+ *  through a kernel transport on purpose: the check must behave identically in
+ *  every IDE, and the cache is the one read path both this extension and the
+ *  browser-based editor can take. A ref the cache cannot address answers
+ *  `null`, which the check reads as "not known" and never as incompatible. */
+async function readCachedManifest(baseRef: string, version: string): Promise<string | null> {
+  const url = moduleManifestCacheUrl(baseRef, version, manifestCacheBaseUrl());
+  if (!url) return null;
+  const response = await fetch(url);
+  if (!response.ok) return null;
+  return await response.text();
+}
+
+function manifestCacheBaseUrl(): string | undefined {
+  const configured = vscode.workspace
+    .getConfiguration("telo")
+    .get<string>("manifestCacheUrl")
+    ?.trim();
+  return configured || undefined;
+}
+
+/** What the author can do about a skipped upgrade, short enough for a lens.
+ *
+ *  Read off the skip's own `reason` rather than its `code`: `incompatible`
+ *  covers both rejections, and only one of them is fixed by updating telo —
+ *  telling the author to do that for a requirement the module failed to state
+ *  sends them after a fix that cannot work, while the tooltip beside it says
+ *  the opposite. */
+function skipAction(skip: ImportUpgradeSkip): string {
+  if (skip.code !== "incompatible") return "run `telo upgrade`";
+  return skip.reason === "unreadable"
+    ? "its declared requirement cannot be read"
+    : "update telo to upgrade";
+}
+
 function toVscodeRange(r: TeloRange): vscode.Range {
   return new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character);
 }
@@ -95,6 +136,11 @@ function toVscodeRange(r: TeloRange): vscode.Range {
  *  that backs import-source completion. */
 export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
   private readonly versions = new VersionCache();
+  /** Memoized per module and version for the life of this provider: a
+   *  published version's declared requirement cannot change, and lenses
+   *  re-resolve on every edit. Rebuilt by `refresh()` alongside the version
+   *  cache so an explicit refresh really re-asks. */
+  private compatibility: VersionCompatibilityCheck = createVersionCompatibility(readCachedManifest);
   private readonly changed = new vscode.EventEmitter<void>();
   private readonly output: vscode.OutputChannel;
   readonly onDidChangeCodeLenses = this.changed.event;
@@ -109,6 +155,7 @@ export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
   /** Drops every memoized version list and re-resolves the visible lenses. */
   refresh(): void {
     this.versions.clear();
+    this.compatibility = createVersionCompatibility(readCachedManifest);
     this.changed.fire();
   }
 
@@ -119,17 +166,22 @@ export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
     if (set.upgrades.length === 0 && set.pins.length === 0 && set.skipped.length === 0) return [];
 
     const uri = document.uri.toString();
-    const lenses = set.upgrades.map(
-      (u) =>
-        new vscode.CodeLens(toVscodeRange(u.keyRange), {
-          title: `↑ ${u.currentVersion} → ${u.latestVersion}`,
-          tooltip: u.repinned
-            ? `Upgrade ${u.alias} to ${u.latestVersion} and re-pin its integrity hash`
-            : `Upgrade ${u.alias} to ${u.latestVersion} (the hub publishes no integrity pin for it)`,
-          command: UPGRADE_IMPORT_COMMAND,
-          arguments: [{ uri, aliases: [u.alias] } satisfies UpgradeArgs],
-        }),
-    );
+    const lenses = set.upgrades.map((u) => {
+      const pinNote = u.repinned
+        ? `Upgrade ${u.alias} to ${u.latestVersion} and re-pin its integrity hash`
+        : `Upgrade ${u.alias} to ${u.latestVersion} (the hub publishes no integrity pin for it)`;
+      // A target short of the newest published version has to say why, or the
+      // lens reads as the tooling being behind rather than the runtime.
+      const heldNote = u.heldBack
+        ? ` · ${u.heldBack.version} held back: ${describeReason(u.heldBack.reason)}`
+        : "";
+      return new vscode.CodeLens(toVscodeRange(u.keyRange), {
+        title: `↑ ${u.currentVersion} → ${u.latestVersion}${u.heldBack ? " ⚠" : ""}`,
+        tooltip: `${pinNote}${heldNote}`,
+        command: UPGRADE_IMPORT_COMMAND,
+        arguments: [{ uri, aliases: [u.alias] } satisfies UpgradeArgs],
+      });
+    });
 
     // An import at the newest version but carrying no hash. Offered separately
     // from an upgrade because it is a different edit with a different risk:
@@ -151,8 +203,8 @@ export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
     for (const skip of set.skipped) {
       lenses.push(
         new vscode.CodeLens(toVscodeRange(skip.keyRange), {
-          title: `⚠ ${skip.currentVersion} → ${skip.latestVersion} · run \`telo upgrade\``,
-          tooltip: skip.reason,
+          title: `⚠ ${skip.currentVersion} → ${skip.latestVersion} · ${skipAction(skip)}`,
+          tooltip: skip.message,
           command: "",
         }),
       );
@@ -182,7 +234,7 @@ export class TeloImportUpgradeLensProvider implements vscode.CodeLensProvider {
     const text = document.getText();
     const set = await buildImportUpgrades(
       text,
-      this.versions.lookup,
+      { listVersions: this.versions.lookup, isCompatible: this.compatibility },
       this.cache.docsFor(document.uri.fsPath, text),
     );
 

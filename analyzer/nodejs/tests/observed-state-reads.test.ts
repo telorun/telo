@@ -259,7 +259,7 @@ describe("status: inherited from a Telo.Abstract", () => {
 
   const backendImport = {
     kind: "Telo.Import",
-    metadata: { name: "Contract", module: "backend" },
+    metadata: { name: "Contract", module: "backend", resolvedModuleName: "contract" },
     source: "./contract",
   } as unknown as ResourceManifest;
 
@@ -270,7 +270,7 @@ describe("status: inherited from a Telo.Abstract", () => {
 
   const consumerImport = {
     kind: "Telo.Import",
-    metadata: { name: "Backend" },
+    metadata: { name: "Backend", resolvedModuleName: "backend" },
     source: "./backend",
   } as unknown as ResourceManifest;
 

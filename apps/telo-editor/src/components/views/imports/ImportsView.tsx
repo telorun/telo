@@ -1,8 +1,12 @@
-import { isNewerModuleVersion, isSameModuleVersion, parseVersionedRef } from "@telorun/analyzer";
-import { ArrowUp, ChevronDown, X } from "lucide-react";
+import { isSameModuleVersion, parseVersionedRef } from "@telorun/analyzer";
+import {
+  describeReason,
+  describeRemedy,
+  type IncompatibilityReason,
+} from "@telorun/ide-support";
+import { ArrowUp, ChevronDown, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { getModuleFiles, summarizeResource } from "../../../diagnostics-aggregate";
-import type { ModuleVersion } from "../../../hub-search";
 import type { ParsedImport } from "../../../model";
 import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
 import { useDiagnosticsState } from "../../diagnostics/DiagnosticsContext";
@@ -10,7 +14,9 @@ import { AddImportDialog } from "../../AddImportDialog";
 import { isImportPinned, upgradedImportSource } from "../../sidebar/import-pin";
 import type { ImportUpgradeState } from "../../sidebar/useImportUpgrade";
 import { useImportUpgrade } from "../../sidebar/useImportUpgrade";
-import { useLatestVersions } from "../../sidebar/useLatestVersions";
+import { useModuleVersions } from "../../sidebar/useModuleVersions";
+import { useUpgradeTargets, type UpgradeTarget } from "../../sidebar/useUpgradeTargets";
+import { useVersionCompatibility } from "../../sidebar/useVersionCompatibility";
 import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import {
@@ -28,6 +34,7 @@ import type { ViewProps } from "../types";
 export function ImportsView({
   viewData,
   hubUrl,
+  manifestCacheUrl,
   onAddImport,
   importableLibraries,
   onRemoveImport,
@@ -37,25 +44,45 @@ export function ImportsView({
 }: ViewProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
-  const upgrade = useImportUpgrade(hubUrl, onUpgradeImport, onUpgradeAllImports);
+  // One version lookup and one compatibility check for the whole view: the
+  // badge, the upgrade button, the version picker and the add dialog all ask
+  // about the same modules and the same versions, so they ask once.
+  const listVersions = useModuleVersions(hubUrl);
+  const isCompatible = useVersionCompatibility(manifestCacheUrl);
+  const upgrade = useImportUpgrade(
+    listVersions,
+    isCompatible,
+    onUpgradeImport,
+    onUpgradeAllImports,
+  );
   const manifest = viewData.manifest;
   const imports = manifest.imports;
   const filePaths = getModuleFiles(manifest);
-  const latestVersions = useLatestVersions(imports, hubUrl);
+  const targets = useUpgradeTargets(imports, listVersions, isCompatible);
 
+  // Only versions this telo can host are offered — "Upgrade all" must not walk
+  // the author into a manifest their runtime refuses to load.
   const outdated = imports.flatMap((imp) => {
-    const ref = parseVersionedRef(imp.source);
-    if (!ref) return [];
-    const latest = latestVersions.get(ref.baseRef);
-    if (!latest || !isNewerModuleVersion(latest.version, ref.version)) return [];
+    const best = targets.get(imp.name)?.best;
+    if (!best) return [];
     return [
       {
         name: imp.name,
-        newSource: upgradedImportSource(imp, latest),
+        newSource: upgradedImportSource(imp, best),
         wasPinned: isImportPinned(imp),
-        repinned: latest.integrity != null,
+        repinned: best.integrity != null,
       },
     ];
+  });
+
+  // Imports that ARE behind but have nothing hostable to move to. Reported at
+  // the top of the view: the per-row control can only say "not offered", and
+  // the action — update telo — is the same for all of them.
+  const blocked = imports.flatMap((imp) => {
+    const target = targets.get(imp.name);
+    return target && !target.best && target.heldBack
+      ? [{ name: imp.name, ...target.heldBack }]
+      : [];
   });
 
   async function handleImportLibrary(source: string, alias: string) {
@@ -141,6 +168,13 @@ export function ImportsView({
         </div>
       )}
 
+      {blocked.length > 0 && (
+        <div className="flex shrink-0 items-start gap-2 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+          <span>{blockedMessage(blocked)}</span>
+        </div>
+      )}
+
       {upgrade.pinNotice && (
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
           <span>{upgrade.pinNotice}</span>
@@ -154,6 +188,8 @@ export function ImportsView({
         open={addOpen}
         onOpenChange={setAddOpen}
         hubUrl={hubUrl}
+        listVersions={listVersions}
+        isCompatible={isCompatible}
         libraries={importableLibraries}
         existingAliases={imports.map((imp) => imp.name)}
         onSubmit={onAddImport}
@@ -183,7 +219,7 @@ export function ImportsView({
                   imp={imp}
                   filePaths={filePaths}
                   upgrade={upgrade}
-                  latestVersions={latestVersions}
+                  target={targets.get(imp.name)}
                   onRemove={onRemoveImport}
                   onOpenModule={onOpenModule}
                 />
@@ -196,11 +232,46 @@ export function ImportsView({
   );
 }
 
+/** The banner for imports that are behind with nothing offerable.
+ *
+ *  A remedy is only stated when every entry shares one cause. A mixed set has
+ *  two different answers — update telo for one, wait for a republish for the
+ *  other — and printing the first entry's would be wrong for the rest, which is
+ *  the same invented-cause mistake the four verdicts exist to prevent. */
+function blockedMessage(
+  blocked: Array<{ name: string; version: string; reason: IncompatibilityReason }>,
+): string {
+  const uniform = blocked.every((b) => b.reason === blocked[0].reason) ? blocked[0].reason : null;
+  const head =
+    blocked.length === 1
+      ? `A newer version of ${blocked[0].name} (${blocked[0].version}) is published, but ${describeReason(blocked[0].reason)}.`
+      : `Newer versions of ${blocked.map((b) => b.name).join(", ")} are published that this telo cannot use.`;
+  return uniform
+    ? `${head} ${describeRemedy(uniform)}`
+    : `${head} Hover each import for what is holding it back.`;
+}
+
+/** The "Outdated" badge's tooltip. A reason is only ever printed when one was
+ *  established: the three states are "behind and upgradeable", "behind, with a
+ *  newer version held back", and "behind with nothing offerable", and the last
+ *  two are exactly the ones that carry a cause. */
+function outdatedTitle(
+  newest: string | null | undefined,
+  offering: string | undefined,
+  heldBack: { version: string; reason: IncompatibilityReason } | null,
+): string {
+  if (!heldBack) return `Latest is ${newest}`;
+  const cause = `${heldBack.version} held back because ${describeReason(heldBack.reason)}`;
+  return offering ? `${cause} — offering ${offering}` : cause;
+}
+
 interface ImportTableRowProps {
   imp: ParsedImport;
   filePaths: string[];
   upgrade: ImportUpgradeState;
-  latestVersions: Map<string, ModuleVersion>;
+  /** What an upgrade would do to this import, once resolved. Absent while the
+   *  lookup is in flight, or when the ref names no version to upgrade. */
+  target: UpgradeTarget | undefined;
   onRemove: (name: string) => void;
   onOpenModule: (filePath: string) => void;
 }
@@ -209,19 +280,22 @@ function ImportTableRow({
   imp,
   filePaths,
   upgrade,
-  latestVersions,
+  target,
   onRemove,
   onOpenModule,
 }: ImportTableRowProps) {
   const ref = parseVersionedRef(imp.source);
-  const latest = ref ? latestVersions.get(ref.baseRef) : undefined;
-  const outdated =
-    ref != null && latest != null && isNewerModuleVersion(latest.version, ref.version);
+  const best = target?.best ?? null;
+  const heldBack = target?.heldBack ?? null;
+  // "Behind" is about what is published; whether anything can be offered is a
+  // separate question, and conflating them would hide a newer version that
+  // exists.
+  const outdated = target?.newest != null;
   const diagState = useDiagnosticsState();
   const summary = summarizeResource(diagState, filePaths, imp.name);
 
   const versionMenu = ref && (
-    <DropdownMenuContent align="end" className="max-h-64 w-44 overflow-y-auto">
+    <DropdownMenuContent align="end" className="max-h-64 w-56 overflow-y-auto">
       <DropdownMenuLabel>Versions</DropdownMenuLabel>
       {upgrade.activeName === imp.name && upgrade.loading && (
         <DropdownMenuItem disabled>Loading…</DropdownMenuItem>
@@ -229,6 +303,15 @@ function ImportTableRow({
       {upgrade.activeName === imp.name && upgrade.error && (
         <DropdownMenuItem disabled className="whitespace-normal text-[11px] leading-snug">
           {upgrade.error}
+        </DropdownMenuItem>
+      )}
+      {/* A list where every row is marked explains nothing on its own. */}
+      {upgrade.activeName === imp.name && !upgrade.loading && upgrade.noneRunnable && (
+        <DropdownMenuItem disabled className="whitespace-normal text-[11px] leading-snug">
+          {upgrade.noneRunnable === "unreadable"
+            ? "No published version can be checked — their declared requirements cannot be read."
+            : "No published version runs on this telo."}{" "}
+          {describeRemedy(upgrade.noneRunnable)}
         </DropdownMenuItem>
       )}
       {upgrade.activeName === imp.name &&
@@ -239,11 +322,24 @@ function ImportTableRow({
             onSelect={() => upgrade.selectVersion(imp, version)}
             disabled={upgrade.submitting}
             className="justify-between gap-3"
+            title={
+              version.compatibility === "too-new"
+                ? `${version.version} requires a newer telo than this one`
+                : version.compatibility === "unreadable"
+                  ? `${version.version} declares a requirement that cannot be read`
+                  : undefined
+            }
           >
             <span className="tabular-nums">{version.version}</span>
-            {isSameModuleVersion(version.version, ref.version) && (
+            {isSameModuleVersion(version.version, ref.version) ? (
               <span className="text-[10px] text-muted-foreground">current</span>
-            )}
+            ) : version.compatibility === "too-new" ? (
+              // Listed, not hidden: a picker is a deliberate choice, and an
+              // author may knowingly pin a version for a telo they will have.
+              <span className="text-[10px] text-amber-600 dark:text-amber-400">needs newer telo</span>
+            ) : version.compatibility === "unreadable" ? (
+              <span className="text-[10px] text-amber-600 dark:text-amber-400">unreadable</span>
+            ) : null}
           </DropdownMenuItem>
         ))}
     </DropdownMenuContent>
@@ -262,7 +358,7 @@ function ImportTableRow({
             <Badge
               variant="outline"
               className="shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-400"
-              title={`Latest is ${latest?.version}`}
+              title={outdatedTitle(target?.newest, best?.version, heldBack)}
             >
               Outdated
             </Badge>
@@ -271,7 +367,18 @@ function ImportTableRow({
       </td>
       <td className="py-1.5 pr-3 text-xs">{imp.importKind}</td>
       <td className="max-w-64 py-1.5 pr-3 text-xs">
-        {imp.resolvedPath ? (
+        {imp.loadError ? (
+          // The workspace opened without this dependency. Saying so here is the
+          // whole point — a row that just resolved to nothing left the author
+          // guessing which import was missing.
+          <span
+            className="flex items-center gap-1 text-amber-600 dark:text-amber-400"
+            title={imp.loadError}
+          >
+            <TriangleAlert className="size-3.5 shrink-0" />
+            <span className="truncate">Unresolved</span>
+          </span>
+        ) : imp.resolvedPath ? (
           <button
             type="button"
             onClick={() => onOpenModule(imp.resolvedPath!)}
@@ -286,15 +393,19 @@ function ImportTableRow({
       </td>
       <td className="py-1.5">
         <div className="flex items-center justify-end gap-1">
-          {ref && outdated && (
+          {ref && best && (
             <div className="flex items-stretch">
               <Button
                 variant="outline"
                 size="xs"
                 className="rounded-r-none text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
-                onClick={() => latest && upgrade.selectVersion(imp, latest)}
+                onClick={() => upgrade.selectVersion(imp, best)}
                 disabled={upgrade.submitting}
-                title={`Upgrade ${imp.name} to ${latest?.version}`}
+                title={
+                  target?.heldBack
+                    ? `Upgrade ${imp.name} to ${best.version} — ${target.heldBack.version} is newer but ${describeReason(target.heldBack.reason)}`
+                    : `Upgrade ${imp.name} to ${best.version}`
+                }
               >
                 <ArrowUp />
                 Upgrade
@@ -316,7 +427,7 @@ function ImportTableRow({
               </DropdownMenu>
             </div>
           )}
-          {ref && !outdated && (
+          {ref && !best && (
             <DropdownMenu onOpenChange={(open) => open && upgrade.loadVersions(imp)}>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -324,7 +435,13 @@ function ImportTableRow({
                   size="icon-xs"
                   disabled={upgrade.submitting}
                   aria-label={`Choose a version for ${imp.name}`}
-                  title={`Choose a version for ${imp.name} (current ${ref.version})`}
+                  title={
+                    // A version exists that nothing here can offer: say so on
+                    // the only control this row still has.
+                    heldBack
+                      ? `${heldBack.version} is published but ${describeReason(heldBack.reason)} — choose a version for ${imp.name} (current ${ref.version})`
+                      : `Choose a version for ${imp.name} (current ${ref.version})`
+                  }
                 >
                   <ChevronDown />
                 </Button>
