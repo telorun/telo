@@ -5,12 +5,15 @@ import {
   type PlatformTarget,
 } from "@telorun/analyzer";
 import {
+  buildSiblingLibraries,
   defaultTransportRegistry,
   hostPlatformTarget,
   moduleArtifactFor,
   moduleDirectoryFor,
   readOwnerManifest,
   type ModuleArtifact,
+  type OwnerManifest,
+  type SiblingLibraryMap,
 } from "@telorun/kernel";
 
 /**
@@ -46,6 +49,15 @@ export interface WarmedLayers {
    * materialization may succeed where this one did not.
    */
   artifacts: Map<string, ModuleArtifact>;
+  /**
+   * The module-owned libraries each module's controller bundles import by bare
+   * specifier, keyed by the declaring module's canonical source — the same join
+   * `kernel.load()` performs, and for the same reason: a bundle externalizes
+   * `@telorun/cache`, so a controller resolved without it fails to import on a
+   * module `telo run` loads fine. Warming is the only pass that holds all three
+   * inputs (import edges, owner manifests, artifacts) outside the kernel.
+   */
+  libraries: Map<string, SiblingLibraryMap>;
 }
 
 export async function warmModuleLayers(
@@ -58,6 +70,8 @@ export async function warmModuleLayers(
 ): Promise<WarmedLayers> {
   const transports = defaultTransportRegistry(registryUrl);
   const artifacts = new Map<string, ModuleArtifact>();
+  const owners = new Map<string, OwnerManifest>();
+  const directories = new Map<string, string | undefined>();
   const seen = new Set<string>();
   let materialized = 0;
 
@@ -68,16 +82,20 @@ export async function warmModuleLayers(
 
     // A malformed index is an authoring error the publisher must fix, so it
     // propagates rather than being downgraded to a warning.
+    const owner = readOwnerManifest(file.text);
+    owners.set(file.source, owner);
+    const moduleDir = moduleDirectoryFor(
+      file.requestedUrl,
+      file.source,
+      entryDir,
+      registryUrl,
+      manifestsDir,
+    );
+    directories.set(file.source, moduleDir ?? undefined);
     const artifact = moduleArtifactFor({
       pinnedRef: file.requestedUrl,
-      layers: readOwnerManifest(file.text).layers,
-      moduleDir: moduleDirectoryFor(
-        file.requestedUrl,
-        file.source,
-        entryDir,
-        registryUrl,
-        manifestsDir,
-      ),
+      layers: owner.layers,
+      moduleDir,
       transports,
     });
     if (!artifact) continue;
@@ -96,7 +114,13 @@ export async function warmModuleLayers(
     }
   }
 
-  return { materialized, artifacts };
+  const libraries = buildSiblingLibraries(graph, {
+    ownerManifests: owners,
+    artifactFor: (source) => artifacts.get(source),
+    directoryFor: (source) => directories.get(source),
+  });
+
+  return { materialized, artifacts, libraries };
 }
 
 /**

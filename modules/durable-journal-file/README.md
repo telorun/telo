@@ -36,4 +36,4 @@ A bad record anywhere *else* stays a hard failure, for the same reason: replayin
 - **Cross-process claiming.** The claim here is advisory and single-machine. A store whose claiming is real answers that with a database's own primitives rather than with a lock file this module would have to invent.
 - **Sharing a transaction with your writes.** It always reports that its records land outside any transaction's atomicity, so a transactional region is recorded as one entry and re-runs whole on a resume. That is correct for a directory of files, and it is what a run's `collapsedRegions` count makes visible.
 
-Use a database-backed store when several machines record to one place, or when you want a region's records to commit and roll back with the writes they describe.
+[durable-journal-postgres](../durable-journal-postgres/README.md) is that store: use it when several machines record to one place, or when you want a region's records to commit and roll back with the writes they describe.

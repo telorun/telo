@@ -15,6 +15,12 @@ packages:
   - ide/*
   - packages/*
   - packages/*/*
+  # Test fixtures whose controllers are TypeScript. In the workspace so they
+  # type-check against the SDK like any other controller — a fixture that only
+  # ever runs through esbuild (which does not type-check) rots silently the day
+  # the surface it exercises moves, which for a fixture guarding a seam is the
+  # one failure it must not have.
+  - tests/__fixtures__/*/nodejs
 
 onlyBuiltDependencies:
   - better-sqlite3

@@ -182,7 +182,7 @@ export class WorkflowController {
      *  under it mid-body. */
     holder: string = this.#holder,
   ): Promise<unknown> {
-    const handle = await LocalRunHandle.open(runId, journal);
+    const handle = await LocalRunHandle.open(runId, journal, this.ctx.log);
     // The claim is held for as long as the body runs, and a body may run far
     // longer than one TTL. Unref'd, so a renewal timer never keeps the process
     // alive on its own — the kernel hold is what does that, and it is released

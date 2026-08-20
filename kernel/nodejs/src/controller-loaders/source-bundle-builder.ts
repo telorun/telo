@@ -4,6 +4,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+// Type-only, so this builder stays free of a runtime edge to the dispatcher.
+import type { ControllerWorkReporter } from "../controller-loader.js";
 
 import { readOwnerManifest } from "../bundle/module-manifest.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
@@ -295,6 +297,7 @@ export async function buildControllerFromSource(
   entryFile: string,
   cacheRoot: string,
   libraries: readonly SiblingLibrary[] = [],
+  report?: ControllerWorkReporter,
 ): Promise<string> {
   const cacheDir = path.join(cacheRoot, CACHE_DIR);
   const externals = externalSpecifiers(libraries);
@@ -309,6 +312,9 @@ export async function buildControllerFromSource(
 
   const inFlight = buildsInFlight.get(entryFile);
   if (inFlight) return inFlight;
+  // Below the content-addressed cache and the in-flight gate: from here esbuild
+  // really runs, which is the only branch worth reporting as a wait.
+  await report?.("source-build");
   const work = build(entryFile, cacheDir, libraries).finally(() =>
     buildsInFlight.delete(entryFile),
   );

@@ -1,4 +1,5 @@
 import { ControllerInstance, NOOP_LOGGER, type Logger } from "@telorun/sdk";
+import type { ControllerWorkReporter } from "../controller-loader.js";
 import { execFile } from "child_process";
 import * as crypto from "crypto";
 import * as fs from "fs/promises";
@@ -188,6 +189,7 @@ export class NpmControllerLoader {
   async resolve(
     purl: string,
     baseUri: string,
+    report?: ControllerWorkReporter,
   ): Promise<{ source: NpmResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     const parsed = PackageURL.fromString(purl);
     if (!parsed.name) {
@@ -199,7 +201,7 @@ export class NpmControllerLoader {
     // versions can coexist in one flat node_modules (see installAlias).
     const alias = installAlias(packageName, version);
 
-    const installRoot = await this.ensureInstallRoot();
+    const installRoot = await this.ensureInstallRoot(report);
     const resolved = await resolveInstallSpec(parsed, packageName, baseUri);
     const source = await this.installPackage(
       installRoot,
@@ -207,6 +209,7 @@ export class NpmControllerLoader {
       resolved.spec,
       resolved.kind,
       version,
+      report,
     );
     const subpath = parsed.subpath ?? null;
     return {
@@ -221,9 +224,9 @@ export class NpmControllerLoader {
    * `npm install` once, and return the absolute root path. Memoized for the
    * lifetime of this loader instance.
    */
-  private ensureInstallRoot(): Promise<string> {
+  private ensureInstallRoot(report?: ControllerWorkReporter): Promise<string> {
     if (this.rootReady) return this.rootReady;
-    this.rootReady = this.materializeInstallRoot().catch((err) => {
+    this.rootReady = this.materializeInstallRoot(report).catch((err) => {
       // Reset on failure so a follow-up call retries rather than caches the rejection.
       this.rootReady = undefined;
       throw err;
@@ -231,7 +234,7 @@ export class NpmControllerLoader {
     return this.rootReady;
   }
 
-  private async materializeInstallRoot(): Promise<string> {
+  private async materializeInstallRoot(report?: ControllerWorkReporter): Promise<string> {
     if (!this.entryUrl) {
       // Throw the env-missing variant so a mixed candidate list (e.g.
       // `pkg:npm/... + pkg:cargo/...`) still falls back to the next
@@ -325,6 +328,9 @@ export class NpmControllerLoader {
           2,
         ) + "\n",
       );
+      // Announced here rather than at the top of the resolve: everything above
+      // this line is a fast path that reuses the existing tree.
+      await report?.("npm-install");
       await runPackageManager(installRoot, [
         "install",
         "--no-audit",
@@ -383,6 +389,7 @@ export class NpmControllerLoader {
     spec: string,
     kind: SpecKind,
     requestedVersion: string | null,
+    report?: ControllerWorkReporter,
   ): Promise<NpmResolveSource> {
     const cacheKey = alias;
     if (this.installedSpecs.has(cacheKey)) return "cache";
@@ -466,6 +473,9 @@ export class NpmControllerLoader {
           }
         }
 
+        // Past every re-check: the package manager is about to run for real,
+        // which is the wait a caller wants reported.
+        await report?.("npm-install");
         await runPackageManager(installRoot, [
           "install",
           "--no-audit",

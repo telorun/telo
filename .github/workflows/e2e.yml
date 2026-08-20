@@ -85,10 +85,26 @@ jobs:
           # assertions about a ref late in the seed (console is last) raced the
           # tracker and saw an index holding only its earlier entries.
           #
-          # Wait for every seeded ref instead: a row per ref, each with
-          # `last_tracked_at` set (the tracker stamps it when a ref's pass ends,
-          # success or failure), plus at least one embedding for the semantic
-          # assertion. Expected count comes from the hub's own environment, so
+          # Waiting on `last_tracked_at` alone is the same mistake one level up,
+          # and it let this race back in: that column is stamped when a ref's
+          # pass ENDS — success or failure — by a different step than the one
+          # that writes the kind rows, so the gate can pass over an index holding
+          # a fraction of them. The suite then fails on an assertion diff about
+          # search results rather than on "the index is not ready", which is what
+          # it actually saw.
+          #
+          # So wait on what the assertions READ, and read it the way the hub
+          # does: every search path joins `rk.version = m.latest_version`, so a
+          # module is queryable only once its LATEST version's kinds are in.
+          # Counting kinds at any version is not the same test and passed over
+          # exactly this — `console` carries 40 kind rows across its versions and
+          # 4 at its latest, `run` 104 and 7 — so a gate counting rows saw both
+          # as ready while a search for either returned nothing. Plus at least
+          # one embedding, for the semantic assertion.
+          # And treat a recorded `last_error` as a hard failure rather than as a
+          # ref that finished — a failed ingest satisfies `last_tracked_at` and
+          # would otherwise be reported, minutes later, as a mysteriously empty
+          # search. Expected count comes from the hub's own environment, so
           # editing SEED_REFS never leaves this gate behind.
           expected=$(docker compose exec -T hub printenv SEED_REFS | jq 'length' 2>/dev/null || echo "")
           if ! [ "${expected:-0}" -gt 0 ] 2>/dev/null; then
@@ -98,19 +114,33 @@ jobs:
           echo "seeded refs: $expected"
           psql() { docker compose exec -T db psql -U postgres -d hub -tAc "$1" 2>/dev/null | tr -d '[:space:]'; }
           for i in $(seq 1 60); do
+            failed=$(psql "SELECT count(*) FROM modules WHERE last_error IS NOT NULL" || echo 0)
+            if [ "${failed:-0}" -gt 0 ]; then
+              echo "::error::$failed seeded ref(s) failed to ingest"
+              docker compose exec -T db psql -U postgres -d hub \
+                -c "SELECT ref, last_error FROM modules WHERE last_error IS NOT NULL ORDER BY ref"
+              docker compose logs --no-color hub
+              exit 1
+            fi
             total=$(psql "SELECT count(*) FROM modules" || echo 0)
-            tracked=$(psql "SELECT count(*) FROM modules WHERE last_tracked_at IS NOT NULL" || echo 0)
+            indexed=$(psql "SELECT count(*) FROM modules m WHERE coalesce(m.latest_version, '') <> '' AND EXISTS (SELECT 1 FROM resource_kinds rk WHERE rk.module_id = m.id AND rk.version = m.latest_version)" || echo 0)
+            kinds=$(psql "SELECT count(*) FROM resource_kinds rk JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version" || echo 0)
             vectors=$(psql "SELECT count(*) FROM resource_vectors" || echo 0)
-            echo "modules: ${tracked:-0}/${total:-0} tracked of $expected seeded; resource_vectors: ${vectors:-0}"
-            if [ "${total:-0}" -ge "$expected" ] && [ "${tracked:-0}" -ge "$expected" ] \
+            echo "modules: ${indexed:-0}/${total:-0} queryable of $expected seeded; kinds at latest: ${kinds:-0}; resource_vectors: ${vectors:-0}"
+            if [ "${total:-0}" -ge "$expected" ] && [ "${indexed:-0}" -ge "$expected" ] \
                && [ "${vectors:-0}" -gt 0 ]; then
               exit 0
             fi
             sleep 5
           done
-          echo "::error::hub never finished its first tracking pass over all seeded refs"
+          echo "::error::hub never indexed a LATEST-version kind for every seeded ref"
           docker compose exec -T db psql -U postgres -d hub \
-            -c "SELECT ref, last_tracked_at, last_error FROM modules ORDER BY ref" || true
+            -c "SELECT m.ref, m.latest_version, m.last_tracked_at, m.last_error,
+                       count(rk.*) FILTER (WHERE rk.version = m.latest_version) AS kinds_at_latest,
+                       count(rk.*) AS kinds_any_version
+                  FROM modules m LEFT JOIN resource_kinds rk ON rk.module_id = m.id
+                 GROUP BY m.id, m.ref, m.latest_version, m.last_tracked_at, m.last_error
+                 ORDER BY m.ref" || true
           docker compose logs --no-color hub embedder
           exit 1
 

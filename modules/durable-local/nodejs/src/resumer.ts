@@ -37,9 +37,21 @@ const CLAIM_TTL_MS = 60_000;
  *  racing for the same runs inside one process. */
 const BATCH = 10;
 
+/** What a journal offers when its store can push. Structural, and OPTIONAL by
+ *  design: a wake makes recovery prompt, the interval is what makes it certain,
+ *  so a journal without one is slower and never wrong. */
+interface WakingJournal {
+  onWake(handler: (run: string) => void): Promise<() => Promise<void>>;
+}
+
+function canWake(journal: unknown): journal is WakingJournal {
+  return typeof (journal as Partial<WakingJournal>).onWake === "function";
+}
+
 export class ResumerController {
   #timer: ReturnType<typeof setInterval> | undefined;
   #release: (() => void) | undefined;
+  #unsubscribe: (() => Promise<void>) | undefined;
   #sweeping = false;
   readonly #holder = crypto.randomUUID();
 
@@ -59,6 +71,15 @@ export class ResumerController {
     // Never hold the process open for the timer ALONE — the hold above is what
     // keeps the app alive, and it is released at teardown.
     this.#timer.unref?.();
+    // A store that can push gets to: a delivery that wakes a run should be
+    // picked up now rather than at the next tick. It SUPPLEMENTS the interval
+    // and never replaces it — a missed notification (a dropped connection, a
+    // process that was not listening yet) is invisible by nature, so the poll
+    // stays the guarantee and this is only the latency.
+    const journal = this.workflow().journal();
+    if (canWake(journal)) {
+      this.#unsubscribe = await journal.onWake(() => void this.sweep());
+    }
     // One pass immediately, so a restart recovers without waiting out an
     // interval it has no reason to.
     await this.sweep();
@@ -66,6 +87,7 @@ export class ResumerController {
 
   async teardown(): Promise<void> {
     if (this.#timer) clearInterval(this.#timer);
+    await this.#unsubscribe?.();
     this.#release?.();
   }
 

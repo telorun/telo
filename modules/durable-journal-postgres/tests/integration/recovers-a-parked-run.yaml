@@ -1,0 +1,215 @@
+kind: Telo.Application
+metadata:
+  name: DurableJournalPostgresRecoveryTest
+  version: 1.0.0
+  description: |
+    The two operations this store exists for, exercised by the resumer rather than
+    described: CLAIMING a run without two pollers taking it, and WAKING one promptly.
+
+    Nothing here submits the run a second time. The file journal's park test continues
+    its run by re-submitting the same id — the same `execute`, and the honest thing to
+    do against a store whose claiming is advisory. Here the poller does it, which is
+    what puts `dueRuns` and `claimRun` under load: the delivery clears the park, the
+    journal NOTIFIES on its wake channel, the resumer's subscription fires, the sweep
+    finds the run due and claims it before continuing. On a store that could not settle
+    that, two pollers would both take it.
+
+    THE ASSERTION IS THE KERNEL'S OWN DISPATCH RECORD. `before` is dispatched exactly
+    ONCE across both executions — performed by the first and REPLAYED from the journal
+    by the resumed one; `after` exactly once, because it had never run when the process
+    parked. Two of either would mean the resume re-executed what was already recorded.
+
+    The resumer is `with:`-scoped, so it is torn down when the sequence ends and the
+    kernel hold it takes goes with it. Declared at module level it would keep this test
+    process alive forever, which is right for an app whose job is recovery and wrong for
+    a test.
+
+    NEEDS A LIVE POSTGRES. Kept out of `tests/` proper for exactly that reason.
+imports:
+  Durable: ../../../durable
+  Local: ../../../durable-local
+  Journal: ../../
+  Postgres: ../../../postgres
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref test
+  - !ref dispatches
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# Its OWN tables, not shared with the sibling test. Two journals over one prefix
+# are two applications sharing a store: this one runs a RESUMER, which polls for
+# due runs and would claim and continue the other test's interrupted runs against
+# a workflow that is not theirs. The module refuses a shared ledger for the same
+# reason; here it is the suite obeying its own rule.
+kind: Journal.Journal
+metadata: { name: journal }
+connection: !ref db
+table: !cel "'telo_durable_recovery_test'"
+---
+kind: Run.Value
+metadata: { name: before }
+value: { stage: before }
+---
+kind: Run.Value
+metadata: { name: after }
+value: { stage: after }
+---
+kind: Durable.Await
+metadata: { name: approval }
+token: !cel "'pgapprove:' + inputs.ticket"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [approvedBy]
+    additionalProperties: false
+    properties:
+      approvedBy: { type: string }
+---
+kind: Local.Workflow
+metadata: { name: onboard }
+journal: !ref journal
+runId: !cel "'pgpark:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - name: opened
+    invoke: !ref before
+  - name: waitForApproval
+    invoke: !ref approval
+    inputs:
+      ticket: !cel "inputs.ticket"
+  - name: closed
+    invoke: !ref after
+---
+kind: Local.Status
+metadata: { name: status }
+journal: !ref journal
+---
+# The delivery knows the token and nothing else — no workflow, no body. That is
+# what lets a webhook receiver wake work it has never heard of, and here it is
+# also what makes the resumer the only thing that could have continued the run.
+kind: Local.Deliver
+metadata: { name: approve }
+journal: !ref journal
+await: !ref approval
+token: !cel "'pgapprove:' + inputs.ticket"
+payload:
+  approvedBy: !cel "inputs.by"
+---
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 20s
+---
+kind: Assert.Events
+metadata: { name: dispatches }
+filter:
+  - type: "before.Invoked"
+  - type: "after.Invoked"
+expect:
+  - event: before.Invoked
+    times: 1
+  - event: after.Invoked
+    times: 1
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  # A long interval on purpose: if the run still completes inside the wait below,
+  # it was the NOTIFY that woke the poller and not the tick. The tick is the
+  # guarantee; this is the latency, and the test is about the latency.
+  - kind: Local.Resumer
+    metadata: { name: resumer }
+    workflow: !ref onboard
+    interval: 60s
+targets:
+  - !ref resumer
+steps:
+  - name: ticket
+    value: !cel "'t' + string(nowMillis())"
+
+  - name: start
+    invoke: !ref onboard
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  # The start is detached, so the body is still on its way to the wait. Read once
+  # before the loop — `while:` is a pre-test.
+  - name: parked
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParked
+    while: !cel "steps.parked.result.status != 'parked'"
+    maxIterations: 200
+    do:
+      - name: parked
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+  - name: assertParked
+    inputs:
+      actual:
+        status: !cel "steps.parked.result.status"
+        waitingAt: !cel "steps.parked.result.parked.path"
+        waitingOn: !cel "steps.parked.result.parked.resource"
+      expected:
+        status: parked
+        waitingAt: steps/waitForApproval
+        waitingOn: approval
+    invoke: { kind: Assert.Equals }
+
+  - name: deliver
+    invoke: !ref approve
+    inputs:
+      ticket: !cel "steps.ticket.result"
+      by: ada
+  - name: assertDelivered
+    inputs:
+      actual: !cel "steps.deliver.result.delivered"
+      expected: true
+    invoke: { kind: Assert.Equals }
+
+  # Nothing else continues the run: the resumer's wake fires on the delivery, it
+  # claims the run, and replay carries it to the end.
+  - name: finished
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: assertCompleted
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        approvedBy: !cel "steps.finished.result.result.steps.waitForApproval.result.approvedBy"
+      expected:
+        status: completed
+        approvedBy: ada
+    invoke: { kind: Assert.Equals }

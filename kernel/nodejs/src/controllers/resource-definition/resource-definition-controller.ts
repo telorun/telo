@@ -161,6 +161,11 @@ class ResourceDefinition implements ResourceInstance {
       installRoot: ctx.getInstallRoot(),
       cacheRoot: host.getCacheRoot?.(),
       log: ctx.log,
+      // What resolution reports on its own: the work branches it enters, and
+      // the candidates it skipped. Routed through `ctx.emit` so they carry the
+      // same `<kind>.` namespace as the load events emitted below — a consumer
+      // pairs a wait with its outcome by that namespace.
+      emit: (event) => ctx.emit(event.name, event.payload as Record<string, unknown>),
     });
     // The artifact of the module that DECLARED this kind — a bundled controller
     // ships in its own module's payload, not the consumer's. It owns the pinned
@@ -199,8 +204,7 @@ class ResourceDefinition implements ResourceInstance {
             }
             throw err;
           });
-        await ctx.emit("ControllerLoading", { purl: resolved.purl });
-        const startedAt = Date.now();
+        await ctx.emit("ControllerLoading", { purl: resolved.purl, source: resolved.source });
         const instance = await resolved.importInstance().catch(async (err) => {
           await ctx.emit("ControllerLoadFailed", {
             purl: resolved.purl,
@@ -212,7 +216,7 @@ class ResourceDefinition implements ResourceInstance {
         await ctx.emit("ControllerLoaded", {
           purl: resolved.purl,
           source: resolved.source,
-          durationMs: Date.now() - startedAt,
+          durationMs: resolved.waitedMs(),
         });
       },
     );

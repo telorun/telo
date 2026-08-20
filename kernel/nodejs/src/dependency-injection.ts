@@ -1,4 +1,4 @@
-import { ResourceInstance, ResourceManifest, RuntimeError, stampRefIdentity } from "@telorun/sdk";
+import { ResourceInstance, ResourceManifest, RuntimeError } from "@telorun/sdk";
 
 /**
  * Walks `resource` following `fieldPath` (dot notation, `[]` = array traversal,
@@ -41,12 +41,12 @@ export function injectAtPath(
         `Local reference '${String(ref.name)}' is registered but not initialized yet (deferring to a later init pass)`,
       );
     }
-    // Tag the instance with the kind+name it resolved from, so a consumer that
-    // holds only the bare instance (an invoke-step target) can dispatch it
-    // through the traced chokepoint rather than calling `.invoke()` directly.
-    if (instance && typeof ref.kind === "string" && typeof ref.name === "string") {
-      stampRefIdentity(instance, ref.kind, ref.name);
-    }
+    // The identity is NOT stamped here. It is stamped at `create()`, the single
+    // instance-production site, which is also the only point where an instance
+    // and the context that DECLARED it are both in hand — here the context is
+    // the CONSUMER's, so a declaration site derived at this point would name
+    // whoever referenced the resource. A second write-once stamp competing for
+    // the same property would silently decide that by init order.
     return instance;
   }
 

@@ -97,6 +97,10 @@ Putting the choice here rather than on the start is what keeps both usable: the 
 
 `collapsedRegions` is the one to watch. A region wrapped in `Durable.Idempotent` — or a transaction whose records land outside its own atomicity — is recorded as one entry and **re-runs whole** on a resume. That is at-least-once, and whether you got it can depend on runtime facts the manifest cannot show, so the run says which way it resolved rather than leaving it to be inferred. `collapseReasons` carries the author's own sentence for each.
 
+Each region also emits one `durable.zone.mode` record at the moment it resolves — the run, the providing kind, the attribute, and `mode: collapsed` or `mode: perStep`. Both outcomes, at the same level: `perStep` is the exactly-once regime and is reached by a runtime attestation, so the affirmative answer is worth as much as the negative, and collapse is the correct resolution under a journal on separate storage, so raising its level would warn on every development run. One field to filter a dashboard on.
+
+The way to get `perStep` for a transactional region is a journal that writes into the same transaction — [`durable-journal-postgres`](../durable-journal-postgres/README.md) on the connection your writes use.
+
 ## Waking work that is waiting
 
 A body waits with [`Durable.Sleep` or `Durable.Await`](../durable/README.md); this module supplies the other half.
@@ -137,4 +141,5 @@ A token that matches nothing answers `{ "delivered": false }` rather than failin
 - [What is recorded, and why it is more than the results](./docs/what-is-recorded.md) — the closure property, and the silent failure it closes.
 - [Durable execution](../../kernel/specs/durable-execution.md) — the normative contract, including what a backend must guarantee.
 - [durable](../durable/README.md) — `Durable.Idempotent` and the marker every backend extends.
-- [durable-journal-file](../durable-journal-file/README.md) — the store this pairs with.
+- [durable-journal-file](../durable-journal-file/README.md) — a store on disk, for one machine.
+- [durable-journal-postgres](../durable-journal-postgres/README.md) — a store in PostgreSQL, for several: real claiming, prompt waking, and records that can commit with the writes they describe.

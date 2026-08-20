@@ -12,7 +12,6 @@ import {
 } from "@telorun/kernel";
 import { SEVERITY, type RuntimeEvent } from "@telorun/sdk";
 import { PackageURL } from "packageurl-js";
-import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -21,6 +20,7 @@ import { attachControllerProgress } from "../controller-progress.js";
 import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
+import { resolveEnvFiles } from "../env-files.js";
 import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
 import { outErrLine, output } from "../output.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
@@ -28,29 +28,24 @@ import { teeStdio } from "../stdio-tee.js";
 import { resolveUiBundle } from "../ui-fetch.js";
 
 /**
- * Load .env and .env.local from the manifest's directory into process.env.
- * Priority (highest to lowest): process.env > .env.local > .env
- * Keys already present in process.env are never overwritten.
+ * Apply the env files visible to the manifest, then report.
+ *
+ * The walk itself is `env-files.ts`'s; what belongs here is the two decisions a
+ * command makes about it — that these values go into `process.env` without
+ * displacing anything the real environment already carries, and that the file
+ * list is `--debug` detail while a file that could not be READ is never quiet,
+ * whatever the flags say.
  */
-function loadEnvFiles(manifestPath: string): void {
-  const resolved = path.resolve(manifestPath);
-  const dir = fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
-    ? resolved
-    : path.dirname(resolved);
-  const base = tryReadFile(path.join(dir, ".env"));
-  const local = tryReadFile(path.join(dir, ".env.local"));
-
-  const merged = { ...dotenv.parse(base), ...dotenv.parse(local) };
-  for (const [key, value] of Object.entries(merged)) {
+function applyEnvFiles(manifestPath: string, report: boolean): void {
+  const { values, loaded, unreadable } = resolveEnvFiles(manifestPath);
+  for (const [key, value] of Object.entries(values)) {
     if (!(key in process.env)) process.env[key] = value;
   }
-}
-
-function tryReadFile(filePath: string): string {
-  try {
-    return fs.readFileSync(filePath, "utf8");
-  } catch {
-    return "";
+  for (const file of unreadable) {
+    outErrLine(`[env] could not read ${file.path} (${file.reason}) — its values were not applied`);
+  }
+  if (report && loaded.length > 0) {
+    outErrLine(`[env] loaded ${loaded.join(", ")}`);
   }
 }
 
@@ -586,7 +581,7 @@ export async function run(argv: RunArgv): Promise<void> {
     process.once("SIGINT", shutdown);
     process.once("SIGTERM", shutdown);
 
-    loadEnvFiles(argv.path);
+    applyEnvFiles(argv.path, argv.debug);
     await kernel.load(argv.path, {
       cacheDir: cacheRoot,
       writeCache: argv.cacheWrite,
@@ -635,7 +630,7 @@ export async function run(argv: RunArgv): Promise<void> {
  * reported but does not exit; we keep watching so the next edit retries.
  */
 async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
-  loadEnvFiles(argv.path);
+  applyEnvFiles(argv.path, argv.debug);
   // Resolve the `.telo` cache root once per invocation, then thread it.
   const cacheRoot = resolveCacheRoot(argv.path);
   // One inspect endpoint for the whole watch session — reloads re-attach the

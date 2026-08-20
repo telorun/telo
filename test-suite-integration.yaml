@@ -1,0 +1,30 @@
+# Tests that need infrastructure the root suite deliberately does not have.
+#
+# `test-suite.yaml` must run on a clean checkout with nothing installed — that is
+# what makes a red module suite mean "the code is wrong" rather than "something
+# was not up". These tests need a live PostgreSQL, so they are discovered from a
+# directory the root suite's `**/tests/*.yaml` glob does not reach (its own
+# subdirectory) and are run by their own command.
+#
+# Connection details come from the environment, with defaults for a plain local
+# server: DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME. The repo's
+# docker-compose `db` service publishes on `${DB_PORT:-5432}`, so a checkout
+# whose 5432 is taken sets DB_PORT once in `.env.local` and both compose and
+# these tests follow it.
+kind: Telo.Application
+metadata:
+  name: IntegrationTestSuite
+  version: 1.0.0
+imports:
+  Test: ./modules/test
+targets:
+  - !ref runAll
+---
+kind: Test.Suite
+metadata:
+  name: runAll
+include:
+  - "**/tests/integration/*.yaml"
+exclude:
+  - "**/__fixtures__/**"
+  - "apps/**"

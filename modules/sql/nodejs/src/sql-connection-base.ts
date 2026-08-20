@@ -71,6 +71,10 @@ export abstract class SqlConnectionBase implements SqlConnection {
     return this.ctx.zonesFor(this, ctx).some((entry) => this.#executors.has(entry));
   }
 
+  bindsZone(zone: ZoneEntry): boolean {
+    return this.#executors.has(zone);
+  }
+
   /**
    * Every statement this connection runs funnels through here — `executeTemplate`
    * and `executeScript` both delegate — so it is the single instrumentation point.
@@ -90,11 +94,19 @@ export abstract class SqlConnectionBase implements SqlConnection {
     ctx?: InvokeContext,
   ): Promise<QueryResult<T>> {
     const executor = this.resolveExecutor(zone, ctx);
-    if (!this.ctx.log.enabled(SEVERITY.debug)) {
-      return executor.executeQuery<T>(CompiledQuery.raw(sql, params));
-    }
+    return this.instrument(sql, () => executor.executeQuery<T>(CompiledQuery.raw(sql, params)));
+  }
+
+  /** The single instrumentation point, shared by every path that runs a
+   *  statement. The disabled branch allocates nothing and takes no clock
+   *  reading — a query is the hottest thing this module does. */
+  private async instrument<T>(
+    sql: string,
+    run: () => Promise<QueryResult<T>>,
+  ): Promise<QueryResult<T>> {
+    if (!this.ctx.log.enabled(SEVERITY.debug)) return run();
     const startedAt = Date.now();
-    const result = await executor.executeQuery<T>(CompiledQuery.raw(sql, params));
+    const result = await run();
     this.ctx.log.debug("Statement executed", {
       "db.query.text": sql,
       "db.response.returned_rows": result.rows.length,
@@ -106,6 +118,25 @@ export abstract class SqlConnectionBase implements SqlConnection {
       "db.client.operation.duration": (Date.now() - startedAt) / 1000,
     });
     return result;
+  }
+
+  /**
+   * Run a statement on the CONNECTION, never on an ambient transaction.
+   *
+   * The complement of {@link resolveExecutor}, and it exists because "joins
+   * whatever transaction is open" is the right default and the wrong one for a
+   * particular class of write: a record ABOUT the work rather than part of it.
+   * A durable journal settling a run is the case that forced it — a settlement
+   * discarded by the caller's rollback leaves a run recorded as still executing
+   * while its effects are gone, and a claim that rolls back releases a run
+   * another poller may already hold.
+   *
+   * On the contract rather than left to each caller to reach for `kysely`,
+   * because the escape hatch is the same for everyone and a caller that reaches
+   * past `execute` also loses its instrumentation — this keeps both.
+   */
+  async executeUncommitted<T>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
+    return this.instrument(sql, () => this.db.executeQuery<T>(CompiledQuery.raw(sql, params)));
   }
 
   async executeTemplate<T>(
