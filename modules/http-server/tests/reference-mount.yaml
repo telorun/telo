@@ -1,0 +1,122 @@
+kind: Telo.Application
+metadata:
+  name: ReferenceMountTest
+  version: 1.0.0
+  description: |
+    The API reference is a mount, not a fixed route on the server: it serves the
+    OpenAPI document and its reference page under the prefix the mount declares,
+    and a `when:` that resolves false leaves it out of the server entirely — the
+    prefix answers 404 rather than being registered and hidden.
+imports:
+  Http: ../
+  JS: ../../javascript
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+  - !ref testMissingOpenApi
+---
+kind: JS.Script
+metadata: { name: fetchStatus }
+code: |
+  async function main({ url }) {
+    const r = await fetch(url);
+    return { status: r.status, contentType: r.headers.get("content-type") || "" };
+  }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      url: { type: string }
+    required: [ url ]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      status: { type: integer }
+      contentType: { type: string }
+    required: [ status, contentType ]
+---
+kind: Run.Value
+metadata: { name: ping }
+value: { ok: true }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    handler: !ref ping
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: !cel "result.ok" }
+---
+kind: Http.Reference
+metadata: { name: docs }
+title: Reference Mount
+---
+kind: Http.Reference
+metadata: { name: internalDocs }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 8967
+    openapi:
+      info: { title: ReferenceMount, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref api
+      # Docs at a prefix of this app's choosing, not a fixed /reference.
+      - path: /docs
+        mount: !ref docs
+      # The production posture — in an app the condition reads a variable
+      # (`variables.env != 'production'`); here it is a constant so the test
+      # depends on nothing in the environment.
+      - path: /internal-docs
+        mount: !ref internalDocs
+        when: !cel "false"
+targets:
+  - !ref server
+steps:
+  - name: hitDocument
+    inputs: { url: "http://127.0.0.1:8967/docs/openapi.json" }
+    invoke: !ref fetchStatus
+  - name: hitPage
+    inputs: { url: "http://127.0.0.1:8967/docs/" }
+    invoke: !ref fetchStatus
+  - name: hitExcluded
+    inputs: { url: "http://127.0.0.1:8967/internal-docs/" }
+    invoke: !ref fetchStatus
+  - name: verify
+    inputs:
+      actual:
+        document: !cel "steps.hitDocument.result.status"
+        documentIsJson: !cel "steps.hitDocument.result.contentType.startsWith('application/json')"
+        page: !cel "steps.hitPage.result.status"
+        pageIsHtml: !cel "steps.hitPage.result.contentType.startsWith('text/html')"
+        excluded: !cel "steps.hitExcluded.result.status"
+      expected:
+        document: 200
+        documentIsJson: true
+        page: 200
+        pageIsHtml: true
+        excluded: 404
+    invoke: { kind: Assert.Equals }
+---
+# The static half. A reference mounted on a server that collects no document is
+# a `telo check` error, reported on the SERVER at its mount slot — the resource
+# whose author can fix it — for a rule Http.Reference declares.
+kind: Assert.Manifest
+metadata: { name: testMissingOpenApi }
+source: ./__fixtures__/reference-without-openapi.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "declares no `openapi:` block"

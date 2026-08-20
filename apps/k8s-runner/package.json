@@ -30,7 +30,7 @@
   "dependencies": {
     "@kubernetes/client-node": "^1.4.0",
     "@telorun/runner-core": "workspace:*",
-    "fastify": "^5.7.2"
+    "fastify": "^5.12.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

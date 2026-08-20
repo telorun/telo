@@ -194,6 +194,26 @@ export {
   type ResourceRuleFinding,
 } from "./validate-resource-rules.js";
 export {
+  REFERRER_RULES_ANNOTATION,
+  readReferrerRules,
+  readRawReferrerRules,
+  hasReferrerRules,
+  rewriteReferrerRuleKinds,
+  type ReferrerRule,
+} from "./referrer-rule.js";
+export {
+  validateReferrerRuleDeclarations,
+  evaluateReferrerRules,
+  referrerRuleExercised,
+  reportReferrerRules,
+  reportUnexercisedReferrerRule,
+  type Referrer,
+  type ReferrerRuleIssue,
+  type ReferrerRuleFinding,
+  type ReferrerRuleDiagnostic,
+} from "./validate-referrer-rules.js";
+export { RULE_BUDGET_MS } from "./rule-condition.js";
+export {
   readSchemaProjection,
   readSchemaMap,
   readProjectionFrom,

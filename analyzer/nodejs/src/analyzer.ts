@@ -69,6 +69,17 @@ import {
   type ResourceRuleIssue,
 } from "./validate-resource-rules.js";
 import { readResourceRules, type ResourceRule } from "./resource-rule.js";
+import { readReferrerRules, type ReferrerRule } from "./referrer-rule.js";
+import {
+  evaluateReferrerRules,
+  referrerRuleExercised,
+  reportReferrerRules,
+  reportUnexercisedReferrerRule,
+  validateReferrerRuleDeclarations,
+  type Referrer,
+  type ReferrerRuleDiagnostic,
+  type ReferrerRuleIssue,
+} from "./validate-referrer-rules.js";
 import {
   describeProjectionFailure,
   type ProjectionFailure,
@@ -1364,8 +1375,24 @@ export class StaticAnalyzer {
         rule: report.rule,
       },
     });
+    const referrerRuleDiagnostic = (report: ReferrerRuleDiagnostic): AnalysisDiagnostic => ({
+      severity: SEVERITY[report.severity],
+      code: report.code,
+      source: SOURCE,
+      message: report.message,
+      data: {
+        resource: {
+          kind: report.manifest.kind,
+          name: report.manifest.metadata?.name as string,
+        },
+        filePath: (report.manifest.metadata as { source?: string } | undefined)?.source,
+        path: report.path,
+        rule: report.rule,
+      },
+    });
     const projectionIssues: SchemaProjectionIssue[] = [];
     const resourceRuleIssues: ResourceRuleIssue[] = [];
+    const referrerRuleIssues: ReferrerRuleIssue[] = [];
     // A rule that never had anything to iterate is never proven — the second way
     // coverage varies invisibly, beside the dynamic-leaf skip. Tracked across the
     // whole run and reported once, since "empty on every resource" is not a fact
@@ -1373,6 +1400,13 @@ export class StaticAnalyzer {
     const ruleExercise = new Map<
       string,
       { manifest: ResourceManifest; rule: ResourceRule; exercised: boolean; seen: boolean }
+    >();
+    // Same for a referrer rule, where "never exercised" means nothing the
+    // `referrer:` filter matches ever referenced a resource of the kind — which
+    // is exactly what a typo in that filter looks like from the outside.
+    const referrerRuleExercise = new Map<
+      string,
+      { manifest: ResourceManifest; rule: ReferrerRule; exercised: boolean; seen: boolean }
     >();
     // `x-telo-type` is checked on EVERY manifest, not only on definition docs: a
     // schema fragment is written wherever a kind declares a schema-valued field,
@@ -1416,6 +1450,17 @@ export class StaticAnalyzer {
             effectiveAuthorSchema(m as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
           ),
         );
+        referrerRuleIssues.push(
+          ...validateReferrerRuleDeclarations(m as unknown as ResourceManifest),
+        );
+        for (const rule of readReferrerRules((m as Record<string, unknown>).schema)) {
+          referrerRuleExercise.set(`${m.metadata?.module}.${m.metadata?.name}#${rule.code}`, {
+            manifest: m as unknown as ResourceManifest,
+            rule,
+            exercised: false,
+            seen: false,
+          });
+        }
         for (const rule of readResourceRules((m as Record<string, unknown>).schema)) {
           ruleExercise.set(`${m.metadata?.module}.${m.metadata?.name}#${rule.code}`, {
             manifest: m as unknown as ResourceManifest,
@@ -1481,6 +1526,25 @@ export class StaticAnalyzer {
         };
         const filePath = (issue.manifest.metadata as { source?: string } | undefined)?.source;
         const data = { resource, filePath, path: issue.path };
+        if (issue.annotation === "referrer") {
+          // Mirrors ZONE_PROVIDER_UNRESOLVED: a filter naming no kind matches no
+          // referrer, so the rule would pass on every manifest while checking
+          // nothing — reported at the kind that wrote it, since the consumer
+          // cannot see that the check is inert.
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "REFERRER_RULE_INVALID",
+            source: SOURCE,
+            message:
+              `x-telo-referrer-rules 'referrer: ${issue.ref}' at '${issue.path}' names no kind. ` +
+              `The prefix must be an import alias declared in this file's 'imports:' map, ` +
+              `'Self' for a kind in this library, or 'Telo' for a built-in. A filter that ` +
+              `matches nothing leaves the rule inert. Known aliases: ` +
+              `${issue.knownAliases?.join(", ") || "(none)"}.`,
+            data,
+          });
+          continue;
+        }
         if (issue.annotation === "zone") {
           // Mirrors X_TELO_REF_UNRESOLVED: an unresolvable provider kind would
           // leave the requirement silently unenforced — no provider ever
@@ -1586,6 +1650,22 @@ export class StaticAnalyzer {
           },
         });
       }
+      for (const issue of referrerRuleIssues) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: issue.code,
+          source: SOURCE,
+          message: issue.message,
+          data: {
+            resource: {
+              kind: issue.manifest.kind,
+              name: issue.manifest.metadata?.name as string,
+            },
+            filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
+            path: issue.path,
+          },
+        });
+      }
       for (const issue of projectionIssues) {
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
@@ -1640,6 +1720,57 @@ export class StaticAnalyzer {
         aliases,
         aliasesByModule,
       }));
+
+    /**
+     * Whether a referrer of `kind` satisfies a referrer rule's `referrer:`
+     * filter, which is canonical by the time it gets here (`resolveSchemaRefKinds`
+     * rewrote it in the DECLARING module's scope). The referring manifest's own
+     * `kind:` is not — it is whatever alias its author imported the kind under —
+     * so it is resolved the same way every other kind comparison in this pass
+     * resolves one. Liskov-substitutable, matching `checkKind`: a child of the
+     * named kind is one.
+     */
+    const kindMatches = (filter: string, kind: string): boolean => {
+      const resolved = aliases.resolveKind(kind) ?? kind;
+      if (resolved === filter) return true;
+      return defs
+        .getByExtends(filter)
+        .some((d) => `${d.metadata.module}.${d.metadata.name}` === resolved);
+    };
+
+    /**
+     * The resources that reach `manifest`, with the slot each one reaches it
+     * through. A step's edge is attributed to the resource whose body declares
+     * it: a step is not a manifest, and the requirement is about the resource
+     * that has to declare something.
+     *
+     * Deduplication is the evaluation's, not this function's — a referrer
+     * reaching one resource through two slots is two sites, and which one anchors
+     * the diagnostic is a reporting decision.
+     */
+    const referrersOf = (
+      manifest: ResourceManifest,
+      graph: ReturnType<typeof buildCallGraph>,
+    ): Referrer[] => {
+      const name = manifest.metadata?.name as string | undefined;
+      if (!name) return [];
+      const node = graph.resource(manifest.kind, name) ?? graph.resourceByName(name);
+      if (!node) return [];
+      const out: Referrer[] = [];
+      for (const edge of graph.edgesTo(node.id)) {
+        const from = graph.nodes.get(edge.from);
+        if (!from) continue;
+        const owner = from.type === "step" ? graph.nodes.get(from.owner) : from;
+        if (!owner || owner.type !== "resource") continue;
+        out.push({
+          manifest: owner.manifest,
+          kind: owner.kind,
+          name: owner.name,
+          path: edge.path,
+        });
+      }
+      return out;
+    };
 
     // A `use` case map's selector written in CEL is a hard diagnostic — a call
     // graph known only at runtime is not statically analyzable, and no fallback
@@ -2123,6 +2254,44 @@ export class StaticAnalyzer {
         if (ruleExercised(m as unknown as ResourceManifest, rule)) tracked.exercised = true;
       }
 
+      // Referrer rules — what must be true of whoever REFERENCES this resource,
+      // declared by the kind that has the requirement rather than by the kind
+      // that must satisfy it. The subject is chosen by the EDGE, so no kind
+      // literal appears on the referring side, where the spelling would be the
+      // consumer's import alias rather than anything the rule's author controls.
+      // A consumer of the shared call graph, never a second traversal.
+      const referrerRules = readReferrerRules(authorSchema);
+      if (referrerRules.length > 0) {
+        const referrers = referrersOf(m as unknown as ResourceManifest, getCallGraph());
+        for (const report of reportReferrerRules(
+          m as unknown as ResourceManifest,
+          definition as unknown as ResourceManifest,
+          evaluateReferrerRules(
+            m as unknown as ResourceManifest,
+            authorSchema,
+            referrers,
+            kindMatches,
+          ),
+          !ruleDeclarer || rootModules.has(ruleDeclarer),
+        )) {
+          // A VIOLATION is the referrer's data, so it is reported only when that
+          // manifest is the entry's own — the same direction a resource-rule
+          // violation takes, one hop further out.
+          const owner = (report.manifest.metadata as { module?: string } | undefined)?.module;
+          if (report.code === "REFERRER_RULE_VIOLATED" && owner && !rootModules.has(owner)) {
+            continue;
+          }
+          diagnostics.push(referrerRuleDiagnostic(report));
+        }
+        for (const rule of referrerRules) {
+          const key = `${definition.metadata?.module}.${definition.metadata?.name}#${rule.code}`;
+          const tracked = referrerRuleExercise.get(key);
+          if (!tracked) continue;
+          tracked.seen = true;
+          if (referrerRuleExercised(rule, referrers, kindMatches)) tracked.exercised = true;
+        }
+      }
+
       // Validate inline resources nested inside this resource's body (e.g. a
       // Run.Sequence step's `invoke: { kind, ...config }`). These sit at
       // x-telo-ref slots reached only through local `$ref`s, which the
@@ -2168,6 +2337,12 @@ export class StaticAnalyzer {
     for (const tracked of ruleExercise.values()) {
       if (!tracked.seen || tracked.exercised) continue;
       diagnostics.push(resourceRuleDiagnostic(reportUnexercisedRule(tracked.manifest, tracked.rule)));
+    }
+    for (const tracked of referrerRuleExercise.values()) {
+      if (!tracked.seen || tracked.exercised) continue;
+      diagnostics.push(
+        referrerRuleDiagnostic(reportUnexercisedReferrerRule(tracked.manifest, tracked.rule)),
+      );
     }
 
     // Template-body structural validations: check that template entry-points produce

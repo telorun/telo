@@ -1,6 +1,11 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { rewriteRefSlotKinds } from "./ref-slot.js";
+import {
+  REFERRER_RULES_ANNOTATION,
+  hasReferrerRules,
+  rewriteReferrerRuleKinds,
+} from "./referrer-rule.js";
 import { hasRequiresZone, rewriteRequiresZoneKind } from "./zone-slot.js";
 
 const REF_ANNOTATION = "x-telo-ref";
@@ -27,9 +32,10 @@ export interface RefConstraintIssue {
   manifest: ResourceManifest;
   reason: RefConstraintReason;
   /** Which annotation carried the unresolved name: an `x-telo-ref` constraint
-   *  (the default) or an `x-telo-requires-zone` provider kind — the caller
-   *  reports the latter as ZONE_PROVIDER_UNRESOLVED. */
-  annotation?: "ref" | "zone";
+   *  (the default), an `x-telo-requires-zone` provider kind, or an
+   *  `x-telo-referrer-rules` `referrer:` filter — the caller reports those as
+   *  ZONE_PROVIDER_UNRESOLVED and REFERRER_RULE_INVALID. */
+  annotation?: "ref" | "zone" | "referrer";
   /** For `gated`: the target module and the kinds it does export. */
   gate?: { module: string; exported: string[] };
   /** Aliases the declaring scope does know — the "did you mean" material for
@@ -75,7 +81,11 @@ export function resolveSchemaRefKinds(
 ): RefConstraintIssue[] {
   const issues: RefConstraintIssue[] = [];
 
-  const record = (ref: string, path: string, annotation: "ref" | "zone" = "ref"): void => {
+  const record = (
+    ref: string,
+    path: string,
+    annotation: "ref" | "zone" | "referrer" = "ref",
+  ): void => {
     if (isLegacyRefIdentity(ref)) {
       issues.push({ ref, path, manifest: definition, reason: "legacy", annotation });
       return;
@@ -132,6 +142,20 @@ export function resolveSchemaRefKinds(
         const result = resolver.resolveKindResult(zone);
         if (result.status === "ok") return result.kind;
         record(zone, `${path}.x-telo-requires-zone`, "zone");
+        return undefined;
+      });
+    }
+    if (hasReferrerRules(obj)) {
+      // A referrer rule's `referrer:` filter names a kind through the identical
+      // alias-qualified grammar, resolved in the same declaring scope — so the
+      // evaluation pass compares canonical kinds and never has to know which
+      // alias the CONSUMER happened to import the kind under. That is the whole
+      // reason such a rule can be sound where the same test written on the
+      // referring kind cannot.
+      rewriteReferrerRuleKinds(obj, (kind) => {
+        const result = resolver.resolveKindResult(kind);
+        if (result.status === "ok") return result.kind;
+        record(kind, `${path}.${REFERRER_RULES_ANNOTATION}`, "referrer");
         return undefined;
       });
     }

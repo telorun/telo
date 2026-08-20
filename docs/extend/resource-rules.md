@@ -11,6 +11,10 @@ by reading the YAML, and each used to fail only at boot.
 `telo check` reports them — in CI, in the editor, and on a laptop with no
 database.
 
+For a requirement on the resource that *references* this one — a docs renderer
+needing its server to collect an OpenAPI document — see
+[Referrer rules](./referrer-rules.md).
+
 ## Writing a rule
 
 The annotation goes inside the kind's `schema:` block, beside the properties it

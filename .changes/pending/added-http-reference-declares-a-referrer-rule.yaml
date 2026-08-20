@@ -1,0 +1,5 @@
+modules:
+  modules/http-server: Added
+body: "Http.Reference declares a referrer rule requiring the server that mounts it to
+  declare an openapi: block, so a reference with nothing to render is a telo check error
+  on the server's mount slot rather than a failure at boot."

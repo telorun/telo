@@ -74,6 +74,11 @@ routes:
           application/json:
             body: { ok: "${{ result.ok }}" }
 ---
+# One reference instance, mounted on both servers: rendering is stateless, and the
+# document each one serves is its own.
+kind: Http.Reference
+metadata: { name: docs }
+---
 kind: Run.Sequence
 metadata: { name: Test }
 with:
@@ -86,6 +91,8 @@ with:
     mounts:
       - path: /v1
         mount: !ref ApiRelative
+      - path: /reference
+        mount: !ref docs
   - kind: Http.Server
     metadata: { name: ForwardedServer }
     host: 127.0.0.1
@@ -96,6 +103,8 @@ with:
     mounts:
       - path: /v1
         mount: !ref ApiForwarded
+      - path: /reference
+        mount: !ref docs
 targets:
   - !ref RelativeServer
   - !ref ForwardedServer
