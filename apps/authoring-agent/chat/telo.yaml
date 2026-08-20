@@ -922,7 +922,17 @@ system: |
             accountId: !cel "steps.createAccount.result.id"
 
   Pair it with a `Local.Resumer` (a Telo.Service, so it goes in `targets:`) and a
-  journal — `DurableJournalFile.Journal` writes append-only files to a directory.
+  journal. There are two, and they differ in GUARANTEE rather than in scale:
+  `DurableJournalFile.Journal` writes append-only files to a directory, for one
+  machine; `DurableJournalPostgres.Journal` takes a `Postgres.Connection`, so
+  several machines record to one place, claiming an interrupted run is one
+  conditional write and a delivery wakes a poller immediately.
+
+  Point the Postgres journal at the SAME connection the body's own writes use and
+  a region inside an `Sql.Transaction` is recorded step by step rather than
+  collapsed to one entry — its records commit and roll back with the effects they
+  describe. On any other journal that region re-runs whole on a resume, which the
+  run reports as `collapsedRegions` rather than leaving to be inferred.
 
   What is recorded is MORE than the results: a step's resolved inputs, every
   branch predicate, every loop condition and every switch key are recorded too,

@@ -1,7 +1,8 @@
 import type { Logger, ResourceContext } from "@telorun/sdk";
 import { quoteAnsiIdentifier, SqlConnectionBase, type SqlDialect } from "@telorun/sql";
 import { Kysely, PostgresDialect } from "kysely";
-import { Pool } from "pg";
+import { Pool, type ClientConfig } from "pg";
+import { NotificationListener, type NotificationHandler } from "./notification-listener.js";
 
 interface PoolConfig {
   min?: number;
@@ -151,13 +152,41 @@ function startHealthCheck(
 
 class PostgresConnection extends SqlConnectionBase {
   private stopHealthCheck: () => void = () => {};
+  #listener: NotificationListener | undefined;
 
   constructor(
     db: Kysely<any>,
     private readonly beginHealthCheck: () => () => void,
+    private readonly listenerConfig: ClientConfig,
     ctx: ResourceContext,
   ) {
     super(db, postgresDialect, ctx);
+  }
+
+  /**
+   * Subscribe to a `NOTIFY` channel; returns the unsubscribe.
+   *
+   * Postgres-only, so it lives HERE rather than on `Sql.Connection` — that
+   * contract is what every backend implements, and a method only one of them can
+   * answer would be a contract satisfied by throwing. A consumer reaches it the
+   * way `Ai.Model`'s `invoke` / `stream` and a connection's own `query()` are
+   * already reached: structurally, testing for the method rather than for a
+   * nominal type.
+   *
+   * The listener is built on first use, because a subscription is the only
+   * reason to hold a second connection open and most applications never take
+   * one.
+   */
+  async listen(channel: string, onNotify: NotificationHandler): Promise<() => Promise<void>> {
+    this.#listener ??= new NotificationListener(this.listenerConfig, this.ctx.log);
+    return this.#listener.listen(channel, onNotify);
+  }
+
+  /** Send a notification. A no-op statement away from `execute`, named here so a
+   *  caller does not have to know the function's name to use the channel it
+   *  already subscribed to. */
+  async notify(channel: string, payload?: string): Promise<void> {
+    await this.execute("SELECT pg_notify($1, $2)", [channel, payload ?? ""]);
   }
 
   /** The sweep starts only once the connection has proved itself: a recurring
@@ -170,6 +199,7 @@ class PostgresConnection extends SqlConnectionBase {
 
   override async teardown(): Promise<void> {
     this.stopHealthCheck();
+    await this.#listener?.close();
     await super.teardown();
   }
 }
@@ -186,6 +216,10 @@ export async function create(
   const url = new URL(resource.connectionString);
   const ssl = sslFromSslmode(url.searchParams.get("sslmode"));
   url.searchParams.delete("sslmode");
+
+  // The listener opens its own client from the same configuration — one
+  // `connectionString` on the manifest, both halves behind it.
+  const listenerConfig: ClientConfig = { connectionString: url.toString(), ssl };
 
   const maxLifetimeMs = resource.pool?.maxLifetimeMs;
   const minConnections = resource.pool?.min ?? 1;
@@ -215,6 +249,7 @@ export async function create(
         minConnections,
         ctx.log,
       ),
+    listenerConfig,
     ctx,
   );
 }

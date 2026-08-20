@@ -68,6 +68,15 @@ export interface SqlConnection extends ResourceInstance {
     ctx?: InvokeContext,
   ): Promise<QueryResult<T>>;
 
+  /**
+   * Run a statement on the CONNECTION, never on an ambient transaction.
+   *
+   * For a write that is a record ABOUT the work rather than part of it, and so
+   * must survive whatever the work was doing — a durable journal settling a run,
+   * releasing a claim. Everything else should use {@link execute} and join.
+   */
+  executeUncommitted<T>(sql: string, params?: unknown[]): Promise<QueryResult<T>>;
+
   /** Run a multi-statement script. */
   executeScript(sql: string): Promise<void>;
 
@@ -82,6 +91,18 @@ export interface SqlConnection extends ResourceInstance {
   /** True when an ambient transaction zone correlated on this connection has an
    *  open executor here — the flat-nesting check `Sql.Transaction` reuses. */
   hasOpenTransaction(ctx?: InvokeContext): boolean;
+
+  /**
+   * Does THIS connection hold the open executor for THIS zone?
+   *
+   * The named zone rather than whatever is ambient, which is what an attestation
+   * needs: a caller asking whether its own writes land inside a particular
+   * region gets a wrong answer from an ambient check the moment a second
+   * transaction is open somewhere in the stack. `hasOpenTransaction` answers the
+   * dispatch-time question ("is there one to execute on"); this answers the
+   * membership question ("is it that one").
+   */
+  bindsZone(zone: ZoneEntry): boolean;
 
   /** Rows affected by a write, normalized across drivers. */
   toRowCount(result: QueryResult<unknown>): number;

@@ -7,10 +7,10 @@ description: "Inheritance via extends: abstract interface declaration (Telo.Abst
 `extends` on a `Telo.Definition` declares that the kind **fulfills an abstract interface** declared by another module. This is the extension point for pluggable subsystems: one module defines the contract, other modules provide implementations.
 
 ```yaml
-# modules/sql-postgres/telo.yaml
+# modules/postgres/telo.yaml
 kind: Telo.Library
 metadata:
-  name: SQLPostgres
+  name: Postgres
   version: 1.0.0
 imports:
   Sql: ../sql
@@ -51,7 +51,7 @@ A definition extends an abstract interface by (a) importing the abstract's libra
 ```yaml
 kind: Telo.Library
 metadata:
-  name: SQLPostgres
+  name: Postgres
   version: 1.0.0
 imports:
   Sql: ../sql
@@ -67,7 +67,7 @@ schema:
     url: { type: string }
     poolSize: { type: integer }
 controllers:
-  - pkg:telo/local/js?path=./nodejs/sql-postgres.mjs&local_path=./nodejs/src/index.ts#connection
+  - pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#ConnectionController
 ```
 
 **Analyzer behavior:** For every reference typed `x-telo-ref: Sql.Connection`, the analyzer accepts any resource whose kind's definition has an `extends` edge leading to `SQL.Connection` (the canonical form after alias resolution). Acceptance is transitive, so a kind extending a kind that extends the abstract is accepted too. `extendedBy` is populated from both `extends` and `capability` so both the canonical and legacy patterns coexist.

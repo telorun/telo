@@ -28,6 +28,7 @@
     "publish": "bun ./cli/nodejs/bin/telo.ts publish",
     "check": "bun ./cli/nodejs/bin/telo.ts check",
     "test": "bun ./cli/nodejs/bin/telo.ts ./test-suite.yaml",
+    "test:integration": "bun ./cli/nodejs/bin/telo.ts ./test-suite-integration.yaml",
     "test:e2e:hub": "bun ./cli/nodejs/bin/telo.ts ./apps/hub/test-suite-e2e.yaml",
     "test:e2e:authoring-agent": "bun ./cli/nodejs/bin/telo.ts ./apps/authoring-agent/test-suite-e2e.yaml",
     "test:node": "node ./cli/nodejs/bin/telo.mjs ./test-suite.yaml",

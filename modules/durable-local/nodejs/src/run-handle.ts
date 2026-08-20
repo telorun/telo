@@ -13,7 +13,9 @@ import {
   type DurableDecisionKind,
   type DurableRunHandle,
   type DurableTarget,
+  type Logger,
   type ZoneEntry,
+  type ZoneJournalingMode,
 } from "@telorun/sdk";
 import type { DurableJournal, JournalEntry, RecordedTarget } from "./journal.js";
 
@@ -39,15 +41,22 @@ export class LocalRunHandle implements DurableRunHandle {
     collapsedRegions: 0,
     collapseReasons: [],
   };
-  readonly #collapsed = new Set<string>();
+  /** Regions already reported, so one transaction is one record however many
+   *  steps run inside it. */
+  readonly #resolved = new Set<string>();
 
   private constructor(
     readonly runId: string,
     private readonly journal: DurableJournal,
+    private readonly log: Logger,
   ) {}
 
-  static async open(runId: string, journal: DurableJournal): Promise<LocalRunHandle> {
-    const handle = new LocalRunHandle(runId, journal);
+  static async open(
+    runId: string,
+    journal: DurableJournal,
+    log: Logger,
+  ): Promise<LocalRunHandle> {
+    const handle = new LocalRunHandle(runId, journal, log);
     for (const entry of await journal.readEntries(runId)) {
       // First write wins here too, mirroring the store's own rule — so a journal
       // that somehow holds two entries at one path replays the same one the
@@ -141,12 +150,33 @@ export class LocalRunHandle implements DurableRunHandle {
     throw new DurableSuspension(this.runId, where.path, where.resource, until);
   }
 
-  /** Counted per DISTINCT region rather than per suppressed step: the reported
-   *  number answers "how many regions of this run re-run whole on a resume",
-   *  and counting steps would make one collapsed transaction look like five. */
-  noteCollapsed(info: { zone: string; attribute: "atomic" | "idempotent"; reason: string }): void {
-    if (this.#collapsed.has(info.zone)) return;
-    this.#collapsed.add(info.zone);
+  /**
+   * Report how one region resolved — the conformance requirement in spec §8.3.
+   *
+   * Recorded per DISTINCT region rather than per suppressed step: the reported
+   * number answers "how many regions of this run re-run whole on a resume", and
+   * counting steps would make one collapsed transaction look like five. The log
+   * record follows the same rule, so a hot loop inside a collapsed transaction
+   * does not emit one line per turn.
+   *
+   * `perStep` is reported at the same level as `collapsed`, deliberately: under
+   * a file journal collapse is the correct and expected resolution, so warning
+   * on it would be noise on every development run. What an operator wants is one
+   * field to filter on.
+   */
+  noteZoneMode(info: ZoneJournalingMode): void {
+    if (this.#resolved.has(info.zone)) return;
+    this.#resolved.add(info.zone);
+    this.log.info("durable.zone.mode", {
+      "durable.run": this.runId,
+      "durable.zone": info.zone,
+      "durable.zone.attribute": info.attribute,
+      "durable.zone.mode": info.mode,
+      ...(info.attestation === undefined
+        ? {}
+        : { "durable.zone.attestation": info.attestation }),
+    });
+    if (info.mode !== "collapsed") return;
     this.observations.collapsedRegions++;
     this.observations.collapseReasons.push(`${info.zone} (${info.attribute}): ${info.reason}`);
   }

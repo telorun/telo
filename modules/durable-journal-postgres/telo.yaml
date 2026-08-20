@@ -1,0 +1,99 @@
+kind: Telo.Library
+metadata:
+  name: DurableJournalPostgres
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Reliability, Storage]
+  description: |
+    Records durable runs in two tables on a PostgreSQL database, so several machines can
+    record and recover the same work. Claims each interrupted run with a single
+    conditional write, so two pollers never take the same one, and wakes a waiting run
+    the moment its answer arrives instead of at the next poll.
+imports:
+  DurableLocal: ../durable-local
+  Postgres: ../postgres
+  # The controller resolves a connection through `@telorun/sql`, so the module
+  # is declared here too — that is what makes the library one module scope
+  # across every consumer rather than a copy inlined into this bundle.
+  Sql: ../sql
+exports:
+  kinds:
+    - Journal
+---
+# A journal whose two hard operations are the database's own.
+#
+# The file journal can record and read back; what it cannot do is settle a race
+# between two processes reaching for the same run, and it says so rather than
+# faking it with a lock file. Both of those are native here — claiming is one
+# conditional UPDATE, waking is LISTEN/NOTIFY — which is the whole reason a
+# second journal exists rather than the file one growing options.
+#
+# It also unlocks EXACTLY-ONCE, which no journal on separate storage can offer:
+# when a step's own writes run inside an `Sql.Transaction` on this same
+# connection, this journal's INSERT lands inside that transaction, so a rollback
+# discards the record along with the effect it described. The step engine reads
+# that attestation and stops collapsing the region. Point the journal at a
+# different database and the attestation is false and the collapse returns —
+# which is correct, and is why the run reports which way it resolved.
+kind: Telo.Definition
+metadata:
+  name: Journal
+  description: >-
+    Stores durable runs and their completed steps in two tables on a PostgreSQL database,
+    keyed so a duplicate record is refused rather than written twice. Claims interrupted
+    runs one holder at a time, finds runs whose deadline or answer has arrived, and
+    notifies waiting pollers immediately. Use it when more than one process records or
+    recovers runs.
+capability: Telo.Provider
+extends: DurableLocal.Journal
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable-journal-postgres.mjs&local_path=./nodejs/src/index.ts#journal
+schema:
+  type: object
+  required: [connection]
+  additionalProperties: false
+  examples:
+    - connection: !ref db
+    - connection: !ref db
+      table: onboarding
+  properties:
+    connection:
+      title: Connection
+      description: >-
+        The PostgreSQL connection this journal records through. Sharing the connection
+        an application's own writes use is what makes exactly-once reachable: the
+        journal's record then lands inside the same transaction as the effect it
+        describes.
+      x-telo-ref:
+        kind: Postgres.Connection
+        use: dependency
+    table:
+      title: Table Prefix
+      description: >-
+        Prefix for this journal's two tables — `<prefix>_runs` and `<prefix>_entries`.
+        Two journals on one database need different prefixes: each treats every run in
+        its own tables as its own, so sharing them would make each recover the other's
+        work.
+      type: string
+      x-telo-eval: compile
+      default: telo_durable
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+    createTable:
+      title: Create Tables
+      description: >-
+        Create the tables on start-up when they are absent. Turn it off where the
+        application's own migrations own them, or where the runtime user holds no DDL
+        grant — there an unconditional CREATE fails the boot outright.
+      type: boolean
+      x-telo-eval: compile
+      default: true
+    notifyChannel:
+      title: Notify Channel
+      description: >-
+        PostgreSQL notification channel used to wake pollers when a run becomes runnable.
+        Defaults to the table prefix plus `_wake`. A wake only makes recovery prompt —
+        the poller's interval is what makes it certain — so a connection that cannot
+        LISTEN simply waits for the next pass.
+      type: string
+      x-telo-eval: compile
