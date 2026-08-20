@@ -167,6 +167,10 @@ export interface InvokeStepContext {
    *  Optional — providers that pre-resolve cross-module refs before reaching the leaf
    *  (e.g. the boot-target runner) may omit it. */
   resolveImportedInstance?(alias: string, name: string): ResourceInstance | undefined;
+  /** Resolve a module-level sibling by name. Optional for the same reason the
+   *  one above is, and read here ONLY to recover a target's declaration site —
+   *  the dispatch itself still goes by name through the chokepoint. */
+  resolveLocalInstance?(name: string): ResourceInstance | undefined;
 }
 
 /**
@@ -272,7 +276,7 @@ export async function executeInvokeStep(
   // rule intact — the journal records the OUTCOME of the step, and a step whose
   // third attempt succeeded completed once.
   const result = handle
-    ? await handle.step(path, targetIdentityOf(raw), inputs, execute)
+    ? await handle.step(path, targetIdentityOf(raw, ctx, state), inputs, execute)
     : await execute();
 
   state.steps[step.name] = { result };
@@ -289,16 +293,80 @@ export async function executeInvokeStep(
  * handles by simply running `execute` and a relocating one must refuse rather
  * than guess.
  */
-function targetIdentityOf(raw: unknown): DurableTarget | undefined {
-  if (raw && typeof raw === "object") {
-    const stamped = getRefIdentity(raw as object);
-    if (stamped) return { kind: stamped.kind, name: stamped.name };
-    const ref = raw as Partial<KindRef>;
-    if (typeof ref.kind === "string" && typeof ref.name === "string") {
-      return { kind: ref.kind, name: ref.name };
+function targetIdentityOf(
+  raw: unknown,
+  ctx: InvokeStepContext,
+  state: InvokeStepState,
+): DurableTarget | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  // A pre-injected instance carries the stamp already.
+  const behind = getRefIdentity(raw as object) ? undefined : instanceBehind(raw, ctx, state);
+  const stamped = getRefIdentity(raw as object) ?? (behind && getRefIdentity(behind.instance));
+  const ref = raw as Partial<KindRef>;
+  const kind = stamped?.kind ?? (typeof ref.kind === "string" ? ref.kind : undefined);
+  const name = stamped?.name ?? (typeof ref.name === "string" ? ref.name : undefined);
+  if (!kind || !name) return undefined;
+  return {
+    kind,
+    name,
+    // Whether the name resolved inside a `with:` scope, which is knowable HERE
+    // and only here — the resolution is what answers it. The tuple identifying
+    // which scope RUN is not derivable yet, so this is what stops such a target
+    // being encoded as the module-level resource that shares its name.
+    ...(behind?.scoped ? { scoped: true as const } : {}),
+    // Carried through verbatim: the kernel derived it at the declaration site,
+    // which is the only place it is knowable, and a consumer that must name this
+    // target elsewhere has nothing else to name it with.
+    ...(stamped?.origin?.module === undefined ? {} : { module: stamped.origin.module }),
+    ...(stamped?.origin?.pointer === undefined ? {} : { pointer: stamped.origin.pointer }),
+  };
+}
+
+/**
+ * The live instance behind a step's `invoke:` REF, when this host can name one.
+ *
+ * A step's slot is not a Phase-5 injection site — it resolves at dispatch — so a
+ * step target arrives as a `{kind, name, alias?}` reference and carries no stamp
+ * of its own. Reading the instance's is what recovers the declaration site, and
+ * the resolution mirrors `dispatch`'s branches exactly so the identity describes
+ * the resource the step will actually reach.
+ *
+ * Reports whether the name resolved inside a `with:` SCOPE as well as what it
+ * resolved to, because that is a fact only the resolution knows and it changes
+ * what the identity means: a scoped name and a module-level one can be the same
+ * string and different resources.
+ *
+ * Best-effort by design: every resolver here is optional, and a host that
+ * supplies none yields an identity of kind and name alone — enough for a local
+ * backend, and refused by a relocating one rather than guessed at.
+ */
+function instanceBehind(
+  raw: object,
+  ctx: InvokeStepContext,
+  state: InvokeStepState,
+): { instance: object; scoped: boolean } | undefined {
+  const ref = raw as Partial<KindRef>;
+  if (typeof ref.name !== "string") return undefined;
+  try {
+    if (ref.alias && ref.alias !== "Self") {
+      const imported = ctx.resolveImportedInstance?.(ref.alias, ref.name) as object | undefined;
+      return imported && { instance: imported, scoped: false };
     }
+    if (state.scope) {
+      // Scope-local FIRST, enclosing module as the fallback — the order
+      // `ScopeContext.getInstance` and the CEL `resources` layering already use,
+      // so what this reports a name to mean is what the dispatch will reach.
+      const scoped = state.scope.getInstance(ref.name) as unknown as object | undefined;
+      if (scoped) return { instance: scoped, scoped: true };
+    }
+    const local = ctx.resolveLocalInstance?.(ref.name) as object | undefined;
+    return local && { instance: local, scoped: false };
+  } catch {
+    // A resolver that throws is answering "not here", and the dispatch below is
+    // where that becomes an error with a message about the dispatch. Recovering
+    // provenance must not be the thing that reports it.
+    return undefined;
   }
-  return undefined;
 }
 
 /**

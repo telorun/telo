@@ -248,7 +248,7 @@ The standard library covers portable, vendor-neutral primitives whose surface is
 Examples:
 
 - `oci://ghcr.io/telorun/http-server`, `oci://ghcr.io/telorun/http-client` — HTTP is a public protocol; portable across vendors.
-- `oci://ghcr.io/telorun/sql` — generic SQL surface area; specific DB drivers are separate modules (`sql-postgres`, `sql-sqlite`).
+- `oci://ghcr.io/telorun/sql` — generic SQL surface area; specific DB drivers are separate modules (`postgres`, `sqlite`).
 - `oci://ghcr.io/telorun/lambda` — vendor-defined APIs and event shapes, adapted by a Telo-authored module.
 
 Where a module is published is a property of the **ref**, not of the library: a module declares nothing about its own location, and the same bytes can be published to an OCI repo, a registry path, or a URL without changing. Moving a module to a different repository is a breaking change to every consumer's `source:` field and is treated as a new module, not a version bump.

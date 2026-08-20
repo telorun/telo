@@ -36,6 +36,12 @@ export {
 } from "./bundle/module-artifact.js";
 export { readOwnerManifest, type OwnerManifest } from "./bundle/module-manifest.js";
 export {
+  buildSiblingLibraries,
+  NO_SIBLING_LIBRARIES,
+  type SiblingLibraryMap,
+  type ResolvedSiblingLibrary,
+} from "./controller-loaders/sibling-libraries.js";
+export {
   buildControllerBundle,
   canBuildFromSource,
   lastBuildInputs,

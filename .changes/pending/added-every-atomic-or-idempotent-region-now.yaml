@@ -1,0 +1,8 @@
+modules:
+  modules/durable-local: Added
+body: "Every atomic or idempotent region now reports how it resolved, as one
+  durable.zone.mode record carrying the run, the providing kind, the attribute and mode:
+  collapsed or perStep — both outcomes at the same level, since perStep is the
+  exactly-once regime and is reached by a runtime attestation the manifest cannot show.
+  And the resumer subscribes to a journal that can push, so a delivery wakes a poller
+  immediately instead of at its next interval; the interval remains the guarantee."

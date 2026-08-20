@@ -1,0 +1,11 @@
+modules:
+  modules/sql: Added
+body: |
+  Sql.Connection gains two methods. `bindsZone(zone)`: does THIS connection hold the
+  open executor for THAT zone. `hasOpenTransaction` answers the dispatch-time question —
+  is there one to execute on — while an attestation needs the membership question, and
+  an ambient check would claim membership of a region a caller's writes may not be in.
+  `executeUncommitted(sql, params)` runs a statement on the connection and never on an
+  ambient transaction, for a write that is a record ABOUT the work rather than part of
+  it and so must survive whatever the work was doing — a durable journal settling a run,
+  or releasing a claim. Joining stays the default, and is what makes exactly-once work.

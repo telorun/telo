@@ -63,6 +63,19 @@ export interface DurableTarget {
   /** Source of the module that DECLARED the target, when known — the half that
    *  disambiguates two libraries each declaring a `store`. */
   readonly module?: string;
+  /**
+   * The target is declared inside a `with:` scope.
+   *
+   * Separate from {@link scope} because the two are known at different places: a
+   * step engine can see THAT its target came from a scope — it resolved the name
+   * there — while the tuple identifying which scope RUN needs the step path the
+   * scope was opened at, which a scope handle is built without. Recording only
+   * the tuple would make an underivable scope indistinguishable from a
+   * module-level target, and that is the one difference that must not be lost:
+   * a scoped instance encoded as module-level resolves, at the far end, to a
+   * DIFFERENT resource that merely shares its name.
+   */
+  readonly scoped?: true;
   /** A `with:`-scoped instance: the scope run is what makes it distinct, and
    *  inside a durable run a scope run is opened by a step at a determined path,
    *  so the tuple stays deterministic. */
@@ -197,11 +210,33 @@ export interface DurableRunHandle {
    * coincidence the manifest cannot show. A durability feature whose guarantee
    * is decided invisibly has to say which way it resolved.
    */
-  noteCollapsed?(info: {
-    readonly zone: string;
-    readonly attribute: "atomic" | "idempotent";
-    readonly reason: string;
-  }): void;
+  noteZoneMode?(info: ZoneJournalingMode): void;
+}
+
+/**
+ * How one region resolved, at the moment it resolved.
+ *
+ * Both outcomes are reported, not only the collapsed one, and that is the point:
+ * `perStep` is the exactly-once regime and it is reached by an ATTESTATION made
+ * at runtime, so an operator asking "did this deployment get exactly-once"
+ * needs the affirmative answer as much as the negative. One field to filter on
+ * (`mode`) rather than the presence or absence of a record.
+ */
+export interface ZoneJournalingMode {
+  /** The providing kind — `Sql.Transaction`, `Idempotency.Once`. */
+  readonly zone: string;
+  readonly attribute: "atomic" | "idempotent";
+  /** `collapsed`: the region records one entry and re-runs whole on resume.
+   *  `perStep`: each step is recorded, and a rollback discards the records with
+   *  the effects they describe. */
+  readonly mode: "collapsed" | "perStep";
+  /** The author's own sentence from the attribute, so the reason an operator
+   *  reads is the manifest's rather than a generic one. */
+  readonly reason: string;
+  /** Why `perStep` was reached. Only `writesInside` today — the handle attested
+   *  that its own records land inside this zone's atomicity — and named rather
+   *  than implied, so a second attestation route is additive. */
+  readonly attestation?: "writesInside";
 }
 
 /**
@@ -254,17 +289,24 @@ export function durableHandleOf(ctx: InvokeContext | undefined): DurableRunHandl
 export function collapsesJournalEntries(
   zones: readonly { kind: string; attributes: ZoneAttributes; entry: ZoneEntry }[],
   handle: DurableRunHandle,
-): { collapsed: boolean; zone?: string; attribute?: "atomic" | "idempotent"; reason?: string } {
+): { collapsed: boolean; resolutions: ZoneJournalingMode[] } {
+  // Every region carrying one of the two attributes is resolved and REPORTED,
+  // including the ones walked past before a collapsing one was found: a
+  // transaction that attested its writes is an exactly-once region whether or
+  // not an idempotent zone further out collapses the whole thing, and reporting
+  // only the verdict would lose it.
+  const resolutions: ZoneJournalingMode[] = [];
   for (const zone of zones) {
     // `idempotent` collapses FULL STOP: there is nothing for the journal to be
     // inside, and re-running is a no-op either way.
     if (zone.attributes.idempotent) {
-      return {
-        collapsed: true,
+      resolutions.push({
         zone: zone.kind,
         attribute: "idempotent",
+        mode: "collapsed",
         reason: zone.attributes.idempotent,
-      };
+      });
+      return { collapsed: true, resolutions };
     }
     // `atomic` collapses UNLESS the handle attests its own writes land inside
     // that atomicity. This is not an override of the attribute; it is the
@@ -274,16 +316,26 @@ export function collapsesJournalEntries(
     // better: finer replay granularity, and no re-running a committed
     // transaction.
     if (zone.attributes.atomic) {
-      if (handle.writesInside(zone.entry)) continue;
-      return {
-        collapsed: true,
+      if (handle.writesInside(zone.entry)) {
+        resolutions.push({
+          zone: zone.kind,
+          attribute: "atomic",
+          mode: "perStep",
+          reason: zone.attributes.atomic,
+          attestation: "writesInside",
+        });
+        continue;
+      }
+      resolutions.push({
         zone: zone.kind,
         attribute: "atomic",
+        mode: "collapsed",
         reason: zone.attributes.atomic,
-      };
+      });
+      return { collapsed: true, resolutions };
     }
   }
-  return { collapsed: false };
+  return { collapsed: false, resolutions };
 }
 
 /** The zone-reading half of a step context — declared here so both the leaf and
@@ -311,13 +363,7 @@ export function journalingSuppressed(
   const zones = ctx.zoneAttributes?.(invokeCtx);
   if (!zones || zones.length === 0) return false;
   const verdict = collapsesJournalEntries(zones, handle);
-  if (verdict.collapsed && verdict.zone && verdict.attribute && verdict.reason) {
-    handle.noteCollapsed?.({
-      zone: verdict.zone,
-      attribute: verdict.attribute,
-      reason: verdict.reason,
-    });
-  }
+  for (const resolution of verdict.resolutions) handle.noteZoneMode?.(resolution);
   return verdict.collapsed;
 }
 

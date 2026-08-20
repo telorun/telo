@@ -1,0 +1,41 @@
+# The child manifest one shipped step runs in.
+#
+# It is handed the target's encoded identity and its inputs through the
+# environment, resolves the target by that identity alone, invokes it through
+# this kernel's own chokepoint, and prints the result as one JSON line — which is
+# the whole protocol between the two processes. Deliberately the crudest one that
+# works: what is under test is the identity, not the transport.
+kind: Telo.Application
+metadata:
+  name: DurableRemoteDispatcher
+  version: 0.0.0
+imports:
+  Remote: ./
+  Console: ../../../modules/console
+variables:
+  encodedTarget:
+    env: TELO_STEP_TARGET
+    type: string
+  encodedInputs:
+    env: TELO_STEP_INPUTS
+    type: string
+    default: "{}"
+targets:
+  - name: step
+    invoke: !ref dispatch
+  - name: report
+    invoke: !ref report
+    inputs:
+      output: !cel "steps.step.result"
+---
+kind: Remote.Dispatch
+metadata: { name: dispatch }
+encodedTarget: !cel "variables.encodedTarget"
+encodedInputs: !cel "variables.encodedInputs"
+targets:
+  # The child declares what it is ABLE to run; which of them runs is decided by
+  # the identity that arrives, not here.
+  greet: !ref Remote.greet
+---
+kind: Console.WriteLine
+metadata: { name: report }

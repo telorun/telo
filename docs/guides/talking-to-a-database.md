@@ -301,7 +301,7 @@ statement, and no handler changes:
 
 ```yaml
 imports:
-  Postgres: oci://ghcr.io/telorun/sql-postgres@<version>
+  Postgres: oci://ghcr.io/telorun/postgres@<version>
 ---
 kind: Postgres.Connection
 metadata:

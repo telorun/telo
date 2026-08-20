@@ -188,10 +188,10 @@ Every `Telo.Definition` schema is automatically assigned an `$id` by the analyze
 kind: Telo.Definition
 metadata:
   name: Connection
-  module: SQLPostgres
+  module: Postgres
 extends: Sql.Connection
 schema:
-  # $id: "telo://sql-postgres/Connection" — assigned automatically by the analyzer
+  # $id: "telo://postgres/Connection" — assigned automatically by the analyzer
   properties:
     url: { type: string }
   $defs:
@@ -205,12 +205,12 @@ schema:
             millis: { type: integer }
 ```
 
-`$defs` entries are type definitions, not instance properties — a `SQLPostgres.Connection` resource instance only declares `url`. `PoolOptions` is exposed for consumers and never appears in instance data.
+`$defs` entries are type definitions, not instance properties — a `Postgres.Connection` resource instance only declares `url`. `PoolOptions` is exposed for consumers and never appears in instance data.
 
 Any definition schema can reference types from another module using a standard `$ref`:
 
 ```yaml
-$ref: "telo://sql-postgres/Connection#/$defs/PoolOptions"
+$ref: "telo://postgres/Connection#/$defs/PoolOptions"
 $ref: "telo://http-server/Server#/properties/headers"
 ```
 
@@ -244,7 +244,7 @@ schema:
             x-telo-schema-from: "connection/$defs/PoolOptions"
 ```
 
-`connection/$defs/PoolOptions` is a path expression: `connection` names an `x-telo-ref` property, `/$defs/PoolOptions` is a JSON Pointer into the resolved kind's schema. When `connection` references a `SQLPostgres.Connection` resource, `pool` validates against that kind's `PoolOptions`. When it references a connection kind from a third-party module written long after `SQL.Query` — an engine nobody had in mind here — it validates against *that* kind's `PoolOptions` instead. That open set is the whole point: a static `$ref` would have to name every engine in advance.
+`connection/$defs/PoolOptions` is a path expression: `connection` names an `x-telo-ref` property, `/$defs/PoolOptions` is a JSON Pointer into the resolved kind's schema. When `connection` references a `Postgres.Connection` resource, `pool` validates against that kind's `PoolOptions`. When it references a connection kind from a third-party module written long after `SQL.Query` — an engine nobody had in mind here — it validates against *that* kind's `PoolOptions` instead. That open set is the whole point: a static `$ref` would have to name every engine in advance.
 
 **Path scope:** the first segment is resolved relative to the schema location where `x-telo-schema-from` appears. A leading `/` makes the path absolute — resolved from the resource root. No leading `/` means relative — resolved from the nearest enclosing `properties` block (sibling).
 

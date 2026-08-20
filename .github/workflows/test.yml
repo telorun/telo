@@ -142,6 +142,76 @@ jobs:
       - name: Run tests (bun)
         run: pnpm test
 
+  integration:
+    name: "Linux: integration tests (Postgres)"
+    runs-on: ubuntu-latest
+
+    # The tests the root suite deliberately cannot hold: they need a live
+    # database. `test-suite.yaml` must pass on a clean checkout with nothing
+    # running, so a red module suite means the code is wrong rather than that
+    # something was not up — which is exactly what mixing these in would cost.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        # Without this the job races the server: the first test would connect
+        # before Postgres finished its own init and fail on the connection
+        # rather than on anything under test.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # The same five variables the suite's manifests declare. Spelled out rather
+    # than left to their defaults so the connection this job uses is readable
+    # here, and so a developer whose 5432 is taken sets DB_PORT locally against
+    # the identical contract.
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: postgres
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run integration tests
+        run: pnpm run test:integration
+
   unit:
     name: "Linux: package unit tests"
     runs-on: ubuntu-latest

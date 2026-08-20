@@ -1,0 +1,69 @@
+kind: Telo.Application
+metadata:
+  name: DurableRemoteStepsTest
+  version: 1.0.0
+  description: |
+    The remote half of the step seam: a step executed in a process that shares no
+    instance graph with the one that declared it, addressed by its ENCODED
+    DECLARATION-SITE IDENTITY and nothing else.
+
+    This is why `step()` takes an identity rather than only a live instance. A target
+    arrives at the step engine as an instance — Phase-5 injection has already replaced
+    the `!ref` — and instance identity is process-local by construction, so a backend
+    asked to execute a step elsewhere would have nothing to resolve. Without something
+    that genuinely sends one, that parameter is a claim nothing tests.
+
+    A child kernel is a real boundary for that purpose: it holds none of this process's
+    instances, so a target cannot resolve there by accident. What proves it went is
+    `via: child-kernel`, which only the child's dispatcher stamps — a fixture that had
+    quietly executed the step at home would return an identical result without it, and
+    `shipped` names the step paths that actually crossed.
+
+    Cheap on purpose. What it can fail at — an identity that does not survive being
+    written down — is exactly what a hosted engine would otherwise be the first to
+    discover.
+
+    NOT ASSERTED HERE: that a `with:`-scoped target is refused rather than shipped as
+    its module-level namesake. A scoped name resolves inside the sequence that opened
+    the scope, and this backend ships that whole sequence as one step — so the scoped
+    resolution never happens in this process at all. It is asserted at the encoder,
+    in sdk/nodejs/tests/durable-target-encoding.test.ts.
+imports:
+  Remote: ./__fixtures__/durable-remote
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref test
+---
+kind: Remote.Workflow
+metadata: { name: greeter }
+dispatcher: ./__fixtures__/durable-remote/dispatcher.yaml
+steps:
+  - name: hello
+    invoke: !ref Remote.greet
+    inputs:
+      text: !cel "inputs.name"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: run
+    invoke: !ref greeter
+    inputs:
+      name: ada
+
+  # The result came back from the resource the step named, carrying the child's
+  # own stamp — so it was resolved from the encoded identity rather than from an
+  # instance this process handed over.
+  - name: assertShipped
+    inputs:
+      actual:
+        echoed: !cel "steps.run.result.steps.hello.result.echoed"
+        via: !cel "steps.run.result.steps.hello.result.via"
+        shipped: !cel "steps.run.result.shipped"
+      expected:
+        echoed: "hello, ada"
+        via: child-kernel
+        shipped: ["steps/hello"]
+    invoke: { kind: Assert.Equals }
+

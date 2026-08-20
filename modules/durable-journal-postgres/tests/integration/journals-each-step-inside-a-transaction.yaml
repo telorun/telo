@@ -1,0 +1,178 @@
+kind: Telo.Application
+metadata:
+  name: DurableJournalPostgresExactlyOnceTest
+  version: 1.0.0
+  description: |
+    The property this journal exists for, and the one no journal on separate storage can
+    offer: a durable body whose writes run inside a transaction ON THIS CONNECTION is
+    journaled STEP BY STEP rather than collapsed to one entry.
+
+    The assertion is a contrast, in one manifest, because either half alone proves
+    nothing. The same transaction body is run twice — once against this journal, once
+    against the file journal — and the two disagree: the Postgres one reports
+    `collapsedRegions: 0` because its own INSERT lands inside the transaction it is
+    recording, so a rollback discards the record with the effect; the file one reports
+    `1`, because a directory of files shares nothing with a database transaction and
+    the region has to re-run whole. That is the runtime coincidence spec §8.3 requires
+    a runtime to make observable, and asserting only the Postgres half would pass just
+    as well against a build where collapse never happened at all.
+
+    NEEDS A LIVE POSTGRES. Kept out of `tests/` proper for exactly that reason — the
+    root suite must run on a clean checkout with nothing installed.
+imports:
+  Durable: ../../../durable
+  Local: ../../../durable-local
+  Journal: ../../
+  FileJournal: ../../../durable-journal-file
+  Postgres: ../../../postgres
+  Sql: ../../../sql
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+  journalDir:
+    env: DURABLE_PG_TEST_DIR
+    type: string
+    default: .telo/durable-postgres-test
+targets:
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# The journal under test — on the SAME connection the transaction below opens,
+# which is the whole condition. Point it at another database and the attestation
+# turns false and the collapse returns, which is the degradation this design
+# insists on reporting rather than hiding.
+kind: Journal.Journal
+metadata: { name: journal }
+connection: !ref db
+table: !cel "'telo_durable_collapse_test'"
+---
+# The control. Genuinely durable, and genuinely unable to be inside anyone's
+# transaction — so its answer to the same question is the opposite one.
+kind: FileJournal.Journal
+metadata: { name: fileJournal }
+directory: !cel "variables.journalDir"
+---
+kind: Sql.Query
+metadata: { name: probe }
+connection: !ref db
+---
+# The body inside the transaction. A read rather than a write, deliberately:
+# what is under test is which JOURNALING MODE the region resolves to, and that
+# turns on the zone and the connection, not on what the statements do.
+kind: Run.Sequence
+metadata: { name: insideTransaction }
+steps:
+  - name: first
+    invoke: !ref probe
+    inputs:
+      sql: SELECT 1 AS ok
+  - name: second
+    invoke: !ref probe
+    inputs:
+      sql: SELECT 2 AS ok
+---
+kind: Sql.Transaction
+metadata: { name: transaction }
+connection: !ref db
+steps: !ref insideTransaction
+---
+kind: Local.Workflow
+metadata: { name: onPostgres }
+journal: !ref journal
+runId: !cel "'pgtx:' + inputs.token"
+steps:
+  - name: work
+    invoke: !ref transaction
+---
+kind: Local.Workflow
+metadata: { name: onFiles }
+journal: !ref fileJournal
+runId: !cel "'filetx:' + inputs.token"
+steps:
+  - name: work
+    invoke: !ref transaction
+---
+kind: Local.Result
+metadata: { name: postgresOutcome }
+journal: !ref journal
+wait: 15s
+---
+kind: Local.Result
+metadata: { name: fileOutcome }
+journal: !ref fileJournal
+wait: 15s
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # One token per process: the journal tables outlive this run, so a fixed id
+  # would attach to what a previous run recorded instead of executing.
+  - name: token
+    value: !cel "string(nowMillis())"
+
+  - name: startPostgres
+    invoke: !ref onPostgres
+    inputs:
+      token: !cel "steps.token.result"
+  - name: postgres
+    invoke: !ref postgresOutcome
+    inputs:
+      run: !cel "steps.startPostgres.result.runId"
+
+  - name: startFiles
+    invoke: !ref onFiles
+    inputs:
+      token: !cel "steps.token.result"
+  - name: files
+    invoke: !ref fileOutcome
+    inputs:
+      run: !cel "steps.startFiles.result.runId"
+
+  # The contrast, asserted as one value so a build where NEITHER collapsed would
+  # fail rather than half-pass.
+  - name: assertModes
+    inputs:
+      actual:
+        postgresStatus: !cel "steps.postgres.result.status"
+        postgresCollapsed: !cel "steps.postgres.result.collapsedRegions"
+        fileStatus: !cel "steps.files.result.status"
+        fileCollapsed: !cel "steps.files.result.collapsedRegions"
+      expected:
+        postgresStatus: completed
+        postgresCollapsed: 0
+        fileStatus: completed
+        fileCollapsed: 1
+    invoke: { kind: Assert.Equals }
+
+  # The file journal states the author's own sentence for why its region re-runs
+  # whole — the reason an operator reads is the manifest's, not a generic one.
+  - name: assertReasonQuoted
+    inputs:
+      actual: !cel "size(steps.files.result.collapseReasons) == 1"
+      expected: true
+    invoke: { kind: Assert.Equals }

@@ -7,7 +7,7 @@ import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { hostPlatformTarget, type ModuleArtifact } from "../bundle/module-artifact.js";
-import type { ControllerResolveSource } from "../controller-loader.js";
+import type { ControllerResolveSource, ControllerWorkReporter } from "../controller-loader.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
 import {
@@ -485,6 +485,7 @@ export class BundleControllerLoader {
     baseUri: string,
     artifact?: ModuleArtifact,
     libraries: SiblingLibraryMap = NO_SIBLING_LIBRARIES,
+    report?: ControllerWorkReporter,
   ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     let parsed: PackageURL;
     try {
@@ -578,10 +579,17 @@ export class BundleControllerLoader {
         importInstance: async () => {
           let built: string;
           try {
+            // A dev build is a compile the caller waits on, and it is paid here
+            // rather than at resolve — which is why the work signal is not tied
+            // to the resolve phase. The reporter goes INTO the builder rather
+            // than wrapping the call: only the builder knows whether its
+            // content-addressed cache answered, and reporting a cache hit would
+            // put a line on screen for work nobody waited for.
             built = await buildControllerFromSource(
               sourceFile!,
               cacheRoot!,
               buildExternals(libraries, format),
+              report,
             );
           } catch (err) {
             if (!(err instanceof ControllerEnvMissingError)) throw err;
@@ -607,7 +615,7 @@ export class BundleControllerLoader {
     if (artifact) {
       // By its own selector, not by re-matching the host: this candidate IS one
       // selector, and it is exactly the key of the layer that carries it.
-      const resolved = await artifact.materializeController(selector);
+      const resolved = await artifact.materializeController(selector, report);
       if (!resolved) {
         throw new ControllerEnvMissingError(
           `pkg:telo controller "${purl}": the module artifact ships no layer for ` +

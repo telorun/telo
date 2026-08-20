@@ -299,11 +299,58 @@ runtime:
   pointer to the declaration)`. Anonymous in the manifest, not anonymous in the
   graph.
 
-**The ENCODING — how one is written into bytes — is NOT specified in v1.1.**
-Nothing in this version sends an identity across a process boundary: a local
-backend resolves it in process. It is written in the version that first does, and
-freezing a format nothing can exercise is the failure this document's own
-sequencing rule exists to prevent.
+#### The encoding
+
+An identity that never leaves the process needs none of this — a local backend
+resolves it in place. What follows binds a runtime that **sends one anywhere**: a
+step executed in another process, a frame on an open invocation, an entry read by
+a second-language kernel.
+
+It is **JSON**, because a journal entry already carries its target as JSON and a
+second serialization vocabulary for one value is a second thing to keep agreeing.
+What the format adds over "some JSON" is what a format has to add:
+
+- **A canonical key order** — `v`, `kind`, `name`, `module`, `pointer`, `scope`,
+  and inside `scope`, `owner`, `site`, `stepPath`. Two runtimes producing the same
+  identity MUST produce the same bytes, so a recipient can compare, log and key on
+  the encoded form without parsing it first.
+- **A version.** `v` is `1`. A reader receiving a version it does not know MUST
+  refuse the identity rather than read the fields it recognizes: those fields may
+  mean something else in a form it has never seen, and resolving anyway executes a
+  step against a resource nobody named. `v` is bumped only for a change an older
+  reader would MISREAD; a new optional field it can ignore is not one.
+- **Required fields per form.** `kind`, `name` and `module` are required in every
+  form. `module` in particular: it is what tells two libraries' same-named
+  resources apart, and a recipient resolving without it picks whichever it saw
+  first. `pointer` marks the inline form, `scope` the scoped one, and a value
+  carrying **both** MUST be refused — that is not a fourth form but a
+  contradiction. A `scope` MUST carry all three of its fields, since a scoped
+  instance is distinguished by its scope RUN and an identity missing that names
+  every run of the scope at once.
+
+**Knowing a target is scoped is separate from identifying which run**, and a
+runtime MUST keep the two apart. A step engine can see that a name resolved
+inside a scope — the resolution is what answers it — while the tuple needs the
+step path the scope was opened at, which a scope handle may be built without. A
+scoped target whose tuple is unavailable MUST be refused, exactly as an
+incomplete `scope` is: encoded as though it were module-level, it resolves at the
+far end to a DIFFERENT resource that merely shares its name, which is the failure
+this whole section exists to prevent.
+
+An identity that cannot meet this MUST be refused **at the sender**, where the
+manifest that produced it is still in reach, rather than encoded partially and
+resolved to something merely similar at the far end.
+
+```json
+{"v":1,"kind":"Mail.Send","name":"sendMail","module":"oci://ghcr.io/acme/mail@1.2.0"}
+```
+
+**Deriving the identity is the runtime's own problem, and it is not free.** A
+step's `invoke:` slot resolves at DISPATCH rather than at injection, so the value
+the step engine holds is a reference, not a stamped instance — a runtime MUST
+recover the declaration site from the instance the reference resolves to, by the
+same resolution the dispatch itself uses, or the identity it encodes will describe
+a resource other than the one the step reaches.
 
 A replay that reaches a **different target** than the entry at that key records
 MUST raise `ERR_JOURNAL_ENTRY_MISMATCH`.
@@ -447,9 +494,22 @@ Which regime a deployment got turns on whether the journal's connection *is* the
 transaction's connection at runtime — invisible in the manifest, and silently
 degrading if someone repoints it. A runtime MUST therefore make the resolution
 observable: a structured record per atomic region at the moment collapse is
-resolved, and a per-run count of collapsed regions as observed state. A
-durability feature whose guarantee is decided by an invisible runtime coincidence
-has to say which way it resolved.
+resolved, and a per-run count of collapsed regions. A durability feature whose
+guarantee is decided by an invisible runtime coincidence has to say which way it
+resolved.
+
+The record is named **`durable.zone.mode`** and carries the run, the providing
+kind, the attribute that decided it, the resolved `mode` — `collapsed` or
+`perStep` — and, for `perStep`, the `attestation` that produced it. **Both
+outcomes are reported, at the same level**, and that is deliberate twice over:
+`perStep` is the exactly-once regime and is reached by a runtime attestation, so
+the affirmative answer is as much wanted as the negative; and collapse is the
+correct, expected resolution under a journal on separate storage, so raising its
+level would put a warning on every development run. One field to filter on, not
+the presence or absence of a line.
+
+One record per REGION, not per suppressed step: the question is how many regions
+of this run re-run whole, and a hot loop inside one transaction is one region.
 
 ## 9. Error codes
 
@@ -462,12 +522,11 @@ has to say which way it resolved.
 | `ERR_DURABLE_SUSPENDED` | not an error — the suspension SIGNAL, carried on an `Error` so it unwinds. It MUST reach the workflow that owns the run |
 | `ERR_DURABLE_SUSPENSION_SWALLOWED` | a body returned normally while a suspension was latched (§7) |
 | `ERR_DURABLE_SUSPEND_FORBIDDEN` | a park was attempted inside a zone declaring `noSuspend`, quoting that zone's own reason |
+| `ERR_DURABLE_TARGET_UNENCODABLE` | a step target could not be written down completely enough to cross a process boundary (§5.3) |
+| `ERR_DURABLE_TARGET_UNDECODABLE` | a step target arrived malformed, or in an encoding version this runtime does not read (§5.3) |
 
 ## 10. What v1.1 deliberately leaves out
 
-- **The target-identity encoding** (§5.3), until something sends one across a
-  process boundary.
-- **Remote step execution**, for the same reason.
 - **Any shared start / schedule / cancel / status surface.** There is none, by
   design: those are where engines genuinely differ, and flattening them costs
   fidelity in both directions.

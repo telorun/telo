@@ -1,0 +1,16 @@
+{
+  "name": "@telorun/durable-remote-fixture-build",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Build-only package for the durable-remote TEST FIXTURE's controllers. Never published, and not a module of the standard library — it exists to hold the remote half of the durable step seam under load.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0"
+  }
+}
