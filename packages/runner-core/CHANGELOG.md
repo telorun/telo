@@ -1,5 +1,11 @@
 # @telorun/runner-core
 
+## 0.8.2
+
+### Patch Changes
+
+- c7fdbd9: Move to fastify 5.12, where per-request logging is switched off through the `logController` option instead of the deprecated top-level `disableRequestLogging` (FSTDEP023).
+
 ## 0.8.1
 
 ### Patch Changes
