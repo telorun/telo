@@ -4,6 +4,7 @@ import { FastifyInstance } from "fastify";
 import { readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizeMountPrefix } from "./mount-prefix.js";
 
 type HttpStaticResource = RuntimeResource & {
   root: string;
@@ -12,17 +13,6 @@ type HttpStaticResource = RuntimeResource & {
   maxAge?: number;
   immutable?: boolean;
 };
-
-/** Collapse a mount prefix to a single leading slash with no trailing slash;
- *  an empty/`"/"` prefix becomes `"/"`. Unlike Http.Api (which returns `""` and
- *  concatenates the prefix onto each route path on the root app), this serves
- *  from an encapsulated `register({ prefix })`, which needs a non-empty prefix —
- *  hence root maps to `"/"`, not `""`. */
-function normalizeMountPrefix(prefix: string): string {
-  const trimmed = prefix.replace(/\/+$/, "");
-  if (!trimmed) return "/";
-  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
-}
 
 /** Serves a directory of static assets (a built SPA, plain HTML, images, …) as a
  *  Telo.Mount. Mirrors Http.Api's `register(app, prefix)` contract so it slots into

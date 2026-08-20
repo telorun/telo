@@ -1,0 +1,11 @@
+modules:
+  modules/http-server: Fixed
+body: >-
+  An Http.Server that failed to initialize reported Fastify's duplicate-route
+  error instead of the reason it failed. The multi-pass init loop calls init()
+  again on a resource that failed — which is how a mount not yet injected gets
+  its second chance — while a route registers exactly once, so the second pass
+  raised FST_ERR_DUPLICATED_ROUTE and buried the first failure. Route
+  registration is now resumable: each mount records that it attached and a later
+  pass registers only what is still missing, so a retry that can succeed still
+  does and one that cannot reports its real cause.

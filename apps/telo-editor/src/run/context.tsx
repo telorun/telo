@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { type DebugFrame, isLogFrame } from "@telorun/debug-wire";
+import { type DebugFrame, isEventFrame } from "@telorun/debug-wire";
 
 import { registry } from "./registry";
 import { loadRunIndex, saveRunIndex, type PersistedRunEntry } from "./run-index";
@@ -589,8 +589,8 @@ function applyRunEvent(
 
   if (event.type === "debug") {
     // The editor shows logs through the run's terminal / LogStream slot, so only
-    // relayed *event* frames feed the Events tab; relayed log frames are dropped.
-    if (isLogFrame(event.frame)) return;
+    // relayed *event* frames feed the Events tab; log and record frames are dropped.
+    if (!isEventFrame(event.frame)) return;
     updateRecord(runId, (record) => appendDebugFrames(record, [event.frame]));
     return;
   }

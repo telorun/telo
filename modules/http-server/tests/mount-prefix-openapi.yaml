@@ -102,6 +102,9 @@ outputType:
       hasAdmin: { type: boolean }
     required: [ serverUrl, serverCount, hasRoot, hasAdmin ]
 ---
+kind: Http.Reference
+metadata: { name: docs }
+---
 kind: Run.Sequence
 metadata: { name: Test }
 with:
@@ -116,6 +119,8 @@ with:
         mount: !ref RootApi
       - path: /admin
         mount: !ref AdminApi
+      - path: /reference
+        mount: !ref docs
 targets:
   - !ref Server
 steps:

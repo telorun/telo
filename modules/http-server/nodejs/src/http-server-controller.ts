@@ -1,7 +1,6 @@
 import cors from "@fastify/cors";
 import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
 import swagger from "@fastify/swagger";
-import apiReference from "@scalar/fastify-api-reference";
 import {
   CatchEntry,
   dispatchCatches,
@@ -20,8 +19,14 @@ import {
   type RuntimeResource,
 } from "@telorun/sdk";
 import addFormats from "ajv-formats";
-import Fastify, { FastifyInstance, type FastifyRequest } from "fastify";
+import Fastify, {
+  FastifyInstance,
+  LogController,
+  type FastifyRequest,
+  type FastifyServerOptions,
+} from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
+import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
 
 /** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
  *  live instance into a mount's `mount` slot (x-telo-ref `Telo.Mount`) — cross-module refs
@@ -45,6 +50,16 @@ type CorsOptions = {
   hideOptionsRoute?: boolean;
 };
 
+type HttpMount = {
+  path?: string;
+  // x-telo-ref `Telo.Mount`: Phase 5 replaces this slot with the live mounted
+  // instance (Http.Api, Mcp.HttpEndpoint, …), local or imported.
+  mount?: Mountable;
+  logging?: { level?: LevelName };
+  /** Expanded at startup (`x-telo-eval: compile`); `false` leaves the mount out. */
+  when?: boolean;
+};
+
 type HttpServerResource = RuntimeResource & {
   host?: string;
   port?: number;
@@ -59,13 +74,7 @@ type HttpServerResource = RuntimeResource & {
       version: string;
     };
   };
-  mounts?: Array<{
-    path?: string;
-    // x-telo-ref `Telo.Mount`: Phase 5 replaces this slot with the live mounted
-    // instance (Http.Api, Mcp.HttpEndpoint, …), local or imported.
-    mount?: Mountable;
-    logging?: { level?: LevelName };
-  }>;
+  mounts?: HttpMount[];
   notFoundHandler?: {
     invoke: KindRef<Invocable>;
     inputs?: Record<string, unknown>;
@@ -88,6 +97,11 @@ class HttpServer implements ResourceInstance {
    *  for a server that emitted `http.server.started`. */
   private listening = false;
   private pluginsInitialized = false;
+  /** Indices into `activeMounts()` already attached, so a later init pass
+   *  registers only what is still missing — see `init()`. */
+  private readonly attachedMounts = new Set<number>();
+  private notFoundHandlerInstalled = false;
+  private excludedMountsLogged = false;
   private readonly app: FastifyInstance;
   private readonly host: string;
   private readonly port: number;
@@ -117,14 +131,25 @@ class HttpServer implements ResourceInstance {
     // protocol/host (request.protocol/host) and the canonical client address
     // (request.ip). An explicit `trustProxy` (boolean / hop-count) wins; absent
     // it, the legacy `trustForwardedHeaders` boolean still applies.
-    const trustProxy = resource.trustProxy ?? this.trustForwardedHeaders;
+    //
+    // The hop count is expressed as the predicate it means — trust the rightmost
+    // N entries of X-Forwarded-For — rather than handed to Fastify as a number:
+    // Fastify 5.12 stopped honouring the numeric form and now trusts NOTHING for
+    // it, which would turn this kind's documented hop-count option into a silent
+    // no-op. The spoofing hazard that motivated their change is the one the
+    // schema already states: only enable this behind a trusted proxy.
+    const configuredTrust = resource.trustProxy ?? this.trustForwardedHeaders;
+    const trustProxy: FastifyServerOptions["trustProxy"] =
+      typeof configuredTrust === "number"
+        ? (address, hop) => hop < configuredTrust
+        : configuredTrust;
     // §13.3: replacement, not bridging — Fastify's Pino instance is swapped for
     // a Telo-backed adapter, so its records are Telo records at the source and
     // inherit the root `logging:` block's level, encoding, redaction, and sinks.
     //
     // The adapter is injected UNCONDITIONALLY. It used to be gated on `info`
     // being enabled, because that was what avoided building a per-request record
-    // at a raised threshold — but `disableRequestLogging` now removes that cost
+    // at a raised threshold — but disabled request logging now removes that cost
     // outright, so the gate's only remaining effect was to hand Fastify its null
     // logger at `level: warn` and silently drop every diagnostic it owns: the
     // error handler's own failures, reply-send failures, aborted-request hooks.
@@ -140,12 +165,26 @@ class HttpServer implements ResourceInstance {
       // `onRequest` / `onResponse` instead (see `installRequestLogging`), so the
       // access record's shape is this KIND's contract rather than Pino's prose —
       // which is what lets a Rust or Go implementation emit the same thing.
-      disableRequestLogging: true,
+      // The top-level `disableRequestLogging` option is deprecated (FSTDEP023);
+      // the log controller carries the same switch.
+      logController: new LogController({ disableRequestLogging: true }),
       trustProxy,
       ajv: { customOptions: { useDefaults: true }, plugins: [addFormats.default as any] },
     });
   }
 
+  /**
+   * Registering plugins and routes: nothing observable, and nothing repeatable —
+   * a route registers exactly once.
+   *
+   * The multi-pass init loop calls `init()` AGAIN on a resource whose init threw,
+   * which is how a mount that was not yet injected gets its second chance. So
+   * this has to be RESUMABLE rather than merely re-runnable: each mount records
+   * that it attached, and a later pass registers only what is still missing.
+   * Re-running the whole set answered with Fastify's duplicate-route error and
+   * buried the reason the first pass failed; refusing to re-run at all would have
+   * made a first-pass failure permanent, which is the retry the loop exists for.
+   */
   async init() {
     if (!this.pluginsInitialized) {
       await this.setupPlugins();
@@ -176,13 +215,27 @@ class HttpServer implements ResourceInstance {
    * scope, so it cannot quieten `/health` while leaving `/api` alone. This can.
    */
   private mountLogFloors(): ReadonlyArray<{ prefix: string; floor: number }> {
-    return (this.resource.mounts ?? [])
+    return this.activeMounts()
       .flatMap((mount) => {
         const level = mount.logging?.level;
         if (!level) return [];
         return [{ prefix: mount.path || "", floor: severityForLevel(level) }];
       })
       .sort((a, b) => b.prefix.length - a.prefix.length);
+  }
+
+  /**
+   * The mounts this server attaches, `when:`-gated ones dropped.
+   *
+   * `when` is a startup decision, not a per-request one: it resolves with the
+   * rest of the server's configuration, so an excluded mount registers no routes
+   * at all rather than answering 404 — which is what makes leaving the API
+   * reference out of a production deployment mean something. The referenced
+   * resource is still created and initialized: it is an ordinary ref slot, filled
+   * before this server ever runs.
+   */
+  private activeMounts(): ReadonlyArray<HttpMount> {
+    return (this.resource.mounts ?? []).filter((mount) => mount.when !== false);
   }
 
   private installRequestLogging() {
@@ -367,6 +420,12 @@ class HttpServer implements ResourceInstance {
       // override; otherwise the URL is relative (`/`) so the doc is correct behind
       // any proxy/ingress/origin — the client resolves it against wherever the
       // reference was loaded.
+      //
+      // This registers the document and nothing that serves it: rendering it is
+      // Http.Reference's, mounted where the author wants it. Collection has to
+      // stay here because @fastify/swagger reads a route's schema through an
+      // `onRoute` hook in its own encapsulation context, so it must be at the
+      // root scope before any mount registers its routes.
       const servers = [{ url: this.resource.baseUrl ?? "/" }];
       await this.app.register(swagger, {
         openapi: {
@@ -375,63 +434,53 @@ class HttpServer implements ResourceInstance {
           servers,
         },
       });
-      const referencePrefix = "/reference";
       // `trustForwardedHeaders` (and no fixed baseUrl) upgrades the relative
       // default to absolute URLs built per-request from the now-trusted
-      // X-Forwarded-* headers, so the served spec advertises the real proxy URL.
-      if (this.trustForwardedHeaders && !this.resource.baseUrl) {
-        // Couples to the Scalar plugin's default spec endpoint
-        // (`<routePrefix>/openapi.json`); if it ever served the doc elsewhere the
-        // rewrite would no-op and the relative default would still apply. The
-        // `openapi-server-url` integration test guards this path.
-        const specPath = `${referencePrefix}/openapi.json`;
-        this.app.addHook("onSend", async (request, reply, payload) => {
-          if (request.url.split("?")[0] !== specPath) return payload;
-          const text =
-            typeof payload === "string"
-              ? payload
-              : Buffer.isBuffer(payload)
-                ? payload.toString("utf8")
-                : null;
-          if (text === null) return payload;
-          try {
-            const doc = JSON.parse(text);
-            if (doc && typeof doc === "object" && Array.isArray(doc.servers)) {
-              doc.servers = [{ url: `${request.protocol}://${request.host}` }];
-              const out = JSON.stringify(doc);
-              reply.header("content-length", Buffer.byteLength(out));
-              return out;
-            }
-          } catch {
-            // Not a JSON document we can rewrite — leave the response untouched.
-          }
-          return payload;
-        });
-      }
-      await this.app.register(apiReference, {
-        routePrefix: referencePrefix,
-      });
+      // X-Forwarded-* headers. The rewrite itself belongs to whichever mount
+      // serves the document, which is the only side that knows its path.
+      publishSpecServerUrlPolicy(
+        this.app,
+        this.trustForwardedHeaders && !this.resource.baseUrl,
+      );
     }
   }
 
   private setupRoutes(): void {
     // const routesByName = new Map<string, HttpRouteResource>();
-    const mounts = this.resource.mounts || [];
+    const mounts = this.activeMounts();
+    if (!this.excludedMountsLogged) {
+      this.excludedMountsLogged = true;
+      for (const skipped of (this.resource.mounts ?? []).filter((mount) => mount.when === false)) {
+        // Said out loud: a route set that is absent because a condition excluded
+        // it is indistinguishable at request time from one that failed to
+        // register. Once, not once per init pass.
+        this.ctx.log.debug(
+          "Mount excluded by its `when` condition",
+          { "http.route": skipped.path || "/" },
+          { eventName: "http.server.mount.excluded" },
+        );
+      }
+    }
     // const resolveSchema = createSchemaResolver(this.ctx);
-    for (const mount of mounts) {
+    for (let index = 0; index < mounts.length; index++) {
+      if (this.attachedMounts.has(index)) continue;
+      const mount = mounts[index];
       const prefix = mount.path || "";
       // `mount.mount` is the live Telo.Mount instance injected by the kernel at Phase 5
       // (x-telo-ref `Telo.Mount`) — a same-module or imported-library mount, uniformly.
       const api = mount.mount;
       if (!api || typeof api.register !== "function") {
+        // Thrown, not recorded: Phase-5 injection runs again before the next
+        // init pass, so a mount that is merely not created YET resolves then.
         throw new Error(
           `Failed to mount at "${prefix}": mount target did not resolve to a Telo.Mount instance`,
         );
       }
       api.register(this.app, prefix);
+      this.attachedMounts.add(index);
     }
 
-    if (this.resolvedNotFoundHandler) {
+    if (this.resolvedNotFoundHandler && !this.notFoundHandlerInstalled) {
       const handler = this.resolvedNotFoundHandler;
       this.app.setNotFoundHandler(async (request, reply) => {
         const normalizedHeaders: Record<string, any> = {};
@@ -511,6 +560,7 @@ class HttpServer implements ResourceInstance {
         }
         return reply.send(result?.body ?? result);
       });
+      this.notFoundHandlerInstalled = true;
     }
   }
 

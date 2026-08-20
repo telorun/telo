@@ -2,7 +2,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import type { AppEndpoint, EndpointReachability } from "../endpoints.js";
 import { distinctSuffixes, type EventFilter, matchesFilter } from "../filter.js";
 import { type DebugTheme, loadStoredTheme, storeTheme, useResolvedTheme } from "../theme.js";
-import { type DebugEvent, type DebugFrame, isLogFrame } from "../wire.js";
+import { type DebugFrame, isEventFrame, isLogFrame } from "../wire.js";
 import { EndpointLinks } from "./EndpointLinks.js";
 import { EventGraph } from "./EventGraph.js";
 import { EventTable } from "./EventTable.js";
@@ -79,10 +79,9 @@ export function DebugPanel({
 
   // `revision` is the in-place-mutation signal; `frames` covers the fresh-array
   // pattern. Either changing recomputes the split.
-  const events = useMemo(
-    () => frames.filter((f): f is DebugEvent => !isLogFrame(f)),
-    [frames, revision],
-  );
+  // Structured `record` frames are neither events nor raw lines; narrowing on
+  // "not a log" would feed them to the event views, where `event` is undefined.
+  const events = useMemo(() => frames.filter(isEventFrame), [frames, revision]);
   const logs = useMemo(() => frames.filter(isLogFrame), [frames, revision]);
   const suffixes = useMemo(() => distinctSuffixes(events), [events]);
   const visible = useMemo(

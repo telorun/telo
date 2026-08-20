@@ -1,4 +1,4 @@
-import { type DebugEvent, type DebugFrame, eventSuffix, isLogFrame } from "./wire.js";
+import { type DebugEvent, type DebugFrame, eventSuffix, isEventFrame } from "./wire.js";
 
 /**
  * Pure, framework-agnostic derivation of a resource graph from a debug event
@@ -171,8 +171,8 @@ export function deriveGraph(frames: readonly DebugFrame[]): GraphState {
   const edges = new Map<string, GraphEdge>();
 
   frames.forEach((frame, seq) => {
-    if (isLogFrame(frame)) return;
-    const event = frame as DebugEvent;
+    if (!isEventFrame(frame)) return;
+    const event = frame;
     const suffix = eventSuffix(event.event);
 
     if (suffix === "Created") {
@@ -436,8 +436,8 @@ export function deriveInvocations(frames: readonly DebugFrame[]): TraceState {
   const roots: Invocation[] = [];
 
   for (const frame of frames) {
-    if (isLogFrame(frame)) continue;
-    const event = frame as DebugEvent;
+    if (!isEventFrame(frame)) continue;
+    const event = frame;
     const p = (event.payload ?? undefined) as Record<string, unknown> | undefined;
     const id = num(p?.spanId);
     if (id === undefined || byId.has(id)) continue;

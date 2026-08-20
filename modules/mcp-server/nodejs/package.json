@@ -14,7 +14,7 @@
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "esbuild": "catalog:",
-    "fastify": "^5.7.2",
+    "fastify": "^5.12.1",
     "typescript": "^5.0.0"
   }
 }

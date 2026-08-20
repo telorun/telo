@@ -22,12 +22,7 @@
  * Browser-safe: no Node built-ins.
  */
 import type { ResourceManifest } from "@telorun/sdk";
-import {
-  CEL_FUNCTIONS,
-  buildCelEnvironment,
-  celEngine,
-  extractAccessChains,
-} from "@telorun/templating";
+import { RULE_BUDGET_MS, compileRuleCondition, conditionRefusals } from "./rule-condition.js";
 import {
   RESOURCE_RULES_ANNOTATION,
   celSourceOf,
@@ -39,6 +34,9 @@ import {
   resolveRuleSubjects,
   type ResourceRule,
 } from "./resource-rule.js";
+
+/** Published name for the shared budget — see `rule-condition.ts`. */
+export const RESOURCE_RULE_BUDGET_MS = RULE_BUDGET_MS;
 
 export interface ResourceRuleIssue {
   code: "RESOURCE_RULE_INVALID";
@@ -60,87 +58,8 @@ export type ResourceRuleFinding =
   | { kind: "failed"; rule: ResourceRule; path: string; reason: string }
   | { kind: "over-budget"; rule: ResourceRule; path: string; elapsedMs: number };
 
-/**
- * Wall-clock ceiling for one rule over one resource. The rules run on the
- * kernel's boot path and at the editor's keystroke-time analysis, and the
- * comprehension nesting is the RULE AUTHOR's — a dependency's quadratic rule
- * must not be able to hang a consumer's `telo check`.
- *
- * It bounds the SUBJECT LOOP, not one expression: cel-js offers no step limit,
- * so a single pathological expression over one huge element still runs to
- * completion. Stated rather than hidden — the budget catches the shape that
- * actually occurs (a cheap expression over many elements) and reports the rule
- * as defective rather than truncating coverage silently.
- */
-export const RESOURCE_RULE_BUDGET_MS = 50;
-
-const HOST_BACKED = new Set(CEL_FUNCTIONS.filter((f) => f.hostBacked).map((f) => f.name));
-const NON_DETERMINISTIC = new Set(
-  CEL_FUNCTIONS.filter((f) => !f.deterministic).map((f) => f.name),
-);
-
-let sharedEnv: ReturnType<typeof buildCelEnvironment> | undefined;
-/** The analyzer's own environment — no host handlers, so every `hostBacked`
- *  entry is a throwing stub. Built once; it is stateless. */
-function ruleEnv(): ReturnType<typeof buildCelEnvironment> {
-  sharedEnv ??= buildCelEnvironment();
-  return sharedEnv;
-}
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
-}
-
-type CompiledRule =
-  | { parsed: (ctx: Record<string, unknown>) => unknown; chains: readonly (readonly string[])[] }
-  | { reason: string };
-
-/**
- * A rule's condition, parsed once per process rather than once per resource.
- *
- * The pass runs over every resource of a kind and at the editor's
- * keystroke-time analysis, so a workspace with fifty tables parsed the same
- * six conditions fifty times each. The source string is the whole key: the
- * environment is stateless and shared, so two identical conditions genuinely
- * compile to the same program. A parse FAILURE is cached too — it is a property
- * of the condition, and re-deriving it per resource costs the same as the
- * success it replaced.
- *
- * BOUNDED, because the editor analyses on every keystroke: a kind author editing
- * a `condition:` interns one entry per character typed, and every one of those
- * intermediate strings is dead the moment the next arrives. Insertion-ordered
- * eviction is enough — the working set is the conditions a workspace actually
- * declares, and a stale entry costs one re-parse.
- */
-const RULE_CACHE_LIMIT = 512;
-const compiledRules = new Map<string, CompiledRule>();
-
-function compileRule(
-  env: ReturnType<typeof buildCelEnvironment>,
-  condition: string,
-): CompiledRule {
-  const cached = compiledRules.get(condition);
-  if (cached) return cached;
-  let result: CompiledRule;
-  try {
-    const parsed = env.parse(condition) as (ctx: Record<string, unknown>) => unknown;
-    const ast = (parsed as unknown as { ast?: unknown }).ast;
-    // No AST is not "reads nothing" — it is "unknown", and treating it as the
-    // former would evaluate a placeholder silently. Fall back to the whole
-    // subject, the conservative reading.
-    result = {
-      parsed,
-      chains: ast ? extractAccessChains(ast as never) : [["self"], ["this"]],
-    };
-  } catch (err) {
-    result = { reason: err instanceof Error ? err.message : String(err) };
-  }
-  if (compiledRules.size >= RULE_CACHE_LIMIT) {
-    const oldest = compiledRules.keys().next();
-    if (!oldest.done) compiledRules.delete(oldest.value);
-  }
-  compiledRules.set(condition, result);
-  return result;
 }
 
 /** Navigate a kind's own schema to the node describing what a pointer names, so
@@ -280,26 +199,7 @@ export function validateResourceRuleDeclarations(
     }
 
     if (condition) {
-      const result = celEngine.analyze(condition, { celEnv: ruleEnv(), contextSchema: null });
-      for (const diagnostic of result.diagnostics) {
-        issue(`${at}.condition`, `Rule condition: ${diagnostic.message}`);
-      }
-      for (const call of result.calls) {
-        if (HOST_BACKED.has(call.name)) {
-          issue(
-            `${at}.condition`,
-            `Rule condition calls '${call.name}()', which the kernel supplies at boot ` +
-              "(it needs Node crypto / Buffer). The analyzer registers a throwing stub, so " +
-              "the rule cannot run at telo check.",
-          );
-        } else if (NON_DETERMINISTIC.has(call.name) || call.deterministic === false) {
-          issue(
-            `${at}.condition`,
-            `Rule condition calls '${call.name}()', which re-evaluates per call. A check ` +
-              "whose verdict depends on when it ran is not a check.",
-          );
-        }
-      }
+      for (const refusal of conditionRefusals(condition)) issue(`${at}.condition`, refusal);
     }
   });
 
@@ -320,7 +220,6 @@ export function evaluateResourceRules(
   const rules = readResourceRules(definitionSchema);
   if (rules.length === 0) return [];
 
-  const env = ruleEnv();
   const self = manifest as unknown as Record<string, unknown>;
   const findings: ResourceRuleFinding[] = [];
 
@@ -332,7 +231,7 @@ export function evaluateResourceRules(
     // against the consumer instead.
     if (subjects === undefined) continue;
 
-    const compiled = compileRule(env, rule.condition);
+    const compiled = compileRuleCondition(rule.condition, ["self", "this"]);
     if ("reason" in compiled) {
       findings.push({ kind: "failed", rule, path: "", reason: compiled.reason });
       continue;
@@ -345,7 +244,7 @@ export function evaluateResourceRules(
       // `readNodes`. Scanning the whole subject would disable every
       // resource-wide rule on any manifest containing one unrelated expression.
       let dynamicAt: string | undefined;
-      for (const node of readNodes(chains, self, subject.value)) {
+      for (const node of readNodes(chains, { self, this: subject.value })) {
         dynamicAt = findDynamicLeaf(node);
         if (dynamicAt !== undefined) break;
       }

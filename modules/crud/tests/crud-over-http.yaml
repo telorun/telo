@@ -56,6 +56,9 @@ singular: todo
 plural: todos
 model: !ref TodoModel
 ---
+kind: Http.Reference
+metadata: { name: docs }
+---
 # Server is scoped to the test sequence so it is torn down (and the port freed)
 # when the run completes — the kernel can then exit cleanly.
 kind: Run.Sequence
@@ -73,6 +76,8 @@ with:
     mounts:
       - path: /todos
         mount: !ref Todos
+      - path: /reference
+        mount: !ref docs
 targets:
   - !ref Server
 steps:

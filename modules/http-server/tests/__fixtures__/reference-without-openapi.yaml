@@ -1,0 +1,40 @@
+# An API reference mounted on a server that collects no OpenAPI document. The
+# pairing spans two resources, so only a referrer rule can state it — and it is
+# stated by the kind that HAS the requirement.
+kind: Telo.Application
+metadata:
+  name: ReferenceWithoutOpenApi
+  version: 1.0.0
+imports:
+  Http: ../../
+  Run: ../../../run
+targets:
+  - !ref server
+---
+kind: Run.Value
+metadata: { name: ping }
+value: { ok: true }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    handler: !ref ping
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: !cel "result.ok" }
+---
+kind: Http.Reference
+metadata: { name: docs }
+---
+kind: Http.Server
+metadata: { name: server }
+host: 127.0.0.1
+port: 8969
+mounts:
+  - path: /v1
+    mount: !ref api
+  - path: /reference
+    mount: !ref docs

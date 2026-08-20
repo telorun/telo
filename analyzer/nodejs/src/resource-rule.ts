@@ -224,13 +224,15 @@ export function findDynamicLeaf(value: unknown, base = ""): string | undefined {
  */
 export function readNodes(
   chains: readonly (readonly string[])[],
-  self: unknown,
-  subject: unknown,
+  /** The bindings in scope, by name — `self`/`this`/`key` for a resource rule,
+   *  `self`/`referrer` for a referrer rule. A chain rooted at a name that is not
+   *  bound reads nothing. */
+  roots: Record<string, unknown>,
 ): unknown[] {
   const nodes: unknown[] = [];
   for (const chain of chains) {
     const root = chain[0];
-    let current: unknown = root === "self" ? self : root === "this" ? subject : undefined;
+    let current: unknown = root !== undefined && root in roots ? roots[root] : undefined;
     if (current === undefined) continue;
     for (const segment of chain.slice(1)) {
       if (segment === "[*]") break;
