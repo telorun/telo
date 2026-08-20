@@ -18,6 +18,15 @@
 //
 // Only a changed published, non-module package with no changeset fails.
 //
+// It also gates the `ignore` list itself, because that list is hand-maintained
+// and changesets validates it as a WHOLE: an ignored package's dependent must be
+// ignored too, so a new module depending on `@telorun/sql` makes `changeset
+// version` refuse the config outright. Nothing in a PR reads the config, so that
+// only surfaced on main, in the release workflow, after merge. The invariant is
+// two-directional: every module-owned package is ignored (its version is the
+// module's), and every ignore entry names a package that still exists (changesets
+// rejects an unknown one).
+//
 // Usage: node scripts/check-changeset-status.mjs [base-ref]
 
 import { execSync } from "node:child_process";
@@ -99,6 +108,34 @@ let failed = 0;
 function moduleOwned(pkg) {
   return resolve(pkg.dir).startsWith(join(ROOT, "modules") + "/");
 }
+
+/** The `ignore` list must name exactly the module-owned packages (plus whatever
+ *  else is deliberately off the ledger), and nothing that no longer exists. */
+function checkIgnoreList() {
+  const config = JSON.parse(readFileSync(join(ROOT, ".changeset", "config.json"), "utf8"));
+  const ignored = new Set(config.ignore ?? []);
+  const byName = new Set(packages.map((pkg) => pkg.name));
+  let bad = 0;
+  for (const pkg of packages) {
+    if (!moduleOwned(pkg) || ignored.has(pkg.name)) continue;
+    console.error(
+      `::error file=.changeset/config.json::${pkg.name} is module-owned but missing from the ` +
+        `\`ignore\` list. Add it, or \`changeset version\` will refuse the config on main.`,
+    );
+    bad = 1;
+  }
+  for (const name of ignored) {
+    if (byName.has(name)) continue;
+    console.error(
+      `::error file=.changeset/config.json::${name} is in the \`ignore\` list but is not a ` +
+        `workspace package. Remove it — changesets rejects an unknown ignore entry.`,
+    );
+    bad = 1;
+  }
+  return bad;
+}
+
+failed = checkIgnoreList();
 
 for (const pkg of changedPackages(packages)) {
   if (moduleOwned(pkg)) continue;
