@@ -8,12 +8,16 @@
  * would read every example and every cached `.telo/manifests` copy as a released
  * module).
  *
- * The file is **optional and read only by `telo release`**. Nothing else — not
- * `run`, `check`, `publish`, `install`, `upgrade`, `migrate`, `module`, and not
- * the kernel — looks for it, so a single-manifest repo, a bare `examples/`
- * directory and a third-party module checkout keep working with nothing added.
- * Any field added later must be true of the whole tree, not derivable from it,
- * and harmless by its absence.
+ * The file is **optional**, and everything reading it is harmless without one.
+ * `telo release` requires one. `telo run` uses its LOCATION — never `modules:`,
+ * which is release scope — as the bound on the walk-up that collects `.env` /
+ * `.env.local`, and with no marker reads the manifest's own directory alone, as
+ * it did before this file existed; a bound is what keeps that walk out of a
+ * user's home directory. Nothing else — not `check`, `publish`, `install`,
+ * `upgrade`, `migrate`, `module`, and not the kernel — looks for it, so a
+ * single-manifest repo, a bare `examples/` directory and a third-party module
+ * checkout keep working with nothing added. Any field added later must be true
+ * of the whole tree, not derivable from it, and harmless by its absence.
  *
  * Parsing lives here, in the browser-safe half, because the editor answers
  * "what does changing this library bump?" from the same model. Finding the file
