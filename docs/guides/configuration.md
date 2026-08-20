@@ -138,8 +138,8 @@ everything below it is passed values. See
 
 ## Local development
 
-The CLI loads a `.env.local` file from the manifest's directory automatically,
-so you rarely export anything by hand:
+The CLI loads `.env` and `.env.local` automatically, so you rarely export
+anything by hand:
 
 ```bash
 # greeting-api/.env.local
@@ -147,7 +147,21 @@ GREETING=Hej
 DATABASE_URL=postgres://localhost/dev
 ```
 
-Keep it out of version control; it is a developer convenience, not a
+It reads the manifest's own directory, and — when a `telo-workspace.yaml` sits
+somewhere above it — every directory up to and including that one, so a
+monorepo keeps shared development values in one file at the root instead of a
+copy beside every manifest. Only the marker's location is used; its `modules:`
+list is release scope and has no say here, so a manifest outside every release
+subtree is covered too. With no marker above the manifest, only its own
+directory is read.
+
+The nearest declaration wins — a value in the manifest's directory overrides
+the same key at the root, `.env.local` overrides `.env` within one directory,
+and a variable already exported in your shell overrides every file. Run with
+`--debug` to see which files were loaded; a file that exists but cannot be read
+is always reported, whatever the flags.
+
+Keep these files out of version control; they are a developer convenience, not a
 configuration mechanism.
 
 ## See also

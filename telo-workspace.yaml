@@ -4,8 +4,10 @@
 # carry a `metadata.version`, and a whole-tree scan would read every example and
 # every cached `.telo/manifests` copy as a released module.
 #
-# Read only by `telo release`. Every other command, and the kernel, behave
-# identically with or without it.
+# Read by `telo release`, and by `telo run` as the bound on its `.env` /
+# `.env.local` walk-up — location only, never `modules:`. Both stay harmless
+# without it: release requires one, and run falls back to reading the
+# manifest's own directory alone, exactly as it did before this file existed.
 modules:
   - modules/*
   - apps/*

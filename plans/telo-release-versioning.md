@@ -316,11 +316,13 @@ declared deps.
   changie keys on the bare directory name, so a library and an app sharing one would silently share
   a fragment — a hazard its own source calls out and leaves open. A path is already unique and
   already the thing the ledger, the fragment and the diagnostics all have to name.
-- **The marker is optional and read only by `telo release`.** Its absence changes nothing else —
-  no command, no kernel behaviour — so a single-manifest repo needs no workspace to run, check or
-  publish, and every future consumer must degrade to today's behaviour without it. A concern that
-  cannot degrade is disqualified from the file, since admitting one would retroactively require a
-  workspace of every standalone manifest that works today.
+- **The marker is optional, and every consumer must degrade without it.** A single-manifest repo
+  needs no workspace to run, check or publish. A concern that cannot degrade is disqualified from
+  the file, since admitting one would retroactively require a workspace of every standalone
+  manifest that works today. `telo run`'s `.env` walk-up is the first consumer outside release and
+  the shape the rule intends: it reads the marker's LOCATION as the bound on how far up it may
+  look, and with no marker reads the manifest's own directory alone — so the file enables the
+  parent lookup rather than gating one, and removing it can never drop a variable an app had.
 - **The workspace marker is the anchor, and naming subtrees is workspace-level configuration while
   registering individual modules is not.** That is where changie's generated `projects:` list went
   wrong and why it needed a CI drift check; naming subtrees needs no such policing. Rejected as

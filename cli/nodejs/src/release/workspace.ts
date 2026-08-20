@@ -2,9 +2,11 @@
  * Finding the workspace, and the modules inside it.
  *
  * The Node half of `telo-workspace.yaml`: walking up from the cwd to find the
- * marker, and filtering its named subtrees down to actual modules. Parsing the
- * marker is the analyzer's (`release/workspace-config.ts`), so the editor reads
- * the same file the same way.
+ * marker, and filtering its named subtrees down to actual modules. Finding the
+ * marker is `workspace-marker.ts`'s — its location is a general anchor, not a
+ * release concept — and parsing it is the analyzer's
+ * (`release/workspace-config.ts`), so the editor reads the same file the same
+ * way.
  *
  * **Discovery, not registration.** Nothing lists the modules: `modules/sql` is a
  * module because `modules/sql/telo.yaml` carries a `metadata.version`, and that
@@ -30,6 +32,7 @@ import {
   type WorkspaceConfig,
 } from "@telorun/analyzer";
 import { GLOB_PRUNE_DIRS, selectByPatterns } from "@telorun/glob";
+import { findWorkspaceRoot } from "../workspace-marker.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseAllDocuments } from "yaml";
@@ -55,19 +58,6 @@ export interface Workspace {
 }
 
 export class WorkspaceNotFoundError extends Error {}
-
-/** Walk up from `from` looking for the marker. Returns the directory holding
- *  it, or `undefined` — the file is optional, and only `telo release` requires
- *  one. */
-export function findWorkspaceRoot(from: string): string | undefined {
-  let dir = path.resolve(from);
-  for (;;) {
-    if (fs.existsSync(path.join(dir, WORKSPACE_FILENAME))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) return undefined;
-    dir = parent;
-  }
-}
 
 /**
  * Load the workspace rooted at or above `from`.
