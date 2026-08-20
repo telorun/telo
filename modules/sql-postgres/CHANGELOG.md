@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2026-08-20
+### Deprecated
+* Deprecated in favour of the unprefixed postgres / sqlite modules, which carry the same Connection kind plus declarative schema and reclamation. The sql- prefix restated the abstract this module implements, which extends already records, and it stops being true now that a backend owns engine-specific surface that is not a sql kind. Consumers change one imports: entry; the alias and every kind: spelling are unchanged.
+
 ## 0.9.3 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.

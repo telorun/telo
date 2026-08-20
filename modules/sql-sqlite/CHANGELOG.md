@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.8.0 - 2026-08-20
+### Deprecated
+* Deprecated in favour of the unprefixed postgres / sqlite modules, which carry the same Connection kind plus declarative schema and reclamation. The sql- prefix restated the abstract this module implements, which extends already records, and it stops being true now that a backend owns engine-specific surface that is not a sql kind. Consumers change one imports: entry; the alias and every kind: spelling are unchanged.
+
 ## 0.7.0 - 2026-08-09
 ### Added
 * metadata.name is now SQLite, so the module contributes its kinds under the `SQLite.<Kind>` canonical prefix instead of `sql-sqlite.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.6.0 - 2026-07-29

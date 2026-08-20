@@ -1,8 +1,0 @@
-modules:
-  modules/run: Added
-body: "A step's decisions are recorded when the body runs inside a durable region:
-  resolved inputs, branch predicates, loop conditions, switch keys and pure value steps.
-  Recording only the results would leave a resume free to re-derive a decision from a
-  live reading and take a branch the run never took. Outside a durable run nothing
-  changes and nothing is paid — the step engine journals only when a run handle is
-  ambient."

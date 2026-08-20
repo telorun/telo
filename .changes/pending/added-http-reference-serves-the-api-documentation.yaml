@@ -1,9 +1,0 @@
-modules:
-  modules/http-server: Added
-body: "`Http.Reference` serves the API documentation as a mountable router: the OpenAPI
-  document the server collects is rendered at the prefix its mount declares, alongside
-  the document itself as JSON and YAML. A mount entry now also takes `when:`, resolved
-  once at startup, so the docs — or any other router — can be left out of a production
-  deployment entirely rather than registered and hidden. BREAKING: declaring `openapi:`
-  no longer serves anything by itself; the fixed /reference route is gone, and an app
-  that wants the docs mounts an Http.Reference where it wants them."

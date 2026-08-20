@@ -1,9 +1,0 @@
-modules:
-  modules/durable-journal-postgres: Added
-body: "New: durable runs recorded in PostgreSQL. Two tables, keyed so a duplicate step
-  record is refused by the database rather than written twice; claiming is one
-  conditional UPDATE, so two pollers never both take a run; waking is LISTEN/NOTIFY, so
-  a delivery reaches a poller in milliseconds instead of at its next interval. Because
-  it can write into the same transaction as the work it records, a transactional region
-  is journaled step by step rather than collapsed — the exactly-once regime no journal
-  on separate storage can offer."

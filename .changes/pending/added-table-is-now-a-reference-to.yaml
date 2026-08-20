@@ -1,6 +1,0 @@
-modules:
-  modules/sql-repository: Added
-body: "table: is now a reference to a declared table rather than a name, and the call
-  signature is typed from it: filters and data are checked against the table's columns
-  and rows come back typed, so a misspelled column fails telo check instead of the
-  query."

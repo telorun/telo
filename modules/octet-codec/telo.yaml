@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: OctetCodec
-  version: 0.10.3
+  version: 0.10.4
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Data]

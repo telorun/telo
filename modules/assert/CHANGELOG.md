@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.0 - 2026-08-20
+### Added
+* Assert.Events entries take an optional times:, asserting how many matching events the stream holds rather than merely that one occurred. The ordered form is a subsequence match that ignores extras, so it could never express 'exactly once' — the assertion a test needs when something may return a cached, memoised or replayed result without dispatching. Counted over the whole capture and consuming no position, so ordered and counted entries mix without either changing what the other means; times: 0 asserts the event never happened.
+
 ## 0.17.3 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.

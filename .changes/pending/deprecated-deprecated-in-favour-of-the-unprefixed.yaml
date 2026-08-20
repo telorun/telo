@@ -1,8 +1,0 @@
-modules:
-  modules/sql-postgres: Deprecated
-  modules/sql-sqlite: Deprecated
-body: "Deprecated in favour of the unprefixed postgres / sqlite modules, which carry the
-  same Connection kind plus declarative schema and reclamation. The sql- prefix restated
-  the abstract this module implements, which extends already records, and it stops being
-  true now that a backend owns engine-specific surface that is not a sql kind. Consumers
-  change one imports: entry; the alias and every kind: spelling are unchanged."

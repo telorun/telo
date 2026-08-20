@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.11.0 - 2026-08-20
+### Added
+* table: is now a reference to a declared table rather than a name, and the call signature is typed from it: filters and data are checked against the table's columns and rows come back typed, so a misspelled column fails telo check instead of the query.
+
 ## 0.10.0 - 2026-08-09
 ### Added
 * metadata.name is now SqlRepository, so the module contributes its kinds under the `SqlRepository.<Kind>` canonical prefix instead of `sql-repository.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.9.0 - 2026-08-08
