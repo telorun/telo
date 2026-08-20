@@ -1,7 +1,7 @@
 {
   "name": "@telorun/sqlite",
   "version": "0.1.0",
-  "description": "Telo SQLite.Connection \u2014 SQLite backend for the Sql.Connection abstract (better-sqlite3 / bun:sqlite, transactional DDL).",
+  "description": "Telo SQLite.Connection — SQLite backend for the Sql.Connection abstract (better-sqlite3 / bun:sqlite, transactional DDL).",
   "keywords": [
     "telo",
     "sql",

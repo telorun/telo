@@ -1,5 +1,242 @@
 # @telorun/analyzer
 
+## 0.63.0
+
+### Minor Changes
+
+- 7463386: Declarative SQL schema support.
+
+  - **SDK**: the duration grammar gains a day unit (`30d`), so a grace window can be
+    written as one, and its error message lists it. Grace windows are measured in days and every other duration in
+    the runtime already goes through this one parser.
+  - **Kernel**: member access on a resource instance reads its **published state**.
+    A ref slot holds the live instance after Phase-5 injection, which CEL cannot
+    read a member off at all, so a template body could not read a scalar off a
+    resource it references. `self.<ref>.<field>` now answers exactly as
+    `resources.<name>.<field>` does — the same fact, the same reading. A whole-value
+    `${{ self.connection }}` is unchanged: that form is navigated directly and still
+    yields the instance itself.
+  - **Analyzer**: `x-telo-schema-map` / `x-telo-schema-projection` let a kind whose
+    configuration is a collection of typed entries declare what that collection
+    means as a JSON Schema object, and `x-telo-schema-projection-from` lets a
+    consumer type a slot from the declaration it references. Generic over typed-field
+    declarations — nothing in them says SQL, column or table. `SCHEMA_PROJECTION_INVALID`,
+    `SCHEMA_MAP_INCOMPLETE` and `SCHEMA_PROJECTION_FROM_UNRESOLVED` report a projection
+    that would silently type nothing — on the declaring side and the consuming side
+    alike, since the consuming side is where the typing is actually wanted.
+
+- 321f153: Durable execution: the replay seam, the normative contract, and the step engine's journaling.
+
+  `@telorun/sdk` gains `DurableRunHandle` — `step(path, target, inputs, execute)`, `decide(path, kind, compute)`, `park`, and the `writesInside(zone)` question — plus `stepPath` and the collapse rule. The handle rides `InvokeContext.durable`, which the kernel carries and never calls: it is a pure conduit, so a backend is an ordinary module and this member deliberately does not cross the ABI.
+
+  `step` mediates execution rather than merely recording it. Lookup-plus-record is a leaky decomposition — two halves of one operation, split so the CALLER performs the effect in between — which silently fixes the step engine and the resource graph in one process. Where an effect executes is a real architectural axis, so `step` takes a declaration-site target identity even though the local backend resolves it in process.
+
+  The step engine now journals its DECISIONS, not only its outcomes: resolved inputs, predicates, loop conditions, switch keys and pure value steps. A run's replay-closed state is its journal, which is what makes replay a pure function of `(journal, manifest)` — recording only outcomes would leave every decision re-derived in a fresh process from a scope carrying live readings.
+
+  The analyzer gains `validate-durable-regions`: `DURABLE_DETACH_FORBIDDEN`, `DURABLE_NONDETERMINISM` (keyed on `idempotent`, where it states something true) and `DURABLE_UNJOURNALABLE_RESULT`. All are consumers of the one containment walk, parameterized over a zone attribute, so no kind is named in analyzer code.
+
+  Normative contract: `kernel/specs/durable-execution.md`.
+
+- 18a5d61: An unusable import is reported as itself, and an upgrade only offers a version this telo can run.
+
+  **One shape for every unusable import.** Loading no longer distinguishes _how_ an
+  import is broken. Unreachable, malformed, resolving to an application, resolving
+  to something that is not a library, resolving to a library that names no module —
+  each records a failure against that import, registers no dependency edge, and
+  lets the rest of the graph load. The check now runs per import declaration rather
+  than once per distinct target, which closes the case where an import pointing at a
+  module something else already reached (the entry application above all) skipped it
+  entirely. An application target used to abort the whole load; it is now a
+  diagnostic on its own line, and still fatal at run time because the runtime
+  refuses to start on any of these.
+
+  Three codes, because three different people fix them: `INVALID_IMPORT_SOURCE`
+  (not a module reference), `IMPORT_UNRESOLVED` (well-formed but not obtainable) and
+  the new `INVALID_IMPORT_TARGET` (obtained, but not importable).
+
+  **No guessing about module identity.** The analyzer used to derive a module name
+  from an import's source string whenever the loader had stamped none. For a pinned
+  ref that produced a canonical kind no registry can hold —
+  `http-dispatch@0.11.1#sha256-….Outcomes` — and every consumer of the alias then
+  failed in its own vocabulary, reporting a _dependency_ as schemaless when the real
+  fact was that the import never resolved. The fallback is gone: an import with no
+  resolved identity registers no alias, and uses of it say `cannot resolve alias
+'<X>'`, which names the import the author can fix.
+
+  **Upgrade affordances filter by `requires.telo`.** `manifestCompatibility` moves
+  the verdict (`yes` / `too-new` / `unreadable` / `unknown`) into the analyzer, where
+  the `requires:` grammar already has its single reader; `telo upgrade` now calls it
+  rather than carrying its own copy. `@telorun/ide-support` gains the selection rule
+  on top — walk candidates newest-first, stop at the first hostable one, report what
+  was held back and why — so the editor's Imports view and the VS Code lenses answer
+  "which version does this move to" identically. `buildImportUpgrades` takes an
+  environment (`listVersions` + `isCompatible`) instead of a bare lookup, so a host
+  cannot silently skip the check; one that genuinely cannot read candidate manifests
+  passes `uncheckedVersionCompatibility`, which says so. A version that cannot be
+  read or reached is never treated as incompatible, and only the telo axis is checked
+  in an IDE — an IDE is not the host that will run the manifest.
+
+- 7463386: A DECLARATION-derived contract (`x-telo-schema-projection-from`) is now resolved
+  at dispatch as well as at `telo check`. It was static-only, which is a contract
+  with a hole exactly where a value is COMPUTED rather than written: a misspelled
+  column written as a literal was rejected, and the identical key arriving from a
+  CEL expression reached the database — which for a repository kind means arbitrary
+  caller text in a SQL identifier position.
+
+  `ProjectionScope` becomes a resolver over the raw slot value rather than a list of
+  manifests, because the two hosts see different things there: the analyzer sees the
+  `{kind, name, alias?}` reference, while the kernel binds contracts after Phase-5
+  injection has replaced it with the live instance. That also makes reference
+  resolution alias-aware, so an unambiguous `!ref Alias.users` is no longer refused
+  as ambiguous merely because two libraries each export a `users`.
+
+  `x-telo-schema-projection` is read from `schema:` as well as from the kind
+  document and reported when it is found there — ignoring a misplaced annotation
+  moved the failure onto the consumer's slot and blamed the wrong author.
+
+  A ref slot inside a kind's `schema:` is typed as the published reading it yields,
+  so `self.<ref>.status.<field>` is checked instead of being read off the annotation
+  node. The runtime view is memoized against a publication counter rather than
+  rebuilt on every dispatch.
+
+  A resource rule that throws or exhausts its budget is anchored on the declaring
+  definition, and is a warning rather than an error when that definition belongs to
+  a published dependency — an error there blocked `telo check` on a line the
+  consumer could not change.
+
+  A projection that cannot resolve at dispatch now raises
+  `ERR_SCHEMA_PROJECTION_UNRESOLVED` instead of leaving the slot open — the
+  analyzer's report is entry-module-scoped, so a dependency's consumer slot was
+  unreported at both ends. Rule-declaration validation reads the same merged schema
+  the evaluation reads, so a rule declared on an abstract resolves its `in:` pointer
+  against the fields a child declares.
+
+  `telo publish` reads the npm controller candidates it may push from the PURL
+  parser it already uses, and the self-pin rewrite is anchored on the `controllers:`
+  scalars, so a PURL mentioned in a description is no longer a rewrite target. Its
+  package directory comes from the candidate's `local_path` rather than an assumed
+  layout, an unreachable npm registry is no longer read as "not published", and a
+  malformed `package.json` fails instead of silently skipping the pin stamp.
+
+- c7fdbd9: `x-telo-referrer-rules`: a kind declaring, as data, what must be true of whoever
+  references one of its resources — the mirror of `x-telo-resource-rules`, which
+  relates the fields of one resource and so cannot reach across a reference.
+
+  Declared by the kind that HAS the requirement rather than the one that must
+  satisfy it, which is what makes it sound: written on the referring side, a rule
+  must name the target kind as a string, and a manifest spells a kind with the
+  alias its own author imported it under — so such a rule silently passes on every
+  manifest that picked a different alias. Declared on the referenced kind, the
+  subject is chosen by the reference itself and no kind literal appears there at
+  all. It is also the only direction that scales: a third-party mount carries its
+  own requirement without the server kind learning it exists.
+
+  In scope: `self` (the referenced resource) and `referrer` (the one that reached
+  it). The optional `referrer:` filter names a kind in the alias-qualified grammar
+  `extends:` uses, canonicalized in the declaring scope; a filter that resolves to
+  nothing is reported at the kind, since it would match nothing and leave the rule
+  inert. Violations are reported on the referrer at the slot path that reaches the
+  resource, under `REFERRER_RULE_VIOLATED` with the author's own code in
+  `data.rule`; `REFERRER_RULE_UNEXERCISED` reports a rule nothing ever matched,
+  which is what a typo in `referrer:` looks like from the outside.
+
+  Polarity, the host-backed and non-deterministic refusals, the condition cache and
+  the 50 ms budget are shared with resource rules rather than reimplemented.
+  Guide: `docs/extend/referrer-rules.md`.
+
+- 7463386: `x-telo-resource-rules` — a kind declaring, as data, relationships between the
+  fields of ONE resource that JSON Schema cannot state: an index naming a column
+  its table does not declare, a foreign key whose two sides differ in length, a
+  `renamedFrom:` pointing at a column the table still declares. Every rule of that
+  form was previously a controller guard at boot, which needs a database to run at
+  all, fires in several cases only after an earlier phase has already changed it,
+  and is invisible to the editor.
+
+  The predicate is CEL rather than a closed vocabulary of named rules. Correlating
+  two collections — a foreign key's own columns against its own references, not
+  every other key's — is the part a pointer language gets wrong, and a
+  comprehension closure gives it for free; `"id" in self.columns` reads map keys,
+  so a `*`-means-keys grammar never arises. The vocabulary is borrowed from
+  `Telo.JsonSchema.rules` (`condition` TRUE when the rule HOLDS, the subject bound
+  as `this`, plus `code` and `message`), because two CEL rule vocabularies with
+  opposite polarity is a trap an author falls into once per rule.
+
+  `in:` names the collection to iterate and IS the diagnostic's anchor, so a
+  reported path exists by construction; omitting it gives the whole-resource form
+  that a `severity: warning` on a discouraged value wants. Violations report under
+  one analyzer-owned `RESOURCE_RULE_VIOLATED` with the author's code in
+  `data.rule`, keeping the diagnostic-code namespace closed.
+
+  Both ways coverage can vary invisibly are reported rather than dropped:
+  `RESOURCE_RULE_SKIPPED` when a value the condition reads holds a `!cel`
+  expression (per element, narrowed to the nodes the condition actually reads), and
+  `RESOURCE_RULE_UNEXERCISED` when a rule's collection was empty on every resource
+  of its kind. Rules may not call host-backed or non-deterministic functions, and
+  are budgeted at 50 ms per resource. Guide: `docs/extend/resource-rules.md`.
+
+- 321f153: Retry parity: a step's retry policy gains `nonRetryable` (error codes that end the loop immediately) and a step gains a per-attempt `timeout:`.
+
+  The leaf's built-in exclusions are the ones decidable without judgement — cancellation, and the kernel's verdicts on the shape of the call. Whether a DOMAIN failure is worth re-attempting is not decidable there at all, so without `nonRetryable` every terminal domain failure was retried to exhaustion. It sits as a sibling of the shared `RetryPolicy` fragment rather than inside it (the way `Http.Request.retry` adds `honorRetryAfter`), because it matches an error CODE while an HTTP retry classifies on a response STATUS.
+
+  `timeout:` bounds ONE attempt, matching Temporal's start-to-close, and is enforced by cancellation: the step mints a scope linked to the caller's token and threads it into the dispatch, so a target that honours cancellation stops rather than running on unobserved. On elapse the step fails `ERR_STEP_TIMEOUT` — a code of its own rather than a cancellation, since the two want opposite follow-ups and `catch:` can only tell them apart by code.
+
+- 9ac2b8a: The step grammar becomes shared vocabulary, and its execution moves to the SDK.
+
+  `$ref: "telo://manifest#/$defs/Step"` on an array's items declares a step body —
+  `invoke` / `value` / `if` / `while` / `switch` / `try` / `throw`, the
+  `steps.<name>.result` accumulator and the `error` variable inside a `catch:`. Any
+  kind can carry one now; a composite kind that wraps a region of work no longer
+  needs a `!ref` to an executable and a second document to hold it. The grammar was
+  declared four times inside `modules/run/telo.yaml`, and `$defs` are local to the
+  schema that declares them, so four kinds in one module could not share one.
+
+  `StepEngine` moves from `modules/run` to `@telorun/sdk` beside the
+  `executeInvokeStep` leaf it already delegated to, against a structural context
+  (`StepEngineContext`) so it depends on neither the kernel nor `run`. The SDK is
+  the one name the bundle loader symlinks onto the kernel's own copy, so the engine
+  is one version per process and reachable from a controller bundle and the
+  kernel's boot runner alike.
+
+  Two consequences for a kind author. `while/do` is admitted in every step body —
+  a fragment cannot be narrowed by its consumer, and the copies that dropped it did
+  so editorially rather than for soundness. And `x-telo-step-context` is now the
+  legacy spelling: it is read forever (published artifacts carry it, and no
+  migration entry can synthesize a `$ref`) but a new step body is declared by
+  pointing at the fragment, which the derived `x-telo-fragment: Step` stamp makes
+  recognizable with no marker to remember.
+
+  A forward-declared `requires.telo` lower bound is now its own verification state.
+  Adopting new syntax means declaring the release that will carry it, so on that
+  commit the edge names a version npm does not have — and spawning
+  `npx @telorun/cli@<unpublished>` there produced an `ETARGET` wrapped in install
+  noise, reported as "could not run", indistinguishable from being offline. The
+  registry is now asked before any edge runs, such an edge is never spawned, and it
+  is reported as `pending` alongside the latest published version (which is what
+  makes a typo'd bound visible). Informational in `telo release check`, fatal in
+  `telo publish`, where npm has already published and the floor must exist.
+
+- 321f153: Zone attributes: a body slot that establishes an execution zone can now declare what the region guarantees about everything inside it.
+
+  `x-telo-provides-zone` gains an object form carrying its correlation key as `key` beside the attributes — `atomic`, `idempotent`, `noSuspend`, `replayed`. The vocabulary is CLOSED and ships as data (`sdk/zone-attributes/*.json`), so both kernels read one vocabulary rather than one written in TypeScript; each attribute's value is the author's REASON, which whatever enforces it quotes verbatim, and `requires:` on an entry compiles to JSON Schema's `dependentRequired` so `atomic ⇒ noSuspend` lives in the data rather than in a validator.
+
+  The analyzer gains a downward **containment walk** (`findZoneRegions`), parameterized over the attribute that opens a region rather than over any kind, plus `ZONE_ATTRIBUTE_UNKNOWN` and `ZONE_ATTRIBUTE_INCOMPLETE`. The kernel gains `ctx.zoneAttributes()`, which resolves the attributes off the declaring kind's schema — never off the `ZoneEntry`, which stays three identities so it remains ABI-serializable — and returns them without branching on any name.
+
+### Patch Changes
+
+- 321f153: Durable-execution correctness fixes found in review.
+
+  **A live value is now actually refused.** `assertJournalable` used `JSON.stringify`, which SUCCEEDS on a stream and returns `{}` — so the case the contract names first was recorded as an empty object and replayed as one. Detection is now structural, through the value-type vocabulary's own binding table, and lives in `@telorun/sdk` because it is a property of the contract rather than of one journal. The static half is only a warning precisely because "the runtime is the gate"; the gate was open.
+
+  **`DURABLE_NONDETERMINISM` reads parsed call sites** (`auditCalls`) instead of a regex over CEL source. A regex fires on a name inside a string literal and on an unrelated receiver method, and re-derives what the registry's `deterministic` flag already answers — the text-matching this repo retired elsewhere.
+
+  **`ctx.zoneAttributes` resolves along `extends`** so a child inheriting a zone-providing slot reports what that slot declares, and no longer memoizes an unresolved kind (which would make a transient miss permanent).
+
+  **A step with no name is refused** rather than defaulting to an empty path segment, where two such steps would share one journal key and the second would be handed the first's result. The shared `Step` schema requires `name`, so a manifest cannot reach this; a caller assembling steps in code can.
+
+  Also: the CEL walk now stops at a nested `{ kind }` declaration rather than reporting that resource's expressions against its enclosing one, and the unused `zoneAttributesSchema()` is removed — the property it was meant to guarantee (the `atomic ⇒ noSuspend` rule living in the data) is already true, since the validator reads `requires:` off the entry.
+
+  - @telorun/templating@0.16.0
+
 ## 0.62.1
 
 ### Patch Changes

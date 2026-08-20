@@ -1,6 +1,6 @@
 {
   "name": "@telorun/editor",
-  "version": "0.13.14",
+  "version": "0.13.15",
   "private": true,
   "description": "Telo Editor - Desktop manifest editor for Telo.",
   "keywords": [

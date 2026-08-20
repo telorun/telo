@@ -1,5 +1,13 @@
 # @telorun/k8s-runner
 
+## 0.10.1
+
+### Patch Changes
+
+- c7fdbd9: Move to fastify 5.12, where per-request logging is switched off through the `logController` option instead of the deprecated top-level `disableRequestLogging` (FSTDEP023).
+- Updated dependencies [c7fdbd9]
+  - @telorun/runner-core@0.8.2
+
 ## 0.10.0
 
 ### Minor Changes

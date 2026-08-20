@@ -1,5 +1,171 @@
 # @telorun/kernel
 
+## 0.79.0
+
+### Minor Changes
+
+- b5dc9d5: Controller progress now reports the wait itself instead of guessing around it.
+
+  A new `ControllerWorkStarted` event is emitted by the sub-loader that is about to install, compile or fetch — past every cache check and re-check, at the point the package manager, `cargo`, esbuild or a layer transfer actually runs. It is the only in-progress signal, and a warm start enters no such branch, so nothing is emitted and nothing has to be taken back. `ControllerLoading` now carries the resolve `source`, and `ControllerLoaded`'s `durationMs` measures from the first work branch entered (falling back to the import call), so a 40-second install is no longer reported as `(npm-install, 12ms)`. `ControllerLoader.resolve()` emits work and candidate-fallthrough events; `load()` is now that resolve plus the import half.
+
+  The CLI's `⬇` line is opened by the work event and closed in place by `Loaded`/`Failed`, so it is on screen for the whole of a real wait and never printed at all for a `cache`/`local` hit — replacing the speculative line that was printed and then erased.
+
+- 7463386: Declarative SQL schema support.
+
+  - **SDK**: the duration grammar gains a day unit (`30d`), so a grace window can be
+    written as one, and its error message lists it. Grace windows are measured in days and every other duration in
+    the runtime already goes through this one parser.
+  - **Kernel**: member access on a resource instance reads its **published state**.
+    A ref slot holds the live instance after Phase-5 injection, which CEL cannot
+    read a member off at all, so a template body could not read a scalar off a
+    resource it references. `self.<ref>.<field>` now answers exactly as
+    `resources.<name>.<field>` does — the same fact, the same reading. A whole-value
+    `${{ self.connection }}` is unchanged: that form is navigated directly and still
+    yields the instance itself.
+  - **Analyzer**: `x-telo-schema-map` / `x-telo-schema-projection` let a kind whose
+    configuration is a collection of typed entries declare what that collection
+    means as a JSON Schema object, and `x-telo-schema-projection-from` lets a
+    consumer type a slot from the declaration it references. Generic over typed-field
+    declarations — nothing in them says SQL, column or table. `SCHEMA_PROJECTION_INVALID`,
+    `SCHEMA_MAP_INCOMPLETE` and `SCHEMA_PROJECTION_FROM_UNRESOLVED` report a projection
+    that would silently type nothing — on the declaring side and the consuming side
+    alike, since the consuming side is where the typing is actually wanted.
+
+- 321f153: Durable execution: the replay seam, the normative contract, and the step engine's journaling.
+
+  `@telorun/sdk` gains `DurableRunHandle` — `step(path, target, inputs, execute)`, `decide(path, kind, compute)`, `park`, and the `writesInside(zone)` question — plus `stepPath` and the collapse rule. The handle rides `InvokeContext.durable`, which the kernel carries and never calls: it is a pure conduit, so a backend is an ordinary module and this member deliberately does not cross the ABI.
+
+  `step` mediates execution rather than merely recording it. Lookup-plus-record is a leaky decomposition — two halves of one operation, split so the CALLER performs the effect in between — which silently fixes the step engine and the resource graph in one process. Where an effect executes is a real architectural axis, so `step` takes a declaration-site target identity even though the local backend resolves it in process.
+
+  The step engine now journals its DECISIONS, not only its outcomes: resolved inputs, predicates, loop conditions, switch keys and pure value steps. A run's replay-closed state is its journal, which is what makes replay a pure function of `(journal, manifest)` — recording only outcomes would leave every decision re-derived in a fresh process from a scope carrying live readings.
+
+  The analyzer gains `validate-durable-regions`: `DURABLE_DETACH_FORBIDDEN`, `DURABLE_NONDETERMINISM` (keyed on `idempotent`, where it states something true) and `DURABLE_UNJOURNALABLE_RESULT`. All are consumers of the one containment walk, parameterized over a zone attribute, so no kind is named in analyzer code.
+
+  Normative contract: `kernel/specs/durable-execution.md`.
+
+- b5dc9d5: Durable step targets can now cross a process boundary. `encodeDurableTarget` / `decodeDurableTarget` fix the wire form of a step's declaration-site identity — JSON with a canonical key order and a version, so two runtimes producing the same identity produce the same bytes and a reader receiving an unknown version refuses it rather than reading the fields it recognises. An identity too incomplete to resolve elsewhere is refused at the SENDER, where the manifest that produced it is still in reach.
+
+  For that to be worth anything the identity has to be derived, and a step's `invoke:` slot is not a Phase-5 injection site — it resolves at dispatch — so a step target arrives carrying no stamp of its own. The kernel now stamps the declaration site at `create()`, its single instance-production site and the one point where an instance and the context that DECLARED it are both in hand (at injection the context is the consumer's), and the step leaf recovers it by resolving the reference the same way the dispatch does.
+
+  A `with:`-scoped target is refused rather than encoded: `DurableTarget.scoped` records that a name resolved inside a scope, which the step engine knows because the resolution is what answered it, separately from the tuple identifying which scope RUN, which needs a step path a scope handle is built without. Without that flag such a target is indistinguishable from a module-level one and would ship — and resolve, at the far end, to a different resource that merely shares the name.
+
+  `DurableRunHandle.noteCollapsed` is replaced by `noteZoneMode`, which reports every atomic or idempotent region and how it resolved — `collapsed` or `perStep` — rather than only the collapsed ones. `perStep` is the exactly-once regime and is reached by a runtime attestation, so the affirmative answer is the one an operator most needs.
+
+- b5dc9d5: `telo install` now resolves sibling module libraries, so a bundled controller that
+  imports another module's `exports.code:` entry point (`@telorun/ai`,
+  `@telorun/cache`, …) installs instead of failing with "Cannot find package". The
+  join `kernel.load()` performs is exported as `buildSiblingLibraries` and computed
+  by the install warm pass, which already holds all three inputs.
+- 7463386: A DECLARATION-derived contract (`x-telo-schema-projection-from`) is now resolved
+  at dispatch as well as at `telo check`. It was static-only, which is a contract
+  with a hole exactly where a value is COMPUTED rather than written: a misspelled
+  column written as a literal was rejected, and the identical key arriving from a
+  CEL expression reached the database — which for a repository kind means arbitrary
+  caller text in a SQL identifier position.
+
+  `ProjectionScope` becomes a resolver over the raw slot value rather than a list of
+  manifests, because the two hosts see different things there: the analyzer sees the
+  `{kind, name, alias?}` reference, while the kernel binds contracts after Phase-5
+  injection has replaced it with the live instance. That also makes reference
+  resolution alias-aware, so an unambiguous `!ref Alias.users` is no longer refused
+  as ambiguous merely because two libraries each export a `users`.
+
+  `x-telo-schema-projection` is read from `schema:` as well as from the kind
+  document and reported when it is found there — ignoring a misplaced annotation
+  moved the failure onto the consumer's slot and blamed the wrong author.
+
+  A ref slot inside a kind's `schema:` is typed as the published reading it yields,
+  so `self.<ref>.status.<field>` is checked instead of being read off the annotation
+  node. The runtime view is memoized against a publication counter rather than
+  rebuilt on every dispatch.
+
+  A resource rule that throws or exhausts its budget is anchored on the declaring
+  definition, and is a warning rather than an error when that definition belongs to
+  a published dependency — an error there blocked `telo check` on a line the
+  consumer could not change.
+
+  A projection that cannot resolve at dispatch now raises
+  `ERR_SCHEMA_PROJECTION_UNRESOLVED` instead of leaving the slot open — the
+  analyzer's report is entry-module-scoped, so a dependency's consumer slot was
+  unreported at both ends. Rule-declaration validation reads the same merged schema
+  the evaluation reads, so a rule declared on an abstract resolves its `in:` pointer
+  against the fields a child declares.
+
+  `telo publish` reads the npm controller candidates it may push from the PURL
+  parser it already uses, and the self-pin rewrite is anchored on the `controllers:`
+  scalars, so a PURL mentioned in a description is no longer a rewrite target. Its
+  package directory comes from the candidate's `local_path` rather than an assumed
+  layout, an unreachable npm registry is no longer read as "not published", and a
+  malformed `package.json` fails instead of silently skipping the pin stamp.
+
+- 9ac2b8a: The step grammar becomes shared vocabulary, and its execution moves to the SDK.
+
+  `$ref: "telo://manifest#/$defs/Step"` on an array's items declares a step body —
+  `invoke` / `value` / `if` / `while` / `switch` / `try` / `throw`, the
+  `steps.<name>.result` accumulator and the `error` variable inside a `catch:`. Any
+  kind can carry one now; a composite kind that wraps a region of work no longer
+  needs a `!ref` to an executable and a second document to hold it. The grammar was
+  declared four times inside `modules/run/telo.yaml`, and `$defs` are local to the
+  schema that declares them, so four kinds in one module could not share one.
+
+  `StepEngine` moves from `modules/run` to `@telorun/sdk` beside the
+  `executeInvokeStep` leaf it already delegated to, against a structural context
+  (`StepEngineContext`) so it depends on neither the kernel nor `run`. The SDK is
+  the one name the bundle loader symlinks onto the kernel's own copy, so the engine
+  is one version per process and reachable from a controller bundle and the
+  kernel's boot runner alike.
+
+  Two consequences for a kind author. `while/do` is admitted in every step body —
+  a fragment cannot be narrowed by its consumer, and the copies that dropped it did
+  so editorially rather than for soundness. And `x-telo-step-context` is now the
+  legacy spelling: it is read forever (published artifacts carry it, and no
+  migration entry can synthesize a `$ref`) but a new step body is declared by
+  pointing at the fragment, which the derived `x-telo-fragment: Step` stamp makes
+  recognizable with no marker to remember.
+
+  A forward-declared `requires.telo` lower bound is now its own verification state.
+  Adopting new syntax means declaring the release that will carry it, so on that
+  commit the edge names a version npm does not have — and spawning
+  `npx @telorun/cli@<unpublished>` there produced an `ETARGET` wrapped in install
+  noise, reported as "could not run", indistinguishable from being offline. The
+  registry is now asked before any edge runs, such an edge is never spawned, and it
+  is reported as `pending` alongside the latest published version (which is what
+  makes a typo'd bound visible). Informational in `telo release check`, fatal in
+  `telo publish`, where npm has already published and the floor must exist.
+
+- 321f153: Zone attributes: a body slot that establishes an execution zone can now declare what the region guarantees about everything inside it.
+
+  `x-telo-provides-zone` gains an object form carrying its correlation key as `key` beside the attributes — `atomic`, `idempotent`, `noSuspend`, `replayed`. The vocabulary is CLOSED and ships as data (`sdk/zone-attributes/*.json`), so both kernels read one vocabulary rather than one written in TypeScript; each attribute's value is the author's REASON, which whatever enforces it quotes verbatim, and `requires:` on an entry compiles to JSON Schema's `dependentRequired` so `atomic ⇒ noSuspend` lives in the data rather than in a validator.
+
+  The analyzer gains a downward **containment walk** (`findZoneRegions`), parameterized over the attribute that opens a region rather than over any kind, plus `ZONE_ATTRIBUTE_UNKNOWN` and `ZONE_ATTRIBUTE_INCOMPLETE`. The kernel gains `ctx.zoneAttributes()`, which resolves the attributes off the declaring kind's schema — never off the `ZoneEntry`, which stays three identities so it remains ABI-serializable — and returns them without branching on any name.
+
+### Patch Changes
+
+- 321f153: Durable-execution correctness fixes found in review.
+
+  **A live value is now actually refused.** `assertJournalable` used `JSON.stringify`, which SUCCEEDS on a stream and returns `{}` — so the case the contract names first was recorded as an empty object and replayed as one. Detection is now structural, through the value-type vocabulary's own binding table, and lives in `@telorun/sdk` because it is a property of the contract rather than of one journal. The static half is only a warning precisely because "the runtime is the gate"; the gate was open.
+
+  **`DURABLE_NONDETERMINISM` reads parsed call sites** (`auditCalls`) instead of a regex over CEL source. A regex fires on a name inside a string literal and on an unrelated receiver method, and re-derives what the registry's `deterministic` flag already answers — the text-matching this repo retired elsewhere.
+
+  **`ctx.zoneAttributes` resolves along `extends`** so a child inheriting a zone-providing slot reports what that slot declares, and no longer memoizes an unresolved kind (which would make a transient miss permanent).
+
+  **A step with no name is refused** rather than defaulting to an empty path segment, where two such steps would share one journal key and the second would be handed the first's result. The shared `Step` schema requires `name`, so a manifest cannot reach this; a caller assembling steps in code can.
+
+  Also: the CEL walk now stops at a nested `{ kind }` declaration rather than reporting that resource's expressions against its enclosing one, and the unused `zoneAttributesSchema()` is removed — the property it was meant to guarantee (the `atomic ⇒ noSuspend` rule living in the data) is already true, since the validator reads `requires:` off the entry.
+
+- Updated dependencies [7463386]
+- Updated dependencies [321f153]
+- Updated dependencies [321f153]
+- Updated dependencies [18a5d61]
+- Updated dependencies [7463386]
+- Updated dependencies [c7fdbd9]
+- Updated dependencies [7463386]
+- Updated dependencies [321f153]
+- Updated dependencies [9ac2b8a]
+- Updated dependencies [321f153]
+  - @telorun/analyzer@0.63.0
+  - @telorun/templating@0.16.0
+
 ## 0.78.0
 
 ### Minor Changes
