@@ -591,14 +591,15 @@ describe("analysis stamp", () => {
 
   it("writeAnalysisStamp + readAnalysisStamp round-trip", async () => {
     const signature = "deadbeef".repeat(8);
-    await writeAnalysisStamp(workdir, signature);
-    const stamp = await readAnalysisStamp(workdir);
+    const entry = "file:///ws/app.telo.yaml";
+    await writeAnalysisStamp(entry, signature, workdir);
+    const stamp = await readAnalysisStamp(entry, workdir);
     expect(stamp?.signature).toBe(signature);
     expect(stamp?.version).toBe(1);
   });
 
   it("readAnalysisStamp returns undefined when no stamp file exists", async () => {
-    expect(await readAnalysisStamp(workdir)).toBeUndefined();
+    expect(await readAnalysisStamp("file:///ws/app.telo.yaml", workdir)).toBeUndefined();
   });
 
   it("@telorun/analyzer/package.json is reachable so its version pins the signature", () => {

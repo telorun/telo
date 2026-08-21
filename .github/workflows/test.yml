@@ -257,6 +257,12 @@ jobs:
       # so cold builds don't dominate (and don't flake the 5s-ish tests).
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          # Controller crates are built into the workspace-anchored `.telo` cache,
+          # keyed by SDK backend, which is NOT the workspace `target/` this action
+          # caches by default. Without naming it every run rebuilds each napi
+          # controller and its dependency tree from cold — minutes on Windows.
+          cache-directories: .telo/cargo
 
       # Package unit tests resolve sibling workspace packages to their built
       # dist/, so the build must run before vitest.
@@ -461,6 +467,12 @@ jobs:
       # unit-test path here exactly as it is on ubuntu.
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          # Controller crates are built into the workspace-anchored `.telo` cache,
+          # keyed by SDK backend, which is NOT the workspace `target/` this action
+          # caches by default. Without naming it every run rebuilds each napi
+          # controller and its dependency tree from cold — minutes on Windows.
+          cache-directories: .telo/cargo
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -548,6 +560,12 @@ jobs:
       # unit-test path here exactly as it is on ubuntu.
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          # Controller crates are built into the workspace-anchored `.telo` cache,
+          # keyed by SDK backend, which is NOT the workspace `target/` this action
+          # caches by default. Without naming it every run rebuilds each napi
+          # controller and its dependency tree from cold — minutes on Windows.
+          cache-directories: .telo/cargo
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -581,6 +599,12 @@ jobs:
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
+        with:
+          # Controller crates are built into the workspace-anchored `.telo` cache,
+          # keyed by SDK backend, which is NOT the workspace `target/` this action
+          # caches by default. Without naming it every run rebuilds each napi
+          # controller and its dependency tree from cold — minutes on Windows.
+          cache-directories: .telo/cargo
 
       # Both SDK backends are compiled explicitly. `telorun-sdk` declares no
       # default backend, so a bare `cargo test` would exercise neither bridge

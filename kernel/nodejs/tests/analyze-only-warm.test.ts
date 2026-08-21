@@ -9,7 +9,7 @@ import { LocalManifestCacheSource } from "../src/manifest-sources/local-manifest
 /**
  * `kernel.load(entry, { analyzeOnly: true })` is the build-time warm pass
  * (`telo install`) bakes into a prebuilt image: it persists the analysis
- * stamp and the compiled `__validators` cache on a writable filesystem so the
+ * stamp and the compiled `validators` cache on a writable filesystem so the
  * runtime `load()` — on a read-only session rootfs — hits both caches and
  * never attempts a write. These tests pin that contract: warm once, freeze the
  * cache read-only, then a fresh runtime load must boot without a single
@@ -30,7 +30,8 @@ afterEach(async () => {
     workdir,
     path.join(workdir, ".telo"),
     path.join(workdir, ".telo/manifests"),
-    path.join(workdir, ".telo/manifests/__validators"),
+    path.join(workdir, ".telo/analysis"),
+    path.join(workdir, ".telo/validators"),
   ]) {
     await fs.chmod(p, 0o755).catch(() => {});
   }
@@ -46,8 +47,13 @@ function makeKernel(stderr?: { write: (s: string) => boolean }): Kernel {
 }
 
 async function freezeReadOnly(): Promise<void> {
-  const manifests = path.join(workdir, ".telo/manifests");
-  for (const p of [path.join(manifests, "__validators"), manifests, path.join(workdir, ".telo"), workdir]) {
+  for (const p of [
+    path.join(workdir, ".telo/validators"),
+    path.join(workdir, ".telo/analysis"),
+    path.join(workdir, ".telo/manifests"),
+    path.join(workdir, ".telo"),
+    workdir,
+  ]) {
     try {
       await fs.chmod(p, 0o555);
     } catch {
@@ -66,8 +72,8 @@ describe("kernel.load analyzeOnly warm pass", () => {
 
     await makeKernel().load(entry, { analyzeOnly: true });
 
-    const stamp = path.join(workdir, ".telo/manifests/.validated.json");
-    await expect(fs.access(stamp)).resolves.toBeUndefined();
+    const stamps = await fs.readdir(path.join(workdir, ".telo/analysis"));
+    expect(stamps).toHaveLength(1);
 
     await freezeReadOnly();
 
@@ -102,7 +108,7 @@ describe("kernel.load analyzeOnly warm pass", () => {
 
     await makeKernel().load(entry, { analyzeOnly: true });
 
-    const validators = path.join(workdir, ".telo/manifests/__validators");
+    const validators = path.join(workdir, ".telo/validators");
     const baked = await fs.readdir(validators);
     expect(baked.length).toBeGreaterThan(0);
 

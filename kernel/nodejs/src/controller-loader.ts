@@ -167,7 +167,7 @@ export class ControllerLoader {
       installRoot: options.installRoot,
     });
     if (options.log) this.npmLoader.setLogger(options.log);
-    this.napiLoader = new NapiControllerLoader();
+    this.napiLoader = new NapiControllerLoader(options.cacheRoot);
     this.bundleLoader = new BundleControllerLoader(options.cacheRoot, options.log);
   }
 

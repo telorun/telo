@@ -20,6 +20,7 @@ use telo_analyzer::DEFAULT_MANIFEST_FILENAME;
 
 use crate::controller_loaders::native_abi::LoadedController;
 use crate::error::KernelError;
+use crate::workspace_marker::resolve_cache_root;
 
 /// The SDK crate whose backend feature selects the FFI bridge.
 const SDK_CRATE_NAME: &str = "telorun-sdk";
@@ -130,8 +131,22 @@ fn probe_rustc() -> Result<(), ResolveError> {
 
 fn build_cdylib(crate_path: &Path, crate_name: &str) -> Result<PathBuf, ResolveError> {
     // A dedicated target directory keeps this build off the workspace lock the
-    // caller may already hold — `telo-rs` itself is often run through cargo.
-    let target_dir = crate_path.join(".telo").join("target");
+    // caller may already hold — `telo-rs` itself is often run through cargo. It
+    // is anchored at the workspace marker rather than inside the crate, so every
+    // controller crate in one repo shares a dependency build instead of each
+    // carrying its own copy; cargo already handles many packages in one target
+    // directory, and this is still not the workspace target, so the anti-lock
+    // property is unchanged.
+    //
+    // KEYED BY SDK BACKEND, and that is not cosmetic: the Node kernel builds
+    // these same crates with `telorun-sdk/napi` while this one uses `native`, and
+    // the two are kept apart today only by the accident that Node's loader takes
+    // cargo's default target directory. Give both one directory and every
+    // alternation between kernels rebuilds the whole dependency tree.
+    let target_dir = resolve_cache_root(crate_path)
+        .join("cargo")
+        .join(SDK_BACKEND_FEATURE.rsplit('/').next().unwrap_or(SDK_BACKEND_FEATURE))
+        .join("target");
     let mut args = vec!["build", "--release"];
     if depends_on_sdk(crate_path, crate_name)? {
         args.extend(["--features", SDK_BACKEND_FEATURE]);

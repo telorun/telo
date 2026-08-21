@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 
 import { hostEnv } from "../host-env.js";
 import { TransportRegistry, defaultTransportRegistry } from "../transports/transport-registry.js";
+import { findWorkspaceRoot } from "../workspace-marker.js";
 
 const CACHE_SUBDIR = ".telo/manifests";
 const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
@@ -51,15 +52,51 @@ function cachePathForUrl(
   return joinUnder(cacheRoot, ...key.split("/"));
 }
 
+/** The PRE-WORKSPACE-ANCHOR manifest cache for an entry: always
+ *  `<entry-dir>/.telo/manifests`, regardless of marker or env override. `null`
+ *  for an entry with no local anchor.
+ *
+ *  A single definition because two things read the old location and they must
+ *  agree: the manifest source serves `telo.yaml` from it, and `moduleDirectoryFor`
+ *  places that module's LAYERS beside it. Deriving the path twice is how the two
+ *  halves end up disagreeing — the manifest resolving from the old root while its
+ *  controller layers are looked for under the new one, which is exactly the
+ *  offline boot the fallback exists to keep working. */
+export function legacyManifestsDir(entryDir: string): string | null {
+  return entryDir ? path.join(entryDir, CACHE_SUBDIR) : null;
+}
+
+/** `legacyManifestsDir`, or `null` when it would coincide with `current` — so the
+ *  fallback is never a second lookup at the same place. */
+export function legacyManifestsDirFallback(
+  entryDir: string,
+  current: string | null,
+): string | null {
+  const legacy = legacyManifestsDir(entryDir);
+  if (legacy === null) return null;
+  if (current !== null && path.resolve(legacy) === path.resolve(current)) return null;
+  return legacy;
+}
+
 /**
- * Reads previously-cached manifest YAMLs from `<entry-dir>/.telo/manifests/`.
- * Sits ahead of `RegistrySource` / `HttpSource` in the source chain — a hit
- * makes boot hermetic, a miss falls through to the network source unchanged.
+ * Reads previously-cached manifest YAMLs from the resolved manifest cache. Sits
+ * ahead of `RegistrySource` / `HttpSource` in the source chain — a hit makes boot
+ * hermetic, a miss falls through to the network source unchanged.
  *
  * Populated by `writeManifestCache` at install time.
+ *
+ * On a miss it consults the PRE-WORKSPACE-ANCHOR location
+ * (`<entry-dir>/.telo/manifests/`) before giving up. Every other cache in `.telo`
+ * costs only CPU when it goes cold; this one costs network, so without the
+ * fallback the move to a workspace-anchored root would stop a hermetic setup from
+ * booting — its `telo install` output stranded at the old path, with the failure
+ * surfacing as a registry fetch on a machine that has no route to one. Read-only
+ * and one directory deep: writes always go to the current root, so the old copy
+ * ages out rather than being maintained.
  */
 export class LocalManifestCacheSource implements ManifestSource {
-  private readonly cacheRoot: string;
+  private readonly cacheRoot: string | null;
+  private readonly legacyRoot: string | null;
   private readonly transports: TransportRegistry;
 
   constructor(
@@ -70,7 +107,8 @@ export class LocalManifestCacheSource implements ManifestSource {
     // `manifestsDir` is the resolved manifest-cache directory threaded from a
     // single `resolveCacheRoot` (honours `TELO_CACHE_DIR`); when absent we fall
     // back to the entry-anchored default so library/test callers are unchanged.
-    this.cacheRoot = manifestsDir ?? path.join(entryDir, CACHE_SUBDIR);
+    this.cacheRoot = manifestsDir ?? legacyManifestsDir(entryDir);
+    this.legacyRoot = legacyManifestsDirFallback(entryDir, this.cacheRoot);
     this.transports = defaultTransportRegistry(registryUrl);
   }
 
@@ -108,7 +146,12 @@ export class LocalManifestCacheSource implements ManifestSource {
   }
 
   private tryMap(url: string): string | null {
-    const candidate = cachePathForUrl(url, this.cacheRoot, this.transports);
+    return this.tryMapIn(url, this.cacheRoot) ?? this.tryMapIn(url, this.legacyRoot);
+  }
+
+  private tryMapIn(url: string, root: string | null): string | null {
+    if (root === null) return null;
+    const candidate = cachePathForUrl(url, root, this.transports);
     if (!candidate) return null;
     // Require a regular file. A directory, dangling symlink, or stat failure
     // (ENOENT, EACCES, EISDIR-on-component) all fall through as a cache miss
@@ -219,18 +262,30 @@ export function resolveEntryDir(entryPath: string): string | null {
 }
 
 /** The single `.telo` cache root for an entry, resolved once and threaded to
- *  every consumer (manifest cache, compiled validators, analysis stamp, npm
- *  install root) so none of them re-derive it or read the env independently.
+ *  every consumer (manifest cache, compiled validators, analysis stamps, npm
+ *  install root, cargo target dirs) so none of them re-derive it or read the env
+ *  independently.
  *
- *  `TELO_CACHE_DIR` (the relocated root a prebuilt image bakes its deps into)
- *  wins; otherwise the root sits beside the entry at `<entry-dir>/.telo`.
+ *  Precedence: `TELO_CACHE_DIR` (the relocated root a prebuilt image bakes its
+ *  deps into) wins; then the directory holding `telo-workspace.yaml`, so every
+ *  app in one repo shares a cache instead of each carrying its own copy of the
+ *  same manifests, validators, bundles and npm tree; then `<entry-dir>/.telo`.
+ *
+ *  Anchoring on the marker's LOCATION only — never its `modules:` list, which is
+ *  release scope — so a manifest in no release subtree (an example, a test
+ *  fixture) shares the cache exactly as an app does. With no marker anywhere
+ *  above, this collapses to what it did before the anchor existed, so the file
+ *  enables the shared cache rather than gating one and deleting it cannot break
+ *  a build.
+ *
  *  Returns `null` for an entry with no local anchor — an http(s), `memory://`
  *  or any other non-`file:` scheme — in which case the disk cache is skipped.
- *  Consumers append the conventional subdirs: `manifests/`, `manifests/__validators/`,
- *  `npm/`. */
+ *  Consumers append the conventional subdirs: `manifests/`, `analysis/`,
+ *  `validators/`, `controller-src/`, `npm/`. */
 export function resolveCacheRoot(entryPath: string): string | null {
   const override = hostEnv().TELO_CACHE_DIR;
   if (override && override.trim()) return path.resolve(override.trim());
   const entryDir = resolveEntryDir(entryPath);
-  return entryDir ? path.join(entryDir, ".telo") : null;
+  if (!entryDir) return null;
+  return path.join(findWorkspaceRoot(entryDir) ?? entryDir, ".telo");
 }

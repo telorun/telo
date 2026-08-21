@@ -414,6 +414,18 @@ async function readMarker(marker: string): Promise<string[]> {
  * identically cold and warm. A genuinely local `source` (development, or a module
  * loaded straight off disk) resolves to its own directory.
  *
+ * A module's LAYERS extract beside its cached `telo.yaml`, so this has to follow
+ * the manifest cache's own fallback to the pre-workspace-anchor root: when the
+ * manifest resolved from `<entry-dir>/.telo/manifests/` because the workspace root
+ * is cold, its already-materialized controller layers are there too. Deriving the
+ * directory from the new root alone left an offline hermetic upgrade resolving
+ * `telo.yaml` from disk and then going to the network for every bundled
+ * controller — the fallback covering half a module.
+ *
+ * The legacy root is chosen only when it HOLDS the manifest and the current root
+ * does not; a cold cache still places the module under the current root, so a
+ * fresh materialization is never diverted to the old location.
+ *
  * Returns `null` when neither route yields a directory — a `memory://` module, or
  * a ref this cache has no coordinates for.
  */
@@ -423,14 +435,17 @@ export function moduleDirectoryFor(
   entryDir: string,
   registryUrl: string | undefined,
   manifestsDir: string | undefined,
+  legacyDir?: string | null,
 ): string | null {
-  const cacheFile = cachePathForCanonical(
-    splitIntegrity(requestedUrl).base,
-    entryDir,
-    registryUrl,
-    manifestsDir,
-  );
-  if (cacheFile) return path.dirname(cacheFile);
+  const pinned = splitIntegrity(requestedUrl).base;
+  const cacheFile = cachePathForCanonical(pinned, entryDir, registryUrl, manifestsDir);
+  if (cacheFile) {
+    if (legacyDir && !existsSync(cacheFile)) {
+      const legacyFile = cachePathForCanonical(pinned, entryDir, registryUrl, legacyDir);
+      if (legacyFile && existsSync(legacyFile)) return path.dirname(legacyFile);
+    }
+    return path.dirname(cacheFile);
+  }
   if (source.startsWith("file://")) return path.dirname(fileURLToPath(source));
   if (path.isAbsolute(source)) return path.dirname(source);
   return null;

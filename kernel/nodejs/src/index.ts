@@ -10,6 +10,7 @@ export {
   writeManifestCache,
 } from "./manifest-sources/local-manifest-cache-source.js";
 export { MemorySource } from "./manifest-sources/memory-source.js";
+export { WORKSPACE_FILENAME, findWorkspaceRoot, realPath } from "./workspace-marker.js";
 export type { Transport } from "./transports/transport.js";
 export { RegistryTransport } from "./transports/registry-transport.js";
 export { OciTransport } from "./transports/oci/oci-transport.js";

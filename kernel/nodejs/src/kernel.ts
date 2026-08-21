@@ -65,6 +65,7 @@ import {
 } from "./manifest-sources/analysis-stamp.js";
 import {
   cachePathForCanonical,
+  legacyManifestsDirFallback,
   resolveCacheRoot,
   resolveEntryDir,
 } from "./manifest-sources/local-manifest-cache-source.js";
@@ -421,19 +422,20 @@ export class Kernel implements IKernel {
       options?.cacheDir !== undefined ? options.cacheDir : resolveCacheRoot(sourceUrl);
     this._cacheRoot = cacheRoot;
     const manifestsDir = cacheRoot ? `${cacheRoot}/manifests` : undefined;
+    const analysisDir = cacheRoot ? `${cacheRoot}/analysis` : undefined;
     // `writeCache: false` (`telo run --no-cache-write`) keeps the cache
     // READ-only: compiled validators and the analysis stamp are still loaded
     // from disk, but never written back — so an ephemeral, read-only session
     // rootfs validates in-memory without touching the baked cache.
     const writeCache = options?.writeCache !== false;
     // Point the shared schema validator at the cache so compiled AJV validators
-    // are loaded (and, when writable, persisted) under
-    // `<cache-root>/manifests/__validators/`. Memory-/HTTP-rooted entries skip
-    // the cache; their schema compiles stay in-process only.
-    this.sharedSchemaValidator.setCacheDir(
-      manifestsDir ? `${manifestsDir}/__validators` : undefined,
-      { write: writeCache },
-    );
+    // are loaded (and, when writable, persisted) under `<cache-root>/validators/`.
+    // Beside `manifests/` rather than inside it: a compiled validator is not a
+    // cached module manifest. Memory-/HTTP-rooted entries skip the cache; their
+    // schema compiles stay in-process only.
+    this.sharedSchemaValidator.setCacheDir(cacheRoot ? `${cacheRoot}/validators` : undefined, {
+      write: writeCache,
+    });
     this.rootContext = new ModuleContext(
       sourceUrl,
       {},
@@ -551,9 +553,7 @@ export class Kernel implements IKernel {
     // passes are elided. Memory- / HTTP-rooted entries have no
     // local stamp store and always re-validate.
     const analysisSignature = computeAnalysisSignature(analysisGraph);
-    const stamp = manifestsDir
-      ? await readAnalysisStamp("", manifestsDir)
-      : undefined;
+    const stamp = analysisDir ? await readAnalysisStamp(sourceUrl, analysisDir) : undefined;
     const skipValidation = stamp?.signature === analysisSignature;
     const errors = this.analyzer.analyzeErrors(
       staticManifests,
@@ -574,13 +574,13 @@ export class Kernel implements IKernel {
         errors.map(staticDiagnosticToRuntime),
       );
     }
-    if (manifestsDir && writeCache && !skipValidation) {
+    if (analysisDir && writeCache && !skipValidation) {
       // Best-effort: stamp the verdict so subsequent loads hit the fast
       // path. A read-only filesystem (baked Docker image) reports the
       // failure on stderr and keeps running — the lookup above will
       // simply miss next time. Skipped under `--no-cache-write`.
       try {
-        await writeAnalysisStamp("", analysisSignature, manifestsDir);
+        await writeAnalysisStamp(sourceUrl, analysisSignature, analysisDir);
       } catch (err) {
         this.logging.kernelLogger().warn("analysis stamp write failed", undefined, { error: err });
       }
@@ -1060,6 +1060,11 @@ export class Kernel implements IKernel {
     this.siblingLibraries.clear();
     const transports = defaultTransportRegistry(this.registryUrl);
     const entryDir = this._entryUrl ? resolveEntryDir(this._entryUrl) ?? "" : "";
+    // The same pre-anchor root `LocalManifestCacheSource` falls back to. Layers
+    // live beside the cached manifest, so both halves have to look in the same
+    // place or an offline upgrade resolves a manifest from disk and then fetches
+    // its controllers.
+    const legacyDir = legacyManifestsDirFallback(entryDir, manifestsDir ?? null);
     // Parsed once per module and shared with the sibling-library join below: a
     // `telo.yaml` is a large multi-document file, and re-reading each target's
     // once per import edge put dozens of redundant full-YAML parses on the boot
@@ -1077,6 +1082,7 @@ export class Kernel implements IKernel {
         entryDir,
         this.registryUrl,
         manifestsDir,
+        legacyDir,
       );
       directories.set(file.source, moduleDir ?? undefined);
       const artifact = moduleArtifactFor({
