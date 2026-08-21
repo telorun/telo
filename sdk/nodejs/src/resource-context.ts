@@ -245,6 +245,20 @@ export interface ResourceContext extends ControllerContext {
     describe: () => string,
     expects?: string,
   ): T;
+  /**
+   * The manifest a name was DECLARED with, resolved in the context that OWNS
+   * this resource — the same order {@link resolveRef} uses, so a declaration
+   * lookup cannot disagree with an instance lookup about what a name means.
+   *
+   * The counterpart to {@link resolveRef} for a slot that wants a FACT about its
+   * target rather than the target itself. A declaration is readable whether or
+   * not the resource has been constructed, which is what lets such a slot avoid
+   * an ordering edge — and what lets a resource read a slot pointing at itself.
+   *
+   * Optional because a third-party context implementation must keep compiling;
+   * absent reads as "no declaration in scope".
+   */
+  resolveDeclaredManifest?(name: string, alias?: string): ResourceManifest | undefined;
   validateSchema(value: any, schema: any): void;
   /** Compile an author-written JSON Schema from a resource field into a
    *  reusable validator, through the runtime's own engine — so its formats and

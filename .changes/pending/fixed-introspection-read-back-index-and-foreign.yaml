@@ -1,0 +1,8 @@
+modules:
+  modules/postgres: Fixed
+body: Introspection read back index and foreign-key column lists as a raw string instead
+  of an array, so every existing primary key, single-column unique and index compared as
+  absent. A second boot then refused to start, demanding a primary key be added in a
+  'beforeMigrations:' entry — on the constraint the first boot had created. The column
+  arrays are cast to text[], which node-postgres parses; pg_attribute.attname is of type
+  name, whose array type it has no parser for.

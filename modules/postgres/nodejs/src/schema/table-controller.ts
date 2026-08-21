@@ -1,5 +1,10 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { normalizeTable, type DeclaredTable, type RawTable } from "@telorun/sql";
+import {
+  normalizeTable,
+  tableReferenceResolver,
+  type DeclaredTable,
+  type RawTable,
+} from "@telorun/sql";
 
 /**
  * `Postgres.Table` — one physical table, declared rather than migrated to.
@@ -11,8 +16,8 @@ import { normalizeTable, type DeclaredTable, type RawTable } from "@telorun/sql"
 export class PostgresTableResource implements ResourceInstance {
   readonly declaration: DeclaredTable;
 
-  constructor(raw: RawTable) {
-    this.declaration = normalizeTable(raw);
+  constructor(raw: RawTable, ctx: ResourceContext) {
+    this.declaration = normalizeTable(raw, tableReferenceResolver(ctx, "Postgres.Table", raw.table));
   }
 
   /** The physical table name, read by consumers that build statements against
@@ -30,7 +35,7 @@ export function register(): void {}
 
 export async function create(
   resource: RawTable,
-  _ctx: ResourceContext,
+  ctx: ResourceContext,
 ): Promise<PostgresTableResource> {
-  return new PostgresTableResource(resource);
+  return new PostgresTableResource(resource, ctx);
 }

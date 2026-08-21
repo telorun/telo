@@ -26,6 +26,8 @@ function driver(overrides: Partial<SchemaDriver> = {}): SchemaDriver {
         : { safe: false, reason: "type change" },
     classifyIndexChange: (): ChangeSafety => ({ safe: true }),
     classifyForeignKeyChange: (): ChangeSafety => ({ safe: true }),
+    foreignKeysInCreateTable: false,
+    namesForeignKeys: true,
     classifyCopy: (live, target): ChangeSafety =>
       live.typeSignature === target.type ? { safe: true } : { safe: false, reason: "copy" },
     canReclaim: () => ({ safe: true }),
@@ -44,7 +46,7 @@ function driver(overrides: Partial<SchemaDriver> = {}): SchemaDriver {
 }
 
 const users = (columns: Record<string, any>, rest: Record<string, any> = {}) =>
-  normalizeTable({ table: "users", columns, ...rest } as any);
+  normalizeTable({ table: "users", columns, ...rest } as any, (value) => String(value));
 
 const live = (columns: LiveColumn[], rest: Partial<LiveTable> = {}): LiveTable => ({
   name: "users",
@@ -284,6 +286,87 @@ describe("snapshotDigest", () => {
  * definition as owned, leaving the manifest asserting something the database was
  * not doing.
  */
+/**
+ * An engine that keeps no constraint name — SQLite — matches a declaration to a
+ * live key by what that key maps to. Every case here is a boot AFTER the one
+ * that created the table, which is the only time the question is asked.
+ */
+describe("foreign keys on an engine that keeps no name", () => {
+  const unnamed = (over: Partial<SchemaDriver> = {}) =>
+    driver({ foreignKeysInCreateTable: true, namesForeignKeys: false, ...over });
+
+  const declaring = (keys: Record<string, any>) =>
+    users({ userId: { type: "integer" } }, { foreignKeys: keys });
+
+  const column: LiveColumn = {
+    name: "userId",
+    typeSignature: "integer",
+    nullable: true,
+    hasDefault: false,
+    primaryKey: false,
+    unique: false,
+  };
+
+  const liveKey = (name: string, over: Record<string, any> = {}) => ({
+    name,
+    columns: ["userId"],
+    references: { table: "other", columns: ["id"] },
+    ...over,
+  });
+
+  const one = { columns: ["userId"], references: { table: "other", columns: ["id"] } };
+
+  it("recognises its own key under a name the engine never kept", () => {
+    const result = plan(
+      [declaring({ fk: one })],
+      [live([column], { foreignKeys: [liveKey("sqlite_fk_0")] })],
+      {},
+      new Set(),
+      unnamed(),
+    );
+    expect(result.statements.map((s) => s.sql)).toEqual([]);
+  });
+
+  it("pairs two identical keys one for one instead of both taking the first", () => {
+    const result = plan(
+      [declaring({ a: one, b: one })],
+      [live([column], { foreignKeys: [liveKey("sqlite_fk_0"), liveKey("sqlite_fk_1")] })],
+      {},
+      new Set(),
+      unnamed(),
+    );
+    expect(result.statements.map((s) => s.sql)).toEqual([]);
+  });
+
+  it("reports a key genuinely absent rather than letting its twin stand in", () => {
+    const result = plan(
+      [declaring({ a: one, b: one })],
+      [live([column], { foreignKeys: [liveKey("sqlite_fk_0")] })],
+      {},
+      new Set(),
+      unnamed(),
+    );
+    expect(result.statements.map((s) => s.sql)).toEqual(["FK b"]);
+  });
+
+  it("treats a changed delete rule as a change to that key, never as a new one", () => {
+    const result = plan(
+      [declaring({ fk: { ...one, onDelete: "cascade" } })],
+      [live([column], { foreignKeys: [liveKey("sqlite_fk_0", { onDelete: "NO ACTION" })] })],
+      {},
+      new Set(),
+      unnamed({ classifyForeignKeyChange: () => ({ safe: false, reason: "no ALTER" }) }),
+    );
+    expect(result.statements).toEqual([]);
+    expect(result.refusals.map((r) => r.reason)).toEqual(["no ALTER"]);
+  });
+
+  it("does not re-add the keys of a table it just created", () => {
+    const result = plan([declaring({ fk: one })], [], {}, new Set(), unnamed());
+    expect(result.statements.map((s) => s.sql)).toEqual(["CREATE users"]);
+  });
+});
+
 describe("constraint and definition drift", () => {
   const permissive = driver({
     classifyAlter: () => ({ safe: true }),

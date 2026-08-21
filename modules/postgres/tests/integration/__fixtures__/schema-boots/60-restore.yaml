@@ -1,9 +1,9 @@
 kind: Telo.Application
 metadata:
-  name: SchemaBoots
+  name: PgSchemaBoots
   version: 6.0.0
   description: |
-    Boot 6 of 7 — the rename is called off. `email` is declared again while its
+    Boot 7 — the rename is called off. `email` is declared again while its
     tombstone is still outstanding, so the tombstone is CLEARED and its budget
     discarded rather than counted down: the column was never dropped, and the
     declaration is authoritative again. The data it held throughout is still
@@ -13,77 +13,83 @@ metadata:
     `renamedFrom:` — the source is a declared column again, so the mention would
     now describe a rename that is not happening.
 imports:
-  Sql: ../../../../sql
-  SQLite: ../../../../sqlite
-  Run: ../../../../run
-  Assert: ../../../../assert
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
 variables:
-  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
 targets:
   - !ref appSchema
   - !ref test
 ---
-kind: SQLite.Connection
+kind: Postgres.Connection
 metadata: { name: db }
-file: !cel "variables.dbFile"
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
 ---
-kind: SQLite.Table
+kind: Postgres.Table
 metadata: { name: users }
 table: users
 columns:
   id: { type: integer, primaryKey: true }
-  # Restated exactly as boot 1 declared it: SQLite cannot change nullability in
-  # place, so a restored column has to come back as the column that is there.
-  email: { type: text, nullable: false }
+  createdAt: { type: timestamptz, nullable: false, defaultExpression: "now()" }
+  # Restated exactly as boot 1 declared it. A restored column has to come back as
+  # the column that is there: declaring it nullable, or without its unique
+  # constraint, would be drift rather than revival — and refused as such.
+  email: { type: text, nullable: false, unique: true }
   displayName: { type: text }
   handle: { type: text }
 ---
-# A foreign key carried unchanged from here on. SQLite does not NAME a foreign
-# key, so a later boot cannot match one to its declaration by name — which is
-# what makes a restart, not a change, the case worth pinning.
-kind: SQLite.Table
+# Declared unchanged by every boot from here on: a foreign key is read back from
+# the catalogue on each of them, through the same array shape the index columns
+# use, so it is the FK half of that read that these boots keep exercising.
+kind: Postgres.Table
 metadata: { name: sessions }
 table: sessions
 columns:
   id: { type: integer, primaryKey: true }
   userId: { type: integer, nullable: false }
+indexes:
+  # The composite key below references this pair, and PostgreSQL requires a
+  # unique constraint on whatever a foreign key points at.
+  sessions_id_user_key: { columns: [id, userId], unique: true }
 foreignKeys:
-  sessionsUser:
+  sessions_user_fk:
     columns: [userId]
     references:
       table: !ref users
       columns: [id]
     onDelete: cascade
 ---
-# Two structurally IDENTICAL keys apart from their declared names, plus a
-# COMPOSITE one. SQLite keeps no name, so these are matched by structure on every
-# later boot — and a match has to be CONSUMED: without that both declarations
-# claim the same live key, and a key genuinely missing from the database is
-# masked by its twin instead of being reported.
-kind: SQLite.Table
-metadata: { name: memberships }
-table: memberships
+# A COMPOSITE foreign key, so both column lists carry more than one entry — the
+# shape a single-column key cannot tell apart from a corrupted read.
+kind: Postgres.Table
+metadata: { name: sessionEvents }
+table: session_events
 columns:
   id: { type: integer, primaryKey: true }
-  ownerId: { type: integer, nullable: false }
-  deputyId: { type: integer, nullable: false }
-  userId: { type: integer, nullable: false }
+  sessionId: { type: integer, nullable: false }
+  sessionUserId: { type: integer, nullable: false }
 foreignKeys:
-  membershipOwner:
-    columns: [ownerId]
-    references: { table: !ref sessions, columns: [id] }
-  membershipDeputy:
-    columns: [deputyId]
-    references: { table: !ref sessions, columns: [id] }
-  membershipUserSession:
-    columns: [userId, id]
-    references: { table: !ref sessions, columns: [userId, id] }
+  session_events_session_fk:
+    columns: [sessionId, sessionUserId]
+    references:
+      table: !ref sessions
+      columns: [id, userId]
+    onDelete: cascade
 ---
-kind: SQLite.Schema
+kind: Postgres.Schema
 metadata: { name: appSchema }
 connection: !ref db
+schema: telo_pg_schema_boots
 version: !cel "module.version"
-tables: [!ref users, !ref sessions, !ref memberships]
+tables: [!ref users, !ref sessions, !ref sessionEvents]
 # A policy is declared, so a still-outstanding tombstone WOULD be eligible by
 # now — which is what makes the revival load-bearing rather than incidental.
 reclaim: { afterVersions: 1, afterDuration: 0ms }
@@ -114,7 +120,8 @@ steps:
   - name: read
     invoke: !ref readUsers
     inputs:
-      sql: "SELECT email, displayName FROM users WHERE id = 1"
+      sql: >-
+        SELECT email, "displayName" FROM telo_pg_schema_boots.users WHERE id = 1
   - name: assertDataIntact
     invoke: !ref assertDataIntact
     inputs:

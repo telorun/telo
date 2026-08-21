@@ -1,0 +1,218 @@
+kind: Telo.Application
+metadata:
+  name: PgSchemaBoots
+  version: 1.0.0
+  description: |
+    Boot 2 — THE SAME RELEASE, RESTARTED. The declaration is boot 1's, character
+    for character, at the same version: a redeploy of an unchanged app, a
+    container bounce, a watch-mode reload. Nothing may change, and nothing may be
+    refused.
+
+    This is the boot that reads back what an earlier PROCESS created, so it is the
+    first to depend on introspection at all. It is a regression fixture: an
+    introspection that cannot recognise the objects it made reports the
+    declaration as new and refuses to start — `primaryKey false → true` on the key
+    boot 1 created, and the same for `unique` — leaving the app unrestartable
+    while the database is provably correct.
+
+    A whole boot rather than an assertion inside boot 1, because the state under
+    test is what SURVIVES the process. Every later boot inherits the same
+    dependency; this one isolates it, so a failure here says the read is broken
+    rather than that some declared change went wrong.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  email: { type: text, nullable: false, unique: true }
+  nickname: { type: text }
+  createdAt: { type: timestamptz, nullable: false, defaultExpression: "now()" }
+indexes:
+  users_nickname_created_idx:
+    columns: [nickname, createdAt]
+---
+# Declared unchanged by every boot from here on: a foreign key is read back from
+# the catalogue on each of them, through the same array shape the index columns
+# use, so it is the FK half of that read that these boots keep exercising.
+kind: Postgres.Table
+metadata: { name: sessions }
+table: sessions
+columns:
+  id: { type: integer, primaryKey: true }
+  userId: { type: integer, nullable: false }
+indexes:
+  # The composite key below references this pair, and PostgreSQL requires a
+  # unique constraint on whatever a foreign key points at.
+  sessions_id_user_key: { columns: [id, userId], unique: true }
+foreignKeys:
+  sessions_user_fk:
+    columns: [userId]
+    references:
+      table: !ref users
+      columns: [id]
+    onDelete: cascade
+---
+# A COMPOSITE foreign key, so both column lists carry more than one entry — the
+# shape a single-column key cannot tell apart from a corrupted read.
+kind: Postgres.Table
+metadata: { name: sessionEvents }
+table: session_events
+columns:
+  id: { type: integer, primaryKey: true }
+  sessionId: { type: integer, nullable: false }
+  sessionUserId: { type: integer, nullable: false }
+foreignKeys:
+  session_events_session_fk:
+    columns: [sessionId, sessionUserId]
+    references:
+      table: !ref sessions
+      columns: [id, userId]
+    onDelete: cascade
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_schema_boots
+version: !cel "module.version"
+tables: [!ref users, !ref sessions, !ref sessionEvents]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertNothingTombstoned
+    invoke: !ref assertNothingTombstoned
+    inputs:
+      actual: !cel "resources.appSchema.status.tombstoned"
+      expected: []
+  - name: assertNothingRevived
+    invoke: !ref assertNothingRevived
+    inputs:
+      actual: !cel "resources.appSchema.status.revived"
+      expected: []
+  - name: assertNothingHeld
+    invoke: !ref assertNothingHeld
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []
+
+  # Asked of PostgreSQL's own catalogue rather than of the schema resource's
+  # report: the constraints and the index are each there exactly once, so the
+  # pass neither duplicated them nor recreated them behind the declaration.
+  - name: readConstraints
+    invoke: !ref readCatalogue
+    inputs:
+      sql: >-
+        SELECT conname, contype FROM pg_constraint
+        WHERE conrelid = 'telo_pg_schema_boots.users'::regclass
+          AND contype IN ('p', 'u')
+        ORDER BY conname
+  - name: assertConstraints
+    invoke: !ref assertConstraints
+    inputs:
+      actual: !cel "steps.readConstraints.result.rows"
+      expected:
+        - { conname: users_email_key, contype: u }
+        - { conname: users_pkey, contype: p }
+
+  - name: readIndexes
+    invoke: !ref readCatalogue
+    inputs:
+      sql: >-
+        SELECT indexname FROM pg_indexes
+        WHERE schemaname = 'telo_pg_schema_boots' AND tablename = 'users'
+        ORDER BY indexname
+  - name: assertIndexes
+    invoke: !ref assertIndexes
+    inputs:
+      actual: !cel "steps.readIndexes.result.rows"
+      expected:
+        - { indexname: users_email_key }
+        - { indexname: users_nickname_created_idx }
+        - { indexname: users_pkey }
+
+  # Both sides of the foreign key, read back from the catalogue. A reference
+  # whose column lists cannot be read compares as absent exactly as a key does,
+  # and the pass has no way to add one to a table that already has it.
+  - name: readForeignKeys
+    invoke: !ref readCatalogue
+    inputs:
+      sql: >-
+        SELECT conname, confdeltype FROM pg_constraint
+        WHERE conrelid = 'telo_pg_schema_boots.sessions'::regclass AND contype = 'f'
+        ORDER BY conname
+  - name: assertForeignKeys
+    invoke: !ref assertForeignKeys
+    inputs:
+      actual: !cel "steps.readForeignKeys.result.rows"
+      expected: [{ conname: sessions_user_fk, confdeltype: c }]
+  - name: readCompositeKey
+    invoke: !ref readCatalogue
+    inputs:
+      sql: >-
+        SELECT conname, confdeltype FROM pg_constraint
+        WHERE conrelid = 'telo_pg_schema_boots.session_events'::regclass AND contype = 'f'
+        ORDER BY conname
+  - name: assertCompositeKey
+    invoke: !ref assertCompositeKey
+    inputs:
+      actual: !cel "steps.readCompositeKey.result.rows"
+      expected: [{ conname: session_events_session_fk, confdeltype: c }]
+
+  - name: read
+    invoke: !ref readCatalogue
+    inputs:
+      sql: "SELECT email, nickname FROM telo_pg_schema_boots.users WHERE id = 1"
+  - name: assertRowIntact
+    invoke: !ref assertRowIntact
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected: [{ email: "a@example.com", nickname: ada }]
+---
+kind: Sql.Query
+metadata: { name: readCatalogue }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertNothingTombstoned }
+---
+kind: Assert.Equals
+metadata: { name: assertNothingRevived }
+---
+kind: Assert.Equals
+metadata: { name: assertNothingHeld }
+---
+kind: Assert.Equals
+metadata: { name: assertConstraints }
+---
+kind: Assert.Equals
+metadata: { name: assertIndexes }
+---
+kind: Assert.Equals
+metadata: { name: assertForeignKeys }
+---
+kind: Assert.Equals
+metadata: { name: assertCompositeKey }
+---
+kind: Assert.Equals
+metadata: { name: assertRowIntact }

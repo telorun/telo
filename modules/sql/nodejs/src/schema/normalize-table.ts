@@ -109,14 +109,17 @@ function normalizeColumn(name: string, raw: RawColumn): DeclaredColumn {
   };
 }
 
-/** A `references.table` is a `!ref` to another table resource, injected as the
- *  live instance by the time a controller reads it. */
-function referencedTableName(value: unknown, fk: string): string {
-  if (typeof value === "string") return value;
-  const table = (value as { table?: unknown } | null)?.table;
-  if (typeof table === "string") return table;
-  throw new Error(`foreign key '${fk}': 'references.table' does not name a table`);
-}
+/**
+ * Turns whatever sits at a `references.table` slot into the referenced table's
+ * physical name.
+ *
+ * REQUIRED rather than optional: a `!ref` is not resolved when a controller is
+ * constructed — Phase-5 injection runs after `create()` returns — so a caller
+ * that omitted one would read the sentinel and reproduce, silently, the exact
+ * defect this parameter exists to fix. `tableReferenceResolver` is the one every
+ * backend uses.
+ */
+export type TableReferenceResolver = (value: unknown, fk: string) => string;
 
 /**
  * Structural checks over one declaration, at resource creation — before any
@@ -190,7 +193,10 @@ function validateTable(table: DeclaredTable): void {
   }
 }
 
-export function normalizeTable(raw: RawTable): DeclaredTable {
+export function normalizeTable(
+  raw: RawTable,
+  resolveReference: TableReferenceResolver,
+): DeclaredTable {
   const columns = Object.entries(raw.columns ?? {}).map(([name, column]) =>
     normalizeColumn(name, column),
   );
@@ -205,7 +211,7 @@ export function normalizeTable(raw: RawTable): DeclaredTable {
       name,
       columns: [...fk.columns],
       references: {
-        table: referencedTableName(fk.references.table, name),
+        table: resolveReference(fk.references.table, name),
         columns: [...fk.references.columns],
       },
       onDelete: fk.onDelete,

@@ -1,0 +1,10 @@
+modules:
+  modules/sql: Fixed
+  modules/sqlite: Fixed
+body: A SQLite table declaring a foreign key could be created once and never booted
+  again. SQLite emits a key only as part of CREATE TABLE and reports it back unnamed, so
+  the reconciler planned an ADD CONSTRAINT alongside the CREATE that already carried it,
+  and every later boot read the table's own key as missing and refused to add what the
+  engine cannot add. A driver now declares that its CREATE TABLE carries the keys, and
+  an unnamed key is matched by its columns, target and referential actions instead of by
+  name.

@@ -28,11 +28,55 @@ columns:
 indexes:
   usersPlan: { columns: [plan] }
 ---
+# A `references.table` is a `!ref` to another table RESOURCE, and it is read
+# while this one is being created — before Phase-5 injection would have replaced
+# it — so the reference is resolved through the kernel rather than read off the
+# slot. Declared here because a foreign key is the only slot on a table that
+# names another resource at all.
+kind: SQLite.Table
+metadata: { name: sessions }
+table: sessions
+columns:
+  id: { type: integer, primaryKey: true }
+  userId: { type: integer, nullable: false }
+foreignKeys:
+  sessionsUser:
+    columns: [userId]
+    references:
+      table: !ref users
+      columns: [id]
+    onDelete: cascade
+---
+# Two keys that are structurally IDENTICAL apart from their declared names, plus
+# a COMPOSITE one. SQLite reports a key back unnamed, so a declaration is matched
+# to a live key by structure — and a match has to be consumed, or both of these
+# would claim the same live key and the second would be read as absent and sent
+# to an ADD CONSTRAINT the engine does not have.
+kind: SQLite.Table
+metadata: { name: memberships }
+table: memberships
+columns:
+  id: { type: integer, primaryKey: true }
+  ownerId: { type: integer, nullable: false }
+  deputyId: { type: integer, nullable: false }
+  userId: { type: integer, nullable: false }
+  plan: { type: text, nullable: false }
+foreignKeys:
+  membershipOwner:
+    columns: [ownerId]
+    references: { table: !ref users, columns: [id] }
+  membershipDeputy:
+    columns: [deputyId]
+    references: { table: !ref users, columns: [id] }
+  membershipUserPlan:
+    columns: [userId, plan]
+    references: { table: !ref users, columns: [id, plan] }
+---
 kind: SQLite.Schema
 metadata: { name: appSchema }
 connection: !ref db
 version: !cel "module.version"
-tables: [!ref users]
+tables: [!ref users, !ref sessions, !ref memberships]
 migrations:
   20260401_seed:
     statement: "INSERT INTO users (id, email) VALUES (1, 'a@example.com')"
@@ -51,6 +95,18 @@ steps:
       actual: !cel "steps.read.result.rows"
       expected:
         - { id: 1, email: "a@example.com", plan: free }
+  # The reference reached the engine: SQLite reports the resolved parent table
+  # and its action, which is what a sentinel read off the slot could not produce.
+  - name: readForeignKeys
+    invoke: !ref readUsers
+    inputs:
+      sql: "SELECT \"table\", \"from\", \"to\", on_delete FROM pragma_foreign_key_list('sessions')"
+  - name: assertForeignKeys
+    invoke: !ref assertForeignKeys
+    inputs:
+      actual: !cel "steps.readForeignKeys.result.rows"
+      expected:
+        - { table: users, from: userId, to: id, on_delete: CASCADE }
   - name: assertStatus
     invoke: !ref assertStatus
     inputs:
@@ -69,6 +125,9 @@ connection: !ref db
 ---
 kind: Assert.Equals
 metadata: { name: assertRows }
+---
+kind: Assert.Equals
+metadata: { name: assertForeignKeys }
 ---
 kind: Assert.Equals
 metadata: { name: assertStatus }

@@ -47,6 +47,13 @@ export type { PlannedStatement, PlannedTombstone, SchemaPlan } from "./schema/sc
 export { migrationStatements, pendingKeys } from "./schema/migration-runner.js";
 export type { MigrationEntry, MigrationMap } from "./schema/migration-runner.js";
 export { normalizeTable } from "./schema/normalize-table.js";
-export type { RawColumn, RawForeignKey, RawIndex, RawTable } from "./schema/normalize-table.js";
+export { tableReferenceResolver } from "./schema/table-reference.js";
+export type {
+  RawColumn,
+  RawForeignKey,
+  RawIndex,
+  RawTable,
+  TableReferenceResolver,
+} from "./schema/normalize-table.js";
 export { runSchemaPass } from "./schema/schema-run.js";
 export type { PendingReclamation, SchemaRunInput, SchemaRunStatus } from "./schema/schema-run.js";
