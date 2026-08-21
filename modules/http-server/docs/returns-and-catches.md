@@ -107,6 +107,8 @@ catches:
 
 `catches:` are buffer-mode only — by the time a catch fires the response is committed pre-stream and there's no upstream iterable to feed an encoder.
 
+**The key is any media type, and editors suggest the common ones.** The `content:` map declares its known keys as `propertyNames.examples` — `application/json`, `application/problem+json`, `text/plain`, `text/html`, `text/event-stream`, `application/octet-stream`, `application/xml`, `application/x-ndjson`, `text/csv` — so completion offers them without closing the set. Any other valid media type (a vendor type, a parameterised one) is accepted exactly as before; `examples` carries no validation.
+
 ## Content negotiation
 
 When a `returns:` entry's `content:` map has multiple keys, the dispatcher picks one per RFC 9110 §12.5.1:

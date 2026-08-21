@@ -1,4 +1,10 @@
-import { parseToAst, readRefSlot, refSlotAnnotation, type AstDocument } from "@telorun/analyzer";
+import {
+  parseToAst,
+  readRefSlot,
+  refSlotAnnotation,
+  type AstDocument,
+  type CelSegment,
+} from "@telorun/analyzer";
 import type { ReplaceRange } from "../types.js";
 import { resolveNodeAtPosition } from "./resolve-node.js";
 
@@ -19,7 +25,17 @@ export type CompletionCtx =
       replaceRange: ReplaceRange;
     }
   | { type: "capability" }
-  | { type: "prop-key"; docKind: string; yamlPath: string[]; existingKeys: Set<string> }
+  | {
+      type: "prop-key";
+      docKind: string;
+      yamlPath: string[];
+      /** The same location with sequence indices kept, so a caller can find the
+       *  manifest node this slot sits in — what resolving an enclosing call's
+       *  reference needs. */
+      concretePath: string;
+      docIndex: number;
+      existingKeys: Set<string>;
+    }
   | {
       /** Cursor sits on the value of an object-form ref's `name:` field
        *  (e.g. `connection: { kind: Sql.Connection, name: |}`). Editor hosts
@@ -43,6 +59,35 @@ export type CompletionCtx =
       prefix: string;
       /** Full source range of the value being completed. */
       replaceRange: ReplaceRange;
+    }
+  | {
+      /** Cursor sits on an ordinary field VALUE whose schema declares the values
+       *  it may take — `enum` (closed) or `examples` (open). Untargeted on
+       *  purpose: every value slot resolves here and the ones declaring neither
+       *  simply offer nothing. */
+      type: "value-suggestions";
+      docKind: string;
+      /** Path from the document root to the field, so its schema can be found. */
+      yamlPath: string[];
+      replaceRange: ReplaceRange;
+    }
+  | {
+      /** Cursor sits inside a CEL body — closed or still open (`!cel "req.|`).
+       *  What completes is decided by the scope the analyzer resolves for this
+       *  site, so the host must supply a `CelScopeQuery`; without one the
+       *  candidate list would be a guess rather than a claim about what
+       *  `telo check` accepts, and nothing is offered. */
+      type: "cel";
+      docKind?: string;
+      /** Which `---` document the cursor is in, so the host can name the
+       *  resource this expression belongs to. */
+      docIndex: number;
+      /** The site's address with sequence indices kept — what the scope is
+       *  resolved at. */
+      concretePath: string;
+      segment: CelSegment;
+      /** Cursor as a document offset. */
+      offset: number;
     };
 
 /** Returns every schema branch reachable from `node` after peeling `anyOf` /
@@ -116,19 +161,52 @@ function resolveLocalRef(
   return current;
 }
 
+/**
+ * Resolves an `x-telo-schema-from` annotation to the schema it derives. Supplied
+ * by the caller because the anchor is alias-qualified and only the registry can
+ * resolve it in the declaring kind's module scope.
+ */
+export type SchemaFromResolver = (schemaFrom: string) => Record<string, any> | undefined;
+
+/**
+ * Expand a node whose shape comes from a sibling kind's schema.
+ *
+ * A slot annotated `x-telo-schema-from` declares NO `properties` of its own — an
+ * `Http.Api` route's `request:` is exactly this — so every walk that reads
+ * `properties` finds an empty node and silently offers nothing. The derived
+ * schema is merged UNDER whatever the slot itself declared, so a slot that adds
+ * a title or narrows a field keeps winning.
+ */
+function resolveSchemaFrom(
+  node: Record<string, any> | undefined,
+  resolve: SchemaFromResolver | undefined,
+): Record<string, any> | undefined {
+  const from = node?.["x-telo-schema-from"];
+  if (!node || !resolve || typeof from !== "string") return node;
+  const derived = resolve(from);
+  if (!derived) return node;
+  return {
+    ...derived,
+    ...node,
+    properties: { ...(derived.properties ?? {}), ...(node.properties ?? {}) },
+  };
+}
+
 /** Navigate a JSON Schema hierarchy following `path`, auto-descending into
- *  array items, peeling `anyOf` / `oneOf` branches and following document-local
- *  `$ref`s. When multiple peeled branches define `properties`, returns a
- *  synthetic node whose `properties` is the union (first-wins on key collision)
- *  and whose `required` is the intersection — enough for propKeyCompletions to
- *  surface every key a value at this slot can legally carry. */
+ *  array items, peeling `anyOf` / `oneOf` branches, following document-local
+ *  `$ref`s and expanding `x-telo-schema-from` slots. When multiple peeled
+ *  branches define `properties`, returns a synthetic node whose `properties` is
+ *  the union (first-wins on key collision) and whose `required` is the
+ *  intersection — enough for propKeyCompletions to surface every key a value at
+ *  this slot can legally carry. */
 export function navigateSchema(
   schema: Record<string, any>,
   path: string[],
+  schemaFrom?: SchemaFromResolver,
 ): Record<string, any> | undefined {
   let current: Record<string, any> | undefined = schema;
   for (const segment of path) {
-    current = resolveLocalRef(current, schema);
+    current = resolveSchemaFrom(resolveLocalRef(current, schema), schemaFrom);
     if (!current) return undefined;
     const candidates = peelCombinators(current).flatMap((node) => {
       const expanded: Record<string, any>[] = [];
@@ -161,7 +239,7 @@ export function navigateSchema(
     if (!next) return undefined;
     current = next;
   }
-  current = resolveLocalRef(current, schema);
+  current = resolveSchemaFrom(resolveLocalRef(current, schema), schemaFrom);
   if (!current) return undefined;
   // Auto-descend through a trailing array at the leaf (e.g. cursor inside `mounts:` items)
   while (current.type === "array" && current.items) {
@@ -227,8 +305,9 @@ function unionLeaves(
 export function lookupRefConstraints(
   definitionSchema: Record<string, any>,
   yamlPath: string[],
+  schemaFrom?: SchemaFromResolver,
 ): string[] {
-  const node = navigateSchema(definitionSchema, yamlPath);
+  const node = navigateSchema(definitionSchema, yamlPath, schemaFrom);
   if (!node) return [];
   return readRefSlot(node)?.kinds ?? [];
 }
@@ -249,9 +328,18 @@ export function detectContext(
   const { docKind } = resolved;
 
   if (resolved.slot === "value") {
-    // Inside a CEL body — structural completion does not apply (a future
-    // CEL-completion feature consumes `resolved.cel`).
-    if (resolved.cel) return undefined;
+    // Inside a CEL body — structural completion does not apply; what completes
+    // are the names the expression may use.
+    if (resolved.cel) {
+      return {
+        type: "cel",
+        docKind,
+        docIndex: resolved.docIndex,
+        concretePath: resolved.concretePath ?? "",
+        segment: resolved.cel.segment,
+        offset: resolved.cel.offset,
+      };
+    }
     const replaceRange = resolved.replaceRange;
     if (!replaceRange) return undefined;
     const key = resolved.path[resolved.path.length - 1];
@@ -297,6 +385,10 @@ export function detectContext(
       }
     }
 
+    if (docKind) {
+      return { type: "value-suggestions", docKind, yamlPath: resolved.path, replaceRange };
+    }
+
     return undefined;
   }
 
@@ -311,6 +403,8 @@ export function detectContext(
     type: "prop-key",
     docKind: scopeKind,
     yamlPath: resolved.path.slice(resolved.resourceDepth ?? 0),
+    concretePath: resolved.concretePath ?? "",
+    docIndex: resolved.docIndex,
     existingKeys: resolved.existingKeys ?? new Set<string>(),
   };
 }

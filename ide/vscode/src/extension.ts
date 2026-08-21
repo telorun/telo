@@ -410,6 +410,9 @@ export function activate(context: vscode.ExtensionContext): void {
       registry,
       graph,
       entryLoaded ? { text: entryLoaded.text, docs: entryLoaded.astDocuments } : undefined,
+      // Over the same manifests the pass just analyzed, so a CEL completion or
+      // hover answers with the scope that produced these diagnostics.
+      registry.analysisOf(manifests),
     );
     // Recolor: a kind that only just resolved (e.g. an import finished loading)
     // should light up without waiting for the next keystroke.

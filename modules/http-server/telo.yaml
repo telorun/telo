@@ -452,6 +452,9 @@ schema:
             x-telo-ref:
               kind: Telo.Executable
               use: trigger.inbound
+              # Names the sibling map holding this call's arguments, so the
+              # handler's declared inputType types what is written there.
+              inputs: /inputs
             x-telo-context:
               type: object
               properties:

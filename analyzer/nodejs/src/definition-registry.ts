@@ -321,35 +321,53 @@ export class DefinitionRegistry {
     return expanded;
   }
 
+  /**
+   * The schema an `x-telo-schema-from` slot derives its shape from.
+   *
+   * Only the STATIC form resolves: an anchor that is a dotted alias-qualified
+   * kind (`HttpDispatch.Request/$defs/Matcher`). The polymorphic forms — a
+   * relative anchor, or a single-segment absolute one — name a sibling property
+   * whose value is known per resource, so a definition-level lookup would be
+   * guessing at one instance's shape.
+   *
+   * Its own method because a schema-from slot is otherwise INVISIBLE to anything
+   * reading `properties`: the field map needs the nested ref slots, and an IDE
+   * needs the very same node to offer a key or describe one. Two resolutions of
+   * one annotation would eventually disagree about which anchors are static.
+   */
+  resolveSchemaFromNode(
+    schemaFrom: string,
+    ownerScope: AliasResolver,
+  ): Record<string, any> | undefined {
+    const isAbsolute = schemaFrom.startsWith("/");
+    const expr = isAbsolute ? schemaFrom.slice(1) : schemaFrom;
+    const slashIdx = expr.indexOf("/");
+    if (slashIdx === -1) return undefined;
+    const anchorName = expr.slice(0, slashIdx);
+    const jsonPointer = "/" + expr.slice(slashIdx + 1);
+
+    if (!anchorName.includes(".")) return undefined;
+
+    const targetKind = ownerScope.resolveKind(anchorName);
+    if (!targetKind) return undefined;
+    const targetDef = this.resolve(targetKind);
+    if (!targetDef?.schema) return undefined;
+    const subSchema = navigateJsonPointer(
+      targetDef.schema as Record<string, unknown>,
+      jsonPointer,
+    );
+    if (!subSchema || typeof subSchema !== "object") return undefined;
+    return subSchema as Record<string, any>;
+  }
+
   private resolveSchemaFromSubMap(
     schemaFrom: string,
     fieldPath: string,
     ownerScope: AliasResolver,
   ): ReferenceFieldMap | null {
-    const isAbsolute = schemaFrom.startsWith("/");
-    const expr = isAbsolute ? schemaFrom.slice(1) : schemaFrom;
-    const slashIdx = expr.indexOf("/");
-    if (slashIdx === -1) return null;
-    const anchorName = expr.slice(0, slashIdx);
-    const jsonPointer = "/" + expr.slice(slashIdx + 1);
-
-    // Static form: absolute path whose anchor is a dotted alias (e.g.
-    // "HttpDispatch.Outcomes/$defs/Returns"). Polymorphic forms — relative
-    // anchors or single-segment absolute anchors — only resolve once we know a
-    // sibling property's value, which is per-resource.
-    if (!anchorName.includes(".")) return null;
-
-    const targetKind = ownerScope.resolveKind(anchorName);
-    if (!targetKind) return null;
-    const targetDef = this.resolve(targetKind);
-    if (!targetDef?.schema) return null;
-    const subSchema = navigateJsonPointer(
-      targetDef.schema as Record<string, unknown>,
-      jsonPointer,
-    );
-    if (!subSchema || typeof subSchema !== "object") return null;
-
-    return buildFieldMapAtPath(subSchema as Record<string, any>, fieldPath);
+    const subSchema = this.resolveSchemaFromNode(schemaFrom, ownerScope);
+    if (!subSchema) return null;
+    return buildFieldMapAtPath(subSchema, fieldPath);
   }
 
   /** Returns all definitions that transitively extend the given abstract kind.

@@ -138,6 +138,22 @@ schema:
             title: Content
             description: Per-MIME response shape. Map key is the canonical Content-Type. Required when status carries a body; omit for 204/304-style empty responses.
             type: object
+            # `examples`, not `enum`: the map key is any media type, and these
+            # are the ones worth suggesting. An enum would close the set and
+            # reject a perfectly valid vendor type.
+            propertyNames:
+              title: Content-Type
+              type: string
+              examples:
+                - application/json
+                - application/problem+json
+                - text/plain
+                - text/html
+                - text/event-stream
+                - application/octet-stream
+                - application/xml
+                - application/x-ndjson
+                - text/csv
             additionalProperties:
               type: object
               additionalProperties: false
@@ -223,6 +239,14 @@ schema:
             title: Content
             description: Per-MIME error-body shape. Buffer-mode only.
             type: object
+            propertyNames:
+              title: Content-Type
+              type: string
+              examples:
+                - application/json
+                - application/problem+json
+                - text/plain
+                - text/html
             additionalProperties:
               type: object
               additionalProperties: false

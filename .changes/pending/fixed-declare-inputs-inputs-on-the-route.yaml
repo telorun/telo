@@ -1,0 +1,6 @@
+modules:
+  modules/http-server: Fixed
+body: "Declare `inputs: /inputs` on the route handler's `x-telo-ref`, naming the sibling
+  map that holds the call's arguments. Nothing previously tied a route's `inputs:` to
+  the handler it invokes, so an editor could not offer the target's declared input keys
+  there."

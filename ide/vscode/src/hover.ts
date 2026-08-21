@@ -10,7 +10,14 @@ export class TeloHoverProvider implements vscode.HoverProvider {
     const filePath = document.uri.fsPath;
     const text = document.getText();
     const docs = this.cache.docsFor(filePath, text);
-    const result = buildHover(text, position.line, position.character, this.cache.registryFor(filePath), docs);
+    const result = buildHover(
+      text,
+      position.line,
+      position.character,
+      this.cache.registryFor(filePath),
+      docs,
+      this.cache.analysisFor(filePath),
+    );
     if (!result) return undefined;
 
     const contents = new vscode.MarkdownString(result.contents);

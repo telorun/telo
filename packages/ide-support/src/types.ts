@@ -54,14 +54,55 @@ export interface HoverResult {
 
 /** Semantic token type names emitted by `buildSemanticTokens`. Kept to the
  *  standard VS Code / LSP set so hosts register them against a stock legend and
- *  every theme colors them without extra configuration. `type` marks a resolved
- *  resource kind; `interface` marks a capability value; `variable` marks a
- *  `!ref` target. */
-export type SemanticTokenType = "type" | "interface" | "variable";
+ *  every theme colors them without extra configuration.
+ *
+ *  Manifest structure: `type` marks a resolved resource kind; `interface` marks
+ *  a capability value; `variable` marks a `!ref` target.
+ *
+ *  Inside a CEL body: `namespace` marks the ROOT of a chain, `property` a member
+ *  it can resolve, `function` a call, and `number` / `string` / `keyword` /
+ *  `operator` the syntax around them. A CEL name the scope CANNOT confirm gets
+ *  no token — the same quiet signal an unresolved `kind:` gives, pairing with
+ *  the analyzer's `CEL_UNKNOWN_FIELD`.
+ *
+ *  The root is a `namespace` rather than a `variable` because colour encodes
+ *  what a symbol IS, which is the invariant every language holds to — and a CEL
+ *  root is not data the author declared, it is a scope the runtime injects
+ *  (`request`, `steps`, `variables`, `self`). Members are uniformly `property`
+ *  however deep, so a chain reads as scope · path. Colouring by the SHAPE of the
+ *  value behind a name — object vs scalar — was considered and rejected: it is
+ *  type-directed highlighting, so the palette becomes a type legend, a name
+ *  changes colour as analysis resolves, and it says nothing exactly where the
+ *  scope declares no shape. */
+export type SemanticTokenType =
+  | "type"
+  | "interface"
+  | "variable"
+  | "property"
+  | "function"
+  | "number"
+  | "string"
+  | "keyword"
+  | "operator"
+  | "namespace";
 
 /** The legend a host registers before mapping `buildSemanticTokens` output. The
- *  numeric token-type of each `SemanticToken` is its index in this array. */
-export const SEMANTIC_TOKEN_LEGEND: readonly SemanticTokenType[] = ["type", "interface", "variable"];
+ *  numeric token-type of each `SemanticToken` is its index in this array, and a
+ *  host registers it once at activation — so new types are APPENDED, never
+ *  inserted, or an already-registered legend would repaint every existing
+ *  token as something else. */
+export const SEMANTIC_TOKEN_LEGEND: readonly SemanticTokenType[] = [
+  "type",
+  "interface",
+  "variable",
+  "property",
+  "function",
+  "number",
+  "string",
+  "keyword",
+  "operator",
+  "namespace",
+];
 
 /** One absolute-positioned semantic token. Every Telo semantic token is
  *  single-line (kinds and capabilities never wrap), so a `{line, char, length}`

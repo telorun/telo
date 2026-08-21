@@ -1,7 +1,16 @@
-import { parseToAst, type AnalysisRegistry, type AstDocument, type AstMap } from "@telorun/analyzer";
+import {
+  parseToAst,
+  type AnalysisRegistry,
+  type AstDocument,
+  type AstMap,
+  type ManifestAnalysis,
+} from "@telorun/analyzer";
 import type { CompletionResult, IdeEnvironmentAdapter } from "../types.js";
 import type { ReplaceRange } from "./detect-context.js";
-import { detectContext, lookupRefConstraints } from "./detect-context.js";
+import { callInputsAt } from "./call-inputs.js";
+import { celCompletions } from "./cel-completions.js";
+import { docIdentity } from "../doc-identity.js";
+import { detectContext, lookupRefConstraints, navigateSchema } from "./detect-context.js";
 import { importSourceCompletions } from "./import-source.js";
 import { propKeyCompletions } from "./prop-keys.js";
 import { CAPABILITY_VALUES } from "./valid-capabilities.js";
@@ -16,23 +25,9 @@ interface ResourceRecord {
  *  either is simply skipped; the analyzer remains the source of truth. */
 function extractInFileResources(docs: AstDocument[]): ResourceRecord[] {
   const out: ResourceRecord[] = [];
-  const scalar = (node: { kind: string; value?: unknown } | undefined): string | undefined =>
-    node?.kind === "scalar" && typeof node.value === "string" ? node.value : undefined;
-
   for (const doc of docs) {
-    if (doc.root?.kind !== "map") continue;
-    let kind: string | undefined;
-    let name: string | undefined;
-    for (const pair of doc.root.entries) {
-      const key = scalar(pair.key);
-      if (key === "kind") kind = scalar(pair.value);
-      else if (key === "metadata" && pair.value?.kind === "map") {
-        const meta = pair.value as AstMap;
-        const nameEntry = meta.entries.find((e) => scalar(e.key) === "name");
-        name = scalar(nameEntry?.value);
-      }
-    }
-    if (kind && name) out.push({ kind, name });
+    const identity = docIdentity(doc);
+    if (identity.kind && identity.name) out.push({ kind: identity.kind, name: identity.name });
   }
   return out;
 }
@@ -98,6 +93,7 @@ function refConstrainedKinds(
   const constraints = lookupRefConstraints(
     definition.schema as Record<string, any>,
     parentYamlPath,
+    (from) => registry.resolveSchemaFrom(from, parentDocKind),
   );
   if (constraints.length === 0) return undefined;
   const resolved = constraints.map((c) => registry.userFacingKindsForRef(c));
@@ -133,6 +129,39 @@ function kindCompletions(
   return results;
 }
 
+/**
+ * The values a field's schema says it may take.
+ *
+ * `enum` is closed and `examples` open — the same distinction `propertyNames`
+ * carries for a map's keys, one level down. Nothing is offered when the schema
+ * declares neither, which is most slots.
+ */
+function valueSuggestions(
+  registry: AnalysisRegistry | undefined,
+  docKind: string,
+  yamlPath: string[],
+  replaceRange: ReplaceRange,
+): CompletionResult[] {
+  const definition = registry?.resolveDefinition(docKind);
+  if (!registry || !definition?.schema || yamlPath.length === 0) return [];
+  const field = navigateSchema(definition.schema as Record<string, any>, yamlPath, (from) =>
+    registry.resolveSchemaFrom(from, docKind),
+  );
+  if (!field) return [];
+  const closed = Array.isArray(field.enum) ? (field.enum as unknown[]) : undefined;
+  const values = closed ?? (Array.isArray(field.examples) ? (field.examples as unknown[]) : []);
+  return values
+    .filter((v) => v !== null && typeof v !== "object")
+    .map((value) => ({
+      label: String(value),
+      kind: "enumMember" as const,
+      detail: closed ? "allowed value" : "known value",
+      // Whole-value replacement, so picking over a partially typed value leaves
+      // no suffix — the rule every other value completion here follows.
+      replaceRange,
+    }));
+}
+
 function capabilityCompletions(): CompletionResult[] {
   return CAPABILITY_VALUES.map((cap) => ({
     label: cap,
@@ -148,6 +177,10 @@ export async function buildCompletions(
   registry: AnalysisRegistry | undefined,
   adapter?: IdeEnvironmentAdapter,
   docs?: AstDocument[],
+  /** The host's analysis of the manifests it loaded. Required for anything
+   *  that has to resolve against the manifest SET — CEL completion, and a
+   *  target's declared inputs. */
+  analysis?: ManifestAnalysis,
 ): Promise<CompletionResult[]> {
   // Reuse the host's already-parsed AST when it matches the current buffer;
   // otherwise parse once here (Part 1 stands alone). Both `detectContext` and
@@ -159,11 +192,27 @@ export async function buildCompletions(
     return kindCompletions(registry, ctx.docKind, ctx.yamlPath, ctx.replaceRange);
   }
   if (ctx.type === "capability") return capabilityCompletions();
+  if (ctx.type === "value-suggestions") {
+    return valueSuggestions(registry, ctx.docKind, ctx.yamlPath, ctx.replaceRange);
+  }
+  if (ctx.type === "cel") {
+    return celCompletions(
+      text,
+      ctx.segment,
+      ctx.offset,
+      ctx.concretePath,
+      docIdentity(astDocs[ctx.docIndex]),
+      analysis?.celScope,
+    );
+  }
   if (ctx.type === "ref-name") {
     const definition = registry?.resolveDefinition(ctx.docKind);
-    const refConstraints = definition?.schema
-      ? lookupRefConstraints(definition.schema as Record<string, any>, ctx.yamlPath)
-      : [];
+    const refConstraints =
+      registry && definition?.schema
+        ? lookupRefConstraints(definition.schema as Record<string, any>, ctx.yamlPath, (from) =>
+            registry.resolveSchemaFrom(from, ctx.docKind),
+          )
+        : [];
     return refNameCompletions(astDocs, ctx.refKind, refConstraints, registry, ctx.replaceRange);
   }
   if (ctx.type === "field-value") {
@@ -172,5 +221,19 @@ export async function buildCompletions(
     }
     return [];
   }
-  return propKeyCompletions(ctx.docKind, ctx.yamlPath, ctx.existingKeys, registry);
+  // A slot that IS an enclosing call's argument map completes from the target's
+  // declared inputs rather than from its own (open) schema.
+  return propKeyCompletions(
+    ctx.docKind,
+    ctx.yamlPath,
+    ctx.existingKeys,
+    registry,
+    callInputsAt(
+      registry,
+      analysis,
+      docIdentity(astDocs[ctx.docIndex]).kind ?? ctx.docKind,
+      docIdentity(astDocs[ctx.docIndex]).name,
+      ctx.concretePath,
+    ),
+  );
 }

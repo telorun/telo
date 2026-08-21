@@ -1,10 +1,17 @@
 import {
+  CelParseError,
   parseToAst,
   readRefSlot,
   type AnalysisRegistry,
   type AstDocument,
+  type CelNode,
+  type CelScopeQuery,
+  type ManifestAnalysis,
 } from "@telorun/analyzer";
 import type { HoverResult } from "../types.js";
+import { chainAt } from "../cel-chain.js";
+import { celSymbolAt } from "../cel/symbols.js";
+import { docIdentity } from "../doc-identity.js";
 import { navigateSchema } from "../completions/detect-context.js";
 import {
   resolveNodeAtPosition,
@@ -90,7 +97,9 @@ function fieldSchemaFor(
   if (!resourceKind || !registry) return undefined;
   const def = registry.resolveDefinition(resourceKind);
   if (!def?.schema) return undefined;
-  return navigateSchema(def.schema as Record<string, any>, relativePath);
+  return navigateSchema(def.schema as Record<string, any>, relativePath, (from) =>
+    registry.resolveSchemaFrom(from, resourceKind),
+  );
 }
 
 export function buildHover(
@@ -99,13 +108,70 @@ export function buildHover(
   character: number,
   registry: AnalysisRegistry | undefined,
   docs?: AstDocument[],
+  /** The host's analysis. Without it a CEL identifier hovers as nothing — its
+   *  type is a property of the resolved scope, and there is no second source
+   *  for it. */
+  analysis?: ManifestAnalysis,
 ): HoverResult | undefined {
   const astDocs = docs ?? parseToAst(text);
   const resolved = resolveNodeAtPosition(text, astDocs, line, character);
   if (!resolved) return undefined;
 
+  if (resolved.cel) {
+    const hover = hoverForCel(resolved, astDocs, analysis?.celScope);
+    // A CEL body is still a field value; when the cursor is on nothing
+    // nameable inside it (an operator, a literal), fall through to the field's
+    // own hover rather than reporting nothing.
+    if (hover) return hover;
+  }
   if (resolved.slot === "value") return hoverForValue(resolved, registry);
   return hoverForKey(resolved, registry);
+}
+
+/**
+ * Hover for one identifier of a CEL chain.
+ *
+ * The TYPE comes from the resolved scope; a DESCRIPTION comes from whatever
+ * schema node declared the name. Where to jump is the other half's answer
+ * (`resolveCelTarget`) and is deliberately not consulted here — hover must
+ * still say what `steps.encode.result` IS even though nothing in the manifest
+ * declares it.
+ */
+function hoverForCel(
+  resolved: ResolvedCursor,
+  docs: AstDocument[],
+  scopeQuery: CelScopeQuery | undefined,
+): HoverResult | undefined {
+  if (!resolved.cel || !scopeQuery) return undefined;
+  const identity = docIdentity(docs[resolved.docIndex]);
+  const resource = scopeQuery.resourceFor(identity.kind, identity.name);
+  if (!resource) return undefined;
+
+  let ast: CelNode;
+  try {
+    ast = resolved.cel.segment.ast();
+  } catch (error) {
+    // An expression the author is still writing does not parse. That means
+    // there is no chain to hit-test, not an error to report from a hover — the
+    // analyzer reports the syntax error itself. Only that failure is tolerated.
+    if (!(error instanceof CelParseError)) throw error;
+    return undefined;
+  }
+
+  const hit = chainAt(ast, resolved.cel.offset);
+  if (!hit) return undefined;
+  // The chain UP TO the cursor, not the whole chain: hovering `resources` in
+  // `resources.db.url` describes `resources`.
+  const parts = hit.parts.slice(0, hit.index + 1).map((p) => p.name);
+  const scope = scopeQuery.scopeAt(resource, resolved.concretePath ?? "");
+  const symbol = celSymbolAt(scope, parts);
+  if (!symbol) return undefined;
+
+  const lines = [symbol.type ? `**${symbol.name}**: \`${symbol.type}\`` : `**${symbol.name}**`];
+  if (symbol.description) lines.push("", symbol.description);
+  const chainText = parts.join(".");
+  if (chainText !== symbol.name) lines.push("", `\`${chainText}\``);
+  return { contents: lines.join("\n") };
 }
 
 function hoverForValue(

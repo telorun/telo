@@ -55,11 +55,23 @@ function resolveResourceChain(
  *  analyzer reports the syntax error itself. Only that failure is tolerated: a
  *  defect in the CEL wrapper propagates rather than reading as "nothing to
  *  navigate to". */
+export interface CelTargetResolvers {
+  /** Where a step of the CURRENT resource is declared. Supplied by the caller
+   *  because finding one needs the declaring kind's step-body annotation, which
+   *  the graph alone does not carry. */
+  locateStep?(stepName: string): DefinitionResult | undefined;
+  /** Where a context binding (`request.query`, `self.<field>`,
+   *  `result.<field>`) was declared. Same reason: the site is derived by an
+   *  `x-telo-context-*` annotation, which only the scope query can read. */
+  locateContextBinding?(parts: string[]): DefinitionResult | undefined;
+}
+
 export function resolveCelTarget(
   graph: LoadedGraph,
   currentModule: LoadedModule,
   segment: CelSegment,
   offset: number,
+  resolvers?: CelTargetResolvers,
 ): DefinitionResult | undefined {
   let ast: CelNode;
   try {
@@ -80,5 +92,18 @@ export function resolveCelTarget(
     return undefined;
   }
   if (root === "resources") return resolveResourceChain(graph, currentModule, parts, index);
+  // `steps.<name>` navigates to the step; `steps` itself and `.result` do not —
+  // the first names no one step, the second is the contract's output, which is
+  // declared by the invoked target rather than at the read site.
+  if (root === "steps" && index === 1 && resolvers?.locateStep) {
+    return resolvers.locateStep(parts[1].name);
+  }
+  // Anything else in scope came from an `x-telo-context-*` annotation, which
+  // names a real manifest node for `request` / `self` / `result` and friends.
+  // The chain UP TO the cursor is what resolves — hovering `query` in
+  // `request.query.lastEventId` navigates to `query`, not to the leaf.
+  if (index >= 1 && resolvers?.locateContextBinding) {
+    return resolvers.locateContextBinding(parts.slice(0, index + 1).map((p) => p.name));
+  }
   return undefined;
 }

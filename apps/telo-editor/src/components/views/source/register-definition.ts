@@ -2,6 +2,7 @@ import type { OnMount } from "@monaco-editor/react";
 import type { IPosition, IRange, Position, Uri, editor, languages } from "monaco-editor";
 import { buildDefinition } from "@telorun/ide-support";
 import {
+  analysisRef,
   currentPathRef,
   graphRef,
   navigatorRef,
@@ -33,6 +34,7 @@ export function registerYamlDefinition(monaco: Monaco): void {
         graph,
         currentPath,
         threadedDocs(text),
+        analysisRef.current,
       );
       if (!result) return undefined;
 

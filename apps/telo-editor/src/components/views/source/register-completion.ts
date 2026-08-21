@@ -3,7 +3,7 @@ import type { editor, Position } from "monaco-editor";
 import { buildCompletions } from "@telorun/ide-support";
 import { pathDirname } from "../../../loader/paths";
 import { EditorIdeAdapter } from "./ide-adapter";
-import { registryRef, settingsRef, threadedDocs, workspaceRef } from "./provider-state";
+import { analysisRef, registryRef, settingsRef, threadedDocs, workspaceRef } from "./provider-state";
 
 type Monaco = Parameters<OnMount>[1];
 
@@ -44,6 +44,7 @@ export function registerYamlCompletions(monaco: Monaco): void {
         registryRef.current,
         adapter,
         threadedDocs(text),
+        analysisRef.current,
       );
       return {
         suggestions: results.map((r) => {

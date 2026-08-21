@@ -1,4 +1,6 @@
 import { isLiveSlot, type ResourceDefinition, valueTypeOf } from "@telorun/sdk";
+import { AliasResolver, moduleScopedDefResolver, type ModuleScopes } from "./alias-resolver.js";
+import { DefinitionRegistry } from "./definition-registry.js";
 import {
   type ContractDirection,
   contractDeclarer,
@@ -13,6 +15,26 @@ import {
 } from "./schema-projection.js";
 
 export type { ContractDirection };
+
+/** The {@link ContractScope} the analyzer resolves invocation contracts in: kinds
+ *  resolve in the module that declared the definition they were read off (so an
+ *  `extends` chain crossing module boundaries re-scopes at every hop), and named
+ *  `telo#Type` references resolve against the flattened manifest list. `resolveIn`
+ *  is the top-level entry point, where the kind was written by the READING
+ *  module and there is no declaring definition yet. */
+export function analyzerContractScope(
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  scopes: ModuleScopes,
+  allManifests: Record<string, any>[],
+): ContractScope & { resolveIn(kind: string, module?: string): ResourceDefinition | undefined } {
+  const resolve = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, scopes);
+  return {
+    resolveDefinition: resolve,
+    resolveIn: resolve.in,
+    typeManifestsFor: () => allManifests,
+  };
+}
 
 /**
  * The one answer to "what is this target's input / output schema".

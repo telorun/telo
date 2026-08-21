@@ -1,4 +1,10 @@
-import type { AnalysisRegistry, AstDocument, LoadedGraph, Range } from "@telorun/analyzer";
+import type {
+  AnalysisRegistry,
+  AstDocument,
+  ManifestAnalysis,
+  LoadedGraph,
+  Range,
+} from "@telorun/analyzer";
 import type { IPosition, IRange } from "monaco-editor";
 import type { AppSettings, WorkspaceAdapter } from "../../../model";
 
@@ -28,8 +34,16 @@ export const docsRef: { current: { text: string; docs: AstDocument[] } | undefin
   current: undefined,
 };
 
+/** The analysis of the manifests the last pass ran over — the same resolutions
+ *  that produced the diagnostics, so a completion offers exactly what
+ *  type-checks and a hover reports the type the checker resolved. */
+export const analysisRef: { current: ManifestAnalysis | undefined } = { current: undefined };
+
 export function setActiveRegistry(r: AnalysisRegistry | undefined): void {
   registryRef.current = r;
+}
+export function setActiveAnalysis(a: ManifestAnalysis | undefined): void {
+  analysisRef.current = a;
 }
 export function setActiveDocs(entry: { text: string; docs: AstDocument[] } | undefined): void {
   docsRef.current = entry;

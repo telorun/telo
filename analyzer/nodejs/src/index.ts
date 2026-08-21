@@ -370,6 +370,19 @@ export { documentToAst, parseToAst } from "./yaml-ast.js";
 export type { AstDocument, AstMap, AstNode, AstPair, AstScalar, AstSeq } from "./yaml-ast.js";
 export { CelParseError, buildCelSegments, wrapCelAst } from "./cel-ast.js";
 export type { CelNode, CelSegment } from "./cel-ast.js";
+
+// The CEL scope rule, and the way into it from outside the analysis pass. What
+// completes, what hovers and what type-checks are one answer because they are
+// one function.
+export { CelScopeResolver } from "./cel-scope.js";
+export type { CelScope, CelScopeInputs, CelSiteRef } from "./cel-scope.js";
+export { CelScopeQuery } from "./cel-scope-query.js";
+export type { CelScopeQueryContext, ContextDeclarationSite } from "./cel-scope-query.js";
+// The pairing of a registry and the manifests it analyzed — the one seam a host
+// threads for every question that needs both.
+export { navigateConcretePath } from "./manifest-path.js";
+export { ManifestAnalysis } from "./manifest-analysis.js";
+export type { ManifestRef } from "./manifest-analysis.js";
 export { DEFAULT_MANIFEST_FILENAME, DiagnosticSeverity, diagnosticFix } from "./types.js";
 export type {
     AnalysisDiagnostic,

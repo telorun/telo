@@ -9,7 +9,7 @@ import {
   validateAgainstSchema,
 } from "./schema-compat.js";
 import { plainChainOf } from "@telorun/templating";
-import { isLiveSlot, valueTypeOf } from "@telorun/sdk";
+import { isLiveSlot, valueTypeOf, type ResourceDefinition } from "@telorun/sdk";
 import { manifestFragmentOf } from "./manifest-schemas.js";
 import {
   analyzerContractScope,
@@ -20,6 +20,12 @@ import {
   walkStepArray,
 } from "./analyzer.js";
 import { readStepSlot } from "./step-slot.js";
+import { navigateConcretePath } from "./manifest-path.js";
+import {
+  isRefEntry,
+  resolveFieldEntries,
+  type ReferenceFieldMap,
+} from "./reference-field-map.js";
 
 export interface StepInputIssue {
   path: string;
@@ -66,6 +72,15 @@ export function collectStepInputIssues(
   const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
 
+  const ctx: CallCheckContext = {
+    manifest,
+    allManifests,
+    defs,
+    contractScope,
+    readingModule,
+    stepContext,
+  };
+
   for (const [fieldName, fieldSchema] of Object.entries(props)) {
     const stepCtx = readStepSlot(fieldSchema);
     if (!stepCtx) continue;
@@ -92,6 +107,127 @@ export function collectStepInputIssues(
       if (!invoke || typeof invoke !== "object") return;
       if (!values || typeof values !== "object" || Array.isArray(values)) return;
 
+      out.push(
+        ...checkCallSite(
+          {
+            inputsPath: `${stepPath}.${inputsField}`,
+            values: values as Record<string, any>,
+            invoke,
+            // Only a step declares a re-attempt policy, so only a step can carry
+            // the live-value-retried finding.
+            declaredRetryFor: (invokedManifest, invokedDef) =>
+              declaredRetry(step, stepItemSchema, invokedManifest, invokedDef),
+          },
+          ctx,
+        ),
+      );
+    });
+  }
+  return out;
+}
+
+/**
+ * Validate the argument map of every call this resource makes through a
+ * REFERENCE SLOT, as opposed to a step.
+ *
+ * A slot that transfers control names its argument slot on its own `x-telo-ref`
+ * (`inputs:`, a JSON Pointer relative to the object enclosing the slot). That
+ * annotation is the only thing tying an otherwise-open `inputs:` map to the
+ * resource it holds arguments for — an HTTP route's `handler:` + `inputs:` pair
+ * is exactly this shape, and nothing about it is a step.
+ *
+ * Discovery is driven by the annotation rather than by any kind's topology, so
+ * a composer that names its argument slot gets its call sites checked without
+ * the analyzer learning what a route is. It is the same check the step driver
+ * runs, because it is the same question.
+ */
+export function collectRefInputIssues(
+  manifest: Record<string, any>,
+  fieldMap: ReferenceFieldMap | undefined,
+  allManifests: Record<string, any>[],
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  scopes: ModuleScopes,
+): StepInputIssue[] {
+  const out: StepInputIssue[] = [];
+  if (!fieldMap) return out;
+
+  const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
+  const ctx: CallCheckContext = {
+    manifest,
+    allManifests,
+    defs,
+    contractScope,
+    readingModule: (manifest.metadata as { module?: string } | undefined)?.module,
+  };
+
+  for (const [fieldPath, entry] of fieldMap) {
+    if (!isRefEntry(entry) || !entry.inputs) continue;
+    const pointer = pointerSegments(entry.inputs);
+    if (!pointer) continue;
+
+    for (const { value: invoke, path: slotPath } of resolveFieldEntries(manifest, fieldPath)) {
+      if (!invoke || typeof invoke !== "object" || Array.isArray(invoke)) continue;
+      // Relative to the object ENCLOSING the slot, which is the annotation's
+      // documented anchor.
+      const enclosing = slotPath.slice(0, Math.max(0, slotPath.lastIndexOf(".")));
+      const inputsPath = [enclosing, ...pointer].filter(Boolean).join(".");
+      const values = navigateConcretePath(manifest, inputsPath);
+      if (!values || typeof values !== "object" || Array.isArray(values)) continue;
+
+      out.push(
+        ...checkCallSite(
+          { inputsPath, values: values as Record<string, any>, invoke: invoke as Record<string, any> },
+          ctx,
+        ),
+      );
+    }
+  }
+  return out;
+}
+
+/** A JSON Pointer naming a sibling FIELD path. An array index is not a field,
+ *  so a pointer carrying one names nothing this can resolve. */
+function pointerSegments(pointer: string): string[] | undefined {
+  if (!pointer.startsWith("/")) return undefined;
+  const segments = pointer
+    .slice(1)
+    .split("/")
+    .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
+  return segments.every((s) => s.length > 0 && !/^\d+$/.test(s)) ? segments : undefined;
+}
+
+/** One call site: the arguments written, and the reference they are for. */
+interface CallSite {
+  /** Concrete path of the argument map, for anchoring a diagnostic. */
+  inputsPath: string;
+  values: Record<string, any>;
+  invoke: Record<string, any>;
+  declaredRetryFor?(
+    invokedManifest: Record<string, any> | undefined,
+    invokedDef: ResourceDefinition | undefined,
+  ): string | undefined;
+}
+
+interface CallCheckContext {
+  manifest: Record<string, any>;
+  allManifests: Record<string, any>[];
+  defs: DefinitionRegistry;
+  contractScope: ReturnType<typeof analyzerContractScope>;
+  readingModule: string | undefined;
+  stepContext?: Record<string, any>;
+}
+
+/**
+ * The check itself, shared by both drivers: the arguments written at a call site
+ * against the contract the target declares.
+ */
+function checkCallSite(site: CallSite, ctx: CallCheckContext): StepInputIssue[] {
+  const out: StepInputIssue[] = [];
+  const { manifest, allManifests, defs, contractScope, readingModule, stepContext } = ctx;
+  const { invoke, values } = site;
+  {
+    {
       const invokedKind = invoke.kind as string | undefined;
       const invokedName = invoke.name as string | undefined;
       const invokedManifest = invokedName
@@ -104,7 +240,7 @@ export function collectStepInputIssues(
         ? contractScope.resolveIn(invokedKind, readingModule)
         : undefined;
       const contract = resolveContract("inputType", invokedManifest, invokedDef, contractScope);
-      if (!contract) return;
+      if (!contract) return out;
 
       // Findings AT a substituted path are about a placeholder, not about
       // anything the author wrote — a `pattern`-constrained string or a `oneOf`
@@ -163,10 +299,10 @@ export function collectStepInputIssues(
           // already declared: the value's liveness by its value type, and the
           // re-attempt by the retry policy. No kind is named.
           if (isLiveSlot(produced)) {
-            const retry = declaredRetry(step, stepItemSchema, invokedManifest, invokedDef);
+            const retry = site.declaredRetryFor?.(invokedManifest, invokedDef);
             if (retry !== undefined) {
               out.push({
-                path: `${stepPath}.${inputsField}.${inputName}`,
+                path: `${site.inputsPath}.${inputName}`,
                 targetLabel: invokedName ?? invokedKind ?? "the invoked resource",
                 message:
                   `'${inputName}' is a live value, which is consumed by reading and so exists ` +
@@ -184,7 +320,7 @@ export function collectStepInputIssues(
           );
           if (compatible) continue;
           out.push({
-            path: `${stepPath}.${inputsField}.${inputName}`,
+            path: `${site.inputsPath}.${inputName}`,
             targetLabel: invokedName ?? invokedKind ?? "the invoked resource",
             message: issues.join("; "),
             code: "CEL_TYPE_ARGUMENT_MISMATCH",
@@ -200,12 +336,12 @@ export function collectStepInputIssues(
         // container that should have held it, which does exist.
         const anchor = missingRequired(issue) ? containerOf(issue.path) : issue.path;
         out.push({
-          path: anchor ? `${stepPath}.${inputsField}.${anchor}` : `${stepPath}.${inputsField}`,
+          path: anchor ? `${site.inputsPath}.${anchor}` : site.inputsPath,
           targetLabel: invokedName ?? invokedKind ?? "the invoked resource",
           message: issue.message,
         });
       }
-    });
+    }
   }
   return out;
 }

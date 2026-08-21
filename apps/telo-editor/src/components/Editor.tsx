@@ -94,6 +94,7 @@ import {
   setActiveDocs,
   setActiveGraph,
   setActiveNavigator,
+  setActiveAnalysis,
   setActiveRegistry,
 } from "./views/source/provider-state";
 import { getModuleFiles } from "../diagnostics-aggregate";
@@ -394,6 +395,9 @@ export function Editor() {
   useEffect(() => {
     const path = state.activeModulePath;
     setActiveRegistry(path ? state.diagnostics.registryByFile.get(path) : undefined);
+    // What CEL sees in this file's closure — built on first use, so opening a
+    // file is what pays for it rather than every analysis pass.
+    setActiveAnalysis(path ? state.diagnostics.analysisByFile.get(path)?.() : undefined);
     // The loaded graph + active path back go-to-definition (`!ref` → target
     // resource across the module's files).
     setActiveGraph(path ? state.diagnostics.graphByFile.get(path) : undefined);
