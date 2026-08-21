@@ -1,7 +1,7 @@
 import type { OnMount } from "@monaco-editor/react";
 import type { editor, languages } from "monaco-editor";
 import { buildSemanticTokens, SEMANTIC_TOKEN_LEGEND } from "@telorun/ide-support";
-import { registryRef, threadedDocs } from "./provider-state";
+import { analysisRef, registryRef, threadedDocs } from "./provider-state";
 
 type Monaco = Parameters<OnMount>[1];
 
@@ -15,7 +15,12 @@ export function registerYamlSemanticTokens(monaco: Monaco): void {
     getLegend: () => LEGEND,
     provideDocumentSemanticTokens(model: editor.ITextModel): languages.SemanticTokens {
       const text = model.getValue();
-      const tokens = buildSemanticTokens(text, registryRef.current, threadedDocs(text));
+      const tokens = buildSemanticTokens(
+        text,
+        registryRef.current,
+        threadedDocs(text),
+        analysisRef.current,
+      );
       // Monaco wants tokens in reading order, delta-encoded against the previous
       // token: [Δline, Δstart (abs when Δline>0), length, typeIndex, modifiers].
       tokens.sort((a, b) => a.line - b.line || a.character - b.character);

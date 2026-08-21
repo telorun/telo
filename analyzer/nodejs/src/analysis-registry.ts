@@ -1,6 +1,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { ManifestAnalysis } from "./manifest-analysis.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.js";
 import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
@@ -239,6 +240,42 @@ export class AnalysisRegistry {
       aliases: this.aliases,
       aliasesByModule: this.aliasesByModule,
       ...opts,
+    });
+  }
+
+  /**
+   * Resolves an `x-telo-schema-from` annotation to the schema node it derives,
+   * in the scope of the kind that DECLARED it — anchors are alias-qualified, and
+   * the declaring definition's module is where those aliases mean something.
+   *
+   * The seam an IDE walks a schema through: a slot shaped entirely by this
+   * annotation (an `Http.Api` route's `request:`) carries no `properties` of its
+   * own, so a walker that only reads `properties` finds nothing there and
+   * silently offers no keys and no hover — a whole field of the standard library
+   * looking like an unknown one.
+   */
+  resolveSchemaFrom(schemaFrom: string, declaringKind: string): Record<string, any> | undefined {
+    const def = this.resolveDefinition(declaringKind);
+    const ownerModule = (def?.metadata as { module?: string } | undefined)?.module;
+    const scope = (ownerModule ? this.aliasesByModule.get(ownerModule) : undefined) ?? this.aliases;
+    return this.defs.resolveSchemaFromNode(schemaFrom, scope);
+  }
+
+  /**
+   * The queries that need this registry AND a manifest set: what CEL sees at a
+   * site, where a binding was declared, what a reference's contract is.
+   *
+   * The seam an IDE reaches all of them through, and one object rather than a
+   * factory per question — each answer has to be the one the analysis pass
+   * computed, or a completion list stops being a claim about what `telo check`
+   * accepts. Built per analysis, not per keystroke: the indices behind it are a
+   * function of the whole manifest set.
+   */
+  analysisOf(manifests: ResourceManifest[]): ManifestAnalysis {
+    return new ManifestAnalysis(manifests, {
+      defs: this.defs,
+      aliases: this.aliases,
+      aliasesByModule: this.aliasesByModule,
     });
   }
 

@@ -6,6 +6,7 @@ import {
   importResolutionDiagnostics,
   remapMigratedPaths,
   type DocumentPosition,
+  type ManifestAnalysis,
   type LoadedGraph,
   type ManifestSource,
   type ZoneExportCache,
@@ -68,6 +69,12 @@ export interface WorkspaceDiagnostics {
    *  target's source location across the graph's modules. Same first-closure-wins
    *  routing as `registryByFile`. */
   graphByFile: Map<string, LoadedGraph>;
+  /** filePath → the analysis of that file's closure, as a thunk so a closure
+   *  nobody opens never builds one. Same first-closure-wins routing as
+   *  `registryByFile`; it must be the SAME closure's, since a scope resolved
+   *  against another closure's manifests would offer names this file's checker
+   *  rejects. */
+  analysisByFile: Map<string, () => ManifestAnalysis>;
 }
 
 /** The set of modules that anchor an independent analysis context: every
@@ -90,6 +97,7 @@ interface MergeAccumulators {
   byFile: Map<string, NormalizedDiagnostic[]>;
   registryByFile: Map<string, AnalysisRegistry>;
   graphByFile: Map<string, LoadedGraph>;
+  analysisByFile: Map<string, () => ManifestAnalysis>;
   /** Dedup key set for diagnostics that route to no file at all. */
   unknownSeen: Set<string>;
   /** External (registry/remote) files already claimed by an earlier closure.
@@ -322,9 +330,16 @@ function analyzeClosure(
   // so it wins regardless of closure order. Other closure files (forwarded
   // foreign deps, including read-only external modules that never anchor a
   // closure) take the first registry that references them as a fallback.
+  // Built lazily and once per closure, so a closure whose files are never
+  // opened costs nothing and one that is opened builds its indices a single
+  // time rather than per keystroke.
+  let analysis: ManifestAnalysis | undefined;
+  const analysisOf = (): ManifestAnalysis => (analysis ??= registry.analysisOf(manifests));
+
   for (const f of rootLocalFiles) {
     acc.registryByFile.set(f, registry);
     acc.graphByFile.set(f, graph);
+    acc.analysisByFile.set(f, analysisOf);
   }
   for (const f of closureFiles) {
     // External files surfaced here are now owned by this closure; later
@@ -332,6 +347,7 @@ function analyzeClosure(
     if (!rootLocalFiles.has(f) && !isWorkspaceModule(app, f)) acc.externalFilesClaimed.add(f);
     if (!acc.registryByFile.has(f)) acc.registryByFile.set(f, registry);
     if (!acc.graphByFile.has(f)) acc.graphByFile.set(f, graph);
+    if (!acc.analysisByFile.has(f)) acc.analysisByFile.set(f, analysisOf);
   }
 }
 
@@ -366,6 +382,7 @@ export async function analyzeWorkspace(
     byFile: new Map(),
     registryByFile: new Map(),
     graphByFile: new Map(),
+    analysisByFile: new Map(),
     unknownSeen: new Set(),
     externalFilesClaimed: new Set(),
   };
@@ -392,5 +409,6 @@ export async function analyzeWorkspace(
     byFile: acc.byFile,
     registryByFile: acc.registryByFile,
     graphByFile: acc.graphByFile,
+    analysisByFile: acc.analysisByFile,
   };
 }

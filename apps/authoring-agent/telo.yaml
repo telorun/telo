@@ -39,10 +39,10 @@ targets:
   - !ref Server
 ---
 kind: Sse.Encoder
-metadata: { name: SseEnc }
+metadata: { name: sseEnc }
 ---
 kind: Http.Api
-metadata: { name: Api }
+metadata: { name: api }
 routes:
   - request:
       path: /chat
@@ -122,7 +122,7 @@ routes:
         mode: stream
         content:
           text/event-stream:
-            encoder: !ref SseEnc
+            encoder: !ref sseEnc
     catches:
       - status: 500
         content:
@@ -301,4 +301,4 @@ cors:
   allowedHeaders: [content-type]
 mounts:
   - path: /
-    mount: !ref Api
+    mount: !ref api

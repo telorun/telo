@@ -25,6 +25,7 @@ import {
 import { DefinitionRegistry } from "./definition-registry.js";
 import { type ContractDirection, effectiveAuthorSchema } from "./extends-resolution.js";
 import {
+  analyzerContractScope,
   type ContractScope,
   PERMISSIVE_CONTRACT,
   resolveContract,
@@ -53,7 +54,16 @@ import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema
 import { runZoneAnalysis, type ZoneExportCache } from "./resolve-zone-requirements.js";
 import { validateDurableRegions } from "./validate-durable-regions.js";
 import { validateZoneViolations } from "./validate-zone-violations.js";
-import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
+import { ManifestRootSchema } from "./manifest-schemas.js";
+import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
+import { buildStepContextSchema, CelScopeResolver, manifestRootForResolver } from "./cel-scope.js";
+
+// The structural walks and the CEL scope rule moved out of this file — the
+// first so both halves can reach them, the second so the IDE can ask what a
+// cursor sees without pulling the analysis pass in behind it. Re-exported here
+// because they were part of this module's surface before the split.
+export { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
+export { analyzerContractScope } from "./invocation-contract.js";
 import { validateZoneSlotDeclarations, type ZoneSlotIssue } from "./validate-zone-slots.js";
 import {
   validateSchemaProjection,
@@ -135,7 +145,7 @@ import { validateModuleMetadata } from "./validate-module-metadata.js";
 import { validateRequires } from "./validate-requires.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateInvocationContract } from "./validate-invocation-contract.js";
-import { collectStepInputIssues } from "./validate-step-inputs.js";
+import { collectRefInputIssues, collectStepInputIssues } from "./validate-step-inputs.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { validateReferences } from "./validate-references.js";
@@ -194,116 +204,7 @@ function resolveSelfOrAlias(
   return scopeResolver.resolveKind(value);
 }
 
-/** The {@link ContractScope} the analyzer resolves invocation contracts in: kinds
- *  resolve in the module that declared the definition they were read off (so an
- *  `extends` chain crossing module boundaries re-scopes at every hop), and named
- *  `telo#Type` references resolve against the flattened manifest list. `resolveIn`
- *  is the top-level entry point, where the kind was written by the READING
- *  module and there is no declaring definition yet. */
-export function analyzerContractScope(
-  defs: DefinitionRegistry,
-  aliases: AliasResolver,
-  scopes: ModuleScopes,
-  allManifests: Record<string, any>[],
-): ContractScope & { resolveIn(kind: string, module?: string): ResourceDefinition | undefined } {
-  const resolve = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, scopes);
-  return {
-    resolveDefinition: resolve,
-    resolveIn: resolve.in,
-    typeManifestsFor: () => allManifests,
-  };
-}
-
 const SOURCE = "telo-analyzer";
-
-/** Build a closed JSON Schema for the `self` CEL variable available inside a
- *  `Telo.Definition` template body. Mirrors the runtime template controller's
- *  `const self = { ...resource, name: resource.metadata.name };` — every
- *  property the user declared in `schema:` plus synthetic `name` / `kind` and
- *  the metadata sub-object (kept open since metadata legitimately carries
- *  arbitrary user-added fields). */
-function buildSelfSchema(
-  definition: Record<string, any>,
-  defs?: DefinitionRegistry,
-  aliases?: AliasResolver,
-): Record<string, any> {
-  // The author-facing schema resolves inheritance: with `base:` the child's own
-  // schema (the parent's config is internal); without it, `merge(parent, own)`.
-  const userSchema = (
-    defs
-      ? effectiveAuthorSchema(definition as unknown as ResourceDefinition, (k) =>
-          defs.resolve(aliases?.resolveKind(k) ?? k) ?? defs.resolve(k),
-        )
-      : (definition.schema ?? {})
-  ) as Record<string, any>;
-  const userProps = (userSchema.properties ?? {}) as Record<string, any>;
-  const userRequired = Array.isArray(userSchema.required) ? userSchema.required : [];
-  return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      ...userProps,
-      name: { type: "string" },
-      kind: { type: "string" },
-      metadata: {
-        type: "object",
-        additionalProperties: true,
-        properties: { name: { type: "string" } },
-      },
-    },
-    required: [...userRequired, "name", "kind"],
-  };
-}
-
-/** Build the JSON Schema for the `inputs` CEL variable available inside an
- *  invocable template body — the shared contract resolver applied to the
- *  definition itself, so a body is typed against the exact signature callers are
- *  checked against and dispatch enforces. Walks the whole `extends` chain rather
- *  than one hop, so a definition two levels below the declaration still gets
- *  typed inputs. Undefined when nothing in the chain declares a contract —
- *  the caller signals opaque `map<string, dyn>` upstream. */
-function lookupTemplateInputsSchema(
-  definition: Record<string, any>,
-  defs: DefinitionRegistry,
-  aliases: AliasResolver,
-  allManifests: Record<string, any>[],
-  scopes: ModuleScopes,
-): Record<string, any> | undefined {
-  return resolveContract(
-    "inputType",
-    undefined,
-    definition as unknown as ResourceDefinition,
-    analyzerContractScope(defs, aliases, scopes, allManifests),
-  )?.schema;
-}
-
-/** Returns a "resolver-facing" view of the manifest where the fields used as
- *  navigation roots by Telo.Definition's `x-telo-context-from-root` annotations
- *  have been pre-augmented:
- *    - `schema`     → augmented `self` schema (synthetic `name`/`kind`/metadata).
- *    - `inputType`  → resolved through the shared contract resolver, so
- *                     `x-telo-context-from-root: inputType` substitutes the
- *                     real signature. Without it the annotation would replace
- *                     the node verbatim with the inline `{kind, schema}` wrapper
- *                     the standard library writes everywhere, typing `inputs` as
- *                     `{kind, schema}` instead of the declared properties.
- *
- *  For non-definition manifests the original object is returned. */
-function manifestRootForResolver(
-  m: Record<string, any>,
-  defs: DefinitionRegistry,
-  aliases: AliasResolver,
-  allManifests: Record<string, any>[],
-  scopes: ModuleScopes,
-): Record<string, any> {
-  if (m.kind !== "Telo.Definition") return m;
-  const inputs = lookupTemplateInputsSchema(m, defs, aliases, allManifests, scopes);
-  return {
-    ...m,
-    schema: buildSelfSchema(m, defs, aliases),
-    ...(inputs ? { inputType: inputs } : {}),
-  };
-}
 
 /** True when an issue reports a property that is absent — its path points at a
  *  node the manifest does not contain. */
@@ -336,273 +237,6 @@ function contractOwnerLabel(
     return parentSpelling;
   }
   return canonical;
-}
-
-/** Resolve a local `$ref` (only `#/$defs/<name>` form) against the root schema.
- *  Non-refs and unresolved refs pass through unchanged. */
-export function resolveLocalRef(
-  schema: Record<string, any> | undefined,
-  root: Record<string, any>,
-): Record<string, any> | undefined {
-  if (!schema) return undefined;
-  const ref = schema.$ref;
-  if (typeof ref === "string" && ref.startsWith("#/$defs/")) {
-    const defName = ref.slice("#/$defs/".length);
-    const resolved = root.$defs?.[defName];
-    if (resolved && typeof resolved === "object") return resolved as Record<string, any>;
-  }
-  // A kernel-owned structural fragment (`telo://manifest#/$defs/InvokeStep`).
-  // Resolved HERE rather than by each walker: this is the one chokepoint every
-  // structural walk already goes through — the step-array walks, the call graph,
-  // the zone projection, the eval-path collector — so a composer that points at a
-  // shared shape stays legible to all of them at once. Nothing is inlined into
-  // the stored schema, which keeps validator-cache identity stable and matches
-  // what `resolveSchemaTypeRefs` does for a named user type.
-  if (typeof ref === "string" && ref.startsWith(BUILTIN_FRAGMENT_PREFIX)) {
-    const defName = ref.slice(BUILTIN_FRAGMENT_PREFIX.length);
-    const resolved = (ManifestRootSchema.$defs as Record<string, unknown>)[defName];
-    if (resolved && typeof resolved === "object") return resolved as Record<string, any>;
-  }
-  return schema;
-}
-
-const BUILTIN_FRAGMENT_PREFIX = `${MANIFEST_SCHEMA_URI}#/$defs/`;
-
-/** Gather property schemas from a (possibly variant-bearing) object schema:
- *  top-level `properties` plus every `oneOf` / `anyOf` / `allOf` branch.
- *
- *  Each branch is resolved through {@link resolveLocalRef} first, so a branch
- *  that points at a shared shape — a `oneOf` arm that IS the kernel's dispatch
- *  site — contributes its properties like an inline one. Without that, pointing a
- *  composer at a shared shape would silently empty every role-driven lookup that
- *  reads this (the inputs slot, the retry policy, the eval paths), which is a
- *  failure with no diagnostic attached to it. */
-export function gatherPropertySchemas(
-  schema: Record<string, any>,
-  root?: Record<string, any>,
-): Array<[string, Record<string, any>]> {
-  const out: Array<[string, Record<string, any>]> = [];
-  const base = resolveLocalRef(schema, root ?? schema) ?? schema;
-  if (base.properties && typeof base.properties === "object") {
-    for (const [k, v] of Object.entries(base.properties as Record<string, any>)) {
-      out.push([k, v as Record<string, any>]);
-    }
-  }
-  for (const variantKey of ["oneOf", "anyOf", "allOf"] as const) {
-    const arr = base[variantKey];
-    if (!Array.isArray(arr)) continue;
-    for (const raw of arr) {
-      if (!raw || typeof raw !== "object") continue;
-      const variant = resolveLocalRef(raw as Record<string, any>, root ?? schema) ?? raw;
-      if (variant.properties) {
-        for (const [k, v] of Object.entries(variant.properties as Record<string, any>)) {
-          out.push([k, v as Record<string, any>]);
-        }
-      }
-    }
-  }
-  return out;
-}
-
-/**
- * Generic, role-driven walk over a step array. Calls
- * `visit(step, stepPath)` for every step — top-level and nested through the
- * `x-telo-topology-role` forms (`branch`, `branch-list`, `case-map`). This is
- * the single definition of how steps nest, shared by `buildStepContextSchema`
- * (which types `steps.<name>.result`) and `validateStepInvokeReferences` (which
- * checks invoke refs), so the topology contract lives in one place — adding a
- * role or nesting form updates both consumers at once. No resource kind is
- * hardcoded; recursion is driven entirely by the schema annotations.
- */
-export function walkStepArray(
-  steps: unknown[],
-  stepItemSchema: Record<string, any> | undefined,
-  rootSchema: Record<string, any>,
-  basePath: string,
-  visit: (step: Record<string, any>, stepPath: string) => void,
-): void {
-  const dispatchRole = (
-    data: unknown,
-    role: string,
-    itemsSchema: Record<string, any> | undefined,
-    path: string,
-  ): void => {
-    if (role === "branch" && Array.isArray(data)) {
-      walkStepArray(data, stepItemSchema, rootSchema, path, visit);
-    } else if (role === "case-map" && data && typeof data === "object" && !Array.isArray(data)) {
-      for (const [caseKey, arr] of Object.entries(data as Record<string, unknown>)) {
-        if (Array.isArray(arr)) walkStepArray(arr, stepItemSchema, rootSchema, `${path}.${caseKey}`, visit);
-      }
-    } else if (role === "branch-list" && Array.isArray(data)) {
-      const entrySchema = resolveLocalRef(itemsSchema, rootSchema);
-      if (!entrySchema) return;
-      data.forEach((entry, i) => {
-        if (!entry || typeof entry !== "object") return;
-        for (const [subKey, subSchema] of gatherPropertySchemas(entrySchema)) {
-          const subRole = subSchema["x-telo-topology-role"];
-          if (typeof subRole !== "string") continue;
-          dispatchRole(
-            (entry as Record<string, any>)[subKey],
-            subRole,
-            subSchema.items as Record<string, any> | undefined,
-            `${path}[${i}].${subKey}`,
-          );
-        }
-      });
-    }
-  };
-
-  steps.forEach((step, i) => {
-    if (!step || typeof step !== "object") return;
-    const s = step as Record<string, any>;
-    const stepPath = `${basePath}[${i}]`;
-    visit(s, stepPath);
-    if (!stepItemSchema) return;
-    for (const [propKey, propSchema] of gatherPropertySchemas(stepItemSchema)) {
-      const role = propSchema["x-telo-topology-role"];
-      if (typeof role !== "string") continue;
-      dispatchRole(
-        s[propKey],
-        role,
-        propSchema.items as Record<string, any> | undefined,
-        `${stepPath}.${propKey}`,
-      );
-    }
-  });
-}
-
-/**
- * Build a `steps` context schema for a kind's step body.
- * Walks each step in the manifest array, resolves the invoked resource's output
- * contract, and builds `steps.<name>.result` context entries.
- *
- * Resolution is the shared {@link resolveContract} — the invoked resource
- * manifest's own declaration, then the kind's, resolved to the nearest
- * declaration along `extends`, then permissive. Sharing it with the kernel is
- * what stops `telo check` from typing `steps.X.result` against one contract
- * while dispatch validates against another.
- *
- * The kind layer is what makes `x-telo-stream` properties on definitions
- * actually govern step-result chain validation — without it, the validator falls
- * back to permissive and the stream-opacity rule never fires.
- *
- * Recursion into nested step arrays is annotation-driven via
- * `x-telo-topology-role`. The analyzer recognises three role values:
- *   - `branch`     — value is an array of steps (e.g. then / else / do / catch).
- *   - `branch-list`— value is an array of objects each carrying further roled
- *                    sub-properties (e.g. elseif: [{ if, then }]).
- *   - `case-map`   — value is an object whose values are step arrays (e.g. cases).
- * No specific Run.Sequence field name is hardcoded; any kind that uses
- * a step body and tags its branch fields with these roles works.
- */
-function buildStepContextSchema(
-  manifest: Record<string, any>,
-  defSchema: Record<string, any>,
-  allManifests: Record<string, any>[],
-  defs: DefinitionRegistry,
-  aliases: AliasResolver,
-  scopes: ModuleScopes,
-): Record<string, any> | undefined {
-  const props = defSchema.properties as Record<string, any> | undefined;
-  if (!props) return undefined;
-
-  const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
-  const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
-
-  for (const [fieldName, fieldSchema] of Object.entries(props)) {
-    const stepCtx = readStepSlot(fieldSchema);
-    if (!stepCtx) continue;
-
-    const invokeField = stepCtx.invoke;
-    const outputTypeField = stepCtx.outputType;
-    // Optional: the field a step uses to produce a result without dispatching.
-    // Only a kind that declares one has pure steps at all.
-    const valueField = stepCtx.value;
-    if (!invokeField || !outputTypeField) continue;
-
-    const steps = manifest[fieldName];
-    if (!Array.isArray(steps)) continue;
-
-    const stepItemSchema = resolveLocalRef(
-      fieldSchema.items as Record<string, any> | undefined,
-      defSchema,
-    );
-
-    // The instance's own input contract, for typing a pure step that just
-    // forwards one of its values.
-    const ownInputs = resolveTypeFieldToSchema(
-      (manifest as Record<string, any>).inputType,
-      allManifests,
-    );
-
-    const stepProperties: Record<string, any> = {};
-
-    walkStepArray(steps, stepItemSchema, defSchema, fieldName, (s) => {
-      const name = s.name;
-      const invoke = s[invokeField] as Record<string, any> | undefined;
-      // Only invoke steps register a `steps.<name>.result` entry — control-flow
-      // wrappers (try/if/while/switch/throw) don't produce a result and must
-      // not shadow real entries with a permissive `additionalProperties: true`,
-      // or unknown step references slip through chain validation.
-      if (typeof name !== "string") return;
-      if (!invoke || typeof invoke !== "object") {
-        // A pure step dispatches nothing, so there is no contract to resolve.
-        // Where its expression is a plain chain into something already typed —
-        // an earlier step's result, or the kind's own inputs — that type carries
-        // through; anything else (arithmetic, a call, a comprehension) stays
-        // permissive rather than guessed. Same rule as a named binding's.
-        if (valueField && valueField in s) {
-          const scopeRoot = {
-            properties: {
-              steps: { type: "object", properties: { ...stepProperties } },
-              ...(ownInputs ? { inputs: ownInputs } : {}),
-            },
-          };
-          const chained = schemaAtChain(bindingPathChain(s[valueField]), scopeRoot);
-          stepProperties[name] = {
-            type: "object",
-            properties: { result: chained ?? PERMISSIVE_CONTRACT },
-          };
-        }
-        return;
-      }
-      const invokedKind = invoke.kind as string | undefined;
-      const invokedName = invoke.name as string | undefined;
-      // A named `!ref` carries the target's own manifest (which may narrow the
-      // contract for this one instance); an inline `{ kind, ... }` step IS the
-      // manifest. Either way the kind layer resolves through `extends`.
-      const invokedManifest = invokedName
-        ? (allManifests.find(
-            (m) =>
-              (m.metadata as any)?.name === invokedName && (!invokedKind || m.kind === invokedKind),
-          ) as Record<string, any> | undefined)
-        : (invoke as Record<string, any>);
-      const invokedDef = invokedKind
-        ? contractScope.resolveIn(invokedKind, readingModule)
-        : undefined;
-      const outputSchema = resolveContract(
-        outputTypeField as ContractDirection,
-        invokedManifest,
-        invokedDef,
-        contractScope,
-      )?.schema;
-      stepProperties[name] = {
-        type: "object",
-        properties: {
-          result: outputSchema ?? PERMISSIVE_CONTRACT,
-        },
-      };
-    });
-
-    if (Object.keys(stepProperties).length > 0) {
-      return {
-        type: "object",
-        properties: stepProperties,
-      };
-    }
-  }
-
-  return undefined;
 }
 
 /** The built-in namespace: globally resolvable, crossing no import boundary. */
@@ -880,92 +514,6 @@ function pathCrossesNestedResource(root: unknown, path: string): boolean {
     }
   }
   return false;
-}
-
-function collectErrorContextScopes(
-  defSchema: Record<string, any> | undefined,
-): Map<string, Record<string, any>> {
-  const out = new Map<string, Record<string, any>>();
-  if (!defSchema || typeof defSchema !== "object") return out;
-  const seen = new Set<Record<string, any>>();
-
-  const walk = (schema: Record<string, any> | undefined): void => {
-    if (!schema || typeof schema !== "object" || seen.has(schema)) return;
-    seen.add(schema);
-
-    const props = schema.properties as Record<string, any> | undefined;
-    if (props) {
-      for (const [fieldName, fieldSchema] of Object.entries(props)) {
-        if (fieldSchema && typeof fieldSchema === "object") {
-          const errCtx = (fieldSchema as Record<string, any>)["x-telo-error-context"];
-          if (errCtx && typeof errCtx === "object" && !out.has(fieldName)) {
-            out.set(fieldName, errCtx as Record<string, any>);
-          }
-        }
-        walk(resolveLocalRef(fieldSchema as Record<string, any>, defSchema));
-      }
-    }
-    if (schema.items) walk(resolveLocalRef(schema.items as Record<string, any>, defSchema));
-    for (const key of ["oneOf", "anyOf", "allOf"] as const) {
-      const arr = schema[key];
-      if (Array.isArray(arr)) for (const sub of arr) walk(resolveLocalRef(sub, defSchema));
-    }
-    if (schema.$defs && typeof schema.$defs === "object") {
-      for (const sub of Object.values(schema.$defs as Record<string, any>)) {
-        walk(sub as Record<string, any>);
-      }
-    }
-  };
-
-  walk(defSchema);
-  return out;
-}
-
-/**
- * Return the error-context schema for a CEL `path` when the path lies within
- * (any depth under) one of the error-bearing fields, else undefined. A path is
- * "within" field `f` when it contains a segment `f[<index>]`. When multiple
- * error-bearing fields match (e.g. a `finally` nested inside a `catch`), the
- * deepest — the one whose segment appears latest in the path — wins, so the
- * innermost branch's schema governs.
- */
-function errorContextForPath(
-  path: string,
-  scopes: Map<string, Record<string, any>>,
-): Record<string, any> | undefined {
-  let best: { index: number; schema: Record<string, any> } | undefined;
-  for (const [fieldName, schema] of scopes) {
-    const escaped = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    for (const match of path.matchAll(new RegExp(`(^|\\.)${escaped}\\[\\d+\\]`, "g"))) {
-      if (best === undefined || match.index > best.index) {
-        best = { index: match.index, schema };
-      }
-    }
-  }
-  return best?.schema;
-}
-
-/** Add a kind's named bindings to a resolved context, when the context declares
- *  a bindings region. They go UNDER the context's own properties: a scope
- *  variable wins over a same-named binding at runtime, so static typing has to
- *  agree (the collision itself is `BINDING_NAME_RESERVED`). */
-function withBindingNames(
-  contextSchema: Record<string, any>,
-  resource: Record<string, any>,
-): Record<string, any> {
-  const field = contextSchema[BINDINGS_ANNOTATION];
-  if (typeof field !== "string") return contextSchema;
-  const bindings = resource[field];
-  if (bindings === null || typeof bindings !== "object" || Array.isArray(bindings)) {
-    return contextSchema;
-  }
-  return {
-    ...contextSchema,
-    properties: {
-      ...bindingContextProperties(bindings as Record<string, unknown>, contextSchema),
-      ...(contextSchema.properties ?? {}),
-    },
-  };
 }
 
 /** Member-access chains in a CEL expression, or none when it doesn't parse.
@@ -2077,9 +1625,20 @@ export class StaticAnalyzer {
     // fit the slot at all", the schema answers "do their type arguments agree",
     // which cel-js cannot express because it types by constructor identity.
     const celSourceSchemaByPath = new Map<ResourceManifest, Map<string, Record<string, any>>>();
-    // Context-free typed environments, one per manifest. Reused across every
-    // expression in it — see the build site for why a matched context opts out.
-    const typedEnvByManifest = new Map<ResourceManifest, Environment>();
+    // What every CEL expression in this set is typed against. The rule lives in
+    // `cel-scope.ts` so the IDE asks the same question the pass does — a
+    // completion list is a claim that the name it offers will pass this check,
+    // and two implementations of it could not be held in agreement.
+    const celScope = new CelScopeResolver({
+      celEnv: this.celEnv,
+      defs,
+      aliases,
+      scopes: { aliasesByModule, rootModules },
+      allManifests,
+      kernelGlobals,
+      moduleManifest,
+      observedStateContext,
+    });
 
     // Validate each non-definition, non-system resource
     for (const m of allManifests) {
@@ -2481,11 +2040,11 @@ export class StaticAnalyzer {
     // state (definitions, aliases, the typed CEL env).
     // Per-resource state computed at enter and read by that resource's CEL
     // sites. The manifest / resource / filePath come straight off each CelSite's
-    // `source` (no need to capture them); only the derived step / invocation
-    // context — which require analyzer state to build — are stashed here.
+    // `source` (no need to capture them); the derived step / invocation / error
+    // context is the scope resolver's, read back from it where a CHECK needs the
+    // same schema an expression is typed against.
     let celStepContextSchema: Record<string, any> | undefined;
-    let celInvocationContext: Record<string, any> | undefined;
-    let celErrorScopes: Map<string, Record<string, any>> = new Map();
+    let celErrorScopes: ReadonlyMap<string, Record<string, any>> = new Map();
     // Region coverage for the "CEL in a non-eval field" check: the union of
     // `x-telo-eval` paths (own + capability) and `x-telo-context` /
     // `x-telo-step-context` / `x-telo-error-context` scopes. A `!cel` outside
@@ -2506,23 +2065,29 @@ export class StaticAnalyzer {
       {
         onResourceEnter: (e) => {
           const m = e.source;
-          celInvocationContext = (m.metadata as any)?.xTeloInvocationContext as
-            | Record<string, any>
-            | undefined;
-          celStepContextSchema = e.definition?.schema
-            ? buildStepContextSchema(
+          celScope.enterResource(m, e.definition);
+          // Read back rather than recomputed: the step-inputs check has to see
+          // the same `steps` schema this resource's expressions are typed
+          // against, and a second computation is how the two come to disagree.
+          celStepContextSchema = celScope.stepContextSchema;
+          celErrorScopes = celScope.errorContextScopes;
+          if (e.definition?.schema) {
+            const stepName = (m.metadata as any)?.name as string | undefined;
+            const stepFile = (m.metadata as { source?: string } | undefined)?.source;
+            // Both drivers of the SAME check: a step's `inputs:` found through
+            // the step grammar, and a reference slot's found through the
+            // `x-telo-ref` `inputs:` pointer. A call site the editor can
+            // complete is a call site `telo check` validates.
+            const inputIssues = [
+              ...collectRefInputIssues(
                 m as Record<string, any>,
-                e.definition.schema as Record<string, any>,
+                defs.expandedFieldMapForResource(m, aliases, aliasesByModule),
                 allManifests as Record<string, any>[],
                 defs,
                 aliases,
                 { aliasesByModule, rootModules },
-              )
-            : undefined;
-          if (e.definition?.schema) {
-            const stepName = (m.metadata as any)?.name as string | undefined;
-            const stepFile = (m.metadata as { source?: string } | undefined)?.source;
-            for (const issue of collectStepInputIssues(
+              ),
+              ...collectStepInputIssues(
               m as Record<string, any>,
               e.definition.schema as Record<string, any>,
               allManifests as Record<string, any>[],
@@ -2530,7 +2095,9 @@ export class StaticAnalyzer {
               aliases,
               { aliasesByModule, rootModules },
               celStepContextSchema,
-            )) {
+              ),
+            ];
+            for (const issue of inputIssues) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 code: issue.code ?? "CONTRACT_INPUTS_MISMATCH",
@@ -2549,10 +2116,6 @@ export class StaticAnalyzer {
               });
             }
           }
-          celErrorScopes = collectErrorContextScopes(
-            e.definition?.schema as Record<string, any> | undefined,
-          );
-
           celBindingSites = findBindingSites(e.definition?.schema as Record<string, any>);
           if (celBindingSites) {
             const declared = (m as Record<string, any>)[celBindingSites.field];
@@ -2680,7 +2243,7 @@ export class StaticAnalyzer {
           if (
             celRuleApplies &&
             engineName === "cel" &&
-            celInvocationContext === undefined &&
+            celScope.invocationContextSchema === undefined &&
             !evalPathsCover(celEvalPaths, path) &&
             !celRegionScopes.some((scope) => pathMatchesScope(path, scope)) &&
             !pathCrossesNestedResource(m, path)
@@ -2733,70 +2296,6 @@ export class StaticAnalyzer {
             }
           }
 
-          let matchedContext: Record<string, any> | undefined =
-            e.contextSchema ?? celInvocationContext;
-
-          if (celStepContextSchema) {
-            const base =
-              matchedContext ?? { type: "object", properties: {}, additionalProperties: true };
-            matchedContext = {
-              ...base,
-              properties: {
-                ...(base.properties ?? {}),
-                steps: celStepContextSchema,
-              },
-            };
-          }
-
-          // `error` is only in scope inside an error-bearing branch (e.g. a
-          // `catch:` / `finally:`), so it's merged per-path, not resource-wide.
-          const errorSchema =
-            celErrorScopes.size > 0 ? errorContextForPath(path, celErrorScopes) : undefined;
-          if (errorSchema) {
-            const base =
-              matchedContext ?? { type: "object", properties: {}, additionalProperties: true };
-            matchedContext = {
-              ...base,
-              properties: {
-                ...(base.properties ?? {}),
-                error: errorSchema,
-              },
-            };
-          }
-
-          let effectiveContext: Record<string, any> | null = null;
-          if (matchedContext) {
-            const manifestItem = matchedScope
-              ? getManifestItem(path, matchedScope, m as Record<string, any>)
-              : (m as Record<string, any>);
-            const rootForResolver = manifestRootForResolver(
-              m as Record<string, any>,
-              defs,
-              aliases,
-              allManifests as Record<string, any>[],
-              { aliasesByModule, rootModules },
-            );
-            const resolvedContext = resolveContextAnnotations(matchedContext, manifestItem, {
-              manifestRoot: rootForResolver,
-              defs,
-              aliases,
-              allManifests: allManifests as Record<string, any>[],
-            });
-            effectiveContext = mergeKernelGlobalsIntoContext(
-              withBindingNames(resolvedContext, m as Record<string, any>),
-              // Typed in the module that DECLARED this resource — for a manifest
-              // forwarded from an imported library, that is its `moduleGlobals`
-              // stamp, not the consuming application's block.
-              kernelGlobals.forResource(m),
-            );
-          } else if (observedStateContext) {
-            // No `x-telo-context` matched, so nothing was chain-validated here
-            // before. Validate the observed-state segment alone rather than
-            // merging the kernel globals, whose closed `variables` / `ports`
-            // nodes would newly reject reads that pass today.
-            effectiveContext = observedStateContext;
-          }
-
           const engine = defaultRegistry().get(engineName);
           if (!engine) {
             // No registered engine owns this tag — the expression would go
@@ -2811,38 +2310,15 @@ export class StaticAnalyzer {
             return;
           }
           // The engine type-checks, so it gets the environment typed for THIS
-          // path — not the bare base one. A `Telo.Import`'s variables/secrets
-          // are a config-only contract evaluated in the IMPORTING module's
-          // scope, so they type from the owning module doc and drop
-          // `resources`/`env`, making a reference to either an error.
-          //
-          // Cached per manifest when no `x-telo-context` applied, which is most
-          // expressions: the environment then depends only on the manifest, so
-          // rebuilding it per expression is pure waste — a clone plus a
-          // re-registration of every variable, on every keystroke in the IDE.
-          // A matched context makes the environment path-specific (its schema is
-          // resolved against the enclosing array item), so those still build
-          // fresh rather than risk one item's types leaking into another's.
-          const cached = effectiveContext === null ? typedEnvByManifest.get(m) : undefined;
-          const typedEnv =
-            cached ??
-            (m.kind === "Telo.Import"
-              ? buildImportInputCelEnvironment(
-                  this.celEnv,
-                  allManifests.find(
-                    (mm) =>
-                      (mm.kind === "Telo.Application" || mm.kind === "Telo.Library") &&
-                      (mm.metadata as { name?: string } | undefined)?.name ===
-                        (m.metadata as { module?: string } | undefined)?.module,
-                  ),
-                )
-              : buildTypedCelEnvironment(
-                  this.celEnv,
-                  m,
-                  effectiveContext ?? undefined,
-                  moduleManifest,
-                ));
-          if (effectiveContext === null && !cached) typedEnvByManifest.set(m, typedEnv);
+          // path — not the bare base one. Both halves come from the one scope
+          // rule, which is what makes the IDE's answer and this check the same
+          // answer rather than two that agree today.
+          const { env: typedEnv, contextSchema: effectiveContext } = celScope.scopeFor({
+            source: m,
+            path,
+            contextSchema: e.contextSchema,
+            matchedScope,
+          });
 
           const result = engine.analyze(expr, { celEnv: typedEnv, contextSchema: effectiveContext });
 

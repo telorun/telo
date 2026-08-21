@@ -26,7 +26,15 @@ export class TeloDefinitionProvider implements vscode.DefinitionProvider {
 
     const text = document.getText();
     const docs = this.cache.docsFor(filePath, text);
-    const result = buildDefinition(text, position.line, position.character, graph, filePath, docs);
+    const result = buildDefinition(
+      text,
+      position.line,
+      position.character,
+      graph,
+      filePath,
+      docs,
+      this.cache.analysisFor(filePath),
+    );
     if (!result) return undefined;
 
     const uri = toUri(result.uri);

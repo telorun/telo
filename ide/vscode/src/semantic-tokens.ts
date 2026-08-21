@@ -21,7 +21,12 @@ export class TeloSemanticTokensProvider implements vscode.DocumentSemanticTokens
     const filePath = document.uri.fsPath;
     const text = document.getText();
     const docs = this.cache.docsFor(filePath, text);
-    const tokens = buildSemanticTokens(text, this.cache.registryFor(filePath), docs);
+    const tokens = buildSemanticTokens(
+      text,
+      this.cache.registryFor(filePath),
+      docs,
+      this.cache.analysisFor(filePath),
+    );
 
     const builder = new vscode.SemanticTokensBuilder(TELO_SEMANTIC_LEGEND);
     for (const t of tokens) {

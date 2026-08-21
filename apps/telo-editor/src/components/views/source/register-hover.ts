@@ -1,7 +1,7 @@
 import type { OnMount } from "@monaco-editor/react";
 import type { Position, editor, languages } from "monaco-editor";
 import { buildHover } from "@telorun/ide-support";
-import { registryRef, threadedDocs, toMonacoRange } from "./provider-state";
+import { analysisRef, registryRef, threadedDocs, toMonacoRange } from "./provider-state";
 
 type Monaco = Parameters<OnMount>[1];
 
@@ -15,6 +15,7 @@ export function registerYamlHover(monaco: Monaco): void {
         position.column - 1,
         registryRef.current,
         threadedDocs(text),
+        analysisRef.current,
       );
       if (!result) return undefined;
       return {

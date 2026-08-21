@@ -51,6 +51,7 @@ export class TeloCompletionProvider implements vscode.CompletionItemProvider {
       registry,
       adapter,
       threaded,
+      this.cache.analysisFor(filePath),
     );
     return results.map((r) => toItem(r));
   }

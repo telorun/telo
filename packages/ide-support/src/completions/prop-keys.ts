@@ -25,7 +25,18 @@ export function propKeyCompletions(
   yamlPath: string[],
   existingKeys: Set<string>,
   registry: AnalysisRegistry | undefined,
+  /** The arguments the enclosing call declares, when this path IS that call's
+   *  argument slot. Resolved by the caller, which is the side holding the
+   *  manifest the reference names. */
+  callInputs?: Record<string, any>,
 ): CompletionResult[] {
+  if (callInputs?.properties) {
+    return buildItems(
+      callInputs.properties as Record<string, any>,
+      existingKeys,
+      new Set<string>(Array.isArray(callInputs.required) ? callInputs.required : []),
+    );
+  }
   if (!registry) return [];
 
   const definition = registry.resolveDefinition(kind);
@@ -41,9 +52,20 @@ export function propKeyCompletions(
 
   const targetSchema = yamlPath.length === 0
     ? (definition.schema as Record<string, any>)
-    : navigateSchema(definition.schema as Record<string, any>, yamlPath);
+    : navigateSchema(definition.schema as Record<string, any>, yamlPath, (from) =>
+        registry.resolveSchemaFrom(from, kind),
+      );
+
+  // A NAME-KEYED map declares its keys nowhere in `properties` — they are the
+  // author's own (a media type, a header name). `propertyNames` is JSON
+  // Schema's own vocabulary for what they may be, and it carries the open/closed
+  // distinction already: `enum` constrains, `examples` only suggests. So an open
+  // list of known values needs no annotation and no analyzer-side knowledge of
+  // any domain.
+  const keySuggestions = propertyNameSuggestions(targetSchema, existingKeys);
 
   if (!targetSchema?.properties) {
+    if (keySuggestions.length > 0) return keySuggestions;
     if (yamlPath.length === 0) {
       return buildItems(ROOT_IMPLICIT_PROPS, existingKeys, new Set<string>());
     }
@@ -58,7 +80,42 @@ export function propKeyCompletions(
       ? { ...ROOT_IMPLICIT_PROPS, ...(targetSchema.properties as Record<string, any>) }
       : { ...(targetSchema.properties as Record<string, any>), ...annotationKeys(targetSchema) };
 
-  return buildItems(properties, existingKeys, required);
+  return [...keySuggestions, ...buildItems(properties, existingKeys, required)];
+}
+
+/**
+ * Key candidates a map-valued node declares through `propertyNames`.
+ *
+ * `enum` is a closed set and `examples` an open one — suggestions with no
+ * validation effect, which is exactly "these are the known values, others are
+ * allowed". Both are stock JSON Schema, so nothing here knows what a media type
+ * is and any name-keyed field gains the same behaviour by declaring it.
+ */
+function propertyNameSuggestions(
+  schema: Record<string, any> | undefined,
+  existingKeys: Set<string>,
+): CompletionResult[] {
+  const names = schema?.propertyNames as Record<string, any> | undefined;
+  if (!names || typeof names !== "object") return [];
+  const closed = Array.isArray(names.enum) ? (names.enum as unknown[]) : undefined;
+  const open = Array.isArray(names.examples) ? (names.examples as unknown[]) : [];
+  const values = closed ?? open;
+
+  const out: CompletionResult[] = [];
+  for (const value of values) {
+    if (typeof value !== "string" || existingKeys.has(value)) continue;
+    out.push({
+      label: value,
+      kind: "enumMember",
+      insertText: `${value}: $0`,
+      snippet: true,
+      detail: closed ? names.title ?? "allowed key" : names.title ?? "known key",
+      // Ahead of any structural key at the same level: at a name-keyed slot the
+      // author is choosing one of these, not adding a sibling field.
+      sortText: `0_${value}`,
+    });
+  }
+  return out;
 }
 
 /**

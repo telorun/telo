@@ -1,7 +1,15 @@
-import { parseToAst, type AstDocument, type AstScalar, type LoadedGraph } from "@telorun/analyzer";
+import {
+  parseToAst,
+  type AstDocument,
+  type AstScalar,
+  type ManifestAnalysis,
+  type LoadedGraph,
+} from "@telorun/analyzer";
 import type { DefinitionResult } from "../types.js";
 import { resolveNodeAtPosition } from "../completions/resolve-node.js";
 import { splitAliasQualified } from "./alias-qualified-value.js";
+import { locateContextBinding } from "./locate-context-binding.js";
+import { locateStepDeclaration } from "./locate-step.js";
 import { moduleForFile } from "./manifest-navigation.js";
 import { resolveCelTarget } from "./resolve-cel-target.js";
 import { isKindSlot, resolveKindTarget } from "./resolve-kind-target.js";
@@ -30,6 +38,10 @@ export function buildDefinition(
   graph: LoadedGraph,
   currentFilePath: string,
   docs?: AstDocument[],
+  /** Lets a `steps.<name>` read navigate to the step that produced it, and a
+   *  context binding to its declaration — both need the declaring kind's own
+   *  annotations, which only the analysis can read. */
+  analysis?: ManifestAnalysis,
 ): DefinitionResult | undefined {
   const astDocs = docs ?? parseToAst(text);
   const resolved = resolveNodeAtPosition(text, astDocs, line, character);
@@ -38,7 +50,23 @@ export function buildDefinition(
   const currentModule = moduleForFile(graph, currentFilePath) ?? graph.entry;
 
   if (resolved.cel) {
-    return resolveCelTarget(graph, currentModule, resolved.cel.segment, resolved.cel.offset);
+    return resolveCelTarget(graph, currentModule, resolved.cel.segment, resolved.cel.offset, {
+      // A step is resolved in the CURRENT document — `steps.<name>.result` is
+      // readable only inside the resource that declares it, which is one
+      // document. Supplied as a closure so the chain resolver stays free of the
+      // AST and the scope query alike.
+      locateStep: (stepName) =>
+        locateStepDeclaration(graph, currentFilePath, astDocs, resolved.docIndex, stepName, analysis?.celScope),
+      locateContextBinding: (parts) =>
+        locateContextBinding(
+          graph,
+          astDocs,
+          resolved.docIndex,
+          resolved.concretePath ?? "",
+          parts,
+          analysis?.celScope,
+        ),
+    });
   }
 
   const node = resolved.node;

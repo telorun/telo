@@ -48,8 +48,15 @@ export interface ResolvedCursor {
   /** Key slot: number of `path` segments that reach `resourceKind`'s map, so
    *  the schema-relative path is `path.slice(resourceDepth)`. */
   resourceDepth?: number;
-  /** Set when the cursor sits inside a CEL body (closed or open). Populated for
-   *  a future CEL-completion feature; this refactor does not consume it. */
+  /** The path with sequence INDICES kept (`routes[0].handler.url`),
+   *  as distinct from `path`, through which arrays are transparent. This is the
+   *  address the analyzer speaks — an `x-telo-context` scope, an error-bearing
+   *  region and a step's identity are all resolved per item — so it is what a
+   *  CEL site is looked up by. */
+  concretePath?: string;
+  /** Set when the cursor sits inside a CEL body (closed or open). The CEL
+   *  segment plus the cursor's document offset — what completion and hover
+   *  hit-test the expression's chain against. */
   cel?: { segment: CelSegment; offset: number };
 }
 
@@ -109,6 +116,7 @@ type Descent =
       type: "key";
       container: AstMap;
       path: string[];
+      concretePath: string;
       keyNode: AstScalar;
       keyName?: string;
       scope: ResourceScope;
@@ -119,15 +127,22 @@ type Descent =
        *  (which has no keyed siblings). */
       container: AstMap | undefined;
       path: string[];
+      concretePath: string;
       keyName?: string;
       keyEnd: number;
       valueNode: AstNode;
     }
   | { type: "empty" };
 
+/** Append one key segment to a concrete path (`routes[0]` + `handler`). */
+function joinKey(concrete: string, key: string): string {
+  return concrete ? `${concrete}.${key}` : key;
+}
+
 function descend(
   node: AstNode,
   ancestors: string[],
+  concrete: string,
   offset: number,
   scope: ResourceScope,
 ): Descent | undefined {
@@ -140,6 +155,7 @@ function descend(
           type: "key",
           container: node,
           path: ancestors,
+          concretePath: concrete,
           keyNode: pair.key as AstScalar,
           keyName,
           scope: mapScope,
@@ -147,13 +163,15 @@ function descend(
       }
       if (pair.value && within(pair.value.range, offset)) {
         const childAncestors = keyName != null ? [...ancestors, keyName] : ancestors;
+        const childConcrete = keyName != null ? joinKey(concrete, keyName) : concrete;
         if (pair.value.kind === "map" || pair.value.kind === "seq") {
-          return descend(pair.value, childAncestors, offset, mapScope) ?? { type: "empty" };
+          return descend(pair.value, childAncestors, childConcrete, offset, mapScope) ?? { type: "empty" };
         }
         return {
           type: "value",
           container: node,
           path: ancestors,
+          concretePath: childConcrete,
           keyName,
           keyEnd: pair.key.range[1],
           valueNode: pair.value,
@@ -164,16 +182,26 @@ function descend(
   }
   if (node.kind === "seq") {
     // Sequence items are transparent to the key path (mirrors the schema
-    // walker, which auto-descends arrays).
-    for (const item of node.items) {
+    // walker, which auto-descends arrays) but NOT to the concrete path: an
+    // `x-telo-context` scope, an error-bearing region and a step's identity are
+    // all addressed per item, so a CEL site is unreachable without the index.
+    for (const [index, item] of node.items.entries()) {
       if (within(item.range, offset)) {
+        const itemConcrete = `${concrete}[${index}]`;
         if (item.kind === "map" || item.kind === "seq") {
-          return descend(item, ancestors, offset, scope) ?? { type: "empty" };
+          return descend(item, ancestors, itemConcrete, offset, scope) ?? { type: "empty" };
         }
         // A bare scalar list item (`targets:\n  - One`) has no enclosing map of
         // keyed siblings — leave `container` undefined rather than treating the
         // seq as a map.
-        return { type: "value", container: undefined, path: ancestors, keyEnd: item.range[0], valueNode: item };
+        return {
+          type: "value",
+          container: undefined,
+          path: ancestors,
+          concretePath: itemConcrete,
+          keyEnd: item.range[0],
+          valueNode: item,
+        };
       }
     }
     return undefined;
@@ -187,6 +215,9 @@ function descend(
 
 interface MapScope {
   path: string[];
+  /** The same location with sequence indices kept — what addresses a manifest
+   *  node, as distinct from `path`, which addresses a schema node. */
+  concrete: string;
   childColumn: number;
   keys: Set<string>;
   rangeStart: number;
@@ -195,6 +226,7 @@ interface MapScope {
 
 interface PairScope {
   path: string[]; // full key path to this pair
+  concrete: string;
   keyColumn: number;
   keyOffset: number;
   childKeys: Set<string>;
@@ -204,6 +236,7 @@ interface PairScope {
 function collectScopes(
   node: AstNode,
   ancestors: string[],
+  concrete: string,
   scope: ResourceScope,
   lineOffsets: number[],
   maps: MapScope[],
@@ -219,11 +252,19 @@ function collectScopes(
       if (childColumn < 0) childColumn = offsetToPosition(pair.key.range[0], lineOffsets).character;
     }
     if (childColumn >= 0) {
-      maps.push({ path: ancestors, childColumn, keys, rangeStart: node.range[0], scope: mapScope });
+      maps.push({
+        path: ancestors,
+        concrete,
+        childColumn,
+        keys,
+        rangeStart: node.range[0],
+        scope: mapScope,
+      });
     }
     for (const pair of node.entries) {
       const keyName = scalarString(pair.key);
       const fullPath = keyName != null ? [...ancestors, keyName] : ancestors;
+      const fullConcrete = keyName != null ? joinKey(concrete, keyName) : concrete;
       const childKeys = new Set<string>();
       if (pair.value?.kind === "map") {
         for (const p of pair.value.entries) {
@@ -233,20 +274,26 @@ function collectScopes(
       }
       pairs.push({
         path: fullPath,
+        concrete: fullConcrete,
         keyColumn: offsetToPosition(pair.key.range[0], lineOffsets).character,
         keyOffset: pair.key.range[0],
         childKeys,
         scope: mapScope,
       });
-      if (pair.value) collectScopes(pair.value, fullPath, mapScope, lineOffsets, maps, pairs);
+      if (pair.value) {
+        collectScopes(pair.value, fullPath, fullConcrete, mapScope, lineOffsets, maps, pairs);
+      }
     }
   } else if (node.kind === "seq") {
-    for (const item of node.items) collectScopes(item, ancestors, scope, lineOffsets, maps, pairs);
+    node.items.forEach((item, index) =>
+      collectScopes(item, ancestors, `${concrete}[${index}]`, scope, lineOffsets, maps, pairs),
+    );
   }
 }
 
 interface KeyResolution {
   path: string[];
+  concrete: string;
   existingKeys: Set<string>;
   scope: ResourceScope;
 }
@@ -262,7 +309,7 @@ function columnSearch(
 ): KeyResolution {
   const maps: MapScope[] = [];
   const pairs: PairScope[] = [];
-  collectScopes(root, [], { depth: 0 }, lineOffsets, maps, pairs);
+  collectScopes(root, [], "", { depth: 0 }, lineOffsets, maps, pairs);
 
   // Sibling level: a map whose children already sit at the cursor's column.
   let sibling: MapScope | undefined;
@@ -271,7 +318,14 @@ function columnSearch(
       if (!sibling || m.rangeStart > sibling.rangeStart) sibling = m;
     }
   }
-  if (sibling) return { path: sibling.path, existingKeys: sibling.keys, scope: sibling.scope };
+  if (sibling) {
+    return {
+      path: sibling.path,
+      concrete: sibling.concrete,
+      existingKeys: sibling.keys,
+      scope: sibling.scope,
+    };
+  }
 
   // Nest under the nearest-preceding key shallower than the cursor.
   let nest: PairScope | undefined;
@@ -286,9 +340,16 @@ function columnSearch(
       }
     }
   }
-  if (nest) return { path: nest.path, existingKeys: nest.childKeys, scope: nest.scope };
+  if (nest) {
+    return {
+      path: nest.path,
+      concrete: nest.concrete,
+      existingKeys: nest.childKeys,
+      scope: nest.scope,
+    };
+  }
 
-  return { path: [], existingKeys: new Set(), scope: { depth: 0 } };
+  return { path: [], concrete: "", existingKeys: new Set(), scope: { depth: 0 } };
 }
 
 // ---------------------------------------------------------------------------
@@ -326,7 +387,7 @@ export function resolveNodeAtPosition(
   const doc = docs[docIndex];
   const docKind = docKindOf(doc);
 
-  const found = doc.root ? descend(doc.root, [], offset, { depth: 0 }) : undefined;
+  const found = doc.root ? descend(doc.root, [], "", offset, { depth: 0 }) : undefined;
 
   // Cursor sits on an existing map key → key/prop-key position.
   if (found?.type === "key") {
@@ -341,6 +402,7 @@ export function resolveNodeAtPosition(
       docKind,
       slot: "key",
       path: found.path,
+      concretePath: found.concretePath,
       node: found.keyNode,
       replaceRange: { start: toPos(found.keyNode.range[0]), end: toPos(found.keyNode.range[1]) },
       container: found.container,
@@ -365,13 +427,14 @@ export function resolveNodeAtPosition(
       toPos(value.range[0]).line !== toPos(found.keyEnd).line;
     if (isPartialKey && doc.root) {
       const col = toPos(value.range[0]).character;
-      const { path, existingKeys, scope } = columnSearch(doc.root, col, offset, lineOffsets);
+      const { path, concrete, existingKeys, scope } = columnSearch(doc.root, col, offset, lineOffsets);
       return {
         docIndex,
         offset,
         docKind,
         slot: "key",
         path,
+        concretePath: concrete,
         container: found.container,
         existingKeys,
         resourceKind: scope.kind,
@@ -386,6 +449,7 @@ export function resolveNodeAtPosition(
       docKind,
       slot: "value",
       path: found.keyName != null ? [...found.path, found.keyName] : found.path,
+      concretePath: found.concretePath,
       node: value,
       container: found.container,
       prefix: text.slice(value.range[0], clampedEnd),
@@ -400,13 +464,14 @@ export function resolveNodeAtPosition(
   // resolved by cursor column.
   const resolution: KeyResolution = doc.root
     ? columnSearch(doc.root, character, offset, lineOffsets)
-    : { path: [], existingKeys: new Set<string>(), scope: { depth: 0 } };
+    : { path: [], concrete: "", existingKeys: new Set<string>(), scope: { depth: 0 } };
   return {
     docIndex,
     offset,
     docKind,
     slot: "key",
     path: resolution.path,
+    concretePath: resolution.concrete,
     existingKeys: resolution.existingKeys,
     resourceKind: resolution.scope.kind,
     resourceDepth: resolution.scope.depth,

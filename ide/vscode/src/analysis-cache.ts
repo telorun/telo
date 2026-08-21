@@ -1,9 +1,14 @@
-import type { AnalysisRegistry, AstDocument, LoadedGraph } from "@telorun/analyzer";
+import type { AnalysisRegistry, AstDocument, LoadedGraph, ManifestAnalysis } from "@telorun/analyzer";
 
 interface CachedAnalysis {
   registry: AnalysisRegistry;
   /** The loaded graph, for cross-file features (go-to-definition). */
   graph?: LoadedGraph;
+  /** The analysis of this file's manifest set — what CEL sees per site, where a
+   *  binding was declared, what a reference's contract is. Built once per
+   *  analysis: the indices behind it are a function of the whole set, and
+   *  rebuilding one per keystroke would put a full-set walk on the hover path. */
+  analysis?: ManifestAnalysis;
   /** The entry file's parsed AST plus the text it was parsed from, so language
    *  features skip re-parsing when the buffer is unchanged. */
   parsed?: { text: string; docs: AstDocument[] };
@@ -21,12 +26,17 @@ export class TeloAnalysisCache {
     registry: AnalysisRegistry,
     graph?: LoadedGraph,
     parsed?: { text: string; docs: AstDocument[] },
+    analysis?: ManifestAnalysis,
   ): void {
-    this.byFile.set(filePath, { registry, graph, parsed });
+    this.byFile.set(filePath, { registry, graph, parsed, analysis });
   }
 
   registryFor(filePath: string): AnalysisRegistry | undefined {
     return this.byFile.get(filePath)?.registry;
+  }
+
+  analysisFor(filePath: string): ManifestAnalysis | undefined {
+    return this.byFile.get(filePath)?.analysis;
   }
 
   graphFor(filePath: string): LoadedGraph | undefined {
