@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.0 - 2026-08-21
+### Fixed
+* Declare `inputs: /inputs` on the route handler's `x-telo-ref`, naming the sibling map that holds the call's arguments. Nothing previously tied a route's `inputs:` to the handler it invokes, so an editor could not offer the target's declared input keys there.
+
 ## 0.27.0 - 2026-08-20
 ### Added
 * Http.Reference declares a referrer rule requiring the server that mounts it to declare an openapi: block, so a reference with nothing to render is a telo check error on the server's mount slot rather than a failure at boot.

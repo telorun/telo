@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.22.1 - 2026-08-21
+### Fixed
+* A foreign key's 'references.table' was read while the table resource was still being created, and the kernel replaces a reference with the instance it names only when that instance already exists — so on the pass where it did not, every cross-table foreign key failed with "'references.table' does not name a table". The target is now resolved to its DECLARATION, which carries the physical name whether or not the table has been constructed, so the slot needs no ordering edge.
+* A SQLite table declaring a foreign key could be created once and never booted again. SQLite emits a key only as part of CREATE TABLE and reports it back unnamed, so the reconciler planned an ADD CONSTRAINT alongside the CREATE that already carried it, and every later boot read the table's own key as missing and refused to add what the engine cannot add. A driver now declares that its CREATE TABLE carries the keys, and an unnamed key is matched by its columns, target and referential actions instead of by name.
+
 ## 0.22.0 - 2026-08-20
 ### Added
 * Body slots that establish an execution zone now declare what the region guarantees about its contents, in the new closed zone-attribute vocabulary: Sql.Transaction.steps declares atomic and noSuspend, Idempotency.Once.invoke declares idempotent and noSuspend, and Lease.Critical.invoke declares noSuspend. Lease.Critical and Idempotency.Once become zone providers, opening their zone around the dispatched body. Each attribute's value is the author's reason, which whatever enforces it quotes verbatim.

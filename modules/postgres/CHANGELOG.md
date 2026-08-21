@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 - 2026-08-21
+### Fixed
+* A foreign key's 'references.table' was read while the table resource was still being created, and the kernel replaces a reference with the instance it names only when that instance already exists — so on the pass where it did not, every cross-table foreign key failed with "'references.table' does not name a table". The target is now resolved to its DECLARATION, which carries the physical name whether or not the table has been constructed, so the slot needs no ordering edge.
+* Introspection read back index and foreign-key column lists as a raw string instead of an array, so every existing primary key, single-column unique and index compared as absent. A second boot then refused to start, demanding a primary key be added in a 'beforeMigrations:' entry — on the constraint the first boot had created. The column arrays are cast to text[], which node-postgres parses; pg_attribute.attname is of type name, whose array type it has no parser for.
+
 ## 0.2.0 - 2026-08-20
 ### Added
 * A connection can subscribe to a PostgreSQL notification channel and send on one (listen / notify). The subscription gets its own connection rather than a pooled one — a listener holds its connection for as long as it is subscribed — and replays every subscription after a reconnect, since LISTEN is a property of the connection that carried it. Reported rather than raised on a drop: a lost notification is a lost optimisation, and a poller is what makes recovery certain.
