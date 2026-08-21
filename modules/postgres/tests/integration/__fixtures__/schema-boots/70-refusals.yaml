@@ -1,0 +1,186 @@
+kind: Telo.Application
+metadata:
+  name: PgSchemaBoots
+  version: 7.0.0
+  description: |
+    Boot 8 — the changes PostgreSQL will not have made to data already present.
+
+    This is where the two engines diverge. SQLite cannot alter a column in place at
+    all, so its equivalent boot refuses every retype; PostgreSQL alters happily
+    when the conversion WIDENS, so what has to be refused is the rest — narrowing,
+    toggling a key or a unique constraint, and adding NOT NULL over rows that may
+    hold NULL. Each is a promise about the DATA, so it cannot be applied by
+    silence: either the constraint is created, which fails if the data contradicts
+    it, or the author is told it cannot be.
+
+    Also: two schema resources naming one ledger. Their histories would merge and
+    each would then read the other's tables as removed.
+
+    A schema resource is `Telo.Runnable`, so these are invoked from steps rather
+    than listed in `targets:` — that is what makes a refusal observable from inside
+    the manifest instead of taking the whole boot down with it.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# An alternative declaration of the table boot 7 manages, carrying every refusal
+# at once: the key dropped, the unique constraint dropped, `handle` (which holds
+# NULL for the seeded row) made NOT NULL.
+kind: Postgres.Table
+metadata: { name: driftedUsers }
+table: users
+columns:
+  id: { type: integer }
+  createdAt: { type: timestamptz, nullable: false, defaultExpression: "now()" }
+  email: { type: text, nullable: false }
+  displayName: { type: text }
+  handle: { type: text, nullable: false }
+---
+kind: Postgres.Schema
+metadata: { name: driftedSchema }
+connection: !ref db
+schema: telo_pg_schema_boots
+version: !cel "module.version"
+# Its own ledger: this is an alternative declaration of a table another boot
+# manages, and two schema resources on a connection may not share a history.
+ledger: drift_probe
+tables: [!ref driftedUsers]
+---
+kind: Postgres.Table
+metadata: { name: clashTableA }
+table: clash_probe_a
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: Postgres.Table
+metadata: { name: clashTableB }
+table: clash_probe_b
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: Postgres.Schema
+metadata: { name: clashA }
+connection: !ref db
+schema: telo_pg_schema_boots
+version: !cel "module.version"
+ledger: clash
+tables: [!ref clashTableA]
+---
+kind: Postgres.Schema
+metadata: { name: clashB }
+connection: !ref db
+schema: telo_pg_schema_boots
+version: !cel "module.version"
+ledger: clash
+tables: [!ref clashTableB]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: attemptDrift
+    try:
+      - name: reconcileDrift
+        invoke: !ref driftedSchema
+    catch:
+      - name: driftRefusal
+        value: !cel "error.message"
+  # One pass, every refusal — a plan is judged whole, so an author is not sent
+  # round the loop once per column.
+  - name: assertKeyRefused
+    invoke: !ref assertKeyRefused
+    inputs:
+      actual: !cel "steps.driftRefusal.result.contains('primary key cannot be added or dropped')"
+      expected: true
+  - name: assertUniqueRefused
+    invoke: !ref assertUniqueRefused
+    inputs:
+      actual: !cel "steps.driftRefusal.result.contains('uniqueness is a named constraint')"
+      expected: true
+  - name: assertNotNullRefused
+    invoke: !ref assertNotNullRefused
+    inputs:
+      actual: !cel "steps.driftRefusal.result.contains('adding NOT NULL to a column')"
+      expected: true
+
+  - name: attemptSharedLedger
+    try:
+      - name: reconcileClashA
+        invoke: !ref clashA
+      - name: reconcileClashB
+        invoke: !ref clashB
+    catch:
+      - name: sharedLedgerRefusal
+        value: !cel "error.message"
+  - name: assertSharedLedgerRefused
+    invoke: !ref assertSharedLedgerRefused
+    inputs:
+      actual: !cel "steps.sharedLedgerRefusal.result.contains('share the ledger')"
+      expected: true
+
+  # The refusal applied no part of its plan: a refusal is decided before any DDL
+  # runs, so a half-applied change is not a state this can reach.
+  - name: readConstraints
+    invoke: !ref readCatalogue
+    inputs:
+      sql: >-
+        SELECT conname, contype FROM pg_constraint
+        WHERE conrelid = 'telo_pg_schema_boots.users'::regclass
+          AND contype IN ('p', 'u')
+        ORDER BY conname
+  - name: assertConstraintsIntact
+    invoke: !ref assertConstraintsIntact
+    inputs:
+      actual: !cel "steps.readConstraints.result.rows"
+      expected:
+        - { conname: users_email_key, contype: u }
+        - { conname: users_pkey, contype: p }
+  - name: readNullability
+    invoke: !ref readCatalogue
+    inputs:
+      sql: >-
+        SELECT is_nullable FROM information_schema.columns
+        WHERE table_schema = 'telo_pg_schema_boots' AND table_name = 'users'
+          AND column_name = 'handle'
+  - name: assertStillNullable
+    invoke: !ref assertStillNullable
+    inputs:
+      actual: !cel "steps.readNullability.result.rows"
+      expected: [{ is_nullable: "YES" }]
+---
+kind: Sql.Query
+metadata: { name: readCatalogue }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertKeyRefused }
+---
+kind: Assert.Equals
+metadata: { name: assertUniqueRefused }
+---
+kind: Assert.Equals
+metadata: { name: assertNotNullRefused }
+---
+kind: Assert.Equals
+metadata: { name: assertSharedLedgerRefused }
+---
+kind: Assert.Equals
+metadata: { name: assertConstraintsIntact }
+---
+kind: Assert.Equals
+metadata: { name: assertStillNullable }

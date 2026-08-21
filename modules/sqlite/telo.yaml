@@ -213,6 +213,13 @@ schema:
             properties:
               table:
                 title: Table
+                # Deliberately `schema` — it names a shape and registers no
+                # ordering edge. What a foreign key needs from its target is the
+                # physical name, which the DECLARATION carries, so nothing here
+                # requires the referenced table to be constructed first. An edge
+                # would also make the two most ordinary foreign keys there are
+                # unbootable: a tree table references itself, and a mutual pair
+                # references each other, and both are cycles.
                 x-telo-ref:
                   kind: Self.Table
                   use: schema

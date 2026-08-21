@@ -292,6 +292,14 @@ export class SqliteSchemaDriver implements SchemaDriver {
     return parts.join(" ") + def;
   }
 
+  /** SQLite has no ADD CONSTRAINT, so a foreign key exists only as part of the
+   *  table it was created with — see `createTable`. */
+  readonly foreignKeysInCreateTable = true;
+
+  /** `PRAGMA foreign_key_list` reports no name, and there is nowhere to have put
+   *  one: SQLite does not record a constraint name for a foreign key. */
+  readonly namesForeignKeys = false;
+
   createTable(schema: string, table: DeclaredTable): string[] {
     const parts = table.columns.map((column) => this.#columnDefinition(column));
     // Foreign keys are part of the table in SQLite — there is no ADD CONSTRAINT

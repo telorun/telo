@@ -1,0 +1,132 @@
+kind: Telo.Application
+metadata:
+  name: PgSchemaBoots
+  version: 5.0.0
+  description: |
+    Boot 6 — two renames at once, in the two states a rename can be in.
+
+    `displayName` renames a LIVE column: expand-contract, so the pass adds it,
+    copies `email` into it and tombstones the source — a native RENAME would break
+    version 4, which is still running and still reads `email`. PostgreSQL has
+    `ALTER … RENAME COLUMN` and it is exactly what must not be used here.
+
+    `handle` renames `nickname`, which boot 4 reclaimed. There is nothing left to
+    copy and nothing left to hold, so the mention is INERT and reported as such —
+    that is how the author learns the `renamedFrom:` can be deleted. It must not
+    put the vanished column back on the books.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  createdAt: { type: timestamptz, nullable: false, defaultExpression: "now()" }
+  displayName: { type: text, renamedFrom: email }
+  handle: { type: text, renamedFrom: nickname }
+---
+# Declared unchanged by every boot from here on: a foreign key is read back from
+# the catalogue on each of them, through the same array shape the index columns
+# use, so it is the FK half of that read that these boots keep exercising.
+kind: Postgres.Table
+metadata: { name: sessions }
+table: sessions
+columns:
+  id: { type: integer, primaryKey: true }
+  userId: { type: integer, nullable: false }
+indexes:
+  # The composite key below references this pair, and PostgreSQL requires a
+  # unique constraint on whatever a foreign key points at.
+  sessions_id_user_key: { columns: [id, userId], unique: true }
+foreignKeys:
+  sessions_user_fk:
+    columns: [userId]
+    references:
+      table: !ref users
+      columns: [id]
+    onDelete: cascade
+---
+# A COMPOSITE foreign key, so both column lists carry more than one entry — the
+# shape a single-column key cannot tell apart from a corrupted read.
+kind: Postgres.Table
+metadata: { name: sessionEvents }
+table: session_events
+columns:
+  id: { type: integer, primaryKey: true }
+  sessionId: { type: integer, nullable: false }
+  sessionUserId: { type: integer, nullable: false }
+foreignKeys:
+  session_events_session_fk:
+    columns: [sessionId, sessionUserId]
+    references:
+      table: !ref sessions
+      columns: [id, userId]
+    onDelete: cascade
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_schema_boots
+version: !cel "module.version"
+tables: [!ref users, !ref sessions, !ref sessionEvents]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: read
+    invoke: !ref readUsers
+    inputs:
+      sql: >-
+        SELECT "displayName", handle, email FROM telo_pg_schema_boots.users
+        WHERE id = 1
+  - name: assertCopied
+    invoke: !ref assertCopied
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected:
+        # Copied by the pass; `handle` is empty because its source was reclaimed.
+        - displayName: "a@example.com"
+          handle: null
+          email: "a@example.com"
+  - name: assertTombstoned
+    invoke: !ref assertTombstoned
+    inputs:
+      actual: !cel "resources.appSchema.status.tombstoned"
+      expected: ["column users.email"]
+  - name: assertInert
+    invoke: !ref assertInert
+    inputs:
+      actual: !cel "resources.appSchema.status.inertRenames"
+      expected: ["column users.handle (renamedFrom nickname)"]
+---
+kind: Sql.Query
+metadata: { name: readUsers }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertCopied }
+---
+kind: Assert.Equals
+metadata: { name: assertTombstoned }
+---
+kind: Assert.Equals
+metadata: { name: assertInert }

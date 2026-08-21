@@ -1,0 +1,115 @@
+kind: Telo.Application
+metadata:
+  name: PgSchemaBoots
+  version: 1.0.0
+  description: |
+    Boot 1 — the first release. The namespace, the table, its primary key, a
+    single-column unique, a named multi-column index and a foreign key are all
+    created here, and a row is written so later boots can prove the DATA survives
+    a removal rather than merely the column.
+
+    Everything declared here is also what boot 2 has to READ BACK. That is the
+    half a creating pass never exercises: the objects are absent, so nothing
+    consults introspection.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref seed
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  email: { type: text, nullable: false, unique: true }
+  nickname: { type: text }
+  createdAt: { type: timestamptz, nullable: false, defaultExpression: "now()" }
+indexes:
+  users_nickname_created_idx:
+    columns: [nickname, createdAt]
+---
+# A second table whose only reason to exist is the foreign key: the column lists
+# on BOTH sides of one are read back through the same array shape the index
+# columns are, so a boot that cannot recognise its own key cannot recognise its
+# own reference either.
+kind: Postgres.Table
+metadata: { name: sessions }
+table: sessions
+columns:
+  id: { type: integer, primaryKey: true }
+  userId: { type: integer, nullable: false }
+indexes:
+  # The composite key below references this pair, and PostgreSQL requires a
+  # unique constraint on whatever a foreign key points at.
+  sessions_id_user_key: { columns: [id, userId], unique: true }
+foreignKeys:
+  sessions_user_fk:
+    columns: [userId]
+    references:
+      table: !ref users
+      columns: [id]
+    onDelete: cascade
+---
+# A COMPOSITE foreign key, so both column lists carry more than one entry — the
+# shape a single-column key cannot tell apart from a corrupted read.
+kind: Postgres.Table
+metadata: { name: sessionEvents }
+table: session_events
+columns:
+  id: { type: integer, primaryKey: true }
+  sessionId: { type: integer, nullable: false }
+  sessionUserId: { type: integer, nullable: false }
+foreignKeys:
+  session_events_session_fk:
+    columns: [sessionId, sessionUserId]
+    references:
+      table: !ref sessions
+      columns: [id, userId]
+    onDelete: cascade
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_schema_boots
+# The clock is the app's own released version, which is what moves between these
+# boots and what reclamation is gated on.
+version: !cel "module.version"
+tables: [!ref users, !ref sessions, !ref sessionEvents]
+---
+kind: Run.Sequence
+metadata: { name: seed }
+steps:
+  - name: insert
+    invoke: !ref writeUser
+    inputs:
+      sql: >-
+        INSERT INTO telo_pg_schema_boots.users (id, email, nickname)
+        VALUES (1, 'a@example.com', 'ada')
+  - name: assertNothingHeld
+    invoke: !ref assertNothingHeld
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []
+---
+kind: Sql.Command
+metadata: { name: writeUser }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertNothingHeld }

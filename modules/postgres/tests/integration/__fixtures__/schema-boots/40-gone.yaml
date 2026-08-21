@@ -1,0 +1,72 @@
+kind: Telo.Application
+metadata:
+  name: PgSchemaBoots
+  version: 4.0.0
+  description: |
+    Boot 5 — the column really is gone from the database, not merely from the
+    ledger. Asserted from a fresh process against PostgreSQL's own catalogue, so
+    the evidence is the engine's rather than the schema resource's own report.
+
+    This boot declares no schema resource at all: it only looks.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: describeTable
+    invoke: !ref readCatalogue
+    inputs:
+      sql: >-
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'telo_pg_schema_boots' AND table_name = 'users'
+        ORDER BY column_name
+  - name: assertColumns
+    invoke: !ref assertColumns
+    inputs:
+      actual: !cel "steps.describeTable.result.rows"
+      expected:
+        - { column_name: createdAt }
+        - { column_name: email }
+        - { column_name: id }
+  - name: readIndexes
+    invoke: !ref readCatalogue
+    inputs:
+      sql: >-
+        SELECT indexname FROM pg_indexes
+        WHERE schemaname = 'telo_pg_schema_boots' AND tablename = 'users'
+        ORDER BY indexname
+  - name: assertIndexes
+    invoke: !ref assertIndexes
+    inputs:
+      actual: !cel "steps.readIndexes.result.rows"
+      expected:
+        - { indexname: users_email_key }
+        - { indexname: users_pkey }
+---
+kind: Sql.Query
+metadata: { name: readCatalogue }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertColumns }
+---
+kind: Assert.Equals
+metadata: { name: assertIndexes }

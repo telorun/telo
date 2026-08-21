@@ -1,0 +1,92 @@
+kind: Telo.Application
+metadata:
+  name: PgSchemaBoots
+  version: 8.0.0
+  description: |
+    Boot 9 — a second schema resource over the SAME namespace, owning a table of
+    its own.
+
+    Nothing it declares mentions `users`, and nothing the first one declares
+    mentions `notes`. Each keeps its own history by keeping its own LEDGER — the
+    separation `flyway.table` and Alembic's `version_table` provide — so a
+    namespace reached by two schema resources, whether two libraries in one app or
+    two applications over one database, has two independent sets of objects, two
+    clocks and two migration histories. Sharing one ledger would make this boot
+    record `notes` as the whole truth, read `users` as removed, and drop it once
+    the window elapsed; declaring the same ledger twice on one connection is
+    refused for exactly that reason, which boot 8 pins.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref otherSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Table
+metadata: { name: notes }
+table: notes
+columns:
+  id: { type: integer, primaryKey: true }
+  body: { type: text, nullable: false }
+---
+kind: Postgres.Schema
+metadata: { name: otherSchema }
+connection: !ref db
+schema: telo_pg_schema_boots
+version: !cel "module.version"
+ledger: notes
+tables: [!ref notes]
+# A policy that would reclaim anything eligible, so the isolation is load-bearing
+# rather than incidental: were `users` tombstoned here, it would be dropped.
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertNothingTombstoned
+    invoke: !ref assertNothingTombstoned
+    inputs:
+      actual: !cel "resources.otherSchema.status.tombstoned"
+      expected: []
+  - name: assertNothingReclaimed
+    invoke: !ref assertNothingReclaimed
+    inputs:
+      actual: !cel "resources.otherSchema.status.reclaimed"
+      expected: []
+  # The other owner's table and its data are untouched.
+  - name: read
+    invoke: !ref readUsers
+    inputs:
+      sql: "SELECT email FROM telo_pg_schema_boots.users WHERE id = 1"
+  - name: assertOtherOwnerIntact
+    invoke: !ref assertOtherOwnerIntact
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected: [{ email: "a@example.com" }]
+---
+kind: Sql.Query
+metadata: { name: readUsers }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertNothingTombstoned }
+---
+kind: Assert.Equals
+metadata: { name: assertNothingReclaimed }
+---
+kind: Assert.Equals
+metadata: { name: assertOtherOwnerIntact }

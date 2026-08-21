@@ -156,6 +156,31 @@ export interface SchemaDriver {
   /** Whether a foreign key can be brought to its declaration in place. */
   classifyForeignKeyChange(live: LiveForeignKey, declared: DeclaredForeignKey): ChangeSafety;
 
+  /**
+   * Whether `createTable` already carries the table's foreign keys, so the
+   * reconciler must not also plan an `addForeignKey` for a table it just made.
+   *
+   * REQUIRED, like every other member here, because the wrong answer is silent:
+   * a driver that omitted it would get name matching by default, and if its
+   * engine also emits keys inside `CREATE TABLE` it would get exactly the
+   * unrestartable application this member exists to prevent — with no compile
+   * error and no failing test. Stating an answer is the point.
+   */
+  readonly foreignKeysInCreateTable: boolean;
+
+  /**
+   * Whether the engine reports a foreign key back under the name the
+   * declaration gave it.
+   *
+   * Separate from `foreignKeysInCreateTable` because they are separate facts and
+   * an engine can hold one without the other: MySQL emits keys inside `CREATE
+   * TABLE` and names them. Where this is false a declaration is matched to a
+   * live key by its columns, target and referential actions, since there is no
+   * name to match on and matching by one reads a table's own key as missing on
+   * every boot after the one that created it.
+   */
+  readonly namesForeignKeys: boolean;
+
   createTable(schema: string, table: DeclaredTable): string[];
   addColumn(schema: string, table: string, column: DeclaredColumn): string[];
   alterColumn(schema: string, table: string, live: LiveColumn, column: DeclaredColumn): string[];

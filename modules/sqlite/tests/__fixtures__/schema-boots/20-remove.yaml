@@ -29,11 +29,52 @@ columns:
   id: { type: integer, primaryKey: true }
   email: { type: text, nullable: false }
 ---
+# A foreign key carried unchanged from here on. SQLite does not NAME a foreign
+# key, so a later boot cannot match one to its declaration by name — which is
+# what makes a restart, not a change, the case worth pinning.
+kind: SQLite.Table
+metadata: { name: sessions }
+table: sessions
+columns:
+  id: { type: integer, primaryKey: true }
+  userId: { type: integer, nullable: false }
+foreignKeys:
+  sessionsUser:
+    columns: [userId]
+    references:
+      table: !ref users
+      columns: [id]
+    onDelete: cascade
+---
+# Two structurally IDENTICAL keys apart from their declared names, plus a
+# COMPOSITE one. SQLite keeps no name, so these are matched by structure on every
+# later boot — and a match has to be CONSUMED: without that both declarations
+# claim the same live key, and a key genuinely missing from the database is
+# masked by its twin instead of being reported.
+kind: SQLite.Table
+metadata: { name: memberships }
+table: memberships
+columns:
+  id: { type: integer, primaryKey: true }
+  ownerId: { type: integer, nullable: false }
+  deputyId: { type: integer, nullable: false }
+  userId: { type: integer, nullable: false }
+foreignKeys:
+  membershipOwner:
+    columns: [ownerId]
+    references: { table: !ref sessions, columns: [id] }
+  membershipDeputy:
+    columns: [deputyId]
+    references: { table: !ref sessions, columns: [id] }
+  membershipUserSession:
+    columns: [userId, id]
+    references: { table: !ref sessions, columns: [userId, id] }
+---
 kind: SQLite.Schema
 metadata: { name: appSchema }
 connection: !ref db
 version: !cel "module.version"
-tables: [!ref users]
+tables: [!ref users, !ref sessions, !ref memberships]
 ---
 kind: Run.Sequence
 metadata: { name: test }

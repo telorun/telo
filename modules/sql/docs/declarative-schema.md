@@ -140,6 +140,36 @@ The rest need the live database: a narrowing type change, `NOT NULL` over a
 column that currently holds NULLs, and a rename whose copy would not survive the
 type change. Those are what `beforeMigrations:` is for.
 
+**A foreign key reads its target's DECLARATION, not its resource.** What it needs
+from `references.table` is the physical name, which the declaration carries
+whether or not that table has been constructed — so the slot registers no
+ordering edge, and declaration order never matters. On an engine with
+`ADD CONSTRAINT` the key is created in a later phase than the tables, so a key
+may name a table declared below it.
+
+**Known limitation: a key may not point at a table that cannot be constructed
+before it.** A table that references ITSELF (a `parent_id` tree) and a mutually
+referencing pair are both refused at boot, because the kernel resolves a `!ref`
+before the resource that holds it is created and neither can satisfy that. Both
+are otherwise ordinary and both are creatable on PostgreSQL. Declare such a key
+in a `beforeMigrations:` entry until this is lifted.
+
+**Where the engine cannot name a key, the key is matched by structure.** SQLite
+emits a foreign key only as part of `CREATE TABLE` and reports it back unnamed,
+so a declaration is matched to a live key by its columns, its target and its
+referential actions rather than by the name the manifest gave it. Matching by
+name there would read a table's own key as missing on every boot after the one
+that created it, and refuse to add what the engine cannot add — an application
+that starts once. A match is consumed, so two keys with identical structure pair
+up one for one and a key genuinely absent from the database is still reported.
+
+**Renaming a SQLite foreign key leaves a tombstone that never clears.** The key
+itself needs no DDL — its structure is unchanged, so it still matches — but the
+old NAME is no longer declared, so it is tombstoned, and SQLite has no
+`DROP CONSTRAINT` to reclaim it with. It sits in `status.pendingReclamation` as
+`unreclaimable` for good. Nothing is broken by it; if the entry is unwanted,
+rebuild the table in a `migrations:` entry, which retires the old name with it.
+
 **An object this engine cannot drop is never attempted.** SQLite has no
 `DROP CONSTRAINT`, so a tombstoned foreign key there is reported through
 `status.pendingReclamation` with an `unreclaimable` reason rather than retried:

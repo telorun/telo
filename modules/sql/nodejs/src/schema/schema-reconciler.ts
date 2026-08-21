@@ -96,6 +96,23 @@ function indexDiffers(live: LiveIndex, declared: DeclaredIndex): boolean {
 /** A referential action is what the constraint DOES, so a change to it is a
  *  change to the constraint. An action the engine did not report is not compared
  *  — an absent reading is not evidence of a difference. */
+/**
+ * The columns a key maps to what, which is what makes it THAT key rather than
+ * another. Its referential actions are settable properties of it, deliberately
+ * excluded: an engine that keeps no name matches on this, and folding the
+ * actions in would make a changed delete rule read as a brand new key — an ADD
+ * where the author should have been told the rule cannot be changed in place.
+ */
+function sameForeignKeyIdentity(live: LiveForeignKey, declared: DeclaredForeignKey): boolean {
+  return (
+    live.references.table === declared.references.table &&
+    live.columns.length === declared.columns.length &&
+    live.columns.every((column, i) => column === declared.columns[i]) &&
+    live.references.columns.length === declared.references.columns.length &&
+    live.references.columns.every((column, i) => column === declared.references.columns[i])
+  );
+}
+
 function foreignKeyDiffers(live: LiveForeignKey, declared: DeclaredForeignKey): boolean {
   const action = (value: string | undefined): string | undefined => value?.toUpperCase();
   return (
@@ -259,12 +276,28 @@ export function planReconciliation(
       ]);
     }
 
-    const liveForeignKeys = new Map(
-      (liveTable?.foreignKeys ?? []).map((fk) => [fk.name, fk]),
-    );
+    // A table this pass just created already carries its keys where the engine
+    // can only emit them there. They are still MARKED declared, or the next boot
+    // would read every one of them as removed and tombstone it.
+    const carriedByCreate = !liveTable && driver.foreignKeysInCreateTable;
+    // Where the engine keeps no name, a declaration is matched to a live key by
+    // its structure. Matching by name regardless is what made such a table
+    // unrestartable: every later boot read its own key as missing and refused to
+    // add what the engine cannot add. Matches are CONSUMED, so two keys that are
+    // structurally identical pair up one for one instead of both claiming the
+    // first.
+    const unmatched = [...(liveTable?.foreignKeys ?? [])];
+    const liveForeignKeys = new Map(unmatched.map((fk) => [fk.name, fk]));
+    const takeStructural = (fk: DeclaredForeignKey): LiveForeignKey | undefined => {
+      const at = unmatched.findIndex((live) => sameForeignKeyIdentity(live, fk));
+      return at < 0 ? undefined : unmatched.splice(at, 1)[0];
+    };
     for (const fk of table.foreignKeys) {
       markDeclared({ kind: "foreignKey", table: table.name, name: fk.name });
-      const existing = liveForeignKeys.get(fk.name);
+      if (carriedByCreate) continue;
+      const existing = driver.namesForeignKeys
+        ? liveForeignKeys.get(fk.name)
+        : takeStructural(fk);
       if (!existing) {
         emit("constraint", `foreign key ${fk.name}`, driver.addForeignKey(schema, table.name, fk));
         continue;

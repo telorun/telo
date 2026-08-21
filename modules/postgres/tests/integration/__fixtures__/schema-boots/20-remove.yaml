@@ -1,0 +1,137 @@
+kind: Telo.Application
+metadata:
+  name: PgSchemaBoots
+  version: 2.0.0
+  description: |
+    Boot 3 — the release that stops declaring `nickname`. This is the boot the
+    whole design exists for: the column is TOMBSTONED, no DDL is emitted, and the
+    version still running keeps reading it. A separate process from the boot that
+    declared it, reading the ledger the earlier one wrote.
+
+    The index over `nickname` goes with the declaration, so it is tombstoned too —
+    a held column that nothing declares is still a column, and the index that
+    covered it is still an object somebody owned.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  email: { type: text, nullable: false, unique: true }
+  createdAt: { type: timestamptz, nullable: false, defaultExpression: "now()" }
+---
+# Declared unchanged by every boot from here on: a foreign key is read back from
+# the catalogue on each of them, through the same array shape the index columns
+# use, so it is the FK half of that read that these boots keep exercising.
+kind: Postgres.Table
+metadata: { name: sessions }
+table: sessions
+columns:
+  id: { type: integer, primaryKey: true }
+  userId: { type: integer, nullable: false }
+indexes:
+  # The composite key below references this pair, and PostgreSQL requires a
+  # unique constraint on whatever a foreign key points at.
+  sessions_id_user_key: { columns: [id, userId], unique: true }
+foreignKeys:
+  sessions_user_fk:
+    columns: [userId]
+    references:
+      table: !ref users
+      columns: [id]
+    onDelete: cascade
+---
+# A COMPOSITE foreign key, so both column lists carry more than one entry — the
+# shape a single-column key cannot tell apart from a corrupted read.
+kind: Postgres.Table
+metadata: { name: sessionEvents }
+table: session_events
+columns:
+  id: { type: integer, primaryKey: true }
+  sessionId: { type: integer, nullable: false }
+  sessionUserId: { type: integer, nullable: false }
+foreignKeys:
+  session_events_session_fk:
+    columns: [sessionId, sessionUserId]
+    references:
+      table: !ref sessions
+      columns: [id, userId]
+    onDelete: cascade
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_schema_boots
+version: !cel "module.version"
+tables: [!ref users, !ref sessions, !ref sessionEvents]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertTombstoned
+    invoke: !ref assertTombstoned
+    inputs:
+      actual: !cel "resources.appSchema.status.tombstoned"
+      expected:
+        - "column users.nickname"
+        - "index users.users_nickname_created_idx"
+  # The declaration no longer mentions the column, and the data is still there.
+  - name: read
+    invoke: !ref readUsers
+    inputs:
+      sql: "SELECT nickname FROM telo_pg_schema_boots.users WHERE id = 1"
+  - name: assertHeld
+    invoke: !ref assertHeld
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected: [{ nickname: ada }]
+  # No policy is declared, so nothing is ever dropped — and the ledger still
+  # reports what it is holding.
+  - name: assertReported
+    invoke: !ref assertReported
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected:
+        - object: "index users.users_nickname_created_idx"
+          missingSinceVersion: "2.0.0"
+          versionsRemaining: null
+          msRemaining: null
+          eligible: false
+        - object: "column users.nickname"
+          missingSinceVersion: "2.0.0"
+          versionsRemaining: null
+          msRemaining: null
+          eligible: false
+---
+kind: Sql.Query
+metadata: { name: readUsers }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertTombstoned }
+---
+kind: Assert.Equals
+metadata: { name: assertHeld }
+---
+kind: Assert.Equals
+metadata: { name: assertReported }

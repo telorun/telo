@@ -56,6 +56,14 @@ export class PostgresSchemaDriver implements SchemaDriver {
     return db;
   }
 
+  /** Every key is added in the constraint phase, after every table — which is
+   *  what makes declaration order irrelevant and lets a key name a table
+   *  declared below it, or the table it sits on. */
+  readonly foreignKeysInCreateTable = false;
+
+  /** `pg_constraint.conname` is the name the declaration gave it. */
+  readonly namesForeignKeys = true;
+
   quote(name: string): string {
     return quoteAnsiIdentifier(name);
   }
@@ -172,7 +180,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
         `ix.indisprimary AS is_primary, ` +
         `ix.indisunique AND (ix.indisprimary OR con.contype IS NOT NULL) AS backs_constraint, ` +
         `ARRAY(SELECT a.attname FROM unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) ` +
-        `JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum ORDER BY k.ord) AS columns ` +
+        `JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum ORDER BY k.ord)::text[] AS columns ` +
         `FROM pg_index ix ` +
         `JOIN pg_class i ON i.oid = ix.indexrelid ` +
         `JOIN pg_class t ON t.oid = ix.indrelid ` +
@@ -185,9 +193,9 @@ export class PostgresSchemaDriver implements SchemaDriver {
       `SELECT c.conname AS name, t.relname AS table_name, rt.relname AS referenced_table, ` +
         `c.confdeltype AS on_delete, c.confupdtype AS on_update, ` +
         `ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord) ` +
-        `JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum ORDER BY k.ord) AS columns, ` +
+        `JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum ORDER BY k.ord)::text[] AS columns, ` +
         `ARRAY(SELECT a.attname FROM unnest(c.confkey) WITH ORDINALITY AS k(attnum, ord) ` +
-        `JOIN pg_attribute a ON a.attrelid = rt.oid AND a.attnum = k.attnum ORDER BY k.ord) AS referenced_columns ` +
+        `JOIN pg_attribute a ON a.attrelid = rt.oid AND a.attnum = k.attnum ORDER BY k.ord)::text[] AS referenced_columns ` +
         `FROM pg_constraint c ` +
         `JOIN pg_class t ON t.oid = c.conrelid ` +
         `JOIN pg_class rt ON rt.oid = c.confrelid ` +

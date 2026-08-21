@@ -1,0 +1,123 @@
+kind: Telo.Application
+metadata:
+  name: PgSchemaBoots
+  version: 3.0.0
+  description: |
+    Boot 4 — a release later, with a policy of one version and no waiting. The
+    tombstones have aged out, so this boot drops the column and its index and
+    clears the ledger entries. `afterDuration: 0ms` is what makes the time backstop
+    a no-op for the test; a real deployment states days.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Table
+metadata: { name: users }
+table: users
+columns:
+  id: { type: integer, primaryKey: true }
+  email: { type: text, nullable: false, unique: true }
+  createdAt: { type: timestamptz, nullable: false, defaultExpression: "now()" }
+---
+# Declared unchanged by every boot from here on: a foreign key is read back from
+# the catalogue on each of them, through the same array shape the index columns
+# use, so it is the FK half of that read that these boots keep exercising.
+kind: Postgres.Table
+metadata: { name: sessions }
+table: sessions
+columns:
+  id: { type: integer, primaryKey: true }
+  userId: { type: integer, nullable: false }
+indexes:
+  # The composite key below references this pair, and PostgreSQL requires a
+  # unique constraint on whatever a foreign key points at.
+  sessions_id_user_key: { columns: [id, userId], unique: true }
+foreignKeys:
+  sessions_user_fk:
+    columns: [userId]
+    references:
+      table: !ref users
+      columns: [id]
+    onDelete: cascade
+---
+# A COMPOSITE foreign key, so both column lists carry more than one entry — the
+# shape a single-column key cannot tell apart from a corrupted read.
+kind: Postgres.Table
+metadata: { name: sessionEvents }
+table: session_events
+columns:
+  id: { type: integer, primaryKey: true }
+  sessionId: { type: integer, nullable: false }
+  sessionUserId: { type: integer, nullable: false }
+foreignKeys:
+  session_events_session_fk:
+    columns: [sessionId, sessionUserId]
+    references:
+      table: !ref sessions
+      columns: [id, userId]
+    onDelete: cascade
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_schema_boots
+version: !cel "module.version"
+tables: [!ref users, !ref sessions, !ref sessionEvents]
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertReclaimed
+    invoke: !ref assertReclaimed
+    inputs:
+      actual: !cel "resources.appSchema.status.reclaimed"
+      expected:
+        # An index is dropped before the column it covers.
+        - "index users.users_nickname_created_idx"
+        - "column users.nickname"
+  - name: assertNothingHeld
+    invoke: !ref assertNothingHeld
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []
+  # The row survives; only the dropped column is gone.
+  - name: read
+    invoke: !ref readUsers
+    inputs:
+      sql: "SELECT email FROM telo_pg_schema_boots.users WHERE id = 1"
+  - name: assertRowIntact
+    invoke: !ref assertRowIntact
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected: [{ email: "a@example.com" }]
+---
+kind: Sql.Query
+metadata: { name: readUsers }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertReclaimed }
+---
+kind: Assert.Equals
+metadata: { name: assertNothingHeld }
+---
+kind: Assert.Equals
+metadata: { name: assertRowIntact }

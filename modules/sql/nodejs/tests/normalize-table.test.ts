@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { normalizeTable } from "../src/schema/normalize-table.js";
 
+/** These declarations name their targets by plain string, so the resolver has
+ *  nothing to resolve. Resolution itself is covered in `table-reference.test.ts`. */
+const byName = (value: unknown) => String(value);
+
 /**
  * Declaration-level refusals. Each of these is decidable from the manifest
  * alone, so it is refused where it is written rather than reaching the engine
@@ -8,7 +12,7 @@ import { normalizeTable } from "../src/schema/normalize-table.js";
  */
 describe("normalizeTable", () => {
   const table = (columns: Record<string, any>, rest: Record<string, any> = {}) =>
-    normalizeTable({ table: "users", columns, ...rest } as any);
+    normalizeTable({ table: "users", columns, ...rest } as any, byName);
 
   it("defaults nullability to true and leaves flags off", () => {
     const declared = table({ id: { type: "integer" } });
@@ -81,14 +85,16 @@ describe("normalizeTable", () => {
     ).toThrow(/one for one/);
   });
 
-  it("reads a reference's table through the injected instance", () => {
-    const declared = table(
-      { a: { type: "text" } },
+  it("takes a reference's table from the resolver, whatever the slot holds", () => {
+    const declared = normalizeTable(
       {
+        table: "users",
+        columns: { a: { type: "text" } },
         foreignKeys: {
-          fk: { columns: ["a"], references: { table: { table: "other" }, columns: ["id"] } },
+          fk: { columns: ["a"], references: { table: { kind: "X.Table", name: "o" }, columns: ["id"] } },
         },
-      },
+      } as any,
+      () => "other",
     );
     expect(declared.foreignKeys[0]?.references.table).toBe("other");
   });
@@ -102,7 +108,7 @@ describe("normalizeTable", () => {
  */
 describe("implied non-nullability", () => {
   const table = (columns: Record<string, any>) =>
-    normalizeTable({ table: "users", columns } as any);
+    normalizeTable({ table: "users", columns } as any, byName);
 
   it("makes a primary key non-nullable even when nothing says so", () => {
     expect(table({ id: { type: "integer", primaryKey: true } }).columns[0]?.nullable).toBe(false);

@@ -1,0 +1,42 @@
+kind: Telo.Application
+metadata:
+  name: PgSchemaBoots
+  version: 1.0.0
+  description: |
+    Boot 0 — start from no namespace, so the sequence of observed versions is the
+    one this test asserts about rather than whatever a previous run left. `DROP
+    SCHEMA IF EXISTS … CASCADE` takes the ledger tables with it, which is the
+    point: the version clock lives there.
+
+    Unlike the SQLite suite, whose reset removes a file and has to catch its
+    absence, `IF EXISTS` makes the empty case unremarkable here.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: dropNamespace
+    invoke: !ref command
+    inputs:
+      sql: "DROP SCHEMA IF EXISTS telo_pg_schema_boots CASCADE"
+---
+kind: Sql.Command
+metadata: { name: command }
+connection: !ref db
