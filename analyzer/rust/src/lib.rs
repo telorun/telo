@@ -10,6 +10,7 @@ pub mod builtins;
 pub mod loaded_types;
 pub mod manifest_loader;
 pub mod parse_loaded_file;
+pub mod release;
 pub mod resolve_ref_sentinels;
 pub mod system_kinds;
 pub mod types;
@@ -17,6 +18,7 @@ pub mod types;
 pub use loaded_types::{LoadedFile, ParseError};
 pub use manifest_loader::{resolve_source, ManifestLoader};
 pub use parse_loaded_file::parse_loaded_file;
+pub use release::WORKSPACE_FILENAME;
 pub use resolve_ref_sentinels::{
     as_resolved_ref, find_invalid_reference_forms, find_unresolved_sentinels,
     resolve_ref_sentinels, InvalidReferenceForm, RefTargets, ResolvedRef, UnresolvedRef,

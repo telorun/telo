@@ -7,19 +7,30 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 
 /**
- * Hash-keyed analysis cache: a tiny JSON sidecar in `.telo/manifests/`
+ * Hash-keyed analysis cache: a tiny JSON sidecar under `.telo/analysis/`
  * recording that an exact set of manifest bytes — under specific
  * `@telorun/kernel` and `@telorun/analyzer` package versions — passed
  * `analyzer.analyzeErrors`. The next `kernel.load` reads the sidecar
  * and, if signatures match, skips the per-resource validation walk.
  *
- * Lives next to the manifest cache (`LocalManifestCacheSource`) but is
- * independent of it — splitting both for grep-ability and because the
- * concerns (URL → file content vs. content → analyzer verdict) are
- * orthogonal.
+ * ONE STAMP PER ENTRY, in a directory keyed by a hash of the entry URL.
+ * A single file holding a single signature was per-app only because every app
+ * used to get its own `.telo` beside its manifest; once the cache root is shared
+ * across a workspace, one file means each app overwrites the last — A stamps, B
+ * misses and overwrites, forever. That is a permanent 100% miss with no error to
+ * show for it, worst in the test suite, where a kernel is spawned per manifest
+ * and the cache matters most.
+ *
+ * A DIRECTORY rather than several records in one file, because two kernels
+ * loading different manifests concurrently would otherwise read-modify-write the
+ * same JSON and lose each other's entry — and concurrent loads are the normal
+ * case, not the exception.
+ *
+ * NOT under `manifests/`, which holds cached module manifests keyed by transport.
+ * A verdict about an entry is not a manifest; filing it there made the directory
+ * mean two things.
  */
 
-const CACHE_SUBDIR = ".telo/manifests";
 
 /** File-format version of the analysis stamp envelope. Only bumped when
  *  the on-disk *layout* changes (new fields, restructured payload). The
@@ -30,7 +41,6 @@ const CACHE_SUBDIR = ".telo/manifests";
  *  disk. A hand-maintained integer for that purpose would silently mask
  *  newly-stricter validation until the next manifest edit. */
 const ANALYSIS_STAMP_FORMAT_VERSION = 1;
-const ANALYSIS_STAMP_FILE = `${CACHE_SUBDIR}/.validated.json`;
 
 const localRequire = createRequire(import.meta.url);
 
@@ -128,21 +138,33 @@ export function computeAnalysisSignature(graph: LoadedGraph): string {
     .digest("hex");
 }
 
-/** Read the stamped analysis verdict for the entry at `entryDir`, or
- *  `undefined` when missing / unreadable / format-mismatched. The
- *  `version` field is the on-disk *format* version; semantic
- *  invalidation flows through the signature (which embeds package
- *  versions). A future format change bumps `version` so older kernels
- *  reading a newer stamp (or vice versa) discard rather than misparse. */
+/** Where one entry's stamp lives: `<analysisDir>/<hash of entry URL>.json`.
+ *
+ *  Keyed by the entry URL rather than by its directory, because two manifests in
+ *  one directory (an app and its test harness) are two entries with two verdicts,
+ *  and a shared cache root makes the directory a far weaker discriminator than it
+ *  used to be. */
+function stampPath(analysisDir: string, entryUrl: string): string {
+  const id = createHash("sha256").update(entryUrl).digest("hex").slice(0, 32);
+  return path.join(analysisDir, `${id}.json`);
+}
+
+/** Read the stamped analysis verdict for `entryUrl`, or `undefined` when
+ *  missing / unreadable / format-mismatched. The `version` field is the
+ *  on-disk *format* version; semantic invalidation flows through the
+ *  signature (which embeds package versions). A future format change bumps
+ *  `version` so older kernels reading a newer stamp (or vice versa) discard
+ *  rather than misparse.
+ *
+ *  A pre-workspace-anchor `.telo/manifests/.validated.json` is simply never
+ *  looked at: it is a file where this layout wants a directory, so neither
+ *  version of the kernel can misread the other's. */
 export async function readAnalysisStamp(
-  entryDir: string,
-  manifestsDir?: string,
+  entryUrl: string,
+  analysisDir: string,
 ): Promise<AnalysisStamp | undefined> {
-  const stampPath = manifestsDir
-    ? path.join(manifestsDir, ".validated.json")
-    : path.join(entryDir, ANALYSIS_STAMP_FILE);
   try {
-    const text = await fs.readFile(stampPath, "utf-8");
+    const text = await fs.readFile(stampPath(analysisDir, entryUrl), "utf-8");
     const parsed = JSON.parse(text) as Partial<AnalysisStamp>;
     if (
       parsed?.version === ANALYSIS_STAMP_FORMAT_VERSION &&
@@ -160,17 +182,23 @@ export async function readAnalysisStamp(
  *  per-resource validation walk when the manifest set is unchanged.
  *  Idempotent; safe to call after every successful load. */
 export async function writeAnalysisStamp(
-  entryDir: string,
+  entryUrl: string,
   signature: string,
-  manifestsDir?: string,
+  analysisDir: string,
 ): Promise<void> {
   const stamp: AnalysisStamp = {
     version: ANALYSIS_STAMP_FORMAT_VERSION,
     signature,
   };
-  const target = manifestsDir
-    ? path.join(manifestsDir, ".validated.json")
-    : path.join(entryDir, ANALYSIS_STAMP_FILE);
+  const target = stampPath(analysisDir, entryUrl);
   await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.writeFile(target, JSON.stringify(stamp), "utf-8");
+  // Temp file + rename, as the controller-source cache does. Two kernels loading
+  // the SAME entry concurrently — the normal case for a shared root, where a test
+  // suite runs many manifests at once — would otherwise interleave writes to one
+  // path. A torn stamp is read as a miss rather than as a wrong verdict, so the
+  // cost is a silent re-validation, but rename makes it unrepresentable for the
+  // price of one syscall.
+  const tmp = `${target}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(stamp), "utf-8");
+  await fs.rename(tmp, target);
 }

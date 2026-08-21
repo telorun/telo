@@ -176,7 +176,15 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     // child down in its own `finally`, so this only has to close the channels.
     const exitCode = (async () => {
       try {
-        await child.load(source);
+        // The child runs a manifest in the SAME workspace as its parent, so it
+        // shares the root the parent already resolved instead of deriving one
+        // beside the child manifest. Deriving put a `.telo` in every directory
+        // holding a test manifest and rebuilt every controller bundle once per
+        // test, since `Test.Suite` runs each test through here.
+        //
+        // `undefined` means "resolve one yourself" and `null` means "no cache" —
+        // a parent with no local anchor must yield the first, not the second.
+        await child.load(source, { cacheDir: this.kernel.getCacheRoot() ?? undefined });
         await child.start();
         return child.exitCode;
       } catch (err) {

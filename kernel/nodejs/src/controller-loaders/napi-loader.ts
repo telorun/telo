@@ -107,6 +107,34 @@ export interface NapiLoadResult {
 
 export class NapiControllerLoader {
   /**
+   * The `.telo` cache root this kernel resolved, or `undefined` when it resolved
+   * none (a memory-rooted entry), in which case cargo's own default is used.
+   *
+   * The build is anchored here for the same reason the Rust kernel's is: one
+   * shared dependency build per workspace instead of one per crate, and — the
+   * load-bearing half — a directory KEYED BY SDK BACKEND. This loader builds a
+   * controller crate with `telorun-sdk/napi` while `telo-rs` builds the very same
+   * crate with `native`, and a plain `cargo build --workspace` builds it with
+   * neither. All three sharing one target directory means each alternation
+   * rebuilds the crate and its dependency tree; before this they were kept apart
+   * only by the accident that this loader took cargo's default.
+   */
+  private readonly cacheRoot?: string;
+
+  constructor(cacheRoot?: string) {
+    this.cacheRoot = cacheRoot;
+  }
+
+  /** `CARGO_TARGET_DIR` for this loader's builds, or `undefined` to leave cargo's
+   *  own resolution alone. Applied to `cargo metadata` as well as `cargo build`,
+   *  since `target_directory` is where the dylib is then looked for — setting it
+   *  on only one of the two would build in one place and search in another. */
+  private targetDirEnv(): Record<string, string | undefined> {
+    const env = hostEnv();
+    if (!this.cacheRoot) return env;
+    return { ...env, CARGO_TARGET_DIR: path.join(this.cacheRoot, "cargo", "napi", "target") };
+  }
+  /**
    * Resolve a `pkg:cargo/...` PURL to a controller module instance by building
    * the crate and loading the resulting native addon.
    *
@@ -234,7 +262,11 @@ export class NapiControllerLoader {
     // Read before building: the metadata answers both "where did the dylib
     // land" and "does this crate use the SDK", and the second decides the build
     // flags.
-    const { targetDir, libName, usesSdk } = await resolveCrateMetadata(cratePath, fallbackName);
+    const { targetDir, libName, usesSdk } = await resolveCrateMetadata(
+      cratePath,
+      fallbackName,
+      this.targetDirEnv(),
+    );
 
     try {
       // The backend is selected as a *dependency* feature of the SDK. A crate
@@ -253,7 +285,7 @@ export class NapiControllerLoader {
       await execFileAsync("cargo", ["build", "--release", ...featureArgs], {
         cwd: cratePath,
         maxBuffer: 32 * 1024 * 1024,
-        env: hostEnv(),
+        env: this.targetDirEnv(),
       });
     } catch (err: any) {
       const stderr = err?.stderr ? `\n${err.stderr}` : "";
@@ -331,6 +363,7 @@ const SDK_CRATE_NAME = "telorun-sdk";
 async function resolveCrateMetadata(
   cratePath: string,
   fallbackName: string,
+  env: Record<string, string | undefined>,
 ): Promise<{ targetDir: string; libName: string; usesSdk: boolean }> {
   const result = await execFileAsync("cargo", [
     "metadata",
@@ -339,7 +372,7 @@ async function resolveCrateMetadata(
     "--manifest-path",
     path.join(cratePath, "Cargo.toml"),
     "--no-deps",
-  ], { maxBuffer: 32 * 1024 * 1024, env: hostEnv() });
+  ], { maxBuffer: 32 * 1024 * 1024, env });
   const metadata = JSON.parse(result.stdout);
   const cratePackage = metadata.packages?.find(
     (p: any) => p.manifest_path === path.join(cratePath, "Cargo.toml"),

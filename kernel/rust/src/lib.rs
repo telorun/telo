@@ -25,6 +25,7 @@ pub mod resolve_include_sentinels;
 pub mod resource_context;
 pub mod runtime_registry;
 pub mod schema_validator;
+pub mod workspace_marker;
 
 pub use error::KernelError;
 pub use kernel::Kernel;

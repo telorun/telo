@@ -45,6 +45,21 @@ const PEER_INSTALL_FLAGS: ReadonlyArray<string> =
       ? ["--no-strict-peer-dependencies"]
       : [];
 
+/**
+ * Quiet the installer WITHOUT quieting its failures. `--silent` does both: on
+ * npm 11 a failed install writes nothing at all — not the `ERESOLVE`/`ETARGET`
+ * code, not the offending spec — so the wrapper below could only report that
+ * some install failed, with no cause, for every failure class. `--loglevel`
+ * error keeps the diagnosis and drops the progress chatter, which is the half
+ * that was actually worth suppressing.
+ */
+const QUIET_INSTALL_FLAGS: ReadonlyArray<string> =
+  PACKAGE_MANAGER === "npm"
+    ? ["--loglevel=error", "--no-progress"]
+    : PACKAGE_MANAGER === "pnpm"
+      ? ["--loglevel=error"]
+      : [];
+
 
 /**
  * Tells the dispatcher (and any UI consumer downstream) which branch the
@@ -335,7 +350,7 @@ export class NpmControllerLoader {
         "install",
         "--no-audit",
         "--no-fund",
-        "--silent",
+        ...QUIET_INSTALL_FLAGS,
         ...PEER_INSTALL_FLAGS,
       ]);
       await fs.writeFile(stateFile, JSON.stringify({ rootHash: newHash }, null, 2) + "\n");
@@ -476,11 +491,21 @@ export class NpmControllerLoader {
         // Past every re-check: the package manager is about to run for real,
         // which is the wait a caller wants reported.
         await report?.("npm-install");
+        // The installer re-resolves the ROOT's whole dependency set, not just
+        // the alias being added, so one dead record left by another app fails
+        // an install that has nothing to do with it — and the root is shared
+        // workspace-wide, so that blast radius is every app. Prune here rather
+        // than only on a realm change (`materializeInstallRoot`), which a root
+        // that goes stale afterwards never reaches. Placed past every re-check
+        // so it costs 2 stats per recorded dep only on the branch that was
+        // already going to spawn the package manager, never on a cache hit.
+        const pruned = await pruneDeadControllerDeps(installRoot);
+        if (pruned) this.rootDeps = pruned;
         await runPackageManager(installRoot, [
           "install",
           "--no-audit",
           "--no-fund",
-          "--silent",
+          ...QUIET_INSTALL_FLAGS,
           ...PEER_INSTALL_FLAGS,
           "--save",
           // `<alias>@<source-spec>` installs the package under the alias folder
@@ -650,9 +675,15 @@ async function runPackageManager(cwd: string, args: string[]): Promise<void> {
           `TELO_PKG_MANAGER to a different binary name.`,
       );
     }
-    const stderr = err?.stderr ? `\n${err.stderr}` : "";
+    // Both streams: npm writes its diagnosis to stderr, pnpm and bun put parts
+    // of theirs on stdout. Reporting one of them is how a real cause becomes a
+    // failure with no message.
+    const output = [err?.stderr, err?.stdout]
+      .map((s) => (typeof s === "string" ? s.trim() : ""))
+      .filter(Boolean)
+      .join("\n");
     throw new Error(
-      `[telo] '${PACKAGE_MANAGER} ${args.join(" ")}' failed in ${cwd}:${stderr}`,
+      `[telo] '${PACKAGE_MANAGER} ${args.join(" ")}' failed in ${cwd}:${output ? `\n${output}` : ""}`,
     );
   }
 }
@@ -833,6 +864,43 @@ async function liveControllerDeps(
     live[name] = spec;
   }
   return live;
+}
+
+/**
+ * Rewrite the install root's `package.json` with its dead controller records
+ * dropped, returning the surviving map — or null when nothing had to change,
+ * so the common case writes no file.
+ *
+ * Realm-collapse names are never candidates: they are wired in by
+ * `materializeInstallRoot` from the kernel's own resolved paths and are the one
+ * thing whose absence must be reported rather than repaired away.
+ *
+ * Must be called under the install root's lock — it is a read-modify-write of a
+ * file every kernel sharing the root writes to.
+ */
+async function pruneDeadControllerDeps(
+  installRoot: string,
+): Promise<Record<string, string> | null> {
+  const deps = await readPackageDeps(installRoot);
+  if (!deps) return null;
+  const realm = new Set<string>(REALM_COLLAPSE_NAMES);
+  const controllers: Record<string, string> = {};
+  const preserved: Record<string, string> = {};
+  for (const [name, spec] of Object.entries(deps)) {
+    if (realm.has(name)) preserved[name] = spec;
+    else controllers[name] = spec;
+  }
+  const live = await liveControllerDeps(controllers, installRoot);
+  if (Object.keys(live).length === Object.keys(controllers).length) return null;
+
+  const packageJsonPath = path.join(installRoot, "package.json");
+  const pkg = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+  const merged = { ...live, ...preserved };
+  await fs.writeFile(
+    packageJsonPath,
+    JSON.stringify({ ...pkg, dependencies: merged }, null, 2) + "\n",
+  );
+  return merged;
 }
 
 async function readPackageDeps(installRoot: string): Promise<Record<string, string> | null> {
