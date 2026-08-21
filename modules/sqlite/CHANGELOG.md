@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 - 2026-08-21
+### Fixed
+* A foreign key's 'references.table' was read while the table resource was still being created, and the kernel replaces a reference with the instance it names only when that instance already exists — so on the pass where it did not, every cross-table foreign key failed with "'references.table' does not name a table". The target is now resolved to its DECLARATION, which carries the physical name whether or not the table has been constructed, so the slot needs no ordering edge.
+* A SQLite table declaring a foreign key could be created once and never booted again. SQLite emits a key only as part of CREATE TABLE and reports it back unnamed, so the reconciler planned an ADD CONSTRAINT alongside the CREATE that already carried it, and every later boot read the table's own key as missing and refused to add what the engine cannot add. A driver now declares that its CREATE TABLE carries the keys, and an unnamed key is matched by its columns, target and referential actions instead of by name.
+
 ## 0.2.0 - 2026-08-20
 ### Added
 * Table and Schema kinds: declare the table, not the DDL. The boot pass creates what is absent, applies imperative migrations before and after it, and records a removal instead of executing it — a tombstoned object is dropped only once the declared number of released versions and the declared time have passed, so the version still running keeps reading it. A change that cannot be applied safely to existing data fails hard naming the table, column and reason. Each type vocabulary is the engine's own, and projects to JSON Schema so consumers can type the rows they read.

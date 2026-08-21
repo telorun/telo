@@ -1,5 +1,0 @@
-modules:
-  modules/http-dispatch: Added
-body: Declare the known media types on the returns/catches `content:` maps as
-  `propertyNames.examples`, so an editor can suggest them. `examples` rather than `enum`
-  keeps the set open — any valid media type is still accepted.
