@@ -43,10 +43,12 @@ Skip the warm-up and your container will pull controllers on every boot, suffer 
 | ----------------------------------------- | ----------- | ----------------------------------------------------------- |
 | `telorun/node:<ver>`                      | debian      | no                                                          |
 | `telorun/node:<ver>-slim`                 | debian-slim | no — **recommended for production**                         |
-| `telorun/node:<ver>-rust-<rust-ver>`      | debian      | yes — for controllers compiling native deps at install time |
-| `telorun/node:<ver>-rust-<rust-ver>-slim` | debian-slim | yes                                                         |
+| `telorun/node:<ver>-rust-<rust-ver>`      | debian-slim | yes — for controllers compiling native deps at install time |
+| `telorun/node:<ver>-rust-<rust-ver>-slim` | debian-slim | yes — the same image, under its historical name             |
 
 `<ver>` accepts an exact CLI version (`1.4.2`), a major (`1`), a major.minor (`1.4`), or `latest`. **Pin to an exact version in production** — rolling tags move with each release.
+
+The `-rust-*` variants carry rustc, cargo and rust-std plus a C build environment of gcc, libc6-dev, make and pkg-config — enough for a pure-Rust crate or one whose `build.rs` drives a C compiler. They deliberately do not carry git, python3 or cmake; a dependency whose build needs one of those must vendor it or ship prebuilt.
 
 The `-rust-*` variants only need to be present in the **build** stage if your controllers compile native code at install time. Use the slim variant for the production stage either way; copying the warmed `/srv` tree across is a single `COPY --from=build`.
 
