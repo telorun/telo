@@ -268,17 +268,46 @@ failure is never masked as env-missing.
 ### 4.2 npm (`pkg:npm`)
 
 Every controller — registry tag, `file:`, and `local_path` alike — is installed
-into a single per-manifest tree rooted at `<entry-manifest-dir>/.telo/npm/`.
-A sibling `<entry-manifest-dir>/.telo/manifests/` tree, written by the same
+into a single tree under the workspace cache's `npm/` directory, in a
+subdirectory keyed by a hash of **the realm package's path relative to that
+directory, plus the host `os`/`arch`/`libc`**.
+
+The key is not a proxy for the problem, it is the string npm will write. The
+root's `package.json` records `@telorun/sdk` as a `file:` dependency pointing at
+the running CLI's own copy, and npm rewrites it relative to the root — in
+`package.json`, in `package-lock.json`, and as the target of the symlink it
+materializes under `node_modules`. A second runner meeting that tree reads a
+path resolving elsewhere or nowhere: an `EMISSINGTARGET` install failure, or a
+dangling link whose failure surfaces later at the controller's import. The
+normal shape is one checkout bind-mounted into a container — `/home/me/app` on
+the host, `/app` inside it — while the developer also runs telo on the host.
+
+So two runners share a root exactly when everything npm records in it means the
+same thing on both sides:
+
+| | |
+|---|---|
+| different CLI installation (host vs container) | different path → separate roots |
+| same CLI, workspace mounted at another **depth** (`/w` vs `/deep/a/b/c/w`) | different `..` count → separate roots |
+| same CLI, workspace copied at the **same** depth (`WORKDIR /build` … `COPY --from=build /build /srv`) | identical path → **one** root, so an image finds the tree `telo install` warmed for it |
+| different architecture or libc | separate roots — a native build is not interchangeable |
+| several manifests in one workspace | **one** root: the key names the runner, never the app |
+
+Each root carries a `.telo-install-root.json` marker naming the key's own
+inputs, written once when the root is created. Nothing reads it; it is there so
+a hashed directory can be traced back to the runner that wrote it.
+
+A sibling `.telo/manifests/` tree, written by the same
 `telo install` pass, holds the YAML of every transitively-imported
 `Telo.Library` so boot can resolve manifests without hitting the module
 registry. See [Module System](./modules.md#7-manifest-cache) for the cache
 layout; this section covers controller resolution only.
 
 ```
-<entry-manifest-dir>/.telo/npm/
+<workspace>/.telo/npm/<runner+platform hash>/
   package.json        # holds @telorun/sdk as a file: dep + overrides pinning it
   .telo-state.json    # hash of the materialized package.json (re-runs short-circuit)
+  .telo-install-root.json  # the key's inputs: realm path + platform
   .lock               # cross-process install lock
   node_modules/
     @telorun/

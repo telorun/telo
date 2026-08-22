@@ -30,7 +30,7 @@ The image has a smart entrypoint (like the official `node` image): a bare manife
 
 `telo install` walks the manifest's `imports:` graph transitively, downloads every controller package, and writes both to `<manifest-dir>/.telo/`:
 
-- `.telo/npm/` — controller `node_modules` tree, one realm per manifest.
+- `.telo/npm/<hash>/` — controller `node_modules` tree, one per runner rather than per app: keyed by where the CLI sits relative to the tree, plus the host platform. A tree warmed in the build stage is reused when the production stage copies it to another directory at the same depth, while a checkout bind-mounted from a different telo installation — a container over a host checkout — gets its own instead of inheriting one whose paths are true only on the other side.
 - `.telo/manifests/…` — every imported `telo.yaml`, registry-served or HTTP-fetched.
 
 Running this in the build stage means the production image is a hermetic snapshot. The kernel resolves every controller and every imported module from disk — boot does **zero** network I/O, which is what makes the image safe to run in airgapped, scale-out, and cold-start scenarios.

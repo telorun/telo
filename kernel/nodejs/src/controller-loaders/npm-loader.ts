@@ -14,6 +14,7 @@ import { tryBuildControllerBundle } from "./bundle-builder.js";
 import { withDirectoryLock } from "../directory-lock.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
+import { resolveInstallRoot, writeInstallRootMarker } from "./npm-install-root.js";
 
 const execFileAsync = promisify(execFile);
 const requireFromHere = createRequire(import.meta.url);
@@ -262,7 +263,10 @@ export class NpmControllerLoader {
       );
     }
     const entryUrlStr = this.entryUrl;
-    const installRoot = this.installRootOverride ?? computeInstallRoot(entryUrlStr);
+    // The BASE holds one root per runner — per filesystem view of the realm
+    // package and per platform — shared by every manifest in the workspace.
+    const installBase = this.installRootOverride ?? computeInstallRoot(entryUrlStr);
+    const installRoot = await resolveInstallRoot(installBase, resolveKernelPackageRoot);
 
     // Build the install-root package.json: kernel-runtime deps as `file:` refs
     // pointing at the kernel-side realpath. Modules declare these names as
@@ -343,6 +347,9 @@ export class NpmControllerLoader {
           2,
         ) + "\n",
       );
+      // Names what this hashed directory was keyed from. Written before the
+      // install so a root that fails to populate still says whose it is.
+      await writeInstallRootMarker(installRoot, installBase, resolveKernelPackageRoot);
       // Announced here rather than at the top of the resolve: everything above
       // this line is a fast path that reuses the existing tree.
       await report?.("npm-install");
@@ -1143,6 +1150,10 @@ export const __testing__ = {
   resolveExportTargetValue,
   tryResolveFile,
   computeInstallRoot,
+  /** The root this kernel uses within the base derived from `entryUrl` — what
+   *  a test asserting on-disk layout needs, since the base alone is not it. */
+  installRootIn: (entryUrl: string) =>
+    resolveInstallRoot(computeInstallRoot(entryUrl), resolveKernelPackageRoot),
   EXPORTS_MAX_DEPTH,
   DEFAULT_RESOLVER_CONDITIONS,
   REALM_COLLAPSE_NAMES,

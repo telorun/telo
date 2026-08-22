@@ -65,7 +65,7 @@ describe("NpmControllerLoader single-realm install", () => {
       const result = await loader.load(javascriptPurl, fakeBaseUri);
       expect(result.instance).toBeDefined();
 
-      const installRoot = path.join(workDir, ".telo", "npm");
+      const installRoot = await __testing__.installRootIn(manifestUrl);
       const installSdk = path.join(installRoot, "node_modules", "@telorun", "sdk");
       const installSdkRealpath = await fs.realpath(installSdk);
 
@@ -90,7 +90,7 @@ describe("NpmControllerLoader single-realm install", () => {
       );
 
       const installRootPkgJson = JSON.parse(
-        await fs.readFile(path.join(workDir, ".telo", "npm", "package.json"), "utf8"),
+        await fs.readFile(path.join(await __testing__.installRootIn(manifestUrl), "package.json"), "utf8"),
       );
 
       // Single mechanism now: modules declare @telorun/sdk as a peer dep,
@@ -119,7 +119,7 @@ describe("NpmControllerLoader single-realm install", () => {
         fakeBaseUri,
       );
 
-      const installRoot = path.join(workDir, ".telo", "npm");
+      const installRoot = await __testing__.installRootIn(manifestUrl);
       const pkgJsonPath = path.join(installRoot, "package.json");
       const before = JSON.parse(await fs.readFile(pkgJsonPath, "utf8"));
       const aliases = Object.keys(before.dependencies).filter((d) => d !== "@telorun/sdk");
@@ -169,7 +169,7 @@ describe("NpmControllerLoader single-realm install", () => {
         fakeBaseUri,
       );
 
-      const installRoot = path.join(workDir, ".telo", "npm");
+      const installRoot = await __testing__.installRootIn(manifestUrl);
       const pkgJsonPath = path.join(installRoot, "package.json");
       const pkg = JSON.parse(await fs.readFile(pkgJsonPath, "utf8"));
       // A dead alias of the shape `--save` records for a local controller.
@@ -225,9 +225,13 @@ describe("NpmControllerLoader single-realm install", () => {
         );
         expect(result.instance).toBeDefined();
 
+        // The URL hash still anchors the cache directory; the install root is
+        // one level further in, keyed by (entry, host platform) like every other.
         const expectedHash = crypto.createHash("sha256").update(entryUrl).digest("hex");
-        const expectedRoot = path.join(cacheDir, expectedHash, "npm");
-        expect(__testing__.computeInstallRoot(entryUrl)).toBe(expectedRoot);
+        const expectedRoot = await __testing__.installRootIn(entryUrl);
+        expect(expectedRoot.startsWith(path.join(cacheDir, expectedHash, "npm") + path.sep)).toBe(
+          true,
+        );
 
         // Sanity: the install root was actually materialized at the expected path.
         const stat = await fs.stat(path.join(expectedRoot, "node_modules"));
