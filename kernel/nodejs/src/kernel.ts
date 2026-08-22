@@ -1017,8 +1017,12 @@ export class Kernel implements IKernel {
     return this._entryUrl;
   }
 
-  /** The npm install root for this load (`<cache-root>/npm`), threaded to the
-   *  controller loader so it doesn't re-derive it from the entry URL. */
+  /** The npm install BASE for this load (`<cache-root>/npm`), threaded to the
+   *  controller loader so it doesn't re-derive it from the entry URL. The base
+   *  holds one root per (entry path, host platform); the loader picks which one
+   *  this runner uses, so two runners over one workspace — a host and a
+   *  bind-mounting container — never share a tree whose `package.json` can only
+   *  be true for one of them. */
   getInstallRoot(): string | undefined {
     return this._cacheRoot ? `${this._cacheRoot}/npm` : undefined;
   }

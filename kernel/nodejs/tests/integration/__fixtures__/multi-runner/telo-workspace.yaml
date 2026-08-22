@@ -1,0 +1,5 @@
+# Anchors the `.telo` cache for the multi-runner test, so every runner —
+# host process, glibc container, musl container — writes into ONE cache
+# directory. That sharing is the condition under test: without the marker each
+# runner would keep its own tree beside the manifest and nothing would collide.
+modules: []

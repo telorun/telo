@@ -214,10 +214,12 @@ async function installOne(
 
   outLine(`Installing ${jobs.length} controller${jobs.length !== 1 ? "s" : ""} for ${log.dim(displayPath)}`);
 
-  // The install root is anchored at the entry manifest's directory, mirroring
-  // how `kernel.load(...)` records the entry URL at run time. Every controller
-  // — registry or `local_path` — resolves through `<entry-dir>/.telo/npm/`,
-  // giving the kernel and all controllers one realpath for `@telorun/sdk`.
+  // The install BASE, exactly as `kernel.load(...)` threads it at run time; the
+  // loader keys the root within it by where the realm package sits relative to
+  // the tree, plus the HOST platform, so warming here fills the tree the later
+  // run reads. The host is what decides that, never `--platform`: that flag
+  // selects which module layers to warm and may name another architecture,
+  // while an npm install materializes packages for the machine it runs on.
   // pathToFileURL handles non-ASCII bytes and Windows drive letters
   // correctly; bare `file://` concatenation breaks on either.
   const entryUrl = isUrl ? entryPath : pathToFileURL(entryPath).toString();

@@ -49,3 +49,5 @@ Ignore any file changes that are not coherent with the overall feature or fix be
 Do not comment about what is sound about the implementation, only point out potential issues and areas for improvement.
 
 Provide concrete fix recommendations for each issue you find, and explain why the fix is necessary.
+
+Your last message MUST ALWAYS contain ALL findings with recommendations.

@@ -1,0 +1,29 @@
+# The app the multi-runner integration test drives from a host process and from
+# two containers over one shared workspace.
+#
+# Every import is a PUBLISHED module, so the workspace is self-contained: no
+# repo checkout has to be mounted, and the only thing a runner brings is its own
+# telo installation — which is the variable the test is about.
+#
+# `Http.Api` is here to force an npm-DELIVERED controller to load. The npm
+# install root is the shared state under test, and a bundled controller never
+# touches it, so an app of purely bundled kinds would exercise nothing.
+kind: Telo.Application
+metadata:
+  name: MultiRunnerProbe
+imports:
+  Console: oci://ghcr.io/telorun/console@0.17.3#sha256-KaCBcFJ13vtXO6I-N06kpjRFm85AcemNEbdVN4tgDhQ
+  Http: oci://ghcr.io/telorun/http-server@0.26.0#sha256-qCiZuU7_9wnxCn2QuA0oKM0H7OyvSd2aFcoXSv3vgFo
+targets:
+  - invoke: !ref hello
+    inputs:
+      output: probe-ok
+---
+kind: Http.Api
+metadata:
+  name: api
+routes: []
+---
+kind: Console.WriteLine
+metadata:
+  name: hello

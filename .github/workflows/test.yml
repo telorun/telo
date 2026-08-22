@@ -410,6 +410,60 @@ jobs:
       - name: Run tests (docker image)
         run: docker run --rm -v "$PWD":/workspace -v /workspace/.telo -w /workspace telo:ci ./test-suite.yaml
 
+  # Tests whose subject is several telo installations over ONE workspace cache —
+  # a host process and two containers, glibc and musl. They live outside the
+  # kernel's default vitest run (which must pass with nothing installed), so
+  # nothing else reaches them: `pnpm -r test:integration` is the only caller.
+  #
+  # Its own job rather than a step on `unit`, because it builds the CLI image
+  # from the shipped Dockerfile and runs containers — minutes that every other
+  # package's unit tests should not wait behind.
+  package-integration:
+    name: "Linux: package integration tests (Docker)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The HOST runner in these tests is `cli/nodejs/bin/telo.mjs`, which
+      # imports `dist/` — the container runners build their own copy inside the
+      # image, but this one needs the workspace built first.
+      - name: Build for Node.js
+        run: pnpm -r run build
+
+      - name: Run package integration tests
+        run: pnpm -r test:integration
+
   # No step is marked `continue-on-error`: a red step fails the job, and a
   # failure logged by a step that still reports success is the one outcome this
   # job must never produce.

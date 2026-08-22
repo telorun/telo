@@ -65,6 +65,7 @@
     "prepack": "cp ../../LICENSE . && cp ../README.md . && node ../../scripts/prepack-bake-overrides.mjs .",
     "postpack": "rm -f LICENSE && rm -f README.md",
     "test": "vitest run",
+    "test:integration": "TELO_DOCKER_TESTS=1 vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
