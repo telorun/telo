@@ -219,8 +219,8 @@ Available image variants:
 
 - `telorun/node:<version>` — debian base, no rust toolchain.
 - `telorun/node:<version>-slim` — debian-slim base, no rust toolchain (smallest footprint; recommended for production).
-- `telorun/node:<version>-rust-<rust-version>` — debian + rust toolchain (controllers that compile native deps at install time).
-- `telorun/node:<version>-rust-<rust-version>-slim` — slim + rust toolchain.
+- `telorun/node:<version>-rust-<rust-version>` — slim + rust toolchain (controllers that compile native deps at install time).
+- `telorun/node:<version>-rust-<rust-version>-slim` — the same image, under its historical name.
 
 Pin to an exact CLI version for reproducible builds; `latest`, `<major>`, and `<major>.<minor>` are rolling tags.
 

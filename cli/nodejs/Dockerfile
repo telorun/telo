@@ -1,12 +1,16 @@
 # syntax=docker/dockerfile:1.7
 #
-# Multi-target Dockerfile for `telorun/node`. Four release variants share one
+# Multi-target Dockerfile for `telorun/node`. Three release variants share one
 # builder stage so the monorepo compiles once:
 #
 #   lean       — node:24-trixie     + Telo CLI                     (default base)
 #   lean-slim  — node:24-trixie-slim + Telo CLI                    (smaller footprint)
-#   rust       — lean      + rustup-pinned Rust toolchain           (native deps)
-#   rust-slim  — lean-slim + rustup-pinned Rust toolchain           (native deps, smaller)
+#   rust-slim  — lean-slim + rustup-pinned Rust toolchain           (native deps)
+#
+# There is no non-slim rust variant. The toolchain exists only so `pkg:cargo`
+# controllers build at load, and that needs nothing from the fat base — which
+# costs ~990 MB over the slim one. Both the `-rust-<ver>` and `-rust-<ver>-slim`
+# tag sets are published from `rust-slim`.
 #
 # RUST_VERSION is the single source of truth for the toolchain pin; CI reads
 # it from this ARG and injects it into the tag matrix.
@@ -56,26 +60,29 @@ WORKDIR /workspace
 ENTRYPOINT ["telo-entrypoint.sh"]
 CMD ["telo"]
 
-# Rust toolchain layered on top of the lean variants. Pinned via Debian's
-# `rustup` package (no `curl | sh` from a third-party host), then
+# Rust toolchain layered on the slim variant. Pinned via Debian's `rustup`
+# package (no `curl | sh` from a third-party host), then
 # `rustup default ${RUST_VERSION}` for an exact compiler.
+#
+# `profile minimal` is not an optimization detail — the default profile installs
+# rust-docs, which is 796 MB of HTML the image can never serve, plus clippy and
+# rustfmt, which nothing here invokes. Minimal is rustc + cargo + rust-std, which
+# is all a `pkg:cargo` controller build needs (1.16 GB -> 580 MB).
+#
+# What is deleted afterwards is only what rustup itself treats as disposable:
+# `share/` (15 MB of doc/man/completions, which nothing in a container reads) and
+# rustup's own `downloads`/`tmp` caches, which `rustup update` cleans anyway. The
+# `rustdoc` BINARY is deliberately kept — it belongs to the `rustc` component
+# rustup tracks, and 13 MB is not worth making `cargo doc` fail.
+#
+# The C build environment is gcc + libc6-dev + make + pkg-config: a controller
+# dependency using the `cc` crate needs a real C compiler (rust-lld cannot stand
+# in), and a `-sys` crate's build.rs routinely shells out to make or pkg-config.
+# make and pkg-config cost ~1 MB together. NOT included: git, python3, cmake — a
+# dependency whose build needs one of those must vendor it or ship prebuilt.
 #
 # CARGO_TARGET_DIR points at /tmp so cargo build outputs stay container-internal
 # instead of landing in a bind-mounted host path under the rust project dir.
-
-FROM lean AS rust
-ARG RUST_VERSION
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    CARGO_TARGET_DIR=/tmp/cargo-target \
-    PATH=/usr/local/cargo/bin:$PATH
-
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates gcc libc6-dev rustup \
-  && rm -rf /var/lib/apt/lists/* \
-  && mkdir -p ${RUSTUP_HOME} ${CARGO_HOME} \
-  && rustup default ${RUST_VERSION} \
-  && chmod -R 0777 ${RUSTUP_HOME} ${CARGO_HOME}
 
 FROM lean-slim AS rust-slim
 ARG RUST_VERSION
@@ -85,8 +92,12 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:$PATH
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates gcc libc6-dev rustup \
+  && apt-get install -y --no-install-recommends \
+       ca-certificates gcc libc6-dev make pkg-config rustup \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p ${RUSTUP_HOME} ${CARGO_HOME} \
+  && rustup set profile minimal \
   && rustup default ${RUST_VERSION} \
+  && rm -rf ${RUSTUP_HOME}/toolchains/*/share \
+            ${RUSTUP_HOME}/downloads ${RUSTUP_HOME}/tmp \
   && chmod -R 0777 ${RUSTUP_HOME} ${CARGO_HOME}

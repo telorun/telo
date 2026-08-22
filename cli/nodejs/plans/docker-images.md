@@ -39,7 +39,7 @@ Pattern inside a kernel repo (example shown for `telorun/node`):
 
 - `<cli-version>` — `@telorun/cli` package version (the linked CLI/kernel/SDK group).
 - `<rust-version>` — the rustup-pinned compiler version (today `1.95.0`, from the `RUST_VERSION` ARG in [cli/nodejs/Dockerfile](../Dockerfile)). Omit segment entirely for variants without the toolchain.
-- `-slim` — debian-slim base. Omit for the default debian-full base.
+- `-slim` — debian-slim base. Omit for the default debian-full base. The Rust variants are slim-based either way: the toolchain needs nothing from the fat base, which costs ~990 MB, so `-rust-<ver>` and `-rust-<ver>-slim` are one image published under two names.
 
 The `-rust-<ver>` segment denotes "Rust toolchain available for compiling native components inside the image" — independent of the kernel runtime, which the repo name already fixes.
 
@@ -51,8 +51,8 @@ For CLI release `1.4.2` and Rust pin `1.95.0`:
 |---|---|---|
 | `1.4.2` | debian | no |
 | `1.4.2-slim` | debian-slim | no |
-| `1.4.2-rust-1.95.0` | debian | 1.95.0 |
-| `1.4.2-rust-1.95.0-slim` | debian-slim | 1.95.0 |
+| `1.4.2-rust-1.95.0` | debian-slim | 1.95.0 |
+| `1.4.2-rust-1.95.0-slim` | debian-slim | 1.95.0 (the same image) |
 
 The version segment also accepts rolling forms: `latest` (newest release), `<major>` (newest patch in that major), `<major>.<minor>` (newest patch in that minor). They compose with the variant suffixes — `latest`, `latest-slim`, `latest-rust-1.95.0-slim`, `1.4-rust-1.95.0`, `1-slim`, and so on.
 
