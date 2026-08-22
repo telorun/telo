@@ -297,23 +297,44 @@ export async function create(
       );
     }
   }
-  ctx.registerModuleImport(alias, targetModule, exportedKindSuffixes);
+  // The alias registrations are an EFFECT on the create frame, not bare calls:
+  // an import whose `init()` fails is discarded and re-created on the next pass,
+  // so an alias left registered would be re-registered against a module context
+  // that already has it — and the abandoned child context would linger with no
+  // owner. One effect, because the four registrations are one act: an alias
+  // resolving kinds through a module whose instances are gone is not a state
+  // this controller should be able to produce.
+  await ctx
+    .effect(`import alias ${alias}`, async () => {
+      ctx.registerModuleImport(alias, targetModule, exportedKindSuffixes);
 
-  // Publish the child's exported instances to the parent so cross-module `!ref Alias.name`
-  // (Phase 5 injection / boot targets) and `${{ resources.Alias.name }}` (CEL value-flow)
-  // resolve. The gate is `exports.resources`; the child's terminal getter is read lazily —
-  // it exists after this import's init() built the child's export table. Handing the parent
-  // the child's TERMINAL getter (not a wrapper) keeps resolution O(1) across re-export hops.
-  (ctx.moduleContext as ModuleContext).registerImportedScope(
-    alias,
-    exportedResourceNames,
-    (name) => childCtx.getTerminalExport(name),
-  );
-  // Same for kinds: `kind: Alias.Kind` resolves through the child's exported-kind table,
-  // covering both locally-defined and transitively re-exported kinds in O(1).
-  (ctx.moduleContext as ModuleContext).registerImportedKindScope(alias, (suffix) =>
-    childCtx.getExportedKind(suffix),
-  );
+      // Publish the child's exported instances to the parent so cross-module `!ref Alias.name`
+      // (Phase 5 injection / boot targets) and `${{ resources.Alias.name }}` (CEL value-flow)
+      // resolve. The gate is `exports.resources`; the child's terminal getter is read lazily —
+      // it exists after this import's init() built the child's export table. Handing the parent
+      // the child's TERMINAL getter (not a wrapper) keeps resolution O(1) across re-export hops.
+      (ctx.moduleContext as ModuleContext).registerImportedScope(
+        alias,
+        exportedResourceNames,
+        (name) => childCtx.getTerminalExport(name),
+      );
+      // Same for kinds: `kind: Alias.Kind` resolves through the child's exported-kind table,
+      // covering both locally-defined and transitively re-exported kinds in O(1).
+      (ctx.moduleContext as ModuleContext).registerImportedKindScope(alias, (suffix) =>
+        childCtx.getExportedKind(suffix),
+      );
+
+      return {
+        result: undefined,
+        inverse: () => {
+          (ctx.moduleContext as ModuleContext).unregisterImport(alias);
+          // The child context goes with the alias: it was spawned for this
+          // import and nothing else can reach it once the alias is gone.
+          ctx.moduleContext.detachChild(child);
+        },
+      };
+    })
+    .perform();
 
   // Return a ResourceInstance whose snapshot() surfaces the exported values under
   // resources.<alias>: the import's variables/secrets plus each exported instance's own
@@ -342,17 +363,19 @@ export async function create(
         ...exported,
       };
     },
-    init: async () => {
-      await child.initializeResources();
-      // Build this import's flattened export tables now that its own imports are
-      // registered (leaves-first), so a re-export (`!ref Alias.name` / `Alias.Kind`)
-      // copies the source import's terminal getter / canonical kind by reference —
-      // O(1) resolution at any depth.
-      childCtx.buildExportTable(exportEntries, kindEntries, targetModule);
-    },
-    teardown: async () => {
-      await child.teardownResources();
-    },
+    // The library's resources ARE this import's allocation, and tearing the
+    // child context down is what undoes it — so the two are one effect rather
+    // than an init/teardown pair the kernel had to trust were inverses.
+    init: (importCtx) =>
+      importCtx.effect("library resources", async () => {
+        await child.initializeResources();
+        // Build this import's flattened export tables now that its own imports are
+        // registered (leaves-first), so a re-export (`!ref Alias.name` / `Alias.Kind`)
+        // copies the source import's terminal getter / canonical kind by reference —
+        // O(1) resolution at any depth.
+        childCtx.buildExportTable(exportEntries, kindEntries, targetModule);
+        return { result: undefined, inverse: () => child.teardownResources() };
+      }),
   };
 }
 

@@ -10,6 +10,10 @@ metadata:
     and counters that outlive one process, under an optional key prefix so several
     apps can share a server. When Redis is unreachable it degrades to an optional
     fallback cache, reports the degradation, and recovers on its own.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 imports:
   Cache: ../cache
 exports:

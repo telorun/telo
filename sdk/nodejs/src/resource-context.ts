@@ -5,6 +5,7 @@ import type {
   OpenSpanOptions,
   ZoneEntry,
 } from "./cancellation.js";
+import type { EffectBody, EffectChain } from "./effect.js";
 import type { ResourceHandle } from "./resource-instance.js";
 import { ControllerContext } from "./controller-context.js";
 import type { Logger } from "./logger.js";
@@ -86,6 +87,42 @@ export interface ResourceContext extends ControllerContext {
    *  registers them into, so two instances of the same templated kind don't
    *  collide and the children nest under their parent in a debug view. */
   readonly ownerPrefix: string;
+  /**
+   * Describe a revertible action: `body` does the work and yields the inverse
+   * that undoes it. Returns a LAZY chain — `.effect(...)` extends it, threading
+   * each step's result into the next.
+   *
+   * Return the chain from `init()` / `run()`: the runtime executes it and keeps
+   * the inverses on that lifecycle entry's frame, unwinding them newest-first
+   * when the resource is torn down or when a later step fails. That is the whole
+   * of a controller's cleanup — there is no `teardown()`.
+   *
+   * Call `.perform()` instead when the allocation belongs to an *operation*
+   * rather than to the resource (a hold taken per durable run, released when the
+   * run settles or parks): it executes against the resource's current frame and
+   * hands back a {@link EffectResult} whose `dispose()` ends that one allocation.
+   * Such an effect MUST be disposed when its operation ends, or it accumulates
+   * for the resource's lifetime.
+   *
+   * `reason` names the effect in recovery diagnostics.
+   */
+  effect<T>(reason: string, body: EffectBody<void, T>): EffectChain<T>;
+  /**
+   * Hold the kernel open (a listening server, a run in flight); the returned
+   * closure releases it.
+   *
+   * The closure is a bare inverse and is NOT registered for you — which frame
+   * owns a hold is a fact only the caller has. Place it in a chain:
+   *
+   * ```ts
+   * ctx.effect("kernel hold", async () => ({ result: undefined, inverse: ctx.acquireHold() }))
+   * ```
+   *
+   * A hold whose lifetime is one *operation* rather than the resource (one per
+   * durable run, taken inside `invoke()`) is performed instead and disposed when
+   * that operation ends. A hold that is neither placed nor released keeps the
+   * process alive.
+   */
   acquireHold(reason?: string): () => void;
   /**
    * Report this resource's **observed state** — what it has learned while

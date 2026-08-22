@@ -11,6 +11,10 @@ metadata:
     Streamable HTTP with managed sessions, or by spawning the server as a child
     process and speaking JSON-RPC over its stdio — the calls themselves are the same
     either way.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 exports:
   kinds:
     - Client

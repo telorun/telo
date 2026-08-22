@@ -26,15 +26,26 @@ export async function create(
     onDrop: () => ctx.logging.recordDrop(sinkId, "buffer_full"),
   });
 
-  ctx.logging.attach(sink);
+  // Attach and its inverse as one pair, performed here rather than returned from
+  // `init()`: a sink must receive records from construction on, or everything
+  // logged while the rest of the graph initializes reaches no destination. The
+  // flush is what makes a clean shutdown lose nothing that was buffered.
+  await ctx
+    .effect("log sink", async () => {
+      ctx.logging.attach(sink);
+      return {
+        result: sink,
+        inverse: async () => {
+          await sink.flush();
+          ctx.logging.detach(sink);
+          await sink.close();
+        },
+      };
+    })
+    .perform();
 
   return {
     sink,
     teardownPriority: TEARDOWN_LAST,
-    teardown: async () => {
-      await sink.flush();
-      ctx.logging.detach(sink);
-      await sink.close();
-    },
   } as unknown as ResourceInstance;
 }

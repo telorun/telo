@@ -166,7 +166,6 @@ class RunSequence {
     );
   }
 
-  async teardown(): Promise<void> {}
 }
 
 export function register(): void {}

@@ -61,13 +61,18 @@ class RedisStore implements ResourceInstance, CacheStore {
     });
   }
 
-  async init(): Promise<void> {
-    this.fallback = this.resolveFallback();
-    try {
-      await this.redis.connect();
-    } catch {
-      await this.enterDegraded();
-    }
+  init(ctx: ResourceContext) {
+    return ctx.effect("redis connection", async () => {
+      this.fallback = this.resolveFallback();
+      try {
+        await this.redis.connect();
+      } catch {
+        // A degraded store is still a store — the connection is what the
+        // inverse closes, and disconnecting an unconnected client is a no-op.
+        await this.enterDegraded();
+      }
+      return { result: undefined, inverse: () => this.redis.disconnect() };
+    });
   }
 
   private key(key: string): string {
@@ -164,10 +169,6 @@ class RedisStore implements ResourceInstance, CacheStore {
 
   async provide(): Promise<RedisStore> {
     return this;
-  }
-
-  async teardown(): Promise<void> {
-    this.redis.disconnect();
   }
 
   snapshot(): Record<string, unknown> {

@@ -60,11 +60,11 @@ for why that distinction is load-bearing rather than stylistic.
 ## What a backend overrides
 
 - **`init()`** — to start recurring work once the connection has proved itself.
-  Call `super.init()` first; it round-trips the connection. `sql-postgres`
-  starts its liveness sweep here.
-- **`teardown()`** — when the backend owns resources kysely does not. Call
-  `super.teardown()`; it destroys the kysely instance and its pool.
-  `sql-postgres` stops its sweep first.
+  Extend the base's chain: `super.init(ctx).effect("health check", …)`. The
+  base's step round-trips the connection and carries `db.destroy()` as its
+  inverse; each `.effect(...)` you add carries its own, and unwinding runs them
+  in reverse — so `postgres` stops its liveness sweep before the pool is
+  destroyed without stating that order anywhere.
 - **`executeScript(sql)`** — when the driver has a native multi-statement entry
   point. The default hands the whole script to `execute` as one statement;
   `sql-sqlite` overrides it to call the driver's `exec`.

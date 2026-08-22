@@ -13,8 +13,8 @@ import type { SqlConnection, SqlDialect } from "./sql-connection.js";
  * scoping, template binding and row-count normalization over a kysely instance.
  *
  * Backends extend it, supply their {@link SqlDialect}, and override only what is
- * genuinely theirs — `teardown` for resources kysely does not own, `executeScript`
- * where the driver has a native multi-statement path.
+ * genuinely theirs — extending `init`'s effect chain for resources kysely does
+ * not own, `executeScript` where the driver has a native multi-statement path.
  */
 export abstract class SqlConnectionBase implements SqlConnection {
   protected readonly db: Kysely<any>;
@@ -38,14 +38,16 @@ export abstract class SqlConnectionBase implements SqlConnection {
     return this.db;
   }
 
-  async init(): Promise<void> {
-    await this.db.connection().execute(async () => {
-      // just checking
+  /** The pool, and what destroys it. A backend that allocates more extends this
+   *  chain rather than overriding a separate teardown — so the two halves cannot
+   *  drift out of order. */
+  init(ctx: ResourceContext) {
+    return ctx.effect("connection pool", async () => {
+      await this.db.connection().execute(async () => {
+        // just checking
+      });
+      return { result: undefined, inverse: () => this.db.destroy() };
     });
-  }
-
-  async teardown(): Promise<void> {
-    await this.db.destroy();
   }
 
   async runInTransaction<T>(

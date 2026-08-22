@@ -182,10 +182,84 @@ The instance implements the method that matches the declared capability:
 | `Telo.Invocable` | `invoke(inputs, ctx?)` | request handlers, scripts |
 | `Telo.Runnable` | `run(ctx?)` | one-shot tasks, pipelines |
 | `Telo.Provider` | `init?()` + `provide()` | config / secret / value sources |
-| `Telo.Service` | `init()` + `teardown?()` | long-lived servers, pools |
+| `Telo.Service` | `init()` + `run()` | long-lived servers, pools |
 | `Telo.Mount` | mounted into a Service | HTTP APIs, middleware |
 
-Any instance may also implement optional `init()`, `teardown()`, and `snapshot()` (the snapshot is what `resources.<name>` exposes in CEL).
+Any instance may also implement optional `init()` and `snapshot()` (the snapshot is what `resources.<name>` exposes in CEL). Cleanup is not a method — `init()` and `run()` return it (see below).
+
+### Undoing what you allocate
+
+**There is no `teardown()`.** `init()` and `run()` *return* the effects they
+perform, and the runtime undoes them:
+
+```ts
+init(ctx) {
+  return ctx.effect("connection pool", async () => {
+    const pool = await openPool(resource.url);
+    return { result: pool, inverse: () => pool.end() };
+  });
+}
+```
+
+Each `.effect(...)` extends the chain, and receives the previous step's result —
+which is how an inverse gets the handle it has to close, without a field existing
+only to carry it between two methods:
+
+```ts
+run(ctx) {
+  return ctx
+    .effect("kernel hold", async () => ({ result: undefined, inverse: ctx.acquireHold() }))
+    .effect("listening", async () => {
+      const socket = await listen(this.port);
+      return { result: socket, inverse: () => socket.close() };
+    });
+}
+```
+
+The chain is **lazy** — nothing runs until the runtime executes it — and it is a
+plain value, so branches and loops build it like any other:
+
+```ts
+let chain = ctx.effect("core", …);
+if (resource.cors) chain = chain.effect("cors", …);
+for (const mount of mounts) chain = chain.effect(`mount ${mount.path}`, …);
+return chain;
+```
+
+Inverses run last-in-first-out when the resource unwinds — a failed `init()`, a
+failed `run()`, a teardown. Three consequences worth knowing:
+
+- **A failed `init()` recovers and the instance is discarded**, so the multi-pass
+  loop's next attempt builds a fresh one. Write `init()` as if it runs once; it
+  does. (Bookkeeping to make a second `init()` call safe is no longer needed.)
+- **A subclass extends its parent's chain** (`super.init(ctx).effect(…)`), and
+  unwinding is the reverse of construction automatically.
+- **`acquireHold()` is an effect**, so a hold you forget to release is reclaimed
+  when the resource unwinds instead of keeping the process alive.
+
+Use the generator form when one step allocates several things — each `yield`
+registers that allocation's inverse the moment it completed:
+
+```ts
+ctx.effect("plugins", async function* () {
+  for (const plugin of plugins) {
+    await register(plugin);
+    yield () => plugin.dispose();
+  }
+});
+```
+
+For an allocation whose lifetime is one *operation* rather than the resource (a
+hold taken per run of a workflow, inside `invoke()`), execute the chain in place
+and dispose it when the operation ends:
+
+```ts
+const { dispose } = await ctx.effect("run hold", …).perform();
+try { … } finally { await dispose(); }
+```
+
+Disposal is idempotent and unordered. Full contract:
+`kernel/specs/revertible-effects.md`.
 
 ## Step 3 — wire the build
 

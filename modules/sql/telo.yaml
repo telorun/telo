@@ -15,7 +15,9 @@ requires:
   # analyzer reads as a malformed annotation, so it would reject this module and
   # blame its author. Declaring the floor turns that into one message naming the
   # cause. Forward-declared: 0.79.0 is the release that carries the form.
-  telo: ">=0.79.0"
+  # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime
+  # that does not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 exports:
   kinds:
     - Connection

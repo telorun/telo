@@ -15,15 +15,54 @@ function jsonResponse(body: unknown, opts: { sessionId?: string; status?: number
   });
 }
 
-/** Minimum ResourceContext surface McpHttpClient actually uses — only
- *  `emitEvent`, for the controllers/SessionTerminateFailed event on teardown.
- *  The sessionProvider is not looked up via the context: the kernel injects the
- *  live instance into `manifest.sessionProvider` at Phase 5, which the external
- *  tests below pass in directly. */
-function makeCtx() {
+/**
+ * Minimum ResourceContext surface McpHttpClient actually uses: `emitEvent` (for
+ * the SessionTerminateFailed event) and `effect`, which is how the controller
+ * hands back what undoes it.
+ *
+ * `unwind()` stands in for the kernel's teardown — it runs the inverses the
+ * returned chain registered, newest first — so a test drives the session-DELETE
+ * the same way the runtime does rather than calling a method directly.
+ *
+ * The sessionProvider is not looked up via the context: the kernel injects the
+ * live instance into `manifest.sessionProvider` at Phase 5, which the external
+ * tests below pass in directly.
+ */
+type TestCtx = ResourceContext & { unwind(): Promise<void> };
+
+function makeCtx(): TestCtx {
+  const inverses: Array<() => unknown> = [];
+  const build = (steps: Array<(input: unknown) => any>): any => ({
+    effect: (_reason: string, body: (input: unknown) => any) => build([...steps, body]),
+    perform: async () => {
+      let value: unknown;
+      for (const step of steps) {
+        const outcome = await step(value);
+        inverses.push(outcome.inverse);
+        value = outcome.result;
+      }
+      return { result: value, dispose: async () => {} };
+    },
+  });
   return {
     emitEvent: vi.fn(async () => {}),
-  } as unknown as ResourceContext;
+    effect: (_reason: string, body: (input: unknown) => any) => build([body]),
+    unwind: async () => {
+      for (const inverse of [...inverses].reverse()) await inverse();
+      inverses.length = 0;
+    },
+  } as unknown as TestCtx;
+}
+
+/** The context the client was constructed with — the same one the kernel would
+ *  pass to `init()`, reached here so each test does not have to name it. */
+function ctxOf(client: McpHttpClient): TestCtx {
+  return (client as unknown as { ctx: TestCtx }).ctx;
+}
+
+/** Init the way the kernel does: call it, then execute what it returned. */
+async function initClient(client: McpHttpClient): Promise<void> {
+  await (client.init(ctxOf(client)) as unknown as { perform(): Promise<unknown> }).perform();
 }
 
 type FetchMock = ReturnType<typeof vi.fn>;
@@ -50,7 +89,7 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
       { metadata: { name: "Mcp" }, url: URL, sessionProvider: { name: "SessionRef", provide: provideSpy } },
       makeCtx(),
     );
-    await client.init();
+    await initClient(client);
     const out = await client.invoke({ method: "tools/call", params: { name: "x", arguments: {} } });
 
     expect(out).toEqual({ content: [{ type: "text", text: "ok" }] });
@@ -75,7 +114,7 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
       { metadata: { name: "Mcp" }, url: URL, sessionProvider: { name: "SessionRef", provide: provideSpy } },
       makeCtx(),
     );
-    await client.init();
+    await initClient(client);
     await client.invoke({ method: "tools/call", params: { name: "x" } });
     await client.invoke({ method: "tools/call", params: { name: "y" } });
 
@@ -90,7 +129,7 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
       { metadata: { name: "Mcp" }, url: URL, sessionProvider: "Missing" },
       makeCtx(),
     );
-    await client.init();
+    await initClient(client);
 
     let err: unknown;
     try {
@@ -107,7 +146,7 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
       { metadata: { name: "Mcp" }, url: URL, sessionProvider: { name: "BadShape" } },
       makeCtx(),
     );
-    await client.init();
+    await initClient(client);
 
     await expect(
       client.invoke({ method: "tools/call", params: { name: "x" } }),
@@ -123,7 +162,7 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
       },
       makeCtx(),
     );
-    await client.init();
+    await initClient(client);
 
     await expect(
       client.invoke({ method: "tools/call", params: { name: "x" } }),
@@ -141,11 +180,11 @@ describe("McpHttpClient (external sessionProvider mode)", () => {
       },
       makeCtx(),
     );
-    await client.init();
+    await initClient(client);
     await client.invoke({ method: "tools/call", params: { name: "x" } });
 
     fetchMock.mockClear();
-    await client.teardown();
+    await ctxOf(client).unwind();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -164,7 +203,7 @@ describe("McpHttpClient (self-handshake mode)", () => {
       .mockResolvedValueOnce(jsonResponse({ jsonrpc: "2.0", id: 3, result: { content: [] } }));
 
     const client = new McpHttpClient({ metadata: { name: "Mcp" }, url: URL }, ctx);
-    await client.init();
+    await initClient(client);
     await client.invoke({ method: "tools/call", params: { name: "x" } });
     await client.invoke({ method: "tools/call", params: { name: "y" } });
 
@@ -192,7 +231,7 @@ describe("McpHttpClient (self-handshake mode)", () => {
       .mockResolvedValueOnce(jsonResponse({ jsonrpc: "2.0", id: 4, result: { content: [] } }));
 
     const client = new McpHttpClient({ metadata: { name: "Mcp" }, url: URL }, ctx);
-    await client.init();
+    await initClient(client);
     const out = await client.invoke({ method: "tools/call", params: { name: "x" } });
     expect(out).toEqual({ content: [] });
 
@@ -212,7 +251,7 @@ describe("McpHttpClient (self-handshake mode)", () => {
       .mockResolvedValueOnce(jsonResponse({ jsonrpc: "2.0", id: 3, result: { content: [] } }));
 
     const client = new McpHttpClient({ metadata: { name: "Mcp" }, url: URL }, ctx);
-    await client.init();
+    await initClient(client);
     await client.invoke({ method: "tools/call", params: { name: "x" } });
     await client.invoke({ method: "tools/call", params: { name: "y" } });
 
@@ -235,9 +274,9 @@ describe("McpHttpClient (self-handshake mode)", () => {
       .mockResolvedValueOnce(new Response(null, { status: 200 })); // DELETE response
 
     const client = new McpHttpClient({ metadata: { name: "Mcp" }, url: URL }, ctx);
-    await client.init();
+    await initClient(client);
     await client.invoke({ method: "tools/call", params: { name: "x" } });
-    await client.teardown();
+    await ctxOf(client).unwind();
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
     const [, deleteInit] = fetchMock.mock.calls[3];

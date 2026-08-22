@@ -15,7 +15,7 @@ Cursor, …) that spawn the server as a child process.
 
 - `init()` — resolves every bundle ref in `tools:` / `resources:` / `prompts:`, validates entries (within-bundle and cross-bundle uniqueness), builds one SDK Server and registers each entry as a handler.
 - `run()` — connects the SDK Server to a `StdioServerTransport`, mints a synthetic session UUID (so `request.session.id` is always defined for CEL inputs), and acquires a kernel hold via `ctx.acquireHold()` so the process stays up.
-- `teardown()` — closes the transport (releasing the hold via `transport.onclose`) and closes the SDK Server.
+- Both return their effects, so unwinding closes the transport and then the SDK Server. The hold is disposed on its own at stdin EOF (see below) rather than waiting for the resource to unwind.
 
 stdin EOF (the parent closing the pipe) triggers `transport.onclose`, which
 releases the hold and lets the kernel exit cleanly.

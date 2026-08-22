@@ -53,9 +53,10 @@ while one is outstanding. Without the deadline, the single case the sweep exists
 to catch would be the case that switches it off.
 
 The sweep starts from `init()`, once the connection has proved it works, and
-stops in `teardown()`. A recurring probe is a side effect, and a resource whose
-`init()` throws is never torn down, so starting it during construction would
-leave a timer nobody owns.
+stopping it is that effect's inverse — so it is torn down before the pool it
+probes, and an `init()` that fails after arming it still stops it. A recurring
+probe is a side effect, so starting it during construction would leave a timer
+nobody owns.
 
 `pool.maxLifetimeMs` is the cause-agnostic backstop: retiring connections on a
 schedule bounds how long any connection can have been broken without anyone

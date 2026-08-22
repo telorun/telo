@@ -1,5 +1,4 @@
 import cors from "@fastify/cors";
-import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
 import swagger from "@fastify/swagger";
 import {
   CatchEntry,
@@ -26,6 +25,7 @@ import Fastify, {
   type FastifyServerOptions,
 } from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
+import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
 import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
 
 /** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
@@ -92,16 +92,9 @@ type ResolvedHandler = {
 };
 
 class HttpServer implements ResourceInstance {
-  private releaseHold: (() => void) | null = null;
-  /** Whether a socket actually opened, so `http.server.stopped` is only emitted
-   *  for a server that emitted `http.server.started`. */
-  private listening = false;
-  private pluginsInitialized = false;
-  /** Indices into `activeMounts()` already attached, so a later init pass
-   *  registers only what is still missing — see `init()`. */
-  private readonly attachedMounts = new Set<number>();
-  private notFoundHandlerInstalled = false;
-  private excludedMountsLogged = false;
+  /** Fastify's `close()` is the inverse of everything registered on the
+   *  instance, so two effects name it; running it twice is a no-op. */
+  private closed = false;
   private readonly app: FastifyInstance;
   private readonly host: string;
   private readonly port: number;
@@ -177,20 +170,30 @@ class HttpServer implements ResourceInstance {
    * Registering plugins and routes: nothing observable, and nothing repeatable —
    * a route registers exactly once.
    *
-   * The multi-pass init loop calls `init()` AGAIN on a resource whose init threw,
-   * which is how a mount that was not yet injected gets its second chance. So
-   * this has to be RESUMABLE rather than merely re-runnable: each mount records
-   * that it attached, and a later pass registers only what is still missing.
-   * Re-running the whole set answered with Fastify's duplicate-route error and
-   * buried the reason the first pass failed; refusing to re-run at all would have
-   * made a first-pass failure permanent, which is the retry the loop exists for.
+   * Written as if it runs once, because it does. A failed `init()` recovers
+   * through this effect and the instance is discarded, so the next pass builds a
+   * fresh Fastify rather than re-entering one that already has half its routes —
+   * which is what the mount-by-mount resumability bookkeeping used to buy, and
+   * what Fastify's duplicate-route error used to punish.
+   *
+   * ONE effect, not one per plugin and mount: Fastify has no unregister, so
+   * `close()` is the only real inverse of anything attached to the instance.
+   * Registering a per-mount inverse that undid nothing would be decoration.
    */
-  async init() {
-    if (!this.pluginsInitialized) {
+  init() {
+    return this.ctx.effect("fastify plugins and routes", async () => {
       await this.setupPlugins();
-      this.pluginsInitialized = true;
-    }
-    this.setupRoutes();
+      this.setupRoutes();
+      return { result: undefined, inverse: () => this.closeApp() };
+    });
+  }
+
+  /** Idempotent: two effects name `close()` as their inverse (the routes, and
+   *  the open socket), and both may unwind in one teardown. */
+  private async closeApp(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    await this.app.close();
   }
 
   /**
@@ -448,22 +451,18 @@ class HttpServer implements ResourceInstance {
   private setupRoutes(): void {
     // const routesByName = new Map<string, HttpRouteResource>();
     const mounts = this.activeMounts();
-    if (!this.excludedMountsLogged) {
-      this.excludedMountsLogged = true;
-      for (const skipped of (this.resource.mounts ?? []).filter((mount) => mount.when === false)) {
-        // Said out loud: a route set that is absent because a condition excluded
-        // it is indistinguishable at request time from one that failed to
-        // register. Once, not once per init pass.
-        this.ctx.log.debug(
-          "Mount excluded by its `when` condition",
-          { "http.route": skipped.path || "/" },
-          { eventName: "http.server.mount.excluded" },
-        );
-      }
+    for (const skipped of (this.resource.mounts ?? []).filter((mount) => mount.when === false)) {
+      // Said out loud: a route set that is absent because a condition excluded
+      // it is indistinguishable at request time from one that failed to
+      // register.
+      this.ctx.log.debug(
+        "Mount excluded by its `when` condition",
+        { "http.route": skipped.path || "/" },
+        { eventName: "http.server.mount.excluded" },
+      );
     }
     // const resolveSchema = createSchemaResolver(this.ctx);
     for (let index = 0; index < mounts.length; index++) {
-      if (this.attachedMounts.has(index)) continue;
       const mount = mounts[index];
       const prefix = mount.path || "";
       // `mount.mount` is the live Telo.Mount instance injected by the kernel at Phase 5
@@ -477,10 +476,9 @@ class HttpServer implements ResourceInstance {
         );
       }
       api.register(this.app, prefix);
-      this.attachedMounts.add(index);
     }
 
-    if (this.resolvedNotFoundHandler && !this.notFoundHandlerInstalled) {
+    if (this.resolvedNotFoundHandler) {
       const handler = this.resolvedNotFoundHandler;
       this.app.setNotFoundHandler(async (request, reply) => {
         const normalizedHeaders: Record<string, any> = {};
@@ -560,14 +558,25 @@ class HttpServer implements ResourceInstance {
         }
         return reply.send(result?.body ?? result);
       });
-      this.notFoundHandlerInstalled = true;
     }
   }
 
-  async run(): Promise<void> {
-    this.releaseHold = this.ctx.acquireHold();
-    try {
-      await this.app.listen({
+  /**
+   * Two effects, and no error handling of its own.
+   *
+   * The hold is one, the open socket is the other. A `listen()` that throws — a bound port — unwinds the run frame,
+   * so the hold is released and the routes are torn down without this method
+   * knowing anything about recovery; the same unwind is what stops the server at
+   * teardown, which is why there is no `teardown()` left to keep in step.
+   */
+  run() {
+    return this.ctx
+      .effect("kernel hold", async () => ({
+        result: undefined,
+        inverse: this.ctx.acquireHold(`http server ${this.resource.metadata.name}`),
+      }))
+      .effect("listening socket", async () => {
+        await this.app.listen({
         host: this.host,
         port: this.port,
         // Fastify announces "Server listening at http://…" through the injected
@@ -577,7 +586,6 @@ class HttpServer implements ResourceInstance {
         // Fastify's wording, which is the thing this kind's own contract forbids.
         listenTextResolver: () => LISTEN_SUPERSEDED,
       });
-      this.listening = true;
       this.ctx.log.info(
         "Listening",
         {
@@ -599,34 +607,21 @@ class HttpServer implements ResourceInstance {
         mounts: this.resource.mounts,
         openapi: this.resource.openapi,
       });
-    } catch (error) {
-      await this.app.close();
-      if (this.releaseHold) {
-        this.releaseHold();
-        this.releaseHold = null;
-      }
-      throw error;
-    }
-  }
-
-  async teardown(): Promise<void> {
-    if (this.releaseHold) {
-      this.releaseHold();
-      this.releaseHold = null;
-    }
-    await this.app.close();
-    // Only if a socket actually opened. A server that initialized but was never
-    // listed in `targets:`, or whose `listen()` threw, would otherwise report a
-    // close for something that never started — and a consumer pairing the two
-    // events for uptime or leak detection sees an unmatched close.
-    if (this.listening) {
-      this.listening = false;
-      this.ctx.log.info(
-        "Stopped listening",
-        { "server.address": this.host, "server.port": this.port },
-        { eventName: "http.server.stopped" },
-      );
-    }
+      return {
+        result: undefined,
+        // Paired with the record above, which is what the `listening` flag used
+        // to approximate: a server that never listened has no such effect, so it
+        // cannot report a close a consumer would fail to match with a start.
+        inverse: async () => {
+          await this.closeApp();
+          this.ctx.log.info(
+            "Stopped listening",
+            { "server.address": this.host, "server.port": this.port },
+            { eventName: "http.server.stopped" },
+          );
+        },
+      };
+    });
   }
 }
 

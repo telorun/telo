@@ -3,6 +3,7 @@ import {
   InvokeError,
   parseDurationMs,
   RuntimeError,
+  type EffectChain,
   type InvokeContext,
   type ResourceContext,
   type ResourceInstance,
@@ -56,9 +57,26 @@ export class RedirectListenerResource implements ResourceInstance {
     return `OAuthClient.RedirectListener "${this.manifest.metadata?.name ?? ""}"`;
   }
 
-  /** Binding is a side effect, so it belongs in `run()`. `init()` builds the
-   *  configuration and nothing observable — the same split `Http.Server` uses. */
-  async run(): Promise<void> {
+  /** Binding is an observable side effect, so it belongs in `run()` — and the
+   *  socket it opens is what `run()` returns, since closing it is the only thing
+   *  that undoes this. The same split `Http.Server` uses. */
+  run(): EffectChain<unknown> {
+    return this.ctx.effect("redirect socket", async () => {
+      await this.bind();
+      return { result: undefined, inverse: () => this.close() };
+    });
+  }
+
+  /** Close the socket. The inverse of {@link bind}; a listener that never bound
+   *  closes to nothing. */
+  private async close(): Promise<void> {
+    const server = this.server;
+    this.server = undefined;
+    if (!server) return;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+
+  private async bind(): Promise<void> {
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "/", `http://${LOOPBACK_HOST}`);
       // Only the configured path is a callback. Treating every request as one
@@ -168,13 +186,6 @@ export class RedirectListenerResource implements ResourceInstance {
       this.waiters.set(state, (result) => settle(() => resolve(result)));
       signal?.addEventListener("abort", onAbort, { once: true });
     });
-  }
-
-  async teardown(): Promise<void> {
-    const server = this.server;
-    this.server = undefined;
-    if (!server) return;
-    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 
   snapshot(): Record<string, unknown> {

@@ -19,8 +19,9 @@ entire HTTP transport lifecycle:
   or 410, or JSON-RPC `-32001` / `-32002`), the cached session is dropped, a
   fresh handshake runs, and the failed request is retried once. A second
   rejection surfaces as `ERR_MCP_SESSION_INVALID`.
-- **Best-effort DELETE on teardown.** Sends a session-terminate DELETE per
-  the Streamable HTTP spec on `teardown()` (self-handshake mode only).
+- **Best-effort DELETE on teardown.** The session is registered as `init()`'s
+  effect, so unwinding sends a session-terminate DELETE per the Streamable HTTP
+  spec (self-handshake mode only).
 
 ## Schema
 

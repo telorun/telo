@@ -29,8 +29,10 @@ import {
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import { evalPathCovers } from "@telorun/analyzer";
+import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
 import {
   classifyInitFailures,
+  isDeferral,
   renderInitFailureText,
   summarizeInitFailures,
   type FailedResource,
@@ -491,11 +493,27 @@ export class EvaluationContext implements IEvaluationContext {
     { resource: ResourceManifest; instance: ResourceInstance }
   >();
 
-  /** Resources that have been created but not yet initialized (between phases). */
+  /** Resources that have been created but not yet initialized (between phases).
+   *  `source` is the manifest as REGISTERED, kept so a discarded instance is
+   *  rebuilt from what the author wrote rather than from the create-time
+   *  expansion of it. */
   protected readonly createdInstances = new Map<
     string,
-    { resource: ResourceManifest; instance: ResourceInstance; ctx: any }
+    { resource: ResourceManifest; instance: ResourceInstance; ctx: any; source: ResourceManifest }
   >();
+
+  /**
+   * Resources whose failed `init()` could not be rolled back.
+   *
+   * Withheld rather than retried: re-running `init()` from a state an inverse
+   * refused to restore is worse than not retrying, so the loop skips them and
+   * they are reported with both the init error and the refusing inverse.
+   */
+  private readonly withheldResources = new Set<string>();
+
+  /** Resources discarded after a failed `init()` and re-queued for creation.
+   *  Their re-creation is not progress — see the create sub-phase. */
+  private readonly recreatedResources = new Set<string>();
 
   /** Resources queued for initialization on this context node. */
   private pendingResources: ResourceManifest[] = [];
@@ -746,6 +764,20 @@ export class EvaluationContext implements IEvaluationContext {
    * Attach a child context to this node. The child's parent is set to this
    * context and the child is registered under the given name.
    */
+  /**
+   * Detach a child from this node — the inverse of {@link spawnChild}.
+   *
+   * A child is normally torn down in place, so this exists for the one case
+   * that discards it instead: an import whose instance is dropped and rebuilt
+   * must not leave its child in `children`, or this context's teardown cascades
+   * into a context whose replacement is already live. Here rather than in the
+   * controller, because how children are tracked is this class's own fact.
+   */
+  detachChild(child: IEvaluationContext): void {
+    const index = this.children.indexOf(child);
+    if (index >= 0) this.children.splice(index, 1);
+  }
+
   spawnChild<T extends IEvaluationContext>(child: T): T {
     child.parent = this;
     this.children.push(child);
@@ -843,11 +875,18 @@ export class EvaluationContext implements IEvaluationContext {
               resource: created.resource,
               instance: created.instance,
               ctx: created.ctx,
+              source: resource,
             });
             const idx = this.pendingResources.findIndex((m) => m.metadata.name === name);
             if (idx >= 0) this.pendingResources.splice(idx, 1);
             errors.delete(name);
-            progress = true;
+            // A FIRST creation is progress; RE-creating a resource whose init
+            // failed is not. Counting it would keep the loop alive on a
+            // permanently failing resource for every remaining pass, re-running
+            // `create()` each time — ten module loads for a broken import, ten
+            // pools for an unreachable database. Its retry still happens; what
+            // it no longer does is claim the environment moved.
+            if (!this.recreatedResources.has(name)) progress = true;
             const createdRes = created.resource;
             const refs = collectResourceRefs(createdRes);
             this.resourceDependencies.set(name, localDependencyNames(refs));
@@ -881,8 +920,8 @@ export class EvaluationContext implements IEvaluationContext {
       }
 
       // Init sub-phase
-      for (const [name, { resource, instance, ctx }] of [...this.createdInstances]) {
-        if (this.resourceInstances.has(name)) continue;
+      for (const [name, { resource, instance, ctx, source }] of [...this.createdInstances]) {
+        if (this.resourceInstances.has(name) || this.withheldResources.has(name)) continue;
         try {
           if (this.preInitHook) {
             this.preInitHook(
@@ -895,7 +934,68 @@ export class EvaluationContext implements IEvaluationContext {
               this,
             );
           }
-          if (instance.init) await instance.init(ctx);
+          const scope = effectOwnerOf(instance)?.effects;
+          scope?.openFrame("init");
+          try {
+            // What `init()` RETURNS is what undoes it. A controller that
+            // allocates nothing returns nothing; there is no `teardown()`, so an
+            // allocation outside the chain is one nothing will reclaim.
+            if (instance.init) await executeReturnedChain(await instance.init(ctx), scope);
+          } catch (error) {
+            // Recover before the next pass: the loop retries a failed init, and
+            // an init that registered a listener before it failed to connect
+            // would otherwise register that listener again on every pass.
+            //
+            // HOW MUCH unwinds depends on whether the instance survives. A
+            // deferral keeps it, so only the init frame goes — unwinding the
+            // create frame there would destroy what construction built (a
+            // connection's pool) and then re-init the same instance against it.
+            // A real failure discards the instance, so everything `create()`
+            // allocated on its behalf goes with it or nothing reclaims it.
+            const deferred = isDeferral(error);
+            const refused = (await (deferred ? scope?.unwindFrame() : scope?.unwindAll())) ?? [];
+            if (refused.length > 0) {
+              // Retrying from a state that could not be rolled back is worse
+              // than not retrying, so the resource is withheld with a cause
+              // naming both the init error and the inverse that refused. The
+              // entry stays in `createdInstances` so it is still reported as a
+              // failure; the loop skips it from here on.
+              this.withheldResources.add(name);
+              throw new RuntimeError(
+                "ERR_EFFECT_RECOVERY_FAILED",
+                `${resource.kind} '${name}' failed to initialize and could not be rolled back: ` +
+                  `${refused.map((f) => `'${f.reason}' (${errorText(f.error)})`).join(", ")}`,
+                [
+                  { severity: "error", message: errorText(error), resource: name },
+                  ...refused.map((f) => ({
+                    severity: "error" as const,
+                    message: `inverse '${f.reason}' refused: ${errorText(f.error)}`,
+                    resource: name,
+                  })),
+                ],
+              );
+            }
+            // A DEFERRAL is not a failure: it is the loop's own "your turn has
+            // not come" signal, raised when a ref names a resource that has not
+            // initialized yet. The instance stays — re-creating it would re-run
+            // `create()`, which for an import re-registers its alias and reloads
+            // its module, and for a template re-registers its children. Its init
+            // frame alone was unwound above, so the next pass re-inits a
+            // constructed resource rather than a dismantled one.
+            if (deferred) throw error;
+            // The inverses restored what init() touched OUTSIDE the instance;
+            // the instance's own half-built fields are beyond their reach, so
+            // the object goes too and the next pass builds a fresh one. That is
+            // what makes "retry from a clean state" literal rather than a
+            // convention each controller has to honour.
+            this.createdInstances.delete(name);
+            this.recreatedResources.add(name);
+            // Re-queued as REGISTERED, not as created: the create-time manifest
+            // has already been through compile-field expansion, and expanding
+            // it a second time would evaluate an author's expression twice.
+            this.pendingResources.push(source);
+            throw error;
+          }
           // Publish BEFORE registering: publication can fail (a kind returning
           // the reserved `status` key without declaring it, a report that does
           // not match `status:`), and a resource that failed must not be left
@@ -1133,8 +1233,29 @@ export class EvaluationContext implements IEvaluationContext {
       reportedStatus.delete(instance);
       startedInstances.delete(instance);
       completedInstances.delete(instance);
+      // Tearing a resource down IS unwinding its effects — every frame, newest
+      // first, LIFO within each. There is no `teardown()` to call: what undoes a
+      // resource is what its `init()` and `run()` returned.
+      const owner = effectOwnerOf(instance);
+      const refused = (await owner?.effects.unwindAll()) ?? [];
+      if (refused.length > 0) {
+        // Aggregate and continue: one refusing inverse must not strand the log
+        // sinks pinned last to outlive everything that might log on the way
+        // down.
+        failures.push({
+          resource: label,
+          error: new RuntimeError(
+            "ERR_EFFECT_RECOVERY_FAILED",
+            `${refused.length} inverse(s) refused: ` +
+              refused.map((f) => `'${f.reason}' (${errorText(f.error)})`).join(", "),
+          ),
+        });
+      }
+      // A drain waits for in-flight background work under a bound and then
+      // abandons it — not an inverse, so it is not on a frame; it runs here,
+      // once the resource's own effects are undone.
       try {
-        if (instance.teardown) await instance.teardown();
+        await owner?.drainDetached();
       } catch (err) {
         // Aggregate rather than abort. A single throwing resource used to
         // abandon every resource after it in the cascade — including the log
@@ -1681,12 +1802,27 @@ export class EvaluationContext implements IEvaluationContext {
     // as started, so this has to happen first.
     await this.markStarted(name, instance);
 
+    // A frame of its own: what `run()` allocates (a listening socket, a kernel
+    // hold) is undone when the run's frame unwinds, without disturbing what
+    // `init()` built underneath it.
+    const effects = effectOwnerOf(instance)?.effects;
+    effects?.openFrame("run");
+
     try {
       // Runnable: run inside the ALS scope so nested invokes inherit the token and
       // trace id (skip the redundant `run` when the token is already ambient).
       // Service: call directly with the explicit context and NO ambient scope, so
       // its long-lived async work does not capture this scope.
-      const call = () => (instance.run as (c?: InvokeContext) => Promise<void>)(invokeCtx);
+      // What `run()` returns is what undoes it — the socket it opened, the hold
+      // it took. The chain executes INSIDE the same ambient scope as the call
+      // that produced it: its bodies are the work `run()` would otherwise have
+      // done inline, so running them outside would silently strip the
+      // cancellation token and trace parent from exactly the code that moved
+      // into a chain.
+      const call = async () => {
+        const returned = await (instance.run as (c?: InvokeContext) => Promise<unknown>)(invokeCtx);
+        await executeReturnedChain(returned, effects);
+      };
       await (isService || invokeCtx === ambient ? call() : cancellationStore.run(invokeCtx, call));
       // A one-shot Runnable that discovered something during run() publishes it
       // without an explicit call; a Service never reaches this until teardown.
@@ -1694,16 +1830,30 @@ export class EvaluationContext implements IEvaluationContext {
       await this.publishSnapshot(name);
       await this.emit(`${name}.Run`, span("end", "ok", {}));
     } catch (err) {
+      // A run that did not complete leaves nothing of its own behind: its frame
+      // unwinds here, so a `listen()` that threw releases the hold it took a
+      // line earlier instead of holding the process open for a server that
+      // never came up.
+      const refused = (await effects?.unwindFrame()) ?? [];
+      const recovery =
+        refused.length > 0
+          ? {
+              recoveryFailures: refused.map((f) => ({
+                reason: f.reason,
+                message: errorText(f.error),
+              })),
+            }
+          : {};
       if (isCancellationError(err)) {
         const reason = err instanceof Error ? err.message : String(err);
-        await this.emit(`${name}.RunCancelled`, span("end", "cancelled", { reason }));
+        await this.emit(`${name}.RunCancelled`, span("end", "cancelled", { reason, ...recovery }));
         throw err;
       }
       const detail =
         err instanceof Error
           ? { name: err.name, message: err.message }
           : { name: "UnknownError", message: String(err) };
-      await this.emit(`${name}.RunFailed`, span("end", "failed", detail));
+      await this.emit(`${name}.RunFailed`, span("end", "failed", { ...detail, ...recovery }));
       throw err;
     }
   }
@@ -2051,6 +2201,11 @@ function locateFailedAccess(
     }
   }
   return null;
+}
+
+/** One line for an inverse's refusal, quoted into a recovery aggregate. */
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function describeMissingAccess(value: unknown, key: string): string {

@@ -12,6 +12,10 @@ metadata:
     again if a call is rejected. Works with any compliant provider, configured from
     its issuer URL alone, and covers browser, terminal, headless-device and
     machine-to-machine sign-in.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 imports:
   Http: ../http-client
   KvStore: ../kv-store

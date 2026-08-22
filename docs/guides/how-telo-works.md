@@ -52,7 +52,7 @@ slots will accept it:
 
 | Capability | The controller implements | Typical kinds |
 | --- | --- | --- |
-| `Telo.Service` | `init()`, optional `teardown()` | Servers, connection pools — long-lived |
+| `Telo.Service` | `init()`, `run()` | Servers, connection pools — long-lived |
 | `Telo.Runnable` | `run()` | One-shot tasks, sequences, pipelines |
 | `Telo.Invocable` | `invoke(inputs)` | Handlers, scripts — things you call |
 | `Telo.Provider` | `provide()` | Configuration and value sources |
@@ -98,8 +98,14 @@ configure neither; both follow from what you declared.
 
 `init()` builds; `run()` acts. `Http.Server` is the reference implementation:
 `init()` registers routes and plugins, `run()` calls `listen()` and takes the
-hold, `teardown()` closes the socket and releases it. This split is what makes
-the init loop safe to retry, and what makes an init failure diagnosable.
+hold. This split is what makes the init loop safe to retry, and what makes an
+init failure diagnosable.
+
+There is no `teardown()`. Both methods **return** the effects they performed —
+each allocation paired with the inverse that undoes it — and the runtime unwinds
+them last-in-first-out when the resource is torn down, or as soon as a later step
+fails. So the server that could not bind its port releases the hold it took a
+line earlier without any recovery code of its own.
 
 ## Two ways a value flows
 

@@ -11,6 +11,10 @@ metadata:
     at the server in a single step, so two callers racing for the same key can never
     both win. When Redis is unreachable, operations fail loudly rather than falling
     back. Run the server with eviction disabled.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 imports:
   KvStore: ../kv-store
 exports:

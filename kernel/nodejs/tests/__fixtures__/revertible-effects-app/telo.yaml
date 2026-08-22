@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata:
+  name: RevertibleEffectsApp
+  version: 1.0.0
+  description: Boots the revertible-effects fixture library so its journal can be read.
+imports:
+  Fixture: ../revertible-effects/telo.yaml
+targets:
+  - !ref Fixture.flaky

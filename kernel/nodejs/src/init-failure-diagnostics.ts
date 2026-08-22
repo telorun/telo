@@ -6,10 +6,17 @@ import type { RuntimeDiagnostic } from "@telorun/sdk";
  * failure of its own. This is the ONLY signal that an entry may be collapsed —
  * see {@link classifyInitFailures}.
  */
-const DEPENDENCY_PENDING_CODES = new Set([
+export const DEPENDENCY_PENDING_CODES = new Set([
   "ERR_LOCAL_REF_PENDING",
   "ERR_CROSS_MODULE_REF_PENDING",
 ]);
+
+/** Whether a thrown error is the loop's own "not your turn yet" signal rather
+ *  than a failure of the resource. */
+export function isDeferral(err: unknown): boolean {
+  const code = (err as { code?: string } | undefined)?.code;
+  return code !== undefined && DEPENDENCY_PENDING_CODES.has(code);
+}
 
 /** One resource that did not reach the `Initialized` state, with the outbound
  *  edges (names of resources in the SAME context) captured for it. */

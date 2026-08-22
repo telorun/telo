@@ -1,0 +1,24 @@
+modules:
+  modules/http-server: Added
+  modules/sql: Added
+  modules/postgres: Added
+  modules/sql-postgres: Added
+  modules/sqlite: Added
+  modules/sql-sqlite: Added
+  modules/otlp: Added
+  modules/cache-redis: Added
+  modules/kv-store-redis: Added
+  modules/mcp-client: Added
+  modules/mcp-server: Added
+  modules/oauth-client: Added
+  modules/scheduler: Added
+  modules/durable-local: Added
+  modules/durable-journal-postgres: Added
+body: "Controllers return their effects from `init()` / `run()` instead of implementing
+  `teardown()`: each allocation is written beside the inverse that undoes it, and the
+  runtime unwinds them last-in-first-out. A failure part-way through startup now
+  recovers what it already allocated — a bound port releases the kernel hold and
+  unregisters the routes, a connection that fails its health check destroys its pool —
+  and the retry starts from a freshly constructed resource. Declares `requires: telo:
+  '>=0.82.0'`, since an older runtime discards what a controller returns and would
+  allocate nothing."

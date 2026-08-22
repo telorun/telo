@@ -52,11 +52,11 @@ export async function register(_ctx: ControllerContext): Promise<void> {}
  * StreamableHTTPClientTransport because that transport opens a long-lived
  * server-pushed SSE GET stream on `notifications/initialized`. That open
  * connection deadlocks against Fastify's `server.close()` in the host's
- * Http.Server: app.close() waits for in-flight responses to drain before
- * teardown unblocks, but the SSE GET can only close once Mcp.HttpClient.
- * teardown() runs — and that won't run until the surrounding `with:` scope
+ * Http.Server: app.close() waits for in-flight responses to drain before it
+ * unblocks, but the SSE GET can only close once this client's own session
+ * effect unwinds — and that won't happen until the surrounding `with:` scope
  * (which owns Http.Server) tears down. Hand-rolling means one fetch per RPC
- * and no persistent connections, so teardown is deterministic.
+ * and no persistent connections, so unwinding is deterministic.
  *
  * v1 covers tools/call + tools/list per the Mcp.Client.inputType enum.
  * Server→client notifications are an explicit non-goal (see the module's
@@ -107,9 +107,10 @@ export class McpHttpClient {
         : ((sp as { name?: unknown } | null | undefined)?.name as string | undefined) ?? null;
   }
 
-  async init(): Promise<void> {
+  init(ctx: ResourceContext) {
     // Config validation only — no network I/O. The handshake fires lazily on
-    // first invoke() (self-handshake mode) or never (external provider mode).
+    // first invoke() (self-handshake mode) or never (external provider mode) —
+    // so the session it may open is what this effect's inverse terminates.
     if (!this.manifest.url) {
       throw transportError("Mcp.HttpClient requires a `url` field");
     }
@@ -119,6 +120,10 @@ export class McpHttpClient {
     } catch {
       throw transportError(`Mcp.HttpClient: invalid URL '${this.manifest.url}'`);
     }
+    return ctx.effect("mcp session", async () => ({
+      result: undefined,
+      inverse: () => this.terminateSession(),
+    }));
   }
 
   async invoke(inputs: InvokeInput): Promise<Record<string, unknown>> {
@@ -272,7 +277,7 @@ export class McpHttpClient {
     };
   }
 
-  async teardown(): Promise<void> {
+  private async terminateSession(): Promise<void> {
     // Best-effort DELETE per the Streamable HTTP spec for self-handshake
     // sessions. External-provider sessions are owned upstream and we don't
     // touch them. Errors swallowed — the kernel is shutting down.

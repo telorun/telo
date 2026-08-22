@@ -51,6 +51,7 @@ import { ambientInvokeContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { mintResourceHandle } from "./resource-handle.js";
+import { bindEffectOwner } from "./effect-scope.js";
 import { declarationOfInstance, recordInstanceDeclaration } from "./instance-declaration.js";
 import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
@@ -1457,16 +1458,14 @@ export class Kernel implements IKernel {
     // parent inputs → controller → parent result → mapping → child result.
     this.bindInvocationContract(instance, processedResource, resolvedKind, ctx);
 
-    // Fold the resource's fire-and-forget drain into its own teardown: tearing
-    // the resource down drains the background tasks it spawned (the kernel just
-    // calls teardown() — it tracks no tasks itself). A drain with no pending
-    // tasks is a no-op, so this is safe for every resource.
-    const ownerCtx = ctx as ResourceContextImpl;
-    const originalTeardown = instance.teardown?.bind(instance);
-    instance.teardown = async () => {
-      await ownerCtx.drainDetached();
-      if (originalTeardown) await originalTeardown();
-    };
+    // Record the instance's inverse accumulator here, at the single
+    // instance-production site, for the same reason the handle is minted here:
+    // the teardown cascade holds an instance and nothing else, so this is the
+    // one point where the instance and its context are both in hand. The
+    // detached drain is NOT folded into teardown any more — it waits for
+    // in-flight work rather than undoing anything, so the teardown cascade
+    // calls it directly (see `EvaluationContext.teardownResources`).
+    bindEffectOwner(instance, ctx as ResourceContextImpl);
 
     if (!runtime.length) return { instance, ctx, resource: processedResource };
 

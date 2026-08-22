@@ -253,9 +253,18 @@ class PostgresJournalController {
     return this.#connection;
   }
 
-  async init(): Promise<void> {
-    this.#createTables = this.resource.createTable !== false;
-    await this.ready();
+  /**
+   * Ensuring the tables exist allocates nothing this journal owns — `IF NOT
+   * EXISTS` throughout, and the tables outlive every process — so this step has
+   * no inverse to state. The wake subscription DOES allocate, and registers its
+   * own effect at the moment `onWake` opens it.
+   */
+  init(ctx: ResourceContext) {
+    return ctx.effect("journal tables", async () => {
+      this.#createTables = this.resource.createTable !== false;
+      await this.ready();
+      return { result: undefined };
+    });
   }
 
   /**
@@ -618,16 +627,37 @@ class PostgresJournalController {
       return async () => {};
     }
     this.#wakeHandlers.add(handler);
-    this.#unlisten ??= await conn.listen(this.#channel, (payload) => {
-      for (const subscriber of this.#wakeHandlers) subscriber(payload ?? "");
-    });
+    if (!this.#unlisten) {
+      // Registered at the moment the subscription is OPENED, on the journal's
+      // own frame — an inverse pairs with a forward action that happened, so a
+      // slot reserved in `init()` for a subscription nobody may ever open is a
+      // placeholder rather than a pair. It closes if the journal unwinds while
+      // subscribers are still attached; the unsubscribe below is the ordinary
+      // path, and disposing twice is a no-op.
+      const { result } = await this.ctx
+        .effect("wake subscription", async () => {
+          const unlisten = await conn.listen(this.#channel, (payload) => {
+            for (const subscriber of this.#wakeHandlers) subscriber(payload ?? "");
+          });
+          this.#unlisten = unlisten;
+          return { result: unlisten, inverse: () => this.closeWakeSubscription() };
+        })
+        .perform();
+      void result;
+    }
     return async () => {
       this.#wakeHandlers.delete(handler);
       if (this.#wakeHandlers.size > 0) return;
-      const unlisten = this.#unlisten;
-      this.#unlisten = undefined;
-      await unlisten?.();
+      await this.closeWakeSubscription();
     };
+  }
+
+  /** Drop the subscription, whether the last subscriber left or the journal
+   *  itself is unwinding. Idempotent — both paths reach it. */
+  private async closeWakeSubscription(): Promise<void> {
+    const unlisten = this.#unlisten;
+    this.#unlisten = undefined;
+    await unlisten?.();
   }
 
   private async wake(run: string): Promise<void> {
@@ -638,13 +668,6 @@ class PostgresJournalController {
     } catch (err) {
       this.ctx.log.debug("durable journal wake notification failed", undefined, { error: err });
     }
-  }
-
-  async teardown(): Promise<void> {
-    this.#wakeHandlers.clear();
-    const unlisten = this.#unlisten;
-    this.#unlisten = undefined;
-    await unlisten?.();
   }
 
   snapshot(): Record<string, unknown> {
