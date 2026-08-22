@@ -320,22 +320,9 @@ jobs:
           cache-from: type=gha,scope=kernel-lean-slim
           cache-to: type=gha,mode=max,scope=kernel-lean-slim
 
-      - name: Build & push rust
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: cli/nodejs/Dockerfile
-          target: rust
-          push: true
-          platforms: linux/amd64,linux/arm64
-          build-args: |
-            RUST_VERSION=${{ needs.context.outputs.rust-version }}
-          tags: ${{ steps.tags.outputs.rust }}
-          cache-from: |
-            type=gha,scope=kernel-rust
-            type=gha,scope=kernel-lean
-          cache-to: type=gha,mode=max,scope=kernel-rust
-
+      # One build, both tag sets. There is no non-slim rust image: the toolchain
+      # needs nothing from the fat base, so `-rust-<ver>` is the slim one under
+      # its historical name rather than a second ~990 MB-heavier build.
       - name: Build & push rust-slim
         uses: docker/build-push-action@v6
         with:
@@ -346,7 +333,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             RUST_VERSION=${{ needs.context.outputs.rust-version }}
-          tags: ${{ steps.tags.outputs.rust-slim }}
+          tags: |
+            ${{ steps.tags.outputs.rust }}
+            ${{ steps.tags.outputs.rust-slim }}
           cache-from: |
             type=gha,scope=kernel-rust-slim
             type=gha,scope=kernel-lean-slim
