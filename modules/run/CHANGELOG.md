@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.0 - 2026-08-23
+### Added
+* Drops the retired `teardown()` from the surface: ai's model, image and embedding handle interfaces no longer declare it, and the run and vector-store-pgvector controllers no longer implement an empty one. Cleanup is what a controller returns from `init()` / `run()`. Nothing called these, so no behaviour changes; a third-party handle implementing `teardown()` simply has a method nobody invokes.
+
 ## 0.25.0 - 2026-08-20
 ### Added
 * A dispatch site's retry policy gains nonRetryable: a list of error codes that end the loop at the first failure instead of consuming the budget, which for a non-idempotent target is the difference between one side effect and N. And a step gains a per-attempt timeout: (milliseconds), enforced by cancellation rather than by abandoning the call, failing ERR_STEP_TIMEOUT on elapse.

@@ -1,6 +1,6 @@
 {
   "name": "@telorun/scheduler-build",
-  "version": "0.8.3",
+  "version": "0.9.0",
   "private": true,
   "description": "Build-only package for the std/scheduler module's bundled controllers. Never published — the controllers ship inside the module artifact as pkg:telo/local/js bundles, so this package exists solely to declare the dependencies esbuild inlines.",
   "type": "module",

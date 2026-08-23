@@ -1,6 +1,6 @@
 {
   "name": "@telorun/pdf",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "PDF primitives — rasterize pages to PNG images, read the text a document renders, and author editable AcroForm fields.",
   "keywords": [
     "telo",

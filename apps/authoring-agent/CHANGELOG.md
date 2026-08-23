@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-08-23
+### Added
+* Drops the retired `teardown()` from the surface: ai's model, image and embedding handle interfaces no longer declare it, and the run and vector-store-pgvector controllers no longer implement an empty one. Cleanup is what a controller returns from `init()` / `run()`. Nothing called these, so no behaviour changes; a third-party handle implementing `teardown()` simply has a method nobody invokes.
+
 ## 0.6.0 - 2026-08-20
 ### Added
 * Any kind can now carry a step body: the grammar is a shared fragment (`$ref: "telo://manifest#/$defs/Step"`) instead of four `$defs` copies declared here, and `StepEngine` moved to `@telorun/sdk`. Two breaking consequences: `while/do` is now legal in an iteration, projection and loop body, not only a sequence; and reading the grammar requires telo >=0.79.0, which the module now declares.

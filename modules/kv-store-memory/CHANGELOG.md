@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-08-23
+### Added
+* Drops the teardown that cleared the in-process Map. It undid nothing observable — the entries live in the store instance, so they go when it does — and keeping it would have meant declaring a runtime floor on a module that is otherwise loadable everywhere.
+
 ## 0.6.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.

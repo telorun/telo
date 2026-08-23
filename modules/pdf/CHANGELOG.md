@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.8.0 - 2026-08-23
+### Added
+* `Pdf.Text` reads the text a PDF renders, per page and whole-document, and reports its page count. The counterpart to `Pdf.Rasterizer`: rasterizing answers what a page looks like, which moves with the platform's font rasterization, while this answers what it says — which is what an assertion about a generated document needs, since a page image cannot tell a correct table from an empty one.
+
 ## 0.7.0 - 2026-08-09
 ### Added
 * metadata.name is now PDF, so the module contributes its kinds under the `PDF.<Kind>` canonical prefix instead of `pdf.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.6.0 - 2026-07-31

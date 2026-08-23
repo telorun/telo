@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.29.0 - 2026-08-23
+### Added
+* Controllers return their effects from `init()` / `run()` instead of implementing `teardown()`: each allocation is written beside the inverse that undoes it, and the runtime unwinds them last-in-first-out. A failure part-way through startup now recovers what it already allocated — a bound port releases the kernel hold and unregisters the routes, a connection that fails its health check destroys its pool — and the retry starts from a freshly constructed resource. Declares `requires: telo: '>=0.82.0'`, since an older runtime discards what a controller returns and would allocate nothing.
+* Mounts declare their entry grammar (`entries` / `matcher` / `handler`), so the editor renders them as an ordered list of mount points rather than as a set of nodes — making mount order, which is match order, visible and editable.
+
 ## 0.28.0 - 2026-08-21
 ### Fixed
 * Declare `inputs: /inputs` on the route handler's `x-telo-ref`, naming the sibling map that holds the call's arguments. Nothing previously tied a route's `inputs:` to the handler it invokes, so an editor could not offer the target's declared input keys there.
