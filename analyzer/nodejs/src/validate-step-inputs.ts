@@ -248,9 +248,15 @@ function checkCallSite(site: CallSite, ctx: CallCheckContext): StepInputIssue[] 
       // findings (missing required, unknown property) are located at the
       // container and survive the filter.
       const celPaths = new Set<string>();
-      const substituted = substituteCelFields(values, contract.schema, undefined, (p) =>
-        celPaths.add(p),
-      );
+      const substituted = substituteCelFields(values, contract.schema, undefined, {
+        onSubstitute: (p) => celPaths.add(p),
+        // A contract may name a shape declared elsewhere. Both halves need the
+        // resolver or they disagree about the same slot: the stand-in walk hands
+        // its expressions a typeless value, and the check below compiles nothing
+        // at all — so a step's arguments went unchecked against exactly the
+        // contracts that describe them most precisely.
+        external: (ref) => defs.schemaForId(ref),
+      });
       // The type-argument check, at the one site where a produced value's schema
       // meets a consuming slot's. A CEL leaf's placeholder says nothing about
       // what the expression yields, so AJV above is silent here by design — and
@@ -328,7 +334,7 @@ function checkCallSite(site: CallSite, ctx: CallCheckContext): StepInputIssue[] 
         }
       }
 
-      for (const issue of validateAgainstSchema(substituted, contract.schema)) {
+      for (const issue of defs.validateResourceConfig(substituted, contract.schema)) {
         if (celPaths.has(issue.path)) continue;
         // A missing-required issue names the property that ISN'T there, so
         // anchoring on it finds no node and the diagnostic degrades to 1:1 —

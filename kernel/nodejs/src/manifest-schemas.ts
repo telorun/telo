@@ -214,12 +214,7 @@ function lazyValidator(schema: object): LazyValidator {
 export const validateResourceDefinition = lazyValidator(ResourceDefinitionSchema);
 export const validateResourceAbstract = lazyValidator(ResourceAbstractSchema);
 
-export function formatAjvErrors(errors: any[] | null | undefined): string {
-  if (!errors || errors.length === 0) return "Unknown schema error";
-  return errors
-    .map((err) => {
-      const p = err.instancePath || "/";
-      return `${p} ${err.message ?? "is invalid"}`;
-    })
-    .join("; ");
-}
+/** Re-exported from the analyzer so a schema failure is phrased identically
+ *  under `telo check` and at runtime — the kernel's own copy rendered the same
+ *  failure as a raw `instancePath + message` join and handled no union. */
+export { formatAjvErrors } from "@telorun/analyzer";

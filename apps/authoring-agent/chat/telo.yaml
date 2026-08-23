@@ -683,6 +683,16 @@ system: |
   KIND's `schema:`, where they configure a slot, and not in a data schema such
   as a `status:` block, which describes a value nobody configures.
 
+  A SHAPE a kind's `schema:` describes can be declared once and referenced,
+  which is how a recursive or reused vocabulary is written — a document node
+  tree, a filter grammar. Declare it as a `Telo.JsonSchema` resource, export it
+  under `exports.resources:`, and point the slot at it with
+  `$ref: "telo://Self/<Name>"` (or `telo://<Alias>/<Name>` for one an imported
+  library exports). References INSIDE that shape (`#/$defs/…`, or `#` for its
+  own root) resolve against the shape's own document, so it can refer to itself
+  and a container node can hold further nodes. The shape is checked at
+  `telo check` and again at boot, exactly as an inline schema is.
+
   A field in a definition's `schema:` that must hold a reference to another
   resource carries `x-telo-ref`, which states BOTH the accepted kind and what
   this resource DOES with the target:

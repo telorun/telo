@@ -247,8 +247,16 @@ export { validateDynamicSelectors, validateRefSlotDeclarations } from "./validat
 export type { RefSlotIssue } from "./validate-ref-slots.js";
 export { validateValueTypeSlots } from "./validate-value-type-slots.js";
 export type { ValueTypeSlotIssue } from "./validate-value-type-slots.js";
-export { checkSchemaCompatibility, selectUnionBranch } from "./schema-compat.js";
-export type { CompatibilityResult } from "./schema-compat.js";
+export { checkSchemaCompatibility, resolveRefIn, selectUnionBranch } from "./schema-compat.js";
+export type { CompatibilityResult, ExternalSchemaResolver } from "./schema-compat.js";
+export {
+  ajvErrorToPath,
+  formatAjvErrors,
+  formatSingleError,
+  reduceSchemaErrors,
+  schemaIssues,
+} from "./schema-error-report.js";
+export type { AjvErrorLike, SchemaIssue } from "./schema-error-report.js";
 export { visitManifest } from "./manifest-visitor.js";
 export type {
     CelSiteEvent,

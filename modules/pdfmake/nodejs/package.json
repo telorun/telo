@@ -1,0 +1,19 @@
+{
+  "name": "@telorun/pdfmake-build",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build-only package for the std/pdfmake module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json"
+  },
+  "dependencies": {
+    "pdfmake": "^0.3.11"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0"
+  }
+}

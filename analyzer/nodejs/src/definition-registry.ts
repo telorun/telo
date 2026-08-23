@@ -8,10 +8,19 @@ import {
   isSchemaFromEntry,
   type ReferenceFieldMap,
 } from "./reference-field-map.js";
-import { createAjv, formatSingleError, navigateJsonPointer } from "./schema-compat.js";
+import { createAjv, navigateJsonPointer } from "./schema-compat.js";
+import {
+  formatSingleError,
+  reduceSchemaErrors,
+  schemaIssues,
+  type SchemaIssue,
+} from "./schema-error-report.js";
 import { effectiveAuthorSchema } from "./extends-resolution.js";
 
 /** Pure kind → ResourceDefinition map. No controller loading, no lifecycle. */
+/** What `ajv.compile` hands back: a predicate carrying its own `errors`. */
+type CompiledValidator = ((data: unknown) => boolean) & { errors?: any[] | null };
+
 export class DefinitionRegistry {
   constructor() {
     for (const def of KERNEL_BUILTINS) this.register(def);
@@ -22,6 +31,7 @@ export class DefinitionRegistry {
    *  across analyze() calls and no unbounded growth across the process lifetime. */
   private readonly ajv = createAjv();
   private readonly registeredSchemaIds = new Set<string>();
+  private readonly compiledValidators = new WeakMap<Record<string, any>, CompiledValidator>();
   /** The subset of `registeredSchemaIds` claimed by a kind's schema. Kinds and
    *  named `Telo.Type`s share one `telo://<module>/<Name>` id space, so this is
    *  what lets a colliding type name be reported instead of silently dropped. */
@@ -162,20 +172,47 @@ export class DefinitionRegistry {
     return schema && typeof schema === "object" ? (schema as Record<string, any>) : undefined;
   }
 
-  /** Validates data against a schema using this registry's AJV instance, which has all
-   *  registered definition schemas loaded — enabling cross-module $ref resolution.
-   *  A compile failure returns `[]` here; it is surfaced loudly (once, on the
-   *  owning definition) by `schemaCompileError` via the analyzer's
-   *  definition-schema compile check, so resources are never silently skipped. */
+  /**
+   * Validates a resource's configuration against its kind's schema, with the
+   * offending field's path — what a `SCHEMA_VIOLATION` diagnostic is built from.
+   *
+   * On THIS registry's AJV, which is the point: it holds every registered
+   * definition schema and every named `Telo.Type`, so a kind whose schema
+   * references a shape declared elsewhere is checked rather than skipped. The
+   * module-level instance this used to run on had none of them registered, so
+   * such a schema failed to compile and the failure was swallowed — a resource
+   * could be arbitrarily wrong and `telo check` reported nothing, while the
+   * kernel (whose validator does resolve the reference) rejected it at boot.
+   * Two AJVs answering one question is what made that possible; there is now
+   * one, and it is the same one `schemaCompileError` reports through.
+   */
   validateWithRefs(data: unknown, schema: Record<string, any>): string[] {
-    let validate: ReturnType<typeof this.ajv.compile>;
+    const validate = this.compiledFor(schema);
+    if (!validate || validate(data)) return [];
+    return reduceSchemaErrors(validate.errors).map(formatSingleError);
+  }
+
+  /** {@link validateWithRefs}, with the path each issue is anchored at. */
+  validateResourceConfig(data: unknown, schema: Record<string, any>): SchemaIssue[] {
+    const validate = this.compiledFor(schema);
+    if (!validate || validate(data)) return [];
+    return schemaIssues(validate.errors);
+  }
+
+  /** Memoized per schema OBJECT — the analyzer validates every resource of a
+   *  kind against the same one, and this runs at keystroke time in an editor.
+   *  A schema AJV refuses compiles to `undefined`; that is reported once,
+   *  anchored on the owning definition, by `schemaCompileError`. */
+  private compiledFor(schema: Record<string, any>): CompiledValidator | undefined {
+    const cached = this.compiledValidators.get(schema);
+    if (cached) return cached;
     try {
-      validate = this.ajv.compile(schema);
+      const validate = this.ajv.compile(schema);
+      this.compiledValidators.set(schema, validate);
+      return validate;
     } catch {
-      return [];
+      return undefined;
     }
-    if (validate(data)) return [];
-    return (validate.errors ?? []).map(formatSingleError);
   }
 
   /** Returns the AJV compile error for `schema`, or `undefined` when it compiles.

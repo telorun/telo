@@ -1,11 +1,8 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { collectRefs, isInlineResource } from "./reference-field-map.js";
-import {
-  collectProperties,
-  resolveRef,
-  substituteCelFields,
-  validateAgainstSchema,
-} from "./schema-compat.js";
+import type { ExternalSchemaResolver } from "./schema-compat.js";
+import { collectProperties, resolveRef, substituteCelFields } from "./schema-compat.js";
+import type { SchemaIssue } from "./schema-error-report.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { collectValueSchemaIssues } from "./validate-value-schema.js";
 
@@ -14,6 +11,22 @@ const SOURCE = "telo-analyzer";
 /** Minimal view of a definition needed to validate an inline resource's config. */
 export interface InlineDefinitionLookup {
   (kind: string): { schema?: Record<string, any> } | undefined;
+}
+
+/**
+ * The validator this pass checks an inline resource's config with, and the
+ * resolver that lets both it and the stand-in walk see through a named shape.
+ *
+ * Passed in rather than reached for: the module-level AJV this used has no
+ * registered shapes, so a kind whose `schema:` references one compiled nowhere
+ * and every inline declaration of it was silently unchecked — while the
+ * identical resource written standalone was checked, and the kernel rejected
+ * both at boot. Two validators answering one question is what allowed that, so
+ * the caller supplies the one that holds the shapes.
+ */
+export interface InlineConfigValidator {
+  validate(data: unknown, schema: Record<string, any>): SchemaIssue[];
+  external: ExternalSchemaResolver;
 }
 
 /**
@@ -41,7 +54,11 @@ export function validateNestedInlineResources(
   rootSchema: Record<string, any>,
   lookupDefinition: InlineDefinitionLookup,
   /** Needed to resolve a `telo#Type` field a value slot is validated against. */
-  allManifests: Record<string, any>[] = [],
+  allManifests: Record<string, any>[],
+  /** REQUIRED, and deliberately not defaulted: a default would be a second
+   *  validator answering the same question, and omitting it would silently stop
+   *  checking rather than fail. */
+  validator: InlineConfigValidator,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const resource = { kind: manifest.kind, name: manifest.metadata?.name as string };
@@ -89,14 +106,18 @@ export function validateNestedInlineResources(
         ? (inline.metadata as Record<string, unknown>)
         : {};
     const data = { ...inline, metadata: { name: "__inline__", ...existingMeta } };
-    const substituted = substituteCelFields(data, effectiveSchema, effectiveSchema);
-    // The same two passes the top-level resource loop runs, so a kind's
-    // guarantees don't depend on whether the author wrote it standalone or
-    // inline (under a step's `invoke:`, or in a `with:` scope). `data` carries
-    // the synthesized metadata; `x-telo-value-schema-from` reads sibling fields
-    // off the resource, which are present either way.
+    const substituted = substituteCelFields(data, effectiveSchema, effectiveSchema, {
+      external: validator.external,
+    });
+    // The same two passes the top-level resource loop runs, on the same
+    // validator, so a kind's guarantees don't depend on whether the author wrote
+    // it standalone or inline (under a step's `invoke:`, or in a `with:` scope)
+    // — and CLAUDE.md mandates inline for a single-use resource, so inline is
+    // the common shape rather than the exception. `data` carries the synthesized
+    // metadata; `x-telo-value-schema-from` reads sibling fields off the
+    // resource, which are present either way.
     const inlineIssues = [
-      ...validateAgainstSchema(substituted, effectiveSchema),
+      ...validator.validate(substituted, effectiveSchema),
       ...collectValueSchemaIssues(data, schema, allManifests),
     ];
     for (const issue of inlineIssues) {

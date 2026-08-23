@@ -6,14 +6,15 @@ metadata:
   license: LicenseRef-SustainableUse
   categories: [Data]
   description: |
-    Working with PDF documents: render a page to an image at a chosen scale, and add
-    editable form fields — text boxes, checkboxes, signatures — at measured positions.
-    Both share one coordinate space, the pixels of the rendered image from the
-    top-left, so what a model or a human measures on the image is where the field
-    lands.
+    Working with PDF documents: render a page to an image at a chosen scale, read the
+    text a document renders, and add editable form fields — text boxes, checkboxes,
+    signatures — at measured positions. Rendering and field placement share one
+    coordinate space, the pixels of the rendered image from the top-left, so what a
+    model or a human measures on the image is where the field lands.
 exports:
   kinds:
     - Rasterizer
+    - Text
     - FormFields
 ---
 # Rasterizer: PDF bytes → one page as a PNG image.
@@ -118,6 +119,67 @@ schema:
       maximum: 100
       default: 80
       description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
+  additionalProperties: false
+---
+# Text: PDF bytes → the text the document renders, per page.
+#
+# The counterpart to Rasterizer. Rasterizing answers what a page LOOKS LIKE,
+# which is a question about pixels and moves with the platform's font
+# rasterization; this answers what it SAYS, which is what an assertion about a
+# generated document needs.
+kind: Telo.Definition
+metadata:
+  name: Text
+  description: >-
+    Extracts the text a PDF renders, as one string per page and as the whole document.
+    Reading order is the order the producer wrote the content in, with a line break at
+    each end-of-line — not a layout reconstruction, so a multi-column page reads column
+    by column. Reports the document's page count.
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/pdf@0.3.0?local_path=./nodejs#text
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: data is not a Uint8Array, is not parseable as a PDF, or page is out of range.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [data]
+    additionalProperties: false
+    properties:
+      data:
+        title: Data
+        description: Buffered PDF bytes.
+        x-telo-type: Telo.Bytes
+      page:
+        title: Page
+        description: Read only this 1-based page. Every page is read when omitted.
+        type: integer
+        minimum: 1
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [text, pages, pageCount]
+    additionalProperties: false
+    properties:
+      text:
+        title: Text
+        description: Every page's text, joined with a line break.
+        type: string
+      pages:
+        title: Pages
+        description: One entry per page read — the whole document, or just `page`.
+        type: array
+        items: { type: string }
+      pageCount:
+        title: Page count
+        description: How many pages the document has, whatever `page` selected.
+        type: integer
+schema:
+  type: object
   additionalProperties: false
 ---
 # FormFields: PDF bytes + field placements → PDF bytes with editable AcroForm fields.

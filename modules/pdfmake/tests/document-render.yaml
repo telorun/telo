@@ -1,0 +1,97 @@
+kind: Telo.Application
+metadata:
+  name: PdfMakeDocumentTest
+  version: 1.0.0
+  description: |
+    Renders a document template and reads it back with Pdf.Text.
+
+    Reading the TEXT is what makes this an assertion: a rendered page image
+    moves with the platform's font rasterization and cannot tell a correct table
+    from an empty one. What is checked here is what has no other regression
+    protection — the content expressions filling in from `inputs`, the
+    declarative table layout, and the per-row style that stands in for
+    pdfmake's row callbacks.
+imports:
+  PdfMake: ../
+  Pdf: ../../pdf
+  Assert: ../../assert
+targets:
+  - name: render
+    invoke: !ref customerReport
+    inputs:
+      customer: Acme Ltd
+      rows:
+        - ["Widget", "12", "144.00"]
+        - ["Sprocket", "3", "27.50"]
+        - [{ text: "Total", style: totalsRow }, { text: "15", style: totalsRow }, { text: "171.50", style: totalsRow }]
+  - name: read
+    invoke: !ref readText
+    inputs:
+      data: !cel "steps.render.result.bytes"
+  - name: assert
+    inputs:
+      actual:
+        pages: !cel "steps.read.result.pages"
+        pageCount: !cel "steps.read.result.pageCount"
+      expected:
+        pageCount: 1
+        # The header renders after the body, so it reads last. One page, so one
+        # entry — which is what says the table did not overflow.
+        pages:
+          - |-
+            Customer: Acme Ltd
+            Item Qty Amount
+            Widget 12 144.00
+            Sprocket 3 27.50
+            Total 15 171.50
+            Payment due within 30 days.
+            Questions to billing@example.com.
+            Invoice
+    invoke: !ref assertContent
+---
+# One resource, invoked per customer: the expressions inside `content` are
+# evaluated per call, so this declaration is the report template.
+kind: PdfMake.Document
+metadata: { name: customerReport }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [customer, rows]
+    additionalProperties: false
+    properties:
+      customer: { type: string }
+      rows: { type: array }
+pageSize: A4
+pageMargins: [40, 60, 40, 60]
+defaultStyle: { fontSize: 10 }
+styles:
+  heading: { fontSize: 18, bold: true, color: "#1B36C4" }
+  tableHeader: { bold: true, color: "#FFFFFF" }
+  totalsRow: { bold: true, color: "#1B36C4" }
+header:
+  - text: Invoice
+    style: heading
+    margin: [40, 20, 40, 0]
+content:
+  - text: !cel "'Customer: ' + inputs.customer"
+    style: heading
+  - table:
+      headerRows: 1
+      widths: [ "*", auto, auto ]
+      body: !cel "[[{'text': 'Item', 'style': 'tableHeader'}, {'text': 'Qty', 'style': 'tableHeader'}, {'text': 'Amount', 'style': 'tableHeader'}]] + inputs.rows"
+    layout:
+      hLineWidth: 0.5
+      hLineColor: "#1B36C4"
+      paddingTop: 4
+      paddingBottom: 4
+      headerFillColor: "#1B36C4"
+  - ul:
+      - text: Payment due within 30 days.
+      - text: Questions to billing@example.com.
+---
+kind: Pdf.Text
+metadata: { name: readText }
+---
+kind: Assert.Equals
+metadata: { name: assertContent }

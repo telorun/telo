@@ -1,14 +1,14 @@
 {
   "name": "@telorun/pdf",
   "version": "0.7.1",
-  "description": "PDF primitives — rasterize pages to PNG images and author editable AcroForm fields.",
+  "description": "PDF primitives \u2014 rasterize pages to PNG images, read the text a document renders, and author editable AcroForm fields.",
   "keywords": [
     "telo",
     "pdf",
     "rasterize",
     "acroform"
   ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
@@ -38,6 +38,11 @@
       "types": "./dist/form-fields-controller.d.ts",
       "bun": "./src/form-fields-controller.ts",
       "import": "./dist/form-fields-controller.js"
+    },
+    "./text": {
+      "types": "./dist/text-controller.d.ts",
+      "bun": "./src/text-controller.ts",
+      "import": "./dist/text-controller.js"
     }
   },
   "files": [
