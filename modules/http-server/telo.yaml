@@ -116,6 +116,13 @@ schema:
     mounts:
       title: Mounts
       description: Mount points attached to the HTTP server.
+      # A list of dispatch entries: `entries` on the array, `matcher` on the
+      # field that selects one, `handler` on the reference it dispatches to —
+      # the same three tokens `Http.Api.routes` and `Mcp.Tools.entries` carry.
+      # It is what lets the editor render mounts as an ordered list rather than
+      # as a set of nodes, and mount order is match order, which a picture of
+      # nodes cannot carry.
+      x-telo-topology-role: entries
       type: "array"
       x-telo-eval: compile
       items:
@@ -129,6 +136,7 @@ schema:
             title: Path
             description: URL prefix where the mount is attached.
             type: "string"
+            x-telo-topology-role: matcher
           mount:
             title: Mount
             description: >-
@@ -136,6 +144,7 @@ schema:
               Mcp.HttpEndpoint, …). Use a `!ref` to the resource by name; an
               `!ref <Alias>.<name>` reaches a mount exported by an imported
               library.
+            x-telo-topology-role: handler
             x-telo-ref:
               kind: Telo.Mount
               use: dependency

@@ -1,7 +1,6 @@
 import type { AnalysisRegistry } from "@telorun/analyzer";
 import type { ImportableLibrary } from "../../loader";
 import type {
-  CanvasViewport,
   DeploymentEnvironment,
   ModuleDocument,
   ModuleViewData,
@@ -9,6 +8,7 @@ import type {
   SourceRevealRequest,
 } from "../../model";
 import type { RefWrite } from "./topology/application-canvas-model";
+import type { TopologyHostState } from "./topology/topology-view";
 
 /** Common props interface passed to every view. Views use what they need. */
 export interface ViewProps {
@@ -30,9 +30,10 @@ export interface ViewProps {
    *  type field). When set, a sub-part of a resource is focused — not the whole
    *  node — so the canvas drops the node-level highlight. */
   selection: Selection | null;
-  /** The "canvas focus" resource — last resource the user worked with in a canvas view. */
-  graphContext: { kind: string; name: string } | null;
   onSelectResource: (kind: string, name: string) => void;
+  /** Navigate the topology view to a resource — from another tab, which knows
+   *  the name but not the route through the containment tree. Switches to the
+   *  topology view and leaves the route for the host to resolve. */
   onNavigateResource: (kind: string, name: string) => void;
   /** Opens a module by its workspace key / resolved import path as the active
    *  module tab — e.g. clicking an import to view the imported library. A remote
@@ -45,8 +46,52 @@ export interface ViewProps {
    *  deletion, picker selection) — set or clear a ref slot at a concrete path on
    *  any resource, the Application root's `targets` included. */
   onWriteRef: (writes: RefWrite[]) => void;
+  /** Creates a resource of `createKind` and writes `buildFields(newName)` back
+   *  to `target` in ONE workspace mutation — what a ref picker does when the
+   *  slot's kind has no instance yet. Atomic because two mutations would race:
+   *  the create re-renders the panel, resetting its pending edit, and the second
+   *  persist would read a workspace snapshot taken before the first. */
+  onCreateAndLink: (
+    target: { kind: string; name: string },
+    createKind: string,
+    buildFields: (newName: string) => Record<string, unknown>,
+  ) => void;
+  /** Renames one mapping key inside a resource's fields, in place. Its own
+   *  operation because a re-keyed entry cannot be expressed as a field diff
+   *  without moving the entry and re-serializing its value. */
+  onRenameField: (
+    target: { kind: string; name: string },
+    pointer: string,
+    newKey: string,
+  ) => void;
+  /** Reorders one item of a sequence field in place. Its own operation for the
+   *  same reason `onRenameField` is: a field diff is positional, so a reorder
+   *  would rewrite every entry it passed over and strip what the author
+   *  attached to the moved one. */
+  onMoveField: (
+    target: { kind: string; name: string },
+    pointer: string,
+    toIndex: number,
+  ) => void;
+  /** Moves one item of a sequence field into a DIFFERENT sequence of the same
+   *  resource — a step dragged from one branch into another. `onMoveField`
+   *  cannot express it: a reorder stays inside one sequence, which is the right
+   *  scope for a reorder and the wrong one for a step changing branches. */
+  onRelocateField: (
+    target: { kind: string; name: string },
+    pointer: string,
+    toPointer: string,
+    toIndex: number,
+  ) => void;
+  /** Removes one item of a sequence field. Same family as `onRenameField` and
+   *  `onMoveField` — an in-place structural edit a field diff cannot express. */
+  onRemoveField: (target: { kind: string; name: string }, pointer: string) => void;
   /** Opens the create-resource flow. Surfaced as a canvas action. */
   onCreateResource: () => void;
+  /** Creates an empty resource of `kind` under a generated name and focuses it.
+   *  The kind-first half of `onCreateResource`: where the surface already names
+   *  the kind, the modal's only remaining question is a name it can derive. */
+  onCreateResourceOfKind: (kind: string) => void;
   /** Telo hub base URL (from settings) — powers the Imports view's add-import
    *  module search and its version lookups (`/module/versions`), the editor's
    *  only version source: a browser cannot enumerate OCI tags itself. Undefined
@@ -88,9 +133,8 @@ export interface ViewProps {
    *  nonce lets repeated clicks on the same diagnostic re-fire the reveal
    *  effect; SourceView tracks the last-consumed nonce internally. */
   revealRequest: SourceRevealRequest | null;
-  /** Saved overview-canvas viewport for the active module, or null to fit on
-   *  first view. */
-  canvasViewport: CanvasViewport | null;
-  /** Persists the active module's overview-canvas viewport after pan/zoom. */
-  onCanvasViewportChange: (viewport: CanvasViewport) => void;
+  /** Where the user is in the active module's topology, which view they picked,
+   *  and the per-view state + viewport the host persists on their behalf. Only
+   *  the topology view reads it. */
+  topology: TopologyHostState;
 }

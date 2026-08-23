@@ -12,31 +12,15 @@ export function getCelEvalMode(
   return rootFallback ?? null;
 }
 
-/** True when the field's runtime value carries a CEL expression — either the
- *  untagged `${{ ... }}` interpolated form, or the explicit `!cel`-tagged
- *  sentinel produced by the YAML loader. `!literal`-tagged values return
- *  false: they are intentionally inert text, not expressions. */
-export function isCelExpression(value: unknown): boolean {
-  if (typeof value === "string") return /\$\{\{.*?\}\}/.test(value);
-  if (isTaggedSentinel(value)) return value.engine === "cel";
-  return false;
-}
-
-/** Returns the editable source text for any value that wraps text via the
- *  templating system — untagged `${{ ... }}` strings, `!cel`-tagged
- *  sentinels, and `!literal`-tagged sentinels. Returns null for plain
- *  primitives without any expression markup so callers can fall through to
- *  the regular field UI. The wrapper distinguishes which chrome to render
- *  (CEL editor vs. literal-text display) using `isCelExpression` /
- *  `getTaggedSentinel` separately. */
-export function getCelExpressionSource(value: unknown): string | null {
-  if (typeof value === "string") return /\$\{\{.*?\}\}/.test(value) ? value : null;
-  if (isTaggedSentinel(value)) return value.source;
-  return null;
-}
-
-/** Convenience type guard re-exported for the wrapper, so it can pick chrome
- *  based on the engine without re-importing from `@telorun/templating`. */
+/** Convenience type guard for a field renderer that has to distinguish a tagged
+ *  value from a plain one without re-importing from `@telorun/templating`.
+ *
+ *  The `isCelExpression` / `getCelExpressionSource` pair that used to sit beside
+ *  it is gone with the CEL toggle: both existed to recognise a raw `${{ }}`
+ *  STRING as an expression, and the toggle was the only thing that wrote one —
+ *  a spelling manifests must never carry. What a value is written as is now read
+ *  off the tag (`value-tag.ts`), which is the only place it is actually
+ *  recorded. */
 export function getTaggedSentinel(value: unknown): TaggedSentinel | null {
   return isTaggedSentinel(value) ? value : null;
 }

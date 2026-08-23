@@ -8,6 +8,7 @@ import {
 import { isRecord } from "../../../lib/utils";
 import type { ModuleViewData } from "../../../model";
 import {
+  branchListBranchKey,
   getTopologyRole,
   getVariants,
   matchVariant,
@@ -133,24 +134,6 @@ function stepDetail(step: Record<string, unknown>, variant: VariantMeta | null):
   return title ? title.split("/")[0].trim() : undefined;
 }
 
-/** The field carrying a branch-list entry's nested steps (role `branch`),
- *  e.g. `elseif[].then`. Falls back to `then` when the schema doesn't name it. */
-function branchListBranchKey(
-  variant: VariantMeta,
-  field: string,
-  root: Record<string, unknown>,
-): string {
-  const props = isRecord(variant.schema.properties) ? variant.schema.properties : {};
-  const listProp = isRecord(props[field]) ? props[field] : {};
-  const items = resolveRef(listProp.items, root);
-  if (isRecord(items) && isRecord(items.properties)) {
-    for (const [k, p] of Object.entries(items.properties)) {
-      if (getTopologyRole(p) === "branch") return k;
-    }
-  }
-  return "then";
-}
-
 /** Recursively flattens a step list into ordered rows, descending into every
  *  branch (`do` / `then` / `else`), case map (`cases`), and branch list
  *  (`elseif`). Each row carries its full concrete `path` so an edge anchors to
@@ -254,6 +237,19 @@ function resolveTypeSignature(
     return { schema, set: true };
   }
   return { schema: fallback, set: false };
+}
+
+/**
+ * A signature only exists when a type is actually declared — on the instance, or
+ * on the kind. An invocable that declares neither has no contract to show, and a
+ * dashed "not set" pill on every such node stands in for information that does
+ * not exist: it reads as a fact about the resource when it is a fact about the
+ * absence of one. The trade is that the pill is also the canvas affordance for
+ * ADDING a type, so a node with no contract now gains one through the detail
+ * panel's form rather than by clicking a placeholder.
+ */
+function declaredSignature(sig: TypeSignature): TypeSignature | undefined {
+  return sig.set || sig.schema || sig.name ? sig : undefined;
 }
 
 /** Picks the source-handle anchor for an edge: the longest step path that is a
@@ -367,14 +363,16 @@ export function buildApplicationCanvasModel(
       node.ports = buildNodePorts(portRefFields, r.fields, stepsField, kindData?.schema);
       if (capability === INVOCABLE_CAPABILITY) {
         const kindProps = isRecord(kindData?.schema.properties) ? kindData.schema.properties : {};
-        node.inputType = {
+        const input = declaredSignature({
           ...resolveTypeSignature(r.fields.inputType, registry.inputTypeForKind(r.kind), typeSchemaByName),
           fieldSchema: isRecord(kindProps.inputType) ? kindProps.inputType : undefined,
-        };
-        node.outputType = {
+        });
+        const output = declaredSignature({
           ...resolveTypeSignature(r.fields.outputType, registry.outputTypeForKind(r.kind), typeSchemaByName),
           fieldSchema: isRecord(kindProps.outputType) ? kindProps.outputType : undefined,
-        };
+        });
+        if (input) node.inputType = input;
+        if (output) node.outputType = output;
       }
       nodes.push(node);
       nodeInfo.set(r.name, { kind: r.kind, schema: kindData?.schema, fields: r.fields });
@@ -406,6 +404,16 @@ export function buildApplicationCanvasModel(
         port.candidates = resolveRefCandidates(port.refs, stripItems, candidateResolver).map(
           (c) => c.name,
         );
+        // A picker port had no create action at all, which made a slot whose
+        // kind has no instance yet a dead end — the select read "(no
+        // candidates)" and nothing on the canvas could produce one. Array ports
+        // have had create-and-link since the `+` slot; this is the same source
+        // of kinds for the single-ref case.
+        const kinds = new Set<string>();
+        for (const ref of port.refs) {
+          for (const k of registry.userFacingKindsForRef(ref) ?? []) kinds.add(k);
+        }
+        if (kinds.size) port.createKinds = [...kinds].sort();
       } else if (port.addPath) {
         const kinds = new Set<string>();
         for (const ref of port.refs) {

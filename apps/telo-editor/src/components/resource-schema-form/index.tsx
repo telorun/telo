@@ -8,6 +8,7 @@ import {
 } from "./field-diagnostics";
 import { SEVERITY_TEXT_COLOR } from "../diagnostics/severity";
 import type { RefResolver } from "./ref-candidates";
+import { resolveSiblingTypedProp } from "./sibling-typed-field";
 import type {
   JsonSchema,
   JsonSchemaProperty,
@@ -57,9 +58,16 @@ export function ResourceSchemaForm({
   const properties = useMemo(() => typedSchema.properties ?? {}, [typedSchema.properties]);
   const required = new Set(typedSchema.required ?? []);
 
+  // A field whose type is declared by a sibling is resolved against the CURRENT
+  // values, so changing that sibling changes the widget immediately; one the
+  // form cannot honestly render for the declared type drops out entirely.
   const fields = useMemo(
-    () => Object.entries(properties).map(([name, prop]) => ({ name, prop, kind: inferType(prop) })),
-    [properties],
+    () =>
+      Object.entries(properties).flatMap(([name, rawProp]) => {
+        const prop = resolveSiblingTypedProp(rawProp, values);
+        return prop ? [{ name, prop, kind: inferType(prop) }] : [];
+      }),
+    [properties, values],
   );
 
   const errorPathsRef = useRef<Set<string>>(new Set());
@@ -96,7 +104,7 @@ export function ResourceSchemaForm({
     <div className="flex flex-col gap-3">
       {fields.map(({ name, prop, kind }) => {
         const labelText = typeof prop.title === "string" ? prop.title : name;
-        const fieldOwnsLabel = ownsLabel(prop as JsonSchemaProperty);
+        const fieldOwnsLabel = ownsLabel(prop);
         const diags = fieldDiagnosticsFor(fieldDiagnostics, name);
         // Lowest severity value is worst (Error === 1), so the dot reads the
         // most severe diagnostic on the field.
@@ -123,7 +131,7 @@ export function ResourceSchemaForm({
             <FieldControl
               rootFieldName={name}
               fieldPath={name}
-              prop={prop as JsonSchemaProperty}
+              prop={prop}
               value={values[name]}
               onValueChange={(next) => setField(name, next)}
               onFieldBlur={onFieldBlur}

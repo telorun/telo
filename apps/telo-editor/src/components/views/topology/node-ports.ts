@@ -42,8 +42,9 @@ export interface NodePort {
   addPath?: string;
   /** Picker ports only: resource names a slot may select, by capability match. */
   candidates?: string[];
-  /** Edge ports with an `addPath`: user-facing kinds the `+` slot can create and
-   *  link (the kinds that satisfy this port's `refs`). */
+  /** User-facing kinds this slot can create and link — the kinds that satisfy
+   *  its `refs`. On an edge port it drives the `+` slot's menu; on a picker port
+   *  it is what keeps a slot fillable when nothing of that kind exists yet. */
   createKinds?: string[];
 }
 

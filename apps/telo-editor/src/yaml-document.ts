@@ -1,6 +1,6 @@
 import { parseLoadedFile, splitIntegrity, type LoadedFile } from "@telorun/analyzer";
 import { isTaggedSentinel } from "@telorun/templating";
-import { Document, isDocument, isMap, isNode, isScalar } from "yaml";
+import { Document, isDocument, isMap, isNode, isScalar, isSeq, Pair, YAMLMap } from "yaml";
 import type { ModuleDocument } from "./model";
 
 /** Parses file text into a ModuleDocument. Wraps the analyzer's
@@ -113,6 +113,13 @@ export type EditOp =
   | { op: "delete"; pointer: string }
   | { op: "insert"; pointer: string; value: unknown }
   | { op: "rename"; pointer: string; newKey: string }
+  /** Relocate a sequence item within its own sequence. `pointer` names the item
+   *  at its CURRENT index; `toIndex` is where it lands. */
+  | { op: "move"; pointer: string; toIndex: number }
+  /** Relocate a sequence item into a DIFFERENT sequence. `pointer` names the
+   *  item at its current index, `toPointer` the destination sequence, `toIndex`
+   *  the position it lands at inside it. */
+  | { op: "relocate"; pointer: string; toPointer: string; toIndex: number }
   | { op: "setTag"; pointer: string; tag: string | null };
 
 /** Applies a single EditOp to `docs[docIndex]` in place, then returns a
@@ -194,10 +201,107 @@ export function applyEdit(docs: Document[], docIndex: number, op: EditOp): Docum
       if (path.length === 0) {
         throw new Error(`applyEdit rename: pointer must target a key (got root)`);
       }
-      const parentPath = path.slice(0, -1);
-      const value = doc.getIn(path);
-      doc.deleteIn(path);
-      doc.setIn([...parentPath, op.newKey], value);
+      // The KEY NODE is renamed in place, rather than the entry being deleted
+      // and re-set: `setIn` on an absent key APPENDS, so delete-then-set moves
+      // the entry to the end of its mapping and re-serializes its value from a
+      // plain JS object, losing the author's comments and quote style. Renaming
+      // one binding is a one-word edit and has to read as one.
+      const parent = doc.getIn(path.slice(0, -1));
+      const key = path[path.length - 1];
+      const pair = isMap(parent)
+        ? parent.items.find((item) => String(isScalar(item.key) ? item.key.value : item.key) === key)
+        : undefined;
+      // Renaming ONTO an existing key would leave the mapping with two entries
+      // of that name — a document no reader agrees about, and one the old
+      // delete-then-set spelling could not produce because a set overwrote.
+      // Refused here rather than only in the form that happens to be the sole
+      // caller today: this is exported as a general operation.
+      if (
+        isMap(parent) &&
+        op.newKey !== key &&
+        parent.items.some(
+          (item) => String(isScalar(item.key) ? item.key.value : item.key) === op.newKey,
+        )
+      ) {
+        throw new Error(
+          `applyEdit rename: ${op.newKey} already exists in the mapping at ${op.pointer}`,
+        );
+      }
+      // A key that is not a plain scalar (or a mapping that is not there) is
+      // left alone: the ordinary validators then report the manifest as it is,
+      // rather than this silently writing a second entry.
+      if (pair && isScalar(pair.key)) pair.key.value = op.newKey;
+      break;
+    }
+    case "move": {
+      // The NODE is relocated, not the values rewritten. A reorder expressed as
+      // a field diff is positional — `diffArray` walks index by index — so
+      // moving one entry emits a `set` for every index in between, rewriting
+      // each from plain data. Anything the author attached to an entry rather
+      // than to its position (a comment, an anchor, a `!ref` tag, a quote
+      // style) would stay where it was while the values slid past it, which is
+      // the one outcome that silently means something different.
+      const from = path[path.length - 1];
+      if (typeof from !== "number") {
+        throw new Error(`applyEdit move: pointer must target a sequence index (got ${op.pointer})`);
+      }
+      const parent = doc.getIn(path.slice(0, -1), true);
+      // Not a sequence, or an index that is not there: left alone, so the
+      // ordinary validators report the manifest as it is rather than this
+      // inventing a position.
+      if (!isSeq(parent)) break;
+      const items = parent.items as unknown[];
+      if (from < 0 || from >= items.length) break;
+      // Clamped rather than refused: a drop past the end is a legible gesture
+      // meaning "last", and the alternative is a no-op the user reads as a bug.
+      const to = Math.max(0, Math.min(op.toIndex, items.length - 1));
+      if (to === from) break;
+      const [node] = items.splice(from, 1);
+      items.splice(to, 0, node);
+      break;
+    }
+    case "relocate": {
+      // Dragging a step out of one branch and into another. The same node is
+      // carried across for the same reason `move` carries it within one
+      // sequence: what the author attached to the ENTRY — a comment, a `!ref`
+      // tag, a quote style — belongs to the step, not to where it was sitting.
+      // A delete-then-insert would re-serialize it from plain data and lose all
+      // three.
+      const from = path[path.length - 1];
+      if (typeof from !== "number") {
+        throw new Error(
+          `applyEdit relocate: pointer must target a sequence index (got ${op.pointer})`,
+        );
+      }
+      // BOTH sequences are resolved before either is touched: the destination's
+      // own path may run through the source sequence (`/steps/0` into
+      // `/steps/1/then`), and removing the item first would shift the index that
+      // path is written against. A node reference survives the shift; a path
+      // does not.
+      // A destination INSIDE the moved node would splice it into its own
+      // descendant, producing a cyclic document. The UI guards this too, but the
+      // operation is exported as a general one — a caller that has not thought
+      // about it must not be able to produce a tree nothing can serialize.
+      if (op.toPointer === op.pointer || op.toPointer.startsWith(`${op.pointer}/`)) {
+        throw new Error(
+          `applyEdit relocate: destination ${op.toPointer} is inside the item being moved`,
+        );
+      }
+      const source = doc.getIn(path.slice(0, -1), true);
+      const destination = doc.getIn(jsonPointerToPath(op.toPointer), true);
+      if (!isSeq(source) || !isSeq(destination)) break;
+      if (source === destination) {
+        throw new Error(
+          `applyEdit relocate: source and destination are the same sequence — use move`,
+        );
+      }
+      const sourceItems = source.items as unknown[];
+      if (from < 0 || from >= sourceItems.length) break;
+      const [node] = sourceItems.splice(from, 1);
+      const destinationItems = destination.items as unknown[];
+      // Clamped, as `move` clamps: a drop past the end reads as "last".
+      const to = Math.max(0, Math.min(op.toIndex, destinationItems.length));
+      destinationItems.splice(to, 0, node);
       break;
     }
   }
@@ -482,6 +586,36 @@ export function removeInlineImport(docs: Document[], name: string): Document[] {
     doc.deleteIn(["imports"]);
   }
   return [...docs];
+}
+
+/** Widens inline `imports:` entries written in the scalar shorthand
+ *  (`Alias: <source>`) into the object form (`Alias: {source: <source>}`), for
+ *  the named aliases only. Returns the same array reference on no-op.
+ *
+ *  A shorthand entry is a Scalar node, so it has nothing to write a key into:
+ *  `setIn(["imports", alias, "variables"], …)` throws `Expected YAML
+ *  collection`. Any edit adding a sibling to `source` therefore has to widen the
+ *  entry first — which is why this is a separate step rather than something the
+ *  generic op applier could infer, since only imports know that the shorthand's
+ *  scalar stands for `source`.
+ *
+ *  The existing Scalar node becomes the `source:` value rather than being
+ *  re-created from its data, so its quote style and its own comment travel with
+ *  it, exactly as `setInlineImportSource` preserves them when swapping a value. */
+export function expandInlineImportShorthand(docs: Document[], names: string[]): Document[] {
+  const idx = findModuleDocIndex(docs);
+  if (idx === -1) return docs;
+  const doc = docs[idx];
+  let changed = false;
+  for (const name of names) {
+    const entry = doc.getIn(["imports", name], true);
+    if (!entry || !isScalar(entry)) continue;
+    const widened = new YAMLMap();
+    widened.add(new Pair(doc.createNode("source"), entry));
+    doc.setIn(["imports", name], widened);
+    changed = true;
+  }
+  return changed ? [...docs] : docs;
 }
 
 /** Rewrites the `source` of an inline `imports:` map entry in place, handling

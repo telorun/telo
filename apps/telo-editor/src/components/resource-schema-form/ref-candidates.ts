@@ -39,6 +39,89 @@ export interface RefResolver {
   acceptedKindsForRef(refTarget: string): Set<string> | undefined;
   /** Canonicalizes an alias-form kind (`Mcp.Redis` → `mcp-client.Redis`). */
   resolveKind(kind: string): string | undefined;
+  /** Alias-form kinds an author could WRITE to fill this slot. Optional so a
+   *  host that supplies only the resolution slice still type-checks; without it
+   *  the picker offers existing resources and no create action. */
+  userFacingKindsForRef?(refTarget: string): string[] | undefined;
+}
+
+/**
+ * A ref slot whose target does not exist yet.
+ *
+ * A picker that can only offer what is already declared is a dead end the moment
+ * a module is new: a `Postgres.Schema` needs a `connection:`, nothing in the
+ * module is one, and the select reads `(no candidates)` with nowhere to go. The
+ * canvas solved this for array slots long ago (create-and-link on the `+`); this
+ * is the same operation for a single slot, and for the form.
+ *
+ * It travels as a MARKER in the form's value tree rather than as a callback,
+ * because creating the resource and linking it must be ONE workspace mutation.
+ * Two — create, then write the ref — race: the create re-renders the panel, which
+ * re-derives its selection context and resets the pending edit, and the second
+ * persist reads a workspace snapshot taken before the first. The marker lets the
+ * form report *where* the new reference goes without threading a concrete path
+ * through every field component, and lets the host apply both halves at once.
+ * It is replaced before anything is written, so it never reaches a manifest.
+ */
+interface PendingRefCreate {
+  __createRefKind: string;
+}
+
+/** Marks a picker entry as "create one of this kind" rather than a candidate's
+ *  ref key. A resource name cannot contain `:`, so no candidate can collide with
+ *  it. Owned here beside the marker itself — the two halves of one protocol,
+ *  which three separate copies of this string were free to disagree about. */
+export const CREATE_REF_OPTION_PREFIX = "::new:";
+
+export function pendingRefCreate(kind: string): unknown {
+  return { __createRefKind: kind } satisfies PendingRefCreate;
+}
+
+function isPendingRefCreate(value: unknown): value is PendingRefCreate {
+  return isRecord(value) && typeof value.__createRefKind === "string";
+}
+
+/** Locates the marker in a form's next values, if one is there. Depth-first over
+ *  plain containers only — the form's values are plain data, and a tagged
+ *  sentinel is an opaque leaf. */
+export function findPendingRefCreate(
+  value: unknown,
+  path: (string | number)[] = [],
+): { path: (string | number)[]; kind: string } | undefined {
+  if (isPendingRefCreate(value)) return { path, kind: value.__createRefKind };
+  if (isRefSentinel(value)) return undefined;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const found = findPendingRefCreate(value[i], [...path, i]);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if (isRecord(value)) {
+    for (const [key, child] of Object.entries(value)) {
+      const found = findPendingRefCreate(child, [...path, key]);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+/** The same values with the marker replaced by a real reference. */
+export function resolvePendingRefCreate(
+  value: unknown,
+  path: (string | number)[],
+  kind: string,
+  name: string,
+): unknown {
+  if (path.length === 0) return toRefValue({ kind, name });
+  const [head, ...rest] = path;
+  if (Array.isArray(value) && typeof head === "number") {
+    return value.map((item, i) => (i === head ? resolvePendingRefCreate(item, rest, kind, name) : item));
+  }
+  if (isRecord(value) && typeof head === "string") {
+    return { ...value, [head]: resolvePendingRefCreate(value[head], rest, kind, name) };
+  }
+  return value;
 }
 
 /** Resolves one or more `x-telo-ref` target strings against the module's resolved

@@ -1,6 +1,8 @@
 import {
+  CREATE_REF_OPTION_PREFIX,
   collectRefTargets,
   parseRefValue,
+  pendingRefCreate,
   resolveRefCandidates,
   toRefString,
   toRefValue,
@@ -35,6 +37,13 @@ export function ReferenceSelectField({
   if (refTargets.length === 0) return null;
 
   const options = resolveRefCandidates(refTargets, resolvedResources, registry);
+  // Kinds that could FILL this slot but have no instance yet. Without them a
+  // module that declares none of them is a dead end: the select reads "(no
+  // candidates)" and there is nowhere to go. Same source the canvas rail uses
+  // for its create-and-link `+`.
+  const createKinds = [
+    ...new Set(refTargets.flatMap((ref) => registry?.userFacingKindsForRef?.(ref) ?? [])),
+  ].sort();
   const selectedName = parseRefValue(value);
   const selected = selectedName
     ? (options.find((option) => option.name === selectedName) ?? {
@@ -44,6 +53,7 @@ export function ReferenceSelectField({
     : null;
   const selectedKey = selected ? toRefString(selected) : "";
   const hasOptions = options.length > 0;
+  const canCreate = createKinds.length > 0;
 
   return (
     <div className="flex flex-col gap-1">
@@ -71,16 +81,23 @@ export function ReferenceSelectField({
               onValueChange(undefined);
               return;
             }
+            if (next.startsWith(CREATE_REF_OPTION_PREFIX)) {
+              // Reported as a marker, not applied here: creating the resource
+              // and linking it has to be one workspace mutation (see
+              // `pendingRefCreate`).
+              onValueChange(pendingRefCreate(next.slice(CREATE_REF_OPTION_PREFIX.length)));
+              return;
+            }
             const option = options.find((item) => toRefString(item) === next);
             if (!option) return;
             onValueChange(toRefValue(option));
           }}
           onBlur={onBlur}
-          disabled={!hasOptions}
+          disabled={!hasOptions && !canCreate}
           className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs outline-none focus:border-zinc-500 disabled:cursor-not-allowed disabled:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-400 dark:disabled:bg-zinc-800"
         >
           <option value="">
-            {selected ? "(change)" : hasOptions ? "Set…" : "(no candidates)"}
+            {selected ? "(change)" : hasOptions || canCreate ? "Set…" : "(no candidates)"}
           </option>
           {options.map((option) => {
             const refValue = toRefString(option);
@@ -90,9 +107,18 @@ export function ReferenceSelectField({
               </option>
             );
           })}
+          {canCreate && (
+            <optgroup label="Create">
+              {createKinds.map((kind) => (
+                <option key={kind} value={`${CREATE_REF_OPTION_PREFIX}${kind}`}>
+                  New {kind}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
       </div>
-      {!hasOptions && (
+      {!hasOptions && !canCreate && (
         <span className="text-xs text-red-500">No resolved resources match {refTargets}.</span>
       )}
     </div>

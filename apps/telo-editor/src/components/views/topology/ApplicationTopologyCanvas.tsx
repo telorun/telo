@@ -13,7 +13,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Boxes, ChevronRight, FileCog, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CanvasViewport, Selection } from "../../../model";
 import { Button } from "../../ui/button";
 import {
@@ -41,6 +41,7 @@ import {
   type RefWrite,
   type TypeSignature,
 } from "./application-canvas-model";
+import { CREATE_REF_OPTION_PREFIX } from "../../resource-schema-form/ref-candidates";
 import type { NodePort } from "./node-ports";
 
 const NODE_WIDTH = 200;
@@ -72,8 +73,9 @@ function nodeHeight(n: GraphNode): number {
   return h;
 }
 
-/** Short capability label (drops the `Telo.` prefix). */
-function capLabel(capability: string): string {
+/** Short capability label (drops the `Telo.` prefix). A display convention the
+ *  whole editor shares, unlike the node components, which are per view. */
+export function capLabel(capability: string): string {
   return capability.startsWith("Telo.") ? capability.slice(5) : capability;
 }
 
@@ -197,6 +199,14 @@ interface ResourceNodeData extends Record<string, unknown> {
   onCreate: (concretePath: string, kind: string) => void;
   /** Opens a focused editor for the node's `inputType` / `outputType` field. */
   onEditType?: (field: "inputType" | "outputType") => void;
+  /** Size of this node's interior in the containment tree. Non-zero is what
+   *  renders the open affordance; zero is a leaf. */
+  interiorCount?: number;
+  /** Referenced by more than one node — one declaration seen from several
+   *  places, so editing it here edits it everywhere. */
+  shared?: boolean;
+  /** Opens this node's interior. Absent in a view that does not nest. */
+  onOpenInterior?: () => void;
 }
 
 /** One edge-port slot row: a label and a source handle that pokes out of the
@@ -281,14 +291,19 @@ function PickerSlotRow({
   label,
   value,
   candidates,
+  createKinds,
   editable,
   onPick,
+  onCreate,
 }: {
   label: string;
   value: string | undefined;
   candidates: string[];
+  /** Kinds offered when nothing of the slot's kind exists yet. */
+  createKinds: string[];
   editable: boolean;
   onPick: (target: string | null) => void;
+  onCreate: (kind: string) => void;
 }) {
   return (
     <div className="flex items-center gap-1 px-3" style={{ height: PORT_ROW_HEIGHT }}>
@@ -298,7 +313,13 @@ function PickerSlotRow({
       <Select
         value={value ?? PICKER_NONE}
         disabled={!editable}
-        onValueChange={(v) => onPick(v === PICKER_NONE ? null : v)}
+        onValueChange={(v) => {
+          if (v.startsWith(CREATE_REF_OPTION_PREFIX)) {
+            onCreate(v.slice(CREATE_REF_OPTION_PREFIX.length));
+            return;
+          }
+          onPick(v === PICKER_NONE ? null : v);
+        }}
       >
         <SelectTrigger
           size="sm"
@@ -313,6 +334,12 @@ function PickerSlotRow({
               {c}
             </SelectItem>
           ))}
+          {editable &&
+            createKinds.map((k) => (
+              <SelectItem key={`${CREATE_REF_OPTION_PREFIX}${k}`} value={`${CREATE_REF_OPTION_PREFIX}${k}`}>
+                New {k}
+              </SelectItem>
+            ))}
         </SelectContent>
       </Select>
     </div>
@@ -334,6 +361,7 @@ function PortRows({
 }) {
   if (port.flavor === "picker") {
     const candidates = port.candidates ?? [];
+    const createKinds = port.createKinds ?? [];
     return (
       <>
         {port.slots.map((slot, i) => (
@@ -342,8 +370,10 @@ function PortRows({
             label={i === 0 ? port.label : ""}
             value={slot.target}
             candidates={candidates}
+            createKinds={createKinds}
             editable={editable}
             onPick={(t) => onPick(slot.concretePath, t)}
+            onCreate={(kind) => onCreate(slot.concretePath, kind)}
           />
         ))}
         {port.addPath && (
@@ -352,8 +382,10 @@ function PortRows({
             label={port.slots.length === 0 ? port.label : ""}
             value={undefined}
             candidates={candidates}
+            createKinds={createKinds}
             editable={editable}
             onPick={(t) => onPick(port.addPath!, t)}
+            onCreate={(kind) => onCreate(port.addPath!, kind)}
           />
         )}
       </>
@@ -443,9 +475,38 @@ function ResourceNode({ data }: NodeProps<Node<ResourceNodeData>>) {
             <DiagnosticBadge summary={summary} size="sm" />
           </span>
         )}
+        {data.onOpenInterior && (
+          <button
+            type="button"
+            data-no-open
+            className={`nodrag nopan flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 ${
+              summary ? "" : "ml-auto"
+            }`}
+            title={
+              data.interiorCount
+                ? `Open ${data.name} — ${data.interiorCount} inside`
+                : `Open ${data.name}`
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onOpenInterior!();
+            }}
+          >
+            {data.interiorCount || null}
+            <ChevronRight className="size-3" />
+          </button>
+        )}
       </div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
-        {capLabel(data.capability)}
+      <div className="mt-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-zinc-400">
+        <span className="truncate">{capLabel(data.capability)}</span>
+        {data.shared && (
+          <span
+            className="shrink-0 rounded bg-amber-100 px-1 text-[9px] normal-case tracking-normal text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+            title="Referenced from more than one place — one declaration, shown in each"
+          >
+            shared
+          </span>
+        )}
       </div>
       {data.ports.length > 0 && (
         <div className="mt-1.5 -mx-3 flex flex-col gap-0.5 border-t border-zinc-100 pt-1.5 dark:border-zinc-800">
@@ -591,6 +652,19 @@ function alignNodesToSources(
   return finalY;
 }
 
+/** The nesting affordance a containment view supplies: how large each node's
+ *  interior is, which nodes are shared, and how to open one. Null in a view that
+ *  does not nest — the canvas then renders exactly as it always has. */
+export interface InteriorAffordance {
+  /** Nodes whose interior can be opened. Separate from `counts` because a node
+   *  may be openable with nothing in it yet, and a node may be counted but not
+   *  openable (a cycle). */
+  openable: ReadonlySet<string>;
+  counts: ReadonlyMap<string, number>;
+  shared: ReadonlySet<string>;
+  onOpen: (node: GraphNode) => void;
+}
+
 /** Runs dagre over the model and returns positioned xyflow nodes + edges. Ref
  *  edges dock onto the source node's port (or step) handle and are deletable —
  *  when editable — only for port edges (deleting clears that ref). */
@@ -608,6 +682,7 @@ function layout(
   onPickRef: (source: { kind: string; name: string }, concretePath: string, target: string | null) => void,
   onCreateRef: (source: { kind: string; name: string }, concretePath: string, kind: string) => void,
   onEditType: (node: GraphNode, field: "inputType" | "outputType") => void,
+  interior: InteriorAffordance | null,
 ): { nodes: Node[]; edges: Edge[] } {
   const portPaths = portHandlePaths(model.nodes);
 
@@ -672,6 +747,9 @@ function layout(
         onCreate: (concretePath: string, kind: string) =>
           onCreateRef({ kind: n.kind, name: n.name }, concretePath, kind),
         onEditType: (field: "inputType" | "outputType") => onEditType(n, field),
+        interiorCount: interior?.counts.get(n.name) ?? 0,
+        shared: interior?.shared.has(n.name) ?? false,
+        onOpenInterior: interior?.openable.has(n.name) ? () => interior.onOpen(n) : undefined,
       } satisfies ResourceNodeData,
     };
   });
@@ -741,6 +819,10 @@ interface ApplicationTopologyCanvasProps {
   /** Opens the create-resource flow. Rendered as a canvas action. */
   onCreateResource?: () => void;
   onBackgroundClick: () => void;
+  /** Nesting affordance — see {@link InteriorAffordance}. Omitted by a flat
+   *  view; supplied by a containment view so a node with an interior gets its
+   *  open control. */
+  interior?: InteriorAffordance | null;
 }
 
 /** Module-wide overview graph rendered for the `Telo.Application` /
@@ -762,8 +844,8 @@ export function ApplicationTopologyCanvas({
   onSelect,
   onCreateResource,
   onBackgroundClick,
+  interior,
 }: ApplicationTopologyCanvasProps) {
-  const [stripOpen, setStripOpen] = useState(true);
   const diagState = useDiagnosticsState();
   const activeFilePaths = useActiveFilePaths();
   const editable = !!onWriteRef;
@@ -836,6 +918,7 @@ export function ApplicationTopologyCanvas({
         onPickRef,
         onCreateRef,
         onEditType,
+        interior ?? null,
       ),
     [
       model,
@@ -847,6 +930,7 @@ export function ApplicationTopologyCanvas({
       onPickRef,
       onCreateRef,
       onEditType,
+      interior,
     ],
   );
 
@@ -1002,59 +1086,6 @@ export function ApplicationTopologyCanvas({
         </ReactFlow>
       </div>
 
-      {model.stripItems.length > 0 && (
-        <div className="flex h-full shrink-0 border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-          {stripOpen ? (
-            <div className="w-48 overflow-y-auto p-2">
-              <div className="mb-1.5 flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
-                  Providers & types
-                </span>
-                <button
-                  className="text-zinc-400 hover:text-zinc-600"
-                  onClick={() => setStripOpen(false)}
-                  title="Collapse"
-                >
-                  <ChevronRight className="size-3.5" />
-                </button>
-              </div>
-              <div className="flex flex-col gap-1">
-                {model.stripItems.map((item) => {
-                  const summary = summarizeResource(diagState, activeFilePaths, item.name);
-                  return (
-                    <div key={nodeId(item.kind, item.name)} className="relative">
-                      <button
-                        className="w-full rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-left hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                        onClick={() => onSelectResource(item.kind, item.name)}
-                      >
-                        <div className="truncate pr-5 text-xs font-medium text-zinc-700 dark:text-zinc-200">
-                          {item.name}
-                        </div>
-                        <div className="text-[10px] uppercase tracking-wide text-zinc-400">
-                          {capLabel(item.capability)}
-                        </div>
-                      </button>
-                      {summary && (
-                        <span className="absolute right-1 top-1">
-                          <DiagnosticBadge summary={summary} size="sm" />
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <button
-              className="flex w-6 items-center justify-center text-zinc-400 hover:text-zinc-600"
-              onClick={() => setStripOpen(true)}
-              title="Show providers & types"
-            >
-              <Boxes className="size-4" />
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

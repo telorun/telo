@@ -6,7 +6,7 @@ import type {
   ParsedResource,
   Workspace,
 } from "../model";
-import { getAvailableKinds } from "./queries";
+import { canonicalizeSchemaRefs, getAvailableKinds, getImportedConfig } from "./queries";
 
 function library(
   filePath: string,
@@ -171,5 +171,125 @@ describe("getAvailableKinds", () => {
 
     expect(kinds.find((k) => k.fullKind === "Run.Sequence")?.categories).toEqual(["compute"]);
     expect(kinds.find((k) => k.fullKind === "Run.Retry")?.categories).toEqual(["reliability"]);
+  });
+});
+
+describe("canonicalizeSchemaRefs", () => {
+  /** postgres declares `Schema.connection` pointing at its OWN `Connection`,
+   *  written `Self.Connection` — an alias private to postgres's manifest. */
+  function postgresWorkspace() {
+    const sql = library("/sql/telo.yaml", "SQL", {
+      resources: [definition("Table", { capability: "Telo.Type", schema: {} })],
+    });
+    const postgres = library("/pg/telo.yaml", "Postgres", {
+      imports: [{ name: "Sql", resolvedPath: "/sql/telo.yaml" }],
+      resources: [
+        definition("Connection", { capability: "Telo.Provider", schema: {} }),
+        definition("Schema", {
+          capability: "Telo.Runnable",
+          schema: {
+            type: "object",
+            properties: {
+              connection: { "x-telo-ref": "Self.Connection" },
+              tables: {
+                type: "array",
+                items: { "x-telo-ref": { kind: "Sql.Table", use: "dependency" } },
+              },
+              ledger: { type: "string" },
+            },
+          },
+        }),
+      ],
+    });
+    return consumer([sql, postgres]);
+  }
+
+  it("rewrites a declaring module's own alias into the canonical kind", () => {
+    const { workspace, manifest } = postgresWorkspace();
+    const schema = getAvailableKinds(workspace, manifest).find((k) => k.kindName === "Schema")!
+      .schema as Record<string, any>;
+
+    // `Self` is postgres, not the app reading it — carried through raw, this
+    // slot resolved to nothing and offered neither candidates nor a create.
+    expect(schema.properties.connection["x-telo-ref"]).toBe("Postgres.Connection");
+    // The structured form is rewritten through the same accessor, and its
+    // siblings survive.
+    expect(schema.properties.tables.items["x-telo-ref"]).toEqual({
+      kind: "SQL.Table",
+      use: "dependency",
+    });
+  });
+
+  it("leaves a built-in and an unresolvable alias exactly as written", () => {
+    const { workspace, manifest } = consumer([
+      library("/pg/telo.yaml", "Postgres", {
+        resources: [
+          definition("Thing", {
+            capability: "Telo.Runnable",
+            schema: {
+              properties: {
+                run: { "x-telo-ref": "Telo.Executable" },
+                gone: { "x-telo-ref": "Missing.Kind" },
+              },
+            },
+          }),
+        ],
+      }),
+    ]);
+    const schema = getAvailableKinds(workspace, manifest)[0].schema as Record<string, any>;
+
+    // A built-in is already canonical; an unresolvable alias keeps the author's
+    // own text, so the diagnostic still names what they wrote.
+    expect(schema.properties.run["x-telo-ref"]).toBe("Telo.Executable");
+    expect(schema.properties.gone["x-telo-ref"]).toBe("Missing.Kind");
+  });
+
+  it("returns the same object when nothing needs rewriting", () => {
+    const { workspace, manifest } = postgresWorkspace();
+    const declaring = workspace.modules.get("/pg/telo.yaml")!;
+    const plain = { type: "object", properties: { ledger: { type: "string" } } };
+
+    // Structural sharing: this runs for every kind of every module on every
+    // render, and most schema nodes are not ref slots.
+    expect(canonicalizeSchemaRefs(workspace, declaring, plain)).toBe(plain);
+  });
+
+  it("never mutates the parsed manifest it read from", () => {
+    const { workspace, manifest } = postgresWorkspace();
+    getAvailableKinds(workspace, manifest);
+
+    const declared = workspace.modules
+      .get("/pg/telo.yaml")!
+      .resources.find((r) => r.name === "Schema")!.fields.schema as Record<string, any>;
+    expect(declared.properties.connection["x-telo-ref"]).toBe("Self.Connection");
+  });
+});
+
+describe("getImportedConfig", () => {
+  it("carries each library's declared variables/secrets under its alias", () => {
+    const s3 = library("/ws/s3/telo.yaml", "s3");
+    s3.variables = { bucket: { type: "string", description: "Target bucket." } };
+    s3.secrets = { accessKey: { type: "string" } };
+    const plain = library("/ws/plain/telo.yaml", "plain");
+
+    const { workspace, manifest } = consumer([s3, plain]);
+    const config = getImportedConfig(workspace, manifest);
+
+    expect(config.get("S3")).toEqual({
+      variables: { bucket: { type: "string", description: "Target bucket." } },
+      secrets: { accessKey: { type: "string" } },
+    });
+    // Read but declaring nothing is still an ANSWER: the entry is present and
+    // empty, which is what closes the set of names an importer may write. Only
+    // an unreadable library is absent.
+    expect(config.get("Plain")).toEqual({});
+  });
+
+  it("skips an import the workspace could not resolve", () => {
+    const { workspace, manifest } = consumer([]);
+    manifest.imports = [
+      { name: "Missing", source: "oci://example/x@1", importKind: "oci" },
+    ];
+    expect(getImportedConfig(workspace, manifest).size).toBe(0);
   });
 });

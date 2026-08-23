@@ -1,5 +1,12 @@
 import { moduleRootKind, moduleRootResource } from "./application-adapter";
-import { getAvailableKinds, normalizePath, resolveCapability, resolveContract } from "./loader";
+import {
+  canonicalizeSchemaRefs,
+  getAvailableKinds,
+  getImportedConfig,
+  normalizePath,
+  resolveCapability,
+  resolveContract,
+} from "./loader";
 import type {
   AvailableKind,
   ModuleSourceFile,
@@ -36,7 +43,13 @@ export function buildModuleViewData(
       kindName: resource.name,
       capability: resolveCapability(workspace, manifest, resource.fields),
       topology: typeof resource.fields.topology === "string" ? resource.fields.topology : undefined,
-      schema: (resource.fields.schema ?? {}) as Record<string, unknown>,
+      // Canonicalized in this module's own alias scope, exactly as an imported
+      // kind's is — a local kind's constraints are alias-qualified too.
+      schema: canonicalizeSchemaRefs(
+        workspace,
+        manifest,
+        (resource.fields.schema ?? {}) as Record<string, unknown>,
+      ),
       categories: resource.categories ?? manifest.metadata.categories ?? [],
       contract: resolveContract(workspace, manifest, resource.fields.extends),
     });
@@ -57,6 +70,7 @@ export function buildModuleViewData(
   return {
     manifest: projectedManifest,
     kinds,
+    importedConfig: getImportedConfig(workspace, manifest),
     sourceFiles: collectSourceFiles(workspace, manifest),
   };
 }

@@ -1,6 +1,7 @@
 import { isSchemaFragment, manifestFragmentOf, readRefSlot } from "@telorun/analyzer";
 import { ArrayObjectField } from "./array-object-field";
-import { CelFieldWrapper } from "./cel-field-wrapper";
+import { offeredValueTags } from "./value-tag";
+import { ValueTagField } from "./value-tag-field";
 import { getCelEvalMode, type CelEvalMode } from "./cel-utils";
 import { JsonSchemaField } from "./json-schema-field";
 import { MapField } from "./map-field";
@@ -300,15 +301,20 @@ export function FieldControl({
   }
 
   const inner = renderInner();
-  const wrapped = evalMode ? (
-    <CelFieldWrapper
+  // Offered tags, not the eval mode, decide whether the field gets a picker: an
+  // `!include-bytes` slot need not be CEL-eligible at all, and gating on eval
+  // would leave a byte slot with no way to author it.
+  const tagOptions = offeredValueTags(prop, evalMode);
+  const wrapped = tagOptions.length > 0 ? (
+    <ValueTagField
+      options={tagOptions}
       evalMode={evalMode}
       value={value}
       onValueChange={onValueChange}
       onBlur={onBlur}
     >
       {inner}
-    </CelFieldWrapper>
+    </ValueTagField>
   ) : (
     inner
   );

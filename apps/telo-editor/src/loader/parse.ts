@@ -171,6 +171,7 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
   // host env, Libraries declare them as the importer contract.
   const variables = moduleMeta?.variables as Record<string, unknown> | undefined;
   const secrets = moduleMeta?.secrets as Record<string, unknown> | undefined;
+  const exports = moduleMeta?.exports as ParsedManifest["exports"] | undefined;
 
   const base = {
     filePath,
@@ -194,6 +195,7 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
     ...(files?.length ? { files } : {}),
     ...(variables ? { variables } : {}),
     ...(secrets ? { secrets } : {}),
+    ...(exports ? { exports } : {}),
   };
 
   if (moduleKind === "Library") {

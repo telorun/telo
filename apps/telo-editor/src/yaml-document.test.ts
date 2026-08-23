@@ -5,6 +5,7 @@ import {
   addResourceDocument,
   applyEdit,
   diffFields,
+  expandInlineImportShorthand,
   findDocForResource,
   moduleParseError,
   parseModuleDocument,
@@ -185,6 +186,51 @@ describe("applyEdit", () => {
     expect(out).toContain("port: 9090");
     expect(out).toContain("# top comment");
     expect(out).toContain("# inline");
+  });
+
+  it("renames a key in place, keeping its position, its value and its comments", () => {
+    // The whole point of `rename` being its own op: expressed as a field diff a
+    // rename reads as delete-plus-add, and `setIn` on an absent key APPENDS —
+    // so the entry would move to the end of the block and its value would be
+    // re-serialized from plain data, losing comments and quote style.
+    const text = [
+      "kind: Telo.Application",
+      "variables:",
+      "  # what the database is",
+      '  dbConnection: { env: "DB_CONNECTION", type: string }',
+      "  trackLoop:",
+      "    env: TRACK_LOOP",
+      "    type: boolean",
+      "ports:",
+      "  http:",
+      "    env: PORT",
+      "",
+    ].join("\n");
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const next = applyEdit(docs, 0, {
+      op: "rename",
+      pointer: "/variables/dbConnection",
+      newKey: "database",
+    });
+    const out = serializeModuleDocument(next);
+
+    expect(Object.keys((next[0].toJSON() as { variables: object }).variables)).toEqual([
+      "database",
+      "trackLoop",
+    ]);
+    expect(out).toContain("# what the database is");
+    expect(out).toContain('database: { env: "DB_CONNECTION", type: string }');
+    // Nothing outside the renamed key moved.
+    expect(out).toContain("ports:");
+  });
+
+  it("leaves a rename alone when the key is not there", () => {
+    const text = "kind: Telo.Application\nvariables:\n  a:\n    env: A\n";
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const next = applyEdit(docs, 0, { op: "rename", pointer: "/variables/gone", newKey: "b" });
+    // Refused rather than writing a second entry — the ordinary validators then
+    // report the manifest as it actually is.
+    expect(next[0].toJSON()).toEqual({ kind: "Telo.Application", variables: { a: { env: "A" } } });
   });
 
   it("deletes a key via op: delete", () => {
@@ -551,5 +597,279 @@ describe("setInlineImportSource", () => {
     );
     expect(yaml).toContain("source: oci://ghcr.io/telorun/timer@0.4.0#sha256-def");
     expect(yaml).not.toContain("integrity:");
+  });
+});
+
+describe("expandInlineImportShorthand", () => {
+  const shorthand = [
+    "kind: Telo.Application",
+    "metadata:",
+    "  name: app",
+    "imports:",
+    "  Console: oci://ghcr.io/telorun/console@0.9.0 # pinned",
+    "  Http: ../http-server",
+    "",
+  ].join("\n");
+
+  it("widens only the named alias, keeping the value's comment", () => {
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", shorthand);
+    const next = expandInlineImportShorthand(docs, ["Console"]);
+    const text = serializeModuleDocument(next);
+    expect(text).toContain("source: oci://ghcr.io/telorun/console@0.9.0 # pinned");
+    // Untouched aliases keep the shape their author chose.
+    expect(text).toContain("Http: ../http-server");
+  });
+
+  it("lets a nested write land on what was a shorthand entry", () => {
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", shorthand);
+    // The write the detail panel produces when a value is added to an import.
+    const op = { op: "set", pointer: "/imports/Console/variables", value: { level: "debug" } } as const;
+    expect(() => applyEdit(docs, 0, op)).toThrow(/Expected YAML collection/);
+
+    const widened = expandInlineImportShorthand(docs, ["Console"]);
+    const written = applyEdit(widened, 0, op);
+    expect((written[0].toJSON() as { imports: Record<string, unknown> }).imports.Console).toEqual({
+      source: "oci://ghcr.io/telorun/console@0.9.0",
+      variables: { level: "debug" },
+    });
+  });
+
+  it("is a no-op on an object-form entry and on an unknown alias", () => {
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "imports:",
+      "  Console:",
+      "    source: ../console",
+      "",
+    ].join("\n");
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    expect(expandInlineImportShorthand(docs, ["Console", "Nope"])).toBe(docs);
+  });
+});
+
+describe("applyEdit move", () => {
+  const app = [
+    "kind: Telo.Application",
+    "metadata:",
+    "  name: app",
+    "targets:",
+    "  # the boot sequence",
+    "  - !ref db",
+    "  # the server needs the database up",
+    "  - !ref server # trailing",
+    "  - !ref worker",
+    "",
+  ].join("\n");
+
+  function docsOf(text: string) {
+    return parseModuleDocument("/ws/telo.yaml", text).loaded.documents;
+  }
+
+  function order(docs: ReturnType<typeof docsOf>): string[] {
+    return serializeModuleDocument(docs).match(/!ref \w+/g) ?? [];
+  }
+
+  it("carries an entry's tag and its own comments to the new position", () => {
+    const next = applyEdit(docsOf(app), 0, { op: "move", pointer: "/targets/1", toIndex: 2 });
+    const text = serializeModuleDocument(next);
+    expect(order(next)).toEqual(["!ref db", "!ref worker", "!ref server"]);
+    // Both comments attached to the entry travel with it, and the `!ref` tag
+    // survives — none of which a value-level rewrite would preserve.
+    expect(text).toMatch(/# the server needs the database up\n\s*- !ref server # trailing/);
+    // A comment on the block's FIRST line belongs to the block, not to the entry
+    // that happened to follow it, so it stays put as the list's header.
+    expect(text.indexOf("# the boot sequence")).toBeLessThan(text.indexOf("!ref db"));
+  });
+
+  it("moves backwards too", () => {
+    const next = applyEdit(docsOf(app), 0, { op: "move", pointer: "/targets/2", toIndex: 0 });
+    expect(order(next)).toEqual(["!ref worker", "!ref db", "!ref server"]);
+  });
+
+  it("clamps a drop past the end rather than refusing it", () => {
+    const next = applyEdit(docsOf(app), 0, { op: "move", pointer: "/targets/0", toIndex: 99 });
+    expect(order(next)).toEqual(["!ref server", "!ref worker", "!ref db"]);
+  });
+
+  it("leaves the document alone when the target is not a sequence item", () => {
+    const before = serializeModuleDocument(docsOf(app));
+    const missing = applyEdit(docsOf(app), 0, { op: "move", pointer: "/targets/9", toIndex: 0 });
+    expect(serializeModuleDocument(missing)).toBe(before);
+    const notASeq = applyEdit(docsOf(app), 0, { op: "move", pointer: "/metadata/0", toIndex: 1 });
+    expect(serializeModuleDocument(notASeq)).toBe(before);
+  });
+
+  it("refuses a pointer that names a key rather than an index", () => {
+    expect(() => applyEdit(docsOf(app), 0, { op: "move", pointer: "/targets", toIndex: 0 })).toThrow(
+      /sequence index/,
+    );
+  });
+});
+
+describe("applyEdit rename", () => {
+  const app = [
+    "kind: Telo.Application",
+    "metadata:",
+    "  name: app",
+    "variables:",
+    "  first:",
+    "    env: FIRST",
+    "  second:",
+    "    env: SECOND",
+    "",
+  ].join("\n");
+
+  function docsOf(text: string) {
+    return parseModuleDocument("/ws/telo.yaml", text).loaded.documents;
+  }
+
+  it("renames a key in place, keeping its position and its value node", () => {
+    const next = applyEdit(docsOf(app), 0, {
+      op: "rename",
+      pointer: "/variables/first",
+      newKey: "renamed",
+    });
+    const text = serializeModuleDocument(next);
+    expect(text).toMatch(/renamed:\s*\n\s*env: FIRST/);
+    expect(text.indexOf("renamed")).toBeLessThan(text.indexOf("second"));
+  });
+
+  it("refuses a rename onto a key the mapping already has", () => {
+    // In-place key mutation cannot overwrite the way delete-then-set did, so
+    // without this the mapping ends up with two `second:` entries — a document
+    // no reader agrees about. The form's own check is UX; this is the operation
+    // refusing to produce an invalid document.
+    expect(() =>
+      applyEdit(docsOf(app), 0, {
+        op: "rename",
+        pointer: "/variables/first",
+        newKey: "second",
+      }),
+    ).toThrow(/already exists/);
+  });
+
+  it("allows a rename to the name it already has", () => {
+    expect(() =>
+      applyEdit(docsOf(app), 0, { op: "rename", pointer: "/variables/first", newKey: "first" }),
+    ).not.toThrow();
+  });
+});
+
+describe("applyEdit relocate", () => {
+  // A step body: the shape a relocate exists for, since a `move` cannot leave
+  // the sequence it started in.
+  const sequence = [
+    "kind: Run.Sequence",
+    "metadata:",
+    "  name: flow",
+    "steps:",
+    "  - name: first",
+    "    invoke: !ref alpha",
+    "  - name: branch",
+    "    if: !cel ok",
+    "    then:",
+    "      # only when ok",
+    "      - name: inner",
+    "        invoke: !ref beta # trailing",
+    "    else:",
+    "      - name: other",
+    "        invoke: !ref gamma",
+    "",
+  ].join("\n");
+
+  function docsOf(text: string) {
+    return parseModuleDocument("/ws/telo.yaml", text).loaded.documents;
+  }
+
+  it("carries the step's node — its tag and its comments — into the other branch", () => {
+    const next = applyEdit(docsOf(sequence), 0, {
+      op: "relocate",
+      pointer: "/steps/1/then/0",
+      toPointer: "/steps/1/else",
+      toIndex: 0,
+    });
+    const text = serializeModuleDocument(next);
+
+    // It arrives ahead of the step that was there, with everything the author
+    // attached to it — which a delete-then-insert would have re-serialized away.
+    expect(text.indexOf("name: inner")).toBeLessThan(text.indexOf("name: other"));
+    expect(text).toMatch(/# only when ok/);
+    expect(text).toMatch(/invoke: !ref beta # trailing/);
+    // And it is gone from where it was. An emptied block sequence serializes as
+    // `[]` — the branch is still declared, which is what keeps it a legal drop
+    // target rather than a key the next edit would have to recreate.
+    expect(text).toMatch(/then:\s*\n(\s*#[^\n]*\n)?\s*\[\]/);
+  });
+
+  it("resolves the destination BEFORE the removal shifts it", () => {
+    // `/steps/1/...` runs through the sequence the item is leaving, so removing
+    // item 0 first would leave the destination path naming a different step.
+    const next = applyEdit(docsOf(sequence), 0, {
+      op: "relocate",
+      pointer: "/steps/0",
+      toPointer: "/steps/1/then",
+      toIndex: 0,
+    });
+    const text = serializeModuleDocument(next);
+    // It landed at the head of `then`, which only holds if `/steps/1/then` was
+    // read against the pre-removal document.
+    expect(text.indexOf("name: first")).toBeLessThan(text.indexOf("name: inner"));
+    expect(text).toMatch(/then:\s*\n(\s*#[^\n]*\n)?\s*- name: first/);
+    // The branch step is still whole — the destination was not misread as its
+    // own `then`, and nothing was written over `else`.
+    expect(text).toMatch(/else:\s*\n\s*- name: other/);
+  });
+
+  it("clamps a drop past the end, as a move does", () => {
+    const next = applyEdit(docsOf(sequence), 0, {
+      op: "relocate",
+      pointer: "/steps/1/else/0",
+      toPointer: "/steps/1/then",
+      toIndex: 99,
+    });
+    const text = serializeModuleDocument(next);
+    expect(text.indexOf("name: inner")).toBeLessThan(text.indexOf("name: other"));
+  });
+
+  it("leaves the document alone when either end is not a sequence", () => {
+    const before = serializeModuleDocument(docsOf(sequence));
+    // A branch the author never wrote — the case the step list refuses to offer
+    // as a drop target, guarded here too so a stale view cannot invent one.
+    const missing = applyEdit(docsOf(sequence), 0, {
+      op: "relocate",
+      pointer: "/steps/0",
+      toPointer: "/steps/1/finally",
+      toIndex: 0,
+    });
+    expect(serializeModuleDocument(missing)).toBe(before);
+  });
+
+  it("refuses a destination inside the item being moved", () => {
+    // Splicing a node into its own descendant produces a cyclic tree nothing
+    // can serialize. The step list guards this too, but the operation is
+    // exported as a general one and must not be able to produce that document.
+    expect(() =>
+      applyEdit(docsOf(sequence), 0, {
+        op: "relocate",
+        pointer: "/steps/1",
+        toPointer: "/steps/1/then",
+        toIndex: 0,
+      }),
+    ).toThrow(/inside the item being moved/);
+  });
+
+  it("refuses a relocate that is really a move", () => {
+    // Two spellings of one edit is how the two drift; `move` is the one that
+    // knows a within-sequence index shifts as the item leaves.
+    expect(() =>
+      applyEdit(docsOf(sequence), 0, {
+        op: "relocate",
+        pointer: "/steps/0",
+        toPointer: "/steps",
+        toIndex: 1,
+      }),
+    ).toThrow(/use move/);
   });
 });

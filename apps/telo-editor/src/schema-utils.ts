@@ -48,6 +48,18 @@ export interface VariantMeta {
 
 // ─── Public utilities ─────────────────────────────────────────────────────────
 
+/** Name of the field annotated `x-telo-topology-role: steps` on a kind schema,
+ *  or null. One reader: it drives step rendering, the exclusion of
+ *  step-internal refs from a node's port rail, and which property the editor's
+ *  property rail leaves to the canvas. */
+export function stepsFieldName(kindSchema: Record<string, unknown>): string | null {
+  if (!isRecord(kindSchema.properties)) return null;
+  for (const [name, prop] of Object.entries(kindSchema.properties)) {
+    if (getTopologyRole(prop) === "steps") return name;
+  }
+  return null;
+}
+
 /**
  * Finds the field annotated `x-telo-topology-role: steps` in the topology
  * schema and returns its resolved items schema (the per-step schema).
@@ -62,6 +74,68 @@ export function getStepSchema(
     return isRecord(items) ? items : null;
   }
   return null;
+}
+
+/**
+ * The field carrying a branch-list entry's nested steps (role `branch`), e.g.
+ * `elseif[].then`. Falls back to `then` when the schema does not name one.
+ *
+ * Schema knowledge rather than any one renderer's: the canvas model reads it to
+ * anchor an edge inside an else-if body, and the step list reads it to know
+ * which array a row belongs to. Two copies would disagree the first time a
+ * composer named the branch something else.
+ */
+export function branchListBranchKey(
+  variant: VariantMeta,
+  field: string,
+  root: unknown,
+): string {
+  return branchListItemKey(variant, field, root, "branch") ?? "then";
+}
+
+/** The field carrying a branch-list entry's own condition (role `predicate`),
+ *  e.g. `elseif[].if` — what tells one else-if branch from the next. */
+export function branchListPredicateKey(
+  variant: VariantMeta,
+  field: string,
+  root: unknown,
+): string {
+  return branchListItemKey(variant, field, root, "predicate") ?? "if";
+}
+
+/** The property of a branch-list ITEM carrying `role`. The item is a schema of
+ *  its own, so its roles are read there rather than on the variant — the two
+ *  agree today (`if`/`then` at both levels) and there is nothing making them. */
+function branchListItemKey(
+  variant: VariantMeta,
+  field: string,
+  root: unknown,
+  role: string,
+): string | null {
+  const props = isRecord(variant.schema.properties) ? variant.schema.properties : {};
+  const listProp = isRecord(props[field]) ? props[field] : {};
+  const items = resolveRef(listProp.items, root);
+  if (isRecord(items) && isRecord(items.properties)) {
+    for (const [k, p] of Object.entries(items.properties)) {
+      if (getTopologyRole(p) === role) return k;
+    }
+  }
+  return null;
+}
+
+/** The property carrying a step's arguments — the one annotated
+ *  `x-telo-topology-role: inputs`, else the conventional `inputs`. */
+export function stepInputsField(
+  stepSchema: Record<string, unknown>,
+  variant: VariantMeta | null,
+): string {
+  for (const source of [variant?.schema.properties, stepSchema.properties]) {
+    if (!isRecord(source)) continue;
+    for (const [name, prop] of Object.entries(source)) {
+      if (getTopologyRole(prop) === "inputs") return name;
+    }
+  }
+  return "inputs";
 }
 
 /**
@@ -145,7 +219,7 @@ export function matchVariant(
 /**
  * Builds a flat editable schema for the detail panel by merging the step
  * schema's base properties with the matched variant's properties, excluding
- * any field with a topology role handled by the sequence canvas.
+ * any field with a topology role the step list renders itself.
  */
 export function buildEditableSchema(
   stepSchema: Record<string, unknown>,

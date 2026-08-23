@@ -73,7 +73,7 @@ function viewData(): ModuleViewData {
     ["demo.Conf", kind("demo.Conf", "Telo.Provider")],
   ]);
 
-  return { manifest, kinds, sourceFiles: [] };
+  return { manifest, kinds, importedConfig: new Map(), sourceFiles: [] };
 }
 
 /** A Library view with the same resources but no targets. */
@@ -98,7 +98,7 @@ function libraryViewData(): ModuleViewData {
     ["demo.Worker", kind("demo.Worker", "Telo.Runnable")],
     ["demo.Conf", kind("demo.Conf", "Telo.Provider")],
   ]);
-  return { manifest, kinds, sourceFiles: [] };
+  return { manifest, kinds, importedConfig: new Map(), sourceFiles: [] };
 }
 
 describe("buildApplicationCanvasModel", () => {
@@ -217,7 +217,7 @@ describe("buildApplicationCanvasModel", () => {
     ]);
 
     const model = buildApplicationCanvasModel(
-      { manifest, kinds, sourceFiles: [] },
+      { manifest, kinds, importedConfig: new Map(), sourceFiles: [] },
       reg,
       ["seq"],
     );
@@ -311,7 +311,7 @@ describe("buildApplicationCanvasModel", () => {
     ]);
 
     const model = buildApplicationCanvasModel(
-      { manifest, kinds, sourceFiles: [] },
+      { manifest, kinds, importedConfig: new Map(), sourceFiles: [] },
       reg,
       ["seq"],
     );
@@ -373,7 +373,7 @@ describe("buildApplicationCanvasModel", () => {
       ["demo.OtherProvider", kind("demo.OtherProvider", "Telo.Provider")],
     ]);
 
-    const model = buildApplicationCanvasModel({ manifest, kinds, sourceFiles: [] }, reg, ["c"]);
+    const model = buildApplicationCanvasModel({ manifest, kinds, importedConfig: new Map(), sourceFiles: [] }, reg, ["c"]);
     const port = model.nodes.find((n) => n.name === "c")?.ports?.find((p) => p.key === "sessionProvider");
 
     expect(port?.flavor).toBe("picker");
@@ -426,7 +426,7 @@ describe("buildApplicationCanvasModel", () => {
       ["demo.Shape", kind("demo.Shape", "Telo.Type")],
     ]);
 
-    const model = buildApplicationCanvasModel({ manifest, kinds, sourceFiles: [] }, reg, ["s"]);
+    const model = buildApplicationCanvasModel({ manifest, kinds, importedConfig: new Map(), sourceFiles: [] }, reg, ["s"]);
     const script = model.nodes.find((n) => n.name === "s");
 
     // Inline input schema flows straight through; the field schema is carried so
@@ -445,6 +445,60 @@ describe("buildApplicationCanvasModel", () => {
     });
     // The type fields are signatures, not picker ports.
     expect(script?.ports ?? []).toEqual([]);
+  });
+
+  it("omits a signature no one declares, so the node shows no empty pill", () => {
+    const reg = new AnalysisRegistry();
+    reg.registerModuleIdentity("std", "demo");
+    reg.registerDefinition(definition("Bare", "Telo.Invocable"));
+
+    const root = appManifest();
+    const manifest: ApplicationManifest = {
+      ...root,
+      targets: ["b"],
+      resources: [moduleRootResource(root), { kind: "demo.Bare", name: "b", fields: {} }],
+    };
+    const kinds = new Map<string, AvailableKind>([
+      ["Telo.Application", moduleRootKind(root)],
+      ["demo.Bare", kind("demo.Bare", "Telo.Invocable")],
+    ]);
+
+    const node = buildApplicationCanvasModel({ manifest, kinds, importedConfig: new Map(), sourceFiles: [] }, reg, ["b"])
+      .nodes.find((n) => n.name === "b");
+
+    expect(node?.inputType).toBeUndefined();
+    expect(node?.outputType).toBeUndefined();
+  });
+
+  it("keeps a signature the KIND declares, even when the instance narrows nothing", () => {
+    const reg = new AnalysisRegistry();
+    reg.registerModuleIdentity("std", "demo");
+    reg.registerDefinition({
+      kind: "Telo.Definition",
+      metadata: { name: "Typed", module: "demo" },
+      capability: "Telo.Invocable",
+      schema: { type: "object", properties: {} },
+      inputType: { type: "object", properties: { q: { type: "string" } } },
+    } as unknown as ResourceDefinition);
+
+    const root = appManifest();
+    const manifest: ApplicationManifest = {
+      ...root,
+      targets: ["t"],
+      resources: [moduleRootResource(root), { kind: "demo.Typed", name: "t", fields: {} }],
+    };
+    const kinds = new Map<string, AvailableKind>([
+      ["Telo.Application", moduleRootKind(root)],
+      ["demo.Typed", kind("demo.Typed", "Telo.Invocable")],
+    ]);
+
+    const node = buildApplicationCanvasModel({ manifest, kinds, importedConfig: new Map(), sourceFiles: [] }, reg, ["t"])
+      .nodes.find((n) => n.name === "t");
+
+    // Declared by the kind, not narrowed here — shown, and marked unset.
+    expect(node?.inputType).toMatchObject({ set: false, schema: { type: "object" } });
+    // Nothing declares an output anywhere.
+    expect(node?.outputType).toBeUndefined();
   });
 
   it("builds the same canvas for a Library, with no target edges", () => {
