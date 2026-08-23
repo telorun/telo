@@ -1,5 +1,84 @@
-import type { AvailableKind, ParsedManifest, Workspace } from "../model";
+import { isRefSlot, readRefSlot, rewriteRefSlotKinds } from "@telorun/analyzer";
+import type {
+  AvailableKind,
+  ImportedModuleConfig,
+  ParsedManifest,
+  Workspace,
+} from "../model";
 import { toPascalCase, toRelativeSource } from "./paths";
+
+/**
+ * Rewrites the `x-telo-ref` constraints inside a kind's schema from the DECLARING
+ * module's alias scope into the canonical `<module>.<Kind>` form.
+ *
+ * An alias is private to the manifest that wrote it, so a constraint like
+ * `Self.Connection` on `Postgres.Schema` means nothing to a consumer: `Self` is
+ * postgres, not the app reading it. Carried through raw, every such slot in every
+ * imported kind resolved to nothing — the picker offered no candidates, reported
+ * "No resolved resources match Self.Connection" naming a scope the reader does
+ * not have, and could not offer to create one either, because the kinds that
+ * satisfy an unresolvable constraint are unknowable. The kernel and the analyzer
+ * canonicalize at registration for exactly this reason; the editor's kind
+ * projection took the schema straight off the parsed manifest and skipped it.
+ *
+ * The same alias rule `resolveExtendsTarget` already applies, which is why both
+ * go through it: `Self` is the declaring module, anything else is one of its
+ * imports. A prefix that resolves to nothing is LEFT ALONE — a `Telo.*` built-in
+ * is already canonical, and an unresolvable alias should keep reporting the text
+ * its author wrote rather than a guess.
+ *
+ * Structurally shared: a schema with no alias-scoped constraint is returned as
+ * it came in, and only the nodes that change are rebuilt. This runs for every
+ * kind of every module on every render, and the overwhelming majority of schema
+ * nodes are not ref slots.
+ */
+export function canonicalizeSchemaRefs(
+  workspace: Workspace,
+  declaring: ParsedManifest,
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  const canonical = (kind: string): string | undefined => {
+    const target = resolveExtendsTarget(workspace, declaring, kind);
+    if (!target) return undefined;
+    const next = `${target.module.metadata.name}.${target.kindName}`;
+    return next === kind ? undefined : next;
+  };
+  return rewriteRefs(schema, canonical) as Record<string, unknown>;
+}
+
+function rewriteRefs(node: unknown, map: (kind: string) => string | undefined): unknown {
+  if (Array.isArray(node)) {
+    let changed = false;
+    const next = node.map((item) => {
+      const rewritten = rewriteRefs(item, map);
+      if (rewritten !== item) changed = true;
+      return rewritten;
+    });
+    return changed ? next : node;
+  }
+  if (!node || typeof node !== "object") return node;
+
+  const record = node as Record<string, unknown>;
+  let next: Record<string, unknown> | null = null;
+  if (isRefSlot(record) && readRefSlot(record)?.kinds.some((k) => map(k) !== undefined)) {
+    // Asked first, cloned only when an answer came back: a clone plus two
+    // serializations per ref slot is real cost on a walk that runs for every
+    // kind of every module, and the overwhelming majority of constraints are
+    // already canonical. Copied rather than rewritten in place because the
+    // parsed manifest is shared with every other consumer, and through the
+    // accessor because the annotation's shapes are its to know, not this walk's.
+    next = { ...record, "x-telo-ref": structuredClone(record["x-telo-ref"]) };
+    rewriteRefSlotKinds(next, map);
+  }
+  for (const [key, value] of Object.entries(record)) {
+    if (key === "x-telo-ref") continue;
+    const rewritten = rewriteRefs(value, map);
+    if (rewritten === value) continue;
+    next = next ?? { ...record };
+    next[key] = rewritten;
+  }
+  return next ?? node;
+}
 
 export function getAvailableKinds(workspace: Workspace, manifest: ParsedManifest): AvailableKind[] {
   const result: AvailableKind[] = [];
@@ -15,13 +94,38 @@ export function getAvailableKinds(workspace: Workspace, manifest: ParsedManifest
         kindName: r.name,
         capability: resolveCapability(workspace, mod, r.fields),
         topology: typeof r.fields.topology === "string" ? (r.fields.topology as string) : undefined,
-        schema: (r.fields.schema ?? {}) as Record<string, unknown>,
+        schema: canonicalizeSchemaRefs(workspace, mod, (r.fields.schema ?? {}) as Record<string, unknown>),
         categories: r.categories ?? mod.metadata.categories ?? [],
         contract: resolveContract(workspace, mod, r.fields.extends),
       });
     }
   }
   return result;
+}
+
+/** Per import alias, the declared `variables:` / `secrets:` contract of the
+ *  library it resolves to.
+ *
+ *  An alias is PRESENT whenever its library was read, even when that library
+ *  declares nothing — "accepts no variables" and "we could not find out" are
+ *  different answers, and only the first one closes the set of names an importer
+ *  may write. An alias the workspace could not load is absent; the editor never
+ *  guesses a contract it has not read. */
+export function getImportedConfig(
+  workspace: Workspace,
+  manifest: ParsedManifest,
+): Map<string, ImportedModuleConfig> {
+  const out = new Map<string, ImportedModuleConfig>();
+  for (const imp of manifest.imports) {
+    if (!imp.resolvedPath) continue;
+    const mod = workspace.modules.get(imp.resolvedPath);
+    if (!mod) continue;
+    out.set(imp.name, {
+      ...(mod.variables ? { variables: mod.variables } : {}),
+      ...(mod.secrets ? { secrets: mod.secrets } : {}),
+    });
+  }
+  return out;
 }
 
 /** `extends: <Alias>.<Kind>` → the module that owns the target and the kind

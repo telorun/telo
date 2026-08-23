@@ -14,7 +14,6 @@ import type { ViewProps } from "../types";
 export function ResourcesView({
   viewData,
   selectedResource,
-  graphContext,
   onSelectResource,
   onNavigateResource,
 }: ViewProps) {
@@ -24,7 +23,6 @@ export function ResourcesView({
 
   function rowClassName(kind: string, name: string, summary: DiagnosticsSummary | null): string {
     const isSelected = selectedResource?.kind === kind && selectedResource?.name === name;
-    const isGraphContext = graphContext?.kind === kind && graphContext?.name === name;
 
     const border =
       summary?.worstSeverity === DiagnosticSeverity.Error
@@ -34,8 +32,6 @@ export function ResourcesView({
           : "border-l-2 border-l-transparent";
 
     if (isSelected) return `${border} bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100`;
-    if (isGraphContext)
-      return `${border} bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200`;
     return `${border} text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900/50`;
   }
 
@@ -62,7 +58,6 @@ export function ResourcesView({
             <tbody>
               {userResources.map((r) => {
                 const kind = viewData.kinds.get(r.kind);
-                const hasTopology = !!kind?.topology;
                 const summary = summarizeResource(diagState, filePaths, r.name);
                 return (
                   <tr
@@ -76,18 +71,19 @@ export function ResourcesView({
                     <td className="py-1.5 pr-3">
                       <div className="flex items-center gap-1.5">
                         <span className="truncate font-medium">{r.name}</span>
-                        {hasTopology && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onNavigateResource(r.kind, r.name);
-                            }}
-                            title="Open in topology view"
-                            className="shrink-0 rounded px-1 text-xs text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
-                          >
-                            ↗
-                          </button>
-                        )}
+                        {/* Every resource is somewhere in the module's
+                            containment tree, so every row can be navigated to;
+                            the topology host resolves the route. */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onNavigateResource(r.kind, r.name);
+                          }}
+                          title="Show in topology view"
+                          className="shrink-0 rounded px-1 text-xs text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+                        >
+                          ↗
+                        </button>
                       </div>
                     </td>
                     <td className="py-1.5 pr-3">

@@ -2,6 +2,7 @@ import { Collapsible as CollapsiblePrimitive } from "radix-ui";
 import { isRecord } from "../../lib/utils";
 import type { CelEvalMode } from "./cel-utils";
 import { FieldControl, inferType, ownsLabel } from "./field-control";
+import { resolveSiblingTypedProp } from "./sibling-typed-field";
 import type { RefResolver } from "./ref-candidates";
 import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
 
@@ -71,13 +72,17 @@ export function ObjectField({
   const canClear = !required && value !== undefined && value !== null;
   const description = typeof prop.description === "string" ? prop.description : undefined;
 
-  const fields = Object.entries(properties).map(([childName, childProp]) => {
+  const fields = Object.entries(properties).flatMap(([childName, rawChildProp]) => {
+    // Same resolution the form root performs, so a sibling-typed field behaves
+    // identically at any depth.
+    const childProp = resolveSiblingTypedProp(rawChildProp, objectValue);
+    if (!childProp) return [];
     const childValue = objectValue[childName];
     const childKind = inferType(childProp);
     const childLabel = typeof childProp.title === "string" ? childProp.title : childName;
     const childOwnsLabel = ownsLabel(childProp);
 
-    return (
+    return [
       <div
         key={`${fieldPath}.${childName}`}
         className={flat ? "flex min-w-28 flex-1 flex-col gap-0.5" : "flex flex-col gap-1"}
@@ -105,8 +110,8 @@ export function ObjectField({
           label={childLabel}
           required={objectRequired.has(childName)}
         />
-      </div>
-    );
+      </div>,
+    ];
   });
 
   if (flat) {

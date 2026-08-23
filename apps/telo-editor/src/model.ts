@@ -45,6 +45,10 @@ export interface AppSettings {
    *  `activeRunnerId` (a single global selection). */
   runners: RunnerInstance[];
   activeRunnerId: string;
+  /** Chosen topology view per candidate-set key (see `viewChoiceKey`). A
+   *  preference rather than per-module state: answering "which of these views do
+   *  I want" once per module would be a chore. */
+  topologyViewByChoiceKey?: Record<string, string>;
 }
 
 export const TELO_CLOUD_RUNNER_ID = "telo-cloud";
@@ -111,6 +115,17 @@ interface BaseParsedManifest {
    *  contract importers must satisfy. */
   variables?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
+  /** A Library's public surface: the kinds importers may reference and the
+   *  ready-made instances they may `!ref`. Read from the module doc so the
+   *  editor can show and edit it — an Application has no `exports` block at
+   *  all, which is what makes this the Library's counterpart to `targets`. */
+  exports?: {
+    kinds?: string[];
+    resources?: string[];
+    /** Left opaque: an `exports.code:` entry is delivery metadata (specifier,
+     *  format, built path), not something the topology surface edits. */
+    code?: unknown[];
+  };
   /** Populated only when the module could not be parsed. The editor still
    *  lists the module so the user can open its source and fix the issue;
    *  `rawYaml` is the unparsed text read from disk. */
@@ -306,11 +321,24 @@ export interface ModuleSourceFile {
   parseError?: string;
 }
 
+/** What an imported library declares that its importer must supply — its
+ *  `variables:` / `secrets:` blocks, which for a Library are plain JSON-Schema
+ *  declarations rather than env bindings. This is the CONTRACT, so it types the
+ *  VALUES the importing module writes in that import's entry. */
+export interface ImportedModuleConfig {
+  variables?: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
+}
+
 /** Stable data contract consumed by all editor views. */
 export interface ModuleViewData {
   manifest: ParsedManifest;
   /** fullKind → merged local + imported kind metadata */
   kinds: Map<string, AvailableKind>;
+  /** import alias → what that library declares its importer must supply.
+   *  Resolved from the workspace here for the same reason `kinds` is: a view
+   *  holds one module, and the answer lives in another one. */
+  importedConfig: Map<string, ImportedModuleConfig>;
   /** Per-file source text for every file the module spans (owner + partials).
    *  Populated from `workspace.documents`; consumed by the source view to
    *  seed its per-tab Monaco buffers. */
@@ -332,10 +360,6 @@ export interface EditorState {
    *  tree restores its open/closed shape across reloads. */
   expandedDirs: string[];
   activeView: ViewId;
-  /** The "canvas focus" resource in the active module — last resource the
-   *  user navigated to in a topology/inventory view. Cleared when the active
-   *  module changes. */
-  graphContext: { kind: string; name: string } | null;
   selectedResource: { kind: string; name: string } | null;
   panelStack: PanelEntry[];
   diagnostics: WorkspaceDiagnostics;
@@ -348,10 +372,31 @@ export interface EditorState {
    *  Hydrated from `storage-deployments.ts` on workspace load and persisted
    *  on every mutation. */
   deploymentsByApp: Record<string, ApplicationDeployment>;
-  /** Per-module overview-canvas viewport (pan/zoom), keyed by module filePath,
-   *  so the Application/Library graph restores its position when navigating back
-   *  to it. In-memory only — not persisted across reloads. */
+  /** Canvas viewport (pan/zoom), keyed by module filePath PLUS the view and the
+   *  level it belongs to (`<module>#<viewId>#<viewKey>`). Two views lay a module
+   *  out differently and a nesting view lays each level out independently, so a
+   *  viewport restored across either would drop the user into empty space.
+   *  In-memory only — not persisted across reloads. */
   viewportByModule: Record<string, CanvasViewport>;
+  /** Per-module topology navigation: where the user is in the containment tree
+   *  and each view's own state. In-memory, like `viewportByModule` — it records
+   *  where you were, which is worth a tab switch and not worth restoring against
+   *  a workspace that may have changed. */
+  topologyByModule: Record<string, ModuleTopologyState>;
+}
+
+export interface ModuleTopologyState {
+  /** Resource names below the containment root — the one navigation fact every
+   *  topology view can interpret, and the only one: which canvas is on screen
+   *  follows from the node this designates. */
+  focusPath: string[];
+  /** A resource another tab asked to navigate to, not yet resolved to a route.
+   *  Only the topology host has the containment tree, so the name waits here
+   *  until it can be turned into a `focusPath`. */
+  focusRequest: string | null;
+  /** Opaque per-view state, keyed by view id. The host persists it and never
+   *  reads it, which is what keeps adding a view off the shared types. */
+  viewState: Record<string, unknown>;
 }
 
 /** Pan/zoom of the overview canvas — mirrors `@xyflow/react`'s `Viewport`. */

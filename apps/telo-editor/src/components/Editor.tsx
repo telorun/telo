@@ -1,4 +1,3 @@
-import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { File as FileIcon, Lock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -9,7 +8,8 @@ import { LocalStorageHistoryStore } from "../history/store";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
 import { useImportOps } from "../hooks/useImportOps";
 import { useWorkspaceLifecycle } from "../hooks/useWorkspaceLifecycle";
-import { INITIAL_STATE, defaultGraphContext, pickInitialActiveModule } from "../editor-state";
+import { INITIAL_STATE, pickInitialActiveModule } from "../editor-state";
+import { findResourceReferences } from "../resource-references";
 import {
   createRegistryAdapters,
   createResourceViaAst,
@@ -25,6 +25,11 @@ import {
   reconcileImports,
   removeResourceViaAst,
   resolveTemplatesBaseUrl,
+  renameResourceFieldKey,
+  moveResourceFieldItem,
+  relocateResourceFieldItem,
+  removeResourceFieldItem,
+  setModuleRootFields,
   setResourceFields,
   VIRTUAL_WORKSPACE_ROOT,
 } from "../loader";
@@ -34,6 +39,7 @@ import type { CanvasViewport, ModuleDocument } from "../model";
 import type {
   EditorState,
   ModuleKind,
+  ModuleTopologyState,
   Selection,
   ViewId,
   Workspace,
@@ -104,10 +110,19 @@ import { TermsGateDialog } from "./TermsGateDialog";
 import { TopBar } from "./TopBar";
 import { acceptTermsFor, isTermsAcceptedFor } from "../storage";
 import { ViewContainer } from "./views/ViewContainer";
-import { refTargetName } from "./views/topology/overview-graph";
 import type { RefWrite } from "./views/topology/application-canvas-model";
 import { leafConcreteIndex, writeConcretePath } from "../lib/concrete-path";
 import type { Range, ZoneExportCache } from "@telorun/analyzer";
+
+/** A module the user has not navigated inside yet: the containment root, no
+ *  per-view state. Frozen so the shared default can never be mutated into a
+ *  cross-module leak. */
+const EMPTY_MODULE_TOPOLOGY: ModuleTopologyState = Object.freeze({
+  focusPath: [] as string[],
+  focusRequest: null,
+  viewState: Object.freeze({}) as Record<string, unknown>,
+});
+
 
 /** Shallow, order-sensitive equality for `include:` lists. Used to detect
  *  source-edits that changed the owner module's partial-file set so Editor
@@ -136,10 +151,24 @@ function activateModuleState(s: EditorState, filePath: string): EditorState {
     activeView,
     openTabs: upsertTab(s.openTabs, { type: "module", path: filePath }),
     activeTabId: filePath,
-    graphContext: moduleChanged ? defaultGraphContext(s.workspace, filePath) : s.graphContext,
     selectedResource: moduleChanged ? null : s.selectedResource,
     panelStack: moduleChanged ? [] : s.panelStack,
   };
+}
+
+/** The base a generated resource name is derived from (`Ai.Tools` → `tools`).
+ *
+ *  Case encodes what a name DENOTES: a resource instance is a VALUE, so it is
+ *  camelCase, and only a `Telo.Type` — a named shape with no runtime instance —
+ *  is type-level and stays PascalCase. Generating the kind name verbatim wrote a
+ *  name `telo check` warns about (`NAME_CASE_CONVENTION`) the moment it landed.
+ *  Only the first character moves, which is also all the rule checks: the rest
+ *  may be an acronym (`SQL`, `AI`) that lowercasing whole would mangle.
+ */
+function resourceNameBase(kind: string, capability: string | undefined): string {
+  const kindName = kind.includes(".") ? kind.slice(kind.lastIndexOf(".") + 1) : kind;
+  if (capability === "Telo.Type") return kindName;
+  return kindName.charAt(0).toLowerCase() + kindName.slice(1);
 }
 
 export function Editor() {
@@ -473,7 +502,6 @@ export function Editor() {
         activeModulePath: nextActive,
         openTabs: finalTabs,
         activeTabId,
-        graphContext: moduleChanged ? null : s.graphContext,
         selectedResource: moduleChanged ? null : s.selectedResource,
         panelStack: moduleChanged ? [] : s.panelStack,
       };
@@ -948,24 +976,73 @@ export function Editor() {
     setState((s) => ({ ...s, selectedResource: null, panelStack: [] }));
   }
 
-  function handleCanvasViewportChange(viewport: CanvasViewport) {
+  // A viewport belongs to a module AND to the view + level it was framed in —
+  // see `EditorState.viewportByModule`.
+  function handleCanvasViewportChange(key: string, viewport: CanvasViewport) {
     setState((s) =>
       s.activeModulePath
-        ? { ...s, viewportByModule: { ...s.viewportByModule, [s.activeModulePath]: viewport } }
+        ? {
+            ...s,
+            viewportByModule: { ...s.viewportByModule, [`${s.activeModulePath}#${key}`]: viewport },
+          }
         : s,
     );
   }
 
+  function updateModuleTopology(
+    s: EditorState,
+    update: (prev: ModuleTopologyState) => ModuleTopologyState,
+  ): EditorState {
+    if (!s.activeModulePath) return s;
+    const prev = s.topologyByModule[s.activeModulePath] ?? EMPTY_MODULE_TOPOLOGY;
+    return {
+      ...s,
+      topologyByModule: { ...s.topologyByModule, [s.activeModulePath]: update(prev) },
+    };
+  }
+
+  // Taking a route consumes any pending request for one — the host resolves a
+  // request by calling this, so clearing it here is what stops it re-firing on
+  // every pass and dragging the user back out of wherever they went next.
+  function handleFocusPath(focusPath: string[]) {
+    setState((s) =>
+      updateModuleTopology(s, (prev) => ({ ...prev, focusPath, focusRequest: null })),
+    );
+  }
+
+  function handleTopologyViewState(viewId: string, next: unknown) {
+    setState((s) =>
+      updateModuleTopology(s, (prev) => ({
+        ...prev,
+        viewState: { ...prev.viewState, [viewId]: next },
+      })),
+    );
+  }
+
+  function handlePickTopologyView(choiceKey: string, viewId: string) {
+    setSettings({
+      ...settings,
+      topologyViewByChoiceKey: { ...(settings.topologyViewByChoiceKey ?? {}), [choiceKey]: viewId },
+    });
+  }
+
+  /** Navigate the topology view to a resource named from another tab. Only the
+   *  topology host holds the containment tree, so what is recorded here is the
+   *  NAME; the host resolves it to a focus path on its next pass. */
   function handleNavigateResource(kind: string, name: string) {
     runContext.closeRunView();
     setSelection(null);
-    setState((s) => ({
-      ...s,
-      activeView: "topology" as ViewId,
-      graphContext: { kind, name },
-      selectedResource: null,
-      panelStack: [],
-    }));
+    setState((s) =>
+      updateModuleTopology(
+        {
+          ...s,
+          activeView: "topology" as ViewId,
+          selectedResource: { kind, name },
+          panelStack: [{ type: "resource", kind, name }],
+        },
+        (prev) => ({ ...prev, focusRequest: name }),
+      ),
+    );
   }
 
   const revealNonceRef = useRef(0);
@@ -1010,12 +1087,24 @@ export function Editor() {
   // Resource creation
   // ---------------------------------------------------------------------------
 
-  const viewData =
-    state.workspace && activeManifest
-      ? buildModuleViewData(state.workspace, activeManifest)
-      : null;
+  // Memoized because its identity is the root of a chain: the canvas model
+  // hangs off it, the containment tree off that, and the nested view's layout —
+  // one dagre pass per lane per expanded container, recursively — off that. Left
+  // unmemoized, every keystroke, hover and streamed run-output chunk re-ran the
+  // lot, since a fresh `viewData` object defeats every `useMemo` below it.
+  const viewData = useMemo(
+    () =>
+      state.workspace && activeManifest
+        ? buildModuleViewData(state.workspace, activeManifest)
+        : null,
+    [state.workspace, activeManifest],
+  );
 
   const availableKinds = viewData ? [...viewData.kinds.values()] : [];
+
+  const activeTopology = state.activeModulePath
+    ? (state.topologyByModule[state.activeModulePath] ?? EMPTY_MODULE_TOPOLOGY)
+    : EMPTY_MODULE_TOPOLOGY;
 
   // A remote/imported (non-workspace) module has no editable on-disk file, so
   // it opens read-only across every view.
@@ -1051,6 +1140,16 @@ export function Editor() {
     setCreateResourceOpen(false);
   }
 
+  /** Creates an empty resource of `kind` under a generated name — the one-click
+   *  path the module bar's import rows offer, where the kind is already chosen
+   *  and a modal would only ask for a name. Same de-duplication as create-and-
+   *  link, so the two surfaces cannot generate colliding names. */
+  async function handleCreateResourceOfKind(kind: string) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const manifest = state.workspace.modules.get(state.activeModulePath);
+    await handleCreateResource(kind, uniqueResourceName(manifest, kind), {});
+  }
+
   function handleSelect(selection: Selection) {
     setSelection(selection);
     setState((s) => ({
@@ -1070,7 +1169,10 @@ export function Editor() {
       manifest.resources.find((r) => r.kind === kind && r.name === name) ??
       (isModuleRootKind(kind) ? moduleRootResource(manifest) : undefined);
     if (!prev) return;
-    const updated = setResourceFields(
+    // The root is the one resource carrying the inline `imports:` map, whose
+    // shorthand entries have to be widened before a nested write lands.
+    const write = isModuleRootKind(kind) ? setModuleRootFields : setResourceFields;
+    const updated = write(
       state.workspace,
       state.activeModulePath,
       kind,
@@ -1103,7 +1205,6 @@ export function Editor() {
       workspace: persisted,
       selectedResource: matches(s.selectedResource) ? null : s.selectedResource,
       panelStack: matches(s.selectedResource) ? [] : s.panelStack,
-      graphContext: matches(s.graphContext) ? null : s.graphContext,
     }));
   }
 
@@ -1116,32 +1217,13 @@ export function Editor() {
     const manifest = ws.modules.get(modulePath);
     if (!registry || !manifest) return ws;
 
-    const root = moduleRootResource(manifest);
-    const asManifest = (r: { kind: string; name: string; fields: Record<string, unknown> }) =>
-      ({ kind: r.kind, metadata: { name: r.name }, ...r.fields }) as unknown as ResourceManifest;
-    const resources = [
-      ...manifest.resources.filter((r) => !isModuleRootKind(r.kind)).map(asManifest),
-      asManifest(root),
-    ];
-
-    const writes: RefWrite[] = [];
-    registry.visitManifest(
-      resources,
-      {
-        onRef: (e) => {
-          if (refTargetName(e.value) !== deleted) return;
-          const srcName = e.source.metadata?.name;
-          if (typeof e.source.kind === "string" && typeof srcName === "string") {
-            writes.push({
-              source: { kind: e.source.kind, name: srcName },
-              concretePath: e.concretePath,
-              target: null,
-            });
-          }
-        },
-      },
-      { expand: true, discoverNestedRefs: true },
-    );
+    // Ref slots only: a CEL read is an expression, and there is no value to
+    // write null into. Deleting from the canvas therefore still leaves a CEL
+    // read dangling — which the root level's delete refuses over, and which the
+    // analyzer reports either way.
+    const writes: RefWrite[] = findResourceReferences(registry, manifest, deleted)
+      .filter((ref) => ref.via === "ref")
+      .map((ref) => ({ source: ref.source, concretePath: ref.path, target: null }));
     return writes.length ? applyRefWrites(ws, modulePath, writes) : ws;
   }
 
@@ -1188,13 +1270,14 @@ export function Editor() {
     return result;
   }
 
-  // A resource name derived from a kind (`Ai.Tools` → `Tools`), de-duplicated
-  // against existing resources so a fresh create-and-link never collides.
+  // A resource name derived from a kind, de-duplicated against existing
+  // resources so a fresh create never collides. The kind's capability decides
+  // the case, so the lookup runs against the active module's own kind table.
   function uniqueResourceName(
     manifest: { resources: { name: string }[] } | undefined,
     kind: string,
   ): string {
-    const base = kind.includes(".") ? kind.slice(kind.lastIndexOf(".") + 1) : kind;
+    const base = resourceNameBase(kind, viewData?.kinds.get(kind)?.capability);
     const taken = new Set((manifest?.resources ?? []).map((r) => r.name));
     if (!taken.has(base)) return base;
     let i = 2;
@@ -1217,6 +1300,117 @@ export function Editor() {
     const updated = applyRefWrites(ws, modulePath, resolved);
     if (updated === state.workspace) return;
     const persisted = await persistModule(updated, modulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
+  }
+
+  /** Create-and-link from a form's ref picker: the new resource and the slot
+   *  that points at it land in ONE workspace, so neither persist can read a
+   *  snapshot taken before the other. The canvas's `RefWrite.createKind` does
+   *  the same thing from a concrete path; this does it from the whole next
+   *  fields object, which is what a form has. */
+  async function handleCreateAndLink(
+    target: { kind: string; name: string },
+    createKind: string,
+    buildFields: (newName: string) => Record<string, unknown>,
+  ) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const modulePath = state.activeModulePath;
+    const manifest = state.workspace.modules.get(modulePath);
+    if (!manifest) return;
+    const prev =
+      manifest.resources.find((r) => r.kind === target.kind && r.name === target.name) ??
+      (isModuleRootKind(target.kind) ? moduleRootResource(manifest) : undefined);
+    if (!prev) return;
+
+    const name = uniqueResourceName(manifest, createKind);
+    let ws = createResourceViaAst(state.workspace, modulePath, createKind, name, {});
+    ws = setResourceFields(ws, modulePath, target.kind, target.name, prev.fields, buildFields(name));
+    const persisted = await persistModule(ws, modulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
+    // Land in the new resource's own form — it was created empty, and its
+    // required fields are the reason the slot was unfillable a moment ago.
+    handleSelectResource(createKind, name);
+  }
+
+  /** Reorders one item of a sequence field — its own AST op, since a field diff
+   *  is positional and would rewrite every entry it passed over. */
+  async function handleMoveField(
+    target: { kind: string; name: string },
+    pointer: string,
+    toIndex: number,
+  ) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const updated = moveResourceFieldItem(
+      state.workspace,
+      state.activeModulePath,
+      target.kind,
+      target.name,
+      pointer,
+      toIndex,
+    );
+    if (updated === state.workspace) return;
+    const persisted = await persistModule(updated, state.activeModulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
+  }
+
+  /** Moves one item of a sequence field into a different sequence of the same
+   *  resource — a step dragged between branches. Its own AST op, since a remove
+   *  plus an insert would re-serialize the step at its destination. */
+  async function handleRelocateField(
+    target: { kind: string; name: string },
+    pointer: string,
+    toPointer: string,
+    toIndex: number,
+  ) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const updated = relocateResourceFieldItem(
+      state.workspace,
+      state.activeModulePath,
+      target.kind,
+      target.name,
+      pointer,
+      toPointer,
+      toIndex,
+    );
+    if (updated === state.workspace) return;
+    const persisted = await persistModule(updated, state.activeModulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
+  }
+
+  /** Removes one item of a sequence field — its own AST op, since a field diff
+   *  would write the survivors' values over the wrong nodes. */
+  async function handleRemoveField(target: { kind: string; name: string }, pointer: string) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const updated = removeResourceFieldItem(
+      state.workspace,
+      state.activeModulePath,
+      target.kind,
+      target.name,
+      pointer,
+    );
+    if (updated === state.workspace) return;
+    const persisted = await persistModule(updated, state.activeModulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
+  }
+
+  /** Renames one mapping key inside a resource's fields — its own AST op, since
+   *  a field diff would read the change as a delete plus an add. */
+  async function handleRenameField(
+    target: { kind: string; name: string },
+    pointer: string,
+    newKey: string,
+  ) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const updated = renameResourceFieldKey(
+      state.workspace,
+      state.activeModulePath,
+      target.kind,
+      target.name,
+      pointer,
+      newKey,
+    );
+    if (updated === state.workspace) return;
+    const persisted = await persistModule(updated, state.activeModulePath);
     setState((s) => ({ ...s, workspace: persisted }));
   }
 
@@ -1524,14 +1718,19 @@ export function Editor() {
                           : undefined) ?? null,
                       selectedResource: state.selectedResource,
                       selection,
-                      graphContext: state.graphContext,
                       onSelectResource: handleSelectResource,
                       onNavigateResource: handleNavigateResource,
                       onOpenModule: handleOpenModule,
                       onUpdateResource: handleUpdateResource,
                       onDeleteResource: handleDeleteResource,
                       onWriteRef: handleWriteRef,
+                      onCreateAndLink: handleCreateAndLink,
+                      onRenameField: handleRenameField,
+                      onMoveField: handleMoveField,
+                      onRelocateField: handleRelocateField,
+                      onRemoveField: handleRemoveField,
                       onCreateResource: () => setCreateResourceOpen(true),
+                      onCreateResourceOfKind: handleCreateResourceOfKind,
                       hubUrl: settings.hubUrl,
                       manifestCacheUrl: settings.manifestCacheUrl,
                       onAddImport: handleAddImport,
@@ -1550,10 +1749,20 @@ export function Editor() {
                         onSetEnvVars: handleSetDeploymentEnvVars,
                       },
                       revealRequest: state.sourceRevealRequest,
-                      canvasViewport: state.activeModulePath
-                        ? (state.viewportByModule[state.activeModulePath] ?? null)
-                        : null,
-                      onCanvasViewportChange: handleCanvasViewportChange,
+                      topology: {
+                        focusPath: activeTopology.focusPath,
+                        onFocusPath: handleFocusPath,
+                        focusRequest: activeTopology.focusRequest,
+                        viewIdByChoiceKey: settings.topologyViewByChoiceKey ?? {},
+                        onPickView: handlePickTopologyView,
+                        viewState: activeTopology.viewState,
+                        onViewState: handleTopologyViewState,
+                        viewportFor: (key) =>
+                          state.activeModulePath
+                            ? (state.viewportByModule[`${state.activeModulePath}#${key}`] ?? null)
+                            : null,
+                        onViewportChange: handleCanvasViewportChange,
+                      },
                     }}
                   />
               ) : (

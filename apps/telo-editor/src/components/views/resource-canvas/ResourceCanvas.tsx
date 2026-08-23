@@ -13,7 +13,10 @@ import {
   ownsLabel,
 } from "../../resource-schema-form/field-control";
 import {
+  CREATE_REF_OPTION_PREFIX,
+  findPendingRefCreate,
   parseRefValue,
+  resolvePendingRefCreate,
   resolveRefCandidates,
   toRefString,
   toRefValue,
@@ -35,6 +38,20 @@ interface ResourceCanvasProps {
   typeKinds?: TypeKindOption[];
   registry?: RefResolver | null;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
+  /** Creates a resource of `createKind` and writes `buildFields(newName)` back
+   *  in ONE workspace mutation — what a ref slot offers when its kind has no
+   *  instance yet.
+   *
+   *  REQUIRED, not optional: the picker offers its create entries from the
+   *  registry alone and reports the choice as a marker value. With no handler to
+   *  intercept it, this canvas's blur-persist would write the marker itself into
+   *  the manifest. Every call site passes one, so making it mandatory is what
+   *  turns "guarded by luck" into "unrepresentable". */
+  onCreateAndLink: (
+    target: { kind: string; name: string },
+    createKind: string,
+    buildFields: (newName: string) => Record<string, unknown>,
+  ) => void;
   onSelectResource: (kind: string, name: string) => void;
   onBackgroundClick: () => void;
   /** When true, skip the resource header row — the embedding container already
@@ -79,6 +96,7 @@ export function ResourceCanvas({
   typeKinds,
   registry,
   onUpdateResource,
+  onCreateAndLink,
   onSelectResource,
   onBackgroundClick,
   hideHeader = false,
@@ -128,7 +146,30 @@ export function ResourceCanvas({
     persist(fields);
   }
 
+  /** Kinds that could fill a ref slot which nothing in the module satisfies yet.
+   *  Without them such a slot is a dead end — no candidates, and no way to
+   *  produce one. */
+  function createKindsFor(refs: string[]): string[] {
+    return [...new Set(refs.flatMap((ref) => registry?.userFacingKindsForRef?.(ref) ?? []))].sort();
+  }
+
+  function createAndLink(createKind: string, build: (newName: string) => Record<string, unknown>) {
+    onCreateAndLink({ kind: resource.kind, name: resource.name }, createKind, build);
+  }
+
   function setTopField(name: string, value: unknown) {
+    // A ref picker with no candidates reports a marker rather than a value (see
+    // `pendingRefCreate`): creating the resource and linking it has to be one
+    // workspace mutation, and this canvas otherwise persists on blur, which
+    // would write the marker itself into the manifest.
+    const pending = findPendingRefCreate(value);
+    if (pending) {
+      createAndLink(pending.kind, (newName) => ({
+        ...fields,
+        [name]: resolvePendingRefCreate(value, pending.path, pending.kind, newName),
+      }));
+      return;
+    }
     setFields((prev) => ({ ...prev, [name]: value }));
   }
 
@@ -140,6 +181,7 @@ export function ResourceCanvas({
 
   function renderArrayOfRefsBinding(descriptor: BindingDescriptor) {
     const candidates = resolveRefCandidates(descriptor.refCapabilities, resolvedResources, registry);
+    const createKinds = createKindsFor(descriptor.refCapabilities);
     const current = getByPath(fields, descriptor.fieldPath);
     const entries = Array.isArray(current) ? current : [];
 
@@ -186,19 +228,40 @@ export function ResourceCanvas({
           onChange={(e) => {
             const v = e.target.value;
             if (!v) return;
+            if (v.startsWith(CREATE_REF_OPTION_PREFIX)) {
+              const createKind = v.slice(CREATE_REF_OPTION_PREFIX.length);
+              createAndLink(createKind, (newName) =>
+                setByPath(fields, descriptor.fieldPath, [
+                  ...entries,
+                  toRefValue({ kind: createKind, name: newName }),
+                ]),
+              );
+              return;
+            }
             const option = candidates.find((c) => toRefString(c) === v);
             if (!option) return;
             commitAt(descriptor.fieldPath, [...entries, toRefValue(option)]);
           }}
-          disabled={candidates.length === 0}
+          disabled={candidates.length === 0 && createKinds.length === 0}
           className="self-start rounded border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 disabled:cursor-not-allowed disabled:bg-zinc-100 dark:disabled:bg-zinc-800"
         >
-          <option value="">{candidates.length === 0 ? "(no candidates)" : "+ Add…"}</option>
+          <option value="">
+            {candidates.length === 0 && createKinds.length === 0 ? "(no candidates)" : "+ Add…"}
+          </option>
           {candidates.map((c) => (
             <option key={toRefString(c)} value={toRefString(c)}>
               {c.kind}:{c.name}
             </option>
           ))}
+          {createKinds.length > 0 && (
+            <optgroup label="Create">
+              {createKinds.map((k) => (
+                <option key={k} value={`${CREATE_REF_OPTION_PREFIX}${k}`}>
+                  New {k}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
       </div>
     );

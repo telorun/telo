@@ -38,6 +38,11 @@ export {
   hasUnresolvedImports,
   rebuildManifestFromDocuments,
   removeResourceViaAst,
+  renameResourceFieldKey,
+  moveResourceFieldItem,
+  relocateResourceFieldItem,
+  removeResourceFieldItem,
+  setModuleRootFields,
   setResourceFields,
 } from "./loader/ast-ops";
 export {
@@ -81,7 +86,9 @@ export {
 } from "./loader/remote";
 export type { RemoteImportPlan, PlanFile, RemoteManifest } from "./loader/remote";
 export {
+  canonicalizeSchemaRefs,
   getAvailableKinds,
+  getImportedConfig,
   getImportableLibraries,
   hasApplicationImporter,
   isWorkspaceModule,

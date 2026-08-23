@@ -31,7 +31,7 @@ import type {
 } from "../model";
 import { loadDeploymentsForWorkspace } from "../storage-deployments";
 import { getModuleFiles } from "../diagnostics-aggregate";
-import { INITIAL_STATE, defaultGraphContext, pickInitialActiveModule } from "../editor-state";
+import { INITIAL_STATE, pickInitialActiveModule } from "../editor-state";
 import {
   setActiveSettings,
   setActiveWorkspaceAdapter,
@@ -184,7 +184,6 @@ export function useWorkspaceLifecycle({
       activeModulePath: plan.rootDestPath,
       openTabs: [{ type: "module", path: plan.rootDestPath }],
       activeTabId: plan.rootDestPath,
-      graphContext: defaultGraphContext(workspace, plan.rootDestPath),
       deploymentsByApp: loadDeploymentsForWorkspace(VIRTUAL_WORKSPACE_ROOT),
     });
     const depCount = plan.files.length - 1;
@@ -299,7 +298,6 @@ export function useWorkspaceLifecycle({
       openTabs,
       activeTabId,
       expandedDirs: persistedHint.expandedDirs,
-      graphContext: defaultGraphContext(workspace, nextActiveModulePath),
       deploymentsByApp: loadDeploymentsForWorkspace(reopened.rootDir),
     }));
   }
@@ -418,7 +416,6 @@ export function useWorkspaceLifecycle({
         activeModulePath: initialActivePath,
         openTabs: initialActivePath ? [{ type: "module", path: initialActivePath }] : [],
         activeTabId: initialActivePath,
-        graphContext: defaultGraphContext(workspace, initialActivePath),
         deploymentsByApp: loadDeploymentsForWorkspace(opened.rootDir),
       });
     } catch (err) {
@@ -474,7 +471,6 @@ export function useWorkspaceLifecycle({
           activeModulePath: rootPath,
           openTabs,
           activeTabId: rootPath,
-          graphContext: defaultGraphContext(workspace, rootPath),
           selectedResource: null,
           panelStack: [],
         };
@@ -495,7 +491,6 @@ export function useWorkspaceLifecycle({
         activeModulePath: rootPath,
         openTabs: [{ type: "module", path: rootPath }],
         activeTabId: rootPath,
-        graphContext: defaultGraphContext(workspace, rootPath),
         deploymentsByApp: loadDeploymentsForWorkspace(VIRTUAL_WORKSPACE_ROOT),
       });
     }

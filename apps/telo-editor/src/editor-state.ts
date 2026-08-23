@@ -8,7 +8,6 @@ export const INITIAL_STATE: EditorState = {
   activeTabId: null,
   expandedDirs: [],
   activeView: "topology",
-  graphContext: null,
   selectedResource: null,
   panelStack: [],
   diagnostics: {
@@ -21,6 +20,7 @@ export const INITIAL_STATE: EditorState = {
   sourceRevealRequest: null,
   deploymentsByApp: {},
   viewportByModule: {},
+  topologyByModule: {},
 };
 
 export function pickInitialActiveModule(workspace: Workspace): string | null {
@@ -33,17 +33,4 @@ export function pickInitialActiveModule(workspace: Workspace): string | null {
   const lib = entries.find(([, m]) => m.kind === "Library");
   if (lib) return lib[0];
   return null;
-}
-
-/** The canvas focus a module lands on when opened — its overview graph, rooted
- *  at the synthesized `Telo.Application` / `Telo.Library` node. */
-export function defaultGraphContext(
-  workspace: Workspace | null,
-  modulePath: string | null,
-): { kind: string; name: string } | null {
-  if (!workspace || !modulePath) return null;
-  const module = workspace.modules.get(modulePath);
-  if (!module) return null;
-  const kind = module.kind === "Application" ? "Telo.Application" : "Telo.Library";
-  return { kind, name: module.metadata.name };
 }

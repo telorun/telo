@@ -1,16 +1,18 @@
-import { MODULE_OVERVIEW_TOPOLOGY } from "../../application-adapter";
-import type { CanvasViewport, ParsedResource, Selection } from "../../model";
+import { isModuleRootKind } from "../../application-adapter";
+import { getStepSchema } from "../../schema-utils";
+import { entryListOf } from "./topology/entry-list-model";
+import type { ModuleViewData, ParsedResource, Selection } from "../../model";
 import type { RefResolver } from "../resource-schema-form/ref-candidates";
 import type { ResolvedResourceOption, TypeKindOption } from "../resource-schema-form/types";
-import { ResourceCanvas } from "./resource-canvas/ResourceCanvas";
-import { ApplicationTopologyCanvas } from "./topology/ApplicationTopologyCanvas";
-import type { AppCanvasModel, RefWrite } from "./topology/application-canvas-model";
-import { RouterTopologyCanvas } from "./topology/RouterTopologyCanvas";
-import { SequenceTopologyCanvas } from "./topology/SequenceTopologyCanvas";
+import type { TopologyViewContext } from "./topology/topology-view";
+import { resolveView } from "./topology/view-registry";
 
 interface PickCanvasProps {
+  viewData: ModuleViewData;
   resource: ParsedResource;
   schema: Record<string, unknown>;
+  /** The kind's declared `topology`, which is what narrows the candidate set to
+   *  a kind-specific view (Router). */
   topology?: string;
   resolvedResources: ResolvedResourceOption[];
   /** Imported `Telo.Type` kinds offered for inline type fields. */
@@ -18,39 +20,33 @@ interface PickCanvasProps {
   /** Narrows `x-telo-ref` candidates by kind satisfaction (abstract refs). */
   registry?: RefResolver | null;
   onUpdateResource: (kind: string, name: string, fields: Record<string, unknown>) => void;
+  /** Forwarded so a ref slot with no candidates can still create one — the peek
+   *  panel renders the same field controls the topology views do. Required for
+   *  the same reason it is on the view contract. */
+  onCreateAndLink: (
+    target: { kind: string; name: string },
+    createKind: string,
+    buildFields: (newName: string) => Record<string, unknown>,
+  ) => void;
   onSelectResource: (kind: string, name: string) => void;
   onSelect: (selection: Selection) => void;
   onBackgroundClick: () => void;
-  /** Module-wide overview model — supplied by `TopologyView` only when
-   *  `topology === "Application"`. Other canvases ignore it. */
-  applicationModel?: AppCanvasModel | null;
-  /** Active module's filePath — keys the overview canvas's viewport per app/lib. */
-  viewportKey?: string;
-  /** Saved overview-canvas viewport for the active module, or null to fit. */
-  canvasViewport?: CanvasViewport | null;
-  /** Persists the overview-canvas viewport after pan/zoom. */
-  onCanvasViewportChange?: (viewport: CanvasViewport) => void;
-  /** Currently selected resource — highlights the matching overview node. */
-  selectedResource?: { kind: string; name: string } | null;
-  /** Active pointer-scoped selection — suppresses the node highlight when a
-   *  sub-field (in/out type, edge inputs) is what's focused. */
-  selection?: Selection | null;
-  /** Removes a resource (overview-canvas Delete key). */
-  onDeleteResource?: (kind: string, name: string) => void;
-  /** Applies reference writes from the overview canvas (drag-to-wire, edge
-   *  deletion, picker changes). Read-only when absent. */
-  onWriteRef?: (writes: RefWrite[]) => void;
-  /** Opens the create-resource flow (Application canvas action). */
-  onCreateResource?: () => void;
-  /** Forwarded to `ResourceCanvas` only. Specialized canvases (Router,
-   *  Sequence) render their own headers. */
   hideHeader?: boolean;
 }
 
-/** Picks the canvas renderer for a resource based on its kind's `topology`.
- *  Shared by `TopologyView` (main canvas) and `DetailPanel` (peek panel) so
- *  both surfaces agree on which renderer to show for a given kind. */
+/**
+ * The canvas for one resource on a surface with no view picker — the detail
+ * panel's peek. It resolves through the same registry the topology host uses and
+ * takes the first applicable view, so "which canvas does this kind get" is
+ * answered in exactly one place; a second dispatcher here is what would let a
+ * kind-declared canvas and a user-chosen view disagree.
+ *
+ * The module-wide views need a containment tree, which a peek has no analysis to
+ * build, so they render their own loading state here — the same thing the peek
+ * showed before there was a registry.
+ */
 export function PickCanvas({
+  viewData,
   resource,
   schema,
   topology,
@@ -58,79 +54,49 @@ export function PickCanvas({
   typeKinds,
   registry,
   onUpdateResource,
+  onCreateAndLink,
   onSelectResource,
   onSelect,
   onBackgroundClick,
-  applicationModel,
-  viewportKey,
-  canvasViewport,
-  onCanvasViewportChange,
-  selectedResource,
-  selection,
-  onDeleteResource,
-  onWriteRef,
-  onCreateResource,
   hideHeader,
 }: PickCanvasProps) {
-  if (topology === MODULE_OVERVIEW_TOPOLOGY) {
-    if (!applicationModel) {
-      return (
-        <div className="flex h-full flex-1 items-center justify-center bg-zinc-50 dark:bg-zinc-900">
-          <span className="text-sm text-zinc-400 dark:text-zinc-600">Analyzing module…</span>
-        </div>
-      );
-    }
-    return (
-      <ApplicationTopologyCanvas
-        model={applicationModel}
-        viewportKey={viewportKey ?? ""}
-        viewport={canvasViewport}
-        onViewportChange={onCanvasViewportChange}
-        selectedResource={selectedResource}
-        selection={selection}
-        onDeleteResource={onDeleteResource}
-        onSelectResource={onSelectResource}
-        onWriteRef={onWriteRef}
-        onSelect={onSelect}
-        onCreateResource={onCreateResource}
-        onBackgroundClick={onBackgroundClick}
-      />
-    );
-  }
-
-  if (topology === "Router") {
-    return (
-      <RouterTopologyCanvas
-        resource={resource}
-        schema={schema}
-        onUpdateResource={onUpdateResource}
-        onSelect={onSelect}
-        onBackgroundClick={onBackgroundClick}
-      />
-    );
-  }
-
-  if (topology === "Sequence") {
-    return (
-      <SequenceTopologyCanvas
-        resource={resource}
-        schema={schema}
-        onUpdateResource={onUpdateResource}
-        onSelect={onSelect}
-        onBackgroundClick={onBackgroundClick}
-      />
-    );
-  }
+  const ctx: TopologyViewContext = {
+    kind: { fullKind: resource.kind, topology },
+    hasSteps: !!getStepSchema(schema),
+    hasEntries: !!entryListOf(schema),
+    isModuleRoot: isModuleRootKind(resource.kind),
+    // A peek has no analysis and so no containment relation; the views that
+    // draw an interior are not candidates here for exactly that reason.
+    hasInterior: false,
+  };
+  const view = resolveView(ctx, undefined);
+  if (!view) return null;
 
   return (
-    <ResourceCanvas
+    <view.Component
+      tree={null}
+      model={null}
+      viewData={viewData}
+      registry={null}
+      refResolver={registry ?? null}
       resource={resource}
       schema={schema}
       resolvedResources={resolvedResources}
-      typeKinds={typeKinds}
-      registry={registry}
-      onUpdateResource={onUpdateResource}
+      typeKinds={typeKinds ?? []}
+      focusPath={[]}
+      onFocusPath={() => undefined}
+      onFocusResource={() => undefined}
+      canFocus={() => false}
+      selectedResource={null}
+      selection={null}
+      state={undefined}
+      onStateChange={() => undefined}
+      viewportFor={() => null}
+      onViewportChange={() => undefined}
       onSelectResource={onSelectResource}
+      onSelect={onSelect}
+      onUpdateResource={onUpdateResource}
+      onCreateAndLink={onCreateAndLink}
       onBackgroundClick={onBackgroundClick}
       hideHeader={hideHeader}
     />

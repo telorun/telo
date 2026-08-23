@@ -1,0 +1,5 @@
+modules:
+  modules/http-server: Added
+body: Mounts declare their entry grammar (`entries` / `matcher` / `handler`), so the
+  editor renders them as an ordered list of mount points rather than as a set of nodes —
+  making mount order, which is match order, visible and editable.
