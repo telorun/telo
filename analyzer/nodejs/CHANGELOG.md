@@ -1,5 +1,111 @@
 # @telorun/analyzer
 
+## 0.65.0
+
+### Minor Changes
+
+- ffe8ca5: One schema-error renderer, and a failing union now reports the branch you meant.
+
+  A schema failure used to be rendered three ways — the analyzer's keyword prose,
+  the kernel's raw `instancePath + message` join, and observed state's own inline
+  variant — so fixing what `telo check` told you led to a different sentence
+  describing the same failure at runtime. The analyzer's implementation is now the
+  only one; the kernel's copy and the observed-state variant call it.
+
+  Neither renderer handled `anyOf` / `oneOf`. Both joined the entire AJV error
+  array, so a failing union emitted every branch's complaints concatenated with
+  nothing saying which branch was meant — already live for `Fs.FileWrite`'s
+  `content`, and about to become an authoring surface for any vocabulary
+  discriminated by which key is present.
+
+  Union reduction selects the branch the value plainly is: branches complaining at
+  the union's own node (a missing discriminating key, a forbidden key, a wrong
+  type) are not plausible readings, and among the rest the one that agreed
+  furthest into the value wins. It narrows the error SET rather than the sentence,
+  so a union failure is one diagnostic on one line instead of one per branch on
+  different lines, and it is recursive — an inner union inside the selected branch
+  is reduced in turn, which is what a self-recursive shape needs, since every
+  level of one carries the identical `schemaPath` and only `instancePath` tells
+  them apart.
+
+  When no branch is a plausible reading it says so and names the alternatives by
+  their discriminating keys, rather than presenting one branch's complaints as
+  though it were the intended one:
+
+  ```
+  /content matches no alternative — expected one with 'text', or one with 'table'
+  ```
+
+  A branch participates by declaring its discriminating key as `required` — that
+  is what selection reads, off the errors alone rather than off the schema, which
+  is what lets it work across a `$ref` into another registered schema. A union
+  whose branches declare no such key still gets the alternatives listing, never a
+  wrong guess.
+
+  This is not fixable inside AJV: a union must attempt every branch, and
+  `discriminator: true` works only against an explicit OpenAPI-style discriminator
+  property, which would mean changing what every module's authors write.
+
+  No manifest surface changes.
+
+- ffe8ca5: A kind whose `schema:` references a named shape is now actually checked.
+
+  Referencing a shape declared elsewhere — `$ref: "telo://Self/<Type>"` at a slot
+  inside a kind's own `schema:` — went blind in both halves, in opposite ways that
+  hid each other:
+
+  - The analyzer validated resource configuration on an AJV instance where named
+    shapes were never registered, so the schema failed to compile and the failure
+    was swallowed. `telo check` reported no issues for a resource that was
+    arbitrarily wrong, and the kernel — whose validator does resolve the reference
+    — rejected it at boot. Configuration is now validated through the definition
+    registry, the same instance the compile check already reports through, so
+    there is one answer instead of two.
+  - Every walk that places a stand-in for a CEL expression stopped at the
+    reference. A described value read as undescribed, so each expression under it
+    was handed the typeless `""` / `null` placeholder and then reported as a
+    violation of the very shape describing it — a valid document could not be
+    written at all.
+  - A `$ref` inside the referenced shape resolved against the REFERRING document.
+    A shape declares its own vocabulary that way (`anyOf: [{$ref: "#/$defs/Text"},
+…]`), and resolving those against the referrer finds nothing, leaves every
+    branch reading as unconstrained, and collapses the union to nothing. The base
+    now travels with the schema: `resolveRefIn` reports the root a resolved
+    schema's own references resolve against, and both walkers carry it.
+
+  Also fixed in union reduction: a branch written as a `$ref` is reported by AJV
+  under the TARGET's schemaPath, so nothing in such an error points back at the
+  union that dispatched to it. Branch attribution now falls back to the value node
+  each complaint is about, which is what reaches a large vocabulary — a branch per
+  `$defs` entry is exactly how one is written, so the biggest unions were the ones
+  staying unreduced.
+
+  Every site that validates configuration now runs on the registry: a top-level
+  resource, an inline declaration nested in a step's `invoke:` (which CLAUDE.md
+  mandates for a single-use resource, so it is the common shape rather than the
+  exception), and a step's arguments against the invoked kind's declared contract.
+  The inline validator takes its validator as a REQUIRED parameter rather than
+  defaulting to one, because a default is a second validator answering the same
+  question and an omission would stop checking silently.
+
+  `resolveRef` and `selectUnionBranch` take an optional resolver for a named
+  shape; `stripCompiledValues` takes one too. `substituteCelFields` now takes an
+  options object instead of six positionals — the resolver was the last of them,
+  so reaching it meant counting `undefined`s, and a caller that stopped one short
+  got the old blind behaviour with no signal. Two of them had.
+
+  Union reduction also indexes its occurrences by value path rather than scanning
+  every union per error. Reducing a 16-deep nested failure goes from 0.41 ms to
+  0.066 ms, and stops growing quadratically with depth — it runs on the editor's
+  per-keystroke path. And where AJV inlines several `$ref` branches under one
+  identical `schemaPath`, the alternatives are now listed one per missing key
+  rather than joined into a single phrase that read as one alternative demanding
+  all of them.
+
+### Patch Changes
+
+- @telorun/templating@0.16.0
+
 ## 0.64.0
 
 ### Minor Changes
