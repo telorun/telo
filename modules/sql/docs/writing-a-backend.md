@@ -119,11 +119,12 @@ non-transactional writes.
 - **Construction builds; nothing observable happens.** No sockets opened as a
   side effect, no timers started.
 - **`init()` proves the connection works** and is where recurring work — a
-  liveness sweep, a background reaper — starts. A resource whose `init()` throws
-  is never torn down, so anything started earlier would be left running with no
-  owner.
-- **`teardown()` releases everything the backend owns**, including whatever
-  `init()` started.
+  liveness sweep, a background reaper — starts. It RETURNS the effects that
+  started them, each paired with its inverse, so an `init()` that throws
+  part-way recovers what it already allocated rather than leaving it running
+  with no owner.
+- **There is no `teardown()`.** What releases the backend's resources is what
+  `init()` returned; extend the base chain rather than restating the order.
 - **A connection failing must never terminate the process.** It surfaces as a
   failed operation to the caller that was using it, and nowhere else. Some
   runtimes give this for free; some do not — see

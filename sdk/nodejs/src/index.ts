@@ -17,6 +17,7 @@ export * from "./controller-context.js";
 export * from "./controller-policy.js";
 export * from "./evaluation-context.js";
 export * from "./module-context.js";
+export * from "./effect.js";
 export * from "./resource-context.js";
 export * from "./resource-instance.js";
 export * from "./resource-manifest.js";

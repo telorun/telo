@@ -9,6 +9,10 @@ metadata:
     Connects an application to a PostgreSQL database over a standard `postgres://`
     URL, with TLS modes and a pooled set of connections shared by every query,
     statement, transaction and migration the application runs.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 imports:
   Sql: ../sql
 exports:

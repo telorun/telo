@@ -19,6 +19,11 @@ metadata:
       not a `sql` kind. Change the `imports:` entry to the new ref; the alias and
       every `kind:` spelling are unchanged.
     replacedBy: oci://ghcr.io/telorun/sqlite
+requires:
+  # The connection inherits `Sql.Connection`'s effect chain, so a runtime that
+  # discards what `init()` returns never destroys the pool — a silent leak
+  # rather than a failure, which is what the floor exists to convert.
+  telo: ">=0.82.0"
 imports:
   Sql: ../sql
 exports:

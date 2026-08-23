@@ -278,6 +278,22 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   }
 
   /**
+   * Undo every registration an alias made — the kind gate, the exported-instance
+   * scope and the exported-kind resolver — as ONE operation, because they are
+   * one act: an import controller registers all four in `create()` and an alias
+   * left half-registered would resolve kinds through a module whose instances
+   * are gone. This is the inverse of the create-frame effect that registers
+   * them, so an import whose instance is discarded does not leave its alias
+   * behind for the retry to collide with.
+   */
+  unregisterImport(alias: string): void {
+    this.importAliases.delete(alias);
+    this.importedKinds.delete(alias);
+    this.importedScopes.delete(alias);
+    this.importedKindResolvers.delete(alias);
+  }
+
+  /**
    * Register an alias that crosses no import boundary and is therefore never gated:
    * `Self` (a library resolving its own kinds — `exports.kinds` gates importers, not
    * internal use) and the `Telo` built-in namespace. Distinct from an ungated

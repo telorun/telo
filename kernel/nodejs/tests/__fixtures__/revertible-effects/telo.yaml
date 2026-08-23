@@ -1,0 +1,61 @@
+kind: Telo.Library
+metadata:
+  name: RevertibleEffects
+  version: 1.0.0
+  description: >-
+    Test fixture for revertible effects: a resource whose init() allocates
+    through ctx.effect and then fails on its first pass, so the recovery, the
+    retry and the run/teardown unwinding are all observable from a probe.
+exports:
+  kinds:
+    - Flaky
+    - Journal
+  resources:
+    - flaky
+    - journal
+files:
+  - "nodejs/*.mjs"
+---
+# Allocates two effects in init() and throws after them on the first pass. The
+# second pass succeeds, so a passing boot is itself the assertion that the retry
+# started from a clean state.
+kind: Telo.Definition
+metadata:
+  name: Flaky
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/flaky.mjs#flaky
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    failFirstInit:
+      type: boolean
+      default: true
+---
+# Reads the module-scope journal every effect writes to: which forward actions
+# ran, which inverses ran, and in what order.
+kind: Telo.Definition
+metadata:
+  name: Journal
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/flaky.mjs#journal
+schema:
+  type: object
+  additionalProperties: false
+outputType:
+  type: object
+  properties:
+    entries:
+      type: array
+      items:
+        type: string
+---
+kind: Self.Flaky
+metadata:
+  name: flaky
+---
+kind: Self.Journal
+metadata:
+  name: journal

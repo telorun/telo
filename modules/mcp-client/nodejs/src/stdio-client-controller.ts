@@ -51,7 +51,14 @@ export class McpStdioClient {
     this.clientInfo = manifest.clientInfo ?? DEFAULT_CLIENT_INFO;
   }
 
-  async init(): Promise<void> {
+  init(ctx: ResourceContext) {
+    return ctx.effect("mcp child process", async () => {
+      await this.spawnChild();
+      return { result: undefined, inverse: () => this.stopChild() };
+    });
+  }
+
+  private async spawnChild(): Promise<void> {
     if (!this.manifest.command) {
       throw transportError("Mcp.StdioClient requires a `command` field");
     }
@@ -177,7 +184,9 @@ export class McpStdioClient {
     };
   }
 
-  async teardown(): Promise<void> {
+  /** SIGTERM the child, escalating to SIGKILL past the grace period. The inverse
+   *  of {@link spawnChild}. */
+  private async stopChild(): Promise<void> {
     const transport = this.transport;
     const client = this.client;
     this.transport = null;

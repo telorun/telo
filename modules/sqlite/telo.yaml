@@ -10,6 +10,11 @@ metadata:
     that lives only as long as the process — with transactional schema changes. The
     database travels with the application, so it suits local development, tests,
     single-node deployments and embedded storage.
+requires:
+  # The connection inherits `Sql.Connection`'s effect chain, so a runtime that
+  # discards what `init()` returns never destroys the pool — a silent leak
+  # rather than a failure, which is what the floor exists to convert.
+  telo: ">=0.82.0"
 imports:
   Sql: ../sql
 exports:

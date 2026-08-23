@@ -40,8 +40,9 @@ manifest declares.
 2. The idle wait is released even though holds are still outstanding.
 3. **Teardown** cascades: child contexts first, then each resource in reverse
    order, with log sinks pinned last so anything logged during shutdown is
-   still flushed. A resource whose `teardown()` throws is recorded and the
-   cascade continues — one bad teardown cannot abandon the rest.
+   still flushed. Tearing a resource down runs the inverses its `init()` and
+   `run()` returned, newest first; one that refuses is recorded and the cascade
+   continues — a single failure cannot abandon the rest.
 4. The process exits with the [exit code](#exit-codes) the run accumulated.
 
 Two properties matter when you configure a supervisor:

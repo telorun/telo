@@ -150,7 +150,6 @@ function startHealthCheck(
 }
 
 class PostgresConnection extends SqlConnectionBase {
-  private stopHealthCheck: () => void = () => {};
 
   constructor(
     db: Kysely<any>,
@@ -163,14 +162,11 @@ class PostgresConnection extends SqlConnectionBase {
   /** The sweep starts only once the connection has proved itself: a recurring
    *  probe is a side effect, and an `init()` that throws is never torn down, so
    *  starting it in `create()` would leave a timer nobody owns. */
-  override async init(): Promise<void> {
-    await super.init();
-    this.stopHealthCheck = this.beginHealthCheck();
-  }
-
-  override async teardown(): Promise<void> {
-    this.stopHealthCheck();
-    await super.teardown();
+  override init(ctx: ResourceContext) {
+    return super.init(ctx).effect("health check", async () => ({
+      result: undefined,
+      inverse: this.beginHealthCheck(),
+    }));
   }
 }
 

@@ -10,6 +10,10 @@ metadata:
     record and recover the same work. Claims each interrupted run with a single
     conditional write, so two pollers never take the same one, and wakes a waiting run
     the moment its answer arrives instead of at the next poll.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 imports:
   DurableLocal: ../durable-local
   Postgres: ../postgres

@@ -157,7 +157,6 @@ export interface AiModelInstance {
   stream(input: ModelInvokeInput): AsyncIterable<StreamPart>;
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
-  teardown?(): Promise<void> | void;
 }
 
 // --- Image generation (Ai.ImageModel / Ai.Image) ---
@@ -232,7 +231,6 @@ export interface AiImageModelInstance {
   invoke(input: ImageInvokeInput, ctx?: InvokeContext): Promise<ImageGenerationResult>;
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
-  teardown?(): Promise<void> | void;
 }
 
 /** A tool the model can call, as surfaced by an Ai.ToolProvider: the advertised
@@ -261,5 +259,4 @@ export interface AiToolProviderInstance {
   callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
-  teardown?(): Promise<void> | void;
 }

@@ -10,6 +10,10 @@ metadata:
     existing resources as callable tools, readable resources and fetchable prompts,
     then serve them either over standard input and output for a locally spawned
     server, or over HTTP with optional per-session state.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 exports:
   kinds:
     - StdioServer

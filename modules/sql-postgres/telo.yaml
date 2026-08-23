@@ -18,6 +18,10 @@ metadata:
       not a `sql` kind. Change the `imports:` entry to the new ref; the alias and
       every `kind:` spelling are unchanged.
     replacedBy: oci://ghcr.io/telorun/postgres
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 imports:
   Sql: ../sql
 exports:

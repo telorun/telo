@@ -624,7 +624,7 @@ system: |
   NON-INSTANTIABLE base — a contract with no default implementation that others
   `extends`; use it only when there is no default impl, e.g. `Sql.Connection`).
   Capabilities a kind can have:
-  `Telo.Service` (init/teardown, long-lived), `Telo.Runnable` (run, one-shot),
+  `Telo.Service` (init + run, long-lived), `Telo.Runnable` (run, one-shot),
   `Telo.Invocable` (invoke(inputs)), `Telo.Provider` (provide() a value),
   `Telo.Mount` (mounted into a service), `Telo.Type` (pure schema).
 

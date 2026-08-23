@@ -18,6 +18,7 @@ import {
   SEVERITY,
   isSuspension,
   parseDurationMs,
+  type EffectChain,
   type ResourceContext,
   type ResourceManifest,
 } from "@telorun/sdk";
@@ -49,9 +50,6 @@ function canWake(journal: unknown): journal is WakingJournal {
 }
 
 export class ResumerController {
-  #timer: ReturnType<typeof setInterval> | undefined;
-  #release: (() => void) | undefined;
-  #unsubscribe: (() => Promise<void>) | undefined;
   #sweeping = false;
   readonly #holder = crypto.randomUUID();
 
@@ -60,35 +58,43 @@ export class ResumerController {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async init(): Promise<void> {}
-
-  async run(): Promise<void> {
+  async run(): Promise<EffectChain<unknown>> {
     const interval = parseDurationMs(this.resource.interval ?? "5s");
-    // A service that is polling holds the kernel: an app whose only job is to
-    // recover interrupted runs must not exit the moment its targets return.
-    this.#release = this.ctx.acquireHold("resuming interrupted durable runs");
-    this.#timer = setInterval(() => void this.sweep(), interval);
-    // Never hold the process open for the timer ALONE — the hold above is what
-    // keeps the app alive, and it is released at teardown.
-    this.#timer.unref?.();
     // A store that can push gets to: a delivery that wakes a run should be
     // picked up now rather than at the next tick. It SUPPLEMENTS the interval
     // and never replaces it — a missed notification (a dropped connection, a
     // process that was not listening yet) is invisible by nature, so the poll
     // stays the guarantee and this is only the latency.
     const journal = this.workflow().journal();
-    if (canWake(journal)) {
-      this.#unsubscribe = await journal.onWake(() => void this.sweep());
-    }
-    // One pass immediately, so a restart recovers without waiting out an
-    // interval it has no reason to.
-    await this.sweep();
-  }
 
-  async teardown(): Promise<void> {
-    if (this.#timer) clearInterval(this.#timer);
-    await this.#unsubscribe?.();
-    this.#release?.();
+    return this.ctx
+      // A service that is polling holds the kernel: an app whose only job is to
+      // recover interrupted runs must not exit the moment its targets return.
+      .effect("kernel hold", async () => ({
+        result: undefined,
+        inverse: this.ctx.acquireHold("resuming interrupted durable runs"),
+      }))
+      .effect("sweep timer", async () => {
+        const timer = setInterval(() => void this.sweep(), interval);
+        // Never hold the process open for the timer ALONE — the hold above is
+        // what keeps the app alive.
+        timer.unref?.();
+        return { result: undefined, inverse: () => clearInterval(timer) };
+      })
+      .effect("wake subscription", async () => {
+        // A journal that cannot push subscribes to nothing, so there is nothing
+        // to unsubscribe — stated by omitting the inverse rather than by a no-op
+        // closure that would read as an oversight.
+        if (!canWake(journal)) return { result: undefined };
+        return { result: undefined, inverse: await journal.onWake(() => void this.sweep()) };
+      })
+      .effect("initial sweep", async () => {
+        // One pass immediately, so a restart recovers without waiting out an
+        // interval it has no reason to. A sweep allocates nothing: it is a step
+        // for its ORDER — after the timer is armed and the subscription is live.
+        await this.sweep();
+        return { result: undefined };
+      });
   }
 
   private async sweep(): Promise<void> {

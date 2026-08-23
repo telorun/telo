@@ -133,9 +133,10 @@ class MemoryVectorStore implements ResourceInstance, VectorStoreHandle {
     return this;
   }
 
-  async teardown(): Promise<void> {
-    this.entries.clear();
-  }
+  // No effect, and deliberately no cleanup: the entries live in a Map this
+  // instance owns, so they go when it does. Clearing it at teardown undid
+  // nothing observable, and paying a runtime floor for that would be a cost to
+  // every consumer of an otherwise universally loadable module.
 
   snapshot(): Record<string, unknown> {
     return {};

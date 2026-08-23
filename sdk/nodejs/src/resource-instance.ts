@@ -1,6 +1,7 @@
 import type { Invocable } from "./capabilities/invokable.js";
 import type { Provider } from "./capabilities/provider.js";
 import type { Runnable } from "./capabilities/runnable.js";
+import type { EffectChain } from "./effect.js";
 import type { ResourceContext } from "./resource-context.js";
 
 export type ResourceInstance<TInput = Record<string, any>, TOutput = any> = Partial<
@@ -8,8 +9,19 @@ export type ResourceInstance<TInput = Record<string, any>, TOutput = any> = Part
 > &
   Partial<Runnable> &
   Partial<Provider<TOutput>> & {
-    init?(ctx?: ResourceContext): Promise<void>;
-    teardown?(): void | Promise<void>;
+    /**
+     * Build the resource, RETURNING the effects that built it.
+     *
+     * The chain is what undoes this — the runtime executes it, keeps the
+     * inverses, and unwinds them when the resource is torn down or when a later
+     * step of `init()` itself fails. Returning nothing is legal only for a
+     * resource that allocates nothing; there is no `teardown()`, so an
+     * allocation with no inverse is one nothing will ever reclaim.
+     *
+     * The chain is lazy and is not a thenable, so `async init()` may `await`
+     * whatever it needs before returning it.
+     */
+    init?(ctx: ResourceContext): EffectChain<unknown> | void | Promise<EffectChain<unknown> | void>;
     snapshot?(): Record<string, any> | Promise<Record<string, any>>;
     /**
      * Teardown ordering hint. Instances tear down in ascending priority — a

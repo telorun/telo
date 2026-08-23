@@ -23,7 +23,6 @@ export async function register(_ctx: ControllerContext): Promise<void> {}
 export class McpStdioServer {
   private server: Server | null = null;
   private transport: StdioServerTransport | null = null;
-  private releaseHold: (() => void) | null = null;
   private session: SessionContext;
 
   constructor(
@@ -47,70 +46,77 @@ export class McpStdioServer {
       asToolsBundle(ref, `${this.resource.kind}[${this.resource.metadata.name}]`),
     );
 
-    this.server = buildServer({
-      serverInfo: this.resource.serverInfo,
-      instructions: this.resource.instructions,
-      toolsBundles,
-      sessionResolver: () => this.session,
-      ctx: this.ctx,
-      moduleContext: this.ctx.moduleContext,
+    return this.ctx.effect("mcp server", async () => {
+      const server = buildServer({
+        serverInfo: this.resource.serverInfo,
+        instructions: this.resource.instructions,
+        toolsBundles,
+        sessionResolver: () => this.session,
+        ctx: this.ctx,
+        moduleContext: this.ctx.moduleContext,
+      });
+      this.server = server;
+      return {
+        result: server,
+        inverse: async () => {
+          this.server = null;
+          await server.close();
+        },
+      };
     });
   }
 
-  async run(): Promise<void> {
+  async run() {
     if (!this.server) {
       throw new Error("Mcp.StdioServer.run() called before init()");
     }
+    // Performed rather than returned, because this hold has to be releasable
+    // BEFORE the resource unwinds: stdin reaching EOF is what lets the kernel
+    // exit, and at that moment the server is still alive. `dispose()` is the
+    // scope's own idempotent release, so the EOF path and the unwind cannot
+    // release it twice.
+    const hold = await this.ctx
+      .effect("kernel hold", async () => ({ result: undefined, inverse: this.ctx.acquireHold() }))
+      .perform();
 
-    this.releaseHold = this.ctx.acquireHold();
-    try {
-      // ResourceContext types stdin/stdout as the structural NodeJS.ReadableStream
-      // / NodeJS.WritableStream interfaces, while the MCP SDK accepts the
-      // concrete node:stream `Readable` / `Writable` classes. process.stdin
-      // and process.stdout satisfy both shapes; a single cast is enough here.
-      this.transport = new StdioServerTransport(
-        this.ctx.stdin as unknown as Readable,
-        this.ctx.stdout as unknown as Writable,
-      );
+    return this.ctx
+      .effect("stdio transport", async () => {
+        // ResourceContext types stdin/stdout as the structural NodeJS.ReadableStream
+        // / NodeJS.WritableStream interfaces, while the MCP SDK accepts the
+        // concrete node:stream `Readable` / `Writable` classes. process.stdin
+        // and process.stdout satisfy both shapes; a single cast is enough here.
+        const transport = new StdioServerTransport(
+          this.ctx.stdin as unknown as Readable,
+          this.ctx.stdout as unknown as Writable,
+        );
+        this.transport = transport;
+        // The transport's `onclose` fires when stdin reaches EOF (the parent
+        // closed the pipe), and releasing the hold then is what lets the kernel
+        // exit.
+        transport.onclose = () => {
+          hold.dispose().catch((err: unknown) => {
+            this.ctx.log.error("Releasing the kernel hold at stdin EOF failed", undefined, {
+              error: err,
+              eventName: "mcp.hold.release_failed",
+            });
+          });
+        };
 
-      // The transport's `onclose` fires when stdin reaches EOF (the parent
-      // closed the pipe). Releasing the hold then lets the kernel exit.
-      this.transport.onclose = () => {
-        if (this.releaseHold) {
-          this.releaseHold();
-          this.releaseHold = null;
-        }
-      };
-
-      await this.server.connect(this.transport);
-
-      await this.ctx.emitEvent(`${this.resource.metadata.name}.Listening`, {
-        transport: "stdio",
-        sessionId: this.session.id,
+        await this.server!.connect(transport);
+        await this.ctx.emitEvent(`${this.resource.metadata.name}.Listening`, {
+          transport: "stdio",
+          sessionId: this.session.id,
+        });
+        return {
+          result: undefined,
+          inverse: async () => {
+            this.transport = null;
+            await transport.close();
+          },
+        };
       });
-    } catch (error) {
-      if (this.releaseHold) {
-        this.releaseHold();
-        this.releaseHold = null;
-      }
-      throw error;
-    }
   }
 
-  async teardown(): Promise<void> {
-    if (this.transport) {
-      await this.transport.close();
-      this.transport = null;
-    }
-    if (this.server) {
-      await this.server.close();
-      this.server = null;
-    }
-    if (this.releaseHold) {
-      this.releaseHold();
-      this.releaseHold = null;
-    }
-  }
 }
 
 export async function create(

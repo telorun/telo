@@ -10,6 +10,11 @@ metadata:
     OTLP, batched and flushed on an interval, with resource attributes such as the
     service name attached to every batch. The route from local logging to any
     OTel-compatible observability backend.
+requires:
+  # The sink pairs its attach with the flush/detach/close that undoes it, as an
+  # effect. A runtime without `ctx.effect` cannot construct this controller at
+  # all — the floor is what turns that into one message naming the cause.
+  telo: ">=0.82.0"
 exports:
   kinds:
     - Sink

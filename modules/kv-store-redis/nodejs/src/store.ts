@@ -82,8 +82,11 @@ class RedisKvStore implements ResourceInstance, KvStore {
     return `${this.prefix}${key}`;
   }
 
-  async init(): Promise<void> {
-    await this.client.connect();
+  init(ctx: ResourceContext) {
+    return ctx.effect("redis connection", async () => {
+      await this.client.connect();
+      return { result: undefined, inverse: () => this.client.quit() };
+    });
   }
 
   async get(key: string): Promise<VersionedValue | null> {
@@ -131,10 +134,6 @@ class RedisKvStore implements ResourceInstance, KvStore {
 
   async provide(): Promise<RedisKvStore> {
     return this;
-  }
-
-  async teardown(): Promise<void> {
-    await this.client.quit();
   }
 
   snapshot(): Record<string, unknown> {

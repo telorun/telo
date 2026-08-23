@@ -162,6 +162,9 @@ export interface EvaluationContext {
   hasManifest(name: string): boolean;
   registerManifest(resource: ResourceManifest): void;
   spawnChild<T extends EvaluationContext>(child: T): T;
+  /** The inverse of {@link spawnChild}, for a child whose owner is being
+   *  discarded rather than torn down in place. */
+  detachChild(child: EvaluationContext): void;
   /** Spawn a fresh child context attached to this one — the isolated scope a
    *  templated definition registers its `resources:` into. Rooted here so child
    *  kinds/refs resolve against THIS context's imports (the defining library),

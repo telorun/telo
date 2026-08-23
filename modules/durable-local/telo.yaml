@@ -11,7 +11,9 @@ metadata:
     picks up runs the process died in the middle of. Records what each step returned and
     every decision the body reached, so a resume takes the same branches it took before.
 requires:
-  telo: ">=0.79.0"
+  # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime
+  # that does not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 imports:
   Durable: ../durable
 exports:

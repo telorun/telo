@@ -205,15 +205,21 @@ export function createTemplateController(definition: {
       let registered = false;
 
       return {
-        init: async () => {
-          if (!registered) {
-            for (const template of definition.resources ?? []) {
-              childContext.registerManifest(expandSelf(template));
+        // The template's own resources are its allocation, and tearing the child
+        // context down is the inverse. `init()` still resumes rather than
+        // restarting, because a deferral (a child ref naming a sibling that has
+        // not initialized) keeps the instance: only a real failure discards it.
+        init: (templateCtx) =>
+          templateCtx.effect("template resources", async () => {
+            if (!registered) {
+              for (const template of definition.resources ?? []) {
+                childContext.registerManifest(expandSelf(template));
+              }
+              registered = true;
             }
-            registered = true;
-          }
-          await childContext.initializeResources();
-        },
+            await childContext.initializeResources();
+            return { result: undefined, inverse: () => childContext.teardownResources() };
+          }),
 
         ...(invokeTarget && {
           invoke: async (inputs: any) => {
@@ -267,9 +273,6 @@ export function createTemplateController(definition: {
           },
         }),
 
-        teardown: async () => {
-          await childContext.teardownResources();
-        },
       };
     },
   };

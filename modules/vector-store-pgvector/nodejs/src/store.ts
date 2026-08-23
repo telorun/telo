@@ -187,8 +187,6 @@ class PgvectorStore implements ResourceInstance, VectorStoreHandle {
   }
 
   // The connection is owned by the Sql.Connection resource; do not destroy it.
-  async teardown(): Promise<void> {}
-
   snapshot(): Record<string, unknown> {
     return {};
   }

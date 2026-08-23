@@ -10,6 +10,10 @@ metadata:
     in a chosen timezone. Schedules start when the application runs and stop on
     shutdown, so they order against migrations and other start-up work, and each tick
     can be gated on current state rather than firing blindly.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 exports:
   kinds:
     - Interval

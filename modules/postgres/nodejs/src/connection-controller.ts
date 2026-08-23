@@ -151,7 +151,6 @@ function startHealthCheck(
 }
 
 class PostgresConnection extends SqlConnectionBase {
-  private stopHealthCheck: () => void = () => {};
   #listener: NotificationListener | undefined;
 
   constructor(
@@ -178,8 +177,22 @@ class PostgresConnection extends SqlConnectionBase {
    * one.
    */
   async listen(channel: string, onNotify: NotificationHandler): Promise<() => Promise<void>> {
-    this.#listener ??= new NotificationListener(this.listenerConfig, this.ctx.log);
-    return this.#listener.listen(channel, onNotify);
+    if (!this.#listener) {
+      // Registered at the moment it is created, not reserved as a slot in
+      // `init()`: an inverse pairs with a forward action that HAPPENED, and an
+      // inverse waiting for a field to be filled later is a placeholder, not a
+      // pair. Performed rather than returned, because this is reached from
+      // ordinary method calls — it lands on the connection's own frame and
+      // closes when the connection unwinds.
+      const listener = new NotificationListener(this.listenerConfig, this.ctx.log);
+      await this.ctx
+        .effect("notification listener", async () => {
+          this.#listener = listener;
+          return { result: listener, inverse: () => listener.close() };
+        })
+        .perform();
+    }
+    return this.#listener!.listen(channel, onNotify);
   }
 
   /** Send a notification. A no-op statement away from `execute`, named here so a
@@ -189,18 +202,19 @@ class PostgresConnection extends SqlConnectionBase {
     await this.execute("SELECT pg_notify($1, $2)", [channel, payload ?? ""]);
   }
 
-  /** The sweep starts only once the connection has proved itself: a recurring
-   *  probe is a side effect, and an `init()` that throws is never torn down, so
-   *  starting it in `create()` would leave a timer nobody owns. */
-  override async init(): Promise<void> {
-    await super.init();
-    this.stopHealthCheck = this.beginHealthCheck();
-  }
-
-  override async teardown(): Promise<void> {
-    this.stopHealthCheck();
-    await this.#listener?.close();
-    await super.teardown();
+  /**
+   * The base's pool, then the liveness sweep on top — so unwinding stops the
+   * sweep before destroying the pool it probes, without either half stating that
+   * order. The sweep starts only once the connection has proved itself: a
+   * recurring probe is a side effect, and starting it in `create()` would leave
+   * a timer nobody owns. (The notification listener registers its own effect
+   * when `listen()` first builds it.)
+   */
+  override init(ctx: ResourceContext) {
+    return super.init(ctx).effect("health check", async () => ({
+      result: undefined,
+      inverse: this.beginHealthCheck(),
+    }));
   }
 }
 

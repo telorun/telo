@@ -28,7 +28,10 @@ import {
   type TypeRule,
   type OpenZoneAttributes,
   type ZoneEntry,
+  type EffectBody,
+  type EffectChain,
 } from "@telorun/sdk";
+import { EffectScope } from "./effect-scope.js";
 import { registerTeloKeywords } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
@@ -829,6 +832,35 @@ export class ResourceContextImpl implements ResourceContext {
     await this.kernel.emitRuntimeEvent(`${this.metadata.name}.${event}`, payload);
   }
 
+  /**
+   * This resource's inverse accumulator. Opened with the context — `create()`
+   * is where template controllers and imports allocate, so an effect performed
+   * there is on the chain alongside `init()` and `run()`.
+   */
+  #effects: EffectScope | undefined;
+
+  get effects(): EffectScope {
+    return (this.#effects ??= new EffectScope(String(this.metadata?.name ?? "<unnamed>")));
+  }
+
+  effect<T>(reason: string, body: EffectBody<void, T>): EffectChain<T> {
+    return this.effects.chain(reason, body);
+  }
+
+  /**
+   * Hold the kernel open; the returned closure releases it.
+   *
+   * Deliberately NOT registered as an effect here. A hold IS an effect — it is
+   * an action with an inverse — but which FRAME owns it is a fact only the
+   * caller has: `run()`'s hold belongs to the run frame, a hold taken per
+   * durable run inside `invoke()` belongs to that operation and is disposed when
+   * the run settles. Registering here would put every hold on whichever frame
+   * happened to be open, and the four call sites that already wrap it in an
+   * effect would register the same release twice.
+   *
+   * So this returns the raw inverse, and a caller places it:
+   * `ctx.effect("kernel hold", async () => ({ result: undefined, inverse: ctx.acquireHold() }))`.
+   */
   acquireHold(reason?: string): () => void {
     return this.kernel.acquireHold(reason);
   }

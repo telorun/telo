@@ -11,6 +11,10 @@ metadata:
     a handler with CEL, and render conditional typed responses buffered or streamed, a
     browsable API reference router, and a static file router with SPA fallback for
     shipping a frontend alongside the API.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
 imports:
   # Single source of truth for the returns:/catches: schema. Both Server.notFoundHandler
   # and Api.routes[] anchor at HttpDispatch.Outcomes/$defs/{Returns,Catches} so the

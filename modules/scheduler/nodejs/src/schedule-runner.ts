@@ -25,7 +25,7 @@ export type NextDelay = () => number | null;
  *
  * Lifecycle mirrors the other inbound sources (`Http.Server`, `Mcp.StdioServer`):
  * `init()` prepares and arms nothing, `run()` starts ticking from the app's
- * `targets`, `teardown()` disarms and drains. Starting in `init()` would fire
+ * `targets` and returns the effect that disarms and drains. Starting in `init()` would fire
  * inside the multi-pass init loop — before resources this schedule holds no
  * `!ref` edge to exist — and would leave an author no way to order a schedule
  * after a migration target.
@@ -42,12 +42,24 @@ export class ScheduleRunner {
     private readonly nextDelay: NextDelay,
   ) {}
 
-  async init(): Promise<void> {
-    // Nothing to arm here on purpose — see the class docstring.
+  // Nothing is armed in `init()` on purpose — see the class docstring.
+
+  run() {
+    return this.ctx.effect("armed schedule", async () => {
+      this.arm();
+      return { result: undefined, inverse: () => this.disarm() };
+    });
   }
 
-  async run(): Promise<void> {
-    this.arm();
+  /** Disarm and drain: the inverse of arming. An occurrence already in flight is
+   *  awaited rather than abandoned, so a schedule cannot be torn down mid-run. */
+  private async disarm(): Promise<void> {
+    this.stopped = true;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+    await this.inFlight;
   }
 
   private arm(): void {
@@ -114,16 +126,6 @@ export class ScheduleRunner {
       return "invalid";
     }
     return verdict ? "open" : "closed";
-  }
-
-  /** Disarm first so no new tick starts, then drain the one already running. */
-  async teardown(): Promise<void> {
-    this.stopped = true;
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = undefined;
-    }
-    await this.inFlight;
   }
 
   snapshot(): Record<string, unknown> {

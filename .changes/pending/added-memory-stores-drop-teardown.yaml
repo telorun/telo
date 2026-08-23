@@ -1,0 +1,8 @@
+modules:
+  modules/cache-memory: Added
+  modules/kv-store-memory: Added
+  modules/vector-store-memory: Added
+body: Drops the teardown that cleared the in-process Map. It undid nothing observable —
+  the entries live in the store instance, so they go when it does — and keeping it would
+  have meant declaring a runtime floor on a module that is otherwise loadable
+  everywhere.

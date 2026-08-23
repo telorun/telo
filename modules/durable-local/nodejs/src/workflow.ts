@@ -146,10 +146,24 @@ export class WorkflowController {
    * And `runDetached` replaces the ambient cancellation scope with the
    * uncancellable root, so the run is not cancelled the moment the triggering
    * request completes.
+   *
+   * The hold is taken as an EFFECT, performed rather than returned: this is
+   * inside `invoke()`, whose value belongs to the caller, and the hold's lifetime
+   * is one run rather than this resource's. So it is disposed when the run
+   * settles or parks — and anything still in flight when the workflow itself
+   * unwinds is released by the frame, which a bare closure could not do.
    */
   private start(runId: string, journal: DurableJournal, cel: { inputs: unknown }): void {
+    // Acquired HERE, synchronously, and only then registered from inside the
+    // detached task: the hold is what stops the kernel going idle, so a gap
+    // between `invoke()` returning and the task starting would be a window in
+    // which the app could exit mid-run. Registering it a tick later is safe
+    // precisely because the hold is already held across that tick.
     const release = this.ctx.acquireHold(`durable run ${runId}`);
     this.ctx.runDetached(async () => {
+      const hold = await this.ctx
+        .effect(`durable run ${runId}`, async () => ({ result: undefined, inverse: release }))
+        .perform();
       try {
         await this.execute(runId, journal, cel);
       } catch (err) {
@@ -159,7 +173,7 @@ export class WorkflowController {
         if (isSuspension(err)) return;
         throw err;
       } finally {
-        release();
+        await hold.dispose();
       }
     });
   }

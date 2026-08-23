@@ -37,7 +37,7 @@ handshake; there is no manifest-level override.
 
 - **`init()`** spawns the child via `child_process.spawn(command, args, { env, stdio: ["pipe", "pipe", "pipe"] })`, then runs the MCP `initialize` + `notifications/initialized` handshake. A child that exits during this window — or sends a malformed initialize response — makes `init()` throw and the kernel surfaces the boot failure with the captured stderr.
 - **`invoke({ method, params })`** writes a framed JSON-RPC request and awaits the matching response on stdout. Concurrent calls are correlated by ID, not call ordering. `ERR_MCP_SESSION_INVALID` is unreachable here — a dead session surfaces as `ERR_MCP_TRANSPORT` via child-process exit.
-- **`teardown()`** asks the SDK to close the transport (which SIGTERMs the child) and waits up to `shutdownGraceMs` ms for a clean exit. If the child is still alive after the grace window, the controller escalates with an explicit `SIGKILL` via `process.kill(pid, "SIGKILL")` and emits a `<Name>.ChildForceKilled` runtime event. Any in-flight `invoke()` calls reject with `ERR_MCP_TRANSPORT`.
+- **The child is `init()`'s effect**, so unwinding asks the SDK to close the transport (which SIGTERMs the child) and waits up to `shutdownGraceMs` ms for a clean exit. If the child is still alive after the grace window, the controller escalates with an explicit `SIGKILL` via `process.kill(pid, "SIGKILL")` and emits a `<Name>.ChildForceKilled` runtime event. Any in-flight `invoke()` calls reject with `ERR_MCP_TRANSPORT`.
 
 ## Stderr
 
