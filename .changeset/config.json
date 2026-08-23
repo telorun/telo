@@ -4,7 +4,11 @@
   "commit": false,
   "fixed": [],
   "linked": [
-    ["@telorun/sdk", "@telorun/kernel", "@telorun/cli"]
+    [
+      "@telorun/sdk",
+      "@telorun/kernel",
+      "@telorun/cli"
+    ]
   ],
   "access": "public",
   "baseBranch": "main",
@@ -50,6 +54,7 @@
     "@telorun/octet-codec-build",
     "@telorun/otlp-build",
     "@telorun/pdf",
+    "@telorun/pdfmake-build",
     "@telorun/plain-text-codec-build",
     "@telorun/postgres-build",
     "@telorun/rate-limit-build",

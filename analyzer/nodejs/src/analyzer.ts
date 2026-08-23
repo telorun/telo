@@ -1476,6 +1476,17 @@ export class StaticAnalyzer {
       diagnostics.push(...validateIncludePlacement(allManifests));
     }
     resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule);
+    // ...and over the manifests the DEFINITION REGISTRY holds, which are not
+    // these. `normalizeInlineResources` deep-clones — that clone is the
+    // analyzer's immutability boundary — while `defs.register` ran before it, on
+    // the originals. So a kind whose `schema:` references a named shape kept the
+    // authored `telo://Self/<Type>` spelling everywhere the registry is read,
+    // which is where a resource's configuration is validated: the schema failed
+    // to compile, the failure was swallowed, and `telo check` reported nothing
+    // about a resource the kernel then rejected at boot. The pass is idempotent
+    // — a canonical id parses as no authority and is left alone — so running it
+    // over both is the whole repair.
+    resolveSchemaTypeRefs(manifests, aliases, aliasesByModule);
 
     // Trusted-input fast path: when the caller has already attested that
     // this exact manifest set passes analysis (e.g. via the kernel's
@@ -1765,8 +1776,13 @@ export class StaticAnalyzer {
         for (const slot of collectCelValueSlots(m, schema, "")) {
           celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
         }
-        // Phase 2+3: AJV on substituted data — CEL fields replaced with typed placeholders
-        const ajvIssues = validateAgainstSchema(substituteCelFields(m, schema), schema);
+        // Phase 2+3: AJV on substituted data — CEL fields replaced with typed
+        // placeholders. Through the REGISTRY, so a kind whose schema references
+        // a shape declared elsewhere is checked on the instance that holds it.
+        const ajvIssues = defs.validateResourceConfig(
+          substituteCelFields(m, schema, undefined, { external: (ref) => defs.schemaForId(ref) }),
+          schema,
+        );
         // Phase 4: value slots that must satisfy a type declared elsewhere on
         // the resource (`x-telo-value-schema-from`) — e.g. every row of a
         // decision table against its declared `outputType`, so a mistyped branch
@@ -1879,6 +1895,10 @@ export class StaticAnalyzer {
               return viaRoot ? defs.resolve(viaRoot) : undefined;
             },
             allManifests as Record<string, any>[],
+            {
+              validate: (data, target) => defs.validateResourceConfig(data, target),
+              external: (ref) => defs.schemaForId(ref),
+            },
           ),
         );
       }

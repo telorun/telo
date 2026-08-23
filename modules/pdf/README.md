@@ -1,8 +1,8 @@
 # PDF
 
-Rasterize PDF pages to images (PNG/JPEG/WebP) and author editable AcroForm fields at
-measured coordinates. Rendering uses pdf.js on a server-side canvas; field
-writing uses pdf-lib.
+Rasterize PDF pages to images (PNG/JPEG/WebP), read the text a document renders, and
+author editable AcroForm fields at measured coordinates. Rendering and text
+extraction use pdf.js; field writing uses pdf-lib.
 
 ## Why use this
 
@@ -25,6 +25,7 @@ writing uses pdf-lib.
 | Kind | Purpose |
 | --- | --- |
 | `Pdf.Rasterizer` | Render one page of a PDF to image bytes (png/jpeg/webp) plus pixel dimensions and page count. |
+| `Pdf.Text` | Read the text a PDF renders, per page and whole-document, plus its page count. |
 | `Pdf.FormFields` | Add editable AcroForm fields (text, checkbox) to a PDF at rendered-image pixel coordinates. |
 
 ## Example

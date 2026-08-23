@@ -1,0 +1,9 @@
+modules:
+  modules/pdf: Added
+body: >-
+  `Pdf.Text` reads the text a PDF renders, per page and whole-document, and
+  reports its page count. The counterpart to `Pdf.Rasterizer`: rasterizing
+  answers what a page looks like, which moves with the platform's font
+  rasterization, while this answers what it says — which is what an assertion
+  about a generated document needs, since a page image cannot tell a correct
+  table from an empty one.

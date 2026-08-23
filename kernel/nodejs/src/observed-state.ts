@@ -1,4 +1,4 @@
-import { registerTeloKeywords } from "@telorun/analyzer";
+import { formatAjvErrors, registerTeloKeywords } from "@telorun/analyzer";
 import AjvModule from "ajv";
 import { detachSnapshotValue, OBSERVED_STATE_KEY, RuntimeError } from "@telorun/sdk";
 
@@ -96,9 +96,7 @@ export function acceptReportedStatus(
   }
   const validate = validatorFor(opts.statusSchema);
   if (!validate(status)) {
-    const detail = (validate.errors ?? [])
-      .map((e) => `${e.instancePath || "/"} ${e.message ?? "is invalid"}`)
-      .join("; ");
+    const detail = formatAjvErrors(validate.errors);
     throw new RuntimeError(
       "ERR_OBSERVED_STATE_INVALID",
       `${opts.kind} '${opts.name}' reported observed state that does not match its declared 'status:': ${detail}`,

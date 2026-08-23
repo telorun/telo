@@ -1,5 +1,5 @@
 import { isCompiledValue } from "@telorun/sdk";
-import { selectUnionBranch } from "@telorun/analyzer";
+import { type ExternalSchemaResolver, resolveRefIn, selectUnionBranch } from "@telorun/analyzer";
 
 /** Returns a schema-appropriate placeholder value for a CompiledValue field. */
 function placeholderForSchema(schema: Record<string, unknown>): unknown {
@@ -38,22 +38,25 @@ function placeholderForSchema(schema: Record<string, unknown>): unknown {
   }
 }
 
-/** Resolve a `$ref` (only `#/$defs/...` form) against the root schema. */
+/**
+ * Resolve a `$ref` — document-local against `root`, everything else through the
+ * schema store when the caller supplies one.
+ *
+ * Without the store a named shape (`telo:<module>/<Type>`) stops the walk: the
+ * node reads as undescribed, so every CEL leaf beneath it collapses to `""` and
+ * is then rejected by the very schema that describes it. A kind referencing a
+ * shape declared elsewhere is exactly the case, and the failure surfaces as a
+ * violation of a value the author never wrote.
+ */
 function resolveSchemaRef(
   schema: Record<string, unknown>,
   root: Record<string, unknown>,
-): Record<string, unknown> {
-  if (
-    schema.$ref &&
-    typeof schema.$ref === "string" &&
-    (schema.$ref as string).startsWith("#/$defs/")
-  ) {
-    const defName = (schema.$ref as string).slice("#/$defs/".length);
-    const defs = root.$defs as Record<string, Record<string, unknown>> | undefined;
-    const resolved = defs?.[defName];
-    if (resolved) return resolved;
-  }
-  return schema;
+  external?: ExternalSchemaResolver,
+): { schema: Record<string, unknown>; root: Record<string, unknown> } {
+  return resolveRefIn(schema as Record<string, any>, root as Record<string, any>, external) as {
+    schema: Record<string, unknown>;
+    root: Record<string, unknown>;
+  };
 }
 
 /** Collect property schemas from top-level `properties` and all `oneOf`/`anyOf` sub-schemas. */
@@ -121,13 +124,18 @@ export function stripCompiledValues(
   v: unknown,
   schema: Record<string, unknown> = {},
   rootSchema?: Record<string, unknown>,
+  external?: ExternalSchemaResolver,
 ): unknown {
   const root = rootSchema ?? schema;
   // Ancestors on the current path, so a genuine cycle stops while a sub-object
   // that merely appears twice is still stripped both times.
   const ancestors = new Set<object>();
 
-  const walk = (value: unknown, rawNodeSchema: Record<string, unknown>): unknown => {
+  const walk = (
+    value: unknown,
+    rawNodeSchema: Record<string, unknown>,
+    base: Record<string, unknown> = root,
+  ): unknown => {
     // A UNION carries no `type` / `items` / `properties` of its own, so descending
     // through one hands every CEL leaf underneath the schema-unaware `""`
     // placeholder — which the branches then reject, reporting violations against
@@ -136,12 +144,16 @@ export function stripCompiledValues(
     // placed. Shared with the analyzer rather than reimplemented: the static and
     // dispatch halves must choose the same branch, or one reports what the other
     // accepts.
+    const entered = resolveSchemaRef(rawNodeSchema, base, external);
     const nodeSchema = selectUnionBranch(
-      resolveSchemaRef(rawNodeSchema, root),
+      entered.schema,
       value,
-      root as Record<string, any>,
+      entered.root as Record<string, any>,
+      external,
     ) as Record<string, unknown>;
-    const resolved = resolveSchemaRef(nodeSchema, root);
+    const here = resolveSchemaRef(nodeSchema, entered.root, external);
+    const resolved = here.schema;
+    const nodeRoot = here.root;
 
     if (isCompiledValue(value)) return placeholderForSchema(resolved);
     // A slot the schema declares as a reference is never config when it HOLDS a
@@ -153,8 +165,10 @@ export function stripCompiledValues(
     if (resolved["x-telo-ref"] !== undefined && !isConfigAtRefSlot(value)) return value;
 
     if (Array.isArray(value)) {
-      const itemSchema = resolveSchemaRef((resolved.items ?? {}) as Record<string, unknown>, root);
-      return walkGuarded(value, () => value.map((item) => walk(item, itemSchema)));
+      const item = resolveSchemaRef((resolved.items ?? {}) as Record<string, unknown>, nodeRoot, external);
+      return walkGuarded(value, () =>
+        value.map((element) => walk(element, item.schema, item.root)),
+      );
     }
     if (value !== null && typeof value === "object") {
       // A class instance (a client, a pool, a stream) carries no CompiledValues
@@ -166,7 +180,7 @@ export function stripCompiledValues(
       return walkGuarded(value, () => {
         const out: Record<string, unknown> = {};
         for (const [k, val] of Object.entries(value as Record<string, unknown>)) {
-          out[k] = walk(val, props[k] ?? {});
+          out[k] = walk(val, props[k] ?? {}, nodeRoot);
         }
         return out;
       });

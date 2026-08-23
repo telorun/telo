@@ -1,0 +1,762 @@
+kind: Telo.Library
+metadata:
+  name: PdfMake
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Data]
+  description: |
+    Authoring PDF documents declaratively: pages, styled text, tables, columns,
+    stacks, lists, images, SVG artwork and vector canvas, with named styles, page
+    backgrounds, headers and footers, and embedded brand fonts. One document
+    resource is a report template — invoke it per customer and its content
+    expressions fill in that customer's rows.
+# A kind schema referencing a named shape needs a runtime that can READ one: an
+# older kernel's placeholder walk stops at the reference, collapses every
+# expression under `content` to an empty string, and then rejects the document
+# for a value the author never wrote. Verified by running the previous released
+# CLI against this module's own test.
+requires:
+  telo: ">=0.82.0"
+exports:
+  kinds:
+    - Document
+  resources:
+    - Node
+    - Style
+---
+# The document node vocabulary, as one recursive shape.
+#
+# A NAMED SHAPE rather than a schema-only kind: a kind's schema reaches another
+# declaration by referencing a registered shape, which is what makes the
+# recursion resolve — a container node refers to this document's root, and the
+# reference carries its own base, so every branch below resolves here wherever
+# the shape is reached from.
+#
+# Field names mirror pdfmake's document definition verbatim, so an example from
+# pdfmake's documentation or its playground pastes in and works. Nodes are
+# discriminated the way pdfmake discriminates them — by which key is present —
+# with no added `type:` field, and each branch declares that key as `required`,
+# which is what branch selection reads when a node matches nothing.
+kind: Telo.JsonSchema
+metadata:
+  name: Node
+  description: >-
+    The content node vocabulary a PDF document is written in: styled text, tables,
+    columns, stacks, ordered and unordered lists, images, SVG, vector canvas and page
+    breaks. Recursive — a container node holds further nodes.
+schema:
+  title: Node
+  description: One content node. Which key is present decides what it is.
+  anyOf:
+    - $ref: "#/$defs/Text"
+    - $ref: "#/$defs/Table"
+    - $ref: "#/$defs/Columns"
+    - $ref: "#/$defs/Stack"
+    - $ref: "#/$defs/OrderedList"
+    - $ref: "#/$defs/UnorderedList"
+    - $ref: "#/$defs/Image"
+    - $ref: "#/$defs/Svg"
+    - $ref: "#/$defs/Canvas"
+    - $ref: "#/$defs/PageBreak"
+  $defs:
+    # ---------------------------------------------------------------- values
+
+    StyleRef:
+      title: Style
+      description: One named style from the document's `styles` map, or several applied in order.
+      anyOf:
+        - type: string
+        - type: array
+          items: { type: string }
+
+    Margin:
+      title: Margin
+      description: "[left, top, right, bottom], [horizontal, vertical], or one value for all four."
+      type: array
+      items: { type: number }
+      minItems: 1
+      maxItems: 4
+
+    Color:
+      title: Color
+      description: A CSS colour name or `#rrggbb`.
+      type: string
+
+    Alignment:
+      title: Alignment
+      type: string
+      enum: [left, center, right, justify]
+
+    Width:
+      title: Width
+      description: A number of points, `auto` (fit the content) or `*` (share the remaining space).
+      anyOf:
+        - type: number
+        - type: string
+          enum: ["auto", "*"]
+
+    Nodes:
+      title: Nodes
+      description: A list of content nodes.
+      type: array
+      items: { $ref: "#" }
+
+    # ---------------------------------------------------------------------
+    #
+    # Every branch enumerates its own presentation keys, because a branch closed
+    # with `additionalProperties: false` sees only its own `properties` — that is
+    # what makes a misspelled key an error rather than silent, and what lets a
+    # failed node name the alternatives by the key each one requires.
+
+    # ------------------------------------------------------------------ text
+
+    Text:
+      title: Text
+      description: A run of text. The one node an author writes most, so it is first in the union.
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text:
+          title: Text
+          description: The text itself, or several runs concatenated with their own styling.
+          anyOf:
+            - type: string
+            - type: number
+            - type: array
+              items:
+                anyOf:
+                  - type: string
+                  - type: number
+                  - $ref: "#/$defs/Text"
+        style: { $ref: "#/$defs/StyleRef" }
+        font: { type: string, description: A key of the document's `fonts` map. }
+        fontSize: { type: number }
+        lineHeight: { type: number }
+        bold: { type: boolean }
+        italics: { type: boolean }
+        color: { $ref: "#/$defs/Color" }
+        background: { $ref: "#/$defs/Color" }
+        alignment: { $ref: "#/$defs/Alignment" }
+        margin: { $ref: "#/$defs/Margin" }
+        decoration:
+          type: string
+          enum: [underline, lineThrough, overline]
+        decorationColor: { $ref: "#/$defs/Color" }
+        decorationStyle:
+          type: string
+          enum: [dashed, dotted, double, wavy]
+        characterSpacing: { type: number }
+        noWrap: { type: boolean }
+        opacity: { type: number }
+        link: { type: string, description: An external URL this run links to. }
+        linkToDestination: { type: string }
+        id: { type: string, description: Names this node as an internal link destination. }
+        pageBreak:
+          type: string
+          enum: [before, after]
+        preserveLeadingSpaces: { type: boolean }
+
+    # ----------------------------------------------------------------- table
+
+    Table:
+      title: Table
+      description: A table of cells, with optional repeating header rows and a declarative layout.
+      type: object
+      required: [table]
+      additionalProperties: false
+      properties:
+        table:
+          type: object
+          required: [body]
+          additionalProperties: false
+          properties:
+            body:
+              title: Body
+              description: >-
+                Rows of cells. A cell is a node, or a bare string or number as a
+                shorthand for a text node.
+              type: array
+              items:
+                type: array
+                items: { $ref: "#/$defs/Cell" }
+            widths:
+              title: Widths
+              description: One entry per column.
+              type: array
+              items: { $ref: "#/$defs/Width" }
+            heights:
+              anyOf:
+                - type: number
+                - type: array
+                  items: { type: number }
+            headerRows:
+              title: Header rows
+              description: How many leading rows repeat at the top of every page.
+              type: integer
+              minimum: 0
+            dontBreakRows: { type: boolean }
+            keepWithHeaderRows: { type: integer }
+        layout: { $ref: "#/$defs/TableLayout" }
+        style: { $ref: "#/$defs/StyleRef" }
+        margin: { $ref: "#/$defs/Margin" }
+        alignment: { $ref: "#/$defs/Alignment" }
+        fontSize: { type: number }
+        color: { $ref: "#/$defs/Color" }
+        pageBreak:
+          type: string
+          enum: [before, after]
+
+    Cell:
+      title: Cell
+      description: A table cell — a node, or a bare string or number as a text shorthand.
+      anyOf:
+        - type: string
+        - type: number
+        - type: "null"
+        - $ref: "#/$defs/SpanningCell"
+        - $ref: "#"
+
+    SpanningCell:
+      title: Spanning cell
+      description: >-
+        A text cell that spans columns or rows. Its own branch because `colSpan` /
+        `rowSpan` are the two keys a plain text node does not carry.
+      type: object
+      required: [text]
+      additionalProperties: false
+      properties:
+        text:
+          anyOf:
+            - type: string
+            - type: number
+        colSpan: { type: integer, minimum: 1 }
+        rowSpan: { type: integer, minimum: 1 }
+        style: { $ref: "#/$defs/StyleRef" }
+        fillColor: { $ref: "#/$defs/Color" }
+        color: { $ref: "#/$defs/Color" }
+        bold: { type: boolean }
+        italics: { type: boolean }
+        fontSize: { type: number }
+        alignment: { $ref: "#/$defs/Alignment" }
+        margin: { $ref: "#/$defs/Margin" }
+        border:
+          title: Border
+          description: "Which of this cell's four edges are drawn: [left, top, right, bottom]."
+          type: array
+          items: { type: boolean }
+          minItems: 4
+          maxItems: 4
+
+    TableLayout:
+      title: Table layout
+      description: >-
+        How the table is drawn. pdfmake takes callbacks here; a manifest holds no
+        functions and pdfmake calls them synchronously during layout, so CEL cannot
+        fill them either. These are the declarative equivalent, and a row that must
+        look different — a totals row — is a row carrying a different `style`, which
+        is data rather than a callback.
+      type: object
+      additionalProperties: false
+      properties:
+        hLineWidth: { title: Horizontal line width, type: number }
+        vLineWidth: { title: Vertical line width, type: number }
+        hLineColor: { $ref: "#/$defs/Color" }
+        vLineColor: { $ref: "#/$defs/Color" }
+        paddingLeft: { type: number }
+        paddingRight: { type: number }
+        paddingTop: { type: number }
+        paddingBottom: { type: number }
+        fillColor:
+          title: Fill colour
+          description: Fills every body row.
+          $ref: "#/$defs/Color"
+        headerFillColor:
+          title: Header fill colour
+          description: Fills the rows counted by `headerRows`.
+          $ref: "#/$defs/Color"
+        oddRowFillColor:
+          title: Odd row fill colour
+          description: Bands the body rows — applied to every other row, header rows excluded.
+          $ref: "#/$defs/Color"
+
+    # ------------------------------------------------------------ containers
+
+    Columns:
+      title: Columns
+      description: Nodes laid out side by side.
+      type: object
+      required: [columns]
+      additionalProperties: false
+      properties:
+        columns:
+          type: array
+          items: { $ref: "#/$defs/Column" }
+        columnGap: { type: number }
+        style: { $ref: "#/$defs/StyleRef" }
+        margin: { $ref: "#/$defs/Margin" }
+        pageBreak:
+          type: string
+          enum: [before, after]
+
+    Column:
+      title: Column
+      description: One column — any node, optionally given an explicit width.
+      anyOf:
+        - $ref: "#/$defs/SizedColumn"
+        - $ref: "#"
+
+    SizedColumn:
+      title: Sized column
+      description: A text column with an explicit width. Wrap any other node in a `stack` to size it.
+      type: object
+      required: [width]
+      additionalProperties: false
+      properties:
+        width: { $ref: "#/$defs/Width" }
+        text:
+          anyOf:
+            - type: string
+            - type: number
+        stack: { $ref: "#/$defs/Nodes" }
+        style: { $ref: "#/$defs/StyleRef" }
+        margin: { $ref: "#/$defs/Margin" }
+        alignment: { $ref: "#/$defs/Alignment" }
+
+    Stack:
+      title: Stack
+      description: Nodes laid out one under another, so a group of them can be styled or sized as one.
+      type: object
+      required: [stack]
+      additionalProperties: false
+      properties:
+        stack: { $ref: "#/$defs/Nodes" }
+        style: { $ref: "#/$defs/StyleRef" }
+        margin: { $ref: "#/$defs/Margin" }
+        alignment: { $ref: "#/$defs/Alignment" }
+        fontSize: { type: number }
+        color: { $ref: "#/$defs/Color" }
+        pageBreak:
+          type: string
+          enum: [before, after]
+
+    OrderedList:
+      title: Ordered list
+      type: object
+      required: [ol]
+      additionalProperties: false
+      properties:
+        ol: { $ref: "#/$defs/Nodes" }
+        start: { type: integer }
+        reversed: { type: boolean }
+        separator:
+          anyOf:
+            - type: string
+            - type: array
+              items: { type: string }
+              minItems: 2
+              maxItems: 2
+        type:
+          title: Marker
+          type: string
+          enum: [lower-alpha, upper-alpha, lower-roman, upper-roman, none]
+        style: { $ref: "#/$defs/StyleRef" }
+        margin: { $ref: "#/$defs/Margin" }
+
+    UnorderedList:
+      title: Unordered list
+      type: object
+      required: [ul]
+      additionalProperties: false
+      properties:
+        ul: { $ref: "#/$defs/Nodes" }
+        type:
+          title: Marker
+          type: string
+          enum: [square, circle, none]
+        markerColor: { $ref: "#/$defs/Color" }
+        style: { $ref: "#/$defs/StyleRef" }
+        margin: { $ref: "#/$defs/Margin" }
+
+    # -------------------------------------------------------------- graphics
+
+    Image:
+      title: Image
+      description: A raster image, as a data URI or a name from the document's `images` map.
+      type: object
+      required: [image]
+      additionalProperties: false
+      properties:
+        image: { type: string }
+        width: { type: number }
+        height: { type: number }
+        fit:
+          title: Fit
+          description: "Scale to fit inside [width, height], keeping the aspect ratio."
+          type: array
+          items: { type: number }
+          minItems: 2
+          maxItems: 2
+        cover:
+          type: object
+          additionalProperties: false
+          properties:
+            width: { type: number }
+            height: { type: number }
+            align: { type: string, enum: [left, center, right] }
+            valign: { type: string, enum: [top, center, bottom] }
+        opacity: { type: number }
+        alignment: { $ref: "#/$defs/Alignment" }
+        margin: { $ref: "#/$defs/Margin" }
+        link: { type: string }
+        pageBreak:
+          type: string
+          enum: [before, after]
+
+    Svg:
+      title: SVG
+      description: >-
+        Vector artwork as SVG markup — brand artwork embedded with `!include-text`, or a
+        chart's rendered markup passed in and read with an expression.
+      type: object
+      required: [svg]
+      additionalProperties: false
+      properties:
+        svg: { type: string }
+        width: { type: number }
+        height: { type: number }
+        fit:
+          type: array
+          items: { type: number }
+          minItems: 2
+          maxItems: 2
+        alignment: { $ref: "#/$defs/Alignment" }
+        margin: { $ref: "#/$defs/Margin" }
+        pageBreak:
+          type: string
+          enum: [before, after]
+
+    Canvas:
+      title: Canvas
+      description: Vector primitives drawn directly — rules, boxes, backgrounds behind a card.
+      type: object
+      required: [canvas]
+      additionalProperties: false
+      properties:
+        canvas:
+          type: array
+          items: { $ref: "#/$defs/Shape" }
+        style: { $ref: "#/$defs/StyleRef" }
+        margin: { $ref: "#/$defs/Margin" }
+
+    Shape:
+      title: Shape
+      description: >-
+        One vector primitive. Which `type` it declares decides which of the other keys
+        it reads; the rest are the union of what the four primitives take, so a key
+        belonging to another primitive is accepted here and ignored by pdfmake.
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [line, rect, ellipse, polyline]
+        x: { type: number }
+        y: { type: number }
+        x1: { type: number }
+        y1: { type: number }
+        x2: { type: number }
+        y2: { type: number }
+        w: { title: Width, type: number }
+        h: { title: Height, type: number }
+        r: { title: Radius, type: number }
+        r1: { type: number }
+        r2: { type: number }
+        points:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              x: { type: number }
+              y: { type: number }
+        closePath: { type: boolean }
+        color: { $ref: "#/$defs/Color" }
+        lineColor: { $ref: "#/$defs/Color" }
+        lineWidth: { type: number }
+        fillOpacity: { type: number }
+        lineOpacity: { type: number }
+        dash:
+          type: object
+          additionalProperties: false
+          properties:
+            length: { type: number }
+            space: { type: number }
+
+    PageBreak:
+      title: Page break
+      description: "Starts a new page. Written as `{ pageBreak: before }` on its own."
+      type: object
+      required: [pageBreak]
+      additionalProperties: false
+      properties:
+        pageBreak:
+          type: string
+          enum: [before, after]
+---
+# A named style, and what `defaultStyle` sets.
+#
+# Its own shape rather than a `$defs` entry inside the node vocabulary: a named
+# shape is addressed whole, so a fragment of one is not referenceable from the
+# document kind's schema, which is where `styles` and `defaultStyle` live.
+kind: Telo.JsonSchema
+metadata:
+  name: Style
+  description: >-
+    The presentation a named style carries — font, size, weight, colour, alignment,
+    spacing and margins — and what a document's `defaultStyle` sets for every node
+    that does not override it.
+schema:
+  title: Style
+  description: >-
+    Not a node — a named style, and what `defaultStyle` sets. Closed for the same
+    reason every node branch is: a misspelled key here is accepted by pdfmake and
+    silently ignored at render, which is the failure the closed branches exist to
+    prevent, and leaving it open would make the same key strict in one place and
+    free-form two lines away.
+  type: object
+  additionalProperties: false
+  properties:
+    font: { type: string, description: A key of the document's `fonts` map. }
+    fontSize: { type: number }
+    lineHeight: { type: number }
+    bold: { type: boolean }
+    italics: { type: boolean }
+    color: { $ref: "#/$defs/Color" }
+    background: { $ref: "#/$defs/Color" }
+    fillColor:
+      title: Fill colour
+      description: Fills the cell, for a style applied to a table cell.
+      $ref: "#/$defs/Color"
+    alignment: { $ref: "#/$defs/Alignment" }
+    margin: { $ref: "#/$defs/Margin" }
+    decoration:
+      type: string
+      enum: [underline, lineThrough, overline]
+    decorationColor: { $ref: "#/$defs/Color" }
+    decorationStyle:
+      type: string
+      enum: [dashed, dotted, double, wavy]
+    characterSpacing: { type: number }
+    noWrap: { type: boolean }
+    opacity: { type: number }
+    markerColor:
+      title: Marker colour
+      description: Bullet colour, for a style applied to a list.
+      $ref: "#/$defs/Color"
+    preserveLeadingSpaces: { type: boolean }
+  $defs:
+    Color:
+      title: Color
+      description: A CSS colour name or `#rrggbb`.
+      type: string
+    Alignment:
+      title: Alignment
+      type: string
+      enum: [left, center, right, justify]
+    Margin:
+      title: Margin
+      description: "[left, top, right, bottom], [horizontal, vertical], or one value for all four."
+      type: array
+      items: { type: number }
+      minItems: 1
+      maxItems: 4
+---
+# A PDF document. Invoked with the data one rendering needs; returns the bytes.
+#
+# The content expressions are evaluated per invocation, so ONE document resource
+# is a report template: invoke it per customer and each rendering carries that
+# customer's rows.
+kind: Telo.Definition
+metadata:
+  name: Document
+  description: >-
+    Renders a declared document — page setup, named styles, embedded fonts, background,
+    header and footer, and a tree of content nodes — to PDF bytes. Content expressions
+    are evaluated per invocation, so one resource serves as a report template rendered
+    once per subject. Read the result back with a PDF reader to learn its page count.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/pdfmake.mjs&local_path=./nodejs/src/index.ts#DocumentController
+throws:
+  codes:
+    ERR_RENDER_FAILED:
+      description: >-
+        pdfmake could not lay the document out — an unknown font name, an image it
+        cannot decode, a table whose widths do not fit the page. The message is
+        pdfmake's own.
+    ERR_INVALID_FONT:
+      description: >-
+        A `fonts` entry did not hold font file bytes. Embed one with `!include-bytes`.
+# The permissive default. An INSTANCE narrows it by declaring its own
+# `inputType:` — the slot below — which is what turns "this document is a
+# template" into a checked claim: the caller's step arguments are validated
+# against it, and a document that declares one cannot be invoked with the wrong
+# argument map.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: Values read inside content / background / header / footer expressions as `inputs.<name>`.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [bytes]
+    properties:
+      bytes:
+        title: Bytes
+        description: The rendered PDF.
+        x-telo-type: Telo.Bytes
+schema:
+  type: object
+  required: [content]
+  additionalProperties: false
+  properties:
+    inputType:
+      title: Input type
+      description: >-
+        The data one rendering takes, named or declared inline. A document is a report
+        template, so its parameter list is the thing most worth checking — declare it
+        and every call site is validated against it. Omitted, any argument map is
+        accepted.
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+    content:
+      title: Content
+      description: >-
+        The document body, top to bottom. Evaluated per invocation — an expression
+        anywhere inside it reads that rendering's `inputs`.
+      type: array
+      items: { $ref: "telo://Self/Node" }
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    pageSize:
+      title: Page size
+      description: A named size, or explicit dimensions in points.
+      anyOf:
+        - type: string
+          enum: [A0, A1, A2, A3, A4, A5, A6, LETTER, LEGAL, TABLOID, EXECUTIVE]
+        - type: object
+          additionalProperties: false
+          required: [width, height]
+          properties:
+            width: { type: number }
+            height: { type: number }
+      default: A4
+    pageOrientation:
+      title: Page orientation
+      type: string
+      enum: [portrait, landscape]
+      default: portrait
+    pageMargins:
+      title: Page margins
+      description: "[left, top, right, bottom], [horizontal, vertical], or one value for all four."
+      type: array
+      items: { type: number }
+      minItems: 1
+      maxItems: 4
+    defaultStyle:
+      title: Default style
+      description: Presentation every node inherits unless it overrides it.
+      $ref: "telo://Self/Style"
+    styles:
+      title: Styles
+      description: >-
+        Named presentation a node applies by naming it in `style`. This is what makes a
+        totals row a row tagged with a different style, rather than a callback.
+      type: object
+      additionalProperties: { $ref: "telo://Self/Style" }
+    fonts:
+      title: Fonts
+      description: >-
+        Brand fonts, embedded with `!include-bytes`. Each entry names the four faces a
+        family renders with; a face left out falls back to `normal`. Roboto is always
+        available under the name `Roboto` and needs no entry.
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [normal]
+        properties:
+          normal: { x-telo-type: Telo.Bytes }
+          bold: { x-telo-type: Telo.Bytes }
+          italics: { x-telo-type: Telo.Bytes }
+          bolditalics: { x-telo-type: Telo.Bytes }
+    images:
+      title: Images
+      description: Named raster images an `image` node refers to, as data URIs.
+      type: object
+      additionalProperties: { type: string }
+    background:
+      title: Background
+      description: Drawn behind every page — a full-bleed graphic or watermark.
+      type: array
+      items: { $ref: "telo://Self/Node" }
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    header:
+      title: Header
+      description: Repeated at the top of every page.
+      type: array
+      items: { $ref: "telo://Self/Node" }
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    footer:
+      title: Footer
+      description: Repeated at the bottom of every page.
+      type: array
+      items: { $ref: "telo://Self/Node" }
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    info:
+      title: Document info
+      description: PDF metadata.
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string }
+        author: { type: string }
+        subject: { type: string }
+        keywords: { type: string }
+        creator: { type: string }
+        producer: { type: string }
+    compress:
+      title: Compress
+      type: boolean
+      default: true
+    userPassword:
+      title: User password
+      description: Required to open the document.
+      type: string
+    ownerPassword:
+      title: Owner password
+      description: Required to change permissions on the document.
+      type: string

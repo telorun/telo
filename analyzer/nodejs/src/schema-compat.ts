@@ -14,6 +14,7 @@ import {
   valueTypePlaceholder,
 } from "@telorun/sdk";
 import { ManifestRootSchema } from "./manifest-schemas.js";
+import { schemaIssues, type SchemaIssue } from "./schema-error-report.js";
 import { registerTeloKeywords } from "./value-type-keyword.js";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
@@ -255,55 +256,8 @@ function compare(
   }
 }
 
-export function formatSingleError(err: any): string {
-  const p = err.instancePath || "/";
-  const params = err.params ?? {};
-  switch (err.keyword) {
-    case "additionalProperties":
-      return `${p} must NOT have additional properties ('${params.additionalProperty}' is not allowed)`;
-    case "required":
-      return `${p} is missing required property '${params.missingProperty}'`;
-    case "enum":
-      return `${p} ${err.message ?? "is invalid"} (${(params.allowedValues as unknown[])?.join(" | ")})`;
-    case "type":
-      return `${p} must be ${params.type} (got ${typeof err.data})`;
-    default:
-      return `${p} ${err.message ?? "is invalid"}`;
-  }
-}
-
-export function formatAjvErrors(errors: any[] | null | undefined): string {
-  if (!errors || errors.length === 0) return "Unknown schema error";
-  return errors.map(formatSingleError).join("; ");
-}
-
-/** Converts an AJV error object to a dotted path string compatible with PositionIndex keys.
- *  e.g. instancePath "/config/routes/0/handler" → "config.routes[0].handler"
- *  For "required" keyword errors, appends the missing property to the parent path. */
-function ajvErrorToPath(err: any): string {
-  const instancePath = (err.instancePath ?? "") as string;
-  const parts = instancePath.split("/").filter((p) => p !== "");
-  let result = "";
-  for (const part of parts) {
-    if (/^\d+$/.test(part)) {
-      result += `[${part}]`;
-    } else {
-      result += result ? `.${part}` : part;
-    }
-  }
-  if (err.keyword === "required" && err.params?.missingProperty) {
-    const missing = err.params.missingProperty as string;
-    result += result ? `.${missing}` : missing;
-  }
-  return result;
-}
-
-/** A schema validation issue with a dotted-path pointer to the offending field. */
-export interface SchemaIssue {
-  message: string;
-  /** Dotted path to the field (e.g. "config.handler"). Empty string means root. */
-  path: string;
-}
+export { formatAjvErrors, formatSingleError } from "./schema-error-report.js";
+export type { SchemaIssue } from "./schema-error-report.js";
 
 /** Does `schema` compile as-authored? Used to tell a malformed module schema
  *  (the author's problem) apart from a fault we introduced while normalizing it. */
@@ -335,10 +289,7 @@ export function validateAgainstSchema(data: unknown, schema: Record<string, any>
     compiledSchemaValidators.set(schema, validate);
   }
   if (validate(data)) return [];
-  return (validate.errors ?? []).map((err: any) => ({
-    message: formatSingleError(err),
-    path: ajvErrorToPath(err),
-  }));
+  return schemaIssues(validate.errors);
 }
 
 /** Resolves a JSON Pointer (RFC 6901, must start with "/") into a schema object.
@@ -640,15 +591,54 @@ function objectPlaceholder(schema: Record<string, any>): Record<string, unknown>
 
 const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
 
-/** Resolve a `$ref` (only `#/$defs/...` form) against the root schema. */
-export function resolveRef(schema: Record<string, any>, root: Record<string, any>): Record<string, any> {
-  if (schema.$ref && typeof schema.$ref === "string" && schema.$ref.startsWith("#/$defs/")) {
-    const defName = schema.$ref.slice("#/$defs/".length);
-    const resolved = root.$defs?.[defName];
-    if (resolved) return resolved;
-  }
-  return schema;
+/**
+ * Resolve a `$ref` — the document-local `#/$defs/...` form against `root`, and
+ * anything else through `external` when a caller supplies one.
+ *
+ * A named shape is addressed by a registered id (`telo:<module>/<Type>`), which
+ * lives in a schema store rather than in this document, so without the hook a
+ * walk stops at the reference and treats a described value as undescribed:
+ * every CEL leaf under it is handed the schema-unaware `""` placeholder and
+ * then rejected against a branch it was never measured against. The caller
+ * supplies the store because only the caller has one.
+ */
+export function resolveRef(
+  schema: Record<string, any>,
+  root: Record<string, any>,
+  external?: ExternalSchemaResolver,
+): Record<string, any> {
+  return resolveRefIn(schema, root, external).schema;
 }
+
+/**
+ * {@link resolveRef}, reporting the ROOT the result's own `#/...` references
+ * resolve against.
+ *
+ * Following an external reference enters another document, and a `$ref` inside
+ * it is relative to THAT document — which is the whole of how a shape declares
+ * its own vocabulary (`anyOf: [{$ref: "#/$defs/Text"}, …]`). Resolving those
+ * against the referring document finds nothing, and a walker that then treats
+ * the branches as unconstrained accepts every one of them, resolves the union
+ * to nothing, and hands the values underneath an untyped stand-in. So the base
+ * travels with the schema.
+ */
+export function resolveRefIn(
+  schema: Record<string, any>,
+  root: Record<string, any>,
+  external?: ExternalSchemaResolver,
+): { schema: Record<string, any>; root: Record<string, any> } {
+  if (!schema.$ref || typeof schema.$ref !== "string") return { schema, root };
+  if (schema.$ref === "#") return { schema: root, root };
+  if (schema.$ref.startsWith("#/$defs/")) {
+    const resolved = root.$defs?.[schema.$ref.slice("#/$defs/".length)];
+    return resolved ? { schema: resolved, root } : { schema, root };
+  }
+  const target = external?.(schema.$ref);
+  return target ? { schema: target, root: target } : { schema, root };
+}
+
+/** Looks a registered schema up by its `$id`. */
+export type ExternalSchemaResolver = (ref: string) => Record<string, any> | undefined;
 
 /** Collect property schemas from top-level `properties` and all `oneOf`/`anyOf` sub-schemas. */
 /**
@@ -671,6 +661,7 @@ export function selectUnionBranch(
   schema: Record<string, any>,
   data: unknown,
   root: Record<string, any>,
+  external?: ExternalSchemaResolver,
 ): Record<string, any> {
   const branches = (schema.oneOf ?? schema.anyOf) as Record<string, any>[] | undefined;
   if (!Array.isArray(branches) || branches.length === 0) return schema;
@@ -692,7 +683,7 @@ export function selectUnionBranch(
   if (!kind) return schema;
 
   const fits = branches
-    .map((b) => resolveRef(b, root))
+    .map((b) => resolveRef(b, root, external))
     .filter((b) => {
       const types = Array.isArray(b.type) ? b.type : b.type ? [b.type] : [];
       if (types.length > 0 && !types.includes(kind)) return false;
@@ -733,10 +724,13 @@ export function collectProperties(schema: Record<string, any>): Record<string, a
 
 /** Deep-clone `data`, replacing every pure CEL template string (`${{ expr }}`) with a
  *  schema-appropriate placeholder so AJV can validate non-CEL fields without false positives. */
-export function substituteCelFields(
-  data: unknown,
-  schema: Record<string, any>,
-  rootSchema?: Record<string, any>,
+/** Everything {@link substituteCelFields} does beyond walking the value.
+ *
+ *  One object rather than trailing positionals: the resolver is the parameter a
+ *  caller most needs and was the LAST of six, so reaching it meant counting
+ *  `undefined`s — and a caller that stopped counting one short simply got the
+ *  old blind behaviour, silently. Two of them did. */
+export interface SubstituteOptions {
   /** Called with the dotted path of every value replaced by a placeholder.
    *
    *  A placeholder is a stand-in for something only known at runtime, so its
@@ -746,11 +740,28 @@ export function substituteCelFields(
    *  so making every placeholder acceptable is not achievable in general —
    *  knowing where not to look is. Structural findings survive because they are
    *  located at the CONTAINER, not at the substituted leaf. */
-  onSubstitute?: (path: string) => void,
-  path = "",
+  onSubstitute?: (path: string) => void;
+  /** Dotted path of `data` within the resource, for `onSubstitute`. */
+  path?: string;
+  /** Resolves a named shape (`telo:<module>/<Type>`) to its schema. Without it
+   *  a slot described by one reads as undescribed and every CEL leaf beneath it
+   *  is handed the typeless `""` stand-in — which the shape then rejects, so a
+   *  perfectly valid expression is reported as a violation. */
+  external?: ExternalSchemaResolver;
+}
+
+export function substituteCelFields(
+  data: unknown,
+  schema: Record<string, any>,
+  rootSchema?: Record<string, any>,
+  options: SubstituteOptions = {},
 ): unknown {
-  const root = rootSchema ?? schema;
-  const resolved = selectUnionBranch(resolveRef(schema, root), data, root);
+  const { onSubstitute, external } = options;
+  const path = options.path ?? "";
+  const base = rootSchema ?? schema;
+  const entered = resolveRefIn(schema, base, external);
+  const root = entered.root;
+  const resolved = selectUnionBranch(entered.schema, data, root, external);
   const mark = () => onSubstitute?.(path);
 
   if (typeof data === "string" && CEL_PURE_RE.test(data)) {
@@ -789,9 +800,13 @@ export function substituteCelFields(
     return celPlaceholderForSchema(resolved);
   }
   if (Array.isArray(data)) {
-    const itemSchema = resolveRef((resolved.items ?? {}) as Record<string, any>, root);
-    return data.map((item, i) =>
-      substituteCelFields(item, itemSchema, root, onSubstitute, `${path}[${i}]`),
+    const item = resolveRefIn((resolved.items ?? {}) as Record<string, any>, root, external);
+    return data.map((element, i) =>
+      substituteCelFields(element, item.schema, item.root, {
+        onSubstitute,
+        path: `${path}[${i}]`,
+        external,
+      }),
     );
   }
   if (data !== null && typeof data === "object") {
@@ -802,13 +817,11 @@ export function substituteCelFields(
         : undefined;
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      result[k] = substituteCelFields(
-        v,
-        (props[k] ?? addlProps ?? {}) as Record<string, any>,
-        root,
+      result[k] = substituteCelFields(v, (props[k] ?? addlProps ?? {}) as Record<string, any>, root, {
         onSubstitute,
-        path ? `${path}.${k}` : k,
-      );
+        path: path ? `${path}.${k}` : k,
+        external,
+      });
     }
     return result;
   }

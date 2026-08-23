@@ -1390,7 +1390,17 @@ export class Kernel implements IKernel {
     try {
       this.sharedSchemaValidator
         .compile(configSchema)
-        .validate(stripCompiledValues(resource, configSchema));
+        .validate(
+          stripCompiledValues(resource, configSchema, undefined, (ref) =>
+            // A kind may describe a slot with a shape declared elsewhere. The
+            // strip walk has to see THROUGH that reference or the value under it
+            // reads as undescribed, and every CEL leaf beneath it collapses to
+            // `""` — which the shape then rejects, reporting a violation of a
+            // value the author never wrote. AJV resolves it either way; this is
+            // what lets the placeholder walk agree with it.
+            this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined,
+          ),
+        );
     } catch (error) {
       throw new RuntimeError(
         "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
