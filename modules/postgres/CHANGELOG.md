@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-08-23
+### Added
+* Controllers return their effects from `init()` / `run()` instead of implementing `teardown()`: each allocation is written beside the inverse that undoes it, and the runtime unwinds them last-in-first-out. A failure part-way through startup now recovers what it already allocated — a bound port releases the kernel hold and unregisters the routes, a connection that fails its health check destroys its pool — and the retry starts from a freshly constructed resource. Declares `requires: telo: '>=0.82.0'`, since an older runtime discards what a controller returns and would allocate nothing.
+
 ## 0.2.1 - 2026-08-21
 ### Fixed
 * A foreign key's 'references.table' was read while the table resource was still being created, and the kernel replaces a reference with the instance it names only when that instance already exists — so on the pass where it did not, every cross-table foreign key failed with "'references.table' does not name a table". The target is now resolved to its DECLARATION, which carries the physical name whether or not the table has been constructed, so the slot needs no ordering edge.

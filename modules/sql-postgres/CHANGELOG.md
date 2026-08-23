@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-08-23
+### Added
+* Controllers return their effects from `init()` / `run()` instead of implementing `teardown()`: each allocation is written beside the inverse that undoes it, and the runtime unwinds them last-in-first-out. A failure part-way through startup now recovers what it already allocated — a bound port releases the kernel hold and unregisters the routes, a connection that fails its health check destroys its pool — and the retry starts from a freshly constructed resource. Declares `requires: telo: '>=0.82.0'`, since an older runtime discards what a controller returns and would allocate nothing.
+
 ## 0.10.0 - 2026-08-20
 ### Deprecated
 * Deprecated in favour of the unprefixed postgres / sqlite modules, which carry the same Connection kind plus declarative schema and reclamation. The sql- prefix restated the abstract this module implements, which extends already records, and it stops being true now that a backend owns engine-specific surface that is not a sql kind. Consumers change one imports: entry; the alias and every kind: spelling are unchanged.

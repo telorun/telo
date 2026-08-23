@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: PDF
-  version: 0.7.1
+  version: 0.8.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Data]
@@ -28,7 +28,7 @@ metadata:
   description: Renders one page of a PDF to an image at a configurable scale, reporting the pixel dimensions.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/pdf@0.3.0?local_path=./nodejs#rasterizer
+  - pkg:npm/@telorun/pdf@0.8.0?local_path=./nodejs#rasterizer
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -137,7 +137,7 @@ metadata:
     by column. Reports the document's page count.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/pdf@0.3.0?local_path=./nodejs#text
+  - pkg:npm/@telorun/pdf@0.8.0?local_path=./nodejs#text
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -196,7 +196,7 @@ metadata:
     positions measured in rendered-image pixels, and returns the new document's bytes.
 capability: Telo.Invocable
 controllers:
-  - pkg:npm/@telorun/pdf@0.3.0?local_path=./nodejs#form-fields
+  - pkg:npm/@telorun/pdf@0.8.0?local_path=./nodejs#form-fields
 throws:
   codes:
     ERR_INVALID_INPUT:

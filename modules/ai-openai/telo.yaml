@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: OpenAI
-  version: 0.15.4
+  version: 0.16.0
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [AI]

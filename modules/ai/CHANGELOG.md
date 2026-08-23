@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.0 - 2026-08-23
+### Added
+* Drops the retired `teardown()` from the surface: ai's model, image and embedding handle interfaces no longer declare it, and the run and vector-store-pgvector controllers no longer implement an empty one. Cleanup is what a controller returns from `init()` / `run()`. Nothing called these, so no behaviour changes; a third-party handle implementing `teardown()` simply has a method nobody invokes.
+
 ## 0.16.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
