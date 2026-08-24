@@ -1,6 +1,6 @@
 # Dev module
 
-The `Dev` module exposes a local HTTP API for development tooling. It provides a single resource kind — `Dev.Server` — that starts a loopback HTTP server, exposes declared `Invocable` resources as callable endpoints, and publishes a discovery file so the Telo Editor can locate it automatically.
+The `Dev` module exposes a local HTTP API for development tooling. It provides a single resource kind — `Dev.Server` — that starts a loopback HTTP server, exposes declared `Invocable` resources as callable endpoints, and publishes a discovery file so Telo Studio can locate it automatically.
 
 The module is never used in production. It belongs in a dedicated `dev.yaml` manifest that imports the main application module and declares development tools alongside it.
 

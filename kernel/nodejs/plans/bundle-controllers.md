@@ -315,7 +315,7 @@ raw `.js` text drops in with no contract change.
   open-editors tabs. Optional v1+ nicety: surface "this Definition is backed by
   `nodejs/script.js`" from the resource so the file is discoverable from the
   Definition, not just the tree.
-- **Run-bundle builder** ([apps/telo-editor/src/run/bundle.ts](../../apps/telo-editor/src/run/bundle.ts)):
+- **Run-bundle builder** ([apps/studio/src/run/bundle.ts](../../apps/studio/src/run/bundle.ts)):
   for each local manifest, parse `pkg:telo` PURLs out of `Telo.Definition.
   controllers`, resolve `path`, include that file **plus its relative
   (`./`,`../`) import graph**. Bare imports are not crawled — they are externals
@@ -402,7 +402,7 @@ registry-independent; the **distribution** track must go registry-before-CLI
    parallelizable with 5–6 once 1–2 landed). Part of the deferred controller
    slice.
 8. ✅ **Editor remote-open `files:`** — `collectRemoteFiles` in
-   `apps/telo-editor/src/loader/remote.ts` fetches literal `files:` entries as
+   `apps/studio/src/loader/remote.ts` fetches literal `files:` entries as
    sibling raw URLs and warns + skips glob entries (surfaced in the import
    preview dialog).
 

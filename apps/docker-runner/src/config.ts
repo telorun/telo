@@ -8,7 +8,7 @@ export interface RunnerConfig extends RunnerCoreConfig {
   childNetwork: string;
   /** Base URL of a host-matching proxy (e.g. Caddy) that fronts session
    *  containers by name. When set, the runner announces an absolute `url` per
-   *  tcp port so the editor renders a reachable link instead of falling back to
+   *  tcp port so studio renders a reachable link instead of falling back to
    *  the runner's own host. Unset (the default) keeps the host-less behaviour. */
   publicBaseUrl?: string;
 }

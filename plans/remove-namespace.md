@@ -93,8 +93,8 @@ branch — a URL's version lives inside the file, and the cache maps URL to path
 the reader cannot know it.
 
 **Cleanup.** `metadata.namespace` is stripped from every manifest in this repo and from the
-passive carriers (`kernel/nodejs/src/bundle/module-manifest.ts`, `apps/telo-editor/src/loader/parse.ts`,
-`apps/telo-editor/src/model.ts`). Docs lose the namespace-tier doctrine in `kernel/docs/modules.md`
+passive carriers (`kernel/nodejs/src/bundle/module-manifest.ts`, `apps/studio/src/loader/parse.ts`,
+`apps/studio/src/model.ts`). Docs lose the namespace-tier doctrine in `kernel/docs/modules.md`
 §6.2 and the identity model in `kernel/docs/resource-references.md`; `CLAUDE.md`,
 `docs/extend/authoring-a-module.md`, and the authoring agent's system prompt
 (`apps/authoring-agent/chat/telo.yaml`) are updated in the same change.

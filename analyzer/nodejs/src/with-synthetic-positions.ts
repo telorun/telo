@@ -10,7 +10,7 @@ import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
  * manifest (the dedup that backs `DUPLICATE_RESOURCE_NAME` reads
  * `(source, sourceLine)` to distinguish pipeline echoes from real
  * collisions). Production callers — the `Loader`, `flattenForAnalyzer`,
- * the telo-editor's `emitDocsFor`, the VSCode extension — all stamp
+ * telo studio's `emitDocsFor`, the VSCode extension — all stamp
  * positions already. This helper is the escape hatch for **programmatic
  * callers** (tests, ad-hoc scripts) that construct `ResourceManifest`
  * literals without going through a loader: it gives every otherwise-naked

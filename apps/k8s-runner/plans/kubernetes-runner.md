@@ -171,7 +171,7 @@ Pod dies — essential given sub-minute sessions would otherwise leak ingress
 objects.
 
 **Editor side.** A dedicated **k8s adapter** under
-`apps/telo-editor/src/run/adapters/` (registered in `run/registry.ts`), reusing
+`apps/studio/src/run/adapters/` (registered in `run/registry.ts`), reusing
 the SSE/IO clients. Its config is minimal — a base URL — because limits and image
 are server-enforced, not user-pickable. Pointed at a bare runner or a control
 plane interchangeably.

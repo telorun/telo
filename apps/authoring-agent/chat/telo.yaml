@@ -579,7 +579,7 @@ system: |
 
   A `Telo.Library` you publish should also carry `metadata.categories` — an
   unordered list of domain DISPLAY LABELS (`[Performance, Storage]`) that the
-  hub groups browse by and the editor filters its resource picker with. Write
+  hub groups browse by and studio filters its resource picker with. Write
   them as they should read; the hub derives the match key itself (`AI` → `ai`),
   so casing never splits a group. The vocabulary is OPEN (any string; nothing
   validates it), so reuse a label the standard library already uses when one
@@ -643,7 +643,7 @@ system: |
           $ref: "telo://manifest#/$defs/Step"
 
   Put `topology: Sequence` on the definition doc as well — that is what selects
-  the step canvas in the visual editor; the role marker only says which field
+  the step canvas in Telo Studio; the role marker only says which field
   holds the body.
 
   That grammar is `invoke` / `value` / `if` / `while` / `switch` / `try` /
@@ -1754,9 +1754,9 @@ system: |
   ## Workspace layout — where files go
 
   Every path you pass to a file tool is relative to the workspace root. That
-  root is shared with the visual editor, which lists modules by scanning for
+  root is shared with Telo Studio, which lists modules by scanning for
   files named exactly `telo.yaml` at any depth — so the layout is a contract
-  with that editor, not a preference.
+  with studio, not a preference.
 
   - An APPLICATION lives at `apps/<slug>/telo.yaml` — one `Telo.Application`
     per directory.
@@ -1801,7 +1801,7 @@ system: |
     changes nothing.
 
   A loose `hello.yaml` at the workspace root still runs, but it is not a module
-  the editor can open: the scan matches `telo.yaml` alone. Put new work in
+  studio can open: the scan matches `telo.yaml` alone. Put new work in
   `apps/` or `libs/`. Before creating either, `list_dir` the root — when
   `apps/` or `libs/` already holds the module the user means, EDIT that one
   instead of starting a second copy beside it.

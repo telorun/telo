@@ -32,7 +32,7 @@ scaffolding and the lessons each consumer needed to learn (`oneOf` / `anyOf`
 walking, nested array descent, `x-telo-schema-from` expansion, scope handling)
 were duplicated everywhere. A fifth consumer is incoming: the editor's overview
 graph needs ref sites (see
-[apps/telo-editor/plans/resource-graph-canvas.md](../../../apps/telo-editor/plans/resource-graph-canvas.md),
+[apps/studio/plans/resource-graph-canvas.md](../../../apps/studio/plans/resource-graph-canvas.md),
 which lists this plan as a prerequisite).
 
 ## Solution
@@ -147,7 +147,7 @@ aliases — the public entry point for hosts (the editor) that must not reach in
 the internal `DefinitionRegistry`.
 
 **Editor-side adapter.** `buildOverviewGraph(resources, registry)` in
-[apps/telo-editor/src/components/views/topology/overview-graph.ts](../../../apps/telo-editor/src/components/views/topology/overview-graph.ts)
+[apps/studio/src/components/views/topology/overview-graph.ts](../../../apps/studio/src/components/views/topology/overview-graph.ts)
 runs `registry.visitManifest` with a `RefSite`-only visitor, classifying each ref
 by its target's capability: node capabilities (Service / Invocable / Runnable /
 Mount) become `LabeledEdge`s, ambient capabilities (Provider / Type) become

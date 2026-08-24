@@ -67,7 +67,7 @@ class TemplatingEngineRegistry {
 
 The registry only handles **tagged** values. Untagged `${{ }}` on `x-telo-eval` fields never touches it — it stays on the existing precompile path, unchanged. So there's no "default engine" concept.
 
-The interface, registry, and built-in engines all live in a new package at `templating/nodejs/` (published as `@telorun/templating`). Consumers depend on it: `kernel`, `analyzer`, `apps/telo-editor`, `ide/vscode`.
+The interface, registry, and built-in engines all live in a new package at `templating/nodejs/` (published as `@telorun/templating`). Consumers depend on it: `kernel`, `analyzer`, `apps/studio`, `ide/vscode`.
 
 **Single source of truth for which engines are registered.** The package exports a `builtinEngines` array and a `createDefaultRegistry()` factory; every host calls the same factory. Per-host à-la-carte registration is forbidden — that path leads to a manifest validating clean in the analyzer (cel only) and crashing at runtime in the kernel (cel+literal), or vice versa. New engines are added by extending `builtinEngines` in the shared package, propagating to every host on the next install.
 
@@ -107,7 +107,7 @@ There are **five** call sites that hand text to `parseAllDocuments`. All must us
 
 - [analyzer/nodejs/src/manifest-loader.ts:77](../src/manifest-loader.ts#L77) — main module load
 - [analyzer/nodejs/src/manifest-loader.ts:197](../src/manifest-loader.ts#L197) — `loadPartialFile`, the path used to load `include`d partials. The kernel reaches both of these via the analyzer's `Loader` ([kernel/nodejs/src/kernel.ts:251](../../../kernel/nodejs/src/kernel.ts#L251)), so wiring the analyzer covers the kernel.
-- [apps/telo-editor/src/yaml-document.ts:11](../../../apps/telo-editor/src/yaml-document.ts#L11) — editor parse
+- [apps/studio/src/yaml-document.ts:11](../../../apps/studio/src/yaml-document.ts#L11) — editor parse
 - [cli/nodejs/src/commands/publish.ts:106](../../../cli/nodejs/src/commands/publish.ts#L106) — `publish` expanding includes
 - [cli/nodejs/src/commands/publish.ts:184](../../../cli/nodejs/src/commands/publish.ts#L184) — `publish` canonicalizing import refs
 
@@ -160,12 +160,12 @@ The two consumers look at different facets of the same object — engine info is
 
 Two pieces:
 
-**Detection / rendering.** Today, two helpers in [apps/telo-editor/src/components/resource-schema-form/cel-utils.ts](../../../apps/telo-editor/src/components/resource-schema-form/cel-utils.ts) check schema annotation + a regex; they're called by the field renderer (e.g. `cel-field-wrapper.tsx`) to pick CEL UI vs. plain input. Update both helpers and the calling renderer to:
+**Detection / rendering.** Today, two helpers in [apps/studio/src/components/resource-schema-form/cel-utils.ts](../../../apps/studio/src/components/resource-schema-form/cel-utils.ts) check schema annotation + a regex; they're called by the field renderer (e.g. `cel-field-wrapper.tsx`) to pick CEL UI vs. plain input. Update both helpers and the calling renderer to:
 
-1. Inspect the YAML AST node's `.tag` directly (the editor stores the `Document` AST in [apps/telo-editor/src/yaml-document.ts](../../../apps/telo-editor/src/yaml-document.ts)).
+1. Inspect the YAML AST node's `.tag` directly (the editor stores the `Document` AST in [apps/studio/src/yaml-document.ts](../../../apps/studio/src/yaml-document.ts)).
 2. Tag → registry → `engine.language` for Monaco mode.
 
-**Edit ops** in `applyEdit` ([apps/telo-editor/src/yaml-document.ts:123-166](../../../apps/telo-editor/src/yaml-document.ts#L123-L166)). The existing opcodes (`set`, `delete`, `insert`, `rename`) only mutate `Scalar.value`, never `.tag`. Tag mutation requires direct AST access (`scalar.tag = '!cel'` before `setIn`) which no current opcode performs. Two changes needed:
+**Edit ops** in `applyEdit` ([apps/studio/src/yaml-document.ts:123-166](../../../apps/studio/src/yaml-document.ts#L123-L166)). The existing opcodes (`set`, `delete`, `insert`, `rename`) only mutate `Scalar.value`, never `.tag`. Tag mutation requires direct AST access (`scalar.tag = '!cel'` before `setIn`) which no current opcode performs. Two changes needed:
 
 - **New opcode `setTag`** (`{ path, engine: string | null }`) — locates the `Scalar` node at `path` and assigns `scalar.tag` (or clears it when `engine` is `null`).
 - **`set` opcode preserves tags** — when `set` updates a value whose `Scalar` already has a tag, the new value is written into `Scalar.value` and the existing `Scalar.tag` stays. Authors editing the inner expression don't lose the tag.
@@ -185,7 +185,7 @@ VS Code extension ([ide/vscode/src/extension.ts](../../../ide/vscode/src/extensi
 
 Pending design approval:
 
-1. Scaffold `templating/nodejs/` (`@telorun/templating`): `package.json`, `tsconfig.json`, `src/index.ts`. Wire it into `pnpm-workspace.yaml` and add it as a dep of `kernel`, `analyzer`, `apps/telo-editor`, `ide/vscode`.
+1. Scaffold `templating/nodejs/` (`@telorun/templating`): `package.json`, `tsconfig.json`, `src/index.ts`. Wire it into `pnpm-workspace.yaml` and add it as a dep of `kernel`, `analyzer`, `apps/studio`, `ide/vscode`.
 2. **Extract the CEL shared core into `@telorun/templating`** (per §3): move CEL compile body and chain-validator body into the new package, refactor `precompile.ts` and `validate-cel-context.ts` to be thin delegations. Full test suite must pass byte-for-byte — this step is purely a relocation.
 3. Define `TemplatingEngine` interface + `TemplatingEngineRegistry` in the new package.
 4. Implement `cel` engine on top of the shared core (whole-string-as-expression input).

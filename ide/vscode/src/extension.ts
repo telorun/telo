@@ -338,7 +338,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // version-reconciliation, import-resolution, and static analysis — into one
     // list, holding back the cascade for files that failed to parse or whose
     // imports failed to resolve. Sourcing all channels here through the same
-    // policy is what keeps the extension showing *exactly* what telo-editor
+    // policy is what keeps the extension showing *exactly* what telo studio
     // shows (and the CLI): a broken `imports:` source can no longer be silently
     // dropped, and the same compromised-file cascade is suppressed in both. Each
     // diagnostic carries `data.filePath` (+ `path: imports.<alias>` for

@@ -181,7 +181,7 @@ by its absence**; a cache path is derivable from the anchor and a toolchain pin 
 Discovery then filters within those subtrees: a module is a directory holding a `telo.yaml` whose
 **module doc** carries a `metadata.version` — not any manifest in the directory, which would read
 `apps/hub/test-suite-e2e.yaml`'s `version: 1.0.0` as a second module, and not a listed directory
-with no manifest at all, which is how `apps/hub-web` and `apps/telo-editor` fall out.
+with no manifest at all, which is how `apps/hub-web` and `apps/studio` fall out.
 
 Modules ship two different artifact kinds, and the digest has to mean something for both. The kind
 is derived, keeping discovery configuration-free: a `Dockerfile` beside the manifest makes it an

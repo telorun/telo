@@ -6,7 +6,7 @@ GitHub Pages at `hub.telo.run`; it reads and POSTs to the hub's verbs on
 `telo.sh` cross-origin. Pure static hosting — the hub app
 ([`apps/hub`](../hub)) is never in the frontend's serving path.
 
-Same UI idiom as [`apps/telo-editor`](../telo-editor): Radix primitives
+Same UI idiom as [`apps/studio`](../studio): Radix primitives
 (`radix-ui`) in `src/components/ui/*`, `lucide-react` icons, Tailwind v4 tokens
 in `src/app/globals.css`. No Tauri — it's a browser app.
 
@@ -100,6 +100,6 @@ pnpm --filter @telorun/hub-web build   # → dist/ (static assets)
 `.github/workflows/hub-pages.yml` builds `dist/` and publishes it to the
 [`telorun/hub`](https://github.com/telorun/hub) GitHub Pages repo
 (`cname: hub.telo.run`) on pushes to `main` that touch this app — mirroring the
-editor's `editor.telo.run` pipeline. It needs a `HUB_PAGES_TOKEN` repo secret
+studio's `studio.telo.run` pipeline. It needs a `HUB_PAGES_TOKEN` repo secret
 with push access to `telorun/hub`, and the `hub.telo.run` DNS `CNAME` pointing at
 GitHub Pages.

@@ -342,7 +342,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     // Reachability check: a workload bound to 127.0.0.1 (or listening on the
     // wrong port) is unreachable on the pod network and surfaces only as a
     // downstream 502. Watch each advertised tcp port from the runner and report
-    // per-port state to the editor's endpoint badge. Background; finish() aborts it.
+    // per-port state to studio's endpoint badge. Background; finish() aborts it.
     const tcpPorts = spec.ports.filter((p) => p.protocol === "tcp").map((p) => p.port);
     if (tcpPorts.length > 0) {
       void (async () => {
@@ -468,7 +468,7 @@ function podPhase(obj: unknown): string | undefined {
   return podStatus(obj)?.phase;
 }
 
-/** A coming-up message for the editor feed while the Pod is still scheduling /
+/** A coming-up message for the studio feed while the Pod is still scheduling /
  *  pulling / delivering the body / creating the container; undefined once running. */
 function provisionMessage(obj: unknown): string | undefined {
   const status = podStatus(obj);

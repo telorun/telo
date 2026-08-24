@@ -47,8 +47,8 @@ Add to `RunEvent`:
 `RunStatus` is untouched. The server SSE channel already forwards
 `event: ${event.type}` verbatim ([channel.ts:139,151](../../../packages/runner-core/src/sse/channel.ts#L139)),
 so no server-side change is needed. **But the editor SSE client silently drops
-unknown types**: [sse-client.ts:79-82](../../../apps/telo-editor/src/run/adapters/http-runner/sse-client.ts#L79-L82)
-registers `addEventListener` per type and [sse-client.ts:109-112](../../../apps/telo-editor/src/run/adapters/http-runner/sse-client.ts#L109-L112)
+unknown types**: [sse-client.ts:79-82](../../../apps/studio/src/run/adapters/http-runner/sse-client.ts#L79-L82)
+registers `addEventListener` per type and [sse-client.ts:109-112](../../../apps/studio/src/run/adapters/http-runner/sse-client.ts#L109-L112)
 gates on a hardcoded `isRunEvent` allow-list of `stdout|stderr|status`. Both must
 gain `progress`, or the frame never reaches `context.tsx`. Mirror the type in the
 editor's `run/types`.
@@ -86,7 +86,7 @@ predates the signal would never flip and the session would hang in `starting`.
 Not worth the coupling — the slow part (build/provision) is already covered by the
 live stream; the brief post-`Running` validation runs while already `running`.
 
-### Editor (`apps/telo-editor/src/run/`)
+### Editor (`apps/studio/src/run/`)
 
 - `sse-client.ts`: add `progress` to `isRunEvent` and register
   `addEventListener("progress", …)` / `removeEventListener` (Part 1 above).
@@ -252,10 +252,10 @@ running    ● Running
 - `kernel/nodejs/src/schema-validator.ts` — read-only cache mode (`writeCache`)
 - `kernel/nodejs/src/manifest-sources/analysis-stamp.ts` — gate stamp write on `writeCache`
 - `cli/nodejs/src/commands/{run,install}.ts` — resolve cache root once, pass `cacheDir`; `run` adds `--no-cache-write` and emits the readiness marker after `kernel.load` resolves
-- `apps/telo-editor/src/run/adapters/http-runner/sse-client.ts` — allow + listen for `progress`
-- `apps/telo-editor/src/run/types.ts` — `progress` variant
-- `apps/telo-editor/src/run/context.tsx` — handle `progress`
-- `apps/telo-editor/src/run/ui/{RunView,RunStatusChip}.tsx` — spinner + message
+- `apps/studio/src/run/adapters/http-runner/sse-client.ts` — allow + listen for `progress`
+- `apps/studio/src/run/types.ts` — `progress` variant
+- `apps/studio/src/run/context.tsx` — handle `progress`
+- `apps/studio/src/run/ui/{RunView,RunStatusChip}.tsx` — spinner + message
 
 ## Non-goals (follow-ups)
 

@@ -17,7 +17,7 @@
  * The rule is deliberately the module DOC's version rather than any manifest in
  * the directory — the looser reading admits `apps/hub/test-suite-e2e.yaml`'s
  * `version: 1.0.0` as a second module — and a listed directory holding no
- * manifest simply is not one, which is how `apps/hub-web` and `apps/telo-editor`
+ * manifest simply is not one, which is how `apps/hub-web` and `apps/studio`
  * fall out.
  */
 

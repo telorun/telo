@@ -23,7 +23,7 @@ export function parseExportEntry(entry: string): ParsedExportEntry {
 }
 
 /** The import-boundary forwarding rule, shared by `flattenForAnalyzer` (the
- *  CLI / kernel loader path) and the telo-editor's workspace projection so the
+ *  CLI / kernel loader path) and telo studio's workspace projection so the
  *  two cannot drift. Given one module's stamped manifests and whether that
  *  module is the analysis entry (root), returns the manifests that cross into
  *  the consumer's flat analysis list:

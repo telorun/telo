@@ -76,7 +76,7 @@ export interface ImageBuildConfig {
 }
 
 export interface K8sRunnerConfig extends RunnerCoreConfig {
-  /** Identity advertised on `/v1/capabilities` — the editor labels the runner
+  /** Identity advertised on `/v1/capabilities` — studio labels the runner
    *  with these. */
   displayName: string;
   description: string;

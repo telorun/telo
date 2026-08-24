@@ -101,7 +101,7 @@ export function validateReferences(
   // Group manifests by name to detect collisions. Two subtleties:
   //
   //   1. Some analyzer hosts emit the SAME physical document twice through
-  //      their pipeline — e.g. the telo-editor's `toAnalysisManifests` walks
+  //      their pipeline — e.g. telo studio's `toAnalysisManifests` walks
   //      each workspace module's documents independently, and a file
   //      reachable from two angles (entry module + `include:` partial)
   //      shows up twice. The fingerprint includes `sourceLine` so identical

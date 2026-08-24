@@ -1,5 +1,5 @@
 packages:
-  - apps/telo-editor
+  - apps/studio
   - apps/hub-web
   - apps/docker-runner
   - apps/k8s-runner

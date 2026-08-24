@@ -1,0 +1,213 @@
+name: Release Studio
+
+# Builds the Tauri desktop binaries for Telo Studio and publishes them as a
+# GitHub Release on the external `telorun/studio` repo (the same repo the web
+# build is deployed to via Pages in `studio-pages.yml`).
+#
+# Trigger is coupled to the changesets release: `@telorun/studio` is private so
+# it never lands in `publishedPackages`, so we instead fire whenever its
+# `package.json` version field actually moves on main (which happens when a
+# Version PR merges, including the automatic `updateInternalDependencies` patch
+# bumps). The `gate` job confirms the version changed before spending matrix
+# minutes. `workflow_dispatch` forces a (re)build of the current version.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/studio/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Detect version bump
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check studio version
+        id: check
+        run: |
+          set -euo pipefail
+          NEW=$(jq -r .version apps/studio/package.json)
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch -> releasing v$NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "No baseline commit -> releasing v$NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A path absent at the baseline is a move (the editor -> studio rename)
+          # or a brand-new app — neither is a version bump, and treating one as
+          # a bump republishes whatever version happens to be in the file. Left
+          # to `git show ... || echo ""` this reads as OLD="" and always fires.
+          # A genuine first release goes through workflow_dispatch.
+          if ! git cat-file -e "$BEFORE:apps/studio/package.json" 2>/dev/null; then
+            echo "apps/studio/package.json did not exist at $BEFORE -> not a version bump; skipping."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          OLD=$(git show "$BEFORE:apps/studio/package.json" | jq -r .version)
+          if [ "$NEW" != "$OLD" ]; then
+            echo "Studio version changed: $OLD -> $NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Studio version unchanged ($NEW); skipping release."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build (${{ matrix.label }})
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            label: macos-x64
+          - os: ubuntu-22.04
+            target: ''
+            label: linux-x64
+          - os: windows-latest
+            target: ''
+            label: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Tauri 2 system libraries (webkit2gtk + tray/appindicator + packaging).
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            file \
+            libxdo-dev \
+            libssl-dev
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/studio/src-tauri -> target
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Studio's `beforeBuildCommand` only runs its own vite build, which
+      # imports the built dist of these workspace deps. Build them first; the
+      # `^...` selector is deps-only (excludes studio itself).
+      - name: Build workspace dependencies
+        run: pnpm --filter "@telorun/studio^..." build
+
+      - name: Build Tauri bundles
+        id: tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/studio
+          args: ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+
+      # Glob the single-file deliverables straight from the bundle tree. Reading
+      # the filesystem (rather than tauri-action's `artifactPaths` string) sidesteps
+      # Windows path-format handling, and the per-extension globs skip the macOS
+      # `.app` directory (shipped inside the .dmg). `target/**/release` matches both
+      # the plain (`target/release`, Linux/Windows) and triple-scoped
+      # (`target/<triple>/release`, macOS `--target`) layouts.
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-${{ matrix.label }}
+          path: |
+            apps/studio/src-tauri/target/**/release/bundle/dmg/*.dmg
+            apps/studio/src-tauri/target/**/release/bundle/msi/*.msi
+            apps/studio/src-tauri/target/**/release/bundle/nsis/*.exe
+            apps/studio/src-tauri/target/**/release/bundle/appimage/*.AppImage
+            apps/studio/src-tauri/target/**/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+  release:
+    name: Publish release to telorun/studio
+    needs: [gate, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List bundles
+        run: ls -la artifacts
+
+      # Cross-repo: publishes to telorun/studio's Releases using the same PAT
+      # that the Pages deploy uses. softprops creates the tag/release if absent
+      # and reuses it (appending assets) on re-runs of the same version.
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: telorun/studio
+          token: ${{ secrets.STUDIO_PAGES_TOKEN }}
+          tag_name: studio-v${{ needs.gate.outputs.version }}
+          name: Telo Studio v${{ needs.gate.outputs.version }}
+          files: artifacts/**/*
+          fail_on_unmatched_files: true
+          body: |
+            Desktop builds of Telo Studio v${{ needs.gate.outputs.version }}.
+
+            | Platform | Assets |
+            | --- | --- |
+            | macOS (Apple Silicon) | `.dmg` — `macos-arm64` |
+            | macOS (Intel) | `.dmg` — `macos-x64` |
+            | Windows | `.msi` / `.exe` |
+            | Linux | `.AppImage` / `.deb` |
+
+            > These are **unsigned** builds: macOS Gatekeeper and Windows
+            > SmartScreen will warn on first launch. Code signing is a follow-up.
