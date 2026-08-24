@@ -18,14 +18,14 @@ metadata:
         REPORT_CRON='*/10 * * * * *' telo ./examples/nightly-report
     The report lands in ./reports/orders.csv.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.26.0#sha256-qCiZuU7_9wnxCn2QuA0oKM0H7OyvSd2aFcoXSv3vgFo
-  Sql: oci://ghcr.io/telorun/sql@0.21.3#sha256-wPgugWO72ulGwO8Xhu9WUPyUimpO6QS0Owadfrn98hc
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.3#sha256-AdpaRCphd3vnfMVoyMZGpsUZ7y5xAo4w72i1j8_ZCVg
+  Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
+  Sql: oci://ghcr.io/telorun/sql@0.23.0#sha256-7OoJzJcGyUpfWe4u1c_4aBXB_isG21LaeN8sPmwfufI
+  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
   Collection: oci://ghcr.io/telorun/collection@0.8.3#sha256-4XBKNDh5xcPG_enb85q_r-s3FHvZuhP5zZPTvAuC52s
-  Schedule: oci://ghcr.io/telorun/scheduler@0.8.3#sha256-DSvUZy47k21Ntvri1154cPSkatYtvAHpc5h6KmxTdao
-  Fs: oci://ghcr.io/telorun/fs@0.9.3#sha256-JNPanpA2kma9WxYCI_nZ6wtJvSOz9KsG21OUJ5Mo-gM
-  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
-  Console: oci://ghcr.io/telorun/console@0.17.3#sha256-KaCBcFJ13vtXO6I-N06kpjRFm85AcemNEbdVN4tgDhQ
+  Schedule: oci://ghcr.io/telorun/scheduler@0.9.0#sha256-4MpeweWGk4LedDa34TE9lELndNfl9YyBLAyOiHyap9s
+  Fs: oci://ghcr.io/telorun/fs@0.9.4#sha256-w8NLcREIq8SvxtsrULgRVKMPXISnR4iJd7LxeFnBFGM
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
 targets:
   - !ref migrate
   - !ref buildReport
@@ -46,19 +46,25 @@ kind: SQLite.Connection
 metadata: { name: db }
 file: ":memory:"
 ---
-kind: Sql.Migrations
+kind: SQLite.Table
+metadata: { name: orders }
+table: orders
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  region: { type: text, nullable: false }
+  status: { type: text, nullable: false }
+  total_cents: { type: integer, nullable: false }
+---
+kind: SQLite.Schema
 metadata: { name: migrate }
 connection: !ref db
+tables:
+  - !ref orders
+# Seed rows are data, not shape, so they stay imperative — they run after the
+# reconciliation pass, once the table exists.
 migrations:
-  0001_orders:
+  0001_seed_orders:
     statements:
-      - |
-        CREATE TABLE IF NOT EXISTS orders (
-          id       INTEGER PRIMARY KEY AUTOINCREMENT,
-          region   TEXT NOT NULL,
-          status   TEXT NOT NULL,
-          total_cents INTEGER NOT NULL
-        )
       - "INSERT INTO orders (region, status, total_cents) VALUES ('emea', 'paid', 12000)"
       - "INSERT INTO orders (region, status, total_cents) VALUES ('emea', 'paid', 4500)"
       - "INSERT INTO orders (region, status, total_cents) VALUES ('emea', 'refunded', 4500)"

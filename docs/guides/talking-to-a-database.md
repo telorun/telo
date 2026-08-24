@@ -24,7 +24,7 @@ metadata:
 imports:
   Http: oci://ghcr.io/telorun/http-server@<version>
   Sql: oci://ghcr.io/telorun/sql@<version>
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@<version>
+  SQLite: oci://ghcr.io/telorun/sqlite@<version>
 targets:
   - !ref Migrate
   - !ref Server
@@ -38,28 +38,32 @@ metadata:
   name: Db
 file: ./notes.db
 ---
-kind: Sql.Migrations
+kind: SQLite.Table
+metadata:
+  name: Notes
+table: notes
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+  body: { type: text, nullable: false }
+---
+kind: SQLite.Schema
 metadata:
   name: Migrate
 connection: !ref Db
-migrations:
-  0001_create_notes:
-    statement: |
-      CREATE TABLE IF NOT EXISTS notes (
-        id    INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        body  TEXT NOT NULL
-      )
+tables:
+  - !ref Notes
 ```
 
 Three things to notice:
 
 - **Two imports, not one.** `sql` declares the vocabulary — `Connection`,
-  `Query`, `Command`, `Transaction`. `sql-sqlite` implements the connection.
+  `Query`, `Command`, `Transaction`. `sqlite` implements the connection.
   That split is what section 5 cashes in.
 - **`Migrate` is first in `targets:`.** Boot targets run in the order written,
-  so the table exists before the server accepts a request. Each entry under
-  `migrations:` runs once and is recorded; re-running the app is a no-op.
+  so the table exists before the server accepts a request. The schema is
+  *declared*, not migrated to: the pass creates what is absent and records what
+  was removed, so re-running the app is a no-op.
 - **Nothing declares an ordering between `Db` and `Migrate`.** `Migrate`
   references `Db`, and that reference *is* the ordering.
 
@@ -177,13 +181,13 @@ kind: SqlRepository.Create
 metadata:
   name: InsertNote
 connection: !ref Db
-table: notes
+table: !ref Notes
 ---
 kind: SqlRepository.Read
 metadata:
   name: ReadNotes
 connection: !ref Db
-table: notes
+table: !ref Notes
 ```
 
 One resource per **operation**, not per route — `ReadNotes` serves both the list

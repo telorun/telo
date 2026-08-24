@@ -112,7 +112,7 @@ export function generateStandardLibrary(modulesRoot: string, outFile: string): v
     "```yaml",
     "imports:",
     `  Http: ${OCI_BASE}/http-server@<version>`,
-    `  Db: ${OCI_BASE}/sql-sqlite@<version>`,
+    `  Db: ${OCI_BASE}/sqlite@<version>`,
     "---",
     "kind: Http.Server # ← the alias you chose, not the module's directory name",
     "```",

@@ -3,7 +3,7 @@
 `shell` — run shell commands behind a transport-neutral host abstraction.
 The same command runs on the local host today and over SSH / in a container
 later (drivers ship as their own modules and extend `Shell.Host`, mirroring the
-`sql` / `sql-sqlite` family).
+`sql` / `sqlite` family).
 
 ## Kinds
 

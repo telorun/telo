@@ -269,7 +269,7 @@ jobs:
       #
       # This includes modules, and the module half is NOT a no-op even though the
       # kernel builds bundled controllers from source at load. 14 of the 56
-      # modules emit dist/: the five `pkg:npm` ones (http-server, sql-sqlite,
+      # modules emit dist/: the five `pkg:npm` ones (http-server, sqlite,
       # image, pdf, starlark), whose controller is resolved as a package EXPORT
       # SUBPATH (`#./script`) inside the installed node_modules and so must be
       # staged, plus nine contract packages a third-party implementation compiles

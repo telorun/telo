@@ -28,7 +28,7 @@ The agent wraps `Shell.Command` — bound to a `Shell.LocalHost` with `cwd` at t
 
 ## Decisions
 
-- **Local driver bundled in core, remote drivers separate** — local execution is a zero-dependency Node builtin and the universal default, so it ships in `shell` as `Shell.LocalHost` (one import for the common case, self-contained core tests). `shell-ssh` / Docker / k8s carry real dependencies and stay separate, where the `sql`-style split actually pays. (Rejected: a separate `shell-local` module mirroring `sql-sqlite` — needless overhead for a builtin-only driver.)
+- **Local driver bundled in core, remote drivers separate** — local execution is a zero-dependency Node builtin and the universal default, so it ships in `shell` as `Shell.LocalHost` (one import for the common case, self-contained core tests). `shell-ssh` / Docker / k8s carry real dependencies and stay separate, where the `sql`-style split actually pays. (Rejected: a separate `shell-local` module mirroring `sqlite` — needless overhead for a builtin-only driver.)
 - **Transport-neutral operations behind `Shell.Host`** — `Shell.Command` is written once; remote backends drop in via `extends Shell.Host`, the agent's tools unchanged.
 - **`Host`, not `Connection`** — there is no link/handle to a local target; `Host` reads correctly for local and SSH alike. (`Target` rejected for lexical overlap with the Application `targets` field.)
 - **Non-zero exit returned, not thrown** — a command that fails (e.g. `telo check` finding errors) is a normal result the agent must read, not an exception. Spawn/timeout failures still throw.

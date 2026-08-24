@@ -124,7 +124,7 @@ becomes a published module; only the importer's `source:` does.
 `!ref` tag is not used in the export list itself.
 
 This is the tool for hiding wiring. A library that imports `sql` **and**
-`sql-sqlite`, configures a connection, and exports just that instance leaves its
+`sqlite`, configures a connection, and exports just that instance leaves its
 consumer with **one** import instead of two:
 
 ```yaml

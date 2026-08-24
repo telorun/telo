@@ -13,11 +13,30 @@ variables:
     type: string
     description: Path to the SQLite database file.
 imports:
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.3#sha256-AdpaRCphd3vnfMVoyMZGpsUZ7y5xAo4w72i1j8_ZCVg
+  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
 exports:
   resources:
     - connection
+    - links
+    - clicks
 ---
 kind: SQLite.Connection
 metadata: { name: connection }
 file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: links }
+table: links
+columns:
+  code: { type: text, primaryKey: true }
+  target: { type: text, nullable: false }
+  created_at: { type: text, defaultExpression: "datetime('now')" }
+---
+kind: SQLite.Table
+metadata: { name: clicks }
+table: clicks
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  code: { type: text, nullable: false }
+  ip: { type: text }
+  clicked_at: { type: text, defaultExpression: "datetime('now')" }

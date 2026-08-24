@@ -49,7 +49,7 @@ digested.
 
 The digest is what sees a change no path rule can: an inlined sibling's edit, a
 fix in a shared TypeScript library, a transitive bump the lockfile alone moved.
-The graph is what says a `Fixed` on `modules/sql` makes `modules/sql-sqlite` a
+The graph is what says a `Fixed` on `modules/sql` makes `modules/sqlite` a
 `Fixed` too. And the changed-files rule — which used to decide the version, and
 whose guesswork therefore had to be sound — now only asks for prose, so a false
 positive costs one sentence rather than a spurious republish.

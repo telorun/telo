@@ -25,14 +25,14 @@ metadata:
     The first reply says "fresh", the second "replayed" — and only one order row
     exists. Watch stdout for the sweeper shipping it.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.26.0#sha256-qCiZuU7_9wnxCn2QuA0oKM0H7OyvSd2aFcoXSv3vgFo
-  Sql: oci://ghcr.io/telorun/sql@0.21.3#sha256-wPgugWO72ulGwO8Xhu9WUPyUimpO6QS0Owadfrn98hc
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.3#sha256-AdpaRCphd3vnfMVoyMZGpsUZ7y5xAo4w72i1j8_ZCVg
-  Idempotency: oci://ghcr.io/telorun/idempotency@0.9.3#sha256-FLyU7VVC0FuEY-5yz-9bgDxvGPWIxjEtZ2sXFzN6nXk
-  KvStore: oci://ghcr.io/telorun/kv-store-memory@0.6.3#sha256-cZq4Z3GQ_050QNSBCn5q8qY38FkNlwQrfBnttv0hjNw
-  Schedule: oci://ghcr.io/telorun/scheduler@0.8.3#sha256-DSvUZy47k21Ntvri1154cPSkatYtvAHpc5h6KmxTdao
-  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
-  Console: oci://ghcr.io/telorun/console@0.17.3#sha256-KaCBcFJ13vtXO6I-N06kpjRFm85AcemNEbdVN4tgDhQ
+  Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
+  Sql: oci://ghcr.io/telorun/sql@0.23.0#sha256-7OoJzJcGyUpfWe4u1c_4aBXB_isG21LaeN8sPmwfufI
+  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
+  Idempotency: oci://ghcr.io/telorun/idempotency@0.10.0#sha256-PE0WF0dQRTcQvi8UbUNcvEoqBmwgH8xP_l661wTyt70
+  KvStore: oci://ghcr.io/telorun/kv-store-memory@0.7.0#sha256-i1Nen64mCl25XONkoBGRqiTptxBSBA8zBcW6om9autg
+  Schedule: oci://ghcr.io/telorun/scheduler@0.9.0#sha256-4MpeweWGk4LedDa34TE9lELndNfl9YyBLAyOiHyap9s
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
 targets:
   - !ref migrate
   - !ref server
@@ -57,26 +57,30 @@ kind: SQLite.Connection
 metadata: { name: db }
 file: ./orders.db
 ---
-kind: Sql.Migrations
+kind: SQLite.Table
+metadata: { name: orders }
+table: orders
+columns:
+  order_id: { type: text, primaryKey: true }
+  amount_cents: { type: integer, nullable: false }
+  currency: { type: text, nullable: false }
+  received_at: { type: text, nullable: false, defaultExpression: "datetime('now')" }
+---
+kind: SQLite.Table
+metadata: { name: fulfilments }
+table: fulfilments
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  order_id: { type: text, nullable: false }
+  status: { type: text, nullable: false, default: pending }
+  sent_at: { type: text }
+---
+kind: SQLite.Schema
 metadata: { name: migrate }
 connection: !ref db
-migrations:
-  0001_orders:
-    statements:
-      - |
-        CREATE TABLE IF NOT EXISTS orders (
-          order_id     TEXT PRIMARY KEY,
-          amount_cents INTEGER NOT NULL,
-          currency     TEXT NOT NULL,
-          received_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-      - |
-        CREATE TABLE IF NOT EXISTS fulfilments (
-          id       INTEGER PRIMARY KEY AUTOINCREMENT,
-          order_id TEXT NOT NULL,
-          status   TEXT NOT NULL DEFAULT 'pending',
-          sent_at  TEXT
-        )
+tables:
+  - !ref orders
+  - !ref fulfilments
 ---
 # Where the idempotency keys live. Swap this one line for kv-store-redis and the
 # guarantee survives a restart and spans every replica — nothing else changes.

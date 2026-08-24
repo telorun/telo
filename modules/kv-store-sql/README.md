@@ -5,7 +5,7 @@
 ## Why use this
 
 - **Each conditional write is one statement** — `putIfAbsent` is a unique-key `INSERT … ON CONFLICT DO UPDATE … WHERE <expired>`; `compareAndSet` / `compareAndDelete` guard on the stored revision. The database resolves the race, so there is no client-side read-then-write window.
-- **Any engine the `sql` module supports** — it targets the `Sql.Connection` abstract, so Postgres (`sql-postgres`) and SQLite (`sql-sqlite`) both work with no database-specific module.
+- **Any engine the `sql` module supports** — it targets the `Sql.Connection` abstract, so Postgres (`postgres`) and SQLite (`sqlite`) both work with no database-specific module.
 - **No new infrastructure** — if the app already has a database, it already has a durable store.
 
 ## Fields
@@ -19,9 +19,14 @@
 ## Example
 
 ```yaml
-kind: SqlPostgres.Connection
+imports:
+  Postgres: oci://ghcr.io/telorun/postgres@<version>
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@<version>
+  Idempotency: oci://ghcr.io/telorun/idempotency@<version>
+---
+kind: Postgres.Connection
 metadata: { name: db }
-url: !cel "secrets.databaseUrl"
+connectionString: !cel "secrets.databaseUrl"
 ---
 kind: KvStoreSql.Store
 metadata: { name: store }

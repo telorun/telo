@@ -9,9 +9,9 @@ metadata:
     the exact module location ref, and `get_module_manifest(ref)` returns the
     tracker-cached telo.yaml for that ref.
 imports:
-  McpClient: oci://ghcr.io/telorun/mcp-client@0.14.3#sha256-aKULlBjNPeDoxlWYH3IzgxtLPNrre40dxTHkX-vpYB8
-  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
-  Assert: oci://ghcr.io/telorun/assert@0.17.4#sha256-dgMgHGwUzhmSzbxkxjpKMBsLx9IDSNxuNCjY6ReoxH0
+  McpClient: oci://ghcr.io/telorun/mcp-client@0.15.0#sha256-M3frsOwjZWR_Vo2LERsRjBqcN7iXZbVg_gTjK4OGq8s
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
   Yaml: oci://ghcr.io/telorun/yaml@0.10.3#sha256-xgWF987hJC2tA6q4SP3BUhSzZz2eSbVmVUK4DVOGupk
 targets:
   - !ref SearchResources_ReturnsKindHits

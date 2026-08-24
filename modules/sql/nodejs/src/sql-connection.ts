@@ -33,7 +33,7 @@ export function quoteAnsiIdentifier(name: string): string {
 
 /**
  * The contract every SQL backend satisfies and every `Sql.*` operation programs
- * against. Backends (`sql-postgres`, `sql-sqlite`) own their own implementation
+ * against. Backends (`postgres`, `sqlite`) own their own implementation
  * — usually by extending {@link SqlConnectionBase} — so nothing in this module
  * knows which databases exist.
  *
@@ -49,7 +49,8 @@ export interface SqlConnection extends ResourceInstance {
   /** The underlying kysely instance, when the backend is built on one —
    *  {@link SqlConnectionBase} always provides it. Optional because the contract
    *  must stay implementable by a driver kysely does not support; a consumer
-   *  that needs it (`Sql.Migrations`) checks and fails with a clear message. */
+   *  that needs it (each backend's `Schema` kind — `Postgres.Schema`,
+   *  `SQLite.Schema`) checks and fails with a clear message. */
   readonly kysely?: Kysely<any>;
 
   execute<T>(

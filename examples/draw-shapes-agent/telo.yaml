@@ -23,12 +23,12 @@ metadata:
   version: 1.0.0
   description: HTTP API where an AI vision agent draws shapes on a canvas and returns an S3 link.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.26.0#sha256-qCiZuU7_9wnxCn2QuA0oKM0H7OyvSd2aFcoXSv3vgFo
-  Ai: oci://ghcr.io/telorun/ai@0.16.3#sha256-pKOpAuQqUQkTP1sNmJ4t_tRp5JJoeAGb9XmdL2vF7CQ
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.15.3#sha256-BblwExnkE-f4Zi2u4MOd48gauYVR6Z1c76ozzIvkGBU
+  Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
+  Ai: oci://ghcr.io/telorun/ai@0.17.0#sha256-0u0_iSMlz0HmJc0VpEEINgJvErfBEudvvlXBJ76FSmc
+  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.16.0#sha256-DGAJ0wG1FdNAj7XWWrpgOuJgh07fEGg4ymvB6ODiEhY
   Image: oci://ghcr.io/telorun/image@0.7.1#sha256-m7iq505X16Jq1sTOlb292MukXcGPpXklW5mY5Bns8uc
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
 targets:
   - !ref server
 ports:

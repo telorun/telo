@@ -13,8 +13,8 @@ variables:
     type: string
     description: Path to the shared SQLite database file.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.26.0#sha256-qCiZuU7_9wnxCn2QuA0oKM0H7OyvSd2aFcoXSv3vgFo
-  Sql: oci://ghcr.io/telorun/sql@0.21.3#sha256-wPgugWO72ulGwO8Xhu9WUPyUimpO6QS0Owadfrn98hc
+  Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
+  Sql: oci://ghcr.io/telorun/sql@0.23.0#sha256-7OoJzJcGyUpfWe4u1c_4aBXB_isG21LaeN8sPmwfufI
   Database:
     source: ../database
     variables:

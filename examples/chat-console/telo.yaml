@@ -12,14 +12,14 @@ metadata:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
 imports:
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.15.3#sha256-BblwExnkE-f4Zi2u4MOd48gauYVR6Z1c76ozzIvkGBU
-  Ai: oci://ghcr.io/telorun/ai@0.16.3#sha256-pKOpAuQqUQkTP1sNmJ4t_tRp5JJoeAGb9XmdL2vF7CQ
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.15.3#sha256-1VpR93YBxBWaj2K4PkiEelKc3w7mORle6EhxiC0o2io
-  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.3#sha256-qXZgMngBfRUyl-SyDVMulH-ACJcBmNsJQw5pXHrqJYk
-  Console: oci://ghcr.io/telorun/console@0.17.3#sha256-KaCBcFJ13vtXO6I-N06kpjRFm85AcemNEbdVN4tgDhQ
-  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
-  Sql: oci://ghcr.io/telorun/sql@0.21.3#sha256-wPgugWO72ulGwO8Xhu9WUPyUimpO6QS0Owadfrn98hc
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.3#sha256-AdpaRCphd3vnfMVoyMZGpsUZ7y5xAo4w72i1j8_ZCVg
+  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.16.0#sha256-DGAJ0wG1FdNAj7XWWrpgOuJgh07fEGg4ymvB6ODiEhY
+  Ai: oci://ghcr.io/telorun/ai@0.17.0#sha256-0u0_iSMlz0HmJc0VpEEINgJvErfBEudvvlXBJ76FSmc
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.15.4#sha256-L4b4EJ4vVPnHszy59Jy7WlZaldAk0kP2Z1sKYwDKhNg
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.4#sha256-Z1My-TDPdE13s63NSi5rT0Qg0CZf-7tAXbJBRcBGCOQ
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Sql: oci://ghcr.io/telorun/sql@0.23.0#sha256-7OoJzJcGyUpfWe4u1c_4aBXB_isG21LaeN8sPmwfufI
+  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
 targets:
   - !ref initSchema
   - !ref chatLoop
@@ -33,9 +33,11 @@ kind: SQLite.Connection
 metadata: { name: chatDb }
 file: ./tmp/chat-history.sqlite
 ---
-kind: Sql.Migrations
+kind: SQLite.Schema
 metadata: { name: initSchema }
 connection: !ref chatDb
+# Imperative, not a declared `Table`: the role domain is a CHECK constraint,
+# which the column vocabulary cannot state — declaring the table would drop it.
 migrations:
   20260501_create_messages:
     statement: |

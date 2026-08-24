@@ -85,7 +85,7 @@ metadata:
 imports:
   Http: oci://ghcr.io/telorun/http-server@<version>
   Sql: oci://ghcr.io/telorun/sql@<version>
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@<version>
+  SQLite: oci://ghcr.io/telorun/sqlite@<version>
 targets:
   - !ref Migrate
   - !ref Server
@@ -97,18 +97,21 @@ metadata:
   name: Db
 file: ./notes.db
 ---
-kind: Sql.Migrations
+kind: SQLite.Table
+metadata:
+  name: Notes
+table: notes
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+  body: { type: text, nullable: false }
+---
+kind: SQLite.Schema
 metadata:
   name: Migrate
 connection: !ref Db
-migrations:
-  0001_create_notes:
-    statement: |
-      CREATE TABLE IF NOT EXISTS notes (
-        id    INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        body  TEXT NOT NULL
-      )
+tables:
+  - !ref Notes
 ---
 kind: Sql.Command
 metadata:
@@ -484,7 +487,7 @@ metadata:
   name: Ledger
 imports:
   Sql: oci://ghcr.io/telorun/sql@<version>
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@<version>
+  SQLite: oci://ghcr.io/telorun/sqlite@<version>
   Run: oci://ghcr.io/telorun/run@<version>
 targets:
   - !ref Migrate
@@ -495,17 +498,21 @@ metadata:
   name: Db
 file: ./ledger.db
 ---
-kind: Sql.Migrations
+kind: SQLite.Table
+metadata:
+  name: Accounts
+table: accounts
+columns:
+  name: { type: text, primaryKey: true }
+  balance: { type: integer, nullable: false }
+---
+kind: SQLite.Schema
 metadata:
   name: Migrate
 connection: !ref Db
+tables:
+  - !ref Accounts
 migrations:
-  0001_accounts:
-    statement: |
-      CREATE TABLE IF NOT EXISTS accounts (
-        name    TEXT PRIMARY KEY,
-        balance INTEGER NOT NULL
-      )
   0002_seed_accounts:
     statement: |
       INSERT OR IGNORE INTO accounts (name, balance)

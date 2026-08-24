@@ -18,10 +18,10 @@ metadata:
           -d '{"text":"the docs are great","source":"web","rating":5}'
         curl localhost:8844/v1/feedback
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.26.0#sha256-qCiZuU7_9wnxCn2QuA0oKM0H7OyvSd2aFcoXSv3vgFo
-  Sql: oci://ghcr.io/telorun/sql@0.21.3#sha256-wPgugWO72ulGwO8Xhu9WUPyUimpO6QS0Owadfrn98hc
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.3#sha256-AdpaRCphd3vnfMVoyMZGpsUZ7y5xAo4w72i1j8_ZCVg
-  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.10.3#sha256-EAkSFjd_ULYi_99svU4J6DD4tjBp49zNdeYfB9WeHG0
+  Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
+  Sql: oci://ghcr.io/telorun/sql@0.23.0#sha256-7OoJzJcGyUpfWe4u1c_4aBXB_isG21LaeN8sPmwfufI
+  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
+  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.12.0#sha256-45lXhHhBS-iYFpsHpq-SBG60e0OOtY_VGfCnUOxSyRY
 targets:
   - !ref migrate
   - !ref server
@@ -35,20 +35,23 @@ metadata:
   name: db
 file: ./feedback.db
 ---
-kind: Sql.Migrations
+kind: SQLite.Table
+metadata:
+  name: feedback
+table: feedback
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  text: { type: text, nullable: false }
+  source: { type: text }
+  rating: { type: integer, nullable: false }
+  created_at: { type: text, defaultExpression: "datetime('now')" }
+---
+kind: SQLite.Schema
 metadata:
   name: migrate
 connection: !ref db
-migrations:
-  0001_create_feedback:
-    statement: |
-      CREATE TABLE IF NOT EXISTS feedback (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        text       TEXT    NOT NULL,
-        source     TEXT,
-        rating     INTEGER NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
+tables:
+  - !ref feedback
 ---
 # One repository resource per operation, not per route: `readFeedback` serves
 # both the list and the by-id route — the `filters:` differ at the call site.
@@ -56,13 +59,13 @@ kind: SqlRepository.Create
 metadata:
   name: insertFeedback
 connection: !ref db
-table: feedback
+table: !ref feedback
 ---
 kind: SqlRepository.Read
 metadata:
   name: readFeedback
 connection: !ref db
-table: feedback
+table: !ref feedback
 ---
 kind: Http.Server
 metadata:
