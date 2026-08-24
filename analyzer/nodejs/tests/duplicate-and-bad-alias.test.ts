@@ -137,7 +137,7 @@ describe("duplicate metadata.name across kinds", () => {
   });
 
   it("does NOT flag the SAME physical doc emitted twice by the pipeline (same source + sourceLine)", () => {
-    // Caller-side artefact: hosts like the telo editor's `toAnalysisManifests`
+    // Caller-side artefact: hosts like telo studio's `toAnalysisManifests`
     // emit the same physical doc twice when a file is reachable from
     // multiple workspace modules. Same kind, name, source AND source line
     // = same doc — collapse.

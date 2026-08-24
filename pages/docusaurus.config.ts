@@ -172,8 +172,8 @@ const config: Config = {
         { to: "/reference/kernel", label: "Reference", position: "left" },
         { to: "/examples", label: "Examples", position: "left" },
         {
-          href: "https://editor.telo.run",
-          label: "Editor",
+          href: "https://studio.telo.run",
+          label: "Studio",
           position: "right",
         },
         {

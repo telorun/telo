@@ -75,7 +75,7 @@ authoritative in.
 | **OutSystems / Mendix** | a proprietary model | not available |
 
 Telo is the only one where the canvas and the file are the same artifact in
-both directions. You can draw a topology in the [editor](/build/editor), commit
+both directions. You can draw a topology in [studio](/build/studio), commit
 the YAML, have a colleague review the diff in a pull request, edit it by hand in
 Vim, and reopen it on the canvas unchanged. That round-trip is a hard design
 constraint — see [How Telo works](/learn/how-telo-works) — not a feature that

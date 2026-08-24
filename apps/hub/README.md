@@ -23,7 +23,7 @@ search API, and the MCP endpoint are all resources in one manifest.
 - **Caches each version's `telo.yaml`** to an S3-compatible bucket at the
   deterministic key `<transport>/<host>/<path…>/<version>/telo.yaml` — the key
   the CLI computes with the analyzer's shared `manifestCacheKey` helper, so the
-  tracker's write key and the editor's read key never drift. In production the
+  tracker's write key and studio's read key never drift. In production the
   bucket is Cloudflare R2 bound directly to `manifests.telo.sh` (no compute in
   the read path). The hub **never stores artifact payloads** — install/run
   resolution is origin-direct, so the hub can vanish and every install still

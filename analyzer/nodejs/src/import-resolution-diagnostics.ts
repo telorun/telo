@@ -46,7 +46,7 @@ function messageFor(e: GraphLoadError, code: ReturnType<typeof classify>): strin
 /**
  * Convert a graph's import failures (`graph.errors`) into structured, coded
  * diagnostics. This is the single source of truth for surfacing a broken
- * import — every host (CLI, VS Code, telo-editor) routes these instead of each
+ * import — every host (CLI, VS Code, telo studio) routes these instead of each
  * re-deriving the channel and drifting (the VS Code extension used to drop it
  * entirely, showing nothing for a broken import).
  *

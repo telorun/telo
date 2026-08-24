@@ -8,9 +8,9 @@ Out of scope: changes to controller execution, kernel boot sequence, schema vali
 
 Today two layers parse the same YAML files with two different identity systems, and stay in sync by ad-hoc bookkeeping that keeps producing bugs:
 
-- **Two parsers.** `Loader.loadModule` parses via `yaml.parseAllDocuments` and projects to `ResourceManifest[]` ([analyzer/manifest-loader.ts:78](../src/manifest-loader.ts#L78)). Independently, the editor's `parseModuleDocument` parses the same text again to retain the `yaml.Document` AST for editing ([apps/telo-editor/src/yaml-document.ts:11](../../../apps/telo-editor/src/yaml-document.ts#L11)). On every workspace load both run on every file. On every source-view debounce the editor reparses; the analyzer never sees that result and reparses again on the next analyze pass.
+- **Two parsers.** `Loader.loadModule` parses via `yaml.parseAllDocuments` and projects to `ResourceManifest[]` ([analyzer/manifest-loader.ts:78](../src/manifest-loader.ts#L78)). Independently, the editor's `parseModuleDocument` parses the same text again to retain the `yaml.Document` AST for editing ([apps/studio/src/yaml-document.ts:11](../../../apps/studio/src/yaml-document.ts#L11)). On every workspace load both run on every file. On every source-view debounce the editor reparses; the analyzer never sees that result and reparses again on the next analyze pass.
 - **Two identities.** The analyzer keys on the source adapter's resolved URL (registry refs become `https://…/telo.yaml`); `metadata.source` carries the resolved form. The editor's workspace map (`subGraph` keys, `documents` map keys, `modules` map keys) uses the user-facing input URL (registry ref `std/javascript@0.4.1` is kept verbatim). `collectPartialDocuments` compares the two, misclassifies every imported library's entry resources as "partials," and tries to re-fetch them through `chainedAdapter` which has no `HttpSource` — producing the "Failed to read … for ModuleDocument" console noise the user reported.
-- **Two adapters.** The analyzer holds its own source chain (registry + http + local). The editor builds a parallel `chainedAdapter` ([loader.ts:184](../../../apps/telo-editor/src/loader.ts#L184)) plus an `inMemoryAdapter` that exists solely to feed the analyzer the editor's already-loaded text on the second parse pass.
+- **Two adapters.** The analyzer holds its own source chain (registry + http + local). The editor builds a parallel `chainedAdapter` ([loader.ts:184](../../../apps/studio/src/loader.ts#L184)) plus an `inMemoryAdapter` that exists solely to feed the analyzer the editor's already-loaded text on the second parse pass.
 - **B1 (just merged) only narrowed the gap.** It made `positionIndex`/`sourceLine` stamping a shared helper so both parsers produce identical position metadata. The right answer is one parser, not synchronized clones.
 
 Every recurring bug in this area — URL-mismatch in `collectPartialDocuments`, missing positions in editor diagnostics, duplicate fetch noise, `chainedAdapter`'s missing `HttpSource`, `inMemoryAdapter`'s reach-around to feed the analyzer — is a symptom of the same fork. Closing it lets the analyzer be the canonical "YAML file → load result" primitive it already nearly is.
@@ -210,13 +210,13 @@ Gone: `populateModuleDocument`, `collectPartialDocuments`, `createInMemoryManife
 
 **`ParsedImport.resolvedPath` survives unchanged.** It continues to mean what it means today — the canonical resolved URL of the import target, used as a key into `workspace.modules`. The new pipeline populates it from `LoadedGraph.importEdges` (the canonical source of truth post-migration) instead of from `subgraph.ts:mergeSubGraph`. Every existing consumer keeps working without changes:
 
-- [model.ts:69](../../../apps/telo-editor/src/model.ts#L69) (type definition) — unchanged.
-- [crud.ts:187,202,216-219](../../../apps/telo-editor/src/loader/crud.ts) (workspace mutation helpers) — unchanged.
-- [queries.ts:6-7](../../../apps/telo-editor/src/loader/queries.ts) (graph traversal) — unchanged.
-- [analysis.ts:166-168](../../../apps/telo-editor/src/analysis.ts#L166-L168) (cross-module identity enrichment) — replaced by flattenForAnalyzer's stamping (see §3 above), but the field stays for the other readers.
-- [ast-ops.ts:59-96](../../../apps/telo-editor/src/loader/ast-ops.ts#L59-L96) (`rebuildManifestFromDocuments` preserves `resolvedPath` across re-projection) — unchanged.
-- [InventoryView.tsx:243](../../../apps/telo-editor/src/components/views/inventory/InventoryView.tsx#L243) (display) — unchanged.
-- [loader.test.ts:205-256](../../../apps/telo-editor/src/loader.test.ts#L205-L256) (tests pin preservation across rebuilds) — unchanged.
+- [model.ts:69](../../../apps/studio/src/model.ts#L69) (type definition) — unchanged.
+- [crud.ts:187,202,216-219](../../../apps/studio/src/loader/crud.ts) (workspace mutation helpers) — unchanged.
+- [queries.ts:6-7](../../../apps/studio/src/loader/queries.ts) (graph traversal) — unchanged.
+- [analysis.ts:166-168](../../../apps/studio/src/analysis.ts#L166-L168) (cross-module identity enrichment) — replaced by flattenForAnalyzer's stamping (see §3 above), but the field stays for the other readers.
+- [ast-ops.ts:59-96](../../../apps/studio/src/loader/ast-ops.ts#L59-L96) (`rebuildManifestFromDocuments` preserves `resolvedPath` across re-projection) — unchanged.
+- [InventoryView.tsx:243](../../../apps/studio/src/components/views/inventory/InventoryView.tsx#L243) (display) — unchanged.
+- [loader.test.ts:205-256](../../../apps/studio/src/loader.test.ts#L205-L256) (tests pin preservation across rebuilds) — unchanged.
 
 `importEdges` is the new internal-to-loader representation of the same fact; `resolvedPath` is the projection consumed by editor UI. The two stay in sync because `resolvedPath` is populated *from* `importEdges` at projection time. We do not rewrite all UI sites to consume `importEdges` directly — that would be churn for no behaviour change.
 

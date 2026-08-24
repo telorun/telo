@@ -491,7 +491,7 @@ passes read the attached set exactly as they read `metadata.exportedKinds`.
 **Cached in a host-lifetime cache passed into `analyze()`, keyed on
 `(source identity, content signature)`.** Two constraints fix this, and neither is
 negotiable. It cannot live in `AnalysisRegistry`: the editor constructs a fresh one **per
-closure, per analysis run** (`apps/telo-editor/src/analysis.ts`), so a cache there dies at
+closure, per analysis run** (`apps/studio/src/analysis.ts`), so a cache there dies at
 exactly the boundary it exists to cross — it would not even survive two closures of one
 run. And the key cannot be source identity alone: a **workspace** library's documents
 change between runs precisely because the user is editing them, so an identity-only key

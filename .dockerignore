@@ -2,7 +2,7 @@
 **/dist
 .git
 .github
-apps/telo-editor/src-tauri/target
+apps/studio/src-tauri/target
 pages/build
 pages/.docusaurus
 **/.turbo

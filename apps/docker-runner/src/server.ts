@@ -59,7 +59,7 @@ export async function verifyBootState(
   } catch (err) {
     log.warn(
       { err },
-      "docker daemon not reachable at boot; /v1/probe will surface this once the editor connects",
+      "docker daemon not reachable at boot; /v1/probe will surface this once studio connects",
     );
     return "daemon-unreachable";
   }

@@ -142,7 +142,7 @@ The Environment tab is a **run-configuration surface** for the editor's Run feat
 
 The tab's shape is **derived** entirely from the Application's declared `variables` / `secrets` block: one row per declared entry. If the user wants a new variable, they edit the manifest (Source view); the tab re-renders. The tab itself has no add / rename / delete / type-change / constraints-edit controls.
 
-Current state (verified during planning): the editor parses Application manifests through [`apps/telo-editor/src/loader/parse.ts:57-110`](../../../apps/telo-editor/src/loader/parse.ts#L57-L110) and exposes `variables` / `secrets` structurally on `ParsedManifest.metadata`, but no part of the editor renders those fields today. The Environment tab must be wired explicitly.
+Current state (verified during planning): the editor parses Application manifests through [`apps/studio/src/loader/parse.ts:57-110`](../../../apps/studio/src/loader/parse.ts#L57-L110) and exposes `variables` / `secrets` structurally on `ParsedManifest.metadata`, but no part of the editor renders those fields today. The Environment tab must be wired explicitly.
 
 Scope for this plan:
 
@@ -164,8 +164,8 @@ Out of scope for the editor work in this plan: refactoring the existing Monaco /
 
 Touch points (confirm exact paths during implementation):
 
-- `apps/telo-editor/src/components/environment-tab/*` — new tab component, read-only shape with value-input rows.
-- `apps/telo-editor/src/loader/parse.ts` — surface the per-entry shape (`name`, `env`, `type`, `default`, residual schema) on `ParsedManifest.metadata` so the tab can render without re-parsing.
+- `apps/studio/src/components/environment-tab/*` — new tab component, read-only shape with value-input rows.
+- `apps/studio/src/loader/parse.ts` — surface the per-entry shape (`name`, `env`, `type`, `default`, residual schema) on `ParsedManifest.metadata` so the tab can render without re-parsing.
 - Wherever the editor's Run feature builds its child-process environment — extend it to merge in the values held by this tab's run-config store, keyed by `entry.env`.
 
 ## Polyglot spec — env-var resolution

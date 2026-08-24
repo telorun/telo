@@ -27,7 +27,7 @@ it — so `ide-support` no longer imports the `yaml` or `cel-js` packages.
   anchors a range from a column → the cursor. Text *after* the cursor is never
   replaced, so `kind: Sql.Co|nnection` + accept → `Sql.Connectionnnection`. Both hosts
   build that prefix-only range ([vscode](../../../ide/vscode/src/completion.ts),
-  [monaco](../../../apps/telo-editor/src/components/views/source/register-completion.ts)).
+  [monaco](../../../apps/studio/src/components/views/source/register-completion.ts)).
 - The analyzer leaks `yaml` package types through its public API
   ([`LoadedFile.documents: Document[]`](../../../analyzer/nodejs/src/loaded-types.ts),
   [`buildPositionIndex(doc: Document)`](../../../analyzer/nodejs/src/position-metadata.ts)),
@@ -49,8 +49,8 @@ it — so `ide-support` no longer imports the `yaml` or `cel-js` packages.
   analyzer's `parseToAst`, never `parseAllDocuments`.
 - **The mutable document model stays in the telo-editor.** LSP-style features need
   only read + edit-emission, so no mutable model belongs in `ide-support`. The
-  editor's round-trip model ([ast-ops.ts](../../../apps/telo-editor/src/loader/ast-ops.ts),
-  [subgraph.ts](../../../apps/telo-editor/src/loader/subgraph.ts)) — still `yaml.Document`
+  editor's round-trip model ([ast-ops.ts](../../../apps/studio/src/loader/ast-ops.ts),
+  [subgraph.ts](../../../apps/studio/src/loader/subgraph.ts)) — still `yaml.Document`
   today — is untouched here. De-`yaml`-ing that model is a separate follow-up.
 - **No general text fallback, only two bounded cursor-line carve-outs.** Empty value
   slots, blank-line-in-container, and whole-node ranges are first-class AST results, not
@@ -229,7 +229,7 @@ Part 1. Drop `yaml` from `packages/ide-support/package.json`.
 - Hosts apply a TextEdit over the whole range:
   - [ide/vscode/src/completion.ts](../../../ide/vscode/src/completion.ts) — build
     `vscode.Range` from `replaceRange` for `item.range`.
-  - [register-completion.ts](../../../apps/telo-editor/src/components/views/source/register-completion.ts) —
+  - [register-completion.ts](../../../apps/studio/src/components/views/source/register-completion.ts) —
     build the Monaco `range` (1-based) from `replaceRange`.
 
 Makes `kind: Sql.Co|nnection` + accept replace the whole `Sql.Connection` scalar.

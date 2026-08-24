@@ -2,7 +2,7 @@
  * The release model: module identity, fragments, the ledger, the edge graph,
  * level propagation and version planning.
  *
- * Browser-safe by construction — pure data in, plan out — so the telo editor can
+ * Browser-safe by construction — pure data in, plan out — so telo studio can
  * answer "what does changing this library bump?" from the same model the CLI
  * releases from. Everything Node-shaped (finding the workspace, running the
  * controller builder, building payloads, reading git, writing files) is

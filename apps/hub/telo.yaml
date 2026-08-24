@@ -3,7 +3,7 @@
 # Umbrella metadata index over Telo modules hosted on any transport (HTTP
 # registry, OCI). Registered module refs are tracked through the generic
 # `telo module versions|digest|manifest` CLI verbs, each version's `telo.yaml`
-# is cached to the static manifest bucket (the editor's browser-safe OCI read
+# is cached to the static manifest bucket (studio's browser-safe OCI read
 # path), and every `Telo.Definition` is indexed one row per
 # `(module-version, resource-kind)` for per-resource search. The hub stores
 # only derived metadata — never artifact payloads — so it can vanish and every
@@ -127,7 +127,7 @@ targets:
 # bucket (Cloudflare R2 / MinIO) the tracker writes each version's telo.yaml
 # into at the deterministic `<transport>/<host>/<path…>/<version>/telo.yaml`
 # key — the key the `telo` CLI computes with the analyzer's shared helper, so
-# the write key and the editor's read key never drift. Never artifact payloads.
+# the write key and studio's read key never drift. Never artifact payloads.
 
 kind: S3.Bucket
 metadata:
@@ -138,7 +138,7 @@ forcePathStyle: !cel "variables.bucketForcePathStyle"
 accessKeyId: !cel "secrets.bucketAccessKeyId"
 secretAccessKey: !cel "secrets.bucketSecretAccessKey"
 createIfMissing: true
-# The manifest cache is the public, cookieless read plane — the editor fetches
+# The manifest cache is the public, cookieless read plane — studio fetches
 # cached telo.yaml with anonymous CORS GETs. On R2 public access comes from the
 # domain binding instead; this covers S3-compatible local/dev backends.
 publicRead: true
@@ -1536,7 +1536,7 @@ steps:
         : '[]'
   # Carried as a pure step rather than a YAML anchor: `broaden` re-runs the
   # identical query with the facet dropped, and two copies would drift — but an
-  # alias has no visual representation, so the editor, which pairs manifest
+  # alias has no visual representation, so studio, which pairs manifest
   # nodes to YAML nodes and writes the pair back, would expand it into exactly
   # the two copies the sharing exists to prevent. A `value:` step is the same
   # sharing expressed as data flow, and it round-trips.

@@ -1,0 +1,54 @@
+name: Deploy Studio
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pnpm-lock.yaml'
+      - 'apps/studio/**'
+      - 'analyzer/**'
+      - 'sdk/**'
+      - 'templating/**'
+      - 'packages/ide-support/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build studio
+        run: pnpm --filter "@telorun/studio..." build
+
+      - name: SPA deep-link fallback
+        run: cp apps/studio/dist/index.html apps/studio/dist/404.html
+
+      - name: Deploy to telorun/studio
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.STUDIO_PAGES_TOKEN }}
+          external_repository: telorun/studio
+          publish_branch: gh-pages
+          publish_dir: apps/studio/dist
+          cname: studio.telo.run

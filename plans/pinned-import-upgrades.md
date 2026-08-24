@@ -15,7 +15,7 @@ no pin untouched by the editor forever, while `telo upgrade` pins it in place
 
 Recomputing the hash editor-side works in VS Code — the extension already bundles
 `@telorun/kernel/transports` for origin-direct diagnostics — but not in
-`apps/telo-editor`, which is a browser and can neither speak OCI nor extract a
+`apps/studio`, which is a browser and can neither speak OCI nor extract a
 tar. It would also put a manifest download on the upgrade path.
 
 ## Solution
@@ -69,7 +69,7 @@ be neither replaced nor spliced out.
 
 **Hosts** — `parseModuleVersions` in `ide-support` is the single reader for the
 route's body (pure, so the host still owns the `fetch`), used by
-`ide/vscode/src/ide-adapter.ts` and `apps/telo-editor/src/hub-search.ts`;
+`ide/vscode/src/ide-adapter.ts` and `apps/studio/src/hub-search.ts`;
 `EditorIdeAdapter` and the editor's sidebar hooks go through the latter rather
 than re-reading the route, and `apps/hub-web/src/api.ts` keeps a name-only reader
 since it has no `ide-support` dependency. Four hand-rolled copies of one parse is
@@ -120,7 +120,7 @@ manifest that then never reaches an install to be verified.
 - **`telo module digest` and `telo module versions` stay as they are.** The first
   answers a different question; the second would have to download every version
   to hash it.
-- **`apps/telo-editor`'s own upgrade UI is adapted, not re-pointed.** It does not
+- **`apps/studio`'s own upgrade UI is adapted, not re-pointed.** It does not
   go through `buildImportUpgrades` — the sidebar hooks (`useImportUpgrade`,
   `useLatestVersions`) hand-roll the rewrite — so it takes the new response shape
   and keeps dropping pins for now. Moving it onto the shared builder is what

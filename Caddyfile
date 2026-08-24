@@ -9,8 +9,8 @@ http://hub.telo.localhost:8060 {
 	reverse_proxy hub-web:5173
 }
 
-http://editor.telo.localhost:8060 {
-	reverse_proxy editor:5173
+http://studio.telo.localhost:8060 {
+	reverse_proxy studio:5173
 }
 
 http://storage.telo.localhost:8060 {

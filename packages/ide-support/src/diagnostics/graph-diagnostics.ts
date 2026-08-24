@@ -19,7 +19,7 @@ import { findPositions } from "./find-positions.js";
  * Both surface a coded parse / import diagnostic of their own (kept, always);
  * their *analysis* diagnostics are what a host suppresses so the real cause is
  * not buried. Every host computes this set from the one function, so the CLI,
- * VS Code, and telo-editor agree on exactly what is compromised.
+ * VS Code, and telo studio agree on exactly what is compromised.
  */
 export function compromisedFiles(graph: LoadedGraph): Set<string> {
   const entrySource = graph.entry.owner.source;
@@ -50,7 +50,7 @@ export function compromisedFiles(graph: LoadedGraph): Set<string> {
  * parse-failed file) — then the entry source.
  *
  * Single-closure hosts (CLI, VS Code) call this directly. The multi-closure
- * telo-editor drives analysis per closure with bespoke routing, so it consumes
+ * telo studio drives analysis per closure with bespoke routing, so it consumes
  * {@link compromisedFiles} and {@link importResolutionDiagnostics} on their own
  * — but through the same shared policy, never a private reimplementation.
  */

@@ -31,7 +31,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         { type: "doc", id: "docs/build/overview", label: "Overview" },
-        { type: "doc", id: "docs/build/editor", label: "Telo Editor" },
+        { type: "doc", id: "docs/build/studio", label: "Telo Studio" },
         { type: "doc", id: "ide/vscode/README", label: "VS Code extension" },
         { type: "doc", id: "docs/coding-agents", label: "Working with coding agents" },
         { type: "doc", id: "docs/build/testing", label: "Testing your manifests" },

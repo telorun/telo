@@ -43,7 +43,7 @@ export default function Home() {
             </Link>
           </div>
           <p className="margin-top--md">
-            or open the <a href="https://editor.telo.run">visual editor</a> · browse modules on the{" "}
+            or open <a href="https://studio.telo.run">Telo Studio</a> · browse modules on the{" "}
             <a href="https://hub.telo.run">hub</a>
           </p>
 

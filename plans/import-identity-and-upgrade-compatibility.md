@@ -65,7 +65,7 @@ surfaces as a load error when the manifest is actually run.
 Files that matter: manifest loading and the analyzer's alias registration in
 `analyzer/nodejs/src/`, the requirement reader in the same package, the shared
 upgrade rule in `packages/ide-support/src/import-upgrades/`, the Imports panel
-and background import reconciliation in `apps/telo-editor/src/`.
+and background import reconciliation in `apps/studio/src/`.
 
 ## Decisions
 

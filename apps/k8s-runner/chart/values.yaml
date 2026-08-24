@@ -26,12 +26,12 @@ runner:
   # would double-manage pods). The Deployment hard-codes replicas: 1.
   port: 8062
   logLevel: info
-  # Identity the runner advertises on /v1/capabilities (the editor shows it as
+  # Identity the runner advertises on /v1/capabilities (studio shows it as
   # the runner's label). Empty → code defaults ("Telo Runner" / "Runs the Telo
   # application in a cloud environment").
   displayName: ""
   description: ""
-  # Cap on retained sessions (live + recently-exited, kept for editor re-attach).
+  # Cap on retained sessions (live + recently-exited, kept for studio re-attach).
   # At capacity the oldest exited session is evicted before a new run is rejected,
   # so this is a history-depth knob, not just a concurrency cap. Matches the code
   # default and pairs with resourceQuota.pods (live sessions each hold one pod).
@@ -111,8 +111,8 @@ session:
   runtimeClass: ""
   # Base-image picker advertised on /v1/capabilities. The runner resolves the
   # menu from a Docker Hub repo's tags (filtered), shows it as an editable
-  # `image` dropdown in the editor, and re-validates the chosen image server-side
-  # (a non-editor client can't widen the set). The runner's own default session
+  # `image` dropdown in studio, and re-validates the chosen image server-side
+  # (a non-studio client can't widen the set). The runner's own default session
   # image is always offered — that is `session.image` when set, and otherwise the
   # value baked into the runner image at build time (`RUNNER_IMAGE`). Disable to
   # lock the picker to that single default (e.g. air-gapped clusters).

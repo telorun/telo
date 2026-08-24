@@ -129,7 +129,7 @@ routes:
           application/json:
             body:
               error: !cel "error.message"
-  # Whole-workspace sync. GET returns a content-hash tree the editor diffs
+  # Whole-workspace sync. GET returns a content-hash tree studio diffs
   # against its own files; POST applies an explicit write/delete change set;
   # GET /workspace/file returns one file's contents.
   - request:
@@ -292,9 +292,9 @@ port: !cel "ports.http"
 # Behind the ingress proxy: derive request.ip from the rightmost X-Forwarded-For
 # hop (the proxy's) so the per-IP guard can't be spoofed by a client-set header.
 trustProxy: 1
-# The editor is a browser/desktop client on a different origin; allow it to call
+# Studio is a browser/desktop client on a different origin; allow it to call
 # the chat + workspace routes cross-origin. Tighten `origin` to the deployed
-# editor origin in production.
+# studio origin (`https://studio.telo.run`) in production.
 cors:
   origin: "*"
   methods: [GET, POST, OPTIONS]

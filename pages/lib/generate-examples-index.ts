@@ -4,7 +4,7 @@ import { parseAllDocuments } from "yaml";
 
 const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/telorun/telo/refs/heads/main/examples";
 const GITHUB_BLOB_BASE = "https://github.com/telorun/telo/blob/main/examples";
-const EDITOR_BASE = "https://editor.telo.run";
+const STUDIO_BASE = "https://studio.telo.run";
 
 interface EnvBinding {
   envKey: string;
@@ -165,7 +165,7 @@ function renderEntry(entry: ExampleEntry, examplesRoot: string): string {
   const rel = path.relative(examplesRoot, entry.file).replace(/\\/g, "/");
   const sourceUrl = `${GITHUB_RAW_BASE}/${rel}`;
   const blobUrl = `${GITHUB_BLOB_BASE}/${rel}`;
-  const editorUrl = `${EDITOR_BASE}/?open=${encodeURIComponent(sourceUrl)}`;
+  const studioUrl = `${STUDIO_BASE}/?open=${encodeURIComponent(sourceUrl)}`;
   const lines = [`### ${entry.name}`, ""];
   if (entry.description) {
     lines.push(entry.description, "");
@@ -175,7 +175,7 @@ function renderEntry(entry: ExampleEntry, examplesRoot: string): string {
   lines.push(`\`\`\``);
   lines.push(
     "",
-    `[Open in Telo Editor →](${editorUrl}) · [View \`${rel}\` on GitHub →](${blobUrl})`,
+    `[Open in Telo Studio →](${studioUrl}) · [View \`${rel}\` on GitHub →](${blobUrl})`,
   );
   return lines.join("\n");
 }

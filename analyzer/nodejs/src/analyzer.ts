@@ -706,7 +706,7 @@ export class StaticAnalyzer {
    * `DUPLICATE_RESOURCE_NAME` reads those fields to tell a pipeline echo
    * apart from a genuine collision, and downstream diagnostic positioning
    * depends on them too. Real callers stamp positions already (the `Loader`,
-   * `flattenForAnalyzer`, the telo-editor's `emitDocsFor`, the VSCode
+   * `flattenForAnalyzer`, telo studio's `emitDocsFor`, the VSCode
    * extension). Programmatic callers — tests, ad-hoc scripts — should pass
    * their inputs through `withSyntheticPositions(...)` before calling
    * `analyze()`. A missing position throws a clear error rather than
