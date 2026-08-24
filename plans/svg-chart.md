@@ -1,4 +1,4 @@
-# Plan — `modules/chart`: one kind per chart type, SVG out
+# Plan — `modules/svg-chart`: one kind per chart type, SVG out
 
 ## Problem
 
@@ -8,28 +8,30 @@ Charts are wanted first by a PDF report, but a chart is not a PDF concern: the s
 
 ## Solution
 
-A new `modules/chart` (`metadata.name: Chart`, category `Visualization`), pure JavaScript so it delivers bundled as `pkg:telo`. Geometry comes from `d3-shape`, `d3-scale`, `d3-array` and the `d3-format` / `d3-time-format` pair; text is measured with `fontkit`. All pure computation, no DOM, no native code.
+A new `modules/svg-chart` (`metadata.name: SvgChart`, category `Visualization`), pure JavaScript so it delivers bundled as `pkg:telo`. Geometry comes from `d3-shape`, `d3-scale`, `d3-array` and the `d3-format` / `d3-time-format` pair; text is measured with `fontkit`. All pure computation, no DOM, no native code.
 
 A chart is one invocable: data in, SVG markup out. There is no intermediate representation and no separate writer — SVG *is* the vector interchange format, and anything that wants pixels rasterizes it.
 
+**Server-side rendering only, and interactive UI charts are a different vocabulary.** The whole surface here is computed on the host — geometry, text metrics, tick thinning — and emitted as final markup. An interactive chart for a browser UI is not this module with another output format: `plans/declarative-ui.md` ships no CEL engine to the client and addresses data with plain chains, so a client-rendered chart cannot evaluate a single accessor written here. That kind belongs in `modules/ui` as `Ui.Chart`, sharing no config with `SvgChart.*`. What the two do share is the SVG a page can embed: a static chart in a UI is this module's markup dropped into the UI spec's `svg` node, and that path is fully covered. Stated so it is not re-litigated.
+
 The kinds form two levels, so the presentation concerns every chart shares are declared once:
 
-- **`Chart.Chart`** — `Telo.Abstract`, capability `Telo.Invocable`. Declares the shared `outputType` (`svg`, `width`, `height`, `mediaType`) and a `schema:` block carrying what every chart has: an author-writable `inputType` (`x-telo-ref: { kind: Telo.Type, use: schema }`, the `JS.Script` pattern), the `rows` data expression, `title`, `description`, `width`, `height`, `margin`, `palette`, `locale`, `font` (`family`, `size`, optional `data`), `legend` (`placement`, `title`) and `labels` (`format`, `valueFormat`). A title and a legend heading are laid out for every chart type and both consume canvas the plot area does not get, so they belong here rather than being restated per kind.
-- **`Chart.Cartesian`** — `Telo.Abstract`, extends `Chart.Chart`. Adds the axis config, identical for every chart that has axes: the `x` / `y` axis objects (value accessor, scale, domain, title, tick formatting) and gridlines.
-- **`Chart.Pie`, `Chart.Donut`** — extend `Chart.Chart`. Angular encoding: category and value accessors, inner radius, leader labels.
-- **`Chart.Bar`, `Chart.Line`, `Chart.Area`, `Chart.Scatter`** — extend `Chart.Cartesian`. Each carries only what is its own: series grouping, stacking, curve interpolation, point sizing.
+- **`SvgChart.Chart`** — `Telo.Abstract`, capability `Telo.Invocable`. Declares the shared `outputType` (`svg`, `width`, `height`, `mediaType`) and a `schema:` block carrying what every chart has: an author-writable `inputType` (`x-telo-ref: { kind: Telo.Type, use: schema }`, the `JS.Script` pattern), the `rows` data expression, `title`, `description`, `width`, `height`, `margin`, `palette`, `locale`, `font` (`family`, `size`, optional `data`), `legend` (`placement`, `title`) and `labels` (`format`, `valueFormat`). A title and a legend heading are laid out for every chart type and both consume canvas the plot area does not get, so they belong here rather than being restated per kind.
+- **`SvgChart.Cartesian`** — `Telo.Abstract`, extends `SvgChart.Chart`. Adds the axis config, identical for every chart that has axes: the `x` / `y` axis objects (value accessor, scale, domain, title, tick formatting) and gridlines.
+- **`SvgChart.Pie`, `SvgChart.Donut`** — extend `SvgChart.Chart`. Angular encoding: category and value accessors, inner radius, leader labels.
+- **`SvgChart.Bar`, `SvgChart.Line`, `SvgChart.Area`, `SvgChart.Scatter`** — extend `SvgChart.Cartesian`. Each carries only what is its own: series grouping, stacking, curve interpolation, point sizing.
 
 An `extends` child without `base:` merges the parent's author schema additively, so a leaf kind's manifest states nothing but its own encoding while validating against the whole inherited surface. Each leaf declares its own controller.
 
 **Every mapping is a typed CEL accessor, not a field name.** The author declares the row shape once by pointing `inputType:` at a type, writes `rows: !cel "inputs.rows"`, and each encoding field is a CEL expression over `row` — typed by `x-telo-context-element-from: "rows"`, the mechanism `Collection.GroupBy` already uses to type `item` from its `collection:` expression. A mistyped accessor is `CEL_UNKNOWN_FIELD` before the kernel runs, and the rows an invoke step passes are checked against the declared type both statically and at dispatch.
 
-The markup stays inside the SVG subset pdfmake renders, so a chart drops into a PDF as vector without a rasterization step. Ships with `modules/chart/docs/` per kind (mandatory), a `modules/chart/tests/` suite asserting SVG structure and computed geometry per chart type plus the degenerate-data cases, a changie fragment, and a re-run of `scripts/gen-changie-config.mjs`. The authoring agent's system prompt gains the module, as CLAUDE.md requires of any surface change.
+The markup stays inside the SVG subset pdfmake renders, so a chart drops into a PDF as vector without a rasterization step. Ships with `modules/svg-chart/docs/` per kind (mandatory), a `modules/svg-chart/tests/` suite asserting SVG structure and computed geometry per chart type plus the degenerate-data cases, a changie fragment, and a re-run of `scripts/gen-changie-config.mjs`. The authoring agent's system prompt gains the module, as CLAUDE.md requires of any surface change.
 
 ## Decisions
 
-- **No scene IR and no chart/writer split.** A generic geometry contract between chart and format is only worth its versioning cost if a second format consumes it, and raster is out of scope. The claim that a raster writer would have to re-parse markup this module just generated does not hold — SVG is the standard vector interchange format, and rasterizing it is a library call. Dropping the indirection also keeps the data contract typed end to end: a writer holding the chart as a reference would forward inputs it cannot describe, so its `inputType` would go permissive exactly where authors get things wrong.
+- **No scene IR and no chart/writer split.** A generic geometry contract between chart and format is only worth its versioning cost if a second renderer consumes it, and none will: raster is a converter that takes finished SVG, and the interactive UI chart is a separate vocabulary by the scope decision above, not a second back end for this one. The claim that a raster writer would have to re-parse markup this module just generated does not hold — SVG is the standard vector interchange format, and rasterizing it is a library call. Dropping the indirection also keeps the data contract typed end to end: a writer holding the chart as a reference would forward inputs it cannot describe, so its `inputType` would go permissive exactly where authors get things wrong.
 - **A kind per chart type, not one kind taking all config.** The six configs are disjoint — inner radius is meaningless on a scatter, scales on a pie, stacking outside bar and area. One kind makes every field optional and validates none of those combinations, and collapses six hub-searchable descriptions into one that cannot be the hit for "donut", "scatter" and "stacked bar" at once.
-- **Two abstract levels, not a flat set of six.** Legend, labels, palette and canvas are the same concern six times. `Chart.Cartesian` exists so pie and donut are never offered axis config they cannot use.
+- **Two abstract levels, not a flat set of six.** Legend, labels, palette and canvas are the same concern six times. `SvgChart.Cartesian` exists so pie and donut are never offered axis config they cannot use.
 - **CEL accessors over `row`, not field-name strings.** `category: employee` is a string nothing can check, so a typo surfaces as an empty chart at runtime. The accessor form is checked against the declared row type by existing machinery, and is strictly more expressive — computed values and composite categories come free, where field names would need a preceding `Collection.Map`. Cost is one CEL evaluation per accessor per row; `GroupBy` already pays this per element and charts are small.
 - **Typing is opt-in per instance and bounded by the upstream.** Omit `inputType:` and `row` falls back to `dyn` — the gradual stance `x-telo-context-element-from` takes everywhere. A chart cannot manufacture type information the resource producing the rows never declared, and inventing an element type would be worse than admitting there is none.
 - **The SVG always names a font family and never carries font data; `font.data` exists only to measure.** SVG's embedding mechanisms do not serve the consumers: SVG Fonts are removed from every browser, and `@font-face` with a base64 payload — the one thing that makes an SVG self-contained — is ignored by pdfmake, the first consumer. Supplying the font bytes via `!include-bytes` on an `x-telo-binary` slot gives exact advance widths instead of an estimate, which is what makes a right-placed legend or a leader label land correctly. **Rejected: a text-to-paths mode.** It would render identically everywhere, but costs selectable and searchable text in both PDF and HTML. The consequence is accepted deliberately: a renderer lacking the named font falls back against a layout computed from real metrics, so labels clip sooner than under estimates — the fix is registering the font with pdfmake or serving it in the page, and the module docs say so.
@@ -40,14 +42,14 @@ The markup stays inside the SVG subset pdfmake renders, so a chart drops into a 
 - **Accessibility markup is always emitted** — `role="img"` plus `<title>` from `title` and `<desc>` from `description`. It costs nothing and is the only thing a screen reader can read, which matters most because the labels are text a fallback font may have mangled.
 - **`locale` defaults to `en-US`.** Tick and label formats are d3-format / d3-time-format specifiers, both locale-sensitive; a report in another locale must not be stuck with US grouping and month names.
 - **Static SVG: no `<script>`, no hover tooltips, no animation.** A PDF cannot run them, and a dashboard wanting interaction wraps the SVG itself. Stated so it is not re-litigated.
-- **SVG only; no raster kind here.** A raster writer needs `@napi-rs/canvas`, whose native binary would force the module onto `pkg:npm` and into the same delivery corner as `pdf` and `image`. A later `modules/chart-raster` takes SVG in and PNG out — one kind, no coupling to this module's internals, mirroring the `cache` / `cache-redis` split.
+- **SVG only; no raster kind here.** A raster writer needs `@napi-rs/canvas`, whose native binary would force the module onto `pkg:npm` and into the same delivery corner as `pdf` and `image`. A later `modules/svg-chart-raster` takes SVG in and PNG out — one kind, no coupling to this module's internals, mirroring the `cache` / `cache-redis` split.
 - **Category `Visualization`, a new label.** The vocabulary is open by design. `Data` is about shape, codecs and reshaping; a chart is presentation.
 
 ## Examples after the change
 
 Every chart reads `rows` — a flat array, one row per drawn datum, never pre-grouped — and maps it with CEL accessors over `row`. `series` is the accessor that splits rows into slices, lines or bands, so a stacked bar takes one row per `(week, priority)` rather than nested arrays. A `time` scale accepts an ISO string or epoch milliseconds.
 
-### `Chart.Donut` — the typed shape in full
+### `SvgChart.Donut` — the typed shape in full
 
 ```yaml
 kind: Telo.JsonSchema
@@ -67,7 +69,7 @@ schema:
           employee: { type: string }
           hours: { type: number }
 ---
-kind: Chart.Donut
+kind: SvgChart.Donut
 metadata: { name: EmployeeHoursChart }
 inputType: !ref EmployeeHoursRows
 rows: !cel "inputs.rows"
@@ -93,10 +95,10 @@ rows:
 
 `!cel "row.employe"` is `CEL_UNKNOWN_FIELD`; an invoke step passing rows without `hours` fails the declared contract. Every example below assumes the same `inputType` pattern.
 
-### `Chart.Pie`
+### `SvgChart.Pie`
 
 ```yaml
-kind: Chart.Pie
+kind: SvgChart.Pie
 metadata: { name: RevenueByRegion }
 inputType: !ref RevenueRows
 rows: !cel "inputs.rows"
@@ -109,10 +111,10 @@ legend: { placement: right }
 labels: { format: "{percent}" }
 ```
 
-### `Chart.Bar` — one row per `(week, priority)`; the chart groups them
+### `SvgChart.Bar` — one row per `(week, priority)`; the chart groups them
 
 ```yaml
-kind: Chart.Bar
+kind: SvgChart.Bar
 metadata: { name: TicketsPerWeek }
 inputType: !ref TicketRows
 rows: !cel "inputs.rows"
@@ -134,10 +136,10 @@ rows:
   - { week: 2026-W07, priority: normal, tickets: 41 }
 ```
 
-### `Chart.Line`
+### `SvgChart.Line`
 
 ```yaml
-kind: Chart.Line
+kind: SvgChart.Line
 metadata: { name: LatencyOverTime }
 inputType: !ref LatencyRows
 rows: !cel "inputs.rows"
@@ -152,10 +154,10 @@ width: 720
 height: 260
 ```
 
-### `Chart.Area`
+### `SvgChart.Area`
 
 ```yaml
-kind: Chart.Area
+kind: SvgChart.Area
 metadata: { name: StorageGrowth }
 inputType: !ref StorageRows
 rows: !cel "inputs.rows"
@@ -170,10 +172,10 @@ height: 240
 legend: { placement: bottom, title: Bucket }
 ```
 
-### `Chart.Scatter`
+### `SvgChart.Scatter`
 
 ```yaml
-kind: Chart.Scatter
+kind: SvgChart.Scatter
 metadata: { name: CostVsLatency }
 inputType: !ref ProviderRows
 rows: !cel "inputs.rows"

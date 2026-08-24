@@ -1,6 +1,6 @@
 # Writing a SQL backend
 
-A backend (`sql-postgres`, `sql-sqlite`, …) is a module that declares a kind
+A backend (`postgres`, `sqlite`, …) is a module that declares a kind
 extending `Sql.Connection` and ships a controller producing a live connection.
 This module owns the operations — `Sql.Query`, `Sql.Command`, `Sql.Selection`,
 `Sql.Transaction` — and knows nothing about which databases
@@ -93,7 +93,7 @@ is resolved at load rather than copied into each dependent, so one module is one
 scope in the common case. It is not a guarantee you can lean on, and two live
 cases say so:
 
-- **An npm-delivered controller resolves the library from npm.** `sql-sqlite`
+- **An npm-delivered controller resolves the library from npm.** `sqlite`
   ships as `pkg:npm`, so its tarball's own `@telorun/sql` is a second scope,
   separate from the one `sql`'s kinds and the bundled backends share. Nothing
   reports this — the kernel cannot see inside another delivery mode's package —
@@ -128,11 +128,11 @@ non-transactional writes.
 - **A connection failing must never terminate the process.** It surfaces as a
   failed operation to the caller that was using it, and nowhere else. Some
   runtimes give this for free; some do not — see
-  [connection lifetime](../../sql-postgres/docs/connection-lifetime.md) for the
+  [connection lifetime](../../postgres/docs/connection-lifetime.md) for the
   full invariant a pooled backend holds and why proactive liveness is part of it.
 
 ## Driver-specific types
 
 A type describing one driver's handle belongs in the backend module, never in
-the shared one. `SqliteDb` lives in `sql-sqlite`; nothing driver-specific is
+the shared one. `SqliteDb` lives in `sqlite`; nothing driver-specific is
 exported from the `sql` module in any language.

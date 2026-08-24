@@ -63,8 +63,6 @@
     "@telorun/scheduler-build",
     "@telorun/shell-build",
     "@telorun/sql",
-    "@telorun/sql-postgres-build",
-    "@telorun/sql-sqlite",
     "@telorun/sqlite",
     "@telorun/sse-codec-build",
     "@telorun/starlark",

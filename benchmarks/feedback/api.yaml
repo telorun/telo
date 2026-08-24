@@ -8,7 +8,7 @@ metadata:
 imports:
   Http: ../../modules/http-server
   Sql: ../../modules/sql
-  SQLite: ../../modules/sql-sqlite
+  SQLite: ../../modules/sqlite
   Run: ../../modules/run
 targets:
   - !ref SetupDb

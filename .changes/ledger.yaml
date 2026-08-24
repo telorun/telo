@@ -250,19 +250,10 @@ modules:
     layers:
       library/js: sha256-TwbyyPfaimkTKH8fJgwH_zzfRZBrJ7URIuiJxwEznv4
       manifest: sha256-qz0P7aOR1oZjsB-YX_nGOfwL9CcNre6vLA11EyAnuqM
-  modules/sql-postgres:
-    version: 0.11.0
-    layers:
-      controller/js: sha256-ktcUG7hO5g8eNrrVjh4nIQCLngXCAHVIUANBenyQWJc
-      manifest: sha256-YwgyaSgxw8ea1zXMNwrzep56mSlQOvJ4im9d9AlReG0
   modules/sql-repository:
     version: 0.12.0
     layers:
       manifest: sha256-ZZa7hU9f0m1aIC0Qs5QlPdwjbMhI-OrspKYesPnmLd0
-  modules/sql-sqlite:
-    version: 0.9.0
-    layers:
-      manifest: sha256-z5aVQZF2TbBHrrdjBJfNMPS74vhrAFNd8cSWXZH-thE
   modules/sqlite:
     version: 0.3.0
     layers:

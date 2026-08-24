@@ -7,7 +7,7 @@ A complete application served from a single Telo manifest on one port:
 - **Frontend** — vanilla HTML/JS/CSS in [`public/`](public/), served by
   `Http.Static` at `/`.
 - **Storage** — a SQLite file (`SQLite.Connection`), schema created on boot by
-  `Sql.Migrations`.
+  `SQLite.Schema`.
 
 No build step: the frontend is plain files, so the whole app ships and runs as a
 unit. This is the pairing `Http.Static` was added for — see the

@@ -39,7 +39,7 @@ The connection's bind-placeholder style is fixed to PostgreSQL numbered (`$1`, `
 
 ## Docs
 
-- [Connection lifetime](nodejs/docs/connection-lifetime.md) — how a lost connection is detected and replaced, and the contract any non-Node implementation of this module must meet.
+- [Connection lifetime](docs/connection-lifetime.md) — how a lost connection is detected and replaced, and the contract any implementation of this module must hold. The Node mechanics are in [the implementation notes](nodejs/docs/connection-lifetime.md).
 
 ## Declarative schema
 

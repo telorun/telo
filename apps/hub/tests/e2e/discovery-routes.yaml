@@ -11,8 +11,8 @@ metadata:
     search, /refs typeahead, and /module/versions including its 404 path.
 imports:
   HttpClient: oci://ghcr.io/telorun/http-client@0.21.2#sha256-9n-zEKDe8J6T_pfQ0XCcjtUt_dVW5G3APow5BQlmZWE
-  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
-  Assert: oci://ghcr.io/telorun/assert@0.17.4#sha256-dgMgHGwUzhmSzbxkxjpKMBsLx9IDSNxuNCjY6ReoxH0
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
 targets:
   - !ref Health
   - !ref SearchResources_FindsSeededKind

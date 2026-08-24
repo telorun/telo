@@ -1,14 +1,9 @@
-# Connection lifetime
+# Connection lifetime — Node mechanics
 
-A pooled connection can stop working at any moment, for reasons the application
-never sees: the server restarts or fails over, an administrator terminates the
-backend, a load balancer or NAT device evicts an idle flow, a route is
-blackholed, the host disappears. The module's job is to make every one of those
-end the same way — **the connection is replaced, and the application keeps
-serving**.
-
-That splits into two problems, because the causes above divide cleanly into ones
-that announce themselves and ones that do not.
+How this module's Node implementation holds the invariant in
+[connection lifetime](../../docs/connection-lifetime.md). Everything here is
+`pg` / `pg-pool` specific; another runtime holds the same contract by other
+means.
 
 ## When the disconnect is reported
 
@@ -52,49 +47,10 @@ the TCP retransmit window — minutes — and a sweep will not begin another pas
 while one is outstanding. Without the deadline, the single case the sweep exists
 to catch would be the case that switches it off.
 
-The sweep starts from `init()`, once the connection has proved it works, and
-stops in `teardown()`. A recurring probe is a side effect, and a resource whose
-`init()` throws is never torn down, so starting it during construction would
-leave a timer nobody owns.
+The sweep starts from `init()`, once the connection has proved it works, and is
+stopped by the inverse `init()` returns alongside it. A recurring probe is a
+side effect, and an `init()` that throws part-way recovers what it already
+allocated, so starting the timer during construction would leave one nobody
+owns.
 
-`pool.maxLifetimeMs` is the cause-agnostic backstop: retiring connections on a
-schedule bounds how long any connection can have been broken without anyone
-noticing, including for reasons neither mechanism anticipates.
-
-## What remains
-
-A connection that dies *while a statement is in flight* fails that statement.
-This is not an implementation gap — `Connection terminated unexpectedly` does not
-say whether the server received and ran the statement, so retrying it
-transparently could apply a write twice, and inside a transaction the session is
-gone entirely. Deciding a statement is safe to repeat is the author's call, and
-it belongs in a declarative `retry` at the manifest level, not inside the driver.
-
-## Contract for other runtimes
-
-This module is Node-specific only in its mechanics. Any implementation — Rust,
-Go, another host — must hold the same invariant:
-
-1. **A connection failing must never terminate the process.** It surfaces as a
-   failed operation, and only to the caller that was using it. Idle-connection
-   failures are reported at `debug` and affect nobody. Most pool libraries give
-   this for free; Node's `EventEmitter` does not, which is the only reason
-   `handleDisconnects` exists.
-2. **A dead connection must be replaced before an operation depends on it**,
-   whatever killed it and whether or not anything reported it. Pool *sizing*
-   (`min`/`max`) is a capacity decision by the author and must never be used as
-   the health mechanism.
-3. **Liveness must be established without a report**, on the `healthCheckMs`
-   interval, with each probe bounded by a deadline so a hung probe cannot
-   suspend the mechanism. Go's `pgxpool` has `HealthCheckPeriod` natively;
-   Rust's `sqlx` has its reaper and `test_before_acquire`; Node implements the
-   sweep in the controller. Any of these satisfies the contract as long as the
-   interval is the one the manifest declares.
-4. **`maxLifetimeMs` retires connections on schedule** — `max_lifetime` in
-   `sqlx`, `MaxConnLifetime` in `pgxpool`, `maxLifetimeSeconds` in `pg-pool`.
-
-The manifest is the shared surface: `healthCheckMs` and `maxLifetimeMs` mean the
-same thing in every runtime, and connection-level transport settings (TLS via
-`sslmode`, and libpq's `keepalives*` / `connect_timeout`) stay in the
-`connectionString`, where they already have one standard spelling every
-PostgreSQL driver understands.
+`pool.maxLifetimeMs` maps straight onto `pg-pool`'s `maxLifetimeSeconds`.

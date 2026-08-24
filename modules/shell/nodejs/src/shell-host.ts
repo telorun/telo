@@ -5,7 +5,7 @@ import type { InvokeContext } from "@telorun/sdk";
  * Every driver (the bundled local host, and future `shell-ssh` / Docker / k8s
  * modules) implements `ShellHost`; the generic operations (`Shell.Command`,
  * `Shell.CommandStream`) and the ref resolver depend only on this file, never
- * on a concrete driver. Mirrors `sql-sqlite`'s `sqlite-driver-interface.ts` split.
+ * on a concrete driver. Mirrors `sqlite`'s `sqlite-driver-interface.ts` split.
  */
 
 /** One record in a `Shell.CommandStream` output stream. */

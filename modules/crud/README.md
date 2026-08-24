@@ -55,7 +55,7 @@ metadata: { name: todo-api, version: 1.0.0 }
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.19.1
   Sql: oci://ghcr.io/telorun/sql@0.13.0
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.4.0
+  SQLite: oci://ghcr.io/telorun/sqlite@0.2.1
   Type: oci://ghcr.io/telorun/type@0.8.0
   Crud: oci://ghcr.io/telorun/crud@0.5.0
 targets:

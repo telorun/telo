@@ -9,10 +9,10 @@ metadata:
     surface is one declarative Crud.Resource — list / read / create / update /
     delete over the `todos` table — mounted alongside the static frontend.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.26.0#sha256-qCiZuU7_9wnxCn2QuA0oKM0H7OyvSd2aFcoXSv3vgFo
-  Sql: oci://ghcr.io/telorun/sql@0.21.3#sha256-wPgugWO72ulGwO8Xhu9WUPyUimpO6QS0Owadfrn98hc
-  SQLite: oci://ghcr.io/telorun/sql-sqlite@0.7.3#sha256-AdpaRCphd3vnfMVoyMZGpsUZ7y5xAo4w72i1j8_ZCVg
-  Crud: oci://ghcr.io/telorun/crud@0.10.2#sha256-bgx2V65MCApV9UN7sqfdd47KHGo7eR9Uav3bwollAi4
+  Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
+  Sql: oci://ghcr.io/telorun/sql@0.23.0#sha256-7OoJzJcGyUpfWe4u1c_4aBXB_isG21LaeN8sPmwfufI
+  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
+  Crud: oci://ghcr.io/telorun/crud@0.13.0#sha256-FnUOXUm792b9jezp1lKWeZdw1yTNltZ0aJRCdNiaQJU
 targets:
   - !ref migrate
   - !ref server
@@ -33,19 +33,22 @@ metadata:
   name: db
 file: ./todo.db
 ---
-kind: Sql.Migrations
+kind: SQLite.Table
+metadata:
+  name: todos
+table: todos
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  text: { type: text, nullable: false }
+  is_done: { type: integer, nullable: false, default: 0 }
+  created_at: { type: text, defaultExpression: "datetime('now')" }
+---
+kind: SQLite.Schema
 metadata:
   name: migrate
 connection: !ref db
-migrations:
-  0001_create_todos:
-    statement: |
-      CREATE TABLE IF NOT EXISTS todos (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        text       TEXT    NOT NULL,
-        is_done    BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
+tables:
+  - !ref todos
 ---
 kind: Http.Server
 metadata:

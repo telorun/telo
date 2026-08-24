@@ -40,7 +40,7 @@ exports:
 # Telo.Provider: a configured connection to a backend, NOT an operation you
 # invoke. Consumers (Sql.Query / Sql.Command / Sql.Selection / Sql.Transaction,
 # and each backend's Schema kind) reference it via `x-telo-ref: Self.Connection` and a
-# concrete implementation (SqlPostgres.Connection / SQLite.Connection)
+# concrete implementation (Postgres.Connection / SQLite.Connection)
 # satisfies the ref. Each implementation also fixes the driver-native bind
 # placeholder style, so inline `${{ }}` parameters in queries are dialect-neutral.
 kind: Telo.Abstract

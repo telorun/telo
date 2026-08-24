@@ -67,7 +67,7 @@ for why that distinction is load-bearing rather than stylistic.
   destroyed without stating that order anywhere.
 - **`executeScript(sql)`** — when the driver has a native multi-statement entry
   point. The default hands the whole script to `execute` as one statement;
-  `sql-sqlite` overrides it to call the driver's `exec`.
+  `sqlite` overrides it to call the driver's `exec`.
 
 ## The dialect interface
 

@@ -46,7 +46,7 @@ An unsupported operator throws rather than silently matching, preserving parity 
 ```yaml
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.13.0
-  Postgres: oci://ghcr.io/telorun/sql-postgres@0.4.0
+  Postgres: oci://ghcr.io/telorun/postgres@0.2.1
   VectorStore: oci://ghcr.io/telorun/vector-store@0.4.0
   VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.3.0
 ---
