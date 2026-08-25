@@ -5,7 +5,7 @@ import type { SchemaDriver } from "./schema-driver.js";
  * A migration is one `statement` or an ordered list of `statements`, keyed by a
  * durable id. Phase is NOT part of identity: keys are unique across both maps
  * and the ledger stores the key alone, so moving a migration between
- * `beforeMigrations:` and `migrations:` keeps its identity and does not re-run
+ * `prepare:` and `migrations:` keeps its identity and does not re-run
  * it.
  */
 export interface MigrationEntry {

@@ -715,7 +715,38 @@ system: |
   `Self` for a kind in this same library, or `Telo` for a built-in. Never write
   the old identity form `"std/kv-store#Store"` — it is deprecated and warns. To
   accept several kinds, give `kind` a LIST (`kind: [Telo.Runnable,
-  Telo.Service]`) — never an `anyOf` of separate `x-telo-ref` branches.
+  Telo.Service]`) — never an `anyOf` of separate `x-telo-ref` branches, with
+  one exception below.
+
+  ### A slot that holds EITHER a value or a reference
+
+  The one shape where the constraint IS a branch: a slot whose value is a name
+  from a closed vocabulary OR a reference to a declared resource — a column's
+  `type:`, which is a storage class or a `!ref` to a declared enum.
+
+      type:
+        oneOf:
+          - title: Storage class
+            type: string
+            enum: [text, uuid, jsonb, bigint, timestamptz]
+          - title: Enum type
+            type: object
+            x-telo-ref:
+              kind: Self.Enum
+              use: schema
+
+  Two things make it work. `type: object` on the reference branch is not
+  decoration: a branch with no keywords is an empty schema matching everything,
+  so a valid scalar would match both branches and the union would fail. And the
+  value branch must declare a CLOSED vocabulary or a plain scalar type — the
+  studio renders one control out of the branches (the vocabulary plus one entry
+  per accepted kind), and it can only do that from what they declare.
+
+  A scalar written there is a VALUE, not a malformed reference: it is checked
+  against the value branch first, and a misspelled one reports as an unknown
+  value rather than as a broken reference. This is the ONLY case where an
+  `x-telo-ref` belongs under `oneOf` / `anyOf`; a multi-kind slot is still a
+  `kind:` list.
 
   `use` says WHEN control reaches the target, relative to this resource's own
   invocation. Pick the one that is true:
@@ -913,6 +944,57 @@ system: |
 
   A rule moves a failure earlier; keep the controller's own guard, because a
   library caller reaching the module directly never passed through `telo check`.
+
+  ## Referrer rules — what must be true of whoever references me
+
+  `x-telo-referrer-rules` relates a resource to the one that REFERENCES it, and
+  is declared by the kind that HAS the requirement — never by the kind that must
+  satisfy it. `Http.Reference` renders the OpenAPI document its server collects,
+  so a server mounting it with no `openapi:` block has nothing to render.
+
+      x-telo-referrer-rules:
+        - referrer: Self.Server
+          condition: !cel "has(referrer.openapi)"
+          code: HTTP_REFERENCE_WITHOUT_OPENAPI
+          message: declares no `openapi:` block, so nothing is collected to render.
+
+  Declaring it on the referring side would mean naming the mounted kind as a
+  string, and a manifest spells a kind with the alias ITS author imported it
+  under — so the rule would silently pass on every other spelling. Declared
+  here, the subject is chosen by the reference itself. In scope: `self` (the
+  referenced resource) and `referrer`. There is no `this`.
+
+  `referrer:` is an alias-qualified kind, the same grammar as `extends:`. Omit it
+  and the rule applies to every referrer, which conflates "references me" with
+  the relation the rule is about — write it.
+
+  ### `peers:` — the declarations listed beside me
+
+  A rename marker is wrong only in relation to the OTHER tables a schema
+  declares. `peers:` is a JSON Pointer naming a collection OF THE REFERRER,
+  binding that collection's other entries as `peers` and my own as `entry`:
+
+      x-telo-referrer-rules:
+        - referrer: Self.Schema
+          peers: /tables
+          condition: !cel "!has(self.renamedFrom) || !peers.exists(p, p.table == self.renamedFrom)"
+          code: SQL_RENAME_SOURCE_STILL_DECLARED
+          message: renames from a table this schema also declares.
+
+  Entries bind AS WRITTEN with the references INSIDE them resolved one level, so
+  `p` is the declaration where the entry is a bare `!ref`, and `p.mount` is the
+  declaration with `p.prefix` beside it where it is not. `peers` binds the whole
+  collection, which is what lets a condition be an existential over the set. A
+  rule declaring `peers:` evaluates once per entry; `peers:` requires `referrer:`
+  and must name a collection that kind declares whose items are, or contain, a
+  reference.
+
+  Both families: write `condition:` with the `!cel` tag, guard optional fields,
+  and expect a rule that never ran anywhere to be reported as unexercised rather
+  than to pass silently. A rule is SKIPPED when a value it reads holds a `!cel` or
+  an `!include-*` embed — the comparison would run against a placeholder — but
+  never for a `!ref`, which names a declaration and is exactly the value a peer
+  rule compares.
 
   ## Durable execution — work that survives process death
 
@@ -1362,9 +1444,58 @@ system: |
     `!cel "module.version"` — it is the clock that gates reclamation. Deleting a
     column emits no DDL: it is tombstoned and dropped only once the optional
     `reclaim: { afterVersions, afterDuration }` policy has been met, and with no
-    policy nothing is ever dropped. A rename is `renamedFrom:`, never a native
-    RENAME. `SQLite.Schema` has no `schema:` field (one namespace);
-    `Postgres.Schema` names one, defaulting to `public`.
+    policy nothing is ever dropped. `SQLite.Schema` has no `schema:` field (one
+    namespace); `Postgres.Schema` names one, defaulting to `public`.
+
+    The imperative pre-pass bucket is `prepare:` (formerly `beforeMigrations:`,
+    which still loads and is rewritten): data preparation for a narrowing the
+    pass is about to attempt — backfill before NOT NULL, make values fit before a
+    length reduction. `migrations:` runs after the pass. Keys are unique across
+    both maps and the ledger stores the key alone, so moving an entry between
+    them re-runs nothing.
+
+    **A domain is a declared ENUM, not a CHECK you hand-write.** `Postgres.Enum`
+    / `SQLite.Enum` declare `typeName` + `values` (SQLite adds `baseType`, since
+    it has no named types); the schema that owns them lists them in `enums:`, and
+    a column names one in its `type:` slot with a `!ref`. PostgreSQL creates a
+    real type; SQLite renders a `CHECK`. Either way the enum crosses into the row
+    projection, so a CRUD model publishes it and a repository filter is checked
+    against it. A column naming an enum its schema does not list is a
+    `telo check` error. Adding a value takes effect on the next boot; REMOVING
+    one is recorded and left in the type, because no engine can drop a label
+    without rewriting every table that stores it.
+
+    **A predicate is a named `checks:` entry**, keyed by constraint name, whose
+    `expression` is raw SQL in that engine's own dialect — a neutral predicate
+    language would fail on the predicates people write, which correlate columns.
+    Nothing reads the expression statically. Removing a check is IMMEDIATE (a
+    dropped constraint loses nothing, so it needs no grace window). PostgreSQL
+    supports `validate: deferred` (`NOT VALID`, scanned on a later pass); SQLite
+    emits checks at create time and refuses a later change. There is no
+    `min` / `max` column keyword: a scalar bound is a predicate, not a domain.
+
+    **Reference data is `seeds:` on the table** — `key:` (the columns that decide
+    whether a row is the same row), `rows:`, and an optional compile-eval
+    `when:`. Rows are typed against that table's own `columns:`, so a misspelled
+    column is a `telo check` error on the row's line. A key naming a column the
+    table does not declare, and a row supplying no value for a key column, are
+    both `telo check` errors too. A row asserts the columns it
+    STATES and no others, so one it omits keeps whatever an operator set. A row
+    removed from `rows:` is tombstoned and reclaimed under the ordinary policy —
+    and a `when:` that turns FALSE is a declaration withdrawn, which tombstones
+    those rows.
+
+    **A table or an enum renames with `renamedFrom:`, natively and immediately**
+    — unlike a column, whose rename is expand-contract. Copying every row is
+    unbounded work and writes during an overlap would diverge, so the cost is
+    stated instead: between the rename and the new deployment, an instance still
+    running the previous version does not find the table. Advisory (neither name
+    present simply creates); both names present is refused.
+
+    **`extensions:` on `Postgres.Schema` provisions an extension** (`citext`,
+    `pgcrypto`) ahead of everything else. Do NOT smuggle `CREATE EXTENSION` into
+    `migrations:` — that is desired state wearing a migration's clothes, with a
+    migration key that is a lie the first time the entry is deleted.
   - `with:` / `targets:` (Run.Sequence) — `with:` is a LIST of full resource
     declarations whose lifetime is that one sequence run: created when it starts,
     torn down when it ends, referenced by `!ref` from its steps. `targets:` (the

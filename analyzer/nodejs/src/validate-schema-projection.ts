@@ -26,6 +26,7 @@ import {
   projectionKeyMap,
   rawSchemaProjection,
   readSchemaProjection,
+  schemaMapBranch,
   schemaProjectionIsMisplaced,
 } from "./schema-projection.js";
 
@@ -118,6 +119,48 @@ export function validateSchemaProjection(manifest: ResourceManifest): SchemaProj
     ];
   }
 
+  const reference = raw.reference;
+  if (reference !== undefined) {
+    if (!isObject(reference)) {
+      issues.push(
+        issue(
+          "SCHEMA_PROJECTION_INVALID",
+          `${base}.reference`,
+          `'reference' says how an entry whose '${projection.key}' holds a REFERENCE projects. ` +
+            `It is an object naming 'from' (the target field to read), 'keyword' (the schema ` +
+            `keyword its values become) and one of 'base' / 'baseFrom'.`,
+        ),
+      );
+    } else {
+      const absent = ["from", "keyword"].filter((f) => typeof reference[f] !== "string");
+      if (absent.length > 0) {
+        issues.push(
+          issue(
+            "SCHEMA_PROJECTION_INVALID",
+            `${base}.reference`,
+            `'reference' is missing ${absent.map((f) => `'${f}'`).join(" and ")}. Without them a ` +
+              `referenced entry projects to nothing, so it vanishes from every consumer's view.`,
+          ),
+        );
+      }
+      const bases = ["base", "baseFrom"].filter((f) => reference[f] !== undefined);
+      if (bases.length !== 1) {
+        issues.push(
+          issue(
+            "SCHEMA_PROJECTION_INVALID",
+            `${base}.reference`,
+            bases.length === 0
+              ? `'reference' declares neither 'base' nor 'baseFrom', so the projected node has no ` +
+                `type. Write 'base' where the named type IS its own base type, or 'baseFrom' ` +
+                `naming the target field that holds a value of this kind's own map.`
+              : `'reference' declares both 'base' and 'baseFrom'. They are two answers to one ` +
+                `question — where the projected node's type comes from — so declare exactly one.`,
+          ),
+        );
+      }
+    }
+  }
+
   const map = projectionKeyMap(schema, projection);
   if (!map) {
     return [
@@ -180,5 +223,11 @@ function keySchema(
       : undefined;
   if (!isObject(entry) || !isObject(entry.properties)) return undefined;
   const field = entry.properties[key];
-  return isObject(field) ? field : undefined;
+  if (!isObject(field)) return undefined;
+  // The vocabulary may sit on a BRANCH — a slot unioning a closed value set with
+  // a reference — and the branch carrying the map is the one whose `enum` the map
+  // has to answer for. Reading the union node instead finds no `enum` at all, so
+  // the completeness check would silently stop running exactly where the two
+  // halves can disagree. Asked through the single reader, never re-derived here.
+  return schemaMapBranch(field) ?? field;
 }

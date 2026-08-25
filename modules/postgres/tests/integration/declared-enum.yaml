@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: PostgresDeclaredEnum
+  version: 1.0.0
+  description: |
+    A declared enum against a real PostgreSQL, across REAL boots.
+
+    Each fixture is a separate application at its own released version, run in
+    its own kernel against one namespace — so what each boot reads is what an
+    earlier PROCESS wrote. The sequence covers what only a live engine can
+    answer: the type is created ahead of the tables that name it, a second boot
+    plans nothing, an added value takes effect and a column can store it, a
+    removed value is reported and left in the type, and a type dropped from
+    `enums:` is held while a table still uses it.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Test: ../../../test
+targets:
+  - !ref boots
+---
+kind: Test.Suite
+metadata: { name: boots }
+include:
+  - "__fixtures__/enum-boots/*.yaml"
+# These fixtures ARE the test, so the default fixture exclusion is dropped.
+exclude: []
+# Ordering is the point — discovery sorts by path, and one at a time keeps it.
+concurrency: 1

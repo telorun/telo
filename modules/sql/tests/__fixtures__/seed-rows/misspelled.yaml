@@ -1,0 +1,32 @@
+# A seed row naming a column the table does not declare. The projection points
+# at this resource's OWN entries, so the row is typed against `columns:` and the
+# error lands on the row's own line — not on a boot against a real database.
+kind: Telo.Application
+metadata:
+  name: SeedMisspelled
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: appDb }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: roles }
+table: roles
+columns:
+  name: { type: text, primaryKey: true }
+  label: { type: text, nullable: false }
+seeds:
+  key: [name]
+  rows:
+    - { name: admin, lable: Administrator }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref appDb
+version: "1.0.0"
+tables: [!ref roles]

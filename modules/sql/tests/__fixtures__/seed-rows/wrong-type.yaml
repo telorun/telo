@@ -1,0 +1,31 @@
+# A seed row holding a value of the wrong type. The projection maps `integer` to
+# a JSON Schema integer, so the string is rejected where it is written.
+kind: Telo.Application
+metadata:
+  name: SeedWrongType
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: appDb }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: roles }
+table: roles
+columns:
+  name: { type: text, primaryKey: true }
+  rank: { type: integer, nullable: false }
+seeds:
+  key: [name]
+  rows:
+    - { name: admin, rank: "high" }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref appDb
+version: "1.0.0"
+tables: [!ref roles]

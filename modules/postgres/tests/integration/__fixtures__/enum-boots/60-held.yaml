@@ -1,0 +1,94 @@
+kind: Telo.Application
+metadata:
+  name: PgEnumBoots
+  version: 6.0.0
+  description: |
+    Boot 6 — the second type is dropped from `enums:`. It is tombstoned, the
+    budget is met, and the drop is ATTEMPTED and refused by the engine, because a
+    table in another namespace still depends on it.
+
+    That is the failure this design must survive rather than be stopped by. The
+    tombstone stays eligible, so an unguarded failure here would fail this boot
+    and every boot after it — the application would never start again over a
+    schema object nobody is waiting on. Reported and held instead, and the boot
+    succeeds.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: message_role
+values: [system, user, assistant]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: messages
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  role: { type: !ref messageRole, nullable: false }
+  body: { type: text }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_enum_boots
+version: !cel "module.version"
+enums: [!ref messageRole]
+tables: [!ref messages]
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertHeld
+    invoke: !ref assertHeld
+    inputs:
+      actual:
+        tombstoned: !cel "resources.appSchema.status.tombstoned"
+        reclaimed: !cel "resources.appSchema.status.reclaimed"
+      expected:
+        tombstoned: ["enum message_status"]
+        reclaimed: []
+  # The engine still has the type, because the drop was attempted and refused
+  # rather than skipped.
+  - name: readType
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT t.typname AS name FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE n.nspname = 'telo_pg_enum_boots' AND t.typname = 'message_status'
+  - name: assertPresent
+    invoke: !ref assertPresent
+    inputs:
+      actual: !cel "steps.readType.result.rows"
+      expected:
+        - { name: message_status }
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertHeld }
+---
+kind: Assert.Equals
+metadata: { name: assertPresent }

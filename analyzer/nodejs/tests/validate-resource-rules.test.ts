@@ -1,10 +1,15 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { readResourceRules, resolveRuleSubjects, findDynamicLeaf } from "../src/resource-rule.js";
 import {
   evaluateResourceRules,
   validateResourceRuleDeclarations,
 } from "../src/validate-resource-rules.js";
+
+/** Conditions are written with the `!cel` tag — the strict half reports one that
+ *  is not, since untagged it stops being CEL to every surface but evaluation. */
+const cel = (source: string) => makeTaggedSentinel("cel", source);
 
 /** A table-shaped kind: a map of columns, a list of indexes, a list of foreign keys. */
 const TABLE_SCHEMA = {
@@ -18,19 +23,19 @@ const TABLE_SCHEMA = {
   "x-telo-resource-rules": [
     {
       in: "/indexes",
-      condition: "this.columns.all(c, c in self.columns)",
+      condition: cel("this.columns.all(c, c in self.columns)"),
       code: "INDEX_UNKNOWN_COLUMN",
       message: "names a column this table does not declare",
     },
     {
       in: "/foreignKeys",
-      condition: "size(this.columns) == size(this.references.columns)",
+      condition: cel("size(this.columns) == size(this.references.columns)"),
       code: "FK_ARITY_MISMATCH",
       message: "lists a different number of columns on each side",
     },
     {
       in: "/columns",
-      condition: '!(this.?renamedFrom.orValue("") in self.columns)',
+      condition: cel('!(this.?renamedFrom.orValue("") in self.columns)'),
       code: "RENAME_SOURCE_STILL_DECLARED",
       message: "renames from a column this table still declares",
     },
@@ -127,7 +132,7 @@ describe("resource rules — evaluation", () => {
       properties: { ...TABLE_SCHEMA.properties, version: { type: "string" } },
       "x-telo-resource-rules": [
         {
-          condition: 'self.ledger != ""',
+          condition: cel('self.ledger != ""'),
           code: "LEDGER_EMPTY",
           message: "ledger name is empty",
         },
@@ -153,7 +158,7 @@ describe("resource rules — evaluation", () => {
       "x-telo-resource-rules": [
         {
           in: "/columns",
-          condition: "self.nope.missing",
+          condition: cel("self.nope.missing"),
           code: "BROKEN",
           message: "unreachable",
         },
@@ -168,7 +173,7 @@ describe("resource rules — evaluation", () => {
       ...TABLE_SCHEMA,
       "x-telo-resource-rules": [
         {
-          condition: 'self.ledger != ""',
+          condition: cel('self.ledger != ""'),
           code: "LEDGER_EMPTY",
           message: "ledger name is empty",
           severity: "warning",
@@ -195,7 +200,7 @@ describe("resource rules — declaration validation", () => {
     const found = declarationMessages({
       ...TABLE_SCHEMA,
       "x-telo-resource-rules": [
-        { in: "/indices", condition: "true", code: "C", message: "m" },
+        { in: "/indices", condition: cel("true"), code: "C", message: "m" },
       ],
     });
     expect(found).toHaveLength(1);
@@ -206,7 +211,7 @@ describe("resource rules — declaration validation", () => {
     expect(
       declarationMessages({
         ...TABLE_SCHEMA,
-        "x-telo-resource-rules": [{ in: "/ledger", condition: "true", code: "C", message: "m" }],
+        "x-telo-resource-rules": [{ in: "/ledger", condition: cel("true"), code: "C", message: "m" }],
       })[0],
     ).toMatch(/not a collection/);
   });
@@ -216,7 +221,7 @@ describe("resource rules — declaration validation", () => {
       declarationMessages({
         ...TABLE_SCHEMA,
         "x-telo-resource-rules": [
-          { condition: 'sha256(self.ledger) != ""', code: "C", message: "m" },
+          { condition: cel('sha256(self.ledger) != ""'), code: "C", message: "m" },
         ],
       })[0],
     ).toMatch(/sha256\(\).*kernel supplies at boot/s);
@@ -227,7 +232,7 @@ describe("resource rules — declaration validation", () => {
       declarationMessages({
         ...TABLE_SCHEMA,
         "x-telo-resource-rules": [
-          { condition: 'nowIso("UTC") != ""', code: "C", message: "m" },
+          { condition: cel('nowIso("UTC") != ""'), code: "C", message: "m" },
         ],
       })[0],
     ).toMatch(/re-evaluates per call/);
@@ -238,8 +243,8 @@ describe("resource rules — declaration validation", () => {
       declarationMessages({
         ...TABLE_SCHEMA,
         "x-telo-resource-rules": [
-          { condition: "true", code: "C", message: "m" },
-          { condition: "true", code: "C", message: "m" },
+          { condition: cel("true"), code: "C", message: "m" },
+          { condition: cel("true"), code: "C", message: "m" },
         ],
       })[0],
     ).toMatch(/already used by rule 0/);
@@ -286,7 +291,28 @@ describe("resource rules — subject resolution", () => {
   });
 
   it("finds a CEL leaf at any depth but stops at a nested kind", () => {
-    expect(findDynamicLeaf({ a: { b: [{ __compiled: true }] } })).toBe("a.b[0]");
+    expect(findDynamicLeaf({ a: { b: [{ __compiled: true }] } })).toEqual({
+      path: "a.b[0]",
+      what: "a CEL expression",
+    });
     expect(findDynamicLeaf({ a: { kind: "X", b: { __compiled: true } } })).toBeUndefined();
+  });
+
+  // A `!ref` is a tagged sentinel like a `!cel`, and reading it as one switched
+  // off every rule that touched a slot holding a reference — reporting a CEL
+  // expression in a manifest containing none.
+  it("reads a !ref sentinel as a value, not as an expression", () => {
+    const ref = { __tagged: true, engine: "ref", source: "messageRole" };
+    expect(findDynamicLeaf({ columns: { role: { type: ref } } })).toBeUndefined();
+  });
+
+  // The other deferred tags DO block a rule — their value is read at creation —
+  // but the diagnostic has to name the tag rather than claim CEL.
+  it("names the tag for a deferred embed", () => {
+    const embed = { __tagged: true, engine: "include-bytes", source: "./logo.png" };
+    expect(findDynamicLeaf({ icon: embed })).toEqual({
+      path: "icon",
+      what: "an !include-bytes embed",
+    });
   });
 });

@@ -1,0 +1,65 @@
+# Seed rows are typed against the table's OWN columns, which is what makes
+# declaring reference data beside the shape it must satisfy worth anything: the
+# projection is pointed at its own resource, so a misspelled column or a value of
+# the wrong type is an error on the row's own line rather than a boot failure
+# against a real database.
+kind: Telo.Application
+metadata:
+  name: SeedRowChecks
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref TestPartial
+  - !ref TestMisspelled
+  - !ref TestWrongType
+  - !ref TestUnknownKey
+  - !ref TestNoIdentity
+---
+# A row omitting a NON-key column passes: the projection emits no `required`, so
+# the insert takes the column default and an update leaves it alone.
+kind: Assert.Manifest
+metadata:
+  name: TestPartial
+source: ./__fixtures__/seed-rows/partial.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata:
+  name: TestMisspelled
+source: ./__fixtures__/seed-rows/misspelled.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "'lable' is not allowed"
+---
+kind: Assert.Manifest
+metadata:
+  name: TestWrongType
+source: ./__fixtures__/seed-rows/wrong-type.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "must be integer"
+---
+# The seed key and the rows are checked against the table's own columns too, so
+# both invariants the controller enforces at boot are decidable at `telo check` —
+# the position `SQL_INDEX_UNKNOWN_COLUMN` already takes one field over.
+kind: Assert.Manifest
+metadata:
+  name: TestUnknownKey
+source: ./__fixtures__/seed-rows/unknown-key.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a column this table does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: TestNoIdentity
+source: ./__fixtures__/seed-rows/no-identity.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "supplies no value for a column the seed key names"

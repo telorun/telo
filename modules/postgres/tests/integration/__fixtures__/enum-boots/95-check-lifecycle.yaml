@@ -1,0 +1,107 @@
+kind: Telo.Application
+metadata:
+  name: PgEnumBoots
+  version: 10.0.0
+  description: |
+    Boot 10 — the deferred constraint is VALIDATED on a later pass, and a check
+    dropped from the declaration is dropped from the database IMMEDIATELY.
+
+    The removal is the asymmetry worth pinning: a dropped column can lose data,
+    which is why removals are recorded and reclaimed on a policy — but a dropped
+    constraint loses nothing, so recording it would put a grace window on a free
+    removal and leave the declaration disagreeing with the database for a release
+    cycle. An enum VALUE is the opposite case again, and for the opposite reason:
+    the engine cannot execute the removal at all.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: conversation_role
+values: [system, user, assistant]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: conversation_messages
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  role: { type: !ref messageRole, nullable: false }
+  body: { type: text }
+  balanceCents: { type: bigint, nullable: false, default: 0 }
+  sentAt: { type: timestamptz }
+checks:
+  sent_implies_timestamp:
+    expression: "body IS NULL OR \"sentAt\" IS NOT NULL"
+    validate: deferred
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_enum_boots
+version: !cel "module.version"
+enums: [!ref messageRole]
+tables: [!ref messages]
+# The rows already there must satisfy the deferred predicate before it can be
+# validated — data preparation for a narrowing the pass is about to attempt,
+# which is exactly what this bucket is for.
+prepare:
+  20260201_backfill_sent_at:
+    statement: >-
+      UPDATE telo_pg_enum_boots.conversation_messages
+      SET "sentAt" = now() WHERE body IS NOT NULL AND "sentAt" IS NULL
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: readChecks
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT c.conname AS name, c.convalidated AS validated FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'telo_pg_enum_boots' AND c.contype = 'c'
+        ORDER BY c.conname
+  # `balance_non_negative` is gone outright, and the deferred one is now proven.
+  - name: assertChecks
+    invoke: !ref assertChecks
+    inputs:
+      actual: !cel "steps.readChecks.result.rows"
+      expected:
+        - { name: sent_implies_timestamp, validated: true }
+  # No tombstone was recorded for the dropped check: the removal was free and has
+  # already happened.
+  - name: assertNoTombstone
+    invoke: !ref assertNoTombstone
+    inputs:
+      actual: !cel "resources.appSchema.status.tombstoned"
+      expected: []
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertChecks }
+---
+kind: Assert.Equals
+metadata: { name: assertNoTombstone }

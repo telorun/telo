@@ -96,8 +96,17 @@ export type {
   ResourceGraphNode,
   StepGraphNode,
 } from "./call-graph.js";
-export { buildReferenceFieldMap, isRefEntry, isScopeEntry } from "./reference-field-map.js";
-export type { ReferenceFieldMap, RefFieldEntry } from "./reference-field-map.js";
+export {
+  buildReferenceFieldMap,
+  isRefEntry,
+  isScopeEntry,
+  satisfiesValueBranch,
+} from "./reference-field-map.js";
+export type {
+  ReferenceFieldMap,
+  RefFieldEntry,
+  ValueBranchValidator,
+} from "./reference-field-map.js";
 export {
   hasDeclaredUse,
   isRefSlot,
@@ -181,6 +190,8 @@ export {
   readRawResourceRules,
   resolveRuleSubjects,
   findDynamicLeaf,
+  dynamicNode,
+  type DynamicLeaf,
   type ResourceRule,
   type ResourceRuleSeverity,
   type RuleSubject,
@@ -211,11 +222,32 @@ export {
   type ReferrerRuleIssue,
   type ReferrerRuleFinding,
   type ReferrerRuleDiagnostic,
+  type ReferrerRuleContext,
+  type ReferrerRuleDeclarationContext,
 } from "./validate-referrer-rules.js";
-export { RULE_BUDGET_MS } from "./rule-condition.js";
+export {
+  PeerBinder,
+  analyzerPeerBinder,
+  analyzerPeersTarget,
+  entryBoundary,
+  navigatePath,
+  referenceValueOf,
+  shapeMatches,
+  type DeclarationLookup,
+  type PeerAliasScope,
+  type PeerBinderEnv,
+  type PeerBinderRegistry,
+  type PeerBinding,
+  type PeerBindingFailure,
+  type PeerBindingResult,
+  type PeersTarget,
+} from "./peer-binding.js";
+export { RULE_BUDGET_MS, UNTAGGED_CONDITION } from "./rule-condition.js";
 export {
   readSchemaProjection,
+  type ProjectionReference,
   readSchemaMap,
+  schemaMapBranch,
   readProjectionFrom,
   readProjectionRef,
   manifestListScope,

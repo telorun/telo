@@ -1,0 +1,38 @@
+# The same manifest with the enum dropped from `enums:`. The table still
+# references it, so nothing creates, reclaims or renames the type — a gap no
+# resource rule can see, because it is a relation between SIBLING declarations.
+kind: Telo.Application
+metadata:
+  name: EnumUnlisted
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata:
+  name: appDb
+file: ":memory:"
+---
+kind: SQLite.Enum
+metadata:
+  name: messageRole
+typeName: message_role
+baseType: text
+values: [system, user, assistant]
+---
+kind: SQLite.Table
+metadata:
+  name: messages
+table: messages
+columns:
+  id: { type: integer, primaryKey: true }
+  role: { type: !ref messageRole, nullable: false }
+---
+kind: SQLite.Schema
+metadata:
+  name: appSchema
+connection: !ref appDb
+version: "1.0.0"
+tables: [!ref messages]

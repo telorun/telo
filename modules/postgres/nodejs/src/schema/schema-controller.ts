@@ -7,6 +7,7 @@ import {
   type SqlConnection,
 } from "@telorun/sql";
 import { PostgresSchemaDriver } from "./postgres-schema-driver.js";
+import type { PostgresEnumResource } from "./enum-controller.js";
 import type { PostgresTableResource } from "./table-controller.js";
 
 interface PostgresSchemaManifest {
@@ -16,7 +17,9 @@ interface PostgresSchemaManifest {
   version?: string;
   ledger?: string;
   tables?: PostgresTableResource[];
-  beforeMigrations?: MigrationMap;
+  enums?: PostgresEnumResource[];
+  extensions?: string[];
+  prepare?: MigrationMap;
   migrations?: MigrationMap;
   reclaim?: ReclaimPolicy;
 }
@@ -56,7 +59,9 @@ class PostgresSchemaResource implements ResourceInstance {
       ledger: this.manifest.ledger,
       version: this.manifest.version,
       tables: (this.manifest.tables ?? []).map((table) => table.declaration),
-      beforeMigrations: this.manifest.beforeMigrations ?? {},
+      enums: (this.manifest.enums ?? []).map((declared) => declared.declaration),
+      extensions: this.manifest.extensions ?? [],
+      prepare: this.manifest.prepare ?? {},
       migrations: this.manifest.migrations ?? {},
       reclaim: this.manifest.reclaim,
     });

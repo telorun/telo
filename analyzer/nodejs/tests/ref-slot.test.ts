@@ -157,3 +157,39 @@ describe("buildReferenceFieldMap carries the slot's use", () => {
     expect(map.get("legacy")).toMatchObject({ refs: ["telo.Invocable"], uses: [] });
   });
 });
+
+describe("value-or-reference union slots", () => {
+  const columnType = {
+    oneOf: [
+      { title: "Storage class", type: "string", enum: ["text", "uuid", "bigint"] },
+      { title: "Enum type", type: "object", "x-telo-ref": { kind: "Self.Enum", use: "schema" } },
+    ],
+  };
+
+  it("collects the non-reference branches when the constraint is a branch", () => {
+    const slot = readRefSlot(columnType)!;
+    expect(slot.kinds).toEqual(["Self.Enum"]);
+    expect(slot.valueBranches).toEqual([
+      { title: "Storage class", type: "string", enum: ["text", "uuid", "bigint"] },
+    ]);
+  });
+
+  it("collects none when the node carries the annotation itself", () => {
+    // An Application `targets` entry: the branches describe the post-resolution
+    // shapes a REFERENCE takes, so a bare string there is still the removed
+    // string-reference spelling rather than a value.
+    const slot = readRefSlot({
+      "x-telo-ref": { kind: ["Telo.Runnable", "Telo.Service"], use: "call" },
+      anyOf: [{ type: "string" }, { type: "object", required: ["kind", "name"] }],
+    })!;
+    expect(slot.valueBranches).toEqual([]);
+  });
+
+  it("carries the branches onto the field map entry", () => {
+    const map = buildReferenceFieldMap({ properties: { columns: { additionalProperties: { properties: { type: columnType } } } } });
+    expect(map.get("columns.{}.type")).toMatchObject({
+      refs: ["Self.Enum"],
+      valueBranches: [{ type: "string", title: "Storage class", enum: ["text", "uuid", "bigint"] }],
+    });
+  });
+});

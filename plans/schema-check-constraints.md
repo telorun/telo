@@ -798,30 +798,32 @@ rejects; restore it and confirm the same runtime reports
 
 ## Staging
 
-1. **Value-or-reference union slots** — the analyzer's reference-form fix, and
-   the studio's one control for such a slot. No schema change, and nothing
-   downstream depends on it landing with the rest.
-2. **Peer rules** — the `peers:` / `entry` bindings, their strict half, the
-   tagged-condition check across all three rule families, and the runtime floor
-   on `sql`, `postgres` and `sqlite`. Analyzer only, and independent of
-   everything below it.
-3. **Domains** — the `Sql.Enum` abstract, the two backend kinds, `enums:` on the
-   schema, `type:` accepting a reference, and the projection's reference path.
-   This alone retires four of the five imperative manifests.
-4. **`renamedFrom:` on a table and on a domain**, with the rename phase, the
-   ledger rewrite and the inert-rename report. Needs nothing from domains beyond
-   their existing ledger entry, and its static half is step 2's.
-5. **Named checks**, including the Postgres deferred-validation option and the
-   SQLite refusal. This is what retires money-transfer.
-6. **`prepare:` and `extensions:`** — the field rename with its migration entry,
-   the refusal messages that name it, and extensions as a reconciled object.
-   Forced by step 4 (which is what makes the phase order matter) but independent
-   of the domain work.
-7. **Seeds** — `seeds:` on the table, the projection's self-pointer that types the
-   rows, the upsert phase and the row tombstone. Depends on step 3 only for the
-   projection change it extends.
-8. **Convert the five manifests back to declared tables** and update the
-   backends' schema docs.
+Steps 1–7 have landed. What remains is step 8, and it is blocked on a release
+rather than on work:
+
+1. ~~**Value-or-reference union slots**~~ — landed.
+2. ~~**Peer rules**~~ — landed, with the runtime floor on `sql`, `postgres` and
+   `sqlite` verified by execution against `@telorun/cli@0.82.0`.
+3. ~~**Domains**~~ — landed.
+4. ~~**`renamedFrom:` on a table and on a domain**~~ — landed.
+5. ~~**Named checks**~~ — landed.
+6. ~~**`prepare:` and `extensions:`**~~ — landed, with the migration entry.
+7. ~~**Seeds**~~ — landed.
+8. **Convert the five manifests back to declared tables.** BLOCKED on the
+   release: `examples/*` and `apps/authoring-agent` import PINNED PUBLISHED module
+   versions (`oci://ghcr.io/telorun/sqlite@0.3.0#sha256-…`), so `SQLite.Enum` and
+   `checks:` do not exist for them until `sqlite@0.4.0` / `postgres@0.4.0` ship
+   and each manifest's pin moves. Verified by attempting one: converting
+   `examples/chat-console` produced `KIND_NOT_EXPORTED` for `SQLite.Enum` and a
+   storage-class violation on every column, against the pinned 0.3.0.
+
+   The five: `examples/chat-console`, `examples/agent-console`,
+   `apps/authoring-agent/chat` (all three `role IN (…)`),
+   `examples/money-transfer` (a non-negative balance), and whichever fifth
+   console the survey counted — re-run the survey when the pins move, since
+   `grep -rl "CREATE TABLE" examples/ apps/` now finds four plus `apps/hub`.
+
+   The backends' schema docs are already updated; only the manifests wait.
 
 ## Verify
 

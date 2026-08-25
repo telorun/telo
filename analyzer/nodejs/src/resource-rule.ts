@@ -21,6 +21,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { CEL_ENGINE, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 
 export const RESOURCE_RULES_ANNOTATION = "x-telo-resource-rules";
 
@@ -58,9 +59,42 @@ function isObject(value: unknown): value is Record<string, unknown> {
  *  Both markers are tested because they are not always both present: a
  *  registered definition's schema reaches the analyzer with `call` and
  *  `__compiled` dropped, keeping only `__tagged` + `source`. Testing one would
- *  make a rule readable on some paths and invisible on others. */
+ *  make a rule readable on some paths and invisible on others.
+ *
+ *  A tagged sentinel of ANOTHER engine is not one. `__tagged` marks every tag
+ *  the loader parses — `!ref` above all — so testing it alone read a reference
+ *  as an expression: a column whose `type:` holds a `!ref` skipped every rule
+ *  that touched `self.columns`, and said "the value holds a CEL expression" about
+ *  a manifest containing none. A reference names a declaration and is a
+ *  perfectly comparable value; what a rule cannot compare is a value COMPUTED at
+ *  create time, which is what this predicate exists to find. */
 function isCelNode(value: unknown): value is { source?: unknown } {
-  return isObject(value) && (value.__compiled === true || value.__tagged === true);
+  if (!isObject(value)) return false;
+  if (value.__compiled === true) return true;
+  return value.__tagged === true && value.engine === CEL_ENGINE;
+}
+
+/** The engine of a non-CEL tagged sentinel — a `!ref`, an `!include-*` — or
+ *  `undefined`. A reference is comparable and never blocks a rule; the other
+ *  tags hold a value only known once the resource is created, so they do, and
+ *  the diagnostic has to name the tag rather than claim CEL. */
+export function deferredTagOf(value: unknown): string | undefined {
+  if (!isTaggedSentinel(value) || isRefSentinel(value)) return undefined;
+  return value.engine === CEL_ENGINE ? undefined : value.engine;
+}
+
+/**
+ * True when a condition was written with the `!cel` tag.
+ *
+ * The readers stay lenient and take a bare string — a rule still runs either
+ * way. What an untagged condition loses is everything outside evaluation: to the
+ * editor's colouring, completion and hover it is a plain string, so a rule author
+ * writes CEL with no help and gets none of the checks a `!cel` scalar gets.
+ * Losing that silently is exactly what a strict half exists to move earlier, so
+ * the tag is reported by the strict halves and never enforced by the readers.
+ */
+export function isTaggedCondition(value: unknown): boolean {
+  return isCelNode(value);
 }
 
 /** A precompiled `!cel` node keeps its author-written text on `source`; a plain
@@ -179,17 +213,45 @@ export function resolveRuleSubjects(
   return undefined;
 }
 
+/** The first leaf a rule cannot compare, and what it is. `what` is a noun
+ *  phrase the diagnostic quotes verbatim, because "a CEL expression" printed
+ *  over an `!include-bytes` embed sends its author looking for an expression
+ *  that is not there. */
+export interface DynamicLeaf {
+  readonly path: string;
+  readonly what: string;
+}
+
+/** Classify ONE node, without descending. Exported because a caller that draws
+ *  its own bound on how far to look (`peer-binding`'s top-level-scalar scan)
+ *  must classify by the same rule as the recursive walk, or a `!ref` is a
+ *  reference to one of them and an expression to the other. */
+export function dynamicNode(value: unknown, path: string): DynamicLeaf | undefined {
+  const at = path || "(value)";
+  if (isCelNode(value)) return { path: at, what: "a CEL expression" };
+  const tag = deferredTagOf(value);
+  return tag ? { path: at, what: `an !${tag} embed` } : undefined;
+}
+
 /**
- * Path of the first CEL leaf inside a value, or `undefined` when every leaf is
- * literal. A rule reading an expression would be evaluating a placeholder, so
- * the subject is skipped — and the skip is reported, never silent.
+ * The first leaf inside a value whose contents are not known until the resource
+ * is created, or `undefined` when every leaf is literal. A rule reading one
+ * would be comparing against a placeholder, so the subject is skipped — and the
+ * skip is reported, never silent.
+ *
+ * A `!ref` is NOT one of them. It is a tagged sentinel like `!cel`, and testing
+ * `__tagged` alone read every reference as an expression: a column whose `type:`
+ * holds a `!ref` switched off every rule touching `self.columns` and reported a
+ * CEL expression in a manifest containing none. A reference names a declaration
+ * — a value a rule compares perfectly well, and the one peer rules are built on.
  *
  * Stops at nested inline `{ kind }` declarations for the reason every other walk
  * does: that CEL belongs to the nested kind, evaluated in its own scope.
  */
-export function findDynamicLeaf(value: unknown, base = ""): string | undefined {
+export function findDynamicLeaf(value: unknown, base = ""): DynamicLeaf | undefined {
   if (isObject(value)) {
-    if (isCelNode(value)) return base || "(value)";
+    const own = dynamicNode(value, base);
+    if (own) return own;
     if (typeof value.kind === "string" && base !== "") return undefined;
     for (const [key, child] of Object.entries(value)) {
       const found = findDynamicLeaf(child, base === "" ? key : `${base}.${key}`);

@@ -1,0 +1,34 @@
+# The positive control. Rows stay PARTIAL by design — the projection emits no
+# `required`, so a row states the columns it asserts and the key columns are what
+# the declaration insists on.
+kind: Telo.Application
+metadata:
+  name: SeedPartial
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: appDb }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: roles }
+table: roles
+columns:
+  name: { type: text, primaryKey: true }
+  label: { type: text, nullable: false }
+  rank: { type: integer, default: 0 }
+seeds:
+  key: [name]
+  rows:
+    - { name: admin, label: Administrator, rank: 100 }
+    - { name: viewer, label: Viewer }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref appDb
+version: "1.0.0"
+tables: [!ref roles]

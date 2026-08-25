@@ -1,0 +1,94 @@
+kind: Telo.Application
+metadata:
+  name: PgEnumBoots
+  version: 3.0.0
+  description: |
+    Boot 3 — a value is ADDED to the declaration, and a column can store it on
+    this same boot. That is what the separate phase buys: `ALTER TYPE … ADD
+    VALUE` cannot be used in the transaction that adds it, so the addition runs
+    ahead of the atomic pass rather than inside it.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: message_role
+values: [system, user, assistant, tool]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: messages
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  role: { type: !ref messageRole, nullable: false }
+  body: { type: text }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_enum_boots
+version: !cel "module.version"
+enums: [!ref messageRole]
+tables: [!ref messages]
+reclaim: { afterVersions: 2, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: insert
+    invoke: !ref command
+    inputs:
+      sql: "INSERT INTO telo_pg_enum_boots.messages (role, body) VALUES ('tool', 'ran')"
+  - name: readRows
+    invoke: !ref query
+    inputs:
+      sql: "SELECT role, body FROM telo_pg_enum_boots.messages ORDER BY id"
+  - name: assertRows
+    invoke: !ref assertRows
+    inputs:
+      actual: !cel "steps.readRows.result.rows"
+      expected:
+        - { role: user, body: hi }
+        - { role: tool, body: ran }
+  # A value ADDITION is not a tombstone: nothing is being retired.
+  - name: assertQuiet
+    invoke: !ref assertQuiet
+    inputs:
+      actual:
+        tombstoned: !cel "resources.appSchema.status.tombstoned"
+        retainedEnumValues: !cel "resources.appSchema.status.retainedEnumValues"
+      expected:
+        tombstoned: []
+        retainedEnumValues: []
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: command }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertRows }
+---
+kind: Assert.Equals
+metadata: { name: assertQuiet }

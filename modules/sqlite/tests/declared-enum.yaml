@@ -1,0 +1,134 @@
+kind: Telo.Application
+metadata:
+  name: SqliteDeclaredEnum
+  version: 1.0.0
+  description: |
+    A declared enum, on an engine that has no named types.
+
+    SQLite renders the domain as a `CHECK` on every column that references it, so
+    what this proves is that the declaration reaches the database at all: a value
+    outside the set is rejected by the engine, and one inside it is stored. The
+    same declaration on PostgreSQL creates a first-class type — the split between
+    declaration and rendering is the point, and the projected row contract is the
+    same on either side of it.
+imports:
+  Sql: ../../sql
+  SQLite: ../
+  Assert: ../../assert
+  Run: ../../run
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Enum
+metadata: { name: messageRole }
+typeName: message_role
+baseType: text
+values: [system, user, assistant]
+---
+kind: SQLite.Table
+metadata: { name: messages }
+table: messages
+columns:
+  id: { type: integer, primaryKey: true }
+  role: { type: !ref messageRole, nullable: false }
+  body: { type: text }
+  balanceCents: { type: integer, nullable: false, default: 0 }
+# A named predicate, emitted at create time — which is the only place SQLite has
+# for one, exactly as with its foreign keys.
+checks:
+  balance_non_negative:
+    expression: "balanceCents >= 0"
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+enums: [!ref messageRole]
+tables: [!ref messages]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # The rendered constraint, read back from the engine's own stored DDL — which
+  # is the only place a SQLite CHECK exists.
+  - name: readSchema
+    invoke: !ref query
+    inputs:
+      sql: "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'messages'"
+  - name: assertCheck
+    invoke: !ref assertCheck
+    inputs:
+      actual: !cel >-
+        steps.readSchema.result.rows[0].sql.contains('CHECK') &&
+        steps.readSchema.result.rows[0].sql.contains("'assistant'")
+      expected: true
+  - name: insertAllowed
+    invoke: !ref command
+    inputs:
+      sql: "INSERT INTO messages (id, role, body) VALUES (1, 'user', 'hi')"
+  # The named check is enforced by the engine too, from the same CREATE TABLE.
+  - name: checkRejected
+    try:
+      - name: attemptCheck
+        invoke: !ref command
+        inputs:
+          sql: "INSERT INTO messages (id, role, balanceCents) VALUES (3, 'user', -1)"
+    catch:
+      - name: checkFailed
+        value: true
+  - name: assertCheckRejected
+    invoke: !ref assertCheckRejected
+    inputs:
+      actual: !cel "steps.checkFailed.result"
+      expected: true
+  # A value outside the domain is rejected BY THE DATABASE, and the failure
+  # arrives as an ordinary statement error rather than a boot failure.
+  - name: insertRejected
+    try:
+      - name: attempt
+        invoke: !ref command
+        inputs:
+          sql: "INSERT INTO messages (id, role) VALUES (2, 'moderator')"
+    catch:
+      - name: rejected
+        value: true
+  - name: assertRejected
+    invoke: !ref assertRejected
+    inputs:
+      actual: !cel "steps.rejected.result"
+      expected: true
+  - name: readRows
+    invoke: !ref query
+    inputs:
+      sql: "SELECT id, role FROM messages ORDER BY id"
+  - name: assertRows
+    invoke: !ref assertRows
+    inputs:
+      actual: !cel "steps.readRows.result.rows"
+      expected:
+        - { id: 1, role: user }
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: command }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertCheck }
+---
+kind: Assert.Equals
+metadata: { name: assertRejected }
+---
+kind: Assert.Equals
+metadata: { name: assertCheckRejected }
+---
+kind: Assert.Equals
+metadata: { name: assertRows }

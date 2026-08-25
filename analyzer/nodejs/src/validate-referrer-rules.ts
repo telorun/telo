@@ -29,8 +29,22 @@ import {
   readReferrerRules,
   type ReferrerRule,
 } from "./referrer-rule.js";
-import { celSourceOf, findDynamicLeaf, readNodes } from "./resource-rule.js";
-import { RULE_BUDGET_MS, compileRuleCondition, conditionRefusals } from "./rule-condition.js";
+import type { PeerBinder, PeerBindingFailure, PeersTarget } from "./peer-binding.js";
+import {
+  celSourceOf,
+  findDynamicLeaf,
+  type DynamicLeaf,
+  isTaggedCondition,
+  pointerSegments,
+  pointerToPath,
+  readNodes,
+} from "./resource-rule.js";
+import {
+  RULE_BUDGET_MS,
+  UNTAGGED_CONDITION,
+  compileRuleCondition,
+  conditionRefusals,
+} from "./rule-condition.js";
 
 export interface ReferrerRuleIssue {
   code: "REFERRER_RULE_INVALID";
@@ -51,12 +65,38 @@ export interface Referrer {
 /** One rule's verdict on one referrer. */
 export type ReferrerRuleFinding =
   | { kind: "violation"; rule: ReferrerRule; referrer: Referrer; message: string }
-  | { kind: "skipped"; rule: ReferrerRule; referrer: Referrer; dynamicAt: string }
+  | { kind: "skipped"; rule: ReferrerRule; referrer: Referrer; dynamic: DynamicLeaf }
+  | { kind: "unbound"; rule: ReferrerRule; referrer: Referrer; failure: PeerBindingFailure }
   | { kind: "failed"; rule: ReferrerRule; referrer?: Referrer; reason: string }
   | { kind: "over-budget"; rule: ReferrerRule; referrer: Referrer; elapsedMs: number };
 
+/** What a peer rule needs beyond the referrers themselves: the binder that
+ *  resolves a referrer's collection into declarations. Absent for a host that
+ *  cannot resolve one — a rule declaring `peers:` then reports as unbound rather
+ *  than running with the binding missing, which would evaluate a condition
+ *  against names that are simply not there.
+ *
+ *  ONE binder per analysis, because it caches each referrer's resolved
+ *  collection and both the evaluation and the exercised check ask for it. */
+export interface ReferrerRuleContext {
+  readonly peerBinder?: PeerBinder;
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/** What a `peers:` pointer names in the referrer kind it is filtered to. Defined
+ *  with the binding vocabulary; re-exported here because this is the surface
+ *  that consumes it. The caller resolves it — only it holds the definition
+ *  registry, and only after every kind is registered, since a rule may name a
+ *  kind declared later in the same file. */
+export type { PeersTarget };
+
+export interface ReferrerRuleDeclarationContext {
+  /** Resolves a rule's `peers:` against its `referrer:` kind. Omit to skip the
+   *  check — the safe direction for a host with no registry. */
+  readonly peersTarget?: (referrerKind: string, pointer: string) => PeersTarget;
 }
 
 /**
@@ -68,7 +108,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
  * declaring module's scope by `resolveSchemaRefKinds`, the only pass holding
  * that scope, and a name resolving to nothing is reported from there.
  */
-export function validateReferrerRuleDeclarations(manifest: ResourceManifest): ReferrerRuleIssue[] {
+export function validateReferrerRuleDeclarations(
+  manifest: ResourceManifest,
+  context: ReferrerRuleDeclarationContext = {},
+): ReferrerRuleIssue[] {
   const own = (manifest as unknown as Record<string, unknown>).schema;
   const raw = readRawReferrerRules(own);
   if (raw === undefined) return [];
@@ -137,12 +180,71 @@ export function validateReferrerRuleDeclarations(manifest: ResourceManifest): Re
       issue(`${at}.severity`, "'severity' must be 'error' or 'warning'.");
     }
 
+    if (condition !== undefined && condition.length > 0 && !isTaggedCondition(entry.condition)) {
+      issue(`${at}.condition`, UNTAGGED_CONDITION);
+    }
+
+    validatePeersDeclaration(entry, at, issue, context);
+
     if (condition) {
       for (const refusal of conditionRefusals(condition)) issue(`${at}.condition`, refusal);
     }
   });
 
   return issues;
+}
+
+/** The strict half of `peers:` — the binding that lets a rule reach a referrer's
+ *  OTHER entries, which is also the one that fails invisibly: a pointer naming a
+ *  collection nothing in resolves would leave the rule seeing no declaration at
+ *  all, and a check that never sees its subject reads as passing. */
+function validatePeersDeclaration(
+  entry: Record<string, unknown>,
+  at: string,
+  issue: (path: string, message: string) => void,
+  context: ReferrerRuleDeclarationContext,
+): void {
+  const { peers } = entry;
+  if (peers === undefined) return;
+  if (typeof peers !== "string") {
+    issue(
+      `${at}.peers`,
+      "'peers' is a JSON Pointer naming a collection OF THE REFERRER (e.g. /tables), whose " +
+        "other entries bind as 'peers' and whose own entry binds as 'entry'.",
+    );
+    return;
+  }
+  if (pointerSegments(peers) === undefined || peers === "" || peers === "/") {
+    issue(
+      `${at}.peers`,
+      `'peers' must be a JSON Pointer to a collection, e.g. /tables — '${peers}' is not one.`,
+    );
+    return;
+  }
+  if (typeof entry.referrer !== "string" || entry.referrer.length === 0) {
+    issue(
+      `${at}.peers`,
+      "'peers' names a collection of the REFERRER, so the rule must also declare 'referrer:' — " +
+        "without a kind there is nothing to check the pointer against, and a pointer that " +
+        "resolves to nothing disables the rule in silence.",
+    );
+    return;
+  }
+  const target = context.peersTarget?.(entry.referrer, peers);
+  if (target === "absent") {
+    issue(
+      `${at}.peers`,
+      `'${entry.referrer}' declares no collection at '${peers}'. A pointer that resolves to ` +
+        "nothing binds no peers, so the rule would never see a sibling declaration.",
+    );
+  } else if (target === "plain") {
+    issue(
+      `${at}.peers`,
+      `'${peers}' on '${entry.referrer}' holds plain data — nothing in it is a reference, so ` +
+        "no entry resolves to a declaration and the rule would run against values it cannot " +
+        "compare. Name a collection whose items are, or contain, a reference.",
+    );
+  }
 }
 
 /**
@@ -154,6 +256,11 @@ export function validateReferrerRuleDeclarations(manifest: ResourceManifest): Re
  * manifest identity, since a name alone is module-scoped — because the condition
  * reads the two manifests and nothing about the site, so a second site could only
  * produce the identical verdict at a different path.
+ *
+ * **A rule declaring `peers:` is the exception, and evaluates once per ENTRY.**
+ * That is a deliberate departure from judge-once rather than an inconsistency: a
+ * rule that binds `entry` is about the entry, so a resource listed twice has two
+ * entries to answer for, and the two sites can genuinely disagree.
  */
 export function evaluateReferrerRules(
   manifest: ResourceManifest,
@@ -163,6 +270,7 @@ export function evaluateReferrerRules(
    *  Liskov-substitutable, so a child of the named kind matches. Supplied by the
    *  caller, which holds the definition registry. */
   kindMatches: (filter: string, kind: string) => boolean,
+  context: ReferrerRuleContext = {},
 ): ReferrerRuleFinding[] {
   const rules = readReferrerRules(definitionSchema);
   if (rules.length === 0) return [];
@@ -171,7 +279,11 @@ export function evaluateReferrerRules(
   const findings: ReferrerRuleFinding[] = [];
 
   for (const rule of rules) {
-    const compiled = compileRuleCondition(rule.condition, ["self", "referrer"]);
+    const perEntry = rule.peers !== undefined;
+    const compiled = compileRuleCondition(
+      rule.condition,
+      perEntry ? ["self", "referrer", "entry", "peers"] : ["self", "referrer"],
+    );
     if ("reason" in compiled) {
       findings.push({ kind: "failed", rule, reason: compiled.reason });
       continue;
@@ -186,29 +298,47 @@ export function evaluateReferrerRules(
     const started = Date.now();
     for (const referrer of referrers) {
       if (rule.referrer !== undefined && !kindMatches(rule.referrer, referrer.kind)) continue;
-      if (seen.has(referrer.manifest)) continue;
-      seen.add(referrer.manifest);
+      if (!perEntry) {
+        if (seen.has(referrer.manifest)) continue;
+        seen.add(referrer.manifest);
+      }
+
+      const scope: Record<string, unknown> = {
+        self,
+        referrer: referrer.manifest as unknown as Record<string, unknown>,
+      };
+      if (perEntry) {
+        const bound = context.peerBinder
+          ? context.peerBinder.bind(referrer.manifest, referrer.kind, rule.peers!, referrer.path)
+          : ({
+              ok: false,
+              failure: { reason: "unknown-shape", at: pointerToPath(rule.peers!) },
+            } as const);
+        if (!bound.ok) {
+          findings.push({ kind: "unbound", rule, referrer, failure: bound.failure });
+          continue;
+        }
+        scope.peers = bound.binding.peers;
+        scope.entry = bound.binding.entry;
+      }
 
       // Only the nodes this condition READS decide whether it can run — the
       // resource-rule reasoning, and it bites harder here: the referrer is a
       // whole manifest, so scanning all of it would disable the rule for any
       // server carrying one unrelated expression.
-      let dynamicAt: string | undefined;
-      for (const node of readNodes(chains, {
-        self,
-        referrer: referrer.manifest as unknown as Record<string, unknown>,
-      })) {
-        dynamicAt = findDynamicLeaf(node);
-        if (dynamicAt !== undefined) break;
+      let dynamic: DynamicLeaf | undefined;
+      for (const node of readNodes(chains, scope)) {
+        dynamic = findDynamicLeaf(node);
+        if (dynamic !== undefined) break;
       }
-      if (dynamicAt !== undefined) {
-        findings.push({ kind: "skipped", rule, referrer, dynamicAt });
+      if (dynamic !== undefined) {
+        findings.push({ kind: "skipped", rule, referrer, dynamic });
         continue;
       }
 
       let held: unknown;
       try {
-        held = parsed({ self, referrer: referrer.manifest });
+        held = parsed(scope);
       } catch (err) {
         findings.push({
           kind: "failed",
@@ -239,10 +369,23 @@ export function referrerRuleExercised(
   rule: ReferrerRule,
   referrers: readonly Referrer[],
   kindMatches: (filter: string, kind: string) => boolean,
+  context: ReferrerRuleContext = {},
 ): boolean {
-  if (rule.referrer === undefined) return referrers.length > 0;
-  const filter = rule.referrer;
-  return referrers.some((referrer) => kindMatches(filter, referrer.kind));
+  const matching =
+    rule.referrer === undefined
+      ? referrers
+      : referrers.filter((referrer) => kindMatches(rule.referrer!, referrer.kind));
+  if (matching.length === 0) return false;
+  if (rule.peers === undefined) return true;
+  // A peer rule that ran against an EMPTY peer set proved nothing — and an empty
+  // set everywhere is exactly what a typo in `peers:` looks like from outside,
+  // which is silence that reads as passing. Asked through the binder, so it
+  // shares the resolution the evaluation already paid for.
+  const binder = context.peerBinder;
+  if (!binder) return false;
+  return matching.some((referrer) =>
+    binder.hasPeers(referrer.manifest, referrer.kind, rule.peers!, referrer.path),
+  );
 }
 
 /** Where a referrer-rule finding is reported, and how loudly. Plain data, so the
@@ -260,6 +403,29 @@ export interface ReferrerRuleDiagnostic {
   manifest: ResourceManifest;
   path?: string;
   rule: string;
+}
+
+/** Why a peer binding could not be produced, as the sentence a reader acts on. */
+function peerBindingReason(failure: PeerBindingFailure): string {
+  switch (failure.reason) {
+    case "no-collection":
+      return `'${failure.at}' holds no collection to bind 'peers' from.`;
+    case "unresolved":
+      return (
+        `a reference at '${failure.at}' names a declaration this analysis does not hold, ` +
+        "so a peer would bind to nothing."
+      );
+    case "dynamic":
+      return (
+        `a value at '${failure.at}' holds ${failure.what ?? "a value"}, which is not known ` +
+        "until the resource is created, so the comparison would run against a placeholder."
+      );
+    case "unknown-shape":
+      return (
+        `which paths under '${failure.at}' hold references is not known here, so nothing ` +
+        "could be resolved into a declaration."
+      );
+  }
 }
 
 const nameOf = (manifest: ResourceManifest): string =>
@@ -305,9 +471,24 @@ export function reportReferrerRules(
         message:
           `${finding.referrer.kind}/${nameOf(finding.referrer.manifest)}: rule ` +
           `'${finding.rule.code}' from ${declaringKind} did not run at ` +
-          `'${finding.referrer.path}' — the value holds a CEL expression at ` +
-          `'${finding.dynamicAt}', which is not known until the resource is created. ` +
+          `'${finding.referrer.path}' — the value holds ${finding.dynamic.what} at ` +
+          `'${finding.dynamic.path}', which is not known until the resource is created. ` +
           "Reported rather than dropped: a check whose coverage varies invisibly reads as passing.",
+        manifest: finding.referrer.manifest,
+        path: finding.referrer.path,
+        rule: finding.rule.code,
+      });
+      continue;
+    }
+    if (finding.kind === "unbound") {
+      out.push({
+        code: "REFERRER_RULE_SKIPPED",
+        severity: "information",
+        message:
+          `${finding.referrer.kind}/${nameOf(finding.referrer.manifest)}: rule ` +
+          `'${finding.rule.code}' from ${declaringKind} did not run at ` +
+          `'${finding.referrer.path}' — ${peerBindingReason(finding.failure)}` +
+          " Reported rather than dropped: a check whose coverage varies invisibly reads as passing.",
         manifest: finding.referrer.manifest,
         path: finding.referrer.path,
         rule: finding.rule.code,
@@ -360,12 +541,18 @@ export function reportUnexercisedReferrerRule(
     code: "REFERRER_RULE_UNEXERCISED",
     severity: "information",
     message:
-      `Referrer rule '${rule.code}' never ran: nothing` +
-      (rule.referrer === undefined ? "" : ` of kind '${rule.referrer}'`) +
-      " references a resource of this kind, so nothing has proven the condition." +
-      (rule.referrer === undefined
-        ? ""
-        : " A 'referrer' naming a kind no manifest uses disables the rule in silence."),
+      rule.peers !== undefined
+        ? `Referrer rule '${rule.code}' never ran with peers to compare: nothing` +
+          (rule.referrer === undefined ? "" : ` of kind '${rule.referrer}'`) +
+          ` references a resource of this kind while '${rule.peers}' held another ` +
+          "declaration, so nothing has proven the condition. An empty peer set " +
+          "everywhere is what a typo in 'peers:' looks like from outside."
+        : `Referrer rule '${rule.code}' never ran: nothing` +
+          (rule.referrer === undefined ? "" : ` of kind '${rule.referrer}'`) +
+          " references a resource of this kind, so nothing has proven the condition." +
+          (rule.referrer === undefined
+            ? ""
+            : " A 'referrer' naming a kind no manifest uses disables the rule in silence."),
     manifest: definition,
     path: `schema.${REFERRER_RULES_ANNOTATION}[${rule.index}]`,
     rule: rule.code,

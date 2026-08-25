@@ -49,6 +49,7 @@ Let the user probe your understanding and challenge assumptions. Iterate until y
 - The shape of the solution at a high level.
 - Which existing pieces are reused vs. new.
 - Key risks and how the plan addresses them.
+- Examples of before and after the change, if relevant.
 
 ## Phase 4 — Resolve every open question
 
@@ -75,8 +76,8 @@ Write to `./plans/<kebab-case-name>.md`. The plan must be:
 
 Structure:
 
-1. **Problem** — what we're solving and why it matters.
-2. **Solution** — the chosen approach in prose, with module/file references.
+1. **Problem** — what we're solving and why it matters, together with examples of the current behavior and its shortcomings.
+2. **Solution** — the chosen approach in prose, with module/file references with examples of how the new feature will be used. Include only public API/manifest surface; internal implementation details are not relevant.
 3. **Decisions** — bullet list of the non-obvious choices made, each with a one-line rationale (and rejected alternative where relevant).
 4. **Complete example after the change** (if relevant) — show how a user would use the new feature (eg. YAML manifest), to clarify the intended behavior.
 

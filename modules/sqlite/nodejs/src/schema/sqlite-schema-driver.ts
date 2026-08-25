@@ -1,11 +1,15 @@
 import {
   quoteAnsiIdentifier,
   type ChangeSafety,
+  type DeclaredCheck,
   type DeclaredColumn,
+  type DeclaredEnum,
   type DeclaredForeignKey,
   type DeclaredIndex,
   type DeclaredTable,
+  type LiveCheck,
   type LiveColumn,
+  type LiveEnum,
   type SchemaObjectId,
   type LiveTable,
   type LedgerTables,
@@ -13,6 +17,9 @@ import {
   type LiveIndex,
   type SchemaDriver,
   type SqlConnection,
+  deleteRowStatements,
+  upsertRowStatements,
+  type RowDialect,
 } from "@telorun/sql";
 import { CompiledQuery, type Kysely } from "kysely";
 
@@ -33,11 +40,32 @@ import { CompiledQuery, type Kysely } from "kysely";
 export const SQLITE_TYPES = ["integer", "real", "text", "blob", "numeric"] as const;
 export type SqliteType = (typeof SQLITE_TYPES)[number];
 
+/**
+ * A declared value as SQLite literal text.
+ *
+ * Structured values are SERIALIZED, never stringified. `String({})` is
+ * `[object Object]` and `String([1,2])` is `1,2`, so a structured seed value —
+ * which the row projection admits wherever a column's mapped node is open —
+ * reached the database as that text. SQLite has no JSON type, only the
+ * convention of JSON in a `text` column, and the serialized form is exactly what
+ * that convention (and `json_extract`) reads.
+ *
+ * Bytes get SQLite's own blob literal: `!include-bytes` resolves to a
+ * `Uint8Array` before a controller sees it, and `String(...)` on one yields its
+ * elements comma-joined.
+ */
 function literal(value: unknown): string {
-  if (value === null) return "NULL";
+  if (value === null || value === undefined) return "NULL";
   if (typeof value === "number" || typeof value === "bigint") return String(value);
   if (typeof value === "boolean") return value ? "1" : "0";
-  return `'${String(value).replace(/'/g, "''")}'`;
+  if (value instanceof Uint8Array) return `X'${Buffer.from(value).toString("hex")}'`;
+  if (typeof value === "object") return quoted(JSON.stringify(value));
+  return quoted(String(value));
+}
+
+/** Single quotes doubled — SQLite's only string escape. */
+function quoted(text: string): string {
+  return `'${text.replace(/'/g, "''")}'`;
 }
 
 function columnDefault(column: DeclaredColumn): string {
@@ -125,6 +153,17 @@ export class SqliteSchemaDriver implements SchemaDriver {
     });
   }
 
+  /** SQLite has no DDL this design must keep out of a transaction, so this is
+   *  `runAtomically` under the name the contract asks for. */
+  async runSequentially(statements: readonly string[]): Promise<void> {
+    await this.runAtomically(statements);
+  }
+
+  /** All of them: SQLite has no DDL this design must keep out of a transaction. */
+  transactionalPhase(): boolean {
+    return true;
+  }
+
   async introspect(_schema: string, tables: readonly string[]): Promise<LiveTable[]> {
     const live: LiveTable[] = [];
     for (const table of tables) {
@@ -195,7 +234,11 @@ export class SqliteSchemaDriver implements SchemaDriver {
         });
       }
 
-      live.push({ name: table, columns, indexes, foreignKeys });
+      // Checks are deliberately NOT read back: SQLite keeps them only inside the
+      // table's stored DDL text, and parsing that would be a SQL parser in a
+      // schema driver. The shared half compares this engine's checks against the
+      // RECORDED declaration instead — see `checksInCreateTable`.
+      live.push({ name: table, columns, indexes, foreignKeys, checks: [] });
     }
     return live;
   }
@@ -288,6 +331,14 @@ export class SqliteSchemaDriver implements SchemaDriver {
     if (column.identity) parts.push("AUTOINCREMENT");
     if (!column.nullable) parts.push("NOT NULL");
     if (column.unique) parts.push("UNIQUE");
+    // SQLite has no named types, so a domain reaches the database only as a
+    // constraint on the column that uses it. The values sort as text rather than
+    // in declaration order — the one thing the rendering cannot reproduce, and
+    // why the enum's `values:` order is documented as PostgreSQL's alone.
+    if (column.enum) {
+      const values = column.enum.values.map((value) => literal(value)).join(", ");
+      parts.push(`CHECK (${this.quote(column.name)} IN (${values}))`);
+    }
     const def = columnDefault(column);
     return parts.join(" ") + def;
   }
@@ -303,9 +354,13 @@ export class SqliteSchemaDriver implements SchemaDriver {
   createTable(schema: string, table: DeclaredTable): string[] {
     const parts = table.columns.map((column) => this.#columnDefinition(column));
     // Foreign keys are part of the table in SQLite — there is no ADD CONSTRAINT
-    // — so they are emitted here and nowhere else.
+    // — so they are emitted here and nowhere else. Named checks land in exactly
+    // the same place, for exactly the same reason.
     for (const fk of table.foreignKeys) {
       parts.push(this.#foreignKeyClause(fk));
+    }
+    for (const check of table.checks) {
+      parts.push(`CONSTRAINT ${this.quote(check.name)} CHECK (${check.expression})`);
     }
     return [
       `CREATE TABLE IF NOT EXISTS ${this.qualify(schema, table.name)} (\n  ${parts.join(",\n  ")}\n)`,
@@ -377,14 +432,150 @@ export class SqliteSchemaDriver implements SchemaDriver {
     );
   }
 
+  /** SQLite has no `ADD CONSTRAINT`, so a check exists only as part of the table
+   *  it was created with — the same place its foreign keys are. */
+  readonly checksInCreateTable = true;
+
+  /** Compared against the RECORDED declaration rather than live state, so this
+   *  is declaration against declaration and the text is the whole comparison. */
+  checkDiffers(live: LiveCheck, declared: DeclaredCheck): boolean {
+    return live.expression !== declared.expression;
+  }
+
+  classifyCheckChange(_live: LiveCheck, declared: DeclaredCheck): ChangeSafety {
+    return {
+      safe: false,
+      reason:
+        `SQLite has no ALTER for a constraint — a check exists only as part of the table it was ` +
+        `created with — so '${declared.name}' cannot be changed in place. Rebuild the table in a ` +
+        `'migrations:' entry.`,
+    };
+  }
+
+  addCheck(_schema: string, table: string, check: DeclaredCheck): string[] {
+    throw new Error(
+      `SQLite.Table: check '${check.name}' cannot be added to the existing table '${table}' — ` +
+        `SQLite has no ADD CONSTRAINT and a check exists only as part of the table it was ` +
+        `created with. Rebuild the table in a 'migrations:' entry.`,
+    );
+  }
+
+  dropCheck(_schema: string, table: string, name: string): string[] {
+    throw new Error(
+      `SQLite.Table: check '${name}' cannot be dropped from '${table}' — SQLite has no DROP ` +
+        `CONSTRAINT. Rebuild the table in a 'migrations:' entry.`,
+    );
+  }
+
+  /** Unreachable: nothing on SQLite is ever added `NOT VALID`, so nothing is
+   *  waiting to be proven. */
+  validateCheck(_schema: string, table: string, name: string): string[] {
+    throw new Error(`SQLite.Table: check '${table}.${name}' has no deferred validation to run.`);
+  }
+
+  /**
+   * SQLite has no named types, so a domain has no database object behind it: the
+   * values are rendered as a `CHECK` on every column that references the enum.
+   *
+   * The DECLARATION is still a ledger object like any other, which is what lets a
+   * change to it be detected at all — see `classifyEnumChange`.
+   */
+  readonly namedEnumTypes = false;
+
+  /** Nothing to read back: there is no type to introspect. */
+  async introspectEnums(): Promise<LiveEnum[]> {
+    return [];
+  }
+
+  /** Unreachable: the shared half asks only when `namedEnumTypes` holds. */
+  createEnum(_schema: string, declared: DeclaredEnum): string[] {
+    throw new Error(
+      `SQLite.Enum '${declared.typeName}': SQLite has no named types, so nothing creates one.`,
+    );
+  }
+
+  addEnumValues(_schema: string, declared: DeclaredEnum): string[] {
+    throw new Error(
+      `SQLite.Enum '${declared.typeName}': SQLite has no named types, so nothing alters one.`,
+    );
+  }
+
+  /** No statement at all — the `CHECK`s on referencing tables never named the
+   *  type, so the ledger key rewrite IS the rename. */
+  renameEnum(): string[] {
+    return [];
+  }
+
+  /** The one part of renaming where the two engines need no separate story:
+   *  SQLite renames a table with the same statement PostgreSQL does. */
+  renameTable(schema: string, from: string, to: string): string[] {
+    return [`ALTER TABLE ${this.qualify(schema, from)} RENAME TO ${this.quote(to)}`];
+  }
+
+  /**
+   * A domain reaches the database inside the tables that use it, so changing one
+   * would mean rebuilding every referencing table — which is where SQLite's
+   * foreign keys and column alterations already are.
+   *
+   * The comparison is against the RECORDED declaration rather than live state,
+   * because there is no live state: nothing in the database corresponds to the
+   * type. That is exactly what makes snapshotting the whole enum declaration
+   * load-bearing rather than decorative.
+   */
+  classifyEnumChange(
+    _live: LiveEnum | undefined,
+    declared: DeclaredEnum,
+    owned: DeclaredEnum | undefined,
+  ): ChangeSafety {
+    if (!owned) return { safe: true };
+    const same =
+      owned.baseType === declared.baseType &&
+      owned.values.length === declared.values.length &&
+      owned.values.every((value, i) => value === declared.values[i]);
+    if (same) return { safe: true };
+    return {
+      safe: false,
+      reason:
+        `SQLite has no named types, so '${declared.typeName}' is rendered as a CHECK on every ` +
+        `column that references it — and SQLite has no ALTER for a constraint. Changing the ` +
+        `declaration would leave every existing table enforcing the old values. Rebuild the ` +
+        `referencing tables in a 'migrations:' entry, which is where a changed constraint on ` +
+        `this engine belongs.`,
+    };
+  }
+
+  dropEnum(): string[] {
+    return [];
+  }
+
+  /** SQLite has no installable extensions in the sense this declares — a
+   *  loadable extension is a build-time or connection-time concern, not a schema
+   *  object a pass can create. */
+  readonly namedExtensions = false;
+
+  async introspectExtensions(): Promise<string[]> {
+    return [];
+  }
+
+  createExtension(_schema: string, name: string): string[] {
+    throw new Error(
+      `SQLite.Schema: extension '${name}' cannot be created — SQLite has no installable ` +
+        `extensions a schema pass can provision.`,
+    );
+  }
+
+  dropExtension(_schema: string, name: string): string[] {
+    throw new Error(`SQLite.Schema: extension '${name}' cannot be dropped.`);
+  }
+
   canReclaim(id: SchemaObjectId): ChangeSafety {
-    if (id.kind === "foreignKey") {
+    if (id.kind === "foreignKey" || id.kind === "check") {
       return {
         safe: false,
         reason:
-          "SQLite has no DROP CONSTRAINT, so this foreign key cannot be dropped in place. " +
-          "Rebuild the table in a 'migrations:' entry; the tombstone is cleared when the " +
-          "constraint is gone.",
+          `SQLite has no DROP CONSTRAINT, so this ${id.kind === "check" ? "check" : "foreign key"} ` +
+          "cannot be dropped in place. Rebuild the table in a 'migrations:' entry; the tombstone " +
+          "is cleared when the constraint is gone.",
       };
     }
     return { safe: true };
@@ -396,5 +587,35 @@ export class SqliteSchemaDriver implements SchemaDriver {
 
   dropTable(schema: string, table: string): string[] {
     return [`DROP TABLE IF EXISTS ${this.qualify(schema, table)}`];
+  }
+
+  /** SQLite has had upsert since 3.24, so both engines render the same statement
+   *  SHAPE — which is why it lives in `row-statements.ts` and only the dialect
+   *  is answered here. */
+  get #rowDialect(): RowDialect {
+    return {
+      quote: (name) => this.quote(name),
+      literal,
+      qualify: (schema, table) => this.qualify(schema, table),
+      excludedAlias: "excluded",
+    };
+  }
+
+  upsertRow(
+    schema: string,
+    table: string,
+    key: readonly string[],
+    row: Record<string, unknown>,
+  ): string[] {
+    return upsertRowStatements(this.#rowDialect, schema, table, key, row);
+  }
+
+  deleteRow(
+    schema: string,
+    table: string,
+    key: readonly string[],
+    row: Record<string, unknown>,
+  ): string[] {
+    return deleteRowStatements(this.#rowDialect, schema, table, key, row);
   }
 }

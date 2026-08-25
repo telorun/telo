@@ -1,0 +1,129 @@
+kind: Telo.Application
+metadata:
+  name: PgEnumBoots
+  version: 8.0.0
+  description: |
+    Boot 8 — the table and the type are both renamed.
+
+    The row count survives and nothing is created or tombstoned, which is what a
+    NATIVE rename buys and what the marker exists to make possible: without it
+    the reconciler cannot tell a rename from a drop-and-create, and would create
+    an empty table beside a tombstoned populated one, and a second type beside
+    the first with every column rewritten to reach it.
+
+    Renaming the RESOURCE would have planned nothing at all — the ledger keys on
+    the physical name, never on the resource name — which is why only these two
+    fields carry a marker.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: conversation_role
+renamedFrom: message_role
+values: [system, user, assistant]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: conversation_messages
+renamedFrom: messages
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  role: { type: !ref messageRole, nullable: false }
+  body: { type: text }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_enum_boots
+version: !cel "module.version"
+enums: [!ref messageRole]
+tables: [!ref messages]
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # Nothing was created and nothing was retired: the rename moved the ledger
+  # entry rather than recording a drop and a create.
+  - name: assertQuiet
+    invoke: !ref assertQuiet
+    inputs:
+      actual:
+        tombstoned: !cel "resources.appSchema.status.tombstoned"
+        reclaimed: !cel "resources.appSchema.status.reclaimed"
+      expected:
+        tombstoned: []
+        reclaimed: []
+  - name: readRows
+    invoke: !ref query
+    inputs:
+      sql: "SELECT role, body FROM telo_pg_enum_boots.conversation_messages ORDER BY id"
+  - name: assertRows
+    invoke: !ref assertRows
+    inputs:
+      actual: !cel "steps.readRows.result.rows"
+      expected:
+        - { role: user, body: hi }
+        - { role: tool, body: ran }
+  - name: readNames
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT c.relname AS name FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'telo_pg_enum_boots' AND c.relkind = 'r'
+          AND c.relname IN ('messages', 'conversation_messages')
+  - name: assertOnlyNewName
+    invoke: !ref assertOnlyNewName
+    inputs:
+      actual: !cel "steps.readNames.result.rows"
+      expected:
+        - { name: conversation_messages }
+  - name: readType
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT t.typname AS name FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE n.nspname = 'telo_pg_enum_boots' AND t.typtype = 'e' ORDER BY t.typname
+  - name: assertOnlyNewType
+    invoke: !ref assertOnlyNewType
+    inputs:
+      actual: !cel "steps.readType.result.rows"
+      expected:
+        - { name: conversation_role }
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertQuiet }
+---
+kind: Assert.Equals
+metadata: { name: assertRows }
+---
+kind: Assert.Equals
+metadata: { name: assertOnlyNewName }
+---
+kind: Assert.Equals
+metadata: { name: assertOnlyNewType }

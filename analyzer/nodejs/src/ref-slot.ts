@@ -97,6 +97,19 @@ export interface RefSlot {
   /** `x-telo-inline: true` on the slot or any `anyOf` branch — accepts an inline
    *  `{kind, ...config}` definition, not only a `!ref`. */
   inline: boolean;
+  /** The slot's VALUE branches — `anyOf` / `oneOf` alternatives that carry no
+   *  `x-telo-ref`, present only when the reference constraint is itself a
+   *  *branch* rather than the node's own annotation.
+   *
+   *  That narrowing is the whole point. A node-level `x-telo-ref` with branches
+   *  beneath it (an Application `targets` entry) uses those branches to describe
+   *  the POST-RESOLUTION structural forms a reference takes — a bare string
+   *  there is the removed string-reference spelling, and admitting it as a value
+   *  would retire `INVALID_REFERENCE_FORM` exactly where it still applies. A
+   *  branch-level constraint says something different: this slot holds either a
+   *  value of one shape or a reference, and a scalar is then a value, not a
+   *  malformed reference. */
+  valueBranches: Record<string, any>[];
 }
 
 /** Every use a slot can take, flattening a case map. The conservative reading
@@ -173,6 +186,28 @@ function annotationNodes(node: Record<string, any> | undefined): Record<string, 
   return out;
 }
 
+/** The branches of a value-or-reference union — see {@link RefSlot.valueBranches}.
+ *  Empty unless the node delegates its reference constraint to a branch. */
+function valueBranchesOf(node: Record<string, any> | undefined): Record<string, any>[] {
+  if (!node || typeof node !== "object") return [];
+  if (node["x-telo-ref"] !== undefined) return [];
+  const out: Record<string, any>[] = [];
+  for (const key of ["anyOf", "oneOf"] as const) {
+    const branches = node[key];
+    if (!Array.isArray(branches)) continue;
+    const carriesRef = branches.some(
+      (b) => b && typeof b === "object" && b["x-telo-ref"] !== undefined,
+    );
+    if (!carriesRef) continue;
+    for (const branch of branches) {
+      if (!branch || typeof branch !== "object") continue;
+      if (branch["x-telo-ref"] !== undefined) continue;
+      out.push(branch as Record<string, any>);
+    }
+  }
+  return out;
+}
+
 /**
  * Reads a schema node as a reference slot, or `undefined` when it declares none.
  *
@@ -210,6 +245,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
     kinds,
     uses: [...uses],
     inline: node?.["x-telo-inline"] === true || nodes.some((n) => n["x-telo-inline"] === true),
+    valueBranches: valueBranchesOf(node),
   };
   if (useCases) slot.useCases = useCases;
   if (inputs !== undefined) slot.inputs = inputs;

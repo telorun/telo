@@ -1,7 +1,9 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import {
+  enumReferenceResolver,
   normalizeTable,
   tableReferenceResolver,
+  type ColumnTypeResolver,
   type DeclaredTable,
   type RawTable,
 } from "@telorun/sql";
@@ -17,7 +19,11 @@ export class PostgresTableResource implements ResourceInstance {
   readonly declaration: DeclaredTable;
 
   constructor(raw: RawTable, ctx: ResourceContext) {
-    this.declaration = normalizeTable(raw, tableReferenceResolver(ctx, "Postgres.Table", raw.table));
+    this.declaration = normalizeTable(
+      raw,
+      tableReferenceResolver(ctx, "Postgres.Table", raw.table),
+      postgresColumnType(ctx, raw.table),
+    );
   }
 
   /** The physical table name, read by consumers that build statements against
@@ -29,6 +35,20 @@ export class PostgresTableResource implements ResourceInstance {
   snapshot(): Record<string, unknown> {
     return { table: this.declaration.name };
   }
+}
+
+/** In PostgreSQL a named enum IS the column's type, so the reduced type name is
+ *  the enum's own. */
+function postgresColumnType(ctx: ResourceContext, table: string): ColumnTypeResolver {
+  const resolveEnum = enumReferenceResolver(ctx, "Postgres.Enum", table);
+  return (value, column) => {
+    const declared = resolveEnum(value, column);
+    if (!declared) return { type: String(value) };
+    return {
+      type: declared.typeName,
+      enum: { typeName: declared.typeName, values: declared.values },
+    };
+  };
 }
 
 export function register(): void {}

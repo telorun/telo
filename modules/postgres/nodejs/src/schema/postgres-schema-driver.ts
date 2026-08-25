@@ -1,18 +1,26 @@
 import {
   quoteAnsiIdentifier,
   type ChangeSafety,
+  type DeclaredCheck,
   type DeclaredColumn,
+  type DeclaredEnum,
   type DeclaredForeignKey,
   type DeclaredIndex,
   type DeclaredTable,
+  type LiveCheck,
   type LiveColumn,
+  type LiveEnum,
   type SchemaObjectId,
   type LiveTable,
   type LedgerTables,
   type LiveForeignKey,
   type LiveIndex,
+  type PlanPhase,
   type SchemaDriver,
   type SqlConnection,
+  deleteRowStatements,
+  upsertRowStatements,
+  type RowDialect,
 } from "@telorun/sql";
 import { CompiledQuery, type Kysely } from "kysely";
 import { typeEntry, widens } from "./postgres-types.js";
@@ -162,6 +170,20 @@ export class PostgresSchemaDriver implements SchemaDriver {
     });
   }
 
+  /** `ALTER TYPE … ADD VALUE` cannot be used in the transaction that adds it, so
+   *  these run one at a time and unwrapped. Idempotent by `IF NOT EXISTS`, which
+   *  is what makes a partial run safe to repeat. */
+  async runSequentially(statements: readonly string[]): Promise<void> {
+    for (const statement of statements) await this.connection.execute(statement);
+  }
+
+  /** Every phase but `enumValue`: PostgreSQL refuses to use an enum value in the
+   *  transaction that adds it, so a column added in the same pass could not
+   *  carry it as a default. */
+  transactionalPhase(phase: PlanPhase): boolean {
+    return phase !== "enumValue";
+  }
+
   async introspect(schema: string, tables: readonly string[]): Promise<LiveTable[]> {
     if (tables.length === 0) return [];
     const columns = await this.connection.execute<Record<string, unknown>>(
@@ -204,14 +226,35 @@ export class PostgresSchemaDriver implements SchemaDriver {
       [schema],
     );
 
+    // `contype = 'c'` is a CHECK; `convalidated` says whether it has been proven
+    // against the rows already there, which is the state `validate: deferred`
+    // leaves behind. Constraints PostgreSQL generates for a NOT NULL column are
+    // excluded by `conname` never matching a declared one — they are matched by
+    // name like every other check, and nothing declared them, so nothing owns
+    // them.
+    const checks = await this.connection.execute<Record<string, unknown>>(
+      `SELECT c.conname AS name, t.relname AS table_name, c.convalidated AS validated, ` +
+        `pg_get_constraintdef(c.oid) AS definition ` +
+        `FROM pg_constraint c ` +
+        `JOIN pg_class t ON t.oid = c.conrelid ` +
+        `JOIN pg_namespace n ON n.oid = t.relnamespace ` +
+        `WHERE n.nspname = $1 AND c.contype = 'c'`,
+      [schema],
+    );
+
     const declared = new Set(tables);
     const live = new Map<
       string,
-      { columns: LiveColumn[]; indexes: LiveIndex[]; fks: LiveForeignKey[] }
+      {
+        columns: LiveColumn[];
+        indexes: LiveIndex[];
+        fks: LiveForeignKey[];
+        checks: LiveCheck[];
+      }
     >();
     const bucket = (name: string) => {
       let entry = live.get(name);
-      if (!entry) live.set(name, (entry = { columns: [], indexes: [], fks: [] }));
+      if (!entry) live.set(name, (entry = { columns: [], indexes: [], fks: [], checks: [] }));
       return entry;
     };
 
@@ -267,15 +310,124 @@ export class PostgresSchemaDriver implements SchemaDriver {
       });
     }
 
+    for (const row of checks.rows) {
+      const table = String(row.table_name);
+      if (!live.has(table)) continue;
+      bucket(table).checks.push({
+        name: String(row.name),
+        // `pg_get_constraintdef` renders `CHECK ((expr)) NOT VALID`; the
+        // predicate is what a declaration states, so the wrapper comes off here
+        // rather than in the comparison.
+        expression: predicateOf(String(row.definition)),
+        validated: row.validated === true,
+      });
+    }
+
     return [...live].map(([name, entry]) => ({
       name,
       columns: entry.columns,
       indexes: entry.indexes,
       foreignKeys: entry.fks,
+      checks: entry.checks,
     }));
   }
 
+  /** PostgreSQL has a first-class enum type, so a domain is a schema object and
+   *  a column simply names it. */
+  readonly namedEnumTypes = true;
+
+  async introspectEnums(schema: string, names: readonly string[]): Promise<LiveEnum[]> {
+    if (names.length === 0) return [];
+    const rows = await this.connection.execute<Record<string, unknown>>(
+      `SELECT t.typname AS name, ` +
+        `ARRAY(SELECT e.enumlabel FROM pg_enum e WHERE e.enumtypid = t.oid ` +
+        `ORDER BY e.enumsortorder)::text[] AS values ` +
+        `FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace ` +
+        `WHERE n.nspname = $1 AND t.typtype = 'e'`,
+      [schema],
+    );
+    const declared = new Set(names);
+    return rows.rows
+      .filter((row) => declared.has(String(row.name)))
+      .map((row) => ({ name: String(row.name), values: (row.values as string[]) ?? [] }));
+  }
+
+  createEnum(schema: string, declared: DeclaredEnum): string[] {
+    const values = declared.values.map((value) => literal(value)).join(", ");
+    return [`CREATE TYPE ${this.qualify(schema, declared.typeName)} AS ENUM (${values})`];
+  }
+
+  addEnumValues(schema: string, declared: DeclaredEnum, values: readonly string[]): string[] {
+    return values.map(
+      (value) =>
+        `ALTER TYPE ${this.qualify(schema, declared.typeName)} ADD VALUE IF NOT EXISTS ` +
+        literal(value),
+    );
+  }
+
+  renameEnum(schema: string, from: string, to: string): string[] {
+    return [`ALTER TYPE ${this.qualify(schema, from)} RENAME TO ${this.quote(to)}`];
+  }
+
+  /** Instant, and it rewrites nothing: the rows stay where they are. */
+  renameTable(schema: string, from: string, to: string): string[] {
+    return [`ALTER TABLE ${this.qualify(schema, from)} RENAME TO ${this.quote(to)}`];
+  }
+
+  /** Nothing about an enum is unsafe to bring to its declaration on PostgreSQL:
+   *  a value is added in place, and a REMOVAL is never planned by the shared half
+   *  on any engine. */
+  classifyEnumChange(): ChangeSafety {
+    return { safe: true };
+  }
+
+  dropEnum(schema: string, name: string): string[] {
+    return [`DROP TYPE IF EXISTS ${this.qualify(schema, name)}`];
+  }
+
+  readonly namedExtensions = true;
+
+  async introspectExtensions(_schema: string, names: readonly string[]): Promise<string[]> {
+    if (names.length === 0) return [];
+    const rows = await this.connection.execute<Record<string, unknown>>(
+      `SELECT extname AS name FROM pg_extension`,
+    );
+    const declared = new Set(names);
+    return rows.rows.map((row) => String(row.name)).filter((name) => declared.has(name));
+  }
+
+  /**
+   * Installed where the connection's `search_path` will find it, NOT into the
+   * schema this resource owns.
+   *
+   * `SCHEMA <ns>` was the first thing tried and it is wrong: an extension's types
+   * are then reachable only when qualified, so a column declared `citext` fails
+   * with `type "citext" does not exist` while the extension provably exists. And
+   * qualifying a type is not something the declaration can express — `citext` is
+   * an entry in this engine's storage-class vocabulary, not a name the author
+   * scoped.
+   *
+   * Unqualified is also the honest reading of what an extension IS: it is
+   * database-wide and shared, which is the same fact `canReclaim` refuses a drop
+   * over. `IF NOT EXISTS` is what makes two schema resources declaring the same
+   * one idempotent rather than a race.
+   */
+  createExtension(_schema: string, name: string): string[] {
+    return [`CREATE EXTENSION IF NOT EXISTS ${this.quote(name)}`];
+  }
+
+  /** Unreachable: `canReclaim` refuses an extension before the drop is planned. */
+  dropExtension(_schema: string, name: string): string[] {
+    throw new Error(`Postgres.Schema: extension '${name}' is never dropped automatically.`);
+  }
+
   typeSignature(column: DeclaredColumn): string {
+    // A column whose type is an enum reports back under the TYPE's name, which is
+    // what `udt_name` carries — so the signature is that name and the comparison
+    // needs nothing new.
+    if (column.enum) {
+      return column.array ? `_${column.enum.typeName}` : column.enum.typeName;
+    }
     const entry = typeEntry(column.type);
     let signature = entry.udt;
     if (entry.lengthed && column.params.length != null) {
@@ -311,7 +463,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
           safe: false,
           reason:
             `changing ${live.typeSignature} to ${target} is not a widening conversion, so ` +
-            `existing values may not survive it. Convert the data in a 'beforeMigrations:' ` +
+            `existing values may not survive it. Convert the data in a 'prepare:' ` +
             `entry first, or declare the wider type.`,
         };
       }
@@ -320,7 +472,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
           safe: false,
           reason:
             `narrowing ${live.typeSignature} to ${target} would truncate existing values. ` +
-            `Make the data fit in a 'beforeMigrations:' entry first.`,
+            `Make the data fit in a 'prepare:' entry first.`,
         };
       }
     }
@@ -330,7 +482,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
         reason:
           `the primary key cannot be added or dropped by altering a column ` +
           `(primaryKey ${live.primaryKey} → ${declared.primaryKey}). Change it in a ` +
-          `'beforeMigrations:' entry, where the constraint can be named.`,
+          `'prepare:' entry, where the constraint can be named.`,
       };
     }
     if (live.unique !== declared.unique) {
@@ -339,7 +491,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
         reason:
           `uniqueness is a named constraint, not a column property that can be toggled in ` +
           `place (unique ${live.unique} → ${declared.unique}). Add or drop it in a ` +
-          `'beforeMigrations:' entry — adding it fails if the column already holds duplicates, ` +
+          `'prepare:' entry — adding it fails if the column already holds duplicates, ` +
           `which is the check you want — or declare a unique index instead.`,
       };
     }
@@ -348,7 +500,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
         safe: false,
         reason:
           "adding NOT NULL to a column that is currently nullable fails if any row holds " +
-          "NULL. Backfill it in a 'beforeMigrations:' entry first.",
+          "NULL. Backfill it in a 'prepare:' entry first.",
       };
     }
     return { safe: true };
@@ -367,7 +519,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
       reason:
         `copying ${live.typeSignature} values into a ${to} column is not a widening ` +
         `conversion, so PostgreSQL will either refuse the assignment or lose data. Convert ` +
-        `the data in a 'beforeMigrations:' entry, or declare the same type.`,
+        `the data in a 'prepare:' entry, or declare the same type.`,
     };
   }
 
@@ -387,13 +539,20 @@ export class PostgresSchemaDriver implements SchemaDriver {
       safe: false,
       reason: isArray
         ? `making ${from} an array is not a conversion PostgreSQL performs on its own. Add the ` +
-          `column alongside and copy with an explicit cast in a 'beforeMigrations:' entry.`
+          `column alongside and copy with an explicit cast in a 'prepare:' entry.`
         : `unwrapping the array ${from} into ${to} would discard every element but one at best. ` +
-          `Convert the data in a 'beforeMigrations:' entry.`,
+          `Convert the data in a 'prepare:' entry.`,
     };
   }
 
-  #typeSql(column: DeclaredColumn): string {
+  #typeSql(schema: string, column: DeclaredColumn): string {
+    // A named type is written schema-qualified like every other identifier here:
+    // relying on `search_path` would let a session default decide which type a
+    // column gets, with no error when it decides wrong.
+    if (column.enum) {
+      const sql = this.qualify(schema, column.enum.typeName);
+      return column.array ? `${sql}[]` : sql;
+    }
     const entry = typeEntry(column.type);
     let sql = entry.ddl ?? column.type;
     if (entry.lengthed && column.params.length != null) sql += `(${Number(column.params.length)})`;
@@ -410,7 +569,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
     return "";
   }
 
-  #columnDefinition(column: DeclaredColumn): string {
+  #columnDefinition(schema: string, column: DeclaredColumn): string {
     // An identity column takes its values from the sequence; PostgreSQL rejects
     // a DEFAULT beside it rather than preferring one.
     if (column.identity && (column.default !== undefined || column.defaultExpression !== undefined)) {
@@ -419,7 +578,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
           `column takes its values from its own sequence — drop the default.`,
       );
     }
-    const parts = [this.quote(column.name), this.#typeSql(column)];
+    const parts = [this.quote(column.name), this.#typeSql(schema, column)];
     if (column.identity) {
       parts.push(`GENERATED ${column.identity.toUpperCase()} AS IDENTITY`);
     }
@@ -430,7 +589,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
   }
 
   createTable(schema: string, table: DeclaredTable): string[] {
-    const parts = table.columns.map((column) => this.#columnDefinition(column));
+    const parts = table.columns.map((column) => this.#columnDefinition(schema, column));
     return [
       `CREATE TABLE IF NOT EXISTS ${this.qualify(schema, table.name)} (\n  ` +
         `${parts.join(",\n  ")}\n)`,
@@ -447,7 +606,7 @@ export class PostgresSchemaDriver implements SchemaDriver {
     }
     return [
       `ALTER TABLE ${this.qualify(schema, table)} ADD COLUMN IF NOT EXISTS ` +
-        this.#columnDefinition(column),
+        this.#columnDefinition(schema, column),
     ];
   }
 
@@ -456,7 +615,9 @@ export class PostgresSchemaDriver implements SchemaDriver {
     const name = this.quote(column.name);
     const statements: string[] = [];
     if (live.typeSignature !== this.typeSignature(column)) {
-      statements.push(`ALTER TABLE ${target} ALTER COLUMN ${name} TYPE ${this.#typeSql(column)}`);
+      statements.push(
+        `ALTER TABLE ${target} ALTER COLUMN ${name} TYPE ${this.#typeSql(schema, column)}`,
+      );
     }
     if (live.nullable !== column.nullable) {
       statements.push(
@@ -515,8 +676,73 @@ export class PostgresSchemaDriver implements SchemaDriver {
     ];
   }
 
-  /** PostgreSQL can drop every object kind this design tracks. */
-  canReclaim(_id: SchemaObjectId): ChangeSafety {
+  /** PostgreSQL has `ADD CONSTRAINT`, so a check is an ordinary diff. */
+  readonly checksInCreateTable = false;
+
+  /**
+   * PostgreSQL stores a NORMALIZED rendering of the predicate — `balance_cents
+   * >= 0` comes back as `((balance_cents >= 0))` — so comparing the author's text
+   * against it would replan the same constraint on every boot.
+   *
+   * Compared with whitespace and the engine's outer parentheses removed. That is
+   * a heuristic rather than a parse, and it is the SAFE direction for a
+   * constraint: a false "same" leaves a constraint the author edited in place,
+   * which the ledger still records as declared, while a false "different" would
+   * drop and re-add — revalidating every row — on every boot forever.
+   */
+  checkDiffers(live: LiveCheck, declared: DeclaredCheck): boolean {
+    return normalizePredicate(live.expression) !== normalizePredicate(declared.expression);
+  }
+
+  /** A check is dropped and re-added; the re-add revalidates the data, which is
+   *  what makes a tightened predicate fail loudly rather than lie. */
+  classifyCheckChange(): ChangeSafety {
+    return { safe: true };
+  }
+
+  addCheck(schema: string, table: string, check: DeclaredCheck): string[] {
+    // `NOT VALID` enforces the predicate for new rows immediately and defers the
+    // scan of the existing ones — which is what keeps adding a constraint to a
+    // large table from holding a lock while every row is read.
+    const notValid = check.validate === "deferred" ? " NOT VALID" : "";
+    return [
+      `ALTER TABLE ${this.qualify(schema, table)} ADD CONSTRAINT ${this.quote(check.name)} ` +
+        `CHECK (${check.expression})${notValid}`,
+    ];
+  }
+
+  dropCheck(schema: string, table: string, name: string): string[] {
+    return [
+      `ALTER TABLE ${this.qualify(schema, table)} DROP CONSTRAINT IF EXISTS ${this.quote(name)}`,
+    ];
+  }
+
+  validateCheck(schema: string, table: string, name: string): string[] {
+    return [
+      `ALTER TABLE ${this.qualify(schema, table)} VALIDATE CONSTRAINT ${this.quote(name)}`,
+    ];
+  }
+
+  /**
+   * PostgreSQL can drop every object kind this design tracks EXCEPT an
+   * extension, which is refused deliberately rather than for want of a
+   * statement.
+   *
+   * An extension is database-wide and shared: something outside this schema may
+   * be using it, and `DROP EXTENSION` takes every object that depends on it with
+   * it. Tombstoned on removal rather than dropped, so the record exists and the
+   * decision stays a person's.
+   */
+  canReclaim(id: SchemaObjectId): ChangeSafety {
+    if (id.kind === "extension") {
+      return {
+        safe: false,
+        reason:
+          "an extension is database-wide, so something outside this schema may be using it and " +
+          "DROP EXTENSION would take every dependent object with it. Removed from the " +
+          "declaration it is recorded and left installed; drop it by hand when nothing needs it.",
+      };
+    }
     return { safe: true };
   }
 
@@ -529,13 +755,66 @@ export class PostgresSchemaDriver implements SchemaDriver {
   dropTable(schema: string, table: string): string[] {
     return [`DROP TABLE IF EXISTS ${this.qualify(schema, table)}`];
   }
+
+  /** The dialect half of rendering a seed row — see `row-statements.ts`, which
+   *  owns the statement SHAPE both engines share. */
+  get #rowDialect(): RowDialect {
+    return {
+      quote: (name) => this.quote(name),
+      literal,
+      qualify: (schema, table) => this.qualify(schema, table),
+      excludedAlias: "EXCLUDED",
+    };
+  }
+
+  upsertRow(
+    schema: string,
+    table: string,
+    key: readonly string[],
+    row: Record<string, unknown>,
+  ): string[] {
+    return upsertRowStatements(this.#rowDialect, schema, table, key, row);
+  }
+
+  deleteRow(
+    schema: string,
+    table: string,
+    key: readonly string[],
+    row: Record<string, unknown>,
+  ): string[] {
+    return deleteRowStatements(this.#rowDialect, schema, table, key, row);
+  }
 }
 
+/**
+ * A declared value as PostgreSQL literal text.
+ *
+ * Structured values are SERIALIZED, never stringified. `String({})` is
+ * `[object Object]` and `String([1,2])` is `1,2`, and a `json` / `jsonb` column
+ * projects to an OPEN schema by design (a JSON column holds any JSON value), so
+ * a structured seed value passed `telo check` and reached the database as that
+ * text — silent corruption in the one place a seed row is most likely to carry
+ * one. Serialized, it is exactly right for a JSON column and a loud type error
+ * from the engine for anything else, which is the direction this design takes
+ * everywhere else it cannot decide.
+ *
+ * Bytes get the engine's own hex form: `!include-bytes` resolves to a
+ * `Uint8Array` before a controller sees it, and `String(...)` on one yields its
+ * elements comma-joined.
+ */
 function literal(value: unknown): string {
-  if (value === null) return "NULL";
+  if (value === null || value === undefined) return "NULL";
   if (typeof value === "number" || typeof value === "bigint") return String(value);
   if (typeof value === "boolean") return value ? "true" : "false";
-  return `'${String(value).replace(/'/g, "''")}'`;
+  if (value instanceof Uint8Array) return `'\\x${Buffer.from(value).toString("hex")}'`;
+  if (typeof value === "object") return quoted(JSON.stringify(value));
+  return quoted(String(value));
+}
+
+/** Single quotes doubled — the only escape `standard_conforming_strings` (on by
+ *  default since 9.1) requires. */
+function quoted(text: string): string {
+  return `'${text.replace(/'/g, "''")}'`;
 }
 
 function liveSignature(row: Record<string, unknown>): string {
@@ -545,6 +824,36 @@ function liveSignature(row: Record<string, unknown>): string {
     return `${udt}(${Number(row.numeric_precision)},${Number(row.numeric_scale ?? 0)})`;
   }
   return udt;
+}
+
+/** The predicate out of `CHECK ((…)) NOT VALID`, which is what a declaration
+ *  states. The wrapper is the engine's rendering, not part of what was declared. */
+function predicateOf(definition: string): string {
+  const match = /^CHECK\s*\((.*)\)(?:\s+NOT VALID)?$/is.exec(definition.trim());
+  return match ? match[1]! : definition;
+}
+
+/** Whitespace and the engine's own outer parentheses removed, so an author's
+ *  `balance_cents >= 0` and the catalogue's `((balance_cents >= 0))` compare
+ *  equal. See {@link PostgresSchemaDriver.checkDiffers} for why the heuristic is
+ *  the safe direction here. */
+function normalizePredicate(expression: string): string {
+  let text = expression.replace(/\s+/g, "");
+  while (text.startsWith("(") && text.endsWith(")") && balanced(text.slice(1, -1))) {
+    text = text.slice(1, -1);
+  }
+  return text.toLowerCase();
+}
+
+/** True when every parenthesis in `text` closes within it — what makes stripping
+ *  the outer pair safe rather than a way to mangle `(a)AND(b)`. */
+function balanced(text: string): boolean {
+  let depth = 0;
+  for (const character of text) {
+    if (character === "(") depth++;
+    else if (character === ")" && --depth < 0) return false;
+  }
+  return depth === 0;
 }
 
 function baseType(signature: string): string {

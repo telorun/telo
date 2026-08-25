@@ -1,0 +1,33 @@
+# The positive control: a rename whose source is genuinely retired, so only the
+# successor is declared. Nothing else in the schema claims that predecessor.
+kind: Telo.Application
+metadata:
+  name: RenameClean
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: appDb }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: messages }
+table: messages
+renamedFrom: chat_messages
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: audit }
+table: audit
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref appDb
+version: "1.0.0"
+tables: [!ref messages, !ref audit]

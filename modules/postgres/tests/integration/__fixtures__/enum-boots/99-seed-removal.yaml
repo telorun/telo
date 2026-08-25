@@ -1,0 +1,130 @@
+kind: Telo.Application
+metadata:
+  name: PgEnumBoots
+  version: 13.0.0
+  description: |
+    Boot 13 — a seed row removed from `rows:` is RECORDED, not deleted, and then
+    reclaimed under the ordinary policy. Deleting rows is irreversible; nothing
+    about a row makes it the one object worth exempting from the grace window.
+
+    Two removals, arriving two different ways. `viewer` is dropped from `rows:`.
+    The `when:` still holds here, so what this boot proves is the removal alone;
+    the guard's own withdrawal is the boot after it.
+
+    It also proves the partial-row rule from the other side: `viewer`'s rank was
+    edited to 7 by an operator, and since the seed never declared a rank, the
+    upsert left it alone — which is what "a row asserts the columns it states"
+    means in practice.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+  environment: { env: APP_ENV, type: string, default: development }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# Carried forward unchanged from the earlier boots, so the only thing these two
+# boots change is the seed rows — otherwise the previous fixtures' tables would
+# tombstone here and the assertions would be about them.
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: conversation_role
+values: [system, user, assistant]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: conversation_messages
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  role: { type: !ref messageRole, nullable: false }
+  body: { type: text }
+  balanceCents: { type: bigint, nullable: false, default: 0 }
+  sentAt: { type: timestamptz }
+checks:
+  sent_implies_timestamp:
+    expression: "body IS NULL OR \"sentAt\" IS NOT NULL"
+    validate: deferred
+---
+kind: Postgres.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  email: { type: citext, nullable: false }
+---
+kind: Postgres.Table
+metadata: { name: roles }
+table: roles
+columns:
+  name: { type: text, primaryKey: true }
+  label: { type: text, nullable: false }
+  rank: { type: integer, default: 0 }
+seeds:
+  key: [name]
+  when: !cel "variables.environment != 'production'"
+  rows:
+    - { name: admin, label: Administrator, rank: 100 }
+    - { name: demo, label: Demo }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_enum_boots
+version: !cel "module.version"
+extensions: [citext]
+enums: [!ref messageRole]
+tables: [!ref messages, !ref people, !ref roles]
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # RECORDED, not deleted — the row is still there while the grace window runs.
+  - name: assertTombstoned
+    invoke: !ref assertReclaimed
+    inputs:
+      actual:
+        tombstoned: !cel "resources.appSchema.status.tombstoned"
+        reclaimed: !cel "resources.appSchema.status.reclaimed"
+      expected:
+        tombstoned: ['seedRow roles.name="viewer"']
+        reclaimed: []
+  - name: readRoles
+    invoke: !ref query
+    inputs:
+      sql: "SELECT name, rank FROM telo_pg_enum_boots.roles ORDER BY name"
+  # `viewer` survives with the rank an OPERATOR set, because the seed never
+  # declared a rank for it — which is what "a row asserts the columns it states"
+  # means from the other side.
+  - name: assertRows
+    invoke: !ref assertRows
+    inputs:
+      actual: !cel "steps.readRoles.result.rows"
+      expected:
+        - { name: admin, rank: 100 }
+        - { name: demo, rank: 0 }
+        - { name: viewer, rank: 7 }
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertReclaimed }
+---
+kind: Assert.Equals
+metadata: { name: assertRows }

@@ -7,6 +7,7 @@ import {
   type SqlConnection,
 } from "@telorun/sql";
 import { SqliteSchemaDriver } from "./sqlite-schema-driver.js";
+import type { SqliteEnumResource } from "./enum-controller.js";
 import type { SqliteTableResource } from "./table-controller.js";
 
 interface SqliteSchemaManifest {
@@ -15,7 +16,8 @@ interface SqliteSchemaManifest {
   version?: string;
   ledger?: string;
   tables?: SqliteTableResource[];
-  beforeMigrations?: MigrationMap;
+  enums?: SqliteEnumResource[];
+  prepare?: MigrationMap;
   migrations?: MigrationMap;
   reclaim?: ReclaimPolicy;
 }
@@ -56,7 +58,8 @@ class SqliteSchemaResource implements ResourceInstance {
       ledger: this.manifest.ledger,
       version: this.manifest.version,
       tables: (this.manifest.tables ?? []).map((table) => table.declaration),
-      beforeMigrations: this.manifest.beforeMigrations ?? {},
+      enums: (this.manifest.enums ?? []).map((declared) => declared.declaration),
+      prepare: this.manifest.prepare ?? {},
       migrations: this.manifest.migrations ?? {},
       reclaim: this.manifest.reclaim,
     });

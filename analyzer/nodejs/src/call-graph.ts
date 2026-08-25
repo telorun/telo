@@ -284,7 +284,13 @@ function resolveUseAtSite(
     const resolved = entry.useCases.cases[String(selector)];
     if (resolved) return { use: resolved };
   }
-  const slot = { kinds: entry.refs, uses: entry.uses, useCases: entry.useCases, inline: false };
+  const slot = {
+    kinds: entry.refs,
+    uses: entry.uses,
+    useCases: entry.useCases,
+    inline: false,
+    valueBranches: [],
+  };
   const unresolvedReason = isTaggedSentinel(selector)
     ? "dynamic"
     : selector === undefined

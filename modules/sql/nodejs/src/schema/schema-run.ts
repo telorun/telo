@@ -1,6 +1,9 @@
 import { parseDurationMs, type ResourceContext } from "@telorun/sdk";
-import type { DeclaredTable } from "./declared-schema.js";
-import { describeObject } from "./declared-schema.js";
+import type { DeclaredEnum, DeclaredTable, SchemaObjectId } from "./declared-schema.js";
+import { describeObject, objectKey } from "./declared-schema.js";
+import { applyRenames, planRenames, renameSources } from "./plan-renames.js";
+import { planSeeds } from "./seed-rows.js";
+import type { DeclarationSnapshot } from "./declaration-snapshot.js";
 import { snapshotDeclaration, snapshotDigest, parseObjectKey } from "./declaration-snapshot.js";
 import type { SchemaDriver } from "./schema-driver.js";
 import { ledgerTables, SchemaLedger, type TombstoneRecord } from "./schema-ledger.js";
@@ -11,7 +14,7 @@ import {
   runMigrations,
   type MigrationMap,
 } from "./migration-runner.js";
-import { describeRefusals, planReconciliation } from "./schema-reconciler.js";
+import { PLAN_PHASES, describeRefusals, planReconciliation } from "./schema-reconciler.js";
 
 export interface SchemaRunInput {
   readonly schema: string;
@@ -26,7 +29,15 @@ export interface SchemaRunInput {
    *  policy is declared — nothing else reads it. */
   readonly version?: string;
   readonly tables: readonly DeclaredTable[];
-  readonly beforeMigrations: MigrationMap;
+  /** The enum types this schema owns. Listed by the schema exactly as tables
+   *  are, so ownership, removal and rename all follow from one list. */
+  readonly enums?: readonly DeclaredEnum[];
+  /** Engine extensions this schema owns, created ahead of everything else.
+   *  Provisioning is a declaration rather than a migration: a `CREATE EXTENSION`
+   *  smuggled into `migrations:` has no release it belongs to and a key that is a
+   *  lie. */
+  readonly extensions?: readonly string[];
+  readonly prepare: MigrationMap;
   readonly migrations: MigrationMap;
   readonly reclaim?: ReclaimPolicy;
 }
@@ -56,6 +67,9 @@ export interface SchemaRunStatus {
   readonly tombstoned: string[];
   readonly revived: string[];
   readonly inertRenames: string[];
+  /** Enum values the declaration dropped and the engine is keeping — no engine
+   *  can remove one without rewriting every table that stores it. */
+  readonly retainedEnumValues: string[];
   readonly reclaimed: string[];
   readonly pendingReclamation: PendingReclamation[];
 }
@@ -217,28 +231,93 @@ async function pass(
   // price is that a key in BOTH is meaningless: the merge below would drop one
   // of them and the ledger would skip the other as already applied, so a
   // migration the author wrote would never run and nothing would say so.
-  const collisions = Object.keys(input.beforeMigrations).filter(
+  const collisions = Object.keys(input.prepare).filter(
     (key) => key in input.migrations,
   );
   if (collisions.length > 0) {
     throw new Error(
       `Schema '${input.schema}': ${collisions.map((k) => `'${k}'`).join(", ")} ` +
         `${collisions.length === 1 ? "is declared" : "are declared"} in both ` +
-        `'beforeMigrations' and 'migrations'. A migration key is its identity across both ` +
+        `'prepare' and 'migrations'. A migration key is its identity across both ` +
         `phases, so it may appear in only one — move it to the phase it belongs in.`,
     );
   }
 
   // Both phases are checked for statements up front, so a malformed entry fails
   // before any DDL has run rather than between two that have.
-  for (const [key, entry] of Object.entries({ ...input.beforeMigrations, ...input.migrations })) {
+  for (const [key, entry] of Object.entries({ ...input.prepare, ...input.migrations })) {
     migrationStatements(key, entry);
+  }
+
+  const enums = input.enums ?? [];
+
+  /**
+   * Renames run FIRST, because a migration key runs exactly once, ever — on
+   * whichever boot first sees it.
+   *
+   * With renames first, an entry naming the table has ONE correct spelling: the
+   * new one, whether the entry lands on the rename boot or a later one. The other
+   * order makes which spelling is correct depend on deployment history rather
+   * than on the manifest.
+   *
+   * The cost is stated rather than hidden: an entry whose PURPOSE is to clear the
+   * destination name cannot work, because the rename refuses before it runs. The
+   * repair is to drop the leftover in an earlier release, or to rename by hand
+   * and omit the marker.
+   */
+  const sources = renameSources({ tables: input.tables, enums });
+  let ownedNow = owned;
+  const renames =
+    sources.tables.length + sources.enums.length === 0
+      ? undefined
+      : planRenames(driver, input.schema, {
+          tables: input.tables,
+          enums,
+          liveTables: new Set(
+            (
+              await driver.introspect(input.schema, [
+                ...input.tables.map((table) => table.name),
+                ...sources.tables,
+              ])
+            ).map((table) => table.name),
+          ),
+          liveEnums: new Set(
+            driver.namedEnumTypes
+              ? (
+                  await driver.introspectEnums(input.schema, [
+                    ...enums.map((one) => one.typeName),
+                    ...sources.enums,
+                  ])
+                ).map((one) => one.name)
+              : // An engine with no named type has nothing to look at, so a
+                // declared predecessor is taken from the ledger — which is the
+                // only record of it there has ever been.
+                sources.enums.filter(
+                  (name) => owned[objectKey({ kind: "enum", table: name })] !== undefined,
+                ),
+          ),
+          owned,
+        });
+  if (renames && renames.refusals.length > 0) {
+    throw new Error(
+      `Schema '${input.schema}': ${renames.refusals.length} declared rename(s) cannot be ` +
+        `applied:\n${describeRefusals(renames.refusals)}`,
+    );
+  }
+  if (renames && renames.statements.length > 0) {
+    await driver.runAtomically(renames.statements);
+  }
+  if (renames) {
+    for (const described of renames.describes) {
+      ctx.log.info("Schema object renamed", { "sql.schema.object": described });
+    }
+    ownedNow = applyRenames(owned, renames.moves);
   }
 
   const beforeApplied = await runMigrations(
     driver,
     ledger,
-    input.beforeMigrations,
+    input.prepare,
     applied,
     now,
   );
@@ -248,14 +327,25 @@ async function pass(
     input.schema,
     input.tables.map((table) => table.name),
   );
-  const plan = planReconciliation(
-    driver,
-    input.schema,
-    input.tables,
+  const liveEnums = driver.namedEnumTypes
+    ? await driver.introspectEnums(
+        input.schema,
+        enums.map((declared) => declared.typeName),
+      )
+    : [];
+  const extensions = input.extensions ?? [];
+  const plan = planReconciliation(driver, input.schema, {
+    tables: input.tables,
+    enums,
+    extensions,
     live,
-    owned,
-    tombstonedKeys,
-  );
+    liveEnums,
+    liveExtensions: driver.namedExtensions
+      ? await driver.introspectExtensions(input.schema, extensions)
+      : [],
+    owned: ownedNow,
+    tombstoned: tombstonedKeys,
+  });
   if (plan.refusals.length > 0) {
     // Never applied, never skipped: the release stops here.
     throw new Error(
@@ -263,20 +353,42 @@ async function pass(
         `safely to the data already present:\n${describeRefusals(plan.refusals)}`,
     );
   }
-  for (const phase of ["table", "index", "constraint"] as const) {
+  // One loop over the phases in order, asking the ENGINE whether each may share
+  // a transaction. Value additions are the phase that usually may not — a
+  // PostgreSQL enum value cannot be used in the transaction that adds it, so a
+  // column added in the same pass could not carry it as a default — but that is
+  // the driver's answer to give, not this loop's to assume.
+  for (const phase of PLAN_PHASES) {
     const statements = plan.statements.filter((s) => s.phase === phase);
     if (statements.length === 0) continue;
-    await driver.runAtomically(statements.map((s) => s.sql));
+    const sql = statements.map((s) => s.sql);
+    if (driver.transactionalPhase(phase)) await driver.runAtomically(sql);
+    else await driver.runSequentially(sql);
     for (const statement of statements) {
       ctx.log.info("Schema reconciled", { "sql.schema.object": statement.describes });
     }
+  }
+  for (const value of plan.retainedEnumValues) {
+    ctx.log.warn("Enum value removed from the declaration and kept by the engine", {
+      "sql.schema.object": `enum value ${value}`,
+    });
+  }
+
+  // Seeds sit AFTER the pass because the table has to exist, and BEFORE
+  // `migrations:` because a one-time backfill may reasonably read the reference
+  // data — while nothing declared can depend on a migration that has already run
+  // once and will never run again.
+  const seeds = planSeeds(driver, input.schema, input.tables);
+  if (seeds.statements.length > 0) {
+    await driver.runAtomically(seeds.statements);
+    ctx.log.info("Seed rows applied", { "sql.schema.seedRows": seeds.statements.length });
   }
 
   const afterApplied = await runMigrations(driver, ledger, input.migrations, applied, now);
   for (const key of afterApplied) applied.add(key);
 
   const at = await driver.now();
-  const declaration = snapshotDeclaration(input.tables);
+  const declaration = snapshotDeclaration(input.tables, enums, extensions);
   const digest = snapshotDigest(declaration);
 
   // One group. The version row records the NEW declaration as owned, and the
@@ -312,7 +424,20 @@ async function pass(
   // Dependents before the thing they hang off. Inherited from `ORDER BY
   // object_key` this happened to be right — `c` < `f` < `i` < `t` — which is a
   // property of the words, not of the design, and nothing said so or tested it.
-  const RECLAIM_ORDER: Record<string, number> = { foreignKey: 0, index: 1, column: 2, table: 3 };
+  // An enum is dropped LAST: a table that still uses it holds a dependency the
+  // engine will refuse, so the type goes only once the tables that stored it are
+  // themselves gone.
+  // A seed ROW goes first of all: it is data inside a table, so it has to be
+  // deleted before anything the table itself depends on is touched.
+  const RECLAIM_ORDER: Record<string, number> = {
+    seedRow: 0,
+    foreignKey: 1,
+    index: 2,
+    column: 3,
+    table: 4,
+    enum: 5,
+    extension: 6,
+  };
   const outstanding = (await ledger.tombstones())
     .filter((t) => !plan.revived.includes(t.objectKey))
     .sort((a, b) => (RECLAIM_ORDER[a.kind] ?? 9) - (RECLAIM_ORDER[b.kind] ?? 9));
@@ -323,13 +448,103 @@ async function pass(
     digest,
     sequence: version.sequence,
     migrationsApplied: [...beforeApplied, ...afterApplied],
-    orphanedMigrations: orphanedKeys(applied, input.beforeMigrations, input.migrations),
+    orphanedMigrations: orphanedKeys(applied, input.prepare, input.migrations),
     tombstoned: plan.tombstones.map((t) => describeObject(t.id)),
     revived: plan.revived.map((key) => describeObject(parseObjectKey(key))),
-    inertRenames: [...plan.inertRenames],
+    inertRenames: [...plan.inertRenames, ...(renames?.inert ?? [])],
+    retainedEnumValues: [...plan.retainedEnumValues],
     reclaimed: reclaimed.dropped,
     pendingReclamation: reclaimed.pending,
   };
+}
+
+/**
+ * The statements that reclaim one tombstoned object, or the reason none can be
+ * rendered.
+ *
+ * **A reason is never a throw.** A tombstone stays eligible until it is cleared,
+ * so an exception here fails this boot and every boot after it — over a schema
+ * object nobody is waiting on. That is the same argument the drop itself is
+ * already guarded by, and it applies with more force to rendering, which fails
+ * for reasons the ledger has no way to repair on its own.
+ *
+ * The switch is EXHAUSTIVE. It was a ternary chain whose final arm rendered a
+ * `DROP CONSTRAINT`, so `extension` — which reached `RECLAIM_ORDER` without
+ * reaching the chain — would have dropped a foreign key named `undefined`, and
+ * every kind added after it would do the same silently.
+ */
+function reclaimStatements(
+  driver: SchemaDriver,
+  input: SchemaRunInput,
+  tombstone: TombstoneRecord,
+  id: SchemaObjectId,
+): { statements: string[] } | { unreclaimable: string } {
+  switch (id.kind) {
+    case "table":
+      return { statements: driver.dropTable(input.schema, id.table) };
+    case "enum":
+      return { statements: driver.dropEnum(input.schema, id.table) };
+    case "column":
+      return { statements: driver.dropColumn(input.schema, id.table, id.name!) };
+    case "index":
+      return { statements: driver.dropIndex(input.schema, id.table, id.name!) };
+    case "foreignKey":
+      return { statements: driver.dropForeignKey(input.schema, id.table, id.name!) };
+    case "check":
+      return { statements: driver.dropCheck(input.schema, id.table, id.name!) };
+    case "extension":
+      // Unreachable while every engine's `canReclaim` refuses one, and stated
+      // rather than left to a fallthrough: an extension is database-wide, so the
+      // drop stays a person's decision.
+      return {
+        unreclaimable:
+          `an extension is database-wide and is never dropped automatically; ` +
+          `drop '${id.table}' by hand when nothing needs it.`,
+      };
+    case "seedRow":
+      return seedRowStatements(driver, input, tombstone, id);
+  }
+}
+
+/**
+ * Reclaiming a seed row is a DELETE by key, and the row comes from the
+ * TOMBSTONE's own last-known definition — not from the current declaration,
+ * which by definition no longer names it. That is what the tombstone records
+ * for, and it is why the whole row is snapshotted rather than only its identity.
+ *
+ * The KEY, though, has to come from the declaration, and the declaration may no
+ * longer describe that table at all — after a rename, or once the table itself
+ * is gone. Held and reported, never thrown: see {@link reclaimStatements}.
+ *
+ * A row a foreign key still references is held and reported through the same
+ * channel a type still in use is, because the engine's refusal is what discovers
+ * it.
+ */
+function seedRowStatements(
+  driver: SchemaDriver,
+  input: SchemaRunInput,
+  tombstone: TombstoneRecord,
+  id: SchemaObjectId,
+): { statements: string[] } | { unreclaimable: string } {
+  const table = input.tables.find((one) => one.name === id.table);
+  let row: Record<string, unknown> | undefined;
+  try {
+    row = JSON.parse(tombstone.definition) as Record<string, unknown>;
+  } catch (error) {
+    return {
+      unreclaimable:
+        `its recorded row is not readable as JSON (${error instanceof Error ? error.message : String(error)}), ` +
+        `so there is nothing to delete by. Clear the tombstone by hand.`,
+    };
+  }
+  if (!table?.seeds) {
+    return {
+      unreclaimable:
+        `the declaration no longer says which columns identify a row in '${id.table}'. ` +
+        `Re-declare 'seeds.key' on that table, or clear the tombstone by hand.`,
+    };
+  }
+  return { statements: driver.deleteRow(input.schema, id.table, table.seeds.key, row) };
 }
 
 /**
@@ -395,14 +610,22 @@ async function reclaim(
       });
       continue;
     }
-    const statements =
-      id.kind === "table"
-        ? driver.dropTable(input.schema, id.table)
-        : id.kind === "column"
-          ? driver.dropColumn(input.schema, id.table, id.name!)
-          : id.kind === "index"
-            ? driver.dropIndex(input.schema, id.table, id.name!)
-            : driver.dropForeignKey(input.schema, id.table, id.name!);
+    const rendered = reclaimStatements(driver, input, tombstone, id);
+    if ("unreclaimable" in rendered) {
+      ctx.log.warn("Schema object could not be reclaimed", {
+        "sql.schema.object": described,
+        "error.message": rendered.unreclaimable,
+      });
+      pending.push({
+        object: described,
+        missingSinceVersion: tombstone.missingSinceVersion,
+        versionsRemaining: 0,
+        msRemaining: 0,
+        eligible: true,
+        unreclaimable: rendered.unreclaimable,
+      });
+      continue;
+    }
     // A drop can still fail for a reason `canReclaim` cannot see — a dependent
     // view, a lock timeout, a constraint discovered at the moment it runs. That
     // must not be why the application stops starting: the tombstone stays
@@ -410,7 +633,7 @@ async function reclaim(
     // after it. Reported through the channel that already exists for held
     // objects, and left standing.
     try {
-      await driver.runAtomically(statements);
+      await driver.runAtomically(rendered.statements);
     } catch (error) {
       // The reason travels with the log, not only in observed state: this is on
       // the boot path, and a warning that says an object could not be dropped

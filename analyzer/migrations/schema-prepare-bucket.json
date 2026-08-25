@@ -1,0 +1,27 @@
+{
+  "$comment": "`inKind` names the two backend schema kinds by their canonical `<module>.<Kind>` spelling, which is what a document's `kind:` carries after alias resolution. `under` is the key itself: the bucket is a top-level field of the resource, so the region and the match are the same node \u2014 the tightest containment this vocabulary can state. NAMING A MODULE'S KIND FROM A CORE ENTRY IS A DEBT, not a pattern: it is the one place the analyzer knows a standard-library kind by name. It is contained because `inKind` is a filter \u2014 an entry naming an absent kind matches nothing \u2014 and it MOVES into `modules/postgres` and `modules/sqlite` when the module-migration surface lands. Do not add another; see analyzer/migrations/README.md.",
+  "id": "schema-prepare-bucket",
+  "code": "SQL_BEFORE_MIGRATIONS_RENAMED",
+  "severity": "warning",
+  "reason": "`beforeMigrations:` is now `prepare:`. Every documented use of it was data preparation for a narrowing the reconciliation pass is about to attempt \u2014 backfill before NOT NULL, make values fit before a length reduction, convert before a non-widening type change \u2014 and each is what a refusal already tells the author to write. The old name said where it ran relative to the OTHER bucket; the new one says what it is for, which is what those refusals need to name. Nothing re-runs: the ledger stores the migration key alone, so moving an entry between the two maps changes no history.",
+  "rules": [
+    {
+      "match": {
+        "key": "beforeMigrations",
+        "inKind": [
+          "Postgres.Schema",
+          "SQLite.Schema"
+        ],
+        "under": [
+          "beforeMigrations"
+        ]
+      },
+      "patch": [
+        {
+          "op": "rename-key",
+          "to": "prepare"
+        }
+      ]
+    }
+  ]
+}

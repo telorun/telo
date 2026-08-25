@@ -64,10 +64,93 @@ must supply it. That is not a stylistic preference:
 | --- | --- |
 | `self` | the resource the rule is declared for — the one being referenced |
 | `referrer` | the resource that references it |
+| `entry` | *(with `peers:`)* the referrer's own entry that reached me |
+| `peers` | *(with `peers:`)* that collection's other entries |
 
 There is deliberately no `this`: in a resource rule `this` is an *element* of a
 collection, and giving one word two meanings across the two families is how an
 author learns a rule vocabulary twice.
+
+## `peers:` — the declarations listed beside me
+
+A rename marker is wrong only in relation to the *other* tables a schema
+declares. An enum a column names is unlisted only in relation to the same set. A
+resource rule sees one resource and a plain referrer rule sees a pair; neither can
+state a relation between **siblings**.
+
+`peers:` is a JSON Pointer naming a collection **of the referrer** to resolve:
+
+```yaml
+x-telo-referrer-rules:
+  - referrer: Self.Schema
+    peers: /tables
+    condition: !cel "!has(self.renamedFrom) || !peers.exists(p, p.table == self.renamedFrom)"
+    code: SQL_RENAME_SOURCE_STILL_DECLARED
+    message: >-
+      renames from a table this schema also declares. A rename's source is the
+      table being retired, so declaring both would rename one live table onto
+      another and retire neither.
+```
+
+`peers` binds the whole collection rather than one member at a time, which is what
+lets a condition be an existential over the set (`peers.exists(…)`,
+`peers.all(…)`).
+
+### Entries bind as written, references resolved one level
+
+A collection's items are not always references — a server's `mounts:` holds
+`{mount, prefix}` — so each entry binds **as written**, with the references
+*inside it* resolved: `p` is the declaration where the entry is a bare `!ref`, and
+`p.mount` is the declaration with `p.prefix` beside it where it is not. Nothing is
+guessed from the item schema, and there is no second pointer to write.
+
+One level only. References inside a resolved declaration stay references, because
+a self-referencing foreign key and a mutual pair are both cycles.
+
+### One evaluation per entry
+
+A rule declaring `peers:` evaluates **once per entry**, anchored at that entry's
+slot path — a deliberate departure from the judge-once rule the family otherwise
+follows. A rule reading `entry` is about the entry, so a resource listed twice has
+two entries to answer for.
+
+`self` is excluded from `peers` **by slot path**, not by identity: exact, cheap,
+and correct when the same resource is listed twice. A `peers:` naming a collection
+*other* than the one that reached me excludes nothing, because nothing there is
+me — which is exactly what a rule over a schema's `enums:` wants while its own
+entry sits in `tables:`.
+
+### What is refused, and where
+
+`peers:` must name a collection the `referrer:` kind declares whose items are, or
+contain, a reference — a collection of plain data resolves nothing, so the rule
+would silently never see a declaration. It also requires `referrer:`: without a
+kind there is nothing to check the pointer against. Both are
+`REFERRER_RULE_INVALID` at the kind that wrote the rule.
+
+The check is Liskov in both directions. The filter is usually an abstract (one
+rule serving every backend) while the collection is declared by the backends that
+implement it, so a pointer resolving on any candidate resolves the rule.
+
+### `peers:` needs a `requires:` floor at first adoption
+
+The rule reader is lenient, so an analyzer released before `peers:` existed reads
+the rule, ignores the unknown key, and evaluates the condition with `peers` and
+`entry` unbound — cel-js throws, and the throw is reported as a rule defect
+anchored on the module's own line, blaming an author who cannot act on it.
+
+The first module to write `peers:` must therefore declare
+`requires: telo: ">=<the release that carries it>"`, verified by execution:
+strip the block, run the previous published CLI against the manifest, confirm it
+rejects; restore it and confirm the same runtime reports
+`MODULE_REQUIRES_NEWER_RUNTIME` instead. See
+[Declaring runtime requirements](./declaring-runtime-requirements.md).
+
+**Peers-by-kind was rejected, not deferred.** A binding over "every resource of
+this kind in the analysis" needs no resolution and is unsound: a physical name is
+scoped by its namespace, so two schema resources over one connection — which the
+schema design supports deliberately — would report a conflict between objects that
+never meet. The reference collection is what defines the scope.
 
 ## `referrer:` — which references the rule is about
 
@@ -97,17 +180,32 @@ against; and each rule gets 50 ms per resource. See
 Guard optional fields — `has(referrer.openapi)`, `referrer.?tls.orValue(false)` —
 because an unguarded missing key throws rather than yielding false.
 
+Write `condition:` with the `!cel` tag. The reader is lenient and a bare string
+still runs, but untagged the expression is not CEL to the editor's colouring,
+completion or hover — so the strict half reports it while the rule keeps working.
+
 ## When a rule does not run
 
-- **A value the condition reads holds a `!cel`.** The verdict would be about a
-  placeholder, so the referrer is skipped and the skip is reported
-  (`REFERRER_RULE_SKIPPED`). Only the nodes the condition actually reads count: a
-  server carrying `port: !cel "ports.http"` does not disable a rule about its
-  `openapi:` block.
+- **A value the condition reads holds a `!cel`, or an `!include-*` embed.** The
+  verdict would be about a placeholder, so the referrer is skipped and the skip
+  is reported (`REFERRER_RULE_SKIPPED`), naming the tag it found. Only the nodes
+  the condition actually reads count: a server carrying
+  `port: !cel "ports.http"` does not disable a rule about its `openapi:` block.
+
+  **A `!ref` is not one of them.** It names a declaration — a value a rule
+  compares perfectly well, and the one peer rules are built on — so a slot
+  holding a reference never skips a rule.
 - **Nothing matched.** If no resource of your kind was referenced by anything the
   filter matches, the rule never ran, and that is reported once
   (`REFERRER_RULE_UNEXERCISED`). This is what a typo in `referrer:` looks like
   from the outside — silence that reads exactly like passing.
+- **A peer resolved to nothing, or the collection is absent.** A reference in the
+  `peers:` collection naming a declaration the analysis does not hold would bind a
+  peer to nothing, so the entry is skipped and the skip is reported
+  (`REFERRER_RULE_SKIPPED`).
+- **Every peer set was empty.** A peer rule that only ever ran against an empty
+  set proved nothing, and reports as `REFERRER_RULE_UNEXERCISED` — which is what a
+  typo in `peers:` looks like from the outside.
 
 ## Diagnostics
 

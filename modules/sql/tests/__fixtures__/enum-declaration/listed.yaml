@@ -1,0 +1,39 @@
+# The positive control: a column references an enum, and the schema that lists
+# the table lists the enum too. The peer rule sees the schema's OTHER entries —
+# which is the whole point, since neither declaration alone knows about the list.
+kind: Telo.Application
+metadata:
+  name: EnumListed
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata:
+  name: appDb
+file: ":memory:"
+---
+kind: SQLite.Enum
+metadata:
+  name: messageRole
+typeName: message_role
+baseType: text
+values: [system, user, assistant]
+---
+kind: SQLite.Table
+metadata:
+  name: messages
+table: messages
+columns:
+  id: { type: integer, primaryKey: true }
+  role: { type: !ref messageRole, nullable: false }
+---
+kind: SQLite.Schema
+metadata:
+  name: appSchema
+connection: !ref appDb
+version: "1.0.0"
+enums: [!ref messageRole]
+tables: [!ref messages]

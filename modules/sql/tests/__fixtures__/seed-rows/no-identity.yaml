@@ -1,0 +1,32 @@
+# A row supplying no value for a key column has no identity: the upsert has
+# nothing to conflict on, and a tombstone could never find it again.
+kind: Telo.Application
+metadata:
+  name: SeedNoIdentity
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: appDb }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: roles }
+table: roles
+columns:
+  name: { type: text, primaryKey: true }
+  label: { type: text, nullable: false }
+seeds:
+  key: [name]
+  rows:
+    - { name: admin, label: Administrator }
+    - { label: Viewer }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref appDb
+version: "1.0.0"
+tables: [!ref roles]

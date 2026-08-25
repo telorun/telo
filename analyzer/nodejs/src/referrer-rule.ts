@@ -37,6 +37,23 @@ export interface ReferrerRule {
    * relation the rule is about, so a kind should write it.
    */
   readonly referrer?: string;
+  /**
+   * JSON Pointer to a collection OF THE REFERRER to resolve — the binding that
+   * lets a rule state a relation between SIBLING declarations, which neither a
+   * resource rule (one resource) nor a plain referrer rule (a pair joined by one
+   * reference) can reach.
+   *
+   * Declaring it binds `peers` (the collection's OTHER entries) and `entry` (my
+   * own), and makes the rule evaluate once per entry rather than once per
+   * referrer: a rule reading `entry` is about the entry, and a resource listed
+   * twice has two entries to answer for.
+   *
+   * Entries bind AS WRITTEN with the references *inside them* resolved one level
+   * — `p` is the declaration where the entry is a bare `!ref`, `p.mount` is the
+   * declaration with `p.prefix` beside it where it is not. Nothing is guessed
+   * from the item schema and there is no second pointer to write.
+   */
+  readonly peers?: string;
   /** CEL source. TRUE when the rule holds. */
   readonly condition: string;
   /** The rule's own name, carried in `data.rule`. Never a diagnostic code —
@@ -68,15 +85,17 @@ export function readReferrerRules(schema: unknown): ReferrerRule[] {
   raw.forEach((entry, index) => {
     if (!isObject(entry)) return;
     const condition = celSourceOf(entry.condition);
-    const { code, message, referrer } = entry;
+    const { code, message, referrer, peers } = entry;
     if (!condition || typeof code !== "string" || typeof message !== "string") return;
     if (code.length === 0 || message.length === 0) return;
     if (referrer !== undefined && typeof referrer !== "string") return;
+    if (peers !== undefined && typeof peers !== "string") return;
     if (entry.severity !== undefined && entry.severity !== "warning" && entry.severity !== "error") {
       return;
     }
     rules.push({
       ...(referrer === undefined ? {} : { referrer }),
+      ...(peers === undefined ? {} : { peers }),
       condition,
       code,
       message,

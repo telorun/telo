@@ -1,0 +1,31 @@
+# The seed key names a column the table does not declare. Decidable from the
+# YAML, and previously only decidable at boot — against a real database.
+kind: Telo.Application
+metadata:
+  name: SeedUnknownKey
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: appDb }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: roles }
+table: roles
+columns:
+  name: { type: text, primaryKey: true }
+  label: { type: text, nullable: false }
+seeds:
+  key: [nmae]
+  rows:
+    - { name: admin, label: Administrator }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref appDb
+version: "1.0.0"
+tables: [!ref roles]
