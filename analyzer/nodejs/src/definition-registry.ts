@@ -41,6 +41,9 @@ export class DefinitionRegistry {
   private readonly fieldMaps = new Map<string, ReferenceFieldMap>();
   /** Reverse inheritance index: parent kind → direct child kinds. */
   private readonly extendedBy = new Map<string, string[]>();
+  /** Memoized inheritance-resolved schemas. `null` records "resolved to
+   *  nothing", so a kind with no schema is not re-walked on every resource. */
+  private readonly effectiveSchemas = new Map<string, Record<string, unknown> | null>();
   /** DEPRECATED module identity table: identity string → canonical module name
    *  ("std/pipeline" → "pipeline"). Serves only the legacy
    *  `<namespace>/<module>#<Kind>` form of `x-telo-ref`, kept resolvable for
@@ -57,6 +60,7 @@ export class DefinitionRegistry {
     // so any already-computed map recomputes against the now-larger def set; the
     // maps rebuild lazily on first `getFieldMap` (after all defs are registered).
     this.fieldMaps.clear();
+    this.effectiveSchemas.clear();
     // `capability` populates extendedBy for backward-compat with the legacy pattern where
     // a concrete definition overloaded `capability: <AbstractKind>` to mean "implements
     // this abstract." The canonical pattern is `extends` (below). Both populate the index,
@@ -283,6 +287,44 @@ export class DefinitionRegistry {
 
   resolve(kind: string): ResourceDefinition | undefined {
     return this.defs.get(kind);
+  }
+
+  /**
+   * The kind's AUTHOR-FACING schema — its own merged with everything it
+   * inherits along `extends` — memoized per kind.
+   *
+   * This is what every consumer reading a kind's schema to interpret an
+   * INSTANCE must use, because that is the schema the instance was authored
+   * against and the one the kernel stamps at definition registration. Reading
+   * `resolve(kind).schema` instead sees only what the leaf declared, so an
+   * annotation on a parent — a CEL context region, a step body, an error
+   * context — is invisible on every child, silently and per consumer. Sharing
+   * one memo is what keeps those consumers from drifting apart.
+   *
+   * Lazy for the same reason `getFieldMap` is: a child registered before its
+   * parent still sees the inherited half once both are present.
+   */
+  effectiveSchema(kind: string): Record<string, unknown> | undefined {
+    const cached = this.effectiveSchemas.get(kind);
+    if (cached !== undefined) return cached ?? undefined;
+    const def = this.defs.get(kind);
+    if (!def) return undefined;
+    const schema = effectiveAuthorSchema(def, (k) => this.resolve(k)) as
+      | Record<string, unknown>
+      | undefined;
+    this.effectiveSchemas.set(kind, schema ?? null);
+    return schema;
+  }
+
+  /** The effective schema for a definition, by the kind it is registered under.
+   *  Falls back to the definition's own schema when it is not in this registry
+   *  (a synthesized or not-yet-registered kind), which is the pre-inheritance
+   *  behaviour and the safe direction: it types less, never wrongly. */
+  effectiveSchemaOf(definition: ResourceDefinition | undefined): Record<string, unknown> | undefined {
+    if (!definition) return undefined;
+    const { name, module: mod } = definition.metadata;
+    const resolved = this.effectiveSchema(mod ? `${mod}.${name}` : name);
+    return resolved ?? (definition.schema as Record<string, unknown> | undefined);
   }
 
   /** Returns the reference field map for the given kind, computed lazily from the

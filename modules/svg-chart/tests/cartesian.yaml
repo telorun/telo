@@ -1,0 +1,298 @@
+kind: Telo.Application
+metadata:
+  name: SvgChartCartesianTest
+  version: 1.0.0
+  description: |
+    Renders a stacked bar, a multi-series line and a scatter, and asserts the
+    geometry each one computed.
+
+    The three cover what is shared and what is not: the axis and series
+    machinery is the same code for all of them, while stacking, path ordering
+    and size encoding are each one chart's own. Bar heights are asserted against
+    the stacked domain, which is the arithmetic that breaks first when the
+    domain is derived from single rows instead of totals.
+imports:
+  SvgChart: ../
+  Run: ../../run
+  Assert: ../../assert
+  JavaScript: ../../javascript
+targets:
+  - !ref testCartesian
+---
+kind: Telo.JsonSchema
+metadata: { name: TicketRows }
+schema:
+  type: object
+  required: [rows]
+  additionalProperties: false
+  properties:
+    rows:
+      type: array
+      items:
+        type: object
+        required: [week, priority, tickets]
+        additionalProperties: false
+        properties:
+          week: { type: string }
+          priority: { type: string }
+          tickets: { type: number }
+---
+kind: SvgChart.Bar
+metadata: { name: ticketsPerWeek }
+inputType: !ref TicketRows
+rows: !cel "inputs.rows"
+title: Tickets per Week
+x: { value: !cel "row.week", scale: band, title: Week }
+y: { value: !cel "row.tickets", scale: linear, title: Tickets }
+series: !cel "row.priority"
+stacked: true
+width: 640
+height: 280
+legend: { placement: bottom, title: Priority }
+---
+kind: SvgChart.Line
+metadata: { name: latencyOverTime }
+rows: !cel "inputs.rows"
+title: p95 Latency
+x: { value: !cel "row.at", scale: linear }
+y: { value: !cel "row.p95", scale: linear, title: "p95 (ms)", domain: { min: 0, max: 100 } }
+series: !cel "row.endpoint"
+points: true
+gridlines: { y: true }
+width: 400
+height: 200
+legend: { placement: none }
+---
+kind: SvgChart.Scatter
+metadata: { name: costVsLatency }
+rows: !cel "inputs.rows"
+title: Cost vs Latency
+x: { value: !cel "row.latencyMs", domain: { min: 0, max: 100 } }
+y: { value: !cel "row.costUsd", domain: { min: 0, max: 10 } }
+size: { value: !cel "row.requests", range: [4, 12] }
+width: 400
+height: 200
+legend: { placement: none }
+---
+# The same rows as the vertical bar, turned on their side. `orientation` is the
+# only thing that differs — it decides which axis carries the categories, so an
+# author does not also restate `scale: band` on the other one.
+kind: SvgChart.Bar
+metadata: { name: ticketsSideways }
+inputType: !ref TicketRows
+rows: !cel "inputs.rows"
+x: { value: !cel "row.tickets", title: Tickets }
+y: { value: !cel "row.week", title: Week }
+series: !cel "row.priority"
+orientation: horizontal
+stacked: true
+width: 640
+height: 280
+labels: { format: "{value}", valueFormat: ".0f" }
+legend: { placement: none }
+---
+# A log axis whose data reaches zero. Zero has no position on a log scale, so
+# the domain is clamped — and the clamp has to happen where the domain is
+# DECIDED, because the ticks and the marks are two readers of it.
+kind: SvgChart.Scatter
+metadata: { name: logScaled }
+rows: !cel "inputs.rows"
+x: { value: !cel "row.n" }
+y: { value: !cel "row.v", scale: log }
+width: 400
+height: 200
+legend: { placement: none }
+---
+# Pulls the drawn geometry back out of the markup: bars as their rects, lines as
+# their path commands, points as their radii.
+kind: JavaScript.Script
+metadata: { name: readShapes }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [svg]
+    additionalProperties: false
+    properties:
+      svg: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [rects, paths, circles, gridlines, tickLabels, markLabels]
+    additionalProperties: false
+    properties:
+      rects:
+        type: array
+        items:
+          type: object
+          additionalProperties: true
+      paths: { type: array, items: { type: string } }
+      circles: { type: array, items: { type: number } }
+      gridlines: { type: integer }
+      tickLabels: { type: array, items: { type: string } }
+      markLabels: { type: array, items: { type: string } }
+code: |
+  function main(inputs) {
+    const svg = inputs.svg;
+    const attrs = (tag) =>
+      [...svg.matchAll(new RegExp(`<${tag} ([^/>]+)/>`, "g"))].map((match) =>
+        Object.fromEntries(
+          [...match[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(([, key, value]) => [key, value]),
+        ),
+      );
+    const group = (name) => {
+      const start = svg.indexOf(`<g data-part="${name}">`);
+      if (start < 0) return "";
+      return svg.slice(start, svg.indexOf("</g>", start));
+    };
+    const inGroup = (name, tag) =>
+      [...group(name).matchAll(new RegExp(`<${tag} ([^/>]+)/>`, "g"))].map((match) =>
+        Object.fromEntries(
+          [...match[1].matchAll(/([\w-]+)="([^"]*)"/g)].map(([, key, value]) => [key, value]),
+        ),
+      );
+    return {
+      rects: inGroup("bars", "rect").map((rect) => ({
+        x: Number(rect.x),
+        y: Number(rect.y),
+        width: Number(rect.width),
+        height: Number(rect.height),
+      })),
+      paths: attrs("path").map((path) => path.d),
+      circles: inGroup("points", "circle").map((circle) => Number(circle.r)),
+      gridlines: inGroup("gridlines", "line").length,
+      tickLabels: [...group("axis-y").matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]),
+      markLabels: [...group("labels").matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((m) => m[1]),
+    };
+  }
+---
+kind: Run.Sequence
+metadata: { name: testCartesian }
+steps:
+  - name: bar
+    invoke: !ref ticketsPerWeek
+    inputs:
+      rows:
+        - { week: 2026-W06, priority: high, tickets: 12 }
+        - { week: 2026-W06, priority: normal, tickets: 34 }
+        - { week: 2026-W07, priority: high, tickets: 7 }
+        - { week: 2026-W07, priority: normal, tickets: 41 }
+  - name: readBar
+    invoke: !ref readShapes
+    inputs: { svg: !cel "steps.bar.result.svg" }
+  # Four rows, four rects — the stacked pair at each week share a left edge and
+  # sit on top of one another, which is what the equal `x` and the touching
+  # `y + height` say. The tallest stack is 48, so the domain reaches it: nothing
+  # is clipped and the top of the W07 stack lands on the plot's top edge.
+  - name: assertBar
+    inputs:
+      actual: !cel "steps.readBar.result.rects"
+      expected:
+        - { x: 107.455, y: 152.565, width: 208.218, height: 38.755 }
+        - { x: 107.455, y: 42.759, width: 208.218, height: 109.806 }
+        - { x: 367.727, y: 168.713, width: 208.218, height: 22.607 }
+        - { x: 367.727, y: 36.3, width: 208.218, height: 132.413 }
+    invoke: { kind: Assert.Equals }
+
+  - name: line
+    invoke: !ref latencyOverTime
+    inputs:
+      rows:
+        - { at: 2, p95: 40, endpoint: /a }
+        - { at: 1, p95: 20, endpoint: /a }
+        - { at: 1, p95: 80, endpoint: /b }
+        - { at: 2, p95: 60, endpoint: /b }
+  - name: readLine
+    invoke: !ref readShapes
+    inputs: { svg: !cel "steps.line.result.svg" }
+  # Two series, two paths — and each path runs left to right even though the
+  # rows for /a arrived in the other order, which is the ordering the encoding
+  # has to impose rather than inherit from the query.
+  - name: assertLine
+    inputs:
+      actual:
+        paths: !cel "steps.readLine.result.paths"
+        points: !cel "size(steps.readLine.result.circles)"
+        gridlines: !cel "steps.readLine.result.gridlines"
+      expected:
+        paths:
+          - "M62.6,140.86L388,114.72"
+          - "M62.6,62.44L388,88.58"
+        points: 4
+        # Ticks are chosen from the canvas height before the plot rect exists —
+        # a 200px canvas asks for three, and a 0–100 domain gives 0, 50, 100.
+        gridlines: 3
+    invoke: { kind: Assert.Equals }
+
+  - name: scatter
+    invoke: !ref costVsLatency
+    inputs:
+      rows:
+        - { latencyMs: 10, costUsd: 1, requests: 100 }
+        - { latencyMs: 50, costUsd: 5, requests: 500 }
+        - { latencyMs: 90, costUsd: 9, requests: 900 }
+  - name: readScatter
+    invoke: !ref readShapes
+    inputs: { svg: !cel "steps.scatter.result.svg" }
+  # Radius encodes AREA, so the middle value sits above the midpoint of the
+  # range rather than on it — that is the square root, and it is the difference
+  # between a size encoding that reads correctly and one that exaggerates.
+  - name: assertScatter
+    inputs:
+      actual: !cel "steps.readScatter.result.circles"
+      expected: [4, 8.944, 12]
+    invoke: { kind: Assert.Equals }
+
+  - name: logAxis
+    invoke: !ref logScaled
+    inputs:
+      rows:
+        - { n: 1, v: 0 }
+        - { n: 2, v: 100 }
+  - name: readLog
+    invoke: !ref readShapes
+    inputs: { svg: !cel "steps.logAxis.result.svg" }
+  # Clamping only where the SCALE was built left `tickValues` reading the
+  # unclamped domain, where `scaleLog().domain([0, 100]).ticks()` returns
+  # nothing: the marks landed correctly on an axis with no ticks and no labels.
+  - name: assertLogTicks
+    inputs:
+      actual: !cel "size(steps.readLog.result.tickLabels) > 0"
+      expected: true
+    invoke: { kind: Assert.Equals }
+
+  - name: horizontal
+    invoke: !ref ticketsSideways
+    inputs:
+      rows:
+        - { week: 2026-W06, priority: high, tickets: 12 }
+        - { week: 2026-W06, priority: normal, tickets: 34 }
+        - { week: 2026-W07, priority: high, tickets: 7 }
+        - { week: 2026-W07, priority: normal, tickets: 41 }
+  - name: readHorizontal
+    invoke: !ref readShapes
+    inputs: { svg: !cel "steps.horizontal.result.svg" }
+  # Transposed: the pair at each week now shares a TOP edge and grows rightward,
+  # so the bars vary in width and share a height — the mirror of the vertical
+  # case, where they varied in height and shared a width. `orientation` alone
+  # produced that; nothing else in the declaration changed.
+  - name: assertHorizontal
+    inputs:
+      actual:
+        sharedHeights: !cel >-
+          steps.readHorizontal.result.rects.all(r,
+            r.height == steps.readHorizontal.result.rects[0].height)
+        variedWidths: !cel >-
+          steps.readHorizontal.result.rects[0].width
+            != steps.readHorizontal.result.rects[1].width
+        stackedFromOneEdge: !cel >-
+          steps.readHorizontal.result.rects[0].x == steps.readHorizontal.result.rects[2].x
+        labelled: !cel "steps.readHorizontal.result.markLabels"
+      expected:
+        sharedHeights: true
+        variedWidths: true
+        stackedFromOneEdge: true
+        # One label per bar, formatted through `valueFormat`.
+        labelled: ["12", "34", "7", "41"]
+    invoke: { kind: Assert.Equals }

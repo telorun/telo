@@ -1,12 +1,19 @@
 import pdfMake from "pdfmake/build/pdfmake.js";
 import robotoVfs from "pdfmake/build/vfs_fonts.js";
+import { type Face as FontFace, type FamilyHandle, isFamilyHandle, selectFace } from "@telorun/font";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { InvokeError } from "@telorun/sdk";
+import { InvokeError, RuntimeError } from "@telorun/sdk";
 
-/** The faces pdfmake looks for in a family, in the order a missing one falls
- *  back through. `normal` is required by the schema, so the chain terminates. */
-const FACES = ["normal", "bold", "italics", "bolditalics"] as const;
-type Face = (typeof FACES)[number];
+/** The faces pdfmake looks for in a family, paired with the neutral names a
+ *  `Font.Family` declares them under. pdfmake's own spelling is kept on its side
+ *  of the boundary — a document's `bolditalics` is pdfmake vocabulary, and the
+ *  shared resource is not the place to carry one renderer's dialect. */
+const FACES: Record<string, FontFace> = {
+  normal: "normal",
+  bold: "bold",
+  italics: "italic",
+  bolditalics: "boldItalic",
+};
 
 /** pdfmake ships Roboto in its own virtual filesystem, so a document renders
  *  with no font configuration at all. Registered under the name pdfmake's own
@@ -29,7 +36,7 @@ interface DocumentResource {
   pageMargins?: number[];
   defaultStyle?: Record<string, unknown>;
   styles?: Record<string, unknown>;
-  fonts?: Record<string, Partial<Record<Face, Uint8Array>>>;
+  fonts?: Record<string, unknown>;
   images?: Record<string, string>;
   info?: Record<string, string>;
   compress?: boolean;
@@ -65,21 +72,30 @@ interface DeclaredLayout {
  * customer's rows each time it is invoked.
  *
  * Embedded fonts are handed to pdfmake through its virtual filesystem under
- * synthesized names. The bytes come from `!include-bytes`, so a brand font is
- * part of the module's own artifact and there is no file to find at runtime.
+ * synthesized names. The bytes come from a referenced `Font.Family`, so a brand
+ * font is declared once for everything that embeds, serves or measures it.
+ *
+ * The reference is checked at CONSTRUCTION, both halves. Whether it resolves and
+ * whether the family it names carries bytes are equally properties of the
+ * manifest — the faces are fully known before anything renders — so an app whose
+ * document can never produce a PDF should not boot rather than fail at the first
+ * request. That the same family is perfectly usable elsewhere (a page serves the
+ * typeface, a chart estimates against it) is why the refusal lives here and not
+ * on `Font.Family`; it is not a reason to defer it.
  */
 class PdfMakeDocument implements ResourceInstance<Record<string, unknown>, DocumentOutputs> {
-  /** Built once — the font bytes are configuration, not per-call data. */
-  private readonly vfs: Record<string, Uint8Array | string>;
-  private readonly fonts: Record<string, Record<string, string>>;
+  /** Resolved at construction; read for bytes on the first render. */
+  private readonly families: Map<string, FamilyHandle>;
+  private registered?: {
+    vfs: Record<string, string>;
+    fonts: Record<string, Record<string, string>>;
+  };
 
   constructor(
     private readonly ctx: ResourceContext,
     private readonly resource: DocumentResource,
   ) {
-    const { vfs, fonts } = registerFonts(resource);
-    this.vfs = vfs;
-    this.fonts = fonts;
+    this.families = resolveFamilies(resource, ctx);
   }
 
   async invoke(inputs: Record<string, unknown>): Promise<DocumentOutputs> {
@@ -119,8 +135,9 @@ class PdfMakeDocument implements ResourceInstance<Record<string, unknown>, Docum
     // resource (see `registerFonts`): two documents each declaring a family
     // called `Brand` would otherwise write the same entry, and whichever
     // rendered last would silently decide the font for both.
-    pdfMake.addVirtualFileSystem(this.vfs);
-    pdfMake.fonts = this.fonts;
+    const { vfs, fonts } = (this.registered ??= registerFonts(name, this.families));
+    pdfMake.addVirtualFileSystem(vfs);
+    pdfMake.fonts = fonts;
 
     let buffer: Buffer;
     try {
@@ -135,7 +152,7 @@ class PdfMakeDocument implements ResourceInstance<Record<string, unknown>, Docum
   }
 
   snapshot(): Record<string, unknown> {
-    return { fonts: Object.keys(this.fonts) };
+    return { fonts: ["Roboto", ...this.families.keys()] };
   }
 }
 
@@ -194,35 +211,71 @@ function compileLayout(declared: DeclaredLayout, headerRows: number): Record<str
   return layout;
 }
 
-/** Puts each declared family's bytes into a virtual filesystem under a name
+/** Puts each referenced family's bytes into a virtual filesystem under a name
  *  derived from the RESOURCE, the family and the face, and builds the font map
  *  pointing at them. Keyed by resource because pdfmake's virtual filesystem is
  *  process-global and merged rather than replaced: two documents declaring a
  *  family of the same name under different bytes would share one entry.
- *  A face left out falls back to `normal`, which the schema requires. */
-function registerFonts(resource: DocumentResource): {
-  vfs: Record<string, Uint8Array | string>;
+ *  A face the family left out falls back to its `normal`, which
+ *  `resolveFamilies` has already established is present. */
+function resolveFamilies(
+  resource: DocumentResource,
+  ctx: ResourceContext,
+): Map<string, FamilyHandle> {
+  const families = new Map<string, FamilyHandle>();
+  for (const [name, reference] of Object.entries(resource.fonts ?? {})) {
+    const family = ctx.resolveRef(
+      reference,
+      isFamilyHandle,
+      () => `PdfMake.Document "${resource.metadata.name}": font '${name}'`,
+      "Font.Family",
+    );
+    // A family with no bytes at all is refused HERE rather than by `Font.Family`,
+    // which allows one deliberately: a typeface the renderer already has is a
+    // valid declaration for a page or a chart, and only embedding needs the file.
+    // So the refusal belongs where the need is, and can say what the need was.
+    if (!selectFace(family.faces, "normal")) {
+      throw new RuntimeError(
+        "ERR_INVALID_FONT",
+        `PdfMake.Document "${resource.metadata.name}": font '${name}' references the family ` +
+          `'${family.family}', which declares no face bytes. A PDF embeds the typeface it renders, ` +
+          `so give that Font.Family at least a 'normal' face with !include-bytes.`,
+      );
+    }
+    families.set(name, family);
+  }
+  return families;
+}
+
+/** Puts each family's bytes into a virtual filesystem under a name derived from
+ *  the RESOURCE, the font name and the face, and builds the font map pointing at
+ *  them. Keyed by resource because pdfmake's virtual filesystem is
+ *  process-global and merged rather than replaced: two documents declaring a
+ *  font of the same name over different bytes would share one entry.
+ *  A face the family left out falls back to its `normal`. */
+function registerFonts(
+  document: string,
+  families: Map<string, FamilyHandle>,
+): {
+  vfs: Record<string, string>;
   fonts: Record<string, Record<string, string>>;
 } {
-  const vfs: Record<string, Uint8Array | string> = { ...(robotoVfs as Record<string, string>) };
+  const vfs: Record<string, string> = { ...(robotoVfs as Record<string, string>) };
   const fonts: Record<string, Record<string, string>> = { Roboto: { ...ROBOTO } };
 
-  for (const [family, faces] of Object.entries(resource.fonts ?? {})) {
+  for (const [name, family] of families) {
     const map: Record<string, string> = {};
-    for (const face of FACES) {
-      const bytes = faces[face] ?? faces.normal;
-      if (!(bytes instanceof Uint8Array)) {
-        throw new InvokeError(
-          "ERR_INVALID_FONT",
-          `PdfMake.Document "${resource.metadata.name}": font '${family}.${face}' must be font file bytes ` +
-            `(embed one with !include-bytes); got ${typeof bytes}.`,
-        );
-      }
-      const file = `${resource.metadata.name}-${family}-${face}.ttf`;
-      vfs[file] = bytes;
-      map[face] = file;
+    for (const [pdfmakeFace, declaredFace] of Object.entries(FACES)) {
+      const bytes = selectFace(family.faces, declaredFace)!;
+      const file = `${document}-${name}-${pdfmakeFace}.ttf`;
+      // Base64, which is what pdfmake's virtual filesystem reads: it treats any
+      // OBJECT value as `{ data, encoding }`, so a raw byte array lands as
+      // `undefined` data and fails inside its Buffer constructor rather than
+      // anywhere that names the font.
+      vfs[file] = Buffer.from(bytes).toString("base64");
+      map[pdfmakeFace] = file;
     }
-    fonts[family] = map;
+    fonts[name] = map;
   }
   return { vfs, fonts };
 }

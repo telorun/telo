@@ -445,19 +445,23 @@ export class CelScopeResolver {
     this.invocationContext = (m.metadata as any)?.xTeloInvocationContext as
       | Record<string, any>
       | undefined;
-    this.stepContext = definition?.schema
+    // The INHERITANCE-RESOLVED schema at both sites, for the reason the CEL
+    // context regions use it: an `extends` child is authored against
+    // merge(parent, own), so a step body or a `catch:` region the parent
+    // declares is in force on the child. All three consumers share one memo so
+    // they cannot come to disagree about which schema a kind means.
+    const authorSchema = defs.effectiveSchemaOf(definition) as Record<string, any> | undefined;
+    this.stepContext = authorSchema
       ? buildStepContextSchema(
           m as Record<string, any>,
-          definition.schema as Record<string, any>,
+          authorSchema,
           allManifests as Record<string, any>[],
           defs,
           aliases,
           scopes,
         )
       : undefined;
-    this.errorScopes = collectErrorContextScopes(
-      definition?.schema as Record<string, any> | undefined,
-    );
+    this.errorScopes = collectErrorContextScopes(authorSchema);
   }
 
   /**

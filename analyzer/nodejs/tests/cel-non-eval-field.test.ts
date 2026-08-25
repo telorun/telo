@@ -82,4 +82,59 @@ describe("CEL in a non-eval field", () => {
     } as unknown as ResourceManifest;
     expect(nonEvalDiagnostics(def, res)).toEqual([]);
   });
+
+  it("does not flag a CEL field an extends child inherits from its parent", () => {
+    // Without `base:`, a child is authored against merge(parent, own), and the
+    // kernel stamps that merged schema at definition registration — so it
+    // expands the inherited field. Reading the child's OWN schema here reported
+    // the expression as never evaluated, which is the analyzer and the runtime
+    // disagreeing about what the manifest means.
+    const parent = makeKind("Test.Base", {
+      type: "array",
+      "x-telo-context": { type: "object", properties: {} },
+    });
+    const child = {
+      kind: "Telo.Definition",
+      metadata: { name: "Child", module: "Test" },
+      capability: "Telo.Service",
+      extends: "Test.Base",
+      schema: { type: "object", properties: { other: { type: "integer" } } },
+    } as unknown as ResourceManifest;
+    const res = instance("Test.Child");
+    const diagnostics = new StaticAnalyzer()
+      .analyze(withSyntheticPositions([parent, child, res]))
+      .filter((d) => d.code === "CEL_IN_NON_EVAL_FIELD");
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("types an x-telo-context region an extends child inherits", () => {
+    // The region and the check live on different kinds: the parent declares the
+    // scope, the child declares only its own field. Reading the child's OWN
+    // schema found no region, so every expression on every descendant went
+    // unchecked — which for a typing rule is the check silently not existing.
+    const parent = makeKind("Test.Base", {
+      type: "object",
+      "x-telo-context": {
+        type: "object",
+        properties: { row: { type: "object", properties: { label: { type: "string" } } } },
+      },
+    });
+    const child = {
+      kind: "Telo.Definition",
+      metadata: { name: "Child", module: "Test" },
+      capability: "Telo.Invocable",
+      extends: "Test.Base",
+      schema: { type: "object", properties: {} },
+    } as unknown as ResourceManifest;
+    const res: ResourceManifest = {
+      kind: "Test.Child",
+      metadata: { name: "r" },
+      field: { row: makeTaggedSentinel("cel", "row.labell") },
+    } as unknown as ResourceManifest;
+    const codes = new StaticAnalyzer()
+      .analyze(withSyntheticPositions([parent, child, res]))
+      .filter((d) => d.code === "CEL_UNKNOWN_FIELD");
+    expect(codes).toHaveLength(1);
+    expect(codes[0].message).toContain("label");
+  });
 });

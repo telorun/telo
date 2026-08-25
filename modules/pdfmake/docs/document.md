@@ -56,7 +56,7 @@ Invoked with `{ customer: "Acme Ltd", rows: [...] }`.
 | `inputType` | type | no | The data one rendering takes. Declare it and every call site is checked against it. |
 | `defaultStyle` | `Style` | no | Presentation every node inherits unless it overrides it. |
 | `styles` | map of `Style` | no | Named presentation a node applies by naming it in `style`. |
-| `fonts` | map | no | Brand fonts, embedded with `!include-bytes`. See below. |
+| `fonts` | map | no | Brand fonts, each a reference to a `Font.Family`. See below. |
 | `images` | map of strings | no | Named raster images an `image` node refers to, as data URIs. |
 | `background` | `Node[]` | no | Drawn behind every page — a full-bleed graphic or watermark. |
 | `header` / `footer` | `Node[]` | no | Repeated at the top / bottom of every page. |
@@ -114,19 +114,32 @@ A named style — and `defaultStyle` — is **closed**: a misspelled key is a `t
 
 ## Fonts
 
-Each entry in `fonts` names the faces a family renders with, embedded from files that ship beside the manifest:
+Each entry in `fonts` maps the name a style writes in `font:` to a `Font.Family`:
 
 ```yaml
+kind: Font.Family
+metadata: { name: brand }
+family: Brand Sans
+faces:
+  normal: !include-bytes assets/Brand-Regular.ttf
+  bold: !include-bytes assets/Brand-Bold.ttf
+---
+kind: PdfMake.Document
+metadata: { name: statement }
 fonts:
-  Brand:
-    normal: !include-bytes assets/Brand-Regular.ttf
-    bold: !include-bytes assets/Brand-Bold.ttf
+  Brand: !ref brand
 defaultStyle: { font: Brand }
+content:
+  - text: Statement
 ```
 
-`normal` is required; a face left out falls back to it. **Roboto** is always available under the name `Roboto` and needs no entry, so a document renders with no font configuration at all.
+A face the family leaves out falls back to its `normal`. **Roboto** is always available under the name `Roboto` and needs no entry, so a document renders with no font configuration at all.
 
-Embedded paths are relative to the module root and the bytes ship inside the artifact, so there is no file to locate at runtime.
+The family is a resource rather than four inline byte fields because a PDF is rarely the only thing that needs it: a chart in this document measures its labels against a typeface, and a page showing the same report serves one. Declared here, each of those is a separate string that can silently disagree — and when the family a layout was *computed* against is not the family that *renders*, labels clip with no visible cause. One `!ref` in each place removes that.
+
+`!include-bytes` paths are relative to the module root and the bytes ship inside the artifact, so there is no file to locate at runtime.
+
+A `Font.Family` may legitimately declare **no** faces — a typeface a page serves or a chart estimates against. A PDF embeds the type it renders, so this module rejects one, and says what the bytes were needed for.
 
 ## Table layout
 
@@ -153,4 +166,6 @@ A reusable section — an invoice block, a statement header — is an ordinary i
 
 `ERR_RENDER_FAILED` — pdfmake could not lay the document out. The message is pdfmake's own.
 
-`ERR_INVALID_FONT` — a `fonts` entry did not hold font file bytes. Embed one with `!include-bytes`.
+`ERR_INVALID_FONT` — a referenced `Font.Family` declares no face bytes, so there is nothing to embed. Give it at least a `normal` face with `!include-bytes`.
+
+A `fonts` entry that names no resource, or one that is not a `Font.Family`, fails when the document resource is created rather than when it renders: whether the reference resolves is a property of the manifest, and an app carrying a broken one should not boot.

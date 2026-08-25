@@ -18,9 +18,13 @@ runs.
   `Node` shape before the app starts — a misspelled key, a table with no `body`,
   a colour where a number belongs. A failed node names the alternatives it could
   have been.
-- **Brand assets ship with the module.** Fonts embed with `!include-bytes` and
-  artwork with `!include-text`, so there is no file to find at runtime.
-  Roboto is always available and needs no configuration.
+- **Brand assets ship with the module.** Artwork embeds with `!include-text` and
+  fonts come from a `Font.Family` whose faces are embedded with `!include-bytes`,
+  so there is no file to find at runtime. Roboto is always available and needs no
+  configuration.
+- **One typeface, one declaration.** A document references the same
+  `Font.Family` a chart measures against and a page serves, so the type a layout
+  was computed for is the type that renders.
 - **Charts and other artwork compose by value.** Anything that produces SVG
   markup — a chart kind, a stored asset — goes into an `svg` node through an
   expression; this module never learns what produced it.
@@ -42,16 +46,22 @@ against the same grammar and lands in `content` through an expression.
 kind: Telo.Application
 metadata: { name: invoicer, version: 1.0.0 }
 imports:
-  PdfMake: oci://ghcr.io/telorun/pdfmake@0.1.0
+  PdfMake: oci://ghcr.io/telorun/pdfmake@0.3.0
+  Font: oci://ghcr.io/telorun/font@0.1.0
 targets: []
+---
+kind: Font.Family
+metadata: { name: brand }
+family: Brand Sans
+faces:
+  normal: !include-bytes assets/Brand-Regular.ttf
+  bold: !include-bytes assets/Brand-Bold.ttf
 ---
 kind: PdfMake.Document
 metadata: { name: customerReport }
 pageSize: A4
 fonts:
-  Brand:
-    normal: !include-bytes assets/Brand-Regular.ttf
-    bold: !include-bytes assets/Brand-Bold.ttf
+  Brand: !ref brand
 defaultStyle: { font: Brand, fontSize: 10 }
 styles:
   heading: { fontSize: 18, bold: true, color: "#1B36C4" }

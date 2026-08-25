@@ -359,7 +359,14 @@ export function visitManifest(
     }
 
     if (wantsCel) {
-      const contexts = definition?.schema ? extractContextsFromSchema(definition.schema) : [];
+      // The INHERITANCE-RESOLVED schema: an `extends` child is authored against
+      // merge(parent, own), so a context region the parent declares is in force
+      // on the child. Reading the child's own schema typed the region on
+      // whichever kind happened to declare it and left every descendant's
+      // expressions unchecked — silently, which for a typing rule means the
+      // check simply stops existing.
+      const authorSchema = registry.effectiveSchemaOf(definition);
+      const contexts = authorSchema ? extractContextsFromSchema(authorSchema) : [];
       walkCelExpressions(r, "", (expr, path, engineName, surface) => {
         let contextSchema: Record<string, any> | undefined;
         let matchedScope: string | undefined;

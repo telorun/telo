@@ -875,6 +875,25 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  modules/font/nodejs:
+    dependencies:
+      fontkit:
+        specifier: ^2.0.4
+        version: 2.0.4
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/fs/nodejs:
     devDependencies:
       '@telorun/sdk':
@@ -1266,6 +1285,9 @@ importers:
 
   modules/pdfmake/nodejs:
     dependencies:
+      '@telorun/font':
+        specifier: workspace:*
+        version: link:../../font/nodejs
       pdfmake:
         specifier: ^0.3.11
         version: 0.3.11
@@ -1498,6 +1520,55 @@ importers:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/svg-chart/nodejs:
+    dependencies:
+      '@telorun/font':
+        specifier: workspace:*
+        version: link:../../font/nodejs
+      d3-array:
+        specifier: ^3.2.4
+        version: 3.2.4
+      d3-format:
+        specifier: ^3.1.0
+        version: 3.1.2
+      d3-scale:
+        specifier: ^4.0.2
+        version: 4.0.2
+      d3-shape:
+        specifier: ^3.2.0
+        version: 3.2.0
+      d3-time-format:
+        specifier: ^4.1.0
+        version: 4.1.0
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/d3-array':
+        specifier: ^3.2.1
+        version: 3.2.2
+      '@types/d3-format':
+        specifier: ^3.0.4
+        version: 3.0.4
+      '@types/d3-scale':
+        specifier: ^4.0.8
+        version: 4.0.9
+      '@types/d3-shape':
+        specifier: ^3.1.6
+        version: 3.1.8
+      '@types/d3-time-format':
+        specifier: ^4.0.3
+        version: 4.0.3
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30

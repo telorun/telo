@@ -1,0 +1,207 @@
+kind: Telo.Library
+metadata:
+  name: Font
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Visualization]
+  description: |
+    Declaring a typeface once and using it everywhere it is needed: the family name
+    written into markup, a document's font table and a stylesheet, plus the face
+    bytes a renderer embeds or serves. Measure how wide a run of text will be at a
+    given size, so a caption, a legend or a column lands where it was laid out.
+exports:
+  kinds:
+    - Family
+    - Measure
+  # The entry point a dependent module's controller bundle resolves
+  # `@telorun/font` to, so this module's code is one module scope across every
+  # consumer instead of a copy inlined into each of their bundles.
+  #
+  # What crosses it is the face vocabulary — a consumer holding a `Font.Family`
+  # duck-types it and picks a face — and the width ESTIMATE. The estimate is the
+  # load-bearing half: a chart laying out against a family that ships no bytes
+  # has to guess widths, and a second table living in the chart would drift from
+  # this one silently, which is the failure mode that matters here since neither
+  # copy is ever wrong enough to fail a test.
+  code:
+    - specifier: "@telorun/font"
+      format: js
+      path: ./nodejs/font.mjs
+      source: ./nodejs/src/index.ts
+---
+# Font.Family — one typeface, declared once.
+#
+# A brand face is embedded by a PDF, measured by a chart and served to a browser
+# by a page. Declared per consumer, the same file sits several times in one
+# manifest tree and — the part that actually breaks — nothing ties the family a
+# chart MEASURED to the family a document EMBEDS. Both are hand-written strings,
+# and when they disagree the layout is computed against metrics the renderer
+# never had. One resource removes the second string.
+#
+# The faces are optional, so a websafe or already-served typeface is still
+# declared here: identity with no bytes, measured by estimate. Without that a
+# font that ships nowhere would need a second declaration surface, which is the
+# duplication this kind exists to remove. A consumer that genuinely needs bytes
+# — a document embedding one, a page serving one — rejects a faceless family
+# itself, where it can say what it needed the bytes for.
+kind: Telo.Definition
+metadata:
+  name: Family
+  description: >-
+    One typeface: the family name renderers use to select it, and optionally the file
+    bytes for its regular, bold, italic and bold-italic faces. Declared once and
+    referenced by everything that embeds, serves or measures it, so the name a layout
+    was computed against is the name that renders. A family with no face bytes is a
+    valid declaration of a typeface supplied elsewhere.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/font.mjs&local_path=./nodejs/src/index.ts#FamilyController
+schema:
+  type: object
+  required: [family]
+  additionalProperties: false
+  properties:
+    family:
+      title: Family
+      type: string
+      description: >-
+        The typeface name a renderer selects by — written into SVG markup, a PDF's
+        font table and CSS. This is the one place it is written down.
+    faces:
+      title: Faces
+      type: object
+      additionalProperties: false
+      description: >-
+        The face files, embedded with `!include-bytes` so they ship inside the module's
+        own artifact and there is no file to find at runtime. Every face is optional: a
+        family declared with none is identity only, and text measured against it is
+        estimated rather than exact. A consumer asking for a face that was not declared
+        falls back to `normal`.
+      properties:
+        normal:
+          title: Normal
+          x-telo-type: Telo.Bytes
+        bold:
+          title: Bold
+          x-telo-type: Telo.Bytes
+        italic:
+          title: Italic
+          x-telo-type: Telo.Bytes
+        boldItalic:
+          title: Bold italic
+          x-telo-type: Telo.Bytes
+---
+# Font.Measure — how wide will this text be?
+#
+# A BATCH, and that is the whole design. Laying out one chart measures every tick
+# label, legend entry, axis title and data label; a dispatch per string would put
+# the cost of the telemetry path on the layout path. A caller knows every string
+# it will draw before it places any of them, so one layout is one call.
+#
+# An invocable rather than a method on the held family, because the contract is
+# then `inputType` / `outputType` — statically checked, versioned with the module,
+# and nothing crossing the boundary but data. A method would have put the type in
+# a shared source surface, raised a module-scope question between two controller
+# bundles, and been Node-only by construction: a controller written in another
+# language cannot call a JavaScript instance method.
+kind: Telo.Definition
+metadata:
+  name: Measure
+  description: >-
+    Measures how wide a list of strings renders in a typeface at a given size, in one
+    call — the advance width of each string, plus the ascender, descender and line gap
+    that decide line height. Measured from the face's own metrics when the family
+    declares its bytes, and estimated from average character widths when it does not;
+    the result says which it was.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/font.mjs&local_path=./nodejs/src/index.ts#MeasureController
+throws:
+  codes:
+    ERR_FONT_UNREADABLE:
+      description: >-
+        The referenced family's face bytes are not a font file this runtime can parse.
+        Check that `!include-bytes` points at a TrueType, OpenType or WOFF file.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [strings]
+    additionalProperties: false
+    properties:
+      strings:
+        title: Strings
+        type: array
+        items: { type: string }
+        description: The runs of text to measure, in the order the widths come back.
+      size:
+        title: Size
+        type: number
+        exclusiveMinimum: 0
+        description: Point size to measure at. Defaults to the resource's `size`.
+      style:
+        title: Style
+        type: string
+        enum: [normal, bold, italic, boldItalic]
+        description: Which face to measure. Defaults to the resource's `style`.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [family, widths, ascender, descender, lineGap, exact]
+    additionalProperties: false
+    properties:
+      family:
+        title: Family
+        type: string
+        description: >-
+          The family name to write into the markup. Comes from the referenced
+          `Font.Family`, so a caller never restates it.
+      widths:
+        title: Widths
+        type: array
+        items: { type: number }
+        description: The advance width of each input string at the requested size, in order.
+      ascender:
+        title: Ascender
+        type: number
+        description: Height above the baseline at the requested size.
+      descender:
+        title: Descender
+        type: number
+        description: Depth below the baseline at the requested size, as a positive number.
+      lineGap:
+        title: Line gap
+        type: number
+        description: Recommended leading between lines at the requested size.
+      exact:
+        title: Exact
+        type: boolean
+        description: >-
+          True when the widths came from the face's own metrics. False when the family
+          declared no bytes and the widths are estimated, which is what tells a caller
+          its layout has slack it did not choose.
+schema:
+  type: object
+  required: [family]
+  additionalProperties: false
+  properties:
+    family:
+      title: Family
+      description: The typeface to measure in.
+      x-telo-ref:
+        kind: Self.Family
+        use: dependency
+    size:
+      title: Size
+      type: number
+      exclusiveMinimum: 0
+      default: 12
+      description: Default point size, used when a call does not give one.
+    style:
+      title: Style
+      type: string
+      enum: [normal, bold, italic, boldItalic]
+      default: normal
+      description: Default face, used when a call does not give one.

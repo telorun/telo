@@ -1,0 +1,160 @@
+kind: Telo.Application
+metadata:
+  name: SvgChartDonutTest
+  version: 1.0.0
+  description: |
+    Renders a donut from typed rows and asserts the SVG's structure and its
+    computed geometry.
+
+    Structure and geometry are both asserted because they fail differently: a
+    chart that draws nothing still produces well-formed markup, and a chart with
+    the wrong arithmetic still produces the right elements. The slice angles are
+    what say the values were read and shared out correctly.
+imports:
+  SvgChart: ../
+  Font: ../../font
+  Run: ../../run
+  Assert: ../../assert
+  JavaScript: ../../javascript
+targets:
+  - !ref testDonut
+---
+kind: Telo.JsonSchema
+metadata: { name: EmployeeHoursRows }
+schema:
+  type: object
+  required: [rows]
+  additionalProperties: false
+  properties:
+    rows:
+      type: array
+      items:
+        type: object
+        required: [employee, hours]
+        additionalProperties: false
+        properties:
+          employee: { type: string }
+          hours: { type: number }
+---
+kind: Font.Family
+metadata: { name: brand }
+family: Test Sans
+faces:
+  normal: !include-bytes ./__fixtures__/fonts/TestSans-Regular.ttf
+---
+kind: SvgChart.Donut
+metadata: { name: employeeHours }
+inputType: !ref EmployeeHoursRows
+rows: !cel "inputs.rows"
+category: !cel "row.employee"
+value: !cel "row.hours"
+title: Employee Hours
+description: Hours logged per employee this month.
+innerRadius: 0.62
+width: 480
+height: 300
+legend: { placement: right, title: Employee }
+labels: { format: "{value} ({percent})", valueFormat: ".0f" }
+font:
+  size: 12
+  metrics: { kind: Font.Measure, family: !ref brand }
+---
+# Reads the markup back so the assertions are about what was drawn rather than
+# about a string this test also wrote. Counting elements and summing sweep
+# angles is the closest thing to reading the picture.
+kind: JavaScript.Script
+metadata: { name: readSvg }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [svg]
+    additionalProperties: false
+    properties:
+      svg: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [slices, labels, legendSwatches, title, desc, fontFamily, sweeps]
+    additionalProperties: false
+    properties:
+      slices: { type: integer }
+      labels: { type: array, items: { type: string } }
+      legendSwatches: { type: integer }
+      title: { type: string }
+      desc: { type: string }
+      fontFamily: { type: string }
+      sweeps: { type: array, items: { type: number } }
+code: |
+  function main(inputs) {
+    const svg = inputs.svg;
+    const between = (open, close) => {
+      const start = svg.indexOf(open);
+      return start < 0 ? "" : svg.slice(start + open.length, svg.indexOf(close, start));
+    };
+    const paths = [...svg.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]);
+    // An arc path's large-arc flag plus its endpoints are hard to read back, but
+    // d3 writes the sweep as an `A rx ry rot large sweep x y` command; the share
+    // each slice takes is recovered from the angle between its two radii.
+    const sweeps = paths.map((d) => {
+      const points = [...d.matchAll(/A[\d.]+,[\d.]+,0,(\d),(\d),(-?[\d.]+),(-?[\d.]+)/g)];
+      const move = d.match(/^M(-?[\d.]+),(-?[\d.]+)/);
+      if (!move || points.length === 0) return 0;
+      const angle = (x, y) => Math.atan2(Number(y), Number(x));
+      const start = angle(move[1], move[2]);
+      const end = angle(points[0][3], points[0][4]);
+      let sweep = end - start;
+      if (sweep < 0) sweep += Math.PI * 2;
+      return Math.round((sweep / (Math.PI * 2)) * 1000) / 1000;
+    });
+    return {
+      slices: paths.length,
+      labels: [...svg.matchAll(/<text[^>]*>([^<]*)<\/text>/g)]
+        .map((m) => m[1])
+        .filter((t) => t.includes("(")),
+      legendSwatches: [...svg.matchAll(/<rect /g)].length,
+      title: between("<title>", "</title>"),
+      desc: between("<desc>", "</desc>"),
+      fontFamily: (svg.match(/font-family="([^"]+)"/) ?? [])[1] ?? "",
+      sweeps,
+    };
+  }
+---
+kind: Run.Sequence
+metadata: { name: testDonut }
+steps:
+  - name: chart
+    invoke: !ref employeeHours
+    inputs:
+      rows:
+        - { employee: Ada, hours: 128.5 }
+        - { employee: Grace, hours: 96 }
+        - { employee: Linus, hours: 74.5 }
+  - name: read
+    invoke: !ref readSvg
+    inputs:
+      svg: !cel "steps.chart.result.svg"
+  - name: assertChart
+    inputs:
+      actual:
+        dimensions:
+          width: !cel "steps.chart.result.width"
+          height: !cel "steps.chart.result.height"
+          mediaType: !cel "steps.chart.result.mediaType"
+        drawn: !cel "steps.read.result"
+      expected:
+        dimensions: { width: 480, height: 300, mediaType: image/svg+xml }
+        drawn:
+          # One slice and one legend swatch per row.
+          slices: 3
+          legendSwatches: 3
+          # 128.5 / 299 = 0.43, 96 / 299 = 0.321, 74.5 / 299 = 0.249.
+          sweeps: [0.43, 0.321, 0.249]
+          labels: ["129 (43%)", "96 (32%)", "75 (25%)"]
+          # Accessibility markup is always emitted, and the family is the one
+          # the layout was measured against rather than a second string.
+          title: Employee Hours
+          desc: Hours logged per employee this month.
+          fontFamily: Test Sans
+    invoke: { kind: Assert.Equals }

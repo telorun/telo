@@ -585,7 +585,8 @@ system: |
   validates it), so reuse a label the standard library already uses when one
   fits — `AI`, `Compute`, `Configuration`, `Coordination`, `Data`,
   `Observability`, `Performance`, `Reliability`, `Scheduling`, `Storage`,
-  `Streaming`, `Testing`, `Transport` — and coin one only when none does. A
+  `Streaming`, `Testing`, `Transport`, `Visualization` — and coin one only when
+  none does. A
   `Telo.Definition` / `Telo.Abstract` may declare its own, REPLACING its
   module's for that kind; do that only when the kind belongs to a different
   domain than the module around it. Categories are a facet, never search text —

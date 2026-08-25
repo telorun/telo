@@ -1,0 +1,278 @@
+kind: Telo.Application
+metadata:
+  name: PdfChartReport
+  version: 1.0.0
+  categories: [Visualization, Data, Storage]
+  description: |
+    A quarterly sales report: two charts and a table, laid out as a PDF and
+    written to disk. Six resources, no script.
+
+    The rows are read once and drawn three ways — a donut of revenue by region, a
+    bar chart of the same rows split by channel, and a table — because a chart
+    takes flat rows and maps them with expressions, so the same result set feeds
+    all of them without being reshaped in between.
+
+        pnpm run telo examples/pdf-chart-report/telo.yaml
+        open ./reports/sales-2026-Q1.pdf
+
+    ONE `Font.Family` is declared here, and both the charts and the document
+    reference it. That is the point worth copying: the charts measure their
+    legends and labels against the typeface the PDF actually embeds, so the
+    layout is computed for the type that renders. Declared twice — once for the
+    chart and once for the document — the two are separate strings that silently
+    disagree, and the only symptom is labels that clip.
+
+    Imports are relative because these modules are not published yet; they become
+    pinned `oci://` refs like every other example once they are.
+imports:
+  SvgChart: ../../modules/svg-chart
+  Font: ../../modules/font
+  PdfMake: ../../modules/pdfmake
+  Collection: ../../modules/collection
+  Fs: ../../modules/fs
+  Run: ../../modules/run
+  Console: ../../modules/console
+variables:
+  quarter:
+    env: QUARTER
+    type: string
+    default: 2026-Q1
+    description: Names the report, its heading and the file it is written to.
+  outputDir:
+    env: OUTPUT_DIR
+    type: string
+    default: ./reports
+    description: Where the PDF lands. Created if missing.
+targets:
+  - !ref buildReport
+---
+# The typeface, declared once. The charts measure in it and the document embeds
+# it, so what was laid out is what renders.
+kind: Font.Family
+metadata: { name: reportSans }
+family: Report Sans
+faces:
+  normal: !include-bytes assets/ReportSans-Regular.ttf
+---
+# Stands in for wherever the rows really come from — a query, an API, a CSV. The
+# charts below care only that they are FLAT: one row per drawn mark, never
+# pre-grouped. Aggregate upstream with Collection.GroupBy when they are not.
+kind: Run.Value
+metadata: { name: quarterlySales }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [rows]
+    additionalProperties: false
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          required: [region, channel, revenue]
+          additionalProperties: false
+          properties:
+            region: { type: string }
+            channel: { type: string }
+            revenue: { type: number }
+value:
+  rows:
+    - { region: North, channel: Direct,  revenue: 412000 }
+    - { region: North, channel: Partner, revenue: 168000 }
+    - { region: EMEA,  channel: Direct,  revenue: 508000 }
+    - { region: EMEA,  channel: Partner, revenue: 233500 }
+---
+# The row shape, declared once and referenced by both charts — so a misspelled
+# accessor is a `telo check` error rather than an empty picture in the PDF.
+kind: Telo.JsonSchema
+metadata: { name: SalesRows }
+schema:
+  type: object
+  required: [rows]
+  additionalProperties: false
+  properties:
+    rows:
+      type: array
+      items:
+        type: object
+        required: [region, channel, revenue]
+        additionalProperties: false
+        properties:
+          region: { type: string }
+          channel: { type: string }
+          revenue: { type: number }
+---
+# One row per region. A donut draws one slice per category, and the sales rows
+# carry two per region — so they are rolled up first. Skip this and the chart
+# says so by name: rows 0 and 1 both have category 'North'.
+kind: Collection.GroupBy
+metadata: { name: totalByRegion }
+collection: !cel "inputs.rows"
+key:
+  region: !cel "item.region"
+aggregate:
+  revenue: !cel "sum(group.map(r, r.revenue))"
+---
+kind: Telo.JsonSchema
+metadata: { name: RegionTotals }
+schema:
+  type: object
+  required: [rows]
+  additionalProperties: false
+  properties:
+    rows:
+      type: array
+      items:
+        type: object
+        required: [region, revenue]
+        additionalProperties: false
+        properties:
+          region: { type: string }
+          revenue: { type: number }
+---
+# Revenue by region.
+kind: SvgChart.Donut
+metadata: { name: revenueByRegion }
+inputType: !ref RegionTotals
+rows: !cel "inputs.rows"
+category: !cel "row.region"
+value: !cel "row.revenue"
+title: Revenue by region
+description: Share of quarterly revenue contributed by each region.
+innerRadius: 0.62
+width: 480
+height: 260
+legend: { placement: right, title: Region }
+labels: { format: "{percent}" }
+font:
+  size: 11
+  metrics: { kind: Font.Measure, family: !ref reportSans }
+---
+# The same rows, split by channel instead — one bar per (region, channel) pair,
+# stacked so each column reads as a region's total.
+kind: SvgChart.Bar
+metadata: { name: revenueByChannel }
+inputType: !ref SalesRows
+rows: !cel "inputs.rows"
+title: Revenue by channel
+description: Direct and partner revenue per region.
+x: { value: !cel "row.region", scale: band, title: Region }
+y: { value: !cel "row.revenue", title: Revenue, tickFormat: "$.2s" }
+series: !cel "row.channel"
+stacked: true
+gridlines: { y: true }
+width: 480
+height: 240
+legend: { placement: bottom, title: Channel }
+font:
+  size: 11
+  metrics: { kind: Font.Measure, family: !ref reportSans }
+---
+# One document, invoked per quarter. The charts arrive as markup and go into
+# `svg` nodes — this module never learns what produced them.
+kind: PdfMake.Document
+metadata: { name: salesReport }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [quarter, regionChart, channelChart, tableRows, total]
+    additionalProperties: false
+    properties:
+      quarter: { type: string }
+      regionChart: { type: string }
+      channelChart: { type: string }
+      tableRows: { type: array }
+      total: { type: string }
+pageSize: A4
+pageMargins: [48, 56, 48, 56]
+fonts:
+  Report: !ref reportSans
+defaultStyle: { font: Report, fontSize: 10 }
+styles:
+  heading: { fontSize: 20, bold: true, color: "#0072B2" }
+  caption: { fontSize: 9, color: "#6B7280" }
+  tableHeader: { bold: true, color: "#FFFFFF" }
+  totalsRow: { bold: true, color: "#0072B2" }
+content:
+  - text: !cel "'Sales report — ' + inputs.quarter"
+    style: heading
+    margin: [0, 0, 0, 12]
+  - svg: !cel "inputs.regionChart"
+    width: 460
+  - text: Share of quarterly revenue by region.
+    style: caption
+    margin: [0, 2, 0, 16]
+  - svg: !cel "inputs.channelChart"
+    width: 460
+  - text: Direct and partner revenue per region.
+    style: caption
+    margin: [0, 2, 0, 20]
+  - table:
+      headerRows: 1
+      widths: ["*", auto, auto]
+      body: !cel >-
+        [[{'text': 'Region', 'style': 'tableHeader'},
+          {'text': 'Channel', 'style': 'tableHeader'},
+          {'text': 'Revenue', 'style': 'tableHeader'}]]
+        + inputs.tableRows
+        + [[{'text': 'Total', 'style': 'totalsRow'}, {'text': '', 'style': 'totalsRow'},
+            {'text': inputs.total, 'style': 'totalsRow'}]]
+    layout:
+      hLineWidth: 0.5
+      hLineColor: "#D1D5DB"
+      paddingTop: 5
+      paddingBottom: 5
+      headerFillColor: "#0072B2"
+---
+kind: Fs.FileWrite
+metadata: { name: writeReport }
+---
+kind: Run.Sequence
+metadata: { name: buildReport }
+steps:
+  - name: sales
+    invoke: !ref quarterlySales
+
+  - name: byRegion
+    invoke: !ref totalByRegion
+    inputs:
+      rows: !cel "steps.sales.result.rows"
+
+  - name: regionChart
+    invoke: !ref revenueByRegion
+    inputs:
+      rows: !cel "steps.byRegion.result.rows"
+
+  - name: channelChart
+    invoke: !ref revenueByChannel
+    inputs:
+      rows: !cel "steps.sales.result.rows"
+
+  - name: render
+    invoke: !ref salesReport
+    inputs:
+      quarter: !cel "variables.quarter"
+      regionChart: !cel "steps.regionChart.result.svg"
+      channelChart: !cel "steps.channelChart.result.svg"
+      tableRows: !cel >-
+        steps.sales.result.rows.map(r,
+          [r.region, r.channel, '$' + string(int(r.revenue))])
+      total: !cel "'$' + string(int(sum(steps.sales.result.rows.map(r, r.revenue))))"
+
+  # The bytes go straight from the renderer to the file — no encoding step,
+  # because `content` accepts raw bytes from a resource that produced them.
+  - name: write
+    invoke: !ref writeReport
+    inputs:
+      path: !cel "variables.outputDir + '/sales-' + variables.quarter + '.pdf'"
+      content: !cel "steps.render.result.bytes"
+      createParents: true
+
+  - name: report
+    invoke: { kind: Console.WriteLine }
+    inputs:
+      output: !cel >-
+        'Wrote ' + string(steps.write.result.bytesWritten) + ' bytes to '
+        + variables.outputDir + '/sales-' + variables.quarter + '.pdf'
