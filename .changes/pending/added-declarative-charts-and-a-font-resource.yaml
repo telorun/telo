@@ -1,0 +1,25 @@
+modules:
+  modules/font: Added
+  modules/svg-chart: Added
+  modules/pdfmake: Added
+body: |
+  Charts as SVG, and a typeface as a resource.
+
+  `modules/svg-chart` renders rows to SVG markup — pie, donut, bar, line, area
+  and scatter, each its own kind over two shared abstracts. Every mapping is an
+  expression over the row checked against a declared row shape, so a misspelled
+  column is a startup error rather than an empty chart. Zero rows renders an
+  empty chart; a null, a non-finite value or a duplicate of a key the chart draws
+  one mark per is an error naming the row and the accessor.
+
+  `modules/font` declares a typeface once — `Font.Family` for its name and face
+  bytes, `Font.Measure` for how wide a batch of strings renders in it. A family
+  with no bytes is a valid declaration and measures by estimate, which the result
+  reports.
+
+  BREAKING: `PdfMake.Document`'s `fonts:` map now takes a reference to a
+  `Font.Family` instead of four inline byte fields, so a document embeds the same
+  typeface a chart measured against and a page serves. Roboto stays built in and
+  needs no entry. Embedded fonts also now reach pdfmake as base64 rather than raw
+  bytes, which is what its virtual filesystem reads — the inline form never
+  rendered.

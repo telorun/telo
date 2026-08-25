@@ -2231,7 +2231,18 @@ export class StaticAnalyzer {
           celRuleApplies =
             !!e.definition?.schema && capability !== undefined && capability !== "Telo.Template";
           if (celRuleApplies) {
-            const ownSchema = e.definition!.schema as Record<string, any>;
+            // The INHERITANCE-RESOLVED schema, not the kind's own: without
+            // `base:`, an `extends` child is authored against merge(parent, own),
+            // so a CEL-bearing field the parent declares is a legal field on the
+            // child and the kernel expands it — it stamps the merged schema at
+            // definition registration and builds eval paths from that. Reading
+            // the own schema here reported `CEL_IN_NON_EVAL_FIELD` for an
+            // expression the runtime evaluates correctly, which is the two halves
+            // disagreeing about what the manifest means.
+            const ownSchema = effectiveAuthorSchema(
+              e.definition as unknown as ResourceDefinition,
+              (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
+            ) as Record<string, any>;
             const own = buildEvalPaths(ownSchema);
             const capabilityDef = capability ? defs.resolve(capability) : undefined;
             const parent = capabilityDef?.schema

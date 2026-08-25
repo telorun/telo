@@ -1,0 +1,656 @@
+kind: Telo.Library
+metadata:
+  name: SvgChart
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Visualization]
+  description: |
+    Turning rows of data into a chart, as SVG markup: pie and donut, bar and stacked
+    bar, line, area and scatter, with axes, scales, gridlines, a legend and formatted
+    labels. Each row maps to a mark through expressions checked against the declared
+    row shape, so a misspelled column is a startup error rather than an empty picture.
+    The markup drops into a PDF, an HTML page, an email or a tool result.
+imports:
+  Font: ../font
+exports:
+  kinds:
+    - Chart
+    - Cartesian
+    - Pie
+    - Donut
+    - Bar
+    - Line
+    - Area
+    - Scatter
+---
+# SvgChart.Chart — what every chart has, declared once.
+#
+# A title and a legend heading are laid out for every chart type and both consume
+# canvas the plot area does not get, so they belong here rather than being
+# restated six times. So does the canvas itself, the palette, the locale and the
+# font: none of them is an encoding, and none of them differs between a donut and
+# a scatter.
+#
+# Abstract because there is no such thing as a chart with no encoding. What a
+# leaf adds is the mapping from a row to a mark, and that is the only thing that
+# differs between them.
+kind: Telo.Abstract
+metadata:
+  name: Chart
+  description: >-
+    What every chart shares: the canvas and its margins, the title and description, the
+    colour palette, the locale, the font to measure text in, the legend and the label
+    formats. Rendered to SVG markup with the dimensions it was drawn at. Extended by
+    each chart type, which adds only its own encoding.
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: true
+    description: Values read inside `rows` and the encoding expressions as `inputs.<name>`.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [svg, width, height, mediaType]
+    properties:
+      svg:
+        title: SVG
+        type: string
+        description: >-
+          The chart as standalone SVG markup. Static by design — no script, no hover, no
+          animation — so it renders identically in a PDF, an email and a page.
+      width:
+        title: Width
+        type: number
+        description: The canvas width it was drawn at.
+      height:
+        title: Height
+        type: number
+        description: The canvas height it was drawn at.
+      mediaType:
+        title: Media type
+        type: string
+        description: Always `image/svg+xml`, so a transport can set a header from the result.
+schema:
+  type: object
+  required: [rows]
+  additionalProperties: false
+  properties:
+    inputType:
+      title: Input type
+      description: >-
+        The data one rendering takes, named or declared inline. Declare it and every
+        encoding expression is checked against the row shape — a misspelled column is a
+        startup error rather than an empty chart — and every call site is validated
+        against the parameter list. Omitted, the row stays untyped.
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+    rows:
+      title: Rows
+      description: >-
+        The rows to draw, one row per mark — never pre-grouped. A stacked bar takes one
+        row per (category, series) pair; aggregate upstream with `Collection.GroupBy`.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+    title:
+      title: Title
+      type: string
+      description: >-
+        Drawn above the plot and emitted as the SVG's own `<title>`, which is what a
+        screen reader announces.
+    description:
+      title: Description
+      type: string
+      description: >-
+        Not drawn. Emitted as the SVG's `<desc>` — the only place a chart can say what it
+        shows to someone who cannot see it.
+    width:
+      title: Width
+      type: number
+      exclusiveMinimum: 0
+      default: 640
+    height:
+      title: Height
+      type: number
+      exclusiveMinimum: 0
+      default: 360
+    margin:
+      title: Margin
+      type: object
+      additionalProperties: false
+      description: >-
+        Space kept clear around everything drawn. Axis labels and the legend are laid out
+        inside it, so this is breathing room rather than the axis gutter.
+      properties:
+        top: { type: number, default: 12 }
+        right: { type: number, default: 12 }
+        bottom: { type: number, default: 12 }
+        left: { type: number, default: 12 }
+    palette:
+      title: Palette
+      type: array
+      items: { type: string }
+      description: >-
+        Series colours, cycled when there are more series than entries. Defaults to the
+        Okabe–Ito colour-blind-safe scale, because a chart landing in a PDF or a report
+        is usually never re-themed.
+    locale:
+      title: Locale
+      type: string
+      default: en-US
+      description: >-
+        BCP 47 tag deciding number grouping and month and day names in formatted ticks and
+        labels. A report in another language must not be stuck with US conventions.
+    font:
+      title: Font
+      type: object
+      additionalProperties: false
+      description: >-
+        The type the chart is laid out against. Omit it and text is placed against
+        estimated widths in whatever the renderer resolves `sans-serif` to.
+      properties:
+        size:
+          title: Size
+          type: number
+          exclusiveMinimum: 0
+          default: 12
+          description: Base text size. Titles and axis titles are scaled from it.
+        metrics:
+          title: Metrics
+          description: >-
+            Measures the text this chart will draw, in one call, and names the family the
+            markup selects by. Point it at the same `Font.Family` the document embeds or
+            the page serves, and the layout is computed against the type that renders.
+          x-telo-ref:
+            kind: Font.Measure
+            use: call
+    legend:
+      title: Legend
+      type: object
+      additionalProperties: false
+      properties:
+        placement:
+          title: Placement
+          type: string
+          enum: [right, bottom, none]
+          default: right
+        title:
+          title: Legend title
+          type: string
+          description: Heading above the legend entries — the dimension the colours encode.
+---
+# SvgChart.Cartesian — the axis configuration, declared once for the four chart
+# types that have axes.
+#
+# It exists so that pie and donut are never offered scales, domains and
+# gridlines they cannot use. `series` sits here rather than on each leaf for the
+# same reason it sits above the leaves at all: splitting rows into lines, bands
+# or grouped bars is one concern with one spelling.
+#
+# The two axes are written out rather than shared through a `$def`: an
+# `x-telo-context` scope does not resolve through a `$ref`, so a shared
+# definition would leave every accessor inside it untyped — silently, which is
+# the one failure this module exists to prevent.
+kind: Telo.Abstract
+metadata:
+  name: Cartesian
+  description: >-
+    What every chart with axes shares: the horizontal and vertical value accessors and
+    their scales, domains, titles and tick formats, the gridlines, and the accessor that
+    splits rows into series. Extended by the bar, line, area and scatter charts.
+capability: Telo.Invocable
+extends: Self.Chart
+schema:
+  type: object
+  required: [x, y]
+  additionalProperties: false
+  properties:
+    x:
+      title: X axis
+      type: object
+      additionalProperties: false
+      required: [value]
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          row: { x-telo-context-element-from: "rows" }
+          index: { type: integer }
+          rows: { type: array }
+      properties:
+        value:
+          title: Value
+          description: What this row's horizontal position is read from.
+        scale:
+          title: Scale
+          type: string
+          enum: [linear, log, time, band, point]
+          description: >-
+            How values map to positions. `band` gives each distinct value a slot of equal
+            width (bars); `point` the same without width; `time` reads an ISO string or
+            epoch milliseconds. Defaults to what the chart type needs — `band` for bars,
+            `linear` otherwise.
+        domain:
+          title: Domain
+          type: object
+          additionalProperties: false
+          description: >-
+            Pins the ends of a continuous scale. Either end may be left out, in which case
+            it comes from the data.
+          properties:
+            min: { type: number }
+            max: { type: number }
+        title:
+          title: Axis title
+          type: string
+        tickFormat:
+          title: Tick format
+          type: string
+          description: >-
+            d3-format specifier for a numeric scale (`.0f`, `,`, `.2s`) or d3-time-format
+            for a time scale (`%b %d`, `%H:%M`).
+        ticks:
+          title: Ticks
+          type: integer
+          minimum: 0
+          description: >-
+            Roughly how many ticks to draw on a continuous scale. Ticks that would collide
+            are thinned out, so this is a target rather than a promise.
+    y:
+      title: Y axis
+      type: object
+      additionalProperties: false
+      required: [value]
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          row: { x-telo-context-element-from: "rows" }
+          index: { type: integer }
+          rows: { type: array }
+      properties:
+        value:
+          title: Value
+          description: What this row's vertical position is read from.
+        scale:
+          title: Scale
+          type: string
+          enum: [linear, log, time, band, point]
+          default: linear
+        domain:
+          title: Domain
+          type: object
+          additionalProperties: false
+          properties:
+            min: { type: number }
+            max: { type: number }
+        title:
+          title: Axis title
+          type: string
+        tickFormat:
+          title: Tick format
+          type: string
+        ticks:
+          title: Ticks
+          type: integer
+          minimum: 0
+    series:
+      title: Series
+      description: >-
+        What splits the rows into separate lines, bands or grouped bars — one colour and
+        one legend entry per distinct value. Omit it to draw every row as one series.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          row: { x-telo-context-element-from: "rows" }
+          index: { type: integer }
+          rows: { type: array }
+    gridlines:
+      title: Gridlines
+      type: object
+      additionalProperties: false
+      description: Rules drawn across the plot at the tick positions.
+      properties:
+        x: { type: boolean, default: false }
+        y: { type: boolean, default: false }
+---
+kind: Telo.Definition
+metadata:
+  name: Pie
+  description: >-
+    Draws each row as a slice sized by its share of the total, with a legend and optional
+    labels showing the value or the percentage. Two rows sharing a category is an error:
+    a pie draws one slice per category, so it means the rows were not aggregated.
+capability: Telo.Invocable
+extends: Self.Chart
+controllers:
+  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#PieController
+throws:
+  codes:
+    ERR_CHART_DATA_INVALID:
+      description: >-
+        An accessor produced a value the chart cannot draw — null, a non-finite number, or
+        a duplicate of a key another row already used. The message names the row index and
+        the accessor.
+schema:
+  type: object
+  required: [category, value]
+  additionalProperties: false
+  properties:
+    category:
+      title: Category
+      description: What names this row's slice, in the legend and in its label.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          row: { x-telo-context-element-from: "rows" }
+          index: { type: integer }
+          rows: { type: array }
+    value:
+      title: Value
+      description: The magnitude this row's slice is sized by. Must be a finite number, and not negative.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          row: { x-telo-context-element-from: "rows" }
+          index: { type: integer }
+          rows: { type: array }
+    labels:
+      title: Labels
+      type: object
+      additionalProperties: false
+      description: Marks labelled in place, in addition to the legend.
+      properties:
+        format:
+          title: Format
+          type: string
+          description: >-
+            Label template. `{category}`, `{value}` and `{percent}` are substituted; anything else is literal, so an
+            unsupported token shows up on the chart rather than vanishing. Omit it to draw
+            no in-place labels.
+        valueFormat:
+          title: Value format
+          type: string
+          description: >-
+            d3-format specifier applied to `{value}` (`.0f`, `,.2f`, `.2s`). Defaults to a
+            general form that drops trailing zeros.
+---
+kind: Telo.Definition
+metadata:
+  name: Donut
+  description: >-
+    Draws each row as a slice of a ring sized by its share of the total, leaving the
+    centre open. Same encoding as a pie, plus how much of the radius the hole takes. Two
+    rows sharing a category is an error, because a ring draws one slice per category.
+capability: Telo.Invocable
+extends: Self.Pie
+controllers:
+  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#DonutController
+# Restated rather than inherited: the throws union is not walked along `extends`,
+# so a kind that declares nothing declares an EMPTY union — and a `catches:` at a
+# donut call site would be told it names a code the target cannot throw, while
+# the runtime throws exactly that code.
+throws:
+  codes:
+    ERR_CHART_DATA_INVALID:
+      description: >-
+        An accessor produced a value the chart cannot draw — null, a non-finite number, a
+        negative slice, or a duplicate of a category another row already used. The message
+        names the row index and the accessor.
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    innerRadius:
+      title: Inner radius
+      type: number
+      exclusiveMinimum: 0
+      exclusiveMaximum: 1
+      default: 0.6
+      description: The hole, as a fraction of the outer radius.
+---
+kind: Telo.Definition
+metadata:
+  name: Bar
+  description: >-
+    Draws a bar per row, grouped side by side or stacked where several rows share a
+    horizontal position. Takes one row per (position, series) pair — aggregate first, and
+    two rows sharing a pair is an error rather than a silent sum.
+capability: Telo.Invocable
+extends: Self.Cartesian
+controllers:
+  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#BarController
+throws:
+  codes:
+    ERR_CHART_DATA_INVALID:
+      description: >-
+        An accessor produced a value the chart cannot draw — null, a non-finite number, or
+        a duplicate of a (position, series) pair another row already used. The message
+        names the row index and the accessor.
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    stacked:
+      title: Stacked
+      type: boolean
+      default: false
+      description: >-
+        Stack the series at each position instead of placing them side by side. Stacked
+        reads as a total split into parts; grouped reads as parts compared with each other.
+    labels:
+      title: Labels
+      type: object
+      additionalProperties: false
+      description: Marks labelled in place, in addition to the legend.
+      properties:
+        format:
+          title: Format
+          type: string
+          description: >-
+            Label template. `{category}`, `{series}` and `{value}` are substituted; anything else is literal, so an
+            unsupported token shows up on the chart rather than vanishing. Omit it to draw
+            no in-place labels.
+            `{percent}` is not offered: a share of a total is what a slice reads as, and an
+            axis chart has no single total one would be of.
+        valueFormat:
+          title: Value format
+          type: string
+          description: >-
+            d3-format specifier applied to `{value}` (`.0f`, `,.2f`, `.2s`). Defaults to a
+            general form that drops trailing zeros.
+    orientation:
+      title: Orientation
+      type: string
+      enum: [vertical, horizontal]
+      default: vertical
+      description: >-
+        Which axis the bars grow along. Horizontal is what makes long category names
+        readable, since they run along the bar rather than under it.
+---
+kind: Telo.Definition
+metadata:
+  name: Line
+  description: >-
+    Draws one line per series through the rows, in horizontal order, optionally marking
+    each row with a point. Two rows sharing a (position, series) pair is an error, since a
+    line has one value per position.
+capability: Telo.Invocable
+extends: Self.Cartesian
+controllers:
+  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#LineController
+throws:
+  codes:
+    ERR_CHART_DATA_INVALID:
+      description: >-
+        An accessor produced a value the chart cannot draw — null, a non-finite number, or
+        a duplicate of a (position, series) pair another row already used. The message
+        names the row index and the accessor.
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    curve:
+      title: Curve
+      type: string
+      enum: [linear, monotone, step, natural, basis]
+      default: linear
+      description: >-
+        How points are joined. `monotone` smooths without inventing peaks between them,
+        which straight interpolation of a smooth series otherwise implies.
+    labels:
+      title: Labels
+      type: object
+      additionalProperties: false
+      description: Marks labelled in place, in addition to the legend.
+      properties:
+        format:
+          title: Format
+          type: string
+          description: >-
+            Label template. `{category}`, `{series}` and `{value}` are substituted; anything else is literal, so an
+            unsupported token shows up on the chart rather than vanishing. Omit it to draw
+            no in-place labels.
+            `{percent}` is not offered: a share of a total is what a slice reads as, and an
+            axis chart has no single total one would be of.
+        valueFormat:
+          title: Value format
+          type: string
+          description: >-
+            d3-format specifier applied to `{value}` (`.0f`, `,.2f`, `.2s`). Defaults to a
+            general form that drops trailing zeros.
+    points:
+      title: Points
+      type: boolean
+      default: false
+      description: Mark each row with a dot, which is what makes a sparse series readable.
+    strokeWidth:
+      title: Stroke width
+      type: number
+      exclusiveMinimum: 0
+      default: 2
+---
+kind: Telo.Definition
+metadata:
+  name: Area
+  description: >-
+    Draws one filled band per series between the baseline and its values, optionally
+    stacked so the bands sum to a total. Two rows sharing a (position, series) pair is an
+    error, since a band has one value per position.
+capability: Telo.Invocable
+extends: Self.Cartesian
+controllers:
+  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#AreaController
+throws:
+  codes:
+    ERR_CHART_DATA_INVALID:
+      description: >-
+        An accessor produced a value the chart cannot draw — null, a non-finite number, or
+        a duplicate of a (position, series) pair another row already used. The message
+        names the row index and the accessor.
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    curve:
+      title: Curve
+      type: string
+      enum: [linear, monotone, step, natural, basis]
+      default: linear
+    stacked:
+      title: Stacked
+      type: boolean
+      default: false
+      description: Stack the bands so they sum to a total rather than overlapping.
+    fillOpacity:
+      title: Fill opacity
+      type: number
+      minimum: 0
+      maximum: 1
+      default: 0.75
+      description: Lower it when unstacked bands overlap and the ones behind must stay visible.
+---
+kind: Telo.Definition
+metadata:
+  name: Scatter
+  description: >-
+    Draws a point per row at its horizontal and vertical values, coloured by series and
+    optionally sized by a third value. Repeated coordinates are drawn rather than refused
+    — a cloud of points is what this chart is for.
+capability: Telo.Invocable
+extends: Self.Cartesian
+controllers:
+  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#ScatterController
+throws:
+  codes:
+    ERR_CHART_DATA_INVALID:
+      description: >-
+        An accessor produced a value the chart cannot draw — null, or a non-finite number.
+        The message names the row index and the accessor.
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    size:
+      title: Size
+      type: object
+      additionalProperties: false
+      required: [value]
+      description: A third value encoded as the radius of each point.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          row: { x-telo-context-element-from: "rows" }
+          index: { type: integer }
+          rows: { type: array }
+      properties:
+        value:
+          title: Value
+          description: What this row's point size is read from.
+        range:
+          title: Range
+          type: array
+          items: { type: number }
+          minItems: 2
+          maxItems: 2
+          default: [3, 12]
+          description: Smallest and largest radius, in pixels, mapped across the value range.
+    labels:
+      title: Labels
+      type: object
+      additionalProperties: false
+      description: Marks labelled in place, in addition to the legend.
+      properties:
+        format:
+          title: Format
+          type: string
+          description: >-
+            Label template. `{category}`, `{series}` and `{value}` are substituted; anything else is literal, so an
+            unsupported token shows up on the chart rather than vanishing. Omit it to draw
+            no in-place labels.
+            `{percent}` is not offered: a share of a total is what a slice reads as, and an
+            axis chart has no single total one would be of.
+        valueFormat:
+          title: Value format
+          type: string
+          description: >-
+            d3-format specifier applied to `{value}` (`.0f`, `,.2f`, `.2s`). Defaults to a
+            general form that drops trailing zeros.
+    radius:
+      title: Radius
+      type: number
+      exclusiveMinimum: 0
+      default: 4
+      description: Radius of every point when no `size` is declared.

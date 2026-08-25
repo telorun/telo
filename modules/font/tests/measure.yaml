@@ -1,0 +1,91 @@
+kind: Telo.Application
+metadata:
+  name: FontMeasureTest
+  version: 1.0.0
+  description: |
+    Measures a batch of strings against a family that declares face bytes, and
+    against one that declares none.
+
+    Both paths matter and they fail differently: the exact path is the reason
+    the module parses fonts at all, and the estimated path is what keeps a
+    websafe family declarable. What separates them in the result is `exact`, so
+    that is asserted rather than inferred from the widths.
+imports:
+  Font: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testMeasure
+---
+# A real face, so the widths come from its own tables.
+kind: Font.Family
+metadata: { name: testSans }
+family: Test Sans
+faces:
+  normal: !include-bytes ./__fixtures__/fonts/TestSans-Regular.ttf
+---
+# Identity with no bytes — a typeface the renderer is expected to already have.
+kind: Font.Family
+metadata: { name: websafe }
+family: Helvetica
+---
+kind: Font.Measure
+metadata: { name: measureExact }
+family: !ref testSans
+size: 12
+---
+kind: Font.Measure
+metadata: { name: measureEstimated }
+family: !ref websafe
+size: 12
+---
+kind: Run.Sequence
+metadata: { name: testMeasure }
+steps:
+  - name: exact
+    invoke: !ref measureExact
+    inputs:
+      strings: ["Ada", "Employee Hours", ""]
+  # The face's own metrics, at 12pt: 1000 units per em, ascent 750, descent
+  # -250 (reported as a depth), line gap 90.
+  - name: assertExact
+    inputs:
+      actual: !cel "steps.exact.result"
+      expected:
+        family: Test Sans
+        widths: [19.98, 80.352, 0]
+        ascender: 9
+        descender: 3
+        lineGap: 1.08
+        exact: true
+    invoke: { kind: Assert.Equals }
+
+  - name: estimated
+    invoke: !ref measureEstimated
+    inputs:
+      strings: ["Ada"]
+  # No bytes, so the widths are estimated and say so. Asserted as a whole value:
+  # what matters is that a caller can tell, not the estimate's exact arithmetic.
+  - name: assertEstimated
+    inputs:
+      actual: !cel "steps.estimated.result"
+      expected:
+        family: Helvetica
+        widths: [19.68]
+        ascender: 9.6
+        descender: 2.4
+        lineGap: 2.4
+        exact: false
+    invoke: { kind: Assert.Equals }
+
+  # A call may override the resource's defaults, and width scales with size.
+  - name: sized
+    invoke: !ref measureExact
+    inputs:
+      strings: ["Ada"]
+      size: 24
+  - name: assertSized
+    inputs:
+      actual: !cel "steps.sized.result.widths"
+      expected: [39.96]
+    invoke: { kind: Assert.Equals }

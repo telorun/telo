@@ -19,7 +19,7 @@ A new `modules/pdfmake` (`metadata.name: PdfMake`), a **typed binding to pdfmake
 
 A reference-typed variant inside the shape was considered and rejected. As a `Telo.Provider` it cannot carry data at all — `provide()` is parameterless, so a composite reached that way could never see the rows the document was invoked with, which is the entire reason such a hole would exist. As a call slot it would put a control-transferring reference at arbitrary depth inside a `x-telo-eval: runtime` data tree, giving the recursive grammar two readings (data, and a dispatch site) for the sake of a composition that already works one step earlier.
 
-**Assets** come from the `!include-*` tags: brand fonts as `!include-bytes` into the `fonts` map, background artwork as `!include-text` into an SVG node. Roboto ships as the default font so a document renders with no font configuration at all.
+**Assets** come from the `!include-*` tags: brand fonts as `!include-bytes` into the `fonts` map, background artwork as `!include-text` into an SVG node. Roboto ships as the default font so a document renders with no font configuration at all. **Superseded for fonts by `plans/svg-chart.md`**, which moves the `fonts` map's values to `!ref`s to a shared `Font.Family` so a document, a chart and a page provably embed, measure and serve the same file; Roboto and the no-configuration default are unaffected.
 
 **Charts compose by value.** A chart kind is one invocable that returns `result.svg` — `plans/svg-chart.md` deliberately rejected a chart/writer split, so there is no separate writer to invoke. A step invokes the chart and passes its markup into an SVG node; `modules/pdfmake` never learns that `modules/svg-chart` exists.
 

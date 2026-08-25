@@ -18,6 +18,8 @@ metadata:
 # CLI against this module's own test.
 requires:
   telo: ">=0.82.0"
+imports:
+  Font: ../font
 exports:
   kinds:
     - Document
@@ -597,9 +599,6 @@ throws:
         pdfmake could not lay the document out — an unknown font name, an image it
         cannot decode, a table whose widths do not fit the page. The message is
         pdfmake's own.
-    ERR_INVALID_FONT:
-      description: >-
-        A `fonts` entry did not hold font file bytes. Embed one with `!include-bytes`.
 # The permissive default. An INSTANCE narrows it by declaring its own
 # `inputType:` — the slot below — which is what turns "this document is a
 # template" into a checked claim: the caller's step arguments are validated
@@ -688,19 +687,17 @@ schema:
     fonts:
       title: Fonts
       description: >-
-        Brand fonts, embedded with `!include-bytes`. Each entry names the four faces a
-        family renders with; a face left out falls back to `normal`. Roboto is always
-        available under the name `Roboto` and needs no entry.
+        Brand fonts this document may name in a style. Each entry maps the name a style
+        writes in `font:` to a `Font.Family` — the same resource a chart measures against
+        and a page serves, so a document cannot embed one typeface while the artwork in it
+        was laid out for another. A family that declares no face bytes cannot be embedded
+        and is rejected when the document renders. Roboto is always available under the
+        name `Roboto` and needs no entry.
       type: object
       additionalProperties:
-        type: object
-        additionalProperties: false
-        required: [normal]
-        properties:
-          normal: { x-telo-type: Telo.Bytes }
-          bold: { x-telo-type: Telo.Bytes }
-          italics: { x-telo-type: Telo.Bytes }
-          bolditalics: { x-telo-type: Telo.Bytes }
+        x-telo-ref:
+          kind: Font.Family
+          use: dependency
     images:
       title: Images
       description: Named raster images an `image` node refers to, as data URIs.

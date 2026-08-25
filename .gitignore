@@ -81,3 +81,8 @@ rust/*.lock
 rust/*.so
 rust/*.dll
 rust/*.dylib
+
+# Output of examples/pdf-chart-report, whose default outputDir is ./reports
+# relative to the process working directory — the repo root, when it is run the
+# way its own description says to run it.
+reports/

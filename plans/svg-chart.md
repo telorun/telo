@@ -16,16 +16,35 @@ A chart is one invocable: data in, SVG markup out. There is no intermediate repr
 
 The kinds form two levels, so the presentation concerns every chart shares are declared once:
 
-- **`SvgChart.Chart`** — `Telo.Abstract`, capability `Telo.Invocable`. Declares the shared `outputType` (`svg`, `width`, `height`, `mediaType`) and a `schema:` block carrying what every chart has: an author-writable `inputType` (`x-telo-ref: { kind: Telo.Type, use: schema }`, the `JS.Script` pattern), the `rows` data expression, `title`, `description`, `width`, `height`, `margin`, `palette`, `locale`, `font` (`family`, `size`, optional `data`), `legend` (`placement`, `title`) and `labels` (`format`, `valueFormat`). A title and a legend heading are laid out for every chart type and both consume canvas the plot area does not get, so they belong here rather than being restated per kind.
+- **`SvgChart.Chart`** — `Telo.Abstract`, capability `Telo.Invocable`. Declares the shared `outputType` (`svg`, `width`, `height`, `mediaType`) and a `schema:` block carrying what every chart has: an author-writable `inputType` (`x-telo-ref: { kind: Telo.Type, use: schema }`, the `JS.Script` pattern), the `rows` data expression, `title`, `description`, `width`, `height`, `margin`, `palette`, `locale`, `font` (`family`, `size`, optional `metrics`), `legend` (`placement`, `title`) and `labels` (`format`, `valueFormat`). A title and a legend heading are laid out for every chart type and both consume canvas the plot area does not get, so they belong here rather than being restated per kind.
 - **`SvgChart.Cartesian`** — `Telo.Abstract`, extends `SvgChart.Chart`. Adds the axis config, identical for every chart that has axes: the `x` / `y` axis objects (value accessor, scale, domain, title, tick formatting) and gridlines.
-- **`SvgChart.Pie`, `SvgChart.Donut`** — extend `SvgChart.Chart`. Angular encoding: category and value accessors, inner radius, leader labels.
+- **`SvgChart.Pie`** — extends `SvgChart.Chart`. Angular encoding: category and value accessors, leader labels. **`SvgChart.Donut`** extends `SvgChart.Pie` and adds the hole, since a donut with no inner radius is a pie and restating the encoding would be the duplication the levels exist to remove.
 - **`SvgChart.Bar`, `SvgChart.Line`, `SvgChart.Area`, `SvgChart.Scatter`** — extend `SvgChart.Cartesian`. Each carries only what is its own: series grouping, stacking, curve interpolation, point sizing.
 
 An `extends` child without `base:` merges the parent's author schema additively, so a leaf kind's manifest states nothing but its own encoding while validating against the whole inherited surface. Each leaf declares its own controller.
 
 **Every mapping is a typed CEL accessor, not a field name.** The author declares the row shape once by pointing `inputType:` at a type, writes `rows: !cel "inputs.rows"`, and each encoding field is a CEL expression over `row` — typed by `x-telo-context-element-from: "rows"`, the mechanism `Collection.GroupBy` already uses to type `item` from its `collection:` expression. A mistyped accessor is `CEL_UNKNOWN_FIELD` before the kernel runs, and the rows an invoke step passes are checked against the declared type both statically and at dispatch.
 
-The markup stays inside the SVG subset pdfmake renders, so a chart drops into a PDF as vector without a rasterization step. Ships with `modules/svg-chart/docs/` per kind (mandatory), a `modules/svg-chart/tests/` suite asserting SVG structure and computed geometry per chart type plus the degenerate-data cases, a changie fragment, and a re-run of `scripts/gen-changie-config.mjs`. The authoring agent's system prompt gains the module, as CLAUDE.md requires of any surface change.
+The markup stays inside the SVG subset pdfmake renders, so a chart drops into a PDF as vector without a rasterization step.
+
+## A font is a resource, not a field: `modules/font`
+
+**A font file is declared once and referenced, because three modules need the same one for three different reasons.** A brand face is embedded by a PDF, measured by a chart and served to a browser by a page, and today each declares it independently: `modules/pdfmake` already ships a `fonts:` map of `!include-bytes` faces, this module was about to add `font.data`, and `modules/ui` would add a third. The same file then sits three times in one manifest tree, and — the part that actually breaks — nothing ties the family a chart *measured* to the family the PDF *embeds*. That disagreement is exactly the accepted cliff below (labels clip against a fallback face); routing every consumer through one declaration removes the second hand-written string that produces it.
+
+**`modules/font`** (`metadata.name: Font`, category `Visualization`) declares two kinds, because a resource that is both held and invoked has to be two:
+
+- **`Font.Family`** — `Telo.Provider`. `family` (the name written into SVG markup, a PDF's font table and CSS) plus optional `faces`: `normal`, `bold`, `italic`, `boldItalic`, each `Telo.Bytes` supplied with `!include-bytes`. Publishes `family` so a theme token or a document style reads it rather than restating it. **Faces are optional** so a websafe or already-served face is still declared here — identity with no bytes, measured by estimate — which is what keeps a font that ships nowhere from needing a second declaration surface. A consumer that genuinely needs bytes (a PDF embedding one, a page serving one) rejects a faceless family itself.
+- **`Font.Measure`** — `Telo.Invocable`, referencing a `Font.Family`. Takes a size, a style and a list of strings; returns each string's advance width plus the font's ascender, descender and line gap.
+
+**Measurement is a batch invocable, not a method on the held instance.** Advance widths are a property of the font, so measurement lives with the font and not with the first module that needed it — `modules/image` draws labels with a font size and has the same unanswered question. The objection to an invocable was dispatch cost, and a batch answers it: a chart knows every string it will draw before it places any of them — formatted ticks, legend entries, title, axis titles, data labels — so one layout is one dispatch, not one per string. What the batch form additionally buys is the reason to prefer it outright: the contract is a declared `inputType` / `outputType`, statically checked and versioned with the module, so nothing crosses the boundary but data. A method would have put the type in a shared TS surface, raised a module-scope question between two bundles, and been Node-only by construction — a Rust chart controller cannot call a JS instance method, which would have quietly made "measures text" a Node-only capability.
+
+**Consumers change with it, in this plan:**
+
+- `SvgChart.Chart` takes `font: { size, metrics }`, and **there is no free-string family**. Omit `font` and the chart draws with its default family name and estimated metrics; name a `Font.Measure` and the family written into the markup comes from the `Font.Family` behind it. Two hand-written strings disagreeing is then unrepresentable rather than merely discouraged. The slot is `use: call`, which is also the honest call-graph edge, and single-use, so it is declared inline at the chart. This replaces `font.data`.
+- `modules/pdfmake`'s `fonts:` map values become `!ref`s to `Font.Family` instead of inline four-face objects. **Breaking, and taken now** — pdfmake has no consumers, and a font surface is far more expensive to unify once three modules have shipped their own. Roboto stays built into the module and still needs no entry, so a document with no font configuration is unaffected. `ERR_INVALID_FONT` keeps its meaning against the referenced faces. Released as a **minor** with an `Added` fragment, per the repo convention that `Changed` / `Removed` are the kinds `telo release check` rejects.
+- `modules/ui` names a `Font.Family` from `Ui.Theme` and `Ui.App` serves its faces and emits the `@font-face` from that one declaration — see the matching change in `plans/declarative-ui.md`.
+
+Ships with `modules/font/docs/` and `modules/svg-chart/docs/` per kind (mandatory), a `modules/font/tests/` suite over face selection, faceless-family estimation and batch measurement, a `modules/svg-chart/tests/` suite asserting SVG structure and computed geometry per chart type plus the degenerate-data cases, updated `modules/pdfmake/docs/`, one release fragment naming all three modules (`telo release add`). The authoring agent's system prompt gains both modules and the pdfmake change, as CLAUDE.md requires of any surface change.
 
 ## Decisions
 
@@ -34,9 +53,11 @@ The markup stays inside the SVG subset pdfmake renders, so a chart drops into a 
 - **Two abstract levels, not a flat set of six.** Legend, labels, palette and canvas are the same concern six times. `SvgChart.Cartesian` exists so pie and donut are never offered axis config they cannot use.
 - **CEL accessors over `row`, not field-name strings.** `category: employee` is a string nothing can check, so a typo surfaces as an empty chart at runtime. The accessor form is checked against the declared row type by existing machinery, and is strictly more expressive — computed values and composite categories come free, where field names would need a preceding `Collection.Map`. Cost is one CEL evaluation per accessor per row; `GroupBy` already pays this per element and charts are small.
 - **Typing is opt-in per instance and bounded by the upstream.** Omit `inputType:` and `row` falls back to `dyn` — the gradual stance `x-telo-context-element-from` takes everywhere. A chart cannot manufacture type information the resource producing the rows never declared, and inventing an element type would be worse than admitting there is none.
-- **The SVG always names a font family and never carries font data; `font.data` exists only to measure.** SVG's embedding mechanisms do not serve the consumers: SVG Fonts are removed from every browser, and `@font-face` with a base64 payload — the one thing that makes an SVG self-contained — is ignored by pdfmake, the first consumer. Supplying the font bytes via `!include-bytes` on an `x-telo-binary` slot gives exact advance widths instead of an estimate, which is what makes a right-placed legend or a leader label land correctly. **Rejected: a text-to-paths mode.** It would render identically everywhere, but costs selectable and searchable text in both PDF and HTML. The consequence is accepted deliberately: a renderer lacking the named font falls back against a layout computed from real metrics, so labels clip sooner than under estimates — the fix is registering the font with pdfmake or serving it in the page, and the module docs say so.
-- **No font ships in the module artifact** — artifact weight plus a licensing question inherited by every consumer.
+- **The SVG always names a font family and never carries font data; `font.metrics` exists only to measure.** SVG's embedding mechanisms do not serve the consumers: SVG Fonts are removed from every browser, and `@font-face` with a base64 payload — the one thing that makes an SVG self-contained — is ignored by pdfmake, the first consumer. A referenced font gives exact advance widths instead of an estimate, which is what makes a right-placed legend or a leader label land correctly. **Rejected: a text-to-paths mode.** It would render identically everywhere, but costs selectable and searchable text in both PDF and HTML. The consequence is accepted deliberately: a renderer lacking the named font falls back against a layout computed from real metrics, so labels clip sooner than under estimates — the fix is pointing the PDF or the page at the same `Font.Family`, which is what makes the shared resource worth its module.
+- **A shared font module, unlike a shared theme-token module.** `plans/declarative-ui.md` rejected neutral design tokens because the duplication was a handful of literals and the coupling would bind three release cadences to one vocabulary before any had shipped. Neither half transfers: a font is a payload plus a parser, not a literal, and what is shared is identity and bytes — embedding stays pdfmake's, delivery and styling stay ui's, sizing stays per-node. The module carries no theme vocabulary and gains none.
+- **No font ships in `modules/font`** — artifact weight plus a licensing question inherited by every consumer. pdfmake's built-in Roboto is unaffected: it is already inside that module's own bundle.
 - **No data and bad data fail differently.** Zero rows renders the chart frame with an empty plot area and no legend entries; an empty result set is not an error. A null or non-finite value reaching an accessor is a hard failure naming the row index and the accessor, because that is a defect in the data or the expression and swallowing it would produce a silently wrong picture.
+- **A duplicate key is an error, on the encodings that draw one mark per key** — `category` on pie and donut, `(x, series)` on bar, line and area. It means the rows were not grouped the way the author believed, which is the same class of defect as a non-finite value: summing silently produces the wrong picture and last-wins discards data. The error names the duplicated key and both row indices, and the docs point at `Collection.GroupBy` as where aggregation belongs. Scatter is exempt — repeated coordinates are what it draws.
 - **Overlapping labels are dropped and dense ticks thinned, silently.** Both are layout outcomes of the data, not defects: erroring would make a chart fail on data it should render, and drawing everything produces unreadable output.
 - **Okabe–Ito is the default palette**, cycling with a documented wrap and overridable via `palette`. Charts land in PDFs and dashboards nobody re-themes, so the default is what most output actually uses, and a colour-blind-safe categorical scale is the only defensible one to pick.
 - **Accessibility markup is always emitted** — `role="img"` plus `<title>` from `title` and `<desc>` from `description`. It costs nothing and is the only thing a screen reader can read, which matters most because the labels are text a fallback font may have mangled.
@@ -52,6 +73,13 @@ Every chart reads `rows` — a flat array, one row per drawn datum, never pre-gr
 ### `SvgChart.Donut` — the typed shape in full
 
 ```yaml
+kind: Font.Family
+metadata: { name: brand }
+family: Inter
+faces:
+  normal: !include-bytes ./fonts/Inter-Regular.ttf
+  bold: !include-bytes ./fonts/Inter-Bold.ttf
+---
 kind: Telo.JsonSchema
 metadata: { name: EmployeeHoursRows }
 schema:
@@ -81,7 +109,7 @@ innerRadius: 0.62
 width: 480
 height: 300
 palette: ["#1f8fff"]
-font: { family: Inter, size: 12, data: !include-bytes ./fonts/Inter-Regular.ttf }
+font: { size: 12, metrics: { kind: Font.Measure, family: !ref brand } }
 legend: { placement: right, title: Employee }
 labels: { format: "{value} ({percent})", valueFormat: ".0f" }
 ```

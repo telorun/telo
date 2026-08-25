@@ -1,0 +1,98 @@
+kind: Telo.Application
+metadata:
+  name: PdfMakeEmbeddedFontTest
+  version: 1.0.0
+  description: |
+    Renders a document in a referenced `Font.Family`, and refuses one whose
+    family declares no face bytes.
+
+    The refusal is the half worth testing: a family with no bytes is a valid
+    declaration everywhere else — a typeface a page serves or a chart estimates
+    against — and only embedding needs the file. So the check belongs to this
+    module, and its message has to say what the bytes were wanted for.
+
+    It fires when the document RESOURCE is created, not when it renders, because
+    the faces are known before anything is drawn and an app that can never
+    produce its PDF should not boot. A test therefore has to observe a creation
+    failure, which is what the `with:` scope below is for: a scoped resource is
+    created when its scope is entered, so entering the scope from inside a `try:`
+    puts the failure somewhere a `catch:` can see it.
+imports:
+  PdfMake: ../
+  Font: ../../font
+  Pdf: ../../pdf
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testEmbeddedFont
+---
+kind: Font.Family
+metadata: { name: brand }
+family: Test Sans
+faces:
+  normal: !include-bytes ./__fixtures__/fonts/TestSans-Regular.ttf
+---
+# Identity only. Legal as a declaration, and not something a PDF can embed.
+kind: Font.Family
+metadata: { name: websafe }
+family: Helvetica
+---
+kind: PdfMake.Document
+metadata: { name: branded }
+fonts:
+  Brand: !ref brand
+defaultStyle: { font: Brand, fontSize: 12 }
+content:
+  - text: Hello from the brand face.
+---
+# Declared inside a scope rather than at the top level: at the top level this
+# document would fail at boot — correctly — and take the whole test with it.
+kind: Run.Sequence
+metadata: { name: renderUnembeddable }
+with:
+  - kind: PdfMake.Document
+    metadata: { name: unembeddable }
+    fonts:
+      Web: !ref websafe
+    defaultStyle: { font: Web }
+    content:
+      - text: This cannot render.
+steps:
+  - name: render
+    invoke: !ref unembeddable
+---
+kind: Run.Sequence
+metadata: { name: testEmbeddedFont }
+steps:
+  - name: render
+    invoke: !ref branded
+  - name: read
+    invoke: { kind: Pdf.Text }
+    inputs:
+      data: !cel "steps.render.result.bytes"
+  # The text reads back, which is what says the face was registered and pdfmake
+  # laid the document out in it rather than falling back.
+  - name: assertRendered
+    inputs:
+      actual: !cel "steps.read.result.pages"
+      expected: ["Hello from the brand face."]
+    invoke: { kind: Assert.Equals }
+
+  - name: facelessFamilyFails
+    try:
+      - name: enterScope
+        invoke: !ref renderUnembeddable
+    catch:
+      # The MESSAGE is what identifies this failure, not the code: a creation
+      # failure is not an invocation, so it reaches a `catch:` as the kernel's
+      # generic wrapper rather than as anything this module chose. That is also
+      # why the kind declares no `ERR_INVALID_FONT` under `throws:` — no dispatch
+      # can raise it, and a `catches:` naming it would never fire.
+      - name: assert
+        inputs:
+          actual:
+            explains: !cel "error.message.contains('declares no face bytes')"
+            namesTheFamily: !cel "error.message.contains('Helvetica')"
+            saysWhatFor: !cel "error.message.contains('A PDF embeds the typeface it renders')"
+          expected: { explains: true, namesTheFamily: true, saysWhatFor: true }
+        invoke: { kind: Assert.Equals }

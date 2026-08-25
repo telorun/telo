@@ -1,0 +1,136 @@
+kind: Telo.Application
+metadata:
+  name: SvgChartDegenerateDataTest
+  version: 1.0.0
+  description: |
+    The cases where no data and bad data have to behave differently.
+
+    An empty result set renders an empty chart, because a report with nothing to
+    show is not an error. A null, a non-finite value or a duplicate key is a hard
+    failure, because each means the picture would be wrong in a way nobody
+    looking at it could see — which is the one outcome worth failing a render
+    over.
+imports:
+  SvgChart: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testDegenerateData
+---
+kind: SvgChart.Pie
+metadata: { name: share }
+rows: !cel "inputs.rows"
+category: !cel "row.name"
+value: !cel "row.amount"
+width: 300
+height: 200
+---
+kind: SvgChart.Line
+metadata: { name: trend }
+rows: !cel "inputs.rows"
+x: { value: !cel "row.at" }
+y: { value: !cel "row.value" }
+series: !cel "row.name"
+width: 300
+height: 200
+---
+kind: Run.Sequence
+metadata: { name: testDegenerateData }
+steps:
+  # Zero rows is not an error. The chart is still a chart — the canvas, the
+  # accessibility markup and the frame — with nothing drawn in it.
+  - name: empty
+    invoke: !ref share
+    inputs: { rows: [] }
+  - name: assertEmpty
+    inputs:
+      actual:
+        width: !cel "steps.empty.result.width"
+        drewSlices: !cel "steps.empty.result.svg.contains('<path')"
+        isSvg: !cel "steps.empty.result.svg.startsWith('<svg')"
+      expected: { width: 300, drewSlices: false, isSvg: true }
+    invoke: { kind: Assert.Equals }
+
+  # A null value is a defect in the data or the expression. Naming the row index
+  # and the accessor is what makes it fixable without a debugger.
+  - name: nullValueFails
+    try:
+      - name: render
+        invoke: !ref share
+        inputs:
+          rows:
+            - { name: a, amount: 1 }
+            - { name: b, amount: null }
+    catch:
+      - name: assert
+        inputs:
+          actual:
+            code: !cel "error.code"
+            names: !cel "error.message.contains(\"'value' produced null for row 1\")"
+          expected: { code: ERR_CHART_DATA_INVALID, names: true }
+        invoke: { kind: Assert.Equals }
+
+  - name: nonFiniteFails
+    try:
+      - name: render
+        invoke: !ref share
+        inputs:
+          rows:
+            - { name: a, amount: "not a number" }
+    catch:
+      - name: assert
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_CHART_DATA_INVALID
+        invoke: { kind: Assert.Equals }
+
+  # Two rows for one category means the rows were not aggregated. Both indices
+  # are named, because either one may be the wrong row.
+  - name: duplicateCategoryFails
+    try:
+      - name: render
+        invoke: !ref share
+        inputs:
+          rows:
+            - { name: a, amount: 1 }
+            - { name: b, amount: 2 }
+            - { name: a, amount: 3 }
+    catch:
+      - name: assert
+        inputs:
+          actual:
+            code: !cel "error.code"
+            names: !cel "error.message.contains('rows 0 and 2 both have category')"
+            advises: !cel "error.message.contains('Collection.GroupBy')"
+          expected: { code: ERR_CHART_DATA_INVALID, names: true, advises: true }
+        invoke: { kind: Assert.Equals }
+
+  # The same rule on a cartesian chart is about the (position, series) PAIR: two
+  # rows may share an x as long as they are different series.
+  - name: duplicatePairFails
+    try:
+      - name: render
+        invoke: !ref trend
+        inputs:
+          rows:
+            - { at: 1, value: 10, name: a }
+            - { at: 1, value: 20, name: a }
+    catch:
+      - name: assert
+        inputs:
+          actual: !cel "error.message.contains('rows 0 and 1 both have x/series pair')"
+          expected: true
+        invoke: { kind: Assert.Equals }
+
+  - name: sharedPositionAcrossSeriesIsFine
+    invoke: !ref trend
+    inputs:
+      rows:
+        - { at: 1, value: 10, name: a }
+        - { at: 1, value: 20, name: b }
+  - name: assertTwoSeriesDrawn
+    inputs:
+      actual: !cel "size(steps.sharedPositionAcrossSeriesIsFine.result.svg.split('<path'))"
+      # One split per path plus the head of the string.
+      expected: 3
+    invoke: { kind: Assert.Equals }
