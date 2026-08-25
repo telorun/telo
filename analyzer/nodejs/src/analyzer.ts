@@ -78,7 +78,7 @@ import {
   type ResourceRuleDiagnostic,
   type ResourceRuleIssue,
 } from "./validate-resource-rules.js";
-import { readResourceRules, type ResourceRule } from "./resource-rule.js";
+import { pointerToPath, readResourceRules, type ResourceRule } from "./resource-rule.js";
 import { readReferrerRules, type ReferrerRule } from "./referrer-rule.js";
 import {
   evaluateReferrerRules,
@@ -87,11 +87,15 @@ import {
   reportUnexercisedReferrerRule,
   validateReferrerRuleDeclarations,
   type Referrer,
+  type ReferrerRuleContext,
   type ReferrerRuleDiagnostic,
   type ReferrerRuleIssue,
 } from "./validate-referrer-rules.js";
+import { analyzerPeerBinder, analyzerPeersTarget } from "./peer-binding.js";
 import {
   describeProjectionFailure,
+  manifestListScope,
+  resolveSchemaProjections,
   type ProjectionFailure,
 } from "./schema-projection.js";
 import {
@@ -941,6 +945,11 @@ export class StaticAnalyzer {
     const projectionIssues: SchemaProjectionIssue[] = [];
     const resourceRuleIssues: ResourceRuleIssue[] = [];
     const referrerRuleIssues: ReferrerRuleIssue[] = [];
+    /** Definition docs of the entry's own modules that may declare rules. Their
+     *  referrer-rule declarations are checked after every kind is registered,
+     *  because a `peers:` pointer is checked against the REFERRER kind's schema
+     *  and that kind may be declared later in the same file. */
+    const ownRuleDeclarers: ResourceManifest[] = [];
     // A rule that never had anything to iterate is never proven — the second way
     // coverage varies invisibly, beside the dynamic-leaf skip. Tracked across the
     // whole run and reported once, since "empty on every resource" is not a fact
@@ -998,9 +1007,10 @@ export class StaticAnalyzer {
             effectiveAuthorSchema(m as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
           ),
         );
-        referrerRuleIssues.push(
-          ...validateReferrerRuleDeclarations(m as unknown as ResourceManifest),
-        );
+        // Deferred to after the registration loop: the `peers:` half is checked
+        // against the REFERRER kind's schema, and a rule may name a kind
+        // declared later in the same file.
+        ownRuleDeclarers.push(m as unknown as ResourceManifest);
         for (const rule of readReferrerRules((m as Record<string, unknown>).schema)) {
           referrerRuleExercise.set(`${m.metadata?.module}.${m.metadata?.name}#${rule.code}`, {
             manifest: m as unknown as ResourceManifest,
@@ -1054,6 +1064,25 @@ export class StaticAnalyzer {
         ? { ...def, capability: resolvedCapability, extends: resolvedExtends }
         : def;
       defs.register(normalized);
+    }
+
+    /**
+     * What a peer rule's `peers:` pointer names in the kind its `referrer:`
+     * filters to.
+     *
+     * Liskov in BOTH directions, which is what the check has to be: the filter
+     * is usually an abstract (`Sql.Schema`, so one rule serves every backend)
+     * while the collection is declared by the backends that implement it, so a
+     * pointer resolving on any candidate resolves the rule. Reported only when
+     * NO candidate declares it, or when every candidate that does holds plain
+     * data — the two shapes where the rule would see no declaration at all.
+     */
+    const peersTarget = analyzerPeersTarget(defs);
+
+    if (!options?.skipValidation) {
+      for (const declarer of ownRuleDeclarers) {
+        referrerRuleIssues.push(...validateReferrerRuleDeclarations(declarer, { peersTarget }));
+      }
     }
 
     // Reference-form validation — enforce `!ref` as the only reference shape.
@@ -1498,13 +1527,12 @@ export class StaticAnalyzer {
       return suppressUnreadableModuleDiagnostics(diagnostics, unreadableFiles);
     }
 
-    // Build a name→manifest map for looking up referenced resources
-    const byName = new Map<string, ResourceManifest>();
-    for (const m of allManifests) {
-      if (m.metadata?.name) {
-        byName.set(m.metadata.name as string, m);
-      }
-    }
+    // ONE binder for the whole run, built beside the binding it serves: it caches
+    // each referrer's resolved collection, which is what keeps a rule over an
+    // n-entry collection from re-resolving that collection once per entry.
+    const referrerRuleContext: ReferrerRuleContext = {
+      peerBinder: analyzerPeerBinder(defs, aliases, allManifests as ResourceManifest[]),
+    };
 
     // Fail loud on definition schemas AJV cannot compile. `validateAgainstSchema`
     // and `validateWithRefs` swallow compile failures (returning no issues),
@@ -1651,6 +1679,54 @@ export class StaticAnalyzer {
       observedStateContext,
     });
 
+    /**
+     * The schema a resource of this kind is validated against, per DEFINITION.
+     *
+     * Both halves derive a fresh object — `effectiveAuthorSchema` merges along
+     * `extends`, and the closed-schema branch spreads `kind` / `metadata` in —
+     * so asking per resource handed `validateResourceConfig` a schema object it
+     * had never seen. That registry memoizes its compiled AJV validator by
+     * object IDENTITY, precisely because every resource of a kind is checked
+     * against the same one at keystroke time, so a fresh object per resource
+     * recompiled the whole kind schema per resource. Keyed on the definition,
+     * which is stable for the run.
+     */
+    const authorSchemaCache = new WeakMap<object, Record<string, any>>();
+    const validationSchemaFor = (def: ResourceDefinition): Record<string, any> => {
+      const cached = authorSchemaCache.get(def as unknown as object);
+      if (cached) return cached;
+      const authorSchema = effectiveAuthorSchema(def, (k) =>
+        defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
+      );
+      // `kind` and `metadata` are implicit on every resource — inject them so
+      // module authors don't have to repeat them under `additionalProperties:
+      // false`.
+      const schema =
+        authorSchema.additionalProperties === false
+          ? {
+              ...authorSchema,
+              properties: {
+                kind: { type: "string" },
+                metadata: { type: "object" },
+                ...authorSchema.properties,
+              },
+            }
+          : authorSchema;
+      authorSchemaCache.set(def as unknown as object, schema);
+      return schema;
+    };
+
+    // One scope for the whole run: it closes over the manifest list and the
+    // registry, neither of which changes per resource, and it is asked once per
+    // schema-valued slot that carries a projection.
+    const resourceProjectionScope = manifestListScope(
+      allManifests as Record<string, any>[],
+      (kind) =>
+        (defs.resolve(kind) ?? defs.resolve(aliases.resolveKind(kind) ?? kind)) as
+          | Record<string, any>
+          | undefined,
+    );
+
     // Validate each non-definition, non-system resource
     for (const m of allManifests) {
       const filePath = (m.metadata as { source?: string } | undefined)?.source;
@@ -1749,39 +1825,54 @@ export class StaticAnalyzer {
       }
 
       // Validate resource config against the definition's AUTHOR-FACING schema —
-      // inheritance-resolved: with `base:` the child's own schema (parent config
-      // is internal), else `merge(parent, own)` so a `base:`-less `extends` child
-      // is validated against the inherited fields it may set. For a definition
-      // that neither extends nor uses `base:` this is exactly its own schema.
-      // `kind` and `metadata` are implicit on every resource — inject them so module
-      // authors don't have to repeat them when using additionalProperties: false.
-      const authorSchema = effectiveAuthorSchema(definition, (k) =>
-        defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
-      );
-      if (authorSchema && Object.keys(authorSchema).length > 0) {
-        const schema =
-          authorSchema.additionalProperties === false
-            ? {
-                ...authorSchema,
-                properties: {
-                  kind: { type: "string" },
-                  metadata: { type: "object" },
-                  ...authorSchema.properties,
-                },
-              }
-            : authorSchema;
+      // inheritance-resolved, with `kind` / `metadata` injected. See
+      // `validationSchemaFor`, which is where both derivations and the reason
+      // they are memoized per definition live.
+      const schema = validationSchemaFor(definition);
+      if (Object.keys(schema).length > 0) {
         // Phase 1: collect the pure-CEL leaves and the schema of the slot each
         // flows into. The expression's own type is resolved later, by the
         // engine walk that owns type-checking; this half only knows the target.
         for (const slot of collectCelValueSlots(m, schema, "")) {
           celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
         }
+        // A kind's own schema may point a slot at a PROJECTION — of a resource it
+        // references, or (the empty pointer) of this very declaration, which is
+        // what types a table's seed rows against its own `columns:`. Resolved
+        // PER RESOURCE, because a projection is declaration-derived: the same
+        // kind schema yields a different row shape for every table.
+        //
+        // A failure here is REPORTED, never dropped. An entry that could not be
+        // read vanishes from the projected shape, so the slot typed from it then
+        // rejects a field the author did declare ("'status' is not allowed") with
+        // nothing saying why — the projection's own failure mode, blaming the
+        // wrong line. Entry-module-scoped, like every other schema issue.
+        const projectionFailures: ProjectionFailure[] = [];
+        const projected = resolveSchemaProjections(
+          schema,
+          m as Record<string, any>,
+          resourceProjectionScope,
+          projectionFailures,
+        ) as Record<string, any>;
+        if (!ownModule || rootModules.has(ownModule)) {
+          for (const failure of projectionFailures) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "SCHEMA_PROJECTION_FROM_UNRESOLVED",
+              source: SOURCE,
+              message: `${m.kind}/${resource.name}: ${describeProjectionFailure(failure)}`,
+              data: { resource, filePath, path: pointerToPath(failure.pointer) },
+            });
+          }
+        }
         // Phase 2+3: AJV on substituted data — CEL fields replaced with typed
         // placeholders. Through the REGISTRY, so a kind whose schema references
         // a shape declared elsewhere is checked on the instance that holds it.
         const ajvIssues = defs.validateResourceConfig(
-          substituteCelFields(m, schema, undefined, { external: (ref) => defs.schemaForId(ref) }),
-          schema,
+          substituteCelFields(m, projected, undefined, {
+            external: (ref) => defs.schemaForId(ref),
+          }),
+          projected,
         );
         // Phase 4: value slots that must satisfy a type declared elsewhere on
         // the resource (`x-telo-value-schema-from`) — e.g. every row of a
@@ -1816,12 +1907,12 @@ export class StaticAnalyzer {
       for (const report of reportResourceRules(
         m as unknown as ResourceManifest,
         definition as unknown as ResourceManifest,
-        evaluateResourceRules(m as unknown as ResourceManifest, authorSchema),
+        evaluateResourceRules(m as unknown as ResourceManifest, schema),
         !ruleDeclarer || rootModules.has(ruleDeclarer),
       )) {
         diagnostics.push(resourceRuleDiagnostic(report));
       }
-      for (const rule of readResourceRules(authorSchema)) {
+      for (const rule of readResourceRules(schema)) {
         const key = `${definition.metadata?.module}.${definition.metadata?.name}#${rule.code}`;
         const tracked = ruleExercise.get(key);
         if (!tracked) continue;
@@ -1835,7 +1926,7 @@ export class StaticAnalyzer {
       // literal appears on the referring side, where the spelling would be the
       // consumer's import alias rather than anything the rule's author controls.
       // A consumer of the shared call graph, never a second traversal.
-      const referrerRules = readReferrerRules(authorSchema);
+      const referrerRules = readReferrerRules(schema);
       if (referrerRules.length > 0) {
         const referrers = referrersOf(m as unknown as ResourceManifest, getCallGraph());
         for (const report of reportReferrerRules(
@@ -1843,9 +1934,10 @@ export class StaticAnalyzer {
           definition as unknown as ResourceManifest,
           evaluateReferrerRules(
             m as unknown as ResourceManifest,
-            authorSchema,
+            schema,
             referrers,
             kindMatches,
+            referrerRuleContext,
           ),
           !ruleDeclarer || rootModules.has(ruleDeclarer),
         )) {
@@ -1857,13 +1949,25 @@ export class StaticAnalyzer {
             continue;
           }
           diagnostics.push(referrerRuleDiagnostic(report));
+          // A rule that VIOLATED plainly ran, whatever its peer set held. The
+          // unexercised report exists to catch silence — a `peers:` naming
+          // nothing makes every `!peers.exists(…)` pass vacuously — so a finding
+          // is exactly the evidence it asks for.
+          if (report.code === "REFERRER_RULE_VIOLATED") {
+            const violated = referrerRuleExercise.get(
+              `${definition.metadata?.module}.${definition.metadata?.name}#${report.rule}`,
+            );
+            if (violated) violated.exercised = true;
+          }
         }
         for (const rule of referrerRules) {
           const key = `${definition.metadata?.module}.${definition.metadata?.name}#${rule.code}`;
           const tracked = referrerRuleExercise.get(key);
           if (!tracked) continue;
           tracked.seen = true;
-          if (referrerRuleExercised(rule, referrers, kindMatches)) tracked.exercised = true;
+          if (referrerRuleExercised(rule, referrers, kindMatches, referrerRuleContext)) {
+            tracked.exercised = true;
+          }
         }
       }
 

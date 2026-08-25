@@ -1,0 +1,106 @@
+kind: Telo.Application
+metadata:
+  name: PgEnumBoots
+  version: 7.0.0
+  description: |
+    Boot 7 — the outside table goes, and the held type is reclaimed on the next
+    pass.
+
+    This is what makes the previous boot's refusal a HOLD rather than permanent
+    breakage: nothing about the tombstone was lost, so once the dependency is
+    gone the ordinary policy drops the type and clears the record.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: message_role
+values: [system, user, assistant]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: messages
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  role: { type: !ref messageRole, nullable: false }
+  body: { type: text }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_enum_boots
+version: !cel "module.version"
+enums: [!ref messageRole]
+tables: [!ref messages]
+# The dependency is removed BEFORE the pass reclaims, which is what
+# `prepare:` is for: data preparation for something the pass is about to
+# attempt.
+prepare:
+  20260102_drop_outside_consumer:
+    statement: "DROP SCHEMA IF EXISTS telo_pg_enum_boots_other CASCADE"
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertReclaimed
+    invoke: !ref assertReclaimed
+    inputs:
+      actual: !cel "resources.appSchema.status.reclaimed"
+      expected: ["enum message_status"]
+  # Verifiably gone from the engine's own catalogue, not merely from the ledger.
+  - name: readType
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT t.typname AS name FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE n.nspname = 'telo_pg_enum_boots' AND t.typname = 'message_status'
+  - name: assertGone
+    invoke: !ref assertGone
+    inputs:
+      actual: !cel "steps.readType.result.rows"
+      expected: []
+  # The type still in use is untouched, and so are its rows.
+  - name: readRows
+    invoke: !ref query
+    inputs:
+      sql: "SELECT role FROM telo_pg_enum_boots.messages ORDER BY id"
+  - name: assertRows
+    invoke: !ref assertRows
+    inputs:
+      actual: !cel "steps.readRows.result.rows"
+      expected:
+        - { role: user }
+        - { role: tool }
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertReclaimed }
+---
+kind: Assert.Equals
+metadata: { name: assertGone }
+---
+kind: Assert.Equals
+metadata: { name: assertRows }

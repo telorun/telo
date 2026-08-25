@@ -1,15 +1,20 @@
 import type {
+  DeclaredCheck,
   DeclaredColumn,
+  DeclaredEnum,
   DeclaredForeignKey,
   DeclaredIndex,
   DeclaredTable,
   SchemaObjectId,
 } from "./declared-schema.js";
-import { objectKey } from "./declared-schema.js";
+import { isTableChild, objectKey } from "./declared-schema.js";
 import type { DeclarationSnapshot } from "./declaration-snapshot.js";
 import { parseObjectKey } from "./declaration-snapshot.js";
+import { seedRowId, seedRowKey } from "./seed-rows.js";
 import type {
+  LiveCheck,
   LiveColumn,
+  LiveEnum,
   LiveForeignKey,
   LiveIndex,
   LiveTable,
@@ -26,9 +31,40 @@ import type {
  * any DDL has run rather than half way through it.
  */
 
-/** DDL ordering. Cross-table constraints come last so declaration order is
- *  never load-bearing and foreign-key ordering is never the author's problem. */
-export type PlanPhase = "table" | "index" | "constraint";
+/**
+ * DDL ordering. Cross-table constraints come last so declaration order is never
+ * load-bearing and foreign-key ordering is never the author's problem.
+ *
+ * `enumValue` runs FIRST so a column can carry a value this same boot adds, and
+ * `enum` creates absent types ahead of the tables so a column can name a type
+ * this same boot creates.
+ */
+export type PlanPhase =
+  | "enumValue"
+  | "extension"
+  | "enum"
+  | "table"
+  | "index"
+  | "constraint";
+
+/**
+ * The phases, in the order the runner executes them.
+ *
+ * WHETHER a phase can share a transaction is the ENGINE's answer, not this
+ * list's — see `SchemaDriver.transactionalPhase`. This list said `enumValue` is
+ * always unwrapped "because PostgreSQL cannot use an enum value in the
+ * transaction that adds it", which put one engine's transactional rule in the
+ * half that exists not to know about engines; a backend whose `ALTER TYPE` is
+ * transactional had no way to say so.
+ */
+export const PLAN_PHASES: readonly PlanPhase[] = [
+  "enumValue",
+  "extension",
+  "enum",
+  "table",
+  "index",
+  "constraint",
+];
 
 export interface PlannedStatement {
   readonly phase: PlanPhase;
@@ -59,6 +95,15 @@ export interface SchemaPlan {
    * manifest text, and saying so is the only way the author learns it can go.
    */
   readonly inertRenames: readonly string[];
+  /**
+   * Enum values the declaration has dropped and the engine is keeping.
+   *
+   * No engine can remove an enum label without rewriting every table that stores
+   * it, so the removal is RECORDED rather than executed — the tombstone rule the
+   * schema design is already built on, applied to a value instead of an object.
+   * Reported so it is visible rather than silent.
+   */
+  readonly retainedEnumValues: readonly string[];
   readonly refusals: readonly Refusal[];
 }
 
@@ -130,18 +175,43 @@ function liveByName(live: readonly LiveTable[]): Map<string, LiveTable> {
   return new Map(live.map((table) => [table.name, table]));
 }
 
+/** What the pass reconciles, beyond the tables. Grouped so the signature does
+ *  not grow a positional argument per object kind. */
+export interface ReconciliationInput {
+  readonly tables: readonly DeclaredTable[];
+  readonly enums: readonly DeclaredEnum[];
+  readonly extensions: readonly string[];
+  readonly live: readonly LiveTable[];
+  readonly liveEnums: readonly LiveEnum[];
+  readonly liveExtensions: readonly string[];
+  readonly owned: DeclarationSnapshot;
+  readonly tombstoned: ReadonlySet<string>;
+}
+
 export function planReconciliation(
   driver: SchemaDriver,
   schema: string,
-  declared: readonly DeclaredTable[],
-  live: readonly LiveTable[],
-  owned: DeclarationSnapshot,
-  tombstoned: ReadonlySet<string>,
+  input: ReconciliationInput,
 ): SchemaPlan {
+  const {
+    tables: declared,
+    enums,
+    extensions,
+    live,
+    liveEnums,
+    liveExtensions,
+    owned,
+    tombstoned,
+  } = input;
   const statements: PlannedStatement[] = [];
   const tombstones: PlannedTombstone[] = [];
   const revived: string[] = [];
   const inertRenames: string[] = [];
+  const retainedEnumValues: string[] = [];
+  /** Checks this pass dropped outright. They are excluded from the tombstone
+   *  sweep below: the object is already gone, so recording it would hold a
+   *  reclamation budget for something nothing is waiting on. */
+  const droppedChecks = new Set<string>();
   const refusals: Refusal[] = [];
   const liveTables = liveByName(live);
   const declaredKeys = new Set<string>();
@@ -162,10 +232,71 @@ export function planReconciliation(
     return key;
   };
 
+  // Extensions before everything: an extension is what makes a storage class
+  // like `citext` available at all, so a column naming one needs it to exist
+  // before the table is created.
+  const presentExtensions = new Set(liveExtensions);
+  for (const name of extensions) {
+    markDeclared({ kind: "extension", table: name });
+    if (!driver.namedExtensions || presentExtensions.has(name)) continue;
+    emit("extension", `extension ${name}`, driver.createExtension(schema, name));
+  }
+
+  // Enums next, and their statements land in the phases that run ahead of the
+  // tables — a column can then name a type this same boot creates.
+  const liveEnumsByName = new Map(liveEnums.map((one) => [one.name, one]));
+  for (const declaredEnum of enums) {
+    markDeclared({ kind: "enum", table: declaredEnum.typeName });
+    const existing = driver.namedEnumTypes
+      ? liveEnumsByName.get(declaredEnum.typeName)
+      : undefined;
+    const recorded = ownedEnum(owned, declaredEnum.typeName);
+    if (!recorded.ok) {
+      refusals.push({ object: `enum ${declaredEnum.typeName}`, reason: recorded.reason });
+      continue;
+    }
+
+    // An engine with no named type has nothing live to compare, so `owned` is
+    // the comparison — which is exactly why the declaration is snapshotted whole.
+    const safety = driver.classifyEnumChange(existing, declaredEnum, recorded.value);
+    if (!safety.safe) {
+      refusals.push({ object: `enum ${declaredEnum.typeName}`, reason: safety.reason });
+      continue;
+    }
+    if (!driver.namedEnumTypes) continue;
+
+    if (!existing) {
+      emit("enum", `enum ${declaredEnum.typeName}`, driver.createEnum(schema, declaredEnum));
+      continue;
+    }
+    const present = new Set(existing.values);
+    const added = declaredEnum.values.filter((value) => !present.has(value));
+    if (added.length > 0) {
+      emit(
+        "enumValue",
+        `enum ${declaredEnum.typeName}`,
+        driver.addEnumValues(schema, declaredEnum, added),
+      );
+    }
+    const kept = new Set(declaredEnum.values);
+    for (const value of existing.values) {
+      if (!kept.has(value)) retainedEnumValues.push(`${declaredEnum.typeName}.${value}`);
+    }
+  }
+
   for (const table of declared) {
     markDeclared({ kind: "table", table: table.name });
     for (const column of table.columns) {
       markDeclared({ kind: "column", table: table.name, name: column.name });
+    }
+    // Seed rows are marked HERE, where every other object is, so the ordinary
+    // sweep tombstones exactly the ones the declaration stopped naming — and
+    // revives one it names again. A `when:` that evaluates false marks none,
+    // which is what withdrawing the declaration means.
+    if (table.seeds?.when) {
+      for (const row of table.seeds.rows) {
+        markDeclared(seedRowId(table.name, seedRowKey(table.seeds, row)));
+      }
     }
     const liveTable = liveTables.get(table.name);
 
@@ -313,6 +444,67 @@ export function planReconciliation(
         ...driver.addForeignKey(schema, table.name, fk),
       ]);
     }
+
+    const carriedChecks = !liveTable && driver.checksInCreateTable;
+    // WHERE the comparison comes from is the engine difference, and the only
+    // one. An engine that can alter a constraint reports its checks back and is
+    // compared against live state; an engine that carries them inside CREATE
+    // TABLE has nothing to read back, so the RECORDED declaration is the
+    // comparison — which is why the declaration is snapshotted whole, exactly as
+    // it is for an enum on such an engine.
+    let liveChecks: Map<string, LiveCheck>;
+    if (driver.checksInCreateTable) {
+      const recorded = recordedChecks(owned, table.name);
+      refusals.push(...recorded.unreadable);
+      liveChecks = recorded.checks;
+    } else {
+      liveChecks = new Map((liveTable?.checks ?? []).map((check) => [check.name, check]));
+    }
+    for (const check of table.checks) {
+      markDeclared({ kind: "check", table: table.name, name: check.name });
+      if (carriedChecks) continue;
+      const existing = liveChecks.get(check.name);
+      if (!existing) {
+        emit("constraint", `check ${check.name}`, driver.addCheck(schema, table.name, check));
+        continue;
+      }
+      // A constraint added `NOT VALID` is proven on a LATER pass — that is what
+      // `validate: deferred` buys, and it is why an unvalidated one is not simply
+      // a difference to re-add.
+      if (!existing.validated) {
+        emit(
+          "constraint",
+          `check ${check.name}`,
+          driver.validateCheck(schema, table.name, check.name),
+        );
+        continue;
+      }
+      if (!driver.checkDiffers(existing, check)) continue;
+      const safety = driver.classifyCheckChange(existing, check);
+      if (!safety.safe) {
+        refusals.push({ object: `${table.name}.${check.name}`, reason: safety.reason });
+        continue;
+      }
+      emit("constraint", `check ${check.name}`, [
+        ...driver.dropCheck(schema, table.name, check.name),
+        ...driver.addCheck(schema, table.name, check),
+      ]);
+    }
+
+    // **Removing a check is IMMEDIATE — no tombstone, no reclaim.** A dropped
+    // column can lose data, which is why removals are recorded and reclaimed on
+    // a policy. A dropped constraint loses nothing, so recording it would put a
+    // grace window on an object whose removal is free and leave the declaration
+    // disagreeing with the database for a release cycle.
+    if (liveTable) {
+      const declaredChecks = new Set(table.checks.map((check) => check.name));
+      for (const [name] of liveChecks) {
+        const key = objectKey({ kind: "check", table: table.name, name });
+        if (declaredChecks.has(name) || owned[key] === undefined) continue;
+        emit("constraint", `check ${name}`, driver.dropCheck(schema, table.name, name));
+        droppedChecks.add(key);
+      }
+    }
   }
 
   // Removal never emits DDL. An object this resource once declared and no longer
@@ -339,7 +531,13 @@ export function planReconciliation(
   for (const [key, definition] of Object.entries(owned)) {
     if (declaredKeys.has(key) || tombstoned.has(key)) continue;
     const id = parseObjectKey(key);
-    if (id.kind !== "table" && retiredTables.has(id.table)) continue;
+    // A retired table takes its own children with it. An ENUM is not one of
+    // them — it is a top-level object that happens to carry its physical name in
+    // the same field — so it is never suppressed by a table of the same name.
+    if (isTableChild(id.kind) && retiredTables.has(id.table)) continue;
+    // A check this pass DROPPED needs no tombstone: the removal was free and it
+    // has already happened.
+    if (id.kind === "check" && droppedChecks.has(key)) continue;
     tombstone(id, key, definition);
   }
 
@@ -364,7 +562,76 @@ export function planReconciliation(
     }
   }
 
-  return { statements, tombstones, revived, inertRenames, refusals };
+  return { statements, tombstones, revived, inertRenames, retainedEnumValues, refusals };
+}
+
+/**
+ * One ledger record, parsed — or the reason it could not be.
+ *
+ * **An unreadable record is never "absent".** The two mean opposite things: an
+ * absent record says this schema has never declared the object, which is the
+ * green light to create it and (for an enum on an engine with no live state to
+ * compare) to accept any change to it. Degrading a corrupt record to absent
+ * therefore accepted a changed enum declaration silently while every existing
+ * table went on enforcing the old values. So the failure is surfaced, and the
+ * caller turns it into a refusal — the pass stops rather than converging on the
+ * wrong schema.
+ */
+type Recorded<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly reason: string };
+
+function readRecord<T>(definition: string, key: string): Recorded<T> {
+  try {
+    return { ok: true, value: JSON.parse(definition) as T };
+  } catch (error) {
+    return {
+      ok: false,
+      reason:
+        `its ledger record '${key}' is not readable as JSON ` +
+        `(${error instanceof Error ? error.message : String(error)}), so this pass cannot tell ` +
+        `what was previously declared. Repair or delete that row of the versions table.`,
+    };
+  }
+}
+
+/** The checks the ledger recorded for one table, read as live state — the
+ *  comparison for an engine that carries a check inside `CREATE TABLE` and has
+ *  nothing to read back. `validated` is true because such an engine has no
+ *  unvalidated state to be in. */
+function recordedChecks(
+  owned: DeclarationSnapshot,
+  table: string,
+): { checks: Map<string, LiveCheck>; unreadable: Refusal[] } {
+  const prefix = `check:${table}.`;
+  const checks = new Map<string, LiveCheck>();
+  const unreadable: Refusal[] = [];
+  for (const [key, definition] of Object.entries(owned)) {
+    if (!key.startsWith(prefix)) continue;
+    const record = readRecord<DeclaredCheck>(definition, key);
+    if (!record.ok) {
+      unreadable.push({ object: key, reason: record.reason });
+      continue;
+    }
+    const parsed = record.value;
+    if (typeof parsed?.name !== "string") {
+      unreadable.push({
+        object: key,
+        reason: `its ledger record declares no 'name', so it cannot be matched to a declaration.`,
+      });
+      continue;
+    }
+    checks.set(parsed.name, { name: parsed.name, expression: parsed.expression, validated: true });
+  }
+  return { checks, unreadable };
+}
+
+/** The enum declaration the ledger recorded. `undefined` means this schema has
+ *  never declared one under that name — see {@link Recorded} for why that is
+ *  kept apart from a record it cannot read. */
+function ownedEnum(owned: DeclarationSnapshot, typeName: string): Recorded<DeclaredEnum | undefined> {
+  const key = objectKey({ kind: "enum", table: typeName });
+  const recorded = owned[key];
+  if (recorded === undefined) return { ok: true, value: undefined };
+  return readRecord<DeclaredEnum>(recorded, key);
 }
 
 export function describeRefusals(refusals: readonly Refusal[]): string {

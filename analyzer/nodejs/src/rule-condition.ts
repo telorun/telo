@@ -32,6 +32,21 @@ import {
  */
 export const RULE_BUDGET_MS = 50;
 
+/**
+ * The one message for an untagged `condition:`, shared by every rule family so
+ * all of them say the same thing about the same defect.
+ *
+ * The readers stay lenient and a bare string still runs. What it loses is
+ * everything outside evaluation — to the editor's colouring, completion and
+ * hover an untagged condition is a plain string, so its author writes CEL with
+ * no help and none of the checks a `!cel` scalar gets. Losing that silently is
+ * the failure a strict half exists to move earlier.
+ */
+export const UNTAGGED_CONDITION =
+  "Write 'condition' with the !cel tag. The reader is lenient and a bare string still " +
+  "runs, but untagged the expression is not CEL to the editor's colouring, completion " +
+  "or hover, so a rule silently stops being CEL to every surface but this one.";
+
 const HOST_BACKED = new Set(CEL_FUNCTIONS.filter((f) => f.hostBacked).map((f) => f.name));
 const NON_DETERMINISTIC = new Set(
   CEL_FUNCTIONS.filter((f) => !f.deterministic).map((f) => f.name),

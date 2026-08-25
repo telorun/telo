@@ -1,8 +1,11 @@
 import type { SqlConnection } from "../sql-connection.js";
 import type { LedgerTables } from "./schema-ledger.js";
+import type { PlanPhase } from "./schema-reconciler.js";
 import type {
   SchemaObjectId,
+  DeclaredCheck,
   DeclaredColumn,
+  DeclaredEnum,
   DeclaredForeignKey,
   DeclaredIndex,
   DeclaredTable,
@@ -50,11 +53,32 @@ export interface LiveForeignKey {
   readonly onUpdate?: string;
 }
 
+/** A named check as the engine has it. `expression` is the engine's own
+ *  NORMALIZED rendering, which is why a change is classified by the driver
+ *  rather than compared as text here. */
+export interface LiveCheck {
+  readonly name: string;
+  readonly expression: string;
+  /** False while the constraint is `NOT VALID` — declared and enforced for new
+   *  rows, not yet proven against the existing ones. */
+  readonly validated: boolean;
+}
+
 export interface LiveTable {
   readonly name: string;
   readonly columns: readonly LiveColumn[];
   readonly indexes: readonly LiveIndex[];
   readonly foreignKeys: readonly LiveForeignKey[];
+  readonly checks: readonly LiveCheck[];
+}
+
+/** An enum type as the engine has it. Only an engine with named types reports
+ *  one; see {@link SchemaDriver.namedEnumTypes}. */
+export interface LiveEnum {
+  readonly name: string;
+  /** In the engine's own sort order, which for an enum type is declaration
+   *  order — the property a CHECK over text does not have. */
+  readonly values: readonly string[];
 }
 
 /** How a declared change relates to the data already in the column. */
@@ -122,6 +146,74 @@ export interface SchemaDriver {
   /** Read back the live shape of the named tables. Absent tables are omitted. */
   introspect(schema: string, tables: readonly string[]): Promise<LiveTable[]>;
 
+  /**
+   * Whether this engine has a first-class enum type at all.
+   *
+   * The declaration is the same on either side of this answer, and only the
+   * RENDERING differs: an engine that has one creates a schema object and reads
+   * it back, while an engine that does not renders the values as a per-column
+   * constraint and has nothing to introspect. Stated rather than inferred from
+   * an empty `introspectEnums`, which is also what a fresh database looks like.
+   */
+  readonly namedEnumTypes: boolean;
+
+  /**
+   * Whether this engine has installable extensions.
+   *
+   * PROVISIONING IS A DECLARATION, NOT A BUCKET. A storage class like `citext`
+   * needs an extension before any column can use it, and smuggling that in as a
+   * `CREATE EXTENSION IF NOT EXISTS` migration is desired state wearing a
+   * migration's clothes — with no release it belongs to and a migration key that
+   * is a lie.
+   */
+  readonly namedExtensions: boolean;
+
+  /** Which of the named extensions are present. Empty for an engine with none. */
+  introspectExtensions(schema: string, names: readonly string[]): Promise<string[]>;
+  createExtension(schema: string, name: string): string[];
+  /** Reclaiming an extension is deliberately refused on every engine — see
+   *  `canReclaim`. This exists so the seam is total. */
+  dropExtension(schema: string, name: string): string[];
+
+  /** The enum types this schema holds, by physical name. Empty for an engine
+   *  with no named types — the shared half asks only when it has them. */
+  introspectEnums(schema: string, names: readonly string[]): Promise<LiveEnum[]>;
+
+  createEnum(schema: string, declared: DeclaredEnum): string[];
+
+  /**
+   * Add values to an existing type.
+   *
+   * Rendered separately from `createEnum` because PostgreSQL cannot use a value
+   * in the transaction that adds it — so these run in their own phase, ahead of
+   * the atomic pass, which is why the runner asks for them apart from everything
+   * else.
+   */
+  addEnumValues(schema: string, declared: DeclaredEnum, values: readonly string[]): string[];
+
+  /** `ALTER TYPE … RENAME TO`, or nothing at all on an engine whose constraints
+   *  never named the type — there the ledger key rewrite IS the rename. */
+  renameEnum(schema: string, from: string, to: string): string[];
+
+  /** `ALTER TABLE … RENAME TO`. Immediate and unbounded-work-free, which is why
+   *  a table rename is native where a column's is expand-contract. */
+  renameTable(schema: string, from: string, to: string): string[];
+
+  /**
+   * Whether the declared enum can be brought to its declaration.
+   *
+   * `live` is undefined on an engine with no named types, where `owned` — the
+   * declaration the ledger recorded — is the only thing a change can be compared
+   * against. Removing a VALUE is never planned by the shared half on any engine:
+   * no engine can drop an enum label without rewriting every table that stores
+   * it, so a removal is recorded and reported rather than executed.
+   */
+  classifyEnumChange(
+    live: LiveEnum | undefined,
+    declared: DeclaredEnum,
+    owned: DeclaredEnum | undefined,
+  ): ChangeSafety;
+
   /** The canonical signature of a declared column's type, for comparison with {@link LiveColumn.typeSignature}. */
   typeSignature(column: DeclaredColumn): string;
 
@@ -155,6 +247,31 @@ export interface SchemaDriver {
 
   /** Whether a foreign key can be brought to its declaration in place. */
   classifyForeignKeyChange(live: LiveForeignKey, declared: DeclaredForeignKey): ChangeSafety;
+
+  /**
+   * Whether a named check differs from its declaration, and whether the
+   * difference can be applied.
+   *
+   * Nothing in the shared half reads an expression: the engine stores a
+   * NORMALIZED rendering (`balance_cents >= 0` comes back as
+   * `((balance_cents >= 0))`), so comparing text here would replan the same
+   * constraint on every boot. The driver owns the comparison for the same reason
+   * it owns `typeSignature`.
+   */
+  checkDiffers(live: LiveCheck, declared: DeclaredCheck): boolean;
+  classifyCheckChange(live: LiveCheck, declared: DeclaredCheck): ChangeSafety;
+
+  /** Whether a check can be added to a table that already exists. False for an
+   *  engine with no `ADD CONSTRAINT`, where a check exists only as part of the
+   *  table it was created with — the same answer its foreign keys give. */
+  readonly checksInCreateTable: boolean;
+
+  addCheck(schema: string, table: string, check: DeclaredCheck): string[];
+  dropCheck(schema: string, table: string, name: string): string[];
+  /** Prove a `NOT VALID` constraint against the rows already there. Rendered on
+   *  a later pass than the one that added it, which is the whole point of
+   *  `validate: deferred`. */
+  validateCheck(schema: string, table: string, name: string): string[];
 
   /**
    * Whether `createTable` already carries the table's foreign keys, so the
@@ -204,4 +321,55 @@ export interface SchemaDriver {
   /** Reclamation. Separated from the rest because these are the only destructive statements. */
   dropColumn(schema: string, table: string, column: string): string[];
   dropTable(schema: string, table: string): string[];
+  dropEnum(schema: string, name: string): string[];
+
+  /**
+   * Insert the row, or update the columns it STATES when a row with the same key
+   * is already there.
+   *
+   * Columns the row does not state are left alone — the insert takes the column
+   * default and the update keeps whatever an operator set. That is what makes a
+   * partial seed row a real declaration rather than a whole-row overwrite.
+   */
+  upsertRow(
+    schema: string,
+    table: string,
+    key: readonly string[],
+    row: Record<string, unknown>,
+  ): string[];
+
+  /** Delete one seed row by its key columns — reclamation for a tombstoned row.
+   *  Held and reported when a foreign key still references it, exactly as a type
+   *  still in use is. */
+  deleteRow(
+    schema: string,
+    table: string,
+    key: readonly string[],
+    row: Record<string, unknown>,
+  ): string[];
+
+  /**
+   * Run `statements` one at a time, OUTSIDE any transaction.
+   *
+   * For DDL an engine refuses to combine with anything else: PostgreSQL cannot
+   * use an enum value in the transaction that added it. Every other statement
+   * this design emits goes through `runAtomically`; this exists for the ones
+   * that provably cannot.
+   */
+  runSequentially(statements: readonly string[]): Promise<void>;
+
+  /**
+   * Whether this engine can run one reconciliation phase inside a transaction.
+   *
+   * The ENGINE's answer, because that is what it is: PostgreSQL cannot use an
+   * enum value in the transaction that adds it, so its `enumValue` phase runs
+   * unwrapped, while SQLite has no such rule and wraps everything. The shared
+   * phase list used to hardcode that one exclusion, which put a PostgreSQL
+   * limitation in the half that exists not to know about engines — and left a
+   * backend whose `ALTER TYPE` is transactional no way to say so.
+   *
+   * Default-true is the right polarity: an engine that says nothing gets the
+   * atomic behaviour every other phase already has.
+   */
+  transactionalPhase(phase: PlanPhase): boolean;
 }

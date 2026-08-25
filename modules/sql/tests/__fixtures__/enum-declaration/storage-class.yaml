@@ -1,0 +1,31 @@
+# A schema whose tables use storage classes only. The rule's optional select
+# yields nothing for every column, so each short-circuits — and the schema
+# declares no `enums:` at all, which must stay legal.
+kind: Telo.Application
+metadata:
+  name: EnumAbsent
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata:
+  name: appDb
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata:
+  name: messages
+table: messages
+columns:
+  id: { type: integer, primaryKey: true }
+  body: { type: text }
+---
+kind: SQLite.Schema
+metadata:
+  name: appSchema
+connection: !ref appDb
+version: "1.0.0"
+tables: [!ref messages]

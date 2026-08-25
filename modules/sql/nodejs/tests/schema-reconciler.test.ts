@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { planReconciliation } from "../src/schema/schema-reconciler.js";
 import { snapshotDeclaration, snapshotDigest } from "../src/schema/declaration-snapshot.js";
 import { normalizeTable } from "../src/schema/normalize-table.js";
-import type { ChangeSafety, LiveColumn, LiveTable, SchemaDriver } from "../src/schema/schema-driver.js";
+import type {
+  ChangeSafety,
+  LiveColumn,
+  LiveEnum,
+  LiveTable,
+  SchemaDriver,
+} from "../src/schema/schema-driver.js";
+import type { DeclaredEnum } from "../src/schema/declared-schema.js";
 
 /**
  * A driver that renders a statement per operation and treats a type change as
@@ -31,6 +38,25 @@ function driver(overrides: Partial<SchemaDriver> = {}): SchemaDriver {
     classifyCopy: (live, target): ChangeSafety =>
       live.typeSignature === target.type ? { safe: true } : { safe: false, reason: "copy" },
     canReclaim: () => ({ safe: true }),
+    runSequentially: async () => {},
+    namedEnumTypes: true,
+    introspectEnums: async () => [],
+    createEnum: (_s, e) => [`CREATE TYPE ${e.typeName}`],
+    addEnumValues: (_s, e, values) => values.map((v) => `ADD VALUE ${e.typeName}.${v}`),
+    renameEnum: (_s, from, to) => [`RENAME TYPE ${from}->${to}`],
+    renameTable: (_s, from, to) => [`RENAME TABLE ${from}->${to}`],
+    classifyEnumChange: (): ChangeSafety => ({ safe: true }),
+    dropEnum: (_s, n) => [`DROP TYPE ${n}`],
+    namedExtensions: true,
+    introspectExtensions: async () => [],
+    createExtension: (_s, n) => [`CREATE EXTENSION ${n}`],
+    dropExtension: (_s, n) => [`DROP EXTENSION ${n}`],
+    checksInCreateTable: false,
+    checkDiffers: (live, declared) => live.expression !== declared.expression,
+    classifyCheckChange: (): ChangeSafety => ({ safe: true }),
+    addCheck: (_s, t, c) => [`ADD CHECK ${t}.${c.name}`],
+    dropCheck: (_s, t, n) => [`DROP CHECK ${t}.${n}`],
+    validateCheck: (_s, t, n) => [`VALIDATE ${t}.${n}`],
     createTable: (_s, t) => [`CREATE ${t.name}`],
     addColumn: (_s, t, c) => [`ADD ${t}.${c.name}`],
     alterColumn: (_s, t, _l, c) => [`ALTER ${t}.${c.name}`],
@@ -46,13 +72,16 @@ function driver(overrides: Partial<SchemaDriver> = {}): SchemaDriver {
 }
 
 const users = (columns: Record<string, any>, rest: Record<string, any> = {}) =>
-  normalizeTable({ table: "users", columns, ...rest } as any, (value) => String(value));
+  normalizeTable({ table: "users", columns, ...rest } as any, (value) => String(value), (value) => ({
+    type: String(value),
+  }));
 
 const live = (columns: LiveColumn[], rest: Partial<LiveTable> = {}): LiveTable => ({
   name: "users",
   columns,
   indexes: [],
   foreignKeys: [],
+  checks: [],
   ...rest,
 });
 
@@ -72,7 +101,19 @@ const plan = (
   owned: Record<string, string> = {},
   tombstoned = new Set<string>(),
   d = driver(),
-) => planReconciliation(d, "app", declared, liveTables, owned, tombstoned);
+  enums: DeclaredEnum[] = [],
+  liveEnums: LiveEnum[] = [],
+) =>
+  planReconciliation(d, "app", {
+    tables: declared,
+    enums,
+    extensions: [],
+    live: liveTables,
+    liveEnums,
+    liveExtensions: [],
+    owned,
+    tombstoned,
+  });
 
 describe("planReconciliation", () => {
   it("creates a table that is not there", () => {
@@ -553,5 +594,73 @@ describe("constraint and definition drift", () => {
       permissive,
     );
     expect(result.statements).toEqual([]);
+  });
+});
+
+/**
+ * Enums. The shared half decides ownership, ordering and what a removal means;
+ * the rendering is the driver's, and the two engines answer `namedEnumTypes`
+ * differently — which is what these pin.
+ */
+describe("planReconciliation — enums", () => {
+  const role: DeclaredEnum = { typeName: "role", values: ["admin", "viewer"] };
+
+  it("creates an absent type, in the phase that runs ahead of the tables", () => {
+    const result = plan([], [], {}, new Set(), driver(), [role]);
+    expect(result.statements).toEqual([
+      { phase: "enum", sql: "CREATE TYPE role", describes: "enum role" },
+    ]);
+  });
+
+  it("adds a value in its OWN phase — it cannot be used in the transaction that adds it", () => {
+    const result = plan([], [], {}, new Set(), driver(), [
+      { typeName: "role", values: ["admin", "viewer", "auditor"] },
+    ], [{ name: "role", values: ["admin", "viewer"] }]);
+    expect(result.statements).toEqual([
+      { phase: "enumValue", sql: "ADD VALUE role.auditor", describes: "enum role" },
+    ]);
+  });
+
+  it("records a removed value and emits nothing — no engine can drop one", () => {
+    const result = plan([], [], {}, new Set(), driver(), [
+      { typeName: "role", values: ["admin"] },
+    ], [{ name: "role", values: ["admin", "viewer"] }]);
+    expect(result.statements).toEqual([]);
+    expect(result.retainedEnumValues).toEqual(["role.viewer"]);
+  });
+
+  it("plans nothing at all where the engine has no named types", () => {
+    const unnamed = driver({ namedEnumTypes: false });
+    const result = plan([], [], {}, new Set(), unnamed, [role]);
+    expect(result.statements).toEqual([]);
+  });
+
+  it("refuses a change the driver cannot make, with its reason", () => {
+    const unnamed = driver({
+      namedEnumTypes: false,
+      classifyEnumChange: () => ({ safe: false, reason: "rebuild the referencing tables" }),
+    });
+    const owned = snapshotDeclaration([], [{ typeName: "role", values: ["admin"] }]);
+    const result = plan([], [], owned, new Set(), unnamed, [role]);
+    expect(result.refusals).toEqual([
+      { object: "enum role", reason: "rebuild the referencing tables" },
+    ]);
+  });
+
+  it("tombstones a type the declaration no longer lists", () => {
+    const owned = snapshotDeclaration([], [role]);
+    const result = plan([], [], owned, new Set(), driver(), []);
+    expect(result.tombstones.map((t) => t.key)).toEqual(["enum:role"]);
+  });
+
+  it("does not suppress an enum sharing a retired table's name", () => {
+    // `table` carries a top-level object's own physical name, so an enum and a
+    // table can collide there — and a retired table must take only its own
+    // children with it.
+    const owned = snapshotDeclaration([users({ id: { type: "integer" } })], [
+      { typeName: "users", values: ["a"] },
+    ]);
+    const result = plan([], [], owned, new Set(), driver(), []);
+    expect(result.tombstones.map((t) => t.key).sort()).toEqual(["enum:users", "table:users"]);
   });
 });

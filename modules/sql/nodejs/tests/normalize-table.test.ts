@@ -5,6 +5,10 @@ import { normalizeTable } from "../src/schema/normalize-table.js";
  *  nothing to resolve. Resolution itself is covered in `table-reference.test.ts`. */
 const byName = (value: unknown) => String(value);
 
+/** A backend whose column types are all storage classes. The enum path is
+ *  covered in `enum-reference.test.ts`. */
+const asStorageClass = (value: unknown) => ({ type: String(value) });
+
 /**
  * Declaration-level refusals. Each of these is decidable from the manifest
  * alone, so it is refused where it is written rather than reaching the engine
@@ -12,7 +16,7 @@ const byName = (value: unknown) => String(value);
  */
 describe("normalizeTable", () => {
   const table = (columns: Record<string, any>, rest: Record<string, any> = {}) =>
-    normalizeTable({ table: "users", columns, ...rest } as any, byName);
+    normalizeTable({ table: "users", columns, ...rest } as any, byName, asStorageClass);
 
   it("defaults nullability to true and leaves flags off", () => {
     const declared = table({ id: { type: "integer" } });
@@ -95,6 +99,7 @@ describe("normalizeTable", () => {
         },
       } as any,
       () => "other",
+      asStorageClass,
     );
     expect(declared.foreignKeys[0]?.references.table).toBe("other");
   });
@@ -108,7 +113,7 @@ describe("normalizeTable", () => {
  */
 describe("implied non-nullability", () => {
   const table = (columns: Record<string, any>) =>
-    normalizeTable({ table: "users", columns } as any, byName);
+    normalizeTable({ table: "users", columns } as any, byName, asStorageClass);
 
   it("makes a primary key non-nullable even when nothing says so", () => {
     expect(table({ id: { type: "integer", primaryKey: true } }).columns[0]?.nullable).toBe(false);

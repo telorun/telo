@@ -1,5 +1,7 @@
 import type {
+  DeclaredCheck,
   DeclaredColumn,
+  DeclaredEnumUse,
   DeclaredForeignKey,
   DeclaredIndex,
   DeclaredTable,
@@ -18,7 +20,9 @@ import type {
  * parse a type back apart.
  */
 export interface RawColumn {
-  readonly type: string;
+  /** A storage class from the backend's vocabulary, or a reference to a declared
+   *  enum — which is why it is not typed `string` here. */
+  readonly type: unknown;
   readonly nullable?: boolean;
   readonly array?: boolean;
   readonly primaryKey?: boolean;
@@ -43,11 +47,23 @@ export interface RawForeignKey {
   readonly onUpdate?: string;
 }
 
+export interface RawCheck {
+  readonly expression: string;
+  readonly validate?: "immediate" | "deferred";
+}
+
 export interface RawTable {
   readonly table: string;
+  readonly renamedFrom?: string;
   readonly columns?: Record<string, RawColumn>;
   readonly indexes?: Record<string, RawIndex>;
   readonly foreignKeys?: Record<string, RawForeignKey>;
+  readonly checks?: Record<string, RawCheck>;
+  readonly seeds?: {
+    readonly key: readonly string[];
+    readonly rows: readonly Record<string, unknown>[];
+    readonly when?: boolean;
+  };
 }
 
 const COLUMN_KEYS = new Set([
@@ -70,7 +86,25 @@ function params(raw: Record<string, unknown>, known: ReadonlySet<string>): Recor
   );
 }
 
-function normalizeColumn(name: string, raw: RawColumn): DeclaredColumn {
+/**
+ * What a column's `type:` slot means to the engine.
+ *
+ * REQUIRED rather than optional, for the reason `TableReferenceResolver` is: the
+ * slot admits a reference, and a caller that omitted this would read the raw
+ * `{ kind, name }` as a type name and put it into DDL. Which engine-native type
+ * an enum reduces to is the backend's own answer — its own type name where the
+ * engine has named types, the enum's base storage class where it does not.
+ */
+export type ColumnTypeResolver = (
+  value: unknown,
+  column: string,
+) => { readonly type: string; readonly enum?: DeclaredEnumUse };
+
+function normalizeColumn(
+  name: string,
+  raw: RawColumn,
+  resolveType: ColumnTypeResolver,
+): DeclaredColumn {
   if (raw.default !== undefined && raw.defaultExpression !== undefined) {
     throw new Error(
       `column '${name}' declares both 'default' and 'defaultExpression' — a typed literal and ` +
@@ -94,9 +128,11 @@ function normalizeColumn(name: string, raw: RawColumn): DeclaredColumn {
     );
   }
 
+  const resolved = resolveType(raw.type, name);
   return {
     name,
-    type: raw.type,
+    type: resolved.type,
+    enum: resolved.enum,
     params: params(raw as Record<string, unknown>, COLUMN_KEYS),
     nullable: impliesNotNull ? false : (raw.nullable ?? true),
     array: raw.array ?? false,
@@ -135,6 +171,11 @@ function validateTable(table: DeclaredTable): void {
   if (table.columns.length === 0) {
     throw new Error(`table '${where}' declares no columns — a table needs at least one.`);
   }
+  if (table.renamedFrom === table.name) {
+    throw new Error(
+      `table '${where}' declares renamedFrom itself, which describes no rename.`,
+    );
+  }
 
   const names = new Set(table.columns.map((c) => c.name));
 
@@ -160,6 +201,34 @@ function validateTable(table: DeclaredTable): void {
           `also declares. A rename's source is the column being retired, so declaring both would ` +
           `copy one live column into another and retire neither.`,
       );
+    }
+  }
+
+  // A seed row is identified by its key columns, so a key naming a column the
+  // table does not declare identifies nothing, and a row missing one cannot be
+  // told apart from any other. Both are decidable from the declaration alone.
+  if (table.seeds) {
+    if (table.seeds.key.length === 0) {
+      throw new Error(
+        `table '${where}' declares seeds with no 'key'. The key names the columns that decide ` +
+          `whether a row is the same row, and it is what the upsert conflicts on.`,
+      );
+    }
+    for (const column of table.seeds.key) {
+      if (names.has(column)) continue;
+      throw new Error(
+        `table '${where}' seeds are keyed on '${column}', which this table does not declare, ` +
+          `so no row can be identified by it.`,
+      );
+    }
+    for (const [index, row] of table.seeds.rows.entries()) {
+      for (const column of table.seeds.key) {
+        if (row[column] !== undefined) continue;
+        throw new Error(
+          `table '${where}' seed row ${index} supplies no '${column}', which the seed key names — ` +
+            `so the row has no identity and the upsert has nothing to conflict on.`,
+        );
+      }
     }
   }
 
@@ -196,9 +265,10 @@ function validateTable(table: DeclaredTable): void {
 export function normalizeTable(
   raw: RawTable,
   resolveReference: TableReferenceResolver,
+  resolveType: ColumnTypeResolver,
 ): DeclaredTable {
   const columns = Object.entries(raw.columns ?? {}).map(([name, column]) =>
-    normalizeColumn(name, column),
+    normalizeColumn(name, column, resolveType),
   );
   const indexes: DeclaredIndex[] = Object.entries(raw.indexes ?? {}).map(([name, index]) => ({
     name,
@@ -218,7 +288,29 @@ export function normalizeTable(
       onUpdate: fk.onUpdate,
     }),
   );
-  const table: DeclaredTable = { name: raw.table, columns, indexes, foreignKeys };
+  const checks: DeclaredCheck[] = Object.entries(raw.checks ?? {}).map(([name, check]) => ({
+    name,
+    expression: check.expression,
+    validate: check.validate,
+  }));
+  const table: DeclaredTable = {
+    name: raw.table,
+    renamedFrom: raw.renamedFrom,
+    columns,
+    indexes,
+    foreignKeys,
+    checks,
+    seeds: raw.seeds
+      ? {
+          key: [...raw.seeds.key],
+          rows: raw.seeds.rows.map((row) => ({ ...row })),
+          // Absent means declared: `when:` is what WITHDRAWS a declaration, and
+          // defaulting the other way would make an omitted guard silently
+          // tombstone every seeded row.
+          when: raw.seeds.when ?? true,
+        }
+      : undefined,
+  };
   validateTable(table);
   return table;
 }

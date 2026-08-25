@@ -1,0 +1,119 @@
+kind: Telo.Application
+metadata:
+  name: PgEnumBoots
+  version: 11.0.0
+  description: |
+    Boot 11 — an extension is a DECLARATION, not a bucket.
+
+    `citext` is in the storage-class vocabulary and needs an extension before any
+    column can use it, which until now had to be smuggled in as a
+    `CREATE EXTENSION IF NOT EXISTS` migration: desired state wearing a
+    migration's clothes, with no release it belongs to and a migration key that
+    is a lie the first time the entry is deleted.
+
+    Declared, it is reconciled ahead of the tables that need it — the column
+    below is the proof, since it could not be created otherwise.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: conversation_role
+values: [system, user, assistant]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: conversation_messages
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  role: { type: !ref messageRole, nullable: false }
+  body: { type: text }
+  balanceCents: { type: bigint, nullable: false, default: 0 }
+  sentAt: { type: timestamptz }
+checks:
+  sent_implies_timestamp:
+    expression: "body IS NULL OR \"sentAt\" IS NOT NULL"
+    validate: deferred
+---
+# The column that could not exist without the extension being created first.
+kind: Postgres.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  email: { type: citext, nullable: false }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_enum_boots
+version: !cel "module.version"
+extensions: [citext]
+enums: [!ref messageRole]
+tables: [!ref messages, !ref people]
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: readColumn
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT udt_name FROM information_schema.columns
+        WHERE table_schema = 'telo_pg_enum_boots' AND table_name = 'people'
+          AND column_name = 'email'
+  - name: assertColumn
+    invoke: !ref assertColumn
+    inputs:
+      actual: !cel "steps.readColumn.result.rows"
+      expected:
+        - { udt_name: citext }
+  # `citext` compares case-insensitively, which is what the extension is FOR and
+  # what proves it is the real type rather than a name that happened to resolve.
+  - name: insert
+    invoke: !ref command
+    inputs:
+      sql: "INSERT INTO telo_pg_enum_boots.people (email) VALUES ('Ada@Example.COM')"
+  - name: readCaseInsensitive
+    invoke: !ref query
+    inputs:
+      sql: "SELECT count(*)::int AS n FROM telo_pg_enum_boots.people WHERE email = 'ada@example.com'"
+  - name: assertMatch
+    invoke: !ref assertMatch
+    inputs:
+      actual: !cel "steps.readCaseInsensitive.result.rows"
+      expected:
+        - { n: 1 }
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: command }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertColumn }
+---
+kind: Assert.Equals
+metadata: { name: assertMatch }

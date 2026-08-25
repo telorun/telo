@@ -1,0 +1,115 @@
+kind: Telo.Application
+metadata:
+  name: PgEnumBoots
+  version: 1.0.0
+  description: |
+    Boot 1 — a fresh namespace. The type is created ahead of the table that names
+    it, which is what lets a column reference a type this same boot creates, and
+    the column comes back reporting the TYPE's name rather than a base type.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# The suite must start from nothing, or a previous run's ledger would decide what
+# this one plans.
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: !ref command
+    inputs:
+      sql: "DROP SCHEMA IF EXISTS telo_pg_enum_boots CASCADE"
+---
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: message_role
+values: [system, user, assistant]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: messages
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  role: { type: !ref messageRole, nullable: false }
+  body: { type: text }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_enum_boots
+version: !cel "module.version"
+enums: [!ref messageRole]
+tables: [!ref messages]
+reclaim: { afterVersions: 2, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: readType
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT e.enumlabel AS label FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        JOIN pg_enum e ON e.enumtypid = t.oid
+        WHERE n.nspname = 'telo_pg_enum_boots' AND t.typname = 'message_role'
+        ORDER BY e.enumsortorder
+  - name: assertValues
+    invoke: !ref assertValues
+    inputs:
+      actual: !cel "steps.readType.result.rows"
+      expected:
+        - { label: system }
+        - { label: user }
+        - { label: assistant }
+  # The column reports back under the TYPE's name, which is what makes a declared
+  # domain and a storage class comparable without parsing either.
+  - name: readColumn
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT udt_name FROM information_schema.columns
+        WHERE table_schema = 'telo_pg_enum_boots' AND table_name = 'messages'
+          AND column_name = 'role'
+  - name: assertColumnType
+    invoke: !ref assertColumnType
+    inputs:
+      actual: !cel "steps.readColumn.result.rows"
+      expected:
+        - { udt_name: message_role }
+  - name: insert
+    invoke: !ref command
+    inputs:
+      sql: "INSERT INTO telo_pg_enum_boots.messages (role, body) VALUES ('user', 'hi')"
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: command }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertValues }
+---
+kind: Assert.Equals
+metadata: { name: assertColumnType }

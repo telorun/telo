@@ -141,7 +141,7 @@ keeps reading it. The clock is the `version:` you write, conventionally
 `!cel "module.version"`.
 
 Imperative migrations still live here, on the same resource, so their order
-relative to the reconciliation pass is defined: `beforeMigrations:` runs before
+relative to the reconciliation pass is defined: `prepare:` runs before
 it, `migrations:` after. Keys are unique across both and identify a migration
 forever after; renaming one makes it a new migration.
 

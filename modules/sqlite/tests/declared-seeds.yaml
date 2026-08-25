@@ -1,0 +1,67 @@
+kind: Telo.Application
+metadata:
+  name: SqliteDeclaredSeeds
+  version: 1.0.0
+  description: |
+    Reference data declared beside the shape it must satisfy.
+
+    A row asserts the columns it STATES and no others, which is the answer to a
+    seeded row edited in place: a column the seed declares is restored on the
+    next boot because that is what declaring it means, and one it does not is
+    the operator's. The upsert is idempotent, so nothing is read back and a row
+    deleted by hand simply comes back.
+imports:
+  Sql: ../../sql
+  SQLite: ../
+  Assert: ../../assert
+  Run: ../../run
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: roles }
+table: roles
+columns:
+  name: { type: text, primaryKey: true }
+  label: { type: text, nullable: false }
+  rank: { type: integer, default: 0 }
+seeds:
+  key: [name]
+  rows:
+    - { name: admin, label: Administrator, rank: 100 }
+    # No `rank`: the insert takes the column default and an update would leave
+    # whatever is there alone.
+    - { name: viewer, label: Viewer }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref roles]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: readSeeded
+    invoke: !ref query
+    inputs:
+      sql: "SELECT name, label, rank FROM roles ORDER BY name"
+  - name: assertSeeded
+    invoke: !ref assertSeeded
+    inputs:
+      actual: !cel "steps.readSeeded.result.rows"
+      expected:
+        - { name: admin, label: Administrator, rank: 100 }
+        - { name: viewer, label: Viewer, rank: 0 }
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertSeeded }

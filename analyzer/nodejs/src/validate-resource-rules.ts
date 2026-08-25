@@ -22,11 +22,18 @@
  * Browser-safe: no Node built-ins.
  */
 import type { ResourceManifest } from "@telorun/sdk";
-import { RULE_BUDGET_MS, compileRuleCondition, conditionRefusals } from "./rule-condition.js";
+import {
+  RULE_BUDGET_MS,
+  UNTAGGED_CONDITION,
+  compileRuleCondition,
+  conditionRefusals,
+} from "./rule-condition.js";
 import {
   RESOURCE_RULES_ANNOTATION,
   celSourceOf,
   findDynamicLeaf,
+  type DynamicLeaf,
+  isTaggedCondition,
   pointerSegments,
   readRawResourceRules,
   readResourceRules,
@@ -54,7 +61,7 @@ export type ResourceRuleFinding =
       path: string;
       message: string;
     }
-  | { kind: "skipped"; rule: ResourceRule; path: string; dynamicAt: string }
+  | { kind: "skipped"; rule: ResourceRule; path: string; dynamic: DynamicLeaf }
   | { kind: "failed"; rule: ResourceRule; path: string; reason: string }
   | { kind: "over-budget"; rule: ResourceRule; path: string; elapsedMs: number };
 
@@ -63,8 +70,11 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** Navigate a kind's own schema to the node describing what a pointer names, so
- *  an `in:` naming a field the kind does not declare is caught at the kind. */
-function schemaAtPointer(schema: unknown, pointer: string): unknown {
+ *  an `in:` naming a field the kind does not declare is caught at the kind.
+ *  Exported because the peer-rule strict half asks the same question of the
+ *  REFERRER's schema, and two navigators would eventually disagree about what a
+ *  pointer names. */
+export function schemaAtPointer(schema: unknown, pointer: string): unknown {
   const segments = pointerSegments(pointer);
   if (!segments) return undefined;
   let node: unknown = schema;
@@ -83,7 +93,7 @@ function schemaAtPointer(schema: unknown, pointer: string): unknown {
 
 /** True when a schema node describes something a rule can iterate. Unknown or
  *  absent `type` passes: an open schema is not evidence of a defect. */
-function isIterableSchema(node: unknown): boolean {
+export function isIterableSchema(node: unknown): boolean {
   if (!isObject(node)) return true;
   const type = node.type;
   if (type === undefined) return true;
@@ -198,6 +208,10 @@ export function validateResourceRuleDeclarations(
       }
     }
 
+    if (condition !== undefined && condition.length > 0 && !isTaggedCondition(entry.condition)) {
+      issue(`${at}.condition`, UNTAGGED_CONDITION);
+    }
+
     if (condition) {
       for (const refusal of conditionRefusals(condition)) issue(`${at}.condition`, refusal);
     }
@@ -243,13 +257,13 @@ export function evaluateResourceRules(
       // Only the nodes this condition READS decide whether it can run — see
       // `readNodes`. Scanning the whole subject would disable every
       // resource-wide rule on any manifest containing one unrelated expression.
-      let dynamicAt: string | undefined;
+      let dynamic: DynamicLeaf | undefined;
       for (const node of readNodes(chains, { self, this: subject.value })) {
-        dynamicAt = findDynamicLeaf(node);
-        if (dynamicAt !== undefined) break;
+        dynamic = findDynamicLeaf(node);
+        if (dynamic !== undefined) break;
       }
-      if (dynamicAt !== undefined) {
-        findings.push({ kind: "skipped", rule, path: subject.path, dynamicAt });
+      if (dynamic !== undefined) {
+        findings.push({ kind: "skipped", rule, path: subject.path, dynamic });
         continue;
       }
       let held: unknown;
@@ -347,8 +361,8 @@ export function reportResourceRules(
         severity: "information",
         message:
           `${manifest.kind}/${name}: rule '${finding.rule.code}' did not run` +
-          `${at ? ` at '${at}'` : ""} — the value holds a CEL expression at ` +
-          `'${finding.dynamicAt}', which is not known until the resource is created. ` +
+          `${at ? ` at '${at}'` : ""} — the value holds ${finding.dynamic.what} at ` +
+          `'${finding.dynamic.path}', which is not known until the resource is created. ` +
           "Reported rather than dropped: a check whose coverage varies invisibly reads as passing.",
         manifest,
         path: at,

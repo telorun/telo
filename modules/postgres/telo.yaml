@@ -12,13 +12,19 @@ metadata:
 requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=0.82.0"
+  # 0.82.1: a column's `type:` unions a storage class with a reference to a
+  # declared enum. An older analyzer reads a scalar at any slot carrying an
+  # `x-telo-ref` as the removed string-reference form, so it rejects every
+  # consumer's `type: text` and tells its author to write `!ref text`. Verified
+  # by execution against 0.82.0.
+  telo: ">=0.82.1"
 imports:
   Sql: ../sql
 exports:
   kinds:
     - Connection
     - Table
+    - Enum
     - Schema
 ---
 kind: Telo.Definition
@@ -104,6 +110,59 @@ schema:
 # repetition and the database enforces the rest.
 kind: Telo.Definition
 metadata:
+  name: Enum
+  description: >-
+    One PostgreSQL enum type — a named set of permitted string values, created by
+    the schema that lists it and referenced from the columns that use it. Adding a
+    value alters the type in place; removing one is recorded and left standing,
+    because PostgreSQL cannot drop an enum label without rewriting every table
+    that stores it.
+capability: Telo.Provider
+extends: Sql.Enum
+controllers:
+  - pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#EnumController
+schema:
+  type: object
+  additionalProperties: false
+  required: [typeName, values]
+  examples:
+    - typeName: message_role
+      values: [system, user, assistant]
+  properties:
+    typeName:
+      title: Type Name
+      description: >-
+        The physical type name, and this declaration's durable identity — the
+        ledger keys on it, never on the resource name, so renaming the resource
+        costs nothing and renaming this is a schema change.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+    values:
+      title: Values
+      description: >-
+        The permitted values, in declaration order — which is the order the type
+        sorts in, unlike a CHECK constraint over text.
+      type: array
+      minItems: 1
+      items: { type: string, minLength: 1 }
+    renamedFrom:
+      title: Renamed From
+      description: >-
+        The physical type name this declaration supersedes, rendering
+        `ALTER TYPE … RENAME TO`. The marker is not optional sugar: the reconciler
+        cannot tell a rename from a drop-and-create, and guessing wrong here
+        creates the new type, alters every column that uses it — a table rewrite
+        each — and tombstones the old one.
+
+        Advisory, so it may be left in place indefinitely: neither name present is
+        a fresh database and the type is simply created. Both present is refused,
+        naming both, because that is either a half-finished earlier run or a type
+        created independently and those want opposite repairs.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+---
+kind: Telo.Definition
+metadata:
   name: Table
   description: >-
     One PostgreSQL table stated as what it is — named columns in the engine's own
@@ -119,6 +178,15 @@ x-telo-schema-projection:
   key: type
   nullable: nullable
   array: array
+  # A `type:` holding a REFERENCE is not a key, so it falls through to this path.
+  # A PostgreSQL enum IS its own base type, so the base is written literally; what
+  # crosses is the enum itself, because it is the type at the granularity a
+  # consumer acts on — the enum in a CRUD model's OpenAPI operation, a completion
+  # list in the editor, a filter a repository can reject before the query.
+  reference:
+    from: values
+    keyword: enum
+    base: { type: string }
 schema:
   type: object
   additionalProperties: false
@@ -142,6 +210,26 @@ schema:
       description: The physical table name.
       type: string
       minLength: 1
+    renamedFrom:
+      title: Renamed From
+      description: >-
+        The physical table this declaration supersedes, rendered as
+        `ALTER TABLE … RENAME TO` and applied BEFORE the reconciliation pass.
+
+        Unlike a column's rename this is NATIVE, and the difference is not an
+        oversight: a column rename is expand-contract because both names can
+        coexist while the previous version of the app is still running, and a
+        table has no cheap equivalent — copying every row is unbounded work, and
+        writes during the overlap would land in one table and not the other. So
+        the rename is immediate, and the cost is stated here: between the rename
+        and the new deployment, an instance still running the previous version
+        does not find the table.
+
+        Advisory. Neither name present is a fresh database and the table is simply
+        created, so a marker left in the manifest indefinitely is harmless; both
+        names present is refused, naming both; and a predecessor the ledger does
+        not record as owned is refused.
+      type: string
     columns:
       title: Columns
       description: >-
@@ -176,44 +264,64 @@ schema:
         properties:
           type:
             title: Type
+            # A named domain goes HERE, because in PostgreSQL it IS the column's
+            # type. A second field beside `type:` would state in two places what
+            # the engine states in one, and leave the two free to disagree.
+            #
+            # `type: object` on the reference branch is not decoration: a branch
+            # with no keywords is an empty schema matching everything, so a valid
+            # storage class would match both branches and the union would fail.
             description: >-
-              PostgreSQL type. Parameters are structured fields (`length`,
+              PostgreSQL type — a storage class, or a reference to an enum this
+              schema declares. Parameters are structured fields (`length`,
               `precision`, `scale`), never spelled into this value, so nothing has
               to parse a type back apart.
-            type: string
-            enum:
-              [text, varchar, char, citext, uuid, json, jsonb, boolean, smallint,
-               integer, bigint, numeric, real, doublePrecision, date, time,
-               timestamp, timestamptz, interval, bytea, inet, cidr, macaddr,
-               tsvector]
-            x-telo-schema-map:
-              text: { type: string }
-              varchar: { type: string }
-              char: { type: string }
-              citext: { type: string }
-              uuid: { type: string }
-              # A JSON column holds any JSON value — an array or a scalar as
-              # readily as an object — so `{type: object}` would make a valid
-              # row a static type error. Unconstrained is the honest projection.
-              json: {}
-              jsonb: {}
-              boolean: { type: boolean }
-              smallint: { type: integer }
-              integer: { type: integer }
-              bigint: { type: integer }
-              numeric: { type: number }
-              real: { type: number }
-              doublePrecision: { type: number }
-              date: { type: string }
-              time: { type: string }
-              timestamp: { type: string }
-              timestamptz: { type: string }
-              interval: { type: string }
-              bytea: { x-telo-type: Telo.Bytes }
-              inet: { type: string }
-              cidr: { type: string }
-              macaddr: { type: string }
-              tsvector: { type: string }
+            oneOf:
+            - title: Storage class
+              type: string
+              enum:
+                [text, varchar, char, citext, uuid, json, jsonb, boolean, smallint,
+                 integer, bigint, numeric, real, doublePrecision, date, time,
+                 timestamp, timestamptz, interval, bytea, inet, cidr, macaddr,
+                 tsvector]
+              x-telo-schema-map:
+                text: { type: string }
+                varchar: { type: string }
+                char: { type: string }
+                citext: { type: string }
+                uuid: { type: string }
+                # A JSON column holds any JSON value — an array or a scalar as
+                # readily as an object — so `{type: object}` would make a valid
+                # row a static type error. Unconstrained is the honest projection.
+                json: {}
+                jsonb: {}
+                boolean: { type: boolean }
+                smallint: { type: integer }
+                integer: { type: integer }
+                bigint: { type: integer }
+                numeric: { type: number }
+                real: { type: number }
+                doublePrecision: { type: number }
+                date: { type: string }
+                time: { type: string }
+                timestamp: { type: string }
+                timestamptz: { type: string }
+                interval: { type: string }
+                bytea: { x-telo-type: Telo.Bytes }
+                inet: { type: string }
+                cidr: { type: string }
+                macaddr: { type: string }
+                tsvector: { type: string }
+            - title: Enum type
+              description: >-
+                A `!ref` to an enum this schema declares. `use: schema` for the
+                reason a foreign key's target table takes it: what the reconciler
+                needs is the physical name, which the declaration carries, so
+                nothing here requires the type to be constructed first.
+              type: object
+              x-telo-ref:
+                kind: Self.Enum
+                use: schema
           length:
             title: Length
             description: Character length for `varchar` / `char`.
@@ -307,6 +415,96 @@ schema:
             type: string
             contentMediaType: application/sql
             x-telo-widget: code
+    seeds:
+      title: Seeds
+      description: >-
+        Reference data this table is declared to hold. Desired state, not
+        history, which is why it is declared beside the shape it must satisfy
+        rather than written as an insert migration: the rows are typed against
+        this table's own columns at `telo check`, and a row deleted by hand comes
+        back on the next boot.
+
+        Applied after the reconciliation pass, since the table has to exist, and
+        before `migrations:`, since a one-time backfill may reasonably read the
+        reference data while nothing declared can depend on a migration that has
+        already run once.
+      type: object
+      additionalProperties: false
+      required: [key, rows]
+      properties:
+        key:
+          title: Key
+          description: >-
+            The columns that decide whether a row is the same row — durable
+            identity, the same principle as `table:` and an index name, and what
+            the upsert conflicts on.
+          type: array
+          minItems: 1
+          items: { type: string }
+        when:
+          title: When
+          description: >-
+            Declares the rows only when this holds. A `when:` that turns FALSE is
+            a declaration withdrawn, so those rows tombstone on the next boot of
+            a database that had them — the correct reading of the rule and the
+            surprising one.
+          type: boolean
+          x-telo-eval: compile
+        rows:
+          title: Rows
+          description: >-
+            A row asserts the columns it STATES and no others: one it omits takes
+            the column default on insert and keeps whatever is there on update.
+            That is the answer to a seeded row edited in place — a column the seed
+            declares is restored, one it does not is the operator's.
+          type: array
+          items:
+            # The projection pointed at its OWN resource: the rows are typed
+            # against this table's `columns:`, so a misspelled column or a value
+            # of the wrong type is an error on the row's own line. Rows stay
+            # partial by design — the projection emits no `required`, and the key
+            # columns are insisted on by the controller.
+            x-telo-schema-projection-from: ""
+    checks:
+      title: Checks
+      description: >-
+        Named table-level predicates, keyed by constraint name — which is their
+        durable identity, so editing an expression in place is a change to that
+        constraint while renaming the key is a drop and an add.
+
+        The expression is raw PostgreSQL, not a neutral predicate vocabulary: a
+        lowest-common-denominator predicate language is the position this design
+        already rejected for column types, and it would fail on the predicates
+        people actually write, which correlate columns. The precedent is
+        `defaultExpression`, already raw engine SQL beside a typed `default`.
+
+        Nothing reads the expression statically, so a check naming a column the
+        table does not declare is reported by the engine rather than by
+        `telo check`. Removing one is IMMEDIATE — a dropped constraint loses no
+        data, so recording it would put a grace window on a free removal.
+      type: object
+      propertyNames:
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [expression]
+        properties:
+          expression:
+            title: Expression
+            description: The predicate, in PostgreSQL's own SQL.
+            type: string
+            minLength: 1
+          validate:
+            title: Validate
+            description: >-
+              `deferred` adds the constraint `NOT VALID`, so it is enforced for
+              new rows immediately and the existing ones are scanned on a later
+              pass — which is what keeps adding a constraint to a large table
+              from holding a lock while every row is read.
+            type: string
+            enum: [immediate, deferred]
+            default: immediate
     foreignKeys:
       title: Foreign Keys
       description: >-
@@ -427,6 +625,41 @@ schema:
         x-telo-ref:
           kind: Self.Table
           use: dependency
+    extensions:
+      title: Extensions
+      description: >-
+        PostgreSQL extensions this schema needs, installed into its namespace
+        ahead of everything else — a storage class like `citext` is unavailable
+        until its extension exists, so a column naming one needs it created first.
+
+        Provisioning is a DECLARATION, not a bucket. `CREATE EXTENSION IF NOT
+        EXISTS` smuggled into `migrations:` is desired state wearing a migration's
+        clothes: there is no release it belongs to, and its migration key is a lie
+        the first time the entry is deleted.
+
+        Removing one is recorded, never executed. An extension is database-wide,
+        so something outside this schema may be using it and `DROP EXTENSION`
+        would take every dependent object with it — the drop stays a person's
+        decision, and the record says one is owed.
+      type: array
+      items:
+        type: string
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+    enums:
+      title: Enums
+      description: >-
+        The enum types this schema declares and owns, listed exactly as tables
+        are. Created ahead of the tables in the same pass, so a column can name a
+        type this same boot creates.
+
+        A type this list stops naming is tombstoned and reclaimed under the
+        ordinary policy; one a table outside this schema still uses stays held and
+        is reported as held rather than attempted.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Enum
+          use: dependency
     ledger:
       title: Ledger
       description: >-
@@ -436,14 +669,19 @@ schema:
         abandons the history under the old name.
       type: string
       pattern: "^[a-z][a-z0-9_]*$"
-    beforeMigrations:
-      title: Before Migrations
+    prepare:
+      title: Prepare
       description: >-
-        Migrations that run BEFORE the reconciliation pass, in key order. The rare
-        deliberate case of preparing ground the pass would otherwise refuse —
-        making values fit a column that is about to narrow, backfilling one that is
-        about to become NOT NULL. Keys are unique across both maps and the ledger
-        stores the key alone, so moving an entry between the two does not re-run it.
+        Data preparation for a narrowing the reconciliation pass is about to
+        attempt — backfilling a column that is about to become NOT NULL, making
+        values fit one that is about to narrow, converting before a non-widening
+        type change. Runs in key order, after any rename and before the pass.
+
+        This is what every refusal already tells the author to write, which is why
+        the field is named for what it is FOR rather than for where it runs
+        relative to the other bucket. Formerly `beforeMigrations:`; the old
+        spelling is rewritten at load, and nothing re-runs, because the ledger
+        stores the migration key alone.
       type: object
       x-telo-eval: compile
       propertyNames:

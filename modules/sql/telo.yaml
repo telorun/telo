@@ -17,7 +17,12 @@ requires:
   # cause. Forward-declared: 0.79.0 is the release that carries the form.
   # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime
   # that does not execute a returned chain allocates nothing and undoes nothing.
-  telo: ">=0.82.0"
+  # 0.82.1: `x-telo-referrer-rules` gains `peers:`. An older analyzer reads the
+  # rule, ignores the unknown key and evaluates the condition with `peers` and
+  # `entry` unbound — cel-js throws, and the throw is reported as a rule defect
+  # on a line the consumer cannot act on. Verified by execution: 0.82.0 against a
+  # manifest that exercises SQL_ENUM_NOT_DECLARED reports exactly that.
+  telo: ">=0.82.1"
 exports:
   kinds:
     - Connection
@@ -26,6 +31,7 @@ exports:
     - Transaction
     - Selection
     - Table
+    - Enum
     - Schema
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/sql` to, so this module's code is one module scope across every
@@ -426,6 +432,82 @@ schema:
 # `citext` exists.
 kind: Telo.Abstract
 metadata:
+  name: Enum
+  description: >-
+    One declared set of permitted values, stated once and referenced by the
+    columns that use it. Each engine renders it natively — a first-class type
+    where the engine has one, a per-column constraint where it does not — and
+    projects the same enum into the row contract either way.
+# A reconciled schema object, so its capability is the one `Table` already uses.
+# `Telo.Type` would be wrong twice: a Type-capability resource is required to
+# carry a PascalCase name, which would force `MessageRole` on what is an ordinary
+# instance, and nothing here is a shape the type system resolves.
+capability: Telo.Provider
+# The STRUCTURAL half, as with `Table`: what the shared reconciler reads to decide
+# whether a declaration is coherent. Each engine restates these in its own
+# vocabulary — SQLite adds `baseType`, since it has no named types and must be
+# told which storage class the constraint sits on.
+schema:
+  type: object
+  properties:
+    typeName:
+      title: Type Name
+      description: >-
+        The physical name this declaration owns, and its DURABLE IDENTITY: the
+        ledger keys on it, never on the resource name, so renaming the resource
+        and its `!ref`s is free and invisible to the database. Renaming the
+        physical type is a schema change, declared with `renamedFrom:`.
+      type: string
+    values:
+      title: Values
+      description: >-
+        The permitted values, in declaration order. A value ADDED here is added to
+        the type; one REMOVED is recorded and left in place, because no engine can
+        drop an enum value without rewriting every table that uses it.
+      type: array
+      minItems: 1
+      items: { type: string }
+    renamedFrom:
+      title: Renamed From
+      description: >-
+        The physical type name this declaration supersedes. Advisory: neither name
+        present simply creates the type, so a marker left in the manifest long
+        after the fact is harmless.
+      type: string
+  x-telo-resource-rules:
+    - condition: !cel "self.values.all(v, size(self.values.filter(x, x == v)) == 1)"
+      code: SQL_ENUM_DUPLICATE_VALUE
+      message: >-
+        repeats a value. Each label is distinct, and the engine would refuse the
+        type rather than name the duplicate.
+    # `has()` rather than `.?`: the optional select truncates the access chain to
+    # `self`, so the dynamic-leaf check reads the WHOLE resource and one
+    # unrelated `!cel` anywhere in it skips the rule. `has()` names the field.
+    - condition: !cel "!has(self.renamedFrom) || self.renamedFrom != self.typeName"
+      code: SQL_RENAME_FROM_SELF
+      message: declares renamedFrom itself, which describes no rename.
+  # The same pair the tables carry, one level out: a rename marker is wrong only
+  # in relation to the other types the schema lists.
+  x-telo-referrer-rules:
+    - referrer: Self.Schema
+      peers: /enums
+      condition: !cel >-
+        !has(self.renamedFrom) || !peers.exists(p, p.typeName == self.renamedFrom)
+      code: SQL_ENUM_RENAME_SOURCE_STILL_DECLARED
+      message: >-
+        renames from a type this schema also declares. A rename's source is the
+        type being retired, so declaring both would rename one live type onto
+        another and retire neither.
+    - referrer: Self.Schema
+      peers: /enums
+      condition: !cel >-
+        !has(self.renamedFrom)
+          || !peers.exists(p, p.?renamedFrom.orValue('') == self.renamedFrom)
+      code: SQL_ENUM_RENAME_SOURCE_CLAIMED_TWICE
+      message: renames from a type another declaration in this schema also claims.
+---
+kind: Telo.Abstract
+metadata:
   name: Table
   description: >-
     One declared database table — its columns, indexes and foreign keys stated as
@@ -467,10 +549,30 @@ schema:
       title: Foreign Keys
       description: Foreign keys keyed by name, which is their durable identity.
       type: object
+    checks:
+      title: Checks
+      description: >-
+        Named table-level predicates, keyed by constraint name — their durable
+        identity. The expression is the backend's own SQL, for the reason a
+        column's type vocabulary is: a neutral predicate language would be a
+        lowest-common-denominator one, and it would fail on the predicates people
+        actually write, which correlate columns.
+      type: object
+    seeds:
+      title: Seeds
+      description: >-
+        Reference data the table is declared to hold. Structural only — each
+        engine restates the entry with its own row shape — but `key:` and `rows:`
+        are named here because the rules below iterate them, and a rule may only
+        point at a collection the kind it is declared on declares.
+      type: object
+      properties:
+        key: { type: array }
+        rows: { type: array }
   # `condition` is TRUE when the rule holds; `this` is the element `in:` iterates
   # and `key` its map key, `self` the whole table. Each is decidable by reading
   # the YAML, and otherwise only at boot — several of them after
-  # `beforeMigrations:` has already changed the database.
+  # `prepare:` has already changed the database.
   x-telo-resource-rules:
     - in: /indexes
       condition: !cel "this.columns.all(c, c in self.columns)"
@@ -505,6 +607,73 @@ schema:
         marks more than one column as primaryKey. A composite primary key is not
         expressible as a per-column flag — declare one column as the key, or
         create the constraint in a 'migrations:' entry.
+    - condition: !cel "!has(self.renamedFrom) || self.renamedFrom != self.table"
+      code: SQL_TABLE_RENAME_FROM_SELF
+      message: declares renamedFrom itself, which describes no rename.
+    # Both seed invariants are decidable from the YAML, and were previously only
+    # decidable at boot — the position `SQL_INDEX_UNKNOWN_COLUMN` already takes
+    # for the identical shape one field over. The controller keeps its guard: a
+    # library caller reaching the schema pass directly never ran `telo check`.
+    # `in: /seeds/key` rather than a guarded whole-resource form, and the reason
+    # is the dynamic-leaf scan rather than the anchor: `has(self.seeds)` READS
+    # `self.seeds`, so the scan covers the whole block and one `when: !cel …`
+    # — the conventional spelling for a conditional seed — switched the rule off
+    # for exactly the tables most likely to have one. Iterating the key reads the
+    # key alone, and anchors on the offending entry into the bargain.
+    - in: /seeds/key
+      condition: !cel "this in self.columns"
+      code: SQL_SEED_KEY_UNKNOWN_COLUMN
+      message: >-
+        names a column this table does not declare, so no row can be identified
+        by it and the upsert has nothing to conflict on.
+    - in: /seeds/rows
+      condition: !cel "self.seeds.key.all(c, c in this)"
+      code: SQL_SEED_ROW_MISSING_KEY
+      message: >-
+        supplies no value for a column the seed key names, so the row has no
+        identity — it cannot be told from any other row, upserted, or reclaimed.
+  # A column's enum is unlisted only in relation to the OTHER declarations its
+  # schema names, which no resource rule can see — so this is a peer rule over the
+  # schema that lists me. `referrer: Self.Schema` is the abstract, and every real
+  # referrer is a backend's `Schema` that extends it.
+  #
+  # The optional select is what discriminates the two shapes `type:` now holds
+  # with no type test: on a storage-class string it yields nothing and the column
+  # short-circuits; on a reference it yields the name and the column is checked.
+  x-telo-referrer-rules:
+    - referrer: Self.Schema
+      peers: /enums
+      condition: !cel >-
+        self.columns.all(c, self.columns[c].type.?name.orValue('') == ''
+          || peers.exists(e, e.metadata.name == self.columns[c].type.name))
+      code: SQL_ENUM_NOT_DECLARED
+      message: >-
+        has a column whose type references an enum this schema does not list in
+        'enums:'. The list is what the ledger records as owned, so an unlisted
+        type is one nothing creates, reclaims or renames — add it to 'enums:'.
+    # A rename marker is wrong only in relation to the OTHER tables the schema
+    # lists. Together these two make a chain (`a → b` beside `c → a`) and a swap
+    # unrepresentable — the rule a column's `renamedFrom:` already carries, one
+    # level out where only a peer rule can see it.
+    - referrer: Self.Schema
+      peers: /tables
+      condition: !cel >-
+        !has(self.renamedFrom) || !peers.exists(p, p.table == self.renamedFrom)
+      code: SQL_TABLE_RENAME_SOURCE_STILL_DECLARED
+      message: >-
+        renames from a table this schema also declares. A rename's source is the
+        table being retired, so declaring both would rename one live table onto
+        another and retire neither.
+    - referrer: Self.Schema
+      peers: /tables
+      condition: !cel >-
+        !has(self.renamedFrom)
+          || !peers.exists(p, p.?renamedFrom.orValue('') == self.renamedFrom)
+      code: SQL_TABLE_RENAME_SOURCE_CLAIMED_TWICE
+      message: >-
+        renames from a table another declaration in this schema also claims. One
+        retired table has one successor, or neither rename can be told from a
+        drop-and-create.
 ---
 # Sql.Schema — the backend-neutral half of a schema resource, and only that
 # half. Tables, migrations, the statement vocabulary and the runner are the
@@ -539,6 +708,26 @@ schema:
         value gates an irreversible drop.
       type: string
       x-telo-eval: compile
+    tables:
+      title: Tables
+      description: >-
+        The tables this schema declares and owns. Structural only: each engine
+        restates the entry as a reference to its OWN `Table` kind, since a child's
+        `properties` entry replaces the parent's wholesale.
+      type: array
+    enums:
+      title: Enums
+      description: >-
+        The enum types this schema declares and owns, listed exactly as tables
+        are. That list is what the ledger records as owned, so which namespace
+        holds the type, what a removal tombstones and what a rename rewrites all
+        follow from it with no new concept.
+
+        Deriving the set from the columns instead would make deleting the last
+        column that used a type silently un-declare it, tombstone it and
+        eventually drop it — a schema removal nobody wrote — and would leave a
+        type used only by a `migrations:` entry undeclarable.
+      type: array
     ledger:
       title: Ledger
       description: >-
@@ -646,6 +835,16 @@ status:
         `renamedFrom:` mentions that can no longer do anything — the source column
         is neither present nor held by a tombstone, so the rename has finished
         everywhere and the mention is dead manifest text that can be deleted.
+      type: array
+      items: { type: string }
+    retainedEnumValues:
+      title: Retained Enum Values
+      description: >-
+        Enum values the declaration has dropped and the engine is keeping. No
+        engine can remove an enum label without rewriting every table that stores
+        it, so the removal is recorded rather than executed — the tombstone rule
+        this design is already built on, applied to a value instead of an object.
+        Reported so it is visible rather than silent.
       type: array
       items: { type: string }
     reclaimed:

@@ -1,0 +1,40 @@
+# A column's enum must be one its schema lists in `enums:` — the first peer rule
+# in the standard library, and the shape peer rules exist for: a relation between
+# the SIBLING declarations one schema names, which neither a resource rule (one
+# resource) nor a plain referrer rule (a pair joined by one reference) can state.
+kind: Telo.Application
+metadata:
+  name: EnumDeclarationChecks
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref TestListed
+  - !ref TestUnlisted
+  - !ref TestStorageClassOnly
+---
+kind: Assert.Manifest
+metadata:
+  name: TestListed
+source: ./__fixtures__/enum-declaration/listed.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata:
+  name: TestUnlisted
+source: ./__fixtures__/enum-declaration/unlisted.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "does not list in 'enums:'"
+---
+# The optional select is what discriminates the two shapes `type:` now holds with
+# no type test: a storage class yields no name and short-circuits, so a schema
+# declaring no enums at all stays clean.
+kind: Assert.Manifest
+metadata:
+  name: TestStorageClassOnly
+source: ./__fixtures__/enum-declaration/storage-class.yaml
+expect:
+  errors: []

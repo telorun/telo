@@ -3,6 +3,7 @@ import { isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { visitManifest } from "./manifest-visitor.js";
+import { satisfiesValueBranch } from "./reference-field-map.js";
 import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -29,6 +30,16 @@ const SOURCE = "telo-analyzer";
  * Rejected, each with an actionable diagnostic pointing at `!ref`:
  *   - the object form `{ kind, name }` (the old reference object), and
  *   - a bare string (the old name / dotted-FQN reference).
+ *
+ * **A value-or-reference union slot is the one exception**, and it is decided by
+ * the value rather than by a new spelling: where the reference constraint is a
+ * *branch* of a union (`type:` on a column, holding either a storage class or a
+ * `!ref` to a declared enum), a SCALAR is a value and is left to that branch,
+ * while an object is still checked for the removed `{kind, name}` form unless a
+ * branch describes it. The rule guards a REMOVED spelling — a bare string is
+ * simply not a reference in Telo — so admitting one takes nothing away: what it
+ * costs is the answer when an author meant a reference and wrote a bare name,
+ * which against a closed branch AJV reports as an unknown value.
  */
 export function validateReferenceForms(
   resources: ResourceManifest[],
@@ -51,6 +62,17 @@ export function validateReferenceForms(
         const value = e.value;
         // `!ref` and `!cel`/`${{ }}` sentinels are the supported shapes.
         if (isTaggedSentinel(value)) return;
+
+        // A SCALAR at a slot whose union has a value branch is a value, and the
+        // value branch is what judges it. Reporting a mistyped storage class as
+        // a malformed reference — "write it as '!ref txt'" — instructs the author
+        // to convert a typo into a reference, and AJV has already said what the
+        // value must be one of. The object form below is not ambiguous the same
+        // way: `{kind, name}` is the removed reference object, so it is still
+        // reported unless a branch genuinely describes that shape.
+        const hasValueBranch = (e.entry.valueBranches?.length ?? 0) > 0;
+        if (hasValueBranch && typeof value !== "object") return;
+        if (satisfiesValueBranch(value, e.entry.valueBranches, registry)) return;
 
         const r = e.source;
         const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;

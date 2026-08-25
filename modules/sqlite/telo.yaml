@@ -14,13 +14,19 @@ requires:
   # The connection inherits `Sql.Connection`'s effect chain, so a runtime that
   # discards what `init()` returns never destroys the pool — a silent leak
   # rather than a failure, which is what the floor exists to convert.
-  telo: ">=0.82.0"
+  # 0.82.1: a column's `type:` unions a storage class with a reference to a
+  # declared enum. An older analyzer reads a scalar at any slot carrying an
+  # `x-telo-ref` as the removed string-reference form, so it rejects every
+  # consumer's `type: integer` and tells its author to write `!ref integer`.
+  # Verified by execution against 0.82.0.
+  telo: ">=0.82.1"
 imports:
   Sql: ../sql
 exports:
   kinds:
     - Connection
     - Table
+    - Enum
     - Schema
 ---
 kind: Telo.Definition
@@ -69,6 +75,13 @@ x-telo-schema-projection:
   key: type
   nullable: nullable
   array: array
+  # SQLite has no named types, so a referenced enum has no base of its own: the
+  # declaration names a storage class and THIS kind's own map resolves it. Same
+  # declaration, same projected node as PostgreSQL, two engine-native renderings.
+  reference:
+    from: values
+    keyword: enum
+    baseFrom: baseType
 schema:
   type: object
   additionalProperties: false
@@ -84,6 +97,26 @@ schema:
       description: The physical table name.
       type: string
       minLength: 1
+    renamedFrom:
+      title: Renamed From
+      description: >-
+        The physical table this declaration supersedes, rendered as
+        `ALTER TABLE … RENAME TO` and applied BEFORE the reconciliation pass.
+
+        Unlike a column's rename this is NATIVE, and the difference is not an
+        oversight: a column rename is expand-contract because both names can
+        coexist while the previous version of the app is still running, and a
+        table has no cheap equivalent — copying every row is unbounded work, and
+        writes during the overlap would land in one table and not the other. So
+        the rename is immediate, and the cost is stated here: between the rename
+        and the new deployment, an instance still running the previous version
+        does not find the table.
+
+        Advisory. Neither name present is a fresh database and the table is simply
+        created, so a marker left in the manifest indefinitely is harmless; both
+        names present is refused, naming both; and a predecessor the ledger does
+        not record as owned is refused.
+      type: string
     columns:
       title: Columns
       description: >-
@@ -118,17 +151,32 @@ schema:
         properties:
           type:
             title: Type
+            # `type: object` on the reference branch is not decoration: a branch
+            # with no keywords is an empty schema matching everything, so a valid
+            # storage class would match both branches and the union would fail.
             description: >-
-              SQLite storage class. There is no date, boolean or UUID type — those
-              are conventions over these five.
-            type: string
-            enum: [integer, real, text, blob, numeric]
-            x-telo-schema-map:
-              integer: { type: integer }
-              real: { type: number }
-              text: { type: string }
-              blob: { x-telo-type: Telo.Bytes }
-              numeric: { type: number }
+              SQLite storage class, or a reference to an enum this schema
+              declares. There is no date, boolean or UUID type — those are
+              conventions over these five.
+            oneOf:
+            - title: Storage class
+              type: string
+              enum: [integer, real, text, blob, numeric]
+              x-telo-schema-map:
+                integer: { type: integer }
+                real: { type: number }
+                text: { type: string }
+                blob: { x-telo-type: Telo.Bytes }
+                numeric: { type: number }
+            - title: Enum type
+              description: >-
+                A `!ref` to an enum this schema declares. SQLite has no named
+                types, so the reference is rendered as a `CHECK` on this column —
+                and the row contract is projected identically either way.
+              type: object
+              x-telo-ref:
+                kind: Self.Enum
+                use: schema
           nullable:
             title: Nullable
             type: boolean
@@ -191,6 +239,80 @@ schema:
             type: string
             contentMediaType: application/sql
             x-telo-widget: code
+    seeds:
+      title: Seeds
+      description: >-
+        Reference data this table is declared to hold. Desired state, not
+        history, which is why it is declared beside the shape it must satisfy
+        rather than written as an insert migration: the rows are typed against
+        this table's own columns at `telo check`, and a row deleted by hand comes
+        back on the next boot.
+
+        Applied after the reconciliation pass, since the table has to exist, and
+        before `migrations:`, since a one-time backfill may reasonably read the
+        reference data while nothing declared can depend on a migration that has
+        already run once.
+      type: object
+      additionalProperties: false
+      required: [key, rows]
+      properties:
+        key:
+          title: Key
+          description: >-
+            The columns that decide whether a row is the same row — durable
+            identity, the same principle as `table:` and an index name, and what
+            the upsert conflicts on.
+          type: array
+          minItems: 1
+          items: { type: string }
+        when:
+          title: When
+          description: >-
+            Declares the rows only when this holds. A `when:` that turns FALSE is
+            a declaration withdrawn, so those rows tombstone on the next boot of
+            a database that had them — the correct reading of the rule and the
+            surprising one.
+          type: boolean
+          x-telo-eval: compile
+        rows:
+          title: Rows
+          description: >-
+            A row asserts the columns it STATES and no others: one it omits takes
+            the column default on insert and keeps whatever is there on update.
+            That is the answer to a seeded row edited in place — a column the seed
+            declares is restored, one it does not is the operator's.
+          type: array
+          items:
+            # The projection pointed at its OWN resource: the rows are typed
+            # against this table's `columns:`, so a misspelled column or a value
+            # of the wrong type is an error on the row's own line. Rows stay
+            # partial by design — the projection emits no `required`, and the key
+            # columns are insisted on by the controller.
+            x-telo-schema-projection-from: ""
+    checks:
+      title: Checks
+      description: >-
+        Named table-level predicates, keyed by constraint name. The expression is
+        raw SQLite SQL, for the reason a column's type vocabulary is the engine's.
+
+        SQLite has no ADD CONSTRAINT, so a check exists only as part of the table
+        it was created with: it is emitted at create time, and a later change —
+        adding, editing or removing one on a live table — is refused with the
+        reason. That refusal needs no expression parsing, because the ledger
+        records the declaration and the pass compares this boot's against it.
+      type: object
+      propertyNames:
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [expression]
+        properties:
+          expression:
+            title: Expression
+            description: The predicate, in SQLite's own SQL.
+            type: string
+            minLength: 1
     foreignKeys:
       title: Foreign Keys
       description: >-
@@ -241,6 +363,60 @@ schema:
             title: On Update
             type: string
             enum: [cascade, restrict, "set null", "set default", "no action"]
+---
+kind: Telo.Definition
+metadata:
+  name: Enum
+  description: >-
+    One declared set of permitted values for the columns that reference it.
+    SQLite has no named types, so nothing in the database corresponds to this
+    declaration: the values are rendered as a `CHECK` on every column that uses
+    it, and the same enum is projected into the row contract as on any engine
+    that does have one.
+capability: Telo.Provider
+extends: Sql.Enum
+controllers:
+  - pkg:npm/@telorun/sqlite@0.3.0?local_path=./nodejs#enum
+schema:
+  type: object
+  additionalProperties: false
+  required: [typeName, baseType, values]
+  examples:
+    - typeName: message_role
+      baseType: text
+      values: [system, user, assistant]
+  properties:
+    typeName:
+      title: Type Name
+      description: >-
+        This declaration's DURABLE IDENTITY. Nothing in SQLite corresponds to it,
+        and it is required anyway: the ledger has to key on something written
+        down, or renaming the resource would abandon the history under the old
+        name — the one outcome the rejected identity column exists to prevent.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+    baseType:
+      title: Base Type
+      description: >-
+        The storage class the values sit in, and what the projected row contract
+        is typed from. PostgreSQL needs no equivalent because an enum type there
+        IS its own base type.
+      type: string
+      enum: [integer, real, text, blob, numeric]
+    values:
+      title: Values
+      description: The permitted values, in declaration order.
+      type: array
+      minItems: 1
+      items: { type: string, minLength: 1 }
+    renamedFrom:
+      title: Renamed From
+      description: >-
+        The physical type name this declaration supersedes. On SQLite this emits
+        NO statement at all — the `CHECK`s on referencing tables never named the
+        type — so the ledger key rewrite IS the rename.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
 ---
 # SQLite.Schema — the single schema-change kind. SQLite has exactly one
 # namespace, so unlike the PostgreSQL kind there is no `schema:` to name.
@@ -303,6 +479,19 @@ schema:
         x-telo-ref:
           kind: Self.Table
           use: dependency
+    enums:
+      title: Enums
+      description: >-
+        The enum types this schema declares and owns, listed exactly as tables
+        are. SQLite has no database object behind one — the values are rendered as
+        a `CHECK` on every column that references the enum — but the DECLARATION
+        is a ledger object like any other, which is what lets a change to it be
+        detected at all.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Enum
+          use: dependency
     ledger:
       title: Ledger
       description: >-
@@ -312,14 +501,19 @@ schema:
         abandons the history under the old name.
       type: string
       pattern: "^[a-z][a-z0-9_]*$"
-    beforeMigrations:
-      title: Before Migrations
+    prepare:
+      title: Prepare
       description: >-
-        Migrations that run BEFORE the reconciliation pass, in key order. The rare
-        deliberate case of preparing ground the pass would otherwise refuse —
-        truncating values that will not fit a narrowed column, say. Keys are unique
-        across both maps and the ledger stores the key alone, so moving an entry
-        between the two does not re-run it.
+        Data preparation for a narrowing the reconciliation pass is about to
+        attempt — backfilling a column that is about to become NOT NULL, or
+        rebuilding a table SQLite cannot alter in place. Runs in key order, after
+        any rename and before the pass.
+
+        This is what every refusal already tells the author to write, which is why
+        the field is named for what it is FOR rather than for where it runs
+        relative to the other bucket. Formerly `beforeMigrations:`; the old
+        spelling is rewritten at load, and nothing re-runs, because the ledger
+        stores the migration key alone.
       type: object
       x-telo-eval: compile
       propertyNames:

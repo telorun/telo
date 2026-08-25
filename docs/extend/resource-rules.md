@@ -104,6 +104,16 @@ written rather than on somebody's manifest:
   points at nothing.
 - **The condition must parse and type-check.** One expression, one verdict: the
   templating engine's.
+- **`condition:` must carry the `!cel` tag.** The reader is lenient and a bare
+  string still runs, but untagged the expression is not CEL to the editor's
+  colouring, completion or hover — so a rule silently stops being CEL to every
+  surface but evaluation, which is the failure a strict half exists to move
+  earlier.
+
+A rule is skipped when a value it reads holds a `!cel` or an `!include-*` embed —
+the comparison would run against a placeholder — and the skip names the tag it
+found. A **`!ref` is not one of them**: it names a declaration, which is a value
+a rule compares perfectly well.
 
 ## Guard your optional fields
 

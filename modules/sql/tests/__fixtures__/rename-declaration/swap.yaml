@@ -1,0 +1,34 @@
+# A SWAP: two declarations claim the same predecessor. One retired table has one
+# successor, or neither rename can be told from a drop-and-create.
+kind: Telo.Application
+metadata:
+  name: RenameSwap
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: appDb }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: messages }
+table: messages
+renamedFrom: legacy_messages
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: archive }
+table: archive
+renamedFrom: legacy_messages
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref appDb
+version: "1.0.0"
+tables: [!ref messages, !ref archive]

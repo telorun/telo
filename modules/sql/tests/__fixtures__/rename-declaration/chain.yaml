@@ -1,0 +1,34 @@
+# A rename CHAIN: `messages` renames from `chat_messages`, and `chat_messages` is
+# still declared beside it. A rename's source is the object being retired, so
+# declaring both would rename one live table onto another and retire neither.
+kind: Telo.Application
+metadata:
+  name: RenameChain
+  version: 1.0.0
+imports:
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: appDb }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: messages }
+table: messages
+renamedFrom: chat_messages
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: legacy }
+table: chat_messages
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref appDb
+version: "1.0.0"
+tables: [!ref messages, !ref legacy]

@@ -12,6 +12,7 @@ import type { RefResolver } from "./ref-candidates";
 import { ReferenceSelectField } from "./reference-select-field";
 import { ScalarField } from "./scalar-field";
 import { TypeField } from "./type-field";
+import { isValueOrReferenceSlot, ValueOrReferenceField } from "./value-or-reference-field";
 import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
 import { UnsupportedField } from "./unsupported-field";
 
@@ -146,6 +147,25 @@ export function FieldControl({
     }
 
     if (isPickableRefSlot(prop)) {
+      // A slot unioning a CLOSED value branch with a reference branch is one
+      // control, and it is asked first: the reference/inline toggle below fires
+      // on "some branch is `type: object`", which a reference branch satisfies,
+      // so the two shapes are separated by the discriminator rather than by
+      // ordering luck — a branch carrying `enum` beside one carrying
+      // `x-telo-ref`.
+      if (isValueOrReferenceSlot(prop)) {
+        return (
+          <ValueOrReferenceField
+            prop={prop}
+            value={value}
+            onValueChange={onValueChange}
+            onBlur={onBlur}
+            resolvedResources={resolvedResources}
+            registry={registry}
+            onSelectResource={onSelectResource}
+          />
+        );
+      }
       // A ref field that also permits an inline object (e.g. an invocable's
       // `inputType`/`outputType`) gets a Reference/Inline toggle so an empty
       // candidate list isn't a dead end.

@@ -19,6 +19,10 @@ export interface RefFieldEntry {
   inputs?: string;
   /** True when the field path traversed through at least one array (path contains "[]"). */
   isArray: boolean;
+  /** The slot's non-reference branches, when the reference constraint is a
+   *  branch of a union — see {@link RefSlot.valueBranches}. A value satisfying
+   *  one of these is a value, not a malformed reference. */
+  valueBranches?: Record<string, any>[];
   /** x-telo-context schema declared on this ref slot, if any. Describes the CEL invocation
    *  context available to resources placed in this slot. */
   context?: Record<string, any>;
@@ -60,6 +64,43 @@ export type ReferenceFieldMap = Map<string, FieldMapEntry>;
 
 export function isRefEntry(entry: FieldMapEntry): entry is RefFieldEntry {
   return "refs" in entry;
+}
+
+/** The half of a definition registry this question needs — structural, so the
+ *  field map keeps depending on nothing. */
+export interface ValueBranchValidator {
+  schemaCompileError(schema: Record<string, any>): string | undefined;
+  validateWithRefs(data: unknown, schema: Record<string, any>): string[];
+}
+
+/**
+ * True when a value at a ref slot satisfies one of the slot's VALUE branches —
+ * a storage class beside a `!ref`, so it is a value and not a malformed
+ * reference.
+ *
+ * One implementation, because BOTH reference passes have to narrow the same way:
+ * `validateReferenceForms` would otherwise call it a removed string reference,
+ * and `validateReferences` a reference missing `kind` and `name`. Two copies of
+ * the rule would eventually disagree about which of the two reported a value.
+ *
+ * A branch AJV cannot COMPILE is not a branch the value satisfies.
+ * `validateWithRefs` returns no issues for one — it swallows the compile failure
+ * by design, so one bad schema does not abort the pass — and reading that as
+ * "no issues, therefore a value" would switch the reference-form rule off for
+ * the slot silently. The uncompilable schema is reported on its own definition
+ * by `schemaCompileError`.
+ */
+export function satisfiesValueBranch(
+  value: unknown,
+  branches: readonly Record<string, any>[] | undefined,
+  registry: ValueBranchValidator,
+): boolean {
+  if (!branches?.length) return false;
+  return branches.some(
+    (branch) =>
+      registry.schemaCompileError(branch) === undefined &&
+      registry.validateWithRefs(value, branch).length === 0,
+  );
 }
 
 export function isScopeEntry(entry: FieldMapEntry): entry is ScopeFieldEntry {
@@ -234,6 +275,7 @@ function traverseNode(
     };
     if (slot.useCases) entry.useCases = slot.useCases;
     if (slot.inputs !== undefined) entry.inputs = slot.inputs;
+    if (slot.valueBranches.length > 0) entry.valueBranches = slot.valueBranches;
     if (node["x-telo-context"]) entry.context = node["x-telo-context"] as Record<string, any>;
     if (slot.inline) entry.inline = true;
     map.set(path, entry);

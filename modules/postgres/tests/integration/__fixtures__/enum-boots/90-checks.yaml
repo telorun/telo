@@ -1,0 +1,118 @@
+kind: Telo.Application
+metadata:
+  name: PgEnumBoots
+  version: 9.0.0
+  description: |
+    Boot 9 — named check constraints.
+
+    Two predicates the type system cannot state: a scalar bound, and one that
+    correlates two columns. A scalar bound is a PREDICATE, not a domain — nothing
+    in a CRUD model or a repository filter could act on one — which is why there
+    is no `min` / `max` column keyword.
+
+    `validate: deferred` renders the constraint `NOT VALID`, so it is enforced for
+    new rows immediately and the existing ones are scanned on a later pass. The
+    boot after this one validates it, which is what makes the deferral a
+    deferral rather than a permanent hole.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: conversation_role
+values: [system, user, assistant]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: conversation_messages
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  role: { type: !ref messageRole, nullable: false }
+  body: { type: text }
+  balanceCents: { type: bigint, nullable: false, default: 0 }
+  sentAt: { type: timestamptz }
+checks:
+  balance_non_negative:
+    expression: "\"balanceCents\" >= 0"
+  sent_implies_timestamp:
+    expression: "body IS NULL OR \"sentAt\" IS NOT NULL"
+    validate: deferred
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_enum_boots
+version: !cel "module.version"
+enums: [!ref messageRole]
+tables: [!ref messages]
+reclaim: { afterVersions: 1, afterDuration: 0ms }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: readChecks
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT c.conname AS name, c.convalidated AS validated FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = 'telo_pg_enum_boots' AND c.contype = 'c'
+        ORDER BY c.conname
+  - name: assertChecks
+    invoke: !ref assertChecks
+    inputs:
+      actual: !cel "steps.readChecks.result.rows"
+      expected:
+        - { name: balance_non_negative, validated: true }
+        - { name: sent_implies_timestamp, validated: false }
+  # The immediate constraint is enforced BY THE DATABASE, and the failure arrives
+  # as an ordinary statement error rather than a boot failure.
+  - name: violate
+    try:
+      - name: attempt
+        invoke: !ref command
+        inputs:
+          sql: >-
+            INSERT INTO telo_pg_enum_boots.conversation_messages
+            (role, "balanceCents", "sentAt") VALUES ('user', -1, now())
+    catch:
+      - name: rejected
+        value: true
+  - name: assertRejected
+    invoke: !ref assertRejected
+    inputs:
+      actual: !cel "steps.rejected.result"
+      expected: true
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: command }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: assertChecks }
+---
+kind: Assert.Equals
+metadata: { name: assertRejected }

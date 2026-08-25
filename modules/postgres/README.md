@@ -69,6 +69,52 @@ tables: [ !ref users ]
 reclaim: { afterVersions: 3, afterDuration: 30d }
 ```
 
+### Domains, predicates and reference data
+
+A column's `type:` takes a storage class or a `!ref` to a declared enum, and the
+schema that owns the type lists it in `enums:`. Named predicates go in `checks:`,
+and rows the table is declared to hold go in `seeds:`:
+
+```yaml
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: message_role
+values: [system, user, assistant]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: messages
+columns:
+  id:           { type: bigint, primaryKey: true, identity: always }
+  role:         { type: !ref messageRole, nullable: false }
+  balanceCents: { type: bigint, nullable: false, default: 0 }
+checks:
+  balance_non_negative:
+    expression: "balance_cents >= 0"
+    # NOT VALID: enforced for new rows now, existing rows scanned on a later
+    # pass, so adding it to a large table holds no lock while every row is read.
+    validate: deferred
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: app
+version: !cel "module.version"
+extensions: [citext]
+enums: [ !ref messageRole ]
+tables: [ !ref messages ]
+```
+
+`extensions:` provisions what a storage class needs before any column can use it
+— `citext` is unavailable until its extension exists — instead of smuggling
+`CREATE EXTENSION` into `migrations:`, which has no release it belongs to.
+
+A table or a type renames with `renamedFrom:`, natively and immediately; a column
+still renames expand-contract. See
+[Declarative schema](../sql/docs/declarative-schema.md) for the full rules —
+what a removal records, what a rename refuses, and why a domain crosses into the
+row projection while a bound does not.
+
 The pass needs a **pool of at least two** connections: the advisory lock is held
 on a connection of its own while the reconciliation runs on the pool. With
 `pool.max: 1` it would wait for the connection the lock is holding, so the pass
@@ -83,7 +129,7 @@ lock, so replicas booting together reconcile once.
 **Widening is applied, narrowing is refused.** `integer` → `bigint` and
 `varchar(64)` → `text` are applied in place; the reverse, and adding `NOT NULL`
 to a column that currently holds NULLs, fail naming the table, the column and the
-remedy — make the data fit in a `beforeMigrations:` entry first.
+remedy — make the data fit in a `prepare:` entry first.
 
 If a second schema resource — an imported library's, or another application's —
 manages tables in the same namespace, give each its own `ledger:` so their

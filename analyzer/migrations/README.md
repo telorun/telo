@@ -102,4 +102,22 @@ The vocabulary is closed in both halves, and an unknown token is refused rather
 than ignored — that is the trust boundary once module-shipped entries are
 aggregated beside these.
 
+## `inKind` naming a module's kind — a debt, not a pattern
+
+`schema-prepare-bucket` names `Postgres.Schema` and `SQLite.Schema`. A **core**
+entry may name any `inKind` and this one has to, because the module surface does
+not exist yet — but it is the one thing in the analyzer that knows a standard
+library kind by name, which the topology-driven constraint otherwise forbids
+outright.
+
+It stays contained only because `inKind` is a *filter*: an entry naming a kind
+that is not present matches nothing, so the cost of the debt is a dead rule
+rather than wrong behaviour. Two rules follow from that while it stands:
+
+- **Do not add another.** A rename that a module owns waits for the module
+  surface, or ships as a widened kind schema that accepts both spellings.
+- **When the module surface lands, this entry MOVES** to `modules/postgres` and
+  `modules/sqlite` and this section goes with it. It is the forcing case, so
+  nothing else should be allowed to accumulate behind it.
+
 The full guide is `docs/extend/manifest-migrations.md`.

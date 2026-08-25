@@ -1,0 +1,44 @@
+# A rename marker is wrong only in relation to the OTHER declarations its schema
+# lists — a chain (`a → b` beside `c → a`) and a swap are both relations between
+# siblings. These are the rules a column's `renamedFrom:` already carries, one
+# level out, where only a peer rule can see them.
+kind: Telo.Application
+metadata:
+  name: RenameDeclarationChecks
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref TestClean
+  - !ref TestChain
+  - !ref TestSwap
+---
+kind: Assert.Manifest
+metadata:
+  name: TestClean
+source: ./__fixtures__/rename-declaration/clean.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata:
+  name: TestChain
+source: ./__fixtures__/rename-declaration/chain.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "renames from a table this schema also declares"
+---
+# Reported at BOTH entries, which is the per-entry evaluation a peer rule
+# deliberately does: a rule reading its own entry is about that entry, so each
+# claimant answers for itself and each gets its own anchor.
+kind: Assert.Manifest
+metadata:
+  name: TestSwap
+source: ./__fixtures__/rename-declaration/swap.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "another declaration in this schema also claims"
+    - code: REFERRER_RULE_VIOLATED
+      message: "another declaration in this schema also claims"

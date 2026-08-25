@@ -35,6 +35,10 @@
     "./table": {
       "bun": "./src/schema/table-controller.ts",
       "import": "./dist/schema/table-controller.js"
+    },
+    "./enum": {
+      "bun": "./src/schema/enum-controller.ts",
+      "import": "./dist/schema/enum-controller.js"
     }
   },
   "files": [

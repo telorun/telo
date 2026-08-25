@@ -1,7 +1,13 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { visitManifest } from "./manifest-visitor.js";
-import { isInlineResource, resolveFieldEntries, resolveFieldValues, type RefFieldEntry } from "./reference-field-map.js";
+import {
+  isInlineResource,
+  resolveFieldEntries,
+  resolveFieldValues,
+  satisfiesValueBranch,
+  type RefFieldEntry,
+} from "./reference-field-map.js";
 import { navigateJsonPointer, substituteCelFields } from "./schema-compat.js";
 import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
@@ -292,6 +298,13 @@ export function validateReferences(
         // elsewhere. Anything still a string here is not a reference to resolve.
         if (typeof val !== "object") return;
         const refVal = val as Record<string, unknown>;
+
+        // A value the slot's own union describes is a value, not a reference —
+        // the same narrowing `validateReferenceForms` applies, through the same
+        // function, because it has to be applied here too: an OBJECT-shaped value
+        // branch would otherwise reach the structural check below and be reported
+        // as a reference missing 'kind' and 'name'.
+        if (satisfiesValueBranch(val, entry.valueBranches, registry)) return;
 
         // Skip inline resources — Phase 2 normalization hasn't run yet.
         if (isInlineResource(refVal)) return;

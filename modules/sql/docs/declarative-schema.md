@@ -27,6 +27,184 @@ tables: [!ref users]
 reclaim: { afterVersions: 3, afterDuration: 30d }
 ```
 
+## Domains — a type refinement, always declared
+
+A column's `type:` holds a storage class **or a reference to a declared enum**.
+The enum is a declaration of its own, listed by the schema that owns it exactly
+as a table is:
+
+```yaml
+kind: Postgres.Enum
+metadata: { name: messageRole }
+typeName: message_role
+values: [system, user, assistant]
+---
+kind: Postgres.Table
+metadata: { name: messages }
+table: messages
+columns:
+  role: { type: !ref messageRole, nullable: false }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+enums: [!ref messageRole]
+tables: [!ref messages]
+```
+
+**The declaration says what the values are; the backend picks the rendering.**
+PostgreSQL has a first-class construct and uses it (`CREATE TYPE … AS ENUM`, a
+schema object with a physical `typeName`). SQLite has no named types at all, so
+`SQLite.Enum` names a `baseType` from its storage classes and the values are
+rendered as a `CHECK` on every column that references the enum. Same
+declaration, same projected row contract, two engine-native renderings.
+
+**A domain crosses into the row projection** — `{ type: string, enum: [...] }` on
+either engine — which is a deliberate exception to the projection's lossiness.
+Length, precision and collation stop at the boundary because the database
+enforces them; a domain crosses because it *is* the type at the granularity a
+consumer acts on: the enum in a CRUD model's OpenAPI operation, a completion list
+in the editor, a filter a repository can reject before the query.
+
+**The schema's `enums:` is what says it owns the type.** Deriving the set from
+the columns instead would make deleting the last column that used a type silently
+un-declare it, tombstone it and eventually drop it — a schema removal nobody
+wrote. A column naming an enum its schema does not list fails `telo check`
+(`SQL_ENUM_NOT_DECLARED`), and the pass refuses it again before any statement
+runs, for the caller who reached the library directly.
+
+### Adding and removing values
+
+A value added to the declaration is added to the type, in its own phase ahead of
+the reconciliation pass — `ALTER TYPE … ADD VALUE` cannot be used in the
+transaction that adds it, so a column can name the new value on the same boot.
+
+A value **removed** is recorded and left in the type: PostgreSQL cannot drop an
+enum label without a new type, a column rewrite per user and a drop. It is
+reported as `status.retainedEnumValues` so the cost is visible rather than
+silent. The opposite of a removed *object*, and for the opposite reason — a
+dropped column is deferred because it CAN be executed later, while this cannot be
+executed at all.
+
+## Predicates — named table-level checks
+
+A `checks:` map beside `indexes:` and `foreignKeys:`, keyed by constraint name,
+each entry carrying an expression in that backend's own SQL:
+
+```yaml
+checks:
+  balance_non_negative:
+    expression: "balance_cents >= 0"
+  sent_implies_timestamp:
+    expression: "status <> 'sent' OR sent_at IS NOT NULL"
+    validate: deferred
+```
+
+Raw backend SQL rather than a structured predicate vocabulary, for the reason
+there is no neutral type vocabulary: a lowest-common-denominator predicate
+language would fail on the predicates people actually write, which correlate
+columns. The precedent is `defaultExpression`, already raw engine SQL beside a
+typed `default`.
+
+The consequence is stated rather than papered over: **nothing reads the
+expression**, so a check naming a column the table does not declare is not
+catchable the way an index's column list is. The engine reports it when the
+constraint is added.
+
+**A scalar bound is a predicate, not a domain**, so there is no `min` / `max`
+column keyword — nothing in a CRUD model or a repository filter could have acted
+on a bound anyway.
+
+**Removing a check is immediate — no tombstone, no reclaim.** A dropped column
+can lose data, which is why removals are recorded and reclaimed on a policy; a
+dropped constraint loses nothing, so recording it would put a grace window on a
+free removal and leave the declaration disagreeing with the database for a
+release cycle.
+
+On PostgreSQL `validate: deferred` renders `NOT VALID`: the predicate is enforced
+for new rows immediately and the existing ones are scanned on a later pass, so
+adding a constraint to a large table does not hold a lock while every row is
+read. SQLite has no `ADD CONSTRAINT`, so a check exists only as part of the table
+it was created with — emitted at create time, and a later change refused with the
+reason.
+
+## Seeds — rows the table is declared to hold
+
+Reference data is desired state, not history, so it is declared beside the shape
+it must satisfy:
+
+```yaml
+seeds:
+  key: [name]
+  rows:
+    - { name: admin,  label: Administrator, rank: 100 }
+    - { name: viewer, label: Viewer }
+```
+
+**On the table, not on the schema, because that is what makes the rows
+checkable.** The row projection already turns `columns:` into a JSON Schema of
+the row, so a misspelled column, a string in an integer column or a null in a
+`nullable: false` one is a `telo check` error on the row's own line.
+
+**`key:` is durable identity** — the columns that decide whether a row is the
+same row, and what the upsert conflicts on. It is checked at `telo check` in both
+directions: a key naming a column the table does not declare is
+`SQL_SEED_KEY_UNKNOWN_COLUMN` on that key entry, and a row supplying no value for
+one is `SQL_SEED_ROW_MISSING_KEY` on that row. Both were previously decidable only
+at boot, against a real database. A `when:` written as `!cel` does not disable
+either: each rule reads only the key, never the whole block.
+
+**A structured value is stored as JSON.** A `json` / `jsonb` column projects to an
+open schema — a JSON column genuinely holds any JSON value — so a row may declare
+an object or an array there, and it is serialized rather than stringified. On an
+engine with no JSON type that is the same text `json_extract` reads; on a column
+whose type is not JSON the engine rejects it, which is a loud failure rather than
+the `[object Object]` a plain string conversion used to write.
+
+**A row asserts the columns it states and no others.** `viewer` above declares no
+`rank`, so the insert leaves it to the column default and the update leaves
+whatever is there alone. That is the answer to a seeded row edited in place: a
+column the seed declares is restored on the next boot, because that is what
+declaring it means; one it does not is the operator's.
+
+**A row removed from `rows:` is recorded, not deleted** — the tombstone rule every
+other object follows, reclaimed under the same policy. Deleting rows is
+irreversible; nothing about a row makes it the one object worth exempting.
+
+Seeds re-apply on every boot, bounded by what is declared, so a row deleted by
+hand comes back. Nothing is read back: the upsert is the whole mechanism, and the
+only history required is the previous declaration the ledger already holds.
+
+An environment-conditional seed is a `when:` on the block:
+
+```yaml
+seeds:
+  key: [name]
+  when: !cel "variables.environment != 'production'"
+  rows:
+    - { name: demo, label: Demo }
+```
+
+with the trap stated: **a `when:` that turns false is a declaration withdrawn**,
+so those rows tombstone on the next boot of a database that had them.
+
+## Provisioning is a declaration, not a bucket
+
+`citext` needs an extension before any column can use it. Declared, it is
+reconciled ahead of everything else:
+
+```yaml
+kind: Postgres.Schema
+extensions: [citext, pgcrypto]
+```
+
+Smuggled into `migrations:` as `CREATE EXTENSION IF NOT EXISTS`, it is desired
+state wearing a migration's clothes: no release it belongs to, and a migration
+key that is a lie the first time the entry is deleted. Removing one is recorded
+rather than executed — an extension is database-wide, so something outside this
+schema may be using it and `DROP EXTENSION` would take every dependent object
+with it.
+
 ## Removal is recorded, not executed
 
 Every declarative schema tool hits the same wall: a column absent from the
@@ -126,7 +304,7 @@ there.
 `Table` kind declares them as resource rules (`x-telo-resource-rules`, see the
 [Resource Rules](../../../docs/extend/resource-rules.md) guide), so a mistyped
 index column is a diagnostic in CI and in the editor rather than a boot failure —
-which matters because `beforeMigrations:` executes before reconciliation, so a
+which matters because `prepare:` executes before reconciliation, so a
 manifest wrong in a way only reconciliation notices has already changed the
 database by the time it is told. The controller keeps every one of them as a
 runtime guard as well: a library caller reaching `runSchemaPass` directly never
@@ -138,7 +316,7 @@ backstop that exists because several releases can land in an afternoon.
 
 The rest need the live database: a narrowing type change, `NOT NULL` over a
 column that currently holds NULLs, and a rename whose copy would not survive the
-type change. Those are what `beforeMigrations:` is for.
+type change. Those are what `prepare:` is for.
 
 **A foreign key reads its target's DECLARATION, not its resource.** What it needs
 from `references.table` is the physical name, which the declaration carries
@@ -152,7 +330,7 @@ before it.** A table that references ITSELF (a `parent_id` tree) and a mutually
 referencing pair are both refused at boot, because the kernel resolves a `!ref`
 before the resource that holds it is created and neither can satisfy that. Both
 are otherwise ordinary and both are creatable on PostgreSQL. Declare such a key
-in a `beforeMigrations:` entry until this is lifted.
+in a `prepare:` entry until this is lifted.
 
 **Where the engine cannot name a key, the key is matched by structure.** SQLite
 emits a foreign key only as part of `CREATE TABLE` and reports it back unnamed,
@@ -197,6 +375,55 @@ history, so the clock gating destruction comes from there too.
 
 ## Renaming
 
+### A table or a type — native, and immediate
+
+```yaml
+kind: Postgres.Table
+metadata: { name: messages }
+table: conversation_messages
+renamedFrom: messages
+```
+
+**Unlike a column, this is a native rename, and the difference is not an
+oversight.** A column rename is expand-contract because both names can coexist
+while the previous version of the app is still running. A table has no cheap
+equivalent: copying every row is unbounded work, and writes during the overlap
+would land in one table and not the other. So the rename is immediate, and the
+cost is stated where you read it: **between the rename and the new deployment, an
+instance still running the previous version does not find the table.**
+
+The marker is not optional sugar. The reconciler cannot tell a rename from a
+drop-and-create, and the wrong guess creates an empty table beside a tombstoned
+populated one — or, for a type, alters every column that uses it, a table rewrite
+each.
+
+It is **advisory**, so it can be left in the manifest indefinitely:
+
+| state | what happens |
+| --- | --- |
+| neither name present | a fresh database — the object is simply created |
+| predecessor present, successor absent | the rename itself |
+| successor present, predecessor gone | finished everywhere; reported as an inert rename |
+| **both present** | **refused, naming both** |
+| predecessor not owned by this ledger | **refused** |
+
+Both present is refused rather than guessed at because it is either a
+half-finished earlier run or an object created independently, and those want
+opposite repairs. A rename **rewrites the ledger entry** from the old key to the
+new one: tombstoning the old and creating the new would record a drop-and-create
+even though the database did the cheap thing.
+
+Renames run in the phase **ahead of everything else**, including `prepare:`,
+because a migration key runs exactly once ever — so with renames first an entry
+naming the table has one correct spelling whichever boot it lands on. The cost is
+one shape: an entry whose *purpose* is to clear the destination name cannot work,
+because the rename refuses first.
+
+On SQLite an enum rename emits **no statement at all** — the `CHECK`s on
+referencing tables never named the type, so the ledger key rewrite IS the rename.
+
+### A column — expand-contract
+
 A rename is expand-contract, never a native `RENAME COLUMN`:
 
 ```yaml
@@ -231,7 +458,7 @@ Backfills, cleanups and data conversions are not declarative and never will be.
 Both phases sit on the same resource, so their order relative to the
 reconciliation pass is defined rather than left to the author's `targets:` list:
 
-- `beforeMigrations:` runs **before** the pass — the rare deliberate case of
+- `prepare:` runs **before** the pass — the rare deliberate case of
   preparing ground the pass would otherwise refuse (making values fit a column
   that is about to narrow).
 - `migrations:` runs **after** it — the common case.
@@ -247,7 +474,7 @@ Type narrowing, `NOT NULL` over existing NULLs, a new non-nullable column with n
 default — all depend on live database state, and the declaration is the only
 artifact, so there is no static baseline to check against. The pass classifies
 against the real database and **fails hard**, naming table, column and reason.
-Nothing is applied and nothing is skipped. The remedy is a `beforeMigrations:`
+Nothing is applied and nothing is skipped. The remedy is a `prepare:`
 entry that makes the data fit.
 
 There is deliberately no dry-run mode. With reconciliation happening as a boot

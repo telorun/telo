@@ -20,9 +20,13 @@ export * as SqlTransactionController from "./sql-transaction-controller.js";
 // its own type vocabulary, DDL rendering, introspection and locking, so nothing
 // here is a lowest-common-denominator type layer.
 export type {
+  DeclaredCheck,
   DeclaredColumn,
+  DeclaredEnum,
+  DeclaredEnumUse,
   DeclaredForeignKey,
   DeclaredIndex,
+  DeclaredSeeds,
   DeclaredTable,
   SchemaObjectId,
   SchemaObjectKind,
@@ -30,7 +34,9 @@ export type {
 export { describeObject, objectKey } from "./schema/declared-schema.js";
 export type {
   ChangeSafety,
+  LiveCheck,
   LiveColumn,
+  LiveEnum,
   LiveForeignKey,
   LiveIndex,
   LiveTable,
@@ -42,13 +48,32 @@ export { assessTombstone } from "./schema/reclaim-policy.js";
 export type { Eligibility, ReclaimPolicy } from "./schema/reclaim-policy.js";
 export { snapshotDeclaration, snapshotDigest } from "./schema/declaration-snapshot.js";
 export type { DeclarationSnapshot } from "./schema/declaration-snapshot.js";
-export { planReconciliation } from "./schema/schema-reconciler.js";
-export type { PlannedStatement, PlannedTombstone, SchemaPlan } from "./schema/schema-reconciler.js";
+export { PLAN_PHASES, planReconciliation } from "./schema/schema-reconciler.js";
+export type {
+  PlanPhase,
+  PlannedStatement,
+  PlannedTombstone,
+  ReconciliationInput,
+  Refusal,
+  SchemaPlan,
+} from "./schema/schema-reconciler.js";
+export { applyRenames, planRenames, renameSources } from "./schema/plan-renames.js";
+export { planSeeds, seedRowId, seedRowKey } from "./schema/seed-rows.js";
+export { deleteRowStatements, upsertRowStatements } from "./schema/row-statements.js";
+export type { RowDialect } from "./schema/row-statements.js";
+export type { SeedPlan } from "./schema/seed-rows.js";
+export type { RenameInput, RenamePlan } from "./schema/plan-renames.js";
 export { migrationStatements, pendingKeys } from "./schema/migration-runner.js";
 export type { MigrationEntry, MigrationMap } from "./schema/migration-runner.js";
 export { normalizeTable } from "./schema/normalize-table.js";
+export { normalizeEnum } from "./schema/normalize-enum.js";
+export type { RawEnum } from "./schema/normalize-enum.js";
 export { tableReferenceResolver } from "./schema/table-reference.js";
+export { enumReferenceResolver } from "./schema/enum-reference.js";
+export type { ColumnEnumResolver } from "./schema/enum-reference.js";
 export type {
+  ColumnTypeResolver,
+  RawCheck,
   RawColumn,
   RawForeignKey,
   RawIndex,
