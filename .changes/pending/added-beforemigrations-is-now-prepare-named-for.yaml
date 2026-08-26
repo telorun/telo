@@ -1,9 +1,0 @@
-modules:
-  modules/sql: Added
-  modules/postgres: Added
-  modules/sqlite: Added
-body: "'beforeMigrations:' is now 'prepare:', named for what it is FOR — data
-  preparation for a narrowing the reconciliation pass is about to attempt — which is
-  what every refusal already tells the author to write. The old spelling still loads: a
-  manifest migration rewrites the key, and nothing re-runs because the ledger stores the
-  migration key alone."
