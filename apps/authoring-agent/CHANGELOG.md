@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 - 2026-08-26
+### Added
+* System prompt: the value-or-reference union slot (a column's type: holding a storage class or a !ref) and a referrer-rules section covering peers:, which the primer had no coverage of at all.
+
 ## 0.7.0 - 2026-08-23
 ### Added
 * Drops the retired `teardown()` from the surface: ai's model, image and embedding handle interfaces no longer declare it, and the run and vector-store-pgvector controllers no longer implement an empty one. Cleanup is what a controller returns from `init()` / `run()`. Nothing called these, so no behaviour changes; a third-party handle implementing `teardown()` simply has a method nobody invokes.

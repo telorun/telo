@@ -1,5 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: "System prompt: the value-or-reference union slot (a column's type: holding a
-  storage class or a !ref) and a referrer-rules section covering peers:, which the
-  primer had no coverage of at all."

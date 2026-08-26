@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 - 2026-08-26
+## 0.2.0 - 2026-08-26
 ### Added
 * Charts as SVG, and a typeface as a resource.
 
@@ -22,7 +22,3 @@ typeface a chart measured against and a page serves. Roboto stays built in and
 needs no entry. Embedded fonts also now reach pdfmake as base64 rather than raw
 bytes, which is what its virtual filesystem reads — the inline form never
 rendered.
-
-## 0.2.0 - 2026-08-23
-### Added
-* A new module for authoring PDF documents: pages, styled text, tables, columns, stacks, lists, images, SVG artwork and vector canvas, with named styles, page backgrounds, headers and footers, and embedded brand fonts. Field names mirror pdfmake's document definition verbatim, so an example from its documentation pastes in and is checked before anything runs. Content expressions are evaluated per invocation, so one document resource is a report template rendered once per subject. Where pdfmake takes a callback — table layout — the binding declares data instead, and a row that must look different is a row carrying a different style. A document narrows its own parameter list with `inputType:`, which is what makes the template claim checkable — a caller passing the wrong argument name is a `telo check` error rather than an empty field in the rendered PDF. Named styles are closed, so a misspelled style key is reported rather than silently ignored at render.

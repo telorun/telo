@@ -1,8 +1,0 @@
-modules:
-  modules/sql: Added
-  modules/postgres: Added
-  modules/sqlite: Added
-body: "Declared enum types: a Sql.Enum abstract with Postgres.Enum and SQLite.Enum
-  backends, listed by the schema that owns them in 'enums:', referenced from a column's
-  'type:', and projected into the row contract as an enum on either engine. A column
-  naming an enum its schema does not list fails 'telo check'."

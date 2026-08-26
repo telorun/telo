@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.4.0 - 2026-08-26
+### Added
+* 'beforeMigrations:' is now 'prepare:', named for what it is FOR — data preparation for a narrowing the reconciliation pass is about to attempt — which is what every refusal already tells the author to write. The old spelling still loads: a manifest migration rewrites the key, and nothing re-runs because the ledger stores the migration key alone.
+* Declared enum types: a Sql.Enum abstract with Postgres.Enum and SQLite.Enum backends, listed by the schema that owns them in 'enums:', referenced from a column's 'type:', and projected into the row contract as an enum on either engine. A column naming an enum its schema does not list fails 'telo check'.
+* Named check constraints ('checks:', keyed by constraint name, raw engine SQL;
+PostgreSQL adds 'validate: deferred' for NOT VALID, SQLite emits them at create
+time and refuses a later change), native table and enum renames ('renamedFrom:',
+applied in a phase ahead of everything else and rewriting the ledger entry),
+declared seed rows ('seeds:' with a durable 'key', typed against the table's own
+columns and reclaimed under the ordinary policy when removed), and PostgreSQL
+'extensions:' as a reconciled object. Removing a check is immediate — a dropped
+constraint loses nothing — while a removed enum value is recorded and kept,
+because no engine can drop one.
+
+Seed keys are checked at 'telo check' in both directions: a key naming a column
+the table does not declare, and a row supplying no value for one. Both were
+previously decidable only at boot, against a real database — the position
+SQL_INDEX_UNKNOWN_COLUMN already took one field over. A structured seed value is
+serialized as JSON rather than stringified, which used to write '[object Object]'
+into a jsonb column silently.
+
+Whether a reconciliation phase may share a transaction is now the driver's
+answer ('transactionalPhase'), not a PostgreSQL rule written into the shared
+phase list. Renaming a table now carries its checks and seed rows to the new
+ledger key — two hand-written lists of "what belongs to a table" had drifted, so
+a rename tombstoned them and the seed-row reclamation later failed on every
+boot. A ledger record that cannot be read is refused rather than treated as
+absent, which had let a changed enum declaration pass while every existing table
+went on enforcing the old values.
+
 ## 0.3.0 - 2026-08-23
 ### Added
 * Controllers return their effects from `init()` / `run()` instead of implementing `teardown()`: each allocation is written beside the inverse that undoes it, and the runtime unwinds them last-in-first-out. A failure part-way through startup now recovers what it already allocated — a bound port releases the kernel hold and unregisters the routes, a connection that fails its health check destroys its pool — and the retry starts from a freshly constructed resource. Declares `requires: telo: '>=0.82.0'`, since an older runtime discards what a controller returns and would allocate nothing.

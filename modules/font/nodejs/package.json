@@ -1,6 +1,6 @@
 {
   "name": "@telorun/font",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "The std/font module's controller bundle and the surface a dependent module's controller reaches through `@telorun/font` (the module's `exports.code:` entry). Never published to npm — the code ships inside the module artifact; this package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
