@@ -1,17 +1,45 @@
-import { AnalysisRegistry, DiagnosticSeverity, authoredModuleMetadata, foldIntegrity, parseExportEntry, StaticAnalyzer } from "@telorun/analyzer";
-import type { ResourceInstance } from "@telorun/sdk";
-import { RuntimeError } from "@telorun/sdk";
+import {
+  AnalysisRegistry,
+  DiagnosticSeverity,
+  authoredModuleMetadata,
+  foldIntegrity,
+  isInjectedDeclaration,
+  parseExportEntry,
+  readLibraryLifecycle,
+  readResourceInputs,
+  readSuppliedResources,
+  StaticAnalyzer,
+} from "@telorun/analyzer";
+import type { ParsedExportEntry } from "@telorun/analyzer";
+import type { ResourceInstance, ResourceManifest } from "@telorun/sdk";
+import { RuntimeError, TEARDOWN_LAST } from "@telorun/sdk";
 import { publishedPropsOf } from "../../evaluation-context.js";
 import type { BuiltinControllerContext } from "../../internal-context.js";
 import { buildScopeConfig, type LoggingManifestBlock } from "../../logging/kernel-logging.js";
 import { ModuleContext } from "../../module-context.js";
 import { isDefaultPolicy, normalizeRuntime } from "../../runtime-registry.js";
+import {
+  assertNoSharedOverride,
+  assertSharedInputsAgree,
+  rootContextOf,
+  sharedLibraries,
+  type SharedLibrary,
+} from "./shared-libraries.js";
 
 export async function create(
   resource: any,
   ctx: BuiltinControllerContext,
 ): Promise<ResourceInstance> {
   const alias = resource.metadata.name as string;
+
+  // Resolve the instances this import hands DOWN to the target library's
+  // declared `resources:` inputs BEFORE any loading happens. A borrowed
+  // instance that is registered but not yet initialized is a DEFERRAL, not a
+  // failure — raised as `ERR_LOCAL_REF_PENDING` so the multi-pass loop retries
+  // and the init-failure classifier reads it as derived rather than as a root
+  // cause. Resolving first is what keeps a deferral cheap: a fetch, a parse and
+  // a full analysis pass would otherwise be redone on every pass.
+  const borrowed = resolveBorrowedResources(resource, ctx);
 
   const rawSource: string = resource.module ?? resource.source;
   // A directly-authored Telo.Import may carry integrity as a sibling field;
@@ -38,6 +66,16 @@ export async function create(
   // loader keyed its caches under — without which fast paths like
   // `isImportValidatedAtLoad` silently miss.
   const resolvedUrl = ctx.resolveImportUrl(base, moduleSource);
+
+  // A `lifecycle: shared` library is instantiated ONCE per application. Only a
+  // shared library is ever registered, so the registry HIT is itself the answer
+  // to "is this one shared" — which is what makes a second import of it cost no
+  // fetch, no parse and no analysis pass at all.
+  const registry = sharedLibraries(ctx.moduleContext);
+  const alreadyShared = registry.get(resolvedUrl);
+  if (alreadyShared) {
+    return borrowSharedLibrary(alreadyShared, alias, resource, borrowed, ctx);
+  }
 
   // The analysis-flattened graph (follows Telo.Import chains, includes forwarded
   // sub-import exports) serves two purposes here: validating the imported subtree,
@@ -114,6 +152,8 @@ export async function create(
   // Validate required inputs before injecting.
   validateRequiredInputs(moduleManifest.variables ?? {}, resource.variables ?? {}, "variables");
   validateRequiredInputs(moduleManifest.secrets ?? {}, resource.secrets ?? {}, "secrets");
+  const declaredInputs = readResourceInputs(moduleManifest);
+  validateResourceInputs(declaredInputs, borrowed, targetModule);
 
   // Evaluate the import's variables/secrets ONCE against the IMPORTER's config
   // scope, instead of baking the raw compiled-value objects verbatim. Resolution
@@ -173,7 +213,19 @@ export async function create(
     authoredModuleMetadata(moduleManifest.metadata as Record<string, unknown> | undefined),
   );
 
-  const child = ctx.moduleContext.spawnChild(childCtx);
+  // A singleton is spawned under the ROOT, never under whichever import reached
+  // it first: otherwise tearing that importer down would close a library two
+  // others still hold, and which importer that is depends on init order. It is
+  // pinned last in the root's cascade so a borrower's own inverses still find it
+  // alive — the context-level form of `TEARDOWN_LAST`.
+  const isShared = readLibraryLifecycle(moduleManifest) === "shared";
+  if (isShared) {
+    assertNoSharedOverride(resource, alias, targetModule);
+    childCtx.teardownPriority = TEARDOWN_LAST;
+  }
+  const child = isShared
+    ? rootContextOf(ctx.moduleContext).spawnChild(childCtx)
+    : ctx.moduleContext.spawnChild(childCtx);
 
   // A library references its own kinds via `Self.<Kind>` (e.g. when it declares an
   // instance to export). Register `Self` → the library's own module in the child context
@@ -209,7 +261,14 @@ export async function create(
   const parentScope =
     (ctx.moduleContext as unknown as ModuleContext).getLoggingConfig?.() ??
     ctx.kernelLoggingRootScope();
-  const scopePath = parentScope.scope ? `${parentScope.scope}.${alias}` : alias;
+  // A singleton's scope is the LIBRARY's own name: it sits under the root rather
+  // than under an importer, and naming it after whichever import was created
+  // first would make a log line's scope depend on init order.
+  const scopePath = isShared
+    ? targetModule
+    : parentScope.scope
+      ? `${parentScope.scope}.${alias}`
+      : alias;
   const importLogging = resource.logging
     ? (ctx.expandValue(resource.logging, {}) as LoggingManifestBlock)
     : undefined;
@@ -220,7 +279,43 @@ export async function create(
     secretValues: child.secretValues,
   });
 
+  // A borrowed instance is bound under the library's own name for it BEFORE its
+  // resources are registered, so `!ref connection` and `resources.connection`
+  // resolve exactly as a locally declared resource does — and so a library
+  // declaring a resource that collides with an input name fails as the
+  // duplicate it is.
+  //
+  // An EFFECT on the create frame, not bare statements: binding a borrowed
+  // instance registers a publication mirror on the OWNER, and an import whose
+  // `init()` fails is discarded and re-created on the next pass. Left
+  // unregistered, each pass would append another mirror for the same pair and
+  // keep the abandoned child context reachable from the live owner.
+  if (borrowed.size > 0) {
+    await ctx
+      .effect(`borrowed resources ${alias}`, async () => {
+        const inverses = [...borrowed].map(([name, entry]) =>
+          childCtx.adoptBorrowedResource(
+            name,
+            entry.manifest,
+            entry.instance,
+            ctx.moduleContext as unknown as ModuleContext,
+          ),
+        );
+        return {
+          result: undefined,
+          inverse: () => {
+            for (const undo of inverses) undo?.();
+          },
+        };
+      })
+      .perform();
+  }
+
   for (const manifest of manifests) {
+    // The kind-only stand-ins the loader synthesizes behind a `resources:` entry
+    // are a DECLARATION for the analyzer, never an instantiation: the instance
+    // is the importer's, already bound above.
+    if (isInjectedDeclaration(manifest)) continue;
     child.registerManifest(manifest);
   }
 
@@ -297,6 +392,48 @@ export async function create(
       );
     }
   }
+  /** Build this library's resources and its export tables — the work an
+   *  `init()` performs, hoisted so a SINGLETON can carry it on its registry
+   *  entry rather than in one import's closure. Whichever import's `init()`
+   *  runs first calls it; every other awaits the same promise. */
+  const buildLibrary = async (): Promise<void> => {
+    // Publish each borrowed reading into the child's `resources` scope before
+    // anything reads it: a library resource's compile-eval fields are expanded
+    // at CREATE time, inside `initializeResources` below.
+    for (const name of borrowed.keys()) await childCtx.publishSnapshot(name);
+    await child.initializeResources();
+    // Build this import's flattened export tables now that its own imports are
+    // registered (leaves-first), so a re-export (`!ref Alias.name` /
+    // `Alias.Kind`) copies the source import's terminal getter / canonical kind
+    // by reference — O(1) resolution at any depth.
+    childCtx.buildExportTable(exportEntries, kindEntries, targetModule);
+  };
+
+  // The singleton, registered before any alias so a second import created in
+  // the same pass finds it. `initialized` is filled by whichever import's
+  // `init()` runs first — which is NOT necessarily the one that registered it,
+  // so the builder travels with the entry.
+  const entry: SharedLibrary | undefined = isShared
+    ? {
+        build: buildLibrary,
+        url: resolvedUrl,
+        module: targetModule,
+        owner: alias,
+        context: childCtx,
+        child,
+        variables: importVariables,
+        secrets: importSecrets,
+        resources: new Map([...borrowed].map(([name, b]) => [name, b.instance])),
+        declaredVariables: (moduleManifest.variables ?? {}) as Record<string, any>,
+        declaredSecrets: (moduleManifest.secrets ?? {}) as Record<string, any>,
+        exportEntries,
+        kindEntries,
+        exportedResourceNames,
+        exportedKindSuffixes,
+      }
+    : undefined;
+  if (entry) registry.set(resolvedUrl, entry);
+
   // The alias registrations are an EFFECT on the create frame, not bare calls:
   // an import whose `init()` fails is discarded and re-created on the next pass,
   // so an alias left registered would be re-registered against a module context
@@ -329,8 +466,10 @@ export async function create(
         inverse: () => {
           (ctx.moduleContext as ModuleContext).unregisterImport(alias);
           // The child context goes with the alias: it was spawned for this
-          // import and nothing else can reach it once the alias is gone.
-          ctx.moduleContext.detachChild(child);
+          // import and nothing else can reach it once the alias is gone. A
+          // SINGLETON is the exception — the root owns it and other imports may
+          // still hold it, so only the alias is given up.
+          if (!isShared) ctx.moduleContext.detachChild(child);
         },
       };
     })
@@ -368,14 +507,101 @@ export async function create(
     // than an init/teardown pair the kernel had to trust were inverses.
     init: (importCtx) =>
       importCtx.effect("library resources", async () => {
-        await child.initializeResources();
-        // Build this import's flattened export tables now that its own imports are
-        // registered (leaves-first), so a re-export (`!ref Alias.name` / `Alias.Kind`)
-        // copies the source import's terminal getter / canonical kind by reference —
-        // O(1) resolution at any depth.
-        childCtx.buildExportTable(exportEntries, kindEntries, targetModule);
+        if (entry) {
+          // Memoized on the ENTRY, so whichever import's `init()` runs first
+          // does the work and every other awaits the same promise. It is not
+          // necessarily the import that registered it: a root import registers
+          // the singleton during the create sub-phase, while a nested import
+          // inside another library borrows it during that library's init — and
+          // the nested one's `init()` can then run first.
+          await (entry.initialized ??= entry.build());
+          // No inverse: the ROOT owns a singleton, and an import that gave it up
+          // would close a library its siblings still hold.
+          return { result: undefined };
+        }
+        await buildLibrary();
         return { result: undefined, inverse: () => child.teardownResources() };
       }),
+  };
+}
+
+/**
+ * A second (or third) import of a library already instantiated as a singleton.
+ *
+ * Nothing is fetched, parsed or analyzed: the registry hit means the library is
+ * built and shared, so this import only has to agree with it and register its
+ * own alias. What it must NOT do is re-register the manifests, re-initialize the
+ * resources, or claim any part of the teardown.
+ */
+function borrowSharedLibrary(
+  entry: SharedLibrary,
+  alias: string,
+  resource: any,
+  borrowed: Map<string, BorrowedResource>,
+  ctx: BuiltinControllerContext,
+): ResourceInstance {
+  assertNoSharedOverride(resource, alias, entry.module);
+  const importVariables = applyDefaults(
+    (ctx.expandValue(resource.variables, {}) as Record<string, unknown>) ?? {},
+    entry.declaredVariables,
+  );
+  const importSecrets = applyDefaults(
+    (ctx.expandValue(resource.secrets, {}) as Record<string, unknown>) ?? {},
+    entry.declaredSecrets,
+  );
+  validateRequiredInputs(entry.declaredVariables, importVariables, "variables");
+  validateRequiredInputs(entry.declaredSecrets, importSecrets, "secrets");
+  assertSharedInputsAgree(entry, alias, importVariables, importSecrets, borrowed);
+
+  const childCtx = entry.context;
+  const exportedResourceNames = [...entry.exportedResourceNames];
+
+  return {
+    snapshot: async () => {
+      const exported: Record<string, unknown> = {};
+      for (const name of exportedResourceNames) {
+        const target = childCtx.getExported(name);
+        if (target?.instance) {
+          exported[name] = await publishedPropsOf(
+            target.kind,
+            name,
+            target.instance,
+            childCtx.getDefinition,
+          );
+        }
+      }
+      return { variables: importVariables, secrets: importSecrets, ...exported };
+    },
+    init: (importCtx) =>
+      importCtx
+        .effect(`import alias ${alias}`, async () => {
+          ctx.registerModuleImport(
+            alias,
+            entry.module,
+            entry.exportedKindSuffixes ? [...entry.exportedKindSuffixes] : undefined,
+          );
+          (ctx.moduleContext as ModuleContext).registerImportedScope(
+            alias,
+            exportedResourceNames,
+            (name) => childCtx.getTerminalExport(name),
+          );
+          (ctx.moduleContext as ModuleContext).registerImportedKindScope(alias, (suffix) =>
+            childCtx.getExportedKind(suffix),
+          );
+          return {
+            result: undefined,
+            // Only the alias: the root owns the library and the imports that
+            // instantiated it are still holding it.
+            inverse: () => (ctx.moduleContext as ModuleContext).unregisterImport(alias),
+          };
+        })
+        // The singleton may not be built yet — this import's `init()` can run
+        // before the one that registered it. Start it if nobody has; otherwise
+        // await the one promise everybody shares.
+        .effect("shared library", async () => {
+          await (entry.initialized ??= entry.build());
+          return { result: undefined };
+        }),
   };
 }
 
@@ -412,3 +638,88 @@ function validateRequiredInputs(
   }
 }
 
+
+/** One instance handed down to a library's declared `resources:` input, with the
+ *  manifest it was DECLARED with — the declaration is what a projected contract
+ *  and a `status:` reading are resolved against, so it travels with the
+ *  instance rather than being re-derived on the far side. */
+interface BorrowedResource {
+  manifest: ResourceManifest;
+  instance: ResourceInstance;
+}
+
+/**
+ * Resolve every `resources:` entry this import supplies to a live instance, in
+ * the IMPORTER's scope.
+ *
+ * A name that is registered here but not yet initialized defers
+ * (`ERR_LOCAL_REF_PENDING`); one that names nothing at all is a hard
+ * `ERR_REF_UNRESOLVED`, since no later pass will produce it. The two are kept
+ * apart because the init-failure classifier reads the first as derived — the
+ * import never ran — and the second as the root cause it is.
+ */
+function resolveBorrowedResources(
+  resource: any,
+  ctx: BuiltinControllerContext,
+): Map<string, BorrowedResource> {
+  const out = new Map<string, BorrowedResource>();
+  const alias = resource.metadata.name as string;
+  for (const [name, value] of Object.entries(readSuppliedResources(resource))) {
+    const ref = value as { name?: unknown; alias?: unknown } | undefined;
+    const targetName = typeof ref?.name === "string" ? ref.name : undefined;
+    if (!targetName) {
+      throw new RuntimeError(
+        "ERR_REF_UNRESOLVED",
+        `Import '${alias}': resource input '${name}' must be a '!ref' to a resource this module declares.`,
+      );
+    }
+    const targetAlias = typeof ref?.alias === "string" ? ref.alias : undefined;
+    const instance =
+      targetAlias && targetAlias !== "Self"
+        ? ctx.moduleContext.resolveImportedInstance(targetAlias, targetName)
+        : ctx.moduleContext.getInstance?.(targetName);
+    if (!instance) {
+      const label = targetAlias ? `${targetAlias}.${targetName}` : targetName;
+      throw new RuntimeError(
+        targetAlias && targetAlias !== "Self"
+          ? "ERR_CROSS_MODULE_REF_PENDING"
+          : "ERR_LOCAL_REF_PENDING",
+        `Import '${alias}': resource input '${name}' → '${label}' is not available yet ` +
+          `(deferring to a later init pass).`,
+      );
+    }
+    const manifest =
+      ctx.moduleContext.resolveDeclaredManifest?.(targetName, targetAlias) ??
+      ({ kind: (ref as { kind?: string }).kind ?? "", metadata: { name: targetName } } as ResourceManifest);
+    out.set(name, { manifest, instance });
+  }
+  return out;
+}
+
+/** The runtime half of `validate-resource-inputs`: a library reached through a
+ *  programmatic load never passed `telo check`, so the boundary is enforced
+ *  here too. Kind acceptance is deliberately NOT re-tested — that is a static
+ *  question about declarations, and the kernel holds instances. */
+function validateResourceInputs(
+  declared: ReadonlyArray<{ name: string; kind: string }>,
+  supplied: ReadonlyMap<string, BorrowedResource>,
+  targetModule: string,
+): void {
+  for (const entry of declared) {
+    if (supplied.has(entry.name)) continue;
+    throw new RuntimeError(
+      "ERR_MANIFEST_VALIDATION_FAILED",
+      `Required resource input "${entry.name}" (kind '${entry.kind}') not provided for import of ` +
+        `module '${targetModule}'.`,
+    );
+  }
+  const names = new Set(declared.map((d) => d.name));
+  for (const name of supplied.keys()) {
+    if (names.has(name)) continue;
+    throw new RuntimeError(
+      "ERR_MANIFEST_VALIDATION_FAILED",
+      `Resource input "${name}" is not declared by module '${targetModule}'. Declared inputs: ` +
+        `${declared.map((d) => d.name).join(", ") || "(none)"}.`,
+    );
+  }
+}

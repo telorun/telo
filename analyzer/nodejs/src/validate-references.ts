@@ -18,11 +18,37 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 const SOURCE = "telo-analyzer";
 
 /**
- * Checks whether `kind` satisfies the ref constraint in `entry`.
- * Returns an empty array when valid, or mismatch error strings when not.
- * Returns an empty array immediately when the ref identity is not registered
- * (partial context — skip check rather than false-positive).
+ * Liskov substitutability at a kind constraint: is `resolved` (a canonical
+ * `<module>.<Kind>`) accepted where `targetKind` is required?
+ *
+ * THE one implementation — `checkKind` below builds a MESSAGE from it and adds
+ * nothing to the rule, so a resource input's injection site and an ordinary ref
+ * slot cannot come to disagree about what satisfies a constraint.
+ *
+ * A value satisfies the slot when it transitively extends the target kind, or —
+ * for a CONCRETE target — IS that kind; `getByExtends` is the same transitive
+ * subtype index for both, and an abstract is satisfied only by an implementer,
+ * never by the abstract itself (which is non-instantiable). Accepts a constraint
+ * that resolves to nothing, and an abstract with no loaded implementations:
+ * partial context, where a rejection would be a guess.
  */
+export function kindSatisfies(
+  resolved: string,
+  targetKind: string,
+  registry: DefinitionRegistry,
+): boolean {
+  const canonical = registry.resolveRef(targetKind) ?? targetKind;
+  const targetDef = registry.resolve(canonical);
+  if (!targetDef) return true;
+  if (targetDef.kind !== "Telo.Abstract" && resolved === canonical) return true;
+  const subtypes = registry.getByExtends(canonical);
+  if (subtypes.some((d) => `${d.metadata.module}.${d.metadata.name}` === resolved)) return true;
+  return targetDef.kind === "Telo.Abstract" && subtypes.length === 0;
+}
+
+/** {@link kindSatisfies} at every kind a slot accepts, rendered as messages.
+ *  The acceptance rule is not restated here — only what to say when it fails,
+ *  which needs the slot's alternatives and the target's flavour. */
 function checkKind(
   kind: string,
   entry: RefFieldEntry,
@@ -36,17 +62,10 @@ function checkKind(
     if (!targetKind) return [];
     const targetDef = registry.resolve(targetKind);
     if (!targetDef) return [];
-    // Liskov substitutability: a value satisfies the slot when it transitively
-    // extends the target kind, or — for a CONCRETE target — IS that kind.
-    // `getByExtends` is the same transitive subtype index for abstract and
-    // concrete targets alike; an abstract is satisfied only by an implementer,
-    // never by the abstract kind itself (which is non-instantiable).
-    if (targetDef.kind !== "Telo.Abstract" && resolved === targetKind) return [];
+    if (kindSatisfies(resolved, targetKind, registry)) return [];
     const subtypes = registry.getByExtends(targetKind);
     const subtypeKinds = new Set(subtypes.map((d) => `${d.metadata.module}.${d.metadata.name}`));
-    if (subtypeKinds.has(resolved)) return [];
     if (targetDef.kind === "Telo.Abstract") {
-      if (subtypes.length === 0) return []; // partial context — no implementations loaded yet
       // Suggest only what an author can actually wire: with abstract-extends-
       // abstract real (Telo.Executable over Invocable/Runnable), the transitive
       // subtype list contains abstracts, which are non-instantiable and would

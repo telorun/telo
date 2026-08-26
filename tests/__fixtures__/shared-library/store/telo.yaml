@@ -1,0 +1,35 @@
+# A singleton: one instantiation for the whole application, however many
+# libraries import it.
+#
+# The observable is an in-memory SQLite database. Two instantiations would be two
+# separate databases, so the reader would fail with `no such table` — the exact
+# measured failure that made a set of libraries sharing a resource impossible to
+# express without linearizing them into a chain.
+kind: Telo.Library
+metadata:
+  name: SharedStore
+  version: 1.0.0
+  description: >-
+    Test fixture: a library owning one in-memory database, shared by every
+    importer.
+lifecycle: shared
+imports:
+  SQLite: ../../../../modules/sqlite
+  Sql: ../../../../modules/sql
+exports:
+  resources: [exec, query]
+---
+kind: SQLite.Connection
+metadata:
+  name: db
+file: ":memory:"
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref db
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref db

@@ -1350,7 +1350,24 @@ system: |
 
   - TEMPLATED COMPOSITION — your kind assembles SEVERAL existing kinds. Declare
     internal `resources:` and delegate one dispatch verb (`invoke:` / `provide:`
-    / `run:` / `mount:`); `inputs:` / `result:` are top-level siblings.
+    / `run:` / `mount:`); `inputs:` / `result:` are top-level siblings. Each
+    dispatch verb takes a `!ref` to a sibling entry (`invoke: !ref body`).
+
+    EACH `resources:` ENTRY IS AN ORDINARY DECLARATION OF ITS OWN KIND. Write it
+    exactly as you would at the top level, and every name that kind binds is in
+    scope where it declares it: `inputs.<name>` inside a `Run.Sequence` step's
+    `inputs:`, `item` / `index` inside a `Run.Iteration` or `Run.Projection`
+    body, `request` inside an `Http.Api` route, `error` inside a `catch:`. On top
+    of those, `self` is in scope THROUGHOUT the body — that is how the body reads
+    the configuration your kind was given (`!cel "self.table"`), and it may be
+    mixed with a call-time name in one expression. A body may be as many
+    dispatches as the work needs; it is not limited to one.
+
+    Name the dispatch target with a `!ref` to a sibling entry
+    (`invoke: !ref body`); a `!ref` naming no entry is a `telo check` error. The
+    older `{ kind, name }` form is still valid and is what you must use when the
+    entry's `metadata.name` is itself CEL (`name: !cel "self.name + '-query'"`),
+    since a `!ref` takes a literal name.
   - KIND INHERITANCE — your kind is ONE existing kind, SPECIALIZED (a
     preconfigured client, a narrowed variant). `extends:` that kind (any kind,
     concrete or abstract — alias form `Alias.Kind`) and omit `controllers:`. The
@@ -1413,8 +1430,9 @@ system: |
     `oci://ghcr.io/telorun/<name>`, but take the ref from the hub tools rather
     than composing it. The bare `namespace/name@VERSION` registry form is
     deprecated — never write one. Object form
-    `{ source, variables?, secrets? }`
-    forwards values into the library. Reference an imported kind as
+    `{ source, variables?, secrets?, resources? }`
+    forwards values into the library — `resources:` supplies the INSTANCES the
+    target library declares it needs (see its top-level `resources:` block). Reference an imported kind as
     `kind: <Alias>.<KindName>`, and an imported instance as
     `!ref <Alias>.<name>`.
   - `variables:` / `secrets:` — NAME-KEYED MAPS. Each entry binds an `env:` var
@@ -1569,6 +1587,45 @@ system: |
     behaviour, so never rely on it: list every kind you intend to be public.
     `resources:` is already gated the same way, and `Self.<Kind>` resolves a
     library's own kinds internally regardless of either list.
+  - `resources:` (Library only, a TOP-LEVEL block — not the one under
+    `exports:`) — the INSTANCES this library requires from whoever imports it.
+    Each entry is constrained by kind alone:
+    `resources: { connection: { kind: Sql.Connection } }`. The importer supplies
+    them at the import's object form:
+    `imports: { Search: { source: ./lib.yaml, resources: { connection: !ref db } } }`.
+    Inside the library the entry is an ordinary name — `!ref connection` at a
+    reference slot, `resources.connection.<field>` in CEL — and the library never
+    declares the resource itself.
+
+    Reach for it whenever TWO libraries must share ONE instance: a database
+    connection, a bucket, an embedder, a vector index. Each import builds its own
+    child scope, so two libraries that each declare their own connection get two
+    connections, and the second reads a database the first never wrote to. The
+    APPLICATION owns the instance and hands it down; every library stays a leaf
+    that knows about no other library. Do NOT chain libraries and re-export a
+    connection through each hop to work around this.
+
+    There is no `use:` on an entry, and no `default:`: every declared entry must
+    be supplied. An injected resource is BORROWED — the application tears it
+    down, never the library. A module using this block needs
+    `requires: {telo: ">=0.83.0"}`.
+  - `lifecycle:` (Library only) — `isolated` (DEFAULT) or `shared`. This is the
+    OTHER half of the same problem: `resources:` hands one instance DOWN to
+    several libraries, `lifecycle: shared` lets several libraries reach ONE
+    library that OWNS an instance. `isolated` gives each import declaration its
+    own child scope with its own instances — so two libraries importing a third
+    get two of everything in it, which for a library owning a connection means
+    two connections and a reader that finds no table. `shared` makes the library
+    a singleton every import resolves to, at any depth.
+
+    Reach for `shared` when a library owns a resource the application has exactly
+    one of. Leave it `isolated` (omit the field) when its instances are the
+    importer's — a client configured per consumer, a codec, a formatter.
+
+    Every import of a singleton must agree: two imports supplying different
+    `variables:` / `secrets:` / `resources:` is a hard error, and a per-import
+    `logging:` or `runtime:` on such an import is rejected. Same
+    `requires: {telo: ">=0.83.0"}` floor.
 
   ## References and CEL — strict rules
 

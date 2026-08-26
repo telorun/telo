@@ -1,0 +1,37 @@
+# A library that takes its connection from whoever imports it, rather than
+# owning one. Two such libraries in one application share the SINGLE instance
+# the application declares — the property the whole `resources:` block exists
+# for, and the one a chain of re-exporting libraries cannot give.
+kind: Telo.Library
+metadata:
+  name: ResourceInputsWriter
+  version: 1.0.0
+  description: >-
+    Test fixture: seeds a table over an injected SQL connection.
+imports:
+  Sql: ../../../../modules/sql
+  Run: ../../../../modules/run
+resources:
+  connection:
+    kind: Sql.Connection
+    description: The database this library writes into.
+exports:
+  resources: [seed]
+---
+kind: Run.Sequence
+metadata:
+  name: seed
+steps:
+  - name: createTable
+    invoke: !ref exec
+    inputs:
+      sql: "CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT NOT NULL)"
+  - name: insertRow
+    invoke: !ref exec
+    inputs:
+      sql: "INSERT INTO notes (id, body) VALUES (1, 'from the writer')"
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref connection

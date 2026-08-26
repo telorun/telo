@@ -40,6 +40,14 @@ export function precompileDoc(doc: unknown, env: Environment): unknown {
         __compiled: true,
         engine: doc.engine,
         source: doc.source,
+        // The AST-derived root identifiers the engine computed, carried through
+        // rather than dropped. This rebuild is where EVERY tagged sentinel's
+        // compiled value is produced, so losing `refs` here lost them for every
+        // `!cel` in every manifest — leaving a consumer that asks what an
+        // expression READS (a template body deciding which nodes survive its
+        // `init()`) with nothing but the source text to scan, which cannot tell
+        // an identifier from a word inside a string literal.
+        ...(compiled.refs ? { refs: compiled.refs } : {}),
         call: compiled.call.bind(compiled),
       };
     }

@@ -1,0 +1,23 @@
+# The other importer. Reading what `left` wrote is only possible because both
+# reached ONE instantiation of the store.
+kind: Telo.Library
+metadata:
+  name: SharedRight
+  version: 1.0.0
+  description: "Test fixture: reads through the shared store."
+imports:
+  Store: ../store
+  Run: ../../../../modules/run
+exports:
+  resources: [readMarks]
+---
+kind: Run.Sequence
+metadata:
+  name: readMarks
+steps:
+  - name: rows
+    invoke: !ref Store.query
+    inputs:
+      sql: "SELECT body FROM marks WHERE id = 1"
+outputs:
+  rows: !cel "steps.rows.result.rows"

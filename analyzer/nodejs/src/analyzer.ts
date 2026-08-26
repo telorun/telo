@@ -157,8 +157,11 @@ import { validateInvocationContract } from "./validate-invocation-contract.js";
 import { collectRefInputIssues, collectStepInputIssues } from "./validate-step-inputs.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
-import { validateReferences } from "./validate-references.js";
+import { kindSatisfies, validateReferences } from "./validate-references.js";
 import { validateReferenceForms } from "./validate-reference-forms.js";
+import { isInjectedDeclaration } from "./resource-input.js";
+import { validateResourceInputs } from "./validate-resource-inputs.js";
+import { validateTemplateDispatch } from "./validate-template-dispatch.js";
 import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 import { readStepSlot } from "./step-slot.js";
@@ -1627,6 +1630,16 @@ export class StaticAnalyzer {
     const runReachable = reportsObservedState
       ? collectRunReachableNames(getCallGraph())
       : new Set<string>();
+    // "Nothing starts this" is DECLARATION-derived, and a library does not
+    // declare its injected inputs — whether the application starts the instance
+    // it hands down is answerable only where that instance is declared. Inside
+    // the library the question has no answer, so the name is treated as
+    // reachable rather than reported on a `targets:` list the author cannot
+    // write. The check still runs at the injection site, against the real
+    // declaration.
+    for (const m of allManifests) {
+      if (isInjectedDeclaration(m)) runReachable.add(m.metadata?.name as string);
+    }
 
     // Build typed kernel globals schema so x-telo-context chain validation
     // recognises variables, secrets, resources, env automatically
@@ -1762,6 +1775,15 @@ export class StaticAnalyzer {
         continue;
       }
 
+      // A kind-only stand-in for a `resources:` entry is a DECLARATION, not an
+      // instantiation: its kind is routinely an abstract and its configuration
+      // is the importer's to supply, so validating it here would report a
+      // non-instantiable kind and a page of missing required fields against a
+      // block that is correct. Its kind is checked where it was written, by
+      // `validate-resource-inputs`; it participates here only as a resolution
+      // target and as a CEL type.
+      if (isInjectedDeclaration(m)) continue;
+
       const resource = { kind: m.kind, name: m.metadata?.name as string };
 
       // Resolve kind through alias if needed; direct lookup takes priority so that
@@ -1861,6 +1883,11 @@ export class StaticAnalyzer {
         ) as Record<string, any>;
         if (!ownModule || rootModules.has(ownModule)) {
           for (const failure of projectionFailures) {
+            // A projection through a library's own resource INPUT is
+            // unanswerable here — the entries belong to the declaration the
+            // importer supplies — so it is not a defect in the block that named
+            // it. The check runs at the injection site instead.
+            if (failure.reason === "injected") continue;
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               code: "SCHEMA_PROJECTION_FROM_UNRESOLVED",
@@ -2556,7 +2583,7 @@ export class StaticAnalyzer {
           }
         },
       },
-      { aliases },
+      { aliases, aliasesByModule, rootModules },
     );
 
     // The two halves of "does this expression fit the slot it flows into" meet
@@ -2644,6 +2671,22 @@ export class StaticAnalyzer {
 
     // Warn about declared variables / secrets / ports that no CEL references.
     diagnostics.push(...validateUnusedDeclarations(allManifests, this.celEnv));
+
+    // A `!ref` at a definition's dispatch slot must name a sibling `resources:`
+    // entry — the slot no reference pass reaches, so the tag would otherwise
+    // advertise a resolution nothing performs.
+    diagnostics.push(...validateTemplateDispatch(allManifests, rootModules));
+
+    // A library's declared resource inputs, and every import that supplies them.
+    diagnostics.push(
+      ...validateResourceInputs(
+        allManifests,
+        defs,
+        aliases,
+        rootModules,
+        (supplied, required) => kindSatisfies(supplied, required, defs),
+      ),
+    );
 
     // Reroute diagnostics on synthetic (inline-extracted) resources back to
     // the chain root so position-index lookups land on the parent doc.

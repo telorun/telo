@@ -21,6 +21,9 @@ export {
     selectModuleManifestsForAnalysis,
     stampExportedKinds,
     stampReExportedKinds,
+    stampRequiredResources,
+    stampResolvedSource,
+    stampSharedLifecycle,
     type ParsedExportEntry,
     type ReExportSpec,
 } from "./flatten-for-analyzer.js";
@@ -31,9 +34,18 @@ export {
   declaresCelRegion,
   evalPathCovers,
   mergeCelEvalSites,
+  pathMatchesScope,
   NO_CEL_EVAL_SITES,
 } from "./eval-paths.js";
 export type { CelEvalSites } from "./eval-paths.js";
+export {
+  injectedDeclarations,
+  isInjectedDeclaration,
+  readLibraryLifecycle,
+  readResourceInputs,
+  readSuppliedResources,
+} from "./resource-input.js";
+export type { LibraryLifecycle, ResourceInput } from "./resource-input.js";
 export {
   BINDINGS_ANNOTATION,
   bindingContextProperties,

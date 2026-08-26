@@ -5,28 +5,65 @@ import type {
   ResourceContext,
   ResourceInstance,
 } from "@telorun/sdk";
-import { isCompiledValue } from "@telorun/sdk";
+import {
+  celEvalSites,
+  effectiveAuthorSchema,
+  evalPathCovers,
+  mergeCelEvalSites,
+  NO_CEL_EVAL_SITES,
+  pathMatchesScope,
+  type CelEvalSites,
+} from "@telorun/analyzer";
+import { isCompiledValue, type ResourceDefinition } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { celSelfView } from "../../evaluation-context.js";
 
-/** CEL variables that are only bound at call time (request handling, step
- *  chaining, error branches) — never at a template's init(). A persistent
- *  child's body is expanded against `self` only, so a `${{ }}` node referencing
- *  any of these must survive untouched for the consuming controller (e.g. an
- *  Http.Api evaluating route CEL per request) to evaluate later. A node mixing
- *  `self` with a deferred variable in one expression is unsupported by design —
- *  keep `self`-derived literals and request-derived values in separate fields
- *  (e.g. a `self`-built SQL string vs. request-built `bindings`). */
-const DEFERRED_VARS = new Set(["request", "result", "steps", "error"]);
-const DEFERRED_RE = new RegExp(`(?<![.\\w])(?:${[...DEFERRED_VARS].join("|")})(?![\\w])`);
+/**
+ * WHICH NODES OF A TEMPLATE BODY SURVIVE init() UNEXPANDED.
+ *
+ * A `resources:` entry is a DECLARATION of another kind, and that kind decides
+ * when each of its fields is evaluated: an `x-telo-eval: runtime` field, or any
+ * field under a CEL-bearing region (an `x-telo-context`, an error branch, a step
+ * body), is evaluated by the child's OWN controller against a scope only it can
+ * build. Those nodes must reach the child compiled.
+ *
+ * Read off the nested kind's schema through the containment matcher both halves
+ * already share (`celEvalSites` / `evalPathCovers`), never off a list of
+ * variable names. The name list — `request`, `result`, `steps`, `error` — was
+ * the reason a body could not read the call's own arguments (`inputs`) or an
+ * iteration's element (`item`): those two names were simply absent from it, so
+ * such a node was expanded at init() against a scope where they do not exist and
+ * failed with `Unknown variable: inputs`. A list has to be extended for every
+ * name any kind ever binds; the annotations already say where evaluation
+ * happens.
+ */
+/** True when a node at `path` inside a body is evaluated by the child's own
+ *  controller rather than at the template's init(). `runtime` paths are
+ *  property-only and match by containment; a region scope is a JSONPath
+ *  (`$.routes[*].returns`) whose wildcards a plain prefix test cannot resolve. */
+function isDeferredPath(sites: CelEvalSites, path: string): boolean {
+  return (
+    sites.runtime.some((p) => evalPathCovers(p, path)) ||
+    sites.regions.some((scope) => pathMatchesScope(path, scope))
+  );
+}
 
-/** True when an expression reads a call-time-only variable. Prefers the AST-
- *  derived root identifiers stamped on the CompiledValue at compile time (exact —
- *  ignores string literals and substrings); falls back to a source-text scan for
- *  values produced by engines that surface no AST. */
-function referencesDeferred(value: CompiledValue): boolean {
-  if (value.refs) return value.refs.some((r) => DEFERRED_VARS.has(r));
-  return typeof value.source === "string" && DEFERRED_RE.test(value.source);
+/**
+ * True when an expression reads anything other than `self`. A deferred node that
+ * names only `self` is still resolved at `init()`: `self` is fixed for the life
+ * of the instance, so expanding it there costs nothing and keeps a `self`-built
+ * literal (a SQL string, a route path) a literal.
+ *
+ * Read off the AST-derived roots the compile step stamps, never off the source
+ * text. A regex over the source both over- and under-matches — it fires on a
+ * word inside a string literal and misses a bare `${{ item }}` with no member
+ * access — and there is nothing to fall back FOR: every built-in engine carries
+ * `refs` through. An engine that surfaces none is treated as reading nothing but
+ * `self`, which resolves it at `init()` and fails loudly there rather than
+ * silently deferring a node the child cannot evaluate.
+ */
+function referencesBeyondSelf(value: CompiledValue): boolean {
+  return (value.refs ?? []).some((r) => r !== "self");
 }
 
 /** Matches a CEL source that is exactly a `self.<path>` member access (capturing
@@ -75,8 +112,18 @@ export function createTemplateController(definition: {
       // `inputs:` sibling (same factoring as Run.Sequence steps), never in the
       // target's resource body — the body is `self`-only so every child can be
       // created once at init and reused across calls.
-      const targetName = (field: string | { kind?: string; name: string } | undefined): string | null => {
+      const targetName = (
+        field: string | { kind?: string; name: string } | undefined,
+      ): string | null => {
         if (field == null) return null;
+        // `invoke: !ref body` names a sibling `resources:` entry — the same
+        // spelling every other reference uses. Phase 2.5 does not descend into a
+        // `Telo.Definition`, so the sentinel arrives raw; `Self.` is the
+        // explicit self-qualifier and names the same local entry.
+        if (isRefSentinel(field)) {
+          const source = field.source;
+          return source.startsWith("Self.") ? source.slice("Self.".length) : source;
+        }
         const nameTemplate =
           typeof field === "object" && !isCompiledValue(field) ? field.name : field;
         return nameTemplate
@@ -146,16 +193,16 @@ export function createTemplateController(definition: {
       }
 
       // Expand a persistent child's body against `self`. Self-only CEL resolves
-      // to literals now; CEL bound only at call time (DEFERRED_VARS) passes
-      // through compiled for the child's own controller. `!ref` sentinels are
+      // to literals now; a node the NESTED KIND evaluates later (see
+      // `deferredPaths`) passes through compiled for the child's own controller. `!ref` sentinels are
       // rewritten to the `{kind, name, alias?}` injection shape here — Phase 2.5
       // (`resolveRefSentinels`) does not descend into template bodies, so the
       // child context's Phase 5 injection would otherwise see an unrecognized
       // sentinel and leave the slot unresolved. Kind is left empty: injection
       // dispatches by name and recovers the kind from the resolved instance.
-      const expandSelf = (value: any): any => {
+      const expandSelf = (value: any, path: string, deferred: CelEvalSites): any => {
         if (isCompiledValue(value)) {
-          if (referencesDeferred(value)) return value;
+          if (isDeferredPath(deferred, path) && referencesBeyondSelf(value)) return value;
           // A pure `self.<path>` access (e.g. a `connection: !ref` passed down) is
           // resolved by navigating the resource directly. Going through CEL would
           // re-emit the value through CEL's output type-checker, which rejects live
@@ -163,10 +210,11 @@ export function createTemplateController(definition: {
           // a consumer wired in could never reach a child's slot. Complex self
           // expressions (string building) still evaluate via CEL, where they yield
           // CEL-safe scalars.
-          const path = typeof value.source === "string" ? value.source.trim().match(SELF_PATH) : null;
-          if (path) {
+          const selfPath =
+            typeof value.source === "string" ? value.source.trim().match(SELF_PATH) : null;
+          if (selfPath) {
             let cur: any = getSelf();
-            for (const key of path[1].split(".").slice(1)) cur = cur?.[key];
+            for (const key of selfPath[1]!.split(".").slice(1)) cur = cur?.[key];
             return cur;
           }
           // CEL cannot read a member off a live instance, and a ref slot holds
@@ -188,13 +236,52 @@ export function createTemplateController(definition: {
           const name = alias === "Self" ? source.slice(dot + 1) : source;
           return { kind: siblingKinds.get(name) ?? "", name };
         }
-        if (Array.isArray(value)) return value.map(expandSelf);
+        if (Array.isArray(value)) {
+          return value.map((item, i) => expandSelf(item, `${path}[${i}]`, deferred));
+        }
         if (value !== null && typeof value === "object") {
           const out: Record<string, unknown> = {};
-          for (const [k, v] of Object.entries(value)) out[k] = expandSelf(v);
+          for (const [k, v] of Object.entries(value)) {
+            out[k] = expandSelf(v, path ? `${path}.${k}` : k, deferred);
+          }
           return out;
         }
         return value;
+      };
+
+      /**
+       * The nested kind's own CEL evaluation sites, resolved once per body. The
+       * kind is written in the DEFINING library's alias scope, so it is
+       * resolved there — the consumer has never heard of the alias.
+       *
+       * The INHERITANCE-RESOLVED schema, merged with the capability abstract's,
+       * exactly as the analyzer half reads it (`effectiveSchemaOf` in
+       * `cel-scope.ts`). A nested kind that inherits a CEL region from an
+       * `extends` parent — or gets one implicitly from `Telo.Provider` — would
+       * otherwise be covered on the static side and not here, which is the two
+       * halves disagreeing about when a node is evaluated.
+       */
+      const deferredPathsFor = (kind: unknown): CelEvalSites => {
+        if (typeof kind !== "string") return NO_CEL_EVAL_SITES;
+        const cached = deferredByKind.get(kind);
+        if (cached) return cached;
+        const resolveDef = (k: string): ResourceDefinition | undefined =>
+          definingContext.getDefinition?.(definingContext.kindResolver?.(k) ?? k) ??
+          definingContext.getDefinition?.(k);
+        const def = resolveDef(kind);
+        const capability = def?.capability;
+        const sites = def
+          ? mergeCelEvalSites(
+              celEvalSites(effectiveAuthorSchema(def, resolveDef) as Record<string, any>),
+              celEvalSites(
+                (capability ? resolveDef(capability)?.schema : undefined) as
+                  | Record<string, any>
+                  | undefined,
+              ),
+            )
+          : NO_CEL_EVAL_SITES;
+        deferredByKind.set(kind, sites);
+        return sites;
       };
 
       // init() may run more than once: when a child's local ref names a sibling
@@ -204,6 +291,10 @@ export function createTemplateController(definition: {
       // children are skipped, still-pending ones advance).
       let registered = false;
 
+      /** Memo per nested kind — a body is expanded once, but a template kind is
+       *  instantiated many times across an application. */
+      const deferredByKind = new Map<string, CelEvalSites>();
+
       return {
         // The template's own resources are its allocation, and tearing the child
         // context down is the inverse. `init()` still resumes rather than
@@ -212,8 +303,17 @@ export function createTemplateController(definition: {
         init: (templateCtx) =>
           templateCtx.effect("template resources", async () => {
             if (!registered) {
+              // `self` is in scope for the whole body, not only for what init()
+              // resolves: a node the nested kind evaluates later (a step's
+              // `inputs`, a route's `returns`) may read `self` beside the
+              // call-time names its own controller binds. Bound as the
+              // published-reading view, so `self.<ref>.<field>` answers exactly
+              // as `resources.<name>.<field>` does.
+              childContext.bindContextValue?.("self", celSelfView(getSelf()));
               for (const template of definition.resources ?? []) {
-                childContext.registerManifest(expandSelf(template));
+                childContext.registerManifest(
+                  expandSelf(template, "", deferredPathsFor(template?.kind)),
+                );
               }
               registered = true;
             }

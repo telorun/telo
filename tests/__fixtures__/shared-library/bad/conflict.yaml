@@ -1,0 +1,19 @@
+# One instantiation, two importers, two different values. Resolving it by init
+# order would make the winner whichever import was created first, silently —
+# which is the failure `lifecycle: shared` exists to remove, not relocate.
+kind: Telo.Application
+metadata:
+  name: SharedLibraryConflict
+  version: 1.0.0
+imports:
+  First:
+    source: ../tunable
+    variables: { label: alpha }
+  Second:
+    source: ../tunable
+    variables: { label: beta }
+targets:
+  - name: greet
+    invoke: !ref First.say
+    inputs:
+      output: !cel "'hello'"

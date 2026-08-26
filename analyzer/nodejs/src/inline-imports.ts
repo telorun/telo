@@ -54,6 +54,7 @@ export function inlineImportManifests(
       source,
       ...(entry.variables !== undefined ? { variables: entry.variables } : {}),
       ...(entry.secrets !== undefined ? { secrets: entry.secrets } : {}),
+      ...(entry.resources !== undefined ? { resources: entry.resources } : {}),
       ...(entry.runtime !== undefined ? { runtime: entry.runtime } : {}),
       ...(entry.logging !== undefined ? { logging: entry.logging } : {}),
     } as unknown as ResourceManifest;

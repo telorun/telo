@@ -28,8 +28,13 @@ export const DEPENDENCY_GRAPH_SKIP_KINDS: ReadonlySet<string> = new Set([
 /** Skipped by `!ref` sentinel resolution: kinds whose bodies are
  *  blueprints or import-time metadata, not resource instances with
  *  user-referenced ref slots. Mirrors `REF_VALIDATION_SKIP_KINDS` but
- *  also drops Telo.Import (its `source` isn't a ref slot, and walking
- *  the field map on it is pointless since there's no registered kind). */
+ *  also lists Telo.Import, because walking its field map is pointless —
+ *  there is no registered kind behind it.
+ *
+ *  `resolveRefSentinels` reaches Telo.Import's `resources:` block AHEAD of this
+ *  set, deliberately: those are the references an importer supplies for a
+ *  library's declared inputs, and they resolve exactly like any other. Nothing
+ *  else on the document is a reference slot, so only that subtree is walked. */
 export const REF_RESOLUTION_SKIP_KINDS: ReadonlySet<string> = new Set([
   "Telo.Definition",
   "Telo.Abstract",

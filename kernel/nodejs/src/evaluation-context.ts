@@ -82,6 +82,12 @@ const SCHEMA_AS_CONTRACT_KINDS = new Set(["Telo.Definition", "Telo.Abstract", "T
 function collectResourceRefs(resource: ResourceManifest): ResourceRef[] {
   const found = new Map<string, ResourceRef>();
   const skipSchema = SCHEMA_AS_CONTRACT_KINDS.has(resource.kind as string);
+  // A re-created resource is rebuilt from the manifest as REGISTERED, but
+  // Phase-5 injection mutated that object in place on the previous pass — so a
+  // ref slot may already hold a live instance, whose object graph is cyclic.
+  // The walk is a best-effort edge collection for failure attribution, so it
+  // stops at anything it has already seen rather than recursing forever.
+  const seen = new WeakSet<object>();
   const visit = (value: unknown): void => {
     if (isResolvedRef(value)) {
       const key = `${value.alias ?? ""}::${value.name}`;
@@ -89,8 +95,12 @@ function collectResourceRefs(resource: ResourceManifest): ResourceRef[] {
       return;
     }
     if (Array.isArray(value)) {
+      if (seen.has(value)) return;
+      seen.add(value);
       for (const item of value) visit(item);
     } else if (value && typeof value === "object") {
+      if (seen.has(value)) return;
+      seen.add(value);
       for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
         if (k === "metadata" || (skipSchema && k === "schema")) continue;
         visit(v);
@@ -484,6 +494,10 @@ export class EvaluationContext implements IEvaluationContext {
   parent: IEvaluationContext | undefined = undefined;
   readonly children: IEvaluationContext[] = [];
 
+  /** Where this node sits in its parent's teardown cascade — ascending, default
+   *  0, reverse-registration within a tier. See `childTeardownOrder`. */
+  teardownPriority: number | undefined = undefined;
+
   /** Current lifecycle state of this context node. */
   state: LifecycleState = "Pending";
 
@@ -514,6 +528,84 @@ export class EvaluationContext implements IEvaluationContext {
   /** Resources discarded after a failed `init()` and re-queued for creation.
    *  Their re-creation is not progress — see the create sub-phase. */
   private readonly recreatedResources = new Set<string>();
+
+  /**
+   * Instances this context can reach by name but does NOT own — a library's
+   * declared `resources:` inputs, bound here by the import that handed them
+   * down.
+   *
+   * **Borrowed, not owned.** The instance's effect frame belongs to the scope
+   * that DECLARED it, so this context must never include it in its own
+   * teardown: a library tearing one down would close the application's
+   * connection out from under everything else still using it.
+   */
+  protected readonly borrowedResources = new Set<string>();
+
+  /**
+   * Bind an instance this context does not own under `name`, and mirror its
+   * published reading into this context's `resources` scope so
+   * `resources.<name>.<field>` reads here exactly as it does where the resource
+   * is declared.
+   *
+   * The mirror is a subscription rather than a copy because a published value is
+   * a READING: the owner republishes after `run()`, after every `invoke()` and
+   * on every `setStatus()`, and a snapshot taken once at binding would go stale
+   * at the first of those — silently, since nothing downstream can tell a stale
+   * reading from a current one.
+   */
+  adoptBorrowedResource(
+    name: string,
+    resource: ResourceManifest,
+    instance: ResourceInstance,
+    owner: EvaluationContext,
+  ): void | (() => void) {
+    this.resourceInstances.set(name, { resource, instance });
+    this.borrowedResources.add(name);
+    this.declaredManifests.set(name, resource);
+    const unmirror = owner.mirrorPublications(resource.metadata.name as string, (props) =>
+      this.onResourceSnapshotted(name, props),
+    );
+    // The INVERSE, returned rather than performed: an import whose `init()`
+    // fails is discarded and re-created on the next pass, so a subscription left
+    // behind would be appended again on every pass — unbounded — and would keep
+    // a dead child context reachable from the live owner. The binding is not on
+    // this context's teardown path either (`teardownOrder` filters a borrowed
+    // name out, and that is also the only place an entry is deleted), so
+    // undoing it has to be stated here.
+    return () => {
+      unmirror();
+      this.borrowedResources.delete(name);
+      this.resourceInstances.delete(name);
+      this.declaredManifests.delete(name);
+    };
+  }
+
+  /** Publication mirrors registered by {@link adoptBorrowedResource}, by the
+   *  OWNER's name for the resource. */
+  private readonly publicationMirrors = new Map<
+    string,
+    Array<(props: Record<string, unknown>) => void>
+  >();
+
+  /** Register a mirror and replay the current reading, so a borrower that binds
+   *  after the owner has already published does not wait for the next one.
+   *  Returns the unsubscribe — a subscription with no way to end it outlives
+   *  whatever registered it. */
+  mirrorPublications(name: string, sink: (props: Record<string, unknown>) => void): () => void {
+    const bucket = this.publicationMirrors.get(name);
+    if (bucket) bucket.push(sink);
+    else this.publicationMirrors.set(name, [sink]);
+    const entry = this.resourceInstances.get(name) ?? this.createdInstances.get(name);
+    const current = entry ? publishedByInstance.get(entry.instance) : undefined;
+    if (current) sink(current);
+    return () => {
+      const sinks = this.publicationMirrors.get(name);
+      if (!sinks) return;
+      const at = sinks.indexOf(sink);
+      if (at >= 0) sinks.splice(at, 1);
+      if (sinks.length === 0) this.publicationMirrors.delete(name);
+    };
+  }
 
   /** Resources queued for initialization on this context node. */
   private pendingResources: ResourceManifest[] = [];
@@ -684,6 +776,7 @@ export class EvaluationContext implements IEvaluationContext {
     });
     publishedByInstance.set(entry.instance, props);
     this.onResourceSnapshotted(name, props);
+    for (const sink of this.publicationMirrors.get(name) ?? []) sink(props);
   }
 
   get context(): Record<string, unknown> {
@@ -799,6 +892,21 @@ export class EvaluationContext implements IEvaluationContext {
       child.owner = this.owner;
     }
     return child;
+  }
+
+  /**
+   * Bind a name into this context's own CEL scope.
+   *
+   * A copy is written rather than a mutation: `spawnChildContext` hands the
+   * child the PARENT's context object by reference, so mutating it in place
+   * would put the binding in the parent's scope as well.
+   *
+   * Used by a template to put `self` in scope for the body it creates, so a node
+   * the nested kind evaluates later can read the enclosing resource's
+   * configuration beside the call-time names that kind binds.
+   */
+  bindContextValue(name: string, value: unknown): void {
+    this._context = { ...this._context, [name]: value };
   }
 
   /** Spawn a fresh child context attached to this node — the isolated scope a
@@ -1216,7 +1324,7 @@ export class EvaluationContext implements IEvaluationContext {
     this.state = "Draining";
     const failures: Array<{ resource: string; error: unknown }> = [];
 
-    for (const child of [...this.children].reverse()) {
+    for (const child of this.childTeardownOrder()) {
       try {
         await child.teardownResources();
       } catch (err) {
@@ -1295,6 +1403,28 @@ export class EvaluationContext implements IEvaluationContext {
   }
 
   /**
+   * Child contexts in teardown order: ascending `teardownPriority` (default 0),
+   * with the base reverse-registration order preserved within each tier.
+   *
+   * The same rule `teardownOrder` applies to resource instances, and for the
+   * same reason: reverse registration is reverse init order in the happy path,
+   * but a node that must reliably outlive the rest has to say so rather than
+   * depend on when it happened to be created. A `lifecycle: shared` library is
+   * registered when the FIRST import reaches it — which, for an import declared
+   * inside another library, is after that library's own context — so reverse
+   * registration would tear the singleton down while a borrower still holds it.
+   */
+  private childTeardownOrder(): IEvaluationContext[] {
+    return [...this.children]
+      .reverse()
+      .sort(
+        (a, b) =>
+          ((a as { teardownPriority?: number }).teardownPriority ?? 0) -
+          ((b as { teardownPriority?: number }).teardownPriority ?? 0),
+      );
+  }
+
+  /**
    * Resource instances in teardown order: ascending `teardownPriority`, with the
    * base reverse-insertion order preserved within each priority tier.
    *
@@ -1308,7 +1438,11 @@ export class EvaluationContext implements IEvaluationContext {
    * instance shape.
    */
   private teardownOrder(): Array<[string, { resource: any; instance: any }]> {
-    const entries = [...this.resourceInstances.entries()].reverse();
+    // A borrowed instance is torn down by the scope that declared it, never
+    // here — see `borrowedResources`.
+    const entries = [...this.resourceInstances.entries()]
+      .filter(([name]) => !this.borrowedResources.has(name))
+      .reverse();
     // Stable sort by priority (default 0); Array.prototype.sort is stable, so
     // the reverse-insertion order survives within each tier.
     return entries.sort(

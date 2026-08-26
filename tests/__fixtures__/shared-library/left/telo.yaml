@@ -1,0 +1,25 @@
+# One of two libraries that import the singleton. It knows nothing about the
+# other, and neither declares a connection of its own.
+kind: Telo.Library
+metadata:
+  name: SharedLeft
+  version: 1.0.0
+  description: "Test fixture: writes through the shared store."
+imports:
+  Store: ../store
+  Run: ../../../../modules/run
+exports:
+  resources: [seed]
+---
+kind: Run.Sequence
+metadata:
+  name: seed
+steps:
+  - name: create
+    invoke: !ref Store.exec
+    inputs:
+      sql: "CREATE TABLE marks (id INTEGER PRIMARY KEY, body TEXT NOT NULL)"
+  - name: write
+    invoke: !ref Store.exec
+    inputs:
+      sql: "INSERT INTO marks (id, body) VALUES (1, 'left was here')"

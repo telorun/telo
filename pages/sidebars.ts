@@ -60,6 +60,11 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/extend/templated-definitions", label: "Templated Definitions" },
         { type: "doc", id: "docs/extend/kind-inheritance", label: "Kind Inheritance" },
         { type: "doc", id: "docs/extend/step-bodies", label: "Step Bodies" },
+        {
+          type: "doc",
+          id: "docs/extend/library-resource-inputs",
+          label: "Sharing Across Libraries",
+        },
         { type: "doc", id: "docs/extend/execution-zones", label: "Execution Zones" },
         { type: "doc", id: "docs/extend/resource-rules", label: "Resource Rules" },
         { type: "doc", id: "docs/extend/referrer-rules", label: "Referrer Rules" },

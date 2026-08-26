@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { buildCallGraph, projectToPairs, type ResourceGraphNode } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { readSuppliedResources } from "./resource-input.js";
 
 export interface ResourceNode {
   kind: string;
@@ -66,6 +67,8 @@ export function buildDependencyGraph(
     deps.get(edge.from)?.delete(edge.to);
   }
   for (const key of nodes.keys()) if (!deps.has(key)) deps.set(key, new Set());
+
+  addResourceInputEdges(resources, nodes, deps);
 
   // --- Kahn's topological sort ---
   // in-degree[X] = number of X's dependencies (size of deps[X])
@@ -163,4 +166,67 @@ function findCycle(
   }
 
   return [];
+}
+
+/**
+ * Boot-order edges for the one thing a `Telo.Import` does hold: the instances it
+ * hands DOWN to its target library's declared `resources:` inputs.
+ *
+ * An import is otherwise module wiring rather than a runtime node — it is in
+ * `DEPENDENCY_GRAPH_SKIP_KINDS` and the call graph gives it no node at all — but
+ * a borrowed instance must exist before the import initializes, and a cycle
+ * through one is a cycle like any other. The edges are added here rather than
+ * read off the reference field map because the accepted KIND at this slot is
+ * declared by the TARGET library, not by the `Telo.Import` schema, so there is
+ * no `x-telo-ref` for the map to read; the constraint itself is checked by
+ * `validate-resource-inputs`.
+ */
+function addResourceInputEdges(
+  resources: ResourceManifest[],
+  nodes: Map<string, ResourceNode>,
+  deps: Map<string, Set<string>>,
+): void {
+  // Every import that supplies inputs becomes a node FIRST, so a cross-module
+  // reference below can resolve to the import that exports its target.
+  const imports: Array<{ key: string; supplied: Record<string, unknown> }> = [];
+  for (const m of resources) {
+    if (m.kind !== "Telo.Import") continue;
+    const alias = m.metadata?.name as string | undefined;
+    const supplied = readSuppliedResources(m);
+    if (!alias || Object.keys(supplied).length === 0) continue;
+    const key = nodeKey(m.kind, alias);
+    nodes.set(key, { kind: m.kind, name: alias });
+    if (!deps.has(key)) deps.set(key, new Set<string>());
+    imports.push({ key, supplied });
+  }
+  if (imports.length === 0) return;
+
+  const byName = new Map<string, string>();
+  for (const [key, node] of nodes) byName.set(node.name, key);
+  // An import is keyed by its alias, and that is also how a cross-module
+  // reference names it — index those so one resolves.
+  for (const m of resources) {
+    if (m.kind !== "Telo.Import") continue;
+    const alias = m.metadata?.name as string | undefined;
+    const key = alias ? nodeKey(m.kind, alias) : undefined;
+    if (alias && key && nodes.has(key)) byName.set(alias, key);
+  }
+
+  for (const { key, supplied } of imports) {
+    const set = deps.get(key)!;
+    for (const value of Object.values(supplied)) {
+      const ref = value as { name?: unknown; alias?: unknown } | undefined;
+      // A CROSS-MODULE reference (`!ref Other.db`) names an instance exported by
+      // another import, never a local resource. Looking it up in the local name
+      // map would find an unrelated resource of the same name — a wrong edge,
+      // and possibly a phantom cycle — or nothing at all. What it depends on is
+      // the IMPORT that exports it, which is the projection
+      // `localDependencyNames` already makes at runtime.
+      const alias = typeof ref?.alias === "string" ? ref.alias : undefined;
+      const targetName =
+        alias && alias !== "Self" ? alias : typeof ref?.name === "string" ? ref.name : undefined;
+      const target = targetName ? byName.get(targetName) : undefined;
+      if (target && target !== key) set.add(target);
+    }
+  }
 }

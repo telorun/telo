@@ -1,0 +1,89 @@
+kind: Telo.Library
+metadata:
+  name: TemplateBody
+  version: 1.0.0
+  description: >-
+    Test fixture: a kind whose body is more than one dispatch, reading the
+    call's own arguments and an iteration's element.
+imports:
+  Run: ../../../modules/run
+  Sql: ../../../modules/sql
+exports:
+  kinds: [Resources]
+---
+kind: Telo.Definition
+metadata:
+  name: Resources
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    connection:
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
+    table:
+      type: string
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      q: { type: string }
+    required: [q]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      labels: { type: array, items: { type: string } }
+    required: [labels]
+resources:
+  - kind: Sql.Query
+    metadata: { name: fuse }
+    connection: !cel "self.connection"
+  - kind: Run.Sequence
+    metadata: { name: body }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          q: { type: string }
+        required: [q]
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          labels: { type: array, items: { type: string } }
+        required: [labels]
+    steps:
+      - name: rows
+        invoke: !ref fuse
+        inputs:
+          sql: !cel "'SELECT body FROM ' + self.table + ' WHERE body LIKE ?'"
+          bindings:
+            - !cel "inputs.q"
+      - name: each
+        invoke: !ref labels
+        inputs:
+          rows: !cel "steps.rows.result.rows"
+    outputs:
+      labels: !cel "steps.each.result.map(r, r.label)"
+  - kind: Run.Projection
+    metadata: { name: labels }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          rows: { type: array, items: { type: object, properties: { body: { type: string } } } }
+        required: [rows]
+    collection: !cel "inputs.rows"
+    steps:
+      - name: label
+        value: !cel "item.body"
+    outputs:
+      label: !cel "steps.label.result"
+invoke: !ref body
+inputs:
+  q: !cel "inputs.q"

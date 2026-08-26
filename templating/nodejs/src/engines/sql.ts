@@ -25,6 +25,13 @@ export const sqlEngine: TemplatingEngine = {
     return {
       __compiled: true,
       source,
+      // The AST-derived root identifiers of every interpolation, carried through
+      // rather than dropped. `compileString` has already computed them one line
+      // above, and a consumer that asks a compiled value what it READS —
+      // a template body deciding which nodes survive its `init()` — otherwise
+      // falls back to scanning the source text, which cannot tell an identifier
+      // from a word inside a SQL string literal.
+      refs: typeof inner === "string" ? [] : (inner as CompiledValue).refs,
       call: (ctx: Record<string, unknown>): ParameterizedSql => {
         const { fragments, values } = toParameterized(inner, ctx);
         return { __teloParameterized: true, fragments, values };

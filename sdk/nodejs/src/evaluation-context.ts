@@ -106,6 +106,13 @@ export interface EvaluationContext {
   parent: EvaluationContext | undefined;
   readonly children: EvaluationContext[];
 
+  /** Where this node sits in its parent's teardown cascade — ascending, default
+   *  0, reverse-registration order within a tier. The context-level analogue of
+   *  {@link ResourceInstance.teardownPriority}: a node that must outlive its
+   *  siblings says so, rather than depending on when it happened to be created.
+   *  A `lifecycle: shared` library sets `TEARDOWN_LAST`. */
+  teardownPriority?: number;
+
   state: LifecycleState;
 
   readonly resourceInstances: Map<
@@ -135,6 +142,18 @@ export interface EvaluationContext {
   /** Looks up a registered resource definition by fully-qualified kind.
    *  Set by the kernel; used for declared-throw-union checks. */
   getDefinition?: (kind: string) => ResourceDefinition | undefined;
+
+  /** Resolve an alias-form kind (`Http.Server`) to its canonical
+   *  `<module>.<Kind>` in THIS context's scope. Only a module context carries
+   *  the import-alias table, so a template / scope child inherits its parent's.
+   *  Optional, like every other kernel-supplied hook here. */
+  kindResolver?: (kind: string) => string;
+
+  /** Bind a name into this context's own CEL scope, detached from the parent's.
+   *  A template uses it to put `self` in scope for the body it creates, so a
+   *  node the nested kind evaluates later can read the enclosing resource's
+   *  configuration beside the call-time names that kind binds. */
+  bindContextValue?(name: string, value: unknown): void;
 
   /** Per-kernel invocation tracer. Set by the kernel on the root context and
    *  propagated through `spawnChild`; drives invocation-id minting in `invoke`. */

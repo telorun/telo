@@ -42,6 +42,7 @@ import {
 } from "./kernel-globals.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
+import { bodyForPath, templateBodies } from "./template-body.js";
 import {
   getManifestItem,
   resolveContextAnnotations,
@@ -415,6 +416,20 @@ export class CelScopeResolver {
   private stepContext: Record<string, any> | undefined;
   private invocationContext: Record<string, any> | undefined;
   private errorScopes: Map<string, Record<string, any>> = new Map();
+  /** The same two facts per `resources:` entry of a `Telo.Definition` — a
+   *  template body is a declaration of ANOTHER kind, so its step body and its
+   *  error branches are that kind's, not the enclosing definition's. */
+  private bodyScopes: Array<{
+    prefix: string;
+    scopePrefix: string;
+    manifest: Record<string, any>;
+    stepContext: Record<string, any> | undefined;
+    errorScopes: Map<string, Record<string, any>>;
+  }> = [];
+  /** The enclosing definition's `self` schema, resolved once per resource. A
+   *  template body's contexts resolve against the BODY, so `self` — the one
+   *  binding anchored on the definition — is substituted before they do. */
+  private selfSchema: Record<string, any> | undefined;
 
   constructor(private readonly inputs: CelScopeInputs) {}
 
@@ -462,6 +477,27 @@ export class CelScopeResolver {
         )
       : undefined;
     this.errorScopes = collectErrorContextScopes(authorSchema);
+    this.selfSchema =
+      m.kind === "Telo.Definition" ? buildSelfSchema(m as Record<string, any>, defs, aliases) : undefined;
+    this.bodyScopes = templateBodies(m, defs, aliases, scopes).map((body) => {
+      const bodySchema = defs.effectiveSchemaOf(body.definition) as Record<string, any> | undefined;
+      return {
+        prefix: body.prefix,
+        scopePrefix: body.scopePrefix,
+        manifest: body.manifest as Record<string, any>,
+        stepContext: bodySchema
+          ? buildStepContextSchema(
+              body.manifest as Record<string, any>,
+              bodySchema,
+              allManifests as Record<string, any>[],
+              defs,
+              aliases,
+              scopes,
+            )
+          : undefined,
+        errorScopes: collectErrorContextScopes(bodySchema),
+      };
+    });
   }
 
   /**
@@ -518,7 +554,14 @@ export class CelScopeResolver {
     const m = site.source;
     let matched: Record<string, any> | undefined = site.contextSchema ?? this.invocationContext;
 
-    if (this.stepContext) {
+    // Inside a template body the step and error regions are the NESTED kind's.
+    // Its `steps` accumulator and its `catch:` branches are declared there, and
+    // the enclosing definition's (there are none) would say nothing about them.
+    const inBody = this.bodyScopes.length > 0 ? bodyForPath(this.bodyScopes, path) : undefined;
+    const stepContext = inBody ? inBody.stepContext : this.stepContext;
+    const errorScopes = inBody ? inBody.errorScopes : this.errorScopes;
+
+    if (stepContext) {
       const base = matched ?? { type: "object", properties: {}, additionalProperties: true };
       matched = {
         ...base,
@@ -535,7 +578,7 @@ export class CelScopeResolver {
           // which is a separate decision from knowing the name is legal.
           inputs: { type: "object", additionalProperties: true },
           ...(base.properties ?? {}),
-          steps: this.stepContext,
+          steps: stepContext,
         },
       };
     }
@@ -543,7 +586,7 @@ export class CelScopeResolver {
     // `error` is only in scope inside an error-bearing branch (e.g. a
     // `catch:` / `finally:`), so it's merged per-path, not resource-wide.
     const errorSchema =
-      this.errorScopes.size > 0 ? errorContextForPath(path, this.errorScopes) : undefined;
+      errorScopes.size > 0 ? errorContextForPath(path, errorScopes) : undefined;
     if (errorSchema) {
       const base = matched ?? { type: "object", properties: {}, additionalProperties: true };
       matched = {
@@ -561,16 +604,49 @@ export class CelScopeResolver {
     }
 
     const { defs, aliases, scopes, allManifests, kernelGlobals } = this.inputs;
-    const manifestItem = site.matchedScope
-      ? getManifestItem(path, site.matchedScope, m as Record<string, any>)
-      : (m as Record<string, any>);
-    const rootForResolver = manifestRootForResolver(
-      m as Record<string, any>,
-      defs,
-      aliases,
-      allManifests as Record<string, any>[],
-      scopes,
-    );
+
+    // A template body's context annotations are the NESTED kind's, and every one
+    // that anchors at a root — `x-telo-context-element-from`,
+    // `-collection-from`, `-from-root`, `x-telo-bindings-from` — means the root
+    // of the DECLARATION they were written for. Resolving them against the
+    // enclosing `Telo.Definition` looked `collection:` up on a document that has
+    // no such field, so `item` typed open and a typo below it went unreported —
+    // the one place a nested declaration did not answer as the same declaration
+    // written at the top level.
+    //
+    // So the path and the scope are rebased into the body and the body becomes
+    // the resolution root. `self` is the single binding that genuinely belongs to
+    // the enclosing definition, and it is substituted below rather than left as
+    // an annotation the rebased root would misread.
+    const body = inBody;
+    const localPath = body ? path.slice(body.prefix.length + 1) : path;
+    const localScope =
+      body && site.matchedScope?.startsWith(`${body.scopePrefix}.`)
+        ? `$.${site.matchedScope.slice(body.scopePrefix.length + 1)}`
+        : body
+          ? undefined
+          : site.matchedScope;
+    const rootManifest = body ? body.manifest : (m as Record<string, any>);
+
+    if (body && this.selfSchema && matched.properties?.self) {
+      matched = {
+        ...matched,
+        properties: { ...matched.properties, self: this.selfSchema },
+      };
+    }
+
+    const manifestItem = localScope
+      ? getManifestItem(localPath, localScope, rootManifest)
+      : rootManifest;
+    const rootForResolver = body
+      ? rootManifest
+      : manifestRootForResolver(
+          m as Record<string, any>,
+          defs,
+          aliases,
+          allManifests as Record<string, any>[],
+          scopes,
+        );
     const resolved = resolveContextAnnotations(matched, manifestItem, {
       manifestRoot: rootForResolver,
       defs,
@@ -578,7 +654,7 @@ export class CelScopeResolver {
       allManifests: allManifests as Record<string, any>[],
     });
     return mergeKernelGlobalsIntoContext(
-      withBindingNames(resolved, m as Record<string, any>),
+      withBindingNames(resolved, rootManifest),
       // Typed in the module that DECLARED this resource — for a manifest
       // forwarded from an imported library, that is its `moduleGlobals` stamp,
       // not the consuming application's block.

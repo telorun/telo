@@ -1,0 +1,13 @@
+# A singleton has no room for a per-import override: `logging:` scopes a subtree
+# that is no longer this import's subtree.
+kind: Telo.Application
+metadata:
+  name: SharedLibraryOverride
+  version: 1.0.0
+imports:
+  Store:
+    source: ../store
+    logging:
+      level: debug
+targets:
+  - !ref Store.query

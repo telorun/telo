@@ -177,6 +177,7 @@ const UNSUPPORTED_MODULE_FIELDS: &[(&str, &str)] = &[
     ("ports", "binding inbound ports"),
     ("include", "loading partial files into the module scope"),
     ("lifecycle", "lifecycle selection"),
+    ("resources", "resource inputs supplied by the importer"),
 ];
 
 fn reject_unsupported_module_fields(module_doc: &Value, source: &str) -> Result<(), KernelError> {
