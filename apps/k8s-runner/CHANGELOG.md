@@ -1,5 +1,13 @@
 # @telorun/k8s-runner
 
+## 0.10.2
+
+### Patch Changes
+
+- b9c0dbe: Doc and comment updates for the Telo Editor -> Telo Studio rename. Prose only —
+  no behaviour, no API surface, and no shipped code path changes in any of these
+  packages.
+
 ## 0.10.1
 
 ### Patch Changes

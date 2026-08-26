@@ -1,5 +1,26 @@
 # @telorun/cli
 
+## 0.82.1
+
+### Patch Changes
+
+- b9c0dbe: Doc and comment updates for the Telo Editor -> Telo Studio rename. Prose only —
+  no behaviour, no API surface, and no shipped code path changes in any of these
+  packages.
+- Updated dependencies [cbc2a4d]
+- Updated dependencies [68aa6dc]
+- Updated dependencies [c829d25]
+- Updated dependencies [c829d25]
+- Updated dependencies [b9c0dbe]
+- Updated dependencies [c829d25]
+- Updated dependencies [c829d25]
+- Updated dependencies [c829d25]
+  - @telorun/analyzer@0.66.0
+  - @telorun/ide-support@0.17.0
+  - @telorun/templating@0.17.0
+  - @telorun/kernel@0.82.1
+  - @telorun/sdk@0.82.1
+
 ## 0.82.0
 
 ### Minor Changes
