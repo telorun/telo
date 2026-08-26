@@ -1,5 +1,232 @@
 # @telorun/analyzer
 
+## 0.66.0
+
+### Minor Changes
+
+- cbc2a4d: "Where is CEL evaluated" is one reader, and `!literal` declares that it produces
+  a string.
+
+  The rule had two halves in two places: `x-telo-eval` paths in `eval-paths.ts`,
+  and the regions that cover their contents (`x-telo-context` /
+  `x-telo-step-context` / `x-telo-error-context`, and a step body) in
+  `validate-cel-context.ts`. Every consumer needed both and combined them itself —
+  including the editor, whose answer is a claim that `telo check` will accept what
+  it writes. It read the annotation half alone, so a predicate sitting inside a
+  region (`Run.Choice`'s rows, an `Http.Api` route's `returns:` entries) offered no
+  way to write the expression the field exists to hold. The region half moves
+  beside the annotation half, re-exported from its old home, and both are read
+  through `celEvalSites` / `mergeCelEvalSites` / `celEvalModeAt` — which the
+  analyzer's own `CEL_IN_NON_EVAL_FIELD` and `OBSERVED_STATE_IN_STARTUP_FIELD`
+  checks now ask instead of combining the pieces themselves.
+
+  Three CEL mistakes that reached the runtime unreported now fail `telo check`.
+
+  An **undeclared root identifier** (`!cel "fff"`): cel-js types an unknown name
+  as `dyn` and accepts it, so the one CEL mistake with no static report at all was
+  the simplest one. Member access on a KNOWN root was already covered, which is
+  why a typo one level in was an error and a typo at the root was not. Reported as
+  `CEL_UNKNOWN_IDENTIFIER`, and only where the environment is complete: a kind
+  document's `examples:` and rule conditions are written for the scope of whoever
+  instantiates the kind, and CEL below a nested inline `{ kind }` belongs to that
+  kind — the two boundaries the non-eval-field check already draws.
+
+  **`variables` / `secrets` typed per declaring module**, as `ports` and `module`
+  already were. A resource document does not carry those blocks, so typing them
+  from the analyzed manifest alone left every ordinary resource with an open map
+  and no check, while `ports.<typo>` one line away was an error. They are read
+  from the resource's own block, then its `metadata.moduleGlobals` stamp (a
+  library's own, which must win over the consuming application's), then the entry
+  module's doc.
+
+  **The expression's type against the field's** — this check already existed and
+  could not fire, because an untyped `variables` made every expression over it
+  `dyn`. `when: !cel "variables.env"` now reports that it returns a string where
+  the field expects a boolean.
+
+  Also modelled: `inputs` is in scope beside `steps` wherever a step body runs.
+  The step engine always provided it and nothing declared it, which went unnoticed
+  while the step context stayed open. Left OPEN rather than typed from the kind's
+  `inputType`: closing it would newly reject reads of arguments a contract does
+  not spell out, which is a separate decision.
+
+  `celCompletions` joins `buildCompletions` on `@telorun/ide-support`'s surface.
+  The document-plus-cursor entry point is the wrong shape for a host that edits a
+  CEL body directly in a field and therefore knows the site's address already;
+  without it that host would model the scope itself, which is the thing the
+  completion list is supposed to be a claim about.
+
+  `!literal` declared no `producedType`, which put it in `!cel`'s category —
+  produces whatever the slot says. It does not: it returns its source verbatim, so
+  its type is a constant of the tag, exactly like an embed's. Declaring it keeps
+  the tag off slots text cannot satisfy and makes a `!literal` at one a static
+  failure through the ordinary schema check, where it previously passed
+  `telo check` and failed at runtime.
+
+- 68aa6dc: An `extends` child no longer reports `CEL_IN_NON_EVAL_FIELD` for a CEL-bearing
+  field it inherits from its parent.
+
+  Without `base:`, a child is authored against merge(parent, own), and the kernel
+  stamps that merged schema at definition registration — so it expands an
+  inherited `x-telo-eval` / `x-telo-context` field correctly. The analyzer built
+  its eval paths from the child's OWN schema, so the same expression the runtime
+  evaluated was reported as never evaluated. The two halves now read the same
+  schema.
+
+- c829d25: **Peer rules** — a referrer rule may declare `peers:`, a JSON Pointer naming a
+  collection of the referrer to resolve, binding that collection's other entries as
+  `peers` and the referrer's own entry as `entry`.
+
+  A rename marker is wrong only in relation to the _other_ declarations a schema
+  lists; an enum a column names is unlisted only in relation to the same set. A
+  resource rule sees one resource and a plain referrer rule sees a pair joined by
+  one reference, so neither can state a relation between siblings.
+
+  - **The field map decides what is a reference**, never the value's shape. A
+    `{kind, name}` object is what a resolved `!ref` looks like and also what author
+    data carrying two common keys looks like; the referrer kind's ref-slot paths are
+    the authority, and the caller already holds them.
+  - **Entries bind as written, with the references inside them resolved one level**
+    — a peer is the declaration where the entry is a bare `!ref`, and the
+    declaration with its siblings beside it where it is not. One level only, since a
+    self-referencing foreign key and a mutual pair are both cycles.
+  - **A peer rule evaluates once per entry**, anchored at that entry's slot path,
+    and excludes `self` **by slot path** rather than by identity — by index for an
+    array collection and by key for a map, which spell an entry's path differently.
+  - **A resolved declaration is scanned for `!cel` leaves where it is known to be a
+    manifest.** `findDynamicLeaf` stops at any nested `{kind}` object, so the whole
+    peer set would otherwise be exempt and a duplicate hidden behind an expression
+    would compare against a sentinel and silently hold.
+  - **A collection is resolved once per referrer and pointer**, shared by the
+    evaluation and the exercised check. Re-resolving per entry is quadratic at the
+    editor's keystroke-time analysis, and the rule budget then reports a correct
+    rule as a defective one.
+  - **Strict half at the declaring kind**: `peers:` must name a collection the
+    `referrer:` kind declares whose items are, or contain, a reference, and it
+    requires `referrer:`. Both are `REFERRER_RULE_INVALID`.
+  - **Coverage variance is reported both ways**: a peer that resolves to nothing, or
+    an absent collection, is `REFERRER_RULE_SKIPPED`; a rule whose peer set was
+    empty everywhere is `REFERRER_RULE_UNEXERCISED`, which is what a typo in
+    `peers:` looks like from outside.
+
+  - **The analyzer's own binder environment lives beside the binder** —
+    `analyzerPeerBinder` / `analyzerPeersTarget`, the `analyzerContractScope`
+    precedent — rather than as forty inline lines of the analysis pass, which had
+    come to use two different field-map accessors for one question.
+
+  A rule's `condition:` must now carry the `!cel` tag, across both rule families.
+  The readers stay lenient and a bare string still runs, but untagged the expression
+  is not CEL to the editor's colouring, completion or hover — so it is reported
+  rather than lost silently.
+
+  **A `!ref` is no longer read as a dynamic value.** Both rule families skip a
+  subject whose read nodes hold a value only known at creation, and the predicate
+  tested `__tagged` alone — which every tagged sentinel carries, `!ref` above all.
+  A column whose `type:` holds a reference therefore switched off every rule reading
+  `self.columns` and reported "the value holds a CEL expression" against a manifest
+  containing none. `dynamicNode` classifies by engine and the diagnostic names the
+  tag it actually found (`an !include-bytes embed`), so the recursive walk and the
+  peer binder's own top-level scan cannot disagree about what a reference is.
+
+- c829d25: `x-telo-schema-projection` gains a **`reference:` path** — how an entry whose
+  keyed field holds a `!ref` rather than a value from the closed vocabulary
+  projects.
+
+  The map is keyed on the field's value and a reference is not a key, so such an
+  entry fell through to nothing. The path is declared as data by the backend
+  (`from` names the target field to read, `keyword` the schema keyword its values
+  become, `base` / `baseFrom` where the node's own type comes from), which is what
+  keeps the analyzer from learning that the domain exists: nothing in it says SQL,
+  column or enum, and a backend that declares none projects exactly as before.
+
+  A deliberate exception to the projection's lossiness. Length, precision and
+  collation stop at the boundary because the database enforces them; a domain
+  crosses because it _is_ the type at the granularity a consumer acts on.
+
+  Two reader changes follow. `x-telo-schema-map` is now found on a **branch** of a
+  union, peeled the way the ref-slot reader already peels one — and so is the
+  `enum` the map's completeness is checked against, which would otherwise have
+  silently stopped being checked. An entry whose reference cannot be read is
+  reported (`entry-reference`) **and projected OPEN** rather than dropped. The two
+  failures are not the same failure: an unmapped value is a gap in the kind's own
+  vocabulary, so there is no entry to speak of, while an unreadable reference names
+  an entry the declaration plainly has and only leaves its type unknown. Dropping it
+  made the projection deny the entry exists, so a row naming it was told the
+  property is not allowed — blaming the row for the reference's mistake.
+
+  `no-projection` is split into `no-projection` / `no-projection-map` /
+  `no-entries`. One message ("declares no 'x-telo-schema-projection'") was printed
+  for a kind that declares one whose key field carries no map, and for a declaration
+  whose entry collection is simply absent — accusing the wrong author of the wrong
+  omission in both. `readProjectionRef` reads the unresolved `!ref` sentinel too,
+  which is exactly the shape present when a projection failure is reported and was
+  previously named `<unnamed>` in it.
+
+- c829d25: Two analyzer changes the declared-schema surface needs.
+
+  **A projection can be pointed at its own resource.** `x-telo-schema-projection-from`
+  with the EMPTY pointer names the declaration it is written on rather than a slot
+  holding a reference to another — resolution is skipped, the declaration is already
+  in hand. That is what lets a kind type its own data against its own entries: a
+  table's seed rows against its `columns:`, so a misspelled column is an error on
+  the row's own line. Projections are now resolved when validating a resource
+  against its kind's schema, per resource, because a projection is
+  declaration-derived — the same kind schema yields a different row shape for every
+  table. A failure to resolve one is reported there as
+  `SCHEMA_PROJECTION_FROM_UNRESOLVED`, which had been reported only for contract
+  slots.
+
+  `resolveSchemaProjections` now returns a node **by identity** where nothing
+  projected. `DefinitionRegistry` memoizes its compiled AJV validator per schema
+  OBJECT — every resource of a kind is checked against the same one at keystroke
+  time — so rebuilding each node unconditionally missed that memo for every resource
+  in the analysis and recompiled the whole kind schema per resource. The
+  inheritance-merged author schema and its injected `kind` / `metadata` are memoized
+  per definition for the same reason. On `apps/hub` that is 723 ms of AJV compilation
+  down to 94 ms, and it applies to every kind rather than only to projecting ones.
+
+  **A migration entry, `schema-prepare-bucket`**, rewriting `beforeMigrations:` to
+  `prepare:` on the two backend schema kinds. A manifest published with the old
+  spelling keeps loading; the region is the key itself, which is the tightest
+  containment the vocabulary can state.
+
+- c829d25: A schema slot may now union a **value branch with a reference branch** — a
+  declared column's `type:`, holding either a storage class from a closed
+  vocabulary or a `!ref` to a named shape.
+
+  A bare string at any slot carrying an `x-telo-ref` was `INVALID_REFERENCE_FORM`,
+  so the value half of such a union was rejected outright. Where the reference
+  constraint is a _branch_ rather than the node's own annotation, a **scalar** is
+  now read as a value and left to that branch — including a misspelled one, which
+  AJV reports as an unknown value rather than as a broken reference, since telling
+  an author to write `!ref txt` converts a typo into a reference. An **object** is
+  still checked for the removed `{kind, name}` form unless a branch describes that
+  shape.
+
+  Both reference passes apply the narrowing: `validateReferenceForms` and
+  `validateReferences`, the second because an object-shaped value branch would
+  otherwise reach the structural check and be reported as a reference missing
+  `kind` and `name`.
+
+  The narrowing is what keeps the rule intact everywhere it still applies: a
+  node-level `x-telo-ref` with branches beneath it (an Application `targets` entry)
+  uses those branches to describe the post-resolution shapes a _reference_ takes,
+  and a bare string there is still the removed string-reference spelling.
+
+  `RefSlot` gains `valueBranches`, carried onto the field-map entry. Both passes
+  narrow through one `satisfiesValueBranch`, and a branch AJV cannot COMPILE is not
+  a branch a value satisfies — `validateWithRefs` swallows a compile failure by
+  design, so reading that as "no issues, therefore a value" would switch the
+  reference-form rule off for the slot silently.
+
+### Patch Changes
+
+- b9c0dbe: Doc and comment updates for the Telo Editor -> Telo Studio rename. Prose only —
+  no behaviour, no API surface, and no shipped code path changes in any of these
+  packages.
+- Updated dependencies [cbc2a4d]
+  - @telorun/templating@0.17.0
+
 ## 0.65.0
 
 ### Minor Changes
