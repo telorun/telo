@@ -230,7 +230,7 @@ The `source` field accepts four forms:
 
 | Form               | Example                                          | Resolved as                                       |
 | ------------------ | ------------------------------------------------ | ------------------------------------------------- |
-| OCI reference      | `oci://ghcr.io/telorun/console@0.15.0`           | Pulled from that OCI host                         |
+| OCI reference      | `oci://ghcr.io/telorun/console@<version>`           | Pulled from that OCI host                         |
 | Registry reference | `acme/user-service@1.0.0`                        | Looked up in the configured module registry       |
 | Relative path      | `./payment/telo.yaml`                            | Resolved relative to the importing manifest's URL |
 | Absolute URL       | `https://cdn.example.com/lib/telo.yaml`          | Fetched directly                                  |

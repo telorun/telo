@@ -111,7 +111,7 @@ logging:
   level: info          # app-wide default
 imports:
   Db:
-    source: oci://ghcr.io/telorun/sql@1.2.0
+    source: oci://ghcr.io/telorun/sql@<version>
     logging:
       level: debug     # this import's subtree only
   Api:
@@ -300,7 +300,7 @@ collector:
 
 ```yaml
 imports:
-  Otlp: oci://ghcr.io/telorun/otlp@0.1.0
+  Otlp: oci://ghcr.io/telorun/otlp@<version>
 secrets:
   collectorToken:
     env: OTLP_TOKEN

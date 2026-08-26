@@ -3,6 +3,11 @@ name: Publish
 on:
   push:
     branches: [main]
+  # Recovery. Every job here derives its work from what is already published rather
+  # than from a previous step's exit code, so a dispatch re-runs them safely: npm
+  # publish skips what exists, module publish skips an already-pushed version, and
+  # the GitHub Release step skips a tag that already has one.
+  workflow_dispatch:
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -45,6 +50,12 @@ jobs:
       - name: Build workspace
         run: pnpm -r --if-present build
 
+      # `createGithubReleases: false` — the action has no per-package filter, and
+      # `changeset publish` publishes module-owned packages too (their versions are
+      # moved by `telo release apply`, so the action sees a version npm does not
+      # have yet). That put a module's release on the npm release page under an npm
+      # package's name. Releases are created by the step below instead, which knows
+      # which packages a module owns.
       - name: Create Release PR or publish
         id: changesets
         uses: changesets/action@v1
@@ -53,9 +64,35 @@ jobs:
           publish: pnpm run release
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # ONE release for the cycle, tagged `v<cli version>`, with the changes grouped
+      # by changeset rather than by package — a changeset that moves five packages
+      # used to produce five releases carrying the same text. Modules are released as
+      # OCI artifacts and discovered through the hub; their changelog lives in the
+      # module directory and they get no GitHub Release. A cycle that does not move
+      # the CLI has no version to name itself after and falls back to one release per
+      # package (only `runner-core` and `k8s-runner` can reach that path).
+      # Deliberately NOT gated on `steps.changesets.outputs.published`. Re-running this
+      # job re-runs `changeset publish`, which finds everything already on npm and
+      # reports `published: false` — so a transient failure here (rate limit, 5xx,
+      # token scope) used to make the release permanently missing, with no way to
+      # retry it. The script decides for itself: it skips a tag that already has a
+      # release, and recovers the package set from this commit's version bumps when
+      # the action reports none.
+      - name: Create the GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # The aggregate tag does not exist yet — `changeset publish` creates only
+          # the per-package ones — so the release is anchored to this exact commit
+          # rather than to wherever the default branch has moved to.
+          GITHUB_SHA: ${{ github.sha }}
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+        run: node scripts/github-releases.mjs
 
   # Module ARTIFACTS publish here, not in the npm release script.
   #

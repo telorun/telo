@@ -342,7 +342,7 @@ List the kind (and any ready-made singleton instances) in `exports`, then import
 
 ```yaml
 imports:
-  Console: oci://ghcr.io/telorun/console@0.9.0
+  Console: oci://ghcr.io/telorun/console@<version>
 targets:
   - invoke: !ref Console.writeLine
     inputs:

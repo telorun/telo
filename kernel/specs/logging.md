@@ -975,7 +975,7 @@ logging:
   level: info          # app-wide default; governs the root's own resources
 imports:
   Db:
-    source: oci://ghcr.io/telorun/sql@1.2.0
+    source: oci://ghcr.io/telorun/sql@<version>
     logging:
       level: debug     # this import's subtree only
   Api:
