@@ -79,6 +79,27 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeRe
     }
   }
 
+  // An undeclared ROOT identifier. cel-js types an unknown name as `dyn` and
+  // accepts it, so `!cel "fff"` type-checked, reached the runtime and resolved
+  // to nothing — the one CEL mistake with no static report at all. Member
+  // access on a KNOWN root was already covered ("No such key"), which is why a
+  // typo one level in was caught and a typo at the root was not.
+  //
+  // Comprehension variables are not roots: `extractAccessChains` drops the
+  // names a `.all(x, …)` binds, so the check never sees them.
+  if (env.rootsDeclared) {
+    const reported = new Set<string>();
+    for (const chain of extractAccessChains(parsed.ast)) {
+      const root = chain[0];
+      if (!root || reported.has(root) || env.celEnv.hasVariable(root)) continue;
+      reported.add(root);
+      out.push({
+        code: "CEL_UNKNOWN_IDENTIFIER",
+        message: `unknown identifier '${root}' — nothing by that name is in scope here.`,
+      });
+    }
+  }
+
   if (env.contextSchema) {
     const contextSchema = env.contextSchema as Record<string, any>;
     for (const chain of extractAccessChains(parsed.ast)) {

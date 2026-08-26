@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { DiagnosticSeverity, type Range } from "@telorun/analyzer";
+import { SEVERITY_CHIP_CLASS, SEVERITY_LABEL } from "./severity";
 import { UNKNOWN_FILE_KEY } from "../../analysis";
 import type { LocatedDiagnostic } from "../../diagnostics-aggregate";
 import { Button } from "../ui/button";
@@ -8,20 +9,6 @@ interface Props {
   diagnostics: LocatedDiagnostic[];
   onNavigate?: (filePath: string, range?: Range) => void;
 }
-
-const SEVERITY_LABEL: Record<DiagnosticSeverity, string> = {
-  [DiagnosticSeverity.Error]: "Error",
-  [DiagnosticSeverity.Warning]: "Warning",
-  [DiagnosticSeverity.Information]: "Info",
-  [DiagnosticSeverity.Hint]: "Hint",
-};
-
-const SEVERITY_CHIP_CLASS: Record<DiagnosticSeverity, string> = {
-  [DiagnosticSeverity.Error]: "bg-red-500/10 text-red-600 dark:text-red-400",
-  [DiagnosticSeverity.Warning]: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  [DiagnosticSeverity.Information]: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
-  [DiagnosticSeverity.Hint]: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
-};
 
 function basename(path: string): string {
   const ix = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));

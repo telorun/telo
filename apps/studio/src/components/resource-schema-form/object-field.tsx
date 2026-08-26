@@ -4,7 +4,13 @@ import type { CelEvalMode } from "./cel-utils";
 import { FieldControl, inferType, ownsLabel } from "./field-control";
 import { resolveSiblingTypedProp } from "./sibling-typed-field";
 import type { RefResolver } from "./ref-candidates";
-import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
+import { SeverityDot, worstUnder, type FieldDiagnostic } from "./field-diagnostics";
+import type {
+  CelFieldTarget,
+  JsonSchemaProperty,
+  ResolvedResourceOption,
+  TypeKindOption,
+} from "./types";
 
 interface ObjectFieldProps {
   rootFieldName: string;
@@ -17,6 +23,14 @@ interface ObjectFieldProps {
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
+  onOpenInline?: (fieldPath: string, kind: string) => void;
+  /** Moves the declaration at a ref slot across the named/inline boundary.
+   *  Threaded beside `onOpenInline` — both address a slot by its field path. */
+  onMoveDeclaration?: (fieldPath: string, direction: "extract" | "inline") => void;
+  celTarget?: CelFieldTarget;
+  fieldDiagnostics?: FieldDiagnostic[];
+  /** Manifest address of this object; children compose theirs from it. */
+  addressPath?: string;
   typeKinds?: TypeKindOption[];
   registry?: RefResolver | null;
   /** Fallback for the collapsible trigger title when the schema has no
@@ -57,6 +71,11 @@ export function ObjectField({
   resolvedResources,
   rootCelEval,
   onSelectResource,
+  onOpenInline,
+  onMoveDeclaration,
+  celTarget,
+  fieldDiagnostics = [],
+  addressPath,
   typeKinds,
   registry,
   label,
@@ -72,6 +91,7 @@ export function ObjectField({
   const canClear = !required && value !== undefined && value !== null;
   const description = typeof prop.description === "string" ? prop.description : undefined;
 
+  const address = addressPath ?? fieldPath;
   const fields = Object.entries(properties).flatMap(([childName, rawChildProp]) => {
     // Same resolution the form root performs, so a sibling-typed field behaves
     // identically at any depth.
@@ -92,6 +112,7 @@ export function ObjectField({
             {childLabel}
             {objectRequired.has(childName) ? <span className="ml-1 text-red-500">*</span> : null}
             <span className="ml-1 text-zinc-400 dark:text-zinc-600">({childKind})</span>
+            <SeverityDot diagnostics={fieldDiagnostics} fieldPath={`${address}.${childName}`} />
           </label>
         )}
         <FieldControl
@@ -105,6 +126,11 @@ export function ObjectField({
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
           onSelectResource={onSelectResource}
+          onOpenInline={onOpenInline}
+          onMoveDeclaration={onMoveDeclaration}
+          celTarget={celTarget}
+          fieldDiagnostics={fieldDiagnostics}
+          addressPath={`${address}.${childName}`}
           typeKinds={typeKinds}
           registry={registry}
           label={childLabel}
@@ -119,7 +145,12 @@ export function ObjectField({
   }
 
   return (
-    <CollapsiblePrimitive.Root className="group rounded border border-zinc-200 dark:border-zinc-800">
+    <CollapsiblePrimitive.Root
+      // As in the map: a message inside a closed section is one the user has to
+      // go looking for. Seeds the initial state only.
+      defaultOpen={worstUnder(fieldDiagnostics, address) != null}
+      className="group rounded border border-zinc-200 dark:border-zinc-800"
+    >
       <div className="flex items-stretch">
         <CollapsiblePrimitive.Trigger className="flex flex-1 items-center gap-2 px-2 py-1 text-left text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800/60">
           <span

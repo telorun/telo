@@ -1,5 +1,6 @@
 import { isCompiledValue } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
+import { producedTypeOf } from "../src/builtins.js";
 import { buildCelEnvironment } from "../src/cel/environment.js";
 import { celEngine } from "../src/engines/cel.js";
 import { literalEngine } from "../src/engines/literal.js";
@@ -130,5 +131,14 @@ describe("literalEngine", () => {
 
   it("declares no Monaco language id (intentionally inert)", () => {
     expect(literalEngine.language).toBeUndefined();
+  });
+
+  it("declares that it produces a string", () => {
+    // Opaque text is TEXT, whatever the slot asks for. Declaring nothing put it
+    // in `!cel`'s category — produces-whatever-the-slot-says — which is what
+    // offered it at a boolean predicate and type-checked it against a
+    // slot-shaped placeholder rather than the string it becomes.
+    expect(literalEngine.producedType?.()).toEqual({ type: "string" });
+    expect(producedTypeOf("literal")).toEqual({ type: "string" });
   });
 });

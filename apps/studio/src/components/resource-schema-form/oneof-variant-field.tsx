@@ -3,7 +3,13 @@ import type { CelEvalMode } from "./cel-utils";
 import { buildEditorDefaultValue } from "./default-value";
 import { FieldControl } from "./field-control";
 import type { RefResolver } from "./ref-candidates";
-import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
+import type { FieldDiagnostic } from "./field-diagnostics";
+import type {
+  CelFieldTarget,
+  JsonSchemaProperty,
+  ResolvedResourceOption,
+  TypeKindOption,
+} from "./types";
 
 interface OneOfVariantFieldProps {
   rootFieldName: string;
@@ -16,6 +22,13 @@ interface OneOfVariantFieldProps {
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
+  onOpenInline?: (fieldPath: string, kind: string) => void;
+  /** Moves the declaration at a ref slot across the named/inline boundary.
+   *  Threaded beside `onOpenInline` — both address a slot by its field path. */
+  onMoveDeclaration?: (fieldPath: string, direction: "extract" | "inline") => void;
+  celTarget?: CelFieldTarget;
+  fieldDiagnostics?: FieldDiagnostic[];
+  addressPath?: string;
   typeKinds?: TypeKindOption[];
   registry?: RefResolver | null;
 }
@@ -59,6 +72,11 @@ export function OneOfVariantField({
   resolvedResources,
   rootCelEval,
   onSelectResource,
+  onOpenInline,
+  onMoveDeclaration,
+  fieldDiagnostics,
+  addressPath,
+  celTarget,
   typeKinds,
   registry,
 }: OneOfVariantFieldProps) {
@@ -117,6 +135,11 @@ export function OneOfVariantField({
           resolvedResources={resolvedResources}
           rootCelEval={rootCelEval}
           onSelectResource={onSelectResource}
+          onOpenInline={onOpenInline}
+          onMoveDeclaration={onMoveDeclaration}
+          celTarget={celTarget}
+          fieldDiagnostics={fieldDiagnostics}
+          addressPath={`${addressPath ?? fieldPath}.${key}`}
           typeKinds={typeKinds}
           registry={registry}
         />

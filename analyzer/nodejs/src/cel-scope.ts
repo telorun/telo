@@ -522,7 +522,21 @@ export class CelScopeResolver {
       const base = matched ?? { type: "object", properties: {}, additionalProperties: true };
       matched = {
         ...base,
-        properties: { ...(base.properties ?? {}), steps: this.stepContext },
+        properties: {
+          // `inputs` is in scope beside `steps` wherever a step body runs — the
+          // step engine evaluates a step against the enclosing kind's own
+          // arguments, which is what `steps[0].inputs.x` reads. Modelled here
+          // because it was modelled NOWHERE: the step context is open, so a
+          // chain through it was never checked and the name's absence went
+          // unnoticed until something asked whether the root existed.
+          //
+          // OPEN, not typed from the kind's `inputType`: closing it would newly
+          // reject every read of an argument the contract does not spell out,
+          // which is a separate decision from knowing the name is legal.
+          inputs: { type: "object", additionalProperties: true },
+          ...(base.properties ?? {}),
+          steps: this.stepContext,
+        },
       };
     }
 

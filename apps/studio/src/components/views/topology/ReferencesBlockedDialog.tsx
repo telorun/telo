@@ -3,57 +3,82 @@ import type { ResourceReference } from "../../../resource-references";
 import { Button } from "../../ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../ui/dialog";
 
+/** What was refused. Both moves fail for the same reason — something else still
+ *  names the resource — and differ only in what the user is told to do about
+ *  it, so the copy is chosen here rather than passed in per caller. */
+export type BlockedMove = "delete" | "inline";
+
 /**
- * Why a resource could not be deleted: the slots that still name it.
+ * Why a resource could not be deleted or inlined: the slots that still name it.
  *
- * Deleting it anyway is representable — the editor already clears every dangling
+ * Doing it anyway is representable — the editor already clears every dangling
  * ref when a node is deleted from the canvas — but it is the wrong default here:
  * a provider or a type is referenced from resources that are nowhere on screen
  * (that is what makes them ambient), so a silent cascade would blank slots the
  * user never saw. Naming them and refusing puts the decision where the evidence
  * is, and each row leads to the resource that has to change.
  */
-export function DeleteBlockedDialog({
+export function ReferencesBlockedDialog({
   name,
+  move,
   references,
+  reason,
   onOpenChange,
   onSelectResource,
 }: {
-  /** The resource the delete was refused for. Null closes the dialog. */
+  /** The resource the move was refused for. Null closes the dialog. */
   name: string | null;
+  move: BlockedMove;
   /**
-   * What still names it — EMPTY meaning the answer is not known rather than
-   * that there is nothing, which is the case where the analysis has not
-   * finished. The two read very differently and only one of them is a reason to
-   * go and edit something, so the dialog says which it is instead of rendering
-   * "0 places still name it".
+   * What still names it — EMPTY, with no `reason`, meaning the answer is not
+   * known rather than that there is nothing, which is the case where the
+   * analysis has not finished. The two read very differently and only one of
+   * them is a reason to go and edit something, so the dialog says which it is
+   * instead of rendering "0 places still name it".
    */
   references: ResourceReference[];
+  /** A refusal that is not about references — the resource is exported, or the
+   *  one slot naming it cannot hold a declaration. Stated instead of the
+   *  reference count, since there is nothing to go and clear. */
+  reason?: string;
   onOpenChange: (open: boolean) => void;
   onSelectResource: (kind: string, name: string) => void;
 }) {
+  const unknown = !reason && references.length === 0;
   return (
     <Dialog open={!!name} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
             <span className="font-mono">{name}</span>{" "}
-            {references.length === 0 ? "cannot be checked yet" : "is still referenced"}
+            {unknown
+              ? "cannot be checked yet"
+              : reason
+                ? `cannot be ${move === "delete" ? "deleted" : "inlined"}`
+                : "is still referenced"}
           </DialogTitle>
         </DialogHeader>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {references.length === 0 ? (
+          {unknown ? (
             <>
-              The analysis has not finished, so what still names it is unknown. Deleting now
-              could leave references pointing at nothing — try again in a moment.
+              The analysis has not finished, so what still names it is unknown.{" "}
+              {move === "delete"
+                ? "Deleting now could leave references pointing at nothing"
+                : "Inlining now could remove a resource something else still uses"}{" "}
+              — try again in a moment.
             </>
+          ) : reason ? (
+            reason
           ) : (
             <>
               {references.length === 1
                 ? "One place still names it"
                 : `${references.length} places still name it`}
-              . Clear {references.length === 1 ? "it" : "them"} first — deleting now would leave{" "}
-              {references.length === 1 ? "a reference" : "references"} pointing at nothing.
+              . Clear {references.length === 1 ? "it" : "them"} first —{" "}
+              {move === "delete"
+                ? `deleting now would leave ${references.length === 1 ? "a reference" : "references"} pointing at nothing`
+                : "a declaration lives in one slot, so it cannot be moved into one of several"}
+              .
             </>
           )}
         </p>

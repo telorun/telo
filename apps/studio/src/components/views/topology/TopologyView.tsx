@@ -66,6 +66,9 @@ export function TopologyView({
   onSelect,
   onClearSelection,
   onOpenModule,
+  onSourceEdit,
+  onExtractInline,
+  onInlineReference,
   onAddImport,
   onRenameField,
   onRemoveImport,
@@ -361,6 +364,10 @@ export function TopologyView({
         }
         viewData={viewData}
         registry={registry}
+        readOnly={readOnly}
+        onSourceEdit={onSourceEdit}
+        onExtractInline={onExtractInline}
+        onInlineReference={onInlineReference}
         onUpdateResource={onUpdateResource}
         onSelectResource={onSelectResource}
         onSelect={onSelect}

@@ -8,7 +8,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { CelExpressionEditor } from "./cel-expression-editor";
 import { tagOf, tagSourceOf, type ValueTagOption } from "./value-tag";
+import type { CelFieldTarget } from "./types";
 
 /** The untagged option. Not an engine, so it carries no entry in the authoring
  *  table — but it is always a choice, and the picker has to name it. */
@@ -24,6 +26,10 @@ interface ValueTagFieldProps {
   value: unknown;
   onValueChange: (next: unknown) => void;
   onBlur: () => void;
+  /** The site this field sits at, for `!cel` completion. Without it the
+   *  expression is edited as plain text — the scope is a property of the
+   *  address, so there is nothing to offer without one. */
+  celTarget?: (CelFieldTarget & { path: string }) | undefined;
   /** The ordinary widget for an untagged value. */
   children: React.ReactNode;
 }
@@ -49,6 +55,7 @@ export function ValueTagField({
   value,
   onValueChange,
   onBlur,
+  celTarget,
   children,
 }: ValueTagFieldProps) {
   const [active, setActive] = useState<string>(() => tagOf(value) ?? PLAIN);
@@ -135,6 +142,16 @@ export function ValueTagField({
 
       {!option ? (
         children
+      ) : active === "cel" && celTarget ? (
+        // `!cel` alone: the completions are CEL's own scope. `!literal` is
+        // opaque text by definition and a path names a file, so neither has
+        // anything a CEL scope could offer.
+        <CelExpressionEditor
+          value={source}
+          onValueChange={write}
+          onBlur={onBlur}
+          target={celTarget}
+        />
       ) : (
         <>
           <input

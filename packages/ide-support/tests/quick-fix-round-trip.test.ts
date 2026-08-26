@@ -27,7 +27,22 @@ describe("applying a quick fix repairs the manifest", () => {
     capability: "Telo.Invocable",
     schema: {
       type: "object",
-      properties: { flag: { type: "boolean", "x-telo-eval": "runtime" } },
+      properties: {
+        flag: {
+          type: "boolean",
+          "x-telo-eval": "runtime",
+          // The fixture expressions read `a.b`. Declared, because an undeclared
+          // ROOT is now a diagnostic of its own, and these cases are about the
+          // call form — an expression carrying a second, unrelated error would
+          // make "the repaired text analyzes clean" assert the wrong thing.
+          "x-telo-context": {
+            type: "object",
+            properties: {
+              a: { type: "object", properties: { b: { type: "string" } } },
+            },
+          },
+        },
+      },
     },
   } as unknown as ResourceManifest;
 

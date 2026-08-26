@@ -122,6 +122,19 @@ export interface ViewProps {
    *  multi-file modules: edits to a partial must land on the partial, not
    *  the owner. */
   onSourceEdit: (filePath: string, moduleDoc: ModuleDocument) => void;
+  /** Moves a resource declared INLINE at `pointer` into its own document under
+   *  `name`, leaving a reference behind. Its own operation, not a field write:
+   *  it adds a document and rewrites a slot in ONE mutation, and a half-applied
+   *  one is either a resource declared twice or a slot pointing at nothing. */
+  onExtractInline: (
+    host: { kind: string; name: string },
+    pointer: string,
+    name: string,
+  ) => void;
+  /** The inverse: folds the resource referenced at `pointer` back into that
+   *  slot and removes its document. One mutation for the same reason, and
+   *  refused — with its reason — when anything else still names the resource. */
+  onInlineReference: (host: { kind: string; name: string }, pointer: string) => void;
   /** Deployment config for the active Application. For Libraries this is still
    *  populated (with a fresh ephemeral environment) but the Deployment tab is
    *  hidden so it goes unused. */

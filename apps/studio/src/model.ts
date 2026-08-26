@@ -1,4 +1,4 @@
-import type { LoadedFile, Range } from "@telorun/analyzer";
+import type { AstDocument, LoadedFile, Range } from "@telorun/analyzer";
 import type { WorkspaceDiagnostics } from "./analysis";
 
 export interface RegistryServer {
@@ -318,6 +318,11 @@ export interface DeploymentEnvironment {
 export interface ModuleSourceFile {
   filePath: string;
   text: string;
+  /** Read-only per-document AST view, aligned to `text` — both come from the
+   *  same parse, so a node's byte range indexes `text` exactly. Carried for the
+   *  surfaces that show a SPAN of the source rather than the whole file (the
+   *  detail panel's YAML pane slices one resource / one pointer out of it). */
+  documents: AstDocument[];
   parseError?: string;
 }
 

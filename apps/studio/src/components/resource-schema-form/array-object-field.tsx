@@ -3,7 +3,13 @@ import type { CelEvalMode } from "./cel-utils";
 import { buildEditorDefaultValue } from "./default-value";
 import { FieldControl, inferType, ownsLabel } from "./field-control";
 import type { RefResolver } from "./ref-candidates";
-import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
+import { SeverityDot, type FieldDiagnostic } from "./field-diagnostics";
+import type {
+  CelFieldTarget,
+  JsonSchemaProperty,
+  ResolvedResourceOption,
+  TypeKindOption,
+} from "./types";
 
 interface ArrayObjectFieldProps {
   rootFieldName: string;
@@ -16,6 +22,13 @@ interface ArrayObjectFieldProps {
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
+  onOpenInline?: (fieldPath: string, kind: string) => void;
+  /** Moves the declaration at a ref slot across the named/inline boundary.
+   *  Threaded beside `onOpenInline` — both address a slot by its field path. */
+  onMoveDeclaration?: (fieldPath: string, direction: "extract" | "inline") => void;
+  celTarget?: CelFieldTarget;
+  fieldDiagnostics?: FieldDiagnostic[];
+  addressPath?: string;
   typeKinds?: TypeKindOption[];
   registry?: RefResolver | null;
 }
@@ -45,6 +58,11 @@ export function ArrayObjectField({
   resolvedResources,
   rootCelEval,
   onSelectResource,
+  onOpenInline,
+  onMoveDeclaration,
+  celTarget,
+  fieldDiagnostics = [],
+  addressPath,
   typeKinds,
   registry,
 }: ArrayObjectFieldProps) {
@@ -63,6 +81,7 @@ export function ArrayObjectField({
     return next;
   };
 
+  const address = addressPath ?? fieldPath;
   return (
     <div className="flex flex-col gap-2">
       {entries.map((entry, index) => {
@@ -75,6 +94,9 @@ export function ArrayObjectField({
             <div className="mb-2 flex items-center justify-between">
               <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 Item {index + 1}
+                {/* Which ITEM, before the fields inside it — a list of ten rows
+                    is otherwise a search for the one that is wrong. */}
+                <SeverityDot diagnostics={fieldDiagnostics} fieldPath={`${address}.${index}`} />
               </span>
               <button
                 type="button"
@@ -103,6 +125,10 @@ export function ArrayObjectField({
                           <span className="ml-1 text-red-500">*</span>
                         ) : null}
                         <span className="ml-1 text-zinc-400 dark:text-zinc-600">({itemKind})</span>
+                        <SeverityDot
+                          diagnostics={fieldDiagnostics}
+                          fieldPath={`${address}.${index}.${itemName}`}
+                        />
                       </label>
                     )}
                     <FieldControl
@@ -121,6 +147,11 @@ export function ArrayObjectField({
                       resolvedResources={resolvedResources}
                       rootCelEval={rootCelEval}
                       onSelectResource={onSelectResource}
+                      onOpenInline={onOpenInline}
+                      onMoveDeclaration={onMoveDeclaration}
+                      celTarget={celTarget}
+                      fieldDiagnostics={fieldDiagnostics}
+                      addressPath={`${address}.${index}.${itemName}`}
                       typeKinds={typeKinds}
                       registry={registry}
                       label={itemLabel}

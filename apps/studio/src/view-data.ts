@@ -96,6 +96,7 @@ function collectSourceFiles(workspace: Workspace, manifest: ParsedManifest): Mod
     out.push({
       filePath: ownerDoc.filePath,
       text: ownerDoc.loaded.text,
+      documents: ownerDoc.loaded.astDocuments,
       ...(err ? { parseError: err } : {}),
     });
   }
@@ -107,6 +108,7 @@ function collectSourceFiles(workspace: Workspace, manifest: ParsedManifest): Mod
     out.push({
       filePath: doc.filePath,
       text: doc.loaded.text,
+      documents: doc.loaded.astDocuments,
       ...(err ? { parseError: err } : {}),
     });
   }

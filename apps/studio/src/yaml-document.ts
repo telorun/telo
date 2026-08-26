@@ -1,5 +1,5 @@
 import { parseLoadedFile, splitIntegrity, type LoadedFile } from "@telorun/analyzer";
-import { isTaggedSentinel } from "@telorun/templating";
+import { defaultCustomTags, isTaggedSentinel } from "@telorun/templating";
 import { Document, isDocument, isMap, isNode, isScalar, isSeq, Pair, YAMLMap } from "yaml";
 import type { ModuleDocument } from "./model";
 
@@ -152,7 +152,14 @@ export function applyEdit(docs: Document[], docIndex: number, op: EditOp): Docum
         // Structural replace via setIn drops the tag along with the old node;
         // capture and reapply so explicit `!cel` / `!literal` markers on
         // tagged scalars survive a value-shape change.
-        const existingTag = node && isScalar(node) ? node.tag : undefined;
+        //
+        // Not across a sentinel boundary, either way: a sentinel carries its
+        // own engine, so `createNode` tags the replacement correctly and
+        // reapplying would stamp the OLD engine over it; and where the new
+        // value is not one, the tag belonged to the value that just left.
+        const crossesSentinel =
+          (isScalar(node) && isTaggedSentinel(node.value)) || isTaggedSentinel(op.value);
+        const existingTag = !crossesSentinel && isScalar(node) ? node.tag : undefined;
         doc.setIn(path, toYamlNodeIfCollection(doc, op.value));
         if (existingTag) {
           const next = doc.getIn(path, true);
@@ -328,6 +335,15 @@ function sameLeafJsType(a: unknown, b: unknown): boolean {
   if (a === null) return b === null;
   if (b === null) return false;
   if (a === undefined || b === undefined) return false;
+  // A tagged sentinel is `typeof "object"` like every other object, so the
+  // plain type test read `!ref todos` and `{kind: Crud.Resource, …}` as the
+  // same shape and swapped the value under the tag — the reference kept its
+  // `!ref`, over a value that stringified to `[object Object]`. Whether a leaf
+  // is tagged, and by WHICH engine, is part of what it is: a tag is emitted for
+  // the value under it, so the two only travel together.
+  if (isTaggedSentinel(a) || isTaggedSentinel(b)) {
+    return isTaggedSentinel(a) && isTaggedSentinel(b) && a.engine === b.engine;
+  }
   return typeof a === typeof b;
 }
 
@@ -471,7 +487,24 @@ export function addResourceDocument(
   fields: Record<string, unknown>,
 ): Document[] {
   const content: Record<string, unknown> = { kind, metadata: { name }, ...fields };
-  return [...docs, new Document(content)];
+  return [...docs, newTeloDocument(content)];
+}
+
+/**
+ * A document whose schema carries the templating tags.
+ *
+ * `createNode` recognises a `!ref` / `!cel` / `!include-text` value by asking
+ * each of the schema's tags to identify it, so a document built with the plain
+ * constructor has no way to know one: the sentinel's `{__tagged, engine,
+ * source}` JS shape reaches the file as a mapping, and what was a reference
+ * parses back as three ordinary keys.
+ *
+ * Every document the editor creates goes through here, because the values it is
+ * given are whatever the author wrote — a resource extracted out of an inline
+ * declaration carries that declaration's own references and embeds.
+ */
+function newTeloDocument(content: unknown): Document {
+  return new Document(content, null, { customTags: defaultCustomTags() });
 }
 
 /** Removes the first document whose top-level `kind` + `metadata.name`
@@ -502,7 +535,7 @@ export function addImportDocument(
   };
   if (extras?.variables) content.variables = extras.variables;
   if (extras?.secrets) content.secrets = extras.secrets;
-  const newDoc = new Document(content);
+  const newDoc = newTeloDocument(content);
 
   let insertAt = 0;
   for (let i = 0; i < docs.length; i++) {
@@ -688,5 +721,5 @@ export function buildInitialModuleDocument(
     kind: kind === "Application" ? "Telo.Application" : "Telo.Library",
     metadata: { name, version: "1.0.0" },
   };
-  return new Document(content);
+  return newTeloDocument(content);
 }

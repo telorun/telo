@@ -1,4 +1,5 @@
 import { isRefSlot } from "@telorun/analyzer";
+import { inlineResourceKind } from "../../resource-schema-form/ref-candidates";
 import { isRecord } from "../../../lib/utils";
 import { getTopologyRole, resolveRef } from "../../../schema-utils";
 import { refTargetName } from "./overview-graph";
@@ -58,6 +59,16 @@ export interface EntryRow {
   index: number;
   /** The resource this entry dispatches to, when its handler names one. */
   target?: string;
+  /**
+   * The kind of a resource declared INLINE in the handler slot, when that is
+   * what the entry holds.
+   *
+   * Separate from `target` because it is a different fact: a target is a NAME
+   * this module declares elsewhere and can be opened, while an inline
+   * declaration exists only here and has no name at all. Collapsing them would
+   * make a row offer to open something that is not a resource in the list.
+   */
+  inlineKind?: string;
   /** The entry names a resource this module does not declare. */
   unresolved: boolean;
   /** What SELECTS this entry, when the kind declares a matcher and the author
@@ -152,7 +163,9 @@ export function buildEntryList({ entries, list, pointer, declared }: EntryListOp
 
   return entries.map((entry, index) => {
     const data = isRecord(entry) ? entry : {};
-    const target = refTargetName(data[list.handler]);
+    const handler = data[list.handler];
+    const target = refTargetName(handler);
+    const inlineKind = inlineResourceKind(handler);
     const matcher =
       list.matcher && data[list.matcher] !== undefined
         ? field(list.matcher, data[list.matcher])
@@ -161,6 +174,7 @@ export function buildEntryList({ entries, list, pointer, declared }: EntryListOp
       pointer: `${pointer}/${index}`,
       index,
       ...(target ? { target } : {}),
+      ...(inlineKind ? { inlineKind } : {}),
       unresolved: !!target && !declared.has(target),
       ...(matcher ? { matcher } : {}),
       // Declaration order, and only what the author actually set: an entry
