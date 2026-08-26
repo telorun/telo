@@ -6,7 +6,13 @@ import type { CelEvalMode } from "./cel-utils";
 import { buildEditorDefaultValue } from "./default-value";
 import { FieldControl } from "./field-control";
 import type { RefResolver } from "./ref-candidates";
-import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
+import { SeverityDot, worstUnder, type FieldDiagnostic } from "./field-diagnostics";
+import type {
+  CelFieldTarget,
+  JsonSchemaProperty,
+  ResolvedResourceOption,
+  TypeKindOption,
+} from "./types";
 
 interface MapFieldProps {
   rootFieldName: string;
@@ -19,6 +25,13 @@ interface MapFieldProps {
   resolvedResources: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
+  onOpenInline?: (fieldPath: string, kind: string) => void;
+  /** Moves the declaration at a ref slot across the named/inline boundary.
+   *  Threaded beside `onOpenInline` — both address a slot by its field path. */
+  onMoveDeclaration?: (fieldPath: string, direction: "extract" | "inline") => void;
+  celTarget?: CelFieldTarget;
+  fieldDiagnostics?: FieldDiagnostic[];
+  addressPath?: string;
   typeKinds?: TypeKindOption[];
   registry?: RefResolver | null;
   label?: string;
@@ -52,6 +65,11 @@ export function MapField({
   resolvedResources,
   rootCelEval,
   onSelectResource,
+  onOpenInline,
+  onMoveDeclaration,
+  celTarget,
+  fieldDiagnostics = [],
+  addressPath,
   typeKinds,
   registry,
   label,
@@ -79,6 +97,7 @@ export function MapField({
     return Object.entries(source).map(([key, value]) => ({ id: newId(), key, value }));
   };
 
+  const address = addressPath ?? fieldPath;
   const [rows, setRows] = useState<Row[]>(() => deriveRows(value));
 
   const lastEmittedRef = useRef<unknown>(value);
@@ -209,7 +228,10 @@ export function MapField({
 
   return (
     <CollapsiblePrimitive.Root
-      defaultOpen={entryCount === 0}
+      // Open when there is something wrong inside: a message the user has to go
+      // looking for is barely better than no message. `defaultOpen`, so it only
+      // seeds the initial state and a deliberate collapse still holds.
+      defaultOpen={entryCount === 0 || worstUnder(fieldDiagnostics, address) != null}
       className="group rounded border border-zinc-200 dark:border-zinc-800"
     >
       <div className="flex items-stretch">
@@ -286,6 +308,12 @@ export function MapField({
                   <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
                     name
                     <span className="ml-1 text-zinc-400 dark:text-zinc-600">(string)</span>
+                    {/* On the KEY, since that is what names the entry — an
+                        analyzer path addresses a map by it. */}
+                    <SeverityDot
+                      diagnostics={fieldDiagnostics}
+                      fieldPath={`${address}.${row.key}`}
+                    />
                   </label>
                 )}
                 <input
@@ -313,6 +341,10 @@ export function MapField({
                 <FieldControl
                   rootFieldName={rootFieldName}
                   fieldPath={`${fieldPath}.${row.id}`}
+                  // The KEY, not the row id: a manifest addresses a map entry by
+                  // its key, while the id exists so renaming one does not
+                  // remount the row. Two questions, two answers.
+                  addressPath={`${address}.${row.key}`}
                   prop={valueSchema}
                   value={row.value}
                   onValueChange={(next) => handleValueChange(row.id, next)}
@@ -321,6 +353,10 @@ export function MapField({
                   resolvedResources={resolvedResources}
                   rootCelEval={rootCelEval}
                   onSelectResource={onSelectResource}
+                  onOpenInline={onOpenInline}
+                  onMoveDeclaration={onMoveDeclaration}
+                  celTarget={celTarget}
+                  fieldDiagnostics={fieldDiagnostics}
                   typeKinds={typeKinds}
                   registry={registry}
                   flat={flatEntry}

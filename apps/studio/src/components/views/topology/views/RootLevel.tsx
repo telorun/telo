@@ -31,7 +31,7 @@ import {
 import { Button } from "../../../ui/button";
 import type { GraphNode, TypeSignature } from "../application-canvas-model";
 import { buildBootModel, type BootTarget } from "../boot-model";
-import { DeleteBlockedDialog } from "../DeleteBlockedDialog";
+import { ReferencesBlockedDialog } from "../ReferencesBlockedDialog";
 import type { TopologyViewProps } from "../topology-view";
 
 /**
@@ -375,8 +375,9 @@ export function RootLevel({
         ))}
       </div>
 
-      <DeleteBlockedDialog
+      <ReferencesBlockedDialog
         name={blocked?.name ?? null}
+        move="delete"
         references={blocked?.references ?? []}
         onOpenChange={(open) => !open && setBlocked(null)}
         onSelectResource={onSelectResource}

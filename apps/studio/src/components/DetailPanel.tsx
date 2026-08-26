@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ModuleViewData, Selection } from "../model";
+import type { ModuleDocument, ModuleViewData, Selection } from "../model";
 import { summarizeResource } from "../diagnostics-aggregate";
 import { isRecord } from "../lib/utils";
-import type { CelEvalMode } from "./resource-schema-form/cel-utils";
+import { fieldPointer, readPointer, writePointer } from "../lib/json-pointer";
+import { suggestedResourceName } from "../resource-naming";
+import {
+  celEvalModeAtPointer,
+  getCelEvalMode,
+  type CelEvalMode,
+} from "./resource-schema-form/cel-utils";
 import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
 import { useActiveFilePaths, useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
 import { APPLICATION_KIND_ID, isModuleRootKind, moduleRootFormSchema } from "../application-adapter";
@@ -17,13 +23,36 @@ import type { ResolvedResourceOption, TypeKindOption } from "./ResourceSchemaFor
 import { ResourceSchemaForm } from "./ResourceSchemaForm";
 import {
   findPendingRefCreate,
+  inlineResourceKind,
   resolvePendingRefCreate,
 } from "./resource-schema-form/ref-candidates";
 import { PickCanvas } from "./views/pick-canvas";
+import { DetailYamlPane } from "./DetailYamlPane";
+import { ExtractInlineDialog } from "./ExtractInlineDialog";
+import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
+import { FileOutput } from "lucide-react";
+
+type DetailMode = "form" | "yaml";
 
 interface DetailPanelProps {
   selectedResource: { kind: string; name: string } | null;
   selection: Selection | null;
+  /** True while the module cannot be edited (remote, or the agent holds it).
+   *  The YAML pane is a write surface like the form, so it honours this. */
+  readOnly: boolean;
+  /** Commits a whole-file edit — what the YAML pane's splice produces. */
+  onSourceEdit: (filePath: string, moduleDoc: ModuleDocument) => void;
+  /** Moves the resource declared inline at `pointer` into its own document
+   *  named `name`, leaving a reference to it behind. */
+  onExtractInline: (
+    host: { kind: string; name: string },
+    pointer: string,
+    name: string,
+  ) => void;
+  /** The inverse: folds the resource the slot at `pointer` references back into
+   *  that slot and removes its document. Refused — with its reason — when
+   *  anything else still names it, which only the host can answer. */
+  onInlineReference: (host: { kind: string; name: string }, pointer: string) => void;
   /**
    * The resource the canvas beside this panel is already drawing, when one is.
    *
@@ -66,50 +95,6 @@ function sanitizeFields(values: Record<string, unknown>): Record<string, unknown
   return next;
 }
 
-function parsePointer(pointer: string): (string | number)[] {
-  if (!pointer) return [];
-  return pointer
-    .replace(/^\//, "")
-    .split("/")
-    .map((s) => {
-      const n = Number(s);
-      return Number.isInteger(n) && n >= 0 ? n : s;
-    });
-}
-
-function getByPointer(obj: unknown, pointer: string): unknown {
-  const segments = parsePointer(pointer);
-  let current = obj;
-  for (const seg of segments) {
-    if (current == null) return undefined;
-    if (Array.isArray(current)) current = current[seg as number];
-    else if (isRecord(current)) current = current[seg as string];
-    else return undefined;
-  }
-  return current;
-}
-
-function setByPointer(root: unknown, pointer: string, value: unknown): unknown {
-  const segments = parsePointer(pointer);
-  if (segments.length === 0) return value;
-
-  function update(obj: unknown, idx: number): unknown {
-    if (idx === segments.length) return value;
-    const seg = segments[idx];
-    if (Array.isArray(obj)) {
-      const arr = [...obj];
-      arr[seg as number] = update(arr[seg as number], idx + 1);
-      return arr;
-    }
-    if (isRecord(obj)) {
-      return { ...obj, [seg as string]: update(obj[seg as string], idx + 1) };
-    }
-    return obj;
-  }
-
-  return update(root, 0);
-}
-
 /**
  * The object a pointer-scoped form edits, or null when there is nothing to edit.
  *
@@ -129,7 +114,7 @@ export function pointerTarget(
   fields: Record<string, unknown>,
   pointer: string,
 ): Record<string, unknown> | null {
-  const target = getByPointer(fields, pointer);
+  const target = readPointer(fields, pointer);
   if (target === undefined) return {};
   return isRecord(target) ? target : null;
 }
@@ -140,11 +125,24 @@ export function DetailPanel({
   canvasResource,
   viewData,
   registry,
+  readOnly,
+  onSourceEdit,
+  onExtractInline,
+  onInlineReference,
   onUpdateResource,
   onSelectResource,
   onSelect,
   onCreateAndLink,
 }: DetailPanelProps) {
+  // Sticky across selections and resources: the choice is about how the user
+  // wants to work, not about what is selected, so re-deriving it per selection
+  // would put them back in the form on every click.
+  const [mode, setMode] = useState<DetailMode>("form");
+  /** The inline resource whose extraction is being named — its kind, and the
+   *  pointer it is written at — or null. Addressed by pointer rather than by
+   *  the open selection, because the move is now offered from the SLOT as well
+   *  as from inside the declaration, and those are different pointers. */
+  const [extracting, setExtracting] = useState<{ kind: string; pointer: string } | null>(null);
   const resource = useMemo(() => {
     if (!selectedResource || !viewData) return null;
     return (
@@ -212,6 +210,7 @@ export function DetailPanel({
         pointer: "",
         schema: moduleRootFormSchema(resource.kind === APPLICATION_KIND_ID),
         values: resource.fields,
+        inlineKind: undefined as string | undefined,
       };
     }
 
@@ -226,17 +225,48 @@ export function DetailPanel({
     const values = pointerTarget(resource.fields, selection.pointer);
     if (!values) return null;
 
-    return { ...selection, values };
-  }, [resource, selection, echoesCanvas]);
+    // A pointer landing on a resource declared INLINE is a pointer at a
+    // resource, not at a slot: it is authored against its own kind's schema,
+    // not against the schema of the field holding it. Resolved here rather
+    // than by whoever built the selection so every route in — a slot's chip
+    // today, the canvas once it draws inline children — agrees, and so the
+    // schema is the kind's current one rather than one captured at click time.
+    const inlineKind = inlineResourceKind(values);
+    const inlineSchema = inlineKind ? viewData?.kinds.get(inlineKind)?.schema : undefined;
+    if (inlineSchema) {
+      return { ...selection, schema: inlineSchema, values, inlineKind };
+    }
+
+    return { ...selection, values, inlineKind: undefined as string | undefined };
+  }, [resource, selection, echoesCanvas, viewData]);
 
   const rootCelEval: CelEvalMode | null = useMemo(() => {
     if (!resource || !viewData) return null;
     // A selection may pin its own CEL mode (an edge's `inputs` form runs at
-    // runtime); otherwise Providers evaluate at compile time, others not at all.
+    // runtime).
     if (selection?.celEval) return selection.celEval;
+
+    // A resource declared inline is authored against its OWN kind, and the
+    // analyzer's eval walk stops at that boundary too — the expressions inside
+    // it belong to the nested kind, so the host's regions do not reach them.
+    const inlineKind = selectionContext?.inlineKind;
+    if (inlineKind) {
+      return getCelEvalMode(viewData.kinds.get(inlineKind)?.schema ?? {}, null);
+    }
+
+    // What the form would have inherited had it started at the resource root
+    // rather than at the selection — an ancestor's region does not appear in a
+    // pointer-scoped subtree.
+    const atPointer = celEvalModeAtPointer(
+      viewData.kinds.get(resource.kind)?.schema,
+      selectionContext?.pointer ?? "",
+    );
+    if (atPointer) return atPointer;
+
+    // Otherwise Providers evaluate at compile time, others not at all.
     const capability = viewData.kinds.get(resource.kind)?.capability;
     return capability === "Telo.Provider" ? "compile" : null;
-  }, [resource, viewData, selection]);
+  }, [resource, viewData, selection, selectionContext]);
 
   const [pointerFields, setPointerFields] = useState<Record<string, unknown>>({});
   const [hasFormErrors, setHasFormErrors] = useState(false);
@@ -324,7 +354,7 @@ export function DetailPanel({
       Object.entries(existing).filter(([k]) => !editableKeys.has(k)),
     );
     const updated = { ...preserved, ...sanitizeFields(values) };
-    return setByPointer(res.fields, ctx.pointer, updated) as Record<string, unknown>;
+    return writePointer(res.fields, ctx.pointer, updated) as Record<string, unknown>;
   }
 
   function commitFields(
@@ -381,7 +411,12 @@ export function DetailPanel({
   // rather than a header over a hint — the canvas view carries its own heading
   // and the breadcrumb says where you are, so an empty panel would cost the
   // canvas a third of the width to repeat both.
-  if (echoesCanvas && !hasSelection) return null;
+  //
+  // The YAML pane is the exception, and for the rule's own reason: source is
+  // not something the canvas draws, so showing it is not duplication. Hiding it
+  // here would also make the pane unreachable on the most common route to a
+  // resource — focusing it on the canvas.
+  if (echoesCanvas && !hasSelection && mode !== "yaml") return null;
 
   const resourceKind = viewData?.kinds.get(resource.kind);
   const resourceSchema = resourceKind?.schema;
@@ -424,13 +459,64 @@ export function DetailPanel({
               ? `${resource.name} • ${selectionContext.pointer}`
               : resource.name}
           </span>
+          {/* The kind being EDITED. For an inline declaration that is its own
+              kind, not the host's — the host is already named to the left. */}
           <span className="shrink-0 rounded bg-zinc-100 px-1 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-            {resource.kind}
+            {selectionContext?.inlineKind ?? resource.kind}
           </span>
+          {selectionContext?.inlineKind && !readOnly && (
+            <button
+              type="button"
+              onClick={() =>
+                selectionContext.inlineKind &&
+                setExtracting({
+                  kind: selectionContext.inlineKind,
+                  pointer: selectionContext.pointer,
+                })
+              }
+              title="Move this declaration to its own resource and reference it here"
+              className="flex shrink-0 items-center gap-1 rounded border border-zinc-200 px-1.5 py-0.5 text-xs text-zinc-600 hover:border-amber-300 hover:text-amber-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-amber-700 dark:hover:text-amber-300"
+            >
+              <FileOutput className="size-3" />
+              Extract
+            </button>
+          )}
           <DiagnosticBadge summary={detailSummary} size="md" stopPropagation={false} />
         </div>
+        <Tabs
+          value={mode}
+          onValueChange={(v) => setMode(v as DetailMode)}
+          className="ml-2 shrink-0"
+        >
+          <TabsList>
+            <TabsTrigger value="form" className="px-2 text-xs">
+              Form
+            </TabsTrigger>
+            <TabsTrigger value="yaml" className="px-2 text-xs">
+              YAML
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
+      {mode === "yaml" ? (
+        <div className="min-h-0 flex-1">
+          <DetailYamlPane
+            sourceFiles={viewData?.sourceFiles ?? []}
+            resource={{ kind: resource.kind, name: resource.name }}
+            // The selection's own path when there is one, the whole resource
+            // document otherwise — the same scope the form is showing.
+            pointer={selectionContext?.pointer ?? ""}
+            readOnly={readOnly}
+            onSourceEdit={onSourceEdit}
+            // The whole resource's, unfiltered: the pane holds a span of the
+            // file and decides for itself which of them fall inside it — the
+            // form's per-field matching is by PATH, which says nothing about
+            // where a diagnostic lands in the text.
+            diagnostics={detailSummary?.diagnostics ?? []}
+          />
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto">
         {selectionContext ? (
           <div className="flex flex-col gap-3 p-3">
@@ -449,6 +535,41 @@ export function DetailPanel({
               resolvedResources={resolvedResources}
               rootCelEval={rootCelEval}
               onSelectResource={onSelectResource}
+              onOpenInline={(fieldPath, kind) =>
+                onSelect({
+                  resource: { kind: resource.kind, name: resource.name },
+                  // The form's path is relative to the form's own scope, so a
+                  // drill-in from a scoped form composes with that scope.
+                  pointer: fieldPointer(selectionContext.pointer, fieldPath),
+                  // Replaced by the inline kind's own schema when the selection
+                  // resolves; carried so a selection is never schema-less.
+                  schema: viewData?.kinds.get(kind)?.schema ?? {},
+                })
+              }
+              // Both directions of the same move, offered at the slot so the
+              // parent's form is enough to make it — reaching either from
+              // inside the declaration costs a navigation each way.
+              onMoveDeclaration={
+                readOnly
+                  ? undefined
+                  : (fieldPath, direction) => {
+                      const pointer = fieldPointer(selectionContext.pointer, fieldPath);
+                      if (direction === "inline") {
+                        onInlineReference({ kind: resource.kind, name: resource.name }, pointer);
+                        return;
+                      }
+                      // Read from the form's own values: they are what the slot
+                      // is showing, and what a commit is about to write.
+                      const kind = inlineResourceKind(
+                        readPointer(pointerFields, fieldPointer("", fieldPath)),
+                      );
+                      if (kind) setExtracting({ kind, pointer });
+                    }
+              }
+              celTarget={{
+                resource: { kind: resource.kind, name: resource.name },
+                pointer: selectionContext.pointer,
+              }}
               typeKinds={typeKinds}
               registry={registry}
               flat={isModuleRootKind(resource.kind)}
@@ -477,6 +598,29 @@ export function DetailPanel({
           />
         )}
       </div>
+      )}
+
+      {extracting && (
+        <ExtractInlineDialog
+          open
+          onOpenChange={(open) => !open && setExtracting(null)}
+          kind={extracting.kind}
+          suggestion={suggestedResourceName(
+            extracting.kind,
+            viewData?.kinds.get(extracting.kind)?.capability,
+            resolvedResources.map((r) => r.name),
+          )}
+          taken={resolvedResources.map((r) => r.name)}
+          onExtract={(name) => {
+            setExtracting(null);
+            onExtractInline(
+              { kind: resource.kind, name: resource.name },
+              extracting.pointer,
+              name,
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

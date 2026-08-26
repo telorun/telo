@@ -26,6 +26,20 @@ export function parseConcretePath(path: string): PathSegment[] {
   });
 }
 
+/** Concrete path for a JSON pointer (`/routes/2/handler` → `routes[2].handler`)
+ *  — the inverse of {@link concretePathToPointer}, and the spelling the analyzer
+ *  addresses a site by (its eval paths, its CEL scope query). */
+export function pointerToConcretePath(pointer: string): string {
+  let out = "";
+  for (const raw of pointer.replace(/^\//, "").split("/")) {
+    if (raw === "") continue;
+    const segment = raw.replace(/~1/g, "/").replace(/~0/g, "~");
+    if (/^\d+$/.test(segment)) out += `[${segment}]`;
+    else out += out === "" ? segment : `.${segment}`;
+  }
+  return out;
+}
+
 /** JSON pointer for a concrete path (`routes[2].handler` → `/routes/2/handler`). */
 export function concretePathToPointer(path: string): string {
   const out: string[] = [];

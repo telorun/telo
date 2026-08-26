@@ -1,5 +1,16 @@
 import { isSchemaFragment, manifestFragmentOf, readRefSlot } from "@telorun/analyzer";
+import { pointerToConcretePath } from "../../lib/concrete-path";
+import { fieldPointer } from "../../lib/json-pointer";
 import { ArrayObjectField } from "./array-object-field";
+import { cn } from "@/lib/utils";
+import { severityFieldClass } from "../diagnostics/severity";
+import {
+  diagnosticsAt,
+  diagnosticsUnder,
+  FieldDiagnostics,
+  worstUnder,
+  type FieldDiagnostic,
+} from "./field-diagnostics";
 import { offeredValueTags } from "./value-tag";
 import { ValueTagField } from "./value-tag-field";
 import { getCelEvalMode, type CelEvalMode } from "./cel-utils";
@@ -13,7 +24,12 @@ import { ReferenceSelectField } from "./reference-select-field";
 import { ScalarField } from "./scalar-field";
 import { TypeField } from "./type-field";
 import { isValueOrReferenceSlot, ValueOrReferenceField } from "./value-or-reference-field";
-import type { JsonSchemaProperty, ResolvedResourceOption, TypeKindOption } from "./types";
+import type {
+  CelFieldTarget,
+  JsonSchemaProperty,
+  ResolvedResourceOption,
+  TypeKindOption,
+} from "./types";
 import { UnsupportedField } from "./unsupported-field";
 
 /** A slot the picker can actually offer candidates for. Gates on the accepted
@@ -27,7 +43,20 @@ function isPickableRefSlot(prop: JsonSchemaProperty): boolean {
 
 interface FieldControlProps {
   rootFieldName: string;
+  /**
+   * This field's render identity — the key errors are tracked under and rows
+   * are reconciled by. NOT an address: a map's rows keep a stable id so that
+   * renaming a key does not remount the row mid-keystroke.
+   */
   fieldPath: string;
+  /**
+   * Where this field sits in the MANIFEST, which is a different question and
+   * has a different answer inside a map. Everything pointing back at the
+   * manifest uses it — which diagnostic belongs here, what a CEL body's scope
+   * is resolved for, what a drill-in selects. Defaults to `fieldPath`, which is
+   * correct everywhere the two coincide.
+   */
+  addressPath?: string;
   prop: JsonSchemaProperty;
   value: unknown;
   onValueChange: (next: unknown) => void;
@@ -47,6 +76,19 @@ interface FieldControlProps {
   rootCelEval?: CelEvalMode | null;
   /** Propagated to `ReferenceSelectField` so ref chips can open the peek panel. */
   onSelectResource?: (kind: string, name: string) => void;
+  /** Opens a resource declared inline at a ref slot, addressed by the slot's
+   *  field path — it has no name to be reached by. */
+  onOpenInline?: (fieldPath: string, kind: string) => void;
+  /** Moves the declaration at a ref slot across the named/inline boundary.
+   *  Threaded beside `onOpenInline` — both address a slot by its field path. */
+  onMoveDeclaration?: (fieldPath: string, direction: "extract" | "inline") => void;
+  /** The site the FORM is rendering; this field's own address is composed from
+   *  it and `fieldPath`. */
+  celTarget?: CelFieldTarget;
+  /** Every diagnostic in the form's scope, addressed by path. Passed down whole
+   *  rather than narrowed per level: `fieldPath` already identifies the node,
+   *  so each one matches on its own address. */
+  fieldDiagnostics?: FieldDiagnostic[];
   /** Imported `Telo.Type` kinds offered for inline type fields. */
   typeKinds?: TypeKindOption[];
   /** Narrows `x-telo-ref` candidates by kind satisfaction (abstract refs). */
@@ -116,6 +158,7 @@ export function ownsDescription(prop: JsonSchemaProperty): boolean {
 export function FieldControl({
   rootFieldName,
   fieldPath,
+  addressPath,
   prop,
   value,
   onValueChange,
@@ -124,6 +167,10 @@ export function FieldControl({
   resolvedResources,
   rootCelEval,
   onSelectResource,
+  onOpenInline,
+  onMoveDeclaration,
+  celTarget,
+  fieldDiagnostics = [],
   typeKinds,
   registry,
   label,
@@ -131,8 +178,15 @@ export function FieldControl({
   flat,
 }: FieldControlProps) {
   const kind = inferType(prop);
+  const address = addressPath ?? fieldPath;
   const onBlur = () => onFieldBlur?.(rootFieldName);
   const evalMode = getCelEvalMode(prop, rootCelEval);
+
+  // Set by the branches that render child FieldControls of their own. Assigned
+  // during render and read straight after, so it is a fact about this render
+  // rather than state — which is what lets the branch decide it instead of a
+  // second copy of the branch conditions below.
+  let descends = false;
 
   function renderInner() {
     // A slot pointing at the shared JSON Schema fragment holds author-written
@@ -196,11 +250,18 @@ export function FieldControl({
           resolvedResources={resolvedResources}
           registry={registry}
           onSelectResource={onSelectResource}
+          // The slot's own path is what addresses a resource declared in it —
+          // an inline declaration has no name to be reached by.
+          onOpenInline={onOpenInline ? (kind) => onOpenInline(address, kind) : undefined}
+          onMoveDeclaration={
+            onMoveDeclaration ? (direction) => onMoveDeclaration(address, direction) : undefined
+          }
         />
       );
     }
 
     if (kind === "object" && isOneOfVariantSchema(prop)) {
+      descends = true;
       return (
         <OneOfVariantField
           rootFieldName={rootFieldName}
@@ -213,6 +274,11 @@ export function FieldControl({
           resolvedResources={resolvedResources}
           rootCelEval={evalMode}
           onSelectResource={onSelectResource}
+          onOpenInline={onOpenInline}
+          onMoveDeclaration={onMoveDeclaration}
+          celTarget={celTarget}
+          fieldDiagnostics={fieldDiagnostics}
+          addressPath={address}
           typeKinds={typeKinds}
           registry={registry}
         />
@@ -220,6 +286,7 @@ export function FieldControl({
     }
 
     if (kind === "object" && prop.properties) {
+      descends = true;
       return (
         <ObjectField
           rootFieldName={rootFieldName}
@@ -232,6 +299,11 @@ export function FieldControl({
           resolvedResources={resolvedResources}
           rootCelEval={evalMode}
           onSelectResource={onSelectResource}
+          onOpenInline={onOpenInline}
+          onMoveDeclaration={onMoveDeclaration}
+          celTarget={celTarget}
+          fieldDiagnostics={fieldDiagnostics}
+          addressPath={address}
           typeKinds={typeKinds}
           registry={registry}
           label={label}
@@ -242,6 +314,7 @@ export function FieldControl({
     }
 
     if (kind === "array" && prop.items?.type === "object" && prop.items.properties) {
+      descends = true;
       return (
         <ArrayObjectField
           rootFieldName={rootFieldName}
@@ -254,6 +327,11 @@ export function FieldControl({
           resolvedResources={resolvedResources}
           rootCelEval={evalMode}
           onSelectResource={onSelectResource}
+          onOpenInline={onOpenInline}
+          onMoveDeclaration={onMoveDeclaration}
+          celTarget={celTarget}
+          fieldDiagnostics={fieldDiagnostics}
+          addressPath={address}
           typeKinds={typeKinds}
           registry={registry}
         />
@@ -261,6 +339,7 @@ export function FieldControl({
     }
 
     if (kind === "object" && isMapValueSchema(prop.additionalProperties)) {
+      descends = true;
       return (
         <MapField
           rootFieldName={rootFieldName}
@@ -273,6 +352,11 @@ export function FieldControl({
           resolvedResources={resolvedResources}
           rootCelEval={evalMode}
           onSelectResource={onSelectResource}
+          onOpenInline={onOpenInline}
+          onMoveDeclaration={onMoveDeclaration}
+          celTarget={celTarget}
+          fieldDiagnostics={fieldDiagnostics}
+          addressPath={address}
           typeKinds={typeKinds}
           registry={registry}
           label={label}
@@ -287,6 +371,7 @@ export function FieldControl({
     }
 
     if (kind === "array" && prop.items && !["object", "array"].includes(inferType(prop.items))) {
+      descends = true;
       return (
         <ScalarArrayField
           rootFieldName={rootFieldName}
@@ -299,6 +384,11 @@ export function FieldControl({
           resolvedResources={resolvedResources}
           rootCelEval={evalMode}
           onSelectResource={onSelectResource}
+          onOpenInline={onOpenInline}
+          onMoveDeclaration={onMoveDeclaration}
+          celTarget={celTarget}
+          fieldDiagnostics={fieldDiagnostics}
+          addressPath={address}
           typeKinds={typeKinds}
           registry={registry}
         />
@@ -321,6 +411,14 @@ export function FieldControl({
   }
 
   const inner = renderInner();
+
+  // A container's children carry their own messages, so it says only what names
+  // it exactly; a leaf is where the path ends as far as this form renders, so it
+  // claims everything below it — which is what keeps a diagnostic pointing into
+  // a JSON blob or an un-rendered key visible instead of vanishing.
+  const own = descends
+    ? diagnosticsAt(fieldDiagnostics, address)
+    : diagnosticsUnder(fieldDiagnostics, address);
   // Offered tags, not the eval mode, decide whether the field gets a picker: an
   // `!include-bytes` slot need not be CEL-eligible at all, and gating on eval
   // would leave a byte slot with no way to author it.
@@ -332,6 +430,16 @@ export function FieldControl({
       value={value}
       onValueChange={onValueChange}
       onBlur={onBlur}
+      // This field's own address: the form's scope plus where the field sits in
+      // it. Composed here because `fieldPath` is this component's to know.
+      celTarget={
+        celTarget
+          ? {
+              ...celTarget,
+              path: pointerToConcretePath(fieldPointer(celTarget.pointer, address)),
+            }
+          : undefined
+      }
     >
       {inner}
     </ValueTagField>
@@ -341,14 +449,25 @@ export function FieldControl({
 
   // Self-headed fields render their own description inside the collapsible
   // trigger; everything else gets a description row below.
-  if (ownsDescription(prop) || typeof prop.description !== "string") {
-    return wrapped;
-  }
+  const showDescription = !ownsDescription(prop) && typeof prop.description === "string";
+  if (!showDescription && own.length === 0) return wrapped;
+
+  // Colour the control itself, and only for a LEAF: a container's `own` holds
+  // just what names it exactly, and a descendant selector there would paint
+  // every input inside it.
+  const worst = own.length ? worstUnder(own, address) : null;
+  const tint = !descends && worst != null ? severityFieldClass(worst) : null;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className={cn("flex flex-col gap-1", tint)}>
       {wrapped}
-      <span className="text-xs text-zinc-400 dark:text-zinc-500">{prop.description}</span>
+      {/* Before the description: what is WRONG with the value outranks what the
+          field is for, and the help text is long enough to push a message out
+          of sight. */}
+      <FieldDiagnostics diagnostics={own} />
+      {showDescription && (
+        <span className="text-xs text-zinc-400 dark:text-zinc-500">{prop.description}</span>
+      )}
     </div>
   );
 }

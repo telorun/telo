@@ -55,7 +55,12 @@ export function ScalarField({ prop, value, kind, onValueChange, onBlur }: Scalar
           disabled={readOnly}
           className="accent-zinc-700 disabled:cursor-not-allowed dark:accent-zinc-300"
         />
-        Enabled
+        {/* The VALUE, not a guess at what the field means. "Enabled" read as a
+            second label beside the field's own, and was wrong wherever the
+            field is not a feature flag — a `when:` predicate above all. */}
+        <span className="font-mono text-xs text-zinc-500 dark:text-zinc-400">
+          {String(Boolean(value))}
+        </span>
       </label>
     );
   }

@@ -47,24 +47,34 @@ export function buildTypedCelEnvironment(
       (env as any).registerType(brand, { fields: {} });
     }
 
-    // Build typed ObjectSchema from manifest.variables if it looks like a schema map
-    const vars = (manifest as Record<string, unknown>).variables;
-    if (vars !== null && typeof vars === "object" && !Array.isArray(vars)) {
-      const entries = Object.entries(vars as Record<string, unknown>).filter(
-        ([, v]) => v !== null && typeof v === "object" && !Array.isArray(v),
-      );
-      if (entries.length > 0) {
-        const schema: Record<string, string> = {};
-        for (const [k, v] of entries) {
-          schema[k] = jsonSchemaToCelType(v as Record<string, any>);
-        }
-        (env as any).registerVariable({ name: "variables", schema });
-      } else {
-        env.registerVariable("variables", "map");
-      }
-    } else {
-      env.registerVariable("variables", "map");
-    }
+    // `variables` / `secrets`: the DECLARING module's blocks, which is the
+    // contract the resource's CEL is evaluated against at runtime. Read the
+    // same three ways `ports` and `module` are, and for the same reason — a
+    // resource doc does not carry them, so typing from `manifest` alone left
+    // every ordinary resource with an open `variables` and no check at all,
+    // while `ports.<typo>` one line away was an error.
+    //
+    // Order matters: a module-identity doc analyzing itself carries its own
+    // block; a resource forwarded from an imported library carries its
+    // library's as `metadata.moduleGlobals`, which must win over the consuming
+    // application's; everything else is the entry module's own doc.
+    const moduleGlobals = (manifest.metadata as Record<string, any> | undefined)?.moduleGlobals as
+      | Record<string, unknown>
+      | undefined;
+    // A KIND document is the exception, and it is not a detail: the CEL inside
+    // a `Telo.Definition`'s `schema:` — an `examples:` entry, a `description`
+    // showing `${{ secrets.API_KEY }}` — illustrates what a CONSUMER writes, in
+    // the consumer's scope. Closing those over the declaring module's blocks
+    // reported an error against a name the module never meant to declare, and
+    // one nobody could fix without deleting the example.
+    const root = (
+      isKindDocument(manifest) ? undefined : (rootModuleManifest as Record<string, unknown>)
+    ) as Record<string, unknown> | undefined;
+    registerConfigNamespace(
+      env,
+      (manifest as Record<string, unknown>).variables ?? moduleGlobals?.variables ?? root?.variables,
+      "variables",
+    );
 
     // `ports` namespace: each entry types as the brand its `protocol` selects
     // (tcp → TcpPort, udp → UdpPort), so `${{ ports.http }}` carries a nominal
@@ -87,7 +97,11 @@ export function buildTypedCelEnvironment(
       env.registerVariable("ports", "map");
     }
 
-    env.registerVariable("secrets", "map");
+    registerConfigNamespace(
+      env,
+      (manifest as Record<string, unknown>).secrets ?? moduleGlobals?.secrets ?? root?.secrets,
+      "secrets",
+    );
     env.registerVariable("resources", "map");
 
     // `module` — the declaring module's own `metadata`, so a manifest reads its
@@ -130,6 +144,21 @@ export function buildTypedCelEnvironment(
   } catch {
     return baseEnv.clone();
   }
+}
+
+/**
+ * A kind document — whose CEL is written for whoever instantiates the kind, not
+ * evaluated in the declaring module's own scope.
+ *
+ * Its `examples:` show a consumer's route reading `request` and `result`, its
+ * `description`s show `${{ secrets.API_KEY }}`, and a rule condition reads the
+ * `self` / `referrer` its own evaluator binds. None of those names are in scope
+ * where they are WRITTEN, and all of them are correct where they are READ — so
+ * every check that asks "is this name in scope here" has to stand down on these
+ * documents, or it reports errors nobody can fix without deleting the example.
+ */
+export function isKindDocument(manifest: ResourceManifest): boolean {
+  return manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract";
 }
 
 /** Register a `variables`/`secrets` namespace typed from a module doc's schema map

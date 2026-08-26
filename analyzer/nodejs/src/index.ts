@@ -24,7 +24,16 @@ export {
     type ParsedExportEntry,
     type ReExportSpec,
 } from "./flatten-for-analyzer.js";
-export { buildEvalPaths, evalPathCovers } from "./eval-paths.js";
+export {
+  buildEvalPaths,
+  celEvalModeAt,
+  celEvalSites,
+  declaresCelRegion,
+  evalPathCovers,
+  mergeCelEvalSites,
+  NO_CEL_EVAL_SITES,
+} from "./eval-paths.js";
+export type { CelEvalSites } from "./eval-paths.js";
 export {
   BINDINGS_ANNOTATION,
   bindingContextProperties,

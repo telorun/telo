@@ -31,6 +31,12 @@ export interface ValueTagOption {
   editor: "expression" | "path";
   /** One line on what the tag does, shown beside the picker. */
   hint: string;
+  /** Only meaningful where the slot is EVALUATED — the tag decides what
+   *  evaluation does with the value (`!cel` supplies the expression, `!literal`
+   *  opts out of interpolation), so outside such a field it says nothing the
+   *  plain value does not. An embed is the other case: it supplies a value, and
+   *  evaluation was never involved. */
+  requiresEvalSlot?: boolean;
 }
 
 /**
@@ -47,11 +53,13 @@ const AUTHORABLE: Record<string, Omit<ValueTagOption, "id">> = {
     label: "!cel",
     editor: "expression",
     hint: "A CEL expression, evaluated against this field's scope.",
+    requiresEvalSlot: true,
   },
   literal: {
     label: "!literal",
     editor: "expression",
     hint: "Opaque text. `${{ }}` inside it is not interpolated.",
+    requiresEvalSlot: true,
   },
   "include-text": {
     label: "!include-text",
@@ -70,15 +78,20 @@ const AUTHORABLE: Record<string, Omit<ValueTagOption, "id">> = {
  *
  * Two rules, both read off the engine rather than off its name:
  *
- *  - A tag that declares a produced type is offered where that type satisfies
- *    the slot. This is what puts `!include-bytes` on a `Telo.Bytes` slot and
- *    keeps it off a string one — the property the produced-type seam exists to
- *    give, checked with the analyzer's own comparator so the editor and
- *    `telo check` agree about what fits.
- *  - A tag that declares none produces whatever the SLOT says, so it is offered
- *    exactly where the slot is CEL-eligible. Outside such a field the value
- *    would never be evaluated, which the analyzer reports as
- *    `CEL_IN_NON_EVAL_FIELD`.
+ *  - CAN its value satisfy the slot? A tag that declares a produced type is
+ *    offered only where that type fits. This is what puts `!include-bytes` on a
+ *    `Telo.Bytes` slot and keeps it off a string one — and what keeps
+ *    `!literal`, which is always text, off a boolean predicate. Checked with
+ *    the analyzer's own comparator so the editor and `telo check` agree about
+ *    what fits. A tag declaring no produced type (`!cel`) produces whatever the
+ *    slot says and constrains nothing here.
+ *  - Is it MEANINGFUL here? A tag that decides what evaluation does with the
+ *    value needs a slot that is evaluated at all: outside one, `!cel` is a
+ *    value the runtime never evaluates (`CEL_IN_NON_EVAL_FIELD`), and
+ *    `!literal` suppresses an interpolation that was never going to happen.
+ *
+ * Independent questions, so both are asked of every tag — collapsing them into
+ * one either/or is what made a produced type imply the second answer.
  */
 export function offeredValueTags(
   prop: JsonSchemaProperty,
@@ -89,8 +102,9 @@ export function offeredValueTags(
     const entry = AUTHORABLE[engine.name];
     if (!entry) continue;
     const produced = producedTypeOf(engine.name);
-    const offered = produced ? producedFits(produced, prop) : evalMode !== null;
-    if (offered) out.push({ id: engine.name, ...entry });
+    const fitsSlot = produced ? producedFits(produced, prop) : true;
+    const meaningful = entry.requiresEvalSlot ? evalMode !== null : true;
+    if (fitsSlot && meaningful) out.push({ id: engine.name, ...entry });
   }
   return out;
 }

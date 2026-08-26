@@ -1,4 +1,10 @@
 import { makeTaggedSentinel } from "@telorun/templating";
+import { suggestedResourceName } from "../resource-naming";
+import { planInlineExtraction, planReferenceInlining } from "../inline-extraction";
+import { concretePathToPointer } from "../lib/concrete-path";
+import { readPointer } from "../lib/json-pointer";
+import { parseRefValue } from "./resource-schema-form/ref-candidates";
+import { ReferencesBlockedDialog } from "./views/topology/ReferencesBlockedDialog";
 import { File as FileIcon, Lock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isModuleRootKind, moduleRootResource } from "../application-adapter";
@@ -9,7 +15,7 @@ import { useEditorPersistence } from "../hooks/useEditorPersistence";
 import { useImportOps } from "../hooks/useImportOps";
 import { useWorkspaceLifecycle } from "../hooks/useWorkspaceLifecycle";
 import { INITIAL_STATE, pickInitialActiveModule } from "../editor-state";
-import { findResourceReferences } from "../resource-references";
+import { findResourceReferences, type ResourceReference } from "../resource-references";
 import {
   createRegistryAdapters,
   createResourceViaAst,
@@ -35,7 +41,7 @@ import {
 } from "../loader";
 import { pathBasename, pathDirname, pathJoin } from "../loader/paths";
 import { moduleParseError, parseModuleDocument } from "../yaml-document";
-import type { CanvasViewport, ModuleDocument } from "../model";
+import type { CanvasViewport, ModuleDocument, ParsedManifest } from "../model";
 import type {
   EditorState,
   ModuleKind,
@@ -165,10 +171,19 @@ function activateModuleState(s: EditorState, filePath: string): EditorState {
  *  Only the first character moves, which is also all the rule checks: the rest
  *  may be an acronym (`SQL`, `AI`) that lowercasing whole would mangle.
  */
-function resourceNameBase(kind: string, capability: string | undefined): string {
-  const kindName = kind.includes(".") ? kind.slice(kind.lastIndexOf(".") + 1) : kind;
-  if (capability === "Telo.Type") return kindName;
-  return kindName.charAt(0).toLowerCase() + kindName.slice(1);
+/** Why a resource cannot be folded into the slot naming it, when the reason is
+ *  not another reference. Null when there is none. */
+function inlineRefusal(manifest: ParsedManifest, name: string): string | null {
+  // A library's exported instance is public surface: importers name it, and
+  // this module cannot see whether any of them does.
+  const exports = moduleRootResource(manifest).fields.exports as
+    | { resources?: unknown }
+    | undefined;
+  const exported = Array.isArray(exports?.resources) && exports.resources.includes(name);
+  if (exported) {
+    return `'${name}' is listed in exports.resources, so importers reach it by name. Remove the export first — an inline declaration has no name to be exported under.`;
+  }
+  return null;
 }
 
 export function Editor() {
@@ -194,6 +209,14 @@ export function Editor() {
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [createModuleKind, setCreateModuleKind] = useState<ModuleKind | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
+  /** Why an inlining was refused — checked on the click rather than to grey a
+   *  button out, since the answer is a walk of the whole module and the reason
+   *  has to be shown either way. */
+  const [inlineBlocked, setInlineBlocked] = useState<{
+    name: string;
+    references: ResourceReference[];
+    reason?: string;
+  } | null>(null);
 
   // Workspace bootstrap (open / restore / remote-import), the adapter refs every
   // other handler reads, the explorer file tree, and the post-file-op reload.
@@ -1277,12 +1300,11 @@ export function Editor() {
     manifest: { resources: { name: string }[] } | undefined,
     kind: string,
   ): string {
-    const base = resourceNameBase(kind, viewData?.kinds.get(kind)?.capability);
-    const taken = new Set((manifest?.resources ?? []).map((r) => r.name));
-    if (!taken.has(base)) return base;
-    let i = 2;
-    while (taken.has(`${base}${i}`)) i++;
-    return `${base}${i}`;
+    return suggestedResourceName(
+      kind,
+      viewData?.kinds.get(kind)?.capability,
+      (manifest?.resources ?? []).map((r) => r.name),
+    );
   }
 
   async function handleWriteRef(writes: RefWrite[]) {
@@ -1330,6 +1352,149 @@ export function Editor() {
     // Land in the new resource's own form — it was created empty, and its
     // required fields are the reason the slot was unfillable a moment ago.
     handleSelectResource(createKind, name);
+  }
+
+  /**
+   * Moves a resource declared inline at `pointer` into its own document, and
+   * leaves a reference to it in the slot.
+   *
+   * ONE workspace mutation, for the reason create-and-link is one: two would
+   * race, and a half-applied extraction is either a resource declared twice or
+   * a slot pointing at nothing. `kind` moves to the document's own `kind:` and
+   * `metadata` is replaced by the new name, so neither is carried into the
+   * config; every other key travels verbatim, nested inline declarations
+   * included — extracting one level does not flatten what is inside it.
+   */
+  async function handleExtractInline(
+    host: { kind: string; name: string },
+    pointer: string,
+    name: string,
+  ) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const modulePath = state.activeModulePath;
+    const manifest = state.workspace.modules.get(modulePath);
+    if (!manifest) return;
+    const prev =
+      manifest.resources.find((r) => r.kind === host.kind && r.name === host.name) ??
+      (isModuleRootKind(host.kind) ? moduleRootResource(manifest) : undefined);
+    if (!prev) return;
+
+    const plan = planInlineExtraction(prev.fields, pointer, name);
+    if (!plan) return;
+
+    let ws = createResourceViaAst(state.workspace, modulePath, plan.kind, name, plan.config);
+    ws = setResourceFields(ws, modulePath, host.kind, host.name, prev.fields, plan.hostFields);
+    const persisted = await persistModule(ws, modulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
+    // Land in the extracted resource: it is what the user just named, and the
+    // slot they were in now says only that it points here.
+    handleSelectResource(plan.kind, name);
+  }
+
+  /**
+   * Moves the resource referenced at `pointer` back into that slot, and removes
+   * the document it was declared in.
+   *
+   * The inverse of {@link handleExtractInline}, refused unless the slot is the
+   * ONLY place the resource is named: a declaration lives where it is written,
+   * so a second reference has nowhere to point once the document is gone. The
+   * refusal names what still holds it, which is what makes "clear them first"
+   * something the user can act on — the arrangement `handleDeleteResource`
+   * already takes, and for the same reason.
+   *
+   * `targets:` is a ref-only slot, so an entry there is a blocker rather than a
+   * host: inlining into one would produce a boot list the loader rejects.
+   */
+  async function handleInlineReference(host: { kind: string; name: string }, pointer: string) {
+    if (!state.workspace || !state.activeModulePath) return;
+    const modulePath = state.activeModulePath;
+    const manifest = state.workspace.modules.get(modulePath);
+    if (!manifest) return;
+    const prev =
+      manifest.resources.find((r) => r.kind === host.kind && r.name === host.name) ??
+      (isModuleRootKind(host.kind) ? moduleRootResource(manifest) : undefined);
+    if (!prev) return;
+
+    const name = parseRefValue(readPointer(prev.fields, pointer));
+    if (!name) return;
+    // The root's only ref slots are its boot `targets:`, which the loader
+    // accepts as references and nothing else — a declaration written there is
+    // not a shorter spelling of the same thing, it is a manifest that fails.
+    if (isModuleRootKind(host.kind)) {
+      setInlineBlocked({
+        name,
+        references: [],
+        reason: `Boot targets name a resource — a declaration cannot be written in one, so '${name}' has to stay a document of its own.`,
+      });
+      return;
+    }
+    const target = manifest.resources.find((r) => r.name === name);
+    // A reference across an import boundary names a resource this module does
+    // not declare, so there is no document to move.
+    if (!target) {
+      setInlineBlocked({
+        name,
+        references: [],
+        reason: `'${name}' is declared by an imported library, so this module has no document to move.`,
+      });
+      return;
+    }
+
+    // No registry means the reference set is UNKNOWN, not empty — the one input
+    // on which reading it as empty would delete a resource unchecked.
+    const registry = state.diagnostics.registryByFile.get(modulePath);
+    if (!registry) {
+      setInlineBlocked({ name, references: [] });
+      return;
+    }
+    const refusal = inlineRefusal(manifest, name);
+    if (refusal) {
+      setInlineBlocked({ name, references: [], reason: refusal });
+      return;
+    }
+    const elsewhere = findResourceReferences(registry, manifest, name).filter(
+      (ref) =>
+        !(
+          ref.via === "ref" &&
+          ref.source.kind === host.kind &&
+          ref.source.name === host.name &&
+          concretePathToPointer(ref.path) === pointer
+        ),
+    );
+    if (elsewhere.length > 0) {
+      setInlineBlocked({ name, references: elsewhere });
+      return;
+    }
+
+    const plan = planReferenceInlining(prev.fields, pointer, {
+      kind: target.kind,
+      name: target.name,
+      fields: target.fields,
+    });
+    if (!plan) return;
+
+    // ONE workspace mutation, as the extraction is: two would race, and a
+    // half-applied move is either a declaration in two places or a slot
+    // pointing at nothing.
+    let ws = setResourceFields(
+      state.workspace,
+      modulePath,
+      host.kind,
+      host.name,
+      prev.fields,
+      plan.hostFields,
+    );
+    ws = removeResourceViaAst(ws, modulePath, target.kind, target.name);
+    const persisted = await persistModule(ws, modulePath);
+    setState((s) => ({ ...s, workspace: persisted }));
+    // Land on the slot the declaration now lives in — the resource that held it
+    // no longer exists under its own name.
+    handleSelectResource(host.kind, host.name);
+    setSelection({
+      resource: host,
+      pointer,
+      schema: viewData?.kinds.get(target.kind)?.schema ?? {},
+    });
   }
 
   /** Reorders one item of a sequence field — its own AST op, since a field diff
@@ -1741,6 +1906,8 @@ export function Editor() {
                       onSelect: handleSelect,
                       onClearSelection: handleClearSelection,
                       onSourceEdit: handleSourceEdit,
+                      onExtractInline: handleExtractInline,
+                      onInlineReference: handleInlineReference,
                       deployment: {
                         activeEnvironment: readActiveEnvironment(
                           state.deploymentsByApp,
@@ -1943,6 +2110,14 @@ export function Editor() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ReferencesBlockedDialog
+        name={inlineBlocked?.name ?? null}
+        move="inline"
+        references={inlineBlocked?.references ?? []}
+        reason={inlineBlocked?.reason}
+        onOpenChange={(open) => !open && setInlineBlocked(null)}
+        onSelectResource={handleSelectResource}
+      />
       <ToastProvider>
         <Toast
           open={toast !== null}

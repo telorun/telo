@@ -21,6 +21,18 @@ export interface CompileEnv {
 export interface AnalyzeEnv {
   readonly celEnv: Environment;
   readonly contextSchema: Record<string, unknown> | null;
+  /**
+   * The caller vouches that `celEnv` declares EVERY name legal at this site, so
+   * a root identifier it does not know is undeclared rather than merely
+   * unmodelled.
+   *
+   * Opt-in because the environment is only that complete when someone built it
+   * for a specific site: the base environment declares CEL's own type names and
+   * nothing else, so checking roots against it would report `variables` itself
+   * as unknown. Absent means the check is skipped, which is what every caller
+   * did before it existed.
+   */
+  readonly rootsDeclared?: boolean;
 }
 
 /** A mechanically applicable repair for a diagnostic. `replacement` is the

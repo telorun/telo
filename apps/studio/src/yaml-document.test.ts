@@ -1,3 +1,4 @@
+import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import {
   addImportDocument,
@@ -395,6 +396,70 @@ describe("document-level helpers", () => {
       metadata: { name: "main" },
       port: 8080,
     });
+  });
+
+  it("a reference replaced by an inline declaration stops being a reference", () => {
+    // The two values are both `typeof "object"`, so the in-place fast path —
+    // which exists to keep a scalar's tag and comments across a value edit —
+    // swapped the declaration in UNDER the `!ref`, leaving a reference to
+    // `[object Object]`.
+    const text = [
+      "kind: Http.Server",
+      "metadata:",
+      "  name: api",
+      "mounts:",
+      "  - path: /x",
+      "    mount: !ref todos",
+      "",
+    ].join("\n");
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const prev = { mounts: [{ path: "/x", mount: makeTaggedSentinel("ref", "todos") }] };
+    const next = { mounts: [{ path: "/x", mount: { kind: "Crud.Resource", plural: "todos" } }] };
+    let out = docs;
+    for (const op of diffFields(prev, next, "")) out = applyEdit(out, 0, op);
+    const yaml = out[0].toString();
+    expect(yaml).not.toContain("!ref");
+    expect(out[0].toJSON()).toMatchObject({
+      mounts: [{ path: "/x", mount: { kind: "Crud.Resource", plural: "todos" } }],
+    });
+  });
+
+  it("an inline declaration replaced by a reference becomes one", () => {
+    const text = [
+      "kind: Http.Server",
+      "metadata:",
+      "  name: api",
+      "mounts:",
+      "  - path: /x",
+      "    mount:",
+      "      kind: Crud.Resource",
+      "      plural: todos",
+      "",
+    ].join("\n");
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const prev = { mounts: [{ path: "/x", mount: { kind: "Crud.Resource", plural: "todos" } }] };
+    const next = { mounts: [{ path: "/x", mount: makeTaggedSentinel("ref", "todos") }] };
+    let out = docs;
+    for (const op of diffFields(prev, next, "")) out = applyEdit(out, 0, op);
+    expect(out[0].toString()).toContain("mount: !ref todos");
+  });
+
+  it("addResourceDocument writes a tagged value as its tag, not as a mapping", () => {
+    // What an extraction carries out of an inline declaration: whatever the
+    // author wrote in it. A document built without the templating tags has no
+    // way to recognise a sentinel, so the reference landed in the file as the
+    // three keys of its JS shape and stopped being a reference.
+    const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
+    const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
+    const next = addResourceDocument(docs, "Crud.Resource", "todos", {
+      connection: makeTaggedSentinel("ref", "db"),
+      model: makeTaggedSentinel("include-text", "./model.json"),
+      plural: "todos",
+    });
+    const yaml = next[1].toString();
+    expect(yaml).toContain("connection: !ref db");
+    expect(yaml).toContain("model: !include-text ./model.json");
+    expect(yaml).not.toContain("__tagged");
   });
 
   it("removeResourceDocument removes the matching doc", () => {

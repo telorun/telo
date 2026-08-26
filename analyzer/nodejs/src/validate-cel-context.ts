@@ -6,8 +6,13 @@ import {
   parseCanonicalTypeSchemaId,
 } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
-import { isStepSlot } from "./step-slot.js";
 import { withRefSlotsAsReadings } from "./ref-slot-reading.js";
+// Where CEL is evaluated is one reader (`eval-paths.ts`), and the region half of
+// it moved there so the scope walk and the `x-telo-eval` walk answer the same
+// question in one place. Re-exported: this module is where every existing
+// consumer imports them from.
+export { extractCelRegionScopes, pathMatchesScope } from "./eval-paths.js";
+import { pathMatchesScope } from "./eval-paths.js";
 
 export interface ContextResolveOpts {
   /** When provided, used to resolve `x-telo-context-from-root` annotations against the
@@ -283,35 +288,6 @@ function collectionBindingWithheld(
 }
 
 /**
- * Returns true when a CEL expression path (from walkCelExpressions, e.g. "routes[0].inputs.q")
- * falls within the scope of a context (e.g. "$.routes[*].inputs").
- *
- * The scope is matched directly (no sibling sharing): a context at "$.routes[*].inputs" only
- * applies to expressions whose path starts with "routes[N].inputs", not to other sibling fields.
- */
-export function pathMatchesScope(exprPath: string, scope: string): boolean {
-  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
-  if (!stripped) return false;
-
-  // Split on wildcard array segments; each [*] must match a concrete [N] in exprPath
-  const parts = stripped.split("[*]");
-  let remaining = exprPath;
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]!;
-    if (!remaining.startsWith(part)) return false;
-    remaining = remaining.slice(part.length);
-    if (i < parts.length - 1) {
-      // Expect a concrete array index like [0], [12], ...
-      const m = remaining.match(/^\[\d+\]/);
-      if (!m) return false;
-      remaining = remaining.slice(m[0].length);
-    }
-  }
-  // Expression must end here or continue into a child path
-  return remaining === "" || remaining[0] === "." || remaining[0] === "[";
-}
-
-/**
  * Resolves `x-telo-context-*` annotations in a context schema using the concrete
  * manifest item (per-scope) and the manifest root.
  *
@@ -577,47 +553,6 @@ export function extractContextsFromSchema(
 ): Array<{ scope: string; schema: Record<string, any> }> {
   const all = collectContexts(schema, path);
   return all.sort((a, b) => b.scope.length - a.scope.length);
-}
-
-/** Schema keys that declare a CEL-bearing region: a field carrying any of these
- *  is evaluated at runtime, so a `!cel` inside it (or a descendant) is live. A
- *  STEP BODY is one too, and says so through the grammar its items point at
- *  rather than through a key — {@link isStepSlot} reads either spelling. */
-const CEL_REGION_KEYS = [
-  "x-telo-context",
-  "x-telo-step-context",
-  "x-telo-error-context",
-] as const;
-
-/**
- * Walk a JSON Schema tree and collect the JSONPath scopes of every field that
- * declares a CEL-bearing region (`x-telo-context` / `x-telo-step-context` /
- * `x-telo-error-context`). Used — alongside `x-telo-eval` paths — to decide
- * whether a `!cel` expression sits in a slot the runtime actually evaluates.
- * Scopes use the same `$.a.b[*]` form as `extractContextsFromSchema`, matched
- * against expression paths with `pathMatchesScope`.
- */
-export function extractCelRegionScopes(schema: Record<string, any>, path = "$"): string[] {
-  if (!schema || typeof schema !== "object") return [];
-  const out: string[] = [];
-
-  if (CEL_REGION_KEYS.some((k) => schema[k]) || isStepSlot(schema)) out.push(path);
-
-  if (schema.properties) {
-    for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {
-      out.push(...extractCelRegionScopes(value, `${path}.${key}`));
-    }
-  }
-  if (schema.items && typeof schema.items === "object") {
-    out.push(...extractCelRegionScopes(schema.items, `${path}[*]`));
-  }
-  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
-    if (Array.isArray(schema[key])) {
-      for (const subschema of schema[key]) out.push(...extractCelRegionScopes(subschema, path));
-    }
-  }
-
-  return out;
 }
 
 function collectContexts(

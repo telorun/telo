@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CelEvalMode } from "./cel-utils";
 import { FieldControl, inferType, ownsLabel } from "./field-control";
-import {
-  FieldDiagnostics,
-  fieldDiagnosticsFor,
-  type FieldDiagnostic,
-} from "./field-diagnostics";
-import { SEVERITY_TEXT_COLOR } from "../diagnostics/severity";
+import { SeverityDot, type FieldDiagnostic } from "./field-diagnostics";
 import type { RefResolver } from "./ref-candidates";
 import { resolveSiblingTypedProp } from "./sibling-typed-field";
 import type {
+  CelFieldTarget,
   JsonSchema,
   JsonSchemaProperty,
   ResolvedResourceOption,
@@ -25,6 +21,17 @@ export interface ResourceSchemaFormProps {
   resolvedResources?: ResolvedResourceOption[];
   rootCelEval?: CelEvalMode | null;
   onSelectResource?: (kind: string, name: string) => void;
+  /** Opens a resource declared INLINE at a ref slot. Addressed by the slot's
+   *  field path (dot-separated, numeric segments for array items) rather than
+   *  by name, because an inline declaration has none. */
+  onOpenInline?: (fieldPath: string, kind: string) => void;
+  /** Moves the declaration at a ref slot across the named/inline boundary.
+   *  Threaded beside `onOpenInline` — both address a slot by its field path. */
+  onMoveDeclaration?: (fieldPath: string, direction: "extract" | "inline") => void;
+  /** The site this form is rendering — the resource and the pointer it is
+   *  scoped to. Supplies `!cel` fields the scope the analyzer resolved for
+   *  their exact address; omit it and an expression is edited as plain text. */
+  celTarget?: CelFieldTarget;
   /** Imported `Telo.Type` kinds offered for inline type fields. */
   typeKinds?: TypeKindOption[];
   /** Narrows `x-telo-ref` candidates by kind satisfaction (abstract refs). */
@@ -49,6 +56,9 @@ export function ResourceSchemaForm({
   resolvedResources = [],
   rootCelEval,
   onSelectResource,
+  onOpenInline,
+  onMoveDeclaration,
+  celTarget,
   typeKinds,
   registry,
   flat,
@@ -105,15 +115,6 @@ export function ResourceSchemaForm({
       {fields.map(({ name, prop, kind }) => {
         const labelText = typeof prop.title === "string" ? prop.title : name;
         const fieldOwnsLabel = ownsLabel(prop);
-        const diags = fieldDiagnosticsFor(fieldDiagnostics, name);
-        // Lowest severity value is worst (Error === 1), so the dot reads the
-        // most severe diagnostic on the field.
-        const worst = diags.length
-          ? diags.reduce(
-              (acc, d) => (d.diagnostic.severity < acc ? d.diagnostic.severity : acc),
-              diags[0].diagnostic.severity,
-            )
-          : null;
         return (
           <div key={name} className="flex flex-col gap-1">
             {!fieldOwnsLabel && (
@@ -121,11 +122,10 @@ export function ResourceSchemaForm({
                 {labelText}
                 {required.has(name) ? <span className="ml-1 text-red-500">*</span> : null}
                 <span className="ml-1 text-zinc-400 dark:text-zinc-600">({kind})</span>
-                {worst != null && (
-                  <span aria-hidden className={`ml-1.5 ${SEVERITY_TEXT_COLOR[worst]}`}>
-                    ●
-                  </span>
-                )}
+                {/* The label marks that something below is wrong; the MESSAGE
+                    now sits at the field it is about, which for a nested one is
+                    somewhere inside this field rather than under it. */}
+                <SeverityDot diagnostics={fieldDiagnostics} fieldPath={name} />
               </label>
             )}
             <FieldControl
@@ -139,13 +139,16 @@ export function ResourceSchemaForm({
               resolvedResources={resolvedResources}
               rootCelEval={rootCelEval}
               onSelectResource={onSelectResource}
+              onOpenInline={onOpenInline}
+              onMoveDeclaration={onMoveDeclaration}
+              celTarget={celTarget}
+              fieldDiagnostics={fieldDiagnostics}
               typeKinds={typeKinds}
               registry={registry}
               label={labelText}
               required={required.has(name)}
               flat={flat}
             />
-            <FieldDiagnostics diagnostics={diags} />
           </div>
         );
       })}

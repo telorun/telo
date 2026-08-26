@@ -132,6 +132,36 @@ describe("entry list model", () => {
     expect(row!.target).toBeUndefined();
   });
 
+  it("names an inline declaration by its kind, since it has no name", () => {
+    // A row read `(nothing attached)` for a fully-authored mount: an inline
+    // declaration carries no name, and the row had nothing else to say.
+    const [row] = buildEntryList({
+      entries: [
+        {
+          path: "/api/todos",
+          mount: { kind: "Crud.Resource", plural: "todos", singular: "todo" },
+        },
+      ],
+      list: entryListOf(schema)!,
+      pointer: "/mounts",
+      declared: new Set(),
+    });
+    expect(row).toMatchObject({ inlineKind: "Crud.Resource", unresolved: false });
+    // Not a target: there is no named resource to open.
+    expect(row!.target).toBeUndefined();
+  });
+
+  it("keeps a reference a reference", () => {
+    const [row] = buildEntryList({
+      entries: [{ path: "/v1", mount: ref("api") }],
+      list: entryListOf(schema)!,
+      pointer: "/mounts",
+      declared: new Set(["api"]),
+    });
+    expect(row).toMatchObject({ target: "api" });
+    expect(row!.inlineKind).toBeUndefined();
+  });
+
   it("claims nothing for a kind with no entry list", () => {
     expect(entryListOf({ properties: { port: { type: "integer" } } })).toBeNull();
     expect(entryListOf({ type: "object" })).toBeNull();

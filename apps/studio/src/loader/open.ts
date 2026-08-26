@@ -12,8 +12,19 @@ export function isInTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+// A framed document (VS Code's Simple Browser, any embedded preview) exposes
+// `showDirectoryPicker` but cannot complete it: the folder dialog opens, and the
+// write-permission prompt that follows the selection has nowhere to render, so
+// the pick is auto-denied as an AbortError. Feature-detecting the method alone
+// therefore offers a picker that can only ever fail — treat framed as
+// unsupported and fall through to the localStorage workspace instead.
 function supportsDirectoryPicker(): boolean {
-  return typeof window !== "undefined" && "showDirectoryPicker" in window;
+  if (typeof window === "undefined" || !("showDirectoryPicker" in window)) return false;
+  try {
+    return window.self === window.top;
+  } catch {
+    return false; // Reading `top` across origins throws — framed by definition.
+  }
 }
 
 // A no-op local adapter — supports nothing, used when only registry adapters are needed.
@@ -61,7 +72,16 @@ export async function openWorkspaceDirectory(): Promise<OpenedWorkspace | null> 
   }
 
   if (supportsDirectoryPicker()) {
-    const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    let dirHandle: FileSystemDirectoryHandle;
+    try {
+      dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    } catch (err) {
+      // Dismissing the picker — or the write-permission prompt behind it — is a
+      // cancel, not a failure: report it as "nothing opened", the way the Tauri
+      // branch above does. Every other rejection still propagates.
+      if (err instanceof DOMException && err.name === "AbortError") return null;
+      throw err;
+    }
     // Request readwrite permission upfront so first save doesn't prompt mid-edit.
     const perm = await dirHandle.requestPermission({ mode: "readwrite" });
     if (perm !== "granted") return null;

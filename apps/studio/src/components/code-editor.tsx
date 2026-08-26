@@ -16,6 +16,10 @@ interface CodeEditorProps {
   height?: string | number;
   readOnly?: boolean;
   className?: string;
+  /** Handed the editor and monaco once mounted, for what only the host can do
+   *  with them — setting markers on this model, say. The widget keeps owning
+   *  its own value and language. */
+  onReady?: OnMount;
 }
 
 type Monaco = Parameters<OnMount>[1];
@@ -51,6 +55,7 @@ export function CodeEditor({
   height = 200,
   readOnly = false,
   className,
+  onReady,
 }: CodeEditorProps) {
   const onBlurRef = useRef(onBlur);
   useEffect(() => {
@@ -61,9 +66,13 @@ export function CodeEditor({
   type Editor = Parameters<OnMount>[0];
   const [handles, setHandles] = useState<{ editor: Editor; monaco: Monaco } | null>(null);
 
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
   const handleMount: OnMount = (editor, monaco) => {
     editor.onDidBlurEditorWidget(() => onBlurRef.current?.());
     setHandles({ editor, monaco });
+    onReadyRef.current?.(editor, monaco);
   };
 
   useEffect(() => {

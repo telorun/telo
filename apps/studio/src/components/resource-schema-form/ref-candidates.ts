@@ -196,6 +196,22 @@ export function parseRefValue(value: unknown): string | null {
   return null;
 }
 
+/**
+ * The kind of a resource declared INLINE at a reference slot, or null.
+ *
+ * A ref slot accepts two shapes, and they are told apart by `name`: the
+ * reference the loader produces carries `{kind, name}`, while an inline
+ * declaration is `{kind, ...config}` with no name — it exists nowhere but this
+ * slot, so there is nothing to name it by. Every surface that reads a ref slot
+ * has to ask, because reading only the reference shape renders an authored
+ * declaration as an empty picker and overwrites it on the next selection.
+ */
+export function inlineResourceKind(value: unknown): string | null {
+  if (isRefSentinel(value) || !isRecord(value)) return null;
+  if (typeof value.kind !== "string" || value.kind === "") return null;
+  return typeof value.name === "string" ? null : value.kind;
+}
+
 /** Stable `"kind.name"` serialization used as a dropdown key. */
 export function toRefString(option: { kind: string; name: string }): string {
   return `${option.kind}.${option.name}`;

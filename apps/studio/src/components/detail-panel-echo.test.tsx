@@ -52,6 +52,10 @@ function panel(props: {
       selection={props.selection ?? null}
       viewData={viewData}
       registry={null}
+      readOnly={false}
+      onSourceEdit={() => undefined}
+      onExtractInline={() => undefined}
+      onInlineReference={() => undefined}
       onUpdateResource={() => undefined}
       onSelectResource={() => undefined}
       onSelect={() => undefined}

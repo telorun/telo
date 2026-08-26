@@ -20,6 +20,7 @@ import {
   buildCelEnvironment,
   buildImportInputCelEnvironment,
   buildTypedCelEnvironment,
+  isKindDocument,
   type CelHandlers,
 } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
@@ -122,14 +123,18 @@ import { collectValueSchemaIssues } from "./validate-value-schema.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
 import {
   extractAccessChains,
-  extractCelRegionScopes,
   extractContextsFromSchema,
   getManifestItem,
-  pathMatchesScope,
   resolveContextAnnotations,
   resolveTypeFieldToSchema,
 } from "./validate-cel-context.js";
-import { buildEvalPaths, evalPathsCover } from "./eval-paths.js";
+import {
+  celEvalModeAt,
+  celEvalSites,
+  mergeCelEvalSites,
+  NO_CEL_EVAL_SITES,
+  type CelEvalSites,
+} from "./eval-paths.js";
 import {
   BINDINGS_ANNOTATION,
   bindingContextProperties,
@@ -2169,18 +2174,15 @@ export class StaticAnalyzer {
     // same schema an expression is typed against.
     let celStepContextSchema: Record<string, any> | undefined;
     let celErrorScopes: ReadonlyMap<string, Record<string, any>> = new Map();
-    // Region coverage for the "CEL in a non-eval field" check: the union of
-    // `x-telo-eval` paths (own + capability) and `x-telo-context` /
-    // `x-telo-step-context` / `x-telo-error-context` scopes. A `!cel` outside
-    // every region is read as a literal — the runtime never evaluates it.
-    let celEvalPaths: string[] = [];
+    // Where this kind says its values are evaluated — `x-telo-eval` paths (own +
+    // capability) and the regions covering their contents. A `!cel` outside every
+    // one of them is read as a literal, and one under a compile path resolves at
+    // startup, where observed state cannot exist yet. Both questions are
+    // `celEvalModeAt`, which the editor asks of the same sites.
+    let celSites: CelEvalSites = NO_CEL_EVAL_SITES;
     // The bindings field this kind declares (if any), read by the CEL sites that
     // see the names it introduces.
     let celBindingSites: BindingSites | undefined;
-    // The compile half alone: a field that resolves at startup, where observed
-    // state cannot exist yet.
-    let celCompilePaths: string[] = [];
-    let celRegionScopes: string[] = [];
     let celRuleApplies = false;
 
     visitManifest(
@@ -2347,21 +2349,16 @@ export class StaticAnalyzer {
               e.definition as unknown as ResourceDefinition,
               (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
             ) as Record<string, any>;
-            const own = buildEvalPaths(ownSchema);
             const capabilityDef = capability ? defs.resolve(capability) : undefined;
-            const parent = capabilityDef?.schema
-              ? buildEvalPaths(capabilityDef.schema as Record<string, any>)
-              : { compile: [], runtime: [] };
-            celEvalPaths = [...own.compile, ...own.runtime, ...parent.compile, ...parent.runtime];
             // A `Telo.Provider`'s fields are implicitly compile-eval — the
             // capability abstract carries the root annotation — so its reads are
             // covered here without the provider restating anything.
-            celCompilePaths = [...own.compile, ...parent.compile];
-            celRegionScopes = extractCelRegionScopes(ownSchema);
+            celSites = mergeCelEvalSites(
+              celEvalSites(ownSchema),
+              celEvalSites(capabilityDef?.schema as Record<string, any> | undefined),
+            );
           } else {
-            celEvalPaths = [];
-            celCompilePaths = [];
-            celRegionScopes = [];
+            celSites = NO_CEL_EVAL_SITES;
           }
         },
         onCel: (e) => {
@@ -2379,8 +2376,7 @@ export class StaticAnalyzer {
             celRuleApplies &&
             engineName === "cel" &&
             celScope.invocationContextSchema === undefined &&
-            !evalPathsCover(celEvalPaths, path) &&
-            !celRegionScopes.some((scope) => pathMatchesScope(path, scope)) &&
+            celEvalModeAt(celSites, path) === null &&
             !pathCrossesNestedResource(m, path)
           ) {
             diagnostics.push({
@@ -2408,7 +2404,7 @@ export class StaticAnalyzer {
                 read.alias ? `${read.alias}.${read.name}` : read.name,
               );
 
-              if (celRuleApplies && evalPathsCover(celCompilePaths, path)) {
+              if (celRuleApplies && celEvalModeAt(celSites, path) === "compile") {
                 diagnostics.push({
                   severity: DiagnosticSeverity.Error,
                   code: "OBSERVED_STATE_IN_STARTUP_FIELD",
@@ -2455,7 +2451,19 @@ export class StaticAnalyzer {
             matchedScope,
           });
 
-          const result = engine.analyze(expr, { celEnv: typedEnv, contextSchema: effectiveContext });
+          const result = engine.analyze(expr, {
+            celEnv: typedEnv,
+            contextSchema: effectiveContext,
+            // `scopeFor` registers every kernel global and every name the site's
+            // context declares, so a root this environment does not know is one
+            // nothing puts in scope. Two places where the CEL belongs to another
+            // scope, both already recognised by the non-eval-field check: a kind
+            // document, whose CEL is written for whoever instantiates the kind,
+            // and anything below a nested inline `{ kind }`, whose CEL the
+            // nested kind evaluates — and which is analyzed again, in its own
+            // scope, as the resource it was extracted into.
+            rootsDeclared: !isKindDocument(m) && !pathCrossesNestedResource(m, path),
+          });
 
           if (result.type !== undefined) {
             let byPath = celTypeByPath.get(m);
@@ -2492,7 +2500,7 @@ export class StaticAnalyzer {
           // intent (a boot timestamp, a run id), so it warns rather than
           // blocking. The engine reports which calls re-evaluate; the eval mode
           // is manifest policy and stays here.
-          if (celRuleApplies && evalPathsCover(celCompilePaths, path)) {
+          if (celRuleApplies && celEvalModeAt(celSites, path) === "compile") {
             const volatile = [
               ...new Set(result.calls.filter((c) => c.deterministic === false).map((c) => c.name)),
             ].sort();
