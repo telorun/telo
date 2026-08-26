@@ -148,7 +148,7 @@ metadata:
   namespace: acme
   version: 0.1.0
 imports:
-  Http: oci://ghcr.io/telorun/http-client@0.7.0
+  Http: oci://ghcr.io/telorun/http-client@<version>
 exports:
   kinds:
     - GithubClient
@@ -198,7 +198,7 @@ metadata:
   version: 1.0.0
 imports:
   Gh: acme/github@0.1.0
-  Http: oci://ghcr.io/telorun/http-client@0.7.0
+  Http: oci://ghcr.io/telorun/http-client@<version>
 secrets:
   ghToken: { env: GITHUB_TOKEN, type: string }
 targets:

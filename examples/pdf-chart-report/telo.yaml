@@ -24,6 +24,14 @@ metadata:
 
     Imports are relative because these modules are not published yet; they become
     pinned `oci://` refs like every other example once they are.
+requires:
+  # The chart kinds inherit their CEL slots from the `Chart` / `Cartesian`
+  # abstracts they extend. An older analyzer does not follow `extends` when it
+  # collects eval paths, so it reads every accessor below as a literal and
+  # reports seven `CEL_IN_NON_EVAL_FIELD` errors against this file — blaming the
+  # manifest for the runtime's age. The floor turns that into one message naming
+  # the cause. Forward-declared: 0.82.1 is the release that carries the fix.
+  telo: ">=0.82.1"
 imports:
   SvgChart: ../../modules/svg-chart
   Font: ../../modules/font

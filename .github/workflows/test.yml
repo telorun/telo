@@ -86,6 +86,12 @@ jobs:
           pnpm exec bun ./cli/nodejs/bin/telo.ts release check
           --base ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD' }}
 
+      # A doc that hardcodes a version for a ref this repo publishes goes stale
+      # silently and reads as current to whoever copies it. The `<version>` marker
+      # is substituted at site build time; this is what keeps it used.
+      - name: Check documentation version pins
+        run: pnpm run check:docs
+
       - name: Check module manifests
         run: pnpm run check modules/*/telo.yaml
 
