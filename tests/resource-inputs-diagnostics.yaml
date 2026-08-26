@@ -1,0 +1,72 @@
+# The ways a library-boundary declaration can be wrong, each reported where the
+# author can act on it: the resource-input constraint at the library that
+# declared it, the three supply failures at the import that made them, and a
+# per-import override of a library that is instantiated once, and two imports of
+# one singleton that disagree.
+kind: Telo.Application
+metadata:
+  name: ResourceInputsDiagnostics
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref unresolvableKind
+  - !ref wrongKind
+  - !ref missingInput
+  - !ref unknownInput
+  - !ref sharedOverride
+  - !ref sharedConflict
+---
+kind: Assert.Manifest
+metadata:
+  name: unresolvableKind
+source: ./__fixtures__/resource-inputs/bad/unresolvable-kind/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_INPUT_KIND_UNRESOLVED
+      message: "constrained to kind 'Sql.Conection'"
+---
+kind: Assert.Manifest
+metadata:
+  name: wrongKind
+source: ./__fixtures__/resource-inputs/bad/wrong-kind.yaml
+expect:
+  errors:
+    - code: RESOURCE_INPUT_KIND_MISMATCH
+      message: "does not satisfy the declared constraint 'SQL.Connection'"
+---
+kind: Assert.Manifest
+metadata:
+  name: missingInput
+source: ./__fixtures__/resource-inputs/bad/missing-input.yaml
+expect:
+  errors:
+    - code: RESOURCE_INPUT_MISSING
+      message: "does not supply the resource input 'connection'"
+---
+kind: Assert.Manifest
+metadata:
+  name: unknownInput
+source: ./__fixtures__/resource-inputs/bad/unknown-input.yaml
+expect:
+  errors:
+    - code: RESOURCE_INPUT_UNKNOWN
+      message: "supplies a resource input 'cache'"
+---
+kind: Assert.Manifest
+metadata:
+  name: sharedOverride
+source: ./__fixtures__/shared-library/bad/override.yaml
+expect:
+  errors:
+    - code: SHARED_LIBRARY_OVERRIDE
+      message: "is 'lifecycle: shared'"
+---
+kind: Assert.Manifest
+metadata:
+  name: sharedConflict
+source: ./__fixtures__/shared-library/bad/conflict.yaml
+expect:
+  errors:
+    - code: SHARED_LIBRARY_CONFLICT
+      message: "different values for variables.label"

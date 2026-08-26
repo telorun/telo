@@ -1,0 +1,33 @@
+# The second consumer of the same injected connection. It reads what the writer
+# wrote, which is only possible because both were handed the application's one
+# instance.
+kind: Telo.Library
+metadata:
+  name: ResourceInputsReader
+  version: 1.0.0
+  description: >-
+    Test fixture: reads a table over an injected SQL connection.
+imports:
+  Sql: ../../../../modules/sql
+  Run: ../../../../modules/run
+resources:
+  connection:
+    kind: Sql.Connection
+exports:
+  resources: [readNotes]
+---
+kind: Run.Sequence
+metadata:
+  name: readNotes
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: "SELECT body FROM notes WHERE id = 1"
+outputs:
+  rows: !cel "steps.rows.result.rows"
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref connection

@@ -1,0 +1,10 @@
+kind: Telo.Library
+metadata:
+  name: ResourceInputsBadKind
+  version: 1.0.0
+  description: Test fixture — a resource input constrained to a kind nothing declares.
+imports:
+  Sql: ../../../../../modules/sql
+resources:
+  connection:
+    kind: Sql.Conection

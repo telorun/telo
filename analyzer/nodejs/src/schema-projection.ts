@@ -35,7 +35,9 @@
  * derivation can reach.
  */
 
+import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
+import { isInjectedDeclaration } from "./resource-input.js";
 
 /** How a kind's entry collection projects to an object schema. */
 export interface SchemaProjection {
@@ -499,6 +501,15 @@ export type ProjectionFailure =
       readonly kind: string;
       readonly entries: string;
     }
+  /** The slot names a resource the module does not DECLARE — a library's
+   *  `resources:` input, standing in for an instance its importer supplies. A
+   *  projection is DECLARATION-derived, so it cannot be answered here at all;
+   *  the stand-in has no entries, and reporting that would tell the library
+   *  author their block is wrong when it is correct. Resolution moves to the
+   *  injection site, where the real declaration is. Carried as its own reason
+   *  rather than as `no-entries` so a consumer can tell "unanswerable here"
+   *  from "answered, and empty". */
+  | { readonly reason: "injected"; readonly pointer: string; readonly name: string }
   /** An ENTRY of the projected declaration references a shape that could not be
    *  read. Reported rather than dropped: the entry would silently vanish from
    *  the projected row, so a consumer naming it would be told the property does
@@ -523,6 +534,9 @@ function refTarget(
   if (!found) return { reason: "unresolved", pointer, name };
   if ("ambiguous" in found) return { reason: "ambiguous", pointer, name };
   const manifest = found.manifest;
+  if (isInjectedDeclaration(manifest as ResourceManifest)) {
+    return { reason: "injected", pointer, name };
+  }
   if (typeof manifest.kind !== "string") return { reason: "unresolved", pointer, name };
   const definition = scope.resolveDefinition(manifest.kind);
   if (!definition) return { reason: "no-projection", pointer, kind: manifest.kind };
@@ -550,6 +564,11 @@ export function describeProjectionFailure(failure: ProjectionFailure): string {
         : `'${failure.pointer}' does not hold a reference, so there is no declaration to project.`;
     case "unresolved":
       return `'${failure.pointer}' references '${failure.name}', which resolves to no resource.`;
+    case "injected":
+      return (
+        `'${failure.pointer}' references '${failure.name}', a resource input this module does ` +
+        `not declare — its entries belong to whoever supplies it.`
+      );
     case "ambiguous":
       return (
         `'${failure.pointer}' references '${failure.name}', which matches more than one resource ` +

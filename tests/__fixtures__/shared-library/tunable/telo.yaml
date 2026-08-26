@@ -1,0 +1,17 @@
+kind: Telo.Library
+metadata:
+  name: SharedTunable
+  version: 1.0.0
+  description: "Test fixture: a singleton that takes a config input."
+lifecycle: shared
+imports:
+  Console: ../../../../modules/console
+variables:
+  label:
+    type: string
+exports:
+  resources: [say]
+---
+kind: Console.WriteLine
+metadata:
+  name: say

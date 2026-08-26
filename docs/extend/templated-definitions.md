@@ -30,7 +30,7 @@ A templated definition omits `controllers:` and instead supplies:
 | `schema` | the kind's config; `self` is typed from it |
 | `inputType` / `outputType` | the invocation contract (Invocable / Runnable) |
 | `resources` | internal sub-resources instantiated per outer instance — the kinds the template composes |
-| `invoke:` / `provide:` / `run:` / `mount:` | the **dispatch target** — names which internal resource fulfils the capability |
+| `invoke:` / `provide:` / `run:` / `mount:` | the **dispatch target** — a `!ref` to the internal resource that fulfils the capability |
 | `inputs` | top-level sibling — the values passed *to* the dispatch target |
 | `result` | top-level sibling — post-call mapping applied to the target's output |
 | `extends` | the `Telo.Abstract` this kind implements (optional) |
@@ -63,19 +63,16 @@ inputType:
     required: [filters]
 resources:
   - kind: Sql.Query
-    metadata:
-      name: !cel "self.name + '-query'"
+    metadata: { name: query }
     connection: !cel "self.connection"
-invoke:
-  kind: Sql.Query
-  name: !cel "self.name + '-query'"
+invoke: !ref query
 inputs:
   sql: !cel "'SELECT * FROM ' + self.table + (keys(inputs.filters).size() > 0 ? ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') : '')"
   bindings: !cel "keys(inputs.filters).map(k, inputs.filters[k])"
 ```
 
-- `resources` declares the internal `Sql.Query`. CEL here sees `self` (this instance's config).
-- `invoke` points at that internal resource by `kind` + `name`.
+- `resources` declares the internal `Sql.Query`.
+- `invoke` names it with a `!ref`, the same spelling every other reference uses. A `!ref` naming no entry is `TEMPLATE_DISPATCH_UNKNOWN` at `telo check`. The older `{ kind, name }` form still works and is what a template naming its entries with CEL (`name: !cel "self.name + '-query'"`) has to use, since a `!ref` takes a literal name.
 - `inputs` is what gets passed to the `Sql.Query`. Inside it, CEL sees both `self` and `inputs` (the caller's arguments to `Read`).
 
 ## Provider template
@@ -95,15 +92,12 @@ schema:
     secret: { type: string }
 resources:
   - kind: JavaScript.Script
-    metadata:
-      name: !cel "self.name + '-source'"
+    metadata: { name: source }
     inputType: { type: object, additionalProperties: true }
     outputType: { type: object, additionalProperties: true }
     code: |
       function main(input) { return { raw: input.value } }
-provide:
-  kind: JavaScript.Script
-  name: !cel "self.name + '-source'"
+provide: !ref source
 inputs:
   value: !cel "self.secret"
 result:
@@ -144,20 +138,54 @@ resources:
             content:
               application/json:
                 body: !cel "result.rows"
-mount: api
+mount: !ref api
 ```
 
 See [`modules/crud/telo.yaml`](https://github.com/telorun/telo/blob/main/modules/crud/telo.yaml) for the full CRUD surface.
+
+## A `resources:` entry is a declaration of its own kind
+
+Write each entry exactly as you would write the same resource at the top level. Its CEL is resolved through **that kind's** annotations — its `x-telo-context` regions, its step body, its error branches — so every name the kind binds is in scope where it binds it:
+
+```yaml
+resources:
+  - kind: Run.Sequence
+    metadata: { name: body }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties: { q: { type: string } }
+    steps:
+      - name: rows
+        invoke: !ref query
+        inputs:
+          bindings:
+            - !cel "inputs.q"          # the SEQUENCE's own arguments
+  - kind: Run.Projection
+    metadata: { name: labels }
+    collection: !cel "inputs.rows"
+    steps:
+      - name: label
+        value: !cel "item.body"        # the ITERATION's element
+```
+
+A body is not limited to one dispatch. `inputs` inside a nested body types from **that entry's own `inputType:`**, never the enclosing definition's — the template reaches its body through a mapping free to rename or narrow, so typing against the outer contract would accept names the body never receives.
+
+Which nodes survive the template's `init()` is decided by the nested kind too: a field it marks `x-telo-eval: runtime`, or one under a CEL-bearing region, is left compiled for its own controller to evaluate. Everything else is resolved once against `self`.
 
 ## CEL scopes inside a template
 
 | Variable | Typed from | Available in |
 |---|---|---|
-| `self` | this definition's `schema` | everywhere — `resources`, `inputs`, `result`, and CEL in `schema` |
-| `inputs` | `inputType` (or the `extends` abstract's `inputType`) | `resources` and top-level `inputs` — **Invocable / Runnable only** |
+| `self` | this definition's `schema` | everywhere — `resources` (at any depth), `inputs`, `result`, and CEL in `schema` |
+| `inputs` | the enclosing `inputType` at top-level `inputs:`; a nested entry's OWN `inputType` inside it | top-level `inputs` — **Invocable / Runnable only** — and wherever the nested kind binds it |
 | `result` | the dispatch target's `outputType` | top-level `result` |
+| whatever the nested kind binds | that kind's own annotations | inside the entry that declares it — `item` / `index` in an iteration, `request` in a route, `error` in a `catch:` |
 
-The analyzer validates every expression against these scopes statically, so a typo like `self.tabel` or `inputs.fitlers` is a load-time error, not a runtime surprise.
+`self` may be mixed with a call-time name in one expression.
+
+The analyzer validates every expression against the scope in force at its position, so a typo like `self.tabel`, `inputs.fitlers` or `item.bodyy` is a `telo check` error rather than a runtime surprise. Where a scope is open — a name the declaring kind leaves untyped — a typo below it is not decidable and is not reported.
 
 ## `extends` and `Self`
 
@@ -168,4 +196,5 @@ The analyzer validates every expression against these scopes statically, so a ty
 - [Resource Definition](/reference/kernel/resource-definition) — every `Telo.Definition` field and `x-telo-*` annotation, including the no-controller execution rule.
 - [Inheritance](/reference/kernel/inheritance) — `Telo.Abstract`, `extends`, and `Self`.
 - [Authoring a Module](/extend/authoring-a-module) — the controller-backed path, for behaviour a template can't express.
+- [Sharing Across Libraries](/extend/library-resource-inputs) — `resources:` inputs and `lifecycle: shared`, for what a template's composition cannot reach.
 - `modules/crud` and `modules/sql-repository` — real templated modules.

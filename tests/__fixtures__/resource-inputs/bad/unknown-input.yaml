@@ -1,0 +1,19 @@
+# An import that supplies an entry the target library never declared.
+kind: Telo.Application
+metadata:
+  name: ResourceInputsUnknown
+  version: 1.0.0
+imports:
+  SQLite: ../../../../modules/sqlite
+  Reader:
+    source: ../reader
+    resources:
+      connection: !ref db
+      cache: !ref db
+targets:
+  - !ref Reader.readNotes
+---
+kind: SQLite.Connection
+metadata:
+  name: db
+file: ":memory:"

@@ -16,6 +16,8 @@ import {
   type RefFieldEntry,
   type SchemaFromFieldEntry,
 } from "./reference-field-map.js";
+import type { ModuleScopes } from "./alias-resolver.js";
+import { templateBodies, withTemplateSelf } from "./template-body.js";
 import { extractContextsFromSchema, pathMatchesScope } from "./validate-cel-context.js";
 
 /**
@@ -150,6 +152,10 @@ export interface VisitOptions {
    *  Opt-in: the validators / dependency graph must NOT enable it (those refs
    *  are runtime-resolved, not boot dependencies). */
   discoverNestedRefs?: boolean;
+  /** Root (consumer-owned) module names, paired with `aliasesByModule` so a
+   *  nested kind inside an imported library's definition resolves through THAT
+   *  library's aliases. */
+  rootModules?: ReadonlySet<string>;
 }
 
 /** Synthetic entry for a value-tree-discovered ref — these carry no declared
@@ -203,6 +209,15 @@ const pathUnderPrefix = (fieldPath: string, prefix: string): boolean =>
   fieldPath === prefix ||
   fieldPath.startsWith(prefix + ".") ||
   fieldPath.startsWith(prefix + "[");
+
+/** The per-declaring-module alias tables, when the caller threaded them. A
+ *  nested kind inside an imported library's definition is written through THAT
+ *  library's aliases. */
+function moduleScopes(options: VisitOptions): ModuleScopes | undefined {
+  return options.aliasesByModule && options.rootModules
+    ? { aliasesByModule: options.aliasesByModule, rootModules: options.rootModules }
+    : undefined;
+}
 
 export function visitManifest(
   resources: ResourceManifest[],
@@ -367,6 +382,24 @@ export function visitManifest(
       // check simply stops existing.
       const authorSchema = registry.effectiveSchemaOf(definition);
       const contexts = authorSchema ? extractContextsFromSchema(authorSchema) : [];
+      // A `Telo.Definition`'s `resources:` entries are DECLARATIONS of another
+      // kind, so the CEL inside one belongs to THAT kind — its own
+      // `x-telo-context` regions, rebased under the entry's path. `self` is
+      // merged into each, since the nested kind knows nothing about the
+      // configuration its enclosing template was given. Without this a nested
+      // body saw one fixed permissive context: `inputs` and `item` undefined
+      // wherever the nested kind declares them, `error` offered everywhere.
+      for (const body of templateBodies(r, registry, aliases, moduleScopes(options))) {
+        const bodySchema = registry.effectiveSchemaOf(body.definition);
+        if (!bodySchema) continue;
+        for (const ctx of extractContextsFromSchema(bodySchema, body.scopePrefix)) {
+          contexts.push({ scope: ctx.scope, schema: withTemplateSelf(ctx.schema) });
+        }
+      }
+      // Longest scope wins, as `extractContextsFromSchema` already orders its
+      // own: a nested kind's region is deeper than the enclosing definition's
+      // blanket `$.resources[*]`, so it takes precedence.
+      contexts.sort((a, b) => b.scope.length - a.scope.length);
       walkCelExpressions(r, "", (expr, path, engineName, surface) => {
         let contextSchema: Record<string, any> | undefined;
         let matchedScope: string | undefined;

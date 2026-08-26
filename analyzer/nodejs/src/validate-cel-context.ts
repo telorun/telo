@@ -14,6 +14,30 @@ import { withRefSlotsAsReadings } from "./ref-slot-reading.js";
 export { extractCelRegionScopes, pathMatchesScope } from "./eval-paths.js";
 import { pathMatchesScope } from "./eval-paths.js";
 
+/** True when a node's value is decided at load or dispatch rather than written
+ *  — a tagged sentinel (`!cel`, `!sql`, an embed) or an already-compiled value.
+ *  A schema position holding one declares a shape nothing static can read. */
+function isDynamicNode(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const node = value as Record<string, unknown>;
+  return node.__tagged === true || node.__compiled !== undefined;
+}
+
+/** Replace every dynamically-valued property with an OPEN schema, so the name is
+ *  in scope with its members unconstrained. */
+function openDynamicProperties(
+  props: Record<string, any> | undefined,
+): Record<string, any> | undefined {
+  if (!props || typeof props !== "object") return props;
+  let out: Record<string, any> | undefined;
+  for (const [key, value] of Object.entries(props)) {
+    if (!isDynamicNode(value)) continue;
+    out ??= { ...props };
+    out[key] = {};
+  }
+  return out ?? props;
+}
+
 export interface ContextResolveOpts {
   /** When provided, used to resolve `x-telo-context-from-root` annotations against the
    *  root manifest. When omitted, defaults to `manifestItem`. */
@@ -357,8 +381,19 @@ export function resolveContextAnnotations(
     // to be resolved first: the standard library writes it as the inline
     // `{ kind: Type.JsonSchema, schema: … }` wrapper, so merging it verbatim
     // would type the variable as `{ kind, schema }` instead of its properties.
+    // The navigated node — or one of the properties in it — may itself be an
+    // expression: a route whose `request.schema.body` is `!cel "self.model.schema"`
+    // declares a body whose SHAPE is only known once the template is
+    // instantiated. Such a name types as OPEN rather than as nothing, and a
+    // wholly dynamic map leaves the whole node open. Resolving it to nothing
+    // reports `request.body` as undefined, which blames the reader for the
+    // writer's dynamism — the same posture a rule takes when a value it reads
+    // is dynamic: skip the judgement, never invert it.
+    if (isDynamicNode(navigated)) {
+      return { ...schema, properties: { ...(schema.properties ?? {}) }, additionalProperties: true };
+    }
     const asType = resolveTypeFieldToSchema(navigated, allManifests ?? []);
-    const resolved = asType?.properties ?? navigated;
+    const resolved = openDynamicProperties(asType?.properties ?? navigated);
     const required = Array.isArray(asType?.required) ? asType.required : undefined;
     return {
       ...schema,
@@ -520,12 +555,37 @@ export function getManifestItem(
   manifest: Record<string, any>,
 ): Record<string, any> {
   const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
-  const wildcardIdx = stripped.indexOf("[*]");
-  if (wildcardIdx === -1) return manifest;
-  const arrayProp = stripped.slice(0, wildcardIdx); // e.g. "routes"
-  const m = exprPath.match(new RegExp(`^${arrayProp}\\[(\\d+)\\]`));
-  if (!m) return manifest;
-  return (manifest as any)[arrayProp]?.[Number(m[1])] ?? manifest;
+  const parts = stripped.split("[*]");
+  if (parts.length === 1) return manifest;
+  // Resolve each `[*]` against the concrete index the expression path carries at
+  // the same position, accumulating up to the LAST wildcard: that node is the
+  // per-scope item (`routes[2]`), which is what `x-telo-context-from` navigates
+  // from. Built by walking the pattern rather than by a regex over the scope —
+  // a scope is a path, not a pattern, and its own `[4]` segments are regex
+  // character classes, which is what silently made every nested scope resolve
+  // to the whole document instead of the item.
+  let remaining = exprPath;
+  let concrete = "";
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i]!;
+    if (!remaining.startsWith(part)) return manifest;
+    remaining = remaining.slice(part.length);
+    const index = remaining.match(/^\[(\d+)\]/);
+    if (!index) return manifest;
+    remaining = remaining.slice(index[0].length);
+    concrete += `${part}${index[0]}`;
+  }
+  return (navigateConcretePath(manifest, concrete) as Record<string, any> | undefined) ?? manifest;
+}
+
+/** Walk a concrete dotted path with `[N]` indices (`resources[4].routes[2]`). */
+function navigateConcretePath(root: unknown, path: string): unknown {
+  let cur: unknown = root;
+  for (const segment of path.match(/[^.[\]]+/g) ?? []) {
+    if (cur === null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[segment];
+  }
+  return cur;
 }
 
 function navigatePath(obj: unknown, segments: string[]): unknown {

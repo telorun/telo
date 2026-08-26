@@ -193,7 +193,18 @@ export function resolveRefSentinels(
 
   for (const r of resources) {
     if (isForeign(r)) continue;
-    if (!r.metadata?.name || !r.kind || SYSTEM_KINDS.has(r.kind)) continue;
+    if (!r.metadata?.name || !r.kind) continue;
+    // A `Telo.Import` is import-time metadata, not a resource instance — except
+    // for its `resources:` block, which supplies the instances the target
+    // library declared it needs. Those are `!ref`s to the importer's OWN
+    // resources and resolve exactly like any other reference; nothing else on
+    // the document is a reference slot, so only that subtree is walked.
+    if (r.kind === "Telo.Import") {
+      const supplied = (r as Record<string, unknown>).resources;
+      if (supplied) (r as Record<string, unknown>).resources = walk(supplied);
+      continue;
+    }
+    if (SYSTEM_KINDS.has(r.kind)) continue;
     walk(r as Record<string, unknown>);
   }
 }

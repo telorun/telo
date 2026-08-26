@@ -1,0 +1,19 @@
+# The injection site is where the declared constraint is checked: a
+# `Console.WriteLine` handed to a slot declared `Sql.Connection`.
+kind: Telo.Application
+metadata:
+  name: ResourceInputsWrongKind
+  version: 1.0.0
+imports:
+  Console: ../../../../modules/console
+  SQLite: ../../../../modules/sqlite
+  Reader:
+    source: ../reader
+    resources:
+      connection: !ref writeLine
+targets:
+  - !ref Reader.readNotes
+---
+kind: Console.WriteLine
+metadata:
+  name: writeLine

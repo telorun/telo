@@ -1,0 +1,10 @@
+# An import that supplies nothing for a declared input — the same failure as a
+# missing required variable.
+kind: Telo.Application
+metadata:
+  name: ResourceInputsMissing
+  version: 1.0.0
+imports:
+  Reader: ../reader
+targets:
+  - !ref Reader.readNotes

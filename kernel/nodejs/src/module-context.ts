@@ -552,6 +552,12 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return `${realModule}.${suffix}`;
   }
 
+  /** A module context IS the alias table, so it answers the resolver seam
+   *  directly rather than inheriting one from a parent it does not have. Public
+   *  because a template body's nested kind is written in the DEFINING library's
+   *  scope and its controller has to resolve it there. */
+  override kindResolver = (kind: string): string => this.resolveKindSafe(kind);
+
   protected override resolveKindSafe(kind: string): string {
     // `resolveKind` throws for unqualified / ungated kinds — an expected signal,
     // not a failure: a capability probe that can't resolve falls back to the raw

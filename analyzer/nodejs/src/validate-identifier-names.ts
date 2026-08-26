@@ -9,6 +9,7 @@ import {
   type NameLevel,
   type NameViolation,
 } from "./identifier-name.js";
+import { isInjectedDeclaration } from "./resource-input.js";
 import { type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -56,6 +57,11 @@ export function validateIdentifierNames(
     // would blame them for a spelling this pass's own pipeline chose.
     if (metadata?.xTeloOrigin) continue;
 
+    // A kind-only stand-in for a `resources:` entry carries the name the author
+    // wrote in that block, and the block's own keys are checked below — on the
+    // module doc, where the name is written and a squiggle can land.
+    if (isInjectedDeclaration(manifest)) continue;
+
     const ownModule = metadata?.module as string | undefined;
     if (ownModule && !rootModules.has(ownModule)) continue;
 
@@ -74,7 +80,10 @@ export function validateIdentifierNames(
     // keys are the imported library's declarations, so a violation there is
     // the library author's, reported when their module is analyzed as a root.
     if (manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library") {
-      for (const field of ["variables", "secrets", "ports"] as const) {
+      // `resources:` joins them: a library's resource inputs are named in the
+      // same identifier space (`!ref connection`, `resources.connection`) and
+      // break the same way.
+      for (const field of ["variables", "secrets", "ports", "resources"] as const) {
         const block = (manifest as Record<string, unknown>)[field];
         if (!block || typeof block !== "object" || Array.isArray(block)) continue;
         for (const key of Object.keys(block as Record<string, unknown>)) {
@@ -149,8 +158,14 @@ function surfaceFor(kind: string): string {
   }
 }
 
-function singular(field: "variables" | "secrets" | "ports"): string {
-  return field === "variables" ? "variable" : field === "secrets" ? "secret" : "port";
+function singular(field: "variables" | "secrets" | "ports" | "resources"): string {
+  return field === "variables"
+    ? "variable"
+    : field === "secrets"
+      ? "secret"
+      : field === "ports"
+        ? "port"
+        : "resource input";
 }
 
 function push(

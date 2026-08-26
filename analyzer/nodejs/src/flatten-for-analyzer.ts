@@ -2,6 +2,12 @@ import type { ResourceManifest } from "@telorun/sdk";
 import type { LoadedGraph, LoadedModule } from "./loaded-types.js";
 import type { LoadedFile } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
+import {
+  injectedDeclarations,
+  readLibraryLifecycle,
+  readResourceInputs,
+  type ResourceInput,
+} from "./resource-input.js";
 import type { ZoneModuleDocuments } from "./zone-module-documents.js";
 
 /** One parsed `exports.resources` / `exports.kinds` entry. `name` is the exported
@@ -414,6 +420,12 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
   // the kernel parses them. A module that declares none is absent, leaving importers ungated
   // (see stampExportedKinds).
   const declaredKinds = new Map<string, readonly string[]>();
+  /** Each library's declared `resources:` block, by module name — the inward
+   *  half, stamped onto its importers below. */
+  const requiredResources = new Map<string, readonly ResourceInput[]>();
+  /** Libraries declaring `lifecycle: shared` — a singleton every import
+   *  resolves to, so a per-import override of it is a contradiction. */
+  const sharedModules = new Set<string>();
   for (const [source, mod] of graph.modules) {
     if (source === graph.rootSource) continue; // root is an Application — no exports
     const libDoc = mod.owner.manifests.find((m) => m && isModuleKind(m.kind)) as
@@ -424,6 +436,9 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
     ownerSourceOf.set(moduleName, mod.owner.source);
     specs.push(...reExportSpecsFromExports(moduleName, libDoc.exports?.resources));
     kindModules.push({ module: moduleName, exportsKinds: libDoc.exports?.kinds });
+    const inputs = readResourceInputs(libDoc);
+    if (inputs.length > 0) requiredResources.set(moduleName, inputs);
+    if (readLibraryLifecycle(libDoc) === "shared") sharedModules.add(moduleName);
     if (libDoc.exports?.kinds !== undefined) {
       declaredKinds.set(moduleName, libDoc.exports.kinds.map((e) => parseExportEntry(e).name));
     }
@@ -440,15 +455,100 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
   // Telo.Import manifests so the analyzer can register the re-export mappings.
   const exportedKinds = resolveExportedKinds(kindModules, aliasToModule);
   const imports: Array<{ manifest: ResourceManifest; targetModule: string }> = [];
+  const sources: Array<{ manifest: ResourceManifest; targetSource: string }> = [];
   for (const m of result) {
     if (m.kind !== "Telo.Import") continue;
     const owner = (m.metadata as { source?: string } | undefined)?.source;
     const alias = m.metadata?.name as string | undefined;
-    const target = owner && alias ? graph.importEdges.get(owner)?.get(alias)?.targetModuleName : undefined;
-    if (target) imports.push({ manifest: m, targetModule: target });
+    const edge = owner && alias ? graph.importEdges.get(owner)?.get(alias) : undefined;
+    if (edge?.targetModuleName) imports.push({ manifest: m, targetModule: edge.targetModuleName });
+    if (edge?.targetSource) sources.push({ manifest: m, targetSource: edge.targetSource });
   }
+  stampResolvedSource(sources);
   stampReExportedKinds(imports, exportedKinds);
   stampExportedKinds(imports, declaredKinds);
+  stampRequiredResources(imports, requiredResources, aliasToModule);
+  stampSharedLifecycle(imports, sharedModules);
+}
+
+/** Stamp `metadata.resolvedSource` — the canonical resolved URL of an import's
+ *  target — onto every `Telo.Import`. It is the identity the kernel keys a
+ *  singleton's registry on, so a check that has to decide whether two imports
+ *  reach the SAME library has to key on it too: `resolvedModuleName` is the
+ *  module's own name, which two versions of it share. */
+export function stampResolvedSource(
+  imports: ReadonlyArray<{ manifest: ResourceManifest; targetSource: string }>,
+): void {
+  for (const { manifest, targetSource } of imports) {
+    (manifest.metadata as Record<string, unknown>).resolvedSource = targetSource;
+  }
+}
+
+/** Stamp `metadata.sharedLibrary` onto every `Telo.Import` whose target declares
+ *  `lifecycle: shared`, so the consumer's pass can reject the per-import
+ *  overrides a singleton has no room for. Stamped on `metadata` for the same
+ *  reason `exportedKinds` is — the `Telo.Import` schema forbids extra top-level
+ *  fields. */
+export function stampSharedLifecycle(
+  imports: ReadonlyArray<{ manifest: ResourceManifest; targetModule: string }>,
+  shared: ReadonlySet<string>,
+): void {
+  for (const { manifest, targetModule } of imports) {
+    if (!shared.has(targetModule)) continue;
+    (manifest.metadata as Record<string, unknown>).sharedLibrary = true;
+  }
+}
+
+/** Stamp `metadata.requiredResources` — the target library's declared
+ *  `resources:` block, with each kind constraint CANONICALIZED in the library's
+ *  own alias scope — onto every `Telo.Import` whose target declares one.
+ *
+ *  Canonicalized here because this is the only point where the target's own
+ *  import edges are in hand: the consumer's pass sees the flattened list, from
+ *  which the library doc and its alias scope are both gone, so an entry written
+ *  `Sql.Connection` would otherwise be read against whatever the CONSUMER
+ *  happens to alias `Sql` to. Stamped on `metadata` for the same reason
+ *  `exportedKinds` is — the `Telo.Import` schema forbids extra top-level
+ *  fields. An entry whose alias resolves to nothing is stamped with its kind
+ *  unchanged; `validate-resource-inputs.ts` reports that against the library
+ *  that wrote it. */
+export function stampRequiredResources(
+  imports: ReadonlyArray<{ manifest: ResourceManifest; targetModule: string }>,
+  declared: ReadonlyMap<string, readonly ResourceInput[]>,
+  aliasToModule: (module: string, alias: string) => string | undefined,
+): void {
+  for (const { manifest, targetModule } of imports) {
+    const inputs = declared.get(targetModule);
+    if (!inputs?.length) continue;
+    // A plain name → canonical-kind MAP, deliberately not a list of
+    // `{name, kind}` objects: that shape is character-identical to a resolved
+    // `!ref`, and every reference walk in the analyzer recognises a reference by
+    // exactly those two keys — so the stamp would be read as a malformed
+    // reference sitting in `metadata`.
+    const table: Record<string, string> = {};
+    for (const input of inputs) {
+      table[input.name] = canonicalizeInputKind(input.kind, targetModule, aliasToModule);
+    }
+    (manifest.metadata as Record<string, unknown>).requiredResources = table;
+  }
+}
+
+/** `Alias.Kind` → `<owning module>.Kind` in the DECLARING library's scope.
+ *  `Self.` names the library itself and `Telo.` the kernel built-ins, both of
+ *  which cross no import edge. An unresolvable prefix is returned unchanged. */
+function canonicalizeInputKind(
+  kind: string,
+  ownModule: string,
+  aliasToModule: (module: string, alias: string) => string | undefined,
+): string {
+  const dot = kind.indexOf(".");
+  if (dot <= 0) return kind;
+  const alias = kind.slice(0, dot);
+  const suffix = kind.slice(dot + 1);
+  if (alias === "Self") return `${ownModule}.${suffix}`;
+  if (alias === "Telo") return kind;
+  const module = aliasToModule(ownModule, alias);
+  return module ? `${module}.${suffix}` : kind;
 }
 
 /** Collect every imported library's FULL document set for the zone stage's
@@ -498,7 +598,20 @@ function collectModuleManifests(mod: LoadedModule): ResourceManifest[] {
   for (const p of mod.partials) {
     partials.push(...stampFile(p, ownerModuleName(mod.owner)));
   }
-  return [...owner, ...partials];
+  const all = [...owner, ...partials];
+  // A library's `resources:` block declares the instances it requires from
+  // whoever imports it. Standing a kind-only declaration behind each entry is
+  // what makes `!ref connection` resolve and `resources.connection.<field>` type
+  // in the library's OWN pass — the only pass that sees its internals, since a
+  // consumer's flattened analysis drops the library doc. `selectModuleManifests-
+  // ForAnalysis` drops them again for a non-root module (they are not exported),
+  // and the kernel's import controller filters them out in favour of the
+  // borrowed instance itself.
+  const moduleDoc = all.find((m) => isModuleKind(m.kind));
+  if (moduleDoc) {
+    all.push(...injectedDeclarations(moduleDoc, moduleDoc.metadata?.name as string | undefined));
+  }
+  return all;
 }
 
 function ownerModuleName(file: LoadedFile): string | undefined {

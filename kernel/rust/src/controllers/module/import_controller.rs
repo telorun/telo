@@ -6,6 +6,13 @@
 //! normalised into the controller-selection policy stamped on the child — which
 //! is why a kind's controller is chosen by the import that reached it rather
 //! than by the module that declared it.
+//!
+//! One deliberate divergence from the Node twin, per the mirror rule: Node's
+//! `resolve-ref-sentinels.ts` walks a `Telo.Import`'s `resources:` block so the
+//! references an importer supplies for a library's declared inputs resolve. This
+//! kernel does not implement that block at all — it is refused below and by
+//! `UNSUPPORTED_MODULE_FIELDS` on the library side — so there is nothing there to
+//! walk. The walk lands here when the feature does.
 
 use serde_json::Value;
 use telo_analyzer::resolve_source;
@@ -27,7 +34,7 @@ pub fn parse_import(
     let (source, runtime) = match entry {
         Value::String(source) => (source.as_str(), None),
         Value::Object(map) => {
-            for unsupported in ["variables", "secrets"] {
+            for unsupported in ["variables", "secrets", "resources"] {
                 if map.contains_key(unsupported) {
                     return Err(KernelError::new(
                         "ERR_UNSUPPORTED_MANIFEST_FEATURE",

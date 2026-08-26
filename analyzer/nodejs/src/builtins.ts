@@ -232,6 +232,35 @@ const ROOT_LOGGING_SCHEMA = {
   additionalProperties: false,
 };
 
+/** A `Telo.Library`'s declared resource inputs — the instances it requires from
+ *  whoever imports it, the inward half of the symmetry `exports.resources`
+ *  already had outward. Each entry is constrained by KIND ONLY, through the same
+ *  alias-qualified grammar `extends:` and `x-telo-ref` use; there is no `use:`,
+ *  because the boundary is a dependency edge for init order whatever the library
+ *  does with the instance. See `analyzer/nodejs/src/resource-input.ts`. */
+const LIBRARY_RESOURCE_INPUTS_SCHEMA = {
+  type: "object",
+  additionalProperties: {
+    type: "object",
+    required: ["kind"],
+    properties: {
+      kind: { type: "string" },
+      description: { type: "string" },
+    },
+    additionalProperties: false,
+  },
+};
+
+/** The importer's side of the same block: entry name → `!ref` to the instance
+ *  supplied for it. Left open because the accepted KIND is declared by the
+ *  target library, not by this schema — the constraint is checked by
+ *  `validate-resource-inputs.ts`, which reads the target's declared block off
+ *  the `metadata.requiredResources` stamp. */
+const IMPORT_RESOURCE_INPUTS_SCHEMA = {
+  type: "object",
+  additionalProperties: {},
+};
+
 export const KERNEL_BUILTINS: ResourceDefinition[] = [
   { kind: "Telo.Abstract", metadata: { name: "Template", module: "Telo" } },
   // "Control can be transferred to this" — the parent of Invocable and Runnable,
@@ -427,28 +456,26 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           items: {
             type: "object",
             additionalProperties: true,
-            // Resource bodies are `self`-only for config: per-call `inputs` is
-            // NOT in scope here. Each entry is a persistent child created once at
-            // init() and reused, so its config cannot depend on call-time data —
-            // that flows through the top-level `inputs:` sibling into the dispatch
-            // target's invoke().
+            // A `resources:` entry is a DECLARATION of another kind, so the
+            // CEL inside it belongs to THAT kind: its `x-telo-context` regions
+            // are rebased under this entry's path and take precedence (they are
+            // deeper), which is what puts `inputs`, `item`, `request`, `steps`
+            // and a `catch:`'s `error` in scope exactly where the nested kind
+            // declares them — see `analyzer/nodejs/src/template-body.ts`.
             //
-            // The exception is CEL the child's OWN controller evaluates later
-            // against a runtime context it owns (e.g. an Http.Api evaluating route
-            // CEL per request). Those `request` / `result` / `steps` / `error`
-            // variables are deferred — the template controller preserves them
-            // untouched (see resource-template-controller.ts) — so they are
-            // exposed here permissively. Their deep shape is the child kind's
-            // concern, not the template's, so they type as open values.
+            // What stays here is `self` alone, in force throughout the entry:
+            // it is how a body reaches the configuration its enclosing template
+            // was given, and no nested kind knows about it. The four names that
+            // used to sit beside it (`request` / `result` / `steps` / `error`)
+            // were a fixed permissive stand-in for the nested kind's own
+            // regions — which is why `error` was offered outside every `catch:`
+            // while `inputs` and `item` were undefined wherever a body actually
+            // reads them.
             "x-telo-context": {
               type: "object",
               additionalProperties: false,
               properties: {
                 self: { "x-telo-context-from-root": "schema" },
-                request: {},
-                result: {},
-                steps: {},
-                error: {},
               },
             },
           },
@@ -611,6 +638,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         integrity: { type: "string" },
         variables: { type: "object" },
         secrets: { type: "object" },
+        resources: IMPORT_RESOURCE_INPUTS_SCHEMA,
         runtime: {
           oneOf: [
             { type: "string" },
@@ -757,6 +785,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                   integrity: { type: "string" },
                   variables: { type: "object" },
                   secrets: { type: "object" },
+                  resources: IMPORT_RESOURCE_INPUTS_SCHEMA,
                   runtime: {
                     oneOf: [
                       { type: "string" },
@@ -872,6 +901,29 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         },
         variables: { type: "object" },
         secrets: { type: "object" },
+        // How many times this library is instantiated in one application.
+        //
+        // `isolated` (the default) is what every published module was written
+        // against: each import declaration builds its own child scope with its
+        // own instances, so two libraries importing a third get two of
+        // everything in it. `shared` makes the library a SINGLETON — every
+        // import of it resolves to one instantiation, owned by the root and
+        // torn down after everything that borrowed it.
+        //
+        // Default `isolated` rather than `shared` — the opposite of the
+        // Application field's — because flipping it would silently collapse
+        // every existing app's resource graph and turn per-import `variables:`
+        // into a conflict. The `exports.kinds` precedent: private-by-default is
+        // the better end state and still needs the ecosystem republished first.
+        lifecycle: {
+          type: "string",
+          enum: ["shared", "isolated"],
+          default: "isolated",
+        },
+        // The inward half of `exports.resources`: instances this library
+        // requires from whoever imports it. Library-only — an Application is a
+        // root with no importer, so it owns its instances outright.
+        resources: LIBRARY_RESOURCE_INPUTS_SCHEMA,
         include: {
           type: "array",
           items: { type: "string" },
@@ -902,6 +954,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                   integrity: { type: "string" },
                   variables: { type: "object" },
                   secrets: { type: "object" },
+                  resources: IMPORT_RESOURCE_INPUTS_SCHEMA,
                   runtime: {
                     oneOf: [
                       { type: "string" },
