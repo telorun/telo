@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0 - 2026-08-27
+### Added
+* `DirectoryListing` takes an `exclude` list — base names omitted at any depth, an excluded directory neither listed nor descended, the semantics `TreeSnapshot` already had. A recursive listing of a real tree is unreadable without one: caches and vendor directories (`.telo`, `node_modules`, `.git`) drown the entries a caller asked for.
+### Fixed
+* An optional invoke `path` now accepts the empty string as a spelling of its default: `DirectoryListing` and `TreeSnapshot` declared `minLength: 1` on a field that is optional and means `cwd`, so a caller passing "" for the root — an LLM tool call above all — was rejected by the contract check even though the controller already resolved it to `cwd`.
+
 ## 0.9.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
