@@ -2,6 +2,7 @@ import { checkName } from "@telorun/analyzer";
 import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { nameViolationMessage } from "./name-violation-message";
 
 interface ExtractInlineDialogProps {
   open: boolean;
@@ -45,7 +46,7 @@ export function ExtractInlineDialog({
     const trimmed = name.trim();
     const violation = checkName(trimmed, "value", "resource");
     if (violation) {
-      setError(violation.message);
+      setError(nameViolationMessage(violation, "value"));
       return;
     }
     if (taken.includes(trimmed)) {

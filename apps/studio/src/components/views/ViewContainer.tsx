@@ -1,13 +1,11 @@
 import { Lock } from "lucide-react";
 import { getModuleFiles, summarizeFiles } from "../../diagnostics-aggregate";
 import type { ModuleKind, ViewId } from "../../model";
+import { RunBar, RunDock, useRun } from "../../run";
 import { DiagnosticBadge } from "../diagnostics/DiagnosticBadge";
 import { useDiagnosticsState } from "../diagnostics/DiagnosticsContext";
-import { DefinitionsView } from "./definitions/DefinitionsView";
-import { DeploymentView } from "./deployment/DeploymentView";
-import { ImportsView } from "./imports/ImportsView";
-import { KindsView } from "./kinds/KindsView";
-import { ResourcesView } from "./resources/ResourcesView";
+import { OutlineView } from "./outline/OutlineView";
+import { RunConfigView } from "./run/RunConfigView";
 import { SourceView } from "./source/SourceView";
 import { TopologyView } from "./topology/TopologyView";
 import type { ViewProps } from "./types";
@@ -27,11 +25,8 @@ interface TabEntry {
 
 const VIEW_TABS: TabEntry[] = [
   { id: "topology", label: "Graph" },
-  { id: "imports", label: "Imports" },
-  { id: "definitions", label: "Definitions" },
-  { id: "resources", label: "Resources" },
-  { id: "kinds", label: "Kinds" },
-  { id: "deployment", label: "Deployment", applicationOnly: true },
+  { id: "outline", label: "Outline" },
+  { id: "run", label: "Run", applicationOnly: true },
   { id: "source", label: "Source" },
 ];
 
@@ -41,13 +36,9 @@ function isTabVisible(tab: TabEntry, kind: ModuleKind): boolean {
 }
 
 /** Views that are edit surfaces: while the agent holds the workspace they get a
- *  pointer-blocking overlay. Browse-only views (resources/definitions/kinds)
- *  stay interactive, and Source handles its own Monaco read-only mode. */
-const OVERLAY_LOCKED_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>([
-  "topology",
-  "imports",
-  "deployment",
-]);
+ *  pointer-blocking overlay. The Outline only lists and navigates, so it stays
+ *  interactive, and Source handles its own Monaco read-only mode. */
+const OVERLAY_LOCKED_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["topology", "run"]);
 
 export function ViewContainer({ activeView, onChangeView, viewProps }: ViewContainerProps) {
   const kind = viewProps.viewData.manifest.kind;
@@ -56,10 +47,20 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
   // sidebar shows per module, since Source is where you go to fix diagnostics.
   const diagState = useDiagnosticsState();
   const sourceSummary = summarizeFiles(diagState, getModuleFiles(viewProps.viewData.manifest));
-  // If the active view is hidden (e.g. "deployment" while viewing a Library),
-  // render nothing — Editor is expected to reset activeView when this happens,
-  // but we guard here so a stale state doesn't crash the canvas.
+  // If the active view is hidden (e.g. "run" while viewing a Library), render
+  // nothing — Editor is expected to reset activeView when this happens, but we
+  // guard here so a stale state doesn't crash the canvas.
   const renderedView = visibleTabs.some((t) => t.id === activeView) ? activeView : null;
+
+  const { dockFillsPane } = useRun();
+  const appPath = viewProps.run.appPath;
+  // A maximized dock takes the whole pane; the view strip above it stays, so the
+  // module — and the way back — never leave the screen. Whether it does is the
+  // run context's answer, not this component's: the dock renders nothing when
+  // the app has nothing to show, and hiding the views against a second reading
+  // of "maximized" is what left the pane blank after a Clear.
+  const dockMaximized = appPath !== null && dockFillsPane(appPath);
+  const openRunTab = () => onChangeView("run");
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-hidden">
@@ -79,6 +80,19 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
             {tab.id === "source" && <DiagnosticBadge summary={sourceSummary} size="sm" />}
           </div>
         ))}
+        {appPath && (
+          <>
+            <div className="flex-1" />
+            <RunBar
+              appPath={appPath}
+              runnerName={viewProps.run.runnerName}
+              onRun={viewProps.run.onRun}
+              onRunWatch={viewProps.run.onRunWatch}
+              canWatch={viewProps.run.canWatch}
+              onOpenSettings={viewProps.run.onOpenSettings}
+            />
+          </>
+        )}
       </div>
 
       {/* Remote modules get their own banner above the view tabs (Editor), so
@@ -90,15 +104,12 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
         </div>
       )}
 
-      <div className="relative flex flex-1 overflow-hidden">
+      <div className={`relative flex-1 overflow-hidden ${dockMaximized ? "hidden" : "flex"}`}>
         {renderedView === "topology" && <TopologyView {...viewProps} />}
-        {renderedView === "imports" && <ImportsView {...viewProps} />}
-        {renderedView === "definitions" && <DefinitionsView {...viewProps} />}
-        {renderedView === "resources" && <ResourcesView {...viewProps} />}
-        {renderedView === "kinds" && <KindsView {...viewProps} />}
+        {renderedView === "outline" && <OutlineView {...viewProps} />}
         {renderedView === "source" && <SourceView {...viewProps} />}
-        {renderedView === "deployment" && (
-          <DeploymentView
+        {renderedView === "run" && (
+          <RunConfigView
             manifest={viewProps.viewData.manifest}
             environment={viewProps.deployment.activeEnvironment}
             onSetEnvVars={viewProps.deployment.onSetEnvVars}
@@ -111,6 +122,8 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
           />
         )}
       </div>
+
+      {appPath && <RunDock appPath={appPath} onOpenConfig={openRunTab} />}
     </div>
   );
 }

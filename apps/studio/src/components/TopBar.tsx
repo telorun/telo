@@ -1,50 +1,22 @@
-import { ChevronDown, Eye, MessageSquare, Monitor, Moon, Redo2, Square, Sun, Undo2 } from "lucide-react";
+import { MessageSquare, Monitor, Moon, Redo2, Sun, Undo2 } from "lucide-react";
 import type { ParsedManifest, Workspace } from "../model";
 import { type ThemePreference, useColorModeControls } from "../theme/color-mode";
 import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
-import type { RunRecord, RunStatus } from "../run";
-import { RunStatusChip } from "../run";
 import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
 import { useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
 import { Button } from "./ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
 
-function formatRunTime(startedAt: number): string {
-  return new Date(startedAt).toLocaleTimeString();
-}
-
+/** Workspace-global chrome only. Running belongs to one Application, so its
+ *  trigger, status and history live in that module's own view-tab strip — a
+ *  Run button here read as global and said nothing about which app it started. */
 interface TopBarProps {
   workspace: Workspace | null;
   activeManifest: ParsedManifest | null;
-  onOpen: () => void;
+  /** Opens a directory picker. Absent where the environment offers no choice of
+   *  workspace — there is exactly one, so an "open" action would re-open what is
+   *  already open. */
+  onOpen?: () => void;
   onOpenSettings: () => void;
-  onRun?: () => void;
-  /** Start a watch session: a workspace that runs continuously, where saving a
-   *  file reloads the kernel instead of starting a new run. Offered only when
-   *  the selected runner advertises `features.watch`. */
-  onRunWatch?: () => void;
-  /** Whether the selected runner offers watch sessions. */
-  canWatch?: boolean;
-  /** Status of the active Application's live (or most recent) run, or null.
-   *  Drives the Run button's spinner (in-flight) / dot (terminal). */
-  runStatus?: RunStatus | null;
-  /** Newest-first run history for the active Application — shown in the Run
-   *  button's chevron dropdown. */
-  runs?: RunRecord[];
-  /** Open the output view for a past/selected run. */
-  onSelectRun?: (runId: string) => void;
-  /** Stop the active Application's live run — the Stop button shown beside Run
-   *  while a run is in flight. */
-  onStop?: (runId: string) => void;
-  /** Clear the active Application's finished run history (the dropdown's Clear). */
-  onClearRuns?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -59,14 +31,6 @@ export function TopBar({
   activeManifest,
   onOpen,
   onOpenSettings,
-  onRun,
-  onRunWatch,
-  canWatch = false,
-  runStatus,
-  runs = [],
-  onSelectRun,
-  onStop,
-  onClearRuns,
   onUndo,
   onRedo,
   canUndo,
@@ -79,16 +43,6 @@ export function TopBar({
   const topBarSummary = activeManifest
     ? summarizeFiles(diagState, getModuleFiles(activeManifest))
     : null;
-  const canRun = activeManifest?.kind === "Application";
-  const runTerminal =
-    runStatus?.kind === "exited" || runStatus?.kind === "failed" || runStatus?.kind === "stopped";
-  const runTerminalOk = runStatus?.kind === "exited" && runStatus.code === 0;
-  const liveRun =
-    runs.find((r) => r.status.kind === "starting" || r.status.kind === "running") ?? null;
-  const hasHistory = runs.some(
-    (r) => r.status.kind === "exited" || r.status.kind === "failed" || r.status.kind === "stopped",
-  );
-
   return (
     <div className="flex h-10 items-center border-b border-zinc-200 bg-white px-4 text-sm dark:border-zinc-800 dark:bg-zinc-950">
       <span className="font-semibold text-zinc-900 dark:text-zinc-100">Telo Studio</span>
@@ -103,9 +57,11 @@ export function TopBar({
       </div>
 
       <div className="flex gap-2">
-        <Button variant="ghost" size="sm" onClick={onOpen}>
-          Open workspace
-        </Button>
+        {onOpen && (
+          <Button variant="ghost" size="sm" onClick={onOpen}>
+            Open folder…
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon-sm"
@@ -129,97 +85,6 @@ export function TopBar({
         <Button variant="ghost" size="sm" disabled>
           Save
         </Button>
-        <div className="flex items-stretch">
-          {liveRun ? (
-            <Button
-              variant="default"
-              size="sm"
-              className="rounded-r-none"
-              onClick={() => onStop?.(liveRun.id)}
-            >
-              <Square className="size-3 fill-current" aria-hidden />
-              Stop
-            </Button>
-          ) : (
-            <Button
-              variant={canRun ? "default" : "ghost"}
-              size="sm"
-              className="rounded-r-none"
-              onClick={canRun ? onRun : undefined}
-              disabled={!canRun}
-            >
-              {runTerminal ? (
-                <span
-                  className={`mr-1 inline-block h-2 w-2 rounded-full ${
-                    runTerminalOk ? "bg-green-500" : "bg-red-500"
-                  }`}
-                  aria-hidden
-                />
-              ) : null}
-              Run
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant={canRun ? "default" : "ghost"}
-                size="icon-sm"
-                className="rounded-l-none border-l border-l-black/15 dark:border-l-white/15"
-                disabled={!canRun && runs.length === 0}
-                aria-label="Recent runs"
-                title="Recent runs"
-              >
-                <ChevronDown />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              {canWatch && (
-                <>
-                  <DropdownMenuItem
-                    onSelect={() => onRunWatch?.()}
-                    disabled={!canRun}
-                    className="gap-2"
-                  >
-                    <Eye className="size-3.5 shrink-0" aria-hidden />
-                    <span className="flex flex-col">
-                      <span>Run in watch mode</span>
-                      <span className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
-                        Saving reloads the app
-                      </span>
-                    </span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-              <DropdownMenuLabel className="flex items-center justify-between gap-2">
-                Recent runs
-                {hasHistory && (
-                  <button
-                    type="button"
-                    onClick={onClearRuns}
-                    className="font-normal text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-                  >
-                    Clear
-                  </button>
-                )}
-              </DropdownMenuLabel>
-              {runs.length === 0 ? (
-                <DropdownMenuItem disabled>No runs yet</DropdownMenuItem>
-              ) : (
-                runs.map((run) => (
-                  <DropdownMenuItem
-                    key={run.id}
-                    onSelect={() => onSelectRun?.(run.id)}
-                    className="justify-between gap-3"
-                  >
-                    <span className="truncate tabular-nums">{formatRunTime(run.startedAt)}</span>
-                    <RunStatusChip status={run.status} />
-                  </DropdownMenuItem>
-                ))
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
         <ThemeToggleButton />
         {onToggleChat && (
           <Button

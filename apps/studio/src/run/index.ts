@@ -1,5 +1,8 @@
 export type {
   LogLine,
+  MissingConfigEntry,
+  RunBlocker,
+  RunDockState,
   RunRecord,
   UnavailableRun,
 } from "./context";
@@ -31,9 +34,10 @@ export {
   type SyncedFiles,
 } from "./workspace-sync";
 export { registry } from "./registry";
+export { RunBar } from "./ui/RunBar";
+export { RunDock } from "./ui/RunDock";
 export { RunSettingsSection } from "./ui/RunSettingsSection";
 export { RunStatusChip } from "./ui/RunStatusChip";
-export { RunView } from "./ui/RunView";
 
 import { isTauri } from "@tauri-apps/api/core";
 import { registry } from "./registry";

@@ -41,15 +41,23 @@ export function acceptTermsFor(runnerId: string, version: string): void {
   }
 }
 
-const VALID_VIEWS: Set<string> = new Set<ViewId>([
-  "topology",
-  "imports",
-  "definitions",
-  "resources",
-  "kinds",
-  "source",
-  "deployment",
-]);
+const VALID_VIEWS: Set<string> = new Set<ViewId>(["topology", "outline", "source", "run"]);
+
+/** Views a persisted hint may still name: "deployment" preceded the Run tab,
+ *  and four separate lists preceded the Outline tab. A hint from before either
+ *  change still says where the user was, so it is mapped rather than dropped. */
+const RENAMED_VIEWS: Record<string, ViewId> = {
+  deployment: "run",
+  imports: "outline",
+  definitions: "outline",
+  resources: "outline",
+  kinds: "outline",
+};
+
+function normalizeView(view: string | undefined): string {
+  if (view && RENAMED_VIEWS[view]) return RENAMED_VIEWS[view];
+  return view && VALID_VIEWS.has(view) ? view : "topology";
+}
 
 // Only lightweight cross-session state is persisted. The workspace itself
 // is rebuilt by `loadWorkspace` on launch, not serialized.
@@ -107,8 +115,7 @@ export function loadPersistedState(): PersistedState | null {
     return {
       rootDir: data?.rootDir ?? detectStoredWorkspaceRoot(),
       activeModulePath: data?.activeModulePath ?? null,
-      activeView:
-        data?.activeView && VALID_VIEWS.has(data.activeView) ? data.activeView : "topology",
+      activeView: normalizeView(data?.activeView),
       openTabs: Array.isArray(data?.openTabs) ? data.openTabs.filter(isValidTab) : [],
       activeTabId: typeof data?.activeTabId === "string" ? data.activeTabId : null,
       expandedDirs: Array.isArray(data?.expandedDirs)

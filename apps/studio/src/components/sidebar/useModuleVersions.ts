@@ -24,8 +24,26 @@ interface Entry {
   failed?: boolean;
 }
 
+/** One cache per hub, module-scoped rather than per component instance.
+ *
+ *  The surfaces that ask are mounted and unmounted independently — the graph's
+ *  declarations rail and the Outline's import table live in different tabs — so
+ *  a cache inside the memo was one cache EACH, discarded on every tab switch.
+ *  The TTL is what bounds staleness; the component's lifetime was never the
+ *  right bound. */
+const CACHES = new Map<string, Map<string, Entry>>();
+
+function cacheFor(hubUrl: string | undefined): Map<string, Entry> {
+  const key = hubUrl ?? "";
+  const existing = CACHES.get(key);
+  if (existing) return existing;
+  const created = new Map<string, Entry>();
+  CACHES.set(key, created);
+  return created;
+}
+
 /**
- * One hub version lookup for the whole Imports view, memoized per module ref.
+ * One hub version lookup, memoized per module ref.
  *
  * Every affordance asks the same question about the same modules: the upgrade
  * badge resolves each import, the picker re-asks when it opens, and the
@@ -35,7 +53,7 @@ interface Entry {
  */
 export function useModuleVersions(hubUrl: string | undefined): ModuleVersionLookup {
   return useMemo(() => {
-    const byRef = new Map<string, Entry>();
+    const byRef = cacheFor(hubUrl);
     return (baseRef) => {
       const now = Date.now();
       const hit = byRef.get(baseRef);

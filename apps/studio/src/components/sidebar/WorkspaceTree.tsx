@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { hasApplicationImporter, isWorkspaceModule } from "../../loader";
 import type { ModuleKind, ParsedManifest, Workspace } from "../../model";
+import { useRun } from "../../run";
 import { getModuleFiles, summarizeFiles } from "../../diagnostics-aggregate";
 import { DiagnosticBadge } from "../diagnostics/DiagnosticBadge";
 import { useDiagnosticsState } from "../diagnostics/DiagnosticsContext";
@@ -195,6 +196,10 @@ function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun }: ModuleR
   const icon = isLibrary ? "□" : "▷";
   const diagState = useDiagnosticsState();
   const summary = summarizeFiles(diagState, getModuleFiles(node.manifest));
+  // A run lives in its owning Application's pane, so this dot is the only place
+  // a run in a module you are not looking at is visible.
+  const { liveRunForApp } = useRun();
+  const liveRun = isLibrary ? null : liveRunForApp(node.manifest.filePath);
 
   const base = "flex items-center gap-1.5 px-4 py-0.5 cursor-pointer select-none group";
   const hoverOrActive = active
@@ -205,6 +210,17 @@ function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun }: ModuleR
     <div className={`${base} ${hoverOrActive} ${dim ? "opacity-50" : ""}`} onClick={onOpen}>
       <span className="text-zinc-400">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{node.manifest.metadata.name}</span>
+      {liveRun && (
+        <span
+          title={liveRun.status.kind === "running" ? "Running" : "Starting"}
+          aria-label={liveRun.status.kind === "running" ? "Running" : "Starting"}
+          className={`size-1.5 shrink-0 rounded-full ${
+            liveRun.status.kind === "running"
+              ? "bg-emerald-500"
+              : "animate-pulse bg-amber-500"
+          }`}
+        />
+      )}
       <DiagnosticBadge summary={summary} size="sm" />
       {dim && (
         <span className="shrink-0 rounded bg-zinc-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">

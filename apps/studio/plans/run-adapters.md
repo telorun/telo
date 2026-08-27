@@ -277,6 +277,9 @@ Separating keys gives deployment storage its own migration story (future: secret
 
 ### UI: Deployment view
 
+> Superseded by [run-in-the-module-pane.md](./run-in-the-module-pane.md): this view
+> is now the `Run` tab, and it carries the run trigger beside the configuration.
+
 New view registered under [src/components/views/](apps/studio/src/components/views/) alongside `inventory/`, `topology/`, `source/`:
 
 ```
@@ -293,6 +296,9 @@ src/components/views/deployment/
 - Future work (multi-environment) slots in by making `EnvironmentSelector` interactive; no changes to `RunRequest.env` or adapter interface.
 
 ### `RunView` is not a `ViewId`
+
+> Superseded by [run-in-the-module-pane.md](./run-in-the-module-pane.md): run output
+> is a per-Application bottom dock, not a full-canvas replacement view.
 
 `RunView` is deliberately **not** a member of the `ViewId` union. It is:
 

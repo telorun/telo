@@ -22,11 +22,3 @@ export function CapabilityBadge({ capability }: { capability: string }) {
     </span>
   );
 }
-
-export function TopologyBadge({ topology }: { topology: string }) {
-  return (
-    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-900/60 dark:text-amber-200">
-      {topology}
-    </span>
-  );
-}

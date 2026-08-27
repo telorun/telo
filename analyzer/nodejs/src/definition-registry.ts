@@ -449,6 +449,42 @@ export class DefinitionRegistry {
     return buildFieldMapAtPath(subSchema, fieldPath);
   }
 
+  /** The kinds a definition descends from DIRECTLY — the same two edges
+   *  `register` feeds into `extendedBy`, read the other way.
+   *
+   *  Both spellings, because either can carry the edge that satisfies a slot:
+   *  `capability:` is the legacy implements-this form, `extends:` the canonical
+   *  one. A consumer walking these by hand would be a second reading of what an
+   *  inheritance edge IS, and the downward index and the upward walk have to
+   *  agree about that forever. */
+  parentsOf(kind: string): string[] {
+    const def = this.defs.get(kind);
+    if (!def) return [];
+    return [def.capability, def.extends].filter(
+      (parent): parent is string => typeof parent === "string" && parent.length > 0,
+    );
+  }
+
+  /** Whether every kind this one descends from is registered.
+   *
+   *  When it is, what the kind implements is FULLY KNOWN: a target it does not
+   *  reach is one it genuinely does not implement, so a mismatch is a verdict.
+   *  When a hop is missing — an unimported abstract, an alias the declaring file
+   *  could not resolve — a mismatch cannot be told from a missing dependency,
+   *  which is the partial context every reference check stays lenient in. */
+  ancestryResolved(kind: string): boolean {
+    const queue = [kind];
+    const seen = new Set<string>();
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (seen.has(current)) continue;
+      seen.add(current);
+      if (!this.defs.has(current)) return false;
+      queue.push(...this.parentsOf(current));
+    }
+    return true;
+  }
+
   /** Returns all definitions that transitively extend the given abstract kind.
    *  Follows the capability chain to any depth (equivalent to instanceof in OOP).
    *  Definitions are included regardless of registration order. */

@@ -2,8 +2,8 @@
 
 Desktop manifest editor for [Telo](https://github.com/telorun/telo). Opens a
 workspace directory, parses its YAML manifests, runs static analysis through
-the shared `@telorun/analyzer` package, and provides Topology, Inventory,
-Source, and Deployment views for editing resources.
+the shared `@telorun/analyzer` package, and provides Graph,
+Outline, Run, and Source views for editing resources.
 
 Built as a React + Vite SPA wrapped in a [Tauri](https://tauri.app) shell.
 

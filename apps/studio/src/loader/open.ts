@@ -27,6 +27,19 @@ function supportsDirectoryPicker(): boolean {
   }
 }
 
+/** Whether this environment can offer a CHOICE of workspace.
+ *
+ *  `"chooser"` — a directory picker exists (Tauri, or a top-level document with
+ *  the File System Access API), so opening is a real operation and repeating it
+ *  switches workspaces.
+ *
+ *  `"single"` — no picker: every open resolves to the one localStorage-backed
+ *  workspace. Offering to "open" it a second time picks the same one, which is
+ *  why the surfaces read this rather than each re-deriving the environment. */
+export function workspaceOpenMode(): "chooser" | "single" {
+  return isInTauri() || supportsDirectoryPicker() ? "chooser" : "single";
+}
+
 // A no-op local adapter — supports nothing, used when only registry adapters are needed.
 export const noopAdapter: ManifestSource = {
   supports: () => false,

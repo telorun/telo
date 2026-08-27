@@ -17,7 +17,7 @@ export interface DeclaredPortEntry {
 }
 
 /** Project an Application manifest's declared `ports:` block into the row model
- *  the Deployment tab renders. Each port binds a host env var — its number is
+ *  the Run tab renders. Each port binds a host env var — its number is
  *  edited as an env value, like a variable — plus a protocol. Library manifests
  *  carry no ports, so the tab is Application-only. */
 export function extractDeclaredPorts(

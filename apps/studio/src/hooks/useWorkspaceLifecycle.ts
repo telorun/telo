@@ -278,11 +278,11 @@ export function useWorkspaceLifecycle({
     const nextActiveModule = nextActiveModulePath
       ? workspace.modules.get(nextActiveModulePath)
       : null;
-    // Deployment view only makes sense for Applications; if the persisted view
-    // is "deployment" and the active module is a Library, fall back to topology.
+    // The Run view only makes sense for Applications; if the persisted view is
+    // "run" and the active module is a Library, fall back to topology.
     const persistedView = persistedHint.activeView;
     const nextActiveView: ViewId =
-      persistedView === "deployment" && nextActiveModule?.kind !== "Application"
+      persistedView === "run" && nextActiveModule?.kind !== "Application"
         ? "topology"
         : (persistedView ?? "topology");
     const { openTabs, activeTabId } = restoreTabs(

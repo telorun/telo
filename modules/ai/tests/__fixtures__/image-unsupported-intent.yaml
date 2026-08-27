@@ -12,7 +12,7 @@ imports:
   Ai: ../../
   AiEcho: ../__fixtures__/ai-echo.yaml
 targets:
-  - !ref Draw
+  - invoke: !ref Draw
 ---
 kind: AiEcho.EchoImageModel
 metadata: { name: Echo }

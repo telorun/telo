@@ -1,4 +1,6 @@
-import { ArrowUp, ChevronLeft, ExternalLink, Pencil, Plus, Settings2, X } from "lucide-react";
+import { isSameModuleVersion, parseVersionedRef } from "@telorun/analyzer";
+import { describeRemedy } from "@telorun/ide-support";
+import { ArrowUp, ChevronLeft, ExternalLink, GitBranch, Pencil, Plus, Settings2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   bindingEntrySchema,
@@ -13,6 +15,12 @@ import type {
   ParsedResource,
   Selection,
 } from "../../../model";
+import {
+  blockedMessage,
+  upgradeActionTitle,
+  versionPickerTitle,
+} from "../../sidebar/import-upgrade-notices";
+import { isImportPinned, upgradedImportSource } from "../../sidebar/import-pin";
 import { useImportUpgrade } from "../../sidebar/useImportUpgrade";
 import { useModuleVersions } from "../../sidebar/useModuleVersions";
 import { useUpgradeTargets } from "../../sidebar/useUpgradeTargets";
@@ -23,6 +31,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
 import {
@@ -119,6 +128,31 @@ export function ModuleBar({
   const isApplication = manifest.kind === "Application";
   const fields = root.fields;
 
+  // Only versions this telo can host are offered — "Upgrade all" must not walk
+  // the author into a manifest their runtime refuses to load.
+  const outdated = readOnly
+    ? []
+    : manifest.imports.flatMap((imp) => {
+        const best = targets.get(imp.name)?.best;
+        if (!best) return [];
+        return [
+          {
+            name: imp.name,
+            newSource: upgradedImportSource(imp, best),
+            wasPinned: isImportPinned(imp),
+            repinned: best.integrity != null,
+          },
+        ];
+      });
+
+  // Imports that ARE behind but have nothing hostable to move to. Reported for
+  // the block rather than per row: a row's controls can only say "not offered",
+  // and the action — update telo — is the same for all of them.
+  const blocked = manifest.imports.flatMap((imp) => {
+    const target = targets.get(imp.name);
+    return target && !target.best && target.heldBack ? [{ name: imp.name, ...target.heldBack }] : [];
+  });
+
   const write = (next: Record<string, unknown>) => onUpdateResource(root.kind, root.name, next);
 
   // The kinds each import brings in, keyed by the alias they arrive under —
@@ -171,7 +205,7 @@ export function ModuleBar({
       out.push({
         key: "upgrade",
         icon: <ArrowUp className="size-4" />,
-        title: `Upgrade ${imp.name} to ${best.version}`,
+        title: upgradeActionTitle(imp.name, best.version, targets.get(imp.name)?.heldBack),
         onClick: () => void upgrade.selectVersion(imp, best),
         tone: "alert",
       });
@@ -184,6 +218,93 @@ export function ModuleBar({
         onClick: () => onOpenModule(imp.resolvedPath!),
       });
     }
+    return out;
+  };
+
+  /** Every published version of an import, each marked with whether this telo
+   *  can host it. The one-click action moves to the newest hostable version; a
+   *  DELIBERATE pick is a different act — an author may knowingly pin a version
+   *  for a telo they are about to have — so the list offers the unhostable ones
+   *  too, labelled. Fetched when the menu opens, never before. */
+  const versionMenu = (imp: ParsedImport): ChipMenu | null => {
+    const ref = parseVersionedRef(imp.source);
+    if (!ref || readOnly) return null;
+    const heldBack = targets.get(imp.name)?.heldBack ?? null;
+    const active = upgrade.activeName === imp.name;
+    const items: ChipMenuItem[] = [];
+    if (active && upgrade.loading) {
+      items.push({ key: "loading", label: "Loading…", message: true });
+    }
+    if (active && upgrade.error) {
+      items.push({ key: "error", label: upgrade.error, message: true });
+    }
+    // A list where every row is marked explains nothing on its own.
+    if (active && !upgrade.loading && upgrade.noneRunnable) {
+      items.push({
+        key: "none-runnable",
+        message: true,
+        label: `${
+          upgrade.noneRunnable === "unreadable"
+            ? "No published version can be checked — their declared requirements cannot be read."
+            : "No published version runs on this telo."
+        } ${describeRemedy(upgrade.noneRunnable)}`,
+      });
+    }
+    if (active && !upgrade.loading) {
+      for (const version of upgrade.versions) {
+        const current = isSameModuleVersion(version.version, ref.version);
+        items.push({
+          key: version.version,
+          label: version.version,
+          note: current
+            ? "current"
+            : version.compatibility === "too-new"
+              ? "needs newer telo"
+              : version.compatibility === "unreadable"
+                ? "unreadable"
+                : undefined,
+          noteTone: current ? "muted" : "warn",
+          title:
+            version.compatibility === "too-new"
+              ? `${version.version} requires a newer telo than this one`
+              : version.compatibility === "unreadable"
+                ? `${version.version} declares a requirement that cannot be read`
+                : undefined,
+          disabled: upgrade.submitting,
+          onSelect: () => void upgrade.selectVersion(imp, version),
+        });
+      }
+    }
+    return {
+      key: "versions",
+      title: versionPickerTitle(imp.name, ref.version, heldBack),
+      icon: <GitBranch className="size-3.5" />,
+      label: "Versions",
+      onOpenChange: (open) => open && upgrade.loadVersions(imp),
+      items,
+    };
+  };
+
+  /** The two menus an import row carries: what importing it made available, and
+   *  which version of it is pinned. */
+  const importMenus = (imp: ParsedImport): ChipMenu[] => {
+    const out: ChipMenu[] = [];
+    const kinds = readOnly ? [] : (kindsByAlias.get(imp.name) ?? []);
+    if (kinds.length > 0) {
+      out.push({
+        key: "kinds",
+        title: `Create a resource from ${imp.name}`,
+        icon: <Plus className="size-4" />,
+        items: kinds.map((kind) => ({
+          key: kind.fullKind,
+          label: kind.kindName,
+          detail: kind.capability.replace("Telo.", ""),
+          onSelect: () => onCreateResourceOfKind(kind.fullKind),
+        })),
+      });
+    }
+    const versions = versionMenu(imp);
+    if (versions) out.push(versions);
     return out;
   };
 
@@ -268,12 +389,32 @@ export function ModuleBar({
         title="Imports"
         onAdd={readOnly ? undefined : () => setAddOpen(true)}
         addTitle="Add an import"
+        action={
+          outdated.length > 0
+            ? {
+                icon: <ArrowUp className="size-3.5" />,
+                title: upgrade.submitting
+                  ? "Upgrading…"
+                  : `Upgrade all ${outdated.length} outdated imports`,
+                onClick: () => void upgrade.upgradeAll(outdated),
+                disabled: upgrade.submitting,
+              }
+            : undefined
+        }
       >
         {/* An upgrade can fail (an unreachable registry, a rewrite that would
             collide) and it can succeed while dropping a pin the YAML no longer
             shows. Neither is visible in the rows above, so both are reported
             here rather than left to the Imports view — the action was taken
             from this surface. */}
+        {/* Behind with nothing hostable to move to: the rows can only fail to
+            offer an upgrade, which reads as "up to date". Said once for the
+            block, because the remedy — update telo — is the same for all. */}
+        {blocked.length > 0 && (
+          <div className="mb-1 rounded bg-amber-50 px-1.5 py-1 text-[10px] leading-tight text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+            {blockedMessage(blocked)}
+          </div>
+        )}
         {(upgrade.submitError || upgrade.pinNotice) && (
           <button
             className="mb-1 block w-full rounded bg-amber-50 px-1.5 py-1 text-left text-[10px] leading-tight text-amber-700 dark:bg-amber-950 dark:text-amber-300"
@@ -310,19 +451,7 @@ export function ModuleBar({
             // Declaring an import and using it are one gesture here: the kinds
             // it exports are exactly the kinds this module gained, and the only
             // thing a create flow would still ask for is a name it can derive.
-            menu={
-              readOnly
-                ? undefined
-                : {
-                    title: `Create a resource from ${imp.name}`,
-                    items: (kindsByAlias.get(imp.name) ?? []).map((kind) => ({
-                      key: kind.fullKind,
-                      label: kind.kindName,
-                      detail: kind.capability.replace("Telo.", ""),
-                      onSelect: () => onCreateResourceOfKind(kind.fullKind),
-                    })),
-                  }
-            }
+            menus={importMenus(imp)}
           />
         ))}
       </Section>
@@ -452,6 +581,7 @@ function Section({
   onAdd,
   addMenu,
   addTitle,
+  action,
   children,
 }: {
   title: string;
@@ -460,6 +590,9 @@ function Section({
    *  something the module already declares. */
   addMenu?: { name: string; onSelect: () => void }[];
   addTitle: string;
+  /** One block-wide action beside the add button — something that acts on every
+   *  row at once, which no row can offer for itself. */
+  action?: { icon: React.ReactNode; title: string; onClick: () => void; disabled?: boolean };
   children: React.ReactNode;
 }) {
   // Falsy entries are conditionals that rendered nothing (a notice with nothing
@@ -474,6 +607,17 @@ function Section({
         <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
           {title}
         </span>
+        <span className="flex items-center gap-1">
+        {action && (
+          <button
+            className="text-amber-600 hover:text-amber-700 disabled:opacity-50 dark:text-amber-400 dark:hover:text-amber-300"
+            onClick={action.onClick}
+            disabled={action.disabled}
+            title={action.title}
+          >
+            {action.icon}
+          </button>
+        )}
         {addMenu ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -498,6 +642,7 @@ function Section({
             <Plus className="size-3.5" />
           </button>
         ) : null}
+        </span>
       </div>
       {empty ? (
         <span className="text-[11px] text-zinc-300 dark:text-zinc-600">None</span>
@@ -533,10 +678,36 @@ const ACTION_TONE: Record<NonNullable<ChipAction["tone"]>, string> = {
 };
 
 /** A row's own actions, offered as a menu beside it rather than as a section
- *  button: what it lists belongs to THIS entry, not to the block. */
+ *  button: what it lists belongs to THIS entry, not to the block. A row may
+ *  carry several — creating from an import's kinds and choosing its version are
+ *  two different questions about the same row. */
 interface ChipMenu {
+  key: string;
   title: string;
-  items: { key: string; label: string; detail?: string; onSelect: () => void }[];
+  icon: React.ReactNode;
+  /** Heading above the items, for a menu whose entries are values rather than
+   *  actions (a version list). */
+  label?: string;
+  /** Fired when the menu opens, for a list that is fetched on demand. */
+  onOpenChange?: (open: boolean) => void;
+  items: ChipMenuItem[];
+}
+
+interface ChipMenuItem {
+  key: string;
+  label: string;
+  /** Secondary text, right-aligned and quiet — a kind's capability. */
+  detail?: string;
+  /** Status of THIS entry (`current`, `needs newer telo`), which is a different
+   *  thing from `detail` and is allowed to shout. */
+  note?: string;
+  noteTone?: "muted" | "warn";
+  title?: string;
+  /** A row that reports rather than offers: loading, an error, or the reason a
+   *  list is empty. Rendered as unselectable prose. */
+  message?: boolean;
+  disabled?: boolean;
+  onSelect?: () => void;
 }
 
 function Chip({
@@ -546,7 +717,7 @@ function Chip({
   openTitle,
   onRename,
   onRemove,
-  menu,
+  menus,
   actions,
   alert,
   badge,
@@ -560,7 +731,7 @@ function Chip({
    *  cannot be one of the fields the form rewrites. */
   onRename?: { validate: (next: string) => string | undefined; commit: (next: string) => void };
   onRemove?: () => void;
-  menu?: ChipMenu;
+  menus?: ChipMenu[];
   /** Extra affordances in the cluster — things the row can do that are neither
    *  opening its entry nor editing its key. */
   actions?: ChipAction[];
@@ -652,18 +823,15 @@ function Chip({
           alert ? "opacity-100" : "opacity-0"
         }`}
       >
-        {menu && menu.items.length > 0 && (
-          <DropdownMenu>
+        {(menus ?? []).map((menu) => (
+          <DropdownMenu key={menu.key} onOpenChange={menu.onOpenChange}>
             <DropdownMenuTrigger asChild>
-              <button
-                className={`${ACTION_CLASS} ${ACTION_TONE.default}`}
-                title={menu.title}
-              >
-                <Plus className="size-4" />
+              <button className={`${ACTION_CLASS} ${ACTION_TONE.default}`} title={menu.title}>
+                {menu.icon}
               </button>
             </DropdownMenuTrigger>
             {/* Beside the row, not below it: the rail is narrow and a list of
-                kinds is wider than it. */}
+                kinds — or of versions — is wider than it. */}
             <DropdownMenuContent
               side="right"
               align="start"
@@ -671,19 +839,41 @@ function Chip({
               // width, and this trigger is one icon.
               className="max-h-72 w-auto min-w-44 overflow-y-auto"
             >
+              {menu.label && <DropdownMenuLabel>{menu.label}</DropdownMenuLabel>}
               {menu.items.map((item) => (
-                <DropdownMenuItem key={item.key} className="text-xs" onSelect={item.onSelect}>
-                  <span className="flex-1">{item.label}</span>
+                <DropdownMenuItem
+                  key={item.key}
+                  className={
+                    item.message
+                      ? "whitespace-normal text-[11px] leading-snug"
+                      : "justify-between gap-3 text-xs"
+                  }
+                  disabled={item.disabled ?? item.message}
+                  title={item.title}
+                  onSelect={item.onSelect}
+                >
+                  <span className={item.message ? undefined : "flex-1"}>{item.label}</span>
                   {item.detail && (
                     <span className="ml-3 text-[9px] uppercase tracking-wide text-zinc-400">
                       {item.detail}
+                    </span>
+                  )}
+                  {item.note && (
+                    <span
+                      className={`ml-3 text-[10px] ${
+                        item.noteTone === "warn"
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {item.note}
                     </span>
                   )}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-        )}
+        ))}
         {(actions ?? []).map((item) => (
           <button
             key={item.key}
