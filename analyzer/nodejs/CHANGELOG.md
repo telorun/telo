@@ -1,5 +1,227 @@
 # @telorun/analyzer
 
+## 0.67.0
+
+### Minor Changes
+
+- 7d49da2: A reference is now checked against an abstract constraint even when the analysis
+  holds **no implementation of that abstract** — which is exactly the case where
+  the check was needed and never fired.
+
+  `checkKind` skipped a slot whenever the target abstract had no loaded subtypes,
+  on the grounds that partial context cannot tell a mismatch from a missing
+  dependency. But that leniency is about the CANDIDATE, not about the population:
+  an application whose imports declare no `Telo.Runnable` is an application whose
+  boot targets are all wrong, and every one of them passed. `targets: - !ref x`
+  naming an invocable — a `JS.Script`, a durable workflow — reported nothing and
+  then failed at boot with `Resource not found for invocation: undefined`.
+
+  The leniency now turns on whether the candidate's own ancestry is fully loaded —
+  asked of the registry, which owns those edges in both directions
+  (`parentsOf` / `ancestryResolved` beside `getByExtends`). Every kind the
+  candidate names through `capability:` / `extends:` resolving means what it
+  implements is settled, so reaching the target or not is a verdict; a missing hop
+  still skips, for an abstract target and a concrete one alike.
+
+  A candidate the registry never saw cannot be judged on what it implements, so it
+  stays lenient. Whether its NAME is resolvable is a separate question, asked of
+  the alias resolver rather than of the string's shape: a qualified kind whose
+  prefix names no import in scope (`NotAnAlias.Script`) is a bad name and is still
+  reported, while one reached through a DECLARED alias resolves even when the
+  target's definitions are absent, and a canonically-written kind the registry
+  holds is identified without any alias at all.
+
+  With no implementation list to suggest, the message says what the kind IS
+  instead — `'javascript.Script' does not implement 'Telo.Runnable' — it declares
+'Telo.Invocable'` — which points at the repair, an invoke step rather than a
+  boot target.
+
+- 46295b2: **Resource inputs on a library** — a `Telo.Library` gains a third input block
+  beside `variables:` and `secrets:`, declaring the instances it requires from
+  whoever imports it. The importer supplies references at the import's object form
+  (`resources: { connection: !ref db }`).
+
+  Instances used to flow up and never down: `exports.resources` hands one to an
+  importer, and nothing handed one the other way. Each import declaration also
+  builds its own child module context with its own instances, so two libraries
+  importing a third get two of everything in it — measured, an application
+  importing two libraries that each import one library owning a SQLite connection
+  fails with `no such table`, because the writer and the reader are on different
+  connections. Any set of libraries that must share a resource therefore had to be
+  linearized into a total order with every layer re-exporting the union of
+  everything beneath it, which gives away the self-containment a split is for. It
+  is a correctness constraint rather than a preference: a journal attests
+  exactly-once only when it writes on the same connection as the work it records.
+
+  - **An entry is constrained by KIND, with no `use:`.** The boundary is a
+    dependency edge for init order whatever the library does with the instance, so
+    the token would carry nothing the edge model reads — and the flattened
+    application analysis drops the library doc, so an app-level claim about
+    internal call sites is one nothing could check.
+  - **An entry synthesizes a kind-only DECLARATION in the library's own scope**, so
+    `!ref connection` at a reference slot and `resources.connection.<field>` in CEL
+    answer exactly as they do for a locally declared resource. Kind-only is enough
+    because it is already what a reference slot gets: the `status:` half types from
+    the kind and the flat half stays open.
+  - **Borrowed, not owned.** An injected resource's effect frame belongs to the
+    scope that declared it, so the child context never tears it down. Its published
+    reading is mirrored into the library's own `resources` scope on every
+    publication, because a reading is not a snapshot — the owner republishes after
+    `run()`, after every `invoke()` and on every `setStatus()`.
+  - **Diagnostics**: `RESOURCE_INPUT_KIND_UNRESOLVED` at the library that declared
+    the constraint; `RESOURCE_INPUT_MISSING`, `RESOURCE_INPUT_UNKNOWN`,
+    `RESOURCE_INPUT_UNRESOLVED` and `RESOURCE_INPUT_KIND_MISMATCH` at the import
+    that supplied (or failed to supply) it. Kind acceptance is the same transitive
+    rule an ordinary reference slot applies, shared rather than re-derived.
+  - **Two declaration-derived checks move to the injection site**, where the real
+    declaration is: a projection through an injected input reports nothing at the
+    library (a new `injected` projection-failure reason), and
+    `OBSERVED_STATE_NEVER_RUN` treats an injected name as reachable, since a
+    library cannot answer whether its consumer starts what it was handed.
+  - **Init order** falls out of the existing graph: a `Telo.Import` gains a
+    dependency edge per injected target — to a local resource, or to the import
+    that exports a cross-module one, which is the projection
+    `localDependencyNames` already makes at runtime. A cycle among those is
+    reported as a cycle; one closing through an imported instance still surfaces
+    as an init-loop failure, since nothing connects a forwarded export back to its
+    owning import. An import whose target is not yet initialized defers with
+    `ERR_LOCAL_REF_PENDING` before doing any load work, and binding a borrowed
+    instance is an EFFECT on the create frame — it registers a publication mirror
+    on the owner, and an import whose `init()` fails is discarded and re-created,
+    so an unregistered mirror would be appended again on every pass.
+  - **An input name listed in `exports.resources` is `RESOURCE_INPUT_EXPORTED`.**
+    An input is borrowed, so exporting it would forward the kind-only stand-in into
+    the consumer's flattened set as a resource the library declares — a phantom
+    with nothing behind it but a kind constraint.
+
+  New syntax on a module document, so a module using it must declare
+  `requires: telo: ">=…"`. Guide: `docs/extend/library-resource-inputs.md`.
+
+- 46295b2: **Library singletons** — `lifecycle:` on a `Telo.Library` decides how many times
+  it is instantiated in one application. `isolated` (the default) is today's
+  behaviour: one child scope per import declaration. `shared` makes the library a
+  singleton every import resolves to, at any depth.
+
+  The field was declared on `Telo.Application` and read by nothing. It is the
+  other half of the problem `resources:` solves: that block hands ONE instance down
+  to several libraries, and this one lets several libraries reach ONE library that
+  owns an instance — without linearizing them into a chain that re-exports the
+  union of everything beneath it.
+
+  - **The root owns it; every import borrows it** — the same rule an injected
+    resource follows. The child scope is spawned under the ROOT rather than under
+    whichever import reached it first, because otherwise tearing that importer down
+    would close a library two others still hold, and which importer that is depends
+    on init order.
+  - **Torn down after every other root child.** `teardownPriority` is now a
+    property of a CONTEXT as well as of a resource instance, and the child cascade
+    sorts by it: a singleton registered during a nested import's init would
+    otherwise be reverse-registration-ordered ahead of the library that borrowed
+    it, so a borrower's inverse could run against a library already gone.
+  - **Initialization is memoized on the ENTRY, not on an import.** The import that
+    REGISTERS a singleton is not necessarily the one whose `init()` runs first — a
+    root import registers it during the create sub-phase, while a nested import
+    inside another library borrows it during that library's init — so the builder
+    travels with the registry entry and whoever gets there first runs it.
+  - **Every import of a singleton must agree**: different variables, secrets or
+    resource instances names both aliases and the key that differs, never a
+    secret's value. Reported at BOTH ends — `SHARED_LIBRARY_CONFLICT` at
+    `telo check` wherever it is decidable there, `ERR_SHARED_LIBRARY_CONFLICT` at
+    boot, which holds resolved values and live instances and is authoritative. The
+    static half compares only what it can: a value holding a `!cel` is skipped
+    (two expressions may evaluate equal, and identical text in two modules may
+    not), and a reference is compared only between imports declared in the same
+    module, since a bare name means the same instance only in one scope. It groups
+    on the target's RESOLVED SOURCE — the identity the kernel keys its registry on
+    — because `resolvedModuleName` would collapse two versions of one module.
+    Resolving a conflict by init order would make the winner whichever import was
+    created first, silently, which is the failure this feature removes rather than
+    relocates.
+  - **A per-import `logging:` / `runtime:` override is refused** —
+    `SHARED_LIBRARY_OVERRIDE` statically, `ERR_SHARED_LIBRARY_OVERRIDE` at runtime.
+    Both scope a subtree that is no longer one import's subtree. A singleton's
+    logging scope is the library's own module name for the same reason.
+  - **A second import costs nothing**: the registry is keyed on the resolved module
+    URL and holds only shared libraries, so the hit IS the answer to "is this
+    shared" — no fetch, no parse, no analysis pass.
+
+  Default `isolated` rather than `shared` — the opposite of the Application
+  field's — because flipping it would silently collapse every existing app's
+  resource graph and turn per-import `variables:` into a conflict. New syntax on a
+  module document, so a module using it must declare `requires: telo: ">=…"`.
+
+- 46295b2: **A template body is a declaration of its own kind.** CEL inside a
+  `Telo.Definition`'s `resources:` entry is now resolved through the NESTED kind's
+  own annotations — its `x-telo-context` regions, its step body, its error branches
+  — with `self` merged in from the enclosing definition's `schema:`.
+
+  It was resolved in the ENCLOSING definition's scope against one fixed permissive
+  context (`self`, plus open `request` / `result` / `steps` / `error`). So `inputs`
+  and `item` were undefined wherever the nested kind declares them — a step's
+  `inputs.bindings` reading the call's own arguments failed as `'inputs' is not
+defined`, and an iteration's `item` the same way — while `error` was offered
+  everywhere regardless of whether a `catch:` was in scope. That is why no standard
+  library template has a body of more than one dispatch.
+
+  - **The kernel stops keying deferral on a name list.** A node survives `init()`
+    unexpanded when the nested kind marks its path `x-telo-eval: runtime` or covers
+    it with a CEL-bearing region, read through the containment matcher both halves
+    already share. The old list — `request`, `result`, `steps`, `error` — had to be
+    extended for every name any kind ever binds, and `inputs` and `item` were
+    simply absent from it. A deferred node naming only `self` is still resolved at
+    `init()`: `self` is fixed for the life of the instance.
+  - **`self` is bound into the template's child context**, as the published-reading
+    view, so a node the nested kind evaluates later can read the enclosing
+    resource's configuration beside the call-time names that kind binds. This
+    removes the restriction that one expression may not mix `self` with a
+    call-time name.
+  - **`invoke:` / `run:` / `provide:` / `mount:` accept a `!ref`** naming a sibling
+    `resources:` entry — the spelling every other reference uses — and a `!ref`
+    naming no entry is `TEMPLATE_DISPATCH_UNKNOWN`, with the nearest sibling as a
+    fix. A `Telo.Definition` is in both reference-skip sets and these slots carry no
+    `x-telo-ref`, so nothing would otherwise resolve them: introducing the tag at a
+    slot no reference pass reaches would be worse than the string form it replaces,
+    since `!ref` is the one spelling that advertises static resolution. Decidable
+    only when every sibling name is literal — a template routinely names entries
+    with CEL, and an expression could expand to the referenced name.
+  - **A nested body's root-anchored bindings resolve against the BODY.** Its
+    context scopes were rebased under `resources[i]` but every annotation inside
+    them that anchors at a root — `x-telo-context-element-from`,
+    `-collection-from`, `-from-root`, `x-telo-bindings-from` — was still resolved
+    against the enclosing `Telo.Definition`. So an iteration's `collection:` was
+    looked up on a document that has no such field, `item` typed open, and a typo
+    below it went unreported: the one place a nested declaration did not answer as
+    the same declaration written at the top level. `self` is substituted before the
+    annotations run, being the single binding that genuinely belongs to the
+    enclosing definition.
+  - **`x-telo-context-from` navigating a dynamic node types OPEN, not empty.** A
+    route whose `request.schema.body` is `!cel "self.model.schema"` declares a body
+    whose shape is only known once the template is instantiated; resolving it to
+    nothing reported `request.body` as undefined, blaming the reader for the
+    writer's dynamism.
+  - **`getManifestItem` resolves a scope with concrete indices.** It built a regex
+    from the scope string, in which `resources[4]` is a character class — so every
+    nested scope silently resolved to the whole document instead of the array item,
+    and every `x-telo-context-from` beneath one navigated from the wrong root.
+  - **`precompileDoc` carries `refs` through.** It rebuilds every tagged
+    sentinel's compiled value by hand and dropped the AST-derived root identifiers
+    the engine had just computed — so `refs` was absent for every `!cel` in every
+    manifest, and a consumer asking what an expression READS had nothing but the
+    source text to scan. (`!sql` dropped them one level down, for the same reason.)
+    That is what a template body's deferral decision needs, and scanning text
+    cannot tell an identifier from a word inside a string literal.
+  - **`collectResourceRefs` stops at anything it has already seen.** A re-created
+    resource is rebuilt from the manifest as registered, but Phase-5 injection
+    mutated that object in place on the previous pass — so a reference slot can
+    already hold a live instance, whose object graph is cyclic, and the walk
+    overflowed the stack instead of reporting the init failure that caused the
+    re-create.
+
+### Patch Changes
+
+- Updated dependencies [46295b2]
+  - @telorun/templating@0.18.0
+
 ## 0.66.0
 
 ### Minor Changes

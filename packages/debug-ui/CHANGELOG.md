@@ -1,5 +1,12 @@
 # @telorun/debug-ui
 
+## 0.6.3
+
+### Patch Changes
+
+- Updated dependencies [d5b8228]
+  - @telorun/debug-wire@0.4.1
+
 ## 0.6.2
 
 ### Patch Changes
