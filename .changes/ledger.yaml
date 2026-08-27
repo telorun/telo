@@ -4,9 +4,9 @@
 registry: oci://ghcr.io/telorun
 modules:
   apps/authoring-agent:
-    version: 0.8.0
+    version: 0.9.0
     layers:
-      image: sha256-L9UZ8Xl8BEDwpAQSAqFgr_x-xKGeK0hZtzil4w36FcM
+      image: sha256-_2hGYqgXq-0gVpOkwVHWjyscDZSgV3vRl523HVzX9jQ
   apps/hub:
     version: 0.6.5
     layers:
@@ -110,10 +110,10 @@ modules:
       library/js: sha256-WAEm-QXIOsUMsP4RJcRsnvGtt_4LEGmUakh60YFgFdY
       manifest: sha256-6ce9AHHOWGtLolNYb7op_LQbe0HVliBROoFQtVQ_6sw
   modules/fs:
-    version: 0.9.4
+    version: 0.10.0
     layers:
-      controller/js: sha256-8JD9ELcP4_RLOlTtEDyhuh_jYpUUrYttjJ7uu_SBAsM
-      manifest: sha256-bqy9DW8mMzXJ4knfeHdJfi9zQ3BeShOQAnePNWehizg
+      controller/js: sha256-5V6uxAmNk3ozjg-ndIxq6KeE2ue_cT_Zq_3GvglM9Hc
+      manifest: sha256-Sh_1gLou04n0GAJQkUd_6hMpCVE4ChOFI3_REsSQDns
   modules/gzip:
     version: 0.8.4
     layers:

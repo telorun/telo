@@ -1,6 +1,0 @@
-modules:
-  modules/fs: Added
-body: "`DirectoryListing` takes an `exclude` list — base names omitted at any depth, an
-  excluded directory neither listed nor descended, the semantics `TreeSnapshot` already
-  had. A recursive listing of a real tree is unreadable without one: caches and vendor
-  directories (`.telo`, `node_modules`, `.git`) drown the entries a caller asked for."

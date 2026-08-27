@@ -1,7 +1,0 @@
-modules:
-  modules/fs: Fixed
-body: 'An optional invoke `path` now accepts the empty string as a spelling of its
-  default: `DirectoryListing` and `TreeSnapshot` declared `minLength: 1` on a field that
-  is optional and means `cwd`, so a caller passing "" for the root — an LLM tool call
-  above all — was rejected by the contract check even though the controller already
-  resolved it to `cwd`.'

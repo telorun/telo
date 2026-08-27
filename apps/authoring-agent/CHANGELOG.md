@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-08-27
+### Added
+* The workspace directory is configurable via the WORKSPACE_DIR environment variable (default ./workspace). A runner standing this up as a session's co-resident agent points it at the shared workspace volume, so the agent's file tools and spawned commands write the same tree the application containers watch.
+
 ## 0.8.0 - 2026-08-26
 ### Added
 * System prompt: the value-or-reference union slot (a column's type: holding a storage class or a !ref) and a referrer-rules section covering peers:, which the primer had no coverage of at all.
