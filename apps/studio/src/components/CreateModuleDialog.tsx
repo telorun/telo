@@ -1,3 +1,4 @@
+import { checkName } from "@telorun/analyzer";
 import { useEffect, useState } from "react";
 import { AlertCircle, Boxes, Check, FileText, Loader2, RotateCw } from "lucide-react";
 import {
@@ -16,6 +17,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
+import { nameViolationMessage } from "./name-violation-message";
 
 interface CreateModuleDialogProps {
   open: boolean;
@@ -33,9 +35,6 @@ interface CreateModuleDialogProps {
 }
 
 const BLANK_ID = "__blank__";
-// metadata.name is the kind prefix; accept PascalCase (WeatherApi) and the
-// kebab-case the stdlib uses (weather-api). The directory is slugified from it.
-const NAME_RE = /^[A-Za-z][A-Za-z0-9]*(-[A-Za-z0-9]+)*$/;
 
 function categoryFor(kind: ModuleKind): TemplateCategory {
   return kind === "Application" ? "app" : "library";
@@ -55,6 +54,10 @@ export function CreateModuleDialog({
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Kept apart from `submitError`: a rejected NAME is answered at the field
+  // that holds it, while a failed create (an unreachable adapter, a collision)
+  // is about the whole form and belongs beside its button.
+  const [nameError, setNameError] = useState<string | null>(null);
   const [overwrite, setOverwrite] = useState<{ relativeDir: string } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -89,6 +92,7 @@ export function CreateModuleDialog({
     setName("");
     setSelectedId(BLANK_ID);
     setSubmitError(null);
+    setNameError(null);
     setOverwrite(null);
     setSubmitting(false);
   }
@@ -108,11 +112,19 @@ export function CreateModuleDialog({
   async function submit(force: boolean) {
     const trimmed = name.trim();
     if (!trimmed) {
-      setSubmitError("Name is required");
+      setNameError("Name is required");
       return;
     }
-    if (!NAME_RE.test(trimmed)) {
-      setSubmitError("Use letters, digits and hyphens, starting with a letter (e.g. WeatherApi)");
+    // `metadata.name` is the module's kind prefix, so it is a TYPE-level name:
+    // PascalCase, and a CEL-safe identifier. The analyzer's own rule decides —
+    // so a name this dialog accepts is one `telo check` accepts — and the
+    // wording is this surface's, beside the field. The directory is slugified
+    // from it (`WeatherApi` → `weather-api`), which is why the hyphenated
+    // spelling this used to allow is now rejected at the name rather than
+    // fixed up behind the author's back.
+    const violation = checkName(trimmed, "type", kindLabel);
+    if (violation) {
+      setNameError(nameViolationMessage(violation, "type"));
       return;
     }
     setSubmitting(true);
@@ -155,6 +167,7 @@ export function CreateModuleDialog({
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
+                setNameError(null);
                 setSubmitError(null);
                 setOverwrite(null);
               }}
@@ -163,6 +176,13 @@ export function CreateModuleDialog({
               }}
               placeholder="WeatherApi"
             />
+            {nameError ? (
+              <span className="text-xs text-red-500 dark:text-red-400">{nameError}</span>
+            ) : (
+              <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                Start with a capital letter — like WeatherApi.
+              </span>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5">

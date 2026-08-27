@@ -38,6 +38,7 @@ import {
   setModuleRootFields,
   setResourceFields,
   VIRTUAL_WORKSPACE_ROOT,
+  workspaceOpenMode,
 } from "../loader";
 import { pathBasename, pathDirname, pathJoin } from "../loader/paths";
 import { moduleParseError, parseModuleDocument } from "../yaml-document";
@@ -56,14 +57,13 @@ import {
   readActiveEnvironment,
   setActiveEnvironmentEnv,
 } from "../deployment";
-import { resolveDeclaredPorts } from "./views/deployment/declared-ports";
+import { resolveDeclaredPorts } from "./views/run/declared-ports";
 import {
   buildRunBundle,
   bundleFiles,
   diffBundle,
   isEmptyChangeSet,
   registry as runRegistry,
-  RunView,
   selectModuleFiles,
   SessionGoneError,
   TermsRequiredError,
@@ -78,8 +78,7 @@ import { AGENT_APP_NAME } from "../agent/launch";
 import { SYNC_EXCLUDED_DIRS } from "../agent/sync";
 import { AgentPanel } from "./agent/AgentPanel";
 import { saveDeploymentsForWorkspace } from "../storage-deployments";
-import { findMissingRequiredEnv } from "./views/deployment/declared-env";
-import type { DeclaredEnvEntry } from "./views/deployment/DeclaredEnvEditor";
+import { findMissingRequiredEnv } from "./views/run/declared-env";
 import { buildModuleViewData } from "../view-data";
 import {
   AlertDialog,
@@ -153,7 +152,7 @@ function activateModuleState(s: EditorState, filePath: string): EditorState {
   const moduleChanged = s.activeModulePath !== filePath;
   const nextModule = s.workspace?.modules.get(filePath);
   const activeView: ViewId =
-    s.activeView === "deployment" && nextModule?.kind !== "Application"
+    s.activeView === "run" && nextModule?.kind !== "Application"
       ? "topology"
       : s.activeView;
   return {
@@ -197,6 +196,9 @@ export function Editor() {
     DEFAULT_SETTINGS,
   );
   const runContext = useRun();
+  // Whether this environment can offer a CHOICE of workspace. Fixed for the
+  // session — it is a property of the host, not of what is open.
+  const openMode = workspaceOpenMode();
   const agent = useAgent();
   const agentLocked = agent.locked;
   const agentLockedRef = useRef(agentLocked);
@@ -210,7 +212,6 @@ export function Editor() {
     runnerId: string;
     filePath: string;
   } | null>(null);
-  const [missingEnv, setMissingEnv] = useState<DeclaredEnvEntry[] | null>(null);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [createModuleKind, setCreateModuleKind] = useState<ModuleKind | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -488,14 +489,13 @@ export function Editor() {
     [state.workspace, state.activeModulePath],
   );
 
-  // Run history + status for the active Application — drives the TopBar Run
-  // button's status dot and its chevron dropdown of recent runs.
+  // The Application this module pane can run. Everything else about a run —
+  // status, history, dock geometry — is keyed by this path inside the run
+  // context, so nothing about it is mirrored into editor state.
   const activeAppPath =
     activeManifest?.kind === "Application" ? activeManifest.filePath : null;
-  const activeAppRuns = activeAppPath ? runContext.runsForApp(activeAppPath) : [];
-  const activeAppRun = activeAppPath
-    ? (runContext.liveRunForApp(activeAppPath) ?? runContext.latestRunForApp(activeAppPath))
-    : null;
+  const activeRunnerName =
+    settings.runners.find((r) => r.id === settings.activeRunnerId)?.name ?? null;
 
   // Whether the selected runner offers watch sessions. Read from its advertised
   // capabilities rather than assumed: a runner with watch off REJECTS the field,
@@ -534,6 +534,10 @@ export function Editor() {
     const adapter = workspaceAdapterRef.current;
     if (!workspace || !adapter) return;
     const updated = await deleteModule(workspace, filePath, adapter);
+    // The run context is keyed by module path, so a deleted module's dock,
+    // blocker and selection would outlive it — and be inherited by a module
+    // later created at the same path.
+    runContext.forgetApp(filePath);
     setState((s) => {
       const openTabs = closeTab(s.openTabs, filePath);
       const wasActiveTab = s.activeTabId === filePath;
@@ -567,6 +571,15 @@ export function Editor() {
 
   async function handleRunModule(filePath: string, mode: "run" | "watch" = "run") {
     setError(null);
+    // The dock states why the LAST press failed, so it is cleared with the same
+    // gesture that clears the error banner. Every early return below reports
+    // through `setError` / Settings instead, and a blocker left standing would
+    // have the dock name a cause that is not this press's.
+    runContext.clearBlocker(filePath);
+    // A run lives in its own Application's pane — the dock and the Run tab are
+    // that module's. Running one from the sidebar therefore brings it forward,
+    // or the output would stream into a pane nobody is looking at.
+    if (state.activeModulePath !== filePath) handleOpenModule(filePath);
     if (!state.workspace) return;
     const workspace = state.workspace;
     const workspaceAdapter = workspaceAdapterRef.current;
@@ -612,7 +625,8 @@ export function Editor() {
       return;
     }
     if (availability.status === "unavailable") {
-      runContext.showUnavailable({
+      runContext.showBlocker(filePath, {
+        kind: "unavailable",
         adapterId: adapter.id,
         adapterDisplayName: adapter.displayName,
         message: availability.message,
@@ -621,7 +635,7 @@ export function Editor() {
         recheck: async () => {
           const again = await adapter.isAvailable(config);
           if (again.status === "ready") {
-            runContext.closeRunView();
+            runContext.clearBlocker(filePath);
             void handleRunModuleRef.current(filePath);
           }
         },
@@ -675,7 +689,14 @@ export function Editor() {
         : ([...workspace.modules.values()].find((m) => m.filePath === filePath) ?? null);
     const missing = findMissingRequiredEnv(manifest, environment.env);
     if (missing.length > 0) {
-      setMissingEnv(missing);
+      runContext.showBlocker(filePath, {
+        kind: "missing-config",
+        entries: missing.map((entry) => ({
+          name: entry.name,
+          envVar: entry.envVar,
+          secret: entry.secret,
+        })),
+      });
       return;
     }
 
@@ -878,7 +899,6 @@ export function Editor() {
   // ---------------------------------------------------------------------------
 
   function handleOpenModule(filePath: string) {
-    runContext.closeRunView();
     setSelection(null);
     setState((s) => activateModuleState(s, filePath));
   }
@@ -902,7 +922,6 @@ export function Editor() {
 
     for (const [modulePath, manifest] of workspace.modules) {
       if (getModuleFiles(manifest).includes(key)) {
-        runContext.closeRunView();
         setSelection(null);
         revealNonceRef.current += 1;
         setState((s) => ({
@@ -914,7 +933,6 @@ export function Editor() {
       }
     }
 
-    runContext.closeRunView();
     setState((s) => ({
       ...s,
       openTabs: upsertTab(s.openTabs, { type: "file", path: key }),
@@ -929,7 +947,6 @@ export function Editor() {
       handleOpenModule(path);
       return;
     }
-    runContext.closeRunView();
     setState((s) => ({ ...s, activeTabId: path }));
   }
 
@@ -1091,7 +1108,6 @@ export function Editor() {
   // ---------------------------------------------------------------------------
 
   function handleSelectResource(kind: string, name: string) {
-    runContext.closeRunView();
     setSelection(null);
     setState((s) => ({
       ...s,
@@ -1159,7 +1175,6 @@ export function Editor() {
    *  topology host holds the containment tree, so what is recorded here is the
    *  NAME; the host resolves it to a focus path on its next pass. */
   function handleNavigateResource(kind: string, name: string) {
-    runContext.closeRunView();
     setSelection(null);
     setState((s) =>
       updateModuleTopology(
@@ -1888,26 +1903,8 @@ export function Editor() {
       <TopBar
         workspace={state.workspace}
         activeManifest={activeManifest}
-        onOpen={handleOpen}
+        onOpen={openMode === "chooser" ? handleOpen : undefined}
         onOpenSettings={() => setSettingsOpen(true)}
-        onRun={
-          activeManifest?.kind === "Application"
-            ? () => void handleRunModule(activeManifest.filePath)
-            : undefined
-        }
-        onRunWatch={
-          activeManifest?.kind === "Application"
-            ? () => void handleRunModule(activeManifest.filePath, "watch")
-            : undefined
-        }
-        canWatch={runnerSupportsWatch}
-        runStatus={activeAppRun?.status ?? null}
-        runs={activeAppRuns}
-        onSelectRun={runContext.selectRun}
-        onStop={(runId) => void runContext.stopRun(runId)}
-        onClearRuns={
-          activeAppPath ? () => runContext.clearRunsForApp(activeAppPath) : undefined
-        }
         onUndo={canUndo ? () => void handleUndo() : undefined}
         onRedo={canRedo ? () => void handleRedo() : undefined}
         canUndo={canUndo}
@@ -1952,12 +1949,11 @@ export function Editor() {
           onDeleteModule={handleDeleteModule}
           onRunModule={handleRunModule}
         />
-        {runContext.isRunViewOpen ? (
-          <RunView />
-        ) : !state.workspace ? (
+        {!state.workspace ? (
           <AppLifecyclePanel
             onOpen={handleOpen}
             onStartFromTemplate={() => setCreateModuleKind("Application")}
+            openMode={openMode}
             recentRootDir={persistedHint?.rootDir}
           />
         ) : (
@@ -2026,6 +2022,18 @@ export function Editor() {
                           state.activeModulePath,
                         ),
                         onSetEnvVars: handleSetDeploymentEnvVars,
+                      },
+                      run: {
+                        appPath: activeAppPath,
+                        onRun: () => {
+                          if (activeAppPath) void handleRunModule(activeAppPath);
+                        },
+                        onRunWatch: () => {
+                          if (activeAppPath) void handleRunModule(activeAppPath, "watch");
+                        },
+                        canWatch: runnerSupportsWatch,
+                        runnerName: activeRunnerName,
+                        onOpenSettings: () => setSettingsOpen(true),
                       },
                       revealRequest: state.sourceRevealRequest,
                       topology: {
@@ -2186,38 +2194,6 @@ export function Editor() {
               onClick={() => void handleConfirmImport()}
             >
               {pendingImport?.plan.files.some((f) => f.exists) ? "Overwrite & import" : "Import"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <AlertDialog open={missingEnv !== null} onOpenChange={(open) => !open && setMissingEnv(null)}>
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Missing required configuration</AlertDialogTitle>
-            <AlertDialogDescription>
-              This Application declares required values with no default. Fill them in the
-              Deployment tab before running:
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {missingEnv && (
-            <ul className="max-h-[50vh] space-y-1 overflow-auto text-sm">
-              {missingEnv.map((entry) => (
-                <li key={entry.envVar} className="flex items-baseline gap-2">
-                  <code className="font-medium">{entry.name}</code>
-                  <span className="text-xs text-muted-foreground">{entry.envVar}</span>
-                  <span className="text-xs text-muted-foreground">
-                    ({entry.secret ? "secret" : "variable"})
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => setState((s) => ({ ...s, activeView: "deployment" as ViewId }))}
-            >
-              Open Deployment tab
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

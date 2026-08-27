@@ -254,7 +254,7 @@ export type RunEvent =
   | { type: "progress"; app?: string; phase: RunPhase; message: string; done?: boolean }
   /** A frame from one app's kernel debug stream (event or log line). The
    *  adapter sources it differently per backend (relayed by a remote runner, or
-   *  a direct loopback SSE for the local runner), but RunView consumes it the
+   *  a direct loopback SSE for the local runner), but the run dock consumes it the
    *  same way regardless. */
   | { type: "debug"; app: string; frame: DebugFrame }
   /** Per-port reachability transition, rendered on the badge. */

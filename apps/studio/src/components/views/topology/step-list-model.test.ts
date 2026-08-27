@@ -148,10 +148,64 @@ describe("step list model", () => {
     });
   });
 
+  // What a step could still BE given. The list renders only bodies that exist,
+  // which is right for reading a manifest and is what left an optional branch
+  // with no way into the document — the step form leaves bodies out too.
+  it("offers the bodies the variant allows and the step has not written", () => {
+    const [entry] = read([{ if: cel("ok"), then: [] }]);
+    expect(entry!.additions).toEqual([
+      { field: "else", form: "branch", seed: [] },
+      { field: "elseif", form: "branch-list", seed: { if: false, then: [] } },
+    ]);
+  });
+
+  it("does not offer a body the step already has", () => {
+    const [entry] = read([{ if: cel("ok"), then: [], else: [] }]);
+    expect(entry!.additions.map((a) => a.field)).not.toContain("else");
+  });
+
+  // A case map has no "already has them" state: its keys are the author's, so
+  // one more is always addable.
+  it("keeps offering cases, and offers the default branch until it is written", () => {
+    const [entry] = read([{ switch: cel("kind"), cases: { a: [] } }]);
+    expect(entry!.additions).toEqual([
+      { field: "default", form: "branch", seed: [] },
+      { field: "cases", form: "case-map", seed: [] },
+    ]);
+  });
+
+  it("offers nothing for a step that owns no bodies", () => {
+    const [entry] = read([{ name: "load", invoke: ref("query") }], ["query"]);
+    expect(entry!.additions).toEqual([]);
+  });
+
   it("keeps a step it cannot classify as a row rather than dropping it", () => {
     // It is in the manifest; a list that rendered nothing would be hiding it.
     const [entry] = read([{ nonsense: true }]);
-    expect(entry).toMatchObject({ pointer: "/steps/0", unresolved: false });
+    expect(entry).toMatchObject({ pointer: "/steps/0", unresolved: false, classified: false });
     expect(entry!.branches).toEqual([]);
+  });
+
+  // A dispatch is created carrying only its name — a reference has no empty
+  // value to seed — so it matches no variant. Its form is the step's own base
+  // fields: which operation it performs is a CHOICE, offered on the row, not a
+  // form listing `if` / `while` / `switch` beside the target.
+  it("edits an unclassified step through its base fields alone", () => {
+    const [entry] = read([{ name: "step1" }]);
+    expect(entry!.classified).toBe(false);
+    const properties = entry!.schema.properties as Record<string, unknown>;
+    expect(properties).toHaveProperty("name");
+    for (const operation of ["invoke", "value", "if", "while", "switch", "throw", "then"]) {
+      expect(properties).not.toHaveProperty(operation);
+    }
+  });
+
+  it("classifies a step once it carries what it invokes", () => {
+    const [entry] = read([{ name: "step1", invoke: ref("query") }], ["query"]);
+    expect(entry!.classified).toBe(true);
+    // The target picker's slot, carried with its reference constraint.
+    expect((entry!.schema.properties as Record<string, unknown>).invoke).toHaveProperty(
+      "x-telo-ref",
+    );
   });
 });

@@ -3,6 +3,7 @@ import {
   branchListBranchKey,
   branchListPredicateKey,
   buildEditableSchema,
+  buildUnclassifiedSchema,
   getVariantSymbol,
   matchVariant,
   stepInputsField,
@@ -41,6 +42,24 @@ import { authoredText } from "./value-summary";
 export interface StepInputs {
   pointer: string;
   schema: Record<string, unknown>;
+}
+
+/** A body this step COULD still declare but has not.
+ *
+ *  The list renders only what is in the manifest, which is right for reading it
+ *  and is what left an optional branch — an `else`, a `default`, a `catch` —
+ *  with no way into the document at all: the step form deliberately leaves
+ *  bodies out, and the list had nothing to show. So the vocabulary the variant
+ *  allows is carried here, with the value that creates each one. */
+export interface StepAddition {
+  /** The field to write. */
+  field: string;
+  /** How that field holds bodies, which decides what creating one means: a
+   *  `branch` is written whole, a `case-map` gains an author-named key, a
+   *  `branch-list` gains one more condition/body pair. */
+  form: "branch" | "case-map" | "branch-list";
+  /** What to write — an empty body, or a fresh else-if pair. */
+  seed: unknown;
 }
 
 /** One nested body owned by a control-flow step. */
@@ -84,9 +103,18 @@ export interface StepEntry {
   /** What the step produces, when its target declares it. */
   output?: TypeSignature;
   /** The schema the detail panel edits this step through — the step's own
-   *  fields, with the branches the list already renders left out. */
+   *  fields, with the bodies the list already renders left out. A step that
+   *  matches no variant is edited through the vocabulary that would make it one
+   *  (see {@link buildUnclassifiedSchema}). */
   schema: Record<string, unknown>;
+  /** False when the step declares nothing that says what it does — a fresh
+   *  dispatch before its target is picked, or an author's half-written step.
+   *  Rendered as unfinished rather than as unreadable: the two look identical
+   *  in the manifest and only one of them is the reader's fault. */
+  classified: boolean;
   branches: StepBranch[];
+  /** Bodies this step can still be given — see {@link StepAddition}. */
+  additions: StepAddition[];
 }
 
 /** The declared call signature of one resource, as the canvas already resolved
@@ -179,10 +207,12 @@ function readEntry(
     ...(inputSchema ? { inputs: { pointer: `${pointer}/${inputsField}`, schema: inputSchema } } : {}),
     ...(written ? { inputKeys: Object.keys(written) } : {}),
     ...(signature?.output ? { output: signature.output } : {}),
+    classified: variant !== null,
     schema: variant
       ? buildEditableSchema(stepSchema, variant, root)
-      : { type: "object", properties: {} },
+      : buildUnclassifiedSchema(stepSchema, root),
     branches: variant ? readBranches(data, variant, pointer, depth, options) : [],
+    additions: variant ? readAdditions(data, variant, root) : [],
   };
 }
 
@@ -205,6 +235,35 @@ function guardOf(
   const field = variant?.predicateFields[0] ?? variant?.discriminatorFields[0];
   if (field) return conditionText(data[field]);
   return conditionText(data.when);
+}
+
+/** What the variant allows that the step has not written. A case map is always
+ *  offerable — its keys are the author's, so there is no "already has them"
+ *  state — and so is an else-if list, which is a sequence rather than a slot. */
+function readAdditions(
+  data: Record<string, unknown>,
+  variant: VariantMeta,
+  root: Record<string, unknown>,
+): StepAddition[] {
+  const out: StepAddition[] = [];
+  for (const field of variant.branchFields) {
+    if (Array.isArray(data[field])) continue;
+    out.push({ field, form: "branch", seed: [] });
+  }
+  for (const field of variant.caseMaps) {
+    out.push({ field, form: "case-map", seed: [] });
+  }
+  for (const field of variant.branchLists) {
+    out.push({
+      field,
+      form: "branch-list",
+      seed: {
+        [branchListPredicateKey(variant, field, root)]: false,
+        [branchListBranchKey(variant, field, root)]: [],
+      },
+    });
+  }
+  return out;
 }
 
 function readBranches(

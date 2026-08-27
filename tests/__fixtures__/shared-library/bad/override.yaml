@@ -10,4 +10,4 @@ imports:
     logging:
       level: debug
 targets:
-  - !ref Store.query
+  - invoke: !ref Store.query

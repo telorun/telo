@@ -5,7 +5,7 @@ metadata:
 imports:
   Lib: ./unexported-kind-lib.yaml
 targets:
-  - !ref usesPrivate
+  - invoke: !ref usesPrivate
 ---
 # `Private` is not listed in the library's `exports.kinds`, so this reference
 # must not resolve — kinds are reachable only when explicitly exported.

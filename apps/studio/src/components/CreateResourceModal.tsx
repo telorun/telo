@@ -1,6 +1,9 @@
+import { checkName } from "@telorun/analyzer";
 import { useMemo, useState } from "react";
 import type { AvailableKind } from "../model";
+import { resourceNameBase } from "../resource-naming";
 import { categoryLabels, filterByCategory, groupKinds } from "./kind-picker-groups";
+import { nameViolationMessage } from "./name-violation-message";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -15,8 +18,6 @@ interface CreateResourceModalProps {
   kinds: AvailableKind[];
   onCreate: (kind: string, name: string, fields: Record<string, unknown>) => void;
 }
-
-const NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 function capabilityLabel(capability: string): string {
   return capability.replace("Telo.", "");
@@ -47,8 +48,14 @@ export function CreateResourceModal({ open, onOpenChange, kinds, onCreate }: Cre
       setNameError("Name is required");
       return;
     }
-    if (!NAME_RE.test(trimmedName)) {
-      setNameError("Only letters, digits, and underscores; must not start with a digit");
+    // Case encodes what the name DENOTES: a `Telo.Type` instance names a
+    // shape, everything else names a value. The analyzer's own rule decides —
+    // the same one the extraction dialog and `telo check` use — so this dialog
+    // cannot accept a name the checker then complains about.
+    const level = selectedKind.capability === "Telo.Type" ? "type" : "value";
+    const violation = checkName(trimmedName, level, "resource");
+    if (violation) {
+      setNameError(nameViolationMessage(violation, level));
       return;
     }
 
@@ -168,10 +175,22 @@ export function CreateResourceModal({ open, onOpenChange, kinds, onCreate }: Cre
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleSubmit();
                   }}
-                  placeholder="my_server"
+                  placeholder={resourceNameBase(selectedKind.fullKind, selectedKind.capability)}
                   className={inputCls}
                 />
-                {nameError && <p className="text-xs text-red-500">{nameError}</p>}
+                {/* Answered at the field it is about: a rejected name is a fact
+                    about this input, and a message further down the dialog reads
+                    as being about the form. Replaces the convention hint rather
+                    than stacking under it — both say what the name must be. */}
+                {nameError ? (
+                  <p className="text-xs text-red-500 dark:text-red-400">{nameError}</p>
+                ) : (
+                  <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                    {selectedKind.capability === "Telo.Type"
+                      ? "Start with a capital letter — like WeatherApi."
+                      : "Start with a lowercase letter — like httpServer."}
+                  </p>
+                )}
               </div>
 
               <p className="text-xs text-zinc-400 dark:text-zinc-500">

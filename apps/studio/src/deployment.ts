@@ -27,7 +27,7 @@ export function readActiveEnvironment(
  *  `local` environment if none exists. Caller receives the (possibly updated)
  *  `deployments` map and the resolved environment.
  *
- *  Used by both the Deployment view (on mount) and RunContext (before building
+ *  Used by both the Run view (on mount) and RunContext (before building
  *  a bundle), so every caller gets identical default seeding behavior. */
 export function getOrCreateActiveEnvironment(
   deployments: Record<string, ApplicationDeployment>,

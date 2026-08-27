@@ -17,7 +17,7 @@ imports:
   SQLite: ../../../sqlite
   Run: ../../../run
 targets:
-  - !ref accountTx
+  - invoke: !ref accountTx
 ---
 kind: SQLite.Connection
 metadata:

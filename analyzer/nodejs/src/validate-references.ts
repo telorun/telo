@@ -43,7 +43,23 @@ export function kindSatisfies(
   if (targetDef.kind !== "Telo.Abstract" && resolved === canonical) return true;
   const subtypes = registry.getByExtends(canonical);
   if (subtypes.some((d) => `${d.metadata.module}.${d.metadata.name}` === resolved)) return true;
-  return targetDef.kind === "Telo.Abstract" && subtypes.length === 0;
+  // Leniency is about the CANDIDATE, not about the population, and it is the
+  // same question for an abstract target and a concrete one. Accepting whenever
+  // no subtype happened to be loaded silenced the check exactly where it was
+  // needed: an app whose imports declare no `Telo.Runnable` is an app whose boot
+  // targets are all wrong, and every one of them passed.
+  //
+  // An UNREGISTERED candidate is not partial context, and the distinction is
+  // load-bearing: a kind nobody declared is an unknown kind or an unimported
+  // alias prefix (`NotAnAlias.Script`), which is precisely what this check
+  // exists to report. Only a kind that IS declared, whose ancestry reaches
+  // something this analysis never saw, is undecidable — there the missing hop is
+  // where the target it appears not to reach could have been declared.
+  // A candidate the registry never saw cannot be judged on what it implements —
+  // the analysis simply does not hold it. Whether its NAME is resolvable is a
+  // different question, asked of the alias scope by the caller.
+  if (!registry.resolve(resolved)) return true;
+  return !registry.ancestryResolved(resolved);
 }
 
 /** {@link kindSatisfies} at every kind a slot accepts, rendered as messages.
@@ -56,13 +72,27 @@ function checkKind(
   aliases: AliasResolver,
 ): string[] {
   const resolved = aliases.resolveKind(kind) ?? kind;
+  // A qualified kind whose prefix names no import in this scope is a bad NAME
+  // rather than a bad type — `{kind: NotAnAlias.Script}` where only `Lib` is
+  // imported — and this check is the only place it surfaces, so it is never
+  // waved through as partial context. Asked of the resolver, which reports
+  // `unknown` for exactly that case: a kind reached through a DECLARED alias
+  // resolves (`ok`) even when the target's definitions are not loaded, and a
+  // gated one says so separately.
+  const unknownAlias =
+    kind.includes(".") &&
+    aliases.resolveKindResult(kind).status === "unknown" &&
+    // …and the registry does not hold it under the name as written either. A
+    // manifest may carry a canonical `<module>.<Kind>`, which no alias resolves
+    // and which is nonetheless perfectly identified.
+    registry.resolve(resolved) === undefined;
   const errors: string[] = [];
   for (const refStr of entry.refs) {
     const targetKind = registry.resolveRef(refStr);
     if (!targetKind) return [];
     const targetDef = registry.resolve(targetKind);
     if (!targetDef) return [];
-    if (kindSatisfies(resolved, targetKind, registry)) return [];
+    if (!unknownAlias && kindSatisfies(resolved, targetKind, registry)) return [];
     const subtypes = registry.getByExtends(targetKind);
     const subtypeKinds = new Set(subtypes.map((d) => `${d.metadata.module}.${d.metadata.name}`));
     if (targetDef.kind === "Telo.Abstract") {
@@ -73,9 +103,16 @@ function checkKind(
       const concrete = subtypes
         .filter((d) => d.kind !== "Telo.Abstract")
         .map((d) => `${d.metadata.module}.${d.metadata.name}`);
-      const options = (concrete.length > 0 ? concrete : [...subtypeKinds]).join(", ");
+      const options = concrete.length > 0 ? concrete : [...subtypeKinds];
+      // With nothing loaded that implements the target there is no list to
+      // offer, so the message says what this kind IS instead — which is the
+      // half the author can act on ("it declares 'Telo.Invocable'" points
+      // straight at a boot target that should have been an invoke step).
+      const declared = registry.resolve(resolved)?.capability;
       errors.push(
-        `'${kind}' does not implement '${targetKind}' (known implementations: ${options})`,
+        options.length > 0
+          ? `'${kind}' does not implement '${targetKind}' (known implementations: ${options.join(", ")})`
+          : `'${kind}' does not implement '${targetKind}'${declared ? ` — it declares '${declared}'` : ""}`,
       );
     } else {
       const options = subtypeKinds.size > 0 ? ` or a subtype (${[...subtypeKinds].join(", ")})` : "";

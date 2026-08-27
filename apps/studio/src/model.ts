@@ -41,7 +41,7 @@ export interface AppSettings {
    *  `templates.json` catalog and the referenced manifests over http(s) with
    *  CORS. Empty/undefined uses `DEFAULT_TEMPLATES_BASE_URL`. */
   templatesBaseUrl?: string;
-  /** The user's runners. The Run button uses the one whose id is
+  /** The user's runners. A run uses the one whose id is
    *  `activeRunnerId` (a single global selection). */
   runners: RunnerInstance[];
   activeRunnerId: string;
@@ -271,17 +271,10 @@ export interface DirEntry {
   isDirectory: boolean;
 }
 
-export type ViewId =
-  | "topology"
-  | "imports"
-  | "definitions"
-  | "resources"
-  | "kinds"
-  | "source"
-  | "deployment";
+export type ViewId = "topology" | "outline" | "source" | "run";
 
 /** An entry in the unified open-editors tab strip. A `module` tab hosts the
- *  structured `ViewContainer` (topology/inventory/source/deployment) for a
+ *  structured `ViewContainer` (graph/outline/run/source) for a
  *  module owner file; a `file` tab hosts a raw Monaco editor for any other
  *  workspace file. `path` is the canonical file path and the tab's identity —
  *  a telo.yaml always opens as a module tab, never a file tab, so the path is

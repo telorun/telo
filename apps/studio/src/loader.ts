@@ -69,6 +69,7 @@ export {
   noopAdapter,
   openWorkspaceDirectory,
   reopenWorkspaceAt,
+  workspaceOpenMode,
 } from "./loader/open";
 export type { OpenedWorkspace } from "./loader/open";
 export {

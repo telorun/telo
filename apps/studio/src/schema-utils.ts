@@ -216,24 +216,56 @@ export function matchVariant(
   return bestMatch;
 }
 
+/** Roles the step LIST renders as structure — the bodies a control-flow step
+ *  owns, edited as rows rather than as form fields. */
+const BODY_ROLES = new Set(["branch", "case-map", "branch-list", "steps"]);
+
+/**
+ * The form for a step that matches no variant.
+ *
+ * A step becomes something by carrying the field that identifies it, so one
+ * that carries none — which is exactly what a freshly created dispatch is,
+ * since a reference has no empty value to seed — matches nothing, and this is
+ * the form it gets: the step's own base fields, and no more.
+ *
+ * Deliberately NOT the union of what every variant needs. That was tried, and a
+ * step meant as a dispatch offered `if`, `while`, `switch` and `throw` beside
+ * its target — seven fields where the author has ONE thing to decide. Which
+ * operation a step performs is a choice, and it is offered as one, on the row.
+ */
+export function buildUnclassifiedSchema(
+  stepSchema: Record<string, unknown>,
+  root: unknown,
+): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  if (isRecord(stepSchema.properties)) {
+    for (const [name, prop] of Object.entries(stepSchema.properties)) {
+      if (!isRecord(prop)) continue;
+      const role = getTopologyRole(prop);
+      if (typeof role === "string" && BODY_ROLES.has(role)) continue;
+      properties[name] = resolveRef(prop, root);
+    }
+  }
+  return { type: "object", properties };
+}
+
 /**
  * Builds a flat editable schema for the detail panel by merging the step
  * schema's base properties with the matched variant's properties, excluding
- * any field with a topology role the step list renders itself.
+ * any field the step list renders as STRUCTURE — the bodies a control-flow step
+ * owns, which are rows in the list and are edited there.
+ *
+ * A predicate and a discriminator are NOT excluded, though the list shows them
+ * too: it shows them as text and offers no way to change them, so excluding
+ * them left `if:` / `while:` / `switch:` with no editor anywhere. Showing a
+ * value and editing it are different jobs, and only the second one is a reason
+ * to keep a field out of the form.
  */
 export function buildEditableSchema(
   stepSchema: Record<string, unknown>,
   variant: VariantMeta,
   root: unknown,
 ): Record<string, unknown> {
-  const excluded = new Set([
-    "branch",
-    "case-map",
-    "branch-list",
-    "predicate",
-    "discriminator",
-    "steps",
-  ]);
 
   const editableProps: Record<string, unknown> = {};
 
@@ -242,7 +274,7 @@ export function buildEditableSchema(
     for (const [name, prop] of Object.entries(source)) {
       if (!isRecord(prop)) continue;
       const role = getTopologyRole(prop);
-      if (typeof role === "string" && excluded.has(role)) continue;
+      if (typeof role === "string" && BODY_ROLES.has(role)) continue;
       if (
         variant.branchFields.includes(name) ||
         variant.caseMaps.includes(name) ||

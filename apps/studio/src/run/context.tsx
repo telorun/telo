@@ -90,7 +90,7 @@ export interface RunRecord {
   historyUnavailable?: boolean;
 }
 
-/** Unavailable/setup-required banner shown in RunView when a run failed to
+/** Unavailable/setup-required banner shown in the run dock when a run failed to
  *  start because of environment or config. Not a run — no record, no events. */
 export interface UnavailableRun {
   adapterId: string;
@@ -105,6 +105,34 @@ export interface UnavailableRun {
   recheck?: () => Promise<void>;
 }
 
+/** One required variable/secret an Application declares with no default and no
+ *  value in the active environment — a run cannot start until it is filled. */
+export interface MissingConfigEntry {
+  name: string;
+  envVar: string;
+  secret: boolean;
+}
+
+/** Why a run never started. Held per Application and rendered in that app's run
+ *  dock — the same surface the run's own output would have used, so "what
+ *  happened when I pressed Run" always has one place. */
+export type RunBlocker =
+  | ({ kind: "unavailable" } & UnavailableRun)
+  | { kind: "missing-config"; entries: MissingConfigEntry[] };
+
+/** Per-Application dock geometry. Held in memory (not persisted): it records
+ *  where you were, which is worth a module switch and not worth restoring
+ *  against a workspace whose runs are gone. */
+export interface RunDockState {
+  open: boolean;
+  /** Body height in px while not maximized. */
+  height: number;
+  maximized: boolean;
+}
+
+export const RUN_DOCK_MIN_HEIGHT = 160;
+const DEFAULT_DOCK: RunDockState = { open: false, height: 340, maximized: false };
+
 /** Live, non-serializable run state, kept out of React state. */
 interface RunRuntime {
   session: RunSession;
@@ -115,13 +143,6 @@ interface RunRuntime {
 }
 
 interface RunContextValue {
-  /** The run RunView currently shows, or null. */
-  selectedRun: RunRecord | null;
-  unavailableRun: UnavailableRun | null;
-  isRunViewOpen: boolean;
-  /** True while `adapter.start` is awaited — RunView shows a loading state. */
-  isStarting: boolean;
-
   startRun(params: {
     appPath: string;
     adapter: RunAdapter<unknown>;
@@ -149,10 +170,8 @@ interface RunContextValue {
   /** Clear an Application's finished run history. A still-live run
    *  (starting/running) is kept so it isn't orphaned. */
   clearRunsForApp(appPath: string): void;
+  /** Show `runId` in its own Application's dock, and open that dock. */
   selectRun(runId: string): void;
-  openRunView(): void;
-  closeRunView(): void;
-  showUnavailable(run: UnavailableRun): void;
 
   /** Newest-first run history for one Application. */
   runsForApp(appPath: string): RunRecord[];
@@ -160,6 +179,39 @@ interface RunContextValue {
   liveRunForApp(appPath: string): RunRecord | null;
   /** The app's most recent run regardless of status, or null. */
   latestRunForApp(appPath: string): RunRecord | null;
+  /** The run this app's dock shows: the explicitly selected one, else its live
+   *  run, else its most recent. Null when the app has never run. */
+  selectedRunForApp(appPath: string): RunRecord | null;
+  /** True while `adapter.start` is awaited for this app — the dock shows a
+   *  loading state. */
+  isStartingApp(appPath: string): boolean;
+
+  /** Why this app's last Run press never produced a run, or null. */
+  blockerForApp(appPath: string): RunBlocker | null;
+  showBlocker(appPath: string, blocker: RunBlocker): void;
+  clearBlocker(appPath: string): void;
+
+  /** Dock geometry for one Application's pane. */
+  dockForApp(appPath: string): RunDockState;
+  /** Whether this app's dock has anything to show — a run, a blocker, or a
+   *  start in flight. */
+  dockHasContent(appPath: string): boolean;
+  /** Whether the dock COVERS the module pane right now: maximized, open, and
+   *  holding something. The one authority, because three surfaces render
+   *  against it — the dock, the view area it hides, and the bar's restore
+   *  toggle — and each deciding for itself is what let them disagree: clearing
+   *  the run history while maximized hid the views behind a dock that had
+   *  stopped rendering, with the toggle gone too. */
+  dockFillsPane(appPath: string): boolean;
+  setDockOpen(appPath: string, open: boolean): void;
+  setDockHeight(appPath: string, height: number): void;
+  setDockMaximized(appPath: string, maximized: boolean): void;
+
+  /** Forget everything held for an Application — its dock, its blocker and its
+   *  selection. For a module that no longer exists; its runs are dropped by the
+   *  eviction path, and these maps are keyed by the same path. */
+  forgetApp(appPath: string): void;
+
   /** The live terminal buffer for a run, or null (log-only / unknown run). */
   getTerminal(runId: string): TerminalBuffer | null;
 }
@@ -194,10 +246,13 @@ export function RunProvider({ children }: { children: ReactNode }) {
     }
     return byApp;
   });
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [unavailableRun, setUnavailableRun] = useState<UnavailableRun | null>(null);
-  const [isRunViewOpen, setIsRunViewOpen] = useState(false);
-  const [isStarting, setIsStarting] = useState(false);
+  // Selection, blockers, dock geometry and the starting flag are all keyed by
+  // Application: a run belongs to one app's pane, and two apps can be running at
+  // once. Global state here is what made the run a mode of the window.
+  const [selectedRunIdByApp, setSelectedRunIdByApp] = useState<Map<string, string>>(new Map());
+  const [blockerByApp, setBlockerByApp] = useState<Map<string, RunBlocker>>(new Map());
+  const [startingApps, setStartingApps] = useState<Set<string>>(new Set());
+  const [dockByApp, setDockByApp] = useState<Map<string, RunDockState>>(new Map());
   // Terminal buffers keyed by run id, held in STATE (not just the runtime ref)
   // so the view re-renders reactively when a buffer appears — load-bearing for
   // resume, where the buffer is attached asynchronously after the record already
@@ -299,8 +354,104 @@ export function RunProvider({ children }: { children: ReactNode }) {
     };
   }, [disposeRuntime]);
 
-  const closeRunView = useCallback(() => setIsRunViewOpen(false), []);
-  const openRunView = useCallback(() => setIsRunViewOpen(true), []);
+  const updateDock = useCallback((appPath: string, mut: (prev: RunDockState) => RunDockState) => {
+    setDockByApp((prev) => {
+      const cur = prev.get(appPath) ?? DEFAULT_DOCK;
+      const next = mut(cur);
+      if (
+        next.open === cur.open &&
+        next.height === cur.height &&
+        next.maximized === cur.maximized
+      ) {
+        return prev;
+      }
+      const map = new Map(prev);
+      map.set(appPath, next);
+      return map;
+    });
+  }, []);
+
+  const dockForApp = useCallback(
+    (appPath: string) => dockByApp.get(appPath) ?? DEFAULT_DOCK,
+    [dockByApp],
+  );
+  const setDockOpen = useCallback(
+    (appPath: string, open: boolean) => updateDock(appPath, (d) => ({ ...d, open })),
+    [updateDock],
+  );
+  const setDockHeight = useCallback(
+    (appPath: string, height: number) =>
+      updateDock(appPath, (d) => ({ ...d, height: Math.max(RUN_DOCK_MIN_HEIGHT, height) })),
+    [updateDock],
+  );
+  const setDockMaximized = useCallback(
+    (appPath: string, maximized: boolean) => updateDock(appPath, (d) => ({ ...d, maximized })),
+    [updateDock],
+  );
+
+  /** Put a dock back to rest. Called when the last thing it could show goes
+   *  away: a maximized dock kept across an emptying would fill the pane again
+   *  the moment the app next runs, which is not where the author left it. */
+  const restDock = useCallback(
+    (appPath: string) =>
+      updateDock(appPath, (d) => ({ ...d, open: false, maximized: false })),
+    [updateDock],
+  );
+
+  const setBlocker = useCallback((appPath: string, blocker: RunBlocker | null) => {
+    setBlockerByApp((prev) => {
+      if (blocker === null && !prev.has(appPath)) return prev;
+      const next = new Map(prev);
+      if (blocker === null) next.delete(appPath);
+      else next.set(appPath, blocker);
+      return next;
+    });
+  }, []);
+
+  const blockerForApp = useCallback(
+    (appPath: string) => blockerByApp.get(appPath) ?? null,
+    [blockerByApp],
+  );
+  const clearBlocker = useCallback((appPath: string) => setBlocker(appPath, null), [setBlocker]);
+  const showBlocker = useCallback(
+    (appPath: string, blocker: RunBlocker) => {
+      setBlocker(appPath, blocker);
+      setDockOpen(appPath, true);
+    },
+    [setBlocker, setDockOpen],
+  );
+
+  const setSelectedRunForApp = useCallback((appPath: string, runId: string) => {
+    setSelectedRunIdByApp((prev) => {
+      if (prev.get(appPath) === runId) return prev;
+      const next = new Map(prev);
+      next.set(appPath, runId);
+      return next;
+    });
+  }, []);
+
+  const forgetSelection = useCallback((match: (runId: string) => boolean) => {
+    setSelectedRunIdByApp((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const [appPath, runId] of prev) {
+        if (!match(runId)) continue;
+        next.delete(appPath);
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const markStarting = useCallback((appPath: string, starting: boolean) => {
+    setStartingApps((prev) => {
+      if (prev.has(appPath) === starting) return prev;
+      const next = new Set(prev);
+      if (starting) next.add(appPath);
+      else next.delete(appPath);
+      return next;
+    });
+  }, []);
 
   // Re-establish a run restored from the index: reconnect to the still-live
   // session on the runner and replay its history. No-op once a runtime exists
@@ -354,18 +505,23 @@ export function RunProvider({ children }: { children: ReactNode }) {
 
   const selectRun = useCallback(
     (runId: string) => {
-      setUnavailableRun(null);
-      setSelectedRunId(runId);
-      setIsRunViewOpen(true);
+      // A run identifies its own app, so selecting one from history never needs
+      // the caller to say which pane it belongs to.
+      let appPath: string | null = null;
+      for (const [path, records] of runsByApp) {
+        if (records.some((r) => r.id === runId)) {
+          appPath = path;
+          break;
+        }
+      }
+      if (!appPath) return;
+      setBlocker(appPath, null);
+      setSelectedRunForApp(appPath, runId);
+      setDockOpen(appPath, true);
       void ensureAttached(runId);
     },
-    [ensureAttached],
+    [runsByApp, ensureAttached, setBlocker, setSelectedRunForApp, setDockOpen],
   );
-
-  const showUnavailable = useCallback((run: UnavailableRun) => {
-    setUnavailableRun(run);
-    setIsRunViewOpen(true);
-  }, []);
 
   const stopRun = useCallback(async (runId: string) => {
     const rt = runtimes.current.get(runId);
@@ -451,12 +607,13 @@ export function RunProvider({ children }: { children: ReactNode }) {
     return session.resume();
   }, []);
 
-  const removeRun = useCallback((runId: string) => {
-    // Clearing the selection first means RunView falls back to its empty state
-    // for a removed run that was on screen. The runsByApp change drives the rest:
-    // the eviction effect disposes any runtime + forgets its re-attach metadata,
-    // and the persist effect rewrites the index without it.
-    setSelectedRunId((cur) => (cur === runId ? null : cur));
+  const removeRun = useCallback(
+    (runId: string) => {
+    // Clearing the selection first means the dock falls back to the app's next
+    // run for a removed one that was on screen. The runsByApp change drives the
+    // rest: the eviction effect disposes any runtime + forgets its re-attach
+    // metadata, and the persist effect rewrites the index without it.
+    forgetSelection((id) => id === runId);
     setRunsByApp((prev) => {
       let found = false;
       const next = new Map(prev);
@@ -469,8 +626,29 @@ export function RunProvider({ children }: { children: ReactNode }) {
         );
       }
       return found ? next : prev;
-    });
-  }, []);
+      });
+    },
+    [forgetSelection],
+  );
+
+  // Geometry follows content, reconciled in ONE place.
+  //
+  // A dock can be emptied from several directions — the history cleared, the
+  // last record removed, a blocker dismissed — and a branch in each mutator is
+  // three chances to miss one. What must not survive is a MAXIMIZED dock with
+  // nothing in it: the dock stops rendering and the view area hidden behind it
+  // has nothing left to bring it back. `dockFillsPane` makes that state
+  // unrenderable; this stops the geometry outliving its content at all.
+  useEffect(() => {
+    for (const [appPath, dock] of dockByApp) {
+      if (!dock.open && !dock.maximized) continue;
+      const hasContent =
+        startingApps.has(appPath) ||
+        blockerByApp.has(appPath) ||
+        (runsByApp.get(appPath) ?? []).length > 0;
+      if (!hasContent) restDock(appPath);
+    }
+  }, [dockByApp, runsByApp, blockerByApp, startingApps, restDock]);
 
   const clearRunsForApp = useCallback(
     (appPath: string) => {
@@ -479,7 +657,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       // effect doesn't tear down (and orphan) a still-running workload.
       const clearedIds = new Set(records.filter((r) => isTerminal(r.status)).map((r) => r.id));
       if (clearedIds.size === 0) return;
-      setSelectedRunId((cur) => (cur && clearedIds.has(cur) ? null : cur));
+      forgetSelection((id) => clearedIds.has(id));
       setRunsByApp((prev) => {
         const cur = prev.get(appPath);
         if (!cur) return prev;
@@ -490,7 +668,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [runsByApp],
+    [runsByApp, forgetSelection],
   );
 
   const startRun = useCallback(
@@ -505,18 +683,18 @@ export function RunProvider({ children }: { children: ReactNode }) {
       config: unknown;
       request: RunRequest;
     }) => {
-      setUnavailableRun(null);
-      setIsRunViewOpen(true);
-      setIsStarting(true);
+      setBlocker(appPath, null);
+      setDockOpen(appPath, true);
+      markStarting(appPath, true);
 
       let session: RunSession;
       try {
         session = await adapter.start(request, config);
       } catch (err) {
-        // The view opened eagerly so the click feels responsive; if start
+        // The dock opened eagerly so the click feels responsive; if start
         // rejects, close it again and let the caller surface the error.
-        setIsStarting(false);
-        setIsRunViewOpen(false);
+        markStarting(appPath, false);
+        setDockOpen(appPath, false);
         throw err;
       }
 
@@ -559,20 +737,11 @@ export function RunProvider({ children }: { children: ReactNode }) {
         next.set(appPath, combined.slice(0, MAX_RUNS_PER_APP));
         return next;
       });
-      setSelectedRunId(record.id);
-      setIsStarting(false);
+      setSelectedRunForApp(appPath, record.id);
+      markStarting(appPath, false);
     },
-    [updateRecord, setTerminal],
+    [updateRecord, setTerminal, setBlocker, setDockOpen, markStarting, setSelectedRunForApp],
   );
-
-  const selectedRun = useMemo<RunRecord | null>(() => {
-    if (!selectedRunId) return null;
-    for (const records of runsByApp.values()) {
-      const found = records.find((r) => r.id === selectedRunId);
-      if (found) return found;
-    }
-    return null;
-  }, [runsByApp, selectedRunId]);
 
   const runsForApp = useCallback(
     (appPath: string) => runsByApp.get(appPath) ?? [],
@@ -589,17 +758,69 @@ export function RunProvider({ children }: { children: ReactNode }) {
     (appPath: string) => (runsByApp.get(appPath) ?? [])[0] ?? null,
     [runsByApp],
   );
+  // Falling back to live-then-latest is what lets the dock open on the run the
+  // user means without every entry point having to select one explicitly.
+  const selectedRunForApp = useCallback(
+    (appPath: string): RunRecord | null => {
+      const records = runsByApp.get(appPath) ?? [];
+      const selectedId = selectedRunIdByApp.get(appPath);
+      const selected = selectedId ? records.find((r) => r.id === selectedId) : undefined;
+      if (selected) return selected;
+      return (
+        records.find((r) => r.status.kind === "starting" || r.status.kind === "running") ??
+        records[0] ??
+        null
+      );
+    },
+    [runsByApp, selectedRunIdByApp],
+  );
+  const isStartingApp = useCallback(
+    (appPath: string) => startingApps.has(appPath),
+    [startingApps],
+  );
   const getTerminal = useCallback(
     (runId: string) => terminals.get(runId) ?? null,
     [terminals],
   );
 
+  // Declared after the readers it composes, because that is all it is: the one
+  // answer to "is there anything to show" and "does the dock cover the pane".
+  const dockHasContent = useCallback(
+    (appPath: string) =>
+      startingApps.has(appPath) ||
+      blockerByApp.has(appPath) ||
+      selectedRunForApp(appPath) !== null,
+    [startingApps, blockerByApp, selectedRunForApp],
+  );
+  const dockFillsPane = useCallback(
+    (appPath: string) => {
+      const dock = dockForApp(appPath);
+      return dock.maximized && dock.open && dockHasContent(appPath);
+    },
+    [dockForApp, dockHasContent],
+  );
+
+  const forgetApp = useCallback(
+    (appPath: string) => {
+      setBlocker(appPath, null);
+      setDockByApp((prev) => {
+        if (!prev.has(appPath)) return prev;
+        const next = new Map(prev);
+        next.delete(appPath);
+        return next;
+      });
+      setSelectedRunIdByApp((prev) => {
+        if (!prev.has(appPath)) return prev;
+        const next = new Map(prev);
+        next.delete(appPath);
+        return next;
+      });
+    },
+    [setBlocker],
+  );
+
   const value = useMemo<RunContextValue>(
     () => ({
-      selectedRun,
-      unavailableRun,
-      isRunViewOpen,
-      isStarting,
       startRun,
       stopRun,
       watchRunForApp,
@@ -610,19 +831,24 @@ export function RunProvider({ children }: { children: ReactNode }) {
       removeRun,
       clearRunsForApp,
       selectRun,
-      openRunView,
-      closeRunView,
-      showUnavailable,
       runsForApp,
       liveRunForApp,
       latestRunForApp,
+      selectedRunForApp,
+      isStartingApp,
+      blockerForApp,
+      showBlocker,
+      clearBlocker,
+      dockForApp,
+      dockHasContent,
+      dockFillsPane,
+      setDockOpen,
+      setDockHeight,
+      setDockMaximized,
+      forgetApp,
       getTerminal,
     }),
     [
-      selectedRun,
-      unavailableRun,
-      isRunViewOpen,
-      isStarting,
       startRun,
       stopRun,
       watchRunForApp,
@@ -633,12 +859,21 @@ export function RunProvider({ children }: { children: ReactNode }) {
       removeRun,
       clearRunsForApp,
       selectRun,
-      openRunView,
-      closeRunView,
-      showUnavailable,
       runsForApp,
       liveRunForApp,
       latestRunForApp,
+      selectedRunForApp,
+      isStartingApp,
+      blockerForApp,
+      showBlocker,
+      clearBlocker,
+      dockForApp,
+      dockHasContent,
+      dockFillsPane,
+      setDockOpen,
+      setDockHeight,
+      setDockMaximized,
+      forgetApp,
       getTerminal,
     ],
   );

@@ -22,10 +22,11 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { isModuleRootKind } from "../../../../application-adapter";
 import { isRecord } from "../../../../lib/utils";
 import {
+  buildEditableSchema,
   getStepSchema,
   getTopologyRole,
   getVariants,
@@ -42,14 +43,33 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "../../../ui/dropdown-menu";
+import {
+  collectRefTargets,
+  resolveRefCandidates,
+  toRefValue,
+} from "../../../resource-schema-form/ref-candidates";
+import type { ResolvedResourceOption } from "../../../resource-schema-form/types";
 import type { TypeSignature } from "../application-canvas-model";
 import {
   buildStepList,
+  type StepAddition,
   type StepBranch,
   type StepEntry,
 } from "../step-list-model";
+import {
+  appendAt,
+  freshStepName,
+  mergeAt,
+  newStep,
+  pointerSegment,
+  readBody,
+  writeAt,
+} from "../step-body-edit";
 import type { TopologyViewProps } from "../topology-view";
 
 /** A stable empty body, so a kind with none written yet does not hand the step
@@ -84,6 +104,8 @@ export function StepsView({
   resource,
   schema,
   viewData,
+  refResolver,
+  resolvedResources,
   model,
   selection,
   canFocus,
@@ -170,6 +192,37 @@ export function StepsView({
     return map;
   }, [entries, field]);
 
+  /** What a dispatch may name, PER VARIANT.
+   *
+   *  Read from that variant's own invoke slot through the analyzer's accessor,
+   *  so the list offers exactly the resources the checker would accept at the
+   *  slot it will be written into — the same answer the detail panel's
+   *  reference picker gives, since both go through one resolver. Resolving one
+   *  variant's slot and offering it for every dispatch variant would put the
+   *  completion surface ahead of its checker the moment a kind declares two
+   *  dispatch alternatives with different constraints. */
+  const invokeCandidates = useMemo(() => {
+    const byVariant = new Map<VariantMeta, ResolvedResourceOption[]>();
+    for (const variant of variants) {
+      if (!variant.invokeField) continue;
+      const props = isRecord(variant.schema.properties) ? variant.schema.properties : {};
+      const slot = props[variant.invokeField];
+      if (!isRecord(slot)) continue;
+      byVariant.set(
+        variant,
+        resolveRefCandidates(collectRefTargets(slot), resolvedResources, refResolver),
+      );
+    }
+    return byVariant;
+  }, [variants, resolvedResources, refResolver]);
+
+  /** Every step name in the body, at any depth. */
+  const takenNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const entry of byPointer.values()) if (entry.stepName) names.add(entry.stepName);
+    return names;
+  }, [byPointer]);
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   function handleDragEnd({ active, over }: DragEndEvent) {
@@ -198,12 +251,84 @@ export function StepsView({
    *  The one edit that goes through an ordinary field write rather than an AST
    *  operation, for the reason the boot list appends the same way: a new LAST
    *  index rewrites nothing, so no existing entry is re-serialized. */
-  function addStep(variant: VariantMeta) {
+  function addStep(variant: VariantMeta, target?: ResolvedResourceOption) {
     if (!field) return;
-    onUpdateResource(resource.kind, resource.name, {
-      ...resource.fields,
-      [field]: [...steps, newStep(variant, freshStepName(steps))],
+    appendStep(`/${field}`, variant, target);
+  }
+
+  /** Appends a step to ANY body, named against the whole tree so two branches
+   *  never mint the same `steps.<name>.result`, and opens its form.
+   *
+   *  Opening it is not a convenience: what a new step still needs is exactly
+   *  what could not be written for it — a dispatch's target above all, since a
+   *  reference has no empty value — so the form is where the step is actually
+   *  created, and landing anywhere else leaves the author looking for it. */
+  function appendStep(
+    containerPointer: string,
+    variant: VariantMeta,
+    invokeTarget?: ResolvedResourceOption,
+  ) {
+    if (!field) return;
+    const current = readBody(resource.fields, containerPointer);
+    const step = newStep(variant, freshStepName(takenNames));
+    // A dispatch is written WITH what it dispatches to. It is the one variant
+    // whose identity is a reference, so a step created without one says nothing
+    // — the schema matches no alternative and the row can only ask the question
+    // again. Asking it once, here, is the whole difference.
+    if (variant.invokeField && invokeTarget) step[variant.invokeField] = toRefValue(invokeTarget);
+    onUpdateResource(
+      resource.kind,
+      resource.name,
+      appendAt(resource.fields, containerPointer, step),
+    );
+    if (!stepSchema) return;
+    onSelect({
+      resource: target,
+      pointer: `${containerPointer}/${current.length}`,
+      schema: buildEditableSchema(stepSchema, variant, schema),
     });
+  }
+
+  /** Says what an unfinished step does — a step already in the manifest that
+   *  declares nothing, whether an author left it half-written or an older
+   *  editor created it that way. Writes the fields the chosen variant needs, a
+   *  dispatch's target included, and opens that variant's form. */
+  function chooseOperation(
+    entry: StepEntry,
+    variant: VariantMeta,
+    invokeTarget?: ResolvedResourceOption,
+  ) {
+    if (!field || !stepSchema) return;
+    const seeded = newStep(variant, entry.stepName ?? freshStepName(takenNames));
+    if (variant.invokeField && invokeTarget) {
+      seeded[variant.invokeField] = toRefValue(invokeTarget);
+    }
+    onUpdateResource(resource.kind, resource.name, mergeAt(resource.fields, entry.pointer, seeded));
+    onSelect({
+      resource: target,
+      pointer: entry.pointer,
+      schema: buildEditableSchema(stepSchema, variant, schema),
+    });
+  }
+
+  /** Creates a body the variant allows and the step has not written: an `else`,
+   *  a named case, one more else-if. Writing it is what makes it renderable —
+   *  the list shows bodies that exist, which is right for reading a manifest
+   *  and is why this had to be its own affordance. */
+  function addBody(entry: StepEntry, addition: StepAddition, caseKey?: string) {
+    if (!field) return;
+    // An empty key would collapse the pointer onto the case MAP, and writing
+    // there replaces every case with an empty list. The menu asks for one; this
+    // is the guard that makes losing them unrepresentable rather than avoided.
+    if (addition.form === "case-map" && !caseKey?.trim()) return;
+    const at = `${entry.pointer}/${pointerSegment(addition.field)}`;
+    const next =
+      addition.form === "branch"
+        ? writeAt(resource.fields, at, addition.seed)
+        : addition.form === "case-map"
+          ? writeAt(resource.fields, `${at}/${pointerSegment(caseKey!.trim())}`, addition.seed)
+          : appendAt(resource.fields, at, addition.seed);
+    onUpdateResource(resource.kind, resource.name, next);
   }
 
   if (!field || !stepSchema) {
@@ -231,6 +356,11 @@ export function StepsView({
     onSelect,
     onSelectResource,
     onRemoveField,
+    variants,
+    onAppendStep: appendStep,
+    onAddBody: addBody,
+    onChooseOperation: chooseOperation,
+    invokeCandidates,
   };
 
   return (
@@ -249,7 +379,11 @@ export function StepsView({
               <span className="shrink-0 font-mono text-[10px] text-zinc-400">{resource.kind}</span>
             </div>
             {variants.length > 0 && (
-              <AddStepMenu variants={variants} onAdd={addStep} />
+              <AddStepMenu
+                variants={variants}
+                invokeCandidates={invokeCandidates}
+                onAdd={addStep}
+              />
             )}
           </div>
         )}
@@ -284,6 +418,25 @@ interface RowProps {
   onSelect: TopologyViewProps["onSelect"];
   onSelectResource: TopologyViewProps["onSelectResource"];
   onRemoveField: TopologyViewProps["onRemoveField"];
+  /** The step vocabulary this body admits — every add affordance offers it. */
+  variants: VariantMeta[];
+  /** Appends a step to one body, named by its array pointer. */
+  onAppendStep: (
+    containerPointer: string,
+    variant: VariantMeta,
+    invokeTarget?: ResolvedResourceOption,
+  ) => void;
+  /** Creates a body the step does not have yet. */
+  onAddBody: (entry: StepEntry, addition: StepAddition, caseKey?: string) => void;
+  /** Says what an unfinished step does; a dispatch names its target here. */
+  onChooseOperation: (
+    entry: StepEntry,
+    variant: VariantMeta,
+    invokeTarget?: ResolvedResourceOption,
+  ) => void;
+  /** What each dispatch variant may name, resolved from that variant's own
+   *  invoke slot. */
+  invokeCandidates: ReadonlyMap<VariantMeta, ResolvedResourceOption[]>;
 }
 
 /**
@@ -321,26 +474,124 @@ function StepList({
  *  of the step above it, and boxing each one turns three levels of ordinary
  *  control flow into three frames of chrome. */
 function StepRow({ entry, ...rowProps }: RowProps & { entry: StepEntry }) {
+  const showBodies = entry.branches.length > 0 || entry.additions.length > 0;
   return (
     <li>
       <StepCard entry={entry} {...rowProps} />
-      {entry.branches.length > 0 && (
+      {showBodies && (
         <div className="ml-3 mt-1 flex flex-col gap-2 border-l border-zinc-200 pl-3 dark:border-zinc-800">
           {entry.branches.map((branch) => (
             <BranchBody key={branch.pointer} branch={branch} {...rowProps} />
           ))}
+          {rowProps.editable && entry.additions.length > 0 && (
+            <AddBodyMenu entry={entry} onAddBody={rowProps.onAddBody} />
+          )}
         </div>
       )}
     </li>
   );
 }
 
+/** The bodies a control-flow step could still declare.
+ *
+ *  It sits under the step beside the bodies it already has, because that is
+ *  what it produces — not in the step's form, which deliberately holds the
+ *  step's own fields and leaves every body to this list.
+ *
+ *  A case is the one addition that needs a value from the author: case keys are
+ *  matched against a discriminator, so they cannot be generated. */
+function AddBodyMenu({
+  entry,
+  onAddBody,
+}: {
+  entry: StepEntry;
+  onAddBody: RowProps["onAddBody"];
+}) {
+  const [caseFor, setCaseFor] = useState<StepAddition | null>(null);
+  const [draft, setDraft] = useState("");
+
+  if (caseFor) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-wide text-zinc-400">
+          {caseFor.field}
+        </span>
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => setCaseFor(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setCaseFor(null);
+            if (e.key !== "Enter") return;
+            const key = draft.trim();
+            if (!key) return;
+            onAddBody(entry, caseFor, key);
+            setCaseFor(null);
+            setDraft("");
+          }}
+          placeholder="case key"
+          className="w-32 rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-[11px] outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="xs" variant="ghost" className="self-start text-zinc-400">
+          <Plus className="size-3" />
+          branch
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {entry.additions.map((addition) => (
+          <DropdownMenuItem
+            key={`${addition.form}:${addition.field}`}
+            onClick={() => {
+              if (addition.form === "case-map") {
+                setDraft("");
+                setCaseFor(addition);
+                return;
+              }
+              onAddBody(entry, addition);
+            }}
+          >
+            {addition.form === "case-map"
+              ? `${addition.field}: add a case…`
+              : addition.form === "branch-list"
+                ? `${addition.field}: add a condition`
+                : addition.field}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function BranchBody({ branch, ...rowProps }: RowProps & { branch: StepBranch }) {
+  const { editable, variants, onAppendStep } = rowProps;
   return (
     <div className="flex flex-col gap-1">
-      <span className="font-mono text-[10px] uppercase tracking-wide text-zinc-400">
-        {branch.label}
-      </span>
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-[10px] uppercase tracking-wide text-zinc-400">
+          {branch.label}
+        </span>
+        {/* A body could previously be filled only by dragging a step in from
+            the top level, so a branch created here had no way to gain its first
+            step. The menu writes into THIS array. */}
+        {editable && variants.length > 0 && (
+          <AddStepMenu
+            variants={variants}
+            invokeCandidates={rowProps.invokeCandidates}
+            onAdd={(variant, invokeTarget) =>
+              onAppendStep(branch.pointer, variant, invokeTarget)
+            }
+            compact
+          />
+        )}
+      </div>
       {branch.entries.length === 0 ? (
         <EmptyBranch pointer={branch.pointer} />
       ) : (
@@ -388,6 +639,9 @@ function StepCard({
   onSelect,
   onSelectResource,
   onRemoveField,
+  variants,
+  onChooseOperation,
+  invokeCandidates,
 }: RowProps & { entry: StepEntry }) {
   const {
     attributes,
@@ -495,9 +749,14 @@ function StepCard({
         <button className="min-w-0 flex-1 text-left" onClick={openStep}>
           <span className="flex items-center gap-1.5">
             <span className="truncate text-sm text-zinc-800 dark:text-zinc-100">
-              {entry.stepName ?? entry.target ?? entry.keyword ?? "(unreadable step)"}
+              {entry.stepName ?? entry.target ?? entry.keyword ?? "unfinished step"}
             </span>
             {entry.keyword && <Badge>{entry.keyword}</Badge>}
+            {!entry.classified && (
+              <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                nothing to run yet
+              </span>
+            )}
             {entry.unresolved && (
               <span
                 className="flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400"
@@ -519,6 +778,29 @@ function StepCard({
             </span>
           )}
         </button>
+        {/* A step that declares nothing about what it does has ONE thing left to
+            decide, so it is offered as a choice here rather than as a form full
+            of operations. Writing the choice is what makes the step readable —
+            and for a dispatch there is nothing valid to write, so it opens the
+            target picker instead. */}
+        {!entry.classified && editable && variants.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="xs" variant="outline" className="shrink-0">
+                Choose
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <StepVariantItems
+                variants={variants}
+                invokeCandidates={invokeCandidates}
+                onPick={(variant, invokeTarget) =>
+                  onChooseOperation(entry, variant, invokeTarget)
+                }
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         {entry.target && canFocus(entry.target) && (
           <button
             className="shrink-0 rounded text-zinc-300 hover:text-zinc-500 dark:text-zinc-600"
@@ -566,27 +848,93 @@ function StepCard({
   );
 }
 
-function AddStepMenu({
+/**
+ * The step vocabulary, as menu items.
+ *
+ * A dispatch opens into WHAT IT DISPATCHES TO instead of being a leaf: it is the
+ * one variant whose identity is a reference, so choosing it without a target
+ * writes a step that says nothing — which is how "add an invoke step" used to
+ * produce a step the schema rejects and a row that could only ask again. Every
+ * other variant is written whole and is a leaf.
+ */
+function StepVariantItems({
   variants,
-  onAdd,
+  invokeCandidates,
+  onPick,
 }: {
   variants: VariantMeta[];
-  onAdd: (variant: VariantMeta) => void;
+  invokeCandidates: ReadonlyMap<VariantMeta, ResolvedResourceOption[]>;
+  onPick: (variant: VariantMeta, invokeTarget?: ResolvedResourceOption) => void;
+}) {
+  return (
+    <>
+      {variants.map((variant, i) => {
+        const label = variant.title || `Variant ${i + 1}`;
+        if (!variant.invokeField) {
+          return (
+            <DropdownMenuItem key={label} onClick={() => onPick(variant)}>
+              {label}
+            </DropdownMenuItem>
+          );
+        }
+        const candidates = invokeCandidates.get(variant) ?? [];
+        if (candidates.length === 0) {
+          return (
+            // Disabled rather than hidden: the vocabulary is what it is, and a
+            // missing entry reads as "this composer cannot dispatch".
+            <DropdownMenuItem key={label} disabled>
+              {label} — nothing to invoke yet
+            </DropdownMenuItem>
+          );
+        }
+        return (
+          <DropdownMenuSub key={label}>
+            <DropdownMenuSubTrigger>{label}</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+              {candidates.map((candidate) => (
+                <DropdownMenuItem
+                  key={`${candidate.kind}/${candidate.name}`}
+                  onClick={() => onPick(variant, candidate)}
+                  className="justify-between gap-3"
+                >
+                  <span>{candidate.name}</span>
+                  <span className="font-mono text-[10px] text-zinc-400">{candidate.kind}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        );
+      })}
+    </>
+  );
+}
+
+function AddStepMenu({
+  variants,
+  invokeCandidates,
+  onAdd,
+  compact,
+}: {
+  variants: VariantMeta[];
+  invokeCandidates: ReadonlyMap<VariantMeta, ResolvedResourceOption[]>;
+  onAdd: (variant: VariantMeta, invokeTarget?: ResolvedResourceOption) => void;
+  /** Inside a body, where the control sits on a label rather than in a header. */
+  compact?: boolean;
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size="xs" variant="outline">
+        <Button size="xs" variant={compact ? "ghost" : "outline"}>
           <Plus className="size-3" />
-          Add step
+          {compact ? "step" : "Add step"}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {variants.map((variant, i) => (
-          <DropdownMenuItem key={variant.title || i} onClick={() => onAdd(variant)}>
-            {variant.title || `Variant ${i + 1}`}
-          </DropdownMenuItem>
-        ))}
+        <StepVariantItems
+          variants={variants}
+          invokeCandidates={invokeCandidates}
+          onPick={onAdd}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -651,42 +999,4 @@ function stepsFieldName(kindSchema: Record<string, unknown>): string | null {
   return null;
 }
 
-/** A name no step in `steps` is using. A step's result is reachable only
- *  through its name, so a new one gets one rather than being left anonymous. */
-function freshStepName(steps: readonly unknown[]): string {
-  const taken = new Set(
-    steps.flatMap((s) => (isRecord(s) && typeof s.name === "string" ? [s.name] : [])),
-  );
-  for (let i = steps.length + 1; ; i++) {
-    const name = `step${i}`;
-    if (!taken.has(name)) return name;
-  }
-}
 
-/** A new step of `variant`, carrying its required fields empty so the form has
- *  something to fill and the manifest stays legible until it is filled. A field
- *  the list itself renders — a branch, a case map, an invoke target — is left
- *  out: the row is where those are edited. */
-function newStep(variant: VariantMeta, name: string): Record<string, unknown> {
-  const step: Record<string, unknown> = { name };
-  const rendered = new Set(["branch", "case-map", "branch-list", "invoke", "inputs"]);
-  for (const field of variant.requiredFields) {
-    if (field === "name") continue;
-    const props = isRecord(variant.schema.properties) ? variant.schema.properties : {};
-    const role = getTopologyRole(props[field]);
-    if (typeof role === "string" && rendered.has(role)) continue;
-    step[field] = defaultFor(props[field]);
-  }
-  return step;
-}
-
-/** An empty value of the declared type — an array field seeded with `""` is a
- *  schema violation the author did not write. */
-function defaultFor(prop: unknown): unknown {
-  const type = isRecord(prop) ? prop.type : undefined;
-  if (type === "array") return [];
-  if (type === "object") return {};
-  if (type === "boolean") return false;
-  if (type === "integer" || type === "number") return 0;
-  return "";
-}

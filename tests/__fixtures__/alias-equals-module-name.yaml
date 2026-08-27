@@ -7,7 +7,7 @@ imports:
   # definition-registry key. The gate must still reject it.
   Lib: ./alias-equals-module-name-lib.yaml
 targets:
-  - !ref usesPrivate
+  - invoke: !ref usesPrivate
 ---
 kind: Lib.Private
 metadata:

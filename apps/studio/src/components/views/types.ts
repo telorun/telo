@@ -136,11 +136,30 @@ export interface ViewProps {
    *  refused — with its reason — when anything else still names the resource. */
   onInlineReference: (host: { kind: string; name: string }, pointer: string) => void;
   /** Deployment config for the active Application. For Libraries this is still
-   *  populated (with a fresh ephemeral environment) but the Deployment tab is
-   *  hidden so it goes unused. */
+   *  populated (with a fresh ephemeral environment) but the Run tab is hidden so
+   *  it goes unused. */
   deployment: {
     activeEnvironment: DeploymentEnvironment;
     onSetEnvVars: (env: Record<string, string>) => void;
+  };
+  /** What it takes to start a run of this module. Status, history and dock
+   *  geometry are NOT here — they come from the run context, which is keyed by
+   *  Application; only the parts the editor owns (the pre-flight flow, the
+   *  runner chosen in settings) are passed through. */
+  run: {
+    /** The Application this pane can run — null for a Library, which is what
+     *  hides the run bar and the dock. */
+    appPath: string | null;
+    onRun: () => void;
+    /** Start a watch session: a workspace that runs continuously, where saving a
+     *  file reloads the kernel instead of starting a new run. */
+    onRunWatch: () => void;
+    /** Whether the selected runner offers watch sessions — read from its
+     *  advertised capabilities, since a runner with watch off rejects the field. */
+    canWatch: boolean;
+    /** Active runner from settings, or null when none is selected. */
+    runnerName: string | null;
+    onOpenSettings: () => void;
   };
   /** When set, SourceView opens the given tab and reveals the range. The
    *  nonce lets repeated clicks on the same diagnostic re-fire the reveal

@@ -12,7 +12,7 @@ imports:
   SQLite: ../../../sqlite
   Run: ../../../run
 targets:
-  - !ref writesTx
+  - invoke: !ref writesTx
 ---
 kind: SQLite.Connection
 metadata:
