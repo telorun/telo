@@ -12,130 +12,153 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Fs.DirectoryCreation
-metadata: { name: MakeDir }
+metadata: { name: makeDir }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Fs.FileWrite
-metadata: { name: Write }
+metadata: { name: write }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Fs.File
-metadata: { name: Read }
+metadata: { name: read }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Fs.FileEdit
-metadata: { name: Edit }
+metadata: { name: edit }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Fs.DirectoryListing
-metadata: { name: List }
+metadata: { name: list }
 cwd: ./modules/fs/tests/__fixtures__
 ---
+# Rooted at this test's own scratch dir, not the shared __fixtures__: the
+# default-`cwd` check below lists it twice and compares the two results, and a
+# sibling test's scratch directory appearing there between the calls is not this
+# test's failure to report.
+kind: Fs.DirectoryListing
+metadata: { name: listScratch }
+cwd: ./modules/fs/tests/__fixtures__/scratch-ops
+---
 kind: Fs.FileRemoval
-metadata: { name: Remove }
+metadata: { name: remove }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   # Tolerate a scratch dir left by an interrupted prior run so the first
-  # MakeDir below reliably reports `created: true`.
-  - name: Reset
+  # makeDir below reliably reports `created: true`.
+  - name: reset
     try:
-      - name: DoReset
+      - name: doReset
         inputs: { path: scratch-ops, recursive: true }
-        invoke: !ref Remove
+        invoke: !ref remove
     catch:
-      - name: NoLeftover
+      - name: noLeftover
         inputs: { actual: 1, expected: 1 }
         invoke: !ref Assert.equals
 
-  - name: Mkdir
+  - name: mkdir
     inputs: { path: scratch-ops, createParents: true }
-    invoke: !ref MakeDir
+    invoke: !ref makeDir
 
-  - name: MkdirAgain
+  - name: mkdirAgain
     inputs: { path: scratch-ops, createParents: true }
-    invoke: !ref MakeDir
+    invoke: !ref makeDir
 
-  - name: Write
+  - name: write
     inputs:
       path: scratch-ops/note.txt
       content: "version: 1\nhello\n"
-    invoke: !ref Write
+    invoke: !ref write
 
-  - name: Read
+  - name: read
     inputs: { path: scratch-ops/note.txt }
-    invoke: !ref Read
+    invoke: !ref read
 
-  - name: Edit
+  - name: edit
     inputs:
       path: scratch-ops/note.txt
       oldString: "version: 1"
       newString: "version: 2"
-    invoke: !ref Edit
+    invoke: !ref edit
 
-  - name: ReadEdited
+  - name: readEdited
     inputs: { path: scratch-ops/note.txt }
-    invoke: !ref Read
+    invoke: !ref read
 
-  - name: WriteBinary
+  - name: writeBinary
     inputs:
       path: scratch-ops/blob.bin
       content: !cel "'aGVsbG8='"
       encoding: base64
-    invoke: !ref Write
+    invoke: !ref write
 
-  - name: ReadBinary
+  - name: readBinary
     inputs: { path: scratch-ops/blob.bin, encoding: base64 }
-    invoke: !ref Read
+    invoke: !ref read
 
   # Byte-safety: a file whose bytes around the edited text are not valid UTF-8
   # (0xFF … 0xFE). The edit must leave those bytes untouched — a UTF-8 round-trip
   # would replace them with U+FFFD and change the base64.
-  - name: WriteNeedle
+  - name: writeNeedle
     inputs:
       path: scratch-ops/needle.bin
       content: !cel "'/25lZWRsZf4='"
       encoding: base64
-    invoke: !ref Write
+    invoke: !ref write
 
-  - name: EditNeedle
+  - name: editNeedle
     inputs:
       path: scratch-ops/needle.bin
       oldString: needle
       newString: ok
-    invoke: !ref Edit
+    invoke: !ref edit
 
-  - name: ReadNeedle
+  - name: readNeedle
     inputs: { path: scratch-ops/needle.bin, encoding: base64 }
-    invoke: !ref Read
+    invoke: !ref read
 
-  - name: RemoveNeedle
+  - name: removeNeedle
     inputs: { path: scratch-ops/needle.bin }
-    invoke: !ref Remove
+    invoke: !ref remove
 
-  - name: List
+  - name: list
     inputs: { path: scratch-ops, recursive: true }
-    invoke: !ref List
+    invoke: !ref list
 
-  - name: Assert
+  # An optional `path` means `cwd`, and the empty string is a spelling of that
+  # default rather than an error — the two calls must list the same directory.
+  - name: listCwdOmitted
+    invoke: !ref listScratch
+
+  - name: listCwdEmpty
+    inputs: { path: "" }
+    invoke: !ref listScratch
+
+  - name: assertEmptyPathIsCwd
+    inputs:
+      actual: !cel "steps.listCwdEmpty.result.entries"
+      expected: !cel "steps.listCwdOmitted.result.entries"
+    invoke: !ref Assert.equals
+
+  - name: assert
     inputs:
       actual:
-        created: !cel "steps.Mkdir.result.created"
-        createdAgain: !cel "steps.MkdirAgain.result.created"
-        bytesWritten: !cel "steps.Write.result.bytesWritten"
-        read: !cel "steps.Read.result.content"
-        size: !cel "steps.Read.result.size"
-        replacements: !cel "steps.Edit.result.replacements"
-        edited: !cel "steps.ReadEdited.result.content"
-        binary: !cel "steps.ReadBinary.result.content"
-        needleReplacements: !cel "steps.EditNeedle.result.replacements"
-        needleEdited: !cel "steps.ReadNeedle.result.content"
-        entries: !cel "steps.List.result.entries"
+        created: !cel "steps.mkdir.result.created"
+        createdAgain: !cel "steps.mkdirAgain.result.created"
+        bytesWritten: !cel "steps.write.result.bytesWritten"
+        read: !cel "steps.read.result.content"
+        size: !cel "steps.read.result.size"
+        replacements: !cel "steps.edit.result.replacements"
+        edited: !cel "steps.readEdited.result.content"
+        binary: !cel "steps.readBinary.result.content"
+        needleReplacements: !cel "steps.editNeedle.result.replacements"
+        needleEdited: !cel "steps.readNeedle.result.content"
+        entries: !cel "steps.list.result.entries"
       expected:
         created: true
         createdAgain: false
@@ -152,12 +175,34 @@ steps:
           - { name: note.txt, path: scratch-ops/note.txt, type: file, size: 17 }
     invoke: !ref Assert.equals
 
-  - name: Cleanup
-    inputs: { path: scratch-ops, recursive: true }
-    invoke: !ref Remove
+  # `exclude` omits a base name at any depth, and an excluded directory is not
+  # descended — what keeps a recursive listing of a real tree readable.
+  - name: mkdirNested
+    inputs: { path: scratch-ops/skipme, createParents: true }
+    invoke: !ref makeDir
 
-  - name: AssertRemoved
+  - name: writeNested
+    inputs: { path: scratch-ops/skipme/hidden.txt, content: "x\n" }
+    invoke: !ref write
+
+  - name: listExcluded
+    inputs: { path: scratch-ops, recursive: true, exclude: [skipme] }
+    invoke: !ref list
+
+  - name: assertExcluded
     inputs:
-      actual: !cel "steps.Cleanup.result.removed"
+      actual: !cel "steps.listExcluded.result.entries"
+      expected:
+        - { name: blob.bin, path: scratch-ops/blob.bin, type: file, size: 5 }
+        - { name: note.txt, path: scratch-ops/note.txt, type: file, size: 17 }
+    invoke: !ref Assert.equals
+
+  - name: cleanup
+    inputs: { path: scratch-ops, recursive: true }
+    invoke: !ref remove
+
+  - name: assertRemoved
+    inputs:
+      actual: !cel "steps.cleanup.result.removed"
       expected: true
     invoke: !ref Assert.equals

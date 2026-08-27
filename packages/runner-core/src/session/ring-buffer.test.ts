@@ -7,8 +7,8 @@ import { normalizeBundlePath, validateSessionId, BundlePathError } from "./bundl
 describe("EventRingBuffer", () => {
   it("assigns monotonic ids starting at 1 and replays after an id", () => {
     const buf = new EventRingBuffer(1_000_000);
-    buf.push({ type: "stdout", chunk: "a" });
-    buf.push({ type: "stdout", chunk: "b" });
+    buf.push({ type: "progress", phase: "boot", message: "a" });
+    buf.push({ type: "progress", phase: "boot", message: "b" });
     const { entries, hasGap } = buf.replay(1);
     expect(entries.map((e) => e.id)).toEqual([2]);
     expect(hasGap).toBe(false);
@@ -16,7 +16,8 @@ describe("EventRingBuffer", () => {
 
   it("evicts oldest entries past the byte cap but always retains the last", () => {
     const buf = new EventRingBuffer(50);
-    for (let i = 0; i < 20; i++) buf.push({ type: "stdout", chunk: "x".repeat(20) });
+    for (let i = 0; i < 20; i++)
+      buf.push({ type: "progress", phase: "boot", message: "x".repeat(20) });
     expect(buf.size).toBeGreaterThanOrEqual(1);
     expect(buf.bytes).toBeLessThanOrEqual(50 + 40);
     const { hasGap } = buf.replay(0);

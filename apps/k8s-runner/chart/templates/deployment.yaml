@@ -72,6 +72,22 @@ spec:
             {{- end }}
             - name: RUNNER_MAX_SESSIONS
               value: "{{ .Values.runner.maxSessions }}"
+            - name: RUNNER_WATCH_SESSIONS
+              value: "{{ .Values.watch.enabled }}"
+            {{- if .Values.watch.enabled }}
+            - name: RUNNER_WATCH_IDLE_SECONDS
+              value: "{{ .Values.watch.idleSeconds }}"
+            - name: RUNNER_WATCH_MAX_TTL_SECONDS
+              value: "{{ .Values.watch.maxTtlSeconds }}"
+            - name: RUNNER_WATCH_MAX_SESSIONS
+              value: "{{ .Values.watch.maxSessions }}"
+            - name: RUNNER_WATCH_RELOAD_LIMIT
+              value: "{{ .Values.watch.reloadLimit }}"
+            - name: RUNNER_WATCH_SUSPENDED_TTL_SECONDS
+              value: "{{ .Values.watch.suspendedTtlSeconds }}"
+            - name: RUNNER_WORKSPACE_CHECKPOINT_SECONDS
+              value: "{{ .Values.watch.checkpointSeconds }}"
+            {{- end }}
             - name: RUNNER_SELF_URL
               value: {{ include "telo-k8s-runner.selfUrl" . | quote }}
             - name: RUNNER_SESSION_NAMESPACE

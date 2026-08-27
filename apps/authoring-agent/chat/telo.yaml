@@ -37,6 +37,14 @@ secrets:
   openaiApiKey:
     type: string
 variables:
+  # Directory every file tool and every spawned command is rooted at. Configurable
+  # because a co-resident agent edits the SESSION's shared workspace volume, which
+  # the runner mounts at a path of its choosing — the agent is one writer on that
+  # volume beside the application containers, not the owner of a directory inside
+  # its own container. Defaults to the standalone layout.
+  workspaceDir:
+    type: string
+    default: ./workspace
   dbFile:
     type: string
     default: ./tmp/authoring-agent.sqlite
@@ -146,33 +154,33 @@ client:
 ---
 kind: Fs.FileWrite
 metadata: { name: writeFile }
-cwd: ./workspace
+cwd: !cel "variables.workspaceDir"
 ---
 kind: Fs.FileEdit
 metadata: { name: editFile }
-cwd: ./workspace
+cwd: !cel "variables.workspaceDir"
 ---
 kind: Fs.File
 metadata: { name: readFile }
-cwd: ./workspace
+cwd: !cel "variables.workspaceDir"
 ---
 kind: Fs.DirectoryListing
 metadata: { name: listDir }
-cwd: ./workspace
+cwd: !cel "variables.workspaceDir"
 ---
 kind: Fs.FileRemoval
 metadata: { name: removeFile }
-cwd: ./workspace
+cwd: !cel "variables.workspaceDir"
 ---
 # Whole-workspace sync primitives, exported so the app's /workspace routes can
 # snapshot (content-hash tree) and apply an explicit write/delete change set.
 kind: Fs.TreeSnapshot
 metadata: { name: treeSnapshot }
-cwd: ./workspace
+cwd: !cel "variables.workspaceDir"
 ---
 kind: Fs.TreeSync
 metadata: { name: treeSync }
-cwd: ./workspace
+cwd: !cel "variables.workspaceDir"
 ---
 # Resumable-turn transport: the agent turn runs detached, journaling its stream
 # under the turnId; a GET events route replays the journal from a client's last
@@ -281,20 +289,20 @@ window: !cel "variables.ipWindow"
 # has none until something makes it. `ensureWorkspace` is a boot target for
 # exactly that; `createParents` makes it idempotent.
 kind: Fs.DirectoryCreation
-metadata: { name: workspaceDir }
+metadata: { name: createDirectory }
 ---
 kind: Run.Sequence
 metadata: { name: ensureWorkspace }
 steps:
   - name: create
-    invoke: !ref workspaceDir
+    invoke: !ref createDirectory
     inputs:
-      path: ./workspace
+      path: !cel "variables.workspaceDir"
       createParents: true
 ---
 kind: Shell.LocalHost
 metadata: { name: localHost }
-cwd: ./workspace
+cwd: !cel "variables.workspaceDir"
 # Scrub the operator's OpenAI key from every subprocess spawned on this host
 # (the auto-`telo check`). The key is read only in-process by OpenaiModel; no
 # exposed tool executes agent content in-process, so unsetting it here means no
@@ -1987,7 +1995,14 @@ system: |
     so a file outside the module folder cannot be reached.
   - NEVER write into `.telo/` (the resolved-dependency cache), `node_modules/`,
     `dist/` or `.git/`. `.telo/` is generated — an edit there is overwritten and
-    changes nothing.
+    changes nothing. Do not READ it to learn a module either: it holds only the
+    manifests an app in this workspace already imports, at the pinned version,
+    so it can tell you what one pin declares and can never tell you a module
+    exists. Read a kind's exact schema with `telo module manifest <ref>@<version>`
+    (the version rides the ref — there is no `--version` flag), list what a
+    module offers with `telo module kinds <ref>`, and find a capability you have
+    not imported yet with the hub search — those answer "what is available",
+    which the cache structurally cannot.
 
   A loose `hello.yaml` at the workspace root still runs, but it is not a module
   studio can open: the scan matches `telo.yaml` alone. Put new work in

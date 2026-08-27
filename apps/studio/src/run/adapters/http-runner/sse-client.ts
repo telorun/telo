@@ -49,55 +49,25 @@ export function openSseClient(deps: SseClientDeps): SseClient {
   const source = new EventSource(url.toString(), { withCredentials: false });
   let closed = false;
 
-  const handleStdout = (e: MessageEvent): void => {
+  // Every named event forwards identically — the SSE `event:` name is the
+  // discriminator the payload already carries — so one handler serves them all
+  // and adding an event type is one entry in the list below.
+  const forward = (e: MessageEvent): void => {
     const parsed = parseRunEvent(e.data);
     if (parsed) {
       persistId(storageKey, e.lastEventId);
       deps.onEvent(parsed);
     }
   };
-  const handleStderr = (e: MessageEvent): void => {
-    const parsed = parseRunEvent(e.data);
-    if (parsed) {
-      persistId(storageKey, e.lastEventId);
-      deps.onEvent(parsed);
-    }
-  };
-  const handleStatus = (e: MessageEvent): void => {
-    const parsed = parseRunEvent(e.data);
-    if (parsed) {
-      persistId(storageKey, e.lastEventId);
-      deps.onEvent(parsed);
-      if (parsed.type === "status" && isTerminal(parsed.status)) {
-        close();
-      }
-    }
-  };
-  const handleProgress = (e: MessageEvent): void => {
-    const parsed = parseRunEvent(e.data);
-    if (parsed) {
-      persistId(storageKey, e.lastEventId);
-      deps.onEvent(parsed);
-    }
-  };
-  const handleDebug = (e: MessageEvent): void => {
-    const parsed = parseRunEvent(e.data);
-    if (parsed) {
-      persistId(storageKey, e.lastEventId);
-      deps.onEvent(parsed);
-    }
-  };
-  const handleReachability = (e: MessageEvent): void => {
-    const parsed = parseRunEvent(e.data);
-    if (parsed) {
-      persistId(storageKey, e.lastEventId);
-      deps.onEvent(parsed);
-    }
-  };
+
   const handleGap = (): void => {
+    // A replay gap is a fact about the STREAM, not output from the workload —
+    // workload bytes travel the byte channel — so it is reported as a
+    // provisioning message rather than synthesized into the app's own output.
     deps.onEvent({
-      type: "stderr",
-      chunk: "\n[stream reconnected — earlier output truncated]\n",
+      type: "progress",
+      phase: "boot",
+      message: "stream reconnected — earlier events truncated",
     });
   };
   const handleError = (): void => {
@@ -110,24 +80,15 @@ export function openSseClient(deps: SseClientDeps): SseClient {
     }
   };
 
-  source.addEventListener("stdout", handleStdout);
-  source.addEventListener("stderr", handleStderr);
-  source.addEventListener("status", handleStatus);
-  source.addEventListener("progress", handleProgress);
-  source.addEventListener("debug", handleDebug);
-  source.addEventListener("reachability", handleReachability);
+  const FORWARDED = ["status", "progress", "debug", "reachability", "run", "endpoints"];
+  for (const name of FORWARDED) source.addEventListener(name, forward);
   source.addEventListener("gap", handleGap);
   source.addEventListener("error", handleError);
 
   function close(): void {
     if (closed) return;
     closed = true;
-    source.removeEventListener("stdout", handleStdout);
-    source.removeEventListener("stderr", handleStderr);
-    source.removeEventListener("status", handleStatus);
-    source.removeEventListener("progress", handleProgress);
-    source.removeEventListener("debug", handleDebug);
-    source.removeEventListener("reachability", handleReachability);
+    for (const name of FORWARDED) source.removeEventListener(name, forward);
     source.removeEventListener("gap", handleGap);
     source.removeEventListener("error", handleError);
     source.close();
@@ -150,8 +111,8 @@ function isRunEvent(value: unknown): value is RunEvent {
   if (!value || typeof value !== "object") return false;
   const v = value as { type?: unknown };
   return (
-    v.type === "stdout" ||
-    v.type === "stderr" ||
+    v.type === "run" ||
+    v.type === "endpoints" ||
     v.type === "status" ||
     v.type === "progress" ||
     v.type === "debug" ||

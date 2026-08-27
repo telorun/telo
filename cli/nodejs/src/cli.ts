@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+// FIRST, and it must stay first: bridges CLICOLOR_FORCE onto FORCE_COLOR for
+// Node's colour libraries before any of them computes a level. See color-bridge.
+import "./color-bridge.js";
+
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { OUTPUT_FORMATS, configureOutput, parseOutputFormat } from "./output.js";

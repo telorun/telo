@@ -18,9 +18,12 @@ All are `Telo.Invocable` — invoke them from a `Run.Sequence` or wrap them as
   `{ path, oldString, newString, replaceAll? }` → `{ replacements }`. Fails when
   `oldString` is absent, or matches more than once without `replaceAll` — never
   a silent no-op. Byte-level, so comments and `!cel` tags survive.
-- **`Fs.DirectoryListing`** — list a directory. `{ path?, recursive? }` →
-  `{ entries: [{ name, path, type, size }] }`; each `path` is relative to `cwd`
-  so it can be fed straight back as an input.
+- **`Fs.DirectoryListing`** — list a directory. `{ path?, recursive?, exclude? }`
+  → `{ entries: [{ name, path, type, size }] }`; each `path` is relative to `cwd`
+  so it can be fed straight back as an input. `exclude` omits entries by base
+  name at any depth (an excluded directory is neither listed nor descended) —
+  a recursive listing of a real tree needs it to stay readable, e.g.
+  `node_modules`, `.git`, `.telo`.
 
   **Every emitted `path` is separated with `/`, on every host.** A path that
   reaches a manifest stops being a host path: an author compares it in CEL
@@ -55,7 +58,10 @@ set.
 
 Each resource carries an optional `cwd` — the base directory invoke `path`s
 resolve against. A relative `cwd` (and the default) resolves against the process
-working directory; an absolute invoke `path` is used as-is. It is **not** a
+working directory; an absolute invoke `path` is used as-is. Where the invoke
+`path` is optional (`DirectoryListing`, `TreeSnapshot`), omitting it and passing
+an empty string both mean `cwd` itself — an empty string is a spelling of the
+default, not an error. It is **not** a
 security boundary: nothing confines paths to `cwd`. Real isolation comes from
 where the kernel runs (the runner sandbox), not this field. `cwd` is a
 compile-time field, so it can be a `!cel` value (e.g. `!cel "variables.workspace"`).

@@ -93,7 +93,7 @@ jobs:
         run: pnpm run check:docs
 
       - name: Check module manifests
-        run: pnpm run check modules/*/telo.yaml
+        run: pnpm run check modules/*/telo.yaml packages/runner-core/workspace-app/telo.yaml
 
       - name: Check example manifests
         run: pnpm run check examples/*/telo.yaml
@@ -553,7 +553,7 @@ jobs:
       # for a native command, and `telo check` takes literal positionals.
       - name: Check module manifests
         shell: bash
-        run: pnpm run check modules/*/telo.yaml
+        run: pnpm run check modules/*/telo.yaml packages/runner-core/workspace-app/telo.yaml
 
       - name: Check example manifests
         shell: bash
@@ -641,7 +641,7 @@ jobs:
         run: pnpm -r --no-bail test
 
       - name: Check module manifests
-        run: pnpm run check modules/*/telo.yaml
+        run: pnpm run check modules/*/telo.yaml packages/runner-core/workspace-app/telo.yaml
 
       - name: Check example manifests
         run: pnpm run check examples/*/telo.yaml

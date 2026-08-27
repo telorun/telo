@@ -11,25 +11,25 @@ imports:
   Fs: ../../
   Run: ../../../run
 targets:
-  - !ref T
+  - !ref writeLiterals
 ---
 kind: Fs.FileWrite
-metadata: { name: Save }
+metadata: { name: save }
 ---
 kind: Fs.TreeSync
-metadata: { name: Sync }
+metadata: { name: sync }
 ---
 kind: Run.Sequence
-metadata: { name: T }
+metadata: { name: writeLiterals }
 steps:
-  - name: WriteLiteral
+  - name: writeLiteral
     inputs:
       path: ./x.png
       content: { foo: bar }
-    invoke: !ref Save
-  - name: SyncLiteral
+    invoke: !ref save
+  - name: syncLiteral
     inputs:
       write:
         - path: ./y.png
           content: { foo: bar }
-    invoke: !ref Sync
+    invoke: !ref sync

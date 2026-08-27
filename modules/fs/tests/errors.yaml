@@ -11,107 +11,107 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Fs.DirectoryCreation
-metadata: { name: MakeDir }
+metadata: { name: makeDir }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Fs.FileWrite
-metadata: { name: Write }
+metadata: { name: write }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Fs.File
-metadata: { name: Read }
+metadata: { name: read }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Fs.FileEdit
-metadata: { name: Edit }
+metadata: { name: edit }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Fs.FileRemoval
-metadata: { name: Remove }
+metadata: { name: remove }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Reset
+  - name: reset
     try:
-      - name: DoReset
+      - name: doReset
         inputs: { path: scratch-err, recursive: true }
-        invoke: !ref Remove
+        invoke: !ref remove
     catch:
-      - name: NoLeftover
+      - name: noLeftover
         inputs: { actual: 1, expected: 1 }
         invoke: !ref Assert.equals
 
-  - name: Mkdir
+  - name: mkdir
     inputs: { path: scratch-err, createParents: true }
-    invoke: !ref MakeDir
+    invoke: !ref makeDir
 
-  - name: Seed
+  - name: seed
     inputs:
       path: scratch-err/dup.txt
       content: "x\nx\n"
-    invoke: !ref Write
+    invoke: !ref write
 
-  - name: ReadMissing
+  - name: readMissing
     try:
-      - name: DoRead
+      - name: doRead
         inputs: { path: scratch-err/does-not-exist.txt }
-        invoke: !ref Read
+        invoke: !ref read
     catch:
-      - name: AssertEnoent
+      - name: assertEnoent
         inputs:
           actual: !cel "error.message"
           pattern: "does-not-exist.txt.*ENOENT"
         invoke: !ref Assert.matches
 
-  - name: EditAbsent
+  - name: editAbsent
     try:
-      - name: DoEdit
+      - name: doEdit
         inputs:
           path: scratch-err/dup.txt
           oldString: "not-present"
           newString: "z"
-        invoke: !ref Edit
+        invoke: !ref edit
     catch:
-      - name: AssertNotFound
+      - name: assertNotFound
         inputs:
           actual: !cel "error.message"
           pattern: "oldString not found"
         invoke: !ref Assert.matches
 
-  - name: EditAmbiguous
+  - name: editAmbiguous
     try:
-      - name: DoEdit
+      - name: doEdit
         inputs:
           path: scratch-err/dup.txt
           oldString: "x"
           newString: "y"
-        invoke: !ref Edit
+        invoke: !ref edit
     catch:
-      - name: AssertAmbiguous
+      - name: assertAmbiguous
         inputs:
           actual: !cel "error.message"
           pattern: "matches 2 times"
         invoke: !ref Assert.matches
 
-  - name: EditReplaceAll
+  - name: editReplaceAll
     inputs:
       path: scratch-err/dup.txt
       oldString: "x"
       newString: "y"
       replaceAll: true
-    invoke: !ref Edit
+    invoke: !ref edit
 
-  - name: AssertReplaceAll
+  - name: assertReplaceAll
     inputs:
-      actual: !cel "steps.EditReplaceAll.result.replacements"
+      actual: !cel "steps.editReplaceAll.result.replacements"
       expected: 2
     invoke: !ref Assert.equals
 
-  - name: Cleanup
+  - name: cleanup
     inputs: { path: scratch-err, recursive: true }
-    invoke: !ref Remove
+    invoke: !ref remove

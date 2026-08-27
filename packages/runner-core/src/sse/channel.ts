@@ -64,9 +64,14 @@ export async function streamSessionEvents(args: SseStreamArgs): Promise<void> {
   let heartbeat: NodeJS.Timeout | null = null;
   let closed = false;
 
+  // An attached event stream is a live client. Idleness — no subscriber on
+  // either channel for the configured window — is what suspends a watch session.
+  const releaseSubscriber = registry.addSubscriber(sessionId);
+
   const cleanup = (): void => {
     if (closed) return;
     closed = true;
+    releaseSubscriber();
     if (heartbeat) clearInterval(heartbeat);
     if (unsubscribe) unsubscribe();
     if (!raw.writableEnded) raw.end();

@@ -13,32 +13,32 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestContentGuard
+  - !ref testContentGuard
 ---
 kind: Fs.FileWrite
-metadata: { name: Write }
+metadata: { name: write }
 cwd: ./modules/fs/tests/__fixtures__/scratch-guard
 ---
 kind: Fs.FileRemoval
-metadata: { name: Remove }
+metadata: { name: remove }
 cwd: ./modules/fs/tests/__fixtures__
 ---
 kind: Run.Sequence
-metadata: { name: TestContentGuard }
+metadata: { name: testContentGuard }
 steps:
   # The analyzer substitutes a byte placeholder for a CEL leaf at a byte slot — it
   # cannot know what the expression evaluates to — so this passes `telo check` and
   # the input contract is what must catch it at dispatch.
-  - name: RejectsNonBytesFromCel
+  - name: rejectsNonBytesFromCel
     try:
-      - name: Invoke
+      - name: invoke
         inputs:
           path: bad.bin
           content: !cel "{'foo': 'bar'}"
           createParents: true
-        invoke: !ref Write
+        invoke: !ref write
     catch:
-      - name: Assert
+      - name: assert
         inputs:
           # Rejected by the input CONTRACT, not the controller: the annotation makes
           # the byte slot checkable, so the dispatch never reaches fs code.
@@ -48,31 +48,31 @@ steps:
 
   # Text still works unchanged, including the base64 decode path — widening the slot
   # must not have disturbed either string form.
-  - name: WritesUtf8
+  - name: writesUtf8
     inputs:
       path: plain.txt
       content: "alpha\n"
       createParents: true
-    invoke: !ref Write
+    invoke: !ref write
 
-  - name: WritesBase64
+  - name: writesBase64
     inputs:
       path: decoded.txt
       content: YWxwaGEK
       encoding: base64
       createParents: true
-    invoke: !ref Write
+    invoke: !ref write
 
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        utf8Bytes: !cel "steps.WritesUtf8.result.bytesWritten"
-        base64Bytes: !cel "steps.WritesBase64.result.bytesWritten"
+        utf8Bytes: !cel "steps.writesUtf8.result.bytesWritten"
+        base64Bytes: !cel "steps.writesBase64.result.bytesWritten"
       expected:
         utf8Bytes: 6
         base64Bytes: 6
     invoke: !ref Assert.equals
 
-  - name: Cleanup
+  - name: cleanup
     inputs: { path: scratch-guard, recursive: true }
-    invoke: !ref Remove
+    invoke: !ref remove

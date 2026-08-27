@@ -158,6 +158,15 @@ export function makeRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
     exitTtlMs: 60_000,
     replayBufferBytes: 1_000_000,
     corsOrigins: "*" as const,
+    watch: {
+      enabled: false,
+      idleMs: 300_000,
+      maxTtlSeconds: 21_600,
+      maxSessions: 8,
+      reloadLimitPerMinute: 30,
+      suspendedTtlMs: 86_400_000,
+      checkpointMs: 30_000,
+    },
     ...overrides,
   };
 }

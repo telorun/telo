@@ -29,17 +29,27 @@ const RECONNECT_DELAY_MS = 500;
  */
 export async function relayDebugStream(opts: DebugRelayOptions): Promise<void> {
   const { url, onFrame, signal } = opts;
+  // The last id delivered, carried across reconnects. Without it a drop replays
+  // the producer's whole buffer, and a consumer that DERIVES state from the
+  // stream — the run projection counting generations — re-counts every reload
+  // still in that buffer. In a watch session that is one pair per save.
+  let lastEventId = 0;
   while (!signal.aborted) {
     try {
       const res = await fetch(url, {
         signal,
-        headers: { accept: "text/event-stream" },
+        headers: {
+          accept: "text/event-stream",
+          ...(lastEventId > 0 ? { "last-event-id": String(lastEventId) } : {}),
+        },
       });
       if (!res.ok || !res.body) {
         await abortableDelay(RECONNECT_DELAY_MS, signal);
         continue;
       }
-      await pump(res.body, onFrame, signal);
+      await pump(res.body, onFrame, signal, (id) => {
+        lastEventId = id;
+      });
     } catch (err) {
       if (signal.aborted) return;
       opts.onError?.(err instanceof Error ? err : new Error(String(err)));
@@ -52,6 +62,7 @@ async function pump(
   body: ReadableStream<Uint8Array>,
   onFrame: (frame: DebugFrame) => void,
   signal: AbortSignal,
+  onId: (id: number) => void,
 ): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -64,14 +75,31 @@ async function pump(
       let sep: number;
       // SSE frames are separated by a blank line.
       while ((sep = buf.indexOf("\n\n")) >= 0) {
-        const frame = parseSseData(buf.slice(0, sep));
+        const block = buf.slice(0, sep);
         buf = buf.slice(sep + 2);
-        if (frame) onFrame(frame);
+        const frame = parseSseData(block);
+        if (!frame) continue;
+        onFrame(frame);
+        // Checkpoint AFTER delivery, so a frame the consumer never saw is not
+        // skipped on the next reconnect.
+        const id = parseSseId(block);
+        if (id !== null) onId(id);
       }
     }
   } finally {
     reader.cancel().catch(() => undefined);
   }
+}
+
+/** The `id:` of one SSE frame, or null when the producer sent none — an older
+ *  kernel, whose stream simply has no resume point. */
+function parseSseId(block: string): number | null {
+  for (const line of block.split("\n")) {
+    if (!line.startsWith("id:")) continue;
+    const parsed = Number.parseInt(line.slice(3).trim(), 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 /** Extract and parse the `data:` payload of one SSE frame. Ignores comment

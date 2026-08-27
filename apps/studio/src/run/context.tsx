@@ -20,10 +20,13 @@ import {
   type RunAdapter,
   type RunEvent,
   type RunPhase,
+  type RunOutcomeEvent,
   type RunReachabilityState,
   type RunRequest,
   type RunSession,
   type RunStatus,
+  type WorkspaceChangeSet,
+  SessionGoneError,
 } from "./types";
 
 const MAX_LOG_LINES = 10_000;
@@ -71,6 +74,15 @@ export interface RunRecord {
   /** Per-port reachability of declared ports, watched by the runner and rendered
    *  on the endpoint badge (spinner → ok / error). Keyed by port. */
   portReachability: Map<number, RunReachabilityState>;
+  /** Latest run outcome per application, keyed by app name. Separate from
+   *  `status`, which is the SESSION's: in a watch session a one-shot app
+   *  completing leaves the session running and starts a new generation on the
+   *  next edit. A run session has exactly one entry, named `app`. */
+  runs: Record<string, RunOutcomeEvent>;
+  /** Declared ports the runner could not route, by port, with its reason. The
+   *  design's whole point is that such a port is reported rather than dropped;
+   *  dropping it here would put the silence back. */
+  unroutablePorts: Map<number, string>;
   /** Set when a run restored from the index could not be re-attached — the
    *  session is gone from the runner (evicted past its TTL / runner restarted)
    *  or its adapter can't resume. The list keeps the entry; the view shows a
@@ -117,6 +129,19 @@ interface RunContextValue {
     request: RunRequest;
   }): Promise<void>;
   stopRun(runId: string): Promise<void>;
+  /** The app's live watch session, or null. A watch session is a workspace that
+   *  runs continuously, so a save syncs into it rather than starting a new run. */
+  watchRunForApp(appPath: string): RunRecord | null;
+  /** Every app with a live watch session, across the workspace. */
+  watchRuns(): RunRecord[];
+  /** Push an edit into a live watch session. A no-op for a plain run, so the
+   *  editor's save path can call it unconditionally. */
+  syncWorkspace(runId: string, changes: WorkspaceChangeSet): Promise<void>;
+  /** Re-run a watch session's app with no file change. */
+  reloadRun(runId: string): Promise<void>;
+  /** Bring a suspended session back. False when the runner no longer holds its
+   *  checkpoint — the caller starts a fresh session instead. */
+  resumeRun(runId: string): Promise<boolean>;
   /** Drop a run from history: tears down its runtime, forgets its re-attach
    *  metadata, and removes it from the persisted index. Used to clear a run
    *  whose history is no longer available on the runner. */
@@ -309,7 +334,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
         runtimes.current.set(runId, runtime);
         if (terminal) setTerminal(runId, terminal);
         runtime.unsubscribe = session.subscribe((event) => {
-          applyRunEvent(event, runId, runtime, terminal !== null, updateRecord);
+          applyRunEvent(event, runId, runtime, updateRecord);
         });
         updateRecord(runId, (record) => ({
           ...record,
@@ -353,6 +378,77 @@ export function RunProvider({ children }: { children: ReactNode }) {
       // status via the subscription — let that drive UI state.
       console.warn("session stop failed:", err);
     }
+  }, []);
+
+  /**
+   * The app's live WATCH session, or null. This is what makes a save cheap: the
+   * editor pushes the changed file into a running workspace instead of starting
+   * a new session, and the kernel's own watcher reloads on it.
+   *
+   * A `suspended` session counts as live — it is not terminal, it is a pod that
+   * was reaped for idleness and resumes under the same id.
+   */
+  // The runtime side table is the authority on watch-ness: a record restored
+  // from the persisted index carries no session until it is re-attached.
+  const isLiveWatch = useCallback(
+    (record: RunRecord): boolean =>
+      LIVE_WATCH_STATUSES.has(record.status.kind) &&
+      runtimes.current.get(record.id)?.session.isWatch === true,
+    [],
+  );
+
+  const watchRunForApp = useCallback(
+    (appPath: string): RunRecord | null =>
+      (runsByApp.get(appPath) ?? []).find(isLiveWatch) ?? null,
+    [runsByApp, isLiveWatch],
+  );
+
+  /** Every app with a live watch session. The editor's save path walks this
+   *  rather than its own bookkeeping, so a session re-attached after a page
+   *  reload still receives edits — the alternative is a tab refresh silently
+   *  disconnecting saves from a workspace that is still running. */
+  const watchRuns = useCallback((): RunRecord[] => {
+    const found: RunRecord[] = [];
+    for (const records of runsByApp.values()) {
+      const run = records.find(isLiveWatch);
+      if (run) found.push(run);
+    }
+    return found;
+  }, [runsByApp, isLiveWatch]);
+
+  /** Push an edit into a live watch session. Silent no-op when the run is not a
+   *  watch session — the editor calls this on every save, and a plain run must
+   *  not be disturbed by one. */
+  const syncWorkspace = useCallback(
+    async (runId: string, changes: WorkspaceChangeSet): Promise<void> => {
+      const runtime = runtimes.current.get(runId);
+      const session = runtime?.session;
+      if (!session?.syncWorkspace) return;
+      // A session reaped for idleness has no workspace to write to — the route
+      // answers 409. The user's first save after a reap must resume it, not
+      // hand them an error for something they did not do.
+      if (session.getStatus().kind === "suspended" && session.resume) {
+        const resumed = await session.resume();
+        if (!resumed) throw new SessionGoneError();
+      }
+      await session.syncWorkspace(changes);
+    },
+    [],
+  );
+
+  const reloadRun = useCallback(async (runId: string): Promise<void> => {
+    const session = runtimes.current.get(runId)?.session;
+    if (!session?.reload) return;
+    await session.reload();
+  }, []);
+
+  /** Resume a suspended session. Returns false when the runner no longer holds
+   *  the checkpoint — the caller starts a fresh session and re-seeds from the
+   *  editor's own copy, which is the authoritative one. */
+  const resumeRun = useCallback(async (runId: string): Promise<boolean> => {
+    const session = runtimes.current.get(runId)?.session;
+    if (!session?.resume) return false;
+    return session.resume();
   }, []);
 
   const removeRun = useCallback((runId: string) => {
@@ -439,6 +535,8 @@ export function RunProvider({ children }: { children: ReactNode }) {
         debugFrames: [],
         debugFrameSeq: 0,
         portReachability: new Map(),
+        runs: {},
+        unroutablePorts: new Map(),
       };
 
       const runtime: RunRuntime = {
@@ -452,7 +550,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       if (terminal) setTerminal(record.id, terminal);
       attachMeta.current.set(record.id, { adapterId: adapter.id, config });
       runtime.unsubscribe = session.subscribe((event) => {
-        applyRunEvent(event, record.id, runtime, terminal !== null, updateRecord);
+        applyRunEvent(event, record.id, runtime, updateRecord);
       });
 
       setRunsByApp((prev) => {
@@ -504,6 +602,11 @@ export function RunProvider({ children }: { children: ReactNode }) {
       isStarting,
       startRun,
       stopRun,
+      watchRunForApp,
+      watchRuns,
+      syncWorkspace,
+      reloadRun,
+      resumeRun,
       removeRun,
       clearRunsForApp,
       selectRun,
@@ -522,6 +625,11 @@ export function RunProvider({ children }: { children: ReactNode }) {
       isStarting,
       startRun,
       stopRun,
+      watchRunForApp,
+      watchRuns,
+      syncWorkspace,
+      reloadRun,
+      resumeRun,
       removeRun,
       clearRunsForApp,
       selectRun,
@@ -537,6 +645,11 @@ export function RunProvider({ children }: { children: ReactNode }) {
 
   return <RunContextValue.Provider value={value}>{children}</RunContextValue.Provider>;
 }
+
+/** Statuses under which a watch session is still there to receive edits.
+ *  `suspended` counts: it is not terminal — the pod was reaped for idleness and
+ *  the session resumes under the same id. */
+const LIVE_WATCH_STATUSES = new Set<RunStatus["kind"]>(["running", "starting", "suspended"]);
 
 /** Build an empty display record from a persisted index entry. Bodies (lines,
  *  debug frames, terminal scrollback) stay empty until the run is selected and
@@ -556,6 +669,8 @@ function shellFromEntry(entry: PersistedRunEntry): RunRecord {
     debugFrames: [],
     debugFrameSeq: 0,
     portReachability: new Map(),
+    runs: {},
+    unroutablePorts: new Map(),
   };
 }
 
@@ -563,7 +678,6 @@ function applyRunEvent(
   event: RunEvent,
   runId: string,
   runtime: RunRuntime,
-  hasTerminal: boolean,
   updateRecord: (runId: string, mut: (record: RunRecord) => RunRecord) => void,
 ): void {
   if (event.type === "status") {
@@ -603,28 +717,39 @@ function applyRunEvent(
     return;
   }
 
-  // Terminal adapters render their bytes through the TerminalBuffer (the `io`
-  // channel); their stdout/stderr events are not shown as lines, so skip them
-  // to avoid duplicating output.
-  if (hasTerminal) return;
+  if (event.type === "run") {
+    // A run outcome is per APP per generation, and is deliberately not a session
+    // status: a one-shot app completing leaves the session up, so the chip must
+    // not go terminal on it.
+    updateRecord(runId, (record) => ({
+      ...record,
+      runs: { ...record.runs, [event.app]: event },
+    }));
+    return;
+  }
 
-  const stream = event.type;
-  const pending = runtime.partial[stream] + event.chunk;
-  const parts = pending.split("\n");
-  runtime.partial[stream] = parts.pop() ?? "";
-  if (parts.length === 0) return;
+  if (event.type === "endpoints") {
+    // A port the runner could not route is the exact outcome this event exists
+    // to prevent being silent — an app that binds a port and is unreachable.
+    // Keep it on the record so the view can say so, with the runner's reason.
+    const rejected = event.rejected ?? [];
+    // A reload re-read the app's declared ports and the runner re-patched its
+    // routing. Merge rather than replace: `added`/`removed` describe a delta.
+    updateRecord(runId, (record) => {
+      const removed = new Set((event.removed ?? []).map((e) => `${e.protocol}/${e.port}`));
+      const current = (record.status.kind === "running" ? record.status.endpoints : undefined) ?? [];
+      const kept = current.filter((e) => !removed.has(`${e.protocol}/${e.port}`));
+      const endpoints = [...kept, ...(event.added ?? [])];
+      const unroutable = new Map(record.unroutablePorts);
+      for (const entry of rejected) unroutable.set(entry.port, entry.reason);
+      for (const entry of event.added ?? []) unroutable.delete(entry.port);
+      return record.status.kind === "running"
+        ? { ...record, status: { ...record.status, endpoints }, unroutablePorts: unroutable }
+        : { ...record, unroutablePorts: unroutable };
+    });
+    return;
+  }
 
-  const newLines: LogLine[] = parts.map((text) => ({
-    id: ++runtime.lineId,
-    stream,
-    text,
-  }));
-  updateRecord(runId, (record) => {
-    const combined = [...record.lines, ...newLines];
-    if (combined.length <= MAX_LOG_LINES) return { ...record, lines: combined };
-    const overflow = combined.length - MAX_LOG_LINES;
-    return { ...record, lines: combined.slice(overflow), truncated: true };
-  });
 }
 
 /** Append debug frames to a record, ring-capped at {@link MAX_DEBUG_FRAMES}.

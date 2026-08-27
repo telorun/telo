@@ -12,6 +12,11 @@ export interface KubernetesRunnerCapabilitiesOptions {
   defaultImage: string;
   terms?: RunnerTerms;
   imageEnum?: string[];
+  /** Whether the operator enabled watch sessions. Advertised so a client knows
+   *  before it asks — a runner with watch off rejects the field. */
+  watch: boolean;
+  /** Catalog names admissible as a session's co-resident `agent`. */
+  agents?: string[];
 }
 
 /** What k8s-runner advertises on `/v1/capabilities`. The runner serves
@@ -33,7 +38,15 @@ export function kubernetesRunnerCapabilities(
   return {
     displayName,
     description,
-    features: { io: true, ports: true },
+    features: {
+      // Both attach modes: the kubernetes attach subresource without a TTY
+      // already gives separate stdout and stderr channels, so `streams` invents
+      // nothing at the transport layer.
+      io: ["tty", "streams"],
+      ports: true,
+      watch: opts.watch,
+      ...(opts.agents && opts.agents.length > 0 ? { agents: opts.agents } : {}),
+    },
     config: {
       schema: sessionConfigSchema({
         imageDefault: defaultImage,

@@ -15,15 +15,29 @@ metadata:
   labels:
     {{- include "telo-k8s-runner.labels" . | nindent 4 }}
 rules:
+  # `update` on services/ingresses is what lets a watch session re-patch its
+  # routing when a reload changes an app's declared port set. Without it the app
+  # binds the new port inside the pod and is simply unreachable: no ingress, no
+  # error, no event.
   - apiGroups: [""]
     resources: ["pods", "services"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
   - apiGroups: [""]
     resources: ["pods/log", "pods/attach"]
     verbs: ["get", "create"]
+  # The workspace application's manifest, delivered to a watch session's pod as
+  # a content-addressed ConfigMap the runner reconciles at start. `list`/`delete`
+  # are for the boot-time sweep: the name is content-addressed, so every release
+  # that changes the manifest would otherwise leave one behind permanently. Reconciled by
+  # the runner rather than shipped by this chart so the manifest and the code
+  # that depends on it version as one artifact — a chart-only upgrade cannot
+  # leave them skewed.
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "delete"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
-    verbs: ["get", "list", "watch", "create", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

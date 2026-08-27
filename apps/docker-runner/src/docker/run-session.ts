@@ -1,5 +1,6 @@
 import type {
   BackendSession,
+  ByteStreamTag,
   DebugFrame,
   PortMapping,
   ReachabilityState,
@@ -65,6 +66,13 @@ export interface CreateContainerOpts {
   AttachStdout: boolean;
   AttachStderr: boolean;
   ExposedPorts?: Record<string, Record<string, never>>;
+  /** Network aliases for the container. A watch session uses one to keep the
+   *  session-wide DNS name (`telo-run-<sessionId>`) pointing at whichever
+   *  container actually binds the session's ports, so the proxy route in front
+   *  of sessions needs no per-session configuration and no change. */
+  NetworkingConfig?: {
+    EndpointsConfig: Record<string, { Aliases?: string[] }>;
+  };
   HostConfig: {
     Binds: string[];
     AutoRemove: boolean;
@@ -92,10 +100,14 @@ export interface SpawnSessionArgs {
    *  override the command — the image boots its own baked CMD/WORKDIR. This is
    *  how operator-predefined app sessions are launched. */
   selfContained?: boolean;
+  /** Which application this workload IS. A run session has exactly one, so this
+   *  is the name every event it produces is qualified with — a single-app
+   *  session carries the qualifier too, so no client needs two readings. */
+  appName: string;
   onStatus: (status: import("@telorun/runner-core").RunStatus) => void;
-  onOutput: (chunk: Buffer) => void;
-  onDebug: (frame: DebugFrame) => void;
-  onReachability: (port: number, state: ReachabilityState) => void;
+  onOutput: (app: string, chunk: Buffer, stream: ByteStreamTag) => void;
+  onDebug: (app: string, frame: DebugFrame) => void;
+  onReachability: (app: string, port: number, state: ReachabilityState) => void;
   isUserStopped: () => boolean;
 }
 
@@ -111,7 +123,7 @@ export async function spawnDockerSession(args: SpawnSessionArgs): Promise<Backen
 
   const ptyStream = await attachContainer(container);
   ptyStream.on("data", (chunk: Buffer) => {
-    if (chunk.byteLength > 0) args.onOutput(chunk);
+    if (chunk.byteLength > 0) args.onOutput(args.appName, chunk, "tty");
   });
 
   try {
@@ -137,7 +149,7 @@ export async function spawnDockerSession(args: SpawnSessionArgs): Promise<Backen
   if (args.inspect) {
     void relayDebugStream({
       url: `http://${args.containerName}:${INSPECT_PORT}/events`,
-      onFrame: args.onDebug,
+      onFrame: (frame) => args.onDebug(args.appName, frame),
       signal: sessionAbort.signal,
     });
   }
@@ -152,7 +164,7 @@ export async function spawnDockerSession(args: SpawnSessionArgs): Promise<Backen
     void watchReachability({
       host: args.publicBaseUrl ? args.containerName : "127.0.0.1",
       ports: tcpPorts,
-      onState: (port, state) => args.onReachability(port, state),
+      onState: (port, state) => args.onReachability(args.appName, port, state),
       signal: sessionAbort.signal,
     });
   }
@@ -171,14 +183,14 @@ export async function spawnDockerSession(args: SpawnSessionArgs): Promise<Backen
   );
 
   return {
-    writeStdin(bytes) {
+    writeStdin(app, bytes) {
       try {
         ptyStream.write(Buffer.from(bytes));
       } catch {
         /* exit task closes the stream; late writes are no-ops */
       }
     },
-    resize(cols, rows) {
+    resize(app, cols, rows) {
       container.resize({ h: rows, w: cols }).catch(() => {
         /* container may have exited; daemon 404 is expected */
       });

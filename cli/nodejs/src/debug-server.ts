@@ -43,7 +43,10 @@ export class DebugServer {
   private readonly server: http.Server;
   private readonly clients = new Set<http.ServerResponse>();
   private readonly heartbeats = new Set<ReturnType<typeof setInterval>>();
-  private readonly buffer: string[] = [];
+  private readonly buffer: Array<{ id: number; line: string }> = [];
+  /** Monotonic across the whole session — never reset, so a resume point stays
+   *  valid across a watch reload. */
+  private nextId = 0;
   private readonly bufferSize: number;
   private readonly host: string;
   private _url = "";
@@ -105,13 +108,20 @@ export class DebugServer {
     });
   }
 
-  /** Fan one serialized wire line to the replay buffer and every live client. */
+  /** Fan one serialized wire line to the replay buffer and every live client.
+   *
+   *  Each line carries a monotonic id, emitted as the SSE `id:`. Without one a
+   *  reconnecting consumer has no resume point and is replayed the whole buffer:
+   *  for a consumer that DERIVES state from the stream — a runner counting run
+   *  generations — that re-counts every reload the buffer still holds, which in
+   *  a watch session is one per save for as long as it has been up. */
   push(line: string): void {
-    this.buffer.push(line);
+    const id = ++this.nextId;
+    this.buffer.push({ id, line });
     if (this.buffer.length > this.bufferSize) {
       this.buffer.splice(0, this.buffer.length - this.bufferSize);
     }
-    const frame = `data: ${line}\n\n`;
+    const frame = `id: ${id}\ndata: ${line}\n\n`;
     for (const res of this.clients) res.write(frame);
   }
 
@@ -146,7 +156,11 @@ export class DebugServer {
 
   private handle(req: http.IncomingMessage, res: http.ServerResponse): void {
     const url = new URL(req.url ?? "/", "http://localhost");
-    if (url.pathname === "/events") return this.handleSse(res);
+    // A reconnecting consumer resumes from the last id it saw. The header is
+    // the SSE spec's; the query parameter is for a client that cannot set one.
+    if (url.pathname === "/events") {
+      return this.handleSse(res, resumeFrom(req, url));
+    }
     if (url.pathname === "/events.jsonl") return void this.handleJsonl(res);
     if (url.pathname.startsWith("/blobs/")) {
       return this.handleBlob(decodeURIComponent(url.pathname.slice("/blobs/".length)), res);
@@ -177,7 +191,7 @@ export class DebugServer {
       );
   }
 
-  private handleSse(res: http.ServerResponse): void {
+  private handleSse(res: http.ServerResponse, afterId = 0): void {
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -187,8 +201,13 @@ export class DebugServer {
       // editor's debug panel) consume the stream cross-origin.
       "Access-Control-Allow-Origin": "*",
     });
-    // Replay history, then stream live.
-    for (const line of this.buffer) res.write(`data: ${line}\n\n`);
+    // Replay only what the consumer has not seen. `Last-Event-ID` is the SSE
+    // spec's own resume mechanism; a consumer that sends none is new and gets
+    // the buffer.
+    for (const entry of this.buffer) {
+      if (entry.id <= afterId) continue;
+      res.write(`id: ${entry.id}\ndata: ${entry.line}\n\n`);
+    }
     this.clients.add(res);
     // The debug server must never keep the CLI alive. The listening socket is
     // unref'd in listen(), but an established SSE connection — and its heartbeat
@@ -270,4 +289,14 @@ function escapeHtml(text: string): string {
     /[&<>"]/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c,
   );
+}
+
+/** The id a consumer last saw, from `Last-Event-ID` (preferred — a reconnecting
+ *  EventSource sets it automatically) or `?lastEventId=`. Zero means "everything
+ *  in the buffer", which is what a fresh consumer wants. */
+function resumeFrom(req: http.IncomingMessage, url: URL): number {
+  const header = req.headers["last-event-id"];
+  const raw = (Array.isArray(header) ? header[0] : header) ?? url.searchParams.get("lastEventId");
+  const parsed = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }

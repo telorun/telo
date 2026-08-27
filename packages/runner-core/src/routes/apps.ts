@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 
 import type { RunnerBackend } from "../backend.js";
 import type { ResolvedRunnerApp } from "../config.js";
-import type { PortMapping, RunnerTerms } from "../contract.js";
+import { DEFAULT_APP_NAME, type PortMapping, type RunnerTerms } from "../contract.js";
 import type { SessionRegistry } from "../session/registry.js";
 import { enforceTerms, portsSchema, startWorkloadSession } from "./session-start.js";
 
@@ -88,15 +88,24 @@ export function appsRoute(deps: AppsRouteDeps): FastifyPluginAsync {
           app,
           deps,
           {
-            // Self-contained image — no bundle to deliver; the entry path is an
-            // unused placeholder so the backend spec stays total.
+            // Self-contained image — no bundle to deliver, and no entry path:
+            // the image's own entrypoint runs.
             bundle: { entryRelativePath: "telo.yaml", files: [] },
-            entryRelativePath: "telo.yaml",
             env,
-            ports: req.body?.ports ?? [],
             config: { image: appEntry.image, pullPolicy: appEntry.pullPolicy },
             selfContained: true,
             inspect: req.body?.inspect ?? false,
+            // An operator-predefined app session is one run of one application.
+            // Watch is a workspace shape, and this door carries no workspace.
+            mode: "run",
+            apps: [
+              {
+                name: DEFAULT_APP_NAME,
+                entryRelativePath: "",
+                ports: req.body?.ports ?? [],
+                io: "tty",
+              },
+            ],
           },
           reply,
         );

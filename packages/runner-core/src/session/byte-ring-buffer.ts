@@ -1,6 +1,12 @@
+import type { ByteStreamTag } from "../contract.js";
+
 export interface BufferedBytes {
   seq: number;
   bytes: Buffer;
+  /** Which stream produced these bytes. `tty` under a terminal attach, where
+   *  there is genuinely one merged stream; `stdout` / `stderr` only where the
+   *  transport really did separate them. */
+  stream: ByteStreamTag;
 }
 
 /**
@@ -22,9 +28,9 @@ export class ByteRingBuffer {
     }
   }
 
-  push(bytes: Buffer): BufferedBytes {
+  push(bytes: Buffer, stream: ByteStreamTag = "tty"): BufferedBytes {
     const seq = this.nextSeq++;
-    const entry: BufferedBytes = { seq, bytes };
+    const entry: BufferedBytes = { seq, bytes, stream };
     this.entries.push(entry);
     this.totalBytes += bytes.byteLength;
     this.evict();

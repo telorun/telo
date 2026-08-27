@@ -16,6 +16,7 @@ import { createDockerBackend } from "./docker/backend.js";
 import type { SessionDockerClient } from "./docker/run-session.js";
 import { loadRunnerEnvFiles } from "./load-env.js";
 import { sweepOrphanBundles } from "./session/bundle-sweep.js";
+import { reapOrphanContainers, type ReapDockerClient } from "./docker/reap-orphans.js";
 
 const VERSION: string = packageJson.version;
 
@@ -32,7 +33,10 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     bundleVolume: deps.runnerConfig.bundleVolume,
     childNetwork: deps.runnerConfig.childNetwork,
     publicBaseUrl: deps.runnerConfig.publicBaseUrl,
+    watchMaxTtlSeconds: deps.runnerConfig.watch.maxTtlSeconds,
   });
+
+  const apps = loadResolvedApps(process.env);
 
   return coreBuildServer({
     backend,
@@ -40,11 +44,19 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     version: VERSION,
     // Terms are opt-in via RUNNER_TERMS_* — a local docker-runner ships with
     // none (no gate); an operator can still require them by setting the env.
-    capabilities: { ...dockerRunnerCapabilities, terms: loadTermsFromEnv(process.env) },
+    capabilities: {
+      ...dockerRunnerCapabilities({
+        watch: deps.runnerConfig.watch.enabled,
+        // A co-resident agent is drawn from the same catalog an app session
+        // launches from, so the advertised set and the accepted set are one list.
+        agents: deps.runnerConfig.watch.enabled ? Object.keys(apps) : undefined,
+      }),
+      terms: loadTermsFromEnv(process.env),
+    },
     defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
     // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on
     // /v1/capabilities and enforced by the core session route.
-    apps: loadResolvedApps(process.env),
+    apps,
     registry: deps.registry,
   });
 }
@@ -116,6 +128,11 @@ async function main(): Promise<void> {
   }
 
   if (bootState === "ok") {
+    // Containers first: a watch session's containers outlive their runs, so a
+    // restart leaves them running with nothing driving them — and the bundle
+    // sweep keeps a directory whose container is still up, so reaping after it
+    // would strand the directory for another cycle.
+    await reapOrphanContainers(docker as unknown as ReapDockerClient, app.log);
     await sweepOrphanBundles(runnerConfig.bundleRoot, docker, app.log);
   }
 

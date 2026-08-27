@@ -15,6 +15,7 @@ imports:
     secrets:
       openaiApiKey: !cel "secrets.openaiApiKey"
     variables:
+      workspaceDir: !cel "variables.workspaceDir"
       dbFile: ./tmp/authoring-agent.sqlite
       model: gpt-5.2
       budgetLimit: !cel "variables.budgetLimit"
@@ -25,6 +26,14 @@ ports:
     env: PORT
     default: 8080
 variables:
+  # Where the agent's file tools and spawned commands are rooted. A runner
+  # standing this up as a session's co-resident agent sets it to the shared
+  # workspace volume it mounts, so the agent edits the same tree the application
+  # containers watch. Unset — running it standalone — keeps the local layout.
+  workspaceDir:
+    env: WORKSPACE_DIR
+    type: string
+    default: ./workspace
   budgetLimit:
     env: BUDGET_LIMIT
     type: integer

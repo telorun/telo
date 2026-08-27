@@ -1,0 +1,228 @@
+kind: Telo.Application
+metadata:
+  name: TeloWorkspace
+  version: 0.1.0
+  description: |
+    The workspace surface of a watch session: an HTTP API over the session's
+    shared volume that the runner proxies to `/v1/sessions/:id/workspace`.
+
+    It is runner INFRASTRUCTURE, not agent functionality — part of the `/v1`
+    session contract — so the runner owns it and the co-resident agent is one
+    more writer on the volume beside the application containers, using its own
+    filesystem tools rather than these routes. Hanging this off the agent's
+    catalog image would invert the dependency (a session contract resting on an
+    application the operator configures) and would need a second implementation
+    for the agentless case, with the contract depending on the two staying in
+    agreement.
+
+    It runs the plain kernel image (`telorun/node`) over this manifest, mounted
+    read-only from a ConfigMap. There is deliberately no third image to build:
+    the whole surface is four routes over the `fs` module's tree primitives.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
+  Fs: oci://ghcr.io/telorun/fs@0.9.4#sha256-w8NLcREIq8SvxtsrULgRVKMPXISnR4iJd7LxeFnBFGM
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+ports:
+  http:
+    env: PORT
+    default: 8099
+variables:
+  root:
+    env: WORKSPACE_DIR
+    type: string
+    default: /workspace
+  # Base names skipped at any depth. Declared once because the two readers below
+  # are the tree the editor DIFFS and the snapshot that RE-SEEDS a resumed pod:
+  # if they drift, a file survives one and not the other. These are caches a
+  # workspace can always rebuild — deliberately not `dist`, which in a hand-written
+  # workspace is ordinary content, and dropping it would lose it across a suspend.
+  excluded:
+    env: WORKSPACE_EXCLUDE
+    type: array
+    default: [node_modules, .telo, .git]
+targets:
+  - !ref server
+---
+# The tree primitives, all rooted at the shared volume. `cwd` is not a security
+# boundary — the runner normalizes every client-supplied path before it gets
+# here, the same traversal guard a session bundle passes through.
+kind: Fs.TreeSnapshot
+metadata: { name: treeSnapshot }
+cwd: !cel "variables.root"
+---
+kind: Fs.TreeSync
+metadata: { name: treeSync }
+cwd: !cel "variables.root"
+---
+kind: Fs.File
+metadata: { name: readFile }
+cwd: !cel "variables.root"
+---
+# Whole-tree pull for the runner's checkpoint timer and for suspend. Contents are
+# ALWAYS base64: a checkpoint has to round-trip a workspace exactly, and deciding
+# text-versus-binary per file would be a guess that silently corrupts whichever
+# file it gets wrong. A manifest workspace is small, so the encoding overhead is
+# not worth a heuristic.
+kind: Run.Projection
+metadata: { name: readAll }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [files]
+    properties:
+      files:
+        type: array
+        items:
+          type: object
+          required: [path, hash]
+          properties:
+            path: { type: string }
+            hash: { type: string }
+collection: !cel "inputs.files"
+concurrency: 8
+steps:
+  - name: read
+    invoke: !ref readFile
+    inputs:
+      path: !cel "item.path"
+      encoding: base64
+outputs:
+  path: !cel "item.path"
+  hash: !cel "item.hash"
+  content: !cel "steps.read.result.content"
+  encoding: base64
+---
+kind: Run.Sequence
+metadata: { name: snapshot }
+steps:
+  - name: tree
+    invoke: !ref treeSnapshot
+    inputs:
+      exclude: !cel "variables.excluded"
+  - name: read
+    invoke: !ref readAll
+    inputs:
+      files: !cel "steps.tree.result.files"
+outputs:
+  files: !cel "steps.read.result"
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  # The content-hash tree the editor diffs against its own files. Hashing content
+  # rather than comparing sizes or timestamps is what makes two snapshots diff
+  # into an exact change set.
+  - request:
+      path: /workspace
+      method: GET
+    handler: !ref treeSnapshot
+    inputs:
+      exclude: !cel "variables.excluded"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              files: !cel "result.files"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+  # An explicit write/delete list, not a whole-tree PUT: a deletion has to be
+  # expressible, and a whole-tree PUT can only express it by treating absence as
+  # intent. There is deliberately no single-file write route — a one-file save is
+  # a change set of one, and a second write path would be a second set of
+  # concurrency rules over the same directory.
+  - request:
+      path: /workspace
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            write:
+              type: array
+              items:
+                type: object
+                required: [path, content]
+                properties:
+                  path: { type: string }
+                  content: { type: string }
+                  encoding: { type: string, enum: [utf8, base64] }
+            delete:
+              type: array
+              items: { type: string }
+    handler: !ref treeSync
+    inputs:
+      write: !cel "has(request.body.write) ? request.body.write : []"
+      delete: !cel "has(request.body.delete) ? request.body.delete : []"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              written: !cel "result.written"
+              deleted: !cel "result.deleted"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+  - request:
+      path: /workspace/file
+      method: GET
+      schema:
+        query:
+          type: object
+          required: [path]
+          properties:
+            path: { type: string }
+            encoding: { type: string, enum: [utf8, base64] }
+    handler: !ref readFile
+    inputs:
+      path: !cel "request.query.path"
+      encoding: !cel "has(request.query.encoding) ? request.query.encoding : 'utf8'"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              content: !cel "result.content"
+              size: !cel "result.size"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+  - request:
+      path: /workspace/snapshot
+      method: GET
+    handler: !ref snapshot
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              files: !cel "result.files"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+---
+kind: Http.Server
+metadata: { name: server }
+# Pod-local only. The runner reaches it by pod IP over the cluster network and
+# proxies it outward; nothing here is published via Service or Ingress, and the
+# container holds no credentials of any kind.
+host: 0.0.0.0
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref api

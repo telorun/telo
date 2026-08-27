@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestRejectsInlineBytes
+  - !ref testRejectsInlineBytes
 ---
 # Widening `content` to accept raw bytes must not cost the check that `type: string`
 # used to give: before `x-telo-binary`, the byte branch could only be modelled as
@@ -15,7 +15,7 @@ targets:
 # such a slot is wrong by construction.
 kind: Assert.Manifest
 metadata:
-  name: TestRejectsInlineBytes
+  name: testRejectsInlineBytes
 source: ./__fixtures__/write-content-literal.yaml
 expect:
   errors:

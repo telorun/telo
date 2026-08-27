@@ -12,6 +12,7 @@ import {
 interface DirectoryListingInput {
   path?: string;
   recursive?: boolean;
+  exclude?: string[];
 }
 
 interface Entry {
@@ -36,12 +37,18 @@ class DirectoryListingResource implements ResourceInstance<DirectoryListingInput
 
   async invoke(input: DirectoryListingInput): Promise<DirectoryListingResult> {
     const root = input?.path ? resolveTarget(this.base, input.path) : this.base;
+    const exclude = new Set(input?.exclude ?? []);
     const entries: Entry[] = [];
-    await this.walk(root, Boolean(input?.recursive), entries);
+    await this.walk(root, Boolean(input?.recursive), exclude, entries);
     return { entries };
   }
 
-  private async walk(dir: string, recursive: boolean, out: Entry[]): Promise<void> {
+  private async walk(
+    dir: string,
+    recursive: boolean,
+    exclude: Set<string>,
+    out: Entry[],
+  ): Promise<void> {
     let names: string[];
     try {
       names = await readdir(dir);
@@ -50,6 +57,7 @@ class DirectoryListingResource implements ResourceInstance<DirectoryListingInput
     }
     names.sort();
     for (const name of names) {
+      if (exclude.has(name)) continue;
       const full = path.join(dir, name);
       // lstat (not stat) so a broken or out-of-tree symlink is reported as
       // "other" rather than throwing. Wrapped so a mid-walk race (entry removed
@@ -62,7 +70,7 @@ class DirectoryListingResource implements ResourceInstance<DirectoryListingInput
       }
       const type = classify(stats);
       out.push({ name, path: toManifestPath(this.base, full), type, size: stats.size });
-      if (recursive && type === "directory") await this.walk(full, recursive, out);
+      if (recursive && type === "directory") await this.walk(full, recursive, exclude, out);
     }
   }
 }

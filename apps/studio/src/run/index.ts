@@ -19,10 +19,17 @@ export type {
   RunRequest,
   RunSession,
   RunStatus,
+  WorkspaceChangeSet,
 } from "./types";
-export { TermsRequiredError } from "./types";
+export { SessionGoneError, TermsRequiredError } from "./types";
 export { buildRunBundle } from "./bundle";
 export { selectModuleFiles } from "./select-module-files";
+export {
+  bundleFiles,
+  diffBundle,
+  isEmptyChangeSet,
+  type SyncedFiles,
+} from "./workspace-sync";
 export { registry } from "./registry";
 export { RunSettingsSection } from "./ui/RunSettingsSection";
 export { RunStatusChip } from "./ui/RunStatusChip";
