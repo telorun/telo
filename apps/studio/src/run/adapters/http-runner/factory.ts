@@ -11,11 +11,15 @@ import {
   type RunnerTerms,
   type RunSession,
   type RunStatus,
+  type WorkspaceChangeSet,
 } from "../../types";
 import { makeHttpRunnerIo } from "./io-client";
 import { openSseClient } from "./sse-client";
 
 const HEALTH_TIMEOUT_MS = 2_000;
+/** Workspace writes and reloads travel to the container and back, so they get a
+ *  budget of their own rather than the health probe's. */
+const WORKSPACE_TIMEOUT_MS = 30_000;
 
 /** Wire header carrying the accepted terms version (mirrors runner-core's
  *  `ACCEPTED_TERMS_HEADER`). Kept as a local constant so editor code doesn't
@@ -185,6 +189,9 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
             // Always request the debug stream so the run view's Debug panel is
             // populated; the runner relays it over this same session stream.
             inspect: true,
+            // Omitted for a plain run, so a runner too old to know the field is
+            // unaffected. A runner with watch disabled rejects it with 400.
+            ...(request.mode === "watch" ? { mode: "watch" } : {}),
           }),
         },
         opts.startTimeoutMs,
@@ -221,6 +228,7 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
         sessionId,
         streamUrl,
         initialStatus: { kind: "starting" },
+        isWatch: request.mode === "watch",
       });
     },
 
@@ -244,7 +252,7 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
       if (!res.ok) {
         throw new Error(`Runner returned HTTP ${res.status} on /v1/sessions/${sessionId}.`);
       }
-      const { status } = (await res.json()) as { status: RunStatus };
+      const { status, mode } = (await res.json()) as { status: RunStatus; mode?: string };
 
       return buildSession({
         base,
@@ -255,6 +263,9 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
         // The re-hydrated record is empty, so replay console + events from the
         // start instead of from the prior tab's checkpoint.
         replayFromStart: true,
+        // The session document is authoritative about what kind of session this
+        // is — a reload has no memory of what was requested.
+        isWatch: mode === "watch",
       });
     },
   };
@@ -267,6 +278,7 @@ interface BuildSessionArgs {
   streamUrl: string;
   initialStatus: RunStatus;
   replayFromStart?: boolean;
+  isWatch?: boolean;
 }
 
 /** Wires the SSE event stream + WebSocket PTY channel for a session that already
@@ -274,7 +286,7 @@ interface BuildSessionArgs {
  *  after reload). The only difference between the two is where the session id
  *  comes from and whether replay starts from zero. */
 function buildSession(args: BuildSessionArgs): RunSession {
-  const { base, runnerHost, sessionId, streamUrl, initialStatus, replayFromStart } = args;
+  const { base, runnerHost, sessionId, streamUrl, initialStatus, replayFromStart, isWatch } = args;
 
   let currentStatus: RunStatus = initialStatus;
   const subscribers = new Set<(event: RunEvent) => void>();
@@ -327,7 +339,58 @@ function buildSession(args: BuildSessionArgs): RunSession {
         throw err;
       }
     },
+    // The three below exist only on a watch session — the routes 409 on a run
+    // session, so gating them here keeps the failure at the call site rather
+    // than on the wire.
+    ...(isWatch
+      ? {
+          isWatch: true as const,
+          async syncWorkspace(changes: WorkspaceChangeSet) {
+            const res = await fetchWithTimeout(
+              `${base}/v1/sessions/${sessionId}/workspace`,
+              {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(changes),
+              },
+              WORKSPACE_TIMEOUT_MS,
+            );
+            if (!res.ok) throw new Error(await describeFailure(res, "sync the workspace"));
+          },
+          async reload() {
+            const res = await fetchWithTimeout(
+              `${base}/v1/sessions/${sessionId}/reload`,
+              { method: "POST" },
+              WORKSPACE_TIMEOUT_MS,
+            );
+            if (!res.ok) throw new Error(await describeFailure(res, "reload"));
+          },
+          async resume(): Promise<boolean> {
+            const res = await fetchWithTimeout(
+              `${base}/v1/sessions/${sessionId}/resume`,
+              { method: "POST" },
+              WORKSPACE_TIMEOUT_MS,
+            );
+            // A suspended checkpoint lives in the runner's memory, so a restart
+            // loses it. That is by design: the editor holds the authoritative
+            // workspace, so `false` means "start a fresh session", not "error".
+            if (res.status === 404 || res.status === 409) return false;
+            if (!res.ok) throw new Error(await describeFailure(res, "resume"));
+            return true;
+          },
+        }
+      : {}),
   };
+}
+
+async function describeFailure(res: Response, what: string): Promise<string> {
+  let payload: ErrorResponse | null = null;
+  try {
+    payload = (await res.json()) as ErrorResponse;
+  } catch {
+    // fall through to the status code
+  }
+  return payload?.message ?? `Couldn't ${what} — runner returned HTTP ${res.status}.`;
 }
 
 export function validateBaseUrl(raw: string): ConfigIssue | null {

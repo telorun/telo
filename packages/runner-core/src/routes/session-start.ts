@@ -1,17 +1,19 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import { isEventFrame } from "@telorun/debug-wire";
-import type { RunnerBackend } from "../backend.js";
+import type { RunnerBackend, WorkloadLaunch } from "../backend.js";
+import { RunProjection } from "../debug/run-projection.js";
 import {
   ACCEPTED_TERMS_HEADER,
   SessionStartError,
-  type PortMapping,
-  type RunBundle,
   type RunnerTerms,
-  type SessionConfig,
 } from "../contract.js";
 import { generateSessionId } from "../session/session-id.js";
-import { SessionLimitError, type SessionRegistry } from "../session/registry.js";
+import {
+  SessionLimitError,
+  type SessionEntry,
+  type SessionRegistry,
+} from "../session/registry.js";
 
 /** JSON Schema for the `ports` body field, shared by every session-creating
  *  route so bundle and app sessions validate port mappings identically. */
@@ -58,15 +60,7 @@ export interface WorkloadStartDeps {
   defaultRegistryUrl?: string;
 }
 
-export interface WorkloadStartArgs {
-  bundle: RunBundle;
-  entryRelativePath: string;
-  env: Record<string, string>;
-  ports: PortMapping[];
-  config: SessionConfig;
-  selfContained: boolean;
-  inspect: boolean;
-}
+export type WorkloadStartArgs = WorkloadLaunch;
 
 /**
  * The session-creation leaf shared by `POST /v1/sessions` (bundle sessions) and
@@ -86,7 +80,12 @@ export async function startWorkloadSession(
 
   let entry: ReturnType<SessionRegistry["register"]>;
   try {
-    entry = deps.registry.register({ sessionId });
+    entry = deps.registry.register({
+      sessionId,
+      mode: args.mode,
+      agent: args.agent?.name,
+      apps: args.apps.map((a) => ({ name: a.name, io: a.io, ports: a.ports })),
+    });
   } catch (err) {
     if (err instanceof SessionLimitError) {
       reply.code(409).send({ error: "too_many_sessions", message: err.message });
@@ -101,10 +100,11 @@ export async function startWorkloadSession(
   // whitespace from an editor input doesn't flow into the workload.
   const configRegistryUrl = args.config.registryUrl?.trim() || undefined;
   const registryUrl = configRegistryUrl ?? deps.defaultRegistryUrl;
-  const sessionEnv =
+  const sessionEnv = withoutCacheOverride(
     registryUrl && !("TELO_REGISTRY_URL" in args.env)
       ? { ...args.env, TELO_REGISTRY_URL: registryUrl }
-      : args.env;
+      : args.env,
+  );
 
   // Respond as soon as the session is registered — BEFORE the backend starts.
   // `backend.start()` now spans the on-cluster image build and pod bring-up,
@@ -119,29 +119,92 @@ export async function startWorkloadSession(
     createdAt: entry.createdAt.toISOString(),
   });
 
+  // Every app's first generation is attributed to the session coming up; a
+  // reload after that is a watch reload unless a route says otherwise.
+  const projection = new RunProjection(deps.registry, sessionId);
+  projection.expectAll("initial");
+  // Parked on the entry so the reload / resume routes can attribute the
+  // generation they are about to cause.
+  entry.attribution = projection;
+
+  const launch: WorkloadLaunch = { ...args, env: sessionEnv };
+  entry.launch = launch;
+  launchWorkload(app, deps, launch, entry);
+}
+
+/**
+ * Wire a backend workload to an EXISTING registry entry and start it in the
+ * background. Shared by session creation and by `resume`, which builds a fresh
+ * pod from the checkpoint under the same session id — the callback wiring is the
+ * contract's, so a second copy of it would be a second place run outcomes,
+ * output routing and the credential boundary could drift.
+ */
+export function launchWorkload(
+  app: FastifyInstance,
+  deps: WorkloadStartDeps,
+  args: WorkloadStartArgs,
+  entry: SessionEntry,
+): void {
+  const sessionId = entry.sessionId;
+  const projection = entry.attribution;
+
   deps.backend
     .start({
       sessionId,
       bundle: args.bundle,
-      entryRelativePath: args.entryRelativePath,
-      env: sessionEnv,
-      ports: args.ports,
+      env: args.env,
       config: args.config,
       selfContained: args.selfContained,
       inspect: args.inspect,
+      mode: args.mode,
+      apps: args.apps,
+      agent: args.agent,
       onStatus: (status) => deps.registry.emit(sessionId, { type: "status", status }),
-      onProgress: (phase, message, done) =>
-        deps.registry.emit(sessionId, { type: "progress", phase, message, done }),
-      onOutput: (chunk) => deps.registry.pushBytes(sessionId, chunk),
+      onProgress: (phase, message, done, app) =>
+        deps.registry.emit(sessionId, { type: "progress", app, phase, message, done }),
+      onOutput: (app, chunk, stream) => deps.registry.pushBytes(sessionId, app, chunk, stream),
       // Relay only kernel *event* frames to the client. stdout/stderr already
       // arrive over the byte channel (onOutput), so forwarding log frames would
       // double the traffic and let log spam evict lifecycle events from the
       // byte-capped replay buffer. The editor discards relayed logs anyway.
-      onDebug: (frame) => {
-        if (isEventFrame(frame)) deps.registry.emit(sessionId, { type: "debug", frame });
+      //
+      // The projection sees EVERY frame, including the ones not relayed — run
+      // outcomes are derived from lifecycle events, not from what a client
+      // happens to be shown.
+      onDebug: (appName, frame) => {
+        projection?.frame(appName, frame);
+        if (isEventFrame(frame)) {
+          deps.registry.emit(sessionId, { type: "debug", app: appName, frame });
+        }
       },
-      onReachability: (port, state) =>
-        deps.registry.emit(sessionId, { type: "reachability", port, state }),
+      // A watch session's app dying is a RUN outcome, not a session status: the
+      // rest of the session is still up, and the next edit starts the next
+      // generation. The projection owns generation identity, so the ending goes
+      // through it rather than being emitted directly.
+      onRunEnded: (appName, outcome) =>
+        projection?.endGeneration(appName, outcome) ??
+        deps.registry.finishGeneration(sessionId, appName, {
+          phase: "failed",
+          reason: outcome.reason ?? "workload ended",
+        }),
+      onReachability: (app, port, state) =>
+        deps.registry.emit(sessionId, { type: "reachability", app, port, state }),
+      onEndpoints: (appName, change) => {
+        // The registry's own channel is what `GET /v1/sessions/:id` reports, so
+        // the delta has to land there too — otherwise the session document keeps
+        // describing the port set the session STARTED with, forever.
+        const channel = entry.apps.get(appName);
+        if (channel) {
+          const removed = new Set(
+            (change.removed ?? []).map((e) => `${e.protocol}/${e.port}`),
+          );
+          channel.ports = [
+            ...channel.ports.filter((p) => !removed.has(`${p.protocol}/${p.port}`)),
+            ...(change.added ?? []).map((e) => ({ port: e.port, protocol: e.protocol })),
+          ];
+        }
+        deps.registry.emit(sessionId, { type: "endpoints", app: appName, ...change });
+      },
       isUserStopped: () => entry.userStopped,
     })
     .then(async (session) => {
@@ -171,4 +234,20 @@ export async function startWorkloadSession(
       app.log.error({ err, sessionId }, "session start failed");
       deps.registry.emit(sessionId, { type: "status", status: { kind: "failed", message } });
     });
+}
+
+/**
+ * Drop a client-supplied `TELO_CACHE_DIR`.
+ *
+ * It OUTRANKS the `telo-workspace.yaml` marker the session seeds at its
+ * workspace root, so a client that sets it silently gives every app its own
+ * module cache — the exact thing the marker exists to prevent. Where a cache
+ * root is genuinely needed (the workspace container, whose manifest lives
+ * outside the workspace) the backend sets it itself.
+ */
+function withoutCacheOverride(env: Record<string, string>): Record<string, string> {
+  if (!("TELO_CACHE_DIR" in env)) return env;
+  const rest = { ...env };
+  delete rest.TELO_CACHE_DIR;
+  return rest;
 }

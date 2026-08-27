@@ -1,10 +1,11 @@
 import { PassThrough, Writable } from "node:stream";
 
-import type { V1ContainerState, V1ContainerStatus, V1Pod } from "@kubernetes/client-node";
+import type { V1Pod } from "@kubernetes/client-node";
 import type {
   AvailabilityReport,
   BackendSession,
   BackendStartSpec,
+  PortMapping,
   ProbeConfig,
   RunStatus,
   RunnerBackend,
@@ -18,6 +19,19 @@ import type { KubeClient } from "./client.js";
 import { ensureSessionImage } from "./image-build.js";
 import { buildSessionIngress, buildSessionService, endpointsFor } from "./ingress.js";
 import { buildAppPod, buildSessionPod, INSPECT_PORT } from "./pod-spec.js";
+import {
+  deletePod,
+  is404,
+  msg,
+  podFailureMessage,
+  podStatus,
+  podPhase,
+  provisionMessage,
+  terminalStatus,
+} from "./pod-status.js";
+import { startWatchSession } from "./watch-session.js";
+
+export { podFailureMessage } from "./pod-status.js";
 
 /** Minimal surface of the websocket client-node's Attach returns. */
 interface ResizableSocket {
@@ -42,7 +56,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
   const { kube, config, bundleStore } = deps;
   const ns = config.sessionNamespace;
 
-  async function probe(_probe: ProbeConfig): Promise<AvailabilityReport> {
+  async function probe(probeConfig: ProbeConfig): Promise<AvailabilityReport> {
     try {
       await kube.core.readNamespace({ name: ns });
     } catch {
@@ -64,7 +78,23 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
   }
 
   async function start(spec: BackendStartSpec): Promise<BackendSession> {
+    // A watch session is a different pod shape and a different lifetime — it
+    // outlives its runs — so it takes its own path rather than accreting
+    // branches through this one. It also never builds an image: the build path
+    // exists to put a dependency closure on disk before boot, and a watch
+    // session fetches its own and keeps it for the pod's life.
+    if (spec.mode === "watch") {
+      return startWatchSession({ kube, config }, spec);
+    }
+    return startRunSession(spec);
+  }
+
+  async function startRunSession(spec: BackendStartSpec): Promise<BackendSession> {
     const podName = `telo-run-${spec.sessionId}`;
+    // A run session is one application by construction — `apps` carries exactly
+    // one entry, defaulted by core when the request declared none.
+    const app = spec.apps[0]!;
+    const appName = app.name;
     // The /v1 contract carries no per-request limits yet, so `requested` is
     // undefined and the configured ceiling is always the effective limit. When
     // a control plane begins passing limits, plumb them here — the clamp is
@@ -82,7 +112,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         sessionId: spec.sessionId,
         podName,
         env: spec.env,
-        ports: spec.ports,
+        ports: app.ports,
         limits,
         image: spec.config.image,
         pullPolicy: spec.config.pullPolicy,
@@ -103,10 +133,10 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         },
         {
           bundle: spec.bundle,
-          entryRelativePath: spec.entryRelativePath,
+          entryRelativePath: app.entryRelativePath,
           baseImage: spec.config.image || config.defaultImage,
           pullPolicy: spec.config.pullPolicy,
-          onProgress: (message, done) => spec.onProgress("build", message, done),
+          onProgress: (message, done) => spec.onProgress("build", message, done, appName),
         },
       );
 
@@ -118,9 +148,9 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         config,
         sessionId: spec.sessionId,
         podName,
-        entryRelativePath: spec.entryRelativePath,
+        entryRelativePath: app.entryRelativePath,
         env: spec.env,
-        ports: spec.ports,
+        ports: app.ports,
         limits,
         image,
         bundleUrl,
@@ -151,8 +181,8 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
 
     const stdin = new PassThrough();
     const stdout = new Writable({
-      write(chunk: Buffer, _enc, cb) {
-        if (chunk?.byteLength) spec.onOutput(Buffer.from(chunk));
+      write(chunk: Buffer, encoding, cb) {
+        if (chunk?.byteLength) spec.onOutput(appName, Buffer.from(chunk), "tty");
         cb();
       },
     });
@@ -189,7 +219,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     const flipRunning = (): void => {
       if (readyFlipped || finished) return;
       readyFlipped = true;
-      spec.onStatus({ kind: "running", endpoints: endpointsFor(config, spec.sessionId, spec.ports) });
+      spec.onStatus({ kind: "running", endpoints: endpointsFor(config, spec.sessionId, app.ports) });
     };
 
     let resolveRunning!: () => void;
@@ -207,7 +237,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         const provision = provisionMessage(obj);
         if (provision && provision !== lastProvision) {
           lastProvision = provision;
-          spec.onProgress("provision", provision);
+          spec.onProgress("provision", provision, undefined, appName);
         }
       }
       if (phase === "Running" && !runningSeen) {
@@ -253,7 +283,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         const req = await kube.watch.watch(
           `/api/v1/namespaces/${ns}/pods`,
           { fieldSelector: `metadata.name=${podName}` },
-          (_type: string, obj: unknown) => handlePhase(obj),
+          (type: string, obj: unknown) => handlePhase(obj),
           () => {
             if (finished) return;
             void reconcileOnce().then(() => {
@@ -303,12 +333,12 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       socket = ws as unknown as ResizableSocket;
     } catch (err) {
       // Attach failure isn't fatal — status still flows; surface the degraded PTY.
-      spec.onOutput(Buffer.from(`\r\n[runner] failed to attach PTY: ${msg(err)}\r\n`));
+      spec.onOutput(appName, Buffer.from(`\r\n[runner] failed to attach PTY: ${msg(err)}\r\n`), "tty");
     }
 
-    if (config.sessionIngressBaseDomain && spec.ports.length > 0) {
-      await createIngress(deps, spec.sessionId, podName, podUid, spec.ports).catch((err) => {
-        spec.onOutput(Buffer.from(`\r\n[runner] failed to create ingress: ${msg(err)}\r\n`));
+    if (config.sessionIngressBaseDomain && app.ports.length > 0) {
+      await createIngress(deps, spec.sessionId, podName, podUid, app.ports).catch((err) => {
+        spec.onOutput(appName, Buffer.from(`\r\n[runner] failed to create ingress: ${msg(err)}\r\n`), "tty");
       });
     }
 
@@ -331,11 +361,11 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       if (ip) {
         void relayDebugStream({
           url: `http://${ip}:${INSPECT_PORT}/events`,
-          onFrame: spec.onDebug,
+          onFrame: (frame) => spec.onDebug(appName, frame),
           signal: debugAbort.signal,
         });
       } else {
-        spec.onOutput(Buffer.from("\r\n[runner] debug stream unavailable: pod IP unknown\r\n"));
+        spec.onOutput(appName, Buffer.from("\r\n[runner] debug stream unavailable: pod IP unknown\r\n"), "tty");
       }
     }
 
@@ -343,7 +373,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     // wrong port) is unreachable on the pod network and surfaces only as a
     // downstream 502. Watch each advertised tcp port from the runner and report
     // per-port state to studio's endpoint badge. Background; finish() aborts it.
-    const tcpPorts = spec.ports.filter((p) => p.protocol === "tcp").map((p) => p.port);
+    const tcpPorts = app.ports.filter((p) => p.protocol === "tcp").map((p) => p.port);
     if (tcpPorts.length > 0) {
       void (async () => {
         const ip = await resolvePodIP();
@@ -351,13 +381,13 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         if (!ip) {
           // Couldn't resolve the pod IP to probe — report unverified rather than
           // leaving the badge spinning forever.
-          for (const port of tcpPorts) spec.onReachability(port, "unreachable");
+          for (const port of tcpPorts) spec.onReachability(appName, port, "unreachable");
           return;
         }
         await watchReachability({
           host: ip,
           ports: tcpPorts,
-          onState: (port, state) => spec.onReachability(port, state),
+          onState: (port, state) => spec.onReachability(appName, port, state),
           signal: reachAbort.signal,
         });
       })();
@@ -366,14 +396,14 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     // `flipRunning` already announced `running` from the watch's Running
     // transition (which `await running` above waited on).
     return {
-      writeStdin(bytes) {
+      writeStdin(app, bytes) {
         try {
           stdin.write(Buffer.from(bytes));
         } catch {
           /* stream ended */
         }
       },
-      resize(cols, rows) {
+      resize(app, cols, rows) {
         if (!socket) return;
         try {
           const payload = Buffer.from(JSON.stringify({ Width: cols, Height: rows }));
@@ -423,7 +453,7 @@ async function createIngress(
   sessionId: string,
   podName: string,
   podUid: string,
-  ports: BackendStartSpec["ports"],
+  ports: PortMapping[],
 ): Promise<void> {
   const { kube, config } = deps;
   const ns = config.sessionNamespace;
@@ -442,143 +472,11 @@ async function createIngress(
   await kube.networking.createNamespacedIngress({ namespace: ns, body: ingress });
 }
 
-async function deletePod(kube: KubeClient, ns: string, name: string): Promise<void> {
-  try {
-    await kube.core.deleteNamespacedPod({ name, namespace: ns, gracePeriodSeconds: 0 });
-  } catch (err) {
-    // 404 = already gone (natural exit + GC). Anything else is a real failure.
-    if (!is404(err)) throw err;
-  }
-}
-
 async function clusterReachable(kube: KubeClient): Promise<boolean> {
   try {
     await kube.core.listNamespace();
     return true;
   } catch {
     return false;
-  }
-}
-
-function podStatus(obj: unknown): V1Pod["status"] | undefined {
-  return (obj as V1Pod | undefined)?.status;
-}
-
-function podPhase(obj: unknown): string | undefined {
-  return podStatus(obj)?.phase;
-}
-
-/** A coming-up message for the studio feed while the Pod is still scheduling /
- *  pulling / delivering the body / creating the container; undefined once running. */
-function provisionMessage(obj: unknown): string | undefined {
-  const status = podStatus(obj);
-  if (status?.phase !== "Pending") return undefined;
-  const containers = [
-    ...(status.initContainerStatuses ?? []),
-    ...(status.containerStatuses ?? []),
-  ];
-  for (const cs of containers) {
-    const reason = cs.state?.waiting?.reason;
-    if (reason) return humanizeWaitReason(reason);
-  }
-  return "Scheduling";
-}
-
-function humanizeWaitReason(reason: string): string {
-  switch (reason) {
-    case "ContainerCreating":
-      return "Creating container";
-    case "PodInitializing":
-      return "Delivering application";
-    case "ErrImagePull":
-    case "ImagePullBackOff":
-      return "Pulling image";
-    default:
-      return reason;
-  }
-}
-
-function terminalStatus(obj: unknown, userStopped: boolean): RunStatus {
-  if (userStopped) return { kind: "stopped" };
-  const phase = podPhase(obj);
-  if (phase === "Succeeded") return { kind: "exited", code: containerExitCode(obj) ?? 0 };
-  return { kind: "failed", message: podFailureMessage(obj) };
-}
-
-// Exit code of the main session container — used to report a clean exit.
-function containerExitCode(obj: unknown): number | null {
-  const term = podStatus(obj)?.containerStatuses?.[0]?.state?.terminated;
-  return typeof term?.exitCode === "number" ? term.exitCode : null;
-}
-
-const MAX_FAILURE_DETAIL = 500;
-
-/**
- * Builds an actionable failure message from a terminal Pod status. Init
- * containers are inspected first: a failed init container leaves the main
- * container unstarted, so reading only `containerStatuses` would fall through
- * to the bare "pod failed". For prebuilt session pods the common failure is the
- * main container itself (image pull, OOM, a non-zero exit).
- */
-export function podFailureMessage(obj: unknown): string {
-  const status = podStatus(obj);
-  const fromContainer = firstContainerProblem(status);
-  if (fromContainer) return fromContainer;
-  if (status?.message) return truncateDetail(status.message);
-  if (status?.reason) return status.reason;
-  return "pod failed";
-}
-
-function firstContainerProblem(status: V1Pod["status"] | undefined): string | undefined {
-  const groups: Array<[string, V1ContainerStatus[] | undefined]> = [
-    ["init container", status?.initContainerStatuses],
-    ["container", status?.containerStatuses],
-  ];
-  for (const [label, statuses] of groups) {
-    for (const cs of statuses ?? []) {
-      const problem = containerStateProblem(cs.state) ?? containerStateProblem(cs.lastState);
-      if (problem) return `${label} "${cs.name}" ${problem}`;
-    }
-  }
-  return undefined;
-}
-
-function containerStateProblem(state: V1ContainerState | undefined): string | undefined {
-  const term = state?.terminated;
-  if (term && term.exitCode !== 0) {
-    const reason = term.reason ? `${term.reason} ` : "";
-    const detail = term.message ? `: ${truncateDetail(term.message)}` : "";
-    return `failed: ${reason}(exit code ${term.exitCode ?? "unknown"})${detail}`;
-  }
-  const waiting = state?.waiting;
-  if (waiting?.reason && isBlockingWaitReason(waiting.reason)) {
-    const detail = waiting.message ? `: ${truncateDetail(waiting.message)}` : "";
-    return `waiting: ${waiting.reason}${detail}`;
-  }
-  return undefined;
-}
-
-// Benign transient reasons the kubelet reports while a Pod is still coming up.
-function isBlockingWaitReason(reason: string): boolean {
-  return reason !== "PodInitializing" && reason !== "ContainerCreating";
-}
-
-function truncateDetail(text: string): string {
-  const trimmed = text.trim();
-  return trimmed.length > MAX_FAILURE_DETAIL ? `${trimmed.slice(0, MAX_FAILURE_DETAIL)}…` : trimmed;
-}
-
-function is404(err: unknown): boolean {
-  const e = err as { statusCode?: number; code?: number; response?: { statusCode?: number } };
-  return e?.statusCode === 404 || e?.code === 404 || e?.response?.statusCode === 404;
-}
-
-function msg(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
   }
 }

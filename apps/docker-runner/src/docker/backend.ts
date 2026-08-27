@@ -3,6 +3,7 @@ import type { BackendSession, BackendStartSpec, RunnerBackend } from "@telorun/r
 import { BundleWorkdir } from "./bundle-workdir.js";
 import { runProbe, type ProbeDockerClient } from "./probe.js";
 import { spawnDockerSession, type SessionDockerClient } from "./run-session.js";
+import { startDockerWatchSession } from "./watch-session.js";
 
 export interface DockerBackendDeps {
   docker: SessionDockerClient & ProbeDockerClient;
@@ -10,6 +11,8 @@ export interface DockerBackendDeps {
   bundleVolume: string;
   childNetwork: string;
   publicBaseUrl?: string;
+  /** Wall-clock ceiling for a watch session (docker has no pod deadline). */
+  watchMaxTtlSeconds: number;
 }
 
 /**
@@ -30,8 +33,28 @@ export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
     },
 
     async start(spec: BackendStartSpec): Promise<BackendSession> {
+      // A watch session is a different container topology and a different
+      // lifetime — it outlives its runs — so it takes its own path rather than
+      // accreting branches through this one.
+      if (spec.mode === "watch") {
+        return startDockerWatchSession(
+          {
+            docker: deps.docker,
+            bundleRoot: deps.bundleRoot,
+            bundleVolume: deps.bundleVolume,
+            childNetwork: deps.childNetwork,
+            publicBaseUrl: deps.publicBaseUrl,
+            maxTtlSeconds: deps.watchMaxTtlSeconds,
+          },
+          spec,
+        );
+      }
+
       const containerName = `telo-run-${spec.sessionId}`;
       const workingDir = `/srv/${spec.sessionId}`;
+      // A run session is one application by construction — `apps` carries
+      // exactly one entry, defaulted by core when the request declared none.
+      const app = spec.apps[0]!;
 
       // App session: the operator-catalog image is self-contained — app +
       // controllers baked in — so there's no bundle to stage; launch the
@@ -47,12 +70,13 @@ export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
           entryRelativePath: "",
           workingDir: "",
           env: spec.env,
-          ports: spec.ports,
+          ports: app.ports,
           publicBaseUrl: deps.publicBaseUrl,
           bundleVolume: deps.bundleVolume,
           childNetwork: deps.childNetwork,
           inspect: false,
           selfContained: true,
+          appName: app.name,
           onStatus: spec.onStatus,
           onOutput: spec.onOutput,
           onDebug: spec.onDebug,
@@ -70,14 +94,15 @@ export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
           sessionId: spec.sessionId,
           image: spec.config.image,
           pullPolicy: spec.config.pullPolicy,
-          entryRelativePath: `./${spec.entryRelativePath}`,
+          entryRelativePath: `./${app.entryRelativePath}`,
           workingDir,
           env: spec.env,
-          ports: spec.ports,
+          ports: app.ports,
           publicBaseUrl: deps.publicBaseUrl,
           bundleVolume: deps.bundleVolume,
           childNetwork: deps.childNetwork,
           inspect: spec.inspect,
+          appName: app.name,
           onStatus: spec.onStatus,
           onOutput: spec.onOutput,
           onDebug: spec.onDebug,

@@ -12,6 +12,7 @@ import { ioRoute } from "./routes/io.js";
 import { probeRoute } from "./routes/probe.js";
 import { sessionsRoute } from "./routes/sessions.js";
 import { SessionRegistry } from "./session/registry.js";
+import { WatchSupervisor } from "./session/watch-supervisor.js";
 
 export interface ServerDeps {
   backend: RunnerBackend;
@@ -52,7 +53,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   // default to `*` and let operators narrow via RUNNER_CORS_ORIGINS.
   await app.register(cors, {
     origin: deps.config.corsOrigins,
-    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   });
 
   await app.register(websocket);
@@ -63,7 +64,19 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       maxSessions: deps.config.maxSessions,
       exitTtlMs: deps.config.exitTtlMs,
       replayBufferBytes: deps.config.replayBufferBytes,
+      suspendedTtlMs: deps.config.watch.suspendedTtlMs,
     });
+
+  // The checkpoint timer and the idle reaper. Started unconditionally: it walks
+  // watch sessions only, and with watch disabled there are none.
+  const supervisor = new WatchSupervisor({
+    registry,
+    idleMs: deps.config.watch.idleMs,
+    checkpointMs: deps.config.watch.checkpointMs,
+    log: app.log,
+  });
+  supervisor.start();
+  app.addHook("onClose", async () => supervisor.stop());
 
   // The app catalog is injected into the served capabilities document here, so
   // what /v1/capabilities advertises and what the session route accepts can
@@ -96,6 +109,14 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       // The capabilities document is the single source of the runner's terms;
       // every session-creating route enforces what /v1/capabilities advertises.
       terms: capabilitiesValue.terms,
+      // A co-resident agent IS an operator-predefined application — one that
+      // happens to share a pod — so it resolves against the same catalog.
+      apps: deps.apps,
+      watch: {
+        enabled: deps.config.watch.enabled,
+        maxSessions: deps.config.watch.maxSessions,
+        reloadLimitPerMinute: deps.config.watch.reloadLimitPerMinute,
+      },
     }),
   );
   await app.register(

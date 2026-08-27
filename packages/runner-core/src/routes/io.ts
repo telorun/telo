@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from "fastify";
 import type { WebSocket } from "@fastify/websocket";
 
-import { isTerminal } from "../contract.js";
+import { isTerminal, type ByteStreamTag } from "../contract.js";
 import type { BufferedBytes } from "../session/byte-ring-buffer.js";
 import type { SessionRegistry } from "../session/registry.js";
 
@@ -12,6 +12,11 @@ export interface IoRouteDeps {
 
 const RESIZE_THROTTLE_MS = 50;
 const SEQ_PREFIX_BYTES = 4;
+const STREAM_TAG_BYTES = 1;
+/** Wire codes for the per-frame stream tag. A tag rather than a labelled merged
+ *  stream: under `io: "streams"` the transport really did separate stdout from
+ *  stderr, and under `tty` it really did not. */
+const STREAM_CODES: Record<ByteStreamTag, number> = { tty: 0, stdout: 1, stderr: 2 };
 /** Upper bound on cols/rows accepted from the client. xterm + a fit addon
  *  produce values in the low thousands at extreme zoom; anything past this
  *  is either nonsense or a malicious client trying to feed
@@ -28,7 +33,7 @@ interface ControlFrame {
 
 export function ioRoute(deps: IoRouteDeps): FastifyPluginAsync {
   return async (app: FastifyInstance) => {
-    app.get<{ Params: { id: string }; Querystring: { lastSeq?: string } }>(
+    app.get<{ Params: { id: string }; Querystring: IoQuery }>(
       "/v1/sessions/:id/io",
       { websocket: true },
       (socket, req) => handleIo(socket, req, deps),
@@ -36,9 +41,16 @@ export function ioRoute(deps: IoRouteDeps): FastifyPluginAsync {
   };
 }
 
+interface IoQuery {
+  lastSeq?: string;
+  /** Which application's terminal to attach to. Required whenever the session
+   *  runs more than one app — there is no defensible default among several. */
+  app?: string;
+}
+
 function handleIo(
   socket: WebSocket,
-  req: FastifyRequest<{ Params: { id: string }; Querystring: { lastSeq?: string } }>,
+  req: FastifyRequest<{ Params: { id: string }; Querystring: IoQuery }>,
   deps: IoRouteDeps,
 ): void {
   // Origin allowlist runs INSIDE the handler (post-handshake) rather than
@@ -61,6 +73,24 @@ function handleIo(
     return;
   }
 
+  // Resolve which app's terminal this attachment is for. An explicit name must
+  // exist; an omitted one is only defensible on a single-app session.
+  const requestedApp = req.query.app?.trim() || undefined;
+  const channel = requestedApp
+    ? entry.apps.get(requestedApp)
+    : deps.registry.soleApp(entry);
+  if (!channel) {
+    closeWith(
+      socket,
+      4404,
+      requestedApp
+        ? `session runs no app named '${requestedApp}'`
+        : `session runs ${entry.apps.size} apps — ?app= is required`,
+    );
+    return;
+  }
+  const appName = channel.name;
+
   const lastSeq = parseLastSeq(req.query.lastSeq);
 
   // Subscribe BEFORE snapshotting the replay buffer. This is load-bearing:
@@ -71,7 +101,7 @@ function handleIo(
   // the handler switches to direct-send mode.
   let mode: "deferred" | "direct" = "deferred";
   const liveQueue: BufferedBytes[] = [];
-  const unsubscribe = deps.registry.subscribeBytes(sessionId, (buffered) => {
+  const unsubscribe = deps.registry.subscribeBytes(sessionId, appName, (buffered) => {
     if (socket.readyState !== socket.OPEN) return;
     if (mode === "deferred") {
       liveQueue.push(buffered);
@@ -80,7 +110,7 @@ function handleIo(
     }
   });
 
-  const { entries, hasGap } = entry.byteBuffer.replay(lastSeq);
+  const { entries, hasGap } = channel.byteBuffer.replay(lastSeq);
 
   // If the session is already terminal AND the byte buffer holds nothing
   // newer than what the client already saw, there's no live channel to
@@ -91,8 +121,9 @@ function handleIo(
     return;
   }
 
-  // Confirm the resume point so the client can validate its own bookkeeping.
-  sendJson(socket, { type: "seq", seq: lastSeq });
+  // Confirm the resume point and which attachment this is, so a client knows
+  // whether to offer resize before it sends one.
+  sendJson(socket, { type: "seq", seq: lastSeq, app: appName, io: channel.io });
   if (hasGap) {
     sendJson(socket, { type: "gap", reason: "buffer_evicted" });
   }
@@ -125,7 +156,7 @@ function handleIo(
     if (!next) return;
     // Session may have exited between schedule and flush; backends treat
     // resize on a gone workload as a no-op.
-    entry.session?.resize(next.cols, next.rows);
+    entry.session?.resize(appName, next.cols, next.rows);
   };
 
   socket.on("message", (raw, isBinary) => {
@@ -133,7 +164,7 @@ function handleIo(
       const session = entry.session;
       if (!session) return;
       const buf = raw instanceof Buffer ? raw : Buffer.from(raw as ArrayBuffer);
-      session.writeStdin(buf);
+      session.writeStdin(appName, buf);
       return;
     }
     const text = raw.toString();
@@ -144,6 +175,13 @@ function handleIo(
       return;
     }
     if (parsed.type === "resize") {
+      // A resize is meaningless with no PTY — rejected rather than silently
+      // dropped, so a client attached to a `streams` app learns it must not
+      // wire its terminal's resize through.
+      if (channel.io !== "tty") {
+        sendJson(socket, { type: "error", error: "resize_unsupported", io: channel.io });
+        return;
+      }
       const cols = clampDimension(parsed.cols);
       const rows = clampDimension(parsed.rows);
       if (cols === null || rows === null) return;
@@ -190,7 +228,12 @@ function handleIo(
     drainAndClose(Date.now() + TERMINAL_DRAIN_MAX_MS);
   }
 
+  // A byte-channel attachment counts as a live client: a session whose terminal
+  // someone is watching is not idle, even with no SSE stream open.
+  const releaseSubscriber = deps.registry.addSubscriber(sessionId);
+
   const cleanup = (): void => {
+    releaseSubscriber();
     unsubscribe();
     unsubscribeStatus();
     if (resizeTimer) clearTimeout(resizeTimer);
@@ -200,14 +243,17 @@ function handleIo(
   socket.on("error", cleanup);
 }
 
-/** Wire format for a binary frame: `[seq:4 BE][payload:N]`. The 4-byte
+/** Wire format for a binary frame: `[seq:4 BE][stream:1][payload:N]`. The 4-byte
  *  prefix lets the client de-sync detect — it knows the authoritative seq
  *  for every byte received, instead of inferring from frame count. Replay
- *  duplicates and reconnect resumes both lean on this. */
+ *  duplicates and reconnect resumes both lean on this. The stream byte says
+ *  which source produced the payload; it is `tty` under a terminal attach and
+ *  never asserts a split the transport did not make. */
 function sendBytesFrame(socket: WebSocket, buffered: BufferedBytes): void {
   if (socket.readyState !== socket.OPEN) return;
-  const prefix = Buffer.alloc(SEQ_PREFIX_BYTES);
+  const prefix = Buffer.alloc(SEQ_PREFIX_BYTES + STREAM_TAG_BYTES);
   prefix.writeUInt32BE(buffered.seq, 0);
+  prefix.writeUInt8(STREAM_CODES[buffered.stream] ?? 0, SEQ_PREFIX_BYTES);
   try {
     socket.send(Buffer.concat([prefix, buffered.bytes]));
   } catch {

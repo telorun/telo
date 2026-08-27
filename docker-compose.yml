@@ -160,6 +160,14 @@ services:
       # so studio links to the reachable app, not the runner host. The proxy
       # routes these to telo-run-<sessionId> on the shared network (see Caddyfile).
       RUNNER_PUBLIC_BASE_URL: http://run.telo.localhost:${PROXY_PORT:-8060}
+      # Watch sessions on: this is the development stack, and a workspace that
+      # reloads on save is the whole point of running it. In production the
+      # default is off — a watch session is a container set that outlives its
+      # runs, so an operator opts in.
+      RUNNER_WATCH_SESSIONS: "true"
+      # Short idle window locally. A dev machine is not paying for capacity, and
+      # a fast suspend/resume cycle is the part worth exercising by hand.
+      RUNNER_WATCH_IDLE_SECONDS: ${RUNNER_WATCH_IDLE_SECONDS:-600}
     # No published port — the runner is reached via the Caddy proxy at
     # http://runner.telo.localhost:8060 (see Caddyfile).
     healthcheck:

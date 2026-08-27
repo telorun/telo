@@ -89,6 +89,7 @@ const SEQ_PREFIX_BYTES = 4;
 
 interface DecodedFrame {
   seq: number;
+  stream: number;
   payload: Buffer;
 }
 
@@ -98,7 +99,10 @@ function decodeFrame(buf: Buffer): DecodedFrame {
   }
   return {
     seq: buf.readUInt32BE(0),
-    payload: buf.subarray(SEQ_PREFIX_BYTES),
+    // [seq:4][stream:1][payload] — the stream tag says which source produced
+    // these bytes; `tty` (0) under a terminal attach.
+    stream: buf.readUInt8(SEQ_PREFIX_BYTES),
+    payload: buf.subarray(SEQ_PREFIX_BYTES + 1),
   };
 }
 
@@ -185,8 +189,8 @@ describe("WebSocket /v1/sessions/:id/io", () => {
   it("replays buffered bytes and streams live ones with seq-prefixed frames", async () => {
     h = await buildIoHarness();
     // Push some bytes into the buffer before any client attaches.
-    h.registry.pushBytes(h.sessionId, Buffer.from("hello ")); // seq 1
-    h.registry.pushBytes(h.sessionId, Buffer.from("world\r\n")); // seq 2
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("hello ")); // seq 1
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("world\r\n")); // seq 2
 
     const ws = new WebSocket(`${h.baseUrl}/v1/sessions/${h.sessionId}/io`, {
       headers: wsHeaders(),
@@ -200,7 +204,7 @@ describe("WebSocket /v1/sessions/:id/io", () => {
     expect(Buffer.concat(frames.map((f) => f.payload)).toString()).toBe("hello world\r\n");
 
     // Live: push another chunk after the client is attached.
-    h.registry.pushBytes(h.sessionId, Buffer.from("more"));
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("more"));
     const live = await collector.waitForBinary(3);
     const liveFrames = live.map(decodeFrame);
     expect(liveFrames.map((f) => f.seq)).toEqual([1, 2, 3]);
@@ -211,9 +215,9 @@ describe("WebSocket /v1/sessions/:id/io", () => {
 
   it("respects ?lastSeq and skips already-seen bytes", async () => {
     h = await buildIoHarness();
-    h.registry.pushBytes(h.sessionId, Buffer.from("a")); // seq 1
-    h.registry.pushBytes(h.sessionId, Buffer.from("b")); // seq 2
-    h.registry.pushBytes(h.sessionId, Buffer.from("c")); // seq 3
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("a")); // seq 1
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("b")); // seq 2
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("c")); // seq 3
 
     const ws = new WebSocket(`${h.baseUrl}/v1/sessions/${h.sessionId}/io?lastSeq=2`, {
       headers: wsHeaders(),
@@ -229,8 +233,8 @@ describe("WebSocket /v1/sessions/:id/io", () => {
 
   it("delivers bytes pushed during the subscribe-replay window with no gaps", async () => {
     h = await buildIoHarness();
-    h.registry.pushBytes(h.sessionId, Buffer.from("a")); // seq 1
-    h.registry.pushBytes(h.sessionId, Buffer.from("b")); // seq 2
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("a")); // seq 1
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("b")); // seq 2
 
     // Open the WS; the registry's emit is synchronous, so we can race a
     // pushBytes onto the same event-loop tick the handler is in by issuing
@@ -244,7 +248,7 @@ describe("WebSocket /v1/sessions/:id/io", () => {
     // This push could land in the handler's deferred queue (subscribed
     // before snapshot) or after the queue drain (subscribe-direct mode);
     // either way the client must see the seq=3 frame exactly once.
-    h.registry.pushBytes(h.sessionId, Buffer.from("c"));
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("c"));
 
     const bytes = await collector.waitForBinary(3);
     const frames = bytes.map(decodeFrame);
@@ -305,7 +309,7 @@ describe("WebSocket /v1/sessions/:id/io", () => {
     const entry = h.registry.get(h.sessionId);
     expect(entry).toBeDefined();
     entry!.session = {
-      writeStdin(bytes: Uint8Array) {
+      writeStdin(_app: string, bytes: Uint8Array) {
         writes.push(Buffer.from(bytes));
       },
       resize() {},
@@ -348,7 +352,7 @@ describe("WebSocket /v1/sessions/:id/io", () => {
     // check the socket would never receive a status event and would stay
     // open indefinitely after the replay flushes.
     h = await buildIoHarness();
-    h.registry.pushBytes(h.sessionId, Buffer.from("startup output\r\n"));
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("startup output\r\n"));
     h.registry.emit(h.sessionId, { type: "status", status: { kind: "exited", code: 0 } });
 
     const ws = new WebSocket(`${h.baseUrl}/v1/sessions/${h.sessionId}/io`, {
@@ -373,7 +377,7 @@ describe("WebSocket /v1/sessions/:id/io", () => {
     const collector = startCollector(ws);
     await waitForOpen(ws);
 
-    h.registry.pushBytes(h.sessionId, Buffer.from("you › "));
+    h.registry.pushBytes(h.sessionId, "app", Buffer.from("you › "));
     h.registry.emit(h.sessionId, { type: "status", status: { kind: "exited", code: 0 } });
 
     const closed = await waitForClose(ws);
@@ -389,7 +393,7 @@ describe("WebSocket /v1/sessions/:id/io", () => {
     let called: { cols: number; rows: number } | null = null;
     entry!.session = {
       writeStdin() {},
-      resize(cols, rows) {
+      resize(_app, cols, rows) {
         called = { cols, rows };
       },
       done: Promise.resolve(),
@@ -415,7 +419,7 @@ describe("WebSocket /v1/sessions/:id/io", () => {
     let called: { cols: number; rows: number } | null = null;
     entry!.session = {
       writeStdin() {},
-      resize(cols, rows) {
+      resize(_app, cols, rows) {
         called = { cols, rows };
       },
       done: Promise.resolve(),

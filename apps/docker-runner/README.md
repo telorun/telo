@@ -29,6 +29,12 @@ Optional, with defaults:
 | `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set. Terms stay disabled unless one of these is set |
 | `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
 | `RUNNER_TERMS_VERSION` | _(hash of body)_ | Acceptance version; defaults to a content hash so any edit to the body automatically re-prompts every client. Set explicitly only to control material-change vs typo |
+| `RUNNER_WATCH_SESSIONS` | `false` (`true` in compose) | Server-side gate for watch sessions — never client-requestable when off |
+| `RUNNER_WATCH_IDLE_SECONDS` | `300` | No SSE/WS subscriber for this long → suspend (containers deleted, workspace checkpoint held) |
+| `RUNNER_WATCH_MAX_SESSIONS` | `8` | Concurrency ceiling for watch sessions, separate from `RUNNER_MAX_SESSIONS` |
+| `RUNNER_WATCH_RELOAD_LIMIT` | `30` | Per-session reloads per minute |
+| `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` | `86400` | How long a suspended record is retained before eviction — bounds accumulation, and is not a workload deadline |
+| `RUNNER_WORKSPACE_CHECKPOINT_SECONDS` | `30` | How often the runner pulls a whole-tree workspace snapshot |
 | `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name via `POST /v1/apps/:name/sessions`: `{"<name>": {"image", "env"?, "pullPolicy"?, "title"?, "description"?}}`. `env` is injected verbatim into the app's workload and may embed secrets — clients can never set those keys, and only name/title/description are advertised on `/v1/capabilities`. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "sk-..."}, "pullPolicy": "always"}}` |
 
 ## Standalone
@@ -85,7 +91,8 @@ Creation door for operator-predefined applications (`RUNNER_APPS`). Body: `{ env
 
 ### `GET /v1/sessions/:id`
 
-`200 { sessionId, status, createdAt, exitedAt? }` or `404`.
+`200 { sessionId, status, mode, agent?, apps, createdAt, exitedAt? }` or `404`.
+`apps` lists `{ name, io, generation, ports }` per running application.
 
 ### `DELETE /v1/sessions/:id`
 
@@ -93,7 +100,59 @@ Idempotent `204`. Kills the spawned container and marks the session as user-stop
 
 ### `GET /v1/sessions/:id/events`
 
-SSE stream. Events: `stdout`, `stderr`, `status`, and `gap` when the replay buffer has evicted events the client asked to resume from. Each event carries a monotonic `id`. Reconnects send `Last-Event-ID` (native) or `?lastEventId=<n>` (fresh instance, e.g. tab reload) — server prefers the header.
+SSE stream. Events: `status`, `progress`, `debug`, `reachability`, `run`, `endpoints`, and `gap` when the replay buffer has evicted events the client asked to resume from. Each event carries a monotonic `id`. Reconnects send `Last-Event-ID` (native) or `?lastEventId=<n>` (fresh instance, e.g. tab reload) — server prefers the header.
+
+**Workload output does not travel this stream.** It goes over the byte channel (`/v1/sessions/:id/io`), which exists precisely because per-chunk events are wasteful for high-volume output. This section previously listed `stdout` and `stderr` events; nothing ever emitted them, and they are gone.
+
+`status` is the SESSION's state, `run` is one application's outcome, and the two are deliberately separate nouns: in a watch session a one-shot app completing emits `run` with `phase: "completed"` and leaves the session `running`, so the next edit starts that app's next generation.
+
+## Watch sessions
+
+**The compose stack has these on** (`RUNNER_WATCH_SESSIONS: "true"` on the `runner` service) — a workspace that reloads on save is the point of running the dev stack. The default everywhere else is off, since a watch session is a container set that outlives its runs.
+
+`POST /v1/sessions` with `mode: "watch"` makes the session a **workspace that runs continuously** rather than one run: a shared workspace directory, a `workspace` container serving the file routes below, one container per application running `telo run --watch`, and optionally a co-resident `agent` from the `RUNNER_APPS` catalog. An edit then costs a kernel reload instead of a container.
+
+Docker's containers on the child network stand in for containers in a pod, and per-session directories on the shared bundle volume stand in for pod volumes. Everything else — the routes, the events, suspend/resume — is identical to the kubernetes runner's.
+
+**One cache for the whole session.** The runner seeds `telo-workspace.yaml` at the workspace root when the session starts, and the kernel anchors its `.telo` cache at the directory holding that marker — so two apps importing the same module resolve it once between them. Application containers carry no `TELO_CACHE_DIR`, because that variable outranks the marker.
+
+**Trust boundary: sessions are mutually trusted on this runner.** Every session
+container joins one `RUNNER_CHILD_NETWORK` and mounts the whole shared bundle
+volume, so a session's workload can already read another session's files — that
+was true before watch sessions. Watch adds a second, remotely reachable surface
+to the same assumption: the workspace API is name-addressable at
+`telo-run-<sessionId>-workspace:8099` with no auth, so any session's workload can
+also WRITE another session's workspace. Do not deploy this runner expecting
+isolation between sessions; the kubernetes runner is the multi-tenant one.
+
+**Orphan reap.** A run session's container exits on its own and the daemon `--rm`s it; a watch session's containers do not, by design. So the runner removes every `telo-run-*` container at boot — a restart would otherwise leave a workspace, an agent and one container per app running with nothing able to reach them.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /v1/sessions/:id/workspace` | Content-hash tree the editor diffs against its own files |
+| `POST /v1/sessions/:id/workspace` | Apply a `{ write: [{path, content, encoding?}], delete: [path] }` change set |
+| `GET /v1/sessions/:id/workspace/file?path=` | One file's contents |
+| `POST /v1/sessions/:id/reload?app=<name>` | Re-run one app with no file change (omit `app` for all) |
+| `PUT /v1/sessions/:id/apps` | Change the running app set (checkpoint + container recreate) |
+| `POST /v1/sessions/:id/resume` | Bring a suspended session back under the same id |
+
+A change set is an explicit write/delete list rather than a whole-tree PUT, because a deletion has to be expressible and a whole-tree PUT can only express it by treating absence as intent. There is deliberately no single-file write route: a one-file save is a change set of one, and a second write path would be a second set of concurrency rules.
+
+**The editor holds the authoritative workspace; the checkpoint is a cache.** The runner is a single replica with an in-memory session registry, so a restart drops every suspended session and `resume` answers `404` — the editor creates a new session and re-seeds from its own copy in one change set.
+
+### `io` — terminal or separated streams
+
+Each app declares `io: "tty"` (default) or `io: "streams"`. The difference is observable **to the application**, not just to the client: `isatty()` drives colour, line-versus-block buffering, progress bars and prompts, so a loop that is always a PTY systematically hides how the app behaves in production.
+
+| | `tty` | `streams` |
+| --- | --- | --- |
+| Output | One merged stream, as a terminal produces | Separated at the source |
+| `/io` resize | Yes | Rejected — meaningless without a PTY |
+| `CLICOLOR_FORCE` | Injected | **Not** injected |
+
+Nothing is invented at the transport layer: docker's non-TTY attach already returns a multiplexed stream carrying a per-frame stream id. The TTY is what collapses it.
+
+`GET /v1/sessions/:id/io?app=<name>` attaches to one app's channel; `?app=` is required whenever the session runs more than one, since there is no defensible default among several terminals. Every binary frame is `[seq:4 BE][stream:1][payload]`, where the stream byte is `tty` / `stdout` / `stderr` — it never asserts a split that does not exist.
 
 ## Hand-test recipe
 

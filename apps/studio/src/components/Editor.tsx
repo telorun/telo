@@ -59,11 +59,16 @@ import {
 import { resolveDeclaredPorts } from "./views/deployment/declared-ports";
 import {
   buildRunBundle,
+  bundleFiles,
+  diffBundle,
+  isEmptyChangeSet,
   registry as runRegistry,
   RunView,
   selectModuleFiles,
+  SessionGoneError,
   TermsRequiredError,
   useRun,
+  type SyncedFiles,
 } from "../run";
 import type { RunnerTerms } from "../run";
 import { useAgent } from "../agent";
@@ -492,6 +497,34 @@ export function Editor() {
     ? (runContext.liveRunForApp(activeAppPath) ?? runContext.latestRunForApp(activeAppPath))
     : null;
 
+  // Whether the selected runner offers watch sessions. Read from its advertised
+  // capabilities rather than assumed: a runner with watch off REJECTS the field,
+  // so offering the entry point there would be a button that always errors.
+  const [runnerSupportsWatch, setRunnerSupportsWatch] = useState(false);
+  const activeRunner = settings.runners.find((r) => r.id === settings.activeRunnerId);
+  const activeRunnerKey = `${activeRunner?.id ?? ""}:${JSON.stringify(activeRunner?.config ?? null)}`;
+  useEffect(() => {
+    let cancelled = false;
+    setRunnerSupportsWatch(false);
+    if (!activeRunner) return;
+    const adapter = runRegistry.get(activeRunner.adapterId);
+    const config = activeRunner.config ?? adapter?.defaultConfig;
+    if (!adapter?.fetchCapabilities) return;
+    void adapter
+      .fetchCapabilities(config)
+      .then((caps) => {
+        if (!cancelled) setRunnerSupportsWatch(caps?.features?.watch === true);
+      })
+      // An unreachable runner is not a claim that watch is unavailable, but the
+      // entry point stays hidden either way — the Run button surfaces the
+      // unreachability on its own.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRunnerKey]);
+
   // ---------------------------------------------------------------------------
   // Module creation + deletion
   // ---------------------------------------------------------------------------
@@ -532,7 +565,7 @@ export function Editor() {
     void refreshFileTree(updated);
   }
 
-  async function handleRunModule(filePath: string) {
+  async function handleRunModule(filePath: string, mode: "run" | "watch" = "run") {
     setError(null);
     if (!state.workspace) return;
     const workspace = state.workspace;
@@ -672,8 +705,14 @@ export function Editor() {
           env: environment.env,
           ports: resolveDeclaredPorts(manifest, environment.env),
           acceptedTermsVersion,
+          mode,
         },
       });
+      if (mode === "watch") {
+        // The bundle we just sent IS the workspace's contents, so the first
+        // diff after this is exactly the user's next edit.
+        syncedFilesRef.current.set(filePath, bundleFiles(bundle));
+      }
     } catch (err) {
       // Safety net: the runner enforces terms server-side, so even if the gate
       // was skipped (e.g. the version changed since we fetched it) it can reject
@@ -704,6 +743,69 @@ export function Editor() {
    *  Records a history snapshot for every file actually written, unless
    *  `skipHistory` is set (true during undo/redo to avoid re-recording the
    *  restore itself, which would shadow the redo tail). */
+  // What the editor last pushed into each app's live watch workspace, by app
+  // path. Diffing against it is what keeps a save from reloading every app: the
+  // kernel's watcher fires on a write, so an unconditional re-push would reload
+  // apps that never read the saved file.
+  const syncedFilesRef = useRef<Map<string, SyncedFiles>>(new Map());
+  // One in-flight sync per app. Two rapid saves must not interleave writes into
+  // one workspace, and the later one must still land.
+  const syncQueueRef = useRef<Map<string, Promise<void>>>(new Map());
+
+  /** Push what changed into every live watch session, after a save. A no-op when
+   *  the app has no watch session, so the save path calls it unconditionally. */
+  function syncWatchSessions(workspace: Workspace): void {
+    const adapter = workspaceAdapterRef.current;
+    if (!adapter) return;
+    const live = runContext.watchRuns();
+    const liveApps = new Set(live.map((r) => r.appPath));
+    for (const appPath of [...syncedFilesRef.current.keys()]) {
+      // The session ended — drop the snapshot so a later one starts clean.
+      if (!liveApps.has(appPath)) syncedFilesRef.current.delete(appPath);
+    }
+    for (const run of live) {
+      const appPath = run.appPath;
+      const queued = (syncQueueRef.current.get(appPath) ?? Promise.resolve()).then(async () => {
+        // No snapshot means this session was re-attached after a page reload, so
+        // what the workspace holds is unknown: push everything once and diff from
+        // there. Costs one extra reload after a refresh; the alternative is a
+        // refreshed tab silently disconnecting saves from a running workspace.
+        const previous = syncedFilesRef.current.get(appPath) ?? new Map<string, string>();
+        const bundle = await buildRunBundle(
+          workspace,
+          appPath,
+          (p) => adapter.readFile(p),
+          (base, patterns) => selectModuleFiles(base, patterns, (dir) => adapter.listDir(dir)),
+        );
+        const next = bundleFiles(bundle);
+        const changes = diffBundle(previous, next);
+        if (isEmptyChangeSet(changes)) return;
+        await runContext.syncWorkspace(run.id, changes);
+        // Recorded only AFTER the write lands: a failed sync must re-send on the
+        // next save rather than believing the workspace already has the edit.
+        syncedFilesRef.current.set(appPath, next);
+      });
+      syncQueueRef.current.set(
+        appPath,
+        queued.catch((err) => {
+          // The runner lost the session (a restart drops every checkpoint). The
+          // editor holds the authoritative workspace, so the remedy is to run
+          // again — say that instead of a wire error the user cannot act on.
+          if (err instanceof SessionGoneError) {
+            syncedFilesRef.current.delete(appPath);
+            setError(
+              "The runner no longer holds this watch session — run it again to start a fresh one.",
+            );
+            return;
+          }
+          setError(
+            `Failed to sync the running workspace: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }),
+      );
+    }
+  }
+
   async function persistModule(
     workspace: Workspace,
     filePath: string,
@@ -759,6 +861,10 @@ export function Editor() {
       }
       if (recorded) setHistoryVersion((v) => v + 1);
     }
+
+    // Every manifest write funnels through here, which is exactly where a live
+    // watch workspace has to learn about it.
+    syncWatchSessions(next);
 
     return next;
   }
@@ -1789,6 +1895,12 @@ export function Editor() {
             ? () => void handleRunModule(activeManifest.filePath)
             : undefined
         }
+        onRunWatch={
+          activeManifest?.kind === "Application"
+            ? () => void handleRunModule(activeManifest.filePath, "watch")
+            : undefined
+        }
+        canWatch={runnerSupportsWatch}
         runStatus={activeAppRun?.status ?? null}
         runs={activeAppRuns}
         onSelectRun={runContext.selectRun}

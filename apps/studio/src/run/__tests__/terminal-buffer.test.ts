@@ -26,7 +26,7 @@ function makeFakeIo() {
 
   return {
     io,
-    push: (b: Uint8Array) => handlers?.onData(b),
+    push: (b: Uint8Array) => handlers?.onData(b, "tty"),
     end: () => handlers?.onClose({ code: 1000, clean: true }),
     sent,
     resizes,

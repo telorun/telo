@@ -15,6 +15,33 @@ export interface RunnerCoreConfig {
   exitTtlMs: number;
   replayBufferBytes: number;
   corsOrigins: string[] | "*";
+  watch: WatchSessionConfig;
+}
+
+/**
+ * Watch-session policy. Off by default and separately ceilinged, because a watch
+ * session is a materially different resource shape from a run: a pod that
+ * outlives its runs, whose concurrency is bounded by simultaneous EDITORS rather
+ * than simultaneous runs. Inheriting a run session's ceilings would size it for
+ * the opposite assumption.
+ */
+export interface WatchSessionConfig {
+  /** Server-side gate. Watch sessions are never client-requestable when off. */
+  enabled: boolean;
+  /** No SSE/WS subscriber for this long → suspend (pod deleted, checkpoint held). */
+  idleMs: number;
+  /** Pod deadline for a watch session. The agent and app containers share one
+   *  pod, so one deadline covers both: take the longer (agent) ceiling and let
+   *  idleness do the real work, or the conversation dies at an hour mid-turn. */
+  maxTtlSeconds: number;
+  maxSessions: number;
+  reloadLimitPerMinute: number;
+  /** How long a SUSPENDED record is retained before eviction. Deliberately not
+   *  the pod deadline: that bounds a pod, so on its own nothing would ever evict
+   *  a suspended record. */
+  suspendedTtlMs: number;
+  /** How often the runner pulls a whole-tree workspace snapshot. */
+  checkpointMs: number;
 }
 
 export class RunnerConfigError extends Error {}
@@ -233,5 +260,37 @@ export function loadCoreConfig(
       "RUNNER_REPLAY_BUFFER_BYTES",
     ),
     corsOrigins: parseCorsOrigins(env.RUNNER_CORS_ORIGINS),
+    watch: loadWatchConfig(env),
+  };
+}
+
+export function loadWatchConfig(env: NodeJS.ProcessEnv): WatchSessionConfig {
+  return {
+    enabled: parseBool(env.RUNNER_WATCH_SESSIONS, false, "RUNNER_WATCH_SESSIONS"),
+    idleMs:
+      parsePositiveInt(env.RUNNER_WATCH_IDLE_SECONDS, 300, "RUNNER_WATCH_IDLE_SECONDS") * 1000,
+    maxTtlSeconds: parsePositiveInt(
+      env.RUNNER_WATCH_MAX_TTL_SECONDS,
+      21600,
+      "RUNNER_WATCH_MAX_TTL_SECONDS",
+    ),
+    maxSessions: parsePositiveInt(env.RUNNER_WATCH_MAX_SESSIONS, 8, "RUNNER_WATCH_MAX_SESSIONS"),
+    reloadLimitPerMinute: parsePositiveInt(
+      env.RUNNER_WATCH_RELOAD_LIMIT,
+      30,
+      "RUNNER_WATCH_RELOAD_LIMIT",
+    ),
+    suspendedTtlMs:
+      parsePositiveInt(
+        env.RUNNER_WATCH_SUSPENDED_TTL_SECONDS,
+        86400,
+        "RUNNER_WATCH_SUSPENDED_TTL_SECONDS",
+      ) * 1000,
+    checkpointMs:
+      parsePositiveInt(
+        env.RUNNER_WORKSPACE_CHECKPOINT_SECONDS,
+        30,
+        "RUNNER_WORKSPACE_CHECKPOINT_SECONDS",
+      ) * 1000,
   };
 }

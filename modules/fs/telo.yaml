@@ -237,9 +237,9 @@ metadata:
   description: >-
     Lists the contents of a directory, returning one entry per item with its
     base name, path, type (file / directory / other) and size in bytes. Set
-    `recursive` to walk subdirectories too. Entry paths come back relative to
-    the resource's `cwd`, so they can be fed straight into a read, write or
-    remove call.
+    `recursive` to walk subdirectories too, and exclude entries by base name at
+    any depth. Entry paths come back relative to the resource's `cwd`, so they
+    can be fed straight into a read, write or remove call.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#DirectoryListingController
@@ -251,14 +251,23 @@ inputType:
     properties:
       path:
         title: Path
-        description: Directory to list, relative to `cwd`. Defaults to `cwd` itself.
+        description: >-
+          Directory to list, relative to `cwd`. Omitted or empty lists `cwd`
+          itself.
         type: string
-        minLength: 1
       recursive:
         title: Recursive
         description: Walk subdirectories and include their entries.
         type: boolean
         default: false
+      exclude:
+        title: Exclude
+        description: >-
+          Base names to omit at any depth (an excluded directory is neither
+          listed nor descended). Typically vendor / build / cache dirs like
+          node_modules, .git, .telo.
+        type: array
+        items: { type: string }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -384,9 +393,10 @@ inputType:
     properties:
       path:
         title: Path
-        description: Directory to walk, relative to `cwd`. Defaults to `cwd` itself.
+        description: >-
+          Directory to walk, relative to `cwd`. Omitted or empty walks `cwd`
+          itself.
         type: string
-        minLength: 1
       exclude:
         title: Exclude
         description: >-

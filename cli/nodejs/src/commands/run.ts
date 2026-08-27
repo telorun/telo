@@ -304,6 +304,9 @@ function registryUrlFor(argv: RunArgv): string {
  *  the stream the UI is already watching, instead of the UI seeing termination. */
 type DebugSession = {
   attach: (kernel: Kernel) => void;
+  /** Push an event the kernel itself cannot emit, onto the same sinks a kernel
+   *  event travels. Exists for exactly one case — see {@link emitRunFailed}. */
+  emitEvent: (name: string, payload: unknown) => void;
   /** Called once the kernel has loaded: publishes the app's resolved ports to the
    *  inspection endpoint and opens the UI the first time (deferred to here so the
    *  browser's discovery handshake already sees the endpoints). */
@@ -385,6 +388,15 @@ async function startDebugSession(
 
   let attachedRecordSink: DebugWireSink | undefined;
 
+  /** Push an event onto the same sinks a kernel event travels. Shared by the
+   *  two callers below rather than reached through `this`, which inside an
+   *  object literal is not the returned session. */
+  const pushEvent = (name: string, payload: unknown): void => {
+    const line = serializeEvent(name, payload, undefined, server?.blobStore);
+    void fileSink?.write(line);
+    server?.push(line);
+  };
+
   return {
     attach(kernel: Kernel): void {
       // A consumer is attached → turn on invocation tracing so events carry
@@ -411,10 +423,16 @@ async function startDebugSession(
       });
       kernel.logging.pipeline.attach(attachedRecordSink);
     },
+    emitEvent: pushEvent,
     markReady(kernel: Kernel): void {
-      server?.setEndpoints(
-        kernel.getResolvedPorts().map(({ port, protocol }) => ({ host: "", port, protocol })),
-      );
+      const ports = kernel.getResolvedPorts();
+      server?.setEndpoints(ports.map(({ port, protocol }) => ({ host: "", port, protocol })));
+      // The same fact the handshake above carries, put on the STREAM — a host
+      // that routes to this app (a runner standing up a Service and an Ingress)
+      // holds a stream and would otherwise have to poll for it, or re-parse the
+      // manifest to learn a `ports:` edit landed. Re-emitted per reload, because
+      // `markReady` runs once per watch cycle and resolution re-happens.
+      pushEvent("Kernel.PortsResolved", { ports: [...ports] });
       openUi();
     },
     stop(kernel?: Kernel): void {
@@ -568,6 +586,7 @@ export async function run(argv: RunArgv): Promise<void> {
   // Held outside the try so the catch can reach the loaded graph a static
   // failure's location resolves against.
   let bootedKernel: Kernel | undefined;
+  let loaded = false;
   try {
     const kernel = await buildKernel(argv, log, cacheRoot);
     bootedKernel = kernel;
@@ -586,6 +605,7 @@ export async function run(argv: RunArgv): Promise<void> {
       cacheDir: cacheRoot,
       writeCache: argv.cacheWrite,
     });
+    loaded = true;
     await persistManifestCache(argv, kernel, log, cacheRoot);
     debug?.markReady(kernel);
 
@@ -616,10 +636,42 @@ export async function run(argv: RunArgv): Promise<void> {
       process.exit(kernel.exitCode);
     }
   } catch (error) {
+    // Emitted BEFORE the sinks are torn down, or the one frame naming the cause
+    // never reaches a consumer.
+    emitRunFailed(debug, loaded ? "start" : "load", error);
     debug?.stop();
     reportError(argv, error, log, bootedKernel);
     process.exit(1);
   }
+}
+
+/**
+ * The one thing a watching consumer cannot otherwise learn: that this generation
+ * never reached a running state, and why. `Kernel.Starting` / `Kernel.Started` /
+ * `Kernel.Stopped` describe a run that got as far as starting; a manifest that
+ * fails to LOAD emits none of them, and a boot failure emits `Starting` and then
+ * nothing — so a consumer projecting run outcomes would show either silence or a
+ * generation stuck at `started` forever, with the reason only on the terminal.
+ *
+ * One event name for both, carrying `phase`, because a consumer projects them to
+ * the same outcome and a second name would split one outcome in two. A dotted
+ * event name obliges no other runtime — the vocabulary inside an event frame is
+ * already open, where the frame-kind set is the conformance contract every kernel
+ * must implement.
+ */
+function emitRunFailed(
+  debug: DebugSession | undefined,
+  phase: "load" | "start",
+  error: unknown,
+): void {
+  if (!debug) return;
+  const diagnostics = (error as { diagnostics?: RuntimeDiagnostic[] })?.diagnostics;
+  const code = (error as { code?: string })?.code ?? diagnostics?.find((d) => d.code)?.code;
+  debug.emitEvent("Kernel.RunFailed", {
+    phase,
+    ...(code ? { code } : {}),
+    message: error instanceof Error ? error.message : String(error),
+  });
 }
 
 /**
@@ -708,13 +760,17 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
       // start() resolves on its own only on boot error or one-shot completion
       // without a hold; the hold keeps long-running and completed apps alive,
       // so the cycle advances on a file change. Errors are reported, not thrown.
-      const startPromise = kernel.start().catch((err) => reportError(argv, err, log, kernel));
+      const startPromise = kernel.start().catch((err) => {
+        emitRunFailed(debug, "start", err);
+        return reportError(argv, err, log, kernel);
+      });
       await changed;
       kernel.cancel("reload");
       kernel.forceIdle();
       await startPromise;
     } catch (error) {
       // Load failed before start(); report and wait for an edit before retrying.
+      emitRunFailed(debug, "load", error);
       reportError(argv, error, log, kernel);
       await kernel.teardown();
       await changed;

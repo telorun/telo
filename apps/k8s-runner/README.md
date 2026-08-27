@@ -66,6 +66,196 @@ service-account token, seccomp `RuntimeDefault`); a sandbox RuntimeClass
 image is single-tenant, so install scripts run normally inside the trusted build
 (native/postinstall controllers work) with no cross-tenant cache to poison.
 
+## Watch sessions
+
+Everything above describes a **run** session: one pod per Run click, terminal when
+the workload exits. `POST /v1/sessions` with `mode: "watch"` asks for something
+different — a **workspace that runs continuously**. One pod holds a shared
+`/workspace` volume, a `workspace` container serving the editor's file routes, one
+`app-<name>` container per application running `telo run --watch`, and optionally
+a co-resident `agent` drawn from the `RUNNER_APPS` catalog. An edit then costs a
+kernel reload instead of a pod: no schedule, no pull, no build.
+
+Off unless `RUNNER_WATCH_SESSIONS` is set. Run sessions are entirely unaffected.
+
+### The pod
+
+| Container | Image | Present | Writes | Credential |
+| --- | --- | --- | --- | --- |
+| `workspace` | The kernel image, over a runner-supplied manifest | Always | `/workspace` | None |
+| `agent` | Operator catalog image | When `agent` is requested | `/workspace` | Operator env |
+| `app-<name>` | The kernel image | One per app | `/workspace`, `/telo-cache/<name>`, scratch | Session-declared env only |
+
+**The env split is the credential boundary.** It used to be structural (two pods)
+and is now a code invariant: the operator env goes on `agent` alone, every
+`app-<name>` gets the session's declared env and nothing else, and `workspace`
+gets neither — it serves files and holds no secrets.
+
+**A shared `fsGroup` is required**, and its absence is the kind of thing that
+fails as a confusing "file not found" one reload after a write: every container
+reads and writes `/workspace`, so they must share a GID or the agent writes files
+the app cannot read.
+
+**The workspace surface is runner infrastructure, not agent functionality.** It is
+part of the `/v1` session contract, so the runner owns its manifest and its
+routes; the agent is one more writer on the volume beside the app containers,
+using its own filesystem tools. It runs the plain kernel image over a manifest the
+runner reconciles into a content-addressed ConfigMap — there is no third image to
+build, and a runner upgrade that changes the manifest leaves running sessions
+mounting the one they booted with.
+
+**Watch sessions never build an image.** The build path exists to put a dependency
+closure on disk before boot; a watch session resolves its own into the workspace
+volume, which lives as long as the pod, so the download happens once per session
+and every later reload resolves from local disk.
+
+**One cache for the whole session.** The runner seeds `telo-workspace.yaml` at
+the workspace root when the session starts, and the kernel anchors its `.telo`
+cache at the directory holding that marker — so two apps importing the same
+module resolve it once between them, and an app in a subdirectory does not get a
+cache of its own. The application containers therefore carry no `TELO_CACHE_DIR`:
+that variable OUTRANKS the marker, so setting it per app is exactly what would
+undo this. Only the `workspace` container keeps an explicit root, because its own
+manifest lives outside the workspace and the walk-up would never reach the
+marker. A workspace that brings its own marker keeps it — overwriting one with a
+real `modules:` list would change what `telo release` discovers.
+
+**Egress moves into the session namespace.** Module fetches used to be scoped to
+the build namespace; a watch session resolves them itself, so the session
+namespace's NetworkPolicy has to reach module registries as well as the model
+provider. Core NetworkPolicy is CIDR-only and registries sit behind rotating-IP
+CDNs, so a locked-down operator needs a CNI with FQDN policy or an egress proxy
+here — the same stated dependency the build namespace already carries, one
+namespace over.
+
+### Two nouns on one stream
+
+*Session status* (`status` events) is `starting` / `running` / `suspended` /
+`stopped` / `failed`. *Run outcome* (`run` events) is one per app per reload
+generation:
+
+```json
+{ "type": "run", "app": "web", "generation": 3, "phase": "started",   "trigger": "watch" }
+{ "type": "run", "app": "web", "generation": 3, "phase": "completed", "code": 0, "durationMs": 412 }
+{ "type": "run", "app": "worker", "generation": 4, "phase": "failed", "reason": "ERR_MANIFEST_VALIDATION_FAILED" }
+```
+
+A one-shot Runnable finishing emits `run` with `phase: "completed"` and leaves
+`status: running` — the session is alive and the next edit starts that app's next
+generation. `generation` is monotonic per app and starts at 1.
+
+Those events are **projected** from the kernel debug stream, not parsed out of the
+terminal: a watch session always runs with `--inspect` on, and `Kernel.Starting` /
+`Kernel.Stopped` bracket each generation on one debug connection that survives
+reloads. The one thing that stream did not carry is a manifest that fails to load
+at all, so the CLI now emits `Kernel.RunFailed` (`{ phase: "load" | "start", code?,
+message }`) — a dotted event name inside an existing frame kind, so it obliges no
+other runtime.
+
+### Routes
+
+| Route | Purpose |
+| --- | --- |
+| `GET /v1/sessions/:id/workspace` | Content-hash tree the editor diffs against its own files |
+| `POST /v1/sessions/:id/workspace` | Apply a `{ write: [{path, content, encoding?}], delete: [path] }` change set |
+| `GET /v1/sessions/:id/workspace/file?path=` | One file's contents |
+| `POST /v1/sessions/:id/reload?app=<name>` | Re-run one app with no file change (omit `app` for all) |
+| `PUT /v1/sessions/:id/apps` | Change the running app set (checkpoint + pod recreate) |
+| `POST /v1/sessions/:id/resume` | Bring a suspended session back under the same id |
+
+### A port set that changes on reload
+
+Adding a `ports:` entry is as ordinary an edit as adding an import, and a
+container may bind any port regardless of what the pod spec declares — so without
+handling, the app listens and is simply unreachable: no ingress, no error, no
+event.
+
+The kernel re-resolves its `ports:` block on every load and says so on the stream
+the runner is already reading (`Kernel.PortsResolved`), so nothing re-parses a
+manifest on the reload path. The runner patches the Service and the Ingress live
+and emits an `endpoints` event; a pod's `containerPort` list is documentation, so
+this costs no pod recreate. A port another app in the session already declares
+cannot be routed — session hosts carry no app name — and comes back on that same
+event as `rejected` rather than being dropped.
+
+It routes the DECLARED set, not what happened to bind. A port the manifest never
+declared is not exposed, and "did anything actually bind it" is already answered
+per port by the reachability watcher (`checking` → `reachable` / `unreachable`).
+Keying on a listening event instead would rest on a per-module convention: a
+transport whose kind does not emit one would silently get no routing.
+
+### Reload and the app set
+
+`reload` exists because `--watch` reloads on change, and pressing Run again after a
+one-shot app completed is not a change. It touches the named app's entry manifest
+through the same path everything else uses, so it needs no signalling into the
+container, no shared PID namespace and no `exec` — **RBAC gains only `configmaps:
+get, create` and `update` on services/ingresses**, the latter so a reload that
+changes an app's declared port set can re-patch its routing. Without that, adding a
+`ports:` entry leaves the app bound to a port with no ingress, no error and no
+event.
+
+Changing the app set costs a pod recreate because a pod's container list is fixed
+at creation. That is the only editing action in the design that costs a pod, and
+it reuses suspend/resume rather than adding a second path.
+
+### Suspend and resume
+
+A session is no longer a pod. With no SSE/WS subscriber for
+`RUNNER_WATCH_IDLE_SECONDS`, the runner snapshots the workspace, deletes the pod
+and keeps the session record — `status: suspended`, which is deliberately **not**
+terminal. `POST /v1/sessions/:id/resume` creates a fresh pod seeded from that
+checkpoint under the same session id. Aggressive reaping is what makes per-visitor
+watch sessions affordable, and the checkpoint is what makes aggressive reaping
+safe; they only work as a pair.
+
+**The editor holds the authoritative workspace; the checkpoint is a cache.** The
+runner is a single replica with an in-memory registry, so a redeploy, crash or
+node move drops every suspended session and `resume` answers `404`. That is by
+design and it buys less than it looks: a durable suspended workspace is only
+meaningful when there is an identity to reattach it to, and accounts are an
+explicit non-goal. A watch session exists because an editor is driving it, that
+editor already holds every file and already diffs its own copy against
+`GET /workspace`, so a `404` costs one change set. Two consequences, stated rather
+than discovered: a suspended session is best-effort, and a watch session with no
+editor attached and unsaved agent writes is the one place work can be lost —
+bounded by `RUNNER_WORKSPACE_CHECKPOINT_SECONDS`.
+
+**Capacity changes shape.** Concurrency becomes bounded by simultaneous *editors*
+rather than simultaneous *runs*; the run-session ceilings were sized for the
+opposite assumption, which is why watch has its own.
+
+### `io` — terminal or separated streams
+
+Each app declares `io: "tty"` (default) or `io: "streams"`. The difference is
+observable **to the application**, not just to the client: `isatty()` drives
+colour, line-versus-block buffering, progress bars and prompts, so a loop that is
+always a PTY systematically hides how the app behaves in production.
+
+| | `tty` | `streams` |
+| --- | --- | --- |
+| Output | One merged stream, as a terminal produces | Separated at the source |
+| `/io` resize | Yes | Rejected — meaningless without a PTY |
+| `CLICOLOR_FORCE` | Injected | **Not** injected |
+
+Nothing is invented at the transport layer: the Pod `attach` subresource without a
+TTY already gives separate stdout and stderr channels. The TTY is what collapses
+it. `streams` forces nothing *off* either — with no terminal the colour precedence
+already resolves to no colour, and an explicit `NO_COLOR` would sit above an app's
+own `color: always` and suppress a decision worth observing.
+
+`GET /v1/sessions/:id/io?app=<name>` attaches to one app's terminal; `?app=` is
+required whenever the session runs more than one, since there is no defensible
+default among several. Every binary frame is `[seq:4 BE][stream:1][payload]`.
+
+### Ports are unique across the whole session
+
+Session hosts are `<port>-<sessionId>.<base-domain>`, a single label, so two apps
+both listening on 3000 would collide with nothing to distinguish them. That is a
+`400 port_conflict` at session create rather than an app name added to the host
+scheme: the user controls both manifests, and a rejected request is a better
+outcome than a URL that silently reaches the wrong app.
+
 ## Configuration (env)
 
 | Env | Default | Purpose |
@@ -90,6 +280,13 @@ image is single-tenant, so install scripts run normally inside the trusted build
 | `RUNNER_MAX_TTL_SECONDS` | `3600` | Wall-clock TTL (Pod `activeDeadlineSeconds`) |
 | `RUNNER_MAX_EPHEMERAL_STORAGE` | `512Mi` | Per-Pod ephemeral-storage ceiling |
 | `RUNNER_MAX_SESSIONS` | `32` | Global session backstop; at capacity the oldest exited session is evicted before a new run is rejected |
+| `RUNNER_WATCH_SESSIONS` | `false` | Server-side gate. Watch sessions are never client-requestable when off |
+| `RUNNER_WATCH_IDLE_SECONDS` | `300` | No SSE/WS subscriber for this long → suspend |
+| `RUNNER_WATCH_MAX_TTL_SECONDS` | `21600` | Pod deadline for a watch session. One deadline covers the agent and the app containers, so it takes the longer ceiling and lets idleness do the real work |
+| `RUNNER_WATCH_MAX_SESSIONS` | `8` | Concurrency ceiling for watch sessions, separate from `RUNNER_MAX_SESSIONS` |
+| `RUNNER_WATCH_RELOAD_LIMIT` | `30` | Per-session reloads per minute |
+| `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` | `86400` | How long a suspended session record is retained before eviction. Deliberately not the pod deadline: that bounds a pod, so on its own nothing would ever evict a suspended record |
+| `RUNNER_WORKSPACE_CHECKPOINT_SECONDS` | `30` | How often the runner pulls a whole-tree workspace snapshot |
 | `RUNNER_EXIT_TTL_MS` | `14400000` | How long exited sessions stay in the registry (so the editor can re-attach and replay their history after a reload) before eviction |
 | `RUNNER_TERMS_FILE` | _(unset)_ | Path to the agreement file (plain text / markdown), read at startup — mount it from a `ConfigMap` (e.g. `/etc/telo/terms.md`). Setting this (or `RUNNER_TERMS_BODY`) enables terms: the runner advertises them on `/v1/capabilities` and rejects `POST /v1/sessions` with `428` unless the client sends `x-telo-accepted-terms` matching the version. An unreadable path fails startup. The public cloud should set this |
 | `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set |

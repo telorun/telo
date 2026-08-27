@@ -1,4 +1,4 @@
-import { ChevronDown, MessageSquare, Monitor, Moon, Redo2, Square, Sun, Undo2 } from "lucide-react";
+import { ChevronDown, Eye, MessageSquare, Monitor, Moon, Redo2, Square, Sun, Undo2 } from "lucide-react";
 import type { ParsedManifest, Workspace } from "../model";
 import { type ThemePreference, useColorModeControls } from "../theme/color-mode";
 import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
@@ -12,6 +12,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
@@ -25,6 +26,12 @@ interface TopBarProps {
   onOpen: () => void;
   onOpenSettings: () => void;
   onRun?: () => void;
+  /** Start a watch session: a workspace that runs continuously, where saving a
+   *  file reloads the kernel instead of starting a new run. Offered only when
+   *  the selected runner advertises `features.watch`. */
+  onRunWatch?: () => void;
+  /** Whether the selected runner offers watch sessions. */
+  canWatch?: boolean;
   /** Status of the active Application's live (or most recent) run, or null.
    *  Drives the Run button's spinner (in-flight) / dot (terminal). */
   runStatus?: RunStatus | null;
@@ -53,6 +60,8 @@ export function TopBar({
   onOpen,
   onOpenSettings,
   onRun,
+  onRunWatch,
+  canWatch = false,
   runStatus,
   runs = [],
   onSelectRun,
@@ -164,6 +173,24 @@ export function TopBar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
+              {canWatch && (
+                <>
+                  <DropdownMenuItem
+                    onSelect={() => onRunWatch?.()}
+                    disabled={!canRun}
+                    className="gap-2"
+                  >
+                    <Eye className="size-3.5 shrink-0" aria-hidden />
+                    <span className="flex flex-col">
+                      <span>Run in watch mode</span>
+                      <span className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
+                        Saving reloads the app
+                      </span>
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuLabel className="flex items-center justify-between gap-2">
                 Recent runs
                 {hasHistory && (

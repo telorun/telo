@@ -59,5 +59,13 @@ function describe(status: RunStatus): { label: string; className: string } {
         className:
           "bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-200",
       };
+    case "suspended":
+      // Not terminal: the workspace checkpoint is held and the session resumes
+      // under the same id, so this reads as paused rather than finished.
+      return {
+        label: "Suspended",
+        className:
+          "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+      };
   }
 }

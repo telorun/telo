@@ -83,6 +83,23 @@ works: the record is built once and offered to each sink.
 `encoding: auto` is decided per sink destination, not per process — a console
 sink on `stdout` and another on `stderr` can resolve differently.
 
+### Colour from the environment
+
+`color: auto` (the default) consults the environment, in this order:
+`NO_COLOR` → `FORCE_COLOR` → `CLICOLOR_FORCE` → `CLICOLOR` → `TERM` →
+`isatty()`. `always` and `never` override all of it.
+
+The Telo CLI honours **`CLICOLOR_FORCE`** directly — it is the convention with
+the widest native reach across ecosystems, so one variable serves a Rust, Go or
+Node workload alike. Node's own colour libraries (`supports-color`, and therefore
+chalk) read `FORCE_COLOR` and ignore it, so the CLI bridges the two for its own
+ecosystem: on start, before any library has computed a colour level, it sets
+`FORCE_COLOR` when `CLICOLOR_FORCE` is present and `FORCE_COLOR` is not.
+
+An existing `FORCE_COLOR` is never overwritten, which is what lets
+`FORCE_COLOR=0` alongside `CLICOLOR_FORCE=1` mean "off for Node, forced for
+everything else".
+
 ### Buffered sinks and durability
 
 Asynchronous sinks are bounded. `on_full` states what happens when the buffer

@@ -17,17 +17,36 @@ export {
   SessionRegistry,
   SessionLimitError,
   SessionEvictedError,
+  UnknownAppError,
+  type AppChannel,
+  type RunAttribution,
   type SessionEntry,
+  type RegisterArgs,
   type RegistryDeps,
+  type WorkspaceCheckpoint,
 } from "./session/registry.js";
+export { WatchSupervisor, type WatchSupervisorDeps } from "./session/watch-supervisor.js";
+export { RunProjection } from "./debug/run-projection.js";
+export {
+  portKey,
+  portsResolvedFrom,
+  PORTS_RESOLVED_EVENT,
+} from "./debug/ports-resolved.js";
 export { EventRingBuffer, type BufferedEvent } from "./session/ring-buffer.js";
 export { ByteRingBuffer, type BufferedBytes } from "./session/byte-ring-buffer.js";
 export { normalizeBundlePath, validateSessionId, BundlePathError } from "./session/bundle-path.js";
+export { WorkspaceClient } from "./session/workspace-client.js";
+export { workspaceAppManifest, WORKSPACE_APP_FILENAME } from "./session/workspace-app.js";
+export {
+  workspaceMarkerWrite,
+  WORKSPACE_MARKER_CONTENTS,
+  WORKSPACE_MARKER_FILENAME,
+} from "./session/workspace-marker.js";
 export { streamSessionEvents, type SseStreamArgs } from "./sse/channel.js";
 export { healthRoute } from "./routes/health.js";
 export { capabilitiesRoute } from "./routes/capabilities.js";
 export { probeRoute, type ProbeRouteDeps } from "./routes/probe.js";
-export { sessionsRoute, type SessionsRouteDeps } from "./routes/sessions.js";
+export { sessionsRoute, type SessionsRouteDeps, type WatchConfig } from "./routes/sessions.js";
 export { appsRoute, type AppsRouteDeps } from "./routes/apps.js";
 export { ioRoute, type IoRouteDeps } from "./routes/io.js";
 export { relayDebugStream, type DebugRelayOptions } from "./debug/relay.js";

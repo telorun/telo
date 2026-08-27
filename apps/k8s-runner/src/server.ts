@@ -15,6 +15,7 @@ import { kubernetesRunnerCapabilities } from "./capabilities.js";
 import { loadK8sRunnerConfig, RunnerConfigError, type K8sRunnerConfig } from "./config.js";
 import { createKubernetesBackend } from "./k8s/backend.js";
 import { createKubeClient } from "./k8s/client.js";
+import { sweepWorkspaceConfigMaps } from "./k8s/workspace-configmap.js";
 
 const VERSION: string = packageJson.version;
 
@@ -32,6 +33,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   // Load terms once; the capabilities getter is re-resolved per request so a
   // refreshed catalog (new tags) shows up without restarting the runner.
   const terms = loadTermsFromEnv(process.env);
+  const apps = loadResolvedApps(process.env);
 
   const handle = await coreBuildServer({
     backend: deps.backend,
@@ -44,11 +46,16 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
         defaultImage: deps.config.defaultImage,
         terms,
         imageEnum: catalog?.current(),
+        watch: deps.config.watch.enabled,
+        // A co-resident agent is drawn from the same catalog an app session
+        // launches from — the advertised set and the accepted set are one list,
+        // so they cannot drift.
+        agents: deps.config.watch.enabled ? Object.keys(apps) : undefined,
       }),
     defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
     // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on
     // /v1/capabilities; app sessions run the catalog image directly (no build).
-    apps: loadResolvedApps(process.env),
+    apps,
     validateConfig: catalog
       ? (sessionConfig: SessionConfig): string | undefined =>
           catalog.isAllowed(sessionConfig.image)
@@ -106,6 +113,9 @@ async function main(): Promise<void> {
   // Reap pods orphaned by a prior runner process (in-memory registry).
   if (backend.reapOrphans) {
     await backend.reapOrphans().catch((err) => app.log.warn({ err }, "orphan reap failed"));
+    // After the pods are gone: a content-addressed workspace ConfigMap outlives
+    // every release that changed the manifest, and nothing else removes it.
+    await sweepWorkspaceConfigMaps(kube, config, app.log);
   }
 
   try {

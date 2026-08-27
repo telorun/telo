@@ -756,6 +756,22 @@ preference*, not the application's desired state. `auto` means "detect the
 environment"; the manifest remains the sole authority over what is logged, and
 these inputs affect only how it is painted. `always` / `never` override them.
 
+**Ecosystem bridging.** `CLICOLOR_FORCE` is the convention with the widest native
+reach — Rust's `anstyle` / `clicolors`, Go's `fatih/color` and BSD-derived tooling
+all read it unaided. Node is the sole ecosystem whose libraries (`supports-color`,
+and therefore chalk) read `FORCE_COLOR` and ignore it, so the **Node CLI bridges
+the two for its own ecosystem**: before any import is evaluated it sets
+`FORCE_COLOR` when `CLICOLOR_FORCE` is present and `FORCE_COLOR` is not. The
+adapter belongs in the runtime whose libraries fall short, not in the environment
+that feeds them — otherwise every process spawning a Telo workload grows a list of
+per-ecosystem spellings, one longer per kernel. An existing `FORCE_COLOR` is never
+overwritten: it outranks `CLICOLOR_FORCE` in the order above precisely so
+`FORCE_COLOR=0` with `CLICOLOR_FORCE=1` can mean "off for Node, forced for
+everything else". A runtime MUST NOT bake `CLICOLOR_FORCE` into an image: the
+usual way to override an image default (an empty value in a pod spec, `-e VAR=`)
+sets it **empty**, which step 4 reads as present-and-forcing, so a baked default
+would be undisableable by the normal means.
+
 Runtimes MUST NOT force color on merely because a CI environment variable is
 present — a widespread bug in existing libraries. Runtimes MUST test
 non-emptiness, not mere presence, for `NO_COLOR` and `FORCE_COLOR`.

@@ -71,6 +71,45 @@ runner:
       cpu: "100m"
       memory: "128Mi"
 
+# Watch sessions: a workspace that runs continuously instead of one pod per run.
+# One pod holds a shared /workspace volume, a `workspace` container serving the
+# editor's file routes, one container per running application under
+# `telo run --watch`, and optionally a co-resident agent from the `apps` catalog.
+# An edit then costs a kernel reload rather than a pod.
+#
+# OFF by default: it is a materially different resource shape, whose concurrency
+# is bounded by simultaneous EDITORS rather than simultaneous runs, so it gets
+# its own gate and its own ceilings rather than inheriting a run session's.
+#
+# Watch sessions never build an image, and they resolve their own module closure
+# inside the pod — so the session namespace's egress must reach the module
+# registries as well as anything the agent calls. Core NetworkPolicy is CIDR-only
+# and registries sit behind rotating-IP CDNs, so a locked-down operator needs a
+# CNI with FQDN policy or an egress proxy here. Run sessions are unaffected.
+watch:
+  enabled: false
+  # No SSE/WS subscriber for this long -> suspend: the pod is deleted and the
+  # workspace checkpoint is kept, and `POST /v1/sessions/:id/resume` brings the
+  # session back under the same id. Aggressive reaping is what makes per-visitor
+  # watch sessions affordable, and the checkpoint is what makes it safe.
+  idleSeconds: 300
+  # Pod deadline. One deadline covers the agent and the app containers, so it
+  # takes the longer (agent) ceiling and lets idleness do the real work — an hour
+  # would kill a conversation mid-turn.
+  maxTtlSeconds: 21600
+  # Separate concurrency ceiling from runner.maxSessions.
+  maxSessions: 8
+  # Per-session reload rate limit (per minute).
+  reloadLimit: 30
+  # How long a SUSPENDED record is retained before eviction. Deliberately not the
+  # pod deadline: that bounds a pod, so on its own nothing would ever evict a
+  # suspended record.
+  suspendedTtlSeconds: 86400
+  # How often the runner pulls a whole-tree workspace snapshot. The checkpoint is
+  # a CACHE, never the only copy — the editor holds the authoritative workspace,
+  # so a runner restart costs an upload, not user work.
+  checkpointSeconds: 30
+
 # HARD CEILINGS for every session. Requests may ask for less, never more
 # (min(requested, ceiling)). For an anonymous-tier runner these ARE the policy.
 limits:

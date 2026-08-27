@@ -55,9 +55,16 @@ export interface RunnerCapabilities {
   displayName: string;
   description: string;
   config: { schema: JSONSchema7 };
-  /** Advertised by every runner; reserved for future editor use (e.g. hiding
-   *  the terminal when `io` is false). Not consumed yet. */
-  features: { io: boolean; ports: boolean };
+  /** What this runner offers. `io` lists the byte-channel attach modes;
+   *  `watch` gates the editor's watch-mode entry point — a runner with it off
+   *  rejects the field, so the editor must not offer it. `agents` names the
+   *  catalog entries admissible as a session's co-resident agent. */
+  features: {
+    io: Array<"tty" | "streams">;
+    ports: boolean;
+    watch?: boolean;
+    agents?: string[];
+  };
   /** Operator-predefined applications the runner can launch by name (mirrors
    *  runner-core's `RunnerAppDescriptor`). The agent entry point shows only
    *  when an app named `authoring-agent` is offered. */
@@ -113,6 +120,19 @@ export interface RunRequest {
   /** The terms version the user accepted for this runner, sent to the runner so
    *  it lets the session start. Omitted when the runner has no terms. */
   acceptedTermsVersion?: string;
+  /** `run` (default) is one run: the session ends when the workload exits.
+   *  `watch` makes the session a workspace that runs continuously — saving a
+   *  file reloads the kernel instead of starting a new session. Only offered
+   *  when the runner advertises `features.watch`. */
+  mode?: "run" | "watch";
+}
+
+/** An explicit write/delete list, not a whole-tree replace: a deletion has to be
+ *  expressible, and a whole-tree replace can only express it by treating absence
+ *  as intent. Mirrors runner-core's `WorkspaceChangeSet`. */
+export interface WorkspaceChangeSet {
+  write?: Array<{ path: string; content: string; encoding?: "utf8" | "base64" }>;
+  delete?: string[];
 }
 
 export interface RunBundle {
@@ -128,10 +148,31 @@ export interface RunSession {
   /** Live PTY byte channel. Present when the adapter can stream raw terminal
    *  bytes both directions; absent for log-only adapters. */
   io?: RunIo;
+
+  /** True when this session is a workspace that runs continuously. The three
+   *  operations below exist only then, so a caller checks one flag rather than
+   *  three optional methods. */
+  readonly isWatch?: boolean;
+  /** Push an edit into the running workspace. The kernel's watcher reloads on
+   *  it — this is what makes a save cost a reload rather than a session. */
+  syncWorkspace?(changes: WorkspaceChangeSet): Promise<void>;
+  /** Re-run with no file change: pressing Run again after a one-shot app
+   *  completed is not a change, so `--watch` alone would do nothing. */
+  reload?(): Promise<void>;
+  /** Bring a suspended session back under the same id. Resolves to `false` when
+   *  the runner no longer has it — the editor holds the authoritative workspace,
+   *  so the caller starts a fresh session and re-seeds from its own copy. */
+  resume?(): Promise<boolean>;
 }
 
+/** Which source produced a byte-channel chunk. `tty` under a terminal attach,
+ *  where there genuinely is one merged stream; `stdout` / `stderr` only where
+ *  the transport really did separate them. The tag never asserts a split that
+ *  does not exist. */
+export type ByteStreamTag = "tty" | "stdout" | "stderr";
+
 export interface RunIoHandlers {
-  onData(bytes: Uint8Array): void;
+  onData(bytes: Uint8Array, stream: ByteStreamTag): void;
   onClose(reason: { code: number; clean: boolean }): void;
 }
 
@@ -158,12 +199,20 @@ export interface RunnerEndpoint {
   url?: string;
 }
 
+/** The SESSION's status, as distinct from how any one run inside it ended.
+ *  A one-shot app finishing in a watch session emits `run.completed` and leaves
+ *  the session `running`; `exited` belongs to a run session, where the session
+ *  IS the run. Mirrors runner-core's `RunStatus`. */
 export type RunStatus =
   | { kind: "starting" }
   /** `inspectUrl` is the kernel inspection UI fronted by a proxy, set only when
    *  the run used `inspect` and the runner exposes it; absent otherwise. */
   | { kind: "running"; endpoints?: RunnerEndpoint[]; inspectUrl?: string }
   | { kind: "exited"; code: number }
+  /** Reaped for idleness: the pod/containers are gone, the workspace checkpoint
+   *  is held, and `resume` brings the session back under the same id. NOT
+   *  terminal — the editor keeps the session and offers to resume. */
+  | { kind: "suspended" }
   | { kind: "failed"; message: string }
   | { kind: "stopped" };
 
@@ -177,19 +226,62 @@ export type RunPhase = "build" | "provision" | "boot";
  *  runner-core's `ReachabilityState`. */
 export type RunReachabilityState = "checking" | "reachable" | "unreachable";
 
+/** What started one generation of an application. */
+export type RunTrigger = "initial" | "watch" | "manual" | "resume";
+
+/** A RUN outcome — one per app per reload generation, distinct from the session
+ *  status. `generation` is monotonic per app and starts at 1. */
+export type RunOutcomeEvent =
+  | { type: "run"; app: string; generation: number; phase: "started"; trigger: RunTrigger }
+  | {
+      type: "run";
+      app: string;
+      generation: number;
+      phase: "completed";
+      code: number;
+      durationMs?: number;
+    }
+  | { type: "run"; app: string; generation: number; phase: "failed"; reason: string };
+
+/** Workload output does NOT travel this channel — it goes over the byte channel
+ *  (`RunIo`), which exists because per-chunk events are wasteful for high-volume
+ *  output. The `stdout` / `stderr` variants this union used to declare were
+ *  emitted by nothing: a contract in shape only. */
 export type RunEvent =
-  | { type: "stdout"; chunk: string }
-  | { type: "stderr"; chunk: string }
   | { type: "status"; status: RunStatus }
-  | { type: "progress"; phase: RunPhase; message: string; done?: boolean }
-  /** A frame from the workload's kernel debug stream (event or log line). The
+  /** `app` is absent for session-scoped provisioning (scheduling, image pull)
+   *  and present once the message belongs to one application. */
+  | { type: "progress"; app?: string; phase: RunPhase; message: string; done?: boolean }
+  /** A frame from one app's kernel debug stream (event or log line). The
    *  adapter sources it differently per backend (relayed by a remote runner, or
    *  a direct loopback SSE for the local runner), but RunView consumes it the
    *  same way regardless. */
-  | { type: "debug"; frame: DebugFrame }
-  /** Per-port reachability transition (keyed by port), rendered on the badge. */
-  | { type: "reachability"; port: number; state: RunReachabilityState };
+  | { type: "debug"; app: string; frame: DebugFrame }
+  /** Per-port reachability transition, rendered on the badge. */
+  | { type: "reachability"; app: string; port: number; state: RunReachabilityState }
+  | RunOutcomeEvent
+  /** An app's declared port set changed on reload and the runner re-patched its
+   *  routing. Without this the app binds the new port and is unreachable with no
+   *  ingress, no error and no event. */
+  | {
+      type: "endpoints";
+      app: string;
+      added?: RunnerEndpoint[];
+      removed?: RunnerEndpoint[];
+      rejected?: Array<{ port: number; reason: string }>;
+    };
 
 export function isTerminal(status: RunStatus): boolean {
   return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";
+}
+
+/** Thrown when a watch session the editor still holds no longer exists on the
+ *  runner — its checkpoint was lost to a restart. Not a failure to report: the
+ *  editor holds the authoritative workspace, so the caller starts a fresh
+ *  session and re-seeds from its own copy. */
+export class SessionGoneError extends Error {
+  constructor() {
+    super("The runner no longer holds this session.");
+    this.name = "SessionGoneError";
+  }
 }

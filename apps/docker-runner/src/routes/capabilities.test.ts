@@ -23,7 +23,7 @@ describe("GET /v1/capabilities", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.displayName).toBe("Docker runner");
-    expect(body.features).toEqual({ io: true, ports: true });
+    expect(body.features).toEqual({ io: ["tty", "streams"], ports: true, watch: false });
     // No RUNNER_APPS → no predefined apps advertised.
     expect(body.apps).toBeUndefined();
 

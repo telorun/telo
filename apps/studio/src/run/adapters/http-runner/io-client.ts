@@ -5,6 +5,10 @@ const STORAGE_PREFIX = SESSION_PREFIXES.runIoSeq;
 const RESIZE_DEBOUNCE_MS = 50;
 const MAX_BACKOFF_MS = 10_000;
 const SEQ_PREFIX_BYTES = 4;
+const STREAM_TAG_BYTES = 1;
+/** Wire codes for the per-frame stream tag: `tty` under a terminal attach,
+ *  `stdout`/`stderr` only where the transport genuinely separated them. */
+const STREAM_TAGS = ["tty", "stdout", "stderr"] as const;
 // Application-level close codes the runner emits — we do not auto-reconnect
 // on these, since they describe terminal conditions on the server side.
 const TERMINAL_CLOSE_CODES = new Set<number>([1000, 1001, 1005, 4403, 4404, 4410]);
@@ -111,23 +115,27 @@ export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
               // renders it inline. Dim style emitted as an ANSI escape; the
               // terminal handles rendering.
               const note = "\r\n\x1b[2m[stream reconnected — earlier output truncated]\x1b[0m\r\n";
-              handlers.onData(new TextEncoder().encode(note));
+              handlers.onData(new TextEncoder().encode(note), "tty");
             }
             return;
           }
 
-          // Binary frame — `[seq:4 BE][payload:N]`. The seq prefix is the
-          // server's authoritative chunk id; we use it for dedup on
+          // Binary frame — `[seq:4 BE][stream:1][payload:N]`. The seq prefix is
+          // the server's authoritative chunk id; we use it for dedup on
           // reconnect/replay, NOT a client-side counter (counting frames
           // would silently drift if any frame were lost or duplicated).
           if (!(event.data instanceof ArrayBuffer)) return;
-          if (event.data.byteLength < SEQ_PREFIX_BYTES) return;
+          if (event.data.byteLength < SEQ_PREFIX_BYTES + STREAM_TAG_BYTES) return;
           const view = new DataView(event.data);
           const seq = view.getUint32(0, false);
           if (seq <= lastSeq) return;
           lastSeq = seq;
           persistSeq(storageKey, lastSeq);
-          handlers.onData(new Uint8Array(event.data, SEQ_PREFIX_BYTES));
+          const stream = STREAM_TAGS[view.getUint8(SEQ_PREFIX_BYTES)] ?? "tty";
+          handlers.onData(
+            new Uint8Array(event.data, SEQ_PREFIX_BYTES + STREAM_TAG_BYTES),
+            stream,
+          );
         });
 
         ws.addEventListener("close", (event: CloseEvent) => {
