@@ -9,9 +9,11 @@ import {
   type RunEvent,
   type RunnerCapabilities,
   type RunnerTerms,
+  type RunnerEndpoint,
   type RunSession,
   type RunStatus,
   type WorkspaceChangeSet,
+  type WorkspaceFileEntry,
 } from "../../types";
 import { makeHttpRunnerIo } from "./io-client";
 import { openSseClient } from "./sse-client";
@@ -146,30 +148,8 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
       return report;
     },
 
-    async getTerms(config): Promise<RunnerTerms | null> {
-      if (validateBaseUrl(config.baseUrl)) return null;
-      const base = trimTrailingSlash(config.baseUrl);
-      let res: Response;
-      try {
-        res = await fetchWithTimeout(`${base}/v1/capabilities`, { method: "GET" }, HEALTH_TIMEOUT_MS);
-      } catch {
-        throw new Error(`Couldn't reach the runner at ${config.baseUrl}.`);
-      }
-      // 404 = older runner without capabilities → treat as no terms.
-      if (res.status === 404) return null;
-      if (!res.ok) {
-        throw new Error(`Runner returned HTTP ${res.status} on /v1/capabilities.`);
-      }
-      try {
-        return ((await res.json()) as RunnerCapabilities).terms ?? null;
-      } catch {
-        throw new Error("Runner returned a malformed /v1/capabilities document.");
-      }
-    },
-
     async start(request, config): Promise<RunSession> {
       const base = trimTrailingSlash(config.baseUrl);
-      const runnerHost = extractHost(config.baseUrl);
 
       const headers: Record<string, string> = { "content-type": "application/json" };
       if (request.acceptedTermsVersion) {
@@ -192,6 +172,9 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
             // Omitted for a plain run, so a runner too old to know the field is
             // unaffected. A runner with watch disabled rejects it with 400.
             ...(request.mode === "watch" ? { mode: "watch" } : {}),
+            // Only ever sent alongside `watch` — the runner rejects the pairing
+            // otherwise, and the caller only sets it from `features.agents`.
+            ...(request.mode === "watch" && request.agent ? { agent: request.agent } : {}),
           }),
         },
         opts.startTimeoutMs,
@@ -224,7 +207,6 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
       const { sessionId, streamUrl } = (await createRes.json()) as CreateSessionResponse;
       return buildSession({
         base,
-        runnerHost,
         sessionId,
         streamUrl,
         initialStatus: { kind: "starting" },
@@ -234,7 +216,6 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
 
     async attach(sessionId, config): Promise<RunSession | null> {
       const base = trimTrailingSlash(config.baseUrl);
-      const runnerHost = extractHost(config.baseUrl);
 
       let res: Response;
       try {
@@ -256,10 +237,9 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
 
       return buildSession({
         base,
-        runnerHost,
         sessionId,
         streamUrl: `/v1/sessions/${sessionId}/events`,
-        initialStatus: fillEndpointHost(status, runnerHost),
+        initialStatus: fillEndpointHost(status, base),
         // The re-hydrated record is empty, so replay console + events from the
         // start instead of from the prior tab's checkpoint.
         replayFromStart: true,
@@ -273,7 +253,6 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
 
 interface BuildSessionArgs {
   base: string;
-  runnerHost: string;
   sessionId: string;
   streamUrl: string;
   initialStatus: RunStatus;
@@ -286,7 +265,7 @@ interface BuildSessionArgs {
  *  after reload). The only difference between the two is where the session id
  *  comes from and whether replay starts from zero. */
 function buildSession(args: BuildSessionArgs): RunSession {
-  const { base, runnerHost, sessionId, streamUrl, initialStatus, replayFromStart, isWatch } = args;
+  const { base, sessionId, streamUrl, initialStatus, replayFromStart, isWatch } = args;
 
   let currentStatus: RunStatus = initialStatus;
   const subscribers = new Set<(event: RunEvent) => void>();
@@ -301,7 +280,7 @@ function buildSession(args: BuildSessionArgs): RunSession {
     onEvent: (event) => {
       const next =
         event.type === "status"
-          ? { ...event, status: fillEndpointHost(event.status, runnerHost) }
+          ? { ...event, status: fillEndpointHost(event.status, base) }
           : event;
       if (next.type === "status") currentStatus = next.status;
       emit(next);
@@ -356,6 +335,26 @@ function buildSession(args: BuildSessionArgs): RunSession {
               WORKSPACE_TIMEOUT_MS,
             );
             if (!res.ok) throw new Error(await describeFailure(res, "sync the workspace"));
+          },
+          async workspaceTree(): Promise<WorkspaceFileEntry[]> {
+            const res = await fetchWithTimeout(
+              `${base}/v1/sessions/${sessionId}/workspace`,
+              { method: "GET" },
+              WORKSPACE_TIMEOUT_MS,
+            );
+            if (!res.ok) throw new Error(await describeFailure(res, "read the workspace"));
+            const body = (await res.json()) as { files?: WorkspaceFileEntry[] };
+            return Array.isArray(body.files) ? body.files : [];
+          },
+          async readWorkspaceFile(path: string): Promise<string> {
+            const res = await fetchWithTimeout(
+              `${base}/v1/sessions/${sessionId}/workspace/file?path=${encodeURIComponent(path)}`,
+              { method: "GET" },
+              WORKSPACE_TIMEOUT_MS,
+            );
+            if (!res.ok) throw new Error(await describeFailure(res, `read '${path}'`));
+            const body = (await res.json()) as { content?: unknown };
+            return typeof body.content === "string" ? body.content : "";
           },
           async reload() {
             const res = await fetchWithTimeout(
@@ -427,10 +426,33 @@ function extractHost(baseUrl: string): string {
   }
 }
 
-function fillEndpointHost(status: RunStatus, runnerHost: string): RunStatus {
-  if (status.kind !== "running" || !status.endpoints) return status;
+function fillEndpointHost(status: RunStatus, baseUrl: string): RunStatus {
+  if (status.kind !== "running") return status;
+  const runnerHost = extractHost(baseUrl);
+  // The runner knows the port it published and not the hostname this client
+  // reached it by, so an empty host is its way of saying "yours". True of the
+  // agent's endpoint for exactly the same reason as an app's.
+  const fill = (e: RunnerEndpoint): RunnerEndpoint =>
+    e.host === "" ? { ...e, host: runnerHost } : e;
+  // The agent's endpoint is dialled, not rendered, so it is completed to a URL
+  // here rather than composed by every consumer. The scheme comes from the base
+  // URL this client actually reached the runner on — the desktop shell's own
+  // page protocol says nothing about how the runner is served.
+  const dialable = (e: RunnerEndpoint): RunnerEndpoint => {
+    const filled = fill(e);
+    if (filled.url) return filled;
+    let scheme = "http";
+    try {
+      scheme = new URL(baseUrl).protocol.replace(/:$/, "") || "http";
+    } catch {
+      // A malformed base URL is already surfaced by every other request; the
+      // default keeps this from throwing on the status path.
+    }
+    return { ...filled, url: `${scheme}://${filled.host}:${filled.port}` };
+  };
   return {
     ...status,
-    endpoints: status.endpoints.map((e) => (e.host === "" ? { ...e, host: runnerHost } : e)),
+    ...(status.endpoints ? { endpoints: status.endpoints.map(fill) } : {}),
+    ...(status.agent ? { agent: dialable(status.agent) } : {}),
   };
 }

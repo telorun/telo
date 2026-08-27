@@ -151,12 +151,6 @@ export interface ViewProps {
      *  hides the run bar and the dock. */
     appPath: string | null;
     onRun: () => void;
-    /** Start a watch session: a workspace that runs continuously, where saving a
-     *  file reloads the kernel instead of starting a new run. */
-    onRunWatch: () => void;
-    /** Whether the selected runner offers watch sessions — read from its
-     *  advertised capabilities, since a runner with watch off rejects the field. */
-    canWatch: boolean;
     /** Active runner from settings, or null when none is selected. */
     runnerName: string | null;
     onOpenSettings: () => void;

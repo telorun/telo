@@ -96,6 +96,30 @@ fails as a confusing "file not found" one reload after a write: every container
 reads and writes `/workspace`, so they must share a GID or the agent writes files
 the app cannot read.
 
+**The agent is routed like an app port, and reported like one.** Its catalog
+entry declares the `port` its image listens on, and the session refuses an agent
+without one (`400 agent_port_undeclared`) rather than starting a container
+nothing can reach. The pod's containers share one network namespace, so two of
+them cannot bind the same port at all — but where an application declares the
+agent's port the **manifest wins**: the session starts without the agent and says
+so on its stream, rather than refusing to run the user's app over a container
+they never asked for and cannot decline. Nothing else is arranged: the pod's containers
+share one network namespace, so the port simply joins the session's own Service
+and Ingress and answers at `<agentPort>-<sessionId>.<base-domain>`. The `running`
+status carries it as an `agent` endpoint beside `endpoints` — separate, because
+`endpoints` are the ports the user's applications declared, and an
+operator-launched container is not one of them. It is reachable without auth for
+as long as the session lives, which is the exposure an app session of the same
+image already has.
+
+**Nothing verifies that the agent listens where `port` says.** `port` tells the
+runner where to route; what the image actually binds is configured separately
+(the authoring agent reads `PORT`, defaulting to 8080). If the two disagree the
+runner publishes a port and routes a host with nothing behind it, and the agent
+appears to start while every request to it fails — neither backend watches the
+agent's port the way both watch an application's. Keep `port` and any `PORT` in
+the entry's `env` in agreement.
+
 **The workspace surface is runner infrastructure, not agent functionality.** It is
 part of the `/v1` session contract, so the runner owns its manifest and its
 routes; the agent is one more writer on the volume beside the app containers,
@@ -264,7 +288,7 @@ outcome than a URL that silently reaches the wrong app.
 | `PORT` | `8062` | HTTP listen port |
 | `RUNNER_DISPLAY_NAME` | `Telo Runner` | Display name advertised on `/v1/capabilities` (the editor's runner label) |
 | `RUNNER_DESCRIPTION` | `Runs the Telo application in a cloud environment` | Description advertised on `/v1/capabilities` |
-| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name (chart: inline `apps.catalog`, or `apps.catalogSecret` referencing a Secret holding the JSON — use the Secret whenever entries embed secrets in `env`); see the docker-runner README for the entry shape. App sessions run the catalog image directly as a pod — no on-cluster build |
+| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name (chart: inline `apps.catalog`, or `apps.catalogSecret` referencing a Secret holding the JSON — use the Secret whenever entries embed secrets in `env`); see the docker-runner README for the entry shape, including the `port` an entry must declare to be usable as a session's co-resident `agent`. App sessions run the catalog image directly as a pod — no on-cluster build |
 | `RUNNER_APP_MAX_CPU` | `500m` | CPU ceiling for predefined-app pods (separate from the anonymous-session ceiling) |
 | `RUNNER_APP_MAX_MEMORY` | `512Mi` | Memory ceiling for predefined-app pods |
 | `RUNNER_APP_MAX_TTL_SECONDS` | `21600` | Wall-clock TTL for predefined-app pods (agent sessions are long-lived) |

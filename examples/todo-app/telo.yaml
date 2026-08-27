@@ -10,9 +10,9 @@ metadata:
     delete over the `todos` table — mounted alongside the static frontend.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
-  Sql: oci://ghcr.io/telorun/sql@0.23.0#sha256-7OoJzJcGyUpfWe4u1c_4aBXB_isG21LaeN8sPmwfufI
-  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
-  Crud: oci://ghcr.io/telorun/crud@0.13.0#sha256-FnUOXUm792b9jezp1lKWeZdw1yTNltZ0aJRCdNiaQJU
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
+  Crud: oci://ghcr.io/telorun/crud@0.14.0#sha256-aB3P-0g4LKhQ5C2lS2XvZz-A68gY3udtSrhroLetzWk
 targets:
   - !ref migrate
   - !ref server

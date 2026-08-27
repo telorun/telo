@@ -1,6 +1,7 @@
 import {
   BaseImageCatalog,
   buildServer as coreBuildServer,
+  coResidentAgentNames,
   loadResolvedApps,
   loadTermsFromEnv,
   stopAllSessions,
@@ -47,10 +48,10 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
         terms,
         imageEnum: catalog?.current(),
         watch: deps.config.watch.enabled,
-        // A co-resident agent is drawn from the same catalog an app session
-        // launches from — the advertised set and the accepted set are one list,
-        // so they cannot drift.
-        agents: deps.config.watch.enabled ? Object.keys(apps) : undefined,
+        // Only entries that declare a port: the session route refuses an agent
+        // without one, and advertising what will be rejected is what makes the
+        // editor attach an agent to every run and every run fail.
+        agents: deps.config.watch.enabled ? coResidentAgentNames(apps) : undefined,
       }),
     defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
     // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on

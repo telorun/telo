@@ -23,10 +23,10 @@ imports:
   AiOpenai: oci://ghcr.io/telorun/ai-openai@0.16.0#sha256-DGAJ0wG1FdNAj7XWWrpgOuJgh07fEGg4ymvB6ODiEhY
   AiMcp: oci://ghcr.io/telorun/ai-mcp@0.12.0#sha256-C0pozBwpE2xzqEsxCJ5YbpqdiHKpxw90Wvn7Md2Ynus
   Mcp: oci://ghcr.io/telorun/mcp-client@0.15.0#sha256-M3frsOwjZWR_Vo2LERsRjBqcN7iXZbVg_gTjK4OGq8s
-  Fs: oci://ghcr.io/telorun/fs@0.9.4#sha256-w8NLcREIq8SvxtsrULgRVKMPXISnR4iJd7LxeFnBFGM
+  Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
-  Sql: oci://ghcr.io/telorun/sql@0.23.0#sha256-7OoJzJcGyUpfWe4u1c_4aBXB_isG21LaeN8sPmwfufI
-  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
   RecordStream: oci://ghcr.io/telorun/record-stream@0.15.4#sha256-L4b4EJ4vVPnHszy59Jy7WlZaldAk0kP2Z1sKYwDKhNg
   Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
   Lease: oci://ghcr.io/telorun/lease@0.13.0#sha256-HTQ8Fds5O9h15_gsOlVNSgVpGl7Ma3uKJRldfw-lfyI
@@ -499,13 +499,24 @@ tools:
         path: { type: string }
   - tool: !ref listDir
     name: list_dir
-    description: List a directory relative to the workspace root; recursive optional.
+    description: >-
+      List a directory relative to the workspace root; recursive optional, and
+      the whole root when `path` is omitted. Caches and vendor directories
+      (`.telo`, `node_modules`, `.git`, `dist`) are filtered out at any depth —
+      their absence from a listing is not evidence that files are missing.
     parameters:
       type: object
       additionalProperties: false
       properties:
         path: { type: string }
         recursive: { type: boolean }
+    # The exclude set is fixed here rather than offered as a parameter: a
+    # recursive listing of a workspace is otherwise mostly `.telo` cache paths,
+    # and a set the model can pass is a set the model can drop.
+    inputs:
+      path: !cel "'path' in arguments ? arguments.path : ''"
+      recursive: !cel "'recursive' in arguments ? arguments.recursive : false"
+      exclude: [".telo", "node_modules", ".git", "dist"]
   - tool: !ref removeFile
     name: delete_file
     description: >-
@@ -2069,7 +2080,10 @@ system: |
       Automatically runs `telo check` afterwards and returns `checkExitCode` +
       `checkOutput` in its result.
     - `read_file` — read a file's contents.
-    - `list_dir` — list a directory (optionally recursive).
+    - `list_dir` — list a directory (optionally recursive), the workspace root
+      when `path` is omitted. It never returns `.telo/`, `node_modules/`,
+      `.git/` or `dist/` at any depth, so a listing shows the files you author
+      and nothing else.
     - `delete_file` — delete a file (or a directory tree with `recursive`).
     - `telo_check` — run `telo check` on a manifest file on demand. Use it to
       re-validate files you did not just write — e.g. every file that referenced

@@ -1,6 +1,6 @@
 # Co-resident agent + watch sessions
 
-**Status: landed, minus the items under "Remaining" below.**
+**Status: landed.**
 
 A session can now be a **workspace that runs continuously** rather than one run:
 one pod, a shared `/workspace` volume, one container per application under
@@ -16,43 +16,11 @@ The design and its rationale now live where they are read:
 - `apps/docker-runner/README.md` — the same model over sibling containers.
 - `packages/runner-core/README.md` — the `RunnerBackend` seam and the run
   projection.
+- `apps/authoring-agent/README.md` — the agent's own two deployments, its routes
+  and what its tools are allowed to do.
 - `CLAUDE.md` — the one-paragraph summary and where to look.
 
 This file is now only what is left.
-
----
-
-## Remaining
-
-### 1. The co-resident agent is not reachable from the editor
-
-The pod half is done and tested: the agent container mounts the shared volume,
-receives the operator env and nothing else, and its manifest is rooted at
-`WORKSPACE_DIR` (which both runners set), so its file tools write the tree the
-app containers watch.
-
-What is missing is the editor:
-
-- The studio never sends `agent` on a session, so there is no way to ask for one.
-  `/v1/capabilities` already advertises `features.agents` (the operator catalog),
-  and the session route already validates the field — `400 unknown_agent`, and
-  `400 agent_requires_watch` without `mode: "watch"`.
-- The studio still opens a **separate** agent session via
-  `POST /v1/apps/authoring-agent/sessions` and polls that session's `/workspace`.
-  For editor-driven authoring that is what the co-resident agent replaces: the
-  agent writes the session's own volume directly, and the editor reads and writes
-  it through `/v1/sessions/:id/workspace` like any other client.
-- The agent's own `/workspace` routes stay, for standalone use.
-
-**Verify.** Start a watch session with an agent from the editor; have the agent
-write a file; assert the app reloads (a `run` event with `trigger: "watch"`) and
-that the editor's workspace tree shows the agent's file.
-
-### 2. `apps/authoring-agent/README.md` does not exist
-
-The workspace is now the session's shared volume, written through the agent's own
-filesystem tools and rooted at `WORKSPACE_DIR`; the agent can observe a running
-app. There is no README to say so.
 
 ---
 
@@ -74,7 +42,24 @@ on them.
   (`telo-run-<sessionId>`); the port-owning container takes it as a network alias.
   With several port-declaring apps that name is ambiguous — docker round-robins a
   shared alias — so nothing is aliased and those ports are reported `rejected`.
-  Single-app and no-proxy multi-app both work fully.
+  Single-app and no-proxy multi-app both work fully. The agent does not count
+  toward this: it takes `telo-run-<sessionId>-agent`, a name of its own that the
+  proxy's existing rule already resolves.
+- **The user's first save after an agent turn re-pushes what the agent wrote.**
+  The editor diffs each save against a snapshot of what IT last pushed, and an
+  agent writes the volume directly, so that snapshot is one turn stale: the file
+  is written again with identical bytes, and the watcher fires on the write
+  rather than on a change. One redundant reload, and only one — the snapshot is
+  correct from that save on. Closing it means threading the agent's write set
+  into the editor's per-app bundle snapshots, which is more machinery than one
+  reload is worth. There is no loop: reflecting an agent write into the editor
+  goes through the file-mutation path, not the save path, so it pushes nothing.
+- **An agent runs on every watch session the runner offers one for.** The editor
+  asks for it whenever `features.agents` names the authoring agent, not when the
+  chat panel happens to be open — a session's container set is fixed at creation,
+  so a panel opened later could not gain one, and the same button would mean two
+  things. The cost is an idle container per watch session; an operator who does
+  not want that omits the name from the catalog. Tokens are spent only on a turn.
 - **A suspended session is best-effort.** The checkpoint lives in the runner's
   memory, so a restart loses it and `resume` answers `404`. The editor holds the
   authoritative workspace and re-seeds in one change set. That is a requirement

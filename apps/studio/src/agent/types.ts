@@ -71,6 +71,47 @@ export interface ChatMessage {
 
 export type AgentStatus = "idle" | "launching" | "seeding" | "streaming" | "error";
 
+/** One file of a workspace snapshot: its path and the sha256 of its bytes.
+ *  Both surfaces that can hold the shared workspace report this shape — the
+ *  agent's `GET /workspace` and the session's `GET /v1/sessions/:id/workspace`. */
+export interface TreeFile {
+  path: string;
+  hash: string;
+}
+
+/**
+ * The directory the agent and the editor converge on, whichever side of the
+ * runner it lives on: a standalone agent's own `./workspace`, or — for a
+ * co-resident agent — the watch session's shared volume, which the editor
+ * reaches through `/v1/sessions/:id/workspace` and the agent writes directly
+ * with its filesystem tools. One interface because the convergence logic is the
+ * same either way; only the transport differs.
+ */
+export interface AgentWorkspace {
+  /** Content-hash tree of the shared workspace. */
+  tree(): Promise<TreeFile[]>;
+  readFile(path: string): Promise<string>;
+  apply(write: Array<{ path: string; content: string }>, remove: string[]): Promise<void>;
+  /** Paths this surface holds that are nobody's to sync — infrastructure the
+   *  runner seeds into the volume rather than files the user authored. Excluded
+   *  in BOTH directions: filtering only the workspace side would make every
+   *  turn re-push a file the editor happens to have, and only the editor side
+   *  would delete one it does not. Empty for a standalone agent, whose
+   *  workspace holds nothing the editor did not put there. */
+  readonly excludedPaths: ReadonlySet<string>;
+}
+
+/**
+ * The agent that lives inside a live watch session: where it answers, and the
+ * session's own workspace surface. Resolved from the session's `running` status
+ * — the runner reports where it routed the agent, because only it knows.
+ */
+export interface CoResidentAgent {
+  runId: string;
+  baseUrl: string;
+  workspace: AgentWorkspace;
+}
+
 /**
  * The editor registers this bridge so the agent context can seed the agent's
  * workspace from the editor's files and reflect the agent's writes back — all

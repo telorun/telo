@@ -87,8 +87,6 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
               appPath={appPath}
               runnerName={viewProps.run.runnerName}
               onRun={viewProps.run.onRun}
-              onRunWatch={viewProps.run.onRunWatch}
-              canWatch={viewProps.run.canWatch}
               onOpenSettings={viewProps.run.onOpenSettings}
             />
           </>

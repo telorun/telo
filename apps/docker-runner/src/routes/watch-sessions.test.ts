@@ -30,6 +30,15 @@ const BODY = {
 };
 
 const CATALOG = JSON.stringify({
+  "authoring-agent": {
+    image: "ghcr.io/telorun/authoring-agent:1",
+    env: { KEY: "secret" },
+    port: 8080,
+  },
+});
+
+/** The same entry with no port — an agent the runner has no way to route. */
+const PORTLESS_CATALOG = JSON.stringify({
   "authoring-agent": { image: "ghcr.io/telorun/authoring-agent:1", env: { KEY: "secret" } },
 });
 
@@ -109,6 +118,50 @@ describe("watch session validation", () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe("unknown_agent");
+  });
+
+  it("rejects an agent the operator gave no port", async () => {
+    // An agent nothing can reach is the same silent no-op as an agent nothing
+    // watches. The port is the operator's to declare, so the message names
+    // their config rather than anything the caller can change.
+    h = await harness(true, PORTLESS_CATALOG);
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      payload: { ...BODY, mode: "watch", agent: "authoring-agent" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("agent_port_undeclared");
+    expect(res.json().message).toContain("RUNNER_APPS.authoring-agent.port");
+  });
+
+  it("starts without the agent when an app declares the agent's port", async () => {
+    // The manifest wins. A client asks for an agent as a convenience — the
+    // editor does so on every run, without the user choosing — so refusing the
+    // session would make an app that declares 8080 unrunnable for a reason
+    // naming a container the user never requested and cannot decline.
+    h = await harness(true, CATALOG);
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      payload: {
+        ...BODY,
+        mode: "watch",
+        agent: "authoring-agent",
+        ports: [{ port: 8080, protocol: "tcp" }],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("advertises only catalog entries that declare a port", async () => {
+    // The advertised set and the accepted set have to be one list. An operator
+    // upgrading keeps a catalog with no `port` anywhere — the field is new — so
+    // advertising it unfiltered makes the editor attach an agent to every run
+    // and every run is refused.
+    h = await harness(true, PORTLESS_CATALOG);
+    const caps = (await h.app.inject({ method: "GET", url: "/v1/capabilities" })).json();
+    expect(caps.features.agents).toBeUndefined();
   });
 
   it("rejects two apps declaring the same port", async () => {

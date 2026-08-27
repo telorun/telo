@@ -576,6 +576,12 @@ function agentContainer(args: BuildWatchPodArgs, agent: ResolvedRunnerApp): V1Co
       { name: "WORKSPACE_DIR", value: WORKSPACE_DIR },
       { name: "CLICOLOR_FORCE", value: "1" },
     ],
+    // Declared so the pod describes what it listens on; the Service selects the
+    // pod and every container shares its network namespace, so the agent needs
+    // no routing of its own beyond being in the session's port set.
+    ...(agent.port !== undefined
+      ? { ports: [{ containerPort: agent.port, protocol: "TCP" }] }
+      : {}),
     resources: watchResources(args.limits),
     volumeMounts: [
       { name: "workspace", mountPath: WORKSPACE_DIR },

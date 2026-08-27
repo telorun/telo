@@ -1,4 +1,6 @@
-import type { AgentHistoryRow, AgentStreamPart } from "./types";
+import type { AgentHistoryRow, AgentStreamPart, TreeFile } from "./types";
+
+export type { TreeFile };
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -25,12 +27,6 @@ async function fetchRetrying(url: string, init?: RequestInit, retries = 6): Prom
       await delay(Math.min(400 * (attempt + 1), 2500));
     }
   }
-}
-
-/** A single file's content hash from `GET /workspace` (Fs.TreeSnapshot). */
-export interface TreeFile {
-  path: string;
-  hash: string;
 }
 
 export interface StartTurnResult {

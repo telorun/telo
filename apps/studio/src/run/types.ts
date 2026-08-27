@@ -30,12 +30,6 @@ export interface RunAdapter<Config = unknown> {
    *  config shapes. */
   resolveBaseUrl?(config: Config): Promise<string | null>;
 
-  /** The runner's usage agreement that must be accepted before a session may
-   *  start, or `null` when this runner has none (e.g. local development). The
-   *  runner enforces it server-side; the editor surfaces it and records the
-   *  user's acceptance. Adapters whose runner has no terms concept omit this. */
-  getTerms?(config: Config): Promise<RunnerTerms | null>;
-
   start(request: RunRequest, config: Config): Promise<RunSession>;
 
   /** Re-establish a session that already exists on the runner, identified by the
@@ -125,6 +119,12 @@ export interface RunRequest {
    *  file reloads the kernel instead of starting a new session. Only offered
    *  when the runner advertises `features.watch`. */
   mode?: "run" | "watch";
+  /** Catalog name of a co-resident agent to run beside the session's apps, on
+   *  the session's own workspace volume. Requires `mode: "watch"` — the runner
+   *  rejects the pairing otherwise, since nothing would observe the agent's
+   *  writes. Only sent when the runner advertises the name in
+   *  `features.agents`. */
+  agent?: string;
 }
 
 /** An explicit write/delete list, not a whole-tree replace: a deletion has to be
@@ -133,6 +133,14 @@ export interface RunRequest {
 export interface WorkspaceChangeSet {
   write?: Array<{ path: string; content: string; encoding?: "utf8" | "base64" }>;
   delete?: string[];
+}
+
+/** One file in a workspace snapshot: its path and the sha256 of its bytes.
+ *  Hashing content is what makes two snapshots diff into an exact change set.
+ *  Mirrors runner-core's `WorkspaceFileEntry`. */
+export interface WorkspaceFileEntry {
+  path: string;
+  hash: string;
 }
 
 export interface RunBundle {
@@ -156,6 +164,12 @@ export interface RunSession {
   /** Push an edit into the running workspace. The kernel's watcher reloads on
    *  it — this is what makes a save cost a reload rather than a session. */
   syncWorkspace?(changes: WorkspaceChangeSet): Promise<void>;
+  /** Content-hash the running workspace. The read half of the same surface: a
+   *  co-resident agent writes the volume directly with its own filesystem
+   *  tools, so this is how the editor learns what it wrote. */
+  workspaceTree?(): Promise<WorkspaceFileEntry[]>;
+  /** One file's contents out of the running workspace. */
+  readWorkspaceFile?(path: string): Promise<string>;
   /** Re-run with no file change: pressing Run again after a one-shot app
    *  completed is not a change, so `--watch` alone would do nothing. */
   reload?(): Promise<void>;
@@ -206,8 +220,15 @@ export interface RunnerEndpoint {
 export type RunStatus =
   | { kind: "starting" }
   /** `inspectUrl` is the kernel inspection UI fronted by a proxy, set only when
-   *  the run used `inspect` and the runner exposes it; absent otherwise. */
-  | { kind: "running"; endpoints?: RunnerEndpoint[]; inspectUrl?: string }
+   *  the run used `inspect` and the runner exposes it; absent otherwise.
+   *  `agent` is where this session's co-resident agent answers — present only on
+   *  a session that asked for one and that the runner could route. */
+  | {
+      kind: "running";
+      endpoints?: RunnerEndpoint[];
+      inspectUrl?: string;
+      agent?: RunnerEndpoint;
+    }
   | { kind: "exited"; code: number }
   /** Reaped for idleness: the pod/containers are gone, the workspace checkpoint
    *  is held, and `resume` brings the session back under the same id. NOT

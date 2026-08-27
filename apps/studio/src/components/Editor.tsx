@@ -70,9 +70,10 @@ import {
   useRun,
   type SyncedFiles,
 } from "../run";
-import type { RunnerTerms } from "../run";
+import type { RunnerCapabilities, RunnerTerms } from "../run";
 import { useAgent } from "../agent";
 import type { WorkspaceBridge } from "../agent";
+import { sessionWorkspace } from "../agent/agent-workspace";
 import { sha256Hex } from "../agent/hash";
 import { AGENT_APP_NAME } from "../agent/launch";
 import { SYNC_EXCLUDED_DIRS } from "../agent/sync";
@@ -251,6 +252,7 @@ export function Editor() {
     registerWorkspace: registerAgentWorkspace,
     setConversation: setAgentConversation,
     setRunner: setAgentRunner,
+    setCoResidentAgent,
     setRunnerAcceptedTerms: setAgentRunnerTerms,
   } = agent;
   const workspaceBridge = useMemo<WorkspaceBridge | null>(() => {
@@ -307,11 +309,32 @@ export function Editor() {
     setAgentConversation(agentRootDir);
   }, [setAgentConversation, agentRootDir]);
 
+  // Hand the chat panel the agent riding inside a live watch session, so it
+  // talks to that one instead of launching a session of the agent's own. The
+  // session's workspace surface comes with it: a co-resident agent writes the
+  // shared volume directly, so `/v1/sessions/:id/workspace` — not the agent's
+  // own routes — is where the editor sees what it wrote. Null whenever no such
+  // session is up, which is what makes the panel fall back to a standalone
+  // launch rather than going dead.
+  const { coResidentAgent } = runContext;
+  useEffect(() => {
+    const live = coResidentAgent();
+    const workspace = live ? sessionWorkspace(live.session) : null;
+    setCoResidentAgent(
+      live && workspace ? { runId: live.runId, baseUrl: live.baseUrl, workspace } : null,
+    );
+  }, [coResidentAgent, setCoResidentAgent]);
+
   // The active runner is where a per-session agent instance is launched. The
   // agent entry point shows only when the runner offers the authoring agent as
   // a predefined app on /v1/capabilities — the runner resolves the image and
   // injects the operator secrets server-side; the editor only asks by name.
   const [agentSupported, setAgentSupported] = useState(false);
+  // The catalog name to request as a watch session's co-resident agent, or null
+  // when this runner offers none. A separate capability from `apps` above: that
+  // one says the agent can be launched as a session of its own, this one that
+  // it may ride inside another session, and an operator can enable either.
+  const [coResidentAgentName, setCoResidentAgentName] = useState<string | null>(null);
   useEffect(() => {
     const runner = settings.runners.find((r) => r.id === settings.activeRunnerId);
     const config = runner?.config as { baseUrl?: string } | undefined;
@@ -332,6 +355,7 @@ export function Editor() {
       setAgentRunner(config?.baseUrl ?? null);
     }
     setAgentSupported(false);
+    setCoResidentAgentName(null);
     setAgentRunnerTerms(null);
     const cancel = () => {
       cancelled = true;
@@ -342,6 +366,9 @@ export function Editor() {
       .then((caps) => {
         if (cancelled) return;
         setAgentSupported(caps?.apps?.some((a) => a.name === AGENT_APP_NAME) === true);
+        setCoResidentAgentName(
+          caps?.features?.agents?.includes(AGENT_APP_NAME) ? AGENT_APP_NAME : null,
+        );
         // A terms-enforcing runner 428s the agent launch without the accepted
         // version header; the run flow's acceptance (per runner + version)
         // carries over to agent sessions.
@@ -354,13 +381,20 @@ export function Editor() {
       .catch(() => {
         // Unreachable / malformed — the run UI surfaces the fault; here the
         // app just stays unoffered, hiding the agent entry point.
-        if (!cancelled) setAgentSupported(false);
+        if (!cancelled) {
+          setAgentSupported(false);
+          setCoResidentAgentName(null);
+        }
       });
     return cancel;
   }, [setAgentRunner, setAgentRunnerTerms, settings.runners, settings.activeRunnerId]);
   // The dev override URL bypasses the runner entirely, so it keeps the agent
-  // reachable (and its settings editable) regardless of the capability.
-  const agentVisible = agentSupported || agent.overrideUrl.trim() !== "";
+  // reachable (and its settings editable) regardless of the capability. Either
+  // capability is enough to offer the panel: a runner may enable the agent as a
+  // co-resident only, and hiding the entry point there would make the operator's
+  // configuration have no effect.
+  const agentVisible =
+    agentSupported || coResidentAgentName !== null || agent.overrideUrl.trim() !== "";
 
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Host-lifetime cache for per-library zone-export derivation. Owned here, not
@@ -497,34 +531,6 @@ export function Editor() {
   const activeRunnerName =
     settings.runners.find((r) => r.id === settings.activeRunnerId)?.name ?? null;
 
-  // Whether the selected runner offers watch sessions. Read from its advertised
-  // capabilities rather than assumed: a runner with watch off REJECTS the field,
-  // so offering the entry point there would be a button that always errors.
-  const [runnerSupportsWatch, setRunnerSupportsWatch] = useState(false);
-  const activeRunner = settings.runners.find((r) => r.id === settings.activeRunnerId);
-  const activeRunnerKey = `${activeRunner?.id ?? ""}:${JSON.stringify(activeRunner?.config ?? null)}`;
-  useEffect(() => {
-    let cancelled = false;
-    setRunnerSupportsWatch(false);
-    if (!activeRunner) return;
-    const adapter = runRegistry.get(activeRunner.adapterId);
-    const config = activeRunner.config ?? adapter?.defaultConfig;
-    if (!adapter?.fetchCapabilities) return;
-    void adapter
-      .fetchCapabilities(config)
-      .then((caps) => {
-        if (!cancelled) setRunnerSupportsWatch(caps?.features?.watch === true);
-      })
-      // An unreachable runner is not a claim that watch is unavailable, but the
-      // entry point stays hidden either way — the Run button surfaces the
-      // unreachability on its own.
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRunnerKey]);
-
   // ---------------------------------------------------------------------------
   // Module creation + deletion
   // ---------------------------------------------------------------------------
@@ -569,7 +575,14 @@ export function Editor() {
     void refreshFileTree(updated);
   }
 
-  async function handleRunModule(filePath: string, mode: "run" | "watch" = "run") {
+  /**
+   * Start an Application. There is ONE way to run: a watch session, where the
+   * app keeps running and a save reloads it. The mode is not a choice the user
+   * makes — it is the runner's capability, so a runner (or a docker daemon) too
+   * old for watch sessions degrades to a plain run rather than rejecting every
+   * Run with a mode it was never offered.
+   */
+  async function handleRunModule(filePath: string) {
     setError(null);
     // The dock states why the LAST press failed, so it is cleared with the same
     // gesture that clears the error banner. Every early return below reports
@@ -643,20 +656,32 @@ export function Editor() {
       return;
     }
 
-    // Terms gate: the runner is the authority on whether running requires
-    // accepting an agreement. Fetch its terms (runner reachable — availability is
-    // ready here); if present and not yet accepted for this runner+version, show
-    // the gate and stop. The accepted version rides along on the run request and
-    // is enforced server-side.
-    let terms: RunnerTerms | null = null;
+    // The runner is the authority on two things this run needs: whether an
+    // agreement must be accepted first, and whether it can host a watch session.
+    // Both are read from one fresh capabilities fetch rather than from the state
+    // the header keeps — that state is filled asynchronously, so a Run clicked
+    // before it lands would silently start a plain run, which is exactly the
+    // difference the single Run control exists to stop the user reasoning about.
+    let capabilities: RunnerCapabilities | null = null;
     try {
-      terms = (await adapter.getTerms?.(config)) ?? null;
+      capabilities = (await adapter.fetchCapabilities?.(config)) ?? null;
     } catch (err) {
       setError(
-        `Failed to read runner terms: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to read runner capabilities: ${err instanceof Error ? err.message : String(err)}`,
       );
       return;
     }
+    const terms: RunnerTerms | null = capabilities?.terms ?? null;
+    // A runner too old for watch sessions — or a docker runner on a daemon that
+    // cannot scope a mount — degrades to a plain run rather than having every
+    // Run rejected for a mode it never offered.
+    const mode: "run" | "watch" = capabilities?.features?.watch === true ? "watch" : "run";
+    // From the SAME fetch, for the same reason: read from the header's state and
+    // a Run clicked before it lands starts a watch session with no agent, and
+    // the panel quietly launches a standalone one instead.
+    const agentName = capabilities?.features?.agents?.includes(AGENT_APP_NAME)
+      ? AGENT_APP_NAME
+      : null;
     if (terms && !isTermsAcceptedFor(runner.id, terms.version)) {
       setTermsGate({ terms, runnerId: runner.id, filePath });
       return;
@@ -727,6 +752,14 @@ export function Editor() {
           ports: resolveDeclaredPorts(manifest, environment.env),
           acceptedTermsVersion,
           mode,
+          // A watch session is where the authoring agent belongs: co-resident,
+          // it writes the very volume these containers watch, so its edits
+          // reload the app the user is looking at. Requested whenever the
+          // runner offers one, rather than when the chat panel happens to be
+          // open — an agent that depends on panel state at start time would
+          // make one button mean two things, and a session's container set is
+          // fixed once it is created.
+          ...(mode === "watch" && agentName ? { agent: agentName } : {}),
         },
       });
       if (mode === "watch") {
@@ -2028,10 +2061,6 @@ export function Editor() {
                         onRun: () => {
                           if (activeAppPath) void handleRunModule(activeAppPath);
                         },
-                        onRunWatch: () => {
-                          if (activeAppPath) void handleRunModule(activeAppPath, "watch");
-                        },
-                        canWatch: runnerSupportsWatch,
                         runnerName: activeRunnerName,
                         onOpenSettings: () => setSettingsOpen(true),
                       },
