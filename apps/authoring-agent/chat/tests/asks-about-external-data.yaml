@@ -1,0 +1,106 @@
+kind: Telo.Application
+metadata:
+  name: ChatAsksAboutExternalData
+  version: 1.0.0
+  description: |
+    Live integration test for the hardest case the analysis phase has to catch:
+    a request that READS as a specification and is not. "Report work times from
+    YouTrack, correlated with our Google spreadsheet, as a PDF" names three
+    systems, a source, a join and an output format — and says nothing about
+    which spreadsheet, which tab, what its columns are called, how the two sides
+    are matched, or what the PDF contains. None of that is discoverable: no hub
+    tool and no file in the workspace describes the user's own systems.
+
+    This is a different assertion from asks-before-building.yaml, which sends an
+    obviously thin request. A confident-sounding one is what actually got built
+    from guesses — and inventing a column name produces a manifest that checks
+    clean, runs, and is wrong, which is the one failure the toolchain cannot
+    catch. So this asserts no file was written and that questions came back.
+
+    Skips silently when OPENAI_API_KEY is unset.
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+    default: ""
+variables:
+  workspaceDir:
+    env: EXTERNAL_DATA_WORKSPACE_DIR
+    type: string
+    default: ./workspace/asks-about-external-data
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: !cel "secrets.openaiApiKey"
+    variables:
+      workspaceDir: !cel "variables.workspaceDir"
+      dbFile: ":memory:"
+      # No `model:` — inherited from the library, so this exercises what ships.
+      teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
+  Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
+  Stream: oci://ghcr.io/telorun/stream@0.10.3#sha256-Xnotv4oDInD7fP1keD0Flwhy1X7RUb741fGrvd0A9PQ
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
+targets:
+  - !ref cleanWorkspace
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref testAsksAboutData
+---
+kind: Run.Sequence
+metadata: { name: cleanWorkspace }
+steps:
+  - name: clean
+    try:
+      - name: remove
+        inputs:
+          path: !cel "variables.workspaceDir"
+          recursive: true
+        invoke:
+          kind: Fs.FileRemoval
+          cwd: "."
+    catch:
+      - name: absent
+        value: true
+---
+kind: Run.Sequence
+metadata: { name: testAsksAboutData }
+steps:
+  - name: runIfKey
+    if: !cel "secrets.openaiApiKey != ''"
+    then:
+      - name: chat
+        invoke: !ref Chat.chatStart
+        inputs:
+          conversationId: external-data-1
+          clientIp: test-runner
+          message: |
+            Build me a report of work times from YouTrack, correlated with our
+            Google spreadsheet, and output it as a PDF.
+      - name: read
+        invoke: !ref Chat.journalSource
+        inputs:
+          key: !cel "steps.chat.result.turnId"
+          fromId: 0
+      - name: drain
+        invoke:
+          kind: Stream.Collect
+        inputs:
+          input: !cel "steps.read.result.output"
+      - name: reply
+        value: !cel "steps.drain.result.items.filter(r, r.data.type == 'text-delta').map(r, r.data.delta).join('')"
+      - name: assert
+        inputs:
+          wroteFile: !cel "steps.drain.result.items.exists(r, r.data.type == 'tool-call' && (r.data.toolCall.name == 'write_file' || r.data.toolCall.name == 'edit_file'))"
+          askedQuestions: !cel "steps.reply.result.contains('telo-questions')"
+          # Unasserted: a failure has to show WHAT it invented instead of asking.
+          reply: !cel "steps.reply.result.size() > 900 ? steps.reply.result.substring(0, 900) : steps.reply.result"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              wroteFile: { const: false }
+              askedQuestions: { const: true }
+            required: [wroteFile, askedQuestions]

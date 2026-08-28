@@ -2097,7 +2097,8 @@ export function Editor() {
             </div>
           </div>
         )}
-        {agentVisible && agent.panelOpen && <AgentPanel className="w-96 shrink-0" />}
+        {/* The panel owns its own width — the user drags it, and it persists. */}
+        {agentVisible && agent.panelOpen && <AgentPanel className="shrink-0" />}
       </div>
       <SettingsModal
         open={settingsOpen}

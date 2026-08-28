@@ -26,31 +26,61 @@ secrets:
     env: OPENAI_API_KEY
     type: string
     default: ""
+variables:
+  # This case OWNS its workspace and starts from an empty one — see
+  # asks-before-building.yaml, where a directory left behind by an earlier run
+  # silently changed what was being tested.
+  workspaceDir:
+    env: AUTHORS_WORKSPACE_DIR
+    type: string
+    default: ./workspace/authors-manifest
 imports:
   Chat:
     source: ../
     secrets:
       openaiApiKey: !cel "secrets.openaiApiKey"
     variables:
+      workspaceDir: !cel "variables.workspaceDir"
       # In-memory store so every run starts with empty history. A persistent file
       # would replay a "task already done" conversation on re-runs, and the model
       # would answer with text instead of calling write_file again.
       dbFile: ":memory:"
-      model: gpt-5.2
-      # The agent's fs tools run from ./workspace, so point its CLI at the repo
-      # entry point relative to that cwd. This makes the agent validate against
-      # the exact checker the AssertValid step below uses (not a globally
-      # installed `telo`, which CI does not have) — so their verdicts always
-      # agree. One variable covers the check loop and the `telo` tool alike.
-      teloProgram: [bun, ../cli/nodejs/bin/telo.ts]
+      # No `model:` — inherited from the library, so this exercises what ships.
+      # The agent's fs tools run from the workspace directory, so point its CLI
+      # at the repo entry point relative to that cwd (two levels below the root).
+      # This makes the agent validate against the exact checker the AssertValid
+      # step below uses (not a globally installed `telo`, which CI does not have)
+      # — so their verdicts always agree. One variable covers the check loop and
+      # the `telo` tool alike.
+      teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
+  Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
   Stream: oci://ghcr.io/telorun/stream@0.10.3#sha256-Xnotv4oDInD7fP1keD0Flwhy1X7RUb741fGrvd0A9PQ
   Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
   Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
 targets:
+  # Before ensureWorkspace, which creates the directory this removes.
+  - !ref cleanWorkspace
   - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
   - !ref TestAuthors
+---
+kind: Run.Sequence
+metadata: { name: cleanWorkspace }
+steps:
+  - name: clean
+    try:
+      - name: remove
+        inputs:
+          path: !cel "variables.workspaceDir"
+          recursive: true
+        invoke:
+          kind: Fs.FileRemoval
+          cwd: "."
+    catch:
+      # A first run, and every fresh checkout, has no directory to remove.
+      - name: absent
+        value: true
 ---
 kind: Shell.LocalHost
 metadata: { name: RepoHost }
@@ -116,7 +146,7 @@ steps:
       # Independently validate the manifest the agent authored.
       - name: Validate
         inputs:
-          command: "bun ./cli/nodejs/bin/telo.ts check ./workspace/hello-api.yaml"
+          command: !cel "'bun ./cli/nodejs/bin/telo.ts check ' + variables.workspaceDir + '/hello-api.yaml'"
         invoke: !ref TeloCheck
       - name: AssertValid
         inputs:
@@ -132,7 +162,7 @@ steps:
       # a self-contained stub) and wired the requested /hello route.
       - name: Content
         inputs:
-          command: "grep -q 'http-server' ./workspace/hello-api.yaml && grep -q '/hello' ./workspace/hello-api.yaml"
+          command: !cel "'grep -q http-server ' + variables.workspaceDir + '/hello-api.yaml && grep -q /hello ' + variables.workspaceDir + '/hello-api.yaml'"
         invoke: !ref TeloCheck
       - name: AssertContent
         inputs:

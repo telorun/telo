@@ -10,6 +10,10 @@ export const SYNC_EXCLUDED_DIRS: ReadonlySet<string> = new Set([
   ".telo",
   ".git",
   "dist",
+  // Throwaway probe manifests the agent writes to discover something and then
+  // deletes. Deleting them is a prompt rule, not an enforcement, so a failed
+  // turn leaves one behind — excluded here it stays out of the user's files.
+  ".probes",
 ]);
 
 function included(workspace: AgentWorkspace, path: string): boolean {

@@ -67,6 +67,22 @@ export interface ChatMessage {
   error?: string;
   /** True while the assistant turn is still streaming. */
   pending?: boolean;
+  /** On a message the Resume button generated: the request it is resuming. The
+   *  message TEXT also reports what the interrupted turn's tools had already
+   *  done, so this is what keeps a second resume quoting the original request
+   *  rather than the first resume's own report of it. */
+  resumedRequest?: string;
+  /** Set when the user cancelled this turn. An ending that is not `finish` is
+   *  still an ending, and a CHOSEN one is not resumable work — without this a
+   *  Stop whose abort request failed leaves an error banner offering to re-send
+   *  the very request that was just cancelled. */
+  stopped?: boolean;
+  /** Set when the turn's own `finish` record arrived. `pending` is cleared by
+   *  every ending, a failure included, so this is the one thing that separates
+   *  a reply that completed from one cut short — which is what decides whether
+   *  there is anything to resume. Absent on transcripts persisted before it
+   *  existed; those read as unfinished, which shows no button on its own. */
+  completed?: boolean;
 }
 
 export type AgentStatus = "idle" | "launching" | "seeding" | "streaming" | "error";

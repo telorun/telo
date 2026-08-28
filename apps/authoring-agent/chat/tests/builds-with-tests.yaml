@@ -1,0 +1,172 @@
+kind: Telo.Application
+metadata:
+  name: ChatBuildsWithTests
+  version: 1.0.0
+  description: |
+    Live integration test for the shape of what the agent BUILDS. A specified
+    request produced one `apps/<slug>/telo.yaml` and nothing else — which checks
+    clean and cannot be tested, because nothing can import an Application. So
+    this asserts the whole deliverable: a feature library, a `Test.Suite` at
+    `apps/<slug>/tests/telo.yaml`, at least one test beside it, and that the
+    agent RAN the suite rather than only writing it. Then it runs that suite
+    itself, which is the only thing that proves the tests the agent wrote
+    actually pass.
+
+    Test runs are enabled here (`allowManifestRuns`), which is off by default — the
+    agent executing a manifest it wrote is arbitrary code execution, safe only
+    where the caller owns the container. This test IS that situation.
+
+    The request names SQLite deliberately. It used to ask for an in-memory store
+    that could be listed, and no published one can be: a key/value store has no
+    scan, so listing needs the whole collection held under one key. That is
+    solvable, but it is a data-modelling puzzle, and a run that failed it failed
+    for a reason this case is not about — the SHAPE of what gets built. Naming a
+    store that lists natively keeps the final assertion measuring the build.
+
+    Still the flakiest case here, and in one specific way: the structure
+    assertions and `ranTests` have held on every measured run, while the final
+    step — the suite the agent wrote actually PASSING — has not. Those failures
+    were real, and the same shape each time: the agent ran its own suite, saw a
+    red test, and finished the turn anyway. Read the assertion's `messages`
+    before concluding anything; it carries the failing test's own output.
+
+    Skips silently when OPENAI_API_KEY is unset.
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+    default: ""
+variables:
+  workspaceDir:
+    env: BUILDS_WORKSPACE_DIR
+    type: string
+    default: ./workspace/builds-with-tests
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: !cel "secrets.openaiApiKey"
+    variables:
+      workspaceDir: !cel "variables.workspaceDir"
+      dbFile: ":memory:"
+      # No `model:` — inherited from the library, so this exercises what ships.
+      teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
+      allowManifestRuns: true
+  Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  Stream: oci://ghcr.io/telorun/stream@0.10.3#sha256-Xnotv4oDInD7fP1keD0Flwhy1X7RUb741fGrvd0A9PQ
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
+targets:
+  - !ref cleanWorkspace
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref testBuilds
+---
+kind: Shell.LocalHost
+metadata: { name: repoHost }
+---
+kind: Shell.Command
+metadata: { name: shell }
+host: !ref repoHost
+---
+kind: Run.Sequence
+metadata: { name: cleanWorkspace }
+steps:
+  - name: clean
+    try:
+      - name: remove
+        inputs:
+          path: !cel "variables.workspaceDir"
+          recursive: true
+        invoke:
+          kind: Fs.FileRemoval
+          cwd: "."
+    catch:
+      # A first run, and every fresh checkout, has no directory to remove.
+      - name: absent
+        value: true
+---
+kind: Run.Sequence
+metadata: { name: testBuilds }
+steps:
+  - name: runIfKey
+    if: !cel "secrets.openaiApiKey != ''"
+    then:
+      # The app's NAME is fixed by the request so the assertions below can name
+      # exact paths; everything else about the shape is the agent's to decide.
+      - name: chat
+        invoke: !ref Chat.chatStart
+        inputs:
+          conversationId: builds-1
+          clientIp: test-runner
+          message: |
+            Build an app called `notes` that stores notes (title, body) in a
+            SQLite database at `:memory:`: add a note and list all notes.
+            Expose it over HTTP on a port `http` bound to PORT, default 8080 —
+            POST /notes and GET /notes.
+
+            Everything else is your call — just build it, and use your
+            recommended answer wherever you would otherwise ask.
+      - name: read
+        invoke: !ref Chat.journalSource
+        inputs:
+          key: !cel "steps.chat.result.turnId"
+          fromId: 0
+      - name: drain
+        invoke:
+          kind: Stream.Collect
+        inputs:
+          input: !cel "steps.read.result.output"
+      - name: tree
+        invoke: !ref Chat.treeSnapshot
+      - name: paths
+        value: !cel "steps.tree.result.files.map(f, f.path)"
+      # A feature library is any `<something>/telo.yaml` one level under the app
+      # that is not the app's own file and not the tests directory. Matched by
+      # shape rather than by name: how the domain is split is the agent's call,
+      # and pinning a name would assert its taste instead of the structure.
+      - name: assertShape
+        inputs:
+          hasLibrary: !cel "steps.paths.result.exists(p, p.matches('^apps/notes/[^/]+/telo[.]yaml$') && !p.startsWith('apps/notes/tests/'))"
+          hasSuite: !cel "steps.paths.result.exists(p, p == 'apps/notes/tests/telo.yaml')"
+          hasTest: !cel "steps.paths.result.exists(p, p.matches('^apps/notes/tests/[^/]+[.]yaml$') && p != 'apps/notes/tests/telo.yaml')"
+          hasApp: !cel "steps.paths.result.exists(p, p == 'apps/notes/telo.yaml')"
+          ranTests: !cel "steps.drain.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'run_manifest')"
+          # Unasserted, so a failure says which of the five is missing rather
+          # than only that one of them was.
+          paths: !cel "steps.paths.result"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              hasLibrary: { const: true }
+              hasSuite: { const: true }
+              hasTest: { const: true }
+              hasApp: { const: true }
+              ranTests: { const: true }
+            required: [hasLibrary, hasSuite, hasTest, hasApp, ranTests]
+      # Independently run the suite the agent wrote. Its own run is a tool call
+      # this test can see happening; whether the tests PASS is a separate fact,
+      # and the only one that says the behaviour is really there.
+      - name: runSuite
+        inputs:
+          command: !cel "'bun ./cli/nodejs/bin/telo.ts run ' + variables.workspaceDir + '/apps/notes/tests/telo.yaml'"
+        invoke: !ref shell
+      - name: assertSuitePasses
+        inputs:
+          exitCode: !cel "steps.runSuite.result.exitCode"
+          # Both streams ride along unasserted: the suite writes its verdicts to
+          # stdout and a manifest that fails to LOAD writes to stderr, so
+          # reporting only one leaves the most common failure as a bare exit
+          # code with no reason attached.
+          output: !cel "steps.runSuite.result.stdout"
+          messages: !cel "steps.runSuite.result.stderr"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              exitCode: { const: 0 }
+            required: [exitCode]

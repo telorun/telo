@@ -1,0 +1,115 @@
+kind: Telo.Application
+metadata:
+  name: ChatAsksBeforeBuilding
+  version: 1.0.0
+  description: |
+    Live integration test for the chat library's analysis phase: drives the
+    exported ChatHandler with a real OpenAI model on a DELIBERATELY VAGUE
+    request ("build me a todo app" — no surface, no storage, no routes) and
+    asserts the agent asks before it builds. It drains the event stream, then
+    asserts (1) no file was written — a question turn writes nothing, and (2)
+    the reply carries a `telo-questions` block, which is the shape Telo Studio
+    renders as clickable options.
+
+    This is the counterpart to authors-manifest.yaml, which sends a FULLY
+    SPECIFIED request and asserts the agent writes immediately. The pair is the
+    real assertion: the question turn is conditional on the request leaving
+    something material unsaid, so a specified request must never pay for a
+    round-trip. Skips silently when OPENAI_API_KEY is unset.
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+    default: ""
+variables:
+  # This case OWNS its workspace and starts from an empty one. The agent is told
+  # to look before it asks, so a todo app left behind by an earlier run is a
+  # different question from the one this case poses — it answers "you already
+  # have one, what should change?", which is correct and not what is under test.
+  # Sharing one ./workspace across the cases made each run depend on the last.
+  workspaceDir:
+    env: ASKS_WORKSPACE_DIR
+    type: string
+    default: ./workspace/asks-before-building
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: !cel "secrets.openaiApiKey"
+    variables:
+      workspaceDir: !cel "variables.workspaceDir"
+      # In-memory store so the run starts with empty history — a persisted
+      # thread would replay answers the model already has and it would build.
+      dbFile: ":memory:"
+      # No `model:` — inherited from the library, so this exercises what ships.
+      # Resolved from the agent's cwd, which IS the workspace directory above —
+      # two levels below the repo root.
+      teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
+  Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
+  Stream: oci://ghcr.io/telorun/stream@0.10.3#sha256-Xnotv4oDInD7fP1keD0Flwhy1X7RUb741fGrvd0A9PQ
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
+targets:
+  # Before ensureWorkspace, which creates the directory this removes.
+  - !ref cleanWorkspace
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref testAsks
+---
+kind: Run.Sequence
+metadata: { name: cleanWorkspace }
+steps:
+  - name: clean
+    try:
+      - name: remove
+        inputs:
+          path: !cel "variables.workspaceDir"
+          recursive: true
+        invoke:
+          kind: Fs.FileRemoval
+          cwd: "."
+    catch:
+      # A first run, and every fresh checkout, has no directory to remove.
+      - name: absent
+        value: true
+---
+kind: Run.Sequence
+metadata: { name: testAsks }
+steps:
+  - name: runIfKey
+    if: !cel "secrets.openaiApiKey != ''"
+    then:
+      - name: chat
+        invoke: !ref Chat.chatStart
+        inputs:
+          conversationId: asks-1
+          clientIp: test-runner
+          message: "Build me a todo app."
+      - name: read
+        invoke: !ref Chat.journalSource
+        inputs:
+          key: !cel "steps.chat.result.turnId"
+          fromId: 0
+      - name: drain
+        invoke:
+          kind: Stream.Collect
+        inputs:
+          input: !cel "steps.read.result.output"
+      - name: reply
+        value: !cel "steps.drain.result.items.filter(r, r.data.type == 'text-delta').map(r, r.data.delta).join('')"
+      # `reply` is asserted on by nothing — it rides along so a failure prints
+      # what the agent actually said. Without it the report is two booleans, and
+      # "asked in prose" and "answered without asking" read identically.
+      - name: assert
+        inputs:
+          wroteFile: !cel "steps.drain.result.items.exists(r, r.data.type == 'tool-call' && (r.data.toolCall.name == 'write_file' || r.data.toolCall.name == 'edit_file'))"
+          askedQuestions: !cel "steps.reply.result.contains('telo-questions')"
+          reply: !cel "steps.reply.result.size() > 600 ? steps.reply.result.substring(0, 600) : steps.reply.result"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              wroteFile: { const: false }
+              askedQuestions: { const: true }
+            required: [wroteFile, askedQuestions]
