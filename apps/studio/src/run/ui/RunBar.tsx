@@ -1,4 +1,4 @@
-import { ChevronDown, Eye, PanelBottom, Play, Server, Square } from "lucide-react";
+import { ChevronDown, PanelBottom, Play, Server, Square } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
 import {
@@ -6,7 +6,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { useRun } from "../context";
@@ -19,12 +18,10 @@ interface RunBarProps {
   appPath: string;
   /** Active runner from settings, or null when none is selected. */
   runnerName: string | null;
+  /** Start this Application. There is one way to run, so there is one control:
+   *  whether the session also reloads on save is the runner's capability to
+   *  answer, not a mode the user picks. */
   onRun: () => void;
-  /** Start a watch session — a workspace that runs continuously, reloading the
-   *  kernel on save instead of starting a new run. */
-  onRunWatch: () => void;
-  /** Whether the selected runner offers watch sessions. */
-  canWatch: boolean;
   onOpenSettings: () => void;
 }
 
@@ -38,8 +35,6 @@ export function RunBar({
   appPath,
   runnerName,
   onRun,
-  onRunWatch,
-  canWatch,
   onOpenSettings,
 }: RunBarProps) {
   const {
@@ -139,22 +134,6 @@ export function RunBar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
-            {/* Watch is a different way to START this app, so it sits with the
-                trigger rather than in the history it heads. */}
-            {canWatch && (
-              <>
-                <DropdownMenuItem onSelect={onRunWatch} className="gap-2">
-                  <Eye className="size-3.5 shrink-0" aria-hidden />
-                  <span className="flex flex-col">
-                    <span>Run in watch mode</span>
-                    <span className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
-                      Saving reloads the app
-                    </span>
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            )}
             <DropdownMenuLabel className="flex items-center justify-between gap-2">
               Recent runs
               {hasHistory && (

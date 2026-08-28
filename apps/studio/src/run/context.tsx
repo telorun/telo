@@ -21,6 +21,7 @@ import {
   type RunEvent,
   type RunPhase,
   type RunOutcomeEvent,
+  type RunnerEndpoint,
   type RunReachabilityState,
   type RunRequest,
   type RunSession,
@@ -90,6 +91,19 @@ export interface RunRecord {
   historyUnavailable?: boolean;
 }
 
+/**
+ * A live watch session that carries a co-resident agent. `session` is handed
+ * over whole rather than as a workspace adapter, because the agent's workspace
+ * IS this session's — the run module's job is to say which session, not to
+ * model what the agent does with it.
+ */
+export interface CoResidentAgentSession {
+  runId: string;
+  /** Where the agent's HTTP contract answers. */
+  baseUrl: string;
+  session: RunSession;
+}
+
 /** Unavailable/setup-required banner shown in the run dock when a run failed to
  *  start because of environment or config. Not a run — no record, no events. */
 export interface UnavailableRun {
@@ -155,6 +169,11 @@ interface RunContextValue {
   watchRunForApp(appPath: string): RunRecord | null;
   /** Every app with a live watch session, across the workspace. */
   watchRuns(): RunRecord[];
+  /** The co-resident agent of a live watch session, or null. Resolved from the
+   *  session's own `running` status: the runner reports where it routed the
+   *  agent, because only the runner knows how (a pod-shared Service on
+   *  kubernetes, a network alias or a published host port on docker). */
+  coResidentAgent(): CoResidentAgentSession | null;
   /** Push an edit into a live watch session. A no-op for a plain run, so the
    *  editor's save path can call it unconditionally. */
   syncWorkspace(runId: string, changes: WorkspaceChangeSet): Promise<void>;
@@ -572,6 +591,30 @@ export function RunProvider({ children }: { children: ReactNode }) {
     return found;
   }, [runsByApp, isLiveWatch]);
 
+  /**
+   * The co-resident agent of a live watch session, or null.
+   *
+   * Only a `running` session has one to report: the endpoint is announced with
+   * that status, and a suspended session — which stays live for editing — has
+   * no pod behind it, so its agent is not answering. Returning it anyway would
+   * hand the panel a URL that connects to nothing.
+   *
+   * First match wins when several apps run watch sessions. The alternative is
+   * asking the user which agent they meant, and there is nothing to choose
+   * between: at most one agent runs per session, they share no conversation,
+   * and each writes only its own session's volume.
+   */
+  const coResidentAgent = useCallback((): CoResidentAgentSession | null => {
+    for (const records of runsByApp.values()) {
+      const record = records.find(isLiveWatch);
+      if (!record || record.status.kind !== "running" || !record.status.agent) continue;
+      const session = runtimes.current.get(record.id)?.session;
+      if (!session) continue;
+      return { runId: record.id, baseUrl: endpointUrl(record.status.agent), session };
+    }
+    return null;
+  }, [runsByApp, isLiveWatch]);
+
   /** Push an edit into a live watch session. Silent no-op when the run is not a
    *  watch session — the editor calls this on every save, and a plain run must
    *  not be disturbed by one. */
@@ -825,6 +868,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       stopRun,
       watchRunForApp,
       watchRuns,
+      coResidentAgent,
       syncWorkspace,
       reloadRun,
       resumeRun,
@@ -853,6 +897,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       stopRun,
       watchRunForApp,
       watchRuns,
+      coResidentAgent,
       syncWorkspace,
       reloadRun,
       resumeRun,
@@ -885,6 +930,14 @@ export function RunProvider({ children }: { children: ReactNode }) {
  *  `suspended` counts: it is not terminal — the pod was reaped for idleness and
  *  the session resumes under the same id. */
 const LIVE_WATCH_STATUSES = new Set<RunStatus["kind"]>(["running", "starting", "suspended"]);
+
+/** A runner endpoint as a dialable URL. The runner sets `url` where it fronts the
+ *  endpoint with a proxy or ingress, and the adapter composes one from the base
+ *  URL it reached the runner on where it did not — so the scheme is never
+ *  guessed here. The fallback covers an adapter that supplies neither. */
+function endpointUrl(endpoint: RunnerEndpoint): string {
+  return endpoint.url ?? `http://${endpoint.host}:${endpoint.port}`;
+}
 
 /** Build an empty display record from a persisted index entry. Bodies (lines,
  *  debug frames, terminal scrollback) stay empty until the run is selected and

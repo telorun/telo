@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { AgentClient, openAgentStream, type AgentStreamHandle } from "./client";
+import { ownWorkspace } from "./agent-workspace";
 import { launchAgentSession, type LaunchedAgent } from "./launch";
 import { reconcile, seedDelta, pullFile } from "./sync";
 import {
@@ -15,7 +16,9 @@ import type {
   AgentHistoryRow,
   AgentStatus,
   AgentStreamPart,
+  AgentWorkspace,
   ChatMessage,
+  CoResidentAgent,
   ToolResult,
   WorkspaceBridge,
 } from "./types";
@@ -47,6 +50,10 @@ interface AgentContextValue {
   registerWorkspace: (bridge: WorkspaceBridge | null) => void;
   /** The active runner's base URL, used to launch a per-session agent. */
   setRunner: (baseUrl: string | null) => void;
+  /** The agent riding inside a live watch session, when there is one. Preferred
+   *  over launching a session of the agent's own: it already shares the volume
+   *  the running applications watch, so a file it writes reloads them. */
+  setCoResidentAgent: (agent: CoResidentAgent | null) => void;
   /** The runner's terms version the user has accepted (null when the runner
    *  has no terms or they aren't accepted yet) — sent on the agent launch so
    *  a terms-enforcing runner doesn't 428 it. */
@@ -124,6 +131,14 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const runnerBaseRef = useRef<string | null>(null);
   const runnerTermsRef = useRef<string | null>(null);
   const launchedRef = useRef<LaunchedAgent | null>(null);
+  // The agent inside a live watch session, pushed in by the editor shell as
+  // sessions come and go. Read at the start of a send, never mid-turn.
+  const coResidentRef = useRef<CoResidentAgent | null>(null);
+  // Which surface the shared workspace is reached through for the agent
+  // currently in use — the session's volume for a co-resident agent, the
+  // agent's own directory otherwise. Resolved together with the base URL, so
+  // the two can never disagree about which agent is being talked to.
+  const workspaceRef = useRef<AgentWorkspace | null>(null);
   const historyRef = useRef<AgentHistoryRow[]>([]);
   historyRef.current = history;
   // `<sessionKey>:<conversationId>` pairs already seeded with history — one
@@ -147,15 +162,40 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     void launched.stop();
   }, []);
 
-  // Ensure an agent instance is reachable: the dev override if set, else launch
-  // (once) a per-session instance on the active runner. Sets `agentUrlRef`.
+  // Ensure an agent instance is reachable, and say which workspace surface goes
+  // with it. Precedence: the dev override, then a live watch session's
+  // co-resident agent, then launching a session of the agent's own.
+  //
+  // The co-resident agent outranks a launched one even when a launched one is
+  // already cached, and the cached one is torn down. It is not a preference:
+  // only the co-resident agent writes the volume the running applications
+  // watch, so only its edits reload the app the user is looking at. Switching
+  // costs nothing the panel cannot recover — the conversation's history is
+  // ferried into whichever instance is used next, which is what makes any
+  // instance replaceable.
+  //
+  // Resolved at the start of a send, so an agent that appears mid-turn is
+  // picked up on the next one rather than halfway through this one.
   const ensureAgent = useCallback(async () => {
     if (overrideRef.current) {
       agentUrlRef.current = overrideRef.current;
+      workspaceRef.current = ownWorkspace(new AgentClient(overrideRef.current));
+      return;
+    }
+    const coResident = coResidentRef.current;
+    if (coResident) {
+      if (launchedRef.current) {
+        const stale = launchedRef.current;
+        launchedRef.current = null;
+        void stale.stop();
+      }
+      agentUrlRef.current = coResident.baseUrl;
+      workspaceRef.current = coResident.workspace;
       return;
     }
     if (launchedRef.current) {
       agentUrlRef.current = launchedRef.current.agentUrl;
+      workspaceRef.current = ownWorkspace(new AgentClient(launchedRef.current.agentUrl));
       return;
     }
     if (!runnerBaseRef.current) {
@@ -165,6 +205,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     const launched = await launchAgentSession(runnerBaseRef.current, runnerTermsRef.current);
     launchedRef.current = launched;
     agentUrlRef.current = launched.agentUrl;
+    workspaceRef.current = ownWorkspace(new AgentClient(launched.agentUrl));
   }, []);
 
   // ── persistence ───────────────────────────────────────────────────────────
@@ -178,7 +219,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     () =>
       overrideRef.current
         ? `override:${overrideRef.current}`
-        : (launchedRef.current?.sessionId ?? null),
+        : coResidentRef.current
+          ? `session:${coResidentRef.current.runId}`
+          : (launchedRef.current?.sessionId ?? null),
     [],
   );
 
@@ -200,6 +243,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   }, []);
   const setRunner = useCallback((base: string | null) => {
     runnerBaseRef.current = base;
+  }, []);
+  const setCoResidentAgent = useCallback((agent: CoResidentAgent | null) => {
+    coResidentRef.current = agent;
   }, []);
   const setRunnerAcceptedTerms = useCallback((version: string | null) => {
     runnerTermsRef.current = version;
@@ -257,8 +303,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           // Eager reflection: pull the one file the agent just wrote.
           const path = parsed?.path;
           const bridge = bridgeRef.current;
-          if (path && bridge && (raw.name === "write_file" || raw.name === "edit_file")) {
-            void pullFile(client(), bridge, path).catch((err) => {
+          const workspace = workspaceRef.current;
+          if (path && bridge && workspace && (raw.name === "write_file" || raw.name === "edit_file")) {
+            void pullFile(workspace, bridge, path).catch((err) => {
               // Mid-turn reflection is redone by the end-of-turn reconcile —
               // log so the failure isn't invisible in the meantime.
               console.error(`Failed to pull '${path}' from the agent workspace`, err);
@@ -280,16 +327,17 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [client, updateAssistant],
+    [updateAssistant],
   );
 
   const endTurn = useCallback(async () => {
     const bridge = bridgeRef.current;
+    const workspace = workspaceRef.current;
     setStatus("idle");
     setTurnId(null);
-    if (bridge) {
+    if (bridge && workspace) {
       try {
-        await reconcile(client(), bridge);
+        await reconcile(workspace, bridge);
       } catch (err) {
         // The next turn re-seeds, but the user must know the editor may be
         // showing stale files right now.
@@ -376,7 +424,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             historySeededRef.current.add(seedKey);
           }
           if (superseded()) return;
-          await seedDelta(c, bridge);
+          const workspace = workspaceRef.current;
+          if (!workspace) throw new Error("No agent workspace is reachable.");
+          await seedDelta(workspace, bridge);
           if (superseded()) return;
           const outcome = await c.startTurn(convId, text);
           if (superseded()) return;
@@ -582,6 +632,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setConversation,
     registerWorkspace,
     setRunner,
+    setCoResidentAgent,
     setRunnerAcceptedTerms,
   };
 

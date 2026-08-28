@@ -615,6 +615,19 @@ async function startSession(
       });
       return;
     }
+    // An agent nothing can reach is the same silent no-op as an agent nothing
+    // watches, one layer down: it would write the volume and never be asked to.
+    // The port is the operator's to declare, so the failure names their config
+    // rather than anything the caller can change.
+    if (agent.port === undefined) {
+      reply.code(400).send({
+        error: "agent_port_undeclared",
+        message:
+          `agent '${body.agent}' declares no port, so this runner cannot route it — ` +
+          `set RUNNER_APPS.${body.agent}.port to the port its image listens on`,
+      });
+      return;
+    }
   }
 
   if (mode === "watch") {
@@ -641,6 +654,32 @@ async function startSession(
     return;
   }
 
+  // The agent's port shares the session's port space with the apps' — on
+  // kubernetes literally (the pod's containers share one network namespace, so
+  // two of them cannot bind the same port at all), and on docker because a
+  // no-proxy runner publishes both to the same host.
+  //
+  // The MANIFEST WINS. A client asks for an agent as a convenience, and on the
+  // editor's path does so on every run without the user choosing; refusing the
+  // whole session would mean an application that declares the operator's agent
+  // port — 8080, which applications routinely declare — could not be run at all,
+  // for a reason naming a container the user never requested and cannot decline.
+  // So the agent is dropped and the session starts without one, reported rather
+  // than silent: a client sees no `agent` endpoint on `running`, and the notice
+  // below says why.
+  let agentNotice: string | undefined;
+  if (agent?.port !== undefined) {
+    const clash = resolved.apps.find((a) =>
+      a.ports.some((p) => p.protocol === "tcp" && p.port === agent!.port),
+    );
+    if (clash) {
+      agentNotice =
+        `co-resident agent '${agent.name}' was not started: it listens on tcp port ${agent.port}, ` +
+        `which app '${clash.name}' declares`;
+      agent = undefined;
+    }
+  }
+
   return startWorkloadSession(
     app,
     deps,
@@ -658,5 +697,6 @@ async function startSession(
       agent,
     },
     reply,
+    agentNotice ? [agentNotice] : undefined,
   );
 }

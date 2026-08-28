@@ -9,9 +9,9 @@ metadata:
     `targets` and dispatch to `CreateNote` / `ListNotes` from their own routes —
     no hand-written SQL beyond the migration.
 imports:
-  Sql: oci://ghcr.io/telorun/sql@0.23.0#sha256-7OoJzJcGyUpfWe4u1c_4aBXB_isG21LaeN8sPmwfufI
-  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
-  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.12.0#sha256-45lXhHhBS-iYFpsHpq-SBG60e0OOtY_VGfCnUOxSyRY
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
+  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.13.0#sha256-P4DK2k7DQoJtJOOiags02cjA4N36WCOuDe20o0TV4ek
 exports:
   resources:
     - migrate

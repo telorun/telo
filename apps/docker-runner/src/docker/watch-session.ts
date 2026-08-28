@@ -29,14 +29,50 @@ import {
   type CreateContainerOpts,
   type SessionDockerClient,
   type SessionDockerContainer,
+  type VolumeMount,
 } from "./run-session.js";
 
-/** Where the shared bundle volume is mounted in every container of a session. */
+/** Where the shared bundle volume is mounted in the runner's OWN containers —
+ *  the workspace file service, and every run session. It is the whole volume, so
+ *  a container holding it can see every session's files. */
 const SRV = "/srv";
+/**
+ * Where a watch session's workspace is mounted in the containers that are NOT
+ * the runner's: the applications, and the co-resident agent. The same path
+ * kubernetes uses, so a workspace looks identical on both backends.
+ *
+ * Scoped to the session's own `workspace` subdirectory rather than the whole
+ * volume, which is what makes the two things true that mounting `/srv` made
+ * false: one session cannot read another's files, and the runner is not laying
+ * a volume over a directory an operator-supplied image may already be using
+ * (the authoring agent installs itself under `/srv`). The runner's own siblings
+ * of that directory — the file service's manifest and its module cache — fall
+ * outside the mount, so they never appear in the user's workspace.
+ */
+const WORKSPACE_MOUNT = "/workspace";
 const WORKSPACE_PORT = 8099;
+
 const INSPECT_PORT = 9230;
 const WORKSPACE_READY_TIMEOUT_MS = 120_000;
 const POLL_MS = 500;
+
+/**
+ * The one mount a session's application and agent containers get: that session's
+ * own `workspace` subdirectory of the shared volume, at `/workspace`.
+ *
+ * The subpath is what makes the mount scoped. Without it the whole volume lands
+ * at the target — every session's files, in every container — so the daemon
+ * floor that guarantees `Subpath` is honoured is not optional (see
+ * `MIN_WATCH_API_VERSION`).
+ */
+export function sessionWorkspaceMount(volume: string, sessionId: string): VolumeMount {
+  return {
+    Type: "volume",
+    Source: volume,
+    Target: WORKSPACE_MOUNT,
+    VolumeOptions: { Subpath: `${sessionId}/workspace` },
+  };
+}
 
 export interface DockerWatchDeps {
   docker: SessionDockerClient;
@@ -69,8 +105,13 @@ export async function startDockerWatchSession(
   const sessionRoot = join(deps.bundleRoot, spec.sessionId);
   const workspaceHostDir = join(sessionRoot, "workspace");
   const appHostDir = join(sessionRoot, "workspace-app");
-  // Paths as the CONTAINERS see them — the same volume, mounted at /srv.
+  // The workspace as the FILE SERVICE sees it, through the whole-volume mount it
+  // needs in order to reach its own manifest and cache beside it.
   const workspaceDir = `${SRV}/${spec.sessionId}/workspace`;
+  // The same directory as the applications and the agent see it: mounted alone,
+  // at the path kubernetes uses. Everything a session's own containers are told
+  // about the workspace is written in terms of this.
+  const appWorkspaceDir = WORKSPACE_MOUNT;
   const appDir = `${SRV}/${spec.sessionId}/workspace-app`;
   // Cache root for the WORKSPACE container only. The app containers have none:
   // their cache is anchored by the marker at the workspace root, which is the
@@ -119,6 +160,25 @@ export async function startDockerWatchSession(
       throw new SessionStartError("start_failed", "create", `failed to create ${name}`, message(err));
     }
     return container;
+  }
+
+  /** The host config for a container that is NOT the runner's own: it gets the
+   *  session's workspace at `/workspace` and no other view of the volume.
+   *  `Binds` is empty rather than absent — the field is required, and an empty
+   *  list is the honest statement that this container binds nothing whole. */
+  function sessionHostConfig(
+    // Deliberately NOT `Partial<HostConfig>`: spread after `Mounts`, that would
+    // let a caller pass `Mounts` or `Binds` and quietly restore the whole-volume
+    // view this function exists to close. Port bindings are all any caller needs.
+    extra?: Pick<CreateContainerOpts["HostConfig"], "PortBindings">,
+  ): CreateContainerOpts["HostConfig"] {
+    return {
+      Binds: [],
+      AutoRemove: true,
+      NetworkMode: deps.childNetwork,
+      Mounts: [sessionWorkspaceMount(deps.bundleVolume, spec.sessionId)],
+      ...extra,
+    };
   }
 
   function baseOpts(overrides: Partial<CreateContainerOpts>): Omit<CreateContainerOpts, "name"> {
@@ -183,7 +243,7 @@ export async function startDockerWatchSession(
   // --- agent container -------------------------------------------------------
   if (spec.agent) await startAgentContainer(spec.agent);
 
-  spec.onStatus({ kind: "running", endpoints: endpointsFor(apps) });
+  spec.onStatus({ kind: "running", endpoints: endpointsFor(apps), ...agentStatusField() });
 
   // The session's wall-clock ceiling. `unref`'d: a pending deadline must not be
   // a reason for the runner process to stay alive.
@@ -228,7 +288,7 @@ export async function startDockerWatchSession(
       teardownInProgress = false;
       apps = next;
       await startAppContainers();
-      spec.onStatus({ kind: "running", endpoints: endpointsFor(apps) });
+      spec.onStatus({ kind: "running", endpoints: endpointsFor(apps), ...agentStatusField() });
     },
     async suspend() {
       teardownInProgress = true;
@@ -253,7 +313,7 @@ export async function startDockerWatchSession(
         // walks up from the entry manifest to `telo-workspace.yaml` (seeded at
         // the workspace root when the session starts) and anchors `.telo` there,
         // so two apps importing the same module resolve it once between them.
-        `TELO_ENTRY=${workspaceDir}/${app.entryRelativePath}`,
+        `TELO_ENTRY=${appWorkspaceDir}/${app.entryRelativePath}`,
         `TELO_INSPECT_ADDR=0.0.0.0:${INSPECT_PORT + index}`,
       ];
       // Only under a terminal — forcing colour in a mode whose whole purpose is
@@ -271,7 +331,7 @@ export async function startDockerWatchSession(
             'while [ ! -f "$TELO_ENTRY" ]; do sleep 0.2; done; ' +
               'exec telo run "$TELO_ENTRY" --watch --inspect "$TELO_INSPECT_ADDR" --no-open',
           ],
-          WorkingDir: workspaceDir,
+          WorkingDir: appWorkspaceDir,
           Env: env,
           Tty: tty,
           OpenStdin: true,
@@ -286,12 +346,9 @@ export async function startDockerWatchSession(
                 },
               }
             : {}),
-          HostConfig: {
-            Binds: [`${deps.bundleVolume}:${SRV}`],
-            AutoRemove: true,
-            NetworkMode: deps.childNetwork,
-            ...(portBindings ? { PortBindings: portBindings } : {}),
-          },
+          HostConfig: sessionHostConfig(
+            portBindings ? { PortBindings: portBindings } : undefined,
+          ),
         }),
       );
       containers.set(app.name, container);
@@ -459,22 +516,81 @@ export async function startDockerWatchSession(
     }
   }
 
+  /**
+   * The agent gets its own network alias, `telo-run-<sessionId>-agent`, rather
+   * than sharing the session's. That is what keeps it reachable behind the
+   * proxy WITHOUT touching the app's routing: a shared alias is round-robined
+   * by docker, so putting the agent on `telo-run-<sessionId>` would make every
+   * app port a coin flip — the exact ambiguity a multi-app session already has
+   * to refuse.
+   *
+   * It needs no proxy configuration either, because the session label is the
+   * proxy's trailing capture: `<agentPort>-<sessionId>-agent.<domain>` resolves
+   * to `telo-run-<sessionId>-agent:<agentPort>` under the rule already there.
+   *
+   * With no proxy the port is published to the host like an app's, and the
+   * client fills the hostname from the base URL it reached the runner on.
+   */
   async function startAgentContainer(agent: ResolvedRunnerApp): Promise<void> {
+    const publishToHost = !deps.publicBaseUrl;
+    const key = agent.port !== undefined ? `${agent.port}/tcp` : null;
     const container = await createAndStart(
       containerName("agent"),
       baseOpts({
         Image: agent.image,
+        // No Cmd and no WorkingDir: the catalog image runs its own baked entry
+        // point from its own directory. Nothing of the runner's is mounted over
+        // it — the workspace arrives at `/workspace` alone, so an image is free
+        // to install itself anywhere, including under `/srv`.
         Cmd: undefined,
         WorkingDir: undefined,
         Env: [
           ...Object.entries(agent.env).map(([k, v]) => `${k}=${v}`),
-          `WORKSPACE_DIR=${workspaceDir}`,
+          `WORKSPACE_DIR=${appWorkspaceDir}`,
           "CLICOLOR_FORCE=1",
         ],
+        HostConfig: sessionHostConfig(
+          key && publishToHost
+            ? { PortBindings: { [key]: [{ HostIp: "", HostPort: String(agent.port) }] } }
+            : undefined,
+        ),
+        ...(key ? { ExposedPorts: { [key]: {} } } : {}),
+        ...(key
+          ? {
+              NetworkingConfig: {
+                EndpointsConfig: {
+                  [deps.childNetwork]: { Aliases: [`telo-run-${spec.sessionId}-agent`] },
+                },
+              },
+            }
+          : {}),
       }),
     );
     containers.set("agent", container);
     await container.start();
+  }
+
+  /** Where this session's co-resident agent answers — the counterpart of
+   *  `endpointsFor` for the one container that is session infrastructure rather
+   *  than an application. */
+  function agentStatusField(): { agent?: RunnerEndpoint } {
+    const endpoint = agentEndpoint();
+    return endpoint ? { agent: endpoint } : {};
+  }
+
+  function agentEndpoint(): RunnerEndpoint | undefined {
+    const port = spec.agent?.port;
+    if (port === undefined) return undefined;
+    if (!deps.publicBaseUrl) return { host: "", port, protocol: "tcp" };
+    const base = new URL(deps.publicBaseUrl);
+    return {
+      // `host` is a hostname (the port has its own field); the URL below is
+      // where `base.host` belongs, since that one wants the port too.
+      host: `${port}-${spec.sessionId}-agent.${base.hostname}`,
+      port,
+      protocol: "tcp",
+      url: `${base.protocol}//${port}-${spec.sessionId}-agent.${base.host}`,
+    };
   }
 
   async function removeContainer(key: string): Promise<void> {

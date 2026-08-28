@@ -78,7 +78,25 @@ export interface CreateContainerOpts {
     AutoRemove: boolean;
     NetworkMode: string;
     PortBindings?: Record<string, Array<{ HostIp?: string; HostPort: string }>>;
+    /** The long-form mount list, used where `Binds` cannot say what is needed.
+     *  A watch session's application and agent containers mount only their own
+     *  session's `workspace` subdirectory, which `Binds` has no syntax for. */
+    Mounts?: VolumeMount[];
   };
+}
+
+/** A volume mount scoped to a subdirectory of the volume. `Subpath` reached the
+ *  Docker Engine API in v1.45 (Docker 26); an older daemon ignores the field and
+ *  mounts the volume WHOLE at the target, which is why watch sessions are gated
+ *  on the daemon version rather than left to degrade into that silently.
+ *  Declared here because `@types/dockerode` does not carry it yet; the host
+ *  config is passed through to the API untouched. */
+export interface VolumeMount {
+  Type: "volume";
+  Source: string;
+  Target: string;
+  ReadOnly?: boolean;
+  VolumeOptions?: { Subpath?: string };
 }
 
 export interface SpawnSessionArgs {

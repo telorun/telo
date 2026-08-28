@@ -7,6 +7,7 @@ import type {
   BackendStartSpec,
   DebugFrame,
   PortMapping,
+  RunnerEndpoint,
   RunStatus,
   WorkspaceAccess,
 } from "@telorun/runner-core";
@@ -167,10 +168,32 @@ export async function startWatchSession(
     watchPorts(runtime);
     armPodWatch(runtime);
 
+    const agent = agentEndpoint();
     spec.onStatus({
       kind: "running",
       endpoints: endpointsFor(config, spec.sessionId, allPorts(apps)),
+      ...(agent ? { agent } : {}),
     });
+  }
+
+  /** Where this session's co-resident agent answers. The pod's containers share
+   *  one network namespace, so the agent rides the session's own Service and
+   *  Ingress — the port is simply in the routed set, and the host follows the
+   *  same `<port>-<sessionId>` scheme every app port does. */
+  function agentEndpoint(): RunnerEndpoint | undefined {
+    const port = spec.agent?.port;
+    if (port === undefined) return undefined;
+    return endpointsFor(config, spec.sessionId, [{ port, protocol: "tcp" }])[0];
+  }
+
+  /** Every port the session's Service and Ingress must carry: the apps' declared
+   *  ports plus the agent's. Kept apart from `allPorts`, which answers what the
+   *  APPLICATIONS declare — that set is what the client is told about and what a
+   *  reload re-reads, and the agent belongs in neither. */
+  function routedPorts(forApps: BackendAppSpec[]): PortMapping[] {
+    const port = spec.agent?.port;
+    const ports = allPorts(forApps);
+    return port === undefined ? ports : [...ports, { port, protocol: "tcp" as const }];
   }
 
   /** Resolve once the pod is Running, streaming provisioning messages meanwhile.
@@ -323,9 +346,15 @@ export async function startWatchSession(
     // A port another app in this session already owns cannot be routed: session
     // hosts are `<port>-<sessionId>`, a single label carrying no app name. It is
     // reported against the app that asked for it, never dropped.
-    const taken = new Set(
-      apps.filter((a) => a.name !== appName).flatMap((a) => a.ports.map(portKey)),
-    );
+    // The agent's port is taken too: it is on the same pod IP behind the same
+    // Service, so an app that reloads onto it would be routed the agent's
+    // traffic — or take the agent's, with nothing to tell the two apart.
+    const taken = new Set([
+      ...apps.filter((a) => a.name !== appName).flatMap((a) => a.ports.map(portKey)),
+      ...(spec.agent?.port !== undefined
+        ? [portKey({ port: spec.agent.port, protocol: "tcp" })]
+        : []),
+    ]);
     const rejected = added.filter((p) => taken.has(portKey(p)));
     const accepted = added.filter((p) => !taken.has(portKey(p)));
 
@@ -350,7 +379,10 @@ export async function startWatchSession(
         ? {
             rejected: rejected.map((p) => ({
               port: p.port,
-              reason: `another app in this session already declares ${p.protocol} port ${p.port}`,
+              reason:
+                spec.agent?.port === p.port && p.protocol === "tcp"
+                  ? `this session's co-resident agent '${spec.agent.name}' listens on ${p.protocol} port ${p.port}`
+                  : `another app in this session already declares ${p.protocol} port ${p.port}`,
             })),
           }
         : {}),
@@ -471,7 +503,7 @@ export async function startWatchSession(
    */
   async function publishEndpoints(rt: PodRuntime, forApps: BackendAppSpec[]): Promise<void> {
     if (!config.sessionIngressBaseDomain) return;
-    const ports = allPorts(forApps);
+    const ports = routedPorts(forApps);
     if (ports.length === 0) return;
     const service = buildSessionService(config, spec.sessionId, rt.name, rt.uid, ports);
     const serviceName = service.metadata!.name!;

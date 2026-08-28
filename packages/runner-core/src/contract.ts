@@ -218,8 +218,23 @@ export type RunStatus =
   /** Every application container is up. `inspectUrl` is the kernel
    *  debug/inspection UI fronted by a proxy (set only when the session ran with
    *  `inspect` and the runner has a public base URL); absent when the inspect
-   *  endpoint isn't externally reachable. */
-  | { kind: "running"; endpoints?: RunnerEndpoint[]; inspectUrl?: string }
+   *  endpoint isn't externally reachable.
+   *
+   *  `agent` is where this session's co-resident agent answers, present only on
+   *  a session that requested one AND that this runner could route. An ENDPOINT
+   *  rather than a URL string because the no-proxy case is real — a docker
+   *  runner publishing to the host knows the port and not the hostname the
+   *  client reached it by, exactly as for an app's endpoint, so the client
+   *  fills an empty `host` from its own base URL. Carried here and not in
+   *  `endpoints` because the agent is session infrastructure: `endpoints` are
+   *  the ports the APPLICATIONS declared, and merging the two would make an
+   *  operator-run container look like part of the user's manifest. */
+  | {
+      kind: "running";
+      endpoints?: RunnerEndpoint[];
+      inspectUrl?: string;
+      agent?: RunnerEndpoint;
+    }
   | { kind: "exited"; code: number }
   /** Reaped for idleness: the pod is gone, the workspace checkpoint is held, and
    *  `POST /v1/sessions/:id/resume` brings it back under the same session id.

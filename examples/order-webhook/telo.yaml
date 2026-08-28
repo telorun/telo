@@ -26,8 +26,8 @@ metadata:
     exists. Watch stdout for the sweeper shipping it.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
-  Sql: oci://ghcr.io/telorun/sql@0.23.0#sha256-7OoJzJcGyUpfWe4u1c_4aBXB_isG21LaeN8sPmwfufI
-  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
   Idempotency: oci://ghcr.io/telorun/idempotency@0.10.0#sha256-PE0WF0dQRTcQvi8UbUNcvEoqBmwgH8xP_l661wTyt70
   KvStore: oci://ghcr.io/telorun/kv-store-memory@0.7.0#sha256-i1Nen64mCl25XONkoBGRqiTptxBSBA8zBcW6om9autg
   Schedule: oci://ghcr.io/telorun/scheduler@0.9.0#sha256-4MpeweWGk4LedDa34TE9lELndNfl9YyBLAyOiHyap9s

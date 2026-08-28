@@ -30,6 +30,7 @@ function build(overrides: Partial<Parameters<typeof buildWatchPod>[0]> = {}) {
       image: "ghcr.io/telorun/authoring-agent:1",
       env: { [OPERATOR_KEY]: OPERATOR_VALUE },
       pullPolicy: "missing",
+      port: 8080,
     },
     limits: config.appLimits,
     image: "telorun/node:latest-slim",
@@ -80,6 +81,25 @@ describe("buildWatchPod — the credential boundary", () => {
 
   it("runs at most one agent, whatever the app count", () => {
     expect(pod.spec!.containers.filter((c) => c.name === "agent")).toHaveLength(1);
+  });
+
+  // The pod's containers share one network namespace, so declaring the port is
+  // all the agent needs to be reachable through the session's own Service —
+  // there is no routing of its own to arrange.
+  it("declares the agent's port so the session's Service can carry it", () => {
+    expect(byName(pod, "agent").ports).toEqual([{ containerPort: 8080, protocol: "TCP" }]);
+  });
+
+  it("declares no port for an agent whose catalog entry has none", () => {
+    const portless = build({
+      agent: {
+        name: "authoring-agent",
+        image: "ghcr.io/telorun/authoring-agent:1",
+        env: {},
+        pullPolicy: "missing",
+      },
+    });
+    expect(byName(portless, "agent").ports).toBeUndefined();
   });
 
   it("omits the agent container entirely when none was requested", () => {

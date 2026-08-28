@@ -35,7 +35,7 @@ Optional, with defaults:
 | `RUNNER_WATCH_RELOAD_LIMIT` | `30` | Per-session reloads per minute |
 | `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` | `86400` | How long a suspended record is retained before eviction — bounds accumulation, and is not a workload deadline |
 | `RUNNER_WORKSPACE_CHECKPOINT_SECONDS` | `30` | How often the runner pulls a whole-tree workspace snapshot |
-| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name via `POST /v1/apps/:name/sessions`: `{"<name>": {"image", "env"?, "pullPolicy"?, "title"?, "description"?}}`. `env` is injected verbatim into the app's workload and may embed secrets — clients can never set those keys, and only name/title/description are advertised on `/v1/capabilities`. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "sk-..."}, "pullPolicy": "always"}}` |
+| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name via `POST /v1/apps/:name/sessions`: `{"<name>": {"image", "env"?, "pullPolicy"?, "port"?, "title"?, "description"?}}`. `env` is injected verbatim into the app's workload and may embed secrets — clients can never set those keys, and only name/title/description are advertised on `/v1/capabilities`. `port` is the tcp port the image listens on; it is what the runner publishes when the entry is used as a session's co-resident `agent`, and there is no default, because the runner knows nothing about any specific app. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "sk-..."}, "pullPolicy": "always", "port": 8080}}` |
 
 ## Standalone
 
@@ -114,18 +114,59 @@ SSE stream. Events: `status`, `progress`, `debug`, `reachability`, `run`, `endpo
 
 Docker's containers on the child network stand in for containers in a pod, and per-session directories on the shared bundle volume stand in for pod volumes. Everything else — the routes, the events, suspend/resume — is identical to the kubernetes runner's.
 
+**The workspace is at `/workspace`, exactly as on kubernetes.** An application container and the agent mount only that session's own `workspace` subdirectory of the shared volume, at that path — so a manifest is `/workspace/telo.yaml` on both backends and no session id appears in any path a workload sees. The runner's own siblings of that directory (the file service's manifest, and its module cache) fall outside the mount, so a user's workspace listing shows only their files plus the marker.
+
+Only the `workspace` container still mounts the volume whole, at `/srv`: it is the runner's own, and it needs its manifest and cache beside the workspace it serves.
+
+**This needs Docker Engine API 1.45 (Docker 26) or newer**, which is where scoping a volume mount to a subdirectory arrived. An older daemon ignores the field and would mount the whole volume at `/workspace` — every session's files in every container, at a path that looks correct — so the runner probes the daemon at boot and **advertises `features.watch: false`** when it is too old, logging why. Run sessions are unaffected and keep their whole-volume `/srv` bind.
+
 **One cache for the whole session.** The runner seeds `telo-workspace.yaml` at the workspace root when the session starts, and the kernel anchors its `.telo` cache at the directory holding that marker — so two apps importing the same module resolve it once between them. Application containers carry no `TELO_CACHE_DIR`, because that variable outranks the marker.
 
 **Trust boundary: sessions are mutually trusted on this runner.** Every session
-container joins one `RUNNER_CHILD_NETWORK` and mounts the whole shared bundle
-volume, so a session's workload can already read another session's files — that
-was true before watch sessions. Watch adds a second, remotely reachable surface
-to the same assumption: the workspace API is name-addressable at
-`telo-run-<sessionId>-workspace:8099` with no auth, so any session's workload can
-also WRITE another session's workspace. Do not deploy this runner expecting
+container joins one `RUNNER_CHILD_NETWORK`, and the workspace API is
+name-addressable at `telo-run-<sessionId>-workspace:8099` with no auth — so any
+session's workload can read and WRITE another session's workspace over the
+network, whatever it can see on disk. Do not deploy this runner expecting
 isolation between sessions; the kubernetes runner is the multi-tenant one.
 
+On disk the exposure is narrower than it was: a watch session's application and
+agent containers mount only their own workspace, so they cannot read another
+session's files that way. A RUN session still binds the whole bundle volume at
+`/srv` and can.
+
 **Orphan reap.** A run session's container exits on its own and the daemon `--rm`s it; a watch session's containers do not, by design. So the runner removes every `telo-run-*` container at boot — a restart would otherwise leave a workspace, an agent and one container per app running with nothing able to reach them.
+
+### Reaching the co-resident agent
+
+An `agent` is only useful if a client can talk to it, so the runner publishes it
+and reports where: the `running` status carries an `agent` endpoint beside
+`endpoints`, and `POST /v1/sessions` refuses an agent whose catalog entry
+declares no `port` (`400 agent_port_undeclared`) rather than starting one nobody
+can reach. Where an application declares the agent's port, the **manifest wins**:
+the session starts without the agent and reports it on the stream, rather than
+refusing to run the user's app over a container they never asked for.
+
+Behind a proxy the agent takes its **own** network alias,
+`telo-run-<sessionId>-agent`, so it is reachable at
+`<agentPort>-<sessionId>-agent.<base-domain>` with no proxy configuration — the
+session label is the proxy's trailing capture, so the existing rule already
+resolves it. Giving it the session's own alias instead would have made every app
+port a coin flip, since docker round-robins a shared alias; that is the same
+ambiguity a multi-app session has to refuse. With no proxy the port is published
+to the host like an app's, and the client fills in the hostname it reached the
+runner on.
+
+The agent is the only container that receives the operator env, and it is
+reachable without auth for as long as the session lives — the same exposure an
+app session of the same image already has.
+**Nothing verifies that the agent listens where `port` says.** `port` tells the
+runner where to route; what the image actually binds is configured separately
+(the authoring agent reads `PORT`, defaulting to 8080). If the two disagree the
+runner publishes a port and routes a host with nothing behind it, and the agent
+appears to start while every request to it fails — neither backend watches the
+agent's port the way both watch an application's. Keep `port` and any `PORT` in
+the entry's `env` in agreement.
+
 
 | Route | Purpose |
 | --- | --- |

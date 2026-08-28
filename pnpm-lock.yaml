@@ -208,13 +208,13 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@tauri-apps/api':
-        specifier: ^2
+        specifier: ~2.11.1
         version: 2.11.1
       '@tauri-apps/plugin-dialog':
-        specifier: ^2.7.1
+        specifier: ~2.7.1
         version: 2.7.1
       '@tauri-apps/plugin-fs':
-        specifier: ^2
+        specifier: ~2.5.0
         version: 2.5.0
       '@telorun/analyzer':
         specifier: workspace:*

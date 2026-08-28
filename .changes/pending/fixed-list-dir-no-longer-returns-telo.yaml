@@ -1,0 +1,8 @@
+modules:
+  apps/authoring-agent: Fixed
+body: "`list_dir` no longer returns `.telo/`, `node_modules/`, `.git/` or `dist/` at any
+  depth: the exclude set is applied by the tool's own inputs mapping, so the model
+  cannot drop it, and an omitted `path` now lists the workspace root rather than
+  failing. A recursive listing was mostly resolved-dependency cache paths, which both
+  drowned the authored files and invited reading a pinned manifest out of the cache as
+  if it were a catalog — the prompt now says why that is not one."

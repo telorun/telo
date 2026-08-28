@@ -57,7 +57,14 @@ export async function launchAgentSession(
     );
   }
   if (res.status === 404) {
-    throw new Error("The authoring agent is not available.");
+    // A 404 here means only that the runner offers no agent app to launch on
+    // its own. It may still offer one to ride inside a session, which is the
+    // other — and preferred — way the panel gets an agent, so say so rather
+    // than reporting a dead end the user can in fact walk around.
+    throw new Error(
+      "This runner does not offer the authoring agent as an app of its own. " +
+        "If it offers one inside a session, run the application in watch mode and the panel will use that.",
+    );
   }
   if (!res.ok) {
     throw new Error(`Failed to start the authoring agent (${res.status}).`);

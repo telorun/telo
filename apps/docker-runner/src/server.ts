@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import {
   buildServer as coreBuildServer,
+  coResidentAgentNames,
   loadResolvedApps,
   loadTermsFromEnv,
   stopAllSessions,
@@ -11,7 +12,12 @@ import {
 import packageJson from "../package.json" with { type: "json" };
 import { dockerRunnerCapabilities } from "./capabilities.js";
 import { loadRunnerConfig, RunnerConfigError, type RunnerConfig } from "./config.js";
-import { createDockerClient, type DockerClient } from "./docker/client.js";
+import {
+  createDockerClient,
+  MIN_WATCH_API_VERSION,
+  watchSupportedByDaemon,
+  type DockerClient,
+} from "./docker/client.js";
 import { createDockerBackend } from "./docker/backend.js";
 import type { SessionDockerClient } from "./docker/run-session.js";
 import { loadRunnerEnvFiles } from "./load-env.js";
@@ -47,9 +53,10 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     capabilities: {
       ...dockerRunnerCapabilities({
         watch: deps.runnerConfig.watch.enabled,
-        // A co-resident agent is drawn from the same catalog an app session
-        // launches from, so the advertised set and the accepted set are one list.
-        agents: deps.runnerConfig.watch.enabled ? Object.keys(apps) : undefined,
+        // Only entries that declare a port: the session route refuses an agent
+        // without one, and advertising what will be rejected is what makes the
+        // editor attach an agent to every run and every run fail.
+        agents: deps.runnerConfig.watch.enabled ? coResidentAgentNames(apps) : undefined,
       }),
       terms: loadTermsFromEnv(process.env),
     },
@@ -120,7 +127,27 @@ async function main(): Promise<void> {
   }
 
   const docker = createDockerClient() as DockerClient & SessionDockerClient;
-  const { app, registry } = await buildServer({ docker, runnerConfig });
+
+  // Watch sessions mount each session's workspace subdirectory rather than the
+  // whole volume, which the daemon has to be new enough to honour. Decided
+  // BEFORE the server is built so an unsupported daemon advertises
+  // `features.watch: false` and the editor never offers a mode that cannot be
+  // delivered safely — rather than accepting the request and quietly mounting
+  // every session's files into every container.
+  const daemonWatch = await watchSupportedByDaemon(docker);
+  if (runnerConfig.watch.enabled && !daemonWatch.supported) {
+    process.stderr.write(
+      `Watch sessions are disabled: they need Docker Engine API ${MIN_WATCH_API_VERSION} or newer ` +
+        `(Docker 26+), and this daemon reports ` +
+        `${daemonWatch.apiVersion ? `API ${daemonWatch.apiVersion}` : "no readable version"}. ` +
+        `Run sessions are unaffected.\n`,
+    );
+  }
+  const effectiveConfig: RunnerConfig = daemonWatch.supported
+    ? runnerConfig
+    : { ...runnerConfig, watch: { ...runnerConfig.watch, enabled: false } };
+
+  const { app, registry } = await buildServer({ docker, runnerConfig: effectiveConfig });
 
   const bootState = await verifyBootState(docker, runnerConfig, app.log);
   if (bootState === "volume-missing" || bootState === "network-missing") {

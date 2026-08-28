@@ -137,6 +137,15 @@ export interface RunnerAppConfig {
   /** Workload image pull policy (default `missing`); `always` keeps a moving
    *  tag like `latest-slim` fresh. */
   pullPolicy?: PullPolicy;
+  /** The tcp port this image listens on, published by the runner when the entry
+   *  is used as a session's co-resident `agent` — a client cannot supply it,
+   *  because what gets published is the operator's decision, not the caller's.
+   *  There is deliberately NO default: the catalog is pure operator
+   *  configuration and the runner has no built-in knowledge of any specific
+   *  app, so guessing 8080 would be exactly that knowledge. An entry without it
+   *  still works as a standalone app session (where the client declares the
+   *  ports it wants published); only `agent` use requires it. */
+  port?: number;
   title?: string;
   description?: string;
 }
@@ -147,6 +156,9 @@ export interface ResolvedRunnerApp {
   image: string;
   env: Record<string, string>;
   pullPolicy: PullPolicy;
+  /** See {@link RunnerAppConfig.port} — undefined when the operator declared
+   *  none, which is what makes the entry unusable as an `agent`. */
+  port?: number;
   title?: string;
   description?: string;
 }
@@ -206,12 +218,38 @@ function validateAppEntry(name: string, value: unknown): RunnerAppConfig {
   if (entry.pullPolicy !== undefined && !PULL_POLICIES.includes(entry.pullPolicy as string)) {
     fail(`has an invalid 'pullPolicy' — expected one of ${PULL_POLICIES.join(", ")}.`);
   }
+  if (
+    entry.port !== undefined &&
+    (typeof entry.port !== "number" || !Number.isInteger(entry.port) || entry.port < 1 || entry.port > 65535)
+  ) {
+    fail("has an invalid 'port' — expected an integer in 1..65535.");
+  }
   for (const key of ["title", "description"] as const) {
     if (entry[key] !== undefined && typeof entry[key] !== "string") {
       fail(`has an invalid '${key}' — expected a string.`);
     }
   }
   return entry as unknown as RunnerAppConfig;
+}
+
+/**
+ * Which catalog entries may be a session's co-resident `agent` — the ones that
+ * declare a `port`, because the session route refuses the rest and a runner
+ * must not advertise what it will reject.
+ *
+ * Derived here rather than in each runner's capabilities call because this IS
+ * the acceptance condition: the two used to be one list by construction
+ * (`Object.keys`), and adding a second condition to the route without adding it
+ * here is exactly how they drift. An operator upgrading with an existing
+ * catalog has no `port` anywhere — the field is new — so an unfiltered
+ * advertisement makes the editor attach an agent to every run and every run is
+ * refused.
+ *
+ * Per entry, not per catalog: declaring a port opts an app into co-resident
+ * use, omitting one leaves it launchable on its own.
+ */
+export function coResidentAgentNames(apps: Record<string, ResolvedRunnerApp>): string[] {
+  return Object.keys(apps).filter((name) => apps[name]?.port !== undefined);
 }
 
 /** The catalog runners pass to `buildServer`: `RUNNER_APPS` validated with
@@ -226,6 +264,7 @@ export function loadResolvedApps(env: NodeJS.ProcessEnv): Record<string, Resolve
       image: entry.image,
       env: entry.env ?? {},
       pullPolicy: entry.pullPolicy ?? "missing",
+      port: entry.port,
       title: entry.title,
       description: entry.description,
     };

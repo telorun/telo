@@ -19,10 +19,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.0", features = [] }
-tauri-plugin-shell = "2.0"
-tauri-plugin-dialog = "2.0"
-tauri-plugin-fs = "2.0"
+# Minor-pinned, and so are their npm counterparts in ../package.json. The CLI
+# refuses to build when a crate's major.minor differs from its `@tauri-apps/*`
+# package, and a caret range on either side lets one drift alone on the next
+# lockfile refresh. Upgrading means editing both files in the same change.
+tauri = { version = "2.11", features = [] }        # @tauri-apps/api
+tauri-plugin-shell = "2.3"
+tauri-plugin-dialog = "2.7"                        # @tauri-apps/plugin-dialog
+tauri-plugin-fs = "2.5"                            # @tauri-apps/plugin-fs
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["process", "io-util", "net", "rt-multi-thread", "time", "macros", "sync"] }

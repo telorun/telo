@@ -75,6 +75,11 @@ export async function startWorkloadSession(
   deps: WorkloadStartDeps,
   args: WorkloadStartArgs,
   reply: FastifyReply,
+  /** Things the route decided about this session that the client would
+   *  otherwise have to infer from an absence — an agent dropped because its
+   *  port collided with an application's. Emitted on the stream, because the
+   *  201 is sent before the workload starts and has nowhere to carry them. */
+  notices?: string[],
 ): Promise<void> {
   const sessionId = generateSessionId();
 
@@ -118,6 +123,10 @@ export async function startWorkloadSession(
     streamUrl: `/v1/sessions/${sessionId}/events`,
     createdAt: entry.createdAt.toISOString(),
   });
+
+  for (const message of notices ?? []) {
+    deps.registry.emit(sessionId, { type: "progress", phase: "provision", message });
+  }
 
   // Every app's first generation is attributed to the session coming up; a
   // reload after that is a watch reload unless a route says otherwise.

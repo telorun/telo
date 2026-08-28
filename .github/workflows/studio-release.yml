@@ -104,6 +104,9 @@ jobs:
         uses: actions/checkout@v4
 
       # Tauri 2 system libraries (webkit2gtk + tray/appindicator + packaging).
+      # libdbus-1-dev is required from tauri 2.11: its `tao` 0.35 enables the
+      # `dbus` feature by default on Linux, and `libdbus-sys` builds via
+      # pkg-config against dbus-1.
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-22.04'
         run: |
@@ -116,7 +119,8 @@ jobs:
             build-essential \
             file \
             libxdo-dev \
-            libssl-dev
+            libssl-dev \
+            libdbus-1-dev
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

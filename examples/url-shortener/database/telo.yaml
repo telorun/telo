@@ -13,7 +13,7 @@ variables:
     type: string
     description: Path to the SQLite database file.
 imports:
-  SQLite: oci://ghcr.io/telorun/sqlite@0.3.0#sha256-l33FRF4pw2ohB7HEnRd1NcX402er1kBS_YnC5W-Bg60
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
 exports:
   resources:
     - connection
