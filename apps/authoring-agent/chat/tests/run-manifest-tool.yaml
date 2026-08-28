@@ -1,0 +1,90 @@
+kind: Telo.Application
+metadata:
+  name: ChatRunTestsTool
+  version: 1.0.0
+  description: |
+    The `run_manifest` gate, without any AI. Executing a manifest is the one thing
+    the agent can do that is arbitrary code execution, so whether it is allowed
+    is a single operator switch rather than an entry in the verb list — and the
+    switch is only worth having if it is closed by default and actually closes.
+    These assert that it refuses before spawning anything when off, and composes
+    exactly `<program> run <path>` when on.
+
+    No model and no API key: the tool never reaches OpenAI, and `echo` stands in
+    for the CLI so the argv itself is what gets asserted (the `telo-cli-tool`
+    precedent — it also drops a dependency on which interpreter CI happens to
+    run).
+imports:
+  ChatOff:
+    source: ../
+    secrets:
+      openaiApiKey: dummy-key-never-used
+    variables:
+      dbFile: ":memory:"
+      teloProgram: [echo]
+      # The default, restated: what this case asserts is that the default is the
+      # closed one, so reading it from the library would assert nothing.
+      allowManifestRuns: false
+  ChatOn:
+    source: ../
+    secrets:
+      openaiApiKey: dummy-key-never-used
+    variables:
+      dbFile: ":memory:"
+      teloProgram: [echo]
+      allowManifestRuns: true
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
+targets:
+  # The workspace is gitignored, so a fresh checkout has none — and every
+  # command spawns with it as cwd.
+  - !ref ChatOff.ensureWorkspace
+  - !ref testRefusedWhenOff
+  - !ref testRunsWhenOn
+---
+# Off is the default, and it must refuse BEFORE anything is spawned — an error
+# the agent can read and act on, not a silent no-op.
+kind: Run.Sequence
+metadata: { name: testRefusedWhenOff }
+steps:
+  - name: attempt
+    try:
+      - name: run
+        invoke: !ref ChatOff.runManifest
+        inputs:
+          path: apps/todo/tests/telo.yaml
+      # Reaching here means the guard did NOT fire and the program was spawned.
+      # Without this the case passes green having asserted nothing: `echo`
+      # succeeds, no error is raised, and `catch:` never runs — so the one thing
+      # this exists to prove, that the default closes, would go unchecked.
+      - name: guardDidNotFire
+        throw:
+          code: ERR_GUARD_DID_NOT_FIRE
+          message: runManifest ran the program with allowManifestRuns off.
+    catch:
+      - name: assertCode
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MANIFEST_RUNS_NOT_ALLOWED
+---
+# On, the verb is FIXED and the agent's path is one argument appended to it.
+# Pinning the whole line is what catches the two ways this could go wrong: a
+# dropped program prefix, and a path that reached the shell as anything but a
+# single argument.
+kind: Run.Sequence
+metadata: { name: testRunsWhenOn }
+steps:
+  - name: run
+    invoke: !ref ChatOn.runManifest
+    inputs:
+      path: apps/todo/tests/telo.yaml
+  - name: assertArgv
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        exitCode: !cel "steps.run.result.exitCode"
+        argv: !cel "trim(steps.run.result.output)"
+      expected:
+        exitCode: 0
+        argv: "run apps/todo/tests/telo.yaml"

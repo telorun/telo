@@ -3,6 +3,7 @@ import { AgentClient, openAgentStream, type AgentStreamHandle } from "./client";
 import { ownWorkspace } from "./agent-workspace";
 import { launchAgentSession, type LaunchedAgent } from "./launch";
 import { reconcile, seedDelta, pullFile } from "./sync";
+import { formatResumeRequest, resumePoint } from "./transcript";
 import {
   clearChat,
   loadAgentSettings,
@@ -30,6 +31,14 @@ interface AgentContextValue {
   /** Dev override URL; empty means launch a per-session agent on the runner. */
   overrideUrl: string;
   setOverrideUrl: (url: string) => void;
+  /** Render the agent's question blocks as clickable options (default on). */
+  questionCards: boolean;
+  setQuestionCards: (enabled: boolean) => void;
+  /** Panel width in pixels, as the user last dragged it. Committed at the END
+   *  of a drag: per-pixel updates here would rebuild this context value and
+   *  re-render every consumer of it on every pointer move. */
+  panelWidth: number;
+  setPanelWidth: (width: number) => void;
 
   // Conversation state.
   conversationId: string | null;
@@ -41,6 +50,11 @@ interface AgentContextValue {
 
   send: (message: string) => void;
   stop: () => void;
+  /** Pick a failed turn back up — re-attaching to it when it is still running,
+   *  otherwise sending the last request again. */
+  retry: () => void;
+  /** True when there is a failed turn `retry()` would act on. */
+  canRetry: boolean;
   /** Discard the current thread and start a fresh conversation for this
    *  workspace — clears the panel and gives the agent an empty history. */
   clearConversation: () => void;
@@ -96,6 +110,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const initialSettings = useRef(loadAgentSettings());
   const [panelOpen, setPanelOpen] = useState(initialSettings.current.panelOpen);
   const [overrideUrl, setOverrideUrlState] = useState(initialSettings.current.overrideUrl);
+  const [questionCards, setQuestionCards] = useState(initialSettings.current.questionCards);
+  const [panelWidth, setPanelWidth] = useState(initialSettings.current.panelWidth);
 
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -141,6 +157,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const workspaceRef = useRef<AgentWorkspace | null>(null);
   const historyRef = useRef<AgentHistoryRow[]>([]);
   historyRef.current = history;
+  // Read by retry(), through a ref so the callback stays stable across every
+  // streamed delta.
+  const messagesRef = useRef<ChatMessage[]>([]);
+  messagesRef.current = messages;
   // `<sessionKey>:<conversationId>` pairs already seeded with history — one
   // import per session is enough (and the import is idempotent regardless).
   const historySeededRef = useRef<Set<string>>(new Set());
@@ -210,8 +230,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
   // ── persistence ───────────────────────────────────────────────────────────
   useEffect(() => {
-    saveAgentSettings({ overrideUrl, panelOpen });
-  }, [overrideUrl, panelOpen]);
+    saveAgentSettings({ overrideUrl, panelOpen, questionCards, panelWidth });
+  }, [overrideUrl, panelOpen, panelWidth, questionCards]);
 
   // Identity of the agent session the current turn runs on — a persisted turn
   // may only be re-attached against the same session (see PersistedChat).
@@ -322,7 +342,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           break;
         }
         case "finish": {
-          updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
+          updateAssistant(assistantId, (m) => ({ ...m, pending: false, completed: true }));
           break;
         }
       }
@@ -388,19 +408,16 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   );
 
   // ── send ────────────────────────────────────────────────────────────────────
-  const send = useCallback(
-    (message: string) => {
+  // The turn itself: reach an agent, seed the history and the workspace, start
+  // the turn and attach its stream. Shared by a fresh send and by a retry —
+  // what differs between them is the transcript bookkeeping, which stays with
+  // each caller, since only they know whether a bubble is being appended or
+  // replaced.
+  const dispatchTurn = useCallback(
+    (text: string, assistantId: string) => {
       const convId = conversationIdRef.current;
       const bridge = bridgeRef.current;
-      const text = message.trim();
-      if (!text || locked || !convId || !bridge) return;
-
-      setError(null);
-      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", text, tools: [] };
-      const assistantId = crypto.randomUUID();
-      assistantIdRef.current = assistantId;
-      const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", text: "", tools: [], pending: true };
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      if (!convId || !bridge) return;
       lastEventIdRef.current = 0;
 
       // A Stop click bumps the generation; the pipeline re-checks it after
@@ -465,8 +482,62 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [locked, agentSessionKey, client, ensureAgent, attachStream, invalidateLaunched, updateAssistant],
+    [agentSessionKey, client, ensureAgent, attachStream, invalidateLaunched, updateAssistant],
   );
+
+  const send = useCallback(
+    (message: string) => {
+      const text = message.trim();
+      if (!text || locked || !conversationIdRef.current || !bridgeRef.current) return;
+      setError(null);
+      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", text, tools: [] };
+      const assistantId = crypto.randomUUID();
+      assistantIdRef.current = assistantId;
+      const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", text: "", tools: [], pending: true };
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      dispatchTurn(text, assistantId);
+    },
+    [dispatchTurn, locked],
+  );
+
+  /**
+   * Pick a failed turn back up.
+   *
+   * A turn whose STREAM was lost is usually still running on a reachable agent,
+   * so the first move is to re-attach from the last event seen: the work
+   * continues where the transcript stopped, and nothing is paid for twice. Only
+   * when there is no turn to re-attach to — the agent session ended, which is
+   * what "Interrupted" means — is the last request sent again, against a fresh
+   * agent seeded with this conversation's history.
+   */
+  const retry = useCallback(() => {
+    if (locked || !conversationIdRef.current || !bridgeRef.current) return;
+    setError(null);
+
+    const activeTurn = turnIdRef.current;
+    if (activeTurn && agentUrlRef.current) {
+      const assistantId = assistantIdRef.current;
+      if (assistantId) updateAssistant(assistantId, (m) => ({ ...m, error: undefined, pending: true }));
+      setStatus("streaming");
+      attachStream(activeTurn, lastEventIdRef.current);
+      return;
+    }
+
+    const resume = resumePoint(messagesRef.current);
+    if (!resume) return;
+    // The failed turn STAYS in the transcript, tool cards and all: it is the
+    // record of work that really happened, and the files it wrote are on disk.
+    // Replacing it would tell the user their agent had done nothing.
+    const text = formatResumeRequest(resume);
+    const assistantId = crypto.randomUUID();
+    assistantIdRef.current = assistantId;
+    setMessages((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), role: "user", text, tools: [], resumedRequest: resume.request },
+      { id: assistantId, role: "assistant", text: "", tools: [], pending: true },
+    ]);
+    dispatchTurn(text, assistantId);
+  }, [attachStream, dispatchTurn, locked, updateAssistant]);
 
   // Stop: cancel any in-flight send pipeline, close the stream, abort the turn
   // on the agent (so the server-side model loop actually ends and the workspace
@@ -476,7 +547,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     streamRef.current?.close();
     streamRef.current = null;
     const assistantId = assistantIdRef.current;
-    if (assistantId) updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
+    if (assistantId) updateAssistant(assistantId, (m) => ({ ...m, pending: false, stopped: true }));
     const convId = conversationIdRef.current;
     const activeTurn = turnIdRef.current;
     void (async () => {
@@ -621,6 +692,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     togglePanel,
     overrideUrl,
     setOverrideUrl,
+    questionCards,
+    setQuestionCards,
+    panelWidth,
+    setPanelWidth,
     conversationId,
     messages,
     status,
@@ -628,6 +703,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     error,
     send,
     stop,
+    retry,
+    canRetry: !locked && (turnId !== null || resumePoint(messages) !== null),
     clearConversation,
     setConversation,
     registerWorkspace,

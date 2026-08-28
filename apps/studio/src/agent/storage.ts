@@ -1,6 +1,15 @@
 import { LOCAL_KEYS, LOCAL_PREFIXES } from "../storage-keys";
 import type { AgentHistoryRow, ChatMessage } from "./types";
 
+/** The panel's width before anyone drags it (Tailwind's `w-96`, which it was
+ *  fixed at) and the narrowest it can be dragged — below this the composer and
+ *  the tool cards stop being readable. A stored width is clamped up to the
+ *  minimum but never down to a maximum: what a wide panel leaves the editor
+ *  depends on the window, so the ceiling is applied while dragging, where the
+ *  window is known. */
+export const AGENT_PANEL_DEFAULT_WIDTH = 384;
+export const AGENT_PANEL_MIN_WIDTH = 280;
+
 const CHAT_PREFIX = LOCAL_PREFIXES.agentChat;
 const CONV_PREFIX = LOCAL_PREFIXES.agentConv;
 const SETTINGS_KEY = LOCAL_KEYS.agentSettings;
@@ -11,6 +20,12 @@ export interface AgentSettings {
   overrideUrl: string;
   /** Chat side-panel open state. */
   panelOpen: boolean;
+  /** Chat side-panel width in pixels, as the user last dragged it. */
+  panelWidth: number;
+  /** Render the agent's `telo-questions` blocks as clickable options. Off, the
+   *  same block is shown as text and answered by typing — a render choice only,
+   *  so it applies to messages already received and the agent is not told. */
+  questionCards: boolean;
 }
 
 /** The client-side display transcript + resume pointers, persisted per conversation. */
@@ -52,6 +67,13 @@ export function loadAgentSettings(): AgentSettings {
   return {
     overrideUrl: typeof data.overrideUrl === "string" ? data.overrideUrl : "",
     panelOpen: data.panelOpen === true,
+    panelWidth:
+      typeof data.panelWidth === "number" && Number.isFinite(data.panelWidth)
+        ? Math.max(AGENT_PANEL_MIN_WIDTH, data.panelWidth)
+        : AGENT_PANEL_DEFAULT_WIDTH,
+    // Default ON: a stored `false` is the only thing that turns it off, so a
+    // settings blob written before this option existed keeps the cards.
+    questionCards: data.questionCards !== false,
   };
 }
 

@@ -16,9 +16,8 @@ imports:
       openaiApiKey: !cel "secrets.openaiApiKey"
     variables:
       workspaceDir: !cel "variables.workspaceDir"
-      dbFile: ./tmp/authoring-agent.sqlite
-      model: gpt-5.2
       budgetLimit: !cel "variables.budgetLimit"
+      allowManifestRuns: !cel "variables.allowManifestRuns"
   Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
   Sse: oci://ghcr.io/telorun/sse-codec@0.10.5#sha256-9NLaO-TSiCOIDiJPNUj93IdrlOSibMc3cVSPxdjrjac
 ports:
@@ -38,6 +37,20 @@ variables:
     env: BUDGET_LIMIT
     type: integer
     default: 4000000
+  # Lets the agent RUN the tests it writes, not merely check them.
+  #
+  # Off by default because it is arbitrary code execution driven by whoever is
+  # prompting: a manifest the agent wrote can spawn a shell, read any file this
+  # container can and reach the network, and a child inherits the operator
+  # environment apart from OPENAI_API_KEY, which is scrubbed. Safe to turn on
+  # where the prompter owns the container — a per-session or co-resident agent
+  # in the user's own workspace, which already runs their manifests under
+  # `telo run --watch`. Do not turn it on for an agent open to anonymous
+  # callers.
+  allowManifestRuns:
+    env: ALLOW_MANIFEST_RUNS
+    type: boolean
+    default: false
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
