@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: ExtendsClosedParentTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref testExtendsClosedParent
+---
+# A merge-form child forwards its WHOLE config as the parent's, so a parent that
+# closes its schema cannot accept an added field. That failed at boot, phrased
+# against the parent kind at the instance's line; asserts it is now reported at
+# the child's own property instead.
+kind: Assert.Manifest
+metadata:
+  name: testExtendsClosedParent
+source: ./__fixtures__/extends-closed-parent.yaml
+expect:
+  errors:
+    - code: EXTENDS_CLOSED_PARENT_ADDS_FIELD

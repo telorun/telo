@@ -1,0 +1,23 @@
+kind: Telo.Library
+metadata:
+  name: ExtendsClosedParent
+  version: 0.1.0
+  description: >-
+    Fixture: a merge-form child adding a field to a parent whose schema is closed.
+    The child's whole config forwards as the parent's, so the field is rejected at
+    the parent's create-time validation — reported statically instead.
+imports:
+  Console: ../../modules/console
+exports:
+  kinds:
+    - TaggedWriteLine
+---
+kind: Telo.Definition
+metadata:
+  name: TaggedWriteLine
+extends: Console.WriteLine
+schema:
+  type: object
+  properties:
+    label:
+      type: string

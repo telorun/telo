@@ -1489,7 +1489,13 @@ system: |
     once to build the parent's config. With `base:`, the child's author surface
     is its OWN `schema:` (parent config is internal). Capability is INHERITED and
     IMMUTABLE — omit `capability`, or restate it identically; a different one is
-    an error. Example — a GitHub client library:
+    an error. WITHOUT `base:` the child is a pure additive extension: its author
+    surface is `merge(parent, own)`, its whole config forwards to the parent's
+    controller, and fields it declares that the parent NEVER DID publish over the
+    parent's reading — so `resources.<child>.<field>` reads them. Redeclaring an
+    inherited field only narrows its schema; the parent's reading of it stands. A
+    `base:`-form child's own fields do NOT publish, being construction inputs
+    consumed by the mapping. Example — a GitHub client library:
 
       kind: Telo.Definition
       metadata: { name: GithubClient }

@@ -1,7 +1,13 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
+import {
+  controllerBearingAncestor,
+  effectiveAuthorSchema,
+  inheritedCapability,
+  isInheritedDelegation,
+  type DefResolver,
+} from "./extends-resolution.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -25,6 +31,9 @@ const EXTENDS_ALIAS_RE = /^[A-Z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9_]*$/;
  *  - EXTENDS_UNKNOWN_TARGET: alias resolves to a module, but that module has no
  *    registered definition with the target name.
  *  - EXTENDS_NON_ABSTRACT: target resolves to a Telo.Definition, not a Telo.Abstract.
+ *  - EXTENDS_CLOSED_PARENT_ADDS_FIELD: a child with no `base:` declares a property its
+ *    controller-bearing ancestor's closed schema rejects — the runtime counterpart is a
+ *    create-time failure phrased against the ancestor kind.
  *  - CAPABILITY_SHADOWS_EXTENDS (warning): `capability` names a user-declared abstract
  *    (metadata.module !== "Telo"). Builtin lifecycle capabilities (Telo.Invocable, etc.)
  *    never trigger this — they're lifecycle roles by design.
@@ -148,6 +157,47 @@ export function validateExtends(
                     `Capability is inherited and immutable — omit 'capability' or restate it identically.`,
                   data: { resource, filePath, path: "capability" },
                 });
+              }
+
+              // A merge-form child (no `base:`) forwards its WHOLE config to the
+              // inherited controller as the parent's config, so a field the
+              // parent's schema closes out is rejected at the parent's own
+              // create-time validation — phrased against the parent kind, at the
+              // instance's line, about a resource the author never wrote.
+              // Reported here instead, at the property that has to change.
+              if (
+                (m as { base?: unknown }).base == null &&
+                isInheritedDelegation(m as ResourceDefinition, resolveDef)
+              ) {
+                const ancestor = controllerBearingAncestor(m as ResourceDefinition, resolveDef);
+                const ancestorSchema = ancestor
+                  ? effectiveAuthorSchema(ancestor, resolveDef)
+                  : undefined;
+                if (ancestorSchema?.additionalProperties === false) {
+                  const inherited = new Set(Object.keys(ancestorSchema.properties ?? {}));
+                  const ownProps = ((m as { schema?: { properties?: Record<string, unknown> } })
+                    .schema?.properties ?? {}) as Record<string, unknown>;
+                  const ancestorKind = `${ancestor?.metadata.module}.${ancestor?.metadata.name}`;
+                  for (const prop of Object.keys(ownProps)) {
+                    if (inherited.has(prop)) continue;
+                    diagnostics.push({
+                      severity: DiagnosticSeverity.Error,
+                      code: "EXTENDS_CLOSED_PARENT_ADDS_FIELD",
+                      source: SOURCE,
+                      message:
+                        `${label}: declares '${prop}', but '${ancestorKind}' closes its schema ` +
+                        `(additionalProperties: false) and a child without 'base:' forwards its whole ` +
+                        `config as that kind's config — so '${prop}' is rejected when the resource is ` +
+                        `created. Add a 'base:' mapping, which makes this kind's fields construction ` +
+                        `inputs and builds the parent's config explicitly.`,
+                      data: {
+                        resource,
+                        filePath,
+                        path: `schema.properties.${prop}`,
+                      },
+                    });
+                  }
+                }
               }
             }
           }

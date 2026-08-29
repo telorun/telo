@@ -9,6 +9,7 @@ import { RuntimeError } from "@telorun/sdk";
 import {
   controllerBearingAncestor,
   effectiveAuthorSchema,
+  publishedOwnFields,
   effectiveStatusSchema,
   hasOwnControllerOrTemplate,
   inheritedCapability,
@@ -30,6 +31,9 @@ type ResourceDefinitionResource = RuntimeResource & {
   };
   schema: Record<string, any>;
   status?: Record<string, any>;
+  /** Derived stamp: the fields a merge-form inheriting child publishes over the
+   *  parent instance's reading (see `publishedOwnFields`). */
+  publishedOwnFields?: string[];
   capability?: string;
   extends?: string;
   base?: Record<string, any>;
@@ -77,6 +81,16 @@ class ResourceDefinition implements ResourceInstance {
           `Telo.Definition '${this.resource.metadata.name}': 'extends' target '${this.resource.extends}' is not loaded yet.`,
         );
       }
+      // Which of the child's fields publish over the parent's reading. Stamped
+      // here for the reason `status:` is: an `extends` alias belongs to the file
+      // that declared it, so the set must be derived in the DEFINING scope — a
+      // consumer importing only the backend has no alias for the parent's
+      // library. Derived before the schema stamp only because it reads the same
+      // resolver, not because it reads the pre-stamp value.
+      this.resource.publishedOwnFields = publishedOwnFields(
+        this.resource as ResourceDefinitionManifest,
+        resolveDef,
+      );
       this.resource.schema = effectiveAuthorSchema(
         this.resource as ResourceDefinitionManifest,
         resolveDef,

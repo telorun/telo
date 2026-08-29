@@ -1,0 +1,24 @@
+kind: Telo.Library
+metadata:
+  name: RuntimeEvalHolder
+  version: 1.0.0
+  description: >-
+    Fixture: a provider kind with a runtime-eval field. provide() is parameterless,
+    so nothing can ever expand it — the kernel must say so rather than dereference
+    the absent invoke().
+exports:
+  kinds:
+    - Holder
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./holder.mjs&local_path=./holder.ts
+schema:
+  type: object
+  properties:
+    tag:
+      type: string
+      x-telo-eval: runtime

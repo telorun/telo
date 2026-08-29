@@ -1479,6 +1479,26 @@ export class Kernel implements IKernel {
 
     if (!runtime.length) return { instance, ctx, resource: processedResource };
 
+    // Runtime eval paths are expanded against a CALL's inputs, so they need a
+    // call. `invoke` is the only entry point that takes any — `run()` and
+    // `provide()` are parameterless — so a kind that declares one of these paths
+    // and has no `invoke()` has annotated something nothing can ever expand: the
+    // value stays a compiled expression for the life of the resource. Reported
+    // here rather than dereferenced: this used to be a non-null assertion, and it
+    // failed as `undefined is not an object (evaluating 'instance.invoke.bind')`
+    // against the kernel's own source, naming neither the kind nor the field.
+    // Method presence rather than declared capability, because the kernel
+    // dispatches on the method — a Provider that implements `invoke` is bound
+    // exactly like an Invocable.
+    if (typeof instance.invoke !== "function") {
+      throw new RuntimeError(
+        "ERR_RUNTIME_EVAL_WITHOUT_INVOKE",
+        `Kind ${resolvedKind} declares 'x-telo-eval: runtime' (at ${runtime.join(", ")}), but its resources have no invoke() — ` +
+          `runtime evaluation expands a call's inputs, and run() / provide() take none. ` +
+          `Use 'x-telo-eval: compile' for a value resolved once when the resource is created, or give the kind an invocable controller.`,
+      );
+    }
+
     // Override invoke in-place so all lifecycle methods (init/invoke/teardown/snapshot)
     // share the same `this`. A wrapper object would split identity: state mutated by
     // init() on the wrapper would be invisible to the original invoke(), which still
@@ -1487,7 +1507,7 @@ export class Kernel implements IKernel {
     // Every argument is forwarded: `invoke(inputs, ctx)` carries the
     // InvokeContext (cancellation, tracing) as its second parameter, and a
     // wrapper that declares only `inputs` silently drops it.
-    const originalInvoke = instance.invoke!.bind(instance);
+    const originalInvoke = instance.invoke.bind(instance);
     instance.invoke = async (inputs: any, ...rest: unknown[]) => {
       const expanded = evalContext.expandPaths(inputs as Record<string, unknown>, runtime);
       return (originalInvoke as (i: any, ...r: unknown[]) => Promise<unknown>)(expanded, ...rest);
