@@ -1,6 +1,0 @@
-modules:
-  modules/sse-codec: Fixed
-  modules/ndjson-codec: Fixed
-body: An error frame carries the failing error's `code` when it has one. A stream now
-  fails by rejecting, so this frame is the whole of what a client gets, and a bare
-  message is not something it can branch on.

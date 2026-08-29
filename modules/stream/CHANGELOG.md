@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-08-29
+### Added
+* `Stream.Map`, `Stream.Scan` and `Stream.FlatMap` — the three element-wise transforms a streaming protocol is assembled from, so turning wire frames into a provider's records is expressible in a manifest instead of only in a controller. All three are lazy, so a stage never drains its source to build a result, and a consumer's early exit propagates to the transport by construction. `Scan` emits the running state after every value, which a terminal fold cannot do and which reassembling a token stream needs; `FlatMap` changes cardinality in both directions, emitting [] to drop a value.
+
 ## 0.10.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.

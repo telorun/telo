@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.0 - 2026-08-29
+### Deprecated
+* Merged into the `openai` module, which serves every OpenAI endpoint — chat, images and embeddings — under one import. One module per SYSTEM rather than per endpoint, so moderation, audio, batch and files arrive there as further kinds rather than as a module apiece. The rename rides the release that already breaks every consumer's imports; done later it would be a second break of the same manifests. `telo upgrade` moves a pin within a ref and does not cross a rename, so a consumer edits its `imports:` by hand once.
+
 ## 0.15.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
