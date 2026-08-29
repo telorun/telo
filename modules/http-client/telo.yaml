@@ -13,8 +13,11 @@ metadata:
     failures retried.
 exports:
   kinds:
+    - ApiKeyHeader
+    - BearerToken
     - Client
     - Credential
+    - QueryKey
     - Request
 ---
 # Http.Credential — how a client authenticates the requests made through it.
@@ -56,9 +59,15 @@ inputType:
           headers:
             type: object
             additionalProperties: { type: string }
+            # The request as it stands BEFORE this credential is applied already
+            # carries the client's default headers — which is exactly where a
+            # per-module `apiKey` field used to put its material. Marked on the
+            # way IN for the same reason the result is marked on the way out.
+            x-telo-sensitive: true
           query:
             type: object
             additionalProperties: { type: string }
+            x-telo-sensitive: true
       forceRefresh:
         type: boolean
         default: false
@@ -76,6 +85,12 @@ outputType:
       headers:
         type: object
         additionalProperties: { type: string }
+        # Auth material BY DEFINITION, and making a credential a dispatched
+        # invocable turns it into an invoke OUTPUT — which rides the debug wire
+        # on every call under `--inspect`, i.e. every watch session. Marked here
+        # on the abstract, so every implementation inherits it rather than each
+        # one remembering.
+        x-telo-sensitive: true
         description: >-
           Headers to apply. They override the client's default headers, and are
           overridden in turn by a header the individual request sets, so an
@@ -83,7 +98,134 @@ outputType:
       query:
         type: object
         additionalProperties: { type: string }
+        x-telo-sensitive: true
         description: Query parameters to apply, under the request's own by the same rule.
+---
+# The three credentials that are just a value the author already holds.
+#
+# Http.Credential had exactly one implementation — OAuth's — so every module
+# talking to a keyed API grew its own `apiKey` field and applied it by hand,
+# which is a second way to say the same thing and a second place for the 401
+# retry to not happen. These cover what those fields were doing.
+#
+# Static means `forceRefresh` returns the same material, which the abstract
+# already anticipates: re-acquiring a written-down value yields what it had, the
+# retry fails again, and the error propagates — the key is wrong, not stale.
+kind: Telo.Definition
+metadata:
+  name: BearerToken
+  description: >-
+    Authenticates requests with a fixed bearer token in the Authorization header, the
+    scheme most HTTP APIs accept. The token is supplied from configuration, typically a
+    secret, and is reused unchanged for every request.
+capability: Telo.Invocable
+extends: Self.Credential
+controllers:
+  - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#BearerTokenController
+throws:
+  codes:
+    ERR_INVALID_CREDENTIAL:
+      description: >-
+        The configured material was absent or empty — typically a variable that
+        resolved to `""`. Refused here rather than sent, which would surface as the
+        server's 401 one indirection from the line that has to change.
+schema:
+  type: object
+  additionalProperties: false
+  required: [token]
+  examples:
+    - token: "${{ secrets.apiToken }}"
+  properties:
+    token:
+      title: Token
+      description: The token to send. Usually a secret, never a literal in a committed manifest.
+      type: string
+      x-telo-eval: compile
+    scheme:
+      title: Scheme
+      description: >-
+        The authorization scheme preceding the token. Defaults to `Bearer`; a handful of
+        services spell the same header `Token`.
+      type: string
+      default: Bearer
+---
+kind: Telo.Definition
+metadata:
+  name: ApiKeyHeader
+  description: >-
+    Authenticates requests with a fixed key in a header the service names — `x-api-key`
+    and its equivalents. The header name is configured alongside the key, so one kind
+    serves every API that keys a header rather than the Authorization scheme.
+capability: Telo.Invocable
+extends: Self.Credential
+controllers:
+  - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#ApiKeyHeaderController
+throws:
+  codes:
+    ERR_INVALID_CREDENTIAL:
+      description: >-
+        The configured material was absent or empty — typically a variable that
+        resolved to `""`. Refused here rather than sent, which would surface as the
+        server's 401 one indirection from the line that has to change.
+schema:
+  type: object
+  additionalProperties: false
+  required: [header, key]
+  examples:
+    - header: x-api-key
+      key: "${{ secrets.apiKey }}"
+  properties:
+    header:
+      title: Header
+      description: Header name to carry the key, e.g. `x-api-key`.
+      type: string
+    key:
+      title: Key
+      description: The key to send. Usually a secret.
+      type: string
+      x-telo-eval: compile
+    prefix:
+      title: Prefix
+      description: >-
+        Text placed before the key in the header value, for services that expect one
+        (`Token `, `ApiKey `). Omitted, the key is sent alone.
+      type: string
+---
+kind: Telo.Definition
+metadata:
+  name: QueryKey
+  description: >-
+    Authenticates requests with a fixed key in a query parameter, the form older REST
+    APIs and some AI endpoints require. Carried in the URL, so prefer a header where a
+    service accepts one.
+capability: Telo.Invocable
+extends: Self.Credential
+controllers:
+  - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#QueryKeyController
+throws:
+  codes:
+    ERR_INVALID_CREDENTIAL:
+      description: >-
+        The configured material was absent or empty — typically a variable that
+        resolved to `""`. Refused here rather than sent, which would surface as the
+        server's 401 one indirection from the line that has to change.
+schema:
+  type: object
+  additionalProperties: false
+  required: [parameter, key]
+  examples:
+    - parameter: key
+      key: "${{ secrets.apiKey }}"
+  properties:
+    parameter:
+      title: Parameter
+      description: Query parameter name to carry the key, e.g. `key`.
+      type: string
+    key:
+      title: Key
+      description: The key to send. Usually a secret.
+      type: string
+      x-telo-eval: compile
 ---
 kind: "Telo.Definition"
 metadata:
@@ -193,10 +335,16 @@ inputType:
       query:
         type: object
         additionalProperties: { type: string }
+        # A key in a query parameter is the whole of what `Http.QueryKey` does,
+        # and a per-call one is the same material by a different route.
+        x-telo-sensitive: true
         description: Query parameters appended to the URL.
       headers:
         type: object
         additionalProperties: { type: string }
+        # A per-call `Authorization` is the same token a credential would have
+        # supplied, and it rides the wire on every request under `--inspect`.
+        x-telo-sensitive: true
         description: Request headers, merged over the client's defaults.
       body:
         description: >-
@@ -233,6 +381,22 @@ inputType:
           without buffering. Chosen per call, unlike the deprecated `mode`.
 controllers:
   - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#HttpRequestController
+throws:
+  codes:
+    ERR_HTTP_STATUS:
+      description: >-
+        The response's status was not one `success` declares, under
+        `throwOnHttpError`. Carries `status`, `url` and the response body, so a caller
+        reads the server's own explanation rather than a status line.
+    ERR_HTTP_BODY_NOT_REPLAYABLE:
+      description: >-
+        A retry or a credential re-send needed the request body a second time and it
+        was a consumed stream. Raised rather than re-sending nothing, which would
+        succeed against an empty payload.
+    ERR_HTTP_CLASSIFIER_INVALID:
+      description: A `success` or `retryOn` predicate evaluated to something other than a boolean.
+    ERR_INVOKE_CANCELLED:
+      description: The caller's cancellation token was signalled before or during the request.
 outputType:
   kind: Telo.JsonSchema
   schema:

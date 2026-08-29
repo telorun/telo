@@ -7,13 +7,8 @@ import type {
 import { InvokeError } from "@telorun/sdk";
 import { logCompletion } from "./completion-log.js";
 import { isContentParts } from "./content.js";
-import { withTokenQuantity } from "./usage.js";
-import type {
-  AiModelInstance,
-  CompletionResult,
-  FinishReason,
-  Message,
-} from "./types.js";
+import { tokenCounts, withTokenQuantity } from "./usage.js";
+import type { AiModelInstance, FinishReason, Message, Usage } from "./types.js";
 
 /**
  * Shape of the Ai.Text manifest after Phase 5 ref injection.
@@ -35,15 +30,23 @@ interface AiTextInputs {
 }
 
 const VALID_ROLES = new Set(["system", "user", "assistant"]);
-const VALID_FINISH_REASONS = new Set(["stop", "length", "content-filter", "error", "other"]);
 
-class AiText implements ResourceInstance<AiTextInputs, CompletionResult> {
+/** What Ai.Text answers with — narrower than the model's own result, because
+ *  this kind is the TEXT operation: the parts, the tool calls and the provider
+ *  state are the model's contract, not this one's. */
+interface AiTextResult {
+  text: string;
+  usage: Usage;
+  finishReason: FinishReason;
+}
+
+class AiText implements ResourceInstance<AiTextInputs, AiTextResult> {
   constructor(
     private readonly resource: AiTextResource,
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(inputs: AiTextInputs = {}, ctx?: InvokeContext): Promise<CompletionResult> {
+  async invoke(inputs: AiTextInputs = {}, ctx?: InvokeContext): Promise<AiTextResult> {
     const name = this.resource.metadata.name;
     const hasPrompt = typeof inputs.prompt === "string";
     const hasMessages = Array.isArray(inputs.messages);
@@ -103,19 +106,20 @@ class AiText implements ResourceInstance<AiTextInputs, CompletionResult> {
         `Ai.Text "${name}": 'model' is not a live Ai.Model instance — check that Phase 5 injection ran and the referenced resource exists.`,
       );
     }
-    const result = await model.invoke({
-      messages,
-      options: mergedOptions,
-      signal: ctx?.cancellation.signal,
-    });
+    // The kernel binds `invoke` and AJV-checks both directions at dispatch, so
+    // the result arrives already held to `Ai.Model`'s declared outputType —
+    // which is why the hand-rolled result validation that used to stand here is
+    // gone rather than merely moved. Cancellation rides the InvokeContext.
+    const result = await model.invoke({ messages, options: mergedOptions }, ctx);
 
-    validateCompletionResult(result, name);
     // Stamp the provider-neutral half of usage here rather than asking every
     // provider for it — the token triple already carries the answer, and doing it
     // in the operation keeps existing providers unchanged.
-    const usage = withTokenQuantity(result.usage);
+    const usage = withTokenQuantity(tokenCounts(result.usage));
     logCompletion(this.ctx.log, "Completion finished", usage, result.finishReason);
-    return { ...result, usage };
+    // This kind's own contract is narrower than the model's: it answers with
+    // text, so the parts, the tool calls and the provider state stop here.
+    return { text: result.text, usage, finishReason: result.finishReason };
   }
 
   snapshot(): Record<string, unknown> {
@@ -151,29 +155,6 @@ function validateMessages(messages: Message[], resourceName: string): Message[] 
     }
   }
   return messages;
-}
-
-function validateCompletionResult(result: unknown, resourceName: string): asserts result is CompletionResult {
-  const bad = (detail: string): never => {
-    throw new InvokeError(
-      "ERR_CONTRACT_VIOLATION",
-      `Ai.Text "${resourceName}": model returned a value that does not match the Ai.Model output contract — ${detail}.`,
-    );
-  };
-  if (!result || typeof result !== "object") return bad("expected an object");
-  const r = result as Record<string, unknown>;
-  if (typeof r.text !== "string") return bad("missing string 'text'");
-  const usage = r.usage as Record<string, unknown> | undefined;
-  if (!usage || typeof usage !== "object") return bad("missing 'usage' object");
-  for (const key of ["promptTokens", "completionTokens", "totalTokens"] as const) {
-    const v = usage[key];
-    if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
-      return bad(`'usage.${key}' must be a non-negative integer`);
-    }
-  }
-  if (typeof r.finishReason !== "string" || !VALID_FINISH_REASONS.has(r.finishReason as string)) {
-    return bad(`'finishReason' must be one of: ${[...VALID_FINISH_REASONS].join(", ")}`);
-  }
 }
 
 export function register(_ctx: ControllerContext): void {}

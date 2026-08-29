@@ -22,7 +22,7 @@ targets:
   - !ref TestSse
   - !ref TestPlain
 ---
-kind: AiEcho.EchoModel
+kind: AiEcho.EchoModelStream
 metadata: { name: Echo }
 ---
 kind: Ai.TextStream

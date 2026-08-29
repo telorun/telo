@@ -5,6 +5,15 @@ metadata:
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [AI]
+  # One module per SYSTEM rather than per endpoint: this module's kinds moved
+  # into `openai`, alongside the other OpenAI surfaces, so moderation, audio,
+  # batch and files arrive there as further kinds rather than as a module
+  # apiece. The rename rides the same release that already breaks every
+  # consumer's imports — done later it would be a second break of the same
+  # manifests.
+  deprecated:
+    reason: Merged into the `openai` module, which serves every OpenAI endpoint under one import.
+    replacedBy: oci://ghcr.io/telorun/openai
   description: |
     Text embeddings from OpenAI and any OpenAI-compatible endpoint — Azure OpenAI,
     gateways, self-hosted servers — over the embeddings HTTP API with no vendor SDK.

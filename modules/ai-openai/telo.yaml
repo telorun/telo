@@ -5,6 +5,15 @@ metadata:
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [AI]
+  # One module per SYSTEM rather than per endpoint: this module's kinds moved
+  # into `openai`, alongside the other OpenAI surfaces, so moderation, audio,
+  # batch and files arrive there as further kinds rather than as a module
+  # apiece. The rename rides the same release that already breaks every
+  # consumer's imports — done later it would be a second break of the same
+  # manifests.
+  deprecated:
+    reason: Merged into the `openai` module, which serves every OpenAI endpoint under one import.
+    replacedBy: oci://ghcr.io/telorun/openai
   description: >-
     Language and image model access for OpenAI and any OpenAI-compatible endpoint —
     Azure OpenAI, gateways, self-hosted servers — over the chat completions and images
@@ -16,6 +25,7 @@ imports:
 exports:
   kinds:
     - OpenaiModel
+    - OpenaiModelStream
     - OpenaiImageModel
 ---
 kind: Telo.Definition
@@ -25,10 +35,77 @@ metadata:
     A chat model served by OpenAI or an OpenAI-compatible endpoint: model id, API key,
     an optional base URL for gateways or Azure, and default request options that
     per-call overrides win over.
-capability: Telo.Provider
+capability: Telo.Invocable
 extends: Ai.Model
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai-openai.mjs&local_path=./nodejs/src/index.ts#OpenaiModelController
+throws:
+  codes:
+    ERR_OPENAI_REQUEST_FAILED:
+      description: >-
+        The endpoint refused the request or failed mid-stream. Carries the provider's
+        own message and the HTTP status, so a caller reads why rather than a status
+        line.
+    ERR_INVALID_INPUT:
+      description: >-
+        A content part that cannot be sent on this dialect — a `reasoning` or
+        `citation` part is produced by a model, not submitted to one.
+schema:
+  type: object
+  properties:
+    model:
+      title: Model ID
+      description: OpenAI model identifier passed to the API (e.g. gpt-4o, gpt-4o-mini).
+      type: string
+    apiKey:
+      title: API Key
+      description: Secret reference; typically `${{ secrets.OPENAI_API_KEY }}`.
+      type: string
+      x-telo-eval: compile
+    baseUrl:
+      title: Base URL
+      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
+      type: string
+      x-telo-eval: compile
+    options:
+      title: Options
+      description: Model-level defaults as camelCase OpenAI request params (temperature, maxTokens, topP, …), normalized to snake_case and merged into the request body. Merged beneath Ai.Text.options / Ai.TextStream.options and per-call inputs.options; downstream wins.
+      type: object
+      additionalProperties: true
+  required: [ model, apiKey ]
+  additionalProperties: false
+  examples:
+    - model: gpt-4o-mini
+      apiKey: "${{ secrets.openaiApiKey }}"
+    - model: gpt-4o
+      apiKey: "${{ secrets.openaiApiKey }}"
+      baseUrl: https://my-gateway.example.com/v1
+      options:
+        temperature: 0.2
+        maxTokens: 512
+---
+kind: Telo.Definition
+metadata:
+  name: OpenaiModelStream
+  description: >-
+    A chat model served by OpenAI or an OpenAI-compatible endpoint, called for a
+    stream: the answer arrives as parts as it is generated. Same model id, API key,
+    base URL and default options as the buffered kind.
+capability: Telo.Invocable
+extends: Ai.ModelStream
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ai-openai.mjs&local_path=./nodejs/src/index.ts#OpenaiModelStreamController
+throws:
+  codes:
+    ERR_OPENAI_REQUEST_FAILED:
+      description: >-
+        The endpoint refused the request or failed mid-stream. Carries the provider's
+        own message and the HTTP status, so a caller reads why rather than a status
+        line.
+    ERR_INVALID_INPUT:
+      description: >-
+        A content part that cannot be sent on this dialect — a `reasoning` or
+        `citation` part is produced by a model, not submitted to one.
 schema:
   type: object
   properties:

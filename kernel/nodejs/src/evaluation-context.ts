@@ -31,6 +31,11 @@ import { RuntimeError } from "@telorun/sdk";
 import { evalPathCovers } from "@telorun/analyzer";
 import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
 import {
+  REDACTED,
+  redactSensitive,
+  sensitivePathsOfInstance,
+} from "./instance-sensitive-paths.js";
+import {
   classifyInitFailures,
   isDeferral,
   renderInitFailureText,
@@ -1652,6 +1657,30 @@ export class EvaluationContext implements IEvaluationContext {
       : undefined;
     // Capture the root CEL scope once, on the trace's root span's terminal event.
     const rootScope = tracing && parentInvocationId === undefined ? this.traceRootScope() : undefined;
+    // What a payload may say about this call. A credential is a dispatched
+    // invocable, so its material is an invoke OUTPUT — and inputs and outputs
+    // ride the debug wire on every call under `--inspect`, i.e. every watch
+    // session, which the substring scrubbing does not reach (one call site, the
+    // resource-Created event's properties). The kind that owns the contract
+    // marks the field; nothing here knows which kind that is.
+    const hide = (detail: Record<string, unknown>): Record<string, unknown> => {
+      let out = detail;
+      for (const direction of ["inputType", "outputType"] as const) {
+        const key = direction === "inputType" ? "inputs" : "outputs";
+        if (!(key in out)) continue;
+        const paths = sensitivePathsOfInstance(instance, direction);
+        // Unknown, because the contract would not resolve — withhold the whole
+        // value rather than guess. The dispatch is about to raise that same
+        // failure with its own code.
+        if (paths === undefined) {
+          out = { ...out, [key]: REDACTED };
+          continue;
+        }
+        if (paths.length === 0) continue;
+        out = { ...out, [key]: redactSensitive(out[key], paths) };
+      }
+      return out;
+    };
     const span = (
       phase: "start" | "end",
       outcome: SpanOutcome | undefined,
@@ -1666,7 +1695,7 @@ export class EvaluationContext implements IEvaluationContext {
         "invoke",
         phase,
         outcome,
-        phase === "end" && rootScope ? { ...detail, context: rootScope } : detail,
+        phase === "end" && rootScope ? { ...hide(detail), context: rootScope } : hide(detail),
       );
     // When tracing, a derived context carries the new id down the tree so nested
     // invokes read it as their parent; it is never `=== ambient`, so the call

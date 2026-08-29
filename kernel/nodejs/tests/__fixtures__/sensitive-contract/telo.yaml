@@ -1,0 +1,93 @@
+kind: Telo.Application
+metadata:
+  name: SensitiveContractApp
+  version: 1.0.0
+imports:
+  JS: ../../../../../modules/javascript
+---
+# A contract marking part of what it returns as auth material. The shape is the
+# one `Http.Credential` has: headers to merge into a request, where the value is
+# the secret and the key names nothing sensitive.
+kind: JS.Script
+metadata:
+  name: Credential
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      forceRefresh: { type: boolean }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [headers, scheme]
+    properties:
+      headers:
+        type: object
+        additionalProperties: { type: string }
+        x-telo-sensitive: true
+      # Beside the marked field, so a test can tell redaction from an emptied
+      # payload: this one must survive verbatim.
+      scheme: { type: string }
+code: |
+  function main() {
+    return { headers: { authorization: "Bearer t0ken-value" }, scheme: "Bearer" };
+  }
+---
+# Nothing marked, so its payload must be carried verbatim — the control that
+# stops "redacts everything" from passing this suite.
+kind: JS.Script
+metadata:
+  name: Plain
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [headers]
+    properties:
+      headers:
+        type: object
+        additionalProperties: { type: string }
+code: |
+  function main() {
+    return { headers: { authorization: "Bearer visible" } };
+  }
+---
+# A MAP whose values are secrets, marked on `additionalProperties` — the shape a
+# headers or query bag takes, which carries no property names to walk.
+kind: JS.Script
+metadata:
+  name: MapValued
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [headers, note]
+    properties:
+      headers:
+        type: object
+        additionalProperties:
+          type: string
+          x-telo-sensitive: true
+      note: { type: string }
+code: |
+  function main() {
+    return { headers: { authorization: "Bearer a", "x-api-key": "b" }, note: "keep" };
+  }
+---
+# The whole output IS the secret. The empty path is a legal mark.
+kind: JS.Script
+metadata:
+  name: WholeValue
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: string
+    x-telo-sensitive: true
+code: |
+  function main() { return "Bearer whole-secret"; }

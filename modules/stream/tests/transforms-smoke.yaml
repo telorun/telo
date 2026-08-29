@@ -1,0 +1,174 @@
+kind: Telo.Application
+metadata:
+  name: StreamTransformsSmokeTest
+  version: 1.0.0
+  description: |
+    Map, Scan and FlatMap, wired as the stages of one pipeline — which is how
+    they are actually used, and the only arrangement that shows each one's
+    output really is a stream the next can pull from.
+
+    The shape mirrors a token stream: wire records in, reshaped (Map),
+    accumulated into running text (Scan), and re-fanned so one record can carry
+    several parts or none (FlatMap).
+imports:
+  Stream: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+# Deliberately includes a record carrying no delta — the keep-alive case, which
+# is what FlatMap's empty list is for.
+kind: Stream.Of
+metadata: { name: Source }
+items:
+  - { kind: delta, text: "Hel" }
+  - { kind: delta, text: "lo " }
+  - { kind: ping }
+  - { kind: delta, text: "wor" }
+  - { kind: delta, text: "ld" }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  - name: Src
+    invoke: !ref Source
+
+  # MAP: one in, one out. Reshapes each wire record into the pipeline's own
+  # vocabulary, and proves `index` is in scope.
+  - name: Mapped
+    inputs:
+      input: !cel "steps.Src.result.output"
+    invoke:
+      kind: Stream.Map
+      value:
+        type: !cel "item.kind"
+        delta: !cel "'text' in item ? item.text : ''"
+        at: !cel "index"
+  - name: CollectMapped
+    inputs:
+      input: !cel "steps.Mapped.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: AssertMapped
+    inputs:
+      actual: !cel "steps.CollectMapped.result.items"
+      expected:
+        - { type: delta, delta: "Hel", at: 0 }
+        - { type: delta, delta: "lo ", at: 1 }
+        - { type: ping, delta: "", at: 2 }
+        - { type: delta, delta: "wor", at: 3 }
+        - { type: delta, delta: "ld", at: 4 }
+    invoke: !ref Assert.equals
+
+  # SCAN: emits the running state after every value, which is what a terminal
+  # fold cannot do and what reassembling a token stream needs.
+  - name: Src2
+    invoke: !ref Source
+  - name: Accumulated
+    inputs:
+      input: !cel "steps.Src2.result.output"
+    invoke:
+      kind: Stream.Scan
+      initial: ""
+      accumulate: !cel "'text' in item ? acc + item.text : acc"
+  - name: CollectAccumulated
+    inputs:
+      input: !cel "steps.Accumulated.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: AssertAccumulated
+    inputs:
+      actual: !cel "steps.CollectAccumulated.result.items"
+      expected: ["Hel", "Hello ", "Hello ", "Hello wor", "Hello world"]
+    invoke: !ref Assert.equals
+
+  # `emit` differing from `accumulate` — the parser shape, where the state and
+  # the value worth publishing are not the same thing.
+  - name: Src3
+    invoke: !ref Source
+  - name: Emitted
+    inputs:
+      input: !cel "steps.Src3.result.output"
+    invoke:
+      kind: Stream.Scan
+      initial: ""
+      accumulate: !cel "'text' in item ? acc + item.text : acc"
+      emit: !cel "size(acc)"
+  - name: CollectEmitted
+    inputs:
+      input: !cel "steps.Emitted.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: AssertEmitted
+    inputs:
+      actual: !cel "steps.CollectEmitted.result.items"
+      expected: [3, 6, 6, 9, 11]
+    invoke: !ref Assert.equals
+
+  # FLATMAP: changes cardinality in BOTH directions — a keep-alive produces
+  # nothing, and a delta produces one part per character.
+  - name: Src4
+    invoke: !ref Source
+  - name: Expanded
+    inputs:
+      input: !cel "steps.Src4.result.output"
+    invoke:
+      kind: Stream.FlatMap
+      values: !cel "'text' in item ? item.text.split('') : []"
+  - name: CollectExpanded
+    inputs:
+      input: !cel "steps.Expanded.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: AssertExpanded
+    inputs:
+      actual: !cel "steps.CollectExpanded.result.items.join('')"
+      expected: "Hello world"
+    invoke: !ref Assert.equals
+  - name: AssertExpandedCount
+    inputs:
+      actual: !cel "size(steps.CollectExpanded.result.items)"
+      expected: 11
+    invoke: !ref Assert.equals
+
+  # A stage handed something that is not a stream says so, rather than yielding
+  # an empty result that reads as "the source was empty".
+  - name: NotAStream
+    try:
+      - name: Call
+        inputs:
+          input: "not a stream"
+        invoke:
+          kind: Stream.Map
+          value: !cel "item"
+    catch:
+      - name: AssertRefused
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_INPUT
+        invoke: !ref Assert.equals
+
+  # FlatMap refuses a non-array rather than wrapping it: wrapping would make
+  # `values` mean two things, kept apart only by what an expression returned.
+  - name: NotAnArray
+    try:
+      - name: Src5
+        invoke: !ref Source
+      - name: Call
+        inputs:
+          input: !cel "steps.Src5.result.output"
+        invoke:
+          kind: Stream.FlatMap
+          values: !cel "item.kind"
+      - name: Drain
+        inputs:
+          input: !cel "steps.Call.result.output"
+        invoke:
+          kind: Stream.Collect
+    catch:
+      - name: AssertNonArrayRefused
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_VALUE
+        invoke: !ref Assert.equals

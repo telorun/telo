@@ -1,0 +1,10 @@
+modules:
+  modules/stream: Added
+body: "`Stream.Map`, `Stream.Scan` and `Stream.FlatMap` — the three element-wise
+  transforms a streaming protocol is assembled from, so turning wire frames into a
+  provider's records is expressible in a manifest instead of only in a controller. All
+  three are lazy, so a stage never drains its source to build a result, and a consumer's
+  early exit propagates to the transport by construction. `Scan` emits the running state
+  after every value, which a terminal fold cannot do and which reassembling a token
+  stream needs; `FlatMap` changes cardinality in both directions, emitting [] to drop a
+  value."

@@ -1,0 +1,10 @@
+modules:
+  modules/http-client: Fixed
+body: "A refused request reports WHY. `throwOnHttpError` raised a status line and
+  discarded the body, so the server's own explanation never reached the caller; under
+  `responseType: stream` the bytes had already arrived and sat unread, which is exactly
+  how an AI provider answers a bad request. The failure body is now read before
+  throwing, in either response type, and the error is a structured `ERR_HTTP_STATUS`
+  carrying the status and the body rather than a bare `Error`. A streamed body also
+  aborts its request when its iterator is returned: a consumer that stops draining used
+  to leave the pump reading — socket open, tokens billing."

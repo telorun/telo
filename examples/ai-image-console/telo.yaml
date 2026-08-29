@@ -18,11 +18,11 @@ metadata:
     The CLI loads `.env.local` from the manifest's directory automatically.
 
     Imports are repo-relative because image generation is not published yet;
-    swap them for pinned `oci://ghcr.io/telorun/...` refs once ai, ai-openai
+    swap them for pinned `oci://ghcr.io/telorun/...` refs once ai, openai
     and fs ship it.
 imports:
   Ai: ../../modules/ai
-  AiOpenai: ../../modules/ai-openai
+  OpenAI: ../../modules/openai
   Fs: ../../modules/fs
   Console: ../../modules/console
 secrets:
@@ -61,7 +61,7 @@ targets:
     inputs:
       output: !cel "'{red ✖} no image produced (' + steps.generate.result.finishReason + ')'"
 ---
-kind: AiOpenai.OpenaiImageModel
+kind: OpenAI.ImageModel
 metadata: { name: painter }
 model: gpt-image-1
 apiKey: !cel "secrets.openaiApiKey"

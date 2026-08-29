@@ -18,10 +18,20 @@ native way to seed a pipeline with fixed data (instead of a `JS.Script`).
 | --- | --- |
 | `Stream.Of` | Emit a declared list of literal `items` as a `Stream`, in order. |
 | `Stream.Collect` | Consume a `Stream` to completion and return its `items` as an array — the inverse of `Stream.Of`. Draining drives the producer's side effects (e.g. runs an `Ai.AgentStream` turn) and materializes the finite stream for inspection or assertion in CEL. Buffered — bounded by the stream's length. |
+| `Stream.Chunk` | Re-frame a byte stream into consecutive fixed-size pieces, each carrying its own offset, index and whether it is the last. |
+| `Stream.Map` | Transform every value with a CEL expression — one in, one out. |
+| `Stream.Scan` | Accumulate, emitting the running state after every value. A fold that emits as it goes. |
+| `Stream.FlatMap` | Expand every value into any number of values, flattened. Emit `[]` to drop one. |
 
-> The output is statically an **opaque** stream (no element type), like every
-> Telo stream today. Static element-type validation is a planned evolution — see
-> the `x-telo-stream: { items }` form and the stream-element-typing plan.
+The three transforms are what make a streaming protocol expressible in a
+manifest: an SSE decoder hands over wire frames, and turning those into a
+provider's records is mapping, accumulating and re-fanning them.
+
+All three are **lazy** — the work happens as the consumer pulls, so a stage never
+drains its source to build a result. That also makes abandonment free: a consumer
+that stops draining causes `for await` to call `return()` on the stage, which
+propagates to its source and on to the transport, so an abandoned pipeline
+closes the socket behind it.
 
 ## Example
 

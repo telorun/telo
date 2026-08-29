@@ -1,6 +1,6 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-import type { AiModelInstance, FinishReason, Message, StreamPart } from "@telorun/ai";
+import type { AiModelStreamInstance, FinishReason, Message, StreamPart } from "@telorun/ai";
 
 /**
  * Test-support Invocable that consumes an `Ai.Model.stream(...)` and collects its output.
@@ -9,7 +9,7 @@ import type { AiModelInstance, FinishReason, Message, StreamPart } from "@teloru
  * would need to pass the live instance into a JS.Script, and ordinary JS sandbox inputs
  * don't carry prototype methods from a provider's class-based controller.
  *
- * Given an injected `model: AiModelInstance` (via Phase 5) and inputs `{ prompt | messages }`,
+ * Given an injected `model: AiModelStreamInstance` (via Phase 5) and inputs `{ prompt | messages }`,
  * consumes every `StreamPart`, and returns:
  *   - `deltas`  — concatenation of all `text-delta` parts
  *   - `deltaCount` — number of `text-delta` parts
@@ -19,7 +19,7 @@ import type { AiModelInstance, FinishReason, Message, StreamPart } from "@teloru
  */
 interface StreamCollectorResource {
   metadata: { name: string; module?: string };
-  model: AiModelInstance;
+  model: AiModelStreamInstance;
 }
 
 interface StreamCollectorInputs {
@@ -60,43 +60,30 @@ class StreamCollector implements ResourceInstance<StreamCollectorInputs, StreamC
     let finishReason: FinishReason | null = null;
     let usage: StreamCollectorOutput["usage"] = null;
     let finishCount = 0;
-    let errorCount = 0;
 
-    // The Ai.Model streaming contract lets providers signal failure by either
-    // yielding `{type: "error"}` or throwing from the iterator. Normalize a thrown
-    // error into a synthetic `error` part so the rest of this method handles both
-    // mechanisms uniformly — same terminator semantics, same contract-violation
-    // checks below.
-    try {
-      for await (const part of this.resource.model.stream({ messages })) {
-        parts.push(part);
-        if (part.type === "text-delta") {
-          deltas += part.delta;
-          deltaCount++;
-        } else if (part.type === "finish") {
-          finishReason = part.finishReason;
-          usage = part.usage;
-          finishCount++;
-        } else if (part.type === "error") {
-          errorCount++;
-        }
+    // A failure PROPAGATES. The contract has exactly one way to fail — the
+    // iteration rejects — so there is no second mechanism to normalize, and
+    // catching here would re-create the swallow the single mechanism removed:
+    // a collector that turned a rejection into a data part would report a
+    // truncated stream as a complete one.
+    const { output } = await this.resource.model.invoke({ messages });
+    for await (const part of output) {
+      parts.push(part);
+      if (part.type === "text-delta") {
+        deltas += part.delta;
+        deltaCount++;
+      } else if (part.type === "finish") {
+        finishReason = part.finishReason;
+        usage = part.usage;
+        finishCount++;
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      parts.push({ type: "error", error: { message } });
-      errorCount++;
     }
 
-    if (finishCount > 1) {
+    if (finishCount !== 1) {
       throw new InvokeError(
         "ERR_CONTRACT_VIOLATION",
-        `AiEcho.StreamCollector "${name}": stream emitted ${finishCount} 'finish' parts; the Ai.Model contract allows at most one.`,
-      );
-    }
-    if (finishCount === 0 && errorCount === 0) {
-      throw new InvokeError(
-        "ERR_CONTRACT_VIOLATION",
-        `AiEcho.StreamCollector "${name}": stream ended without a terminator — expected exactly one 'finish' part, or an 'error' part.`,
+        `AiEcho.StreamCollector "${name}": stream emitted ${finishCount} 'finish' parts; ` +
+          `the Ai.ModelStream contract requires exactly one, since a failure rejects instead.`,
       );
     }
 

@@ -3,11 +3,17 @@ metadata:
   name: AgentStreamToolErrorTest
   version: 1.0.0
   description: |
-    Verifies Ai.AgentStream's onToolError: throw honours the one-terminal-frame wire
-    contract: a tool throw (here an unknown tool) is converted to a terminal `error`
-    event rather than escaping the generator and truncating the SSE stream. Echo
-    requests a tool that isn't registered; with onToolError: throw, dispatch throws
-    ERR_AGENT_UNKNOWN_TOOL, which the stream must surface as a terminal error frame.
+    A stream fails by REJECTING, and both consequences are asserted here because
+    they pull in opposite directions.
+
+    From a MANIFEST the rejection is an ordinary error: catchable by name in a
+    `catch:`, which a data part never was — that is the whole gain of the
+    change, and `ERR_AGENT_UNKNOWN_TOOL` is reachable from a manifest for the
+    first time.
+
+    On the WIRE the one-terminal-frame contract still holds, because the encoder
+    catches the rejection and frames it. That is what keeps a streaming client
+    working: without it the client sees 200, some frames, and then silence.
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -15,11 +21,12 @@ imports:
   Ndjson: ../../ndjson-codec
   JS: ../../javascript
   Run: ../../run
+  Stream: ../../stream
   Assert: ../../assert
 targets:
   - !ref TestToolError
 ---
-kind: AiEcho.EchoModel
+kind: AiEcho.EchoModelStream
 metadata: { name: Echo }
 emitToolCall:
   name: ghost
@@ -83,6 +90,21 @@ routes:
         content:
           application/x-ndjson:
             encoder: !ref NdjsonEnc
+    # A catch-all. The handler's throw union is declared now, so the analyzer
+    # requires every code to be covered or a final entry with no `when:`. It
+    # fires BEFORE streaming starts — once frames are on the wire the encoder's
+    # own terminal error frame is what a client sees.
+    catches:
+      - status: 500
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [error]
+              properties:
+                error: { type: string }
+            body:
+              error: !cel "error.code"
 ---
 kind: JS.Script
 metadata: { name: FetchAndSummarize }
@@ -158,3 +180,24 @@ steps:
           finishCount: { const: 0 }
           errorCount: { const: 1 }
         required: [ lastType, lastCode, finishCount, errorCount ]
+
+  # The same failure reached directly rather than over the wire. Draining the
+  # agent's own stream rejects, and the rejection is catchable BY NAME — which
+  # is what a terminal data part could never be.
+  - name: Direct
+    try:
+      - name: Start
+        inputs:
+          prompt: "call the ghost"
+        invoke: !ref Assistant
+      - name: Drain
+        inputs:
+          input: !cel "steps.Start.result.output"
+        invoke:
+          kind: Stream.Collect
+    catch:
+      - name: AssertCatchableByName
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_AGENT_UNKNOWN_TOOL
+        invoke: !ref Assert.equals

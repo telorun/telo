@@ -53,6 +53,7 @@ import { ResourceContextImpl } from "./resource-context.js";
 import { mintResourceHandle } from "./resource-handle.js";
 import { bindEffectOwner } from "./effect-scope.js";
 import { declarationOfInstance, recordInstanceDeclaration } from "./instance-declaration.js";
+import { recordSensitivePaths } from "./instance-sensitive-paths.js";
 import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
@@ -1583,6 +1584,13 @@ export class Kernel implements IKernel {
       projections,
     );
     if (!input && !output) return;
+
+    // Recorded here because this is the only point holding both the instance and
+    // its resolved contract — `bindContract` closes over the contract and drops
+    // it, and the trace site has only the instance. Lazily, so a contract is
+    // still compiled on first dispatch rather than at create time.
+    if (input) recordSensitivePaths(instance, "inputType", () => input.sensitivePaths());
+    if (output) recordSensitivePaths(instance, "outputType", () => output.sensitivePaths());
 
     bindContract(instance, {
       input,

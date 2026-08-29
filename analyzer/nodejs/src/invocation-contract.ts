@@ -334,6 +334,77 @@ export function defaultBearingPaths(
   return out;
 }
 
+/** Every path in `schema` the author marked `x-telo-sensitive: true` — the
+ *  values a trace payload must carry as `[redacted]` rather than verbatim.
+ *
+ *  It exists because making a credential a dispatched `Telo.Invocable` turns its
+ *  material into an invoke OUTPUT, and invoke inputs and outputs ride the debug
+ *  wire on every call under `--inspect` — which is every watch session. The
+ *  kernel's substring scrubbing does not reach them: it has one call site, the
+ *  resource-Created event's properties.
+ *
+ *  Declared by the kind that OWNS the contract, so the kernel names no kind and
+ *  any module opts in — the `x-telo-eval` shape. Exempting "an Http.Credential
+ *  result" directly would be kind-knowledge in the kernel, and would stop at
+ *  that one kind while the same token surfaces wherever else a contract carries
+ *  it.
+ *
+ *  Bounded by the schema's declarations exactly as {@link defaultBearingPaths}
+ *  is: a contract marking nothing walks nothing at dispatch. The key is kept and
+ *  only the value replaced, per the logging spec §14 — a payload that silently
+ *  loses a key reads as a value that was never produced. */
+export function sensitivePaths(
+  schema: Record<string, any>,
+  resolveRef?: (ref: string) => Record<string, any> | undefined,
+): string[][] {
+  const out: string[][] = [];
+
+  const walk = (node: unknown, path: string[], chain: readonly object[]): void => {
+    if (!node || typeof node !== "object") return;
+    let s = node as Record<string, any>;
+    if (chain.includes(s)) return;
+    if (resolveRef && typeof s.$ref === "string") {
+      const target = resolveRef(s.$ref);
+      if (!target || chain.includes(target)) return;
+      s = { ...target, ...s, $ref: undefined };
+    }
+    const here = [...chain, node as object];
+
+    // A marked node is redacted WHOLE, so there is nothing below it to mark:
+    // descending would emit paths into a value that is already gone. The EMPTY
+    // path is legal and means the whole value — a contract whose entire output
+    // is the secret is the simplest shape there is, and refusing it silently
+    // (which `path.length > 0` did) left exactly that case unredacted.
+    if (s["x-telo-sensitive"] === true) {
+      out.push(path);
+      return;
+    }
+
+    const properties = s.properties as Record<string, any> | undefined;
+    if (properties) {
+      for (const [key, child] of Object.entries(properties)) walk(child, [...path, key], here);
+    }
+    // A map whose VALUES are secrets — `additionalProperties: {x-telo-sensitive}`
+    // — is the shape a headers or query bag takes, and it carries no property
+    // names to walk. `{}` is the wildcard segment, the `[]` precedent one axis
+    // over.
+    for (const key of ["additionalProperties", "patternProperties"] as const) {
+      const node = s[key];
+      if (!node || typeof node !== "object") continue;
+      if (key === "additionalProperties") walk(node, [...path, "{}"], here);
+      else for (const child of Object.values(node)) walk(child, [...path, "{}"], here);
+    }
+    for (const branch of ["allOf", "anyOf", "oneOf"] as const) {
+      const list = s[branch];
+      if (Array.isArray(list)) for (const child of list) walk(child, path, here);
+    }
+    if (s.items) walk(s.items, [...path, "[]"], here);
+  };
+
+  walk(schema, [], []);
+  return out;
+}
+
 /** The scalar form a declared node's value takes at runtime. `int64` and
  *  `double` are the two JSON scalars whose runtime representation is NOT decided
  *  by the value that arrives: a CEL integer is a BigInt and a CEL double a JS

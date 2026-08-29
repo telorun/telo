@@ -5,6 +5,7 @@ import {
   type DeclaredScalarForm,
   type DeclaredScalarPath,
   defaultBearingPaths,
+  sensitivePaths,
   effectiveContractField,
   describeProjectionFailure,
   resolveSchemaProjections,
@@ -75,6 +76,9 @@ export interface BoundContract {
    *  value is normalized at, in either direction. Empty when the contract
    *  declares none. */
   scalarPaths(): DeclaredScalarPath[];
+  /** Paths the contract marked `x-telo-sensitive` — the values a trace payload
+   *  carries as `[redacted]`. Empty when the contract marks none. */
+  sensitivePaths(): string[][];
 }
 
 const CONTRACT_ERROR: Record<ContractDirection, string> = {
@@ -149,6 +153,7 @@ export function resolveBoundContract(
   let compiled: { validate(value: unknown): void } | undefined;
   let paths: string[][] | undefined;
   let scalars: DeclaredScalarPath[] | undefined;
+  let sensitive: string[][] | undefined;
 
   const resolve = (): { validate(value: unknown): void } => {
     if (compiled !== undefined) return compiled;
@@ -193,6 +198,9 @@ export function resolveBoundContract(
     const stripped = withLiveValuesSkipped(projected, factory.resolveRef);
     paths = defaultBearingPaths(stripped, factory.resolveRef);
     scalars = declaredScalarPaths(stripped, factory.resolveRef);
+    // Read off the STRIPPED schema like the other two, so a marked node behind a
+    // live value is not reported: nothing walks into a stream to redact it.
+    sensitive = sensitivePaths(stripped, factory.resolveRef);
     // Compile by NAME whenever the declaration is one, so the type's CEL
     // `rules:` are composed in — including when a stream had to be stripped, in
     // which case the stream-bearing properties are dropped from the schema the
@@ -219,6 +227,10 @@ export function resolveBoundContract(
     scalarPaths: () => {
       resolve();
       return scalars ?? [];
+    },
+    sensitivePaths: () => {
+      resolve();
+      return sensitive ?? [];
     },
   };
 }

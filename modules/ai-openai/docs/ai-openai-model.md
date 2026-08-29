@@ -7,7 +7,7 @@ sidebar_label: Ai.OpenaiModel
 
 > Examples below assume this module is imported with an `imports:` entry under alias `AiOpenai` (and `ai` as `Ai`). Kind references (`AiOpenai.OpenaiModel`, `Ai.Text`, `Ai.TextStream`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
 
-OpenAI-compatible provider for the `Ai.Model` abstract. A **`Telo.Provider`** — a configured model client referenced by `Ai.Text` / `Ai.TextStream` / `Ai.Agent`, never invoked directly as a target or step. Implements the full `AiModelInstance` runtime contract (`invoke` + `stream`) by calling the OpenAI `POST /chat/completions` HTTP API **directly** — no vendor SDK, no `zod`, nothing beyond `@telorun/ai`. Because the wire protocol is the de-facto standard, the same controller serves OpenAI and every OpenAI-compatible endpoint (Azure OpenAI, Ollama, vLLM, Groq, Together, OpenRouter, …) via `baseUrl`.
+OpenAI-compatible provider for the model abstracts, as **two kinds**: `OpenaiModel` implements `Ai.Model` (buffered) and `OpenaiModelStream` implements `Ai.ModelStream`. Both are `Telo.Invocable` with one declared, kernel-bound `invoke`, and they share their request translation so it cannot drift between them. They call the OpenAI `POST /chat/completions` HTTP API **directly** — no vendor SDK, no `zod`, nothing beyond `@telorun/ai`. Because the wire protocol is the de-facto standard, the same controller serves OpenAI and every OpenAI-compatible endpoint (Azure OpenAI, Ollama, vLLM, Groq, Together, OpenRouter, …) via `baseUrl`.
 
 ```yaml
 kind: Telo.Application
@@ -104,7 +104,7 @@ inputs:
 
 A non-2xx response from `invoke` throws an actionable error built from the provider's `{ error: { message } }` body (falling back to the raw response text), prefixed with the HTTP status. No retry, no swallowing. Wrap in `try` / `catch` inside `Run.Sequence` if you want to handle them.
 
-For streaming calls, a non-OK response or a mid-stream failure is translated into a `StreamPart` of shape `{ type: "error", error: { message, code?, data? } }` and yielded as the terminator — generic encoders (`Ndjson.Encoder`, `Sse.Encoder`) frame this as an in-band error record without a bespoke serialization step. The native `Error` instance never reaches the wire (it isn't JSON-serializable). Already-emitted text-delta parts are preserved; consumers see partial output plus a structured error record.
+For streaming calls, a non-OK response or a mid-stream failure **rejects the iteration** rather than being yielded as a part. Already-emitted text-delta parts still reach the consumer, and the generic encoders (`Ndjson.Encoder`, `Sse.Encoder`) catch the rejection and frame it — carrying the error's `code` when it has one — so a client still sees partial output plus one terminal error record. Rejecting is what makes the failure reachable from a manifest: a `catch:` can name it, which a data part never could.
 
 ## Azure OpenAI / OpenAI-compatible gateways
 

@@ -1,4 +1,5 @@
 import type { Logger } from "@telorun/sdk";
+import { InvokeError, integerInput } from "@telorun/sdk";
 import { logCompletion } from "./completion-log.js";
 import type { StreamPart, Usage } from "./types.js";
 
@@ -11,6 +12,39 @@ import type { StreamPart, Usage } from "./types.js";
  * provider: the token triple already carries the answer, and deriving it here keeps
  * existing providers unchanged.
  */
+
+/**
+ * A model's usage as plain JS numbers.
+ *
+ * `Ai.Model` declares its token counts as `integer`, and a declared integer
+ * crosses a dispatch boundary as an int64 — that is what the declaration MEANS,
+ * and it is why the contract is worth declaring. A consumer that ADDS to one
+ * has to convert first: accumulating across an agent's turns is `0 + 1n`, which
+ * is a TypeError rather than a sum.
+ *
+ * Refuses rather than clamping a count it cannot represent. Unreachable for a
+ * token count in practice, which is the point: the alternative is a silently
+ * wrong total.
+ */
+export function tokenCounts(usage: Usage): Usage {
+  const count = (value: unknown, field: string): number => {
+    const n = integerInput(value);
+    if (n === undefined) {
+      throw new InvokeError(
+        "ERR_CONTRACT_VIOLATION",
+        `usage.${field} is not a representable integer: ${String(value)}.`,
+      );
+    }
+    return n;
+  };
+  return {
+    ...usage,
+    promptTokens: count(usage.promptTokens, "promptTokens"),
+    completionTokens: count(usage.completionTokens, "completionTokens"),
+    totalTokens: count(usage.totalTokens, "totalTokens"),
+    ...(usage.total === undefined ? {} : { total: Number(usage.total) }),
+  };
+}
 
 /** Stamp the provider-neutral half onto a token triple. Non-destructive: a provider
  *  that already reported `unit`/`total` keeps them. */
@@ -31,7 +65,9 @@ export async function* stampStreamUsage(
   parts: AsyncIterable<StreamPart>,
 ): AsyncIterable<StreamPart> {
   for await (const part of parts) {
-    yield part.type === "finish" ? { ...part, usage: withTokenQuantity(part.usage) } : part;
+    yield part.type === "finish"
+      ? { ...part, usage: withTokenQuantity(tokenCounts(part.usage)) }
+      : part;
   }
 }
 

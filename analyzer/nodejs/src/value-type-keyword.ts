@@ -69,6 +69,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-schema-projection",
   "x-telo-schema-projection-from",
   "x-telo-scope",
+  "x-telo-sensitive",
   "x-telo-step-context",
   "x-telo-topology-role",
   "x-telo-value-schema-from",

@@ -20,7 +20,7 @@ imports:
 targets:
   - !ref TestAgentStream
 ---
-kind: AiEcho.EchoModel
+kind: AiEcho.EchoModelStream
 metadata: { name: Echo }
 emitToolCall:
   name: multiply
@@ -83,6 +83,21 @@ routes:
         content:
           application/x-ndjson:
             encoder: !ref NdjsonEnc
+    # A catch-all. The handler's throw union is declared now, so the analyzer
+    # requires every code to be covered or a final entry with no `when:`. It
+    # fires BEFORE streaming starts — once frames are on the wire the encoder's
+    # own terminal error frame is what a client sees.
+    catches:
+      - status: 500
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [error]
+              properties:
+                error: { type: string }
+            body:
+              error: !cel "error.code"
 ---
 # Fetch the agent stream, parse each NDJSON line into an event, and summarize the
 # sequence into a flat shape the assertion can check by equality.

@@ -13,13 +13,14 @@ imports:
 exports:
   kinds:
     - EchoModel
+    - EchoModelStream
     - EchoImageModel
     - StreamCollector
 ---
 kind: Telo.Definition
 metadata:
   name: EchoModel
-capability: Telo.Provider
+capability: Telo.Invocable
 extends: Ai.Model
 controllers:
   - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#AiEchoController
@@ -43,6 +44,65 @@ schema:
         reason: { type: string }
       required: [ message, code, reason ]
       additionalProperties: false
+    emitToolCall:
+      title: Emit tool call
+      description: |
+        Test-only marker: when `tools` are present and the conversation has no tool
+        result yet, invoke() emits this tool call (finishReason "tool-calls") instead
+        of echoing. Lets Ai.Agent loop tests run without a live model.
+      type: object
+      properties:
+        name: { type: string }
+        arguments: { type: object, additionalProperties: true }
+      required: [ name ]
+      additionalProperties: false
+  additionalProperties: false
+---
+# The streaming half of the same fixture. Two kinds because Ai.Model and
+# Ai.ModelStream are two abstracts with one entry point each — which is the
+# whole point of the split, and what a provider that only streams would
+# implement alone.
+kind: Telo.Definition
+metadata:
+  name: EchoModelStream
+capability: Telo.Invocable
+extends: Ai.ModelStream
+controllers:
+  - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#AiEchoStreamController
+schema:
+  type: object
+  properties:
+    suffix:
+      title: Suffix
+      description: Appended to the echoed content. Default empty.
+      type: string
+    failOn:
+      title: Fail-on rule
+      description: |
+        Test-only marker: when the last message's content equals `message`,
+        invoke()/stream() throw InvokeError(code, reason) instead of echoing.
+        Used to exercise provider-error passthrough.
+      type: object
+      properties:
+        message: { type: string }
+        code: { type: string }
+        reason: { type: string }
+      required: [ message, code, reason ]
+      additionalProperties: false
+    emitProviderState:
+      title: Emit provider state
+      description: |
+        Test-only marker: emit this value as a `provider-state` part, the way a
+        provider that keeps its reasoning server-side does.
+      type: string
+    failAfterDeltas:
+      title: Fail after deltas
+      description: |
+        Test-only marker: reject the iteration after this many text deltas, which
+        is how a mid-stream provider failure presents now that a stream fails by
+        rejecting rather than by yielding an error part.
+      type: integer
+      minimum: 0
     emitToolCall:
       title: Emit tool call
       description: |
@@ -116,9 +176,9 @@ schema:
       type: string
       enum: [ edit, inpaint ]
 ---
-# Test-support Invocable: takes an Ai.Model reference, calls model.stream(...),
-# collects the StreamPart sequence, and returns it. Lets stream-contract tests
-# exercise the streaming path without a dedicated Ai.Stream consumer kind.
+# Test-support Invocable: takes an Ai.ModelStream reference, drives it, collects
+# the parts, and returns them. Lets stream-contract tests exercise the streaming
+# path without a dedicated consumer kind.
 kind: Telo.Definition
 metadata:
   name: StreamCollector
@@ -130,7 +190,9 @@ schema:
   properties:
     model:
       title: Model
-      description: Reference to any Ai.Model implementation whose stream() will be collected.
-      x-telo-ref: Ai.Model
+      description: Reference to any Ai.ModelStream implementation whose parts will be collected.
+      x-telo-ref:
+        kind: Ai.ModelStream
+        use: [call, trigger.consumer]
   required: [ model ]
   additionalProperties: false

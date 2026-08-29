@@ -54,6 +54,16 @@ interface RetryPolicy {
  *  would succeed against an empty payload and look like a successful upload. */
 const ERR_BODY_NOT_REPLAYABLE = "ERR_HTTP_BODY_NOT_REPLAYABLE";
 
+/** A status the request did not declare successful, under `throwOnHttpError`. */
+const ERR_HTTP_STATUS = "ERR_HTTP_STATUS";
+
+/** How much of a failed response body is carried into the error.
+ *
+ *  An error body is a MESSAGE, so a bound is not a compromise: a failing
+ *  endpoint that answers with megabytes must not turn the error path into an
+ *  out-of-memory, and no explanation needs more than this. */
+const MAX_FAILURE_BODY = 8192;
+
 type ResponseType = "json" | "text" | "bytes" | "stream";
 
 /** The bytes to send, already resolved from whatever the manifest declared.
@@ -197,7 +207,7 @@ async function executeRequest(
       return {
         status: response.status,
         headers: responseHeaders,
-        body: await readBody(response, responseType, responseHeaders),
+        body: await readBody(response, responseType, responseHeaders, () => controller.abort()),
       };
     }
   } catch (err) {
@@ -221,33 +231,61 @@ async function executeRequest(
  * `text` is the honest name for that old fallback, so a caller that wants a
  * string says so rather than getting one by omission.
  */
-async function readBody(
+export async function readBody(
   response: Response,
   responseType: ResponseType,
   responseHeaders: Record<string, string>,
+  abortRequest: () => void,
 ): Promise<unknown> {
   if (responseType === "stream") {
     // Pumped eagerly into a PassThrough so data flows as it arrives rather than
     // when the consumer first pulls.
     const webStream = response.body;
     const out = new PassThrough();
+    if (!webStream) {
+      out.end();
+      return out;
+    }
+    const reader = webStream.getReader();
+    // Whether the pump reached its own end — normally or by failing. It is the
+    // only thing that distinguishes a stream nobody wants any more from one
+    // that is simply finished, and both close the PassThrough.
+    let settled = false;
+
+    // ABANDONMENT. A consumer that stops draining destroys this PassThrough:
+    // `for await` calls `return()` on `break`, and Node destroys the readable.
+    // That close is the ONLY signal the transport gets, and without acting on
+    // it the pump keeps reading a response nobody will ever read — socket open,
+    // tokens billing, which is the editor's commonest path when a user stops a
+    // turn. Cancelling the reader and aborting the request is what carries the
+    // consumer's early exit back to the producer.
+    out.on("close", () => {
+      if (settled) return;
+      settled = true;
+      void reader.cancel().catch(() => {
+        // The reader is already errored or released; the abort below is what
+        // actually ends the request, so there is nothing this could add.
+      });
+      abortRequest();
+    });
+
     void (async () => {
-      if (!webStream) {
-        out.end();
-        return;
-      }
-      const reader = webStream.getReader();
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           out.push(Buffer.from(value));
         }
+        settled = true;
+        reader.releaseLock();
         out.end();
       } catch (err) {
+        // An abandonment cancel surfaces here as a rejected read. The consumer
+        // is already gone and the stream already destroyed, so re-destroying it
+        // would replace their reason with ours.
+        if (settled) return;
+        settled = true;
         out.destroy(err as Error);
-      } finally {
-        reader.releaseLock();
       }
     })();
     return out;
@@ -265,6 +303,51 @@ async function readBody(
     return text.length === 0 ? null : JSON.parse(text);
   }
   return response.text();
+}
+
+/**
+ * The provider's explanation of a failure, as text, whatever response type the
+ * call asked for.
+ *
+ * A streamed body is DRAINED here rather than skipped: it is the one shape
+ * where the bytes have arrived and nobody has read them, so leaving it alone is
+ * what made a streamed failure report a status line with no cause. Bounded, and
+ * destroyed afterwards — the caller never receives this stream, so if this does
+ * not end it nothing will.
+ */
+async function failureDetail(
+  body: unknown,
+  responseType: ResponseType,
+): Promise<string | undefined> {
+  if (body === null || body === undefined) return undefined;
+
+  if (responseType === "stream") {
+    const stream = body as PassThrough;
+    const chunks: Buffer[] = [];
+    let size = 0;
+    try {
+      for await (const chunk of stream) {
+        const buf = Buffer.from(chunk as Buffer);
+        chunks.push(buf);
+        size += buf.length;
+        if (size >= MAX_FAILURE_BODY) break;
+      }
+    } finally {
+      stream.destroy();
+    }
+    const text = Buffer.concat(chunks).subarray(0, MAX_FAILURE_BODY).toString("utf8");
+    return text.length > 0 ? text : undefined;
+  }
+
+  if (typeof body === "string") {
+    return body.length > 0 ? body.slice(0, MAX_FAILURE_BODY) : undefined;
+  }
+  if (body instanceof Uint8Array) {
+    const text = Buffer.from(body).subarray(0, MAX_FAILURE_BODY).toString("utf8");
+    return text.length > 0 ? text : undefined;
+  }
+  // A parsed body came from JSON.parse, so it is acyclic and re-encodable.
+  return JSON.stringify(body)?.slice(0, MAX_FAILURE_BODY);
 }
 
 /**
@@ -945,7 +1028,23 @@ class HttpRequestResource implements ResourceInstance {
     }
 
     if (throwOnHttpError && !isSuccess(response.status, response.headers, response.body)) {
-      throw new Error(`HTTP ${response.status} error from ${fullUrl}`);
+      // The provider's own explanation is IN the body, and under
+      // `responseType: stream` that body is an unread PassThrough — so a
+      // streamed call used to raise a status line and nothing else, in exactly
+      // the case where the message matters most: a model refusing a request
+      // says why, and "HTTP 400" does not.
+      const detail = await failureDetail(response.body, responseType);
+      throw new InvokeError(
+        ERR_HTTP_STATUS,
+        detail
+          ? `HTTP ${response.status} error from ${fullUrl}: ${detail}`
+          : `HTTP ${response.status} error from ${fullUrl}`,
+        {
+          status: response.status,
+          url: fullUrl,
+          ...(detail === undefined ? {} : { body: detail }),
+        },
+      );
     }
 
     if (responseType === "stream") {

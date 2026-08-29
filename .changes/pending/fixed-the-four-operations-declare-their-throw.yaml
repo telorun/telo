@@ -1,0 +1,11 @@
+modules:
+  modules/ai: Fixed
+body: "The four operations declare their throw unions, so `ERR_AGENT_MAX_STEPS` and a
+  tool error under `onToolError: throw` are nameable in a route's `catches:` — not only
+  in a `try:`/`catch:` step. With no declared union the analyzer read one as {∅} and
+  rejected any route that named a code, which made the advertised catchability
+  half-true. A consequence worth knowing: a route mounting one of these handlers must
+  now cover its codes or end with a catch-all entry. `finishReason` is also declared
+  once instead of restated five times with four different value sets — `Ai.Text`
+  admitted `error`, which no model produces, and omitted `tool-calls`, which one does,
+  so a tool-calling finish through it failed output validation."

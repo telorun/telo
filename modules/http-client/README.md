@@ -18,13 +18,41 @@ Outgoing HTTP calls for Telo. Language- and engine-neutral request/response cont
 | --- | --- |
 | `Http.Client` | Long-lived client carrying base URL, default headers, timeout, redirect policy, and an optional credential. |
 | `Http.Credential` | Abstract: given the request about to be sent, return the headers or query parameters to merge into it. |
+| `Http.BearerToken` | A fixed token in the `Authorization` header — the scheme most APIs accept. |
+| `Http.ApiKeyHeader` | A fixed key in a header the service names (`x-api-key` and its equivalents). |
+| `Http.QueryKey` | A fixed key in a query parameter, for services that offer only that. |
 | `Http.Request` | Per-call HTTP request invocable; references an `Http.Client` for shared defaults. |
 
 ## Authenticating requests
 
-`Http.Credential` is a contract, not an implementation — implement it for API
-keys, HMAC signing or SigV4, or use `OAuthClient.Credential` for OAuth 2.0. Attach
-one to a client and the calls through it need no header wiring:
+`Http.Credential` is a contract. Three static implementations ship here for the
+cases where the material is a value you already hold; `OAuthClient.Credential`
+covers OAuth 2.0, and a scheme that signs the request (HMAC, SigV4) implements
+the same contract. Attach one to a client and the calls through it need no
+header wiring:
+
+```yaml
+kind: Http.BearerToken
+metadata: { name: apiToken }
+token: !cel "secrets.apiToken"
+---
+kind: Http.ApiKeyHeader
+metadata: { name: anthropicKey }
+header: x-api-key
+key: !cel "secrets.anthropicKey"
+---
+kind: Http.QueryKey
+metadata: { name: studioKey }
+parameter: key
+key: !cel "secrets.googleAiKey"
+```
+
+Use these rather than an `apiKey` field on whatever kind is making the call: an
+`apiKey` beside a `credential` reference is two ways to say one thing, and the
+`401` re-acquire-and-retry below is inherited only by the credential path.
+Material that resolves to nothing is refused at the credential
+(`ERR_INVALID_CREDENTIAL`) rather than sent and answered `401` — a failure
+reported one indirection from the line that has to change.
 
 ```yaml
 kind: Http.Client
@@ -39,6 +67,11 @@ than just adding a token, satisfies the same contract. What it returns overrides
 the client's default headers and query parameters, and is overridden in turn by
 the individual request's own: an explicit per-call `Authorization` is never
 silently replaced.
+
+A credential's returned headers and query are marked `x-telo-sensitive`, so the
+material is carried as `[redacted]` in trace payloads and on the debug wire
+rather than verbatim — which matters because a credential is a dispatched
+invocable, and invoke outputs ride that wire on every call under `--inspect`.
 
 A response of `401` re-invokes the credential with `forceRefresh: true` and
 retries the call **once**; a second rejection propagates. This lives here rather

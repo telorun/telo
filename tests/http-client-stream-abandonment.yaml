@@ -1,0 +1,201 @@
+kind: Telo.Application
+metadata:
+  name: HttpClientStreamAbandonment
+  version: 1.0.0
+  description: |
+    A consumer that stops draining a streamed response part-way.
+
+    What this pins is the CLIENT side of abandonment: the failure that stopped
+    the drain propagates, nothing hangs, and the client is still usable
+    afterwards. When the consumer's iterator is returned, the request controller
+    cancels its reader and aborts the request — a path that runs on a destroyed
+    stream while its pump is still going, so the ways it can go wrong are a
+    hang, a swallowed error, or a client left broken for the next call.
+
+    READ THIS BEFORE TRUSTING IT AS COVERAGE. It does NOT assert that the socket
+    closed, and it is not a guard on the abort itself: disabling the abandonment
+    handler and re-running leaves all three assertions passing, which was
+    measured rather than assumed. What it guards is that the handler — which
+    runs on a destroyed stream while its pump is still going — breaks nothing.
+
+    The abort itself is asserted where it is observable — in
+    `modules/http-client/nodejs/tests/stream-abandonment.test.ts`, which drives
+    the body reader directly and fails when the handler is removed. Asserting it
+    from a manifest would mean asserting what the SERVER observed, which needs a
+    producer still sending when the consumer gives up; no manifest can express
+    one, since `Stream.Of` emits instantly and CEL has no side effects.
+imports:
+  Server: ../modules/http-server
+  Http: ../modules/http-client
+  Run: ../modules/run
+  Stream: ../modules/stream
+  Sse: ../modules/sse-codec
+  Assert: ../modules/assert
+targets:
+  - !ref test
+---
+# Enough records that the consumer gives up well before the end.
+kind: Stream.Of
+metadata: { name: records }
+items:
+  - { type: tick, n: 0 }
+  - { type: tick, n: 1 }
+  - { type: tick, n: 2 }
+  - { type: tick, n: 3 }
+  - { type: tick, n: 4 }
+  - { type: tick, n: 5 }
+  - { type: tick, n: 6 }
+  - { type: tick, n: 7 }
+  - { type: tick, n: 8 }
+  - { type: tick, n: 9 }
+---
+kind: Sse.Encoder
+metadata: { name: sseEncoder }
+---
+kind: Run.Value
+metadata: { name: pong }
+value:
+  ok: true
+---
+kind: Http.Client
+metadata: { name: client }
+baseUrl: http://localhost:8883
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: testApi }
+    routes:
+      - request:
+          path: /stream
+          method: GET
+        handler: !ref records
+        inputs: {}
+        returns:
+          - status: 200
+            mode: stream
+            content:
+              text/event-stream:
+                encoder: !ref sseEncoder
+      - request:
+          path: /ping
+          method: GET
+        handler: !ref pong
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required: [ok]
+                  properties:
+                    ok: { type: boolean }
+                body:
+                  ok: !cel "result.ok"
+  - kind: Server.Server
+    metadata: { name: testServer }
+    port: 8883
+    baseUrl: http://localhost:8883
+    openapi:
+      info: { title: Stream Abandonment, version: 1.0.0 }
+    mounts:
+      - path: /api
+        mount: !ref testApi
+targets:
+  - !ref testServer
+steps:
+  # ABANDON. `Stream.FlatMap` refuses a non-array, and that refusal unwinds the
+  # drain — which is what calls `return()` on the source and reaches the
+  # transport. So the partial consumer needs no bespoke machinery: it is an
+  # ordinary stage failing part-way, the commonest way a real pipeline stops.
+  - name: abandon
+    try:
+      - name: fetch
+        inputs:
+          url: /api/stream
+          method: GET
+          responseType: stream
+        invoke:
+          kind: Http.Request
+          client: !ref client
+          throwOnHttpError: true
+      - name: decode
+        inputs:
+          input: !cel "steps.fetch.result.body"
+        invoke:
+          kind: Sse.Decoder
+      - name: stop
+        inputs:
+          input: !cel "steps.decode.result.records"
+        invoke:
+          kind: Stream.FlatMap
+          # An array for the first two frames, then a bare string — refused.
+          values: !cel "index < 2 ? [index] : item.event"
+      - name: drain
+        inputs:
+          input: !cel "steps.stop.result.output"
+        invoke:
+          kind: Stream.Collect
+    catch:
+      # The failure that stopped the drain reaches the caller rather than being
+      # swallowed by the teardown running underneath it.
+      - name: assertPropagated
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_VALUE
+        invoke: !ref Assert.equals
+
+  # The client survives an abandoned stream. Aborting the request tears down a
+  # connection the client holds, so this is the assertion that the teardown took
+  # nothing shared with it — and reaching this step at all is what proves the
+  # abandonment path did not hang.
+  - name: stillWorks
+    inputs:
+      url: /api/ping
+      method: GET
+    invoke:
+      kind: Http.Request
+      client: !ref client
+      throwOnHttpError: true
+  - name: assertClientHealthy
+    inputs:
+      actual: !cel "steps.stillWorks.result.body.ok"
+      expected: true
+    invoke: !ref Assert.equals
+
+  # And a second abandonment behaves exactly as the first, so nothing about the
+  # first left the client in a state that only fails the next time.
+  - name: abandonAgain
+    try:
+      - name: fetch2
+        inputs:
+          url: /api/stream
+          method: GET
+          responseType: stream
+        invoke:
+          kind: Http.Request
+          client: !ref client
+          throwOnHttpError: true
+      - name: decode2
+        inputs:
+          input: !cel "steps.fetch2.result.body"
+        invoke:
+          kind: Sse.Decoder
+      - name: stop2
+        inputs:
+          input: !cel "steps.decode2.result.records"
+        invoke:
+          kind: Stream.FlatMap
+          values: !cel "index < 2 ? [index] : item.event"
+      - name: drain2
+        inputs:
+          input: !cel "steps.stop2.result.output"
+        invoke:
+          kind: Stream.Collect
+    catch:
+      - name: assertPropagatedAgain
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_VALUE
+        invoke: !ref Assert.equals

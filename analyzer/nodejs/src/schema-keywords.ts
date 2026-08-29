@@ -27,6 +27,9 @@
  */
 
 import { X_TELO_TYPE } from "@telorun/sdk";
+
+/** The one annotation read from a DATA schema rather than a kind schema. */
+const X_TELO_SENSITIVE = "x-telo-sensitive" as const;
 import { ANNOTATION_KEYWORDS } from "./value-type-keyword.js";
 
 /** A keyword entry: the JSON Schema its VALUE must satisfy, carrying the title
@@ -227,7 +230,13 @@ export function jsonSchemaKeywords(self: string): SchemaKeywords {
  * a schema describing an annotation from an annotation, which nothing does yet.
  */
 export const TELO_SCHEMA_ANNOTATIONS: Record<
-  (typeof ANNOTATION_KEYWORDS)[number] | typeof X_TELO_TYPE,
+  // Exhaustive over the kind vocabulary, so adding a keyword without an entry is
+  // a compile error. `x-telo-sensitive` is excluded because it belongs to the
+  // DATA vocabulary below — it is read from a contract, not from a kind's own
+  // `schema:` — and offering it here would put it on the one schema where
+  // nothing reads it.
+  | Exclude<(typeof ANNOTATION_KEYWORDS)[number], typeof X_TELO_SENSITIVE>
+  | typeof X_TELO_TYPE,
   Record<string, unknown>
 > = {
   "x-telo-eval": {
@@ -379,5 +388,28 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
     title: "Catches for",
     description: "Names the field whose failures this branch list handles.",
     type: "string",
+  },
+};
+
+/**
+ * Annotations that belong on a DATA schema — an `inputType` / `outputType`
+ * contract — rather than on a kind's own `schema:`.
+ *
+ * Split out because {@link TELO_SCHEMA_ANNOTATIONS} is offered only where the
+ * fragment is `KindSchema`, which is a kind's CONFIGURATION. `x-telo-sensitive`
+ * is read from the opposite place: the kernel resolves it off a bound contract,
+ * which stamps `JsonSchema7`. Offering it from the kind vocabulary alone put it
+ * on the one schema where nothing reads it and withheld it from the two where it
+ * is the whole mechanism.
+ */
+export const TELO_DATA_SCHEMA_ANNOTATIONS: Record<
+  typeof X_TELO_SENSITIVE,
+  Record<string, unknown>
+> = {
+  [X_TELO_SENSITIVE]: {
+    title: "Sensitive",
+    description:
+      "This value is auth material or equivalent: carry it as `[redacted]` in trace payloads and on the debug wire rather than verbatim. Read only from a resource's declared `inputType` / `outputType`.",
+    type: "boolean",
   },
 };

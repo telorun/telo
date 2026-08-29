@@ -19,7 +19,7 @@ targets:
 # apiKey defaults to "" when OPENAI_API_KEY is unset so the resource passes
 # schema validation. The model is constructed (just config — no API call until
 # stream()), but never reached because the run-step is gated.
-kind: AiOpenai.OpenaiModel
+kind: AiOpenai.OpenaiModelStream
 metadata: { name: Live }
 model: gpt-4o-mini
 apiKey: !cel "secrets.openaiApiKey"
