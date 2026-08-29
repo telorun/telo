@@ -1,6 +1,0 @@
-modules:
-  modules/http-client: Fixed
-body: A consumer that stops draining a streamed response no longer leaves the request
-  running. When the returned stream's iterator is returned — which `for await` does on a
-  break or a throw — the reader is cancelled and the request aborted, so an abandoned
-  response stops rather than being read to completion into a stream nobody holds.

@@ -1,5 +1,0 @@
-modules:
-  modules/http-server: Fixed
-body: A streaming route's handler throw union is now declared by the `ai` operations it
-  commonly mounts, so a route mounting one must cover its codes with a `catches:` entry
-  or a catch-all. Previously the union was empty and the analyzer could check nothing.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.22.0 - 2026-08-29
+### Added
+* Three static credentials — `Http.BearerToken`, `Http.ApiKeyHeader` and `Http.QueryKey`. `Http.Credential` had exactly one implementation, OAuth's, which is why every module talking to a keyed API grew its own `apiKey` field: a second way to say the same thing, and a second place for the 401 re-acquire-and-retry not to happen. A static credential answers `forceRefresh` with the same material, which the abstract already anticipates. Material that resolved to nothing is refused at the credential rather than sent and answered 401, one indirection from the line that has to change.
+### Fixed
+* A consumer that stops draining a streamed response no longer leaves the request running. When the returned stream's iterator is returned — which `for await` does on a break or a throw — the reader is cancelled and the request aborted, so an abandoned response stops rather than being read to completion into a stream nobody holds.
+* A refused request reports WHY. `throwOnHttpError` raised a status line and discarded the body, so the server's own explanation never reached the caller; under `responseType: stream` the bytes had already arrived and sat unread, which is exactly how an AI provider answers a bad request. The failure body is now read before throwing, in either response type, and the error is a structured `ERR_HTTP_STATUS` carrying the status and the body rather than a bare `Error`. A streamed body also aborts its request when its iterator is returned: a consumer that stops draining used to leave the pump reading — socket open, tokens billing.
+
 ## 0.21.1 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.

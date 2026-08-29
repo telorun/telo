@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.5 - 2026-08-29
+### Fixed
+* An error frame carries the failing error's `code` when it has one. A stream now fails by rejecting, so this frame is the whole of what a client gets, and a bare message is not something it can branch on.
+
 ## 0.9.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
