@@ -108,6 +108,10 @@ import {
   validateValueTypeSlots,
   type ValueTypeSlotIssue,
 } from "./validate-value-type-slots.js";
+import {
+  validateSensitiveSlots,
+  type SensitiveSlotIssue,
+} from "./validate-sensitive-slots.js";
 import { resolveSchemaTypeRefs } from "./resolve-schema-type-refs.js";
 import { validateSchemaTypeRefs } from "./validate-schema-type-refs.js";
 import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
@@ -979,10 +983,16 @@ export class StaticAnalyzer {
     // definition's `schema:` does. Same scoping as every other schema issue —
     // the entry's own modules, since a dependency is not the consumer's to fix.
     const valueTypeSlotIssues: ValueTypeSlotIssue[] = [];
+    // `x-telo-sensitive` rides the same walk and the same scoping. It is read by
+    // ONE consumer — the kernel, off a bound contract — so an occurrence outside
+    // `inputType` / `outputType` is inert; for a security control, inert-and-
+    // silent is the failure worth reporting.
+    const sensitiveSlotIssues: SensitiveSlotIssue[] = [];
     for (const m of manifests) {
       const declaringModule = (m.metadata as { module?: string } | undefined)?.module;
       if (!declaringModule || rootModules.has(declaringModule)) {
         valueTypeSlotIssues.push(...validateValueTypeSlots(m as unknown as ResourceManifest));
+        sensitiveSlotIssues.push(...validateSensitiveSlots(m as unknown as ResourceManifest));
       }
     }
     for (const m of manifests) {
@@ -1209,6 +1219,22 @@ export class StaticAnalyzer {
             filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
             path: issue.path,
             ...(issue.fix ? { fix: issue.fix } : {}),
+          },
+        });
+      }
+      for (const issue of sensitiveSlotIssues) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: issue.code,
+          source: SOURCE,
+          message: issue.message,
+          data: {
+            resource: {
+              kind: issue.manifest.kind,
+              name: issue.manifest.metadata?.name as string,
+            },
+            filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
+            path: issue.path,
           },
         });
       }

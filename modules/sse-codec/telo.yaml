@@ -9,11 +9,12 @@ metadata:
     Server-Sent Events on the wire: a stream of event records becomes the framed bytes
     a browser's EventSource reads, one named event per record. The usual way to push
     live updates — model tokens, progress, notifications — to a web client over plain
-    HTTP. Encoding only for now; decoding is not yet implemented.
+    HTTP, and the reader that parses those frames back into records as they arrive.
 imports:
   Codec: ../codec
 exports:
   kinds:
+    - Decoder
     - Encoder
 ---
 # Encoder: `{type, ...rest}` records → SSE frame bytes. Bare strings frame as
@@ -30,6 +31,69 @@ capability: Telo.Invocable
 extends: Codec.Encoder
 controllers:
   - pkg:telo/local/js?path=./nodejs/sse-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController
+schema:
+  type: object
+  additionalProperties: false
+---
+# Decoder: SSE frame bytes → one record per frame, emitted as they arrive.
+#
+# Streaming rather than collecting, which is the variation Codec.Decoder leaves
+# open: the whole point of the format is that a frame is usable the moment it
+# lands, and buffering to the end would make every consumer wait for the
+# response to finish.
+#
+# `data` is handed over as TEXT and never parsed here. The format says nothing
+# about what a payload is, and a stream carrying JSON frames routinely also
+# carries a sentinel that is not JSON (`data: [DONE]`), so parsing would fail on
+# the one frame announcing the stream is over.
+kind: Telo.Definition
+metadata:
+  name: Decoder
+  description: >-
+    Parses a byte stream of Server-Sent Events into one record per frame — event name,
+    payload text and optional id — emitted as each frame arrives rather than collected
+    at the end. Comments and keep-alives are skipped, and multi-line payloads are joined.
+capability: Telo.Invocable
+extends: Codec.Decoder
+controllers:
+  - pkg:telo/local/js?path=./nodejs/sse-codec.mjs&local_path=./nodejs/src/index.ts#DecoderController
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: "`input` did not resolve to an async iterable, or yielded something other than bytes."
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [records]
+    properties:
+      records:
+        description: One record per dispatched frame, in order.
+        x-telo-type:
+          name: Telo.Stream
+          of:
+            type: object
+            additionalProperties: false
+            required: [event, data]
+            properties:
+              event:
+                type: string
+                description: The frame's event name, `message` when it declared none.
+              data:
+                type: string
+                description: >-
+                  The frame's payload as text, with multiple `data:` lines joined by
+                  newlines. Never parsed — a stream of JSON frames routinely ends with a
+                  sentinel that is not JSON.
+              id:
+                type: string
+                description: >-
+                  The stream cursor, if one has been seen. Persists across frames until
+                  replaced, as the format specifies.
+              retry:
+                type: integer
+                description: The reconnection delay in milliseconds, when the server sent one.
 schema:
   type: object
   additionalProperties: false

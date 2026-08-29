@@ -10,7 +10,7 @@ imports:
 targets:
   - !ref TestEchoStreamContract
 ---
-kind: AiEcho.EchoModel
+kind: AiEcho.EchoModelStream
 metadata: { name: Echo }
 ---
 # AiEcho.StreamCollector (a test-support Invocable) takes the Echo model as an

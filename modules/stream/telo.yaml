@@ -16,6 +16,9 @@ exports:
     - Of
     - Collect
     - Chunk
+    - Map
+    - Scan
+    - FlatMap
 ---
 # Emit a list of items as a stream, in order — declared statically or supplied
 # at invoke time.
@@ -193,3 +196,234 @@ schema:
       description: >-
         Default bytes per piece, used when a call supplies none. Declared here when
         the size is a property of the destination rather than of the call.
+---
+# The three element-wise transforms every streaming protocol is assembled from.
+#
+# They exist so a manifest can produce a token stream at all: an SSE decoder
+# hands over wire frames, and turning those into a provider's parts is mapping,
+# accumulating and re-fanning them — work that was previously only expressible
+# in a controller, which is why every provider shipped one.
+#
+# All three are LAZY. The work happens as the consumer pulls, so a stage never
+# drains its source to build a result, and abandonment costs nothing to support:
+# a consumer that stops draining causes `for await` to call `return()` on the
+# stage, which propagates to its own source and so on to the transport.
+kind: Telo.Definition
+metadata:
+  name: Map
+  description: >-
+    Transforms every value of a stream with a CEL expression, one in and one out, as
+    the consumer pulls. The expression sees each value and its position, so a wire
+    record can be reshaped into whatever the next stage expects without buffering the
+    stream.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#MapController
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: "`input` did not resolve to an async iterable."
+    ERR_INVALID_VALUE:
+      description: >-
+        `value` was written blank. Raised per call rather than at load — a key with no
+        value parses to null, which the schema cannot tell from a CEL node.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input]
+    properties:
+      input:
+        x-telo-type: Telo.Stream
+        description: Stream whose values are transformed.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output]
+    properties:
+      output:
+        x-telo-type: Telo.Stream
+        description: Stream of transformed values, in order.
+schema:
+  type: object
+  additionalProperties: false
+  required: [value]
+  properties:
+    elementType:
+      title: Element Type
+      description: >-
+        The contract each produced value satisfies — a named type reference or an inline
+        type definition. Declaring it holds `value` to that shape at analysis time, so a
+        stage that drops a field the next one reads is an error before it runs.
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+    value:
+      title: Value
+      description: >-
+        Each output value, evaluated once per element — a CEL expression, a structure
+        with `!cel` leaves, or a literal. Sees item, index and inputs.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          item: {}
+          index: { type: integer }
+      x-telo-value-schema-from: elementType
+---
+kind: Telo.Definition
+metadata:
+  name: Scan
+  description: >-
+    Accumulates a stream and emits the running state after every value, so a consumer
+    sees each intermediate result rather than only the total. Reassembling text from
+    deltas is the usual case: the accumulated value is what a reader wants, and it has
+    to arrive per value rather than at the end.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#ScanController
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: "`input` did not resolve to an async iterable."
+    ERR_INVALID_VALUE:
+      description: "`accumulate` was written blank."
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input]
+    properties:
+      input:
+        x-telo-type: Telo.Stream
+        description: Stream to accumulate over.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output]
+    properties:
+      output:
+        x-telo-type: Telo.Stream
+        description: Stream of emitted values, one per input value, in order.
+schema:
+  type: object
+  additionalProperties: false
+  required: [initial, accumulate]
+  properties:
+    accType:
+      title: Accumulator Type
+      description: >-
+        The running state's contract — a named type reference or an inline type
+        definition. Declaring it types `acc` inside `accumulate` and `emit`, and holds
+        both the seed and the step to that shape at analysis time.
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+    initial:
+      title: Initial
+      description: The starting accumulator, evaluated once before the first value. Sees inputs.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+      x-telo-value-schema-from: accType
+    accumulate:
+      title: Accumulate
+      description: >-
+        The accumulator's next value, evaluated once per element. Sees acc, item, index
+        and inputs. It REPLACES the accumulator rather than merging into it.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          acc: { x-telo-context-from-root: "accType" }
+          item: {}
+          index: { type: integer }
+      x-telo-value-schema-from: accType
+    emit:
+      title: Emit
+      description: >-
+        What to emit for this element, evaluated after `accumulate` against the NEW
+        accumulator. Omitted, the accumulator itself is emitted. Declared separately
+        because the state and the value worth publishing are routinely different — a
+        parser accumulates a buffer and emits only the frames it completed.
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          acc: { x-telo-context-from-root: "accType" }
+          item: {}
+          index: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: FlatMap
+  description: >-
+    Expands every value of a stream into any number of values, flattened into one
+    stream. One wire frame routinely carries several logical records, and a keep-alive
+    carries none, so emitting a list — empty to drop the value — is what lets a stage
+    change how many values flow through it.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#FlatMapController
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: "`input` did not resolve to an async iterable."
+    ERR_INVALID_VALUE:
+      description: >-
+        `values` was written blank, or evaluated to something other than an array. A
+        non-array is refused rather than emitted as one value: that would make `values`
+        mean two things kept apart only by what an expression happened to return.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input]
+    properties:
+      input:
+        x-telo-type: Telo.Stream
+        description: Stream whose values are expanded.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output]
+    properties:
+      output:
+        x-telo-type: Telo.Stream
+        description: Stream of the produced values, in order, flattened.
+schema:
+  type: object
+  additionalProperties: false
+  required: [values]
+  properties:
+    elementType:
+      title: Element Type
+      description: >-
+        The contract each produced value satisfies — a named type reference or an inline
+        type definition. Declaring it holds every element of `values` to that shape at
+        analysis time.
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+    values:
+      title: Values
+      description: >-
+        The values this element expands to, evaluated once per element. Must be an
+        array; emit [] to drop the element. Sees item, index and inputs.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+          item: {}
+          index: { type: integer }

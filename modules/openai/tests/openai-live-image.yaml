@@ -1,0 +1,73 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiLiveImage
+  version: 1.0.0
+  description: |
+    Live OpenAI image generation. Skips silently when OPENAI_API_KEY is unset
+    (locally: drop a .env.local in this directory; CI: secret on the workflow).
+    One image at the cheapest quality — this call bills real money per run, so the
+    assertions are structural rather than exhaustive; the byte path itself is
+    covered hermetically in modules/ai/tests/image-to-file.yaml.
+secrets:
+  openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
+imports:
+  OpenAI: ../
+  Ai: ../../ai
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref LiveImage
+---
+# apiKey defaults to "" when OPENAI_API_KEY is unset so the resource passes schema
+# validation. The model is constructed (just config — no API call until invoke), but
+# never reached because the run-step is gated.
+kind: OpenAI.ImageModel
+metadata: { name: Live }
+model: gpt-image-1
+apiKey: !cel "secrets.openaiApiKey"
+options:
+  size: 1024x1024
+  quality: low
+  n: 1
+---
+kind: Ai.Image
+metadata: { name: Draw }
+model: !ref Live
+---
+kind: Run.Sequence
+metadata:
+  name: LiveImage
+steps:
+  - name: GuardEnv
+    if: !cel "secrets.openaiApiKey != ''"
+    then:
+      - name: Invoke
+        inputs:
+          prompt: A single small red circle centered on a white background.
+        invoke: !ref Draw
+      - name: Assert
+        inputs:
+          # Compared as a boolean: CEL's size() is an int, which reaches a JSON
+          # Schema validator as a string and would never match a numeric const.
+          singleImage: !cel "size(steps.Invoke.result.images) == 1"
+          mediaType: !cel "steps.Invoke.result.images[0].mediaType"
+          width: !cel "steps.Invoke.result.images[0].width"
+          finishReason: !cel "steps.Invoke.result.finishReason"
+          usageUnit: !cel "steps.Invoke.result.usage.unit"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              singleImage: { const: true }
+              mediaType: { type: string, enum: [ image/png, image/jpeg, image/webp ] }
+              # Echoed back from the requested size, which is how this provider
+              # reports dimensions — it decodes nothing.
+              width: { const: 1024 }
+              finishReason: { const: stop }
+              # gpt-image-1 reports token usage; the quantity is normalized here.
+              usageUnit: { const: tokens }
+            # usageUnit is required, not optional: the claim under test is that this
+            # model reports usage and that it is normalized. Leaving it out would let
+            # a missing `usage` pass vacuously.
+            required: [ singleImage, mediaType, width, finishReason, usageUnit ]

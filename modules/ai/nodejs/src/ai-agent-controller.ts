@@ -2,7 +2,7 @@ import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/
 import { InvokeError } from "@telorun/sdk";
 import { logCompletion } from "./completion-log.js";
 import type { MessageContent } from "./content.js";
-import { withTokenQuantity } from "./usage.js";
+import { tokenCounts, withTokenQuantity } from "./usage.js";
 import {
   assembleTools,
   buildInitialMessages,
@@ -97,19 +97,32 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
     const usage: Usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
     const steps: StepTrace[] = [];
     let last: CompletionResult | undefined;
+    // Carried across turns, opaque throughout.
+    let providerState: unknown;
 
     for (let step = 0; step < maxSteps; step++) {
       ctx?.cancellation.throwIfCancelled();
-      const result = await model.invoke({
-        messages,
-        options: mergedOptions,
-        signal: ctx?.cancellation.signal,
-        ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
-      });
+      const result = await model.invoke(
+        {
+          messages,
+          options: mergedOptions,
+          ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
+          // Replayed verbatim so a provider that keeps its reasoning
+          // server-side can pick the chain back up. This is what makes
+          // reasoning survive a tool loop rather than restarting at every
+          // turn; `ai` never looks inside it.
+          ...(providerState === undefined ? {} : { providerState }),
+        },
+        ctx,
+      );
       last = result;
-      usage.promptTokens += result.usage.promptTokens;
-      usage.completionTokens += result.usage.completionTokens;
-      usage.totalTokens += result.usage.totalTokens;
+      providerState = result.providerState;
+      // Converted before adding: a declared integer arrives as an int64, and
+      // `0 + 1n` is a TypeError rather than a sum.
+      const turnUsage = tokenCounts(result.usage);
+      usage.promptTokens += turnUsage.promptTokens;
+      usage.completionTokens += turnUsage.completionTokens;
+      usage.totalTokens += turnUsage.totalTokens;
 
       const calls = result.toolCalls ?? [];
       if (calls.length === 0) {

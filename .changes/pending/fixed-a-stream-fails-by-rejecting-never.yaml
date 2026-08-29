@@ -1,0 +1,10 @@
+modules:
+  modules/ai: Fixed
+body: "A stream fails by REJECTING, never by yielding. `finish` is the only terminal
+  part; a mid-stream failure rejects the iteration with a structured error. An error
+  part has to be remembered by every drainer, and one that forgets truncates silently. A
+  thrown error also reaches machinery a data part cannot — `catches:`, a throws union, a
+  `try:` step — so a tool error under `onToolError: throw` and `ERR_AGENT_MAX_STEPS` are
+  handleable from a manifest for the first time. Parts already yielded still reach the
+  consumer, and both shipped encoders frame the rejection, so a streaming client still
+  sees one terminal frame."

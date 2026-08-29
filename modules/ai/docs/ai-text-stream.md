@@ -53,7 +53,13 @@ The provider's `stream()` yields a sequence of tagged `StreamPart` records:
 type StreamPart =
   | { type: "text-delta"; delta: string }
   | { type: "finish"; usage: Usage; finishReason: FinishReason }
-  | { type: "error"; error: { message: string; code?: string; data?: unknown } };
+  | { type: "reasoning-delta"; delta: string }
+  | { type: "content-part"; part: ContentPart }
+  | { type: "provider-state"; providerState: unknown };
+
+// A FAILURE is not a part. `finish` is the only terminator; a mid-stream
+// failure rejects the iteration with a structured error, which a `catch:` can
+// name and an encoder frames for the wire.
 ```
 
 `StreamPart.error` is a JSON-serializable object (not a native `Error`) so generic encoders can frame it without a bespoke serialization step. Provider controllers translate native errors to this shape at yield time.
@@ -159,7 +165,7 @@ code: |
 
 ## Cancellation
 
-When the consumer stops iterating (drops the iterator, the HTTP client disconnects, etc.), the iterator's `.return()` propagates back through any encoder in the pipeline to `model.stream()`, and from there to the provider's underlying SDK call. Provider controllers honour the abort signal — failing to do so leaves connections open after the consumer is gone.
+When the consumer stops iterating (drops the iterator, the HTTP client disconnects, etc.), the iterator's `.return()` propagates back through any encoder in the pipeline to the model's own generator, and from there to the provider's underlying request. Provider controllers honour the abort signal — failing to do so leaves connections open after the consumer is gone.
 
 ## Pairing with `Http.Api`
 
@@ -168,5 +174,5 @@ The HTTP-server integration (single source-Invocable + format-codec response, wi
 ## What's NOT here
 
 - **Backpressure-aware error catching mid-stream.** Once headers are flushed, errors are surfaced in-band (NDJSON / SSE error frames) — `catches:` only fires for pre-stream throws.
-- **Multi-consumer streams.** A single `model.stream()` is consumed by one `Ai.TextStream` invocation; teeing is not supported.
+- **Multi-consumer streams.** A single model invocation's stream is consumed by one `Ai.TextStream` invocation; teeing is not supported.
 - **Tool use / function calling.** Future `Ai.Agent` / `Ai.Worker` kinds.

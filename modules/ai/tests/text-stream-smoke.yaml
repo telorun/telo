@@ -19,7 +19,7 @@ imports:
 targets:
   - !ref TestNdjson
 ---
-kind: AiEcho.EchoModel
+kind: AiEcho.EchoModelStream
 metadata: { name: Echo }
 ---
 kind: Ai.TextStream

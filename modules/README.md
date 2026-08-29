@@ -11,7 +11,7 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 | Module | Description |
 | --- | --- |
 | [ai](./ai/README.md) | LLM access via `Ai.Model`, `Ai.Text` (buffered), and `Ai.TextStream` (streaming). |
-| [ai-openai](./ai-openai/README.md) | OpenAI provider implementing `Ai.OpenaiModel`. |
+| [openai](./openai/README.md) | Every OpenAI surface under one import: chat (buffered and streaming), images, embeddings. Supersedes `ai-openai` and `embedding-openai`. |
 
 ### HTTP & APIs
 

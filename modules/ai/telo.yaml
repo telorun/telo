@@ -11,9 +11,14 @@ metadata:
     that calls the model, runs the tools it asks for, and replays their results until
     it settles. Tools wrap ordinary resources, exposed as a static list or discovered
     at runtime.
+imports:
+  Run: ../run
+  Stream: ../stream
 exports:
   kinds:
     - Model
+    - ModelStream
+    - Buffered
     - Text
     - TextStream
     - ToolProvider
@@ -31,31 +36,409 @@ exports:
       path: ./nodejs/ai.mjs
       source: ./nodejs/src/index.ts
 ---
-# Ai.Model — the abstract LLM client every provider implements. Like Sql.Connection
-# or Http.Client, it is a Telo.Provider: a configured handle to a backend (model id,
-# API key, options), NOT an operation you invoke directly. The operation lives in the
-# consumers — Ai.Text / Ai.TextStream / Ai.Agent — which hold a reference to a model
-# and drive it through two documented runtime methods (the same convention
-# Ai.ToolProvider uses for listTools/callTool):
-#   invoke({ messages, options?, tools? }): CompletionResult
-#       — { text, usage, finishReason, toolCalls? }
-#   stream({ messages, options? }): AsyncIterable<StreamPart>
-#       — text-delta | finish | error parts
-# The messages-in / completion-out contract is owned by the operations (Ai.Text and
-# Ai.TextStream declare their own inputType/outputType); the model abstract carries
-# only the config schema each provider extends.
+# Ai.Message — one turn of a conversation.
 #
-# Tool support (`tools` in, `toolCalls` out, the `tool` message role, the
-# `tool-calls` finishReason) is additive — only Ai.Agent passes `tools`; Ai.Text
-# and Ai.TextStream never do, so they are unaffected.
+# Declared once and referenced everywhere rather than restated per kind: it was
+# copied verbatim into four consumers' inputTypes, which is four places for a
+# new role or content type to be added in three of them.
+kind: Telo.JsonSchema
+metadata:
+  name: Message
+  description: One conversation turn — a role, its content as text or parts, and the tool-call bookkeeping that links an assistant's request to the result fed back to it.
+schema:
+  type: object
+  additionalProperties: false
+  required: [role, content]
+  properties:
+    role:
+      type: string
+      enum: [system, user, assistant, tool]
+    content:
+      description: >-
+        The turn's content: a plain string, or parts when it carries anything other
+        than text.
+      anyOf:
+        - type: string
+        - type: array
+          minItems: 1
+          items:
+            $ref: "telo://Self/ContentPart"
+    toolCalls:
+      description: On an assistant turn, the calls the model asked for.
+      type: array
+      items:
+        $ref: "telo://Self/ToolCall"
+    toolCallId:
+      description: On a tool turn, which requested call this is the result of.
+      type: string
+---
+kind: Telo.JsonSchema
+metadata:
+  name: ToolCall
+  description: One tool invocation a model asked for — its id, the tool's name, and the arguments to call it with.
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, name, arguments]
+  properties:
+    id:
+      type: string
+      description: The provider's id for this call, echoed back on the tool turn carrying its result.
+    name: { type: string }
+    arguments:
+      description: The call's arguments, as the model produced them.
+      type: object
+      additionalProperties: true
+---
+# Ai.ContentPart — what a turn can be made of, in one vocabulary.
+#
+# MODALITY LIVES HERE, not in kind names. A model returning a picture is an
+# image part in an ordinary completion; it is not a different kind of model.
+# That is what stops the abstract multiplying per modality as providers add
+# audio, video and documents.
+#
+# A flat shape with a `type` discriminator rather than a union of branches: the
+# media parts carry bytes, `data` is deliberately untyped so it accepts both raw
+# bytes and the base64 a manifest can author, and a union with an instance
+# branch is exactly the shape a reader that does not know the value-type
+# vocabulary mis-reads.
+kind: Telo.JsonSchema
+metadata:
+  name: ContentPart
+  description: One piece of a conversation turn — text, an image, audio, video, a document, a tool call, reasoning, a citation or a refusal. Media parts carry bytes or a URI plus a media type, so a document is a matter of value rather than of a separate kind.
+schema:
+  type: object
+  additionalProperties: false
+  required: [type]
+  properties:
+    type:
+      type: string
+      enum:
+        - text
+        - image
+        - audio
+        - video
+        - file
+        # Output-only from here down: a model produces these, a caller does not
+        # send them.
+        - tool-call
+        - reasoning
+        - citation
+        - refusal
+    text:
+      type: string
+      description: The text of a `text`, `reasoning` or `refusal` part.
+    data:
+      description: >-
+        A media part's bytes — raw bytes at runtime, or base64 when a manifest
+        authored them. Both spellings are legitimate and the distinction is the
+        producer's, so the slot is a union rather than either one.
+      # `anyOf`, not `oneOf`: a reader that does not know `x-telo-type` sees the
+      # byte branch as an empty schema, which MATCHES — so under `oneOf` a plain
+      # base64 string would match both branches and fail, while under `anyOf` it
+      # degrades to accepting. That is the documented rule, and it is why leaving
+      # this untyped bought nothing.
+      anyOf:
+        - x-telo-type: Telo.Bytes
+        - type: string
+    uri:
+      type: string
+      description: Where a media part's bytes live, when they are referenced rather than carried.
+    mediaType:
+      type: string
+      description: The media part's IANA media type, e.g. `image/png`.
+    toolCall:
+      description: The call a `tool-call` part carries.
+      $ref: "telo://Self/ToolCall"
+    citation:
+      description: What a `citation` part points at.
+      type: object
+      additionalProperties: true
+    cacheControl:
+      description: >-
+        Provider-specific caching directives for this part, passed through untouched.
+        Opaque here — what a provider does with it is the provider's.
+      type: object
+      additionalProperties: true
+---
+# Ai.StreamPart — the same content, arriving in pieces.
+#
+# `finish` is the ONLY terminal part. A failure mid-stream rejects the iteration
+# with a structured error rather than yielding one, because an error part must
+# be remembered by every drainer and one that forgets truncates silently. A
+# thrown error also reaches machinery a data part cannot: `catches:`, a throws
+# union, a `try:` step.
+#
+# The field names here are load-bearing beyond this repo: an editor reading a
+# forwarded stream keys on `text-delta.delta`, `tool-call.toolCall` and
+# `finish.usage`. Renaming one of those is a breaking change to every consumer
+# of a forwarded stream, with nothing in this repo to catch it.
+kind: Telo.JsonSchema
+metadata:
+  name: StreamPart
+  description: One piece of a streamed completion — a text or reasoning delta, a completed content part, a tool call, opaque provider state, or the single terminal record carrying usage and the finish reason.
+schema:
+  type: object
+  additionalProperties: false
+  required: [type]
+  properties:
+    type:
+      type: string
+      enum: [text-delta, reasoning-delta, content-part, tool-call, provider-state, finish]
+    delta:
+      type: string
+      description: The text a `text-delta` or `reasoning-delta` adds.
+    part:
+      description: The completed part a `content-part` carries.
+      $ref: "telo://Self/ContentPart"
+    toolCall:
+      description: The call a `tool-call` part carries, once its arguments are complete.
+      $ref: "telo://Self/ToolCall"
+    providerState:
+      description: >-
+        Opaque provider state, carried so a following request can replay it. See
+        Ai.Model's `providerState`.
+    usage:
+      description: Token accounting, on the terminal `finish` part.
+      $ref: "telo://Self/TokenUsage"
+    finishReason:
+      description: Why generation ended, on the terminal `finish` part.
+      $ref: "telo://Self/FinishReason"
+---
+# Why generation ended. Declared once: it was restated in five places with four
+# different value sets, so a value one kind produced was rejected by the next —
+# `Ai.Text` admitted `error`, which no model can produce, and omitted
+# `tool-calls`, which one can, making a tool-calling finish through it a bare
+# ERR_OUTPUT_INVALID.
+#
+# `error` is deliberately absent. A failure REJECTS; a reason code saying "the
+# answer failed" competes with the mechanism that already reports failure.
+#
+# Image generation keeps its own vocabulary — `Ai.ImageResult.finishReason` is a
+# different set of outcomes, not a narrowing of this one.
+kind: Telo.JsonSchema
+metadata:
+  name: FinishReason
+  description: Why a model stopped generating — it finished, hit a length limit, was filtered, or asked for tools.
+schema:
+  type: string
+  enum: [stop, length, content-filter, tool-calls, other]
+---
+# Two usage shapes, and the difference is WHO fills them.
+#
+# A PROVIDER reports the token triple, which is all its endpoint tells it. The
+# provider-neutral half — `unit` and `total`, the pair that lets one consumer
+# sum spend across modalities — is stamped by the OPERATION, since the triple
+# already carries the answer and deriving it centrally is what keeps every
+# existing provider unchanged. So a model's declared output requires three
+# fields and an operation's requires five; collapsing them would either make
+# every provider report a figure it does not have, or drop the guarantee
+# exactly where a consumer reads it.
+kind: Telo.JsonSchema
+metadata:
+  name: TokenUsage
+  description: What a request consumed in tokens, as a provider reports it — the prompt, completion and total counts, optionally already carrying the provider-neutral unit and total.
+schema:
+  type: object
+  additionalProperties: false
+  required: [promptTokens, completionTokens, totalTokens]
+  properties:
+    promptTokens: { type: integer, minimum: 0 }
+    completionTokens: { type: integer, minimum: 0 }
+    totalTokens: { type: integer, minimum: 0 }
+    unit:
+      type: string
+      description: What `total` counts. Stamped by the operation when a provider reports none.
+    total: { type: number, minimum: 0 }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Usage
+  description: What a request consumed, as an operation reports it — the prompt/completion token triple, plus a provider-neutral unit and total so spend can be summed across modalities.
+schema:
+  type: object
+  additionalProperties: false
+  required: [promptTokens, completionTokens, totalTokens, unit, total]
+  properties:
+    promptTokens: { type: integer, minimum: 0 }
+    completionTokens: { type: integer, minimum: 0 }
+    totalTokens: { type: integer, minimum: 0 }
+    unit:
+      type: string
+      description: What `total` counts, so a consumer can sum across modalities.
+    total: { type: number, minimum: 0 }
+---
+# Ai.Model — the buffered model contract every provider implements.
+#
+# DECLARED, not a convention. It used to be a Telo.Provider with no schema and
+# no types, whose `invoke` and `stream` were duck-typed JavaScript methods
+# checked at the call site with a `typeof`. That made a provider necessarily
+# TypeScript: nothing was statically checked, no non-Node kernel could host one,
+# and every new endpoint shape was controller work.
+#
+# `Telo.Invocable` rather than `Telo.Provider` because a provider template is
+# reached through `provide:`, which is parameterless — so per-call messages and
+# tools have nowhere to enter, and a model could not be written as a manifest at
+# all. Cancellation rides the InvokeContext the kernel passes as the second
+# argument, never a `signal` inside the input: an AbortSignal is not declarable
+# data.
+#
+# Buffered and streaming are TWO abstracts, not one. A live output is exempt
+# from validation, so a single always-streaming contract would take the check
+# away from the buffered path too — the one Ai.Text and Ai.Agent use, and the
+# majority of calls. It also makes "this endpoint does not stream" expressible
+# rather than faked as a one-element stream.
 kind: Telo.Abstract
 metadata:
   name: Model
   description: >-
-    A configured handle to a language model — credentials, model id and default
-    options — that completion and agent operations drive for buffered completions
-    or token streams, optionally passing tools the model may call.
-capability: Telo.Provider
+    A language model called for a complete answer: messages and optional tools go in,
+    the finished content, token usage and a finish reason come back. Providers
+    implement it for their own endpoint; consumers hold one and call it.
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messages]
+    properties:
+      messages:
+        type: array
+        minItems: 1
+        items:
+          $ref: "telo://Self/Message"
+      options:
+        type: object
+        additionalProperties: true
+        description: Request options, already merged by the operation from its own and the caller's.
+      tools:
+        type: array
+        description: The tools this call may ask for. Absent when the caller offers none.
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, parameters]
+          properties:
+            name: { type: string }
+            description: { type: string }
+            parameters:
+              type: object
+              additionalProperties: true
+              description: JSON Schema for the tool's arguments, as the model is told them.
+      providerState:
+        description: >-
+          Opaque state a previous turn produced, replayed verbatim. This is what lets
+          reasoning survive a tool loop: a provider that keeps its reasoning
+          server-side hands back a token here, and it must go out again unchanged on
+          the next request or the chain is broken. `ai` never inspects it.
+      responseFormat:
+        type: object
+        additionalProperties: true
+        description: The shape the answer must take, e.g. a JSON schema the provider enforces.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [content, text, usage, finishReason]
+    properties:
+      content:
+        type: array
+        description: >-
+          What the model produced, as parts. The whole answer including any images or
+          reasoning it returned.
+        items:
+          $ref: "telo://Self/ContentPart"
+      text:
+        type: string
+        description: >-
+          The text parts of `content`, concatenated. Carried beside the parts because
+          the overwhelmingly common consumer wants exactly this and should not have to
+          fold the list to get it.
+      usage:
+        $ref: "telo://Self/TokenUsage"
+      finishReason:
+        $ref: "telo://Self/FinishReason"
+      toolCalls:
+        type: array
+        description: The calls the model asked for, when it asked for any.
+        items:
+          $ref: "telo://Self/ToolCall"
+      providerState:
+        description: Opaque state to replay on the next request. See the input of the same name.
+      alternatives:
+        type: array
+        description: >-
+          Further candidates, when the request asked for more than one. The first
+          candidate is always the one reported in `content` / `text`.
+        items:
+          type: object
+          additionalProperties: true
+---
+# Ai.ModelStream — the same contract, delivered as it is generated.
+#
+# A separate abstract rather than a mode of Ai.Model: see the note there. What
+# differs beyond the output is the RELATION a consumer has to it — the response,
+# the transform chain and every error happen while the consumer drains, after
+# this invocation has already returned.
+kind: Telo.Abstract
+metadata:
+  name: ModelStream
+  description: >-
+    A language model called for a stream: the same messages and tools go in, and the
+    answer arrives as parts — text deltas, tool calls, a terminal record with usage —
+    as it is generated. A failure mid-stream rejects the iteration rather than
+    yielding an error part.
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messages]
+    properties:
+      messages:
+        type: array
+        minItems: 1
+        items:
+          $ref: "telo://Self/Message"
+      options:
+        type: object
+        additionalProperties: true
+      tools:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, parameters]
+          properties:
+            name: { type: string }
+            description: { type: string }
+            parameters:
+              type: object
+              additionalProperties: true
+      providerState: {}
+      responseFormat:
+        type: object
+        additionalProperties: true
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output]
+    properties:
+      output:
+        description: >-
+          The answer's parts, in order, ending with exactly one `finish`. A mid-stream
+          failure rejects the iteration; parts already yielded still reach the
+          consumer, so a forwarder can flush what it has and encode an error frame
+          from the catch.
+        x-telo-type:
+          name: Telo.Stream
+          of:
+            $ref: "telo://Self/StreamPart"
 ---
 kind: Telo.Definition
 metadata:
@@ -67,6 +450,19 @@ metadata:
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiTextController
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The call's messages or options were malformed — both `prompt` and `messages`,
+        neither, an empty message list, or a content part that is not text or a
+        recognized media part.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        `model` did not resolve to a live model instance. A wiring failure, not a
+        request failure.
+    ERR_CONTRACT_VIOLATION:
+      description: A provider reported a token count that is not a representable integer.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -76,32 +472,7 @@ inputType:
       messages:
         type: array
         items:
-          type: object
-          properties:
-            role: { type: string, enum: [system, user, assistant] }
-            content:
-              oneOf:
-                - type: string
-                - type: array
-                  minItems: 1
-                  items:
-                    oneOf:
-                      - type: object
-                        additionalProperties: false
-                        required: [type, text]
-                        properties:
-                          type: { type: string, const: text }
-                          text: { type: string }
-                      - type: object
-                        additionalProperties: false
-                        required: [type, data, mediaType]
-                        properties:
-                          type: { type: string, const: image }
-                          data:
-                            description: Base64-encoded image bytes (manifest-authored) or raw bytes (runtime tool results).
-                          mediaType: { type: string }
-          required: [role, content]
-          additionalProperties: false
+          $ref: "telo://Self/Message"
       system: { type: string }
       options: { type: object, additionalProperties: true }
     additionalProperties: false
@@ -112,21 +483,9 @@ outputType:
     properties:
       text: { type: string }
       usage:
-        type: object
-        properties:
-          promptTokens: { type: integer, minimum: 0 }
-          completionTokens: { type: integer, minimum: 0 }
-          totalTokens: { type: integer, minimum: 0 }
-          # The provider-neutral half, shared with Ai.Image's usage so one consumer
-          # can total spend across modalities. Filled by this kind from totalTokens,
-          # so a provider that reports only the token triple needs no change.
-          unit: { type: string }
-          total: { type: number, minimum: 0 }
-        required: [promptTokens, completionTokens, totalTokens, unit, total]
-        additionalProperties: false
+        $ref: "telo://Self/Usage"
       finishReason:
-        type: string
-        enum: [stop, length, content-filter, error, other]
+        $ref: "telo://Self/FinishReason"
     required: [text, usage, finishReason]
     additionalProperties: false
 schema:
@@ -176,6 +535,19 @@ metadata:
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiTextStreamController
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The call's messages or options were malformed — both `prompt` and `messages`,
+        neither, an empty message list, or a content part that is not text or a
+        recognized media part.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        `model` did not resolve to a live model instance. A wiring failure, not a
+        request failure.
+    ERR_CONTRACT_VIOLATION:
+      description: A provider reported a token count that is not a representable integer.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -185,32 +557,7 @@ inputType:
       messages:
         type: array
         items:
-          type: object
-          properties:
-            role: { type: string, enum: [system, user, assistant] }
-            content:
-              oneOf:
-                - type: string
-                - type: array
-                  minItems: 1
-                  items:
-                    oneOf:
-                      - type: object
-                        additionalProperties: false
-                        required: [type, text]
-                        properties:
-                          type: { type: string, const: text }
-                          text: { type: string }
-                      - type: object
-                        additionalProperties: false
-                        required: [type, data, mediaType]
-                        properties:
-                          type: { type: string, const: image }
-                          data:
-                            description: Base64-encoded image bytes (manifest-authored) or raw bytes (runtime tool results).
-                          mediaType: { type: string }
-          required: [role, content]
-          additionalProperties: false
+          $ref: "telo://Self/Message"
       system: { type: string }
       options: { type: object, additionalProperties: true }
     additionalProperties: false
@@ -221,7 +568,9 @@ outputType:
     properties:
       output:
         x-telo-type: Telo.Stream
-        description: Async iterable of StreamPart records (text-delta | finish | error).
+        description: >-
+          Async iterable of StreamPart records, ending with exactly one `finish`. A
+          mid-stream failure rejects the iteration rather than yielding a part.
     required: [output]
     additionalProperties: false
 schema:
@@ -229,14 +578,15 @@ schema:
   properties:
     model:
       title: Model
-      description: Reference to any Ai.Model implementation.
+      description: Reference to any Ai.ModelStream implementation.
       x-telo-ref:
-        kind: Self.Model
-        # stream(...) is a convention method on the held model, not a bound
-        # entry point — unlike OnComplete.handler, whose handler.invoke() IS
-        # the entry point dispatched at drain time (trigger.consumer there).
-        # Nothing the kernel dispatches, traces or zone-tracks happens here.
-        use: dependency
+        kind: Self.ModelStream
+        # Both, and the pair is the honest reading: the invocation is a real
+        # dispatch that returns a handle, and then the response, the transform
+        # chain and every error happen while the CONSUMER drains — after this
+        # call has already returned. So a zone's lifetime stops at the streaming
+        # boundary rather than falsely extending over work that outlives it.
+        use: [call, trigger.consumer]
     system:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
@@ -389,6 +739,27 @@ metadata:
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentController
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The call's messages or options were malformed — both `prompt` and `messages`,
+        neither, an empty message list, or a content part that is not text or a
+        recognized media part.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        `model` did not resolve to a live model instance. A wiring failure, not a
+        request failure.
+    ERR_CONTRACT_VIOLATION:
+      description: A provider reported a token count that is not a representable integer.
+    ERR_AGENT_MAX_STEPS:
+      description: >-
+        The loop did not converge within `maxSteps` and `onMaxSteps` is `throw`. Raised
+        rather than returned so it reaches a `catch:` and a route's `catches:`.
+    ERR_AGENT_UNKNOWN_TOOL:
+      description: The model asked for a tool no mounted provider advertises.
+    ERR_AGENT_TOOL_COLLISION:
+      description: Two mounted providers advertise the same tool name.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -398,32 +769,7 @@ inputType:
       messages:
         type: array
         items:
-          type: object
-          properties:
-            role: { type: string, enum: [system, user, assistant, tool] }
-            content:
-              oneOf:
-                - type: string
-                - type: array
-                  minItems: 1
-                  items:
-                    oneOf:
-                      - type: object
-                        additionalProperties: false
-                        required: [type, text]
-                        properties:
-                          type: { type: string, const: text }
-                          text: { type: string }
-                      - type: object
-                        additionalProperties: false
-                        required: [type, data, mediaType]
-                        properties:
-                          type: { type: string, const: image }
-                          data:
-                            description: Base64-encoded image bytes (manifest-authored) or raw bytes (runtime tool results).
-                          mediaType: { type: string }
-          required: [role, content]
-          additionalProperties: false
+          $ref: "telo://Self/Message"
       system: { type: string }
       options: { type: object, additionalProperties: true }
     additionalProperties: false
@@ -433,21 +779,11 @@ outputType:
     type: object
     properties:
       text: { type: string }
+      # Accumulated across the loop's turns.
       usage:
-        type: object
-        properties:
-          promptTokens: { type: integer, minimum: 0 }
-          completionTokens: { type: integer, minimum: 0 }
-          totalTokens: { type: integer, minimum: 0 }
-          # See the note on Ai.Text's usage — same provider-neutral half, accumulated
-          # across the loop's turns.
-          unit: { type: string }
-          total: { type: number, minimum: 0 }
-        required: [promptTokens, completionTokens, totalTokens, unit, total]
-        additionalProperties: false
+        $ref: "telo://Self/Usage"
       finishReason:
-        type: string
-        enum: [stop, length, content-filter, error, tool-calls, other]
+        $ref: "telo://Self/FinishReason"
       steps:
         type: array
         items:
@@ -550,11 +886,33 @@ metadata:
   name: AgentStream
   description: >-
     Runs a tool-use loop and emits it as it happens: assistant text deltas, every tool
-    call and its result, then a terminal finish or error. Same configuration as the
+    call and its result, then a terminal finish. A failure rejects the iteration.
+    Same configuration as the
     buffered loop, shaped for serving live output.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentStreamController
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The call's messages or options were malformed — both `prompt` and `messages`,
+        neither, an empty message list, or a content part that is not text or a
+        recognized media part.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        `model` did not resolve to a live model instance. A wiring failure, not a
+        request failure.
+    ERR_CONTRACT_VIOLATION:
+      description: A provider reported a token count that is not a representable integer.
+    ERR_AGENT_MAX_STEPS:
+      description: >-
+        The loop did not converge within `maxSteps` and `onMaxSteps` is `throw`. Raised
+        rather than returned so it reaches a `catch:` and a route's `catches:`.
+    ERR_AGENT_UNKNOWN_TOOL:
+      description: The model asked for a tool no mounted provider advertises.
+    ERR_AGENT_TOOL_COLLISION:
+      description: Two mounted providers advertise the same tool name.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -564,32 +922,7 @@ inputType:
       messages:
         type: array
         items:
-          type: object
-          properties:
-            role: { type: string, enum: [system, user, assistant, tool] }
-            content:
-              oneOf:
-                - type: string
-                - type: array
-                  minItems: 1
-                  items:
-                    oneOf:
-                      - type: object
-                        additionalProperties: false
-                        required: [type, text]
-                        properties:
-                          type: { type: string, const: text }
-                          text: { type: string }
-                      - type: object
-                        additionalProperties: false
-                        required: [type, data, mediaType]
-                        properties:
-                          type: { type: string, const: image }
-                          data:
-                            description: Base64-encoded image bytes (manifest-authored) or raw bytes (runtime tool results).
-                          mediaType: { type: string }
-          required: [role, content]
-          additionalProperties: false
+          $ref: "telo://Self/Message"
       system: { type: string }
       options: { type: object, additionalProperties: true }
     additionalProperties: false
@@ -612,14 +945,15 @@ schema:
   properties:
     model:
       title: Model
-      description: Reference to any Ai.Model implementation.
+      description: Reference to any Ai.ModelStream implementation.
       x-telo-ref:
-        kind: Self.Model
-        # stream(...) is a convention method on the held model, not a bound
-        # entry point — unlike OnComplete.handler, whose handler.invoke() IS
-        # the entry point dispatched at drain time (trigger.consumer there).
-        # Nothing the kernel dispatches, traces or zone-tracks happens here.
-        use: dependency
+        kind: Self.ModelStream
+        # Both, and the pair is the honest reading: the invocation is a real
+        # dispatch that returns a handle, and then the response, the transform
+        # chain and every error happen while the CONSUMER drains — after this
+        # call has already returned. So a zone's lifetime stops at the streaming
+        # boundary rather than falsely extending over work that outlives it.
+        use: [call, trigger.consumer]
     system:
       title: System prompt
       description: Default system message. Runtime inputs.system takes precedence when set.
@@ -639,13 +973,19 @@ schema:
       default: 8
     onMaxSteps:
       title: On max steps
-      description: throw → emit a terminal error part (ERR_AGENT_MAX_STEPS); return → emit a terminal finish with the last turn's finishReason.
+      description: >-
+        throw → raise ERR_AGENT_MAX_STEPS, rejecting the iteration so a `catch:` or a
+        route's `catches:` can name it; return → emit a terminal finish with the last
+        turn's finishReason.
       type: string
       enum: [throw, return]
       default: throw
     onToolError:
       title: On tool error
-      description: feedback → emit a tool-result with error:true and continue; throw → emit a terminal error part and end the stream.
+      description: >-
+        feedback → emit a tool-result with error:true and continue; throw → raise the
+        tool's error, rejecting the iteration. Parts already emitted still reach the
+        consumer, and an encoder frames the rejection for the wire.
       type: string
       enum: [feedback, throw]
       default: feedback
@@ -950,3 +1290,95 @@ schema:
         quality: low
     - model: !ref Painter
       intent: inpaint
+---
+# Ai.Buffered — a buffered model built out of a streaming one.
+#
+# It exists for a provider that only streams, and for third parties: without it,
+# such a provider is unusable by `Ai.Text` and `Ai.Agent`, which is most of the
+# calls anyone makes. Not for OpenAI, whose buffered kind sends a genuinely
+# non-streaming request and is the better thing to use when the endpoint offers
+# it — collecting a stream to hand back one answer pays a stream's latency for a
+# buffer's result.
+#
+# Written as a MANIFEST rather than a controller, which is the point: the
+# declared contract is what makes an adapter like this expressible at all. The
+# fold is a `Run.Sequence` whose steps drive the streaming model and drain it.
+kind: Telo.Definition
+metadata:
+  name: Buffered
+  description: >-
+    Presents a streaming model as a buffered one: it drives the stream, collects every
+    part and folds them into a single completed answer with its usage and finish
+    reason. For a provider that only streams, and for consumers that want one answer
+    rather than a sequence.
+capability: Telo.Invocable
+extends: Self.Model
+schema:
+  type: object
+  additionalProperties: false
+  required: [model]
+  properties:
+    model:
+      title: Model
+      description: The streaming model to drive and collect.
+      x-telo-ref:
+        kind: Self.ModelStream
+        use: [call, trigger.consumer]
+resources:
+  - kind: Run.Sequence
+    # A literal name: the body's children live in this instance's own child
+    # context, so it is unique there, and a literal is what lets
+    # `validate-template-dispatch` check that `invoke:` names a sibling at all.
+    metadata:
+      name: fold
+    steps:
+      - name: start
+        # The WHOLE input, passed through. Enumerating the fields here would be
+        # a second copy of the contract that silently drops whatever the
+        # abstract gains next — and it already dropped `tools`, which turned an
+        # agent's first turn into a plain answer with nothing to report it.
+        inputs: !cel "inputs"
+        invoke: !cel "self.model"
+      - name: parts
+        inputs:
+          input: !cel "steps.start.result.output"
+        invoke:
+          kind: Stream.Collect
+      # One traversal per bucket, rather than recomputing the same
+      # filter/map/join chain inside several output expressions.
+      - name: buckets
+        value:
+          texts: !cel "steps.parts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta)"
+          reasoning: !cel "steps.parts.result.items.filter(p, p.type == 'reasoning-delta').map(p, p.delta)"
+          finishes: !cel "steps.parts.result.items.filter(p, p.type == 'finish')"
+          states: !cel "steps.parts.result.items.filter(p, p.type == 'provider-state')"
+          contentParts: !cel "steps.parts.result.items.filter(p, p.type == 'content-part').map(p, p.part)"
+          toolCalls: !cel "steps.parts.result.items.filter(p, p.type == 'tool-call').map(p, p.toolCall)"
+      # `finish` is the only terminator and a failure rejects rather than
+      # yielding, so exactly one exists by contract — but a provider that ends
+      # without one would make `[0]` a raw CEL index error, so the count is
+      # tested rather than assumed.
+      - name: folded
+        value:
+          text: !cel "steps.buckets.result.texts.join('')"
+          content: !cel >-
+            (size(steps.buckets.result.texts) == 0 ? [] : [{'type': 'text', 'text': steps.buckets.result.texts.join('')}]) +
+            (size(steps.buckets.result.reasoning) == 0 ? [] : [{'type': 'reasoning', 'text': steps.buckets.result.reasoning.join('')}]) +
+            steps.buckets.result.contentParts
+          usage: !cel >-
+            size(steps.buckets.result.finishes) == 1 ? steps.buckets.result.finishes[0].usage :
+            {'promptTokens': 0, 'completionTokens': 0, 'totalTokens': 0}
+          finishReason: !cel >-
+            size(steps.buckets.result.finishes) == 1 ? steps.buckets.result.finishes[0].finishReason : 'other'
+          toolCalls: !cel "steps.buckets.result.toolCalls"
+          providerState: !cel >-
+            size(steps.buckets.result.states) == 0 ? null :
+            steps.buckets.result.states[size(steps.buckets.result.states) - 1].providerState
+    # The fold, in two pure steps: bucket the parts once each, then assemble.
+    # Every part type the vocabulary carries is folded, not just text. Dropping
+    # `provider-state` was the serious one — it is what lets reasoning survive a
+    # tool loop, so an agent over a Buffered-wrapped provider lost the chain
+    # silently, `providerState` being optional on the output.
+    outputs: !cel "steps.folded.result"
+invoke: !ref fold
+inputs: !cel "inputs"

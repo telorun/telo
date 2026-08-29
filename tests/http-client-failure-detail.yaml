@@ -1,0 +1,156 @@
+kind: Telo.Application
+metadata:
+  name: HttpClientFailureDetail
+  version: 1.0.0
+  description: |
+    A refused request reports WHY, not just that it was refused.
+
+    `throwOnHttpError` used to raise `HTTP 400 error from <url>` and drop the
+    body, so the server's own explanation — the only part that says what to fix
+    — never reached the caller. Under `responseType: stream` it was worse than
+    lossy: the bytes had already arrived and were sitting unread in the
+    response, which is exactly the shape an AI provider answers a bad request
+    with.
+
+    Asserted here for both response types, because the two read the body by
+    different paths and only one of them was ever populated.
+imports:
+  Server: ../modules/http-server
+  Http: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+  JS: ../modules/javascript
+targets:
+  - !ref Test
+---
+# The shape a provider actually refuses with: a nested message rather than a
+# bare string, so the assertion proves the whole body is carried and not just a
+# top-level field somebody happened to look for.
+kind: JS.Script
+metadata: { name: Denial }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [error]
+    properties:
+      error:
+        type: object
+        required: [message, type]
+        properties:
+          message: { type: string }
+          type: { type: string }
+code: |
+  function main() {
+    return {
+      error: {
+        message: "Function tools with reasoning_effort are not supported",
+        type: "invalid_request_error",
+      },
+    };
+  }
+---
+kind: Run.Sequence
+metadata: { name: Test }
+with:
+  - kind: Server.Api
+    metadata: { name: TestApi }
+    routes:
+      - request:
+          path: /deny
+          method: POST
+        handler: !ref Denial
+        returns:
+          - status: 400
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required: [error]
+                  properties:
+                    error:
+                      type: object
+                      required: [message, type]
+                      properties:
+                        message: { type: string }
+                        type: { type: string }
+                body:
+                  error:
+                    message: !cel "result.error.message"
+                    type: !cel "result.error.type"
+  - kind: Server.Server
+    metadata: { name: TestServer }
+    port: 8879
+    baseUrl: http://localhost:8879
+    openapi:
+      info: { title: Failure Detail, version: 1.0.0 }
+    mounts:
+      - path: /api
+        mount: !ref TestApi
+targets:
+  - !ref TestServer
+steps:
+  # A BUFFERED refusal. The body was already parsed, so what this pins is that
+  # the error carries it rather than discarding it on the way out.
+  - name: Buffered
+    try:
+      - name: Call
+        inputs:
+          url: http://localhost:8879/api/deny
+          method: POST
+          headers: { content-type: application/json }
+          body: '"x"'
+        invoke:
+          kind: Http.Request
+          throwOnHttpError: true
+    catch:
+      - name: AssertBufferedCode
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_HTTP_STATUS
+        invoke: !ref Assert.equals
+      - name: AssertBufferedMessage
+        inputs:
+          actual: !cel "error.message"
+          value: "Function tools with reasoning_effort are not supported"
+        invoke: !ref Assert.contains
+      # The status rides the structured data, so a caller branches on the number
+      # rather than parsing it back out of a sentence.
+      - name: AssertBufferedStatus
+        inputs:
+          actual: !cel "error.data.status"
+          expected: 400
+        invoke: !ref Assert.equals
+
+  # The STREAMED refusal — the case this fix exists for. The body arrives as an
+  # unread stream, and reading it is what turns "HTTP 400" into the reason.
+  - name: Streamed
+    try:
+      - name: Call
+        inputs:
+          url: http://localhost:8879/api/deny
+          method: POST
+          headers: { content-type: application/json }
+          body: '"x"'
+          responseType: stream
+        invoke:
+          kind: Http.Request
+          throwOnHttpError: true
+    catch:
+      - name: AssertStreamedCode
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_HTTP_STATUS
+        invoke: !ref Assert.equals
+      - name: AssertStreamedMessage
+        inputs:
+          actual: !cel "error.message"
+          value: "Function tools with reasoning_effort are not supported"
+        invoke: !ref Assert.contains
+      # Byte-for-byte the response body, so nothing about the streamed path
+      # truncates or re-encodes what the server said.
+      - name: AssertStreamedBody
+        inputs:
+          actual: !cel "error.data.body"
+          expected: '{"error":{"message":"Function tools with reasoning_effort are not supported","type":"invalid_request_error"}}'
+        invoke: !ref Assert.equals

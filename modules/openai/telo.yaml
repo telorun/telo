@@ -1,0 +1,244 @@
+kind: Telo.Library
+metadata:
+  name: OpenAI
+  version: 0.0.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [AI]
+  description: >-
+    Language, image and embedding models for OpenAI and any OpenAI-compatible endpoint
+    — Azure OpenAI, gateways, self-hosted servers — over the chat completions, images
+    and embeddings HTTP APIs with no vendor SDK. Supplies buffered completions, token
+    streaming, tool calling, prompt-to-picture generation and editing, and text
+    vectors, to whichever operation holds the model.
+imports:
+  Ai: ../ai
+  Embedding: ../embedding
+exports:
+  kinds:
+    - Model
+    - ModelStream
+    - ImageModel
+    - EmbeddingModel
+---
+kind: Telo.Definition
+metadata:
+  name: Model
+  description: >-
+    A chat model served by OpenAI or an OpenAI-compatible endpoint: model id, API key,
+    an optional base URL for gateways or Azure, and default request options that
+    per-call overrides win over.
+capability: Telo.Invocable
+extends: Ai.Model
+controllers:
+  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ModelController
+throws:
+  codes:
+    ERR_OPENAI_REQUEST_FAILED:
+      description: >-
+        The endpoint refused the request or failed mid-stream. Carries the provider's
+        own message and the HTTP status, so a caller reads why rather than a status
+        line.
+    ERR_INVALID_INPUT:
+      description: >-
+        A content part that cannot be sent on this dialect — a `reasoning` or
+        `citation` part is produced by a model, not submitted to one.
+schema:
+  type: object
+  properties:
+    model:
+      title: Model ID
+      description: OpenAI model identifier passed to the API (e.g. gpt-4o, gpt-4o-mini).
+      type: string
+    apiKey:
+      title: API Key
+      description: Secret reference; typically `${{ secrets.OPENAI_API_KEY }}`.
+      type: string
+      x-telo-eval: compile
+    baseUrl:
+      title: Base URL
+      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
+      type: string
+      x-telo-eval: compile
+    options:
+      title: Options
+      description: Model-level defaults as camelCase OpenAI request params (temperature, maxTokens, topP, …), normalized to snake_case and merged into the request body. Merged beneath Ai.Text.options / Ai.TextStream.options and per-call inputs.options; downstream wins.
+      type: object
+      additionalProperties: true
+  required: [ model, apiKey ]
+  additionalProperties: false
+  examples:
+    - model: gpt-4o-mini
+      apiKey: "${{ secrets.openaiApiKey }}"
+    - model: gpt-4o
+      apiKey: "${{ secrets.openaiApiKey }}"
+      baseUrl: https://my-gateway.example.com/v1
+      options:
+        temperature: 0.2
+        maxTokens: 512
+---
+kind: Telo.Definition
+metadata:
+  name: ModelStream
+  description: >-
+    A chat model served by OpenAI or an OpenAI-compatible endpoint, called for a
+    stream: the answer arrives as parts as it is generated. Same model id, API key,
+    base URL and default options as the buffered kind.
+capability: Telo.Invocable
+extends: Ai.ModelStream
+controllers:
+  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ModelStreamController
+throws:
+  codes:
+    ERR_OPENAI_REQUEST_FAILED:
+      description: >-
+        The endpoint refused the request or failed mid-stream. Carries the provider's
+        own message and the HTTP status, so a caller reads why rather than a status
+        line.
+    ERR_INVALID_INPUT:
+      description: >-
+        A content part that cannot be sent on this dialect — a `reasoning` or
+        `citation` part is produced by a model, not submitted to one.
+schema:
+  type: object
+  properties:
+    model:
+      title: Model ID
+      description: OpenAI model identifier passed to the API (e.g. gpt-4o, gpt-4o-mini).
+      type: string
+    apiKey:
+      title: API Key
+      description: Secret reference; typically `${{ secrets.OPENAI_API_KEY }}`.
+      type: string
+      x-telo-eval: compile
+    baseUrl:
+      title: Base URL
+      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
+      type: string
+      x-telo-eval: compile
+    options:
+      title: Options
+      description: Model-level defaults as camelCase OpenAI request params (temperature, maxTokens, topP, …), normalized to snake_case and merged into the request body. Merged beneath Ai.Text.options / Ai.TextStream.options and per-call inputs.options; downstream wins.
+      type: object
+      additionalProperties: true
+  required: [ model, apiKey ]
+  additionalProperties: false
+  examples:
+    - model: gpt-4o-mini
+      apiKey: "${{ secrets.openaiApiKey }}"
+    - model: gpt-4o
+      apiKey: "${{ secrets.openaiApiKey }}"
+      baseUrl: https://my-gateway.example.com/v1
+      options:
+        temperature: 0.2
+        maxTokens: 512
+---
+# The image half of the same account: same key, same optional baseUrl, a different
+# HTTP surface. `$defs/Intent` is what Ai.Image derives its own `intent` field from
+# (x-telo-schema-from), so naming a mode this endpoint has no route for fails
+# `telo check` instead of throwing at dispatch.
+kind: Telo.Definition
+metadata:
+  name: ImageModel
+  description: >-
+    An image model served by OpenAI or an OpenAI-compatible endpoint: model id, API
+    key, an optional base URL for gateways or Azure, and default request options
+    (size, quality, count, output format) that per-call overrides win over.
+capability: Telo.Provider
+extends: Ai.ImageModel
+controllers:
+  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ImageModelController
+schema:
+  type: object
+  properties:
+    model:
+      title: Model ID
+      description: OpenAI image model identifier passed to the API (e.g. gpt-image-1, dall-e-3).
+      type: string
+    apiKey:
+      title: API Key
+      description: Secret reference; typically `${{ secrets.openaiApiKey }}`.
+      type: string
+      x-telo-eval: compile
+    baseUrl:
+      title: Base URL
+      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
+      type: string
+      x-telo-eval: compile
+    options:
+      title: Options
+      description: >-
+        Model-level defaults as camelCase OpenAI image request params (size, quality,
+        n, outputFormat, background, …), normalized to snake_case. Merged beneath
+        Ai.Image.options and its per-call inputs.options; downstream wins.
+      type: object
+      additionalProperties: true
+  required: [ model, apiKey ]
+  additionalProperties: false
+  $defs:
+    # The reference-image modes this endpoint routes: edit and inpaint go to
+    # /images/edits, variation to /images/variations. Style and structure
+    # conditioning have no route here, so they are absent rather than accepted and
+    # rejected later.
+    Intent:
+      title: Intent
+      type: string
+      enum: [ edit, inpaint, variation ]
+  examples:
+    - model: gpt-image-1
+      apiKey: "${{ secrets.openaiApiKey }}"
+      options:
+        size: 1024x1024
+        quality: low
+    - model: dall-e-3
+      apiKey: "${{ secrets.openaiApiKey }}"
+      options:
+        size: 1024x1024
+---
+# The embeddings endpoint, which was its own module until the merge. One module
+# per SYSTEM rather than per endpoint: moderation, audio, batch and files arrive
+# as further kinds here rather than as a module apiece.
+kind: Telo.Definition
+metadata:
+  name: EmbeddingModel
+  description: >-
+    An embedding model served by OpenAI or an OpenAI-compatible endpoint: model id,
+    API key, an optional base URL for gateways or Azure, and an optional output
+    dimensionality.
+capability: Telo.Provider
+extends: Embedding.Model
+controllers:
+  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#EmbeddingModelController
+schema:
+  type: object
+  required: [model, apiKey]
+  additionalProperties: false
+  properties:
+    model:
+      title: Model ID
+      description: OpenAI embedding model identifier (e.g. text-embedding-3-small).
+      type: string
+    apiKey:
+      title: API Key
+      description: Secret reference; typically `${{ secrets.openaiApiKey }}`.
+      type: string
+      x-telo-eval: compile
+    baseUrl:
+      title: Base URL
+      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
+      type: string
+      x-telo-eval: compile
+    dimensions:
+      title: Dimensions
+      description: Output dimensionality. v3 models support truncating to fewer dimensions.
+      type: integer
+      minimum: 1
+    options:
+      title: Options
+      description: Extra request params merged into the /embeddings body; per-call options win.
+      type: object
+      additionalProperties: true
+  examples:
+    - model: text-embedding-3-small
+      apiKey: "${{ secrets.openaiApiKey }}"
+      dimensions: 1536

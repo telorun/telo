@@ -1,0 +1,9 @@
+modules:
+  modules/sse-codec: Added
+body: "`Sse.Decoder` — byte chunks in, one record per frame out, emitted as each frame
+  arrives rather than collected at the end. `data` is handed over as text and never
+  parsed: the format says nothing about what a payload is, and a stream of JSON frames
+  routinely ends with a sentinel that is not JSON. Comments and keep-alives are skipped,
+  multi-line payloads are joined, an id persists across frames as the format specifies,
+  and a trailing frame that never got its blank line is dispatched rather than discarded
+  — a one-shot HTTP response has no second delivery."

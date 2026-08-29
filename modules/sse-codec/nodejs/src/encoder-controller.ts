@@ -70,7 +70,15 @@ async function* encode(
       error: err,
     });
     const message = err instanceof Error ? err.message : String(err);
-    yield Buffer.from(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, "utf8");
+    // The CODE is carried when the error has one: a stream now fails by
+    // rejecting, so this frame is all a client gets, and a bare message is not
+    // something it can branch on.
+    // Narrowed to an InvokeError: a Node system code (`ECONNRESET`, `ABORT_ERR`)
+    // is not a Telo code, and forwarding one as `code` would have a client
+    // branch on a value that means something else entirely.
+    const code = err instanceof InvokeError ? err.code : undefined;
+    const payload = { message, ...(code === undefined ? {} : { code }) };
+    yield Buffer.from(`event: error\ndata: ${JSON.stringify(payload)}\n\n`, "utf8");
   }
 }
 

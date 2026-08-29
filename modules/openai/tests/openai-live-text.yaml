@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiLiveText
+  version: 1.0.0
+  description: |
+    Live OpenAI integration test. Skips silently when OPENAI_API_KEY is unset
+    (locally: drop a .env.local in this directory; CI: secret on the workflow).
+secrets:
+  openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
+imports:
+  OpenAI: ../
+  Ai: ../../ai
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref LiveText
+---
+# apiKey defaults to "" when OPENAI_API_KEY is unset so the resource passes
+# schema validation. The model is constructed (just config — no API call until
+# invoke), but never reached because the run-step is gated.
+kind: OpenAI.Model
+metadata: { name: Live }
+model: gpt-4o-mini
+apiKey: !cel "secrets.openaiApiKey"
+options:
+  temperature: 0
+  maxTokens: 32
+---
+kind: Ai.Text
+metadata: { name: C }
+model: !ref Live
+---
+kind: Run.Sequence
+metadata:
+  name: LiveText
+steps:
+  - name: GuardEnv
+    if: !cel "secrets.openaiApiKey != ''"
+    then:
+      - name: Invoke
+        inputs:
+          prompt: "Say the single word: pong."
+        invoke: !ref C
+      - name: Assert
+        inputs:
+          text: "${{ steps.Invoke.result.text }}"
+          promptTokens: "${{ steps.Invoke.result.usage.promptTokens }}"
+          completionTokens: "${{ steps.Invoke.result.usage.completionTokens }}"
+          finishReason: "${{ steps.Invoke.result.finishReason }}"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              text: { type: string, minLength: 1 }
+              promptTokens: { type: integer, minimum: 1 }
+              completionTokens: { type: integer, minimum: 1 }
+              finishReason: { type: string, enum: [ stop, length, content-filter, error, other ] }
+            required: [ text, promptTokens, completionTokens, finishReason ]

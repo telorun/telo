@@ -9,7 +9,7 @@
  */
 
 import type { InvokeContext } from "@telorun/sdk";
-import type { MessageContent } from "./content.js";
+import type { ContentPart, MessageContent } from "./content.js";
 
 export type { ContentPart, ImagePart, MessageContent, TextPart } from "./content.js";
 
@@ -84,42 +84,60 @@ export interface Usage {
  *  finished a turn by requesting one or more tools. */
 export type FinishReason = "stop" | "length" | "content-filter" | "error" | "tool-calls" | "other";
 
-/** Result of a buffered (non-streaming) completion. `toolCalls` is present when the
- *  model requested tools (`finishReason === "tool-calls"`); the consumer (Ai.Agent)
- *  executes them and replays the results. */
+/** Result of a buffered (non-streaming) completion, as declared by `Ai.Model`'s
+ *  `outputType` — the kernel validates it at dispatch, so nothing here is
+ *  re-checked by hand.
+ *
+ *  `content` is the whole answer as parts; `text` is its text parts
+ *  concatenated, carried beside them because the overwhelmingly common consumer
+ *  wants exactly that and should not have to fold the list. `toolCalls` is
+ *  present when the model asked for tools (`finishReason === "tool-calls"`);
+ *  `providerState` is opaque and exists to be replayed. */
 export interface CompletionResult {
+  content: ContentPart[];
   text: string;
   usage: Usage;
   finishReason: FinishReason;
   toolCalls?: ToolCall[];
+  providerState?: unknown;
+  alternatives?: Record<string, unknown>[];
 }
 
-/** Input passed to both `invoke` and `stream` on an `AiModelInstance`. `tools`, when
- *  present, advertises the callable tools to the model; only `Ai.Agent` passes it
- *  (`Ai.Text`/`Ai.TextStream` never do). */
+/** Input passed to a model, buffered or streaming — `Ai.Model`'s and
+ *  `Ai.ModelStream`'s declared `inputType`.
+ *
+ *  There is deliberately NO `signal` member. Cancellation rides the
+ *  `InvokeContext` the kernel passes as the second argument to a bound entry
+ *  point; an AbortSignal is not declarable data, so a manifest-authored provider
+ *  could never have received one this way. */
 export interface ModelInvokeInput {
   messages: Message[];
   options?: Record<string, unknown>;
   tools?: ToolDefinition[];
-  /** Cooperative cancellation signal, threaded from the invoke's `InvokeContext`.
-   *  Providers forward it to their underlying SDK (`abortSignal`) so an abandoned
-   *  request stops its live model connection instead of running to completion. */
-  signal?: AbortSignal;
+  /** Opaque state a previous turn produced, replayed verbatim so reasoning
+   *  survives a tool loop. Never inspected here. */
+  providerState?: unknown;
+  responseFormat?: Record<string, unknown>;
 }
 
-/** Tagged part emitted by a streaming invocation. Consumers iterate until the stream
- *  ends; a `finish` part (or `error`) signals completion.
+/** Tagged part emitted by a streaming invocation — `Ai.StreamPart`.
  *
- *  `error` carries a JSON-serializable shape (not a native `Error`) so generic
- *  encoders (`Encode.Ndjson`, `Encode.Sse`) can serialize the part without a
- *  bespoke translation step. Provider controllers translate native Errors to
- *  this shape at yield time. */
-export type StreamPartError = { message: string; code?: string; data?: unknown };
+ *  `finish` is the ONLY terminator. A failure mid-stream REJECTS the iteration
+ *  with a structured error rather than yielding one: an error part has to be
+ *  remembered by every drainer, and one that forgets truncates silently. A
+ *  thrown error also reaches machinery a data part cannot — `catches:`, a
+ *  throws union, a `try:` step.
+ *
+ *  `text-delta.delta`, `tool-call.toolCall` and `finish.usage` are read by name
+ *  by consumers outside this repo (an editor rendering a forwarded stream), so
+ *  those names are part of the contract, not an implementation detail. */
 export type StreamPart =
   | { type: "text-delta"; delta: string }
+  | { type: "reasoning-delta"; delta: string }
+  | { type: "content-part"; part: ContentPart }
   | { type: "tool-call"; toolCall: ToolCall }
-  | { type: "finish"; usage: Usage; finishReason: FinishReason }
-  | { type: "error"; error: StreamPartError };
+  | { type: "provider-state"; providerState: unknown }
+  | { type: "finish"; usage: Usage; finishReason: FinishReason };
 
 /** One tool execution's result, as recorded by the agent. Shared shape between the
  *  buffered agent's `StepTrace.toolResults` and the streaming agent's `tool-result`
@@ -136,25 +154,44 @@ export interface ToolResultRecord {
 
 /** Tagged part emitted by a streaming *agent* (`Ai.AgentStream`) — the module's
  *  streaming deliverable, distinct from the model-facing `StreamPart`. It is a
- *  superset: the shared members (`text-delta`, `tool-call`, `finish`, `error`) are
- *  reused from `StreamPart`, and the agent adds `tool-result` for a tool it executed.
- *  This is the element type the streaming `output` (`x-telo-stream`) carries. */
+ *  superset: the shared members are reused, and the agent adds `tool-result` for
+ *  a tool it executed. This is the element type the streaming `output` carries. */
 export type AgentStreamPart =
   | StreamPart
   | { type: "tool-result"; toolResult: ToolResultRecord };
 
 /**
- * Runtime contract every Ai.Model implementation exposes.
+ * An `Ai.Model` implementation, as the kernel binds it.
  *
- * - `invoke` — buffered path used by Ai.Text and Ai.Agent.
- * - `stream` — chunked path used by Ai.TextStream. Returns an `AsyncIterable<StreamPart>`
- *   — one handle the caller iterates until the terminator (a `finish` part, an `error`
- *   part, or a thrown error from the iterator itself).
- * - `snapshot` — must redact secrets (see `redact.ts`) before returning.
+ * `invoke` is the DECLARED entry point, not a convention: the kernel binds it at
+ * its single instance-production site and AJV-checks both directions at
+ * dispatch. So a consumer validates nothing by hand, `telo check` sees the
+ * shape, and a provider written in any language — or as a manifest — implements
+ * a declared contract rather than a TypeScript interface.
+ *
+ * The second argument is the `InvokeContext` the kernel forwards; cancellation
+ * rides it.
  */
 export interface AiModelInstance {
-  invoke(input: ModelInvokeInput): Promise<CompletionResult>;
-  stream(input: ModelInvokeInput): AsyncIterable<StreamPart>;
+  invoke(input: ModelInvokeInput, ctx?: InvokeContext): Promise<CompletionResult>;
+  snapshot?(): Record<string, unknown>;
+  init?(): Promise<void> | void;
+}
+
+/** What a streaming invocation returns: one handle the caller drains. */
+export interface ModelStreamResult {
+  output: AsyncIterable<StreamPart>;
+}
+
+/**
+ * An `Ai.ModelStream` implementation.
+ *
+ * A separate contract from {@link AiModelInstance} rather than a second method
+ * on it: a live output is exempt from validation, so folding the two would take
+ * the check away from the buffered path — the one most calls use.
+ */
+export interface AiModelStreamInstance {
+  invoke(input: ModelInvokeInput, ctx?: InvokeContext): Promise<ModelStreamResult>;
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
 }

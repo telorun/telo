@@ -1,6 +1,7 @@
 import {
   manifestFragmentOf,
   TELO_SCHEMA_ANNOTATIONS,
+  TELO_DATA_SCHEMA_ANNOTATIONS,
   type AnalysisRegistry,
 } from "@telorun/analyzer";
 import type { CompletionResult } from "../types.js";
@@ -132,7 +133,12 @@ function propertyNameSuggestions(
  * walkers as an annotated node.
  */
 function annotationKeys(node: Record<string, any>): Record<string, any> {
-  return manifestFragmentOf(node) === "KindSchema" ? TELO_SCHEMA_ANNOTATIONS : {};
+  const fragment = manifestFragmentOf(node);
+  // A kind's own `schema:` takes the whole annotation vocabulary. A DATA schema
+  // — an `inputType` / `outputType` contract — takes only the annotations read
+  // from one, which is where the kernel looks for them.
+  if (fragment === "KindSchema") return TELO_SCHEMA_ANNOTATIONS;
+  return fragment === "JsonSchema7" ? TELO_DATA_SCHEMA_ANNOTATIONS : {};
 }
 
 function buildItems(

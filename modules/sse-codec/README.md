@@ -13,6 +13,21 @@ Server-Sent Events codec — event-record stream ↔ byte iterables. The encoder
 | Kind | Purpose |
 | --- | --- |
 | `Sse.Encoder` | Encode an async iterable of event records into SSE frames. |
+| `Sse.Decoder` | Parse a byte stream of SSE frames back into one record per frame, emitted as each arrives. |
+
+`Sse.Decoder` streams rather than collecting: the whole point of the format is
+that a frame is usable the moment it lands, and buffering to the end would make
+every consumer wait for the response to finish. `data` is handed over as **text**
+and never parsed — the format says nothing about what a payload is, and a stream
+carrying JSON frames routinely ends with a sentinel that is not JSON
+(`data: [DONE]`), so parsing here would fail on the one frame announcing the
+stream is over.
+
+Comments and keep-alives dispatch nothing, multi-line payloads are joined with
+newlines, and an `id` persists across frames as a stream cursor. A trailing frame
+that never got its blank line **is** dispatched, departing from the EventSource
+rule that discards it: that rule serves a reconnecting browser stream where the
+partial event arrives again, and a one-shot HTTP response has no second delivery.
 
 ## Record shape
 

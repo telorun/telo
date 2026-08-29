@@ -1,0 +1,113 @@
+kind: Telo.Application
+metadata:
+  name: SseDecoderSmokeTest
+  version: 1.0.0
+  description: |
+    The decoder against wire bytes written by hand, because the interesting
+    cases are the ones a well-behaved encoder never produces: a comment
+    keep-alive, a multi-line payload, a frame with no `data:` at all, an id that
+    persists past the frame that set it, and chunk boundaries falling inside a
+    frame rather than between frames.
+
+    A round-trip through this module's own encoder is asserted separately, and
+    proves something weaker — that the two agree — so it cannot stand in for the
+    cases above.
+imports:
+  Sse: ../
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref Test
+---
+kind: Run.Sequence
+metadata: { name: Test }
+steps:
+  # The bytes arrive split at points chosen to break a naive parser: mid-field
+  # name, mid-payload, and between the CR and LF of one line terminator. Written
+  # at the step because that is where a CEL slot is — `items` on the declaration
+  # is literal data.
+  - name: Bytes
+    inputs:
+      items:
+        - !cel "bytesFromBase64('OiBrZWVwLWFsaXZlCgo=')"
+        - !cel "bytesFromBase64('ZXZlbnQ6IG1lc3M=')"
+        - !cel "bytesFromBase64('YWdlCmRhdGE6IGZpcnN0CmRhdGE6IHNlY29uZAoK')"
+        - !cel "bytesFromBase64('aWQ6IDQyCmV2ZW50OiB0aWNrCmRhdGE6IHsiYSI6MX0NCg==')"
+        - !cel "bytesFromBase64('Cg==')"
+        - !cel "bytesFromBase64('ZXZlbnQ6IG5vZGF0YQoKZGF0YTogW0RPTkVdCgo=')"
+    invoke:
+      kind: Stream.Of
+  - name: Decode
+    inputs:
+      input: !cel "steps.Bytes.result.output"
+    invoke:
+      kind: Sse.Decoder
+  - name: Collect
+    inputs:
+      input: !cel "steps.Decode.result.records"
+    invoke:
+      kind: Stream.Collect
+  - name: AssertRecords
+    inputs:
+      actual: !cel "steps.Collect.result.items"
+      expected:
+        # The keep-alive comment dispatched nothing.
+        # A payload spanning two `data:` lines is joined with a newline.
+        - { event: message, data: "first\nsecond" }
+        # `id` is carried, and the frame ends on CRLF.
+        - { event: tick, data: '{"a":1}', id: "42" }
+        # `event: nodata` dispatched nothing — a frame with no `data:` line is
+        # not a record — and the id set two frames ago is STILL current, because
+        # it is a stream cursor rather than a property of one frame.
+        - { event: message, data: "[DONE]", id: "42" }
+    invoke: !ref Assert.equals
+
+  # Round trip: what the encoder writes, the decoder reads back.
+  - name: Records
+    invoke: !ref SourceRecords
+  - name: Encode
+    inputs:
+      input: !cel "steps.Records.result.output"
+    invoke:
+      kind: Sse.Encoder
+  - name: DecodeRoundTrip
+    inputs:
+      input: !cel "steps.Encode.result.output"
+    invoke:
+      kind: Sse.Decoder
+  - name: CollectRoundTrip
+    inputs:
+      input: !cel "steps.DecodeRoundTrip.result.records"
+    invoke:
+      kind: Stream.Collect
+  - name: AssertRoundTrip
+    inputs:
+      # The encoder JSON-encodes the non-`type` fields into `data`, so what comes
+      # back is the same event name carrying that JSON as text — the decoder
+      # deliberately does not parse it.
+      actual: !cel "steps.CollectRoundTrip.result.items"
+      expected:
+        - { event: "text-delta", data: '{"delta":"Hi"}' }
+        - { event: finish, data: '{"reason":"stop"}' }
+    invoke: !ref Assert.equals
+
+  - name: NotAStream
+    try:
+      - name: Call
+        inputs:
+          input: "not a stream"
+        invoke:
+          kind: Sse.Decoder
+    catch:
+      - name: AssertRefused
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_INPUT
+        invoke: !ref Assert.equals
+---
+kind: Stream.Of
+metadata: { name: SourceRecords }
+items:
+  - { type: "text-delta", delta: "Hi" }
+  - { type: finish, reason: stop }

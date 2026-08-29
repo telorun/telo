@@ -18,6 +18,7 @@
     "@telorun/ai-fixtures",
     "@telorun/ai-mcp-build",
     "@telorun/ai-openai-build",
+    "@telorun/openai-build",
     "@telorun/assert-build",
     "@telorun/benchmark-build",
     "@telorun/cache",

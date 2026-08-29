@@ -11,7 +11,36 @@
 
 export type TextPart = { type: "text"; text: string };
 export type ImagePart = { type: "image"; data: Uint8Array | string; mediaType: string };
-export type ContentPart = TextPart | ImagePart;
+
+/** A media part that is not an image — audio, video, a document. Same carriage
+ *  as an image (bytes, or a URI when they are referenced rather than sent), so
+ *  a document is a matter of VALUE rather than of a separate kind. */
+export type MediaPart = {
+  type: "audio" | "video" | "file";
+  data?: Uint8Array | string;
+  uri?: string;
+  mediaType: string;
+};
+
+/** Parts a model produces and a caller does not send. Kept in the same union
+ *  because they travel in the same list: an answer carrying reasoning beside its
+ *  text is one `content`, not two. */
+export type ReasoningPart = { type: "reasoning"; text: string };
+export type RefusalPart = { type: "refusal"; text: string };
+export type CitationPart = { type: "citation"; citation: Record<string, unknown> };
+export type ToolCallPart = {
+  type: "tool-call";
+  toolCall: { id: string; name: string; arguments: Record<string, unknown> };
+};
+
+export type ContentPart =
+  | TextPart
+  | ImagePart
+  | MediaPart
+  | ReasoningPart
+  | RefusalPart
+  | CitationPart
+  | ToolCallPart;
 export type MessageContent = string | ContentPart[];
 
 export function isTextPart(v: unknown): v is TextPart {
@@ -30,8 +59,45 @@ export function isImagePart(v: unknown): v is ImagePart {
   return (typeof data === "string" || data instanceof Uint8Array) && typeof mediaType === "string";
 }
 
+/**
+ * A part is content when its `type` is one the vocabulary declares AND it
+ * carries what that type requires.
+ *
+ * The required-field check is the whole point. A predicate that accepted any
+ * object with a known `type` would admit `{type: "text"}` with no text and
+ * `{type: "image"}` with no bytes — which the two dedicated predicates below
+ * reject, so widening the vocabulary that way would have made this LOOSER than
+ * before while claiming to keep arbitrary objects out of a message.
+ */
 export function isContentPart(v: unknown): v is ContentPart {
-  return isTextPart(v) || isImagePart(v);
+  if (!v || typeof v !== "object") return false;
+  const part = v as Record<string, unknown>;
+  switch (part.type) {
+    case "text":
+      return isTextPart(v);
+    case "image":
+      return isImagePart(v);
+    case "audio":
+    case "video":
+    case "file":
+      // Bytes or a URI, and always a media type — the carriage a consumer needs
+      // to do anything at all with it.
+      return (
+        typeof part.mediaType === "string" &&
+        (typeof part.data === "string" ||
+          part.data instanceof Uint8Array ||
+          typeof part.uri === "string")
+      );
+    case "reasoning":
+    case "refusal":
+      return typeof part.text === "string";
+    case "citation":
+      return !!part.citation && typeof part.citation === "object";
+    case "tool-call":
+      return !!part.toolCall && typeof part.toolCall === "object";
+    default:
+      return false;
+  }
 }
 
 /** True when `v` is a non-empty array of content parts — the shape a multimodal

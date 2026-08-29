@@ -878,9 +878,14 @@ system: |
   The distinction that matters most: calling a METHOD on a held instance is
   `dependency`; dispatching a BOUND ENTRY POINT (`invoke`/`provide`/`run` — what
   the kernel dispatches, traces and contract-checks) is `call`. A domain method
-  is not dispatch no matter how much work it does: `connection.query()`,
-  `model.embed()`, `model.stream()` are all `dependency`, while an `Ai.Text`
-  model slot is `call` because the controller drives the bound `invoke()`.
+  is not dispatch no matter how much work it does: `connection.query()` and
+  `model.embed()` are `dependency`, while an `Ai.Text` model slot is `call`
+  because the controller drives the bound `invoke()`.
+
+  A slot holding a STREAMING model (`Ai.ModelStream`) is `[call,
+  trigger.consumer]`, and the pair is the honest reading: the invocation is a
+  real dispatch that returns a handle, and then the response and every error
+  happen while the CONSUMER drains — after that call already returned.
 
   `use` is a SET — write a list when one slot genuinely dispatches two ways in a
   single invocation (`use: [call, detached]`). When the mode is chosen by a
@@ -899,9 +904,37 @@ system: |
   `Telo.Service` is NOT executable, so a slot that also accepts services writes
   the list `[Telo.Runnable, Telo.Service]`.
 
-  Nothing cross-checks `use` against the target's capability, deliberately —
-  `Ai.Model` declares `capability: Telo.Provider` yet is genuinely `use: call`.
-  Declare what the controller actually does.
+  Nothing cross-checks `use` against the target's capability, deliberately: a
+  kind may expose a convention method that does real work without any bound
+  entry point being dispatched. Declare what the controller actually does.
+
+  AI models are TWO abstracts, each `Telo.Invocable` with one bound `invoke`.
+  `Ai.Model` is called for a complete answer and is what `Ai.Text` / `Ai.Agent`
+  take; `Ai.ModelStream` returns `{output}`, a stream of parts, and is what
+  `Ai.TextStream` / `Ai.AgentStream` take. A provider implements one or both —
+  the `openai` module ships `OpenAI.Model` and `OpenAI.ModelStream` as separate
+  kinds, so an app using both declares both. `Ai.Buffered` adapts a streaming
+  model to the buffered contract for a provider that only streams.
+
+  A model stream FAILS BY REJECTING: `finish` is the only terminal part, and a
+  mid-stream failure raises. So a tool error under `onToolError: throw` and
+  `ERR_AGENT_MAX_STEPS` are catchable — in a `try:`/`catch:` step, and in a
+  route's `catches:`. Because those kinds now declare a throws union, a route
+  mounting one MUST cover its codes or end with a catch-all entry (no `when:`,
+  placed last), or `telo check` reports UNCOVERED_THROW_CODE.
+
+  Outbound auth is a credential on an `Http.Client`, never an `apiKey` field you
+  invent: `Http.BearerToken`, `Http.ApiKeyHeader` and `Http.QueryKey` cover the
+  static cases and inherit the 401 re-acquire-and-retry.
+
+  Stream pipelines compose from `Stream.Map` / `Stream.Scan` / `Stream.FlatMap`
+  (lazy, one value in and one, several or none out) and `Sse.Decoder`, which
+  turns a byte stream of Server-Sent Events into one record per frame.
+
+  A contract property carrying auth material is marked `x-telo-sensitive: true`
+  on the `inputType` / `outputType` — the kernel then redacts it in trace
+  payloads. It is read ONLY from a contract; on a kind's own `schema:` it is
+  reported as misplaced.
 
   A `!ref` inside a `Run.Sequence` `with:` block may name either a scope-local
   resource or one from the enclosing module; scope-local wins, exactly as CEL's
@@ -1971,7 +2004,7 @@ system: |
 
   The standard library is published at `oci://ghcr.io/telorun/<name>`
   (http-server, http-client, sql + postgres/sqlite, run, config, console,
-  assert, test, ai + ai-openai, cache + cache-redis, mcp-client/server, s3,
+  assert, test, ai + openai, cache + cache-redis, mcp-client/server, s3,
   timer, scheduler, idempotency, lease, kv-store + kv-store-sql/-redis/-memory,
   workflow, and many more) — but NEVER assemble that ref from the module name.
   Always take the exact ref, `version`, and field schema from the tools. There is

@@ -88,12 +88,15 @@ export {
   resolveParent,
 } from "./extends-resolution.js";
 export type { ContractDirection, DefResolver } from "./extends-resolution.js";
+export { validateSensitiveSlots } from "./validate-sensitive-slots.js";
+export type { SensitiveSlotIssue } from "./validate-sensitive-slots.js";
 export {
   defaultBearingPaths,
   declaredScalarPaths,
   PERMISSIVE_CONTRACT,
   resolveContract,
   resolveContractSchema,
+  sensitivePaths,
   withLiveValuesSkipped,
 } from "./invocation-contract.js";
 export type {

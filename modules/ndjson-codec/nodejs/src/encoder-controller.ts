@@ -22,7 +22,10 @@ interface EncoderOutputs {
  * dangling exception across the wire.
  */
 class NdjsonEncoder implements ResourceInstance<EncoderInputs, EncoderOutputs> {
-  constructor(private readonly resource: EncoderResource) {}
+  constructor(
+    private readonly resource: EncoderResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   async invoke(inputs: EncoderInputs): Promise<EncoderOutputs> {
     const name = this.resource.metadata.name;
@@ -33,7 +36,7 @@ class NdjsonEncoder implements ResourceInstance<EncoderInputs, EncoderOutputs> {
         `Ndjson.Encoder "${name}": 'input' must be an AsyncIterable.`,
       );
     }
-    return { output: new Stream(encode(input)) };
+    return { output: new Stream(encode(input, this.ctx)) };
   }
 
   snapshot(): Record<string, unknown> {
@@ -41,14 +44,36 @@ class NdjsonEncoder implements ResourceInstance<EncoderInputs, EncoderOutputs> {
   }
 }
 
-async function* encode(input: AsyncIterable<unknown>): AsyncIterable<Uint8Array> {
+async function* encode(
+  input: AsyncIterable<unknown>,
+  ctx: ResourceContext,
+): AsyncIterable<Uint8Array> {
   try {
     for await (const item of input) {
       yield Buffer.from(JSON.stringify(item) + "\n", "utf8");
     }
   } catch (err) {
+    // The frame tells the client, and nothing else does: the stream has already
+    // been handed to the transport, so the failure never reaches the caller and
+    // the response still completes 200. Server-side this log is the only report.
+    ctx.log.error("Upstream failed mid-stream; emitted a terminal error record", undefined, {
+      error: err,
+    });
     const message = err instanceof Error ? err.message : String(err);
-    yield Buffer.from(JSON.stringify({ type: "error", error: { message } }) + "\n", "utf8");
+    // The CODE is carried when the error has one: a stream now fails by
+    // rejecting, so this frame is all a client gets, and a bare message is not
+    // something it can branch on.
+    // Narrowed to an InvokeError: a Node system code (`ECONNRESET`, `ABORT_ERR`)
+    // is not a Telo code, and forwarding one as `code` would have a client
+    // branch on a value that means something else entirely.
+    const code = err instanceof InvokeError ? err.code : undefined;
+    yield Buffer.from(
+      JSON.stringify({
+        type: "error",
+        error: { message, ...(code === undefined ? {} : { code }) },
+      }) + "\n",
+      "utf8",
+    );
   }
 }
 
@@ -56,8 +81,8 @@ export function register(_ctx: ControllerContext): void {}
 
 export async function create(
   resource: EncoderResource,
-  _ctx: ResourceContext,
+  ctx: ResourceContext,
 ): Promise<NdjsonEncoder> {
-  return new NdjsonEncoder(resource);
+  return new NdjsonEncoder(resource, ctx);
 }
 

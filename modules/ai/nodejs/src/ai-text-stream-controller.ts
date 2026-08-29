@@ -7,16 +7,16 @@ import type {
 import { InvokeError, Stream } from "@telorun/sdk";
 import { isContentParts } from "./content.js";
 import { reportStreamUsage, stampStreamUsage } from "./usage.js";
-import type { AiModelInstance, Message, StreamPart } from "./types.js";
+import type { AiModelStreamInstance, Message, StreamPart } from "./types.js";
 
 /**
  * Shape of the Ai.TextStream manifest after Phase 5 ref injection.
- * `model` is replaced in-place with the live `AiModelInstance` returned by the
- * referenced provider's controller.
+ * `model` is replaced in-place with the live `AiModelStreamInstance` returned by
+ * the referenced provider's controller.
  */
 interface AiTextStreamResource {
   metadata: { name: string; module?: string };
-  model: AiModelInstance;
+  model: AiModelStreamInstance;
   system?: string;
   options?: Record<string, unknown>;
 }
@@ -35,13 +35,14 @@ interface AiTextStreamOutput {
 const VALID_ROLES = new Set(["system", "user", "assistant"]);
 
 /**
- * Ai.TextStream is a configured wrapper over `Ai.Model.stream()`. It validates
+ * Ai.TextStream is a configured wrapper over an `Ai.ModelStream`. It validates
  * inputs, prepends a system prompt, merges options, and forwards the model's
- * StreamPart iterable as `{output: Stream<...>}` per the streaming-Invocable
- * convention. Encoding / wire framing is the consumer's responsibility — pipe
- * through `Encode.Ndjson` / `Encode.Sse` / `Encode.Plain` (or any other Encoder)
- * to turn StreamPart records into bytes, or iterate `result.output` directly in
- * a `JS.Script` step.
+ * parts as `{output: Stream<...>}`. Encoding / wire framing is the consumer's
+ * responsibility — pipe through an Encoder to turn parts into bytes, or iterate
+ * `result.output` directly.
+ *
+ * A failure mid-stream REJECTS the iteration rather than arriving as a part, so
+ * a drainer that forgets to look for an error part cannot truncate silently.
  */
 class AiTextStream implements ResourceInstance<AiTextStreamInputs, AiTextStreamOutput> {
   constructor(
@@ -95,19 +96,20 @@ class AiTextStream implements ResourceInstance<AiTextStreamInputs, AiTextStreamO
     };
 
     const model = this.resource.model;
-    if (!model || typeof model.stream !== "function") {
+    if (!model || typeof model.invoke !== "function") {
       throw new InvokeError(
         "ERR_INVALID_REFERENCE",
-        `Ai.TextStream "${name}": 'model' is not a live Ai.Model instance with a stream() method — check that Phase 5 injection ran and the referenced resource exists.`,
+        `Ai.TextStream "${name}": 'model' is not a live Ai.ModelStream instance — check that Phase 5 injection ran and the referenced resource exists.`,
       );
     }
 
-    // Capture the signal at invoke-time so it rides into the deferred Stream
-    // consumption and aborts the live model connection on cancel.
-    const parts = model.stream({ messages, options: mergedOptions, signal: ctx?.cancellation.signal });
+    // A dispatch through the kernel, so the call is traced, contract-checked and
+    // zone-tracked like any other — and the InvokeContext it carries is what
+    // aborts the live model connection on cancel.
+    const { output } = await model.invoke({ messages, options: mergedOptions }, ctx);
     // Stamped so a streamed run reports usage exactly as a buffered one does.
     return {
-      output: new Stream(reportStreamUsage(stampStreamUsage(parts), this.ctx.log)),
+      output: new Stream(reportStreamUsage(stampStreamUsage(output), this.ctx.log)),
     };
   }
 

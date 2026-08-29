@@ -1,6 +1,6 @@
 import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { logCompletion } from "./completion-log.js";
-import { withTokenQuantity } from "./usage.js";
+import { tokenCounts, withTokenQuantity } from "./usage.js";
 import { InvokeError, Stream } from "@telorun/sdk";
 import {
   assembleTools,
@@ -13,7 +13,7 @@ import {
 } from "./agent-tools.js";
 import type {
   AgentStreamPart,
-  AiModelInstance,
+  AiModelStreamInstance,
   FinishReason,
   Message,
   ToolCall,
@@ -32,7 +32,7 @@ import type {
  */
 interface AiAgentStreamResource {
   metadata: { name: string; module?: string };
-  model: AiModelInstance;
+  model: AiModelStreamInstance;
   system?: string;
   options?: Record<string, unknown>;
   maxSteps?: number;
@@ -67,10 +67,10 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
     const name = this.resource.metadata.name;
     const label = `Ai.AgentStream "${name}"`;
     const model = this.resource.model;
-    if (!model || typeof model.stream !== "function") {
+    if (!model || typeof model.invoke !== "function") {
       throw new InvokeError(
         "ERR_INVALID_REFERENCE",
-        `${label}: 'model' is not a live Ai.Model instance with a stream() method — check that Phase 5 injection ran.`,
+        `${label}: 'model' is not a live Ai.ModelStream instance — check that Phase 5 injection ran.`,
       );
     }
 
@@ -114,33 +114,49 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
 
     const usage: Usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
     let finishReason: FinishReason = "stop";
+    // Carried across turns, opaque throughout.
+    let providerState: unknown;
 
     for (let step = 0; step < maxSteps; step++) {
       ctx?.cancellation.throwIfCancelled();
 
       const turnCalls: ToolCall[] = [];
       let turnText = "";
-      for await (const part of model.stream({
-        messages,
-        options,
-        signal: ctx?.cancellation.signal,
-        ...(tools.toolDefs.length > 0 ? { tools: tools.toolDefs } : {}),
-      })) {
+      const turn = await model.invoke(
+        {
+          messages,
+          options,
+          ...(tools.toolDefs.length > 0 ? { tools: tools.toolDefs } : {}),
+          ...(providerState === undefined ? {} : { providerState }),
+        },
+        ctx,
+      );
+      for await (const part of turn.output) {
         if (part.type === "text-delta") {
           turnText += part.delta;
           yield part;
         } else if (part.type === "tool-call") {
           turnCalls.push(part.toolCall);
           yield part;
+        } else if (part.type === "provider-state") {
+          // Kept for the next turn rather than forwarded: it is the model's
+          // bookkeeping, not the agent's output, and replaying it is what lets
+          // reasoning survive the loop.
+          providerState = part.providerState;
         } else if (part.type === "finish") {
+          // Each TURN's finish is consumed; exactly one synthesized terminal
+          // finish is emitted for the whole run, below.
           finishReason = part.finishReason;
-          usage.promptTokens += part.usage.promptTokens;
-          usage.completionTokens += part.usage.completionTokens;
-          usage.totalTokens += part.usage.totalTokens;
+          const turnUsage = tokenCounts(part.usage);
+          usage.promptTokens += turnUsage.promptTokens;
+          usage.completionTokens += turnUsage.completionTokens;
+          usage.totalTokens += turnUsage.totalTokens;
         } else {
-          // Model-side error: forward as the terminal frame and stop the loop.
+          // Anything else the vocabulary carries — reasoning deltas, completed
+          // content parts — is the model's output and is forwarded verbatim.
+          // A model FAILURE is not here at all: it rejects the iteration, and
+          // that rejection propagates out of this generator to the caller.
           yield part;
-          return;
         }
       }
 
@@ -162,36 +178,26 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
 
       for (const call of normalized) {
         ctx?.cancellation.throwIfCancelled();
-        // With onToolError: "throw", dispatch throws (an unknown tool or a tool's own
-        // error). On the streaming path we convert that to a terminal `error` frame
-        // rather than letting the exception escape the generator — otherwise the SSE
-        // client sees a silently truncated stream (200 + frames already flushed, no
-        // terminator), breaking the one-terminal-frame contract. Cancellation is
-        // deliberately left to propagate above: the client is already gone.
-        let record;
-        try {
-          record = await dispatchToolCall(call, tools.dispatch, onToolError, label);
-        } catch (err) {
-          const code = err instanceof InvokeError ? err.code : "ERR_AGENT_TOOL_ERROR";
-          const message = err instanceof Error ? err.message : String(err);
-          yield { type: "error", error: { code, message } };
-          return;
-        }
+        // With onToolError: "throw", dispatch throws — and the throw PROPAGATES,
+        // rejecting the iteration. It used to be converted into a terminal
+        // `error` frame here, to keep the wire's one-terminal-frame contract;
+        // that contract is now met by the encoder, which catches the rejection
+        // and frames it. Rejecting is what makes this reachable from a manifest
+        // at all: `catches:`, a throws union and a `try:` step all see a thrown
+        // error, and none of them can see a data part.
+        const record = await dispatchToolCall(call, tools.dispatch, onToolError, label);
         yield { type: "tool-result", toolResult: record };
         messages.push({ role: "tool", content: record.content, toolCallId: call.id });
       }
     }
 
-    // maxSteps exhausted without the model converging.
+    // maxSteps exhausted without the model converging. Thrown rather than
+    // yielded, for the same reason a tool error is.
     if (onMaxSteps === "throw") {
-      yield {
-        type: "error",
-        error: {
-          code: "ERR_AGENT_MAX_STEPS",
-          message: `${label}: did not converge within maxSteps=${maxSteps}.`,
-        },
-      };
-      return;
+      throw new InvokeError(
+        "ERR_AGENT_MAX_STEPS",
+        `${label}: did not converge within maxSteps=${maxSteps}.`,
+      );
     }
     // `onMaxSteps: "return"` — handed back as an ordinary terminal finish, so
     // nothing in the stream marks that the agent ran out of steps rather than

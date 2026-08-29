@@ -21,7 +21,7 @@ imports:
 targets:
   - !ref TestAllFormats
 ---
-kind: AiEcho.EchoModel
+kind: AiEcho.EchoModelStream
 metadata: { name: Echo }
 ---
 # One source — wire format is decided by the route's encoder, not by the source.
@@ -99,6 +99,19 @@ routes:
         content:
           application/x-ndjson:
             encoder: !ref NdjsonEnc
+    # The handler's throw union is declared now, so a route mounting it covers
+    # its codes or ends with a catch-all. This fires BEFORE streaming starts.
+    catches:
+      - status: 500
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [error]
+              properties:
+                error: { type: string }
+            body:
+              error: !cel "error.code"
   - request:
       path: /sse
       method: POST
@@ -117,6 +130,19 @@ routes:
         content:
           text/event-stream:
             encoder: !ref SseEnc
+    # The handler's throw union is declared now, so a route mounting it covers
+    # its codes or ends with a catch-all. This fires BEFORE streaming starts.
+    catches:
+      - status: 500
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [error]
+              properties:
+                error: { type: string }
+            body:
+              error: !cel "error.code"
   - request:
       path: /plain
       method: POST
@@ -135,6 +161,19 @@ routes:
         content:
           text/plain; charset=utf-8:
             encoder: !ref PlainEnc
+    # The handler's throw union is declared now, so a route mounting it covers
+    # its codes or ends with a catch-all. This fires BEFORE streaming starts.
+    catches:
+      - status: 500
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [error]
+              properties:
+                error: { type: string }
+            body:
+              error: !cel "error.code"
 
   # Negotiated route — three formats on one entry, Accept-header picks one.
   - request:
@@ -159,6 +198,19 @@ routes:
             encoder: !ref SseEnc
           text/plain; charset=utf-8:
             encoder: !ref PlainEnc
+    # The handler's throw union is declared now, so a route mounting it covers
+    # its codes or ends with a catch-all. This fires BEFORE streaming starts.
+    catches:
+      - status: 500
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [error]
+              properties:
+                error: { type: string }
+            body:
+              error: !cel "error.code"
 ---
 kind: Run.Sequence
 metadata: { name: TestAllFormats }
