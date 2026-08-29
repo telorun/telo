@@ -49,3 +49,19 @@ steps:
         required:
           - status
           - id
+
+  # A `base:`-form child's own fields are construction inputs consumed by the
+  # mapping, so they are NOT published — the reading is the parent's alone.
+  # Asserted as the whole reading so the narrowing cannot drift into publishing
+  # `host` alongside it.
+  - name: AssertBaseFormPublishesParentOnly
+    inputs:
+      actual: !cel "resources.Placeholder"
+      expected:
+        baseUrl: https://jsonplaceholder.typicode.com
+        headers:
+          X-From: placeholder-jsonplaceholder.typicode.com
+        timeout: 10000
+        followRedirects: true
+    invoke:
+      kind: Assert.Equals

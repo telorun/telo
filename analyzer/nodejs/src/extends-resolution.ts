@@ -137,6 +137,39 @@ export function effectiveAuthorSchema(
   return mergeTypeSchemas([parentSchema, own]) as Record<string, any>;
 }
 
+/**
+ * The fields a merge-form inheriting child publishes over its parent's reading.
+ *
+ * A child that inherits its controller by delegation and declares no `base:` IS
+ * the parent instance, so `resources.<child>` is the parent's `snapshot()` — and
+ * a field the parent has never heard of would be readable from nowhere. These
+ * are exactly those fields: the ones the effective (merged) schema declares that
+ * the controller-bearing ancestor's does not.
+ *
+ * A REDECLARED name is deliberately excluded. Narrowing an inherited field (a
+ * description, a pattern, a widget hint) is ordinary in an additive extension and
+ * says nothing about publication, while the parent's `snapshot()` is the sole
+ * authority on what a parent instance publishes — its normalizations, its
+ * deliberate omissions, and its redactions. Republishing such a field from raw
+ * config would silently undo a provider's decision to keep it out.
+ *
+ * Empty for the `base:` form, whose fields are construction inputs consumed by
+ * the mapping, and for a child with its own controller, which publishes itself.
+ */
+export function publishedOwnFields(
+  def: ResourceDefinition | undefined,
+  resolve: DefResolver,
+): string[] {
+  if (body(def).base || !isInheritedDelegation(def, resolve)) return [];
+  const ancestor = controllerBearingAncestor(def, resolve);
+  if (!ancestor) return [];
+  const inherited = new Set(
+    Object.keys((effectiveAuthorSchema(ancestor, resolve).properties ?? {}) as object),
+  );
+  const own = (effectiveAuthorSchema(def, resolve).properties ?? {}) as Record<string, unknown>;
+  return Object.keys(own).filter((name) => !inherited.has(name));
+}
+
 /** The two directions of a kind's invocation contract. `inputType` is what a
  *  caller sends to `invoke()`; `outputType` is what `invoke()` / `provide()`
  *  returns. */

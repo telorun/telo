@@ -84,6 +84,7 @@ export {
   isInheritedDelegation,
   mappingFieldFor,
   needsContractMapping,
+  publishedOwnFields,
   resolveParent,
 } from "./extends-resolution.js";
 export type { ContractDirection, DefResolver } from "./extends-resolution.js";

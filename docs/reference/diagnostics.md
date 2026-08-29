@@ -150,6 +150,7 @@ how to read a failure, and the debugging flags — see
 | `ERR_RUNTIME_INVALID` | An import's `runtime:` is neither a string nor an array of strings. |
 | `ERR_CIRCULAR_DEPENDENCY` | An imported library's resource graph contains a cycle. |
 | `ERR_INVALID_EXPORT` / `ERR_INVALID_REEXPORT` | A library's `exports.resources` entry is malformed, or re-exports through an alias it never imported. |
+| `ERR_RUNTIME_EVAL_WITHOUT_INVOKE` | A kind declares `x-telo-eval: runtime` but its resources have no `invoke()`. Runtime evaluation expands a call's inputs, and `run()` / `provide()` take none, so nothing would ever expand the field. Use `x-telo-eval: compile` for a value resolved once at creation, or give the kind an invocable controller. |
 
 ### Initialization
 

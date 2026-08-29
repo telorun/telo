@@ -12,6 +12,7 @@ exports:
   kinds:
     - PlaceholderClient
     - TaggedClient
+    - TaggedRequest
 ---
 # No `base:` — a pure additive extension (merge case). The author-facing schema is
 # merge(Http.Client, own): the parent's baseUrl/headers/timeout PLUS `label`. The
@@ -44,3 +45,23 @@ base:
   baseUrl: !cel "'https://' + self.host"
   headers:
     X-From: !cel "'placeholder-' + self.host"
+---
+# Adds a field the parent never declared (published over the parent's reading),
+# a runtime-eval one (withheld — still a CompiledValue when the reading is
+# taken) and a REDECLARED inherited one (not published: narrowing a schema says
+# nothing about publication, and the parent's snapshot() stays the authority).
+kind: Telo.Definition
+metadata:
+  name: TaggedRequest
+extends: Http.Request
+schema:
+  type: object
+  properties:
+    plain:
+      type: string
+    tag:
+      type: string
+      x-telo-eval: runtime
+    timeout:
+      type: integer
+      description: redeclared purely to narrow the description

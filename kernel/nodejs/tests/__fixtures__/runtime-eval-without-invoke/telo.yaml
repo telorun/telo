@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: RuntimeEvalWithoutInvokeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+---
+kind: Lib.Holder
+metadata:
+  name: holder
+tag: !cel "'computed'"

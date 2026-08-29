@@ -34,7 +34,23 @@ template body inherits, by delegation:
   **own** schema — the parent's config fields become internal, set solely through
   `base:`, so the child genuinely narrows. Without `base:`, the child's schema is
   `merge(parent, own)` — a pure additive extension exposing the parent's config
-  fields plus its own.
+  fields plus its own. A merge-form child forwards its **whole** config as the
+  parent's, so a parent that closes its schema (`additionalProperties: false`)
+  cannot accept an added field; declaring one is
+  `EXTENDS_CLOSED_PARENT_ADDS_FIELD`, and the fix is a `base:` mapping.
+- **The published reading.** `resources.<child>` is the parent instance's
+  `snapshot()`. Without `base:`, the fields the child declares **that the parent
+  did not** are published over it, so a field the parent has never heard of reads
+  back as `resources.<child>.<field>`. A *redeclared* inherited field is not:
+  narrowing a field's schema (a description, a pattern, a widget hint) says
+  nothing about publication, and the parent's `snapshot()` stays the sole
+  authority on what a parent instance publishes — including its normalizations,
+  its deliberate omissions and its redactions. Two values are withheld even for
+  an own field, because neither is a reading: one whose slot is `x-telo-eval:
+  runtime` (still an unevaluated expression when the reading is taken) and one
+  holding a live resource instance. With `base:` the reading is the parent's
+  alone — there the child's fields are construction inputs consumed by the
+  mapping and do not exist on the instance.
 - **The invocation contract — by replacement, not merge.** `inputType` /
   `outputType` resolve to the **nearest declaration** along the chain: declare
   neither and the child presents its ancestor's signature unchanged; declare one

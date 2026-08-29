@@ -142,6 +142,12 @@ function localDependencyNames(refs: ResourceRef[]): string[] {
  *  whole-value match is redacted. */
 const MIN_SUBSTRING_SCRUB_LEN = 5;
 
+/** A live resource instance, as opposed to the raw config value a slot held
+ *  before Phase-5 injection — the same duck-test the reference-resolving
+ *  controllers use. */
+const hasSnapshotMethod = (value: unknown): boolean =>
+  !!value && typeof (value as { snapshot?: unknown }).snapshot === "function";
+
 export function buildResolvedProperties(
   resource: ResourceManifest,
   secretValues: Set<string>,
@@ -753,6 +759,43 @@ export class EvaluationContext implements IEvaluationContext {
   }
 
   /**
+   * The configured values a merge-form inheriting child publishes over the
+   * parent instance's reading, or undefined when the kind declares none.
+   *
+   * Such a child IS the parent instance — the inherited controller returns it
+   * verbatim — so `snapshot()` is the parent's and a field the parent never
+   * declared would be readable from nowhere. The field NAMES come from
+   * `publishedOwnFields`, stamped onto the definition at registration in the
+   * scope that declared the `extends` alias; resolving the chain here would
+   * resolve it in the READING module's scope, which may have no alias for the
+   * parent's library. Done here rather than by rebinding the instance's
+   * `snapshot()` because this is definition-derived data joined into a reading —
+   * exactly what `statusSchemaOf` already does — and a second kernel cannot
+   * rebind a trait method.
+   *
+   * Two values are withheld rather than published, both conservatively: a
+   * runtime-eval field is still a `CompiledValue` at this point (only compile
+   * paths are expanded at create), and a live instance is a collaborator rather
+   * than a reading. Publishing either would put a wrong-typed value in the CEL
+   * scope, which is the failure this overlay exists to remove.
+   */
+  private ownFieldOverlay(
+    kind: string,
+    resource: Record<string, unknown>,
+  ): Record<string, unknown> | undefined {
+    const def = this.getDefinition?.(this.resolveKindSafe(kind)) ?? this.getDefinition?.(kind);
+    const fields = (def as { publishedOwnFields?: string[] } | undefined)?.publishedOwnFields;
+    if (!fields?.length) return undefined;
+    let overlay: Record<string, unknown> | undefined;
+    for (const field of fields) {
+      const value = resource[field];
+      if (value === undefined || isCompiledValue(value) || hasSnapshotMethod(value)) continue;
+      (overlay ??= {})[field] = value;
+    }
+    return overlay;
+  }
+
+  /**
    * Re-read a resource's `snapshot()` and republish it, joined with whatever
    * observed state the resource has reported. The single publication path — the
    * post-init capture, the post-run publication, the post-invoke refresh and
@@ -760,11 +803,14 @@ export class EvaluationContext implements IEvaluationContext {
    */
   async publishSnapshot(name: string): Promise<void> {
     const entry = this.resourceInstances.get(name) ?? this.createdInstances.get(name);
-    if (!entry?.instance.snapshot) return;
-    const snap = (await Promise.resolve(entry.instance.snapshot())) as
-      | Record<string, unknown>
-      | undefined;
+    if (!entry) return;
     const kind = entry.resource.kind as string;
+    const own = this.ownFieldOverlay(kind, entry.resource);
+    if (!entry.instance.snapshot && !own) return;
+    const snapshot = entry.instance.snapshot
+      ? ((await Promise.resolve(entry.instance.snapshot())) as Record<string, unknown> | undefined)
+      : undefined;
+    const snap = own ? { ...(snapshot ?? {}), ...own } : snapshot;
     const props = buildPublishedProps(snap, {
       kind,
       name,

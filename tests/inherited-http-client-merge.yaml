@@ -41,3 +41,19 @@ steps:
           status: { type: integer, const: 200 }
           id: { type: integer, const: 2 }
         required: [status, id]
+
+  # The child's own declared field publishes beside the parent's reading: the
+  # inherited controller lays it over the parent instance's snapshot, so both
+  # halves are readable from one expression.
+  - name: AssertOwnFieldPublished
+    inputs:
+      actual:
+        label: !cel "resources.Tagged.label"
+        baseUrl: !cel "resources.Tagged.baseUrl"
+        timeout: !cel "resources.Tagged.timeout"
+      expected:
+        label: demo
+        baseUrl: https://jsonplaceholder.typicode.com
+        timeout: 10000
+    invoke:
+      kind: Assert.Equals
