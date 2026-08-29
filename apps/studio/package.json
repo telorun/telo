@@ -1,6 +1,6 @@
 {
   "name": "@telorun/studio",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "private": true,
   "description": "Telo Studio - Desktop manifest editor for Telo.",
   "keywords": [

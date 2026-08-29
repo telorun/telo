@@ -1,5 +1,88 @@
 # @telorun/analyzer
 
+## 0.68.0
+
+### Minor Changes
+
+- d887374: An inheriting child's own declared fields are published
+
+  A `Telo.Definition` that specializes a concrete kind without `base:` is a pure
+  additive extension: its whole config forwards to the parent's controller and the
+  parent instance is returned verbatim. So a field the child declared and the
+  parent has never heard of was held by the parent controller and published by
+  nothing — `resources.<child>.<field>` resolved to nothing, with no diagnostic,
+  leaving concrete inheritance able to widen a schema but never to carry new
+  meaning.
+
+  The publication path now joins those fields into the reading, beside where it
+  already folds a kind's `status:` contract in — not by rebinding the instance's
+  `snapshot()`, which is a JS-only trick a second kernel cannot reproduce and which
+  would forge the `typeof x.snapshot === "function"` liveness signal other code
+  reads. The field names are derived once and stamped onto the definition at
+  registration, in the scope that declared the `extends` alias.
+
+  Only fields the ancestor does **not** declare are published. A redeclared
+  inherited field is excluded: narrowing its schema says nothing about publication,
+  while the parent's `snapshot()` remains the sole authority on what a parent
+  instance publishes — its normalizations, its deliberate omissions and its
+  redactions. Two values are withheld even for an own field, since neither is a
+  reading: a slot declared `x-telo-eval: runtime` (still an unevaluated expression
+  when the reading is taken) and one holding a live resource instance. The `base:`
+  form is unchanged.
+
+  New error `ERR_RUNTIME_EVAL_WITHOUT_INVOKE`: a kind declaring `x-telo-eval:
+runtime` whose resources have no `invoke()` used to fail as `undefined is not an
+object (evaluating 'instance.invoke.bind')` — a TypeError raised against the
+  kernel's own source, naming neither the kind nor the field. Runtime evaluation
+  expands a call's inputs and `run()` / `provide()` take none, so the annotation
+  can never take effect; that is now said, with the kind and the annotated path.
+
+  New error `EXTENDS_CLOSED_PARENT_ADDS_FIELD`: a merge-form child forwards its
+  whole config as the parent's, so a parent that closes its schema
+  (`additionalProperties: false`) cannot accept an added field. That already failed
+  at boot, phrased against the parent kind at the instance's line; it is now
+  reported by `telo check` at the child's own property, naming the closed ancestor
+  and pointing at `base:`.
+
+- c15b198: `x-telo-sensitive` keeps auth material off the debug wire
+
+  Invoke inputs and outputs ride the debug wire on every call under `--inspect` —
+  which is every watch session — and nothing scrubbed them. The kernel's substring
+  scrubbing has exactly one call site, the resource-Created event's properties;
+  log attributes match on exact values; dispatch payloads were not covered at all.
+
+  That was survivable while a credential was a held instance whose material never
+  crossed a dispatch boundary. It stops being survivable the moment auth is a
+  dispatched `Telo.Invocable`, because the token becomes an invoke **output**.
+
+  A contract property may now be marked `x-telo-sensitive: true`, and the trace
+  payload carries that value as `[redacted]` instead of verbatim. `Http.Credential`
+  marks its own output, so every implementation — including OAuth's, which was
+  already on the wire unmarked — inherits it.
+
+  Declared by the kind that OWNS the contract, read generically: the kernel names
+  no kind, and any module opts in, the same shape `x-telo-eval` has. Exempting "an
+  `Http.Credential` result" directly would have been kind-knowledge in the kernel,
+  and would have stopped at that one kind while the same token surfaces wherever
+  else a contract carries it.
+
+  The key is kept and only the value replaced, per the logging spec §14 — a payload
+  that silently loses a key reads as a value that was never produced. Where the
+  contract cannot be resolved the payload is withheld whole rather than guessed at;
+  the dispatch that follows raises that same failure with its own code, so nothing
+  is swallowed.
+
+  Completion follows the same split. The annotation vocabulary was offered only
+  where the fragment is `KindSchema` — a kind's CONFIGURATION — so the editor
+  suggested `x-telo-sensitive` on the one schema the kernel never reads it from and
+  withheld it from the two where it is the whole mechanism. It now lives in its own
+  `TELO_DATA_SCHEMA_ANNOTATIONS` set, offered for `JsonSchema7`.
+
+  Bounded by the schema, like the default-fill and scalar-normalization walks
+  beside it: a contract marking nothing walks nothing at dispatch, and the paths
+  are resolved lazily so a contract is still compiled on first dispatch rather than
+  at create time.
+
 ## 0.67.0
 
 ### Minor Changes
