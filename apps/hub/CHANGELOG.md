@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.6 - 2026-08-30
+### Fixed
+* Both apps declare an `Http.Client` account — bearer token where there is one, no credential where the endpoint needs none — and reference an `Http.Request` from their model resources, which is what `openai@0.2.0` requires. They were left writing the removed `apiKey:` field when their pins moved, so neither could boot. The hub's embedder keeps its own base URL, which now sits on the client rather than on the model.
+
 ## 0.6.3 - 2026-08-16
 ### Fixed
 * Import pins moved to the current module releases

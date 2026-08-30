@@ -4,13 +4,13 @@
 registry: oci://ghcr.io/telorun
 modules:
   apps/authoring-agent:
-    version: 0.10.1
+    version: 0.10.2
     layers:
-      image: sha256-zKtLtGG1WYR6rEx3Qa0CfV7aW_Bc48SiAukuhe-t1U8
+      image: sha256-41CWouctU_L1pNnOEIIv2h6Y6lXdnpHGgwD1ZWWZawA
   apps/hub:
-    version: 0.6.5
+    version: 0.6.6
     layers:
-      image: sha256-PXUKWtinNLoLnyyH01dYZ5BY2_HwaNxsI7ON7JVtTEw
+      image: sha256-sD1yxH_j-O7awRVPDwF397Fm-vfusosAmJLopai1tF0
   modules/ai:
     version: 0.18.0
     layers:
@@ -202,10 +202,10 @@ modules:
       controller/js: sha256-G51aOh9DHHq18qWwUokxyOYwFmMely01pNTmcsBuORY
       manifest: sha256-Pn8LuyMQJUGopmfI6ZVd0heMBBx-lZN1v0Q9hS-G-5Q
   modules/openai:
-    version: 0.2.0
+    version: 0.3.0
     layers:
-      controller/js: sha256-D2RtX8mmrFA5zAYwx214qG5RXwFPjHlmDB7uQiuRGvQ
-      manifest: sha256-V28bN6U_1MX1Fad8izwGBdAoZshg0zg7nklW0wVIK_o
+      controller/js: sha256-Hy9JRQb6ZOeuI4_YdKQFYAgltCAFOzyeGShStPGk18k
+      manifest: sha256-4CXp9TieFk_HzlnaLLs8gSxVS6vA9GRKwnEpsLloj_M
   modules/otlp:
     version: 0.5.0
     layers:
