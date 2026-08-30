@@ -7,32 +7,39 @@ metadata:
   categories: [AI]
   description: >-
     Language, image and embedding models for OpenAI and any OpenAI-compatible endpoint
-    — Azure OpenAI, gateways, self-hosted servers — over the chat completions, images
-    and embeddings HTTP APIs with no vendor SDK. Supplies buffered completions, token
-    streaming, tool calling, prompt-to-picture generation and editing, and text
-    vectors, to whichever operation holds the model.
+    — Azure OpenAI, gateways, self-hosted servers — over the chat completions,
+    responses, images and embeddings HTTP APIs with no vendor SDK. Supplies buffered
+    completions, token streaming, tool calling, reasoning that survives a tool loop,
+    prompt-to-picture generation and editing, and text vectors, to whichever operation
+    holds the model.
 imports:
   Ai: ../ai
   Embedding: ../embedding
   Http: ../http-client
 exports:
   kinds:
+    - ChatModel
+    - ChatModelStream
     - Model
     - ModelStream
+    - ResponsesModel
+    - ResponsesModelStream
     - ImageModel
     - EmbeddingModel
 ---
 kind: Telo.Definition
 metadata:
-  name: Model
+  name: ChatModel
   description: >-
-    A chat model served by OpenAI or an OpenAI-compatible endpoint: model id, the
-    request every call goes through — whose client carries the base URL and the
-    credential — and default request options that per-call overrides win over.
+    A chat model called through the chat completions API, served by OpenAI or any
+    OpenAI-compatible endpoint: model id, the request every call goes through — whose
+    client carries the base URL and the credential — and default request options that
+    per-call overrides win over. The portable choice; almost every compatible endpoint
+    serves this API and not the responses one.
 capability: Telo.Invocable
 extends: Ai.Model
 controllers:
-  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ModelController
+  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ChatModelController
 throws:
   codes:
     ERR_OPENAI_REQUEST_FAILED:
@@ -44,6 +51,16 @@ throws:
       description: >-
         A content part that cannot be sent on this dialect — a `reasoning` or
         `citation` part is produced by a model, not submitted to one.
+    ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
+      description: >-
+        The model asked for a tool with arguments that are not a JSON object. Raised
+        rather than passed on as empty arguments, which would run the tool with a
+        different request than the model made.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        `request` did not resolve to a live Http.Request. A reference slot on a
+        resource declared inside a `with:` scope is not an injection site, so declare
+        the request at module level.
 schema:
   type: object
   properties:
@@ -69,7 +86,14 @@ schema:
         use: call
     options:
       title: Options
-      description: Model-level defaults as camelCase OpenAI request params (temperature, maxTokens, topP, …), normalized to snake_case and merged into the request body. Merged beneath Ai.Text.options / Ai.TextStream.options and per-call inputs.options; downstream wins.
+      description: >-
+        Model-level defaults as camelCase OpenAI request params (temperature,
+        maxTokens, topP, …), normalized to snake_case and merged into the request
+        body. Merged beneath Ai.Text.options / Ai.TextStream.options and per-call
+        inputs.options; downstream wins. The bag is open, so a name this API does not
+        take is sent and refused by the endpoint rather than caught here — note that
+        the token cap is `maxTokens` on this API and `maxOutputTokens` on the
+        responses kinds.
       type: object
       additionalProperties: true
       x-telo-eval: compile
@@ -86,15 +110,15 @@ schema:
 ---
 kind: Telo.Definition
 metadata:
-  name: ModelStream
+  name: ChatModelStream
   description: >-
-    A chat model served by OpenAI or an OpenAI-compatible endpoint, called for a
-    stream: the answer arrives as parts as it is generated. Same model id, request
-    and default options as the buffered kind.
+    A chat model called through the chat completions API for a stream: the answer
+    arrives as parts as it is generated. Same model id, request and default options as
+    the buffered kind, and the same portability across OpenAI-compatible endpoints.
 capability: Telo.Invocable
 extends: Ai.ModelStream
 controllers:
-  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ModelStreamController
+  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ChatModelStreamController
 throws:
   codes:
     ERR_OPENAI_REQUEST_FAILED:
@@ -106,6 +130,16 @@ throws:
       description: >-
         A content part that cannot be sent on this dialect — a `reasoning` or
         `citation` part is produced by a model, not submitted to one.
+    ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
+      description: >-
+        The model asked for a tool with arguments that are not a JSON object. Raised
+        rather than passed on as empty arguments, which would run the tool with a
+        different request than the model made.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        `request` did not resolve to a live Http.Request. A reference slot on a
+        resource declared inside a `with:` scope is not an injection site, so declare
+        the request at module level.
 schema:
   type: object
   properties:
@@ -131,7 +165,14 @@ schema:
         use: call
     options:
       title: Options
-      description: Model-level defaults as camelCase OpenAI request params (temperature, maxTokens, topP, …), normalized to snake_case and merged into the request body. Merged beneath Ai.Text.options / Ai.TextStream.options and per-call inputs.options; downstream wins.
+      description: >-
+        Model-level defaults as camelCase OpenAI request params (temperature,
+        maxTokens, topP, …), normalized to snake_case and merged into the request
+        body. Merged beneath Ai.Text.options / Ai.TextStream.options and per-call
+        inputs.options; downstream wins. The bag is open, so a name this API does not
+        take is sent and refused by the endpoint rather than caught here — note that
+        the token cap is `maxTokens` on this API and `maxOutputTokens` on the
+        responses kinds.
       type: object
       additionalProperties: true
       x-telo-eval: compile
@@ -145,6 +186,236 @@ schema:
       options:
         temperature: 0.2
         maxTokens: 512
+---
+# The pre-rename names, kept for ONE release as deprecated aliases.
+#
+# Deleting them outright makes a consumer that moves its pin hit UNDEFINED_KIND
+# naming nothing: the edit distance from `Model` to `ChatModel` is too large for
+# the suggestion to fire, so the diagnostic is a dead end. A child that extends
+# the new kind with no `base:` and no `controllers:` inherits it verbatim — same
+# fields, same controller, same instance — so the alias costs nothing at runtime
+# and `metadata.deprecated` names the replacement the editor and the hub read.
+kind: Telo.Definition
+metadata:
+  name: Model
+  description: >-
+    Deprecated alias of ChatModel, kept so a manifest written against an earlier
+    version keeps loading. Use ChatModel.
+  deprecated:
+    reason: >-
+      Renamed to ChatModel, so the completions and responses pairs are named
+      symmetrically for the API each speaks.
+    replacedBy: Self.ChatModel
+extends: Self.ChatModel
+---
+kind: Telo.Definition
+metadata:
+  name: ModelStream
+  description: >-
+    Deprecated alias of ChatModelStream, kept so a manifest written against an
+    earlier version keeps loading. Use ChatModelStream.
+  deprecated:
+    reason: >-
+      Renamed to ChatModelStream, so the completions and responses pairs are named
+      symmetrically for the API each speaks.
+    replacedBy: Self.ChatModelStream
+extends: Self.ChatModelStream
+---
+# The `/v1/responses` surface, as its own pair of kinds rather than a dialect
+# flag on the pair above. The two share a vendor and almost nothing else — an
+# `input` item list against `messages`, `instructions` against a system role,
+# flat tools against nested ones, an `output` array against `choices`, named
+# events against `[DONE]`-terminated chunks — so under one kind every field
+# would read differently depending on a sibling scalar. Reasoning is the field
+# that forces it: `/chat/completions` refuses a non-`none` effort alongside
+# function tools outright, so on a merged kind it would be a field that is
+# sometimes a hard 400. Here it simply lives where it works.
+kind: Telo.Definition
+metadata:
+  name: ResponsesModel
+  description: >-
+    A chat model called through OpenAI's responses API: model id, the request every
+    call goes through — whose client carries the base URL and the credential —
+    reasoning effort, and default request options that per-call overrides win over.
+    Reasoning survives a tool loop, which the completions API cannot do.
+capability: Telo.Invocable
+extends: Ai.Model
+controllers:
+  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ResponsesModelController
+throws:
+  codes:
+    ERR_OPENAI_REQUEST_FAILED:
+      description: >-
+        The endpoint refused the request or failed mid-stream. Carries the provider's
+        own message and the HTTP status, so a caller reads why rather than a status
+        line.
+    ERR_INVALID_INPUT:
+      description: >-
+        A content part that cannot be sent — a `reasoning` or `citation` part is
+        produced by a model, not submitted to one.
+    ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
+      description: >-
+        The model asked for a tool with arguments that are not a JSON object. Raised
+        rather than passed on as empty arguments, which would run the tool with a
+        different request than the model made.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        `request` did not resolve to a live Http.Request. A reference slot on a
+        resource declared inside a `with:` scope is not an injection site, so declare
+        the request at module level.
+schema:
+  type: object
+  properties:
+    model:
+      title: Model ID
+      description: OpenAI model identifier passed to the API (e.g. gpt-5-nano, gpt-5.2).
+      type: string
+      # Explicit because these kinds are Telo.Invocable. A Telo.Provider's
+      # fields are implicitly compile-eval; that rule stopped applying when the
+      # capability changed, and without this `model: !cel "variables.model"` is
+      # read as a literal.
+      x-telo-eval: compile
+    request:
+      title: Request
+      description: >-
+        The HTTP request every call is made through. Its client carries the base URL
+        and the credential, so an account is declared once and the 401
+        re-acquire-and-retry is inherited rather than re-implemented here. Point it at
+        a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`).
+      x-telo-ref:
+        kind: Http.Request
+        use: call
+    reasoning:
+      title: Reasoning
+      description: >-
+        How much the model thinks before answering. The reasoning itself comes back
+        encrypted and is replayed on the next request, so a chain of tool calls keeps
+        it; `summary` additionally asks for a readable précis, which is what produces
+        `reasoning-delta` parts on the streaming kind.
+      type: object
+      additionalProperties: false
+      properties:
+        effort:
+          type: string
+          enum: [ minimal, low, medium, high ]
+        summary:
+          type: string
+          enum: [ auto, concise, detailed ]
+      x-telo-eval: compile
+    options:
+      title: Options
+      description: >-
+        Model-level defaults as camelCase OpenAI request params (temperature,
+        maxOutputTokens, topP, …), normalized to snake_case and merged into the request
+        body. Merged beneath Ai.Text.options / Ai.Agent.options and per-call
+        inputs.options; downstream wins. The bag is open, so a name this API does not
+        take is sent and refused by the endpoint rather than caught here — note that
+        the token cap is `maxOutputTokens` on this API and `maxTokens` on the chat
+        kinds.
+      type: object
+      additionalProperties: true
+      x-telo-eval: compile
+  required: [ model, request ]
+  additionalProperties: false
+  examples:
+    - model: gpt-5-nano
+      request: !ref openaiRequest
+      reasoning: { effort: low }
+    - model: gpt-5.2
+      request: !ref openaiRequest
+      reasoning: { effort: medium }
+      options:
+        maxOutputTokens: 2048
+---
+kind: Telo.Definition
+metadata:
+  name: ResponsesModelStream
+  description: >-
+    A chat model called through OpenAI's responses API for a stream: the answer
+    arrives as parts as it is generated. Same model id, request, reasoning effort and
+    default options as the buffered kind.
+capability: Telo.Invocable
+extends: Ai.ModelStream
+controllers:
+  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ResponsesModelStreamController
+throws:
+  codes:
+    ERR_OPENAI_REQUEST_FAILED:
+      description: >-
+        The endpoint refused the request or failed mid-stream. Carries the provider's
+        own message and the HTTP status, so a caller reads why rather than a status
+        line.
+    ERR_INVALID_INPUT:
+      description: >-
+        A content part that cannot be sent — a `reasoning` or `citation` part is
+        produced by a model, not submitted to one.
+    ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
+      description: >-
+        The model asked for a tool with arguments that are not a JSON object. Raised
+        rather than passed on as empty arguments, which would run the tool with a
+        different request than the model made.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        `request` did not resolve to a live Http.Request. A reference slot on a
+        resource declared inside a `with:` scope is not an injection site, so declare
+        the request at module level.
+schema:
+  type: object
+  properties:
+    model:
+      title: Model ID
+      description: OpenAI model identifier passed to the API (e.g. gpt-5-nano, gpt-5.2).
+      type: string
+      x-telo-eval: compile
+    request:
+      title: Request
+      description: >-
+        The HTTP request every call is made through. Its client carries the base URL
+        and the credential, so an account is declared once and the 401
+        re-acquire-and-retry is inherited rather than re-implemented here. Point it at
+        a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`).
+      x-telo-ref:
+        kind: Http.Request
+        use: call
+    reasoning:
+      title: Reasoning
+      description: >-
+        How much the model thinks before answering. The reasoning itself comes back
+        encrypted and is replayed on the next request, so a chain of tool calls keeps
+        it; `summary` additionally asks for a readable précis, emitted as
+        `reasoning-delta` parts.
+      type: object
+      additionalProperties: false
+      properties:
+        effort:
+          type: string
+          enum: [ minimal, low, medium, high ]
+        summary:
+          type: string
+          enum: [ auto, concise, detailed ]
+      x-telo-eval: compile
+    options:
+      title: Options
+      description: >-
+        Model-level defaults as camelCase OpenAI request params (temperature,
+        maxOutputTokens, topP, …), normalized to snake_case and merged into the request
+        body. Merged beneath Ai.TextStream.options / Ai.AgentStream.options and per-call
+        inputs.options; downstream wins. The bag is open, so a name this API does not
+        take is sent and refused by the endpoint rather than caught here — note that
+        the token cap is `maxOutputTokens` on this API and `maxTokens` on the chat
+        kinds.
+      type: object
+      additionalProperties: true
+      x-telo-eval: compile
+  required: [ model, request ]
+  additionalProperties: false
+  examples:
+    - model: gpt-5-nano
+      request: !ref openaiRequest
+      reasoning: { effort: low }
+    - model: gpt-5.2
+      request: !ref openaiRequest
+      reasoning: { effort: medium }
 ---
 # The image half of the same account, over the same injected request: a
 # different HTTP surface, including the multipart one edit, inpaint and variation

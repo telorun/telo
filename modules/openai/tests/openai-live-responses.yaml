@@ -1,0 +1,148 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiLiveResponses
+  version: 1.0.0
+  description: |
+    Live check of the pair `/chat/completions` refuses outright: function tools
+    AND a non-`none` reasoning effort, on one model, through a whole agent tool
+    loop — the model asks for the tool, the result goes back, and the encrypted
+    reasoning is replayed in between.
+
+    This is the reason the responses kinds exist, so it is asserted against the
+    real endpoint rather than a fixture. The offline fixtures cover the shapes;
+    only the endpoint can say the combination is accepted.
+
+    Skips silently when OPENAI_API_KEY is unset (locally: drop a .env.local in
+    this directory; CI: secret on the workflow).
+secrets:
+  openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
+imports:
+  OpenAI: ../
+  Http: ../../http-client
+  Ai: ../../ai
+  Run: ../../run
+  Stream: ../../stream
+  Assert: ../../assert
+targets:
+  - !ref liveResponses
+---
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.ResponsesModel
+metadata: { name: live }
+model: gpt-5-nano
+request: !ref openaiRequest
+reasoning: { effort: low }
+---
+# A reading no model can guess: an answer carrying it is proof the tool ran,
+# where a plausible temperature is proof of nothing.
+kind: Run.Value
+metadata: { name: fluxReading }
+value: { flux: 7331, unit: mSv }
+---
+kind: Ai.Tools
+metadata: { name: tools }
+tools:
+  - tool: !ref fluxReading
+    name: get_flux
+    description: Get the current flux reading of a device, by device id.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [ device ]
+      properties:
+        device: { type: string }
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model: !ref live
+toolProviders:
+  - provider: !ref tools
+---
+kind: OpenAI.ResponsesModelStream
+metadata: { name: liveStream }
+model: gpt-5-nano
+request: !ref openaiRequest
+reasoning: { effort: low }
+---
+kind: Ai.AgentStream
+metadata: { name: streamingAgent }
+model: !ref liveStream
+toolProviders:
+  - provider: !ref tools
+---
+kind: Run.Sequence
+metadata: { name: liveResponses }
+steps:
+  - name: guardEnv
+    if: !cel "secrets.openaiApiKey != ''"
+    then:
+      - name: invoke
+        inputs:
+          prompt: >-
+            What is the flux reading of device QX-9? Use the tool, then answer
+            with the number.
+        invoke: !ref agent
+      - name: assert
+        inputs:
+          # The answer carries a number only the tool knows, and the trace names
+          # the tool that produced it — so the run really was a tool loop, which
+          # is what reasoning has to survive.
+          mentionsReading: !cel "steps.invoke.result.text.contains('7331')"
+          toolCalled: !cel "steps.invoke.result.steps[0].toolResults[0].name"
+          promptTokens: !cel "steps.invoke.result.usage.promptTokens"
+          finishReason: !cel "steps.invoke.result.finishReason"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              mentionsReading: { const: true }
+              toolCalled: { const: get_flux }
+              promptTokens: { type: integer, minimum: 1 }
+              finishReason: { const: stop }
+            required: [ mentionsReading, toolCalled, promptTokens, finishReason ]
+
+      # The streaming half of the same combination — what an interactive agent
+      # actually runs on, and the path where the tool call and the reasoning
+      # arrive as parts rather than as a body.
+      - name: invokeStream
+        inputs:
+          prompt: >-
+            What is the flux reading of device QX-9? Use the tool, then answer
+            with the number.
+        invoke: !ref streamingAgent
+      - name: drain
+        inputs:
+          input: !cel "steps.invokeStream.result.output"
+        invoke:
+          kind: Stream.Collect
+      - name: assertStream
+        inputs:
+          toolCalls: !cel "size(steps.drain.result.items.filter(p, p.type == 'tool-call'))"
+          answer: !cel >-
+            steps.drain.result.items.filter(p, p.type == 'text-delta')
+              .map(p, p.delta).join('')
+          finishes: !cel "size(steps.drain.result.items.filter(p, p.type == 'finish'))"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              toolCalls: { type: integer, minimum: 1 }
+              answer: { type: string, pattern: "7331" }
+              # `finish` is the only terminator, and there is exactly one for the
+              # whole run however many turns it took.
+              finishes: { const: 1 }
+            required: [ toolCalls, answer, finishes ]

@@ -1,24 +1,36 @@
 ---
-description: "OpenAI.Model and OpenAI.ModelStream: OpenAI-compatible chat providers, buffered and streaming, over the /chat/completions HTTP API directly (no vendor SDK). Schema, options, redaction."
-sidebar_label: OpenAI.Model
+description: "OpenAI.ChatModel and OpenAI.ChatModelStream: OpenAI-compatible chat providers, buffered and streaming, over the /chat/completions HTTP API directly (no vendor SDK). Schema, options, redaction."
+sidebar_label: OpenAI.ChatModel
 ---
 
-# `OpenAI.Model`
+# `OpenAI.ChatModel`
 
-> Examples below assume this module is imported with an `imports:` entry under alias `OpenAI` (and `ai` as `Ai`). Kind references (`OpenAI.Model`, `Ai.Text`, `Ai.TextStream`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
+> Examples below assume this module is imported with an `imports:` entry under alias `OpenAI` (and `ai` as `Ai`). Kind references (`OpenAI.ChatModel`, `Ai.Text`, `Ai.TextStream`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
 
-OpenAI-compatible provider for the model abstracts, as **two kinds**: `OpenAI.Model` implements `Ai.Model` (buffered) and `OpenAI.ModelStream` implements `Ai.ModelStream`. Both are `Telo.Invocable` with one declared, kernel-bound `invoke`, and they share their request translation so it cannot drift between them. They call the OpenAI `POST /chat/completions` HTTP API **directly** — no vendor SDK, no `zod`, nothing beyond `@telorun/ai`. Because the wire protocol is the de-facto standard, the same controller serves OpenAI and every OpenAI-compatible endpoint (Azure OpenAI, Ollama, vLLM, Groq, Together, OpenRouter, …) via `baseUrl`.
+OpenAI-compatible provider for the model abstracts, as **two kinds**: `OpenAI.ChatModel` implements `Ai.Model` (buffered) and `OpenAI.ChatModelStream` implements `Ai.ModelStream`. Both are `Telo.Invocable` with one declared, kernel-bound `invoke`, and they share their request translation so it cannot drift between them. They call the OpenAI `POST /chat/completions` HTTP API **directly** — no vendor SDK, no `zod`, nothing beyond `@telorun/ai`. Because the wire protocol is the de-facto standard, the same controller serves OpenAI and every OpenAI-compatible endpoint (Azure OpenAI, Ollama, vLLM, Groq, Together, OpenRouter, …) via the client's `baseUrl`.
+
+For reasoning — especially reasoning with tools — use [`OpenAI.ResponsesModel`](./responses-model.md) instead: `/chat/completions` refuses a non-`none` reasoning effort alongside function tools.
+
+The account is a plain `Http.Client`, so the key and the base URL are declared once for every OpenAI kind in the app and the 401 re-acquire-and-retry is inherited rather than re-implemented here.
 
 ```yaml
-kind: Telo.Application
-metadata: { name: summarizer, version: 1.0.0 }
-imports:
-  AiOpenai: oci://ghcr.io/telorun/openai@0.12.0
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
 ---
-kind: OpenAI.Model
-metadata: { name: Gpt4o }
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.ChatModel
+metadata: { name: gpt4o }
 model: gpt-4o
-apiKey: "${{ secrets.OPENAI_API_KEY }}"
+request: !ref openaiRequest
 options:
   temperature: 0.2
   maxTokens: 800
@@ -28,29 +40,30 @@ The resource is then referenced from any `Ai.Model` consumer:
 
 ```yaml
 kind: Ai.Text
-metadata: { name: Summarizer }
-model: !ref Gpt4o
+metadata: { name: summarizer }
+model: !ref gpt4o
 ```
 
 ---
 
 ## Schema
 
-| Field     | Type   | Required | Description                                                                                                       |
-| --------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------- |
-| `model`   | string | yes      | Model identifier (e.g. `gpt-4o`, `gpt-4o-mini`, `o1-preview`).                                                    |
-| `apiKey`  | string | yes      | API key, sent as `Authorization: Bearer …`. Use a secret reference: `"${{ secrets.OPENAI_API_KEY }}"`. Compile-evaluated, never appears at runtime CEL. |
-| `baseUrl` | string | no       | Override the API base URL (default `https://api.openai.com/v1`). `/chat/completions` is appended. Useful for Azure OpenAI and OpenAI-compatible gateways. |
+| Field     | Type   | Required | Description |
+| --------- | ------ | -------- | ----------- |
+| `model`   | string | yes      | Model identifier (e.g. `gpt-4o`, `gpt-4o-mini`). |
+| `request` | ref    | yes      | The `Http.Request` every call goes through. Its client carries the base URL and the credential. |
 | `options` | object | no       | camelCase OpenAI request params, normalized to snake_case and merged into the request body. Merged beneath the caller's options. |
 
-`apiKey` and `baseUrl` are `x-telo-eval: compile`, so they resolve at load time from `secrets.*` / `env.*`. Hardcoded keys in manifests work but are strongly discouraged.
+`model` and `options` are `x-telo-eval: compile`, so they resolve at load time from `variables.*` / `secrets.*`.
+
+There is no `apiKey` and no `baseUrl`: both belong to the account. Point `request` at a client whose `baseUrl` is the endpoint and whose `credential` carries the key — one declaration serves every OpenAI kind in the app.
 
 ## Invoke / stream
 
-Both methods call `POST {baseUrl}/chat/completions` directly:
+Both kinds POST to `/chat/completions` through the injected request. Each has one declared, kernel-bound `invoke`:
 
-- `invoke({messages, options, tools?})` → buffered request → `{text, usage, finishReason, toolCalls?}`.
-- `stream({messages, options, tools?})` → `stream: true` request, parsed from the SSE `data:` frames → `AsyncIterable<StreamPart>`. `stream_options.include_usage` is set so the terminal `finish` part carries token usage.
+- `OpenAI.ChatModel.invoke({messages, options, tools?, responseFormat?})` → a buffered request → `{content, text, usage, finishReason, toolCalls?}`. `responseFormat` is sent as `response_format`, and a `json_schema` format is normalized into this API's nested `{type, json_schema: {…}}` form — the responses kinds take the same contract value flat under `text.format`, and each API refuses the other's shape, so both kinds reshape rather than pass through.
+- `OpenAI.ChatModelStream.invoke({messages, options, tools?})` → a `stream: true` request, parsed from the SSE `data:` frames → `{output}`, an `AsyncIterable<StreamPart>`. `stream_options.include_usage` is set so the terminal `finish` part carries token usage.
 
 OpenAI `finish_reason` values map into the Ai contract:
 
@@ -90,15 +103,16 @@ Message `content` may be a string or [content parts](../../ai/docs/ai-model.md) 
 
 Any other field OpenAI (or your compatible gateway) accepts flows through — `responseFormat`, `logitBias`, provider-specific extensions, etc. Only top-level keys are converted; nested object values (a `responseFormat` JSON schema, a `logitBias` token map) keep their own casing. Keys already written in snake_case are passed through unchanged.
 
-## Snapshot redaction
+## Snapshot
 
-`apiKey` is omitted from the CEL-visible snapshot. Other fields (model id, baseUrl, options) remain visible — useful for telemetry and debugging:
+The model id and options are visible in the CEL-visible snapshot — useful for telemetry and debugging:
 
 ```yaml
 inputs:
-  modelName: "${{ resources.Gpt4o.model }}"  # works
-  apiKey: "${{ resources.Gpt4o.apiKey }}"    # always null
+  modelName: !cel "resources.gpt4o.model"
 ```
+
+Nothing needs redacting here: the key belongs to the client's credential, whose own output is marked `x-telo-sensitive` and omitted from trace payloads.
 
 ## Errors
 
@@ -108,12 +122,21 @@ For streaming calls, a non-OK response or a mid-stream failure **rejects the ite
 
 ## Azure OpenAI / OpenAI-compatible gateways
 
-Set `baseUrl` to override the endpoint (the controller appends `/chat/completions`):
+Point the client at the endpoint — the controller appends `/chat/completions`. A server that requires no auth needs no `credential`:
 
 ```yaml
-kind: OpenAI.Model
-metadata: { name: LocalLlama }
+kind: Http.Client
+metadata: { name: localClient }
+baseUrl: http://localhost:11434/v1        # Ollama, vLLM, LM Studio, …
+---
+kind: Http.Request
+metadata: { name: localRequest }
+client: !ref localClient
+---
+kind: OpenAI.ChatModel
+metadata: { name: localLlama }
 model: llama3.1
-apiKey: "${{ secrets.OPENAI_API_KEY }}"   # ignored by servers that don't require auth
-baseUrl: "http://localhost:11434/v1"      # Ollama, vLLM, LM Studio, …
+request: !ref localRequest
 ```
+
+These endpoints serve `/chat/completions`; almost none serve `/v1/responses`, which is why this pair is the portable one and the [responses kinds](./responses-model.md) are reached for deliberately, when reasoning is what you need.

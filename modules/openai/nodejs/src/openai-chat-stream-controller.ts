@@ -6,4 +6,4 @@
  * buffered one so the request translation — the drift-prone half — is written
  * once.
  */
-export { createStream as create, register } from "./openai-model-controller.js";
+export { createStream as create, register } from "./openai-chat-controller.js";

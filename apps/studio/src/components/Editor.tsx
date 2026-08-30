@@ -207,11 +207,12 @@ export function Editor() {
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // The pending terms gate: the runner's terms, the runner they belong to, and
-  // the run to resume once accepted. Null when no gate is shown.
+  // what to resume once accepted — the run that was blocked, or the agent turn
+  // whose launch was refused. Null when no gate is shown.
   const [termsGate, setTermsGate] = useState<{
     terms: RunnerTerms;
     runnerId: string;
-    filePath: string;
+    resume: { kind: "run"; filePath: string } | { kind: "agent" };
   } | null>(null);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [createModuleKind, setCreateModuleKind] = useState<ModuleKind | null>(null);
@@ -254,6 +255,8 @@ export function Editor() {
     setRunner: setAgentRunner,
     setCoResidentAgent,
     setRunnerAcceptedTerms: setAgentRunnerTerms,
+    registerTermsGate: registerAgentTermsGate,
+    retry: agentRetry,
   } = agent;
   const workspaceBridge = useMemo<WorkspaceBridge | null>(() => {
     if (!agentRootDir) return null;
@@ -308,6 +311,16 @@ export function Editor() {
   useEffect(() => {
     setAgentConversation(agentRootDir);
   }, [setAgentConversation, agentRootDir]);
+
+  // A terms-enforcing runner refuses the agent launch with the same agreement it
+  // refuses a run with, so it gets the same gate: the dialog lives here, and
+  // accepting resumes the turn that was blocked.
+  useEffect(() => {
+    registerAgentTermsGate((terms) =>
+      setTermsGate({ terms, runnerId: settings.activeRunnerId, resume: { kind: "agent" } }),
+    );
+    return () => registerAgentTermsGate(null);
+  }, [registerAgentTermsGate, settings.activeRunnerId]);
 
   // Hand the chat panel the agent riding inside a live watch session, so it
   // talks to that one instead of launching a session of the agent's own. The
@@ -683,7 +696,7 @@ export function Editor() {
       ? AGENT_APP_NAME
       : null;
     if (terms && !isTermsAcceptedFor(runner.id, terms.version)) {
-      setTermsGate({ terms, runnerId: runner.id, filePath });
+      setTermsGate({ terms, runnerId: runner.id, resume: { kind: "run", filePath } });
       return;
     }
     const acceptedTermsVersion = terms?.version;
@@ -772,7 +785,7 @@ export function Editor() {
       // was skipped (e.g. the version changed since we fetched it) it can reject
       // with the current terms — surface the gate and let the user retry.
       if (err instanceof TermsRequiredError) {
-        setTermsGate({ terms: err.terms, runnerId: runner.id, filePath });
+        setTermsGate({ terms: err.terms, runnerId: runner.id, resume: { kind: "run", filePath } });
         return;
       }
       setError(
@@ -2129,9 +2142,12 @@ export function Editor() {
           if (termsGate.runnerId === settings.activeRunnerId) {
             setAgentRunnerTerms(termsGate.terms.version);
           }
-          const { filePath } = termsGate;
+          const { resume } = termsGate;
           setTermsGate(null);
-          void handleRunModuleRef.current(filePath);
+          // Resume whatever the gate interrupted. The accepted version is on the
+          // agent's ref by now, so its retry launches with the header set.
+          if (resume.kind === "run") void handleRunModuleRef.current(resume.filePath);
+          else agentRetry();
         }}
         onDecline={() => setTermsGate(null)}
       />

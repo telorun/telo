@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { create, createStream } from "../src/openai-model-controller.js";
+import { create, createStream } from "../src/openai-chat-controller.js";
 
 // The controller drives an INJECTED `Http.Request` rather than global `fetch`,
 // so the stub is that resource: it records the inputs the controller built and
@@ -117,6 +117,32 @@ describe("option normalization (camelCase → OpenAI snake_case)", () => {
     const body = sentBody();
     expect(body.response_format).toEqual({ type: "json_schema", jsonSchema: { name: "x" } });
     expect(body).not.toHaveProperty("responseFormat");
+  });
+
+  it("nests a flat json_schema responseFormat, which is what this API takes", async () => {
+    // The same contract value is FLAT on the responses kinds. Each API refuses the
+    // other's shape, so a caller that moves between them must not have to reshape
+    // by hand — passing this one on unchanged is a provider 400.
+    const model = await makeModel({});
+    await model.invoke({
+      messages: [{ role: "user", content: "hi" }],
+      responseFormat: { type: "json_schema", name: "reply", strict: true, schema: { type: "object" } },
+    });
+
+    expect(sentBody().response_format).toEqual({
+      type: "json_schema",
+      json_schema: { name: "reply", strict: true, schema: { type: "object" } },
+    });
+  });
+
+  it("leaves a format that is already nested, and any non-json_schema format, alone", async () => {
+    const model = await makeModel({});
+    await model.invoke({
+      messages: [{ role: "user", content: "hi" }],
+      responseFormat: { type: "json_object" },
+    });
+
+    expect(sentBody().response_format).toEqual({ type: "json_object" });
   });
 
   it("normalizes options on the streaming path too, and requests usage", async () => {

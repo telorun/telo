@@ -31,7 +31,7 @@ kind: Http.Request
 metadata: { name: openaiRequest }
 client: !ref openaiClient
 ---
-kind: OpenAI.Model
+kind: OpenAI.ChatModel
 metadata: { name: Live }
 model: gpt-4o-mini
 request: !ref openaiRequest

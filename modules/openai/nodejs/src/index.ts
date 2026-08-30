@@ -3,5 +3,7 @@
 // state is one module scope.
 export * as EmbeddingModelController from "./embedding-model-controller.js";
 export * as ImageModelController from "./openai-image-model-controller.js";
-export * as ModelController from "./openai-model-controller.js";
-export * as ModelStreamController from "./openai-model-stream-controller.js";
+export * as ChatModelController from "./openai-chat-controller.js";
+export * as ChatModelStreamController from "./openai-chat-stream-controller.js";
+export * as ResponsesModelController from "./openai-responses-controller.js";
+export * as ResponsesModelStreamController from "./openai-responses-stream-controller.js";

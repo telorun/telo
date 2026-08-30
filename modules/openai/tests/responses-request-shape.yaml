@@ -1,0 +1,296 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiResponsesRequestShape
+  version: 1.0.0
+  description: |
+    What `/v1/responses` actually receives — asserted as one whole request, because
+    every part of the translation differs from the completions dialect and a
+    field-by-field check would pass while the shape was wrong.
+
+    Three of the claims are not cosmetic:
+
+      - the system turn is HOISTED to `instructions`, not sent as a role;
+      - a tool call is keyed on `call_id`, which is also what `function_call_output`
+        answers — the item's own `id` is a different value, and keying on it
+        produces a request the endpoint ACCEPTS and answers wrongly;
+      - `providerState` is spliced immediately BEFORE the function call it reasoned
+        about, because the endpoint requires that order and the contract hands the
+        state over out-of-band, so the position has to be reconstructed.
+
+    Offline: a local server answers every call with the request it received,
+    encoded as the model's own answer text.
+imports:
+  OpenAI: ../
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Client
+metadata: { name: echoClient }
+baseUrl: http://localhost:8877/v1
+---
+kind: Http.Request
+metadata: { name: echoRequest }
+client: !ref echoClient
+---
+kind: OpenAI.ResponsesModel
+metadata: { name: model }
+model: gpt-test
+request: !ref echoRequest
+reasoning: { effort: low }
+---
+# The route needs a handler; the answer is built entirely in `returns` from the
+# request, so this resolves with nothing.
+kind: OpenAI.ResponsesModel
+metadata: { name: failedRun }
+model: gpt-failed-run
+request: !ref echoRequest
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: EchoApi }
+    routes:
+      - request:
+          path: /responses
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          # A run the endpoint accepts and then reports as failed. `Ai.FinishReason`
+          # has no `error` member, so reporting one would be an ERR_OUTPUT_INVALID
+          # about an enum with the endpoint's own explanation thrown away.
+          - status: 200
+            when: !cel "request.body.model == 'gpt-failed-run'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  status: failed
+                  error: { message: the model caught fire }
+                  output: []
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  status: completed
+                  output:
+                    - type: message
+                      content:
+                        - type: output_text
+                          text: !cel "json(request.body)"
+                  usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 }
+  - kind: Server.Server
+    metadata: { name: EchoServer }
+    port: 8877
+    baseUrl: http://localhost:8877
+    openapi:
+      info: { title: Fake Responses API, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref EchoApi
+targets:
+  - !ref EchoServer
+steps:
+  - name: call
+    inputs:
+      messages:
+        - role: system
+          content: [{ type: text, text: be terse }]
+        - role: user
+          content: [{ type: text, text: weather in Paris? }]
+        - role: assistant
+          content: [{ type: text, text: Let me check. }]
+          toolCalls:
+            - id: call_abc
+              name: get_weather
+              arguments: { city: Paris }
+        - role: tool
+          toolCallId: call_abc
+          content: [{ type: text, text: "18C" }]
+      tools:
+        - name: get_weather
+          description: Get the weather for a city.
+          parameters:
+            type: object
+            properties:
+              city: { type: string }
+            required: [ city ]
+      providerState:
+        api: responses
+        model: gpt-test
+        # Module-qualified: a resource name is module-scoped, so two libraries each
+        # declaring a model would otherwise mint the same tag.
+        resource: OpenaiResponsesRequestShape.model
+        items:
+          - { id: rs_1, type: reasoning, encrypted_content: OPAQUE, summary: [] }
+    invoke: !ref model
+
+  - name: assertRequest
+    inputs:
+      actual: !cel "parseJson(steps.call.result.text)"
+      expected:
+        model: gpt-test
+        instructions: be terse
+        input:
+          - role: user
+            content: [{ type: input_text, text: weather in Paris? }]
+          # An assistant turn's text goes back as `output_text`, not `input_text`.
+          - role: assistant
+            content: [{ type: output_text, text: Let me check. }]
+          # Spliced here — before the call it reasoned about, not appended.
+          - { id: rs_1, type: reasoning, encrypted_content: OPAQUE, summary: [] }
+          - type: function_call
+            call_id: call_abc
+            name: get_weather
+            arguments: '{"city":"Paris"}'
+          - type: function_call_output
+            call_id: call_abc
+            output: "18C"
+        tools:
+          # Flat — the completions dialect nests these under `function`.
+          - type: function
+            name: get_weather
+            description: Get the weather for a city.
+            parameters:
+              type: object
+              properties:
+                city: { type: string }
+              required: [ city ]
+        reasoning: { effort: low }
+    invoke:
+      kind: Assert.Equals
+
+  # The reading of the answer, from the same call: usage renamed off
+  # `input_tokens`/`output_tokens`, and a turn that asked for nothing ends `stop`.
+  - name: assertResult
+    inputs:
+      actual:
+        usage: !cel "steps.call.result.usage"
+        finishReason: !cel "steps.call.result.finishReason"
+        hasState: !cel "has(steps.call.result.providerState)"
+      expected:
+        usage: { promptTokens: 7, completionTokens: 3, totalTokens: 10 }
+        finishReason: stop
+        hasState: false
+    invoke:
+      kind: Assert.Equals
+
+  # `responseFormat` is ONE contract value with two incompatible wire shapes: flat
+  # here, nested on the chat kinds, and each API refuses the other's. Given the
+  # chat form, this kind reshapes it rather than passing it on to a 400 — which is
+  # what makes swapping providers under `Ai.Model` actually work.
+  - name: nestedFormat
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: hello }]
+      responseFormat:
+        type: json_schema
+        json_schema:
+          name: reply
+          strict: true
+          schema:
+            type: object
+            properties:
+              city: { type: string }
+            required: [ city ]
+            additionalProperties: false
+    invoke: !ref model
+
+  - name: assertFormatFlattened
+    inputs:
+      actual: !cel "parseJson(steps.nestedFormat.result.text).text"
+      expected:
+        format:
+          type: json_schema
+          name: reply
+          strict: true
+          schema:
+            type: object
+            properties:
+              city: { type: string }
+            required: [ city ]
+            additionalProperties: false
+    invoke:
+      kind: Assert.Equals
+
+  # A state minted by another model is DROPPED, not replayed: the item is opaque
+  # and an endpoint answers a foreign one wrongly or refuses it.
+  - name: foreignState
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: hello }]
+      providerState:
+        api: responses
+        model: some-other-model
+        resource: OpenaiResponsesRequestShape.model
+        items:
+          - { id: rs_9, type: reasoning, encrypted_content: FOREIGN }
+    invoke: !ref model
+
+  # Same model id, another ACCOUNT's resource: the opaque item belongs to the
+  # endpoint that minted it, and a gateway refuses one minted directly.
+  - name: otherResourceState
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: hello }]
+      providerState:
+        api: responses
+        model: gpt-test
+        resource: OpenaiResponsesRequestShape.someOtherAccount
+        items:
+          - { id: rs_8, type: reasoning, encrypted_content: FOREIGN }
+    invoke: !ref model
+
+  - name: assertOtherResourceDropped
+    inputs:
+      actual: !cel "parseJson(steps.otherResourceState.result.text).input"
+      expected:
+        - role: user
+          content: [{ type: input_text, text: hello }]
+    invoke:
+      kind: Assert.Equals
+
+  - name: assertForeignStateDropped
+    inputs:
+      actual: !cel "parseJson(steps.foreignState.result.text).input"
+      expected:
+        - role: user
+          content: [{ type: input_text, text: hello }]
+    invoke:
+      kind: Assert.Equals
+
+  # A failed run RAISES, carrying the endpoint's own words — the same code and
+  # shape the streaming half uses, so one `catches:` covers both.
+  - name: failedRun
+    try:
+      - name: failedCall
+        inputs:
+          messages:
+            - role: user
+              content: [{ type: text, text: hello }]
+        invoke: !ref failedRun
+      - name: failedUnreachable
+        throw: { code: TEST_FAILED, message: a failed run was reported as an answer }
+    catch:
+      - name: assertFailedRun
+        inputs:
+          actual:
+            code: !cel "error.code"
+            carriesMessage: !cel "error.message.contains('caught fire')"
+          expected: { code: ERR_OPENAI_REQUEST_FAILED, carriesMessage: true }
+        invoke:
+          kind: Assert.Equals

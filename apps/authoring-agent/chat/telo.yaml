@@ -20,7 +20,8 @@ metadata:
     SQLite file; the workspace is ./workspace.
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.18.0#sha256-OtJa8sQbyyLNKMTjbyy5-qiQWF9ouPj7a2-BSH0KGXg
-  OpenAI: oci://ghcr.io/telorun/openai@0.1.0#sha256-SnFe2QDJWkXtCWDcJh_fBTQ73thsdA_Cg6cNfI01i2o
+  OpenAI: oci://ghcr.io/telorun/openai@0.2.0#sha256-Ggrq6AdWFpsgNIlNk_QxzdMHGZh7qUlmbRvjScmFh7E
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
   AiMcp: oci://ghcr.io/telorun/ai-mcp@0.13.0#sha256-GUeyyUnObEQcx--sTRlkoMx-3hi07HuqH9aSYA4XY7I
   Mcp: oci://ghcr.io/telorun/mcp-client@0.15.0#sha256-M3frsOwjZWR_Vo2LERsRjBqcN7iXZbVg_gTjK4OGq8s
   Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
@@ -54,9 +55,11 @@ variables:
     # importer including the tests, so a test exercises what the app ships. It
     # used to be restated as a literal at the root and in four tests, which made
     # this line dead config: changing it looked like an upgrade and did nothing.
-    # A reasoning model that needs `/v1/responses` cannot go here yet: this
-    # agent is nothing but tools, and `ai-openai` speaks `/v1/chat/completions`,
-    # where the two are refused together. See modules/ai/plans/declarative-model-contract.md.
+    # A reasoning model cannot go here while the resource below is an
+    # `OpenAI.ModelStream`: that kind speaks `/v1/chat/completions`, which
+    # refuses a non-`none` reasoning effort alongside function tools, and this
+    # agent is nothing but tools. `OpenAI.ResponsesModelStream` is what lifts
+    # that, so this moves when the pin above carries it.
     default: gpt-5.2
   budgetLimit:
     type: integer
@@ -168,10 +171,26 @@ migrations:
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
 ---
+# The account, declared once: base URL and credential on the client, so the model
+# kinds carry no key and the 401 re-acquire-and-retry is inherited from
+# `http-client` rather than re-implemented per provider.
+kind: HttpClient.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: HttpClient.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: HttpClient.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
 kind: OpenAI.ModelStream
 metadata: { name: model }
 model: !cel "variables.model"
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 ---
 kind: AiMcp.ToolProvider
 metadata: { name: hubTools }
@@ -912,9 +931,28 @@ system: |
   `Ai.Model` is called for a complete answer and is what `Ai.Text` / `Ai.Agent`
   take; `Ai.ModelStream` returns `{output}`, a stream of parts, and is what
   `Ai.TextStream` / `Ai.AgentStream` take. A provider implements one or both —
-  the `openai` module ships `OpenAI.Model` and `OpenAI.ModelStream` as separate
-  kinds, so an app using both declares both. `Ai.Buffered` adapts a streaming
-  model to the buffered contract for a provider that only streams.
+  the `openai` module ships `OpenAI.ChatModel` and `OpenAI.ChatModelStream` as
+  separate kinds, so an app using both declares both. `Ai.Buffered` adapts a
+  streaming model to the buffered contract for a provider that only streams.
+
+  OPENAI KIND NAMES CHANGED, so read them off the hub for the version you are
+  pinning rather than from memory: the completions pair was once called
+  `OpenAI.Model` / `OpenAI.ModelStream`, and older versions declare only those.
+  `get_module_manifest` answers for the exact version, and its `exports.kinds`
+  is the list that version really has.
+
+  REASONING WITH TOOLS NEEDS THE RESPONSES KINDS. Newer `openai` versions ship a
+  second pair, `OpenAI.ResponsesModel` and `OpenAI.ResponsesModelStream` — check
+  the manifest of the version you pin, since older ones have neither — over
+  OpenAI's `/v1/responses` API, carrying `reasoning: { effort, summary }`. Reach for
+  them whenever an app wants a reasoning model that also calls tools:
+  `/chat/completions` — the pair above — refuses a non-`none` reasoning effort
+  alongside function tools with a 400, and an agent is nothing but tools. The
+  encrypted reasoning rides the contract's `providerState` and is replayed by
+  `Ai.Agent` / `Ai.AgentStream`, so it survives a tool loop with nothing to
+  declare. Keep the completions pair for everything else and for every
+  OpenAI-COMPATIBLE endpoint (Azure, Ollama, vLLM, Groq, OpenRouter): almost
+  none of them serve `/v1/responses`.
 
   A model stream FAILS BY REJECTING: `finish` is the only terminal part, and a
   mid-stream failure raises. So a tool error under `onToolError: throw` and

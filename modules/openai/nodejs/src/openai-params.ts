@@ -49,3 +49,43 @@ export async function errorMessage(res: Response, label: string): Promise<string
   }
   return `${label} failed (${res.status} ${res.statusText})${detail ? `: ${detail}` : ""}`;
 }
+
+/**
+ * `responseFormat` is ONE contract field with two incompatible wire shapes.
+ *
+ * The declared `Ai.Model` input is an open object, so nothing static or runtime
+ * catches the difference — and the two APIs disagree in both directions. Chat
+ * nests the schema (`{type: json_schema, json_schema: {name, schema, strict}}`)
+ * and refuses the flat form with `Missing required parameter:
+ * 'response_format.json_schema'`; responses takes it flat and refuses the nested
+ * form with `Missing required parameter: 'text.format.name'`. Both verified
+ * against the live endpoints.
+ *
+ * So each dialect NORMALIZES rather than passing through. Without it, swapping
+ * `OpenAI.ChatModel` for `OpenAI.ResponsesModel` — which the docs present as an
+ * interchangeable choice under one abstract — turns a working manifest into a
+ * provider 400 with no Telo diagnostic.
+ *
+ * Only `json_schema` differs. `{type: text}`, `{type: json_object}` and anything
+ * this module has not heard of pass through untouched, so a format the endpoint
+ * gains tomorrow is not blocked by a translation written today.
+ */
+
+function isJsonSchemaFormat(value: Record<string, unknown>): boolean {
+  return value.type === "json_schema";
+}
+
+/** Nest a flat `json_schema` format, which is what `/chat/completions` takes. */
+export function toChatResponseFormat(value: Record<string, unknown>): Record<string, unknown> {
+  if (!isJsonSchemaFormat(value) || value.json_schema !== undefined) return value;
+  const { type, ...rest } = value;
+  return { type, json_schema: rest };
+}
+
+/** Flatten a nested `json_schema` format, which is what `/v1/responses` takes. */
+export function toResponsesTextFormat(value: Record<string, unknown>): Record<string, unknown> {
+  if (!isJsonSchemaFormat(value)) return value;
+  const nested = value.json_schema;
+  if (!nested || typeof nested !== "object") return value;
+  return { type: value.type, ...(nested as Record<string, unknown>) };
+}

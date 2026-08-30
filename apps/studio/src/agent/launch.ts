@@ -7,6 +7,8 @@
  * the editor never holds a secret nor picks an image.
  */
 
+import { TermsRequiredError, type RunnerTerms } from "../run/types";
+
 /** Well-known app name in the runner's predefined-app catalog. */
 export const AGENT_APP_NAME = "authoring-agent";
 
@@ -51,10 +53,19 @@ export async function launchAgentSession(
       ports: [{ port: AGENT_PORT, protocol: "tcp" }],
     }),
   });
+  // The runner enforces its terms — if unacknowledged it replies 428 with the
+  // current terms. Carry them out as the same error the run path raises, so the
+  // caller gates on the agreement itself instead of telling the user to go and
+  // find it somewhere else in the editor.
   if (res.status === 428) {
-    throw new Error(
-      "Accept the usage terms before using the agent: run any application once to review and accept them, then try again.",
-    );
+    let payload: { terms?: RunnerTerms } | null = null;
+    try {
+      payload = (await res.json()) as { terms?: RunnerTerms };
+    } catch {
+      // fall through to the generic error below
+    }
+    if (payload?.terms) throw new TermsRequiredError(payload.terms);
+    throw new Error("The runner requires accepting its usage terms before the agent can start.");
   }
   if (res.status === 404) {
     // A 404 here means only that the runner offers no agent app to launch on

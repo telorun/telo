@@ -1,4 +1,4 @@
-import { contentToText, isImagePart, type ImagePart, type MessageContent } from "@telorun/ai";
+import { contentToText, type ImagePart, type MessageContent } from "@telorun/ai";
 import type {
   AiModelInstance,
   AiModelStreamInstance,
@@ -19,8 +19,15 @@ import type {
   ResourceInstance,
 } from "@telorun/sdk";
 import { InvokeError, Stream } from "@telorun/sdk";
-import { mergeOptions, toOpenAiParams } from "./openai-params.js";
+import { mergeOptions, toChatResponseFormat, toOpenAiParams } from "./openai-params.js";
 import { callOpenAi, type HttpRequestInstance } from "./openai-endpoint.js";
+import { parseSseData } from "./openai-sse.js";
+import {
+  imageDataUrl,
+  imageParts,
+  parseToolArguments,
+  TOOL_IMAGE_PLACEHOLDER,
+} from "./openai-message-parts.js";
 
 /**
  * OpenAI-compatible provider for the Ai.Model abstract. Speaks the OpenAI
@@ -119,21 +126,8 @@ type OpenAiRequestMessage =
   | { role: "assistant"; content: string | null; tool_calls?: OpenAiToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
 
-/** Render an image part as an OpenAI data URL. Runtime tool results carry raw bytes
- *  (the stdlib binary convention); manifest-authored parts carry a base64 string. */
-function imageDataUrl(part: ImagePart): string {
-  const base64 =
-    typeof part.data === "string" ? part.data : Buffer.from(part.data).toString("base64");
-  return `data:${part.mediaType};base64,${base64}`;
-}
-
 function toImageUrlPart(part: ImagePart): OpenAiContentPart {
   return { type: "image_url", image_url: { url: imageDataUrl(part) } };
-}
-
-function imageParts(content: MessageContent): ImagePart[] {
-  if (typeof content === "string") return [];
-  return content.filter(isImagePart);
 }
 
 /** Translate message content for a role that can carry images (user). A plain string
@@ -184,7 +178,7 @@ function translateMessages(messages: Message[], resourceName: string): OpenAiReq
         content:
           images.length === 0
             ? text
-            : text || "(tool returned image content — see the following message)",
+            : text || TOOL_IMAGE_PLACEHOLDER,
       });
       if (images.length > 0) {
         pendingImageMessages.push({ role: "user", content: images.map(toImageUrlPart) });
@@ -247,23 +241,6 @@ function parseToolCalls(tcs: OpenAiToolCall[] | undefined): ToolCall[] {
   }));
 }
 
-/** OpenAI returns tool-call arguments as a JSON string. Parse it into the object
- *  shape the Ai contract requires; surface malformed JSON rather than hiding it
- *  behind an empty object (an empty-args call and a broken-args call differ). */
-function parseToolArguments(raw: string | undefined, toolName: string): Record<string, unknown> {
-  if (!raw || raw.trim() === "") return {};
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error(`OpenAI tool call '${toolName}' returned non-JSON arguments: ${raw}`);
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`OpenAI tool call '${toolName}' arguments were not a JSON object: ${raw}`);
-  }
-  return parsed as Record<string, unknown>;
-}
-
 /** What the two kinds share: the endpoint, the request translation, and the
  *  redacted snapshot. */
 abstract class OpenaiBase {
@@ -284,6 +261,12 @@ abstract class OpenaiBase {
       model: this.resource.model,
       messages: translateMessages(input.messages, this.resource.metadata.name),
       ...(tools ? { tools } : {}),
+      // A declared contract input, under this dialect's own key AND its own
+      // shape: a `json_schema` format is nested here and flat on the responses
+      // API, and each refuses the other's form outright.
+      ...(input.responseFormat
+        ? { response_format: toChatResponseFormat(input.responseFormat) }
+        : {}),
       ...toOpenAiParams(mergeOptions(this.resource.options, input.options)),
       stream,
       ...(stream ? { stream_options: { include_usage: true } } : {}),
@@ -343,7 +326,10 @@ class OpenaiModelStreamInstance
       // name, and the concatenated arguments string, then assemble at the finish
       // boundary (arguments are only valid JSON once fully joined).
       const toolAcc = new Map<number, { id: string; name: string; args: string }>();
-      for await (const data of parseSseData(body as AsyncIterable<Uint8Array>)) {
+      for await (const data of parseSseData(
+        body as AsyncIterable<Uint8Array>,
+        `OpenAI chat stream "${this.resource.metadata.name}"`,
+      )) {
         if (data === "[DONE]") break;
         const chunk = JSON.parse(data) as OpenAiStreamChunk;
         const choice = chunk.choices?.[0];
@@ -372,39 +358,6 @@ class OpenaiModelStreamInstance
       }
     yield { type: "finish", usage, finishReason };
   }
-}
-
-/** Parse an OpenAI SSE byte stream into the payload of each `data:` line. Handles
- *  chunk boundaries that split a line and a final unterminated line.
- *
- *  Takes an async iterable rather than a web `ReadableStream`: the bytes now
- *  arrive from `Http.Request`'s streamed response, which is also what makes a
- *  consumer's early exit reach the transport — breaking out of this loop returns
- *  the source iterator, and the request controller aborts on that. */
-async function* parseSseData(body: AsyncIterable<Uint8Array>): AsyncGenerator<string> {
-  const decoder = new TextDecoder();
-  let buffer = "";
-  for await (const chunk of body) {
-    buffer += decoder.decode(chunk as Uint8Array, { stream: true });
-    let nl: number;
-    while ((nl = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, nl);
-      buffer = buffer.slice(nl + 1);
-      const data = sseDataPayload(line);
-      if (data !== null) yield data;
-    }
-  }
-  buffer += decoder.decode();
-  const tail = sseDataPayload(buffer);
-  if (tail !== null) yield tail;
-}
-
-/** Return the payload of a `data:` SSE line, or null for blank / comment / other
- *  field lines. */
-function sseDataPayload(line: string): string | null {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("data:")) return null;
-  return trimmed.slice("data:".length).trim();
 }
 
 export function register(_ctx: ControllerContext): void {}
