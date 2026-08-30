@@ -47,12 +47,12 @@ away from the path most calls use.
 kind: OpenAI.Model
 metadata: { name: gpt }
 model: gpt-4o-mini
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 ---
 kind: OpenAI.ModelStream
 metadata: { name: gptStream }
 model: gpt-4o-mini
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 ```
 
 ## Errors
@@ -63,9 +63,40 @@ A refused request raises the provider's own message, not just a status. A failur
 error part cannot silently truncate. Parts already emitted still reach the consumer, and
 the shipped encoders frame the rejection with its code.
 
+## The account is an `Http.Client`
+
+The chat and embedding kinds carry **no credential of their own**. They reference an
+`Http.Request`, whose client holds the base URL and the credential:
+
+```yaml
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+```
+
+The key is declared once for every OpenAI kind in the app, and the `401`
+re-acquire-and-retry comes with it rather than being re-implemented per provider. A
+gateway, Azure or a self-hosted server is a different `baseUrl` on the client.
+
+`OpenAI.ImageModel` goes through the same request, including image edit, inpaint and
+variation, which send multipart/form-data: the form is framed as bytes and sent under the
+boundary-bearing content type, a byte body like any other to `Http.Request` — and a
+replayable one, so the 401 retry still applies.
+
 ## Secrets
 
-`snapshot()` redacts `apiKey`, so the key does not reach CEL or the debug stream.
+Nothing on a model kind holds a key, so a reading cannot leak one. The credential's own
+returned headers are marked `x-telo-sensitive`, so the material is `[redacted]` in trace
+payloads and on the debug wire.
 
 ## Options
 

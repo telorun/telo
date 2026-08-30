@@ -14,6 +14,7 @@ metadata:
 imports:
   Ai: ../ai
   Embedding: ../embedding
+  Http: ../http-client
 exports:
   kinds:
     - Model
@@ -25,9 +26,9 @@ kind: Telo.Definition
 metadata:
   name: Model
   description: >-
-    A chat model served by OpenAI or an OpenAI-compatible endpoint: model id, API key,
-    an optional base URL for gateways or Azure, and default request options that
-    per-call overrides win over.
+    A chat model served by OpenAI or an OpenAI-compatible endpoint: model id, the
+    request every call goes through — whose client carries the base URL and the
+    credential — and default request options that per-call overrides win over.
 capability: Telo.Invocable
 extends: Ai.Model
 controllers:
@@ -50,29 +51,35 @@ schema:
       title: Model ID
       description: OpenAI model identifier passed to the API (e.g. gpt-4o, gpt-4o-mini).
       type: string
-    apiKey:
-      title: API Key
-      description: Secret reference; typically `${{ secrets.OPENAI_API_KEY }}`.
-      type: string
+      # Explicit because these kinds are Telo.Invocable. A Telo.Provider's
+      # fields are implicitly compile-eval; that rule stopped applying when the
+      # capability changed, and without this `model: !cel "variables.model"` is
+      # read as a literal.
       x-telo-eval: compile
-    baseUrl:
-      title: Base URL
-      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
-      type: string
-      x-telo-eval: compile
+    request:
+      title: Request
+      description: >-
+        The HTTP request every call is made through. Its client carries the base URL
+        and the credential, so an account is declared once and the 401
+        re-acquire-and-retry is inherited rather than re-implemented here. Point it at
+        a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`, or a
+        gateway's).
+      x-telo-ref:
+        kind: Http.Request
+        use: call
     options:
       title: Options
       description: Model-level defaults as camelCase OpenAI request params (temperature, maxTokens, topP, …), normalized to snake_case and merged into the request body. Merged beneath Ai.Text.options / Ai.TextStream.options and per-call inputs.options; downstream wins.
       type: object
       additionalProperties: true
-  required: [ model, apiKey ]
+      x-telo-eval: compile
+  required: [ model, request ]
   additionalProperties: false
   examples:
     - model: gpt-4o-mini
-      apiKey: "${{ secrets.openaiApiKey }}"
+      request: !ref openaiRequest
     - model: gpt-4o
-      apiKey: "${{ secrets.openaiApiKey }}"
-      baseUrl: https://my-gateway.example.com/v1
+      request: !ref openaiRequest
       options:
         temperature: 0.2
         maxTokens: 512
@@ -82,8 +89,8 @@ metadata:
   name: ModelStream
   description: >-
     A chat model served by OpenAI or an OpenAI-compatible endpoint, called for a
-    stream: the answer arrives as parts as it is generated. Same model id, API key,
-    base URL and default options as the buffered kind.
+    stream: the answer arrives as parts as it is generated. Same model id, request
+    and default options as the buffered kind.
 capability: Telo.Invocable
 extends: Ai.ModelStream
 controllers:
@@ -106,44 +113,54 @@ schema:
       title: Model ID
       description: OpenAI model identifier passed to the API (e.g. gpt-4o, gpt-4o-mini).
       type: string
-    apiKey:
-      title: API Key
-      description: Secret reference; typically `${{ secrets.OPENAI_API_KEY }}`.
-      type: string
+      # Explicit because these kinds are Telo.Invocable. A Telo.Provider's
+      # fields are implicitly compile-eval; that rule stopped applying when the
+      # capability changed, and without this `model: !cel "variables.model"` is
+      # read as a literal.
       x-telo-eval: compile
-    baseUrl:
-      title: Base URL
-      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
-      type: string
-      x-telo-eval: compile
+    request:
+      title: Request
+      description: >-
+        The HTTP request every call is made through. Its client carries the base URL
+        and the credential, so an account is declared once and the 401
+        re-acquire-and-retry is inherited rather than re-implemented here. Point it at
+        a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`, or a
+        gateway's).
+      x-telo-ref:
+        kind: Http.Request
+        use: call
     options:
       title: Options
       description: Model-level defaults as camelCase OpenAI request params (temperature, maxTokens, topP, …), normalized to snake_case and merged into the request body. Merged beneath Ai.Text.options / Ai.TextStream.options and per-call inputs.options; downstream wins.
       type: object
       additionalProperties: true
-  required: [ model, apiKey ]
+      x-telo-eval: compile
+  required: [ model, request ]
   additionalProperties: false
   examples:
     - model: gpt-4o-mini
-      apiKey: "${{ secrets.openaiApiKey }}"
+      request: !ref openaiRequest
     - model: gpt-4o
-      apiKey: "${{ secrets.openaiApiKey }}"
-      baseUrl: https://my-gateway.example.com/v1
+      request: !ref openaiRequest
       options:
         temperature: 0.2
         maxTokens: 512
 ---
-# The image half of the same account: same key, same optional baseUrl, a different
-# HTTP surface. `$defs/Intent` is what Ai.Image derives its own `intent` field from
-# (x-telo-schema-from), so naming a mode this endpoint has no route for fails
-# `telo check` instead of throwing at dispatch.
+# The image half of the same account, over the same injected request: a
+# different HTTP surface, including the multipart one edit, inpaint and variation
+# use — framed as bytes and sent under the boundary-bearing content type, which
+# `Http.Request` carries like any other byte body. `$defs/Intent` is what
+# Ai.Image derives its own `intent` field from (x-telo-schema-from), so naming a
+# mode this endpoint has no route for fails `telo check` instead of throwing at
+# dispatch.
 kind: Telo.Definition
 metadata:
   name: ImageModel
   description: >-
-    An image model served by OpenAI or an OpenAI-compatible endpoint: model id, API
-    key, an optional base URL for gateways or Azure, and default request options
-    (size, quality, count, output format) that per-call overrides win over.
+    An image model served by OpenAI or an OpenAI-compatible endpoint: model id, the
+    request every call goes through, and default request options (size, quality,
+    count, output format) that per-call overrides win over. Generation, editing,
+    inpainting and variations.
 capability: Telo.Provider
 extends: Ai.ImageModel
 controllers:
@@ -155,16 +172,17 @@ schema:
       title: Model ID
       description: OpenAI image model identifier passed to the API (e.g. gpt-image-1, dall-e-3).
       type: string
-    apiKey:
-      title: API Key
-      description: Secret reference; typically `${{ secrets.openaiApiKey }}`.
-      type: string
-      x-telo-eval: compile
-    baseUrl:
-      title: Base URL
-      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
-      type: string
-      x-telo-eval: compile
+    request:
+      title: Request
+      description: >-
+        The HTTP request every call is made through. Its client carries the base URL
+        and the credential, so an account is declared once and the 401
+        re-acquire-and-retry is inherited rather than re-implemented here. Point it at
+        a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`, or a
+        gateway's).
+      x-telo-ref:
+        kind: Http.Request
+        use: call
     options:
       title: Options
       description: >-
@@ -173,7 +191,7 @@ schema:
         Ai.Image.options and its per-call inputs.options; downstream wins.
       type: object
       additionalProperties: true
-  required: [ model, apiKey ]
+  required: [ model, request ]
   additionalProperties: false
   $defs:
     # The reference-image modes this endpoint routes: edit and inpaint go to
@@ -186,12 +204,12 @@ schema:
       enum: [ edit, inpaint, variation ]
   examples:
     - model: gpt-image-1
-      apiKey: "${{ secrets.openaiApiKey }}"
+      request: !ref openaiRequest
       options:
         size: 1024x1024
         quality: low
     - model: dall-e-3
-      apiKey: "${{ secrets.openaiApiKey }}"
+      request: !ref openaiRequest
       options:
         size: 1024x1024
 ---
@@ -203,31 +221,30 @@ metadata:
   name: EmbeddingModel
   description: >-
     An embedding model served by OpenAI or an OpenAI-compatible endpoint: model id,
-    API key, an optional base URL for gateways or Azure, and an optional output
-    dimensionality.
+    the request every call goes through — whose client carries the base URL and the
+    credential — and an optional output dimensionality.
 capability: Telo.Provider
 extends: Embedding.Model
 controllers:
   - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#EmbeddingModelController
 schema:
   type: object
-  required: [model, apiKey]
+  required: [model, request]
   additionalProperties: false
   properties:
     model:
       title: Model ID
       description: OpenAI embedding model identifier (e.g. text-embedding-3-small).
       type: string
-    apiKey:
-      title: API Key
-      description: Secret reference; typically `${{ secrets.openaiApiKey }}`.
-      type: string
-      x-telo-eval: compile
-    baseUrl:
-      title: Base URL
-      description: Optional override for the OpenAI API base URL (Azure OpenAI, OpenAI-compatible gateways).
-      type: string
-      x-telo-eval: compile
+    request:
+      title: Request
+      description: >-
+        The HTTP request every call is made through. Its client carries the base URL
+        and the credential, so an account is declared once and the 401
+        re-acquire-and-retry is inherited rather than re-implemented here.
+      x-telo-ref:
+        kind: Http.Request
+        use: call
     dimensions:
       title: Dimensions
       description: Output dimensionality. v3 models support truncating to fewer dimensions.
@@ -240,5 +257,5 @@ schema:
       additionalProperties: true
   examples:
     - model: text-embedding-3-small
-      apiKey: "${{ secrets.openaiApiKey }}"
+      request: !ref openaiRequest
       dimensions: 1536

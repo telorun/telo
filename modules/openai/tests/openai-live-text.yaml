@@ -9,19 +9,32 @@ secrets:
   openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
 imports:
   OpenAI: ../
+  Http: ../../http-client
   Ai: ../../ai
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref LiveText
 ---
-# apiKey defaults to "" when OPENAI_API_KEY is unset so the resource passes
-# schema validation. The model is constructed (just config — no API call until
-# invoke), but never reached because the run-step is gated.
+# The account: base URL and credential in one place, so the key is declared once
+# and the 401 re-acquire-and-retry is inherited rather than re-implemented.
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
 kind: OpenAI.Model
 metadata: { name: Live }
 model: gpt-4o-mini
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 options:
   temperature: 0
   maxTokens: 32

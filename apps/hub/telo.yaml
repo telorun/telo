@@ -17,7 +17,7 @@ metadata:
     Federated discovery hub: tracks registered module refs across transports,
     caches manifests, and serves per-resource search over HTTP and MCP.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
+  Http: oci://ghcr.io/telorun/http-server@0.29.1#sha256-pE3rCn5FDwOXz2Joi2RnSS1Hcoa69CBl1meW-TVgK70
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
   Postgres: oci://ghcr.io/telorun/postgres@0.4.0#sha256-urAQgZtDIlbm4PFi0OlBgYPTU0fSdFbw3l3sHVdh-MQ
   Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
@@ -29,7 +29,7 @@ imports:
   PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.4#sha256-Z1My-TDPdE13s63NSi5rT0Qg0CZf-7tAXbJBRcBGCOQ
   Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
   Embedding: oci://ghcr.io/telorun/embedding@0.11.3#sha256-d6UqT9EJTRaXtOI5862y5c-ep6rVhWTjuq9zIPrUD2c
-  EmbeddingOpenai: oci://ghcr.io/telorun/embedding-openai@0.9.3#sha256-2acshGDbPtI2ltP7emHqDYnFWMcFy2En-5HIRHZ5tkk
+  OpenAI: oci://ghcr.io/telorun/openai@0.1.0#sha256-SnFe2QDJWkXtCWDcJh_fBTQ73thsdA_Cg6cNfI01i2o
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.9.0#sha256-xf5Sl63MYbMSM4GzzRPVNrqbtrxQ27x9cwFKrDCjCEM
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.4#sha256-_E2AqSEEsTotJXiSmk9GBqlnlwW8JRXNJXZWbx-olxY
   VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
@@ -398,7 +398,7 @@ migrations:
 # database as the relational rows. The RRF search query never touches that
 # table — it only fuses the ids VectorStore.Match returns (see Search).
 
-kind: EmbeddingOpenai.Model
+kind: OpenAI.EmbeddingModel
 metadata:
   name: Embedder
 # Pinned to the stored vectors: embeddinggemma-300m → 768 dims. A model change

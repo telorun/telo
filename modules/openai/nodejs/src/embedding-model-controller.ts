@@ -1,13 +1,13 @@
-import { fetchOrThrow } from "@telorun/sdk";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { EmbedRequest, EmbedResult, EmbeddingModel, EmbeddingPrompts } from "@telorun/embedding";
 import { applyEmbeddingPrompt, resolveEmbeddingPrompts } from "@telorun/embedding";
+import { callOpenAi, type HttpRequestInstance } from "./openai-endpoint.js";
 
 /**
  * OpenAI-compatible provider for the Embedding.Model abstract. Speaks the
  * OpenAI `/embeddings` HTTP API directly (no vendor SDK), so the same
  * controller serves OpenAI plus every OpenAI-compatible endpoint (Azure OpenAI,
- * vLLM, text-embeddings-inference, …) via `baseUrl`.
+ * vLLM, text-embeddings-inference, …) via the client's `baseUrl`.
  *
  * The OpenAI models themselves are symmetric — no wire parameter carries the
  * query/passage intent. Self-hosted checkpoints served over the same API are
@@ -20,13 +20,11 @@ import { applyEmbeddingPrompt, resolveEmbeddingPrompts } from "@telorun/embeddin
  * Shallow merge, caller wins.
  */
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-
 interface OpenaiEmbeddingResource extends EmbeddingPrompts {
   metadata: { name: string; module?: string };
   model: string;
-  apiKey: string;
-  baseUrl?: string;
+  /** Injected by Phase 5 — the base URL and credential live on its client. */
+  request: HttpRequestInstance;
   dimensions?: number;
   options?: Record<string, unknown>;
 }
@@ -37,14 +35,12 @@ interface OpenAiEmbeddingResponse {
 }
 
 class OpenaiEmbeddingModel implements ResourceInstance, EmbeddingModel {
-  private readonly baseUrl: string;
   private readonly prompts: EmbeddingPrompts;
 
   constructor(private readonly resource: OpenaiEmbeddingResource) {
-    this.baseUrl = (resource.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
     this.prompts = resolveEmbeddingPrompts(
       resource,
-      `EmbeddingOpenai.Model "${resource.metadata.name}"`,
+      `OpenAI.EmbeddingModel "${resource.metadata.name}"`,
     );
   }
 
@@ -57,21 +53,12 @@ class OpenaiEmbeddingModel implements ResourceInstance, EmbeddingModel {
       ...(this.resource.options ?? {}),
       ...(request.options ?? {}),
     };
-    const headers: Record<string, string> = { "content-type": "application/json" };
-    if (this.resource.apiKey) headers["authorization"] = `Bearer ${this.resource.apiKey}`;
-
-    const res = await fetchOrThrow(
-      `${this.baseUrl}/embeddings`,
-      { method: "POST", headers, body: JSON.stringify(body) },
-      {
-        operation: "Embedding model request",
-        resource: this.resource.metadata.name,
-        setting: "baseUrl",
-      },
-    );
-    if (!res.ok) throw new Error(await errorMessage(res, "OpenAI embeddings"));
-
-    const data = (await res.json()) as OpenAiEmbeddingResponse;
+    const data = (await callOpenAi(
+      this.resource.request,
+      this.resource.metadata.name,
+      "OpenAI embeddings",
+      { path: "/embeddings", body },
+    )) as OpenAiEmbeddingResponse;
     const embeddings = (data.data ?? []).map((d) => d.embedding ?? []);
     if (embeddings.length !== request.texts.length) {
       throw new Error(
@@ -95,7 +82,6 @@ class OpenaiEmbeddingModel implements ResourceInstance, EmbeddingModel {
   snapshot(): Record<string, unknown> {
     return {
       model: this.resource.model,
-      ...(this.resource.baseUrl ? { baseUrl: this.resource.baseUrl } : {}),
       ...(this.resource.dimensions !== undefined ? { dimensions: this.resource.dimensions } : {}),
       ...(this.prompts.queryPrompt !== undefined
         ? { queryPrompt: this.prompts.queryPrompt }
@@ -103,29 +89,8 @@ class OpenaiEmbeddingModel implements ResourceInstance, EmbeddingModel {
       ...(this.prompts.passagePrompt !== undefined
         ? { passagePrompt: this.prompts.passagePrompt }
         : {}),
-      apiKey: this.resource.apiKey ? "[redacted]" : this.resource.apiKey,
     };
   }
-}
-
-/** Build an actionable error message from a non-OK response, preferring the
- *  provider's `{ error: { message } }` body and falling back to the raw text. */
-async function errorMessage(res: Response, label: string): Promise<string> {
-  let detail = "";
-  try {
-    detail = await res.text();
-  } catch {
-    // Body already consumed or unavailable — status line is all we have.
-  }
-  if (detail) {
-    try {
-      const parsed = JSON.parse(detail) as { error?: { message?: string } };
-      if (typeof parsed.error?.message === "string") detail = parsed.error.message;
-    } catch {
-      // Non-JSON body (gateway HTML, plain text) — keep it verbatim.
-    }
-  }
-  return `${label} failed (${res.status} ${res.statusText})${detail ? `: ${detail}` : ""}`;
 }
 
 export function register(_ctx: ControllerContext): void {}

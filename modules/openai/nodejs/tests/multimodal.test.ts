@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { create } from "../src/openai-model-controller.js";
 
@@ -6,27 +6,41 @@ import { create } from "../src/openai-model-controller.js";
 // wire — content parts, image data URLs, and the tool-message-can't-carry-images
 // workaround — by stubbing `fetch` and inspecting the request body. No live key.
 
-let fetchMock: ReturnType<typeof vi.fn>;
+// The controller drives an INJECTED `Http.Request` rather than global `fetch`,
+// so the stub is that resource: it records the inputs the controller built and
+// answers with a canned response. Closer to what the kernel actually hands the
+// controller than a fetch mock, and it needs no global stubbing.
+
+let requestMock: ReturnType<typeof vi.fn>;
+
+function ok(body: unknown) {
+  return { status: 200, headers: { "content-type": "application/json" }, body };
+}
+
+/** An SSE response as the request controller delivers one: a byte stream. */
+function sseStream(frames: unknown[]) {
+  const text = frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join("") + "data: [DONE]\n\n";
+  const bytes = new TextEncoder().encode(text);
+  return {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+    body: (async function* () {
+      yield bytes;
+    })(),
+  };
+}
 
 const COMPLETION = {
   choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
   usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
 };
 
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 function makeModel() {
   return create(
     {
       metadata: { name: "T" },
       model: "gpt-4o-mini",
-      apiKey: "sk-test",
-      baseUrl: "https://api.example.com/v1",
+      request: { invoke: requestMock },
     } as never,
     {} as never,
   );
@@ -39,18 +53,13 @@ interface WireMessage {
 }
 
 function sentMessages(): WireMessage[] {
-  const call = fetchMock.mock.calls.at(-1);
-  if (!call) throw new Error("fetch was not called");
-  return JSON.parse((call[1] as RequestInit).body as string).messages;
+  const call = requestMock.mock.calls.at(-1);
+  if (!call) throw new Error("the request was not invoked");
+  return (call[0] as { body: { messages: WireMessage[] } }).body.messages;
 }
 
 beforeEach(() => {
-  fetchMock = vi.fn(async () => jsonResponse(COMPLETION));
-  vi.stubGlobal("fetch", fetchMock);
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
+  requestMock = vi.fn(async () => ok(COMPLETION));
 });
 
 describe("multimodal message translation", () => {

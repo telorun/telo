@@ -1,5 +1,3 @@
-import { fetchOrThrow } from "@telorun/sdk";
-import { redact } from "@telorun/ai";
 import { contentToText, isImagePart, type ImagePart, type MessageContent } from "@telorun/ai";
 import type {
   AiModelInstance,
@@ -21,13 +19,14 @@ import type {
   ResourceInstance,
 } from "@telorun/sdk";
 import { InvokeError, Stream } from "@telorun/sdk";
-import { errorMessage, mergeOptions, toOpenAiParams } from "./openai-params.js";
+import { mergeOptions, toOpenAiParams } from "./openai-params.js";
+import { callOpenAi, type HttpRequestInstance } from "./openai-endpoint.js";
 
 /**
  * OpenAI-compatible provider for the Ai.Model abstract. Speaks the OpenAI
  * `/chat/completions` HTTP API directly (no vendor SDK), so the same controller
  * serves OpenAI plus every OpenAI-compatible endpoint (Azure OpenAI, Ollama,
- * vLLM, Groq, Together, OpenRouter, …) via `baseUrl`.
+ * vLLM, Groq, Together, OpenRouter, …) via the client's `baseUrl`.
  *
  * TWO kinds, because Ai.Model and Ai.ModelStream are two abstracts with one
  * declared entry point each. They share this file — and their request building
@@ -41,13 +40,12 @@ import { errorMessage, mergeOptions, toOpenAiParams } from "./openai-params.js";
  * body verbatim.
  */
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-
 interface OpenaiResource {
   metadata: { name: string; module?: string };
   model: string;
-  apiKey: string;
-  baseUrl?: string;
+  /** Injected by Phase 5 — the account's base URL and credential live on its
+   *  client, so this module holds no key. */
+  request: HttpRequestInstance;
   options?: Record<string, unknown>;
 }
 
@@ -269,21 +267,18 @@ function parseToolArguments(raw: string | undefined, toolName: string): Record<s
 /** What the two kinds share: the endpoint, the request translation, and the
  *  redacted snapshot. */
 abstract class OpenaiBase {
-  protected readonly baseUrl: string;
+  constructor(protected readonly resource: OpenaiResource) {}
 
-  constructor(protected readonly resource: OpenaiResource) {
-    this.baseUrl = (resource.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
-  }
-
+  /** No redaction needed: the key is the client's, and a credential's own
+   *  output is marked `x-telo-sensitive`. */
   snapshot(): Record<string, unknown> {
-    return redact(["apiKey"], this.resource);
+    return {
+      model: this.resource.model,
+      ...(this.resource.options ? { options: this.resource.options } : {}),
+    };
   }
 
-  protected buildRequest(
-    input: ModelInvokeInput,
-    stream: boolean,
-    ctx?: InvokeContext,
-  ): RequestInit {
+  protected buildBody(input: ModelInvokeInput, stream: boolean): Record<string, unknown> {
     const tools = buildTools(input.tools);
     const body: Record<string, unknown> = {
       model: this.resource.model,
@@ -293,36 +288,20 @@ abstract class OpenaiBase {
       stream,
       ...(stream ? { stream_options: { include_usage: true } } : {}),
     };
-    const headers: Record<string, string> = { "content-type": "application/json" };
-    if (this.resource.apiKey) headers["authorization"] = `Bearer ${this.resource.apiKey}`;
-    return {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      // From the InvokeContext the kernel forwards. An AbortSignal is not
-      // declarable data, so it never belonged in the input.
-      ...(ctx?.cancellation.signal ? { signal: ctx.cancellation.signal } : {}),
-    };
+    return body;
   }
 
 }
 
 class OpenaiModelInstance extends OpenaiBase implements ResourceInstance, AiModelInstance {
   async invoke(input: ModelInvokeInput, ctx?: InvokeContext): Promise<CompletionResult> {
-    const res = await fetchOrThrow(
-      `${this.baseUrl}/chat/completions`,
-      this.buildRequest(input, false, ctx),
-      { operation: "AI chat completion", resource: this.resource.metadata.name, setting: "baseUrl" },
-    );
-    if (!res.ok) {
-      throw new InvokeError(
-        "ERR_OPENAI_REQUEST_FAILED",
-        await errorMessage(res, "OpenAI chat completion"),
-        { status: res.status },
-      );
-    }
-
-    const data = (await res.json()) as OpenAiChatResponse;
+    const data = (await callOpenAi(
+      this.resource.request,
+      this.resource.metadata.name,
+      "OpenAI chat completion",
+      { path: "/chat/completions", body: this.buildBody(input, false) },
+      ctx,
+    )) as OpenAiChatResponse;
     const choice = data.choices?.[0];
     const toolCalls = parseToolCalls(choice?.message?.tool_calls);
     const text = choice?.message?.content ?? "";
@@ -347,21 +326,16 @@ class OpenaiModelStreamInstance
   }
 
   private async *parts(input: ModelInvokeInput, ctx?: InvokeContext): AsyncIterable<StreamPart> {
-      const res = await fetchOrThrow(
-        `${this.baseUrl}/chat/completions`,
-        this.buildRequest(input, true, ctx),
-        { operation: "AI chat stream", resource: this.resource.metadata.name, setting: "baseUrl" },
+      // A refused request FAILS — the status check lives in `callOpenAi`, which
+      // reads the provider's own message out of the body. The parts already
+      // emitted still reach the consumer when a failure comes later.
+      const body = await callOpenAi(
+        this.resource.request,
+        this.resource.metadata.name,
+        "OpenAI chat stream",
+        { path: "/chat/completions", body: this.buildBody(input, true), stream: true },
+        ctx,
       );
-      // A refused request FAILS. It used to be yielded as an error part, which a
-      // drainer had to remember to look for; now the iteration rejects, and the
-      // parts already emitted still reach the consumer.
-      if (!res.ok || !res.body) {
-        throw new InvokeError(
-          "ERR_OPENAI_REQUEST_FAILED",
-          await errorMessage(res, "OpenAI chat stream"),
-          { status: res.status },
-        );
-      }
 
       let usage: Usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
       let finishReason: FinishReason = "stop";
@@ -369,7 +343,7 @@ class OpenaiModelStreamInstance
       // name, and the concatenated arguments string, then assemble at the finish
       // boundary (arguments are only valid JSON once fully joined).
       const toolAcc = new Map<number, { id: string; name: string; args: string }>();
-      for await (const data of parseSseData(res.body)) {
+      for await (const data of parseSseData(body as AsyncIterable<Uint8Array>)) {
         if (data === "[DONE]") break;
         const chunk = JSON.parse(data) as OpenAiStreamChunk;
         const choice = chunk.choices?.[0];
@@ -401,29 +375,28 @@ class OpenaiModelStreamInstance
 }
 
 /** Parse an OpenAI SSE byte stream into the payload of each `data:` line. Handles
- *  chunk boundaries that split a line and a final unterminated line. */
-async function* parseSseData(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
-  const reader = body.getReader();
+ *  chunk boundaries that split a line and a final unterminated line.
+ *
+ *  Takes an async iterable rather than a web `ReadableStream`: the bytes now
+ *  arrive from `Http.Request`'s streamed response, which is also what makes a
+ *  consumer's early exit reach the transport — breaking out of this loop returns
+ *  the source iterator, and the request controller aborts on that. */
+async function* parseSseData(body: AsyncIterable<Uint8Array>): AsyncGenerator<string> {
   const decoder = new TextDecoder();
   let buffer = "";
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let nl: number;
-      while ((nl = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, nl);
-        buffer = buffer.slice(nl + 1);
-        const data = sseDataPayload(line);
-        if (data !== null) yield data;
-      }
+  for await (const chunk of body) {
+    buffer += decoder.decode(chunk as Uint8Array, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, nl);
+      buffer = buffer.slice(nl + 1);
+      const data = sseDataPayload(line);
+      if (data !== null) yield data;
     }
-    const tail = sseDataPayload(buffer);
-    if (tail !== null) yield tail;
-  } finally {
-    reader.releaseLock();
   }
+  buffer += decoder.decode();
+  const tail = sseDataPayload(buffer);
+  if (tail !== null) yield tail;
 }
 
 /** Return the payload of a `data:` SSE line, or null for blank / comment / other

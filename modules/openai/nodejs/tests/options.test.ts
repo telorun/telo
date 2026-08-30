@@ -1,37 +1,42 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { create, createStream } from "../src/openai-model-controller.js";
 
-// The controller calls global `fetch`; we stub it and inspect the request body
-// it builds so option normalization and request shaping are verified on the
-// wire without a live API key.
+// The controller drives an INJECTED `Http.Request` rather than global `fetch`,
+// so the stub is that resource: it records the inputs the controller built and
+// answers with a canned response. Closer to what the kernel actually hands the
+// controller than a fetch mock, and it needs no global stubbing.
 
-let fetchMock: ReturnType<typeof vi.fn>;
+let requestMock: ReturnType<typeof vi.fn>;
+
+function ok(body: unknown) {
+  return { status: 200, headers: { "content-type": "application/json" }, body };
+}
+
+/** An SSE response as the request controller delivers one: a byte stream. */
+function sseStream(frames: unknown[]) {
+  const text = frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join("") + "data: [DONE]\n\n";
+  const bytes = new TextEncoder().encode(text);
+  return {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+    body: (async function* () {
+      yield bytes;
+    })(),
+  };
+}
 
 const COMPLETION = {
   choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
   usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
 };
 
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function sseResponse(frames: unknown[]) {
-  const text = frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join("") + "data: [DONE]\n\n";
-  return new Response(text, { status: 200, headers: { "content-type": "text/event-stream" } });
-}
-
 function makeStreamModel(options?: Record<string, unknown>) {
   return createStream(
     {
       metadata: { name: "T" },
       model: "gpt-4o-mini",
-      apiKey: "sk-test",
-      baseUrl: "https://api.example.com/v1",
+      request: { invoke: requestMock },
       options,
     } as never,
     {} as never,
@@ -43,28 +48,23 @@ function makeModel(options?: Record<string, unknown>) {
     {
       metadata: { name: "T" },
       model: "gpt-4o-mini",
-      apiKey: "sk-test",
-      baseUrl: "https://api.example.com/v1",
+      request: { invoke: requestMock },
       options,
     } as never,
     {} as never,
   );
 }
 
-/** The JSON body of the most recent fetch call. */
+/** The body of the most recent call — already an object, since `Http.Request`
+ *  serializes it rather than the controller. */
 function sentBody(): Record<string, unknown> {
-  const call = fetchMock.mock.calls.at(-1);
-  if (!call) throw new Error("fetch was not called");
-  return JSON.parse((call[1] as RequestInit).body as string);
+  const call = requestMock.mock.calls.at(-1);
+  if (!call) throw new Error("the request was not invoked");
+  return (call[0] as { body: Record<string, unknown> }).body;
 }
 
 beforeEach(() => {
-  fetchMock = vi.fn(async () => jsonResponse(COMPLETION));
-  vi.stubGlobal("fetch", fetchMock);
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
+  requestMock = vi.fn(async () => ok(COMPLETION));
 });
 
 describe("option normalization (camelCase → OpenAI snake_case)", () => {
@@ -120,8 +120,8 @@ describe("option normalization (camelCase → OpenAI snake_case)", () => {
   });
 
   it("normalizes options on the streaming path too, and requests usage", async () => {
-    fetchMock.mockImplementationOnce(async () =>
-      sseResponse([
+    requestMock.mockImplementationOnce(async () =>
+      sseStream([
         { choices: [{ delta: { content: "he" } }] },
         { choices: [{ delta: { content: "llo" }, finish_reason: "stop" }] },
         { choices: [], usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 } },

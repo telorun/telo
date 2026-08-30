@@ -1,5 +1,5 @@
 ---
-description: "OpenAI.ImageModel: OpenAI-compatible provider for Ai.ImageModel. Routes generation, edit, inpaint and variation against the images HTTP API directly (no vendor SDK). Schema, options, intents, refusals."
+description: "OpenAI.ImageModel: OpenAI-compatible provider for Ai.ImageModel. Routes generation, edit, inpaint and variation against the images HTTP API through an injected Http.Request (no vendor SDK). Schema, options, intents, refusals."
 sidebar_label: OpenAI.ImageModel
 ---
 
@@ -7,21 +7,35 @@ sidebar_label: OpenAI.ImageModel
 
 > Examples below assume this module is imported with an `imports:` entry under alias `OpenAI` (and `ai` as `Ai`). Kind references follow those aliases — substitute if you import under different names.
 
-OpenAI-compatible provider for the [`Ai.ImageModel`](../../ai/docs/ai-image-model.md) abstract. A **`Telo.Provider`** — a configured image client referenced by [`Ai.Image`](../../ai/docs/ai-image.md), never invoked directly as a target or step. Calls the OpenAI images HTTP API **directly** — no vendor SDK, nothing beyond `@telorun/ai` — so the same controller serves OpenAI and every OpenAI-compatible endpoint via `baseUrl`.
+OpenAI-compatible provider for the [`Ai.ImageModel`](../../ai/docs/ai-image-model.md) abstract. A **`Telo.Provider`** — a configured image client referenced by [`Ai.Image`](../../ai/docs/ai-image.md), never invoked directly as a target or step. Calls the OpenAI images HTTP API through the referenced `Http.Request` — no vendor SDK — so the same controller serves OpenAI and every OpenAI-compatible endpoint via the client's `baseUrl`.
 
 ```yaml
 kind: Telo.Application
 metadata: { name: poster-maker, version: 1.0.0 }
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.15.0
-  AiOpenai: oci://ghcr.io/telorun/openai@0.15.0
+  Ai: oci://ghcr.io/telorun/ai@0.18.0
+  OpenAI: oci://ghcr.io/telorun/openai@0.2.0
+  Http: oci://ghcr.io/telorun/http-client@0.22.0
 secrets:
   openaiApiKey: { env: OPENAI_API_KEY, type: string }
+---
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
 ---
 kind: OpenAI.ImageModel
 metadata: { name: Painter }
 model: gpt-image-1
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 options:
   size: 1024x1024
   quality: low
@@ -36,11 +50,10 @@ model: !ref Painter
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `model` | string | yes | Image model identifier (e.g. `gpt-image-1`, `dall-e-3`, `dall-e-2`). |
-| `apiKey` | string | yes | API key, sent as `Authorization: Bearer …`. Use a secret reference. Compile-evaluated. |
-| `baseUrl` | string | no | Override the API base URL (default `https://api.openai.com/v1`). For Azure OpenAI and compatible gateways. |
+| `request` | `!ref` | yes | The `Http.Request` every call goes through. Its client carries the base URL (`https://api.openai.com/v1`, Azure, a gateway) and the credential. |
 | `options` | object | no | camelCase image request params (`size`, `quality`, `n`, `outputFormat`, `background`, …), normalized to snake_case. Merged beneath `Ai.Image`'s options and its per-call inputs. |
 
-`apiKey` and `baseUrl` are `x-telo-eval: compile`. `snapshot()` redacts `apiKey`.
+Nothing here holds a key: auth is the client's credential, and the 401 re-acquire-and-retry `http-client` owns is inherited. A non-2xx answer that is not a content refusal raises `ERR_OPENAI_REQUEST_FAILED` with the endpoint's own message.
 
 ## Endpoint routing
 
@@ -52,7 +65,7 @@ The configured intent selects the endpoint. `$defs/Intent` declares `edit | inpa
 | `edit`, `inpaint` | `POST /images/edits` — multipart; the mask is its own part |
 | `variation` | `POST /images/variations` — multipart; the prompt is not sent |
 
-A single reference goes on the `image` field; several go on `image[]`, which only the multi-reference models accept. `content-type` is deliberately left unset on multipart requests so the runtime supplies the boundary.
+A single reference goes on the `image` field; several go on `image[]`, which only the multi-reference models accept. The multipart form is framed as bytes and sent through the same request under the boundary-bearing content type — a byte body like any other to `Http.Request`, and a replayable one, so the credential retry applies to an edit as it does to a generation.
 
 Per-mode requirements are this provider's, not `Ai.Image`'s: `inpaint` requires a `mask`, `edit` requires a `prompt`, and `variation` needs neither. An intent outside the declared set raises `ERR_INVALID_INPUT` rather than falling through to `/images/edits` — the backstop for a manifest that predates `$defs/Intent`.
 

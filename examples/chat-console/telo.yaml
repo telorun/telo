@@ -12,8 +12,8 @@ metadata:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
 imports:
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.16.0#sha256-DGAJ0wG1FdNAj7XWWrpgOuJgh07fEGg4ymvB6ODiEhY
-  Ai: oci://ghcr.io/telorun/ai@0.17.0#sha256-0u0_iSMlz0HmJc0VpEEINgJvErfBEudvvlXBJ76FSmc
+  OpenAI: oci://ghcr.io/telorun/openai@0.1.0#sha256-SnFe2QDJWkXtCWDcJh_fBTQ73thsdA_Cg6cNfI01i2o
+  Ai: oci://ghcr.io/telorun/ai@0.18.0#sha256-OtJa8sQbyyLNKMTjbyy5-qiQWF9ouPj7a2-BSH0KGXg
   RecordStream: oci://ghcr.io/telorun/record-stream@0.15.4#sha256-L4b4EJ4vVPnHszy59Jy7WlZaldAk0kP2Z1sKYwDKhNg
   PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.4#sha256-Z1My-TDPdE13s63NSi5rT0Qg0CZf-7tAXbJBRcBGCOQ
   Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
@@ -49,7 +49,7 @@ migrations:
       )
 ---
 # --- AI provider -----------------------------------------------------------
-kind: AiOpenai.OpenaiModel
+kind: OpenAI.ModelStream
 metadata: { name: gpt54Nano }
 model: gpt-5.4-nano
 apiKey: !cel "secrets.openaiApiKey"

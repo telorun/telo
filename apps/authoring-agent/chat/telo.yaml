@@ -19,9 +19,9 @@ metadata:
     its tests drive the same handler. Parameterized by the OpenAI key and the
     SQLite file; the workspace is ./workspace.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.17.0#sha256-0u0_iSMlz0HmJc0VpEEINgJvErfBEudvvlXBJ76FSmc
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.16.0#sha256-DGAJ0wG1FdNAj7XWWrpgOuJgh07fEGg4ymvB6ODiEhY
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.12.0#sha256-C0pozBwpE2xzqEsxCJ5YbpqdiHKpxw90Wvn7Md2Ynus
+  Ai: oci://ghcr.io/telorun/ai@0.18.0#sha256-OtJa8sQbyyLNKMTjbyy5-qiQWF9ouPj7a2-BSH0KGXg
+  OpenAI: oci://ghcr.io/telorun/openai@0.1.0#sha256-SnFe2QDJWkXtCWDcJh_fBTQ73thsdA_Cg6cNfI01i2o
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.13.0#sha256-GUeyyUnObEQcx--sTRlkoMx-3hi07HuqH9aSYA4XY7I
   Mcp: oci://ghcr.io/telorun/mcp-client@0.15.0#sha256-M3frsOwjZWR_Vo2LERsRjBqcN7iXZbVg_gTjK4OGq8s
   Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
@@ -168,7 +168,7 @@ migrations:
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
 ---
-kind: AiOpenai.OpenaiModel
+kind: OpenAI.ModelStream
 metadata: { name: model }
 model: !cel "variables.model"
 apiKey: !cel "secrets.openaiApiKey"

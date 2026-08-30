@@ -23,6 +23,7 @@ metadata:
 imports:
   Ai: ../../modules/ai
   OpenAI: ../../modules/openai
+  Http: ../../modules/http-client
   Fs: ../../modules/fs
   Console: ../../modules/console
 secrets:
@@ -61,10 +62,26 @@ targets:
     inputs:
       output: !cel "'{red ✖} no image produced (' + steps.generate.result.finishReason + ')'"
 ---
+# The account: the key lives on the client's credential, and every OpenAI kind
+# in the app shares it through one request.
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+timeout: 120000
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
 kind: OpenAI.ImageModel
 metadata: { name: painter }
 model: gpt-image-1
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 options:
   size: 1024x1024
   quality: low

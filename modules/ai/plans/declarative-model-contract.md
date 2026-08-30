@@ -322,18 +322,46 @@ decide whether the last group ships at all.
    so no cycle. `Ai.Buffered` passes its whole input through rather than enumerating
    the fields: enumerating them dropped `tools`, which turned an agent's first turn
    into a plain answer with nothing to report it.
-6. **The `openai` module.** The MERGE and RENAME are *landed*: `ai-openai` and
-   `embedding-openai` are one module whose kinds are named by role (`OpenAI.Model`,
-   `ModelStream`, `ImageModel`, `EmbeddingModel`), both old refs publish deprecated
-   naming it, and every live test passes against the real API. Doing this now is what
-   keeps it ONE break for consumers rather than two.
+6. **The `openai` module.** Merge, rename and the consumer move are *landed and
+   published*. `ai-openai` and `embedding-openai` published one final deprecated
+   version each and their directories are deleted, so the duplication is gone. Every
+   in-repo consumer is repointed at `openai`; two of them gained a second resource,
+   since `Ai.TextStream` / `Ai.AgentStream` need an `Ai.ModelStream`.
 
-   Still open: **the credential move** (the model kinds carry an `apiKey` while
-   `Http.BearerToken` sits unused beside them — the fallback controller should drive an
-   injected `Http.Request`, which is what inherits the credential and the 401 retry
-   instead of re-implementing them), and **the manifest dialects**, which are gated on
-   the byte-identity and latency harness. Only one in-repo consumer used a relative
-   path and has moved; the rest are digest-pinned and are repointed at publish time.
+   **The next module release carries two changes at once**: the CEL-slot fix
+   (`model:` and `options:` stopped being CEL slots when the kinds became
+   `Telo.Invocable`, since only a `Telo.Provider`'s fields are implicitly
+   compile-eval) and the credential move below. Every digest-pinned in-repo consumer
+   — the authoring agent, the hub, `chat-console`, `agent-console`, the template —
+   pins `openai@0.1.0` and still writes `apiKey:`, which is consistent with that pin
+   and is what that version's schema requires. `draw-shapes-agent` stays on
+   `ai-openai@0.15.3`: it computes its model id from a variable, which `openai@0.1.0`
+   reads as a literal, so it cannot move before the fix publishes. Moving them all is
+   release work on the same commit as the pin bump: each gains the README's three
+   declarations (`Http.BearerToken`, `Http.Client`, `Http.Request`) and drops the
+   key. `ai-image-console` imports by relative path and already has them. Until then
+   the agent's manifest and its prompt disagree on purpose — the prompt describes the
+   surface the agent authors FOR, the manifest the one it runs ON.
+
+   **The credential move is landed** for all four kinds: `OpenAI.Model`,
+   `ModelStream`, `ImageModel` and `EmbeddingModel` reference an `Http.Request` and
+   carry no key, so the account is declared once and the 401 retry is inherited rather
+   than re-implemented. All four live tests pass against the real API.
+
+   The image kind's multipart intents (edit, inpaint, variation) needed no transport
+   work: the generic primitive already exists — `Multipart.Encoder` yields a framed
+   byte stream plus its boundary-bearing content type, and `Http.Request` sends a byte
+   body under a declared content type, which `modules/multipart/tests/over-http.yaml`
+   composes end to end. The provider frames its form with the platform encoder and
+   sends BYTES, not the stream: a stream body is refused by the credential retry
+   (`ERR_HTTP_BODY_NOT_REPLAYABLE`), and the parts are in memory anyway. A hermetic
+   test decodes the form at a local server and asserts the part names, the boundary
+   surviving the wire, and the bearer token arriving from the client's credential.
+
+   Still open: **the manifest dialects**, gated on the byte-identity and latency
+   harness. The `responses` wire shape they need is recorded above, confirmed by the
+   probe.
+
 7. **The element-typing group**, last and behind its gate. **Not started**; it relaxes
    with 6 by the rule stated above. Each transform already declares an `elementType`
    held by `x-telo-value-schema-from`, which is the half that works today.
