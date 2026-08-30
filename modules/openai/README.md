@@ -11,14 +11,18 @@ the de-facto standard.
 
 | Kind | Implements | Purpose |
 | --- | --- | --- |
-| `OpenAI.Model` | `Ai.Model` | A chat model called for a complete answer. |
-| `OpenAI.ModelStream` | `Ai.ModelStream` | The same, delivered as parts as they are generated. |
+| `OpenAI.ChatModel` | `Ai.Model` | A chat model called for a complete answer, over `/chat/completions`. |
+| `OpenAI.ChatModelStream` | `Ai.ModelStream` | The same, delivered as parts as they are generated. |
+| `OpenAI.ResponsesModel` | `Ai.Model` | A chat model over `/v1/responses` — reasoning that survives a tool loop. |
+| `OpenAI.ResponsesModelStream` | `Ai.ModelStream` | The same, streamed. |
 | `OpenAI.ImageModel` | `Ai.ImageModel` | Generation, editing, inpainting and variations. |
 | `OpenAI.EmbeddingModel` | `Embedding.Model` | Text vectors for search and indexing. |
 
 Named by **role**, as every other backend names its kinds (`Postgres.Connection`,
 `CacheRedis.Store`). The alias already says which vendor this is, so `OpenAI.OpenaiModel`
-stuttered it.
+stuttered it. Where two kinds play the same role over different APIs, the API qualifies
+the name — `ChatModel` and `ResponsesModel` are symmetric, rather than one of them being
+the model and the other a variant of it.
 
 ## One module per system
 
@@ -31,10 +35,44 @@ Both old refs are published deprecated, naming this module as their replacement.
 `telo upgrade` moves a pin within a ref and does not cross a rename, so a consumer edits
 its `imports:` by hand once.
 
+## Two APIs, two pairs of kinds
+
+`/chat/completions` refuses a non-`none` reasoning effort alongside function tools:
+
+```
+400: Function tools with reasoning_effort are not supported for <model> in
+/v1/chat/completions. To use function tools, use /v1/responses or set
+reasoning_effort to 'none'.
+```
+
+An agent is nothing but tools, so on that API it runs with reasoning off. The
+`Responses` pair is how a reasoning model drives a tool loop — the encrypted reasoning
+comes back as the contract's `providerState`, is replayed on the next turn, and is tagged
+with the model and dialect that produced it so a transcript moved elsewhere is dropped
+rather than sent on.
+
+Separate kinds rather than a dialect flag, because the two APIs share a vendor and little
+else: `input` items against `messages`, `instructions` against a system role, flat tools
+against nested ones, an `output` array against `choices`, named events against
+`[DONE]`-terminated chunks. Under one kind, `reasoning` would be a field that is
+sometimes a hard 400.
+
+Prefer the completions pair for everything else, and for every OpenAI-**compatible**
+endpoint: Azure OpenAI, Ollama, vLLM, Groq and OpenRouter serve `/chat/completions`, and
+almost none serve `/v1/responses`.
+
+```yaml
+kind: OpenAI.ResponsesModelStream
+metadata: { name: reasoner }
+model: gpt-5-nano
+request: !ref openaiRequest
+reasoning: { effort: low }
+```
+
 ## Buffered and streaming are two kinds
 
 `Ai.Model` and `Ai.ModelStream` are separate abstracts with one bound entry point each,
-so a provider declares which it serves. `OpenAI.Model` sends a genuinely non-streaming
+so a provider declares which it serves. `OpenAI.ChatModel` sends a genuinely non-streaming
 request rather than collecting a stream — which is what keeps a buffered call working on
 a deployment where streaming is disabled or separately gated.
 
@@ -44,12 +82,12 @@ value is exempt from validation, so one always-streaming abstract would take the
 away from the path most calls use.
 
 ```yaml
-kind: OpenAI.Model
+kind: OpenAI.ChatModel
 metadata: { name: gpt }
 model: gpt-4o-mini
 request: !ref openaiRequest
 ---
-kind: OpenAI.ModelStream
+kind: OpenAI.ChatModelStream
 metadata: { name: gptStream }
 model: gpt-4o-mini
 request: !ref openaiRequest
@@ -65,7 +103,7 @@ the shipped encoders frame the rejection with its code.
 
 ## The account is an `Http.Client`
 
-The chat and embedding kinds carry **no credential of their own**. They reference an
+The model, image and embedding kinds carry **no credential of their own**. They reference an
 `Http.Request`, whose client holds the base URL and the credential:
 
 ```yaml

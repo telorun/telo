@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { AgentClient, openAgentStream, type AgentStreamHandle } from "./client";
 import { ownWorkspace } from "./agent-workspace";
 import { launchAgentSession, type LaunchedAgent } from "./launch";
+import { TermsRequiredError, type RunnerTerms } from "../run/types";
 import { reconcile, seedDelta, pullFile } from "./sync";
 import { formatResumeRequest, resumePoint } from "./transcript";
 import {
@@ -72,6 +73,12 @@ interface AgentContextValue {
    *  has no terms or they aren't accepted yet) — sent on the agent launch so
    *  a terms-enforcing runner doesn't 428 it. */
   setRunnerAcceptedTerms: (version: string | null) => void;
+  /** Register the shell's terms gate. A terms-enforcing runner refuses the
+   *  agent launch with its current agreement, which is the same gate a run is
+   *  refused with — so it is handed to the shell that owns the dialog rather
+   *  than reported as an error telling the user to go and run something else to
+   *  find it. Accepting it and calling `retry()` resumes the turn. */
+  registerTermsGate: (handler: ((terms: RunnerTerms) => void) | null) => void;
 }
 
 /** Recover a tool result's structured fields from its `content`. Tool outputs
@@ -146,6 +153,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   overrideRef.current = overrideUrl;
   const runnerBaseRef = useRef<string | null>(null);
   const runnerTermsRef = useRef<string | null>(null);
+  const termsGateRef = useRef<((terms: RunnerTerms) => void) | null>(null);
   const launchedRef = useRef<LaunchedAgent | null>(null);
   // The agent inside a live watch session, pushed in by the editor shell as
   // sessions come and go. Read at the start of a send, never mid-turn.
@@ -269,6 +277,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   }, []);
   const setRunnerAcceptedTerms = useCallback((version: string | null) => {
     runnerTermsRef.current = version;
+  }, []);
+  const registerTermsGate = useCallback((handler: ((terms: RunnerTerms) => void) | null) => {
+    termsGateRef.current = handler;
   }, []);
 
   const updateAssistant = useCallback((id: string, fn: (m: ChatMessage) => ChatMessage) => {
@@ -475,6 +486,15 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           if (superseded()) return;
           if (isUpstreamGone(err)) {
             invalidateLaunched(err instanceof Error ? err.message : String(err));
+          }
+          if (err instanceof TermsRequiredError) {
+            // The shell shows the agreement; the turn stays in the transcript as
+            // a failed one, so accepting and retrying resumes this same request.
+            termsGateRef.current?.(err.terms);
+            setError("The runner requires accepting its usage terms before the agent can start.");
+            setStatus("error");
+            updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
+            return;
           }
           setError(err instanceof Error ? err.message : String(err));
           setStatus("error");
@@ -711,6 +731,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setRunner,
     setCoResidentAgent,
     setRunnerAcceptedTerms,
+    registerTermsGate,
   };
 
   return <AgentContext.Provider value={value}>{children}</AgentContext.Provider>;

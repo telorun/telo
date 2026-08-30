@@ -1,0 +1,234 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiResponsesStreamParts
+  version: 1.0.0
+  description: |
+    The streamed `/v1/responses` vocabulary, read into contract parts.
+
+    It is a NAMED-EVENT stream, not the completions dialect's positional deltas
+    terminated by `[DONE]`: text arrives as `response.output_text.delta`, a tool
+    call and the encrypted reasoning both arrive whole on
+    `response.output_item.done`, and usage arrives only on `response.completed`.
+    A turn that calls a tool emits no text delta at all, so the transcript here
+    carries both — one fixture covering one path is a fixture that silently
+    covers one.
+
+    The second half asserts that a mid-stream failure REJECTS the iteration
+    rather than yielding an error part: a part has to be remembered by every
+    drainer, and one that forgets truncates silently.
+
+    Offline: a local server replays a recorded transcript, chosen by model id.
+imports:
+  OpenAI: ../
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Stream: ../../stream
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Client
+metadata: { name: fakeClient }
+baseUrl: http://localhost:8878/v1
+---
+kind: Http.Request
+metadata: { name: fakeRequest }
+client: !ref fakeClient
+---
+kind: OpenAI.ResponsesModelStream
+metadata: { name: streaming }
+model: gpt-test
+request: !ref fakeRequest
+reasoning: { effort: low }
+---
+kind: OpenAI.ResponsesModelStream
+metadata: { name: failing }
+model: gpt-fail
+request: !ref fakeRequest
+---
+kind: OpenAI.ResponsesModelStream
+metadata: { name: truncating }
+model: gpt-truncated
+request: !ref fakeRequest
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeApi }
+    routes:
+      - request:
+          path: /responses
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 200
+            when: !cel "request.body.model == 'gpt-truncated'"
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  event: response.output_text.delta
+                  data: {"type":"response.output_text.delta","delta":"half an ans"}
+          - status: 200
+            when: !cel "request.body.model == 'gpt-fail'"
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  event: response.output_text.delta
+                  data: {"type":"response.output_text.delta","delta":"partial"}
+
+                  event: response.failed
+                  data: {"type":"response.failed","response":{"status":"failed","error":{"message":"the model overheated"}}}
+          - status: 200
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  event: response.created
+                  data: {"type":"response.created"}
+
+                  event: response.in_progress
+                  data: {"type":"response.in_progress"}
+
+                  event: response.output_item.added
+                  data: {"type":"response.output_item.added","item":{"id":"rs_1","type":"reasoning"}}
+
+                  event: response.output_item.done
+                  data: {"type":"response.output_item.done","item":{"id":"rs_1","type":"reasoning","encrypted_content":"OPAQUE","summary":[]}}
+
+                  event: response.content_part.added
+                  data: {"type":"response.content_part.added"}
+
+                  event: response.output_text.delta
+                  data: {"type":"response.output_text.delta","delta":"Pa"}
+
+                  event: response.output_text.delta
+                  data: {"type":"response.output_text.delta","delta":"ris"}
+
+                  event: response.output_text.done
+                  data: {"type":"response.output_text.done","text":"Paris"}
+
+                  event: response.function_call_arguments.delta
+                  data: {"type":"response.function_call_arguments.delta","delta":"{\"city\""}
+
+                  event: response.output_item.done
+                  data: {"type":"response.output_item.done","item":{"id":"fc_1","type":"function_call","call_id":"call_xyz","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}
+
+                  event: response.completed
+                  data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":11,"output_tokens":5,"total_tokens":16}}}
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 8878
+    baseUrl: http://localhost:8878
+    openapi:
+      info: { title: Fake Responses API, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref FakeApi
+targets:
+  - !ref FakeServer
+steps:
+  - name: call
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: weather in Paris? }]
+    invoke: !ref streaming
+  - name: parts
+    inputs:
+      input: !cel "steps.call.result.output"
+    invoke:
+      kind: Stream.Collect
+
+  - name: assertParts
+    inputs:
+      actual: !cel "steps.parts.result.items"
+      expected:
+        - { type: text-delta, delta: Pa }
+        - { type: text-delta, delta: ris }
+        # `call_id`, not the item's own `id` — that is what a later
+        # `function_call_output` answers.
+        - type: tool-call
+          toolCall:
+            id: call_xyz
+            name: get_weather
+            arguments: { city: Paris }
+        # Tagged, so a transcript replayed against another model or dialect is
+        # dropped rather than sent on.
+        - type: provider-state
+          providerState:
+            api: responses
+            model: gpt-test
+            # Module-qualified: a resource name is module-scoped, so two libraries
+            # each declaring a model would otherwise mint the same tag.
+            resource: OpenaiResponsesStreamParts.streaming
+            items:
+              - { id: rs_1, type: reasoning, encrypted_content: OPAQUE, summary: [] }
+        - type: finish
+          usage: { promptTokens: 11, completionTokens: 5, totalTokens: 16 }
+          finishReason: tool-calls
+    invoke:
+      kind: Assert.Equals
+
+  # A stream whose bytes stop with no `response.completed` is an INTERRUPTED
+  # answer. Reporting `finish` would render it as a clean stop with zero usage —
+  # the one failure a consumer cannot detect for itself.
+  - name: truncatedStream
+    try:
+      - name: truncCall
+        inputs:
+          messages:
+            - role: user
+              content: [{ type: text, text: hello }]
+        invoke: !ref truncating
+      - name: truncDrain
+        inputs:
+          input: !cel "steps.truncCall.result.output"
+        invoke:
+          kind: Stream.Collect
+      - name: truncUnreachable
+        throw: { code: TEST_FAILED, message: a truncated stream reported a clean finish }
+    catch:
+      - name: assertTruncated
+        inputs:
+          actual:
+            code: !cel "error.code"
+            saysIncomplete: !cel "error.message.contains('incomplete')"
+          expected: { code: ERR_OPENAI_REQUEST_FAILED, saysIncomplete: true }
+        invoke:
+          kind: Assert.Equals
+
+  - name: midStreamFailure
+    try:
+      - name: failCall
+        inputs:
+          messages:
+            - role: user
+              content: [{ type: text, text: hello }]
+        invoke: !ref failing
+      # A streamed failure arrives while the handle is DRAINED, never at invoke.
+      - name: failDrain
+        inputs:
+          input: !cel "steps.failCall.result.output"
+        invoke:
+          kind: Stream.Collect
+      - name: unreachable
+        throw: { code: TEST_FAILED, message: the stream did not reject }
+    catch:
+      - name: assertRejection
+        inputs:
+          actual:
+            code: !cel "error.code"
+            carriesMessage: !cel "error.message.contains('overheated')"
+          expected: { code: ERR_OPENAI_REQUEST_FAILED, carriesMessage: true }
+        invoke:
+          kind: Assert.Equals

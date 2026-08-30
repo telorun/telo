@@ -1,0 +1,156 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiDeprecatedAliases
+  version: 1.0.0
+  description: |
+    `OpenAI.Model` and `OpenAI.ModelStream` — the names the completions kinds had
+    before the rename — still load and still work.
+
+    Kept for one release because deleting them outright makes a consumer that moves
+    its pin hit `UNDEFINED_KIND` naming nothing: the edit distance to `ChatModel` is
+    too large for the suggestion to fire, so the diagnostic is a dead end.
+
+    The point of the assertion is that an alias is not a stub. Each extends the
+    renamed kind with no `base:` and no `controllers:`, so it inherits the
+    controller verbatim — and this drives real calls through both, buffered and
+    streamed, rather than only checking that the manifest parses. The first step
+    is a CONTROL through `OpenAI.ChatModel` itself, so a failure says which half
+    is at fault instead of blaming the alias for a broken fixture.
+imports:
+  OpenAI: ../
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Stream: ../../stream
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Client
+metadata: { name: fakeClient }
+baseUrl: http://localhost:8879/v1
+---
+kind: Http.Request
+metadata: { name: fakeRequest }
+client: !ref fakeClient
+---
+kind: OpenAI.Model
+metadata: { name: oldBuffered }
+model: gpt-test
+request: !ref fakeRequest
+---
+kind: OpenAI.ChatModel
+metadata: { name: newBuffered }
+model: gpt-test
+request: !ref fakeRequest
+---
+kind: OpenAI.ModelStream
+metadata: { name: oldStreaming }
+model: gpt-stream
+request: !ref fakeRequest
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeApi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          # Selected by model id, buffered first: the two entries answer the same
+          # path, and which one a call wants is a property of the resource that
+          # made it.
+          - status: 200
+            when: !cel "request.body.model == 'gpt-test'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message: { content: pong }
+                      finish_reason: stop
+                  usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 }
+          - status: 200
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  data: {"choices":[{"delta":{"content":"pong"}}]}
+
+                  data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}
+
+                  data: [DONE]
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 8879
+    baseUrl: http://localhost:8879
+    openapi:
+      info: { title: Fake Chat API, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref FakeApi
+targets:
+  - !ref FakeServer
+steps:
+  - name: control
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: ping }]
+    invoke: !ref newBuffered
+  - name: assertControl
+    inputs:
+      actual: !cel "steps.control.result.text"
+      expected: pong
+    invoke:
+      kind: Assert.Equals
+
+  - name: buffered
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: ping }]
+    invoke: !ref oldBuffered
+  - name: assertBuffered
+    inputs:
+      actual:
+        text: !cel "steps.buffered.result.text"
+        finishReason: !cel "steps.buffered.result.finishReason"
+        usage: !cel "steps.buffered.result.usage"
+      expected:
+        text: pong
+        finishReason: stop
+        usage: { promptTokens: 2, completionTokens: 1, totalTokens: 3 }
+    invoke:
+      kind: Assert.Equals
+
+  - name: streaming
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: ping }]
+    invoke: !ref oldStreaming
+  - name: drain
+    inputs:
+      input: !cel "steps.streaming.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: assertStreaming
+    inputs:
+      actual: !cel "steps.drain.result.items"
+      expected:
+        - { type: text-delta, delta: pong }
+        - type: finish
+          usage: { promptTokens: 2, completionTokens: 1, totalTokens: 3 }
+          finishReason: stop
+    invoke:
+      kind: Assert.Equals

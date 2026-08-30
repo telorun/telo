@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { create } from "../src/openai-model-controller.js";
+import { create } from "../src/openai-chat-controller.js";
 
 // Verifies how the controller shapes multimodal message content onto the OpenAI
 // wire — content parts, image data URLs, and the tool-message-can't-carry-images

@@ -41,12 +41,12 @@ kind: Http.Request
 metadata: { name: throwingRequest }
 client: !ref throwingClient
 ---
-kind: OpenAI.ModelStream
+kind: OpenAI.ChatModelStream
 metadata: { name: streaming }
 model: gpt-test
 request: !ref plainRequest
 ---
-kind: OpenAI.Model
+kind: OpenAI.ChatModel
 metadata: { name: buffered }
 model: gpt-test
 request: !ref throwingRequest

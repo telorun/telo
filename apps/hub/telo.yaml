@@ -29,7 +29,8 @@ imports:
   PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.4#sha256-Z1My-TDPdE13s63NSi5rT0Qg0CZf-7tAXbJBRcBGCOQ
   Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
   Embedding: oci://ghcr.io/telorun/embedding@0.11.3#sha256-d6UqT9EJTRaXtOI5862y5c-ep6rVhWTjuq9zIPrUD2c
-  OpenAI: oci://ghcr.io/telorun/openai@0.1.0#sha256-SnFe2QDJWkXtCWDcJh_fBTQ73thsdA_Cg6cNfI01i2o
+  OpenAI: oci://ghcr.io/telorun/openai@0.2.0#sha256-Ggrq6AdWFpsgNIlNk_QxzdMHGZh7qUlmbRvjScmFh7E
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.9.0#sha256-xf5Sl63MYbMSM4GzzRPVNrqbtrxQ27x9cwFKrDCjCEM
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.4#sha256-_E2AqSEEsTotJXiSmk9GBqlnlwW8JRXNJXZWbx-olxY
   VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
@@ -398,15 +399,26 @@ migrations:
 # database as the relational rows. The RRF search query never touches that
 # table — it only fuses the ids VectorStore.Match returns (see Search).
 
+# The sidecar's endpoint, declared as an account. It carries no `credential:` at
+# all — the self-hosted server needs none, which is the honest spelling of what
+# used to be an `apiKey: unused` placeholder.
+kind: HttpClient.Client
+metadata:
+  name: embedderClient
+baseUrl: !cel "variables.embedderBaseUrl"
+---
+kind: HttpClient.Request
+metadata:
+  name: embedderRequest
+client: !ref embedderClient
+---
 kind: OpenAI.EmbeddingModel
 metadata:
   name: Embedder
 # Pinned to the stored vectors: embeddinggemma-300m → 768 dims. A model change
-# is a re-embed, never an in-place swap. apiKey is a placeholder — the
-# self-hosted server needs none.
+# is a re-embed, never an in-place swap.
 model: embeddinggemma-300m
-apiKey: unused
-baseUrl: !cel "variables.embedderBaseUrl"
+request: !ref embedderRequest
 # embeddinggemma is prompt-tuned: it expects these exact wrappers, and without
 # them the similarity spread collapses (every kind lands in a narrow band and
 # the ranking degenerates into orthographic noise — "Schema" outranking a real
