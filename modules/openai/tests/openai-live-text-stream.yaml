@@ -14,6 +14,7 @@ secrets:
 imports:
   Ai: ../../ai
   OpenAI: ../
+  Http: ../../http-client
   Ndjson: ../../ndjson-codec
   PlainText: ../../plain-text-codec
   JS: ../../javascript
@@ -22,13 +23,28 @@ imports:
 targets:
   - !ref LiveTextStream
 ---
+# The account: base URL and credential in one place, so the key is declared once
+# and the 401 re-acquire-and-retry is inherited rather than re-implemented.
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
 # apiKey defaults to "" when OPENAI_API_KEY is unset so the resource passes
 # schema validation. The model is just config — no API call until stream() —
 # and the run-step is gated on the key being present.
 kind: OpenAI.ModelStream
 metadata: { name: Live }
 model: gpt-4o-mini
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 options:
   temperature: 0
   maxTokens: 32

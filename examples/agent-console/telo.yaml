@@ -16,11 +16,11 @@ metadata:
         OPENAI_API_KEY=sk-...
   version: 1.0.0
 imports:
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.16.0#sha256-DGAJ0wG1FdNAj7XWWrpgOuJgh07fEGg4ymvB6ODiEhY
-  Ai: oci://ghcr.io/telorun/ai@0.17.0#sha256-0u0_iSMlz0HmJc0VpEEINgJvErfBEudvvlXBJ76FSmc
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.12.0#sha256-C0pozBwpE2xzqEsxCJ5YbpqdiHKpxw90Wvn7Md2Ynus
+  OpenAI: oci://ghcr.io/telorun/openai@0.1.0#sha256-SnFe2QDJWkXtCWDcJh_fBTQ73thsdA_Cg6cNfI01i2o
+  Ai: oci://ghcr.io/telorun/ai@0.18.0#sha256-OtJa8sQbyyLNKMTjbyy5-qiQWF9ouPj7a2-BSH0KGXg
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.13.0#sha256-GUeyyUnObEQcx--sTRlkoMx-3hi07HuqH9aSYA4XY7I
   Mcp: oci://ghcr.io/telorun/mcp-client@0.15.0#sha256-M3frsOwjZWR_Vo2LERsRjBqcN7iXZbVg_gTjK4OGq8s
-  Http: oci://ghcr.io/telorun/http-client@0.21.2#sha256-9n-zEKDe8J6T_pfQ0XCcjtUt_dVW5G3APow5BQlmZWE
+  Http: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
   Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
   Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
@@ -55,7 +55,7 @@ migrations:
       )
 ---
 # --- AI provider -----------------------------------------------------------
-kind: AiOpenai.OpenaiModel
+kind: OpenAI.Model
 metadata: { name: gpt4oMini }
 model: gpt-4o-mini
 apiKey: !cel "secrets.openaiApiKey"

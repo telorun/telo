@@ -1,0 +1,134 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiImageEditMultipart
+  version: 1.0.0
+  description: |
+    An image EDIT goes through the injected Http.Request as a multipart form —
+    the path the credential move could not cover without a test. A local server
+    stands in for the endpoint and DECODES what arrived, so what is asserted is
+    the wire: the named parts (`model`, `image`, `prompt`, `mask`) with their
+    file names, the boundary-bearing content type reaching the server intact, and
+    the bearer token applied by the client's credential rather than by the
+    provider. The decoded part names come back through `revised_prompt`, which the
+    provider surfaces as `text` — the one output field that carries free text.
+
+    Offline: nothing leaves localhost.
+imports:
+  OpenAI: ../
+  Ai: ../../ai
+  Http: ../../http-client
+  Server: ../../http-server
+  Multipart: ../../multipart
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+# Named rather than inline at the route: an inline `{kind}` handler from an
+# imported library inside a `with:` scope fails to resolve to a live instance
+# (ERR_RESOURCE_NOT_INVOKABLE) — a pre-existing cross-module mount limitation.
+kind: Multipart.Decoder
+metadata: { name: serverDecoder }
+---
+kind: Http.BearerToken
+metadata: { name: fakeKey }
+token: sk-test-token
+---
+kind: Http.Client
+metadata: { name: fakeOpenAi }
+baseUrl: http://localhost:8874/v1
+credential: !ref fakeKey
+---
+kind: Http.Request
+metadata: { name: fakeRequest }
+client: !ref fakeOpenAi
+---
+kind: OpenAI.ImageModel
+metadata: { name: painter }
+model: gpt-image-1
+request: !ref fakeRequest
+options:
+  size: 256x256
+---
+kind: Ai.Image
+metadata: { name: edit }
+model: !ref painter
+intent: inpaint
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeImagesApi }
+    routes:
+      - request:
+          path: /images/edits
+          method: POST
+          schema:
+            body:
+              x-telo-type:
+                name: Telo.Stream
+                of: Telo.Bytes
+        inputs:
+          input: !cel "request.body"
+          contentType: !cel "request.headers['content-type']"
+        handler: !ref serverDecoder
+        returns:
+          # The authorization header is checked HERE, at the only place that
+          # sees it: a request without the credential's token is answered 401,
+          # which the provider reports as ERR_OPENAI_REQUEST_FAILED and the
+          # test fails on.
+          - when: !cel "request.headers['authorization'] != 'Bearer sk-test-token'"
+            status: 401
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { error: { message: unauthenticated } }
+          - status: 200
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required: [data]
+                  properties:
+                    data: { type: array }
+                body:
+                  # 'edited' in base64, so the bytes the provider decodes are
+                  # checkable as text.
+                  data:
+                    - b64_json: ZWRpdGVk
+                      revised_prompt: !cel "result.parts.map(p, has(p.filename) ? p.name + '=' + p.filename : p.name).join(',')"
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 8874
+    baseUrl: http://localhost:8874
+    openapi:
+      info: { title: Fake Images API, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref FakeImagesApi
+targets:
+  - !ref FakeServer
+steps:
+  - name: inpaint
+    inputs:
+      prompt: paint the marked region blue
+      images:
+        - data: !cel "bytesFromBase64('aW1hZ2UtYnl0ZXM=')"
+          mediaType: image/png
+      mask:
+        data: !cel "bytesFromBase64('bWFzay1ieXRlcw==')"
+        mediaType: image/png
+    invoke: !ref edit
+  - name: assert
+    inputs:
+      actual:
+        parts: !cel "steps.inpaint.result.text"
+        image: !cel "string(steps.inpaint.result.images[0].data)"
+        finishReason: !cel "steps.inpaint.result.finishReason"
+      expected:
+        parts: "model,image=image.png,prompt,mask=mask.png,size"
+        image: edited
+        finishReason: stop
+    invoke:
+      kind: Assert.Equals

@@ -1,0 +1,135 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiFailureCarriesMessage
+  version: 1.0.0
+  description: |
+    A refused request is ONE error code with the provider's own words in it,
+    whatever the account's transport settings — so a `catches:` written against
+    this module's declared union holds:
+
+      - a streamed call answered 4xx surfaces the body's `error.message`, which
+        `Http.Request` hands over as an unread stream under `responseType: stream`;
+      - a client declaring `throwOnHttpError: true` makes the transport raise
+        `ERR_HTTP_STATUS` first, and the provider re-raises it as its own code
+        rather than letting a code the module never declared escape.
+
+    Offline: a local server answers 400 with a provider-shaped body.
+imports:
+  OpenAI: ../
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Stream: ../../stream
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Client
+metadata: { name: plainClient }
+baseUrl: http://localhost:8875/v1
+---
+kind: Http.Request
+metadata: { name: plainRequest }
+client: !ref plainClient
+---
+kind: Http.Client
+metadata: { name: throwingClient }
+baseUrl: http://localhost:8875/v1
+throwOnHttpError: true
+---
+kind: Http.Request
+metadata: { name: throwingRequest }
+client: !ref throwingClient
+---
+kind: OpenAI.ModelStream
+metadata: { name: streaming }
+model: gpt-test
+request: !ref plainRequest
+---
+kind: OpenAI.Model
+metadata: { name: buffered }
+model: gpt-test
+request: !ref throwingRequest
+---
+kind: Run.Value
+metadata: { name: refusal }
+value:
+  error: { message: "The model `gpt-test` does not exist.", code: model_not_found }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeChatApi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+        handler: !ref refusal
+        returns:
+          - status: 400
+            content:
+              application/json:
+                # Open, or the response serializer keeps only declared properties
+                # and the provider's message never leaves the server.
+                schema: { type: object, additionalProperties: true }
+                body: !cel "result"
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 8875
+    baseUrl: http://localhost:8875
+    openapi:
+      info: { title: Fake Chat API, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref FakeChatApi
+targets:
+  - !ref FakeServer
+steps:
+  - name: streamed
+    try:
+      - name: streamCall
+        inputs:
+          messages:
+            - role: user
+              content: [{ type: text, text: hello }]
+        invoke: !ref streaming
+      # A streamed call fails while it is DRAINED, never at invoke — the handle
+      # comes back first and the response arrives behind it.
+      - name: drain
+        inputs:
+          input: !cel "steps.streamCall.result.output"
+        invoke:
+          kind: Stream.Collect
+      - name: streamUnreachable
+        throw: { code: TEST_FAILED, message: the streamed call did not raise }
+    catch:
+      - name: streamCheck
+        inputs:
+          actual:
+            code: !cel "error.code"
+            carriesMessage: !cel "error.message.contains('does not exist')"
+            status: !cel "error.data.status"
+          expected: { code: ERR_OPENAI_REQUEST_FAILED, carriesMessage: true, status: 400 }
+        invoke:
+          kind: Assert.Equals
+  - name: throwing
+    try:
+      - name: bufferedCall
+        inputs:
+          messages:
+            - role: user
+              content: [{ type: text, text: hello }]
+        invoke: !ref buffered
+      - name: bufferedUnreachable
+        throw: { code: TEST_FAILED, message: the buffered call did not raise }
+    catch:
+      - name: bufferedCheck
+        inputs:
+          actual:
+            code: !cel "error.code"
+            carriesMessage: !cel "error.message.contains('does not exist')"
+            status: !cel "error.data.status"
+          expected: { code: ERR_OPENAI_REQUEST_FAILED, carriesMessage: true, status: 400 }
+        invoke:
+          kind: Assert.Equals

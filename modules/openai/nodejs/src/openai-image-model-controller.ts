@@ -1,5 +1,4 @@
 import { fetchOrThrow } from "@telorun/sdk";
-import { redact } from "@telorun/ai";
 import type {
   AiImageModelInstance,
   GeneratedImage,
@@ -16,12 +15,20 @@ import type {
   ResourceInstance,
 } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import {
+  isSuccess,
+  openAiFailure,
+  sendOpenAi,
+  type HttpRequestInstance,
+  type OpenAiCall,
+  type OpenAiResponse,
+} from "./openai-endpoint.js";
 import { errorMessage, mergeOptions, toOpenAiParams } from "./openai-params.js";
 
 /**
- * OpenAI-compatible provider for the Ai.ImageModel abstract. Speaks the images HTTP
- * API directly (no vendor SDK), so the same controller serves OpenAI plus every
- * OpenAI-compatible endpoint via `baseUrl`.
+ * OpenAI-compatible provider for the Ai.ImageModel abstract, over the images
+ * HTTP API through an injected `Http.Request` — see openai-endpoint.ts for why
+ * not `fetch`.
  *
  * Endpoint selection follows the configured intent, which Ai.Image resolves and the
  * manifest's `$defs/Intent` has already constrained statically:
@@ -29,18 +36,22 @@ import { errorMessage, mergeOptions, toOpenAiParams } from "./openai-params.js";
  *   edit | inpaint  → POST /images/edits         (multipart; mask is its own part)
  *   variation       → POST /images/variations    (multipart; no prompt)
  *
+ * A multipart body is framed by Node's own `FormData` encoder (undici, through
+ * `new Response(form)` — host-specific; a port uses its host's) and sent as BYTES
+ * under the content type it produced (boundary included). Bytes rather than
+ * the stream the encoder could also give: the request is replayable, so the 401
+ * re-acquire-and-retry `http-client` owns still applies — a stream body is
+ * refused there — and the parts are already in memory.
+ *
  * Options merging: this manifest's `options` → the options Ai.Image already merged
  * from its own and the caller's. Shallow, downstream wins; keys are camelCase in the
  * manifest and converted to the wire's snake_case.
  */
 
-const DEFAULT_BASE_URL = "https://api.openai.com/v1";
-
 interface OpenaiImageResource {
   metadata: { name: string; module?: string };
   model: string;
-  apiKey: string;
-  baseUrl?: string;
+  request: HttpRequestInstance;
   options?: Record<string, unknown>;
 }
 
@@ -77,6 +88,8 @@ const REFUSAL_CODES = new Set([
 /** The reference-image modes this controller has an endpoint for. Mirrors the
  *  manifest's `$defs/Intent`, which is what enforces it statically. */
 const SUPPORTED_INTENTS = new Set(["edit", "inpaint", "variation"]);
+
+const OPERATION = "OpenAI image generation";
 
 /** Media type of the produced bytes. gpt-image-1 honours an `output_format` option;
  *  every other model returns PNG. */
@@ -128,42 +141,50 @@ function mapUsage(u: OpenAiImageUsage | undefined): UsageQuantity | undefined {
   };
 }
 
-class OpenaiImageModelInstance implements ResourceInstance, AiImageModelInstance {
-  private readonly baseUrl: string;
-
-  constructor(private readonly resource: OpenaiImageResource) {
-    this.baseUrl = (resource.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
+/** Frame a form the way Node's fetch would, and read back the content type it
+ *  chose — the boundary lives in both, so they come from one place. */
+async function frameForm(form: FormData): Promise<{ body: Uint8Array; contentType: string }> {
+  const framed = new Response(form);
+  const contentType = framed.headers.get("content-type");
+  if (!contentType) {
+    throw new Error(`${OPERATION}: the runtime produced a multipart body with no content type.`);
   }
+  return { body: new Uint8Array(await framed.arrayBuffer()), contentType };
+}
+
+class OpenaiImageModelInstance implements ResourceInstance, AiImageModelInstance {
+  constructor(private readonly resource: OpenaiImageResource) {}
 
   async invoke(input: ImageInvokeInput, ctx?: InvokeContext): Promise<ImageGenerationResult> {
     const params = toOpenAiParams(mergeOptions(this.resource.options, input.options));
-    const signal = ctx?.cancellation.signal;
     const intent = input.intent;
     this.checkIntent(intent, input);
 
-    const request =
+    const call =
       intent === undefined
-        ? this.generationRequest(input, params, signal)
-        : this.multipartRequest(intent, input, params, signal);
+        ? this.generationCall(input, params)
+        : await this.multipartCall(intent, input, params);
 
-    const res = await fetchOrThrow(`${this.baseUrl}${request.path}`, request.init, {
-      operation: "AI image generation",
-      resource: this.resource.metadata.name,
-      setting: "baseUrl",
-    });
+    const response = await sendOpenAi(
+      this.resource.request,
+      this.resource.metadata.name,
+      OPERATION,
+      call,
+      ctx,
+    );
 
-    if (!res.ok) {
-      const refusal = await this.refusalReason(res);
+    if (!isSuccess(response)) {
+      const refusal = refusalReason(response);
       // Carry the provider's explanation through: a total refusal otherwise reaches
       // the author as an empty array with no reason, which is the one case where
       // they most need one.
       if (refusal) {
         return { images: [], finishReason: refusal.reason, text: refusal.message };
       }
-      throw new Error(await errorMessage(res, "OpenAI image generation"));
+      throw openAiFailure(this.resource.metadata.name, OPERATION, response);
     }
 
-    const data = (await res.json()) as OpenAiImageResponse;
+    const data = response.body as OpenAiImageResponse;
     const items = data.data ?? [];
     const mediaType = outputMediaType(params);
     const dimensions = requestedDimensions(params);
@@ -171,7 +192,7 @@ class OpenaiImageModelInstance implements ResourceInstance, AiImageModelInstance
     const images: GeneratedImage[] = [];
     for (const item of items) {
       images.push({
-        data: await this.imageBytes(item, signal),
+        data: await this.imageBytes(item, ctx?.cancellation.signal),
         mediaType,
         ...dimensions,
       });
@@ -188,37 +209,24 @@ class OpenaiImageModelInstance implements ResourceInstance, AiImageModelInstance
   }
 
   /** Text-to-image: a plain JSON body. */
-  private generationRequest(
-    input: ImageInvokeInput,
-    params: Record<string, unknown>,
-    signal: AbortSignal | undefined,
-  ): { path: string; init: RequestInit } {
-    const body: Record<string, unknown> = {
-      model: this.resource.model,
-      prompt: input.prompt ?? "",
-      ...params,
-      ...(wantsResponseFormat(this.resource.model) ? { response_format: "b64_json" } : {}),
-    };
+  private generationCall(input: ImageInvokeInput, params: Record<string, unknown>): OpenAiCall {
     return {
       path: "/images/generations",
-      init: {
-        method: "POST",
-        headers: { "content-type": "application/json", ...this.authHeader() },
-        body: JSON.stringify(body),
-        ...(signal ? { signal } : {}),
+      body: {
+        model: this.resource.model,
+        prompt: input.prompt ?? "",
+        ...params,
+        ...(wantsResponseFormat(this.resource.model) ? { response_format: "b64_json" } : {}),
       },
     };
   }
 
-  /** Reference-image intents. `content-type` is deliberately NOT set: the runtime
-   *  fills in the multipart boundary, and setting it by hand produces a body the
-   *  server cannot parse. */
-  private multipartRequest(
+  /** Reference-image intents: named binary parts, framed and sent as bytes. */
+  private async multipartCall(
     intent: string,
     input: ImageInvokeInput,
     params: Record<string, unknown>,
-    signal: AbortSignal | undefined,
-  ): { path: string; init: RequestInit } {
+  ): Promise<OpenAiCall> {
     const images = input.images ?? [];
     const form = new FormData();
     form.append("model", this.resource.model);
@@ -251,17 +259,8 @@ class OpenaiImageModelInstance implements ResourceInstance, AiImageModelInstance
 
     return {
       path: variation ? "/images/variations" : "/images/edits",
-      init: {
-        method: "POST",
-        headers: this.authHeader(),
-        body: form,
-        ...(signal ? { signal } : {}),
-      },
+      ...(await frameForm(form)),
     };
-  }
-
-  private authHeader(): Record<string, string> {
-    return this.resource.apiKey ? { authorization: `Bearer ${this.resource.apiKey}` } : {};
   }
 
   /** The intents this controller routes. The manifest's `$defs/Intent` is what makes
@@ -272,7 +271,7 @@ class OpenaiImageModelInstance implements ResourceInstance, AiImageModelInstance
    *  rules are as well. */
   private checkIntent(intent: string | undefined, input: ImageInvokeInput): void {
     if (intent === undefined) return;
-    const label = `AiOpenai.OpenaiImageModel "${this.resource.metadata.name}"`;
+    const label = `OpenAI.ImageModel "${this.resource.metadata.name}"`;
     if (!SUPPORTED_INTENTS.has(intent)) {
       throw new InvokeError(
         "ERR_INVALID_INPUT",
@@ -293,36 +292,11 @@ class OpenaiImageModelInstance implements ResourceInstance, AiImageModelInstance
     }
   }
 
-  /** Classify a non-OK response: a content refusal is an outcome the contract models,
-   *  anything else is an error the caller must see. Returns undefined for the latter
-   *  so the caller throws with the provider's own message. */
-  private async refusalReason(
-    res: Response,
-  ): Promise<{ reason: ImageFinishReason; message: string } | undefined> {
-    let body = "";
-    try {
-      body = await res.clone().text();
-    } catch {
-      return undefined;
-    }
-    try {
-      const parsed = JSON.parse(body) as { error?: { code?: string; type?: string; message?: string } };
-      const code = parsed.error?.code ?? parsed.error?.type;
-      if (typeof code === "string" && REFUSAL_CODES.has(code)) {
-        return {
-          reason: "content-filter",
-          message: parsed.error?.message ?? `The request was refused (${code}).`,
-        };
-      }
-    } catch {
-      // Non-JSON body — not a structured refusal, so it is a plain failure.
-    }
-    return undefined;
-  }
-
   /** Take the bytes from the response item. Base64 is what we ask for, but a
    *  gateway (or a model that ignores `response_format`) may answer with a URL —
-   *  fetch it rather than returning an image-shaped hole. */
+   *  fetch it rather than returning an image-shaped hole. A direct fetch, not the
+   *  injected request: the URL is the provider's own, off the account's base URL,
+   *  and carries its own access token. */
   private async imageBytes(item: OpenAiImageDatum, signal: AbortSignal | undefined): Promise<Uint8Array> {
     if (typeof item.b64_json === "string") {
       return new Uint8Array(Buffer.from(item.b64_json, "base64"));
@@ -339,13 +313,40 @@ class OpenaiImageModelInstance implements ResourceInstance, AiImageModelInstance
       return new Uint8Array(await res.arrayBuffer());
     }
     throw new Error(
-      `OpenAI image generation returned an item with neither 'b64_json' nor 'url' (resource '${this.resource.metadata.name}').`,
+      `${OPERATION} returned an item with neither 'b64_json' nor 'url' (resource '${this.resource.metadata.name}').`,
     );
   }
 
+  /** Nothing to redact: the key is the client's. */
   snapshot(): Record<string, unknown> {
-    return redact(["apiKey"], this.resource);
+    return { model: this.resource.model, ...(this.resource.options ? { options: this.resource.options } : {}) };
   }
+}
+
+/** Classify a non-OK response: a content refusal is an outcome the contract models,
+ *  anything else is an error the caller must see. The body is already parsed by
+ *  `Http.Request` when the endpoint answered JSON. */
+function refusalReason(
+  response: OpenAiResponse,
+): { reason: ImageFinishReason; message: string } | undefined {
+  let parsed: { error?: { code?: string; type?: string; message?: string } } | undefined;
+  if (typeof response.body === "string") {
+    try {
+      parsed = JSON.parse(response.body);
+    } catch {
+      return undefined;
+    }
+  } else if (response.body && typeof response.body === "object") {
+    parsed = response.body as typeof parsed;
+  }
+  const code = parsed?.error?.code ?? parsed?.error?.type;
+  if (typeof code === "string" && REFUSAL_CODES.has(code)) {
+    return {
+      reason: "content-filter",
+      message: parsed?.error?.message ?? `The request was refused (${code}).`,
+    };
+  }
+  return undefined;
 }
 
 export function register(_ctx: ControllerContext): void {}

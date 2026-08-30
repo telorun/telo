@@ -13,16 +13,32 @@ metadata:
     is ever made.
 imports:
   OpenAI: ../
+  Http: ../../http-client
   Embedding: ../../embedding
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref Test
 ---
+# The account. The key lives on the client's credential, so the model kinds
+# carry none.
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: dummy-key
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
 kind: OpenAI.EmbeddingModel
 metadata: { name: Model }
 model: text-embedding-3-small
-apiKey: dummy-key
+request: !ref openaiRequest
 dimensions: 1536
 ---
 # A dependent consumer — its ref must resolve, proving the model initialized
@@ -46,11 +62,13 @@ steps:
         model: !cel "'model' in inputs.probe ? inputs.probe.model : null"
         dimensions: !cel "'dimensions' in inputs.probe ? inputs.probe.dimensions : null"
         apiKey: !cel "'apiKey' in inputs.probe ? inputs.probe.apiKey : null"
+        hasApiKey: !cel "'apiKey' in inputs.probe"
   - name: Assert
     inputs:
       model: !cel steps.Inspect.result.model
       dimensions: !cel steps.Inspect.result.dimensions
       apiKey: !cel steps.Inspect.result.apiKey
+      hasApiKey: !cel steps.Inspect.result.hasApiKey
     invoke:
       kind: Assert.Schema
       schema:
@@ -58,5 +76,8 @@ steps:
         properties:
           model: { const: text-embedding-3-small }
           dimensions: { const: 1536 }
-          apiKey: { const: "[redacted]" }
-        required: [model, dimensions, apiKey]
+          # The kind carries no key at all now — the credential is the client's —
+          # so the snapshot cannot leak one. Absent beats redacted.
+          apiKey: { type: "null" }
+          hasApiKey: { const: false }
+        required: [model, dimensions, apiKey, hasApiKey]

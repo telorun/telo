@@ -13,18 +13,33 @@ secrets:
 imports:
   OpenAI: ../
   Ai: ../../ai
+  Http: ../../http-client
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref LiveImage
 ---
-# apiKey defaults to "" when OPENAI_API_KEY is unset so the resource passes schema
-# validation. The model is constructed (just config — no API call until invoke), but
-# never reached because the run-step is gated.
+# The token defaults to "" when OPENAI_API_KEY is unset so the credential passes
+# schema validation. The model is constructed (just config — no API call until
+# invoke), but never reached because the run-step is gated.
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+timeout: 120000
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
 kind: OpenAI.ImageModel
 metadata: { name: Live }
 model: gpt-image-1
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 options:
   size: 1024x1024
   quality: low

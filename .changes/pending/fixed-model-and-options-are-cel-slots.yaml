@@ -1,0 +1,8 @@
+modules:
+  modules/openai: Fixed
+body: "`model` and `options` are CEL slots again. A `Telo.Provider`'s fields are
+  implicitly `x-telo-eval: compile`; these kinds became `Telo.Invocable` when the model
+  contract was declared, so the two fields that relied on that implicit rule silently
+  stopped being evaluated — `model: !cel \"variables.model\"` was read as a literal.
+  `apiKey` and `baseUrl` were annotated explicitly and were never affected. Any manifest
+  computing its model id or options from a variable needs this."
