@@ -7,7 +7,7 @@ sidebar_label: Ai.ImageModel
 
 > Examples below assume this module is imported with an `imports:` entry under alias `Ai`. Kind references (`Ai.ImageModel`, `Ai.Image`, …) follow that alias — if you import the module under a different name, substitute accordingly.
 
-`Ai.ImageModel` is a `Telo.Abstract` declared in `@telorun/ai`. Any module can declare a `Telo.Definition` that **`extends: Ai.ImageModel`** and ship as a drop-in provider for [`Ai.Image`](./ai-image.md). `@telorun/ai-openai` is the first-party implementation.
+`Ai.ImageModel` is a `Telo.Abstract` declared in `@telorun/ai`. Any module can declare a `Telo.Definition` that **`extends: Ai.ImageModel`** and ship as a drop-in provider for [`Ai.Image`](./ai-image.md). `openai` is the first-party implementation.
 
 ```yaml
 kind: Telo.Abstract
@@ -75,12 +75,12 @@ Reference-image work splits differently per backend: whole-image editing, inpain
 
 ```yaml
 kind: Telo.Definition
-metadata: { name: OpenaiImageModel }
+metadata: { name: ImageModel }
 capability: Telo.Provider
 extends: Ai.ImageModel
 schema:
   type: object
-  # … model, apiKey, baseUrl, options …
+  # … model, request, options …
   $defs:
     Intent:
       type: string

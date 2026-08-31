@@ -25,7 +25,7 @@ export interface EmbedResult {
 }
 
 /**
- * The contract every embedding backend (EmbeddingOpenai.Model, …) implements.
+ * The contract every embedding backend (OpenAI.EmbeddingModel, …) implements.
  * A single `embed` call produces one vector per input text; the backend reads
  * `intent` to pick its query/passage parameter where the model is asymmetric.
  */

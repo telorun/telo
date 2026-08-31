@@ -4,7 +4,7 @@
 //
 // Deliberately dependency-free: this fixture sits under `__fixtures__`, outside
 // the pnpm workspace globs, so it can never reliably link a workspace package.
-// Prompt-template behaviour is covered by embedding-openai's unit tests.
+// Prompt-template behaviour is covered by openai's unit tests.
 
 function deterministicVector(text, intent, dimensions) {
   const seed = intent === "query" ? 1 : 2;

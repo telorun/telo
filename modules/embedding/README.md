@@ -1,6 +1,6 @@
 # Embedding
 
-The backend-pluggable text-embedding abstract for Telo. `Embedding.Model` is the contract every backend implements; `Embedding.Query` and `Embedding.Passage` turn text into vectors against any model. Backends ship as their own modules — `embedding-openai` (`EmbeddingOpenai.Model`) — mirroring the `cache` / `cache-memory` family.
+The backend-pluggable text-embedding abstract for Telo. `Embedding.Model` is the contract every backend implements; `Embedding.Query` and `Embedding.Passage` turn text into vectors against any model. Backends ship as their own modules — `openai` (`OpenAI.EmbeddingModel`) — mirroring the `cache` / `cache-memory` family.
 
 ## Why two operations
 
@@ -12,7 +12,7 @@ Asymmetric retrieval models embed a search **query** differently from a stored *
 
 | Kind | Capability | Purpose |
 | --- | --- | --- |
-| `Embedding.Model` | `Telo.Provider` | The abstract model. A concrete backend (`EmbeddingOpenai.Model`) satisfies it. |
+| `Embedding.Model` | `Telo.Provider` | The abstract model. A concrete backend (`OpenAI.EmbeddingModel`) satisfies it. |
 | `Embedding.Query` | `Telo.Invocable` | Embeds search queries. |
 | `Embedding.Passage` | `Telo.Invocable` | Embeds stored passages (the chunks you index). |
 
@@ -20,13 +20,26 @@ Asymmetric retrieval models embed a search **query** differently from a stored *
 
 ## Usage
 
-> Examples assume this module is imported under alias `Embedding` and an OpenAI backend under `EmbeddingOpenai`.
+> Examples assume this module is imported under alias `Embedding`, `openai` under `OpenAI`, and `http-client` under `Http`.
 
 ```yaml
-kind: EmbeddingOpenai.Model
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.EmbeddingModel
 metadata: { name: textEmbedding }
 model: text-embedding-3-small
-apiKey: !cel secrets.openaiApiKey
+request: !ref openaiRequest
 dimensions: 1536
 ---
 kind: Embedding.Passage
@@ -56,6 +69,6 @@ Wire the resulting vector into a vector store (`VectorStore.Record` for indexing
 
 | Module | Kind | Notes |
 | --- | --- | --- |
-| `embedding-openai` | `EmbeddingOpenai.Model` | OpenAI `/embeddings` HTTP API; symmetric (intent ignored). |
+| `openai` | `OpenAI.EmbeddingModel` | OpenAI `/embeddings` HTTP API; symmetric (intent ignored). |
 
 To add a backend, implement the `EmbeddingModel` contract from `@telorun/embedding` and declare a `Telo.Definition` with `extends: Embedding.Model`.

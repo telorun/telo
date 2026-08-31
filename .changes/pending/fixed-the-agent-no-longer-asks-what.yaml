@@ -1,0 +1,13 @@
+modules:
+  apps/authoring-agent: Fixed
+body: "The agent no longer asks what to name an environment variable. An env var name, a
+  file path, a resource name and an app slug are all names the manifest DECLARES, so
+  asking makes the user invent an answer whose only effect is what the agent was about
+  to write anyway — it picks the name, writes the binding, and reports which vars to set
+  when it finishes. Two places in the prompt had told it otherwise: the credentials item
+  on the unspecified-facts checklist asked for \"the env var it arrives in\", and the
+  OAuth section called the variable names for a client id and secret \"a real
+  question\". What stays a question is the part only the user holds: which identity each
+  side authenticates as where several plausibly exist, and the credential's value
+  itself. Anything derivable from what is being built — an OAuth scope follows from the
+  calls the agent is about to make — is the agent's to pick too."

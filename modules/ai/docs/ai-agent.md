@@ -5,17 +5,30 @@ sidebar_label: Ai.Agent
 
 # `Ai.Agent`
 
-> Examples assume aliases `Ai` (this module), `AiOpenai` (`ai-openai`), and `Js` (`javascript`). Substitute if you import under different names.
+> Examples assume aliases `Ai` (this module), `OpenAI` (`openai`), `Http` (`http-client`), and `Js` (`javascript`). Substitute if you import under different names.
 
 `Ai.Agent` is a `Telo.Invocable` that runs a **tool-use loop** over any `Ai.Model`: it calls the model with a set of tools, executes whatever tools the model requests, replays the results, and repeats until the model produces a final answer (or a step cap is hit). The loop lives in the controller — not the provider — so it is provider-agnostic and every turn is observable in the returned `steps` trace.
 
 Tools come from one field, `toolProviders`: a list of references to any [`Ai.ToolProvider`](./ai-tool-provider.md). Both a static list ([`Ai.Tools`](./ai-tool-provider.md#aitools)) and runtime MCP discovery (`AiMcp.ToolProvider`, from `@telorun/ai-mcp`) are providers — the agent treats them uniformly.
 
 ```yaml
-kind: AiOpenai.OpenaiModel
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.ChatModel
 metadata: { name: Gpt4o }
 model: gpt-4o-mini
-apiKey: "${{ secrets.openaiApiKey }}"
+request: !ref openaiRequest
 ---
 kind: Js.Script
 metadata: { name: Multiplier }

@@ -1,21 +1,25 @@
 name: E2E Tests
 
 # End-to-end suites that stand up, or reach out to, something real — a
-# docker-compose stack, a live model, the live hub. Run in parallel with the
-# main `test.yml` job so multi-hundred-MB image pulls / compose bring-ups don't
-# extend the unit-test wall time. Each job is self-contained.
+# docker-compose stack, a live model, the live hub. Each job is self-contained.
 #
 # They are separate from the module suite for a second reason too: an app's
 # tests pin PUBLISHED module versions, so they also fail while a change has
 # landed in this repo but not yet been released and re-pinned. That is a real
 # signal about the release sequence, and it should not make a module-suite
 # failure ambiguous.
+#
+# PULL REQUESTS ONLY. These are the expensive suites — a compose stack with a
+# model sidecar, and tens of minutes of live agent turns — and running them
+# again on the merge commit re-pays for a result the PR already gave. The cost
+# is that nothing catches a break arriving through a path the PR gate does not
+# watch (`cli/`, `kernel/`); `workflow_dispatch` is how that gets run on demand
+# when a change there is suspected.
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   # Brings up the discovery-hub stack (db=pgvector, storage, embedder, hub) via
@@ -175,23 +179,70 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The suite drives a real model through whole agent turns, so it costs
+      # tens of minutes and real tokens on every run. Gated on the agent's own
+      # files rather than skipped by a workflow-level `paths:` filter: a job
+      # that never STARTS never reports, and a required check that never
+      # reports blocks the merge it was meant to guard. This job always runs and
+      # always reports; what it skips is the expensive part.
+      #
+      # Knowingly NOT in the trigger set: `cli/` and `kernel/`. The agent runs
+      # `telo` from this checkout, so a change there really can break it — but
+      # including them would re-run the suite on most pull requests, which is
+      # the cost this gate exists to remove. Nothing else covers that coupling
+      # now the workflow no longer runs on main, so a change there that is
+      # expected to reach the agent wants a manual `workflow_dispatch`.
+      - name: Decide whether the agent changed
+        id: changed
+        shell: bash
+        run: |
+          # A manual dispatch is someone asking for this suite by name.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          # Full history is already checked out (fetch-depth: 0), so this only
+          # makes sure the base branch ref exists locally. NOT shallow: a
+          # depth-limited ref has no merge base with HEAD, and the three-dot
+          # diff below needs one.
+          git fetch --no-tags origin "${{ github.base_ref }}" || true
+          # FAIL OPEN. A gate that cannot work out what changed must run the
+          # suite, not skip it: skipping turns a broken gate into a silently
+          # disabled test, which is the one outcome worse than paying for a run.
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD") || {
+            echo "run=true" >> $GITHUB_OUTPUT
+            echo "Could not diff against the base — running the suite anyway." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          }
+          if printf '%s\n' "$changed" \
+             | grep -qE '^(apps/authoring-agent/|\.github/workflows/e2e\.yml$)'; then
+            echo "run=true" >> $GITHUB_OUTPUT
+          else
+            echo "run=false" >> $GITHUB_OUTPUT
+            echo "No authoring-agent changes — skipping the live suite." >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Setup Node.js
+        if: steps.changed.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
 
       - name: Install pnpm
+        if: steps.changed.outputs.run == 'true'
         uses: pnpm/action-setup@v2
         with:
           version: 10.28.2
 
       - name: Get pnpm store directory
+        if: steps.changed.outputs.run == 'true'
         id: pnpm-cache
         shell: bash
         run: |
           echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
       - name: Setup pnpm cache
+        if: steps.changed.outputs.run == 'true'
         uses: actions/cache@v3
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
@@ -200,7 +251,9 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
+        if: steps.changed.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Run authoring agent e2e suite
+        if: steps.changed.outputs.run == 'true'
         run: pnpm run test:e2e:authoring-agent

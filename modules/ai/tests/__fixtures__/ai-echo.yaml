@@ -5,7 +5,7 @@ metadata:
   description: Internal Ai.Model test fixture. Echoes the last message back, optionally with a suffix.
 imports:
   # Importing the parent @telorun/ai so `Ai` is an alias in scope for `extends: Ai.Model`
-  # below. This mirrors exactly how external provider packages (ai-openai, ai-anthropic,
+  # below. This mirrors exactly how external provider packages (openai, ai-anthropic,
   # ai-ollama) import @telorun/ai — the echo fixture exercises the same code path.
   # Path resolves relative to THIS file (ai-echo.yaml), which lives at
   # modules/ai/tests/__fixtures__/. Two levels up = modules/ai/, the @telorun/ai library.

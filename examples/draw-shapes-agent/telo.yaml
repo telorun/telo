@@ -23,12 +23,13 @@ metadata:
   version: 1.0.0
   description: HTTP API where an AI vision agent draws shapes on a canvas and returns an S3 link.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.26.0#sha256-qCiZuU7_9wnxCn2QuA0oKM0H7OyvSd2aFcoXSv3vgFo
-  Ai: oci://ghcr.io/telorun/ai@0.16.3#sha256-pKOpAuQqUQkTP1sNmJ4t_tRp5JJoeAGb9XmdL2vF7CQ
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.15.3#sha256-BblwExnkE-f4Zi2u4MOd48gauYVR6Z1c76ozzIvkGBU
+  Http: oci://ghcr.io/telorun/http-server@0.29.1#sha256-pE3rCn5FDwOXz2Joi2RnSS1Hcoa69CBl1meW-TVgK70
+  Ai: oci://ghcr.io/telorun/ai@0.18.0#sha256-OtJa8sQbyyLNKMTjbyy5-qiQWF9ouPj7a2-BSH0KGXg
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.0#sha256-tlcGRgiTGfFkCB7n3lnGmzdSmduyFTDwZ_BqDw71rCk
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
   Image: oci://ghcr.io/telorun/image@0.7.1#sha256-m7iq505X16Jq1sTOlb292MukXcGPpXklW5mY5Bns8uc
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Run: oci://ghcr.io/telorun/run@0.24.2#sha256-BFRCvbtbCRmj6SAu60wo_qbiQCJj1bGqKaKnhQwPJfw
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
 targets:
   - !ref server
 ports:
@@ -63,11 +64,29 @@ secrets:
     env: S3_SECRET_ACCESS_KEY
     type: string
 ---
-kind: AiOpenai.OpenaiModel
+# The account: base URL and credential on the client, so the model kind carries
+# no key and inherits the 401 re-acquire-and-retry from `http-client`.
+kind: HttpClient.BearerToken
+metadata:
+  name: openaiKey
+token: !cel "secrets.openaiApiKey"
+---
+kind: HttpClient.Client
+metadata:
+  name: openaiClient
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: HttpClient.Request
+metadata:
+  name: openaiRequest
+client: !ref openaiClient
+---
+kind: OpenAI.ChatModel
 metadata:
   name: visionModel
 model: !cel "variables.modelId"
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 options:
   temperature: 0.2
 ---

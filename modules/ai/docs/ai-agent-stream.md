@@ -5,7 +5,7 @@ sidebar_label: Ai.AgentStream
 
 # `Ai.AgentStream`
 
-> Examples assume aliases `Ai` (this module), `AiOpenai` (`ai-openai`), `Http` (`http-server`), and `Sse` (`sse-codec`). Substitute if you import under different names.
+> Examples assume aliases `Ai` (this module), `Http` (`http-server`), and `Sse` (`sse-codec`). Substitute if you import under different names.
 
 `Ai.AgentStream` is the streaming counterpart of [`Ai.Agent`](./ai-agent.md): it stands to `Ai.Agent` as [`Ai.TextStream`](./ai-text-stream.md) stands to [`Ai.Text`](./ai-text.md). Same tool-use loop, same configuration — but instead of returning a buffered object, it forwards the run as a `Stream` on `result.output` (the streaming-Invocable convention), so the assistant's text streams token-by-token and every tool call surfaces the moment it happens.
 

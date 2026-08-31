@@ -296,7 +296,28 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       switch (part.type) {
         case "text-delta": {
           const delta = typeof (part as { delta?: unknown }).delta === "string" ? (part as { delta: string }).delta : "";
-          updateAssistant(assistantId, (m) => ({ ...m, text: m.text + delta }));
+          updateAssistant(assistantId, (m) => ({ ...m, text: m.text + delta, reasoningInterrupted: true }));
+          break;
+        }
+        case "reasoning-delta": {
+          // Accumulated separately from the answer: it is the model's précis of
+          // its own thinking, and folding it into `text` would put it in the
+          // reply, in the resume report, and in front of `splitAgentText`.
+          const delta = typeof (part as { delta?: unknown }).delta === "string" ? (part as { delta: string }).delta : "";
+          if (!delta) break;
+          updateAssistant(assistantId, (m) => {
+            // A turn reasons several times — once before each tool call, once
+            // before the answer — and the stream carries no part boundary this
+            // controller reads, so two summaries would otherwise join
+            // mid-sentence. A blank line where reasoning RESUMES after other
+            // content is the boundary the stream no longer supplies.
+            const resumed = !!m.reasoning && m.reasoningInterrupted === true;
+            return {
+              ...m,
+              reasoning: (m.reasoning ?? "") + (resumed ? "\n\n" : "") + delta,
+              reasoningInterrupted: false,
+            };
+          });
           break;
         }
         case "tool-call": {
@@ -305,6 +326,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           const toolCallId = call.id ?? `${call.name ?? "tool"}-${Math.floor(id)}`;
           updateAssistant(assistantId, (m) => ({
             ...m,
+            reasoningInterrupted: true,
             tools: [
               ...m.tools,
               { toolCallId, name: call.name ?? "tool", args: call.arguments, state: "running" },

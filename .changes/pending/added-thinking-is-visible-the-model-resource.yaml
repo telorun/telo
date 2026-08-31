@@ -1,0 +1,12 @@
+modules:
+  apps/authoring-agent: Added
+body: "Thinking is visible. The model resource now asks for `reasoning.summary`, so a
+  turn streams the model's own précis of its reasoning as `reasoning-delta` parts beside
+  the answer, and Telo Studio renders them as a collapsible Thinking block — open while
+  it is the only thing to read, collapsed once the answer starts, unless the reader says
+  otherwise. Reasoning effort alone produced nothing a client could show: the reasoning
+  itself comes back encrypted and is only ever replayed through providerState, so the
+  summary is the whole readable surface and asking for it is what turns it on. It is
+  kept apart from the reply rather than folded into the text: the conversation history
+  persists the answer and not the thinking, a resume report never quotes it, and a
+  client that does not render it simply drops the parts."

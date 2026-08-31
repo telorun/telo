@@ -5,7 +5,7 @@ sidebar_label: Ai.Text
 
 # `Ai.Text`
 
-> Examples below assume this module is imported with an `imports:` entry under alias `Ai` (and `ai-openai` as `AiOpenai`). Kind references (`Ai.Text`, `AiOpenai.OpenaiModel`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
+> Examples below assume this module is imported with an `imports:` entry under alias `Ai` (and `openai` as `OpenAI`). Kind references (`Ai.Text`, `OpenAI.ChatModel`, …) follow those aliases — if you import either module under a different name, substitute accordingly.
 
 `Ai.Text` is a `Telo.Invocable` that delegates a single-turn, buffered LLM call to any `Ai.Model` implementation. It owns message-building, system-prompt handling, and option-merging; the model handles the HTTP call. For chunked output, see [Ai.TextStream](./ai-text-stream.md).
 
@@ -14,12 +14,26 @@ kind: Telo.Application
 metadata: { name: summarizer, version: 1.0.0 }
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.10.0
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.12.0
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.0
+  Http: oci://ghcr.io/telorun/http-client@0.22.0
 ---
-kind: AiOpenai.OpenaiModel
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.ChatModel
 metadata: { name: Gpt4o }
 model: gpt-4o
-apiKey: "${{ secrets.OPENAI_API_KEY }}"
+request: !ref openaiRequest
 ---
 kind: Ai.Text
 metadata: { name: Summarizer }

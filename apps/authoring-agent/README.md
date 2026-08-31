@@ -117,6 +117,22 @@ empty workspace — a question the runtime can answer exactly and for free, and 
 that reads as not having looked. A tool the model must remember to call is a tool
 it sometimes will not; a message in the turn is not.
 
+**It is told the time the same way.** Each turn also opens with a `CURRENT TIME:`
+message in UTC, so "last week" and "since Friday" resolve to real dates instead
+of guesses, and the agent reports the absolute range it resolved them to. It
+rides the per-turn message rather than the system prompt because that prompt is a
+literal fixed at load: a date stamped there would be the date the process
+started, for as long as it runs. UTC because a report whose boundaries genuinely
+depend on your timezone is a question worth asking, not an offset worth guessing.
+
+**Thinking is visible.** The model resource asks for `reasoning.summary`, so each
+turn streams a précis of its reasoning as `reasoning-delta` parts alongside the
+answer, and Telo Studio shows them as a collapsible **Thinking** block. That
+summary is all a client can ever show: the reasoning itself comes back encrypted,
+is replayed through `providerState` so the chain survives the tool loop, and is
+never readable. It is not persisted as the assistant's message either — the
+conversation history keeps the answer, not the thinking.
+
 ## What it builds
 
 An application is never one file. The agent splits the work into **feature
@@ -178,8 +194,10 @@ With runs enabled, the agent answers its own questions where it can. Given a
 spreadsheet id and a token it writes a throwaway manifest under `.probes/`, runs
 it, reads what it printed, and deletes it — so it learns the tabs, the column
 headers and the real shape of the data rather than asking you to transcribe
-them. What it still has to ask is the part nothing can discover: the identifier
-and which env var holds the credential.
+them. What it still has to ask is the part nothing can discover: the identifier,
+and which identity to authenticate as where several plausibly exist. It does not
+ask what to CALL the environment variable — that name is one the manifest
+declares, so it picks it and tells you which vars to set when it is done.
 
 **A missing credential is not the end of it.** The agent drives OAuth consent
 itself rather than reporting that it has none: it prints a verification URL and a
@@ -190,7 +208,7 @@ timeout while a human signs in — so the first prints the link, the turn ends
 there, and the next run polls and does the reading in one go, since an in-memory
 grant does not survive the process that obtained it. The one thing it cannot do
 for you is register the application: you create the OAuth client and give it the
-env var names for the id and secret.
+id and secret, which it reads from variables it names and reports back to you.
 
 **Probes read; they never write.** That is a rule in the prompt, and the prompt
 is not an enforcement mechanism — the agent authors the probe, so nothing in the
@@ -239,6 +257,7 @@ Variables:
 | `PORT` | `8080` | HTTP listen port |
 | `WORKSPACE_DIR` | `./workspace` | The directory every tool is rooted at (see above) |
 | `BUDGET_LIMIT` | `4000000` | Total tokens across all turns per window — the operator's spend cap. Exhausted, `POST /chat` answers 429 |
+| `REASONING_EFFORT` | `medium` | How hard the model thinks before each turn: `minimal`, `low`, `medium` or `high`. Trades answer quality against latency and spend on every turn; `minimal` is the pre-reasoning behaviour |
 | `ALLOW_MANIFEST_RUNS` | `false` | Lets the agent execute manifests — its tests, and probes against your live systems. Arbitrary code execution in this container, with its credentials — read the section above before turning it on |
 
 The library takes several more that the root does not surface as env

@@ -18,6 +18,7 @@ imports:
       workspaceDir: !cel "variables.workspaceDir"
       budgetLimit: !cel "variables.budgetLimit"
       allowManifestRuns: !cel "variables.allowManifestRuns"
+      reasoningEffort: !cel "variables.reasoningEffort"
   Http: oci://ghcr.io/telorun/http-server@0.29.1#sha256-pE3rCn5FDwOXz2Joi2RnSS1Hcoa69CBl1meW-TVgK70
   Sse: oci://ghcr.io/telorun/sse-codec@0.11.0#sha256-PDIUJeHsa2-brpvFDmz5PQSQ7The15hMzcxlD0FSJGw
 ports:
@@ -37,6 +38,16 @@ variables:
     env: BUDGET_LIMIT
     type: integer
     default: 4000000
+  # How hard the model thinks before each turn. Bound to an env var because it
+  # is the dial an operator turns per deployment: it trades answer quality
+  # against latency and spend on every turn of every tool loop, and `minimal`
+  # is how a deployment gets the pre-reasoning behaviour back without editing
+  # a manifest.
+  reasoningEffort:
+    env: REASONING_EFFORT
+    type: string
+    enum: [ minimal, low, medium, high ]
+    default: medium
   # Lets the agent RUN the tests it writes, not merely check them.
   #
   # Off by default because it is arbitrary code execution driven by whoever is

@@ -493,7 +493,7 @@ schema:
   properties:
     model:
       title: Model
-      description: Reference to any Ai.Model implementation (Ai.OpenaiModel, Ai.AnthropicModel, Ai.OllamaModel, or a third-party provider).
+      description: Reference to any Ai.Model implementation (OpenAI.ChatModel, OpenAI.ResponsesModel, or a third-party provider).
       x-telo-ref:
         kind: Self.Model
         use: call

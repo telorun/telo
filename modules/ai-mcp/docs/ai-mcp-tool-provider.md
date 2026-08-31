@@ -5,7 +5,7 @@ sidebar_label: AiMcp.ToolProvider
 
 # `AiMcp.ToolProvider`
 
-> Examples assume aliases `Ai` (`@telorun/ai`), `AiMcp` (`@telorun/ai-mcp`), `AiOpenai` (`@telorun/ai-openai`), and `Mcp` (`@telorun/mcp-client`).
+> Examples assume aliases `Ai` (`@telorun/ai`), `AiMcp` (`@telorun/ai-mcp`), `OpenAI` (`openai`), `Http` (`http-client`), and `Mcp` (`@telorun/mcp-client`).
 
 `AiMcp.ToolProvider` is the bridge between MCP and agents: it wraps any `Mcp.Client` as an [`Ai.ToolProvider`](../../ai/docs/ai-tool-provider.md), so an [`Ai.Agent`](../../ai/docs/ai-agent.md) discovers and calls a whole MCP server's tools without knowing anything about MCP.
 
@@ -17,10 +17,23 @@ The MCP `content` array is translated into [Ai content parts](../../ai/docs/ai-m
 This is the **only** module that depends on both `@telorun/ai` and `@telorun/mcp-client` — `@telorun/ai` stays MCP-agnostic, `@telorun/mcp-client` stays a pure transport.
 
 ```yaml
-kind: AiOpenai.OpenaiModel
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.ChatModel
 metadata: { name: Gpt4o }
 model: gpt-4o-mini
-apiKey: "${{ secrets.openaiApiKey }}"
+request: !ref openaiRequest
 ---
 # Any Mcp.Client — stdio or Streamable HTTP.
 kind: Mcp.StdioClient

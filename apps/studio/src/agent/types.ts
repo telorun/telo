@@ -3,6 +3,11 @@
 // where the wire shape is provider-defined; only the fields the panel reads are typed.
 export type AgentStreamPart =
   | { type: "text-delta"; delta: string }
+  // The model's own summary of its thinking, streamed ahead of the answer. Only
+  // ever a PRÉCIS: the reasoning itself comes back encrypted and is replayed
+  // through `providerState`, never shown, so this arrives only where the model
+  // resource asks for `reasoning.summary`.
+  | { type: "reasoning-delta"; delta: string }
   | { type: "tool-call"; toolCall: ToolCall }
   | { type: "tool-result"; toolResult: ToolResult }
   | { type: "finish"; usage?: Usage; finishReason?: string }
@@ -63,6 +68,16 @@ export interface ChatMessage {
   id: string;
   role: ChatRole;
   text: string;
+  /** The thinking summary this turn streamed, accumulated. Kept apart from
+   *  `text` because it is not the answer: it is not persisted as the assistant's
+   *  message, a resume never quotes it, and a client is free not to show it.
+   *  Absent on a turn that produced none — an older transcript, or a model
+   *  asked for no summary. */
+  reasoning?: string;
+  /** Set when a tool call or answer text arrived, so the next reasoning delta
+   *  knows it is RESUMING and starts a new paragraph. Transient display state:
+   *  it never leaves the browser and is not persisted. */
+  reasoningInterrupted?: boolean;
   tools: ToolCallView[];
   error?: string;
   /** True while the assistant turn is still streaming. */
