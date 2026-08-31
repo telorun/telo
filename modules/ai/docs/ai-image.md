@@ -5,7 +5,7 @@ sidebar_label: Ai.Image
 
 # `Ai.Image`
 
-> Examples below assume this module is imported with an `imports:` entry under alias `Ai` (and `ai-openai` as `AiOpenai`). Kind references follow those aliases — substitute if you import under different names.
+> Examples below assume this module is imported with an `imports:` entry under alias `Ai` (and `openai` as `OpenAI`). Kind references follow those aliases — substitute if you import under different names.
 
 `Ai.Image` is a `Telo.Invocable` that turns a prompt into pictures using any [`Ai.ImageModel`](./ai-image-model.md) implementation. It owns option-merging and input validation; the model handles the HTTP call.
 
@@ -14,14 +14,28 @@ kind: Telo.Application
 metadata: { name: poster-maker, version: 1.0.0 }
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.15.0
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.15.0
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.0
+  Http: oci://ghcr.io/telorun/http-client@0.22.0
 secrets:
   openaiApiKey: { env: OPENAI_API_KEY, type: string }
 ---
-kind: AiOpenai.OpenaiImageModel
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.ImageModel
 metadata: { name: Painter }
 model: gpt-image-1
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 options:
   size: 1024x1024
   quality: low
@@ -48,7 +62,7 @@ model: !ref Painter
 | `mask` | `{ data, mediaType }` whose transparent region marks what to repaint |
 | `options` | per-call overrides, shallow-merged over the resource's |
 
-`Ai.Image` enforces only what follows from the shape: an intent is what says the references are *for*, so one implies the other, and with neither there is nothing to work from but a prompt. **What a particular mode needs — whether it can run without a prompt, whether it takes a mask — is the provider's rule**, because the provider owns the vocabulary. Ask your provider's docs; the OpenAI one is [here](../../ai-openai/docs/ai-openai-image-model.md).
+`Ai.Image` enforces only what follows from the shape: an intent is what says the references are *for*, so one implies the other, and with neither there is nothing to work from but a prompt. **What a particular mode needs — whether it can run without a prompt, whether it takes a mask — is the provider's rule**, because the provider owns the vocabulary. Ask your provider's docs; the OpenAI one is [here](../../openai/docs/image-model.md).
 
 The result is `{ images, finishReason, usage?, text? }` — see the [provider contract](./ai-image-model.md) for the full shape. `images[].data` is **raw bytes**, so it goes straight into `Fs.FileWrite`, `Image.Overlay`, or a multimodal message part.
 

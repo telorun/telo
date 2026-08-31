@@ -5,9 +5,9 @@ sidebar_label: Embedding.Model
 
 # `Embedding.Model`
 
-> Examples assume this module is imported under alias `Embedding`. Substitute if you import under a different name.
+> Examples assume this module is imported under alias `Embedding`, `openai` under `OpenAI`, and `http-client` under `Http`. Substitute if you import under different names.
 
-`Embedding.Model` is the abstract every embedding backend implements — a `Telo.Provider` representing a configured model, **not** an operation you invoke. [`Embedding.Query`](./embedding-query) and [`Embedding.Passage`](./embedding-passage) reference it via `x-telo-ref: Self.Model`; a concrete backend such as [`EmbeddingOpenai.Model`](../../embedding-openai/docs/embedding-openai-model) satisfies the ref by declaring `extends: Embedding.Model`.
+`Embedding.Model` is the abstract every embedding backend implements — a `Telo.Provider` representing a configured model, **not** an operation you invoke. [`Embedding.Query`](./embedding-query) and [`Embedding.Passage`](./embedding-passage) reference it via `x-telo-ref: Self.Model`; a concrete backend such as [`OpenAI.EmbeddingModel`](../../openai/docs/embedding-model.md) satisfies the ref by declaring `extends: Embedding.Model`.
 
 ## Prompt templates
 
@@ -16,12 +16,21 @@ Many retrieval checkpoints are **prompt-tuned**: they expect each text wrapped i
 `queryPrompt` and `passagePrompt` declare those wrappers. Both are inherited by every backend, and both must contain the `{text}` placeholder:
 
 ```yaml
-kind: EmbeddingOpenai.Model
+# A self-hosted checkpoint behind an OpenAI-compatible endpoint: the client
+# carries the base URL and declares no credential, because the server needs none.
+kind: Http.Client
+metadata: { name: embedderClient }
+baseUrl: http://localhost:11434/v1
+---
+kind: Http.Request
+metadata: { name: embedderRequest }
+client: !ref embedderClient
+---
+kind: OpenAI.EmbeddingModel
 metadata:
-  name: Embedder
+  name: embedder
 model: embeddinggemma-300m
-apiKey: unused
-baseUrl: http://embedder/v1
+request: !ref embedderRequest
 queryPrompt: "task: search result | query: {text}"
 passagePrompt: "title: none | text: {text}"
 ```
@@ -61,8 +70,8 @@ class MyModel implements EmbeddingModel {
 }
 ```
 
-Then declare the kind with `extends: Embedding.Model` and a `Telo.Provider` capability, pointing `controllers` at your package. The `queryPrompt` / `passagePrompt` fields come with the `extends` — you do not redeclare them in your schema. `applyEmbeddingPrompt` returns the texts unchanged when neither is set, so a backend for a symmetric model needs no branching. See `embedding-openai` for a reference implementation.
+Then declare the kind with `extends: Embedding.Model` and a `Telo.Provider` capability, pointing `controllers` at your package. The `queryPrompt` / `passagePrompt` fields come with the `extends` — you do not redeclare them in your schema. `applyEmbeddingPrompt` returns the texts unchanged when neither is set, so a backend for a symmetric model needs no branching. See `openai` for a reference implementation.
 
 ## Available backends
 
-- [`EmbeddingOpenai.Model`](../../embedding-openai/docs/embedding-openai-model) — OpenAI `/embeddings` HTTP API, plus any OpenAI-compatible endpoint.
+- [`OpenAI.EmbeddingModel`](../../openai/docs/embedding-model.md) — OpenAI `/embeddings` HTTP API, plus any OpenAI-compatible endpoint.

@@ -93,7 +93,26 @@ export function loadChat(conversationId: string): PersistedChat {
 }
 
 export function saveChat(conversationId: string, chat: PersistedChat): void {
-  writeJson(CHAT_PREFIX + conversationId, chat);
+  writeJson(CHAT_PREFIX + conversationId, { ...chat, messages: chat.messages.map(withoutReasoning) });
+}
+
+/**
+ * Reasoning is DISPLAY-ONLY and is dropped before persisting.
+ *
+ * It is never sent back to the agent (the encrypted reasoning that actually
+ * matters rides `providerState` on the server side) and never read by resume,
+ * so persisting it buys nothing — and at `medium` or `high` effort it is
+ * several KB per turn against a ~5MB quota shared with the whole transcript.
+ * Reaching that quota does not degrade gracefully: the write throws, the catch
+ * in `writeJson` discards it, and `activeTurnId` / `lastEventId` silently stop
+ * being recorded, so a reload loses the thread and cannot re-attach to an
+ * in-flight turn. Keeping the volatile, valueless half out of the payload keeps
+ * the cliff far away.
+ */
+function withoutReasoning(message: ChatMessage): ChatMessage {
+  if (message.reasoning === undefined) return message;
+  const { reasoning, ...rest } = message;
+  return rest;
 }
 
 export function clearChat(conversationId: string): void {

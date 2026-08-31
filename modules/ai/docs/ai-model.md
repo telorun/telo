@@ -159,10 +159,12 @@ to one must convert first — `0 + 1n` is a `TypeError`, not a sum. `@telorun/sd
 
 ## Secrets
 
-`snapshot()` must redact credentials (`redact(["apiKey"], resource)`); a snapshot is a
-reading, published into CEL and onto the debug stream.
+Carry no credential of your own: reference an `Http.Client` and let its `credential`
+do it. `Http.BearerToken`, `Http.ApiKeyHeader` and `Http.QueryKey` cover the static
+cases, the 401 re-acquire-and-retry is inherited rather than re-implemented, and the
+credential's own output is marked `x-telo-sensitive`, so the material never reaches the
+debug wire. This is what the `openai` kinds do: they hold no key at all.
 
-Better still, carry no credential of your own: reference an `Http.Client` and let its
-`credential` do it. `Http.BearerToken`, `Http.ApiKeyHeader` and `Http.QueryKey` cover
-the static cases, the 401 re-acquire-and-retry is inherited, and the credential's own
-output is marked `x-telo-sensitive`, so the material never reaches the debug wire.
+Where a provider genuinely must hold one, `snapshot()` has to redact it
+(`redact(["apiKey"], resource)`) — a snapshot is a reading, published into CEL and onto
+the debug stream.

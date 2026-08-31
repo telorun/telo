@@ -23,6 +23,14 @@ metadata:
     for a reason this case is not about — the SHAPE of what gets built. Naming a
     store that lists natively keeps the final assertion measuring the build.
 
+    The request carries NO HTTP surface, for the same reason. Nothing asserted
+    here touches a route, a port or a response: the five structural checks are
+    about file layout and the last one runs the suite. A server was pure turn
+    count — an import, a port binding, two routes, their schemas and their
+    rendering — and turn count is what this case pays for, at a reasoning
+    effort that multiplies every one of them. It was 20 minutes of the 29 the
+    e2e suite took.
+
     Still the flakiest case here, and in one specific way: the structure
     assertions and `ranTests` have held on every measured run, while the final
     step — the suite the agent wrote actually PASSING — has not. Those failures
@@ -102,9 +110,9 @@ steps:
           clientIp: test-runner
           message: |
             Build an app called `notes` that stores notes (title, body) in a
-            SQLite database at `:memory:`: add a note and list all notes.
-            Expose it over HTTP on a port `http` bound to PORT, default 8080 —
-            POST /notes and GET /notes.
+            SQLite database at `:memory:`: add a note and list all notes. No
+            HTTP — a runnable that adds a couple of notes and prints them back
+            is the whole surface.
 
             Everything else is your call — just build it, and use your
             recommended answer wherever you would otherwise ask.

@@ -9,7 +9,7 @@ metadata:
     entirely in the manifest — the kinds are built from an HTTP request, with no
     controller code to write, load or publish.
 imports:
-  Http: oci://ghcr.io/telorun/http-client@0.21.2#sha256-9n-zEKDe8J6T_pfQ0XCcjtUt_dVW5G3APow5BQlmZWE
+  Http: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
 exports:
   kinds:
     - Webhook

@@ -5,7 +5,7 @@ sidebar_label: Embedding.Passage
 
 # `Embedding.Passage`
 
-> Examples assume this module is imported under alias `Embedding` and an OpenAI backend under `EmbeddingOpenai`. Substitute if you import under different names.
+> Examples assume this module is imported under alias `Embedding`. Substitute if you import under different names.
 
 `Embedding.Passage` embeds **stored passages** — the chunks you index — into vectors against any [`Embedding.Model`](./embedding-model). It is the index-side half of the asymmetric pair; [`Embedding.Query`](./embedding-query) is the retrieval-side half. The controller passes the retrieval intent `passage` to the backend (mapped to the vendor's `search_document` / `RETRIEVAL_DOCUMENT` parameter); symmetric backends ignore it.
 

@@ -29,7 +29,7 @@ imports:
   PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.4#sha256-Z1My-TDPdE13s63NSi5rT0Qg0CZf-7tAXbJBRcBGCOQ
   Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
   Embedding: oci://ghcr.io/telorun/embedding@0.11.3#sha256-d6UqT9EJTRaXtOI5862y5c-ep6rVhWTjuq9zIPrUD2c
-  OpenAI: oci://ghcr.io/telorun/openai@0.2.0#sha256-Ggrq6AdWFpsgNIlNk_QxzdMHGZh7qUlmbRvjScmFh7E
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.0#sha256-tlcGRgiTGfFkCB7n3lnGmzdSmduyFTDwZ_BqDw71rCk
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.9.0#sha256-xf5Sl63MYbMSM4GzzRPVNrqbtrxQ27x9cwFKrDCjCEM
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.4#sha256-_E2AqSEEsTotJXiSmk9GBqlnlwW8JRXNJXZWbx-olxY

@@ -5,7 +5,7 @@ sidebar_label: Embedding.Query
 
 # `Embedding.Query`
 
-> Examples assume this module is imported under alias `Embedding` and an OpenAI backend under `EmbeddingOpenai`. Substitute if you import under different names.
+> Examples assume this module is imported under alias `Embedding`. Substitute if you import under different names.
 
 `Embedding.Query` embeds **search queries** into vectors against any [`Embedding.Model`](./embedding-model). It is the retrieval-side half of the asymmetric pair; [`Embedding.Passage`](./embedding-passage) is the index-side half. The controller passes the retrieval intent `query` to the backend (mapped to the vendor's `search_query` / `RETRIEVAL_QUERY` parameter); symmetric backends ignore it.
 

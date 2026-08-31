@@ -20,7 +20,7 @@ metadata:
     SQLite file; the workspace is ./workspace.
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.18.0#sha256-OtJa8sQbyyLNKMTjbyy5-qiQWF9ouPj7a2-BSH0KGXg
-  OpenAI: oci://ghcr.io/telorun/openai@0.2.0#sha256-Ggrq6AdWFpsgNIlNk_QxzdMHGZh7qUlmbRvjScmFh7E
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.0#sha256-tlcGRgiTGfFkCB7n3lnGmzdSmduyFTDwZ_BqDw71rCk
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
   AiMcp: oci://ghcr.io/telorun/ai-mcp@0.13.0#sha256-GUeyyUnObEQcx--sTRlkoMx-3hi07HuqH9aSYA4XY7I
   Mcp: oci://ghcr.io/telorun/mcp-client@0.15.0#sha256-M3frsOwjZWR_Vo2LERsRjBqcN7iXZbVg_gTjK4OGq8s
@@ -55,12 +55,20 @@ variables:
     # importer including the tests, so a test exercises what the app ships. It
     # used to be restated as a literal at the root and in four tests, which made
     # this line dead config: changing it looked like an upgrade and did nothing.
-    # A reasoning model cannot go here while the resource below is an
-    # `OpenAI.ModelStream`: that kind speaks `/v1/chat/completions`, which
-    # refuses a non-`none` reasoning effort alongside function tools, and this
-    # agent is nothing but tools. `OpenAI.ResponsesModelStream` is what lifts
-    # that, so this moves when the pin above carries it.
     default: gpt-5.2
+  reasoningEffort:
+    type: string
+    enum: [ minimal, low, medium, high ]
+    # How hard the model thinks before each turn. A variable rather than a
+    # literal for the same reason `model` is one: it is the knob an operator
+    # tunes per deployment, and it trades answer quality against latency and
+    # spend on every turn of every tool loop.
+    #
+    # `medium` because this agent's work is structural — deciding what resources
+    # an application needs and how they wire together — which is where thinking
+    # pays for itself; `minimal` exists for a deployment that wants the old
+    # behaviour back without editing the manifest.
+    default: medium
   budgetLimit:
     type: integer
     # Max total tokens spent across all turns per window (operator spend cap).
@@ -182,15 +190,45 @@ kind: HttpClient.Client
 metadata: { name: openaiClient }
 baseUrl: https://api.openai.com/v1
 credential: !ref openaiKey
+# A provider edge fails transiently — a 503 whose body is the proxy's own
+# "upstream connect error … Connection refused", arriving BEFORE any headers, so
+# the request never started streaming and re-sending it is sound. Without a
+# budget nothing re-sends: `retryOn` defaults to 408/429/500/502/503/504 only
+# once `attempts` is non-zero, so a single edge blip took down a whole turn.
+#
+# Three attempts, not more: an agent turn already costs seconds and tokens, and
+# a provider that is still refusing after ~4s of backoff is having an outage
+# rather than a blip. `honorRetryAfter` is what makes the 429 case cooperative
+# instead of additive.
+retry:
+  attempts: 3
+  initialDelay: 500
+  maxDelay: 4000
+  honorRetryAfter: true
 ---
 kind: HttpClient.Request
 metadata: { name: openaiRequest }
 client: !ref openaiClient
 ---
-kind: OpenAI.ModelStream
+# The responses API, not chat completions: this agent is nothing but tools, and
+# `/v1/chat/completions` refuses a non-`none` reasoning effort alongside function
+# tools outright. The encrypted reasoning comes back as the contract's
+# `providerState` and `Ai.AgentStream` replays it, so thinking survives each tool
+# loop rather than restarting on every turn.
+kind: OpenAI.ResponsesModelStream
 metadata: { name: model }
 model: !cel "variables.model"
 request: !ref openaiRequest
+reasoning:
+  effort: !cel "variables.reasoningEffort"
+  # What the thinking a client can SHOW is: the reasoning itself comes back
+  # encrypted and is only ever replayed, so without this a turn emits no
+  # readable reasoning at all — which is why Studio's transcript had none. A
+  # summary is a précis the endpoint writes, delivered as `reasoning-delta`
+  # parts beside the text. Not a variable: it costs a handful of tokens and
+  # there is no `off` value to switch to — the key's ABSENCE is off, so hiding
+  # thinking is a decision for the client that renders it, not for the model.
+  summary: auto
 ---
 kind: AiMcp.ToolProvider
 metadata: { name: hubTools }
@@ -2482,8 +2520,10 @@ system: |
       what to do when a row matches nothing.
     - THE OUTPUT: what the report actually contains — the columns, the grouping,
       the ordering, the totals, the period it covers.
-    - CREDENTIALS: which token or service account each side uses, and the env
-      var it arrives in.
+    - CREDENTIALS: which identity each side authenticates as, when several
+      plausibly exist — the user's own token or a service account, and whose.
+      NOT the env var it arrives in: that name is one you declare and they set
+      (see "Names you are about to write are yours" below).
 
   **A `default:` is an invented answer wearing a nicer word.** Declaring
   `assignmentsRange` with `default: "Assignments!A1:Z"` does not turn a guessed
@@ -2549,8 +2589,9 @@ system: |
   is already in the workspace are LOOKUPS; asking about them reads as not having
   looked, because it is.
 
-  **The workspace state is already in front of you.** Every turn opens with a
-  `WORKSPACE STATE:` message listing what the workspace contains — you do not
+  **The workspace state is already in front of you.** Every turn carries a
+  `WORKSPACE STATE:` message — the last thing in the conversation, after the
+  request it applies to — listing what the workspace contains, so you do not
   have to call anything to know that. It is authoritative:
 
     - It says EMPTY — then everything you build is new. **Never ask whether to
@@ -2565,6 +2606,22 @@ system: |
   Beyond that, before the question turn, hub-search the capabilities the request
   implies, so your questions are about the user's intent rather than about the
   standard library.
+
+  **Names you are about to write are yours.** Never ask what YOU decide. An env
+  var name, a file path, a resource name, an app slug — none of these is a fact
+  the user holds; each is a name the manifest DECLARES, and asking makes them
+  invent an answer whose only effect is what you were going to write anyway.
+  "What environment variable will hold your YouTrack token?" is that question:
+  you write `secrets: { youtrackToken: { env: YOUTRACK_TOKEN } }` and they set
+  whatever you named. The same goes for anything derivable from what you are
+  building — an OAuth scope follows from the calls you are about to make, so it
+  is yours to pick too.
+
+  What you owe them instead is the name, stated: when you finish, say which env
+  vars to set and what each is for. That is the whole value the question was
+  buying, at no cost to their turn. The credential's VALUE is theirs, always —
+  never invent one, never write one into a manifest, and never ask them to paste
+  one into the chat.
 
   ### Go and look — a PROBE beats a question
 
@@ -2637,9 +2694,10 @@ system: |
   access, and driving a user through consent is what it is FOR.
 
   One thing you genuinely cannot do for them: register the application. The user
-  creates an OAuth client in their provider's console and tells you the env var
-  names for its id and secret. Ask for that — it is a real question. Everything
-  after it is yours to do.
+  creates an OAuth client in their provider's console and hands you its id and
+  secret. Ask for THAT — it is a real question. You name the variables they
+  arrive in and tell them what you named, the same as any other credential.
+  Everything after it is yours to do.
 
   **Use the DEVICE flow.** You run in a container the user's browser cannot
   reach, so a redirect has nowhere to land: `RedirectListener` catches a callback
@@ -3181,17 +3239,36 @@ steps:
   - name: ask
     invoke: !ref author
     inputs:
-      # Prepended, so it is in scope before the first thing the user ever said.
-      # A reading taken at the start of THIS turn: the agent's own writes move it,
-      # which is what its tools report back.
+      # Both blocks are per-turn READINGS: the workspace listing moves whenever
+      # the agent writes, and the clock moves always. Neither can ride the
+      # `system:` block, which is a literal resolved once at load — a date
+      # stamped there would be the BOOT date for the life of the process.
+      #
+      # APPENDED as a user turn, not prepended as a system one, and that is a
+      # cost decision rather than a stylistic one. The provider hoists EVERY
+      # system message into the request's `instructions` string wherever it sits,
+      # so a per-turn system message puts a moving value at the head of the
+      # prompt — and the head is the cacheable prefix. One clock tick there
+      # re-prices the whole system prompt, uncached, on every turn of every
+      # conversation, including a pure question that writes nothing. At the tail
+      # they are ordinary input: `instructions` stays byte-identical across
+      # turns, and the history in front of them caches too.
+      #
+      # They read at least as well here — this is the state as of now, stated
+      # after the request it applies to. UTC, stated as UTC: a report's
+      # boundaries may well want the user's own zone, and that is a question to
+      # ask rather than a guess to bury in an offset.
       messages: !cel >-
-        [{
-          'role': 'system',
+        steps.readHistory.result.rows + [{
+          'role': 'user',
+          'content': 'CURRENT TIME: ' + nowIso() + ' (UTC). Resolve every relative period the user names — "last week", "this month", "since Friday" — against this, and say which absolute range you resolved it to. Never guess a date, and where the boundaries depend on the user timezone, ask.'
+        }, {
+          'role': 'user',
           'content': size(steps.listWorkspace.result.entries) == 0
             ? 'WORKSPACE STATE: the workspace is EMPTY — it contains no files at all. Anything you build is therefore new; do not ask whether to create something new or extend something existing.'
             : 'WORKSPACE STATE: the workspace contains these paths (caches and vendor directories omitted). Read them before asking anything they already answer.\n' +
               join(steps.listWorkspace.result.entries.map(e, '- ' + e.path + (e.type == 'directory' ? '/' : '')), '\n')
-        }] + steps.readHistory.result.rows
+        }]
   - name: tap
     invoke: !ref persist
     inputs:

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RotateCw, Send, Square, SquarePen, X, ChevronDown } from "lucide-react";
+import { Brain, RotateCw, Send, Square, SquarePen, X, ChevronDown } from "lucide-react";
 import { AGENT_PANEL_DEFAULT_WIDTH, AGENT_PANEL_MIN_WIDTH, splitAgentText, useAgent } from "@/agent";
 import type { ChatMessage, ToolCallView } from "@/agent";
 import { Button } from "@/components/ui/button";
@@ -341,6 +341,9 @@ function MessageBlock({
   return (
     <Message from="assistant">
       <MessageContent>
+        {message.reasoning && (
+          <ReasoningCard text={message.reasoning} streaming={!!message.pending && !message.text} />
+        )}
         {message.tools.map((t) => (
           <ToolCallCard key={t.toolCallId} tool={t} />
         ))}
@@ -360,7 +363,7 @@ function MessageBlock({
               ),
             )
           : message.text && <MessageResponse>{message.text}</MessageResponse>}
-        {message.pending && !message.text && message.tools.length === 0 && (
+        {message.pending && !message.text && !message.reasoning && message.tools.length === 0 && (
           <Loader size={16} className="text-muted-foreground" />
         )}
         {message.error && (
@@ -376,6 +379,33 @@ function MessageBlock({
         )}
       </MessageContent>
     </Message>
+  );
+}
+
+/**
+ * The model's summary of its own thinking, above the answer it led to.
+ *
+ * Open while it is the only thing there is to read and collapsed once the answer
+ * starts, because that is when it stops being the interesting half — unless the
+ * reader says otherwise, which is what the override holds. A `defaultOpen` could
+ * not do this: the block mounts when the turn starts, so every finished turn
+ * would stay expanded.
+ */
+function ReasoningCard({ text, streaming }: { text: string; streaming: boolean }) {
+  const [override, setOverride] = useState<boolean | null>(null);
+  const open = override ?? streaming;
+
+  return (
+    <Collapsible open={open} onOpenChange={setOverride}>
+      <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-2 hover:underline">
+        <Brain className="size-3" />
+        {streaming ? "Thinking…" : "Thought process"}
+        <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-1 whitespace-pre-wrap border-l pl-3 text-xs text-muted-foreground">
+        {text}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

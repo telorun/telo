@@ -16,12 +16,26 @@ kind: Telo.Application
 metadata: { name: chat, version: 1.0.0 }
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.10.0
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@0.12.0
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.0
+  Http: oci://ghcr.io/telorun/http-client@0.22.0
 ---
-kind: AiOpenai.OpenaiModel
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.ChatModel
 metadata: { name: Gpt4o }
 model: gpt-4o
-apiKey: "${{ secrets.OPENAI_API_KEY }}"
+request: !ref openaiRequest
 ---
 kind: Ai.TextStream
 metadata: { name: ChatStream }

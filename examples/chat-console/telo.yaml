@@ -12,7 +12,8 @@ metadata:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
 imports:
-  OpenAI: oci://ghcr.io/telorun/openai@0.1.0#sha256-SnFe2QDJWkXtCWDcJh_fBTQ73thsdA_Cg6cNfI01i2o
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.0#sha256-tlcGRgiTGfFkCB7n3lnGmzdSmduyFTDwZ_BqDw71rCk
+  Http: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
   Ai: oci://ghcr.io/telorun/ai@0.18.0#sha256-OtJa8sQbyyLNKMTjbyy5-qiQWF9ouPj7a2-BSH0KGXg
   RecordStream: oci://ghcr.io/telorun/record-stream@0.15.4#sha256-L4b4EJ4vVPnHszy59Jy7WlZaldAk0kP2Z1sKYwDKhNg
   PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.4#sha256-Z1My-TDPdE13s63NSi5rT0Qg0CZf-7tAXbJBRcBGCOQ
@@ -49,10 +50,25 @@ migrations:
       )
 ---
 # --- AI provider -----------------------------------------------------------
-kind: OpenAI.ModelStream
+# The account: base URL and credential on the client, so the model kind carries no
+# key and inherits the 401 re-acquire-and-retry from `http-client`.
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.ChatModelStream
 metadata: { name: gpt54Nano }
 model: gpt-5.4-nano
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 ---
 kind: Ai.TextStream
 metadata: { name: chatStream }

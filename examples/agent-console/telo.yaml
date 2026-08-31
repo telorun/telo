@@ -16,7 +16,7 @@ metadata:
         OPENAI_API_KEY=sk-...
   version: 1.0.0
 imports:
-  OpenAI: oci://ghcr.io/telorun/openai@0.1.0#sha256-SnFe2QDJWkXtCWDcJh_fBTQ73thsdA_Cg6cNfI01i2o
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.0#sha256-tlcGRgiTGfFkCB7n3lnGmzdSmduyFTDwZ_BqDw71rCk
   Ai: oci://ghcr.io/telorun/ai@0.18.0#sha256-OtJa8sQbyyLNKMTjbyy5-qiQWF9ouPj7a2-BSH0KGXg
   AiMcp: oci://ghcr.io/telorun/ai-mcp@0.13.0#sha256-GUeyyUnObEQcx--sTRlkoMx-3hi07HuqH9aSYA4XY7I
   Mcp: oci://ghcr.io/telorun/mcp-client@0.15.0#sha256-M3frsOwjZWR_Vo2LERsRjBqcN7iXZbVg_gTjK4OGq8s
@@ -55,10 +55,25 @@ migrations:
       )
 ---
 # --- AI provider -----------------------------------------------------------
-kind: OpenAI.Model
+# The account: base URL and credential on the client, so the model kind carries no
+# key and inherits the 401 re-acquire-and-retry from `http-client`.
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.ChatModel
 metadata: { name: gpt4oMini }
 model: gpt-4o-mini
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 ---
 # --- Tool: MCP server (runtime discovery) ----------------------------------
 # Streamable-HTTP MCP client pointed at the Telo registry server. AiMcp.ToolProvider

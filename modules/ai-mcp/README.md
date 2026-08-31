@@ -26,14 +26,28 @@ secrets:
     type: string
 imports:
   Ai: oci://ghcr.io/telorun/ai@^0.4.0
-  AiOpenai: oci://ghcr.io/telorun/ai-openai@^0.4.0
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.0
+  Http: oci://ghcr.io/telorun/http-client@0.22.0
   Mcp: oci://ghcr.io/telorun/mcp-client@^0.4.0
   AiMcp: oci://ghcr.io/telorun/ai-mcp@^0.4.0
 ---
-kind: AiOpenai.OpenaiModel
+kind: Http.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: Http.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: Http.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.ChatModel
 metadata: { name: Gpt4o }
 model: gpt-4o-mini
-apiKey: !cel "secrets.openaiApiKey"
+request: !ref openaiRequest
 ---
 kind: Mcp.StdioClient
 metadata: { name: FilesMcp }

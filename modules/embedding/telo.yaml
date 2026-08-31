@@ -29,7 +29,7 @@ exports:
 # Telo.Provider: a configured model, NOT an operation you invoke. Consumers
 # (Embedding.Query / Embedding.Passage) reference it via
 # `x-telo-ref: Self.Model`; a concrete implementation
-# (EmbeddingOpenai.Model, …) satisfies the ref.
+# (OpenAI.EmbeddingModel, …) satisfies the ref.
 #
 # The prompt templates live here, on the model, because they are a property of
 # the checkpoint — embeddinggemma, E5 and BGE each mandate their own fixed

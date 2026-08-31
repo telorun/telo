@@ -16,7 +16,7 @@ metadata:
     exits on its own instead of hanging on a listening port.
 imports:
   Notify: ./notify
-  Http: oci://ghcr.io/telorun/http-server@0.29.0#sha256-6OIi1b-_cF4uMZ3O20EWRWAJn6JbgomkE4amBBMofqM
+  Http: oci://ghcr.io/telorun/http-server@0.29.1#sha256-pE3rCn5FDwOXz2Joi2RnSS1Hcoa69CBl1meW-TVgK70
   Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
   Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
 targets:

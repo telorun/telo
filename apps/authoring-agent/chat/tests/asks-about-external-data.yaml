@@ -94,6 +94,15 @@ steps:
         inputs:
           wroteFile: !cel "steps.drain.result.items.exists(r, r.data.type == 'tool-call' && (r.data.toolCall.name == 'write_file' || r.data.toolCall.name == 'edit_file'))"
           askedQuestions: !cel "steps.reply.result.contains('telo-questions')"
+          # The other half of the same rule, and the one nothing held before: a
+          # name the MANIFEST declares is not a fact the user has. Asking which
+          # env var holds a token makes them invent an answer whose only effect
+          # is what the agent was going to write anyway. Asserted as an absence,
+          # so a prompt edit that reinstates the question fails here rather than
+          # passing a suite that only checks that SOME question came back.
+          askedEnvVarName: !cel >-
+            steps.reply.result.lowerAscii().contains('environment variable')
+            || steps.reply.result.lowerAscii().contains('env var')
           # Unasserted: a failure has to show WHAT it invented instead of asking.
           reply: !cel "steps.reply.result.size() > 900 ? steps.reply.result.substring(0, 900) : steps.reply.result"
         invoke:
@@ -103,4 +112,5 @@ steps:
             properties:
               wroteFile: { const: false }
               askedQuestions: { const: true }
-            required: [wroteFile, askedQuestions]
+              askedEnvVarName: { const: false }
+            required: [wroteFile, askedQuestions, askedEnvVarName]
