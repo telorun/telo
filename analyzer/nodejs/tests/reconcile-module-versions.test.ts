@@ -72,12 +72,12 @@ function app(imports: Record<string, string>) {
 
 describe("reconcileModuleVersions via loadGraph", () => {
   it("hoists a same-major skew to the higher version silently", async () => {
-    // app imports std/shared@0.2.0 directly; sub imports std/shared@0.1.0.
+    // app imports oci://ghcr.io/telorun/shared@0.2.0 directly; sub imports oci://ghcr.io/telorun/shared@0.1.0.
     const files: Record<string, string> = {
-      "/ws/telo.yaml": app({ Shared: "std/shared@0.2.0", Sub: "std/sub@1.0.0" }),
-      "std/shared@0.2.0": lib("shared", "0.2.0"),
-      "std/sub@1.0.0": lib("sub", "1.0.0", { Old: "std/shared@0.1.0" }),
-      "std/shared@0.1.0": lib("shared", "0.1.0"),
+      "/ws/telo.yaml": app({ Shared: "oci://ghcr.io/telorun/shared@0.2.0", Sub: "oci://ghcr.io/telorun/sub@1.0.0" }),
+      "oci://ghcr.io/telorun/shared@0.2.0": lib("shared", "0.2.0"),
+      "oci://ghcr.io/telorun/sub@1.0.0": lib("sub", "1.0.0", { Old: "oci://ghcr.io/telorun/shared@0.1.0" }),
+      "oci://ghcr.io/telorun/shared@0.1.0": lib("shared", "0.1.0"),
     };
 
     const graph = await loaderFor(files).loadGraph("/ws/telo.yaml", { desugarImports: true });
@@ -86,11 +86,11 @@ describe("reconcileModuleVersions via loadGraph", () => {
     expect(graph.versionDiagnostics).toHaveLength(0);
 
     // Loser (0.1.0) redirected to winner (0.2.0).
-    expect(graph.overrides.get("std/shared@0.1.0")).toBe("std/shared@0.2.0");
+    expect(graph.overrides.get("oci://ghcr.io/telorun/shared@0.1.0")).toBe("oci://ghcr.io/telorun/shared@0.2.0");
 
     // sub's edge was repointed in place at the winner.
-    expect(graph.importEdges.get("std/sub@1.0.0")?.get("Old")?.targetSource).toBe(
-      "std/shared@0.2.0",
+    expect(graph.importEdges.get("oci://ghcr.io/telorun/sub@1.0.0")?.get("Old")?.targetSource).toBe(
+      "oci://ghcr.io/telorun/shared@0.2.0",
     );
   });
 
@@ -121,8 +121,8 @@ describe("reconcileModuleVersions via loadGraph", () => {
     // `shared` under two different registry paths is two different modules —
     // reconciling them would drop one and break its kinds.
     const files: Record<string, string> = {
-      "/ws/telo.yaml": app({ A: "std/shared@0.1.0", B: "acme/shared@0.2.0" }),
-      "std/shared@0.1.0": lib("shared", "0.1.0"),
+      "/ws/telo.yaml": app({ A: "oci://ghcr.io/telorun/shared@0.1.0", B: "acme/shared@0.2.0" }),
+      "oci://ghcr.io/telorun/shared@0.1.0": lib("shared", "0.1.0"),
       "acme/shared@0.2.0": lib("shared", "0.2.0"),
     };
 
@@ -149,10 +149,10 @@ describe("reconcileModuleVersions via loadGraph", () => {
 
   it("flags an incompatible major mismatch as an error", async () => {
     const files: Record<string, string> = {
-      "/ws/telo.yaml": app({ Shared: "std/shared@2.0.0", Sub: "std/sub@1.0.0" }),
-      "std/shared@2.0.0": lib("shared", "2.0.0"),
-      "std/sub@1.0.0": lib("sub", "1.0.0", { Old: "std/shared@1.0.0" }),
-      "std/shared@1.0.0": lib("shared", "1.0.0"),
+      "/ws/telo.yaml": app({ Shared: "oci://ghcr.io/telorun/shared@2.0.0", Sub: "oci://ghcr.io/telorun/sub@1.0.0" }),
+      "oci://ghcr.io/telorun/shared@2.0.0": lib("shared", "2.0.0"),
+      "oci://ghcr.io/telorun/sub@1.0.0": lib("sub", "1.0.0", { Old: "oci://ghcr.io/telorun/shared@1.0.0" }),
+      "oci://ghcr.io/telorun/shared@1.0.0": lib("shared", "1.0.0"),
     };
 
     const graph = await loaderFor(files).loadGraph("/ws/telo.yaml", { desugarImports: true });
@@ -161,7 +161,7 @@ describe("reconcileModuleVersions via loadGraph", () => {
     expect(graph.versionDiagnostics[0].code).toBe("MODULE_VERSION_CONFLICT");
     expect(graph.versionDiagnostics[0].severity).toBe(1); // Error
     // A winner is still chosen (max version) so analysis collapses to one copy.
-    expect(graph.overrides.get("std/shared@1.0.0")).toBe("std/shared@2.0.0");
+    expect(graph.overrides.get("oci://ghcr.io/telorun/shared@1.0.0")).toBe("oci://ghcr.io/telorun/shared@2.0.0");
   });
 
   it("does not emit a spurious DUPLICATE_IMPORT_ALIAS for the skewed shared module", async () => {
@@ -169,11 +169,11 @@ describe("reconcileModuleVersions via loadGraph", () => {
     // import (`Inner`). Pre-reconcile both copies reach analyze() and the alias
     // `Inner` collides in scope `shared`. Post-reconcile only one copy survives.
     const files: Record<string, string> = {
-      "/ws/telo.yaml": app({ Shared: "std/shared@0.2.0", Sub: "std/sub@1.0.0" }),
-      "std/shared@0.2.0": lib("shared", "0.2.0", { Inner: "std/inner@0.1.0" }),
-      "std/sub@1.0.0": lib("sub", "1.0.0", { Old: "std/shared@0.1.0" }),
-      "std/shared@0.1.0": lib("shared", "0.1.0", { Inner: "std/inner@0.1.0" }),
-      "std/inner@0.1.0": lib("inner", "0.1.0"),
+      "/ws/telo.yaml": app({ Shared: "oci://ghcr.io/telorun/shared@0.2.0", Sub: "oci://ghcr.io/telorun/sub@1.0.0" }),
+      "oci://ghcr.io/telorun/shared@0.2.0": lib("shared", "0.2.0", { Inner: "oci://ghcr.io/telorun/inner@0.1.0" }),
+      "oci://ghcr.io/telorun/sub@1.0.0": lib("sub", "1.0.0", { Old: "oci://ghcr.io/telorun/shared@0.1.0" }),
+      "oci://ghcr.io/telorun/shared@0.1.0": lib("shared", "0.1.0", { Inner: "oci://ghcr.io/telorun/inner@0.1.0" }),
+      "oci://ghcr.io/telorun/inner@0.1.0": lib("inner", "0.1.0"),
     };
 
     const graph = await loaderFor(files).loadGraph("/ws/telo.yaml", { desugarImports: true });

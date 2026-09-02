@@ -52,8 +52,7 @@ describe("buildManifestJsonPayload", () => {
     stubFetch(() => ({ ok: true, body: MANIFEST }));
 
     const payload = await buildManifestJsonPayload(
-      "std/console@0.9.0",
-      "https://reg.example.test",
+      "https://reg.example.test/console/telo.yaml",
       MANIFEST,
       log,
     );
@@ -63,7 +62,7 @@ describe("buildManifestJsonPayload", () => {
     // editor writes it into a manifest.
     expect(payload.integrity).toMatch(/^sha256-[A-Za-z0-9_-]{43}$/);
     expect(payload.manifest).toBe(MANIFEST);
-    expect(payload.cacheKey).toBe("registry/reg.example.test/std/console/0.9.0/telo.yaml");
+    expect(payload.cacheKey).toBe("url/reg.example.test/console/0.9.0/telo.yaml");
   });
 
   it("reports null with the reason on stderr when the ref cannot be hashed", async () => {
@@ -76,8 +75,7 @@ describe("buildManifestJsonPayload", () => {
       .mockImplementation((() => true) as typeof process.stderr.write);
 
     const payload = await buildManifestJsonPayload(
-      "std/console@0.9.0",
-      "https://reg.example.test",
+      "https://reg.example.test/console/telo.yaml",
       MANIFEST,
       log,
     );
@@ -96,8 +94,7 @@ describe("buildManifestJsonPayload", () => {
     stubFetch(() => ({ ok: true, body: KIND_MANIFEST }));
 
     const payload = await buildManifestJsonPayload(
-      "std/console@0.9.0",
-      "https://reg.example.test",
+      "https://reg.example.test/console/telo.yaml",
       KIND_MANIFEST,
       log,
     );
@@ -114,12 +111,7 @@ describe("buildManifestJsonPayload", () => {
       throw new Error("a local ref must not reach the network");
     });
 
-    const payload = await buildManifestJsonPayload(
-      "./some/module",
-      "https://reg.example.test",
-      MANIFEST,
-      log,
-    );
+    const payload = await buildManifestJsonPayload("./some/module", MANIFEST, log);
 
     expect(payload).toMatchObject({ integrity: null, cacheKey: null, manifest: MANIFEST });
   });

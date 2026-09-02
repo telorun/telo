@@ -60,7 +60,7 @@ Edges come from two places:
   declared-dependency graph cannot see `--external`, so `@telorun/sdk` (declared
   by 54 modules, inlined by none) would otherwise bump the whole standard
   library on every SDK change.
-- **In-repo relative `imports:`**. A pinned registry ref is deliberately *not* an
+- **In-repo relative `imports:`**. A pinned remote ref is deliberately *not* an
   edge: pinning is the statement "I am not affected until I choose to be", and
   moving it is `telo upgrade`'s job.
 

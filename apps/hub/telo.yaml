@@ -294,7 +294,7 @@ migrations:
   # and this app parses no PURLs.
   #
   # Per KIND rather than per module, because coverage genuinely differs between
-  # kinds of one module: `std/console` ships Rust controllers for two of its four
+  # kinds of one module: `console` ships Rust controllers for two of its four
   # kinds. `module_versions.runtimes` is the roll-up (every kernel with at least
   # partial reach) and `runtimes_full` the subset that covers every kind, so a
   # filter reads one column and the UI still distinguishes full from partial.
@@ -392,6 +392,22 @@ migrations:
           SELECT CASE WHEN version ~ '^[0-9]+(\.[0-9]+)*$'
                       THEN string_to_array(version, '.')::int[] END
         $$
+  # The `registry` transport is gone: a bare `<namespace>/<name>` ref resolves
+  # nowhere, so `telo module versions` on one exits non-zero and those rows fail
+  # every tracking pass forever. DELETED rather than filtered out of reads —
+  # filtering would hide rows that can never be repaired, while leaving them
+  # readable means search and `get_module_manifest` hand a caller a ref they
+  # cannot import, which is worse than a 404. Cascades to `module_versions`,
+  # `resource_kinds` and `module_resources`. Orphaned rows in the pgvector
+  # backend's own table are left alone — the hub does not reach into it, and the
+  # RRF query joins vector ids back to the relational rows, so an id with no row
+  # yields no hit.
+  "20260904090000_DropRegistryTransportModules":
+    statements:
+      - DELETE FROM modules WHERE transport = 'registry'
+      - |
+        ALTER TABLE modules ADD CONSTRAINT modules_transport_known
+        CHECK (transport IN ('oci', 'url'))
 ---
 # ── Semantic search: embedding model + pgvector index ────────────────────────
 # The embedder is a self-hosted embeddinggemma-300m sidecar (OpenAI-compatible);
@@ -519,7 +535,7 @@ inputType:
       version: { type: string }
 # How a ref pins to one version, in one place. A direct `https://` ref addresses
 # a single file at a fixed location and takes NO `@version` suffix — appending
-# one produces a 404. Registry and OCI refs pin with `@<version>`.
+# one produces a 404. An OCI ref pins with `@<version>`.
 value: !cel "inputs.ref.startsWith('https://') ? inputs.ref : inputs.ref + '@' + inputs.version"
 ---
 kind: Run.Value
@@ -563,10 +579,10 @@ steps:
         ON CONFLICT (ref) DO NOTHING
       bindings:
         - !cel "inputs.ref"
-        # Transport is part of the record's identity — an explicit scheme can't
-        # be inferred from host/path alone. `url` is a single manifest at a fixed
-        # https location (no version list of its own; see the README).
-        - !cel "inputs.ref.startsWith('oci://') ? 'oci' : (inputs.ref.startsWith('https://') ? 'url' : 'registry')"
+        # Transport is part of the record's identity. `url` is a single
+        # manifest at a fixed https location (no version list of its own; see
+        # the README).
+        - !cel "inputs.ref.startsWith('oci://') ? 'oci' : 'url'"
 ---
 # ── Public registration (POST /register) ─────────────────────────────────────
 # Validate a submitted module ref resolves to a real Telo module, insert it, and
@@ -614,11 +630,10 @@ steps:
   # positional. The transport-egress guard only covers refs that actually reach
   # the network; this gate is what keeps local refs from getting that far.
   - name: accepted
-    if: !cel "steps.limit.result.allowed && inputs.ref.matches('^(oci://|https://)?[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)+(@[A-Za-z0-9][A-Za-z0-9._+-]*)?$')"
+    if: !cel "steps.limit.result.allowed && inputs.ref.matches('^(oci://|https://)[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)+(@[A-Za-z0-9][A-Za-z0-9._+-]*)?$')"
     then:
-      # `versions` proves the transport resolves the ref to a module repo — a
-      # bare registry ref is enumerated with a placeholder version internally,
-      # so the submitter supplies no version.
+      # `versions` proves the transport resolves the ref to a module repo, so
+      # the submitter supplies no version.
       - name: versionsCmd
         invoke: !ref TeloCli
         inputs:
@@ -747,7 +762,7 @@ outputs:
     !steps.limit.result.allowed
       ? 'too many registrations from this address — retry in ' + string(steps.limit.result.retryAfter) + 's'
       : (!('versionsCmd' in steps)
-          ? 'invalid module ref — expected <namespace>/<name>, oci://<host>/<path>, or https://<host>/<path>'
+          ? 'invalid module ref — expected oci://<host>/<path> or https://<host>/<path>'
           : (steps.versionsCmd.result.exitCode != 0
               ? 'cannot resolve module ref: ' + steps.versionsCmd.result.stderr
               : (!('manifestCmd' in steps)
@@ -1152,8 +1167,8 @@ steps:
             then:
               # Composed passage: kind name + capability + curated description,
               # framed by the owning module's name + description. The curated
-              # line is the primary signal (schema-derived enrichment is a
-              # follow-up — see plans/federated-discovery.md).
+              # line is the primary signal; schema-derived enrichment is a
+              # follow-up.
               - name: passages
                 invoke: !ref EmbedPassage
                 inputs:
@@ -1897,7 +1912,7 @@ outputs:
   hits: !cel "('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).map(r, {'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license, 'homepage': r.module_homepage, 'publisher': r.module_publisher, 'deprecated': {'reason': r.module_deprecated_reason, 'replacedBy': r.module_replaced_by}, 'runtime': {'runtimes': r.module_runtimes, 'full': r.module_runtimes_full, 'languages': r.module_languages, 'portable': r.module_portable}, 'categories': r.module_categories}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds, 'exportedResources': r.exported_resources})"
 ---
 # ── Manifest read (MCP get_module_manifest) ──────────────────────────────────
-# Re-keyed off the location ref (an OCI module has no namespace/name). Reads
+# Keyed off the location ref. Reads
 # the cached telo.yaml from the manifest bucket; a missing row falls back to a
 # sentinel key that 404s into the Module-not-found catch.
 kind: Run.Sequence
@@ -1951,7 +1966,7 @@ openapi:
   info:
     title: Telo Hub
     # The HTTP API's own version, not the app version (which changie owns) —
-    # deliberately outside the release replacement, like the registry's.
+    # deliberately outside the release replacement.
     version: 1.0.0
     description: >-
       Federated discovery over Telo modules: per-resource search, ref
@@ -2496,8 +2511,8 @@ entries:
           code: -32602
           message: !cel "error.message"
 
-  # get_module_manifest — keyed off the module's location ref (an OCI module
-  # has no namespace/name), serving the tracker-cached telo.yaml.
+  # get_module_manifest — keyed off the module's location ref, serving the
+  # tracker-cached telo.yaml.
   - name: get_module_manifest
     description: |
       Fetch the raw `telo.yaml` for a tracked module by its location ref

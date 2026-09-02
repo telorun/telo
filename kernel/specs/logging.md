@@ -840,7 +840,7 @@ kind: Telo.Application
 metadata:
   name: my-app
 imports:
-  Loki: acme/loki-sink@1.4.0
+  Loki: oci://ghcr.io/acme/loki-sink@1.4.0
 logging:
   level: info
   attributes:

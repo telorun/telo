@@ -1,6 +1,6 @@
 # Hub module metadata & badges
 
-Follow-up to [federated-discovery.md](federated-discovery.md), which built the index. This plan makes a hit *legible*: what can run it, who published it, whether it is still current.
+Follow-up to the work that built the hub's index. This plan makes a hit *legible*: what can run it, who published it, whether it is still current.
 
 ## Problem
 

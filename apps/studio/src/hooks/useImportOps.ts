@@ -2,7 +2,7 @@ import type { ManifestSource } from "@telorun/analyzer";
 import {
   addImportViaAst,
   classifyImport,
-  createRegistryAdapters,
+  createManifestSources,
   noopAdapter,
   removeImportViaAst,
   upgradeImportViaAst,
@@ -44,7 +44,7 @@ export function useImportOps({
       workspace: Workspace,
       modulePath: string,
       manifestAdapter: ManifestSource,
-      registryAdapters: ManifestSource[],
+      manifestSources: ManifestSource[],
     ) => Promise<Workspace>,
   ): Promise<void> {
     if (!state.workspace || !state.activeModulePath) return;
@@ -54,7 +54,7 @@ export function useImportOps({
       state.workspace,
       modulePath,
       adapter,
-      createRegistryAdapters(settings),
+      createManifestSources(settings),
     );
     const persisted = await persistModule(updated, modulePath);
     setState((s) => ({ ...s, workspace: persisted }));

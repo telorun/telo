@@ -9,9 +9,6 @@ import { enforceTerms, portsSchema, startWorkloadSession } from "./session-start
 export interface AppsRouteDeps {
   backend: RunnerBackend;
   registry: SessionRegistry;
-  /** The runner's own default registry URL, surfaced to the workload as
-   *  TELO_REGISTRY_URL when the request doesn't override it. */
-  defaultRegistryUrl?: string;
   /** Terms gate shared with `POST /v1/sessions` — app sessions execute on the
    *  operator's infrastructure just like runs, so they ride the same 428. */
   terms?: RunnerTerms;

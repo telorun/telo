@@ -194,8 +194,6 @@ build:
   # HTTP(S) base for a best-effort manifest existence check (skip build on a hit).
   # Empty → derive from the in-cluster registry, else always build.
   registryApiUrl: ""
-  # Telo module registry `telo install` resolves manifests from during the build.
-  teloRegistryUrl: "https://registry.telo.run"
   # Reference pre-existing dockerconfigjson Secrets by name (alternative to
   # registry.dockerconfigjson below, which creates them for you). pushSecretName
   # lives in build.namespace (Kaniko push); pullSecretName lives in

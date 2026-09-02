@@ -82,7 +82,6 @@ describe("warmModuleLayers", () => {
     const warmed = await warmModuleLayers(
       graph,
       entryDir,
-      "https://registry.invalid",
       path.join(entryDir, ".telo", "manifests"),
       { os: "linux", arch: "amd64" },
       (msg) => warnings.push(msg),

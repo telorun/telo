@@ -70,11 +70,8 @@ const NOT_FOUND = /\b404\b|not found|MANIFEST_UNKNOWN|NAME_UNKNOWN/i;
  * the kind of incident where a release is most likely to ship something wrong.
  * Those propagate and fail the publish.
  */
-async function readPublishedLayers(
-  ref: string,
-  registry: string,
-): Promise<ArtifactLayer[] | null> {
-  const transport = defaultTransportRegistry(registry).forRef(ref);
+async function readPublishedLayers(ref: string): Promise<ArtifactLayer[] | null> {
+  const transport = defaultTransportRegistry().forRef(ref);
   if (!transport) {
     throw new Error(
       `Cannot verify the published payload of '${ref}': no transport owns that ref.`,
@@ -113,9 +110,8 @@ async function readPublishedLayers(
 export async function readPublishedDigests(
   destination: string,
   version: string,
-  registry: string,
 ): Promise<LayerDigests | null> {
-  const published = await readPublishedLayers(`${destination}@${version}`, registry);
+  const published = await readPublishedLayers(`${destination}@${version}`);
   if (published === null) return null;
   const digests: Record<string, string> = {};
   for (const layer of published) {
@@ -134,9 +130,8 @@ export async function findPayloadDrift(
   destination: string,
   version: string,
   built: readonly BuiltLayer[],
-  registry: string,
 ): Promise<LayerDrift[] | null> {
-  const published = await readPublishedLayers(`${destination}@${version}`, registry);
+  const published = await readPublishedLayers(`${destination}@${version}`);
   if (published === null) return null;
 
   const publishedByKey = new Map<string, ArtifactLayer>();

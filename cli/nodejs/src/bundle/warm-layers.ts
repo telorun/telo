@@ -63,12 +63,11 @@ export interface WarmedLayers {
 export async function warmModuleLayers(
   graph: LoadedGraph,
   entryDir: string,
-  registryUrl: string,
   manifestsDir: string,
   target: PlatformTarget,
   onWarn: (message: string) => void,
 ): Promise<WarmedLayers> {
-  const transports = defaultTransportRegistry(registryUrl);
+  const transports = defaultTransportRegistry();
   const artifacts = new Map<string, ModuleArtifact>();
   const owners = new Map<string, OwnerManifest>();
   const directories = new Map<string, string | undefined>();
@@ -88,7 +87,6 @@ export async function warmModuleLayers(
       file.requestedUrl,
       file.source,
       entryDir,
-      registryUrl,
       manifestsDir,
     );
     directories.set(file.source, moduleDir ?? undefined);

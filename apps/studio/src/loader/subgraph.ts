@@ -21,7 +21,6 @@ import {
   setInlineImportSource,
 } from "../yaml-document";
 import { normalizePath } from "./paths";
-import { isRegistryImportSource } from "./registry";
 import { buildParsedManifest, classifyImport } from "./parse";
 import {
   buildResourceDocIndex,
@@ -34,20 +33,6 @@ import {
 // Loader wiring
 // ---------------------------------------------------------------------------
 
-const registryFallbackBlocker: ManifestSource = {
-  supports(url: string): boolean {
-    return isRegistryImportSource(url);
-  },
-  async read(url: string): Promise<{ text: string; source: string }> {
-    throw new Error(
-      `No enabled registry server can resolve '${url}'. Configure at least one registry in settings.`,
-    );
-  },
-  resolveRelative(_base: string, relative: string): string {
-    return relative;
-  },
-};
-
 function resolveDepPath(adapter: ManifestSource, filePath: string, source: string): string {
   return source.startsWith(".") || source.startsWith("/")
     ? adapter.resolveRelative(filePath, source)
@@ -56,21 +41,14 @@ function resolveDepPath(adapter: ManifestSource, filePath: string, source: strin
 
 export function createEditorLoader(
   localAdapter: ManifestSource,
-  registryAdapters: ManifestSource[],
+  settingsSources: ManifestSource[],
 ): Loader {
-  // The editor supplies its own registry adapters, so it takes the built-in
-  // HTTP source but not the built-in RegistrySource. The blocker sits right
-  // after them unconditionally: an enabled registry server claims its refs
-  // first, and a registry ref nothing claims (none configured, or the array
-  // holds only a settings-sourced manifest-cache adapter) fails with the
-  // actionable "configure a registry" message instead of a local read error.
-  // A browser can't speak the OCI protocol, so `oci://` imports resolve
-  // against the hub's static manifest cache — a settings-sourced adapter in
-  // `registryAdapters` wins over the built-in default, and both come before
-  // the local adapter, which would otherwise claim the ref.
+  // A browser can't speak the OCI protocol, so `oci://` imports resolve against
+  // the hub's static manifest cache — a settings-sourced adapter wins over the
+  // built-in default, and both come before the local adapter, which would
+  // otherwise claim the ref.
   return new Loader([
-    ...registryAdapters,
-    registryFallbackBlocker,
+    ...settingsSources,
     new ManifestCacheSource(),
     localAdapter,
     new HttpSource(),

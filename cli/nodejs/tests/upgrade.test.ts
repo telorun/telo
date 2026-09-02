@@ -1,13 +1,21 @@
+import { makeTarGz } from "@telorun/kernel";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import nock from "nock";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pickLatest, upgradeManifest, upgradeOne } from "../src/commands/upgrade.js";
 import { createLogger } from "../src/logger.js";
 
-const REGISTRY = "https://registry.example.test";
+const HOST = "oci.example.test";
+const ORIGIN = `https://${HOST}`;
 const log = createLogger(false);
+
+/** `oci://host/repo@version` — the one ref grammar that carries a version. */
+const ref = (repo: string, version: string): string => `oci://${HOST}/${repo}@${version}`;
+/** The version-independent label `upgrade` reports an import under. */
+const label = (repo: string): string => `oci://${HOST}/${repo}`;
 
 // ---------------------------------------------------------------------------
 // pickLatest — pure
@@ -40,8 +48,28 @@ describe("pickLatest", () => {
 });
 
 // ---------------------------------------------------------------------------
-// upgradeManifest — in-memory string in / string out, with mocked registry
+// upgradeManifest — in-memory string in / string out, over a mocked OCI
+// distribution registry. Version enumeration is `/v2/<repo>/tags/list`; pinning
+// pulls the artifact manifest and then the blob holding its `telo.yaml` layer.
 // ---------------------------------------------------------------------------
+
+const LIB = "kind: Telo.Library\n";
+let libTar: Buffer;
+let libDigest: string;
+
+beforeAll(async () => {
+  libTar = await makeTarGz([{ name: "telo.yaml", content: LIB }]);
+  libDigest = `sha256:${createHash("sha256").update(libTar).digest("hex")}`;
+  nock.disableNetConnect();
+});
+
+afterAll(() => {
+  nock.enableNetConnect();
+});
+
+afterEach(() => {
+  nock.cleanAll();
+});
 
 function buildManifest(imports: Array<{ name: string; source: string }>): string {
   const lines: string[] = [
@@ -57,40 +85,45 @@ function buildManifest(imports: Array<{ name: string; source: string }>): string
   return lines.join("\n") + "\n";
 }
 
-function mockVersions(namespace: string, name: string, versions: string[]) {
-  return nock(REGISTRY)
-    .get(`/${namespace}/${name}`)
+/** The tag list for `repo`. `times` covers a case that calls `upgradeManifest`
+ *  more than once against a single interceptor. */
+function mockVersions(repo: string, versions: string[], times = 1) {
+  return nock(ORIGIN)
+    .get(`/v2/${repo}/tags/list`)
+    .query(true)
+    .times(times)
+    .reply(200, { name: repo, tags: versions });
+}
+
+/** The two-hop pull `manifestHash` performs. Without both, pinning fails and
+ *  the import is reported as left unpinned. */
+function mockManifest(repo: string, version: string) {
+  nock(ORIGIN)
+    .get(`/v2/${repo}/manifests/${version}`)
     .reply(200, {
-      name: `${namespace}/${name}`,
-      version: versions[versions.length - 1] ?? "",
-      versions,
+      schemaVersion: 2,
+      mediaType: "application/vnd.oci.image.manifest.v1+json",
+      config: { mediaType: "application/vnd.oci.empty.v1+json", digest: libDigest, size: 0 },
+      layers: [
+        {
+          mediaType: "application/vnd.telo.module.manifest.v1+tar",
+          digest: libDigest,
+          size: libTar.length,
+        },
+      ],
     });
+  nock(ORIGIN).get(`/v2/${repo}/blobs/${libDigest}`).reply(200, libTar);
 }
 
-function mockManifest(namespace: string, name: string, version: string, body = "kind: Telo.Library\n") {
-  return nock(REGISTRY).get(`/${namespace}/${name}/${version}/telo.yaml`).reply(200, body);
-}
-
-beforeAll(() => {
-  nock.disableNetConnect();
-});
-
-afterAll(() => {
-  nock.enableNetConnect();
-});
-
-afterEach(() => {
-  nock.cleanAll();
-});
-
-describe("upgradeManifest — registry interactions (in-memory)", () => {
+describe("upgradeManifest — origin interactions (in-memory)", () => {
   it("leaves an already-current, already-pinned import untouched (byte-for-byte, no manifest fetch)", async () => {
-    const input = buildManifest([{ name: "Run", source: "std/run@0.2.7#sha256-EXISTING" }]);
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    const input = buildManifest([
+      { name: "Run", source: `${ref("telorun/run", "0.2.7")}#sha256-EXISTING` },
+    ]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
@@ -103,13 +136,12 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
   });
 
   it("pins an already-current unpinned import in place (no version change)", async () => {
-    const input = buildManifest([{ name: "Run", source: "std/run@0.2.7" }]);
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
-    mockManifest("std", "run", "0.2.7");
+    const input = buildManifest([{ name: "Run", source: ref("telorun/run", "0.2.7") }]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
+    mockManifest("telorun/run", "0.2.7");
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
@@ -117,17 +149,17 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
     expect(result.upgrades).toEqual([]);
     expect(result.pinned).toBe(1);
     expect(result.errors).toBe(0);
-    expect(content).toMatch(/Run: std\/run@0\.2\.7#sha256-[A-Za-z0-9_-]+/);
+    expect(content).toContain(`${ref("telorun/run", "0.2.7")}#sha256-`);
   });
 
   it("leaves an already-current import unpinned when the manifest fetch fails (best-effort)", async () => {
-    const input = buildManifest([{ name: "Run", source: "std/run@0.2.7" }]);
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
-    // telo.yaml endpoint intentionally not mocked → hash fetch fails.
+    const input = buildManifest([{ name: "Run", source: ref("telorun/run", "0.2.7") }]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
+    // The manifest pull fails, so the pin cannot be computed.
+    nock(ORIGIN).get("/v2/telorun/run/manifests/0.2.7").reply(404);
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
@@ -139,66 +171,62 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
   });
 
   it("rewrites a real older pin to the latest published version", async () => {
-    const input = buildManifest([{ name: "Run", source: "std/run@0.2.4" }]);
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    const input = buildManifest([{ name: "Run", source: ref("telorun/run", "0.2.4") }]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
 
     expect(result.upgrades).toEqual([
-      { packagePath: "std/run", from: "0.2.4", to: "0.2.7" },
+      { packagePath: label("telorun/run"), from: "0.2.4", to: "0.2.7" },
     ]);
-    expect(content).toContain("Run: std/run@0.2.7");
-    expect(content).not.toContain("Run: std/run@0.2.4");
+    expect(content).toContain(`Run: ${ref("telorun/run", "0.2.7")}`);
+    expect(content).not.toContain(`Run: ${ref("telorun/run", "0.2.4")}`);
   });
 
   it("repairs a broken low pin (current not in published list) upward", async () => {
-    const input = buildManifest([{ name: "Run", source: "std/run@0.0.1" }]);
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    const input = buildManifest([{ name: "Run", source: ref("telorun/run", "0.0.1") }]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
 
     expect(result.upgrades).toEqual([
-      { packagePath: "std/run", from: "0.0.1", to: "0.2.7" },
+      { packagePath: label("telorun/run"), from: "0.0.1", to: "0.2.7" },
     ]);
-    expect(content).toContain("Run: std/run@0.2.7");
+    expect(content).toContain(`Run: ${ref("telorun/run", "0.2.7")}`);
   });
 
   it("repairs a broken high pin downward — only direction where downgrade is allowed", async () => {
-    const input = buildManifest([{ name: "Run", source: "std/run@9.9.9" }]);
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    const input = buildManifest([{ name: "Run", source: ref("telorun/run", "9.9.9") }]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
 
     expect(result.upgrades).toEqual([
-      { packagePath: "std/run", from: "9.9.9", to: "0.2.7" },
+      { packagePath: label("telorun/run"), from: "9.9.9", to: "0.2.7" },
     ]);
-    expect(content).toContain("Run: std/run@0.2.7");
+    expect(content).toContain(`Run: ${ref("telorun/run", "0.2.7")}`);
   });
 
-  it("treats a registry 404 as skipped, not an error", async () => {
+  it("treats an unknown repository as skipped, not an error", async () => {
     const input = buildManifest([
-      { name: "Missing", source: "std/does-not-exist@1.0.0" },
+      { name: "Missing", source: ref("telorun/does-not-exist", "1.0.0") },
     ]);
-    nock(REGISTRY).get("/std/does-not-exist").reply(404, { error: "Module not found" });
+    nock(ORIGIN).get("/v2/telorun/does-not-exist/tags/list").query(true).reply(404, {});
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
@@ -209,13 +237,12 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
     expect(content).toBe(input);
   });
 
-  it("surfaces a non-404 registry failure as an error and leaves the manifest unchanged", async () => {
-    const input = buildManifest([{ name: "Run", source: "std/run@0.2.4" }]);
-    nock(REGISTRY).get("/std/run").reply(500, "boom");
+  it("surfaces a non-404 origin failure as an error and leaves the manifest unchanged", async () => {
+    const input = buildManifest([{ name: "Run", source: ref("telorun/run", "0.2.4") }]);
+    nock(ORIGIN).get("/v2/telorun/run/tags/list").query(true).reply(500, "boom");
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
@@ -225,13 +252,12 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
     expect(content).toBe(input);
   });
 
-  it("skips non-registry sources without making any HTTP call", async () => {
+  it("skips a local sibling import without making any HTTP call", async () => {
     const input = buildManifest([{ name: "Local", source: "../sibling" }]);
     // No nock interceptor — net is disabled, so any fetch attempt would throw.
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
@@ -242,58 +268,66 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
     expect(content).toBe(input);
   });
 
-  it("respects --include-prerelease in both directions against the same versions list", async () => {
-    const input = buildManifest([{ name: "Run", source: "std/run@1.0.0" }]);
+  it("skips a ref pinned to a digest — there is no version ordering to follow", async () => {
+    const input = buildManifest([
+      { name: "Run", source: `oci://${HOST}/telorun/run@sha256:deadbeef` },
+    ]);
+    mockVersions("telorun/run", ["0.2.7"]);
 
-    // Two GETs are made in this test — one per upgradeManifest call.
-    nock(REGISTRY)
-      .get("/std/run")
-      .twice()
-      .reply(200, {
-        name: "std/run",
-        version: "2.0.0-rc.1",
-        versions: ["1.0.0", "2.0.0-rc.1"],
-      });
+    const { content, result } = await upgradeManifest({
+      content: input,
+      includePrerelease: false,
+      log,
+    });
+
+    expect(result.upgrades).toEqual([]);
+    expect(result.skipped).toBe(1);
+    expect(content).toBe(input);
+  });
+
+  it("respects --include-prerelease in both directions against the same versions list", async () => {
+    const input = buildManifest([{ name: "Run", source: ref("telorun/run", "1.0.0") }]);
+
+    // Two tag-list reads are made — one per upgradeManifest call.
+    mockVersions("telorun/run", ["1.0.0", "2.0.0-rc.1"], 2);
+    // The stable pass finds nothing newer, so it pins the version already named.
+    mockManifest("telorun/run", "1.0.0");
 
     const stable = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
     expect(stable.result.upgrades).toEqual([]);
-    expect(stable.result.unchanged).toBe(1);
-    expect(stable.content).toBe(input);
+    expect(stable.result.pinned).toBe(1);
 
     const prereleased = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: true,
       log,
     });
     expect(prereleased.result.upgrades).toEqual([
-      { packagePath: "std/run", from: "1.0.0", to: "2.0.0-rc.1" },
+      { packagePath: label("telorun/run"), from: "1.0.0", to: "2.0.0-rc.1" },
     ]);
-    expect(prereleased.content).toContain("Run: std/run@2.0.0-rc.1");
+    expect(prereleased.content).toContain(`Run: ${ref("telorun/run", "2.0.0-rc.1")}`);
   });
 
   it("rewrites multiple inline imports in one map", async () => {
     const input = buildManifest([
-      { name: "Run", source: "std/run@0.2.4" },
-      { name: "Type", source: "std/type@1.0.0" },
+      { name: "Run", source: ref("telorun/run", "0.2.4") },
+      { name: "Type", source: ref("telorun/type", "1.0.0") },
     ]);
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
-    mockVersions("std", "type", ["1.0.0", "1.0.5"]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
+    mockVersions("telorun/type", ["1.0.0", "1.0.5"]);
 
     const { content } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
 
-    expect(content).toContain("Run: std/run@0.2.7");
-    expect(content).toContain("Type: std/type@1.0.5");
+    expect(content).toContain(`Run: ${ref("telorun/run", "0.2.7")}`);
+    expect(content).toContain(`Type: ${ref("telorun/type", "1.0.5")}`);
   });
 
   it("rewrites the object form (`Alias: { source: … }`) source", async () => {
@@ -304,24 +338,23 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
       "  version: 0.0.1",
       "imports:",
       "  Run:",
-      "    source: std/run@0.2.4",
+      `    source: ${ref("telorun/run", "0.2.4")}`,
       "    variables:",
       "      flag: true",
       "",
     ].join("\n");
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
 
     expect(result.upgrades).toEqual([
-      { packagePath: "std/run", from: "0.2.4", to: "0.2.7" },
+      { packagePath: label("telorun/run"), from: "0.2.4", to: "0.2.7" },
     ]);
-    expect(content).toContain("source: std/run@0.2.7");
+    expect(content).toContain(`source: ${ref("telorun/run", "0.2.7")}`);
     // The sibling `variables:` block under the same entry is untouched.
     expect(content).toContain("      flag: true");
   });
@@ -342,74 +375,70 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
       "    SELECT id, $1, 'root-publish-token' FROM users WHERE username = 'root'",
       "    ON CONFLICT (user_id, label) DO UPDATE SET token_hash = EXCLUDED.token_hash",
       "  bindings:",
-      "    - \"abc\"",
+      '    - "abc"',
     ].join("\n");
     const input =
-      buildManifest([{ name: "Run", source: "std/run@0.2.4" }]) + "---\n" + sqlBlock + "\n";
+      buildManifest([{ name: "Run", source: ref("telorun/run", "0.2.4") }]) +
+      "---\n" +
+      sqlBlock +
+      "\n";
 
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
 
     expect(result.upgrades).toHaveLength(1);
-    expect(content).toContain("Run: std/run@0.2.7");
+    expect(content).toContain(`Run: ${ref("telorun/run", "0.2.7")}`);
     // The folded-block source lines must survive verbatim — no collapse onto a
     // single line.
     expect(content).toContain(sqlBlock);
   });
 
   it("preserves the quote style of the source scalar on rewrite", async () => {
+    const old = ref("telorun/run", "0.2.4");
+    const next = ref("telorun/run", "0.2.7");
+
     // Plain scalar — written back as plain.
-    const plainInput = buildManifest([{ name: "Run", source: "std/run@0.2.4" }]);
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    const plainInput = buildManifest([{ name: "Run", source: old }]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
     const plain = await upgradeManifest({
       content: plainInput,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
-    expect(plain.content).toContain("Run: std/run@0.2.7");
-    expect(plain.content).not.toContain('Run: "std/run@0.2.7"');
+    expect(plain.content).toContain(`Run: ${next}`);
+    expect(plain.content).not.toContain(`Run: "${next}"`);
 
     // Double-quoted scalar — quotes kept.
-    const dqInput = plainInput.replace(
-      "Run: std/run@0.2.4",
-      'Run: "std/run@0.2.4"',
-    );
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    const dqInput = plainInput.replace(`Run: ${old}`, `Run: "${old}"`);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
     const dq = await upgradeManifest({
       content: dqInput,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
-    expect(dq.content).toContain('Run: "std/run@0.2.7"');
-    expect(dq.content).not.toContain("Run: std/run@0.2.7\n");
+    expect(dq.content).toContain(`Run: "${next}"`);
+    expect(dq.content).not.toContain(`Run: ${next}\n`);
 
     // Single-quoted scalar — quotes kept.
-    const sqInput = plainInput.replace(
-      "Run: std/run@0.2.4",
-      "Run: 'std/run@0.2.4'",
-    );
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    const sqInput = plainInput.replace(`Run: ${old}`, `Run: '${old}'`);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
     const sq = await upgradeManifest({
       content: sqInput,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
-    expect(sq.content).toContain("Run: 'std/run@0.2.7'");
+    expect(sq.content).toContain(`Run: '${next}'`);
   });
 
   it("everything outside the rewritten source value is byte-identical to the input", async () => {
-    // Construct a manifest with multiple imports plus a noisy unrelated doc
-    // (comments, indentation oddities, trailing whitespace) and verify the
-    // diff is exactly the bumped pin chars.
+    // Construct a manifest with an import plus a noisy unrelated doc (comments,
+    // indentation oddities, trailing comment) and verify the diff is exactly
+    // the bumped pin chars.
     const before = [
       "# Top-of-file comment.",
       "kind: Telo.Application",
@@ -417,7 +446,7 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
       "  name: probe",
       "  version: 0.0.1",
       "imports:",
-      "  Run: std/run@0.2.4   # trailing comment",
+      `  Run: ${ref("telorun/run", "0.2.4")}   # trailing comment`,
       "---",
       "# Comment between docs.",
       "kind: Other.Resource",
@@ -430,18 +459,17 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
       "",
     ].join("\n");
 
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
 
     const { content } = await upgradeManifest({
       content: before,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
 
     // The only delta is the version chars — comments, spacing, the noisy doc
     // are byte-identical.
-    expect(content).toBe(before.replace("std/run@0.2.4", "std/run@0.2.7"));
+    expect(content).toBe(before.replace("run@0.2.4", "run@0.2.7"));
   });
 
   it("does not reflow long double-quoted scalars when rewriting a different doc", async () => {
@@ -451,25 +479,24 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
     const longCel =
       "${{ type(steps.parseManifest.result.docs[?0].?metadata.?description.orValue('')) == string ? steps.parseManifest.result.docs[?0].?metadata.?description.orValue(null) : null }}";
     const input =
-      buildManifest([{ name: "Run", source: "std/run@0.2.4" }]) +
+      buildManifest([{ name: "Run", source: ref("telorun/run", "0.2.4") }]) +
       "---\n" +
       "kind: Some.Resource\n" +
       "metadata:\n" +
       "  name: Probe\n" +
       `expr: "${longCel}"\n`;
 
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
 
     expect(result.upgrades).toHaveLength(1);
     // Source was rewritten as expected …
-    expect(content).toContain("Run: std/run@0.2.7");
+    expect(content).toContain(`Run: ${ref("telorun/run", "0.2.7")}`);
     // … but the long scalar in the unrelated doc must survive verbatim — no
     // line wrap, no backslash continuations.
     expect(content).toContain(`expr: "${longCel}"`);
@@ -477,80 +504,11 @@ describe("upgradeManifest — registry interactions (in-memory)", () => {
   });
 
   it("returns a per-import diagnostic for an unparseable current version", async () => {
-    const input = buildManifest([{ name: "Run", source: "std/run@not-a-version" }]);
-    mockVersions("std", "run", ["1.0.0"]);
+    const input = buildManifest([{ name: "Run", source: ref("telorun/run", "not-a-version") }]);
+    mockVersions("telorun/run", ["1.0.0"]);
 
     const { content, result } = await upgradeManifest({
       content: input,
-      registryUrl: REGISTRY,
-      includePrerelease: false,
-      log,
-    });
-
-    expect(result.upgrades).toEqual([]);
-    expect(result.skipped).toBe(1);
-    expect(content).toBe(input);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// upgradeManifest — OCI imports route through the OCI transport, not the
-// registry-only classifier that used to skip them.
-// ---------------------------------------------------------------------------
-
-describe("upgradeManifest — OCI interactions", () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it("bumps an oci:// import to the latest published tag", async () => {
-    // Stub the OCI distribution API: tag enumeration succeeds; the manifest
-    // pull used for pinning 404s, so the version is rewritten but left unpinned.
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      const url = String(input);
-      if (url.includes("/tags/list")) {
-        return new Response(JSON.stringify({ tags: ["0.19.0", "0.19.1", "0.20.0"] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response(null, { status: 404 });
-    });
-
-    const input = buildManifest([
-      { name: "Http", source: "oci://ghcr.io/telorun/http-server@0.19.1" },
-    ]);
-
-    const { content, result } = await upgradeManifest({
-      content: input,
-      registryUrl: REGISTRY,
-      includePrerelease: false,
-      log,
-    });
-
-    expect(result.upgrades).toEqual([
-      { packagePath: "oci://ghcr.io/telorun/http-server", from: "0.19.1", to: "0.20.0" },
-    ]);
-    expect(content).toContain("Http: oci://ghcr.io/telorun/http-server@0.20.0");
-    expect(result.skipped).toBe(0);
-  });
-
-  it("skips an oci:// import pinned to a digest (no version ordering to follow)", async () => {
-    // listVersions is still reached, but the current reference is a digest, so
-    // there is nothing to compare against.
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      async () =>
-        new Response(JSON.stringify({ tags: ["0.20.0"] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-    );
-
-    const input = buildManifest([
-      { name: "Http", source: "oci://ghcr.io/telorun/http-server@sha256:deadbeef" },
-    ]);
-
-    const { content, result } = await upgradeManifest({
-      content: input,
-      registryUrl: REGISTRY,
       includePrerelease: false,
       log,
     });
@@ -582,27 +540,29 @@ describe("upgradeOne — filesystem wrapper", () => {
     const manifestPath = path.join(workdir, "telo.yaml");
     fs.writeFileSync(
       manifestPath,
-      buildManifest([{ name: "Run", source: "std/run@0.2.4" }]),
+      buildManifest([{ name: "Run", source: ref("telorun/run", "0.2.4") }]),
       "utf-8",
     );
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
 
-    const result = await upgradeOne(workdir, REGISTRY, false, false, log);
+    const result = await upgradeOne(workdir, false, false, log);
 
     expect(result.upgrades).toHaveLength(1);
-    expect(fs.readFileSync(manifestPath, "utf-8")).toContain("Run: std/run@0.2.7");
+    expect(fs.readFileSync(manifestPath, "utf-8")).toContain(
+      `Run: ${ref("telorun/run", "0.2.7")}`,
+    );
   });
 
-  it("dry-run hits the registry but never writes the file", async () => {
+  it("dry-run hits the origin but never writes the file", async () => {
     const manifestPath = path.join(workdir, "telo.yaml");
-    const input = buildManifest([{ name: "Run", source: "std/run@0.2.4" }]);
+    const input = buildManifest([{ name: "Run", source: ref("telorun/run", "0.2.4") }]);
     fs.writeFileSync(manifestPath, input, "utf-8");
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
 
-    const result = await upgradeOne(manifestPath, REGISTRY, false, true, log);
+    const result = await upgradeOne(manifestPath, false, true, log);
 
     expect(result.upgrades).toEqual([
-      { packagePath: "std/run", from: "0.2.4", to: "0.2.7" },
+      { packagePath: label("telorun/run"), from: "0.2.4", to: "0.2.7" },
     ]);
     expect(fs.readFileSync(manifestPath, "utf-8")).toBe(input);
   });
@@ -614,19 +574,19 @@ describe("upgradeOne — filesystem wrapper", () => {
     fs.writeFileSync(
       rootPath,
       buildManifest([
-        { name: "Run", source: "std/run@0.2.4" },
+        { name: "Run", source: ref("telorun/run", "0.2.4") },
         { name: "Lib", source: "./lib" },
       ]),
       "utf-8",
     );
-    const libInput = buildManifest([{ name: "Type", source: "std/type@1.0.0" }]);
+    const libInput = buildManifest([{ name: "Type", source: ref("telorun/type", "1.0.0") }]);
     fs.writeFileSync(libPath, libInput, "utf-8");
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
-    // std/type is NOT mocked — if the lib were followed, its fetch would 404/throw.
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
+    // telorun/type is NOT mocked — if the lib were followed, its fetch would throw.
 
-    const result = await upgradeOne(rootPath, REGISTRY, false, false, log);
+    const result = await upgradeOne(rootPath, false, false, log);
 
-    expect(result.upgrades).toHaveLength(1); // only std/run
+    expect(result.upgrades).toHaveLength(1); // only telorun/run
     expect(result.skipped).toBe(1); // the relative ./lib import
     expect(fs.readFileSync(libPath, "utf-8")).toBe(libInput); // untouched
   });
@@ -639,25 +599,29 @@ describe("upgradeOne — filesystem wrapper", () => {
     fs.writeFileSync(
       rootPath,
       buildManifest([
-        { name: "Run", source: "std/run@0.2.4" },
+        { name: "Run", source: ref("telorun/run", "0.2.4") },
         { name: "Lib", source: "./lib" },
       ]),
       "utf-8",
     );
-    fs.writeFileSync(libPath, buildManifest([{ name: "Type", source: "std/type@1.0.0" }]), "utf-8");
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
-    mockVersions("std", "type", ["1.0.0", "1.0.5"]);
+    fs.writeFileSync(
+      libPath,
+      buildManifest([{ name: "Type", source: ref("telorun/type", "1.0.0") }]),
+      "utf-8",
+    );
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
+    mockVersions("telorun/type", ["1.0.0", "1.0.5"]);
 
-    const result = await upgradeOne(rootPath, REGISTRY, false, false, log, true);
+    const result = await upgradeOne(rootPath, false, false, log, true);
 
     // Aggregated over both files, and the relative import is not counted skipped.
     expect(result.upgrades).toEqual([
-      { packagePath: "std/run", from: "0.2.4", to: "0.2.7" },
-      { packagePath: "std/type", from: "1.0.0", to: "1.0.5" },
+      { packagePath: label("telorun/run"), from: "0.2.4", to: "0.2.7" },
+      { packagePath: label("telorun/type"), from: "1.0.0", to: "1.0.5" },
     ]);
     expect(result.skipped).toBe(0);
-    expect(fs.readFileSync(rootPath, "utf-8")).toContain("Run: std/run@0.2.7");
-    expect(fs.readFileSync(libPath, "utf-8")).toContain("Type: std/type@1.0.5");
+    expect(fs.readFileSync(rootPath, "utf-8")).toContain(`Run: ${ref("telorun/run", "0.2.7")}`);
+    expect(fs.readFileSync(libPath, "utf-8")).toContain(`Type: ${ref("telorun/type", "1.0.5")}`);
   });
 
   it("with --recursive, an import cycle upgrades each file exactly once", async () => {
@@ -669,7 +633,7 @@ describe("upgradeOne — filesystem wrapper", () => {
     fs.writeFileSync(
       aPath,
       buildManifest([
-        { name: "Run", source: "std/run@0.2.4" },
+        { name: "Run", source: ref("telorun/run", "0.2.4") },
         { name: "B", source: "./b" },
       ]),
       "utf-8",
@@ -677,20 +641,20 @@ describe("upgradeOne — filesystem wrapper", () => {
     fs.writeFileSync(
       bPath,
       buildManifest([
-        { name: "Type", source: "std/type@1.0.0" },
+        { name: "Type", source: ref("telorun/type", "1.0.0") },
         { name: "A", source: "../" },
       ]),
       "utf-8",
     );
-    // One interceptor each — a second visit would need a second GET and 404.
-    mockVersions("std", "run", ["0.2.4", "0.2.7"]);
-    mockVersions("std", "type", ["1.0.0", "1.0.5"]);
+    // One interceptor each — a second visit would need a second read and fail.
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
+    mockVersions("telorun/type", ["1.0.0", "1.0.5"]);
 
-    const result = await upgradeOne(aPath, REGISTRY, false, false, log, true);
+    const result = await upgradeOne(aPath, false, false, log, true);
 
     expect(result.upgrades).toEqual([
-      { packagePath: "std/run", from: "0.2.4", to: "0.2.7" },
-      { packagePath: "std/type", from: "1.0.0", to: "1.0.5" },
+      { packagePath: label("telorun/run"), from: "0.2.4", to: "0.2.7" },
+      { packagePath: label("telorun/type"), from: "1.0.0", to: "1.0.5" },
     ]);
     expect(result.errors).toBe(0);
   });

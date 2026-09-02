@@ -433,15 +433,14 @@ export function moduleDirectoryFor(
   requestedUrl: string,
   source: string,
   entryDir: string,
-  registryUrl: string | undefined,
   manifestsDir: string | undefined,
   legacyDir?: string | null,
 ): string | null {
   const pinned = splitIntegrity(requestedUrl).base;
-  const cacheFile = cachePathForCanonical(pinned, entryDir, registryUrl, manifestsDir);
+  const cacheFile = cachePathForCanonical(pinned, entryDir, manifestsDir);
   if (cacheFile) {
     if (legacyDir && !existsSync(cacheFile)) {
-      const legacyFile = cachePathForCanonical(pinned, entryDir, registryUrl, legacyDir);
+      const legacyFile = cachePathForCanonical(pinned, entryDir, legacyDir);
       if (legacyFile && existsSync(legacyFile)) return path.dirname(legacyFile);
     }
     return path.dirname(cacheFile);

@@ -167,7 +167,6 @@ export class KernelRuntimeSeam implements RuntimeSeam {
       stdout: stdout.writable,
       stderr: stderr.writable,
       sources: [...this.kernel.injectedSources],
-      registryUrl: this.kernel.registryUrl,
     });
 
     // A child that fails to load is not an exception on this side: the caller
@@ -223,7 +222,7 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     // rather than the kernel's own loader because a checked manifest is often
     // deliberately broken and has no business entering the running kernel's
     // parse cache.
-    const loader = new Loader(defaultTransportRegistry(this.kernel.registryUrl).sources(), {
+    const loader = new Loader(defaultTransportRegistry().sources(), {
       celHandlers: nodeCelHandlers,
     });
     for (const injected of this.kernel.injectedSources) {

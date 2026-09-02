@@ -36,13 +36,11 @@ const BUNDLE: RunBundle = {
 };
 
 const BASE = "telorun/node:latest-slim";
-const TELO_REGISTRY = "https://registry.telo.run";
 
 function tagInputs(over: Partial<Parameters<typeof computeImageTag>[0]> = {}) {
   return {
     bundle: BUNDLE,
     baseImage: BASE,
-    teloRegistryUrl: TELO_REGISTRY,
     ...over,
   };
 }
@@ -82,10 +80,9 @@ describe("computeImageTag — dependency-closure addressing", () => {
     expect(computeImageTag(tagInputs({ bundle: edited }))).not.toBe(computeImageTag(tagInputs()));
   });
 
-  it("changes when the base image or telo registry change", () => {
+  it("changes when the base image changes", () => {
     const base = computeImageTag(tagInputs());
     expect(computeImageTag(tagInputs({ baseImage: "telorun/node:next" }))).not.toBe(base);
-    expect(computeImageTag(tagInputs({ teloRegistryUrl: "https://other.example" }))).not.toBe(base);
   });
 
   it("produces a 32-char lowercase hex tag", () => {
@@ -113,7 +110,6 @@ describe("buildDockerfile", () => {
     const df = buildDockerfile({ baseImage: BASE, entryRelativePath: "app/manifest.yaml" });
     expect(df).toContain(`FROM ${BASE}`);
     expect(df).toContain("COPY . /app");
-    expect(df).toContain("ARG TELO_REGISTRY_URL");
     expect(df).toContain("ENV TELO_CACHE_DIR=/telo-cache");
     expect(df).toContain("RUN telo install /app/app/manifest.yaml");
   });
@@ -125,7 +121,6 @@ const BUILD_CONFIG: ImageBuildConfig = {
   builderImage: "gcr.io/kaniko-project/executor:latest",
   timeoutSeconds: 600,
   insecureRegistry: false,
-  teloRegistryUrl: TELO_REGISTRY,
 };
 
 function kanikoArgsOf(job: ReturnType<typeof buildKanikoJob>): string[] {
@@ -158,12 +153,11 @@ describe("buildKanikoJob", () => {
     expect(init?.args?.[0]).toContain(base.contextUrl);
   });
 
-  it("passes context, dockerfile, destination and the telo registry build-arg", () => {
+  it("passes context, dockerfile and destination", () => {
     const args = kanikoArgsOf(buildKanikoJob({ config: BUILD_CONFIG, ...base }));
     expect(args).toContain("--context=dir:///workspace");
     expect(args).toContain("--dockerfile=/workspace/Dockerfile");
     expect(args).toContain(`--destination=${base.destination}`);
-    expect(args).toContain(`--build-arg=TELO_REGISTRY_URL=${TELO_REGISTRY}`);
   });
 
   it("omits insecure flags by default and includes them when configured", () => {

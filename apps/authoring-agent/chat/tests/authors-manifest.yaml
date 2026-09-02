@@ -14,13 +14,13 @@ metadata:
     tools, including the agent's own `telo check`), then independently asserts:
     (1) the agent called get_module_manifest (hub discovery actually
     happened), (2) `telo check` on the authored file passes — which can only
-    succeed if the import version resolves against the live registry and the
-    http resources are wired correctly, and (3) the file composed the real
+    succeed if the import version resolves against its origin and the http
+    resources are wired correctly, and (3) the file composed the real
     http-server module and wired the /hello route. Skips silently when
     OPENAI_API_KEY is unset (locally: drop a .env.local here; CI: secret on the
     workflow); when the key is present it also needs outbound access to the hub
-    (telo.sh) for discovery and registry.telo.run for module resolution, or the
-    run fails.
+    (telo.sh) for discovery and to ghcr.io for module resolution, or the run
+    fails.
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY

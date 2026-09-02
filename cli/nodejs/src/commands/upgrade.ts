@@ -17,11 +17,9 @@ import { createLogger, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine, output } from "../output.js";
 import { findModuleDoc, importSourceRefs, type ImportSourceRef } from "./manifest-imports.js";
 
-const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
-
 /** The version-independent label for a versioned `source`, for diagnostics —
  *  the ref with its exact `@<rawVersion>` suffix and any integrity fragment
- *  stripped (`oci://ghcr.io/telorun/run`, `acme/lib`). */
+ *  stripped (`oci://ghcr.io/telorun/run`). */
 function refLabel(source: string, rawVersion: string): string {
   const base = splitIntegrity(source).base;
   const suffix = `@${rawVersion}`;
@@ -160,7 +158,6 @@ function resolveManifestPath(inputPath: string): { filePath: string; error?: str
  */
 export async function upgradeManifest(args: {
   content: string;
-  registryUrl: string;
   includePrerelease: boolean;
   log: Logger;
   /** Optional label printed in the "Upgrading <name>" header. */
@@ -169,7 +166,7 @@ export async function upgradeManifest(args: {
    *  neither counted nor reported as skipped here. */
   recursive?: boolean;
 }): Promise<{ content: string; result: UpgradeResult; relativeImports: string[] }> {
-  const { content, registryUrl, includePrerelease, log, displayName, recursive } = args;
+  const { content, includePrerelease, log, displayName, recursive } = args;
 
   const result: UpgradeResult = {
     changed: false,
@@ -180,7 +177,7 @@ export async function upgradeManifest(args: {
     errors: 0,
   };
 
-  const registry = defaultTransportRegistry(registryUrl);
+  const registry = defaultTransportRegistry();
   const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
 
   if (displayName !== undefined) {
@@ -296,7 +293,7 @@ export async function upgradeManifest(args: {
 
     if (published === null || published.length === 0) {
       outLine(
-        `  ${log.warn("!")}  ${label}  ${log.dim("no published versions in registry")}`,
+        `  ${log.warn("!")}  ${label}  ${log.dim("no published versions")}`,
       );
       result.skipped++;
       continue;
@@ -477,7 +474,6 @@ function mergeResults(into: UpgradeResult, child: UpgradeResult): void {
 
 export async function upgradeOne(
   inputPath: string,
-  registryUrl: string,
   includePrerelease: boolean,
   dryRun: boolean,
   log: Logger,
@@ -510,7 +506,6 @@ export async function upgradeOne(
 
   const { content: nextContent, result, relativeImports } = await upgradeManifest({
     content,
-    registryUrl,
     includePrerelease,
     log,
     displayName: displayPath,
@@ -533,7 +528,6 @@ export async function upgradeOne(
     for (const rel of relativeImports) {
       const child = await upgradeOne(
         path.resolve(dir, rel),
-        registryUrl,
         includePrerelease,
         dryRun,
         log,
@@ -549,15 +543,11 @@ export async function upgradeOne(
 
 export async function upgrade(argv: {
   paths: string[];
-  registryUrl?: string;
   includePrerelease: boolean;
   dryRun: boolean;
   recursive?: boolean;
 }): Promise<void> {
   const log = createLogger(false);
-
-  const registryUrl =
-    argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
 
   let totalUpgrades = 0;
   let totalPinned = 0;
@@ -572,7 +562,6 @@ export async function upgrade(argv: {
   for (const p of argv.paths) {
     const r = await upgradeOne(
       p,
-      registryUrl,
       argv.includePrerelease,
       argv.dryRun,
       log,
@@ -616,7 +605,7 @@ export async function upgrade(argv: {
 export function upgradeCommand(yargs: Argv): Argv {
   return yargs.command(
     "upgrade <paths..>",
-    "Bump import sources to the latest published version in the registry",
+    "Bump import sources to the latest published version at their origin",
     (y) =>
       y
         .positional("paths", {
@@ -624,10 +613,6 @@ export function upgradeCommand(yargs: Argv): Argv {
           type: "string",
           array: true,
           demandOption: true,
-        })
-        .option("registry-url", {
-          type: "string",
-          describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
         })
         .option("include-prerelease", {
           type: "boolean",

@@ -22,7 +22,6 @@ import {
 import { createLogger, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine, output } from "../output.js";
 
-const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
 interface ControllerJob {
   purls: string[];
@@ -85,18 +84,13 @@ function collectControllerJobs(manifests: ResourceManifest[]): ControllerJob[] {
 async function warmAnalysisCache(
   entryPath: string,
   entryDir: string,
-  registryUrl: string,
   log: Logger,
   cacheRoot: string,
 ): Promise<void> {
   const manifestsDir = path.join(cacheRoot, "manifests");
   try {
     const kernel = new Kernel({
-      registryUrl,
-      sources: [
-        new LocalFileSource(),
-        new LocalManifestCacheSource(entryDir, registryUrl, manifestsDir),
-      ],
+      sources: [new LocalFileSource(), new LocalManifestCacheSource(entryDir, manifestsDir)],
     });
     await kernel.load(entryPath, { analyzeOnly: true, cacheDir: cacheRoot });
     outLine(
@@ -112,7 +106,6 @@ async function warmAnalysisCache(
 
 async function installOne(
   inputPath: string,
-  registryUrl: string,
   platform: PlatformTarget,
   log: Logger,
 ): Promise<boolean> {
@@ -121,7 +114,7 @@ async function installOne(
   const displayPath = isUrl ? entryPath : path.relative(process.cwd(), entryPath);
 
   // The install pass deliberately does NOT register LocalManifestCacheSource:
-  // its job is to converge `.telo/manifests/` with whatever the registry
+  // its job is to converge `.telo/manifests/` with whatever each origin
   // currently serves for the pinned versions. Reading from the cache here
   // would freeze stale bytes in place — re-running `telo install` could
   // never refresh a corrupted or outdated entry without manual deletion.
@@ -130,10 +123,7 @@ async function installOne(
   // image bakes deps at the relocated root) and thread it to the manifest
   // cache, controller install root, and analysis-warm pass.
   const cacheRoot = resolveCacheRoot(entryPath);
-  const loader = new Loader([
-    new LocalFileSource(),
-    ...defaultTransportRegistry(registryUrl).sources(),
-  ]);
+  const loader = new Loader([new LocalFileSource(), ...defaultTransportRegistry().sources()]);
   let manifests: ResourceManifest[];
   let graph: Awaited<ReturnType<typeof loader.loadGraph>>;
   try {
@@ -166,12 +156,12 @@ async function installOne(
 
   // Persist every imported manifest to `<entry-dir>/.telo/manifests/` so the
   // boot path (`telo run`) can resolve every import from disk and skip
-  // the registry round-trip. The Dockerfile `COPY --from=build /srv /srv`
+  // the network round-trip. The Dockerfile `COPY --from=build /srv /srv`
   // line then carries this whole tree into the production image.
   if (entryDir && cacheRoot) {
     const manifestsDir = path.join(cacheRoot, "manifests");
     try {
-      const written = await writeManifestCache(graph, entryDir, registryUrl, manifestsDir);
+      const written = await writeManifestCache(graph, entryDir, manifestsDir);
       if (written.length > 0) {
         outLine(
           `  ${log.ok("✓")}  cached ${written.length} manifest${written.length !== 1 ? "s" : ""} to ${log.dim(path.relative(process.cwd(), manifestsDir))}`,
@@ -182,7 +172,6 @@ async function installOne(
       const warmed = await warmModuleLayers(
         graph,
         entryDir,
-        registryUrl,
         manifestsDir,
         platform,
         (msg) => outErrLine(`  ${log.err.warn("⚠")}  ${msg}`),
@@ -208,7 +197,7 @@ async function installOne(
 
   if (jobs.length === 0) {
     outLine(log.ok("✓") + `  ${displayPath}: no controllers to install`);
-    if (entryDir && cacheRoot) await warmAnalysisCache(entryPath, entryDir, registryUrl, log, cacheRoot);
+    if (entryDir && cacheRoot) await warmAnalysisCache(entryPath, entryDir, log, cacheRoot);
     return true;
   }
 
@@ -264,7 +253,7 @@ async function installOne(
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   if (failed === 0) {
     outLine(`\n${log.ok("✓")}  ${jobs.length} installed in ${elapsed}s`);
-    if (entryDir && cacheRoot) await warmAnalysisCache(entryPath, entryDir, registryUrl, log, cacheRoot);
+    if (entryDir && cacheRoot) await warmAnalysisCache(entryPath, entryDir, log, cacheRoot);
     return true;
   }
   outLine(
@@ -273,11 +262,7 @@ async function installOne(
   return false;
 }
 
-export async function install(argv: {
-  paths: string[];
-  registryUrl?: string;
-  platform?: string;
-}): Promise<void> {
+export async function install(argv: { paths: string[]; platform?: string }): Promise<void> {
   const log = createLogger(false);
 
   // The platform whose layers get warmed. Explicit so a baked image can be built
@@ -290,19 +275,11 @@ export async function install(argv: {
     process.exit(1);
   }
 
-  // Same fallback chain as `telo run`: --registry-url > TELO_REGISTRY_URL >
-  // built-in default. The configured URL drives both the network fetches and
-  // the on-disk cache layout — registry-served manifests are keyed under
-  // `registry/<registry-host>/<path…>/<version>/...`, so pointing at a
-  // different registry never reuses this one's cached bytes.
-  const registryUrl =
-    argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
-
   let failed = false;
   const installed: string[] = [];
   const failures: string[] = [];
   for (const p of argv.paths) {
-    const ok = await installOne(p, registryUrl, platform, log);
+    const ok = await installOne(p, platform, log);
     (ok ? installed : failures).push(p);
     if (!ok) failed = true;
   }
@@ -328,11 +305,6 @@ export function installCommand(yargs: Argv): Argv {
           type: "string",
           array: true,
           demandOption: true,
-        })
-        .option("registry-url", {
-          type: "string",
-          describe:
-            "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
         })
         .option("platform", {
           type: "string",

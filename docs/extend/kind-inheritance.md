@@ -213,7 +213,7 @@ metadata:
   name: github-demo
   version: 1.0.0
 imports:
-  Gh: acme/github@0.1.0
+  Gh: oci://ghcr.io/acme/github@0.1.0
   Http: oci://ghcr.io/telorun/http-client@<version>
 secrets:
   ghToken: { env: GITHUB_TOKEN, type: string }

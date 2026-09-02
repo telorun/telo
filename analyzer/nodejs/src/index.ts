@@ -362,7 +362,6 @@ export {
 } from "./position-metadata.js";
 export type { DocumentPosition } from "./position-metadata.js";
 export { HttpSource } from "./sources/http-source.js";
-export { RegistrySource } from "./sources/registry-source.js";
 export { defaultSources } from "./sources/default-sources.js";
 export {
   splitIntegrity,
@@ -373,8 +372,6 @@ export {
   sha256Base64Url,
   IntegrityError,
 } from "./sources/integrity.js";
-export { parseModuleRef, isRegistryRef } from "./sources/module-ref.js";
-export type { ParsedModuleRef } from "./sources/module-ref.js";
 export { OCI_SCHEME, isOciRef, parseOciRef } from "./sources/oci-ref.js";
 export type { ParsedOciRef } from "./sources/oci-ref.js";
 export { parseVersionedRef, withRefVersion } from "./sources/versioned-ref.js";

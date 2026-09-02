@@ -220,9 +220,7 @@ the host environment directly for exactly the following:
 | Variable | Read by | Effect |
 | --- | --- | --- |
 | `TELO_CACHE_DIR` | run, install, check | Relocates the `.telo` cache root (default: `<manifest-dir>/.telo`). Used for the manifest cache, compiled validators, the analysis stamp, and the npm install root. |
-| `TELO_REGISTRY_URL` | run, install, upgrade | Base URL of the Telo module registry. Overridden by `--registry-url`. |
 | `TELO_PKG_MANAGER` | install | Package manager invoked for the controllers still delivered over npm. Defaults to `npm`. |
-| `TELO_REGISTRY_TOKEN` | publish | Bearer token for the registry's publish endpoint. Build-time only — never needed by a running app. |
 | `TELO_HUB_URL` | search | Hub used by `telo search`. Overridden by `--hub-url`. |
 | `TELO_EGRESS` | run, install, check | Set to `public-only` to refuse fetches from private, loopback or link-local hosts. See [Security & supply chain](/deploy/security). |
 

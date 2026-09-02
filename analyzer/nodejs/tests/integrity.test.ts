@@ -1,12 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RegistrySource } from "../src/sources/registry-source.js";
 import { HttpSource } from "../src/sources/http-source.js";
 import {
   sha256Base64Url,
   splitIntegrity,
   verifyIntegrity,
 } from "../src/sources/integrity.js";
-import { parseModuleRef } from "../src/sources/module-ref.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
@@ -22,35 +20,23 @@ afterEach(() => {
 });
 
 describe("splitIntegrity", () => {
-  it("splits a trailing sha256 fragment off a registry ref", () => {
-    expect(splitIntegrity("std/console@0.9.0#sha256-AAAA")).toEqual({
-      base: "std/console@0.9.0",
+  it("splits a trailing sha256 fragment off a module ref", () => {
+    expect(splitIntegrity("oci://ghcr.io/telorun/console@0.9.0#sha256-AAAA")).toEqual({
+      base: "oci://ghcr.io/telorun/console@0.9.0",
       integrity: "sha256-AAAA",
     });
   });
 
   it("leaves a ref without an integrity fragment untouched", () => {
-    expect(splitIntegrity("std/console@0.9.0")).toEqual({ base: "std/console@0.9.0" });
+    expect(splitIntegrity("oci://ghcr.io/telorun/console@0.9.0")).toEqual({
+      base: "oci://ghcr.io/telorun/console@0.9.0",
+    });
   });
 
   it("ignores a non-integrity fragment", () => {
     expect(splitIntegrity("http://x/a.yaml#section")).toEqual({
       base: "http://x/a.yaml#section",
     });
-  });
-});
-
-describe("parseModuleRef", () => {
-  it("strips the integrity fragment and the leading v from the version", () => {
-    expect(parseModuleRef("aws/s3@v1.2.0#sha256-ZZZ")).toEqual({
-      modulePath: "aws/s3",
-      version: "1.2.0",
-      integrity: "sha256-ZZZ",
-    });
-  });
-
-  it("rejects a ref without a namespace slash", () => {
-    expect(() => parseModuleRef("console@0.9.0")).toThrow(/expected namespace\/name@version/);
   });
 });
 
@@ -62,9 +48,9 @@ describe("verifyIntegrity", () => {
   });
 
   it("throws a terminal error on mismatch", async () => {
-    await expect(verifyIntegrity(enc("tampered"), "sha256-AAAA", "aws/s3@1.0.0")).rejects.toThrow(
-      /Integrity check failed for aws\/s3@1\.0\.0/,
-    );
+    await expect(
+      verifyIntegrity(enc("tampered"), "sha256-AAAA", "oci://ghcr.io/aws/s3@1.0.0"),
+    ).rejects.toThrow(/Integrity check failed for oci:\/\/ghcr\.io\/aws\/s3@1\.0\.0/);
   });
 
   it("rejects an unsupported algorithm", async () => {
@@ -77,22 +63,48 @@ describe("verifyIntegrity", () => {
 describe("source read verification", () => {
   const manifest = "kind: Telo.Library\nmetadata:\n  name: console\n";
 
-  it("RegistrySource serves the manifest when the hash matches", async () => {
+  it("HttpSource serves the manifest when the hash matches", async () => {
     vi.stubGlobal("fetch", mockFetch(manifest));
     const hash = `sha256-${await sha256Base64Url(enc(manifest))}`;
-    const src = new RegistrySource("https://reg.example");
-    const { text, source } = await src.read(`std/console@0.9.0#${hash}`);
+    const src = new HttpSource();
+    const { text, source } = await src.read(`https://x.example/console/telo.yaml#${hash}`);
     expect(text).toBe(manifest);
     // The canonical source never carries the integrity fragment.
-    expect(source).toBe("https://reg.example/std/console/0.9.0/telo.yaml");
+    expect(source).toBe("https://x.example/console/telo.yaml");
   });
 
-  it("RegistrySource throws when the hash does not match", async () => {
-    vi.stubGlobal("fetch", mockFetch(manifest));
-    const src = new RegistrySource("https://reg.example");
-    await expect(src.read("std/console@0.9.0#sha256-WRONG")).rejects.toThrow(
-      /Integrity check failed/,
+  it("names the origin when a bucket answers 200 with an XML error body", async () => {
+    // R2 / S3 surface auth and permission failures this way. Without the sniff
+    // the loader parses the XML as YAML and blames the manifest's contents.
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(
+        '<?xml version="1.0" encoding="UTF-8"?>\n' +
+          "<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>",
+      ),
     );
+    const src = new HttpSource();
+    await expect(src.read("https://x.example/lib/telo.yaml")).rejects.toThrow(
+      /non-manifest response.*AccessDenied: Access Denied/s,
+    );
+  });
+
+  it("reports the XML body ahead of a pin mismatch, so the cause is the origin", async () => {
+    // A bucket's error page hashes to something; reporting the pin would name
+    // the wrong cause exactly as the loader would.
+    vi.stubGlobal("fetch", mockFetch("<Error><Code>NoSuchKey</Code><Message>gone</Message></Error>"));
+    const src = new HttpSource();
+    await expect(src.read("https://x.example/lib/telo.yaml#sha256-WRONG")).rejects.toThrow(
+      /non-manifest response/,
+    );
+  });
+
+  it("leaves a manifest that merely starts with a angle bracket alone", async () => {
+    // The sniff keys on the XML prologue / <Error> root, not on "<".
+    const yaml = "kind: Telo.Library\nmetadata:\n  name: lib\n";
+    vi.stubGlobal("fetch", mockFetch(yaml));
+    const src = new HttpSource();
+    await expect(src.read("https://x.example/lib/telo.yaml")).resolves.toMatchObject({ text: yaml });
   });
 
   it("HttpSource verifies the fetched bytes", async () => {

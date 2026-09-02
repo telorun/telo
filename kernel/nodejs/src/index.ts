@@ -12,7 +12,7 @@ export {
 export { MemorySource } from "./manifest-sources/memory-source.js";
 export { WORKSPACE_FILENAME, findWorkspaceRoot, realPath } from "./workspace-marker.js";
 export type { Transport } from "./transports/transport.js";
-export { RegistryTransport } from "./transports/registry-transport.js";
+export { HttpTransport } from "./transports/http-transport.js";
 export { OciTransport } from "./transports/oci/oci-transport.js";
 export { OciClient } from "./transports/oci/oci-client.js";
 export { isOciRef, parseOciRef, type ParsedOciRef } from "./transports/oci/oci-ref.js";

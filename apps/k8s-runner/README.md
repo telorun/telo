@@ -358,7 +358,6 @@ degrades to reusing the cached build for it, same as `missing` / `never`.
 | `RUNNER_REGISTRY_API_URL` | _(unset → always build)_ | HTTP(S) base for the manifest existence check (authenticated via the push Secret) |
 | `RUNNER_REGISTRY_PUSH_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-builds`) Kaniko pushes with; also authenticates the existence check |
 | `RUNNER_IMAGE_PULL_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-sessions`) the kubelet pulls per-app images with |
-| `TELO_REGISTRY_URL` | `https://registry.telo.run` | Telo module registry used by `telo install` |
 
 ## Deploy (Helm)
 

@@ -9,7 +9,7 @@ import {
 } from "./templates";
 
 function settings(over?: Partial<AppSettings>): AppSettings {
-  return { registryServers: [], runners: [], activeRunnerId: "x", ...over } as AppSettings;
+  return { runners: [], activeRunnerId: "x", ...over } as AppSettings;
 }
 
 function stubFetch(impl: (url: string) => Partial<Response>): void {

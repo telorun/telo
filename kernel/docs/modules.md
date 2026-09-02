@@ -14,7 +14,7 @@ A Telo Module is a self-contained, encapsulated package of application logic, se
 
 Every module file begins with exactly one `Telo.Application` or `Telo.Library` document — the manifest and public interface for the package. Applications are runnable entry points; Libraries are units imported by others. Both use JSON Schema validation for their inputs.
 
-- **`metadata.name`**: Global identifier in the package registry. Kebab-case slug (e.g., `user-service`) to remain URL-friendly and consistent with standard registry patterns.
+- **`metadata.name`**: The module's name — the canonical kind prefix (e.g. `HttpServer.*`) that the registry keys on and diagnostics print. PascalCase; see the [style guide](/guides/style-guide).
 - **`variables`**: Standard configuration properties required by the module. JSON Schema object properties. Per the style guide, use **camelCase** (e.g., `dbConnectionString`).
 - **`secrets`**: Sensitive inputs. Also JSON Schema object properties, handled separately to ensure secure injection and prevent accidental exposure in logs.
 - **Optionality (No `required` block)**: Requirement validation is handled via defaults. Mandatory inputs are defined without a `default`. Optional inputs must be explicitly defined with `default: null`.
@@ -62,7 +62,7 @@ All resources defined in included files behave as if they were declared in the s
 - Must not contain `kind: Telo.Application`, `kind: Telo.Library`, `kind: Telo.Import`, or `kind: Telo.Definition`. These system kinds are reserved for the owner `telo.yaml`.
 - Resources that omit `metadata.module` are automatically bound to the including module, rather than the `default` module. Explicitly setting `metadata.module` on a resource in an included file still takes precedence.
 
-**Glob patterns** (e.g. `**/*.yaml`, `routes/*.yaml`) are expanded at load time against the module directory. At publish time, globs are expanded and partial file contents are inlined into the published artifact, so registry consumers receive a single self-contained manifest.
+**Glob patterns** (e.g. `**/*.yaml`, `routes/*.yaml`) are expanded at load time against the module directory. At publish time, globs are expanded and partial file contents are inlined into the published artifact, so consumers receive a single self-contained manifest.
 
 **IDE support:** When a partial file is opened directly in an IDE, the analyzer walks parent directories to find the owning `telo.yaml` and provides full diagnostics in context. If a file has a discoverable owner but is not listed in its `include` field, a warning is shown indicating the file will not be loaded at runtime.
 
@@ -199,7 +199,7 @@ imports:
   # only the importing module's variables/secrets. Forwarding is eager and
   # per-hop, so a value flows app -> lib -> lib at any depth and resolves in O(1).
   PaymentGateway:
-    source: acme/payment-gateway@1.2.0
+    source: oci://ghcr.io/acme/payment-gateway@1.2.0
     variables:
       upstreamProviderUrl: "https://api.stripe.com"
       retryTimeoutMs: 5000
@@ -207,7 +207,7 @@ imports:
       providerApiKey: "${{ secrets.stripeApiKey }}"
       webhookSignature: "${{ secrets.stripeWebhookSignature }}"
   UserService:
-    source: acme/user-service@1.0.0
+    source: oci://ghcr.io/acme/user-service@1.0.0
     variables:
       dbConnectionString: "${{ variables.databaseUrl }}"
 ```
@@ -226,16 +226,15 @@ To utilize an external package, a module declares a dependency as an entry in it
 
 ### 6.1 Source Resolution
 
-The `source` field accepts four forms:
+The `source` field accepts three forms:
 
 | Form               | Example                                          | Resolved as                                       |
 | ------------------ | ------------------------------------------------ | ------------------------------------------------- |
 | OCI reference      | `oci://ghcr.io/telorun/console@<version>`           | Pulled from that OCI host                         |
-| Registry reference | `acme/user-service@1.0.0`                        | Looked up in the configured module registry       |
 | Relative path      | `./payment/telo.yaml`                            | Resolved relative to the importing manifest's URL |
 | Absolute URL       | `https://cdn.example.com/lib/telo.yaml`          | Fetched directly                                  |
 
-`oci://` is the form the standard library and every first-party module publish to; the bare `<namespace>/<name>@<version>` registry form is retained read-only so already-pinned manifests keep resolving.
+`oci://` is the form the standard library and every first-party module publish to.
 
 Relative paths follow the same semantics as `<script src>` in HTML — the base URL is always the manifest that declares the `imports:` entry, not the current working directory. This means a manifest fetched from a remote URL can itself import other remote modules using relative paths.
 
@@ -251,9 +250,9 @@ Examples:
 - `oci://ghcr.io/telorun/sql` — generic SQL surface area; specific DB drivers are separate modules (`postgres`, `sqlite`).
 - `oci://ghcr.io/telorun/lambda` — vendor-defined APIs and event shapes, adapted by a Telo-authored module.
 
-Where a module is published is a property of the **ref**, not of the library: a module declares nothing about its own location, and the same bytes can be published to an OCI repo, a registry path, or a URL without changing. Moving a module to a different repository is a breaking change to every consumer's `source:` field and is treated as a new module, not a version bump.
+Where a module is published is a property of the **ref**, not of the library: a module declares nothing about its own location, and the same bytes can be published to an OCI repo or served at a URL without changing. Moving a module to a different repository is a breaking change to every consumer's `source:` field and is treated as a new module, not a version bump.
 
-**Discovery.** Modules are discovered through the **hub** ([`hub.telo.run`](https://hub.telo.run)) — a federated index over every registered module across transports (the HTTP registry, OCI, and direct manifest URLs). `telo search "<query>"` and the hub's MCP tools (`search_resources`, `get_module_manifest` — see [Coding Agents](/build/coding-agents)) resolve intent to the exact kind and its owning ref. Discovery is independent of where a module is hosted: the hub stores only metadata and cached manifests, and `telo install` / `telo run` resolve the actual artifact against the module's own origin (see §7).
+**Discovery.** Modules are discovered through the **hub** ([`hub.telo.run`](https://hub.telo.run)) — a federated index over every registered module across transports (OCI and direct manifest URLs). `telo search "<query>"` and the hub's MCP tools (`search_resources`, `get_module_manifest` — see [Coding Agents](/build/coding-agents)) resolve intent to the exact kind and its owning ref. Discovery is independent of where a module is hosted: the hub stores only metadata and cached manifests, and `telo install` / `telo run` resolve the actual artifact against the module's own origin (see §7).
 
 ### Import Declaration
 
@@ -264,7 +263,7 @@ metadata:
   version: 1.0.0
 imports:
   UserService:
-    source: acme/user-service@1.0.0
+    source: oci://ghcr.io/acme/user-service@1.0.0
     variables:
       dbConnectionString: "postgresql://app_user:pass@db.internal:5432/users"
       enableDebug: true
@@ -281,22 +280,19 @@ imports:
 
 ## 7. Manifest Cache
 
-Resolution is separate from discovery: the [hub](#62-publishing-locations) indexes *what* modules exist, but the bytes of each `Telo.Library` are fetched from the module's own origin. A bare `<namespace>/<name>@<version>` ref resolves against the read-only registry origin (`registry.telo.run`), an `oci://…` ref against its OCI host, and an `https://…` ref directly. `telo install` walks the full import graph from a manifest, fetches every transitively-imported `Telo.Library` from its origin, and writes its YAML to a sibling of the controller install tree. Boot then resolves every import from disk and makes zero network calls — the cache is the single trust boundary that pins which manifests the runtime will see.
+Resolution is separate from discovery: the [hub](#62-publishing-locations) indexes *what* modules exist, but the bytes of each `Telo.Library` are fetched from the module's own origin. An `oci://…` ref resolves against its OCI host, and an `https://…` ref directly. `telo install` walks the full import graph from a manifest, fetches every transitively-imported `Telo.Library` from its origin, and writes its YAML to a sibling of the controller install tree. Boot then resolves every import from disk and makes zero network calls — the cache is the single trust boundary that pins which manifests the runtime will see.
 
 ### Layout
 
 ```text
 <entry-manifest-dir>/.telo/manifests/
-  registry/<host>/<path…>/<version>/telo.yaml   # registry refs (source: ns/name@x.y.z)
-  registry/<host>/<path…>/<version>/<partial>   # any include: target reachable from above
   oci/<host>/<repo…>/<tag>/telo.yaml            # OCI imports (source: oci://host/repo@tag)
+  oci/<host>/<repo…>/<tag>/<partial>            # any include: target reachable from above
   url/<host>/<pathname>                         # direct URL imports (source: https://…)
 ```
 
 - Every entry is keyed `<transport>/<host>/<path…>/<version>/<file>` — the same grammar the hub's static manifest bucket and the editor's browser-safe read path use, so no two of them can drift on where a module lands. The coordinates come from the transport that owns the ref; `manifestCacheKey` in `@telorun/analyzer` renders them.
-- Registry entries carry the **registry host**: a bare ref says nothing about which registry serves it, so without the host two registries' copies of the same path and version would share one cache entry.
 - Direct URL imports carry no version segment. A URL addresses exactly one file, and the version it declares lives inside bytes the cache maps paths without.
-- An HTTP URL whose host matches the configured registry URL is folded into the registry layout — `source: https://registry.telo.run/acme/foo/1.0.0/telo.yaml` and `source: acme/foo@1.0.0` hit the same cache file.
 - URLs with a query string or fragment get a short content-hash inserted before the file extension so two distinct manifests differing only in query never collide.
 - Partials reached through `include:` are written alongside their owning manifest using the same relative paths declared in the owner, so the loader's existing relative-resolution path keeps working unchanged once the owner is served from disk.
 
@@ -305,14 +301,14 @@ Resolution is separate from discovery: the [hub](#62-publishing-locations) index
 A `LocalManifestCacheSource` registered ahead of the network sources claims any URL that matches a populated cache file. The chain on a typical CLI invocation:
 
 1. `LocalFileSource` — `file://`, absolute, or relative paths (the entry manifest, plus any `include:` and partials of cache-served files).
-2. `LocalManifestCacheSource` — registry refs and HTTP URLs that have a corresponding file under `.telo/manifests/`.
-3. `HttpSource` / `RegistrySource` — built-in fallbacks. Hit on cache miss, allowing dev runs without `telo install` to work unchanged.
+2. `LocalManifestCacheSource` — OCI refs and HTTP URLs that have a corresponding file under `.telo/manifests/`.
+3. `HttpSource` and the OCI transport — built-in fallbacks. Hit on cache miss, allowing dev runs without `telo install` to work unchanged.
 
 The cache miss is silent: a missing file falls through to whichever network source claims the URL, exactly as if the cache layer weren't there. This is what keeps `telo install` optional for development and load-bearing only for hermetic deploys.
 
 ### Provenance
 
-The cache is **content-addressed by URL**, not by content hash. `telo install` overwrites existing files with freshly fetched bytes on every run, so re-installing converges on whatever the registry currently serves for the pinned version. The trust model assumes versions are immutable in the registry; mutating a published version after install will silently shadow stale bytes until `telo install` runs again.
+The cache is **content-addressed by URL**, not by content hash. `telo install` overwrites existing files with freshly fetched bytes on every run, so re-installing converges on whatever the origin currently serves for the pinned version. The trust model assumes versions are immutable at the origin; mutating a published version after install will silently shadow stale bytes until `telo install` runs again.
 
 The cache is never pruned automatically. Stale entries — for versions no longer referenced by the manifest — stay until `.telo/manifests/` is removed by hand. This matches the `.telo/npm/` convention and keeps re-installs fast.
 

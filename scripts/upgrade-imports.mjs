@@ -20,7 +20,7 @@
 //   node scripts/upgrade-imports.mjs                    # examples, templates, apps
 //   node scripts/upgrade-imports.mjs --dry-run          # show what would change
 //   node scripts/upgrade-imports.mjs examples/todo-app  # narrow the scan to a subtree
-//   node scripts/upgrade-imports.mjs --include-prerelease --registry-url=https://…
+//   node scripts/upgrade-imports.mjs --include-prerelease
 //
 // Flags are forwarded verbatim to `telo upgrade`; positionals narrow the roots that are scanned.
 // Env: TELO_CLI overrides the command used to run the CLI (default: bun, falling back to node).

@@ -60,7 +60,7 @@ export interface ModuleEvidence {
   readonly inlines: ReadonlyMap<ModuleKey, readonly string[]>;
   /**
    * Modules reached by an in-repo **relative** `imports:` source. A pinned
-   * registry ref is deliberately not an edge: pinning is the statement "I am not
+   * remote ref is deliberately not an edge: pinning is the statement "I am not
    * affected until I choose to be", and moving it is `telo upgrade`'s job.
    */
   readonly imports: readonly ModuleKey[];

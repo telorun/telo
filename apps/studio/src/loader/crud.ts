@@ -38,7 +38,7 @@ export interface MaterializeModuleOptions {
   selection: NewModuleSelection;
   /** Resolved templates base URL (used only for template selections). */
   templatesBaseUrl: string;
-  registryAdapters: ManifestSource[];
+  manifestSources: ManifestSource[];
   overwrite?: boolean;
 }
 
@@ -97,7 +97,7 @@ async function buildModuleFiles(
   return fetchTemplateFiles(
     templateManifestUrl(options.templatesBaseUrl, options.selection.template),
     name,
-    options.registryAdapters,
+    options.manifestSources,
   );
 }
 

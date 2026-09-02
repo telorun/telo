@@ -9,7 +9,6 @@ describe("sessionConfigSchema", () => {
     expect(props.image.default).toBe("telorun/node:0-slim");
     expect(props.image.readOnly).toBeUndefined();
     expect(props.pullPolicy.default).toBe("missing");
-    expect(props.registryUrl).toBeUndefined();
     expect(schema.required).toEqual(["image", "pullPolicy"]);
   });
 
@@ -19,12 +18,6 @@ describe("sessionConfigSchema", () => {
     expect(props.image.readOnly).toBe(true);
     expect(props.image.default).toBe("telorun/node:latest-slim");
     expect(props.pullPolicy.readOnly).toBeUndefined();
-  });
-
-  it("includes registryUrl only when requested", () => {
-    const schema = sessionConfigSchema({ imageDefault: "x", registryUrl: true });
-    const props = schema.properties as Record<string, unknown>;
-    expect(props.registryUrl).toBeDefined();
   });
 
   it("renders image as an editable enum picker — overriding enforced — when imageEnum is set", () => {

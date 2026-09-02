@@ -136,8 +136,6 @@ spec:
               value: "{{ .Values.build.timeoutSeconds }}"
             - name: RUNNER_REGISTRY_INSECURE
               value: "{{ .Values.build.insecureRegistry }}"
-            - name: TELO_REGISTRY_URL
-              value: {{ .Values.build.teloRegistryUrl | quote }}
             {{- $apiUrl := include "telo-k8s-runner.registryApiUrl" . }}
             {{- if $apiUrl }}
             - name: RUNNER_REGISTRY_API_URL

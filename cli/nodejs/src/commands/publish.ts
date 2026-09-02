@@ -5,7 +5,7 @@ import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyz
 import { LocalFileSource, defaultTransportRegistry, resolveCacheRoot } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
-import { fetchManifestHash } from "../registry-hash.js";
+import { fetchManifestHash } from "../manifest-hash.js";
 import type { Argv } from "yargs";
 import { findModuleDoc, importSourceRefs } from "./manifest-imports.js";
 import { readOwnerVersion } from "../bundle/manifest-text.js";
@@ -129,7 +129,7 @@ function rewritePurls(content: string, packageName: string, newVersion: string):
 // Pinning is authoring-time work now: `telo install` / `telo upgrade` write a
 // dependency's integrity beside its ref, and the payload builder REFUSES a
 // remote import that carries none. What is left for publish is the other half —
-// checking that the hash the author committed still describes what the registry
+// checking that the hash the author committed still describes what the origin
 // serves.
 //
 // It replaced a best-effort fetch-and-pin. That branch decided the published
@@ -142,13 +142,9 @@ function rewritePurls(content: string, packageName: string, newVersion: string):
  *  through it. */
 export const verifyImportPinsForTest = verifyImportPins;
 
-async function verifyImportPins(
-  payload: ModulePayload,
-  registry: string,
-  log: Logger,
-): Promise<void> {
+async function verifyImportPins(payload: ModulePayload, log: Logger): Promise<void> {
   for (const { alias, ref, integrity } of payload.authoredPins) {
-    const actual = await fetchManifestHash(registry, ref);
+    const actual = await fetchManifestHash(ref);
     if (actual !== integrity) {
       throw new Error(
         `import '${alias}' is pinned to ${integrity}, but ${ref} now serves ${actual}. ` +
@@ -305,7 +301,6 @@ function indent(text: string): string {
 async function publishOne(
   filePath: string,
   destination: string,
-  registry: string,
   bump: BumpLevel | undefined,
   dryRun: boolean,
   skipControllers: boolean,
@@ -445,9 +440,9 @@ async function publishOne(
   const localFileSource = new LocalFileSource();
   // Same source chain as `telo check`: the kernel's transport sources resolve
   // every scheme install/run do — `oci://` included — direct-to-origin. The
-  // analyzer's `defaultSources()` (HTTP + registry only) cannot resolve an OCI
-  // import, so an `oci://` dependency (pinned or not) fails to load for analysis.
-  const analysisLoader = new Loader([localFileSource, ...defaultTransportRegistry(registry).sources()]);
+  // analyzer's `defaultSources()` (HTTP only) cannot resolve an OCI import, so
+  // an `oci://` dependency (pinned or not) fails to load for analysis.
+  const analysisLoader = new Loader([localFileSource, ...defaultTransportRegistry().sources()]);
   let analysisGraph;
   try {
     // `desugarImports` so inline `imports:` maps expand into synthetic
@@ -514,7 +509,6 @@ async function publishOne(
   let payload: ModulePayload;
   try {
     payload = await new ModulePayloadBuilder({
-      registryOrigin: registry,
       cacheRoot: resolveCacheRoot(filePath) ?? path.join(manifestDir, ".telo"),
     }).payload(filePath, destination);
   } catch (err) {
@@ -530,7 +524,7 @@ async function publishOne(
   // dangling one is a hard error (publish the sibling first, or earlier in this
   // invocation). Skipped on --dry-run (nothing is published yet).
   if (!dryRun) {
-    const transports = defaultTransportRegistry(registry);
+    const transports = defaultTransportRegistry();
     for (const { ref } of payload.relativeImports) {
       try {
         const transport = transports.forRef(ref);
@@ -548,7 +542,7 @@ async function publishOne(
 
     // Every author-written pin still describes what the registry serves.
     try {
-      await verifyImportPins(payload, registry, log);
+      await verifyImportPins(payload, log);
     } catch (err) {
       outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
       return false;
@@ -564,7 +558,7 @@ async function publishOne(
   if (version) {
     let drift;
     try {
-      drift = await findPayloadDrift(destination, version, layers, registry);
+      drift = await findPayloadDrift(destination, version, layers);
     } catch (err) {
       // A registry that could not answer is not a pass. Fail the publish and say
       // why, rather than shipping on the assumption that nothing changed.
@@ -626,11 +620,10 @@ async function publishOne(
   // `layers:` index into the manifest, and pushes the manifest layer last.
   let result;
   try {
-    result = await defaultTransportRegistry(registry).publish(
+    result = await defaultTransportRegistry().publish(
       destination,
       { manifest: content, layers },
       {
-        token: process.env.TELO_REGISTRY_TOKEN,
         onRetry: ({ reason, attempt, maxAttempts, delayMs }) =>
           outErrLine(
             `    ${"retry".padEnd(STEP_WIDTH)}${log.err.warn(reason)}  attempt ${attempt}/${maxAttempts - 1}, ` +
@@ -649,9 +642,9 @@ async function publishOne(
 
 // ---------------------------------------------------------------------------
 // Destination-first positional — `telo publish <destination> <paths…>`. The
-// destination is an OCI repo (`oci://host/repo`); publishing to the HTTP Telo
-// registry has been removed. A leading positional is classified so an old-style
-// registry destination gets a clear error rather than being read as a path.
+// destination is an OCI repo (`oci://host/repo`); publishing over plain HTTP has
+// been removed. A leading positional is classified so an old-style HTTP
+// destination gets a clear error rather than being read as a path.
 // ---------------------------------------------------------------------------
 
 type DestinationKind = "oci" | "http" | null;
@@ -662,8 +655,8 @@ function classifyDestination(arg: string): DestinationKind {
   if (arg.startsWith(".") || arg.startsWith("/")) return null;
   if (fs.existsSync(arg)) return null; // a real local file/dir wins
   if (arg.endsWith(".yaml") || arg.endsWith(".yml")) return null;
-  // Host-like bare destination (the old HTTP-registry form, e.g. ghcr.io is
-  // written `oci://…`). First path segment carries a dot.
+  // Host-like bare destination (the old HTTP form, e.g. ghcr.io is written
+  // `oci://…`). First path segment carries a dot.
   return arg.split("/")[0].includes(".") ? "http" : null;
 }
 
@@ -673,7 +666,6 @@ function classifyDestination(arg: string): DestinationKind {
 
 export async function publish(argv: {
   paths: string[];
-  registry: string;
   bump?: BumpLevel;
   dryRun: boolean;
   skipControllers: boolean;
@@ -683,15 +675,14 @@ export async function publish(argv: {
     process.exit(1);
   }
 
-  // The push destination is the leading positional, an OCI repo. `registry`
-  // stays the (read-only, still-deployed) origin used to resolve/pin deps.
+  // The push destination is the leading positional, an OCI repo.
   let paths = argv.paths;
   let destination: string | undefined;
   if (paths.length > 0) {
     const kind = classifyDestination(paths[0]);
     if (kind === "http") {
       outErrLine(
-        "error: publishing to the HTTP Telo registry has been removed. " +
+        "error: publishing over plain HTTP has been removed. " +
           "Publish to an OCI registry, e.g. `telo publish oci://ghcr.io/<org>/<name> ./telo.yaml`.",
       );
       process.exit(1);
@@ -724,7 +715,6 @@ export async function publish(argv: {
     const ok = await publishOne(
       filePath,
       destination,
-      argv.registry,
       argv.bump,
       argv.dryRun,
       argv.skipControllers,
@@ -761,11 +751,6 @@ export function publishCommand(yargs: Argv): Argv {
           type: "string",
           array: true,
           demandOption: true,
-        })
-        .option("registry", {
-          type: "string",
-          default: "https://registry.telo.run",
-          describe: "Registry origin used to resolve/pin dependencies (read-only)",
         })
         .option("bump", {
           type: "string",

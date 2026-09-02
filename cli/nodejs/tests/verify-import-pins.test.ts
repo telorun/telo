@@ -5,9 +5,9 @@ import type { ModulePayload } from "../src/bundle/module-payload.js";
  *  the module boundary rather than over a network. What is under test is the
  *  comparison — which was a silent no-op until the payload started carrying the
  *  pin split from the ref. */
-const fetchManifestHash = vi.fn<(registry: string, ref: string) => Promise<string>>();
-vi.mock("../src/registry-hash.js", () => ({
-  fetchManifestHash: (registry: string, ref: string) => fetchManifestHash(registry, ref),
+const fetchManifestHash = vi.fn<(ref: string) => Promise<string>>();
+vi.mock("../src/manifest-hash.js", () => ({
+  fetchManifestHash: (ref: string) => fetchManifestHash(ref),
 }));
 
 const { verifyImportPinsForTest } = await import("../src/commands/publish.js");
@@ -30,7 +30,7 @@ function payloadWithPins(pins: ModulePayload["authoredPins"]): ModulePayload {
 describe("verifyImportPins", () => {
   it("fails the publish when the upstream hash has moved", async () => {
     // The whole point of trading best-effort pinning away: an artifact whose
-    // manifest claims a hash the registry no longer serves embeds a statement
+    // manifest claims a hash the origin no longer serves embeds a statement
     // that is already false, and its consumers verify against it.
     fetchManifestHash.mockResolvedValueOnce(MOVED);
     await expect(
@@ -38,7 +38,6 @@ describe("verifyImportPins", () => {
         payloadWithPins([
           { alias: "Console", ref: "oci://ghcr.io/telorun/console@0.17.0", integrity: HASH },
         ]),
-        "https://registry.example",
         createLogger(false),
       ),
     ).rejects.toThrow(/pinned to sha256-rsHT.*now serves sha256-ZZZT/s);
@@ -52,12 +51,8 @@ describe("verifyImportPins", () => {
       payloadWithPins([
         { alias: "Console", ref: "oci://ghcr.io/telorun/console@0.17.0", integrity: HASH },
       ]),
-      "https://registry.example",
       createLogger(false),
     );
-    expect(fetchManifestHash).toHaveBeenCalledWith(
-      "https://registry.example",
-      "oci://ghcr.io/telorun/console@0.17.0",
-    );
+    expect(fetchManifestHash).toHaveBeenCalledWith("oci://ghcr.io/telorun/console@0.17.0");
   });
 });

@@ -17,7 +17,7 @@ import { useWorkspaceLifecycle } from "../hooks/useWorkspaceLifecycle";
 import { INITIAL_STATE, pickInitialActiveModule } from "../editor-state";
 import { findResourceReferences, type ResourceReference } from "../resource-references";
 import {
-  createRegistryAdapters,
+  createManifestSources,
   createResourceViaAst,
   deleteModule,
   getImportableLibraries,
@@ -480,7 +480,7 @@ export function Editor() {
       const diagnostics = await analyzeWorkspace(
         workspace,
         manifestAdapter,
-        createRegistryAdapters(settings),
+        createManifestSources(settings),
         zoneExportCacheRef.current,
       );
       setState((s) => {
@@ -1807,7 +1807,7 @@ export function Editor() {
         workspace,
         state.activeModulePath,
         adapter,
-        createRegistryAdapters(settings),
+        createManifestSources(settings),
       );
     }
 
@@ -1848,7 +1848,7 @@ export function Editor() {
             workspace.rootDir,
             adapter,
             workspaceAdapter,
-            createRegistryAdapters(settings),
+            createManifestSources(settings),
           );
         } catch (err) {
           console.error(`Failed to reload workspace after include change:`, err);

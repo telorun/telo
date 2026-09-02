@@ -1,13 +1,6 @@
 import type { AstDocument, LoadedFile, Range } from "@telorun/analyzer";
 import type { WorkspaceDiagnostics } from "./analysis";
 
-export interface RegistryServer {
-  id: string;
-  url: string;
-  label?: string;
-  enabled: boolean;
-}
-
 /** A user-configured runner: an instance of an adapter *type* (`adapterId`)
  *  with that adapter's opaque config. The user manages a list of these (add /
  *  edit / remove / switch). */
@@ -27,7 +20,6 @@ export interface RunnerInstance {
 }
 
 export interface AppSettings {
-  registryServers: RegistryServer[];
   /** Base URL of the hub's static manifest cache used to resolve `oci://`
    *  imports (a browser can't speak the OCI protocol). Empty/undefined uses
    *  the public default (`manifests.telo.sh`); a self-hosted hub points this
@@ -72,9 +64,6 @@ export interface AvailableKind {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  registryServers: [
-    { id: "default", url: "https://registry.telo.run", label: "Official Registry", enabled: true },
-  ],
   runners: [
     {
       id: TELO_CLOUD_RUNNER_ID,
@@ -152,7 +141,7 @@ export interface LibraryManifest extends BaseParsedManifest {
 /** A parsed module, discriminated on `kind`. */
 export type ParsedManifest = ApplicationManifest | LibraryManifest;
 
-export type ImportKind = "local" | "registry" | "remote" | "oci";
+export type ImportKind = "local" | "remote" | "oci";
 
 export interface ParsedImport {
   name: string;

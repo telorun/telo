@@ -61,29 +61,23 @@ export function originKey(ref: string): string {
 /**
  * Whether a cached manifest for `ref` may be served to `check` at all.
  *
- * The cache maps three key shapes, and only two of them address content that
+ * The cache maps two key shapes, and only one of them addresses content that
  * cannot change under the key:
  *
  *  - `oci` — the reference is either a `sha256:` digest or a tag. A tag is
  *    mutable, which is what {@link revalidateMutableOciRefs} exists to catch,
  *    so both are cacheable and freshness is settled separately.
- *  - `registry` — `<path>@<version>`, always version-segmented. A published
- *    version is immutable by convention, the same assumption npm makes, so
- *    these are served without revalidation. This is a deliberate policy call,
- *    not a gap: the registry origin has no cheap freshness probe (`digest()`
- *    downloads the manifest to hash it), so revalidating would cost exactly
- *    what re-fetching costs and buy nothing.
  *  - `url` — an arbitrary HTTP(S) import. Its key carries **no version
  *    segment**: one URL is one path forever, so a cached copy would be served
  *    for the lifetime of the directory no matter what the server now returns.
  *    `check` therefore never reads these from the cache and always re-fetches.
  *    That costs one request — exactly what revalidating would cost, since
- *    `RegistryTransport.digest` is a full GET — so the honest option is also
- *    the cheap one. `telo run` keeps caching them; changing that is a separate
+ *    `HttpTransport.digest` is a full GET — so the honest option is also the
+ *    cheap one. `telo run` keeps caching them; changing that is a separate
  *    decision about `run`'s freshness model, not a property of this pass.
  */
-export function isCacheableForCheck(ref: string, registryUrl: string): boolean {
-  return defaultTransportRegistry(registryUrl).cacheCoords(ref)?.transport !== "url";
+export function isCacheableForCheck(ref: string): boolean {
+  return defaultTransportRegistry().cacheCoords(ref)?.transport !== "url";
 }
 
 /**
@@ -101,13 +95,10 @@ export class RecordingCacheSource implements ManifestSource {
   /** Request URL → absolute path of the cache file that answered it. */
   readonly served = new Map<string, string>();
 
-  constructor(
-    private readonly inner: LocalManifestCacheSource,
-    private readonly registryUrl: string,
-  ) {}
+  constructor(private readonly inner: LocalManifestCacheSource) {}
 
   supports(url: string): boolean {
-    return isCacheableForCheck(url, this.registryUrl) && this.inner.supports(url);
+    return isCacheableForCheck(url) && this.inner.supports(url);
   }
 
   async read(url: string): Promise<{ text: string; source: string }> {
@@ -205,7 +196,6 @@ export async function revalidateMutableOciRefs(
    *  from, which is not necessarily the root this entry writes to: one loader
    *  serves every input path, so a hit may land in a sibling's cache. */
   originsByRoot: Map<string, Map<string, string>>,
-  registryUrl: string,
   /** Digests already probed earlier in this invocation, keyed as {@link originKey}.
    *  A tag verified once in a process is verified for the whole run, so checking
    *  twenty manifests that share an import issues one `HEAD`, not twenty.
@@ -259,7 +249,7 @@ export async function revalidateMutableOciRefs(
 
   if (targets.size === 0) return { staleFiles: [], digests: new Map() };
 
-  const transports = defaultTransportRegistry(registryUrl);
+  const transports = defaultTransportRegistry();
   const resolved = await Promise.all(
     [...targets.entries()].map(async ([key, target]) => {
       const already = verified.get(key);

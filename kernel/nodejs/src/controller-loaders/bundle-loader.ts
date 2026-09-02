@@ -285,17 +285,17 @@ function findPackageRoot(entryFile: string, name: string): string | null {
 
 /**
  * Loads a `pkg:telo` controller — a controller delivered inside the module's own
- * bundle (the Telo registry artifact), not fetched from an external package
- * registry. Every PURL segment carries meaning:
+ * artifact, not fetched from an external package registry. Every PURL segment
+ * carries meaning:
  *
  *   pkg:telo / local / <format> ? path=./nodejs/x.mjs # export
  *      type     ns       name          qualifier        subpath
  *
  *  - `type=telo` — Telo-delivered (not npm/cargo).
  *  - `namespace=local` — the delivery sub-mode: bundled in the module artifact.
- *    Reserves `pkg:telo/registry/…` for a future "controller fetched from the
- *    Telo registry as its own artifact". A non-`local` namespace → env-missing
- *    here (a different mode another branch/kernel would handle).
+ *    The namespace is what leaves room for a future sub-mode (a controller
+ *    fetched as its own artifact). A non-`local` namespace → env-missing here
+ *    (a different mode another branch/kernel would handle).
  *  - `name=<format>` — the artifact format the loader dispatches on (`js` /
  *    `napi` / `wasm`). Bundling is the one delivery not tied to an ecosystem's
  *    runtime (npm ⇒ JS, cargo ⇒ Rust; a bundle is just files), so the format is
@@ -497,8 +497,8 @@ export class BundleControllerLoader {
     }
 
     // Delivery sub-mode lives in the namespace; this loader handles bundled
-    // (`local`) controllers. Anything else (e.g. a future `registry` mode) is
-    // env-missing so the candidate list falls through.
+    // (`local`) controllers. Anything else (a future sub-mode) is env-missing
+    // so the candidate list falls through.
     if (parsed.namespace !== "local") {
       throw new ControllerEnvMissingError(
         `pkg:telo controller "${purl}" must use the "local" namespace (pkg:telo/local/<format>); got "${parsed.namespace ?? "(none)"}"`,
