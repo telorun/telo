@@ -1,18 +1,16 @@
 import type { GraphLoadError, LoadedGraph } from "./loaded-types.js";
 import { isLocalPathSource } from "./sources/local-path-ref.js";
-import { isRegistryRef } from "./sources/module-ref.js";
 import { isOciRef } from "./sources/oci-ref.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
 
-/** True when `source` is a shape some transport claims — a registry ref, an OCI
- *  ref, an HTTP(S) URL, or a relative/absolute path. A source matching none of
- *  these is malformed (no transport can ever resolve it), which we report
- *  differently from a well-formed ref that simply failed to fetch. */
+/** True when `source` is a shape some transport claims — an OCI ref, an HTTP(S)
+ *  URL, or a relative/absolute path. A source matching none of these is
+ *  malformed (no transport can ever resolve it), which we report differently
+ *  from a well-formed ref that simply failed to fetch. */
 function isRecognizedSourceShape(source: string): boolean {
   return (
-    isRegistryRef(source) ||
     isOciRef(source) ||
     source.startsWith("http://") ||
     source.startsWith("https://") ||
@@ -27,13 +25,32 @@ function classify(e: GraphLoadError): "INVALID_IMPORT_TARGET" | "INVALID_IMPORT_
   return isRecognizedSourceShape(e.source ?? e.url) ? "IMPORT_UNRESOLVED" : "INVALID_IMPORT_SOURCE";
 }
 
+/** The removed bare `<namespace>/<name>@<version>` ref: no scheme, not a path,
+ *  carrying both a `/` and an `@`. Recognised only to explain itself — no
+ *  migration can rewrite it, because the OCI host it moved to is not derivable
+ *  from the ref, and the failing line is frequently inside a dependency the
+ *  consumer cannot edit. The message is the whole remedy available to them. */
+function isRemovedBareRef(source: string): boolean {
+  return (
+    !source.includes("://") &&
+    !source.startsWith("/") &&
+    !source.startsWith(".") &&
+    source.includes("@") &&
+    source.includes("/")
+  );
+}
+
 function messageFor(e: GraphLoadError, code: ReturnType<typeof classify>): string {
   const authored = e.source ?? e.url;
   const via = e.alias ? `import '${e.alias}' → '${authored}'` : `'${authored}'`;
   if (code === "INVALID_IMPORT_SOURCE") {
+    const removedForm = isRemovedBareRef(authored)
+      ? ` The bare '<namespace>/<name>@<version>' form was removed — rewrite it to the ` +
+        `module's 'oci://' ref (\`telo search <name>\` reports it).`
+      : "";
     return (
       `Cannot resolve ${via}: not a recognized module reference. Expected ` +
-      `'namespace/name@version', 'oci://host/repo@tag', 'https://…', or a relative path.`
+      `'oci://host/repo@tag', 'https://…', or a relative path.${removedForm}`
     );
   }
   // The target WAS obtained, so "cannot resolve" would name the wrong problem —

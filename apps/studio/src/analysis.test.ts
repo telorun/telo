@@ -84,7 +84,7 @@ function inMemoryAdapter(files: Record<string, string>) {
 }
 
 /** ManifestSource that resolves registry-style refs (`namespace/name@version`)
- *  through a fixed in-memory map. Mirrors what `RegistrySource` does at
+ *  through a fixed in-memory map. Mirrors what `HttpSource` does at
  *  runtime; lets tests exercise the editor's Phase 2a registry-import path
  *  without spinning up a real registry server. */
 function inMemoryRegistry(refToFiles: Record<string, Record<string, string>>): ManifestSource {

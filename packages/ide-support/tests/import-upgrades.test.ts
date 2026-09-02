@@ -52,7 +52,7 @@ function applyEdits(text: string, edits: ImportUpgradeEdit[]): string {
 /** Every version carries a pin, as a hub that has ingested since the integrity
  *  column exists reports them. */
 const versions: ModuleVersionLookup = async (baseRef) => {
-  if (baseRef === "std/console") {
+  if (baseRef === "oci://ghcr.io/telorun/console") {
     return [
       { version: "0.9.0", integrity: OLD_PIN },
       { version: "1.0.0", integrity: NEW_PIN },
@@ -81,7 +81,7 @@ describe("buildImportUpgrades", () => {
       "metadata:",
       "  name: App",
       "imports:",
-      "  Console: std/console@0.9.0",
+      "  Console: oci://ghcr.io/telorun/console@0.9.0",
       "",
     ].join("\n");
 
@@ -92,12 +92,12 @@ describe("buildImportUpgrades", () => {
       alias: "Console",
       currentVersion: "0.9.0",
       latestVersion: "1.0.0",
-      newSource: `std/console@1.0.0#${NEW_PIN}`,
+      newSource: `oci://ghcr.io/telorun/console@1.0.0#${NEW_PIN}`,
       wasPinned: false,
       repinned: true,
     });
     expect(applyEdits(text, set!.upgrades[0].edits)).toContain(
-      `Console: std/console@1.0.0#${NEW_PIN}`,
+      `Console: oci://ghcr.io/telorun/console@1.0.0#${NEW_PIN}`,
     );
   });
 
@@ -107,19 +107,19 @@ describe("buildImportUpgrades", () => {
       "metadata:",
       "  name: Lib",
       "imports:",
-      `  Console: std/console@0.9.0#${OLD_PIN}`,
+      `  Console: oci://ghcr.io/telorun/console@0.9.0#${OLD_PIN}`,
       "",
     ].join("\n");
 
     const set = await build(text, versions);
 
     expect(set?.upgrades[0]).toMatchObject({
-      newSource: `std/console@1.0.0#${NEW_PIN}`,
+      newSource: `oci://ghcr.io/telorun/console@1.0.0#${NEW_PIN}`,
       wasPinned: true,
       repinned: true,
     });
     expect(applyEdits(text, set!.upgrades[0].edits)).toContain(
-      `Console: std/console@1.0.0#${NEW_PIN}\n`,
+      `Console: oci://ghcr.io/telorun/console@1.0.0#${NEW_PIN}\n`,
     );
   });
 
@@ -156,7 +156,7 @@ describe("buildImportUpgrades", () => {
     const text = [
       "kind: Telo.Application",
       "imports:",
-      `  Console: { source: std/console@0.9.0, integrity: ${OLD_PIN} }`,
+      `  Console: { source: oci://ghcr.io/telorun/console@0.9.0, integrity: ${OLD_PIN} }`,
       "",
     ].join("\n");
 
@@ -164,7 +164,7 @@ describe("buildImportUpgrades", () => {
 
     expect(set?.skipped).toEqual([]);
     expect(applyEdits(text, set!.upgrades[0].edits)).toContain(
-      `{ source: std/console@1.0.0, integrity: ${NEW_PIN} }`,
+      `{ source: oci://ghcr.io/telorun/console@1.0.0, integrity: ${NEW_PIN} }`,
     );
   });
 
@@ -172,7 +172,7 @@ describe("buildImportUpgrades", () => {
     const text = [
       "kind: Telo.Application",
       "imports:",
-      "  Console: std/console@1.0.0",
+      "  Console: oci://ghcr.io/telorun/console@1.0.0",
       "",
     ].join("\n");
 
@@ -183,10 +183,10 @@ describe("buildImportUpgrades", () => {
     expect(set?.pins[0]).toMatchObject({
       alias: "Console",
       version: "1.0.0",
-      newSource: `std/console@1.0.0#${NEW_PIN}`,
+      newSource: `oci://ghcr.io/telorun/console@1.0.0#${NEW_PIN}`,
     });
     expect(applyEdits(text, set!.pins[0].edits)).toContain(
-      `Console: std/console@1.0.0#${NEW_PIN}`,
+      `Console: oci://ghcr.io/telorun/console@1.0.0#${NEW_PIN}`,
     );
   });
 
@@ -194,7 +194,7 @@ describe("buildImportUpgrades", () => {
     const text = [
       "kind: Telo.Application",
       "imports:",
-      `  Console: std/console@1.0.0#${NEW_PIN}`,
+      `  Console: oci://ghcr.io/telorun/console@1.0.0#${NEW_PIN}`,
       "  Timer:",
       "    source: oci://ghcr.io/telorun/timer@2.1.0",
       `    integrity: ${TIMER_NEW_PIN}`,
@@ -227,8 +227,8 @@ describe("buildImportUpgrades", () => {
     const text = [
       "kind: Telo.Application",
       "imports:",
-      "  Console: std/console@0.9.0",
-      "  Current: std/console@1.0.0",
+      "  Console: oci://ghcr.io/telorun/console@0.9.0",
+      "  Current: oci://ghcr.io/telorun/console@1.0.0",
       "",
     ].join("\n");
 
@@ -240,7 +240,7 @@ describe("buildImportUpgrades", () => {
     ]);
 
     expect(set?.upgrades[0]).toMatchObject({
-      newSource: "std/console@1.0.0",
+      newSource: "oci://ghcr.io/telorun/console@1.0.0",
       repinned: false,
     });
     expect(applyEdits(text, set!.upgrades[0].edits)).not.toContain("Evil");
@@ -266,7 +266,7 @@ describe("buildImportUpgrades", () => {
   });
 
   it("never offers a prerelease as the upgrade target", async () => {
-    const text = ["kind: Telo.Application", "imports:", "  P: std/pre@1.0.0", ""].join("\n");
+    const text = ["kind: Telo.Application", "imports:", "  P: oci://ghcr.io/telorun/pre@1.0.0", ""].join("\n");
 
     const set = await build(text, async () => [
       { version: "1.1.0-rc.1" },
@@ -277,7 +277,7 @@ describe("buildImportUpgrades", () => {
   });
 
   it("supersedes a prerelease pin with the newest release", async () => {
-    const text = ["kind: Telo.Application", "imports:", "  P: std/pre@1.0.0-rc.1", ""].join("\n");
+    const text = ["kind: Telo.Application", "imports:", "  P: oci://ghcr.io/telorun/pre@1.0.0-rc.1", ""].join("\n");
 
     const set = await build(text, async () => [
       { version: "1.0.0" },
@@ -291,8 +291,8 @@ describe("buildImportUpgrades", () => {
     const text = [
       "kind: Telo.Application",
       "imports:",
-      "  Console: std/console@0.9.0",
-      "  Gone: std/missing@1.0.0",
+      "  Console: oci://ghcr.io/telorun/console@0.9.0",
+      "  Gone: oci://ghcr.io/telorun/missing@1.0.0",
       "",
     ].join("\n");
 
@@ -300,12 +300,12 @@ describe("buildImportUpgrades", () => {
 
     expect(set?.upgrades.map((u) => u.alias)).toEqual(["Console"]);
     expect(set?.failures).toEqual([
-      { baseRef: "std/missing", message: "no such module: std/missing" },
+      { baseRef: "oci://ghcr.io/telorun/missing", message: "no such module: oci://ghcr.io/telorun/missing" },
     ]);
   });
 
   it("ignores an unparseable tag rather than letting it mask real candidates", async () => {
-    const text = ["kind: Telo.Application", "imports:", "  C: std/console@0.9.0", ""].join("\n");
+    const text = ["kind: Telo.Application", "imports:", "  C: oci://ghcr.io/telorun/console@0.9.0", ""].join("\n");
 
     // `latest` sorts first from the hub but cannot be ordered; the newest
     // comparable release still has to win.
@@ -330,15 +330,15 @@ describe("buildImportUpgrades", () => {
       const text = [
         "kind: Telo.Application",
         "imports:",
-        "  Console: std/console@0.9.0",
-        "  Current: std/console@1.0.0",
+        "  Console: oci://ghcr.io/telorun/console@0.9.0",
+        "  Current: oci://ghcr.io/telorun/console@1.0.0",
         "",
       ].join("\n");
 
       const set = await build(text, unpinnedVersions);
 
       expect(set?.upgrades[0]).toMatchObject({
-        newSource: "std/console@1.0.0",
+        newSource: "oci://ghcr.io/telorun/console@1.0.0",
         wasPinned: false,
         repinned: false,
       });
@@ -349,7 +349,7 @@ describe("buildImportUpgrades", () => {
       const text = [
         "kind: Telo.Application",
         "imports:",
-        `  Console: std/console@0.9.0#${OLD_PIN}`,
+        `  Console: oci://ghcr.io/telorun/console@0.9.0#${OLD_PIN}`,
         "",
       ].join("\n");
 
@@ -357,7 +357,7 @@ describe("buildImportUpgrades", () => {
 
       expect(set?.upgrades[0]).toMatchObject({ wasPinned: true, repinned: false });
       expect(applyEdits(text, set!.upgrades[0].edits)).toContain(
-        "Console: std/console@1.0.0\n",
+        "Console: oci://ghcr.io/telorun/console@1.0.0\n",
       );
     });
 
@@ -386,7 +386,7 @@ describe("buildImportUpgrades", () => {
       const text = [
         "kind: Telo.Application",
         "imports:",
-        `  Console: { source: std/console@0.9.0, integrity: ${OLD_PIN} }`,
+        `  Console: { source: oci://ghcr.io/telorun/console@0.9.0, integrity: ${OLD_PIN} }`,
         "",
       ].join("\n");
 

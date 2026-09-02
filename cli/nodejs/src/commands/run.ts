@@ -259,7 +259,6 @@ type RunArgv = {
   watch: boolean;
   /** `--no-cache-write`: read the baked cache but never persist derived entries. */
   cacheWrite: boolean;
-  registryUrl?: string;
   "--"?: string[];
 };
 
@@ -287,13 +286,6 @@ function parseInspectTarget(value: string): { host: string; port: number } {
 
 function isLoopbackHost(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
-}
-
-function registryUrlFor(argv: RunArgv): string {
-  // The CLI owns the registry-URL fallback chain: --registry-url > TELO_REGISTRY_URL >
-  // RegistrySource default. The kernel itself does no env lookup — programmatic
-  // callers (tests, SDK) pass registryUrl explicitly when they need one.
-  return argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? "https://registry.telo.run";
 }
 
 /** An observability session composing two independent sinks: the `--debug` JSONL
@@ -449,26 +441,22 @@ async function startDebugSession(
 }
 
 async function buildKernel(argv: RunArgv, log: Logger, cacheRoot: string | null): Promise<Kernel> {
-  const registryUrl = argv.registryUrl ?? process.env.TELO_REGISTRY_URL;
-  // The manifest cache (populated by `telo install`) wins over the registry
-  // / HTTP sources so production images boot without any registry network
-  // I/O. A missing cache file falls through transparently — dev runs and
-  // ad-hoc invocations work unchanged.
+  // The manifest cache (populated by `telo install`) wins over the network
+  // sources so production images boot without any network I/O. A missing cache
+  // file falls through transparently — dev runs and ad-hoc invocations work
+  // unchanged.
   const sources: ManifestSource[] = [new LocalFileSource()];
   // `cacheRoot` is resolved once per invocation (honours TELO_CACHE_DIR) and
   // threaded here, to the kernel, and to persistManifestCache.
   if (cacheRoot) {
-    // Pass the same registry URL the kernel will use so the cache source's
-    // URL→path mapping matches what `telo install` wrote.
     sources.push(
       new LocalManifestCacheSource(
         resolveEntryDir(argv.path) ?? "",
-        registryUrlFor(argv),
         path.join(cacheRoot, "manifests"),
       ),
     );
   }
-  const kernel = new Kernel({ argv: argv["--"], registryUrl, sources });
+  const kernel = new Kernel({ argv: argv["--"], sources });
   // Pretty controller-download progress. With --verbose, always render
   // (so captured logs/CI output get the lines too); otherwise gate on TTY
   // so CI and the docker service stay silent.
@@ -499,7 +487,7 @@ async function persistManifestCache(
   try {
     const entryDir = resolveEntryDir(argv.path) ?? "";
     const manifestsDir = path.join(cacheRoot, "manifests");
-    await writeManifestCache(graph, entryDir, registryUrlFor(argv), manifestsDir);
+    await writeManifestCache(graph, entryDir, manifestsDir);
   } catch (err) {
     // Warnings belong on stderr — stdout is reserved for the manifest's own
     // output (consumers may pipe `telo run` into jq / a downstream process).
@@ -791,11 +779,6 @@ export function runCommand(yargs: Argv): Argv {
           type: "string",
           demandOption: true,
         })
-        .option("registry-url", {
-          type: "string",
-          describe:
-            "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
-        })
         .option("debug", {
           type: "boolean",
           describe: "Write a .telo.debug.jsonl event log next to the manifest.",
@@ -823,7 +806,7 @@ export function runCommand(yargs: Argv): Argv {
       ]);
       // `--inspect` is valued ([host:]port). The valued-flag branch below skips
       // the `=` form and the space form alike, so neither leaks into kernel argv.
-      const knownValuedFlags = new Set(["--registry-url", "--inspect"]);
+      const knownValuedFlags = new Set(["--inspect"]);
       const rawArgs = process.argv;
       const pathIdx = rawArgs.indexOf(argv.path as string);
       const sliced = pathIdx >= 0 ? rawArgs.slice(pathIdx + 1) : [];
@@ -836,7 +819,7 @@ export function runCommand(yargs: Argv): Argv {
         const bare = eqIdx >= 0 ? a.slice(0, eqIdx) : a;
         if (knownValuedFlags.has(bare)) {
           // Only skip the next token as a value when it actually looks like one.
-          // Guards against `--registry-url --verbose` (or trailing bare flag) where
+          // Guards against `--inspect --verbose` (or trailing bare flag) where
           // yargs consumed `--verbose` as the value — we still want the next flag
           // re-evaluated by this loop rather than silently dropped.
           const next = sliced[i + 1];

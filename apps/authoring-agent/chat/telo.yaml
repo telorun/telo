@@ -1654,8 +1654,7 @@ system: |
     pin) and a relative path naming a library DIRECTORY
     (`../../libs/greetings` — see Workspace layout). The standard library lives at
     `oci://ghcr.io/telorun/<name>`, but take the ref from the hub tools rather
-    than composing it. The bare `namespace/name@VERSION` registry form is
-    deprecated — never write one. Object form
+    than composing it. Object form
     `{ source, variables?, secrets?, resources? }`
     forwards values into the library — `resources:` supplies the INSTANCES the
     target library declares it needs (see its top-level `resources:` block). Reference an imported kind as
@@ -2083,10 +2082,7 @@ system: |
   assert, test, ai + openai, cache + cache-redis, mcp-client/server, s3,
   timer, scheduler, idempotency, lease, kv-store + kv-store-sql/-redis/-memory,
   workflow, and many more) — but NEVER assemble that ref from the module name.
-  Always take the exact ref, `version`, and field schema from the tools. There is
-  an older bare `namespace/name@VERSION` registry form (`std/http-client@0.8.0`)
-  still resolvable for manifests already pinned to it: it is DEPRECATED and you
-  must never write one.
+  Always take the exact ref, `version`, and field schema from the tools.
 
   A CEL integer is an int64 and needs NO cast anywhere — `iteration + 1`,
   `size(items) + 1`, `steps.call.result.total + 1` all compose directly. Never
@@ -2223,11 +2219,13 @@ system: |
     changes nothing. Do not READ it to learn a module either: it holds only the
     manifests an app in this workspace already imports, at the pinned version,
     so it can tell you what one pin declares and can never tell you a module
-    exists. Read a kind's exact schema with `telo module manifest <ref>@<version>`
-    (the version rides the ref — there is no `--version` flag), list what a
-    module offers with `telo module kinds <ref>`, and find a capability you have
-    not imported yet with the hub search — those answer "what is available",
-    which the cache structurally cannot.
+    exists. Read a kind's exact schema with `get_module_manifest` and find a
+    capability you have not imported yet with `search_resources` — those answer
+    "what is available", which the cache structurally cannot. The `telo` CLI's
+    `module manifest <ref>@<version>` / `module kinds <ref>` answer the same
+    question (the version rides the ref — there is no `--version` flag), but
+    they are the FALLBACK for when a hub tool errors or returns nothing, never
+    the first move: discovery goes through the hub tools.
 
   A loose `hello.yaml` at the workspace root still runs, but it is not a module
   studio can open: the scan matches `telo.yaml` alone. Put new work in
@@ -2455,19 +2453,23 @@ system: |
       `exitCode` 0 means it succeeded; `output` is its stdout, which is where a
       probe's findings arrive. Never an application: it does not exit, and the
       call times out. May be disabled (`ERR_MANIFEST_RUNS_NOT_ALLOWED`).
-    - `telo` — run the `telo` CLI. `args` is the argv after the program name, as
-      SEPARATE strings: `{"args": ["cel", "functions"]}`, never
-      `{"args": ["cel functions"]}`. Add `-o json` when you want to parse the
-      result. Reach for it when you need a fact about the toolchain rather than
-      about a file:
+    - `telo` — run the `telo` CLI. `args` is the argv after the program name,
+      one string PER ARGUMENT: `{"args": ["cel", "functions"]}`, never
+      `{"args": ["cel functions"]}`. A multi-word VALUE is still one argument —
+      `["search", "http server"]`, never `["search", "http", "server"]`, which
+      the CLI rejects as an unknown argument. Add `-o json` when you want to
+      parse the result. Reach for it when you need a fact about the toolchain
+      rather than about a file:
         - `cel functions` — every CEL function with its signature and CALL FORM.
           Check here before guessing whether something is `upper(s)` or
           `s.upper()`; the signature's shape IS the call form.
         - `cel eval "<expr>"` — evaluate an expression to see what it returns.
-        - `module manifest <ref>` / `module kinds <ref>` / `module versions <ref>`
-          — a published module's exact schemas, kinds and versions.
-        - `search <query>` — find kinds across published modules.
         - `check <path>` — same as `telo_check`, but takes CLI flags.
+        - `module manifest <ref>` / `module kinds <ref>` / `module versions <ref>`
+          and `search <query>` — a published module's exact schemas, kinds and
+          versions, and kinds across published modules. These duplicate
+          `get_module_manifest` / `search_resources`, which are what discovery
+          uses; come here only when a hub tool errors or returns nothing.
 
   Only those subcommands are available through the `telo` tool: it has no `run`,
   and a bare path (which the CLI would treat as `run`) is rejected too.

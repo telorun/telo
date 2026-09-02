@@ -88,7 +88,7 @@ schema:
     #
     #   imports:
     #     Http:
-    #       source: std/http-server
+    #       source: oci://ghcr.io/telorun/http-server@<version>
     #       logging:
     #         level: warn   # server errors only, no per-request access logs
     #

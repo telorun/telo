@@ -28,7 +28,7 @@ function memAdapter(existing: Record<string, DirEntry[]> = {}) {
   return { adapter, writes, deleted };
 }
 
-const CTX = { templatesBaseUrl: "https://x.dev", registryAdapters: [] };
+const CTX = { templatesBaseUrl: "https://x.dev", manifestSources: [] };
 const TEMPLATE: TemplateDescriptor = {
   id: "t",
   title: "T",

@@ -146,7 +146,7 @@ export class Loader {
    *  when a URL it has already canonicalised is requested again — kernel
    *  load → boot and the import-controller each ask the loader for the same
    *  modules. Without this fast path every duplicate request re-runs the
-   *  source's `read()` (a `fetch` for `RegistrySource`, a disk read for
+   *  source's `read()` (a `fetch` for `HttpSource`, a disk read for
    *  `LocalFileSource`). */
   private readonly urlToSource = new Map<string, string>();
 
@@ -157,8 +157,7 @@ export class Loader {
   /** Sources are resolved in order — the first whose `supports(url)` matches
    *  wins. The caller (composition root) decides which concrete sources exist
    *  and supplies them; `defaultSources()` bundles the browser-safe built-ins
-   *  (HTTP + registry) for the common case. `register()` prepends a source at
-   *  runtime. */
+   *  (HTTP) for the common case. `register()` prepends a source at runtime. */
   constructor(sources: ManifestSource[] = [], options: LoaderInitOptions = {}) {
     this.sources = [...sources];
     this.celEnv = buildCelEnvironment(options.celHandlers);
@@ -181,7 +180,7 @@ export class Loader {
     // entry are populated in `urlToSource` + `fileCache` in one read.
     // Callers (kernel.load) immediately call `loadGraph(entryUrl)`
     // afterwards — without this priming, the entry file would be read
-    // twice (twice over the network for `RegistrySource`).
+    // twice (twice over the network for `HttpSource`).
     const file = await this.loadFile(url);
     return file.source;
   }
@@ -469,7 +468,7 @@ export class Loader {
 
   /** Resolve an `import` URL against the file it appears in. Relative /
    *  absolute-path forms run through the owning `ManifestSource`'s
-   *  `resolveRelative`; registry refs and full URLs pass through
+   *  `resolveRelative`; scheme-qualified refs and full URLs pass through
    *  unchanged. Exposed so the import-controller (and any other
    *  caller-side resolver) lands on the *exact same* canonical URL the
    *  loader used when walking the entry graph — divergent resolution

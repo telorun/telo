@@ -21,7 +21,6 @@ import {
  * the first bundled controller.
  */
 
-const REGISTRY = "https://registry.telo.run";
 const REF = "oci://ghcr.io/telorun/console@0.9.0";
 const REF_PATH = path.join("oci", "ghcr.io", "telorun", "console", "0.9.0");
 
@@ -59,7 +58,7 @@ async function servedFrom(source: LocalManifestCacheSource): Promise<string> {
 describe("legacy cache fallback", () => {
   it("serves a manifest from the pre-anchor root when the current one misses", async () => {
     await seed(legacyManifests);
-    const source = new LocalManifestCacheSource(entryDir, REGISTRY, newManifests);
+    const source = new LocalManifestCacheSource(entryDir, newManifests);
 
     expect(source.supports(REF)).toBe(true);
     expect(await servedFrom(source)).toBe(path.join(legacyManifests, REF_PATH));
@@ -68,13 +67,13 @@ describe("legacy cache fallback", () => {
   it("prefers the current root when both hold the manifest", async () => {
     await seed(legacyManifests);
     await seed(newManifests);
-    const source = new LocalManifestCacheSource(entryDir, REGISTRY, newManifests);
+    const source = new LocalManifestCacheSource(entryDir, newManifests);
 
     expect(await servedFrom(source)).toBe(path.join(newManifests, REF_PATH));
   });
 
   it("misses when neither root holds it, so the network source still gets a turn", async () => {
-    const source = new LocalManifestCacheSource(entryDir, REGISTRY, newManifests);
+    const source = new LocalManifestCacheSource(entryDir, newManifests);
     expect(source.supports(REF)).toBe(false);
   });
 
@@ -92,7 +91,7 @@ describe("legacy cache fallback", () => {
     const fallback = legacyManifestsDirFallback(entryDir, newManifests);
 
     expect(
-      moduleDirectoryFor(REF, "file:///irrelevant/telo.yaml", entryDir, REGISTRY, newManifests, fallback),
+      moduleDirectoryFor(REF, "file:///irrelevant/telo.yaml", entryDir, newManifests, fallback),
     ).toBe(legacyDir);
   });
 
@@ -100,7 +99,7 @@ describe("legacy cache fallback", () => {
     const fallback = legacyManifestsDirFallback(entryDir, newManifests);
 
     expect(
-      moduleDirectoryFor(REF, "file:///irrelevant/telo.yaml", entryDir, REGISTRY, newManifests, fallback),
+      moduleDirectoryFor(REF, "file:///irrelevant/telo.yaml", entryDir, newManifests, fallback),
     ).toBe(path.join(newManifests, REF_PATH));
   });
 });

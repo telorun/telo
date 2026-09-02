@@ -62,7 +62,7 @@ describe("ociManifestCacheCoords", () => {
     // A digest reference is not a human version tag.
     expect(ociManifestCacheCoords("oci://ghcr.io/aws/telo-s3@sha256:deadbeef")).toBeNull();
     // Non-OCI refs are never claimed.
-    expect(ociManifestCacheCoords("std/console@0.9.0")).toBeNull();
+    expect(ociManifestCacheCoords("./sibling/telo.yaml")).toBeNull();
     expect(ociManifestCacheCoords("https://example.com/telo.yaml")).toBeNull();
   });
 
@@ -110,7 +110,7 @@ describe("ManifestCacheSource", () => {
     expect(source.supports("oci://ghcr.io/aws/telo-s3@1.2.0")).toBe(true);
     expect(source.supports("oci://ghcr.io/aws/telo-s3")).toBe(true);
     expect(source.supports("oci://ghcr.io/aws/telo-s3@sha256:deadbeef")).toBe(true);
-    expect(source.supports("std/console@0.9.0")).toBe(false);
+    expect(source.supports("./sibling/telo.yaml")).toBe(false);
     expect(source.supports("https://example.com/telo.yaml")).toBe(false);
   });
 
@@ -156,9 +156,9 @@ describe("ManifestCacheSource", () => {
   it("resolves relative sibling imports against the repo path", () => {
     const source = new ManifestCacheSource();
     expect(source.resolveRelative("oci://ghcr.io/aws/my-app@1.0.0", "../lib")).toBe("oci://ghcr.io/aws/lib");
-    expect(source.resolveRelative("oci://ghcr.io/aws/my-app@1.0.0", "std/console@0.9.0")).toBe(
-      "std/console@0.9.0",
-    );
+    expect(
+      source.resolveRelative("oci://ghcr.io/aws/my-app@1.0.0", "oci://ghcr.io/telorun/console@0.9.0"),
+    ).toBe("oci://ghcr.io/telorun/console@0.9.0");
   });
 });
 
@@ -168,7 +168,7 @@ describe("isHttpsModuleRef", () => {
     expect(isHttpsModuleRef("https://example.com/lib/telo.yaml#sha256-abc")).toBe(true);
     expect(isHttpsModuleRef("http://example.com/lib/telo.yaml")).toBe(false);
     expect(isHttpsModuleRef("oci://ghcr.io/aws/telo-s3@1.2.0")).toBe(false);
-    expect(isHttpsModuleRef("std/console@0.9.0")).toBe(false);
+    expect(isHttpsModuleRef("./sibling/telo.yaml")).toBe(false);
   });
 });
 

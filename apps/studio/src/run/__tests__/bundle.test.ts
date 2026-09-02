@@ -100,7 +100,7 @@ describe("buildRunBundle", () => {
   it("excludes registry and remote imports from the bundle", async () => {
     const app = makeManifest("/ws/app/telo.yaml", "Application", {
       imports: [
-        makeImport("Registry", "pkg:npm:@foo/bar", "registry"),
+        makeImport("Remote", "pkg:npm:@foo/bar", "remote"),
         makeImport("Remote", "https://example.com/mod.yaml", "remote"),
       ],
     });

@@ -35,8 +35,11 @@ describe("upgradedImportSource", () => {
 
   it("pins an import that carried none", () => {
     expect(
-      upgradedImportSource(imp("std/console@0.9.0"), { version: "0.10.0", integrity: PIN_B }),
-    ).toBe(`std/console@0.10.0#${PIN_B}`);
+      upgradedImportSource(imp("oci://ghcr.io/telorun/console@0.9.0"), {
+        version: "0.10.0",
+        integrity: PIN_B,
+      }),
+    ).toBe(`oci://ghcr.io/telorun/console@0.10.0#${PIN_B}`);
   });
 
   it("pins from the object form's sibling side too", () => {

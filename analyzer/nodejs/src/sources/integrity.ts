@@ -110,11 +110,26 @@ export async function verifyIntegrity(
   }
 }
 
+/** Object-storage backends (Cloudflare R2, S3) surface auth and permission
+ *  failures as a **200 with an XML error body**. Caught here rather than left to
+ *  the loader, which would parse the XML as YAML and report a downstream
+ *  `UNDEFINED_KIND` — naming the manifest's contents as the problem instead of
+ *  the origin that refused to serve it. Returns the failure detail, or `null`
+ *  when the body is not an XML error document. */
+function objectStorageError(text: string): string | null {
+  const head = text.trimStart();
+  if (!head.startsWith("<?xml") && !head.startsWith("<Error")) return null;
+  const code = text.match(/<Code>([^<]+)<\/Code>/);
+  const message = text.match(/<Message>([^<]+)<\/Message>/);
+  return code && message ? `${code[1]}: ${message[1]}` : text.slice(0, 200);
+}
+
 /** The single verified network read for remote manifests: fetch `fetchUrl`,
  *  verify the raw bytes against `integrity` (when pinned), and return both the
  *  bytes and the decoded text. The one choke point every network `ManifestSource`
- *  routes through, so verification cannot drift between them. `describe` names
- *  the artifact in error messages. */
+ *  routes through, so verification cannot drift between them — which is also why
+ *  the object-storage non-manifest check lives here rather than in each source.
+ *  `describe` names the artifact in error messages. */
 export async function verifiedFetch(
   fetchUrl: string,
   integrity: string | undefined,
@@ -127,6 +142,16 @@ export async function verifiedFetch(
     );
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
+  const text = new TextDecoder().decode(bytes);
+  // Before the integrity check: a bucket's error page hashes to something, and
+  // reporting a pin mismatch would name the wrong cause just as the loader does.
+  const storageError = objectStorageError(text);
+  if (storageError) {
+    throw new Error(
+      `The origin returned a non-manifest response for ${describe} ` +
+        `(URL: ${fetchUrl}): ${storageError}`,
+    );
+  }
   if (integrity) await verifyIntegrity(bytes, integrity, describe);
-  return { bytes, text: new TextDecoder().decode(bytes) };
+  return { bytes, text };
 }

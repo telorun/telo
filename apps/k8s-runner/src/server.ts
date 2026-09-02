@@ -53,7 +53,6 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
         // editor attach an agent to every run and every run fail.
         agents: deps.config.watch.enabled ? coResidentAgentNames(apps) : undefined,
       }),
-    defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
     // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on
     // /v1/capabilities; app sessions run the catalog image directly (no build).
     apps,

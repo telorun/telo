@@ -21,8 +21,6 @@ export interface ImageTagInputs {
    *  (e.g. `latest-slim`) yields a fresh tag and rebuilds. Set only under the
    *  `always` pull policy; omitted → keyed on the base TAG STRING alone. */
   baseDigest?: string;
-  /** Telo module registry baked into the build (affects resolved manifests). */
-  teloRegistryUrl: string;
 }
 
 /**
@@ -44,7 +42,6 @@ export function computeImageTag(inputs: ImageTagInputs): string {
   const h = createHash("sha256");
   h.update("base\0" + inputs.baseImage + "\0");
   if (inputs.baseDigest) h.update("base-digest\0" + inputs.baseDigest + "\0");
-  h.update("telo-registry\0" + inputs.teloRegistryUrl + "\0");
   for (const source of key.importSources) h.update("import\0" + source + "\0");
   for (const locator of key.controllerLocators) h.update("controller\0" + locator + "\0");
   if (key.fullContentFallback) {
@@ -82,8 +79,6 @@ export function buildDockerfile(opts: { baseImage: string; entryRelativePath: st
     `FROM ${opts.baseImage}`,
     `WORKDIR /app`,
     `COPY . /app`,
-    `ARG TELO_REGISTRY_URL`,
-    `ENV TELO_REGISTRY_URL=$TELO_REGISTRY_URL`,
     `ENV TELO_CACHE_DIR=/telo-cache`,
     `RUN telo install /app/${opts.entryRelativePath}`,
     ``,
@@ -116,7 +111,6 @@ export function buildKanikoJob(args: KanikoJobArgs): V1Job {
     `--context=dir://${CONTEXT_DIR}`,
     `--dockerfile=${CONTEXT_DIR}/Dockerfile`,
     `--destination=${args.destination}`,
-    `--build-arg=TELO_REGISTRY_URL=${config.teloRegistryUrl}`,
   ];
   if (config.insecureRegistry) {
     kanikoArgs.push("--insecure", "--skip-tls-verify", "--insecure-pull", "--skip-tls-verify-pull");
@@ -247,7 +241,6 @@ export async function ensureSessionImage(
     bundle: args.bundle,
     baseImage: args.baseImage,
     baseDigest,
-    teloRegistryUrl: deps.build.teloRegistryUrl,
   });
   const ref = imageRef(deps.build, tag);
 

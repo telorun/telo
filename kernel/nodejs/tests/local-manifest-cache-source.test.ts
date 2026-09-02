@@ -27,8 +27,6 @@ afterEach(async () => {
   await fs.rm(workdir, { recursive: true, force: true });
 });
 
-const REGISTRY_URL = "https://registry.telo.run";
-
 /** The entry-dir the cachePathForCanonical cases below pass in. */
 const ENTRY_DIR = "/srv/app";
 
@@ -41,62 +39,38 @@ const ENTRY_DIR = "/srv/app";
 const cachePath = (relative: string) => path.join(ENTRY_DIR, ".telo/manifests", relative);
 
 describe("cachePathForCanonical", () => {
-  it("maps a registry-served URL into the registry/host/path/version layout", () => {
-    const result = cachePathForCanonical(
-      "https://registry.telo.run/std/type/1.0.5/telo.yaml",
-      ENTRY_DIR,
-      REGISTRY_URL,
-    );
-    expect(result).toBe(cachePath("registry/registry.telo.run/std/type/1.0.5/telo.yaml"));
-  });
-
-  it("strips a trailing slash from the configured registry URL", () => {
-    const result = cachePathForCanonical(
-      "https://registry.telo.run/std/run/0.2.4/telo.yaml",
-      ENTRY_DIR,
-      `${REGISTRY_URL}/`,
-    );
-    expect(result).toBe(cachePath("registry/registry.telo.run/std/run/0.2.4/telo.yaml"));
+  it("maps an oci ref into the oci/host/repo/version layout", () => {
+    const result = cachePathForCanonical("oci://ghcr.io/telorun/type@1.0.5", ENTRY_DIR);
+    expect(result).toBe(cachePath("oci/ghcr.io/telorun/type/1.0.5/telo.yaml"));
   });
 
   it("maps an arbitrary HTTP URL under the url subtree", () => {
-    const result = cachePathForCanonical(
-      "https://example.com/lib/v1/telo.yaml",
-      ENTRY_DIR,
-      REGISTRY_URL,
-    );
-    expect(result).toBe(
-      cachePath("url/example.com/lib/v1/telo.yaml"),
-    );
+    const result = cachePathForCanonical("https://example.com/lib/v1/telo.yaml", ENTRY_DIR);
+    expect(result).toBe(cachePath("url/example.com/lib/v1/telo.yaml"));
   });
 
   it("returns null for file:// sources (already on disk)", () => {
-    expect(
-      cachePathForCanonical("file:///tmp/foo/telo.yaml", ENTRY_DIR, REGISTRY_URL),
-    ).toBeNull();
+    expect(cachePathForCanonical("file:///tmp/foo/telo.yaml", ENTRY_DIR)).toBeNull();
   });
 
   it("returns null for memory:// sources (transient)", () => {
-    expect(
-      cachePathForCanonical("memory://app/telo.yaml", ENTRY_DIR, REGISTRY_URL),
-    ).toBeNull();
+    expect(cachePathForCanonical("memory://app/telo.yaml", ENTRY_DIR)).toBeNull();
   });
-
 });
 
 describe("LocalManifestCacheSource.supports", () => {
-  it("matches a registry ref when the on-disk file exists", async () => {
-    const cacheRoot = path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/type/1.0.5");
+  it("matches an oci ref when the on-disk file exists", async () => {
+    const cacheRoot = path.join(workdir, ".telo/manifests/oci/ghcr.io/telorun/type/1.0.5");
     await fs.mkdir(cacheRoot, { recursive: true });
     await fs.writeFile(path.join(cacheRoot, "telo.yaml"), "kind: Telo.Library\n");
 
     const source = new LocalManifestCacheSource(workdir);
-    expect(source.supports("std/type@1.0.5")).toBe(true);
+    expect(source.supports("oci://ghcr.io/telorun/type@1.0.5")).toBe(true);
   });
 
-  it("returns false when the registry ref has no on-disk file (miss falls through)", () => {
+  it("returns false when the ref has no on-disk file (miss falls through)", () => {
     const source = new LocalManifestCacheSource(workdir);
-    expect(source.supports("std/type@1.0.5")).toBe(false);
+    expect(source.supports("oci://ghcr.io/telorun/type@1.0.5")).toBe(false);
   });
 
   it("matches an HTTP URL when the on-disk file exists", async () => {
@@ -126,174 +100,130 @@ describe("LocalManifestCacheSource.supports", () => {
   });
 
   it("treats a directory at the cache path as a miss (not a hit)", async () => {
-    // `mkdir -p .telo/manifests/registry/registry.telo.run/std/foo/1.0.0/telo.yaml` — note the .yaml
-    // segment is itself a directory. existsSync would say true here; we need
-    // a stricter regular-file check so reads don't blow up with EISDIR and
-    // the chain still falls through to the registry.
+    // `mkdir -p .telo/manifests/oci/ghcr.io/telorun/foo/1.0.0/telo.yaml` — note the
+    // .yaml segment is itself a directory. existsSync would say true here; we need
+    // a stricter regular-file check so reads don't blow up with EISDIR and the
+    // chain still falls through to the network source.
     await fs.mkdir(
-      path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/foo/1.0.0/telo.yaml"),
+      path.join(workdir, ".telo/manifests/oci/ghcr.io/telorun/foo/1.0.0/telo.yaml"),
       { recursive: true },
     );
 
     const source = new LocalManifestCacheSource(workdir);
-    expect(source.supports("std/foo@1.0.0")).toBe(false);
+    expect(source.supports("oci://ghcr.io/telorun/foo@1.0.0")).toBe(false);
   });
 
-  it("rejects malformed registry refs (missing version)", () => {
+  it("rejects an oci ref with no addressable version", () => {
     const source = new LocalManifestCacheSource(workdir);
-    expect(source.supports("std/type@")).toBe(false);
-    expect(source.supports("@1.0.0")).toBe(false);
-    expect(source.supports("notnamespace@1.0.0")).toBe(false);
+    expect(source.supports("oci://ghcr.io/telorun/type")).toBe(false);
+    expect(source.supports("oci://ghcr.io/telorun/type@sha256:deadbeef")).toBe(false);
   });
 });
 
 describe("LocalManifestCacheSource.read", () => {
   it("returns the cached text and a file:// canonical source", async () => {
-    const cacheRoot = path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/run/0.2.4");
+    const cacheRoot = path.join(workdir, ".telo/manifests/oci/ghcr.io/telorun/run/0.2.4");
     await fs.mkdir(cacheRoot, { recursive: true });
     const expected = "kind: Telo.Library\nmetadata:\n  name: run\n";
     await fs.writeFile(path.join(cacheRoot, "telo.yaml"), expected);
 
     const source = new LocalManifestCacheSource(workdir);
-    const { text, source: canonical } = await source.read("std/run@0.2.4");
+    const { text, source: canonical } = await source.read("oci://ghcr.io/telorun/run@0.2.4");
 
     expect(text).toBe(expected);
     expect(canonical.startsWith("file://")).toBe(true);
-    expect(canonical.endsWith("/registry/registry.telo.run/std/run/0.2.4/telo.yaml")).toBe(true);
-  });
-
-  it("strips a leading v from the version", async () => {
-    const cacheRoot = path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/run/0.2.4");
-    await fs.mkdir(cacheRoot, { recursive: true });
-    await fs.writeFile(path.join(cacheRoot, "telo.yaml"), "kind: Telo.Library\n");
-
-    const source = new LocalManifestCacheSource(workdir);
-    const { text } = await source.read("std/run@v0.2.4");
-    expect(text).toContain("kind: Telo.Library");
+    expect(canonical.endsWith("/oci/ghcr.io/telorun/run/0.2.4/telo.yaml")).toBe(true);
   });
 });
 
 describe("writeManifestCache", () => {
   it("persists every transitively-imported manifest from a graph", async () => {
-    // Build a fake graph with a registry-served import and an HTTP-served
-    // import, plus the root entry which must be skipped.
+    // Build a fake graph with an OCI-served import and an HTTP-served import,
+    // plus the root entry which must be skipped.
     const rootSource = "file:///tmp/root/telo.yaml";
-    const registryTarget = "https://registry.telo.run/std/type/1.0.5/telo.yaml";
+    const ociTarget = "oci://ghcr.io/telorun/type@1.0.5";
     const httpTarget = "https://example.com/lib/telo.yaml";
 
     const fakeGraph: any = {
       rootSource,
       entry: null,
       modules: new Map<string, any>([
-        [
-          rootSource,
-          { owner: { source: rootSource, text: "entry-text" }, partials: [] },
-        ],
-        [
-          registryTarget,
-          {
-            owner: { source: registryTarget, text: "registry-text" },
-            partials: [],
-          },
-        ],
-        [
-          httpTarget,
-          {
-            owner: { source: httpTarget, text: "http-text" },
-            partials: [],
-          },
-        ],
+        [rootSource, { owner: { source: rootSource, text: "entry-text" }, partials: [] }],
+        [ociTarget, { owner: { source: ociTarget, text: "oci-text" }, partials: [] }],
+        [httpTarget, { owner: { source: httpTarget, text: "http-text" }, partials: [] }],
       ]),
       importEdges: new Map(),
       errors: [],
     };
 
-    const written = await writeManifestCache(fakeGraph, workdir, REGISTRY_URL);
+    const written = await writeManifestCache(fakeGraph, workdir);
 
     expect(written.length).toBe(2);
-    const registryFile = path.join(
+    const ociFile = path.join(
       workdir,
-      ".telo/manifests/registry/registry.telo.run/std/type/1.0.5/telo.yaml",
+      ".telo/manifests/oci/ghcr.io/telorun/type/1.0.5/telo.yaml",
     );
-    const httpFile = path.join(
-      workdir,
-      ".telo/manifests/url/example.com/lib/telo.yaml",
-    );
-    expect(await fs.readFile(registryFile, "utf-8")).toBe("registry-text");
+    const httpFile = path.join(workdir, ".telo/manifests/url/example.com/lib/telo.yaml");
+    expect(await fs.readFile(ociFile, "utf-8")).toBe("oci-text");
     expect(await fs.readFile(httpFile, "utf-8")).toBe("http-text");
 
     // The entry itself must not be cached — it already lives on disk.
     const entryCache = path.join(workdir, ".telo/manifests");
     const entries = await fs.readdir(entryCache);
-    expect(entries.sort()).toEqual(["registry", "url"]);
+    expect(entries.sort()).toEqual(["oci", "url"]);
   });
 
   it("dedupes when the same source is reachable through multiple paths", async () => {
     const rootSource = "file:///tmp/root/telo.yaml";
-    const shared = "https://registry.telo.run/std/run/0.2.4/telo.yaml";
+    const shared = "https://example.com/run/0.2.4/telo.yaml";
     const fakeGraph: any = {
       rootSource,
       entry: null,
       modules: new Map<string, any>([
-        [
-          rootSource,
-          { owner: { source: rootSource, text: "entry" }, partials: [] },
-        ],
-        [
-          shared,
-          { owner: { source: shared, text: "shared-text" }, partials: [] },
-        ],
+        [rootSource, { owner: { source: rootSource, text: "entry" }, partials: [] }],
+        [shared, { owner: { source: shared, text: "shared-text" }, partials: [] }],
       ]),
       importEdges: new Map(),
       errors: [],
     };
 
-    const written = await writeManifestCache(fakeGraph, workdir, REGISTRY_URL);
+    const written = await writeManifestCache(fakeGraph, workdir);
     expect(written.length).toBe(1);
   });
 
   it("overwrites existing cache entries with freshly fetched bytes (refresh on re-install)", async () => {
-    // Seed a stale cache entry, then run writeManifestCache with a graph
-    // whose canonical sources are the network URLs (as they would be when
-    // the install-time Loader skips the cache source and reads from the
-    // registry directly). The on-disk bytes must be the freshly fetched
-    // ones, not whatever was already there.
+    // Seed a stale cache entry, then run writeManifestCache with a graph whose
+    // canonical sources are the network URLs (as they would be when the
+    // install-time Loader skips the cache source and fetches directly). The
+    // on-disk bytes must be the freshly fetched ones, not whatever was there.
     const cacheFile = path.join(
       workdir,
-      ".telo/manifests/registry/registry.telo.run/std/foo/1.0.0/telo.yaml",
+      ".telo/manifests/url/example.com/foo/1.0.0/telo.yaml",
     );
     await fs.mkdir(path.dirname(cacheFile), { recursive: true });
     await fs.writeFile(cacheFile, "stale-bytes");
 
     const rootSource = "file:///tmp/root/telo.yaml";
+    const target = "https://example.com/foo/1.0.0/telo.yaml";
     const fakeGraph: any = {
       rootSource,
       entry: null,
       modules: new Map<string, any>([
         [rootSource, { owner: { source: rootSource, text: "" }, partials: [] }],
-        [
-          "https://registry.telo.run/std/foo/1.0.0/telo.yaml",
-          {
-            owner: {
-              source: "https://registry.telo.run/std/foo/1.0.0/telo.yaml",
-              text: "fresh-bytes",
-            },
-            partials: [],
-          },
-        ],
+        [target, { owner: { source: target, text: "fresh-bytes" }, partials: [] }],
       ]),
       importEdges: new Map(),
       errors: [],
     };
 
-    await writeManifestCache(fakeGraph, workdir, REGISTRY_URL);
+    await writeManifestCache(fakeGraph, workdir);
     expect(await fs.readFile(cacheFile, "utf-8")).toBe("fresh-bytes");
   });
 
   it("persists partials alongside their owner", async () => {
     const rootSource = "file:///tmp/root/telo.yaml";
-    const ownerSource = "https://registry.telo.run/std/foo/1.0.0/telo.yaml";
-    const partialSource = "https://registry.telo.run/std/foo/1.0.0/sub.yaml";
+    const ownerSource = "https://example.com/foo/1.0.0/telo.yaml";
+    const partialSource = "https://example.com/foo/1.0.0/sub.yaml";
     const fakeGraph: any = {
       rootSource,
       entry: null,
@@ -311,33 +241,28 @@ describe("writeManifestCache", () => {
       errors: [],
     };
 
-    await writeManifestCache(fakeGraph, workdir, REGISTRY_URL);
+    await writeManifestCache(fakeGraph, workdir);
 
     const partialPath = path.join(
       workdir,
-      ".telo/manifests/registry/registry.telo.run/std/foo/1.0.0/sub.yaml",
+      ".telo/manifests/url/example.com/foo/1.0.0/sub.yaml",
     );
     expect(await fs.readFile(partialPath, "utf-8")).toBe("partial-text");
   });
 });
 
-describe("Loader picks the cache source over RegistrySource on hit", () => {
-  it("serves a registry ref from disk and never touches the network", async () => {
+describe("Loader picks the cache source over HttpSource on hit", () => {
+  it("serves an HTTP import from disk and never touches the network", async () => {
     // Seed the cache directly.
-    const libDir = path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/foo/1.0.0");
+    const libDir = path.join(workdir, ".telo/manifests/url/example.invalid/foo/1.0.0");
     await fs.mkdir(libDir, { recursive: true });
     await fs.writeFile(
       path.join(libDir, "telo.yaml"),
-      [
-        "kind: Telo.Library",
-        "metadata:",
-        "  name: foo",
-        "  version: 1.0.0",
-        "",
-      ].join("\n"),
+      ["kind: Telo.Library", "metadata:", "  name: foo", "  version: 1.0.0", ""].join("\n"),
     );
 
-    // Write an entry manifest that imports the library by registry ref.
+    // The import points at an unreachable host, so a hit is the only way this
+    // resolves — which is exactly what the cache is claimed to guarantee.
     const entryPath = path.join(workdir, "telo.yaml");
     await fs.writeFile(
       entryPath,
@@ -350,17 +275,15 @@ describe("Loader picks the cache source over RegistrySource on hit", () => {
         "kind: Telo.Import",
         "metadata:",
         "  name: Foo",
-        "source: std/foo@1.0.0",
+        "source: https://example.invalid/foo/1.0.0/telo.yaml",
         "",
       ].join("\n"),
     );
 
-    // Build a Loader with the cache source registered, and point
-    // `registryUrl` at an unreachable host to prove no network call is made.
     const loader = new Loader([
       new LocalFileSource(),
       new LocalManifestCacheSource(workdir),
-      ...defaultSources("http://127.0.0.1:1"),
+      ...defaultSources(),
     ]);
 
     const graph = await loader.loadGraph(entryPath);
@@ -368,9 +291,9 @@ describe("Loader picks the cache source over RegistrySource on hit", () => {
     expect(graph.modules.size).toBe(2);
   });
 
-  it("falls through to RegistrySource on cache miss", async () => {
-    // No cache file written. Same entry as above, but expect a network
-    // failure because RegistrySource is consulted next.
+  it("falls through to HttpSource on cache miss", async () => {
+    // No cache file written. Same entry as above, but expect a network failure
+    // because HttpSource is consulted next.
     const entryPath = path.join(workdir, "telo.yaml");
     await fs.writeFile(
       entryPath,
@@ -383,7 +306,7 @@ describe("Loader picks the cache source over RegistrySource on hit", () => {
         "kind: Telo.Import",
         "metadata:",
         "  name: Foo",
-        "source: std/foo@1.0.0",
+        "source: https://example.invalid/foo/1.0.0/telo.yaml",
         "",
       ].join("\n"),
     );
@@ -391,7 +314,7 @@ describe("Loader picks the cache source over RegistrySource on hit", () => {
     const loader = new Loader([
       new LocalFileSource(),
       new LocalManifestCacheSource(workdir),
-      ...defaultSources("http://127.0.0.1:1"),
+      ...defaultSources(),
     ]);
 
     const graph = await loader.loadGraph(entryPath);
@@ -400,27 +323,20 @@ describe("Loader picks the cache source over RegistrySource on hit", () => {
 });
 
 describe("path traversal guard", () => {
-  it("rejects a registry ref whose modulePath segments would escape the cache root", () => {
-    const result = cachePathForCanonical(
-      "foo/../../escape@1.0.0",
-      ENTRY_DIR,
-      REGISTRY_URL,
-    );
-    expect(result).toBeNull();
+  it("returns null for a ref no transport owns", () => {
+    expect(cachePathForCanonical("foo/../../escape@1.0.0", ENTRY_DIR)).toBeNull();
+  });
+
+  it("rejects an oci ref whose repo segments would escape the cache root", () => {
+    expect(cachePathForCanonical("oci://ghcr.io/foo/../../escape@1.0.0", ENTRY_DIR)).toBeNull();
   });
 
   it("URL parser canonicalizes .. in HTTP pathnames so they cannot escape", () => {
-    // `new URL()` collapses `..` segments, so a malformed import like this
-    // is already neutered before our mapping sees it: pathname becomes
+    // `new URL()` collapses `..` segments, so a malformed import like this is
+    // already neutered before our mapping sees it: pathname becomes
     // `/escape/telo.yaml`, which lands inside the url subtree.
-    const result = cachePathForCanonical(
-      "https://example.com/../../escape/telo.yaml",
-      ENTRY_DIR,
-      REGISTRY_URL,
-    );
-    expect(result).toBe(
-      cachePath("url/example.com/escape/telo.yaml"),
-    );
+    const result = cachePathForCanonical("https://example.com/../../escape/telo.yaml", ENTRY_DIR);
+    expect(result).toBe(cachePath("url/example.com/escape/telo.yaml"));
   });
 
   it("supports() returns false on a traversal attempt even when a file exists at the escaped path", async () => {
@@ -429,41 +345,25 @@ describe("path traversal guard", () => {
     await fs.mkdir(outside, { recursive: true });
     await fs.writeFile(path.join(outside, "telo.yaml"), "kind: Telo.Library\n");
 
-    // The cache root is workdir/.telo/manifests — so `foo/../../escape@1.0.0`
-    // would otherwise resolve to <workdir>/escape/1.0.0/telo.yaml (above).
+    // The cache root is workdir/.telo/manifests — so the ref below would
+    // otherwise resolve to <workdir>/escape/1.0.0/telo.yaml (above).
     const source = new LocalManifestCacheSource(workdir);
-    expect(source.supports("foo/../../escape@1.0.0")).toBe(false);
+    expect(source.supports("oci://ghcr.io/foo/../../../../escape@1.0.0")).toBe(false);
   });
 });
 
 describe("query-string disambiguation", () => {
   it("writes distinct cache paths for URLs that differ only in query string", () => {
-    const a = cachePathForCanonical(
-      "https://example.com/lib/telo.yaml?a=1",
-      ENTRY_DIR,
-      REGISTRY_URL,
-    );
-    const b = cachePathForCanonical(
-      "https://example.com/lib/telo.yaml?a=2",
-      ENTRY_DIR,
-      REGISTRY_URL,
-    );
+    const a = cachePathForCanonical("https://example.com/lib/telo.yaml?a=1", ENTRY_DIR);
+    const b = cachePathForCanonical("https://example.com/lib/telo.yaml?a=2", ENTRY_DIR);
     expect(a).not.toBeNull();
     expect(b).not.toBeNull();
     expect(a).not.toBe(b);
   });
 
   it("writes a distinct path for a fragment", () => {
-    const a = cachePathForCanonical(
-      "https://example.com/lib/telo.yaml",
-      ENTRY_DIR,
-      REGISTRY_URL,
-    );
-    const b = cachePathForCanonical(
-      "https://example.com/lib/telo.yaml#frag",
-      ENTRY_DIR,
-      REGISTRY_URL,
-    );
+    const a = cachePathForCanonical("https://example.com/lib/telo.yaml", ENTRY_DIR);
+    const b = cachePathForCanonical("https://example.com/lib/telo.yaml#frag", ENTRY_DIR);
     expect(a).not.toBeNull();
     expect(b).not.toBeNull();
     expect(a).not.toBe(b);
@@ -471,7 +371,7 @@ describe("query-string disambiguation", () => {
 
   it("reader and writer agree on the disambiguated path for the same query string", async () => {
     const url = "https://example.com/lib/telo.yaml?a=1";
-    const writePath = cachePathForCanonical(url, workdir, REGISTRY_URL);
+    const writePath = cachePathForCanonical(url, workdir);
     expect(writePath).not.toBeNull();
     await fs.mkdir(path.dirname(writePath!), { recursive: true });
     await fs.writeFile(writePath!, "kind: Telo.Library\n");
@@ -481,53 +381,20 @@ describe("query-string disambiguation", () => {
     const { text } = await source.read(url);
     expect(text).toContain("kind: Telo.Library");
   });
-});
 
-describe("registry URL alignment between reader and writer", () => {
-  it("direct registry URL imports hit the same cache that registry-ref imports wrote", async () => {
-    // Writer sees the canonical URL (HTTP) that RegistrySource returns.
-    const canonical = "https://registry.telo.run/std/foo/1.0.0/telo.yaml";
-    const writePath = cachePathForCanonical(canonical, workdir, REGISTRY_URL);
+  it("an un-suffixed URL and its /telo.yaml form share one cache file", async () => {
+    // HttpSource appends /telo.yaml; the cache mapping mirrors that
+    // normalization, so both import shapes resolve to the same file.
+    const writePath = cachePathForCanonical("https://example.com/foo/1.0.0/telo.yaml", workdir);
     expect(writePath).toBe(
-      path.join(workdir, ".telo/manifests/registry/registry.telo.run/std/foo/1.0.0/telo.yaml"),
+      path.join(workdir, ".telo/manifests/url/example.com/foo/1.0.0/telo.yaml"),
     );
     await fs.mkdir(path.dirname(writePath!), { recursive: true });
     await fs.writeFile(writePath!, "kind: Telo.Library\n");
 
-    const source = new LocalManifestCacheSource(workdir, REGISTRY_URL);
-
-    // Both import shapes must resolve to the same cache file.
-    expect(source.supports("std/foo@1.0.0")).toBe(true);
-    expect(source.supports("https://registry.telo.run/std/foo/1.0.0/telo.yaml")).toBe(true);
-    // And even the un-suffixed direct URL: HttpSource would append /telo.yaml,
-    // the cache mapping must mirror that normalization.
-    expect(source.supports("https://registry.telo.run/std/foo/1.0.0")).toBe(true);
-  });
-
-  it("falls back to url layout for registry URLs when a non-default registry is configured", () => {
-    // Writer with a custom registry URL.
-    const customRegistry = "https://registry.example.internal";
-    const writePath = cachePathForCanonical(
-      "https://registry.telo.run/std/foo/1.0.0/telo.yaml",
-      ENTRY_DIR,
-      customRegistry,
-    );
-    // The default registry URL is NOT the configured one, so this is
-    // arbitrary HTTP from the perspective of the cache.
-    expect(writePath).toBe(
-      cachePath("url/registry.telo.run/std/foo/1.0.0/telo.yaml"),
-    );
-  });
-
-  it("registry URL with a path prefix maps correctly", () => {
-    const writePath = cachePathForCanonical(
-      "https://reg.example.com/r/std/foo/1.0.0/telo.yaml",
-      ENTRY_DIR,
-      "https://reg.example.com/r",
-    );
-    expect(writePath).toBe(
-      cachePath("registry/reg.example.com/std/foo/1.0.0/telo.yaml"),
-    );
+    const source = new LocalManifestCacheSource(workdir);
+    expect(source.supports("https://example.com/foo/1.0.0/telo.yaml")).toBe(true);
+    expect(source.supports("https://example.com/foo/1.0.0")).toBe(true);
   });
 });
 

@@ -63,7 +63,7 @@ pkg:telo/local/<format>?path=<file>[&local_path=<source>][&siblings=<globs>][&os
 | Segment            | Meaning                                                                                   |
 | ------------------ | ----------------------------------------------------------------------------------------- |
 | `type=telo`        | Telo-delivered, not fetched from an ecosystem registry                                      |
-| `namespace=local`  | Bundled in the module artifact (reserving `pkg:telo/registry/…` for a fetched controller)   |
+| `namespace=local`  | Bundled in the module artifact (the namespace leaves room for a fetched controller)         |
 | `name=<format>`    | The artifact format the loader dispatches on: `js`, `napi`, `wasm`                          |
 | `path`             | The file in the module's payload, relative to `telo.yaml`                                   |
 | `#export`          | Named export within it; omit to use the whole module as the controller                      |
@@ -299,8 +299,7 @@ a hashed directory can be traced back to the runner that wrote it.
 
 A sibling `.telo/manifests/` tree, written by the same
 `telo install` pass, holds the YAML of every transitively-imported
-`Telo.Library` so boot can resolve manifests without hitting the module
-registry. See [Module System](./modules.md#7-manifest-cache) for the cache
+`Telo.Library` so boot can resolve manifests without any network I/O. See [Module System](./modules.md#7-manifest-cache) for the cache
 layout; this section covers controller resolution only.
 
 ```

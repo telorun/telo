@@ -15,7 +15,6 @@ import { TransportRegistry, defaultTransportRegistry } from "../transports/trans
 import { findWorkspaceRoot } from "../workspace-marker.js";
 
 const CACHE_SUBDIR = ".telo/manifests";
-const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
 /** Verify that `candidate` resolves to a path under `root`. Returns the
  *  candidate path on success, `null` when any segment escapes the root.
@@ -33,8 +32,8 @@ function joinUnder(root: string, ...segments: string[]): string | null {
 
 /** Single source of truth for URL → cache path. Used identically by the
  *  reader (cache lookup) and writer (install-time persistence). For any
- *  given import ref — registry ref, direct registry URL, arbitrary HTTP, or
- *  `oci://` — both sides land on the same file: the owning transport supplies
+ *  given import ref — an HTTP(S) URL or an `oci://` ref — both sides land on
+ *  the same file: the owning transport supplies
  *  the coordinates and the analyzer's `manifestCacheKey` renders them, the same
  *  grammar the hub's static manifest bucket and the editor's read path use.
  *
@@ -80,8 +79,8 @@ export function legacyManifestsDirFallback(
 
 /**
  * Reads previously-cached manifest YAMLs from the resolved manifest cache. Sits
- * ahead of `RegistrySource` / `HttpSource` in the source chain — a hit makes boot
- * hermetic, a miss falls through to the network source unchanged.
+ * ahead of `HttpSource` in the source chain — a hit makes boot hermetic, a miss
+ * falls through to the network source unchanged.
  *
  * Populated by `writeManifestCache` at install time.
  *
@@ -90,7 +89,7 @@ export function legacyManifestsDirFallback(
  * costs only CPU when it goes cold; this one costs network, so without the
  * fallback the move to a workspace-anchored root would stop a hermetic setup from
  * booting — its `telo install` output stranded at the old path, with the failure
- * surfacing as a registry fetch on a machine that has no route to one. Read-only
+ * surfacing as a network fetch on a machine that has no route out. Read-only
  * and one directory deep: writes always go to the current root, so the old copy
  * ages out rather than being maintained.
  */
@@ -99,17 +98,13 @@ export class LocalManifestCacheSource implements ManifestSource {
   private readonly legacyRoot: string | null;
   private readonly transports: TransportRegistry;
 
-  constructor(
-    entryDir: string,
-    registryUrl: string = DEFAULT_REGISTRY_URL,
-    manifestsDir?: string,
-  ) {
+  constructor(entryDir: string, manifestsDir?: string) {
     // `manifestsDir` is the resolved manifest-cache directory threaded from a
     // single `resolveCacheRoot` (honours `TELO_CACHE_DIR`); when absent we fall
     // back to the entry-anchored default so library/test callers are unchanged.
     this.cacheRoot = manifestsDir ?? legacyManifestsDir(entryDir);
     this.legacyRoot = legacyManifestsDirFallback(entryDir, this.cacheRoot);
-    this.transports = defaultTransportRegistry(registryUrl);
+    this.transports = defaultTransportRegistry();
   }
 
   supports(url: string): boolean {
@@ -176,11 +171,10 @@ export class LocalManifestCacheSource implements ManifestSource {
 export function cachePathForCanonical(
   canonicalSource: string,
   entryDir: string,
-  registryUrl: string | undefined = DEFAULT_REGISTRY_URL,
   manifestsDir?: string,
 ): string | null {
   const cacheRoot = manifestsDir ?? path.join(entryDir, CACHE_SUBDIR);
-  return cachePathForUrl(canonicalSource, cacheRoot, defaultTransportRegistry(registryUrl));
+  return cachePathForUrl(canonicalSource, cacheRoot, defaultTransportRegistry());
 }
 
 /**
@@ -198,7 +192,6 @@ export function cachePathForCanonical(
 export async function writeManifestCache(
   graph: LoadedGraph,
   entryDir: string,
-  registryUrl: string = DEFAULT_REGISTRY_URL,
   manifestsDir?: string,
 ): Promise<string[]> {
   const written: string[] = [];
@@ -210,7 +203,7 @@ export async function writeManifestCache(
       if (seen.has(file.source)) continue;
       seen.add(file.source);
 
-      const target = cachePathForCanonical(file.source, entryDir, registryUrl, manifestsDir);
+      const target = cachePathForCanonical(file.source, entryDir, manifestsDir);
       if (!target) continue;
 
       await fs.mkdir(path.dirname(target), { recursive: true });

@@ -4,7 +4,7 @@ import {
   buildFileTree,
   buildRemoteImportPlan,
   clearManifestUrlParam,
-  createRegistryAdapters,
+  createManifestSources,
   createVirtualWorkspaceAdapter,
   loadWorkspace,
   loadWorkspaceDependencies,
@@ -176,7 +176,7 @@ export function useWorkspaceLifecycle({
       VIRTUAL_WORKSPACE_ROOT,
       adapter,
       adapter,
-      createRegistryAdapters(settings),
+      createManifestSources(settings),
     );
     setState({
       ...INITIAL_STATE,
@@ -214,9 +214,9 @@ export function useWorkspaceLifecycle({
     base: Workspace,
     manifestAdapter: ManifestSource,
     workspaceAdapter: WorkspaceAdapter,
-    registryAdapters: ManifestSource[],
+    manifestSources: ManifestSource[],
   ) {
-    loadWorkspaceDependencies(base, manifestAdapter, workspaceAdapter, registryAdapters)
+    loadWorkspaceDependencies(base, manifestAdapter, workspaceAdapter, manifestSources)
       .then((deps) => {
         setState((s) => {
           if (
@@ -245,7 +245,7 @@ export function useWorkspaceLifecycle({
     if (!reopened) return;
     manifestAdapterRef.current = reopened.manifestAdapter;
     workspaceAdapterRef.current = reopened.workspaceAdapter;
-    const registryAdapters = createRegistryAdapters(settings);
+    const manifestSources = createManifestSources(settings);
     // Load only the workspace's own modules first (external dependency graphs —
     // by far the slowest, most variable part of the load — are deferred and
     // streamed in below) and walk the file tree in parallel, so the workspace
@@ -255,7 +255,7 @@ export function useWorkspaceLifecycle({
         reopened.rootDir,
         reopened.manifestAdapter,
         reopened.workspaceAdapter,
-        registryAdapters,
+        manifestSources,
         { deferExternalDeps: true },
       ),
       buildFileTree(reopened.rootDir, reopened.workspaceAdapter).catch((err) => {
@@ -269,7 +269,7 @@ export function useWorkspaceLifecycle({
       workspace,
       reopened.manifestAdapter,
       reopened.workspaceAdapter,
-      registryAdapters,
+      manifestSources,
     );
     const nextActiveModulePath =
       persistedHint.activeModulePath && workspace.modules.has(persistedHint.activeModulePath)
@@ -319,7 +319,7 @@ export function useWorkspaceLifecycle({
     (async () => {
       try {
         const adapter = createVirtualWorkspaceAdapter();
-        const plan = await buildRemoteImportPlan(url, adapter, createRegistryAdapters(settings));
+        const plan = await buildRemoteImportPlan(url, adapter, createManifestSources(settings));
         if (!cancelled) setPendingImport({ adapter, plan });
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -407,7 +407,7 @@ export function useWorkspaceLifecycle({
         opened.rootDir,
         opened.manifestAdapter,
         opened.workspaceAdapter,
-        createRegistryAdapters(settings),
+        createManifestSources(settings),
       );
       const initialActivePath = pickInitialActiveModule(workspace);
       setState({
@@ -442,7 +442,7 @@ export function useWorkspaceLifecycle({
       ? (workspaceAdapterRef.current as ManifestSource & WorkspaceAdapter)
       : createVirtualWorkspaceAdapter();
     const root = workspaceOpen ? state.workspace!.rootDir : VIRTUAL_WORKSPACE_ROOT;
-    const registryAdapters = createRegistryAdapters(settings);
+    const manifestSources = createManifestSources(settings);
 
     // Domain logic — slug, existence, file materialization, write, overwrite —
     // lives in `materializeModule`; the hook only picks the adapter/root and
@@ -452,13 +452,13 @@ export function useWorkspaceLifecycle({
       name,
       selection,
       templatesBaseUrl: resolveTemplatesBaseUrl(settings),
-      registryAdapters,
+      manifestSources,
       overwrite: opts?.overwrite,
     });
 
     if (workspaceOpen) {
       const manifestAdapter = manifestAdapterRef.current!;
-      const workspace = await loadWorkspace(root, manifestAdapter, adapter, registryAdapters);
+      const workspace = await loadWorkspace(root, manifestAdapter, adapter, manifestSources);
       setState((s) => {
         const reconciled = reconcileWorkspaceTabs(s, workspace);
         const openTabs = reconciled.openTabs.some(
@@ -483,7 +483,7 @@ export function useWorkspaceLifecycle({
         VIRTUAL_WORKSPACE_ROOT,
         adapter,
         adapter,
-        registryAdapters,
+        manifestSources,
       );
       setState({
         ...INITIAL_STATE,
@@ -560,7 +560,7 @@ export function useWorkspaceLifecycle({
     const adapter = workspaceAdapterRef.current;
     const manifestAdapter = manifestAdapterRef.current;
     if (!ws || !adapter || !manifestAdapter) return null;
-    return loadWorkspace(ws.rootDir, manifestAdapter, adapter, createRegistryAdapters(settings));
+    return loadWorkspace(ws.rootDir, manifestAdapter, adapter, createManifestSources(settings));
   }
 
   // After a file op: reload + re-parse the workspace only when one of the

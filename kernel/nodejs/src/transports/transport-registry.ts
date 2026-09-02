@@ -1,8 +1,8 @@
 import type { ManifestCacheCoords, ManifestSource } from "@telorun/analyzer";
 
 import type { PayloadFile } from "../bundle/files-integrity.js";
+import { HttpTransport } from "./http-transport.js";
 import { OciTransport } from "./oci/oci-transport.js";
-import { RegistryTransport } from "./registry-transport.js";
 import type {
   PublishBundle,
   PublishOptions,
@@ -12,9 +12,9 @@ import type {
 
 /** Dispatches ref-scheme-specific operations to the transport that owns a ref.
  *  The loader, cache source, `upgrade`, and `publish` consult this instead of
- *  branching on ref shape. `RegistryTransport` is always last so it is the
- *  fallback for bare / `https` refs, and a scheme-owning transport (OCI, later
- *  S3) claims its refs via `supports()` before the fallback is reached. */
+ *  branching on ref shape. `HttpTransport` is always last so it is the fallback
+ *  for plain `https` refs, and a scheme-owning transport (OCI, later S3) claims
+ *  its refs via `supports()` before the fallback is reached. */
 export class TransportRegistry {
   constructor(private readonly transports: Transport[]) {}
 
@@ -73,27 +73,20 @@ export class TransportRegistry {
 }
 
 /** The default transport set. Scheme-owning transports come first; the
- *  `RegistryTransport` is last, the fallback for bare / `https` refs. OCI (and
- *  later S3) claim their `oci://` / `s3://` refs before the fallback is reached. */
-export function defaultTransports(registryUrl?: string): Transport[] {
-  return [new OciTransport(), new RegistryTransport(registryUrl)];
+ *  `HttpTransport` is last, the fallback for plain `https` refs. OCI (and later
+ *  S3) claim their `oci://` / `s3://` refs before the fallback is reached. */
+export function defaultTransports(): Transport[] {
+  return [new OciTransport(), new HttpTransport()];
 }
 
-const defaultRegistryCache = new Map<string, TransportRegistry>();
+let defaultRegistry: TransportRegistry | undefined;
 
-/** A `TransportRegistry` seeded with {@link defaultTransports}, memoized per
- *  `registryUrl`. The default transports hold no per-call state, so one shared
- *  instance per registry URL is safe — and avoids re-instantiating the whole set
- *  on hot paths like `cachePathForCanonical`. It is also what gives
- *  `OciTransport`'s per-instance read-client pool a process-wide lifetime here,
- *  so the bearer-token cache survives across operations without the pool having
- *  to be global. */
-export function defaultTransportRegistry(registryUrl?: string): TransportRegistry {
-  const key = registryUrl ?? "";
-  let cached = defaultRegistryCache.get(key);
-  if (!cached) {
-    cached = new TransportRegistry(defaultTransports(registryUrl));
-    defaultRegistryCache.set(key, cached);
-  }
-  return cached;
+/** A `TransportRegistry` seeded with {@link defaultTransports}, memoized. The
+ *  default transports hold no per-call state, so one shared instance is safe —
+ *  and avoids re-instantiating the whole set on hot paths like
+ *  `cachePathForCanonical`. It is also what gives `OciTransport`'s per-instance
+ *  read-client pool a process-wide lifetime here, so the bearer-token cache
+ *  survives across operations without the pool having to be global. */
+export function defaultTransportRegistry(): TransportRegistry {
+  return (defaultRegistry ??= new TransportRegistry(defaultTransports()));
 }

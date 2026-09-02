@@ -99,7 +99,7 @@ metadata:
   version: 1.0.0
 imports:
   LegacyPostgresModule:
-    source: acme/postgres-driver@2.0.0
+    source: oci://ghcr.io/acme/postgres-driver@2.0.0
     variables:
       poolSize: 10
     secrets:

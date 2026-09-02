@@ -19,9 +19,6 @@ export interface SessionConfigSchemaOptions {
    *  effect once `imageEnum` is set (the picker is the constraint). `pullPolicy`
    *  is always client-editable. */
   enforced?: boolean;
-  /** Include the optional `registryUrl` field (a runner that forwards a module
-   *  registry URL to its workloads). */
-  registryUrl?: boolean;
 }
 
 /**
@@ -55,14 +52,6 @@ export function sessionConfigSchema(opts: SessionConfigSchemaOptions): JsonSchem
         "`missing` pulls on first use; `always` forces a pull every run; `never` fails if the image isn't present.",
     },
   };
-  if (opts.registryUrl) {
-    properties.registryUrl = {
-      type: "string",
-      title: "Registry URL",
-      description:
-        "Optional base URL for the telo module registry, forwarded to the runner as TELO_REGISTRY_URL. Leave blank for the default registry.",
-    };
-  }
   return {
     type: "object",
     required: ["image", "pullPolicy"],

@@ -16,8 +16,8 @@ import {
  * from an extension host. The `fetch` itself stays with the host — everything
  * in this package leaves the network to its caller.
  *
- * A ref the cache cannot address (a registry ref, whose origin this side does
- * not know; a URL with no version segment) returns `null`, which the caller
+ * A ref the cache cannot address (a URL with no version segment) returns
+ * `null`, which the caller
  * reads as "not known" and never as "incompatible". Losing the check for those
  * refs is the honest outcome: the manifest is still gated at load time.
  */

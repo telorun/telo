@@ -8,7 +8,6 @@ import type { Argv } from "yargs";
 import { createLogger } from "../logger.js";
 import { outErrLine, output } from "../output.js";
 
-const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
 /**
  * `telo migrate` — the REFERENCE application of the migration operation, not
@@ -99,16 +98,9 @@ async function migrateOne(
   return { outcomes };
 }
 
-export async function migrate(argv: {
-  paths: string[];
-  registryUrl?: string;
-}): Promise<void> {
+export async function migrate(argv: { paths: string[] }): Promise<void> {
   const log = createLogger(false);
-  const registryUrl = argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
-  const loader = new Loader([
-    new LocalFileSource(),
-    ...defaultTransportRegistry(registryUrl).sources(),
-  ]);
+  const loader = new Loader([new LocalFileSource(), ...defaultTransportRegistry().sources()]);
 
   const out = output();
   const all: FileOutcome[] = [];
@@ -177,10 +169,6 @@ export function migrateCommand(yargs: Argv): Argv {
           type: "string",
           array: true,
           demandOption: true,
-        })
-        .option("registry-url", {
-          type: "string",
-          describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
         }),
     async (argv) => {
       await migrate(argv as any);

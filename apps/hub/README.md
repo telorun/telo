@@ -7,8 +7,8 @@ search API, and the MCP endpoint are all resources in one manifest.
 
 ## What it does
 
-- **Tracks registered module refs** across transports — the HTTP registry
-  (`<ns>/<name>`), OCI (`oci://<host>/<repo>`), and a direct manifest URL
+- **Tracks registered module refs** across transports — OCI
+  (`oci://<host>/<repo>`) and a direct manifest URL
   (`https://<host>/<path>/telo.yaml`, transport `url`).
   A pull tracker periodically enumerates each registered module's versions by
   shelling out to the generic CLI verbs — `telo module versions <ref>`,
@@ -190,7 +190,7 @@ on `search_resources` filters by kernel (`nodejs`, `rust`) — the same labels a
 
 The facet is **per kind**, and the module roll-up distinguishes full from
 partial reach, because coverage genuinely differs inside one module:
-`std/console` ships Rust controllers for two of its four kinds. A module hit
+`console` ships Rust controllers for two of its four kinds. A module hit
 carries `runtime.runtimes` (every kernel with at least partial reach) and
 `runtime.full` (the subset covering every kind), so a filter reads one list and
 a UI still renders "Rust (partial)".
@@ -335,7 +335,7 @@ POSTs to this verb cross-origin.
 ### `url` transport — weaker guarantees
 
 A direct manifest URL addresses **one file**, not a versioned repo, so it differs
-from registry/OCI refs in ways worth knowing:
+from an OCI ref in ways worth knowing:
 
 - **Its version list is always one entry** — whatever `metadata.version` the file
   currently declares (a manifest without one can't be registered at all).

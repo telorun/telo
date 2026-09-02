@@ -10,9 +10,9 @@ export interface DockerRunnerCapabilitiesOptions {
   agents?: string[];
 }
 
-/** What docker-runner advertises on `/v1/capabilities`. Image / pullPolicy /
- *  registryUrl are all user-editable — the docker-runner trusts the caller to
- *  pick the image. */
+/** What docker-runner advertises on `/v1/capabilities`. Image and pullPolicy
+ *  are both user-editable — the docker-runner trusts the caller to pick the
+ *  image. */
 export function dockerRunnerCapabilities(
   opts: DockerRunnerCapabilitiesOptions,
 ): RunnerCapabilities {
@@ -20,7 +20,7 @@ export function dockerRunnerCapabilities(
     displayName: "Docker runner",
     description: "Runs the Application via a docker-runner HTTP service.",
     config: {
-      schema: sessionConfigSchema({ imageDefault: DEFAULT_SESSION_IMAGE, registryUrl: true }),
+      schema: sessionConfigSchema({ imageDefault: DEFAULT_SESSION_IMAGE }),
     },
     features: {
       // Both attach modes: docker's non-TTY attach already returns a

@@ -17,7 +17,6 @@ import { LocalManifestCacheSource } from "../src/manifest-sources/local-manifest
  */
 
 let workdir: string;
-const REGISTRY = "https://registry.telo.run";
 
 beforeEach(async () => {
   workdir = await fs.mkdtemp(path.join(os.tmpdir(), "telo-warm-"));
@@ -40,8 +39,7 @@ afterEach(async () => {
 
 function makeKernel(stderr?: { write: (s: string) => boolean }): Kernel {
   return new Kernel({
-    sources: [new LocalFileSource(), new LocalManifestCacheSource(workdir, REGISTRY)],
-    registryUrl: REGISTRY,
+    sources: [new LocalFileSource(), new LocalManifestCacheSource(workdir)],
     ...(stderr ? { stderr: stderr as NodeJS.WritableStream } : {}),
   });
 }

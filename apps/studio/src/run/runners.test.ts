@@ -9,7 +9,7 @@ import {
 import { normalizeRunnerSettings } from "./runners";
 
 function legacy(overrides: Record<string, unknown>): AppSettings {
-  return { registryServers: [], ...overrides } as unknown as AppSettings;
+  return { ...overrides } as unknown as AppSettings;
 }
 
 describe("normalizeRunnerSettings", () => {

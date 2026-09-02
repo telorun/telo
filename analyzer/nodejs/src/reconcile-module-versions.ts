@@ -50,15 +50,14 @@ interface ModuleIdentity {
  *  **What this key cannot relate.** It compares ref *spellings*, so it groups by
  *  origin exactly and nothing else. Two consequences, both accepted:
  *
- *  - A module imported once by a registry ref and once by a relative path is two
- *    groups, so a version skew between them is not hoisted. Keying on what the
- *    module declares about itself would catch that case, but only by trusting a
- *    self-declared identity — which is what this change removes, and which
- *    cannot tell two same-named modules from different origins apart.
- *  - A bare `std/kv-store@0.4.0` and the equivalent direct
- *    `https://<registry>/std/kv-store/0.4.0/telo.yaml` are two groups. Relating
- *    them needs the configured registry base, which this pure, browser-safe
- *    function does not have. */
+ *  - A module imported once by an `oci://` ref and once by a relative path is
+ *    two groups, so a version skew between them is not hoisted. Keying on what
+ *    the module declares about itself would catch that case, but only by
+ *    trusting a self-declared identity — which is what this change removes, and
+ *    which cannot tell two same-named modules from different origins apart.
+ *  - An `oci://` ref and a direct `https://…/telo.yaml` URL serving the same
+ *    module are two groups. Relating them needs knowledge of the origin's
+ *    layout, which this pure, browser-safe function does not have. */
 function refIdentity(ref: string): string | null {
   const base = ref.split("#")[0];
   if (!base || base.startsWith(".") || base.startsWith("/") || base.startsWith("file:")) {
@@ -185,8 +184,8 @@ export function reconcileModuleVersions(
   // source normally maps to exactly one identity; the entry module has no
   // inbound edge and needs none (it is never reconciled against itself).
   //
-  // One source CAN be reached by two spellings of the same location (a bare
-  // registry ref and the direct URL it resolves to). Both name the same module
+  // One source CAN be reached by two spellings of the same location (a ref and
+  // the direct URL it resolves to). Both name the same module
   // at the same version, so either identity groups it correctly — but the choice
   // must not depend on edge iteration order, or the same graph could reconcile
   // differently across runs. First edge wins.

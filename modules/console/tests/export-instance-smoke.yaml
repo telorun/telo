@@ -3,7 +3,7 @@ metadata:
   name: ConsoleExportInstanceSmoke
   version: 1.0.0
   description: |
-    Verifies the cross-module exported-instance feature: `std/console` exports
+    Verifies the cross-module exported-instance feature: `console` exports
     a ready-made `writeLine` singleton via `exports.resources`, and a consumer
     references it directly with `!ref Console.writeLine` — no locally declared
     `Console.WriteLine` instance. Exercises the full path: alias-qualified ref

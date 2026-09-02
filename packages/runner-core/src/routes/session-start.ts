@@ -55,9 +55,6 @@ export function enforceTerms(
 export interface WorkloadStartDeps {
   backend: RunnerBackend;
   registry: SessionRegistry;
-  /** The runner's own default registry URL, surfaced to the workload as
-   *  TELO_REGISTRY_URL when the request doesn't override it. */
-  defaultRegistryUrl?: string;
 }
 
 export type WorkloadStartArgs = WorkloadLaunch;
@@ -99,17 +96,7 @@ export async function startWorkloadSession(
     throw err;
   }
 
-  // Surface a TELO_REGISTRY_URL to the workload so the telo CLI inside picks
-  // it up. Precedence: explicit env value > config.registryUrl (per-request
-  // override) > runner's own default. Trim client-supplied URLs so stray
-  // whitespace from an editor input doesn't flow into the workload.
-  const configRegistryUrl = args.config.registryUrl?.trim() || undefined;
-  const registryUrl = configRegistryUrl ?? deps.defaultRegistryUrl;
-  const sessionEnv = withoutCacheOverride(
-    registryUrl && !("TELO_REGISTRY_URL" in args.env)
-      ? { ...args.env, TELO_REGISTRY_URL: registryUrl }
-      : args.env,
-  );
+  const sessionEnv = withoutCacheOverride(args.env);
 
   // Respond as soon as the session is registered — BEFORE the backend starts.
   // `backend.start()` now spans the on-cluster image build and pod bring-up,

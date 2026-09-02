@@ -14,7 +14,7 @@ describe("buildAppPod", () => {
     config,
     sessionId: "abc123",
     podName: "telo-run-abc123",
-    env: { SERVICE_TOKEN: "tok-operator", TELO_REGISTRY_URL: "https://registry.telo.run" },
+    env: { SERVICE_TOKEN: "tok-operator" },
     ports: [{ port: 8080, protocol: "tcp" }],
     limits: config.appLimits,
     image: "acme/tool:1",

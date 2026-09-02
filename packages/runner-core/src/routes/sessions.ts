@@ -29,9 +29,6 @@ export interface SessionsRouteDeps {
   backend: RunnerBackend;
   registry: SessionRegistry;
   corsOrigins: string[] | "*";
-  /** The runner's own default registry URL, surfaced to the workload as
-   *  TELO_REGISTRY_URL when the request doesn't override it. */
-  defaultRegistryUrl?: string;
   /** When set, a session may only start if the client acknowledges this exact
    *  terms version via the `x-telo-accepted-terms` header. */
   terms?: RunnerTerms;
@@ -95,7 +92,6 @@ const startBodySchema = {
       properties: {
         image: { type: "string", minLength: 1 },
         pullPolicy: { type: "string", enum: ["missing", "always", "never"] },
-        registryUrl: { type: "string", minLength: 1 },
       },
     },
     inspect: { type: "boolean" },

@@ -33,7 +33,6 @@ import {
   writeOriginDigests,
 } from "../manifest-freshness.js";
 
-const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
 
 /** Where one input path's manifest cache lives. `null` for an HTTP(S) entry,
  *  which has no local anchor to hang a `.telo` directory off. */
@@ -72,8 +71,8 @@ interface CheckSession {
  * One loader for the whole invocation, ahead of the transports:
  *
  *  - `LocalManifestCacheSource` makes a repeat check hermetic. Without it every
- *    `oci://` / registry import was re-pulled on every run even when fully
- *    pinned, which is the bulk of `check`'s wall time.
+ *    `oci://` import was re-pulled on every run even when fully pinned, which
+ *    is the bulk of `check`'s wall time.
  *  - The loader is shared across *all* input paths, so `telo check a b c` reads
  *    a module common to several of them once. Its `urlToSource` / `fileCache`
  *    dedupe by canonical URL, so this is purely a cache-hit question — the
@@ -83,23 +82,19 @@ interface CheckSession {
  * are content-addressed, so a hit under any root is as good as a hit under the
  * one this path would write to, and a miss falls through unchanged.
  */
-function openSession(cacheTargets: CacheTarget[], registryUrl: string): CheckSession {
+function openSession(cacheTargets: CacheTarget[]): CheckSession {
   const recorders = cacheTargets.map(
-    (t) =>
-      new RecordingCacheSource(
-        new LocalManifestCacheSource(t.entryDir, registryUrl, t.manifestsDir),
-        registryUrl,
-      ),
+    (t) => new RecordingCacheSource(new LocalManifestCacheSource(t.entryDir, t.manifestsDir)),
   );
   // The kernel's transport sources — the same set `install` / `run` use — so
   // `check` resolves every scheme they do, `oci://` included, direct-to-origin.
   // The browser-only `manifests.telo.sh` cache path stays the editor's; a CLI
-  // resolves origin-direct so it never depends on the hub (federated-discovery
-  // plan: resolution never routes through the hub).
+  // resolves origin-direct so it never depends on the hub — resolution never
+  // routes through it.
   const loader = new Loader([
     new LocalFileSource(),
     ...recorders,
-    ...defaultTransportRegistry(registryUrl).sources(),
+    ...defaultTransportRegistry().sources(),
   ]);
   return {
     loader,
@@ -153,13 +148,12 @@ interface CheckOutcome {
    *  files and retries rather than reporting diagnostics derived from them. */
   staleFiles: string[];
   /** Digests observed while revalidating, carried to the retry so the repaired
-   *  cache is recorded against what the registry actually serves now. */
+   *  cache is recorded against what the origin actually serves now. */
   digests: Map<string, string>;
 }
 
 async function checkOne(
   inputPath: string,
-  registryUrl: string,
   session: CheckSession,
   cacheTarget: CacheTarget | null,
   cacheWrite: boolean,
@@ -194,7 +188,6 @@ async function checkOne(
         graph,
         served,
         originsByRoot,
-        registryUrl,
         session.verified,
       );
       if (freshness.staleFiles.length > 0) {
@@ -232,12 +225,7 @@ async function checkOne(
       // directory, which reads the same cache — is hermetic. Caching is an
       // optimization: a read-only filesystem warns rather than fails the check.
       try {
-        await writeManifestCache(
-          graph,
-          cacheTarget.entryDir,
-          registryUrl,
-          cacheTarget.manifestsDir,
-        );
+        await writeManifestCache(graph, cacheTarget.entryDir, cacheTarget.manifestsDir);
         await writeOriginDigests(cacheTarget.manifestsDir, digests);
       } catch (err) {
         outErrLine(
@@ -275,14 +263,10 @@ async function checkOne(
 
 export async function check(argv: {
   paths: string[];
-  registryUrl?: string;
   cacheWrite?: boolean;
 }): Promise<void> {
   const log = createLogger(false);
 
-  // Same fallback chain as `run` / `install`.
-  const registryUrl =
-    argv.registryUrl ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
   const cacheWrite = argv.cacheWrite !== false;
 
   const cacheTargets = new Map<string, CacheTarget>();
@@ -291,7 +275,7 @@ export async function check(argv: {
     if (target) cacheTargets.set(target.manifestsDir, target);
   }
 
-  const session = openSession([...cacheTargets.values()], registryUrl);
+  const session = openSession([...cacheTargets.values()]);
 
   let totalErrors = 0;
   let totalWarns = 0;
@@ -299,7 +283,7 @@ export async function check(argv: {
 
   for (const p of argv.paths) {
     const cacheTarget = cacheTargetFor(resolveEntryPath(p));
-    let outcome = await checkOne(p, registryUrl, session, cacheTarget, cacheWrite, null, log);
+    let outcome = await checkOne(p, session, cacheTarget, cacheWrite, null, log);
 
     if (outcome.staleFiles.length > 0) {
       // A mutable tag moved under the cache. Drop just those entries — file,
@@ -310,15 +294,7 @@ export async function check(argv: {
       for (const file of outcome.staleFiles) {
         await dropStaleEntry(file, session, log);
       }
-      outcome = await checkOne(
-        p,
-        registryUrl,
-        session,
-        cacheTarget,
-        cacheWrite,
-        outcome.digests,
-        log,
-      );
+      outcome = await checkOne(p, session, cacheTarget, cacheWrite, outcome.digests, log);
     }
 
     totalErrors += outcome.errorCount;
@@ -366,10 +342,6 @@ export function checkCommand(yargs: Argv): Argv {
           type: "string",
           array: true,
           demandOption: true,
-        })
-        .option("registry-url", {
-          type: "string",
-          describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
         }),
     async (argv) => {
       await check(argv as any);

@@ -45,8 +45,8 @@ imports:
 The fetched bytes are hashed and compared against the fragment **before the
 manifest is parsed or cached**. A mismatch is terminal — never downgraded to a
 cache miss, never retried against another source. The fragment is authoritative
-across every transport, so the same pin protects an OCI ref, a registry ref, and
-a plain HTTPS URL alike.
+across every transport, so the same pin protects an OCI ref and a plain HTTPS
+URL alike.
 
 `telo upgrade` maintains these pins for you: it rewrites the version and drops
 the now-stale hash, so a pin never silently describes a different version than
@@ -67,12 +67,11 @@ A layer whose contents do not hash to its recorded `integrity` fails with
 this index rather than through the registry's layer list, so a republish that
 reorders or re-tags layers cannot substitute one.
 
-**3. Immutability of the ref itself.** A registry version is immutable by
-convention, and `telo check` serves it from cache without revalidation. A
-**mutable OCI tag** (`@latest`) is exactly what it sounds like: `check`
-revalidates it with a `HEAD` against the digest recorded in
-`.telo/manifests/.origins.json` and refetches when it has moved. Pin exact
-versions — plus the `#sha256-` fragment — for anything you deploy.
+**3. Immutability of the ref itself.** A **mutable OCI tag** (`@latest`) is
+exactly what it sounds like: `check` revalidates it with a `HEAD` against the
+digest recorded in `.telo/manifests/.origins.json` and refetches when it has
+moved. Pin exact versions — plus the `#sha256-` fragment — for anything you
+deploy.
 
 **4. Publishing.** `telo publish` refuses to push changed bytes at an unchanged
 `metadata.version`, comparing each layer's digest against what is already

@@ -129,10 +129,6 @@ export interface KernelOptions {
    *  fails to dispatch). Order matters — later entries take priority over
    *  earlier ones (sources are unshifted onto the dispatch chain). */
   sources: ManifestSource[];
-  /** Base URL for the registry source. When unset, the `RegistrySource`
-   *  default applies. Callers (e.g. the CLI) are responsible for resolving
-   *  `TELO_REGISTRY_URL` or any other env-based fallback before passing. */
-  registryUrl?: string;
 }
 
 /**
@@ -195,7 +191,6 @@ export class Kernel implements IKernel {
   readonly stderr: NodeJS.WritableStream;
   readonly env: Record<string, string | undefined>;
   readonly argv: string[];
-  readonly registryUrl: string | undefined;
   /** The sources this kernel was constructed with, kept so `ctx.runtime` can
    *  give a child manifest — or a static check of one — the same resolution
    *  chain this kernel runs on. The transports come from the registry and are
@@ -232,11 +227,10 @@ export class Kernel implements IKernel {
       return { traceId: ambient.traceId, spanId };
     });
     this.argv = options.argv ?? [];
-    this.registryUrl = options.registryUrl;
     // Resolution sources come from the transport registry, so a scheme-owning
     // transport (OCI, later S3) joins the loader's dispatch chain by being
     // registered — no source-chain edits here.
-    this.loader = new Loader(defaultTransportRegistry(this.registryUrl).sources(), {
+    this.loader = new Loader(defaultTransportRegistry().sources(), {
       celHandlers: nodeCelHandlers,
     });
     this.injectedSources = [...options.sources];
@@ -334,8 +328,8 @@ export class Kernel implements IKernel {
     // import-controller's independent re-resolution onto the winning source so a
     // sub-library importing a lower version loads the same controller/definition
     // the analyzer registered — never a second, colliding copy. Keyed by
-    // canonical URL; `canonicalize` maps a registry ref (returned verbatim by
-    // the loader) to the URL the graph walk already resolved it to.
+    // canonical URL; `canonicalize` maps a ref returned verbatim by the loader
+    // to the URL the graph walk already resolved it to.
     const overrides = this._loadedGraph?.overrides;
     if (overrides && overrides.size > 0) {
       const canonical = this.loader.canonicalize(resolved) ?? resolved;
@@ -1064,7 +1058,7 @@ export class Kernel implements IKernel {
   private buildModuleArtifacts(graph: LoadedGraph, manifestsDir: string | undefined): void {
     this.moduleArtifacts.clear();
     this.siblingLibraries.clear();
-    const transports = defaultTransportRegistry(this.registryUrl);
+    const transports = defaultTransportRegistry();
     const entryDir = this._entryUrl ? resolveEntryDir(this._entryUrl) ?? "" : "";
     // The same pre-anchor root `LocalManifestCacheSource` falls back to. Layers
     // live beside the cached manifest, so both halves have to look in the same
@@ -1086,7 +1080,6 @@ export class Kernel implements IKernel {
         file.requestedUrl,
         file.source,
         entryDir,
-        this.registryUrl,
         manifestsDir,
         legacyDir,
       );

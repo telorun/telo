@@ -1,10 +1,8 @@
 import {
   isHttpsModuleRef,
   isOciRef,
-  isRegistryRef,
   manifestCacheKey,
   ociManifestCacheCoords,
-  parseModuleRef,
   sha256Base64Url,
   splitIntegrity,
   urlManifestCacheCoords,
@@ -24,27 +22,10 @@ import {
 } from "../controller-runtime.js";
 import { createLogger, type Logger } from "../logger.js";
 import { outErrLine, outLine, output } from "../output.js";
-import { fetchManifestHash } from "../registry-hash.js";
+import { fetchManifestHash } from "../manifest-hash.js";
 import { findModuleDoc } from "./manifest-imports.js";
 
-const DEFAULT_REGISTRY_URL = "https://registry.telo.run";
-
 const errMsg = (err: unknown): string => (err instanceof Error ? err.message : String(err));
-
-function resolveRegistryUrl(explicit?: string): string {
-  return explicit ?? process.env.TELO_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
-}
-
-/** Normalize a ref for version enumeration. The version segment is irrelevant to
- *  `listVersions` (only the `<ns>/<name>` path or OCI repo is used), but the
- *  registry transport only owns refs that carry an `@version` — so a bare
- *  `acme/console` gets a placeholder version. Scheme refs (`oci://`) and
- *  already-versioned refs pass through. */
-function refForEnumeration(ref: string): string {
-  const base = splitIntegrity(ref).base;
-  if (base.includes("://") || base.includes("@")) return base;
-  return `${base}@0.0.0`;
-}
 
 /** Newest-first: valid SemVer sorted by precedence, then any non-SemVer tags
  *  (digests, `latest`, …) appended in lexical order so output stays stable. */
@@ -71,8 +52,8 @@ function localManifestPath(ref: string): string | null {
     stat = fs.statSync(resolved);
   } catch {
     // Path-like but missing: still treat as local so we report a clear read
-    // error rather than "no transport". A bare `ns/name` that isn't on disk is
-    // a registry ref — leave it to the transport.
+    // error rather than "no transport". Anything else is remote — leave it to
+    // the transport that owns its scheme.
     return pathLike ? resolved : null;
   }
   return stat.isDirectory() ? path.join(resolved, "telo.yaml") : resolved;
@@ -132,7 +113,7 @@ async function readRemoteManifest(
   if (!transport) {
     const base = splitIntegrity(ref).base;
     outErrLine(
-      `${log.err.error("error")}  cannot resolve '${ref}' — registry refs need a version (e.g. '${base}@<version>')`,
+      `${log.err.error("error")}  cannot resolve '${ref}' — an oci:// ref needs a version (e.g. '${base}@<version>')`,
     );
     process.exit(1);
   }
@@ -144,11 +125,7 @@ async function readRemoteManifest(
   }
 }
 
-async function runVersions(argv: {
-  ref: string;
-  registryUrl?: string;
-  json: boolean;
-}): Promise<void> {
+async function runVersions(argv: { ref: string; json: boolean }): Promise<void> {
   const log = createLogger(false);
 
   // 1. Local module — one version, the one it declares on disk.
@@ -159,7 +136,7 @@ async function runVersions(argv: {
     return;
   }
 
-  const registry = defaultTransportRegistry(resolveRegistryUrl(argv.registryUrl));
+  const registry = defaultTransportRegistry();
   const base = splitIntegrity(argv.ref).base;
 
   // 2. Direct URL — a single manifest at a fixed location, no version list.
@@ -169,8 +146,8 @@ async function runVersions(argv: {
     return;
   }
 
-  // 3. Enumerable — a registry `ns/name` or `oci://host/repo` ref.
-  const enumRef = refForEnumeration(argv.ref);
+  // 3. Enumerable — an `oci://host/repo` ref.
+  const enumRef = base;
   if (!registry.forRef(enumRef)) {
     outErrLine(`${log.err.error("error")}  no transport handles '${argv.ref}'`);
     process.exit(1);
@@ -191,15 +168,11 @@ async function runVersions(argv: {
 
 /** Resolve `ref` to a single manifest's text — local file, direct URL, or any
  *  transport-owned ref — shared by `manifest` / `resources` / `kinds`. */
-async function loadManifestText(
-  ref: string,
-  registryUrl: string | undefined,
-  log: Logger,
-): Promise<string> {
+async function loadManifestText(ref: string, log: Logger): Promise<string> {
   const localPath = localManifestPath(ref);
   return localPath
     ? readFileOrExit(localPath, log)
-    : readRemoteManifest(defaultTransportRegistry(resolveRegistryUrl(registryUrl)), ref, log);
+    : readRemoteManifest(defaultTransportRegistry(), ref, log);
 }
 
 function parseDocs(text: string): Document[] {
@@ -214,7 +187,7 @@ function parseDocs(text: string): Document[] {
  *  `text` is the resolved manifest: a direct `https://` ref carries no version
  *  in the ref itself (it addresses one file whose version lives inside it), so
  *  its key is built from the `metadata.version` the file declares. */
-function cacheKeyForRef(ref: string, registryUrl: string, text: string): string | null {
+function cacheKeyForRef(ref: string, text: string): string | null {
   if (isOciRef(ref)) {
     const coords = ociManifestCacheCoords(ref);
     return coords ? manifestCacheKey(coords) : null;
@@ -225,23 +198,15 @@ function cacheKeyForRef(ref: string, registryUrl: string, text: string): string 
     const coords = urlManifestCacheCoords(ref, version);
     return coords ? manifestCacheKey(coords) : null;
   }
-  if (!isRegistryRef(ref)) return null;
-  let host: string;
-  try {
-    host = new URL(registryUrl).host;
-  } catch {
-    return null;
-  }
-  const { modulePath, version } = parseModuleRef(ref);
-  return manifestCacheKey({ transport: "registry", host, path: modulePath, version });
+  return null;
 }
 
 /** The import-pin hash for a remote ref (`sha256-<base64url>`), or `null` with
  *  the reason on stderr when it cannot be produced.
  *
  *  Delegates to `fetchManifestHash` so the transport stays the single authority
- *  on what gets hashed — the registry hashes raw response bytes, OCI the UTF-8
- *  text extracted from the tar layer, and only the transport knows which a pin
+ *  on what gets hashed — HTTP hashes raw response bytes, OCI the UTF-8 text
+ *  extracted from the tar layer, and only the transport knows which a pin
  *  written at this ref will be checked against.
  *
  *  Best-effort, but never silent: the manifest itself resolved, so failing the
@@ -250,13 +215,9 @@ function cacheKeyForRef(ref: string, registryUrl: string, text: string): string 
  *  cannot ride along inside it, and "no transport owns this ref", an auth
  *  rejection and a transient network failure are three different problems that
  *  must not collapse into an unexplained `null`. */
-async function integrityForRef(
-  ref: string,
-  registryUrl: string,
-  log: Logger,
-): Promise<string | null> {
+async function integrityForRef(ref: string, log: Logger): Promise<string | null> {
   try {
-    return await fetchManifestHash(registryUrl, ref);
+    return await fetchManifestHash(ref);
   } catch (err) {
     outErrLine(`${log.err.warn("warn")}  no integrity hash for '${ref}': ${errMsg(err)}`);
     return null;
@@ -287,7 +248,6 @@ export interface ManifestJsonPayload {
  *  checked. */
 export async function buildManifestJsonPayload(
   ref: string,
-  registryUrl: string,
   text: string,
   log: Logger,
 ): Promise<ManifestJsonPayload> {
@@ -296,25 +256,20 @@ export async function buildManifestJsonPayload(
   const local = localManifestPath(ref) !== null;
   return {
     ref,
-    cacheKey: local ? null : cacheKeyForRef(ref, registryUrl, text),
+    cacheKey: local ? null : cacheKeyForRef(ref, text),
     manifest: text,
-    integrity: local ? null : await integrityForRef(ref, registryUrl, log),
+    integrity: local ? null : await integrityForRef(ref, log),
     runtime: extractKindRuntimes(parseDocs(text)),
   };
 }
 
-async function runManifest(argv: {
-  ref: string;
-  registryUrl?: string;
-  json: boolean;
-}): Promise<void> {
+async function runManifest(argv: { ref: string; json: boolean }): Promise<void> {
   const log = createLogger(false);
-  const text = await loadManifestText(argv.ref, argv.registryUrl, log);
+  const text = await loadManifestText(argv.ref, log);
   if (argv.json || output().isJson) {
-    const registryUrl = resolveRegistryUrl(argv.registryUrl);
     // The hub's tracker parses this document; it is the payload, not a log
     // line, so it bypasses `outLine` (a no-op under `-o json`).
-    output().document(await buildManifestJsonPayload(argv.ref, registryUrl, text, log));
+    output().document(await buildManifestJsonPayload(argv.ref, text, log));
     return;
   }
   output().raw(text.endsWith("\n") ? text : `${text}\n`);
@@ -323,11 +278,7 @@ async function runManifest(argv: {
 /** Cheap content-identity digest of one published version — what the discovery
  *  tracker records per version and re-checks on every track to detect a
  *  re-pushed tag. Opaque and transport-specific: compare for equality only. */
-async function runDigest(argv: {
-  ref: string;
-  registryUrl?: string;
-  json: boolean;
-}): Promise<void> {
+async function runDigest(argv: { ref: string; json: boolean }): Promise<void> {
   const log = createLogger(false);
 
   const emit = (digest: string): void => {
@@ -338,7 +289,7 @@ async function runDigest(argv: {
     outLine(digest);
   };
 
-  // Local module — hash the manifest bytes on disk (same form as the registry
+  // Local module — hash the manifest bytes on disk (same form as the HTTP
   // transport's digest, so a local and a published copy compare equal).
   const localPath = localManifestPath(argv.ref);
   if (localPath) {
@@ -347,7 +298,7 @@ async function runDigest(argv: {
     return;
   }
 
-  const registry = defaultTransportRegistry(resolveRegistryUrl(argv.registryUrl));
+  const registry = defaultTransportRegistry();
   if (!registry.forRef(argv.ref)) {
     outErrLine(`${log.err.error("error")}  no transport handles '${argv.ref}'`);
     process.exit(1);
@@ -469,13 +420,9 @@ function extractKinds(docs: Document[]): KindEntry[] {
   return out;
 }
 
-async function runResources(argv: {
-  ref: string;
-  registryUrl?: string;
-  json: boolean;
-}): Promise<void> {
+async function runResources(argv: { ref: string; json: boolean }): Promise<void> {
   const log = createLogger(false);
-  const resources = extractResources(parseDocs(await loadManifestText(argv.ref, argv.registryUrl, log)));
+  const resources = extractResources(parseDocs(await loadManifestText(argv.ref, log)));
   if (argv.json || output().isJson) {
     output().document(resources);
     return;
@@ -487,13 +434,9 @@ async function runResources(argv: {
   for (const r of resources) outLine(`${r.kind}${r.name ? `  ${log.dim(r.name)}` : ""}`);
 }
 
-async function runKinds(argv: {
-  ref: string;
-  registryUrl?: string;
-  json: boolean;
-}): Promise<void> {
+async function runKinds(argv: { ref: string; json: boolean }): Promise<void> {
   const log = createLogger(false);
-  const kinds = extractKinds(parseDocs(await loadManifestText(argv.ref, argv.registryUrl, log)));
+  const kinds = extractKinds(parseDocs(await loadManifestText(argv.ref, log)));
   if (argv.json || output().isJson) {
     output().document(kinds);
     return;
@@ -526,13 +469,9 @@ export function moduleCommand(yargs: Argv): Argv {
           (yy) =>
             yy
               .positional("ref", {
-                describe: "Module ref: ./path, oci://host/repo, ns/name, or an https URL",
+                describe: "Module ref: ./path, oci://host/repo, or an https URL",
                 type: "string",
                 demandOption: true,
-              })
-              .option("registry-url", {
-                type: "string",
-                describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
               })
               .option("json", {
                 type: "boolean",
@@ -549,14 +488,9 @@ export function moduleCommand(yargs: Argv): Argv {
           (yy) =>
             yy
               .positional("ref", {
-                describe:
-                  "Module ref: ./path, oci://host/repo@1.2.0, ns/name@0.9.0, or an https URL",
+                describe: "Module ref: ./path, oci://host/repo@1.2.0, or an https URL",
                 type: "string",
                 demandOption: true,
-              })
-              .option("registry-url", {
-                type: "string",
-                describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
               })
               .option("json", {
                 type: "boolean",
@@ -573,14 +507,9 @@ export function moduleCommand(yargs: Argv): Argv {
           (yy) =>
             yy
               .positional("ref", {
-                describe:
-                  "Module ref: ./path, oci://host/repo@1.2.0, ns/name@0.9.0, or an https URL",
+                describe: "Module ref: ./path, oci://host/repo@1.2.0, or an https URL",
                 type: "string",
                 demandOption: true,
-              })
-              .option("registry-url", {
-                type: "string",
-                describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
               })
               .option("json", {
                 type: "boolean",
@@ -597,14 +526,9 @@ export function moduleCommand(yargs: Argv): Argv {
           (yy) =>
             yy
               .positional("ref", {
-                describe:
-                  "Module ref: ./path, oci://host/repo@1.2.0, ns/name@0.9.0, or an https URL",
+                describe: "Module ref: ./path, oci://host/repo@1.2.0, or an https URL",
                 type: "string",
                 demandOption: true,
-              })
-              .option("registry-url", {
-                type: "string",
-                describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
               })
               .option("json", {
                 type: "boolean",
@@ -621,14 +545,9 @@ export function moduleCommand(yargs: Argv): Argv {
           (yy) =>
             yy
               .positional("ref", {
-                describe:
-                  "Module ref: ./path, oci://host/repo@1.2.0, ns/name@0.9.0, or an https URL",
+                describe: "Module ref: ./path, oci://host/repo@1.2.0, or an https URL",
                 type: "string",
                 demandOption: true,
-              })
-              .option("registry-url", {
-                type: "string",
-                describe: "Base URL for the telo module registry. Overrides TELO_REGISTRY_URL.",
               })
               .option("json", {
                 type: "boolean",

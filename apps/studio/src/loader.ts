@@ -26,7 +26,7 @@ export {
   toPascalCase,
   toRelativeSource,
 } from "./loader/paths";
-export { createRegistryAdapters, isRegistryImportSource } from "./loader/registry";
+export { createManifestSources } from "./loader/manifest-sources";
 export {
   buildFailureManifest,
   buildParsedManifest,

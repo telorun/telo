@@ -381,11 +381,7 @@ async function verify(argv: CommonArgv & { write: boolean }): Promise<void> {
   for (const [index, module] of reconciled.entries()) {
     outProgress(log.err.dim(`  [${index + 1}/${reconciled.length}] ${module.key}`));
     const recorded = ledger.modules.get(module.key);
-    const published = await readPublishedDigests(
-      destinationFor(registry, module),
-      module.version,
-      registry,
-    );
+    const published = await readPublishedDigests(destinationFor(registry, module), module.version);
 
     if (published === null) {
       // Nothing published at this version. Not drift on its own — a module that

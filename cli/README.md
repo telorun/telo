@@ -1,6 +1,6 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, and publishes module manifests to the Telo registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, and publishes module artifacts to an OCI registry with `telo publish`.
 
 ## Installation
 
@@ -27,7 +27,7 @@ telo --watch ./manifest.yaml
 
 ### `telo publish <paths..>`
 
-Publish one or more module manifests to the Telo registry. For each manifest, the command:
+Publish one or more module artifacts to an OCI registry. For each manifest, the command:
 
 1. Finds all `controllers` entries with a `local_path` qualifier (i.e. locally-developed packages).
 2. Optionally bumps each controller package version with `--bump`.
@@ -96,17 +96,9 @@ image for an architecture other than the build machine's.
 **Options:**
 
 - `--bump patch|minor|major` — Bump all controller package versions before publishing. Also bumps `metadata.version` in the manifest.
-- `--registry <url>` — Telo registry base URL (default: `https://registry.telo.run`)
 - `--dry-run` — Show what would happen without writing files or publishing anything.
-- `--skip-controllers` — Skip the controller build/publish/PURL-rewrite loop and only run static analysis and push the manifest to the Telo registry. Use this when controller packages have already been published by another tool (e.g. Changesets in CI). Mutually exclusive with `--bump`.
+- `--skip-controllers` — Skip the controller build/publish/PURL-rewrite loop and only run static analysis and push the artifact to the OCI registry. Use this when controller packages have already been published by another tool (e.g. Changesets in CI). Mutually exclusive with `--bump`.
 
-**Environment:**
-
-- `TELO_REGISTRY_TOKEN` — Bearer token for the registry's publish endpoint. The CLI adds it as `Authorization: Bearer <token>` on each PUT; without it, the server returns 401. Operators receive a token from whoever administers the registry. Example:
-
-  ```bash
-  TELO_REGISTRY_TOKEN=<token> telo publish ./modules/my-module/telo.yaml
-  ```
 
 ---
 
@@ -126,7 +118,6 @@ Imports resolve through the same `.telo/manifests/` cache `telo run` reads, and 
 
 - **Pinned** (`…@1.2.3#sha256-…`, or an `@sha256:` reference) — verified against the hash on read, so a repeat check of a fully pinned manifest needs no network at all.
 - **Mutable OCI tag** — revalidated with one `HEAD` per reference against the digest recorded in `.telo/manifests/.origins.json`. If the tag has moved, that entry is dropped and refetched.
-- **Registry ref** (`<namespace>/<name>@<version>`) — served from cache without revalidation; a published version is immutable by convention.
 - **HTTP(S) URL** — never read from the cache by `check`, since its key carries no version segment and a hit would be served indefinitely. Always re-fetched (one request, the same cost revalidating would have).
 
 One loader serves every path in a single invocation, so `telo check a b c` resolves a module shared between them once.
@@ -162,20 +153,14 @@ telo install ./apps/my-app/telo.yaml
 telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
 ```
 
-**Options:**
-
-- `--registry-url <url>` — Base URL for the telo module registry. Overrides `TELO_REGISTRY_URL`. Affects both the network fetches and the on-disk cache layout (manifests served by this registry are stored under `registry/<host>/<path…>/<version>/...`).
-
 **Environment:**
 
-- `TELO_REGISTRY_URL` — Default registry URL used when `--registry-url` is omitted.
 - `TELO_PKG_MANAGER` — Override the package manager invoked for controller installs. Defaults to `npm`. Set to `pnpm` (or any compatible CLI) when the runtime environment ships a different manager.
 
 The cache lives next to the manifest at `<entry-manifest-dir>/.telo/`:
 
 - `.telo/npm/` — controller node_modules tree (one realm per manifest), for the modules that still deliver their controller from npm.
 - `.telo/controller-src/` — bundles built from a **local** module's controller sources. Only ever written for a module that is a working copy on disk: a published module ships a prebuilt bundle in its artifact and never reaches this path. Each entry is named by a digest of every input the build read, so an edit anywhere in the source graph yields a new entry rather than invalidating one.
-- `.telo/manifests/registry/<host>/<path…>/<version>/telo.yaml` — registry-served manifests.
 - `.telo/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry.
 - `.telo/manifests/url/<host>/<pathname>` — manifests imported via raw HTTP URLs.
 - `.telo/manifests/.origins.json` — for each cached import named by a **mutable tag**, the OCI manifest digest that produced the copy. `telo check` revalidates against it with one `HEAD` per reference; a pinned import needs no entry, since its bytes are verified against the ref's own hash.
@@ -230,7 +215,7 @@ The build stage materializes `<manifest-dir>/.telo/npm/` and `<manifest-dir>/.te
 
 ### `telo upgrade <paths..>`
 
-Scans one or more manifests for remote `imports:` entries — a registry ref (`<namespace>/<name>@<version>`) or an OCI ref (`oci://host/repo@tag`) — asks each ref's transport for the latest published version, and rewrites the source in place when a newer version is available. Both the scalar shorthand (`Alias: <src>`) and the object form (`Alias: { source: <src>, … }`) are handled. Version enumeration, ref reconstruction, and integrity hashing are all delegated to the transport that owns the ref's scheme, so every backend Telo can resolve is also upgradeable — the command never special-cases a scheme. The rewrite operates at the byte level: only the version characters of changed source values are spliced into the original file. Comments, indentation, folded block scalars (`>-` / `|`), quote style on the source value, and every other byte outside the rewritten ranges are preserved exactly. The on-disk YAML is mutated only when at least one import in the file changes.
+Scans one or more manifests for remote `imports:` entries — an OCI ref (`oci://host/repo@tag`) — asks each ref's transport for the latest published version, and rewrites the source in place when a newer version is available. Both the scalar shorthand (`Alias: <src>`) and the object form (`Alias: { source: <src>, … }`) are handled. Version enumeration, ref reconstruction, and integrity hashing are all delegated to the transport that owns the ref's scheme, so every backend Telo can resolve is also upgradeable — the command never special-cases a scheme. The rewrite operates at the byte level: only the version characters of changed source values are spliced into the original file. Comments, indentation, folded block scalars (`>-` / `|`), quote style on the source value, and every other byte outside the rewritten ranges are preserved exactly. The on-disk YAML is mutated only when at least one import in the file changes.
 
 Accepts the same path shapes as `check` / `install`: a manifest file, a directory containing a `telo.yaml`, or several of those mixed. By default only the imports declared in the files you pass are inspected; pass `--recursive` / `-r` to also follow relative (local) imports into their sibling manifests and upgrade those too.
 
@@ -244,28 +229,23 @@ telo upgrade ./manifest.yaml --include-prerelease
 
 **Options:**
 
-- `--registry-url <url>` — Base URL for the Telo registry. Falls back to `TELO_REGISTRY_URL`, then `https://registry.telo.run`. Matches the `install` / `run` fallback chain.
 - `--include-prerelease` — Consider versions with a SemVer prerelease segment (e.g. `1.0.0-beta.1`) when picking the latest. Off by default — prereleases are ignored unless the flag is set.
 - `--dry-run` — Show the proposed rewrites without touching any files.
-- `--recursive`, `-r` — Follow relative (local) imports and upgrade their manifests too. Cycle-safe, and each file is upgraded at most once even when reached from several manifests. Remote refs (registry / OCI / HTTP) are always upgraded in place; recursion only descends into on-disk siblings.
+- `--recursive`, `-r` — Follow relative (local) imports and upgrade their manifests too. Cycle-safe, and each file is upgraded at most once even when reached from several manifests. Remote refs (OCI / HTTP) are always upgraded in place; recursion only descends into on-disk siblings.
 
 **Behavior per import:**
 
 | Pinned version state | Action | Log marker |
 | --- | --- | --- |
 | Equal to the latest published | leave unchanged | `=  already at <ver>` |
-| Lower than the latest, and itself in the registry | rewrite to latest | `↑  <old> → <new>` |
-| Not present in the registry's version list | rewrite to latest (repair) — flagged with `(pinned version not in registry)`. Direction can be downward if the broken pin is higher than anything published. | `↑` or `↓` |
-| Module not found (404) / no eligible versions after filtering | leave unchanged, report | `!  no published versions in registry` |
+| Lower than the latest, and itself published | rewrite to latest | `↑  <old> → <new>` |
+| Not present in the origin's version list | rewrite to latest (repair) — flagged with `(pinned version not published)`. Direction can be downward if the broken pin is higher than anything published. | `↑` or `↓` |
+| Module not found (404) / no eligible versions after filtering | leave unchanged, report | `!  no published versions` |
 | Remote ref with no comparable version — a bare `https://` URL, an OCI digest pin (`@sha256:…`), or a moving tag like `latest` | leave unchanged | `·  skipped (not version-pinned)` / `!  unparseable current version` |
 | `source` is a relative / absolute local path | leave unchanged (or follow under `--recursive`) | `·  skipped (local import — use --recursive to follow)` |
 | `source` is not a remote ref at all | leave unchanged | `·  skipped (not a remote ref)` |
 
-A non-existent pin is always treated as broken and repaired against the registry — leaving an unbootable pin in place would defeat the point of the command — but the rewrite is annotated so the action is visible. Network or non-404 registry errors are surfaced per import and produce a non-zero exit code; other imports in the same file still get processed.
-
-**Environment:**
-
-- `TELO_REGISTRY_URL` — Default registry URL used when `--registry-url` is omitted.
+A non-existent pin is always treated as broken and repaired against the origin — leaving an unbootable pin in place would defeat the point of the command — but the rewrite is annotated so the action is visible. Network or non-404 errors are surfaced per import and produce a non-zero exit code; other imports in the same file still get processed.
 
 **Example output:**
 
@@ -300,10 +280,6 @@ telo migrate ./apps/a ./apps/b
 The rewrite operates at the byte level, exactly as `telo upgrade`'s does: comments, indentation, folded block scalars (`>-` / `|`), quote style and every byte outside the rewritten ranges are preserved. A file with nothing to migrate is not touched.
 
 **Scope.** Only the manifest you name and its `include:` partials are rewritten. Imported modules are left alone — a published dependency is not yours to fix, and its author is the only person who can. That is the same rule that decides which deprecation warnings `telo check` shows you.
-
-**Options:**
-
-- `--registry-url <url>` — Base URL for the Telo registry, for resolving imports while loading. Falls back to `TELO_REGISTRY_URL`, then `https://registry.telo.run`.
 
 **Example output:**
 
@@ -375,7 +351,7 @@ Each hit prints the exact ref to paste into your `imports:` map, and the kinds t
 
 ### `telo module <subcommand> <ref>`
 
-Inspect a module without importing it. `<ref>` is any form the runtime resolves: a local path, an `oci://` ref, a registry ref, or a direct URL.
+Inspect a module without importing it. `<ref>` is any form the runtime resolves: a local path, an `oci://` ref, or a direct URL.
 
 | Subcommand | What it prints |
 | --- | --- |

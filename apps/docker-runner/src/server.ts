@@ -60,7 +60,6 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       }),
       terms: loadTermsFromEnv(process.env),
     },
-    defaultRegistryUrl: process.env.TELO_REGISTRY_URL,
     // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on
     // /v1/capabilities and enforced by the core session route.
     apps,

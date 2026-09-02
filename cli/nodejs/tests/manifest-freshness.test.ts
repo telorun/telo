@@ -15,7 +15,6 @@ import {
   writeOriginDigests,
 } from "../src/manifest-freshness.js";
 
-const REGISTRY = "https://registry.example.test";
 const HOST = "https://ghcr.io";
 const PIN = "#sha256-Ac-5GQaSaOs5uH4jEELH1MLOACS5g0IFK0w21YeBmXY";
 
@@ -82,16 +81,15 @@ describe("ref predicates", () => {
 });
 
 describe("isCacheableForCheck", () => {
-  it("serves oci and versioned registry refs from the cache", () => {
-    expect(isCacheableForCheck("oci://ghcr.io/acme/thing@1.2.3", REGISTRY)).toBe(true);
-    expect(isCacheableForCheck("std/console@1.0.0", REGISTRY)).toBe(true);
+  it("serves oci refs from the cache", () => {
+    expect(isCacheableForCheck("oci://ghcr.io/acme/thing@1.2.3")).toBe(true);
   });
 
   it("never serves an arbitrary HTTP(S) import from the cache", () => {
     // Its cache key carries no version segment, so a hit would be served
     // forever regardless of what the server now returns.
-    expect(isCacheableForCheck("https://example.test/some/telo.yaml", REGISTRY)).toBe(false);
-    expect(isCacheableForCheck("http://example.test/other/telo.yaml", REGISTRY)).toBe(false);
+    expect(isCacheableForCheck("https://example.test/some/telo.yaml")).toBe(false);
+    expect(isCacheableForCheck("http://example.test/other/telo.yaml")).toBe(false);
   });
 });
 
@@ -139,7 +137,6 @@ describe("revalidateMutableOciRefs", () => {
       graphOf([source], [{ targetRef: `${source}${PIN}`, targetSource: source }]),
       new Map(),
       new Map(),
-      REGISTRY,
     );
     expect(result).toEqual({ staleFiles: [], digests: new Map() });
   });
@@ -150,7 +147,6 @@ describe("revalidateMutableOciRefs", () => {
       graphOf(["oci://ghcr.io/acme/thing@1.2.3"]),
       new Map(),
       new Map(),
-      REGISTRY,
     );
     expect(result.staleFiles).toEqual([]);
     expect(result.digests.get("ghcr.io/acme/thing@1.2.3")).toBe("sha256:aaa");
@@ -166,7 +162,6 @@ describe("revalidateMutableOciRefs", () => {
       graphOf([pathToFileURL(cacheFile).href]),
       new Map([["oci://ghcr.io/acme/thing@1.2.3", cacheFile]]),
       new Map([[dir, new Map()]]),
-      REGISTRY,
     );
     expect(result.staleFiles).toEqual([cacheFile]);
   });
@@ -180,7 +175,6 @@ describe("revalidateMutableOciRefs", () => {
       graphOf([pathToFileURL(cacheFile).href]),
       new Map([["oci://ghcr.io/acme/thing@1.2.3", cacheFile]]),
       new Map([[dir, new Map([["ghcr.io/acme/thing@1.2.3", "sha256:aaa"]])]]),
-      REGISTRY,
     );
     expect(result.staleFiles).toEqual([]);
   });
@@ -194,7 +188,6 @@ describe("revalidateMutableOciRefs", () => {
       graphOf([pathToFileURL(cacheFile).href]),
       new Map([["oci://ghcr.io/acme/thing@1.2.3", cacheFile]]),
       new Map([[dir, new Map([["ghcr.io/acme/thing@1.2.3", "sha256:aaa"]])]]),
-      REGISTRY,
     );
     expect(result.staleFiles).toEqual([cacheFile]);
   });
@@ -208,7 +201,6 @@ describe("revalidateMutableOciRefs", () => {
       graphOf([pathToFileURL(cacheFile).href]),
       new Map([["oci://ghcr.io/acme/thing@1.2.3", cacheFile]]),
       new Map([[dir, new Map([["ghcr.io/acme/thing@1.2.3", "sha256:aaa"]])]]),
-      REGISTRY,
     );
     expect(result.staleFiles).toEqual([cacheFile]);
   });
@@ -228,7 +220,6 @@ describe("revalidateMutableOciRefs", () => {
         [mine, new Map()],
         [other, new Map([["ghcr.io/acme/thing@1.2.3", "sha256:aaa"]])],
       ]),
-      REGISTRY,
     );
     expect(result.staleFiles).toEqual([]);
   });
@@ -238,10 +229,10 @@ describe("revalidateMutableOciRefs", () => {
     const verified = new Map<string, string>();
     const graph = graphOf(["oci://ghcr.io/acme/thing@1.2.3"]);
 
-    const first = await revalidateMutableOciRefs(graph, new Map(), new Map(), REGISTRY, verified);
+    const first = await revalidateMutableOciRefs(graph, new Map(), new Map(), verified);
     // A second path resolving the same tag must not issue another request —
     // only one interceptor is registered, so a second HEAD would throw.
-    const second = await revalidateMutableOciRefs(graph, new Map(), new Map(), REGISTRY, verified);
+    const second = await revalidateMutableOciRefs(graph, new Map(), new Map(), verified);
 
     expect(first.digests.get("ghcr.io/acme/thing@1.2.3")).toBe("sha256:aaa");
     expect(second.digests.get("ghcr.io/acme/thing@1.2.3")).toBe("sha256:aaa");
@@ -257,7 +248,6 @@ describe("revalidateMutableOciRefs", () => {
       graphOf([pathToFileURL(cacheFile).href, "oci://ghcr.io/acme/thing@1.2.3"]),
       new Map([["oci://ghcr.io/acme/thing@1.2.3", cacheFile]]),
       new Map([[dir, new Map([["ghcr.io/acme/thing@1.2.3", "sha256:aaa"]])]]),
-      REGISTRY,
     );
     expect(result.staleFiles).toEqual([cacheFile]);
   });

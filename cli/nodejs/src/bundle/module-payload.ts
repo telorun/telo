@@ -109,7 +109,7 @@ export interface ModulePayload {
    */
   readonly authoredPins: readonly {
     readonly alias: string;
-    /** The ref with no integrity fragment — what the registry is asked for. */
+    /** The ref with no integrity fragment — what the origin is asked for. */
     readonly ref: string;
     /** The hash the author committed. */
     readonly integrity: string;
@@ -117,9 +117,6 @@ export interface ModulePayload {
 }
 
 export interface PayloadBuilderOptions {
-  /** The read-only registry origin `registry://` refs resolve against. Not the
-   *  publish destination, which is per module and passed to `payload()`. */
-  readonly registryOrigin?: string;
   /** Where the controller build cache lives. */
   readonly cacheRoot: string;
 }
@@ -243,7 +240,7 @@ export class ModulePayloadBuilder {
    *  digest covers, so both halves of the published manifest come from one. */
   private transportFor(manifestPath: string) {
     const destination = this.destinationOf(manifestPath);
-    const transport = defaultTransportRegistry(this.options.registryOrigin).forRef(destination);
+    const transport = defaultTransportRegistry().forRef(destination);
     if (!transport) {
       throw new Error(`no transport owns publish destination '${destination}'`);
     }

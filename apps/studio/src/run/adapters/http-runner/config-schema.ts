@@ -4,7 +4,7 @@ import type { JSONSchema7 } from "json-schema";
  * The unified HTTP-runner config. `baseUrl` is the one client-owned field (you
  * need it to reach the runner, so the runner can't advertise it). Everything
  * else is dynamic — the form merges in the runner's advertised capability
- * schema (`image`, `pullPolicy`, `registryUrl`, …) once `baseUrl` is reachable.
+ * schema (`image`, `pullPolicy`, …) once `baseUrl` is reachable.
  */
 export interface HttpRunnerConfig {
   baseUrl: string;

@@ -470,9 +470,6 @@ function workspaceContainer(args: BuildWatchPodArgs): V1Container {
       { name: "TELO_CACHE_DIR", value: `${CACHE_ROOT}/workspace` },
       { name: "HOME", value: HOME_DIR },
       { name: "npm_config_cache", value: `${HOME_DIR}/.npm` },
-      ...(args.config.build.teloRegistryUrl
-        ? [{ name: "TELO_REGISTRY_URL", value: args.config.build.teloRegistryUrl }]
-        : []),
     ],
     ports: [{ containerPort: WORKSPACE_PORT, protocol: "TCP" }],
     resources: watchResources(args.limits),

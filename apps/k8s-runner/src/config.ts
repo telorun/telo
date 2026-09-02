@@ -66,8 +66,6 @@ export interface ImageBuildConfig {
   /** HTTP(S) base for a best-effort manifest existence check (skip build on hit);
    *  undefined → always build. */
   registryApiUrl?: string;
-  /** Telo module registry `telo install` resolves manifests from during the build. */
-  teloRegistryUrl: string;
   /** Optional dockerconfig Secret (in the build namespace) Kaniko pushes with. */
   pushSecretName?: string;
   /** Optional dockerconfig Secret (in the session namespace) the kubelet uses to
@@ -184,7 +182,6 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     ),
     insecureRegistry: env.RUNNER_REGISTRY_INSECURE?.trim() === "true",
     registryApiUrl: env.RUNNER_REGISTRY_API_URL?.trim() || undefined,
-    teloRegistryUrl: env.TELO_REGISTRY_URL?.trim() || "https://registry.telo.run",
     pushSecretName: env.RUNNER_REGISTRY_PUSH_SECRET?.trim() || undefined,
     imagePullSecret: env.RUNNER_IMAGE_PULL_SECRET?.trim() || undefined,
   };

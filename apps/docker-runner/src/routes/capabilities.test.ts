@@ -31,7 +31,6 @@ describe("GET /v1/capabilities", () => {
     expect(props.image.default).toBe("telorun/node:0-slim");
     // docker trusts the caller — image is editable, not readOnly.
     expect(props.image.readOnly).toBeUndefined();
-    expect(props.registryUrl).toBeDefined();
   });
 
   it("advertises app identities only — image and env never surface", async () => {

@@ -73,6 +73,30 @@ describe("importResolutionDiagnostics", () => {
     expect(d.data).toMatchObject({ filePath: "/ws/telo.yaml", path: "imports.Console" });
   });
 
+  it("tells a consumer the bare registry form was removed and what replaces it", async () => {
+    // The failing line is frequently inside a dependency the consumer cannot
+    // edit, and no migration can rewrite it (the OCI host is not derivable), so
+    // the message is the entire remedy available to them.
+    const loader = new Loader([
+      inMemorySource({ "/ws/telo.yaml": appWithImport("Console", "std/console@0.9.0") }),
+    ]);
+    const graph = await loader.loadGraph("/ws/telo.yaml");
+
+    const d = importResolutionDiagnostics(graph)[0];
+    expect(d.code).toBe("INVALID_IMPORT_SOURCE");
+    expect(d.message).toContain("was removed");
+    expect(d.message).toContain("oci://");
+  });
+
+  it("does not blame the removed form for a source that never resembled it", async () => {
+    const loader = new Loader([
+      inMemorySource({ "/ws/telo.yaml": appWithImport("Console", "not-found@whatever") }),
+    ]);
+    const graph = await loader.loadGraph("/ws/telo.yaml");
+
+    expect(importResolutionDiagnostics(graph)[0].message).not.toContain("was removed");
+  });
+
   it("codes a well-formed but unresolvable source as IMPORT_UNRESOLVED, quoting the author string", async () => {
     // `./nope` is a valid relative-path shape; it just doesn't exist.
     const loader = new Loader([

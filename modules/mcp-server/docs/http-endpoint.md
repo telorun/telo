@@ -89,8 +89,8 @@ ignores any header the client echoes.
 | Client echoes an `Mcp-Session-Id`| Ignored. The header is treated as informational; nothing is validated against it.       |
 
 This is the right model for tools-only servers and for any deployment running
-behind a load balancer without sticky sessions — the registry app behind
-`registry.telo.run` runs in this mode for exactly this reason.
+behind a load balancer without sticky sessions — the discovery hub behind
+`telo.sh` runs in this mode for exactly this reason.
 
 `request.session.id` (available in tool `inputs:` CEL) is the empty string in
 stateless mode. Tools that branch on session identity belong on a stateful
@@ -130,7 +130,7 @@ Reach for `stateful: true` when you actually need session-bound behaviour:
 - Tool inputs that depend on `request.session.id` to scope handler state.
 - Per-session capabilities negotiation that handlers consume.
 
-A registry-style server (only `tools/list` + `tools/call` against pure-read
+A discovery-style server (only `tools/list` + `tools/call` against pure-read
 tools) needs none of those; stateless is the right default.
 
 ## v1 limits

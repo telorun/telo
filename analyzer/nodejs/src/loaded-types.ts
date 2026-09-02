@@ -12,9 +12,9 @@ import type { AstDocument } from "./yaml-ast.js";
  *  cache uses `source` — the URL the source adapter's `read()` returned. */
 export interface LoadedFile {
   /** Canonical identity. The URL the source adapter's `read()` returned —
-   *  HTTPS for http/registry, an absolute path for local. */
+   *  HTTPS for a remote module, an absolute path for local. */
   source: string;
-  /** The URL the caller supplied (e.g. registry ref `std/javascript@0.3.0`).
+  /** The URL the caller supplied (e.g. `oci://ghcr.io/telorun/javascript@0.3.0`).
    *  Differs from `source` only for adapter-resolved URLs. */
   requestedUrl: string;
   /** Raw text exactly as `read()` returned it. */
@@ -65,8 +65,8 @@ export interface LoadedModule {
 export interface ImportEdge {
   /** Canonical resolved URL of the target — a key into `modules`. */
   targetSource: string;
-  /** The import's `source` exactly as authored — a registry ref, an `oci://`
-   *  or `https://` ref, or a relative path. Version reconciliation keys on
+  /** The import's `source` exactly as authored — an `oci://` or `https://`
+   *  ref, or a relative path. Version reconciliation keys on
    *  this (minus its version), since it names the module's location
    *  independently of what the module declares about itself. */
   targetRef: string;

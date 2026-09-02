@@ -24,8 +24,6 @@ export interface ServerDeps {
    *  getter is re-resolved per request — use it when the config surface changes
    *  at runtime (e.g. a base-image catalog refreshed from a registry). */
   capabilities: RunnerCapabilities | (() => RunnerCapabilities);
-  /** Runner's default registry URL, passed to workloads as TELO_REGISTRY_URL. */
-  defaultRegistryUrl?: string;
   /** Backend config gate, enforced on `POST /v1/sessions` before the workload
    *  starts (e.g. an `image` allowlist). Rejects with `400 invalid_config`.
    *  Not consulted for app sessions — their image comes from `apps`. */
@@ -104,7 +102,6 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       backend: deps.backend,
       registry,
       corsOrigins: deps.config.corsOrigins,
-      defaultRegistryUrl: deps.defaultRegistryUrl,
       validateConfig: deps.validateConfig,
       // The capabilities document is the single source of the runner's terms;
       // every session-creating route enforces what /v1/capabilities advertises.
@@ -123,7 +120,6 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     appsRoute({
       backend: deps.backend,
       registry,
-      defaultRegistryUrl: deps.defaultRegistryUrl,
       terms: capabilitiesValue.terms,
       apps: deps.apps,
     }),

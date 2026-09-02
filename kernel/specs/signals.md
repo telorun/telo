@@ -57,7 +57,7 @@ metadata:
   name: consumer
   version: 1.0.0
 imports:
-  Users: example/users@1.0.0
+  Users: oci://ghcr.io/example/users@1.0.0
 
 ---
 kind: Worker.Listener
