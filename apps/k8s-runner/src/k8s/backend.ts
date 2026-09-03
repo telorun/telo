@@ -15,8 +15,8 @@ import { relayDebugStream, SessionStartError, watchReachability } from "@telorun
 import type { BundleStore } from "../bundle-store.js";
 import type { K8sRunnerConfig } from "../config.js";
 import { clampLimits } from "../limits.js";
+import { apiFailure, apiReason, withCause } from "./api-error.js";
 import type { KubeClient } from "./client.js";
-import { ensureSessionImage } from "./image-build.js";
 import { buildSessionIngress, buildSessionService, endpointsFor } from "./ingress.js";
 import { buildAppPod, buildSessionPod, INSPECT_PORT } from "./pod-spec.js";
 import {
@@ -80,9 +80,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
   async function start(spec: BackendStartSpec): Promise<BackendSession> {
     // A watch session is a different pod shape and a different lifetime — it
     // outlives its runs — so it takes its own path rather than accreting
-    // branches through this one. It also never builds an image: the build path
-    // exists to put a dependency closure on disk before boot, and a watch
-    // session fetches its own and keeps it for the pod's life.
+    // branches through this one.
     if (spec.mode === "watch") {
       return startWatchSession({ kube, config }, spec);
     }
@@ -104,9 +102,9 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
 
     let pod: V1Pod;
     if (spec.selfContained) {
-      // Operator-predefined app (catalog image): self-contained, no build and
-      // no bundle to deliver — the pod runs the image's own entrypoint with
-      // the env the core route already merged.
+      // Operator-predefined app (catalog image): self-contained, with no bundle
+      // to deliver — the pod runs the image's own entrypoint with the env the
+      // core route already merged.
       pod = buildAppPod({
         config,
         sessionId: spec.sessionId,
@@ -118,30 +116,9 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         pullPolicy: spec.config.pullPolicy,
       });
     } else {
-      // Prebuild a self-contained per-app image on-cluster (controllers + module
-      // manifests baked in) and run it directly. Controller resolution never
-      // happens on the session start path, so a slow or unreachable package
-      // registry can't stall a session. Throws SessionStartError on a build
-      // failure, carrying the build pod's log tail.
-      const image = await ensureSessionImage(
-        {
-          kube,
-          build: config.build,
-          bundleStore,
-          initImage: config.initImage,
-          managedByLabel: config.managedByLabel,
-        },
-        {
-          bundle: spec.bundle,
-          entryRelativePath: app.entryRelativePath,
-          baseImage: spec.config.image || config.defaultImage,
-          pullPolicy: spec.config.pullPolicy,
-          onProgress: (message, done) => spec.onProgress("build", message, done, appName),
-        },
-      );
-
-      // The image is keyed on the dependency closure only, so deliver the
-      // per-session body to the Pod's /app at boot via a tokenized, single-use URL.
+      // Deliver the body to the Pod's /app at boot via a tokenized, single-use
+      // URL, and run it on the plain kernel image: the kernel resolves its own
+      // module closure into the pod's cache emptyDir on the way up.
       const bundleUrl = await bundleStore.stageSessionBundle(spec.sessionId, spec.bundle);
 
       pod = buildSessionPod({
@@ -152,7 +129,8 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         env: spec.env,
         ports: app.ports,
         limits,
-        image,
+        image: spec.config.image || config.defaultImage,
+        pullPolicy: spec.config.pullPolicy,
         bundleUrl,
         inspect: spec.inspect,
       });
@@ -163,7 +141,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       const created = await kube.core.createNamespacedPod({ namespace: ns, body: pod });
       podUid = created.metadata?.uid ?? "";
     } catch (err) {
-      throw new SessionStartError("start_failed", "create", `failed to create pod: ${msg(err)}`, msg(err));
+      throw apiFailure(err, "create", "could not create the session pod");
     }
 
     let finished = false;
@@ -214,8 +192,8 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     // Flip the session to `running` when the pod reaches Running. Deterministic
     // and independent of the session image's telo version — a readiness signal
     // would couple this to the in-image CLI (and a stale base image would never
-    // flip). The build/provision progress (streamed before this) covers the slow
-    // part; the brief post-Running validation runs while already `running`.
+    // flip). The provision progress (streamed before this) covers the slow part;
+    // module resolution and validation run while already `running`.
     const flipRunning = (): void => {
       if (readyFlipped || finished) return;
       readyFlipped = true;
@@ -301,7 +279,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       } catch (err) {
         if (!runningSeen) {
           clearStartDeadline();
-          rejectRunning(new Error(`failed to watch pod: ${msg(err)}`));
+          rejectRunning(new Error(`could not watch the session pod: ${apiReason(err)}`, { cause: err }));
         } else if (!finished) {
           setTimeout(() => void armWatch(), WATCH_REARM_DELAY_MS).unref?.();
         }
@@ -324,7 +302,16 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       abortWatch();
       bundleStore.drop(spec.sessionId);
       await deletePod(kube, ns, podName);
-      throw new SessionStartError("start_failed", "start", `pod failed to start: ${msg(err)}`, msg(err));
+      // `err` is one of OUR errors — a pod-status failure message, a
+      // disappeared pod, the start deadline, a watch that could not be armed —
+      // so its message is already client-safe and stands. What must not be lost
+      // is its `cause`: the watch path attaches the raw ApiException there, and
+      // rewrapping without forwarding it drops the very detail the summarized
+      // message exists to relocate into the log.
+      throw withCause(
+        new SessionStartError("start_failed", "start", `pod failed to start: ${msg(err)}`),
+        (err as { cause?: unknown })?.cause ?? err,
+      );
     }
 
     // Attach a PTY to the running container: stdout → onOutput, stdin ← writes.
@@ -333,12 +320,20 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       socket = ws as unknown as ResizableSocket;
     } catch (err) {
       // Attach failure isn't fatal — status still flows; surface the degraded PTY.
-      spec.onOutput(appName, Buffer.from(`\r\n[runner] failed to attach PTY: ${msg(err)}\r\n`), "tty");
+      spec.onOutput(
+        appName,
+        Buffer.from(`\r\n[runner] failed to attach PTY: ${apiReason(err)}\r\n`),
+        "tty",
+      );
     }
 
     if (config.sessionIngressBaseDomain && app.ports.length > 0) {
       await createIngress(deps, spec.sessionId, podName, podUid, app.ports).catch((err) => {
-        spec.onOutput(appName, Buffer.from(`\r\n[runner] failed to create ingress: ${msg(err)}\r\n`), "tty");
+        spec.onOutput(
+          appName,
+          Buffer.from(`\r\n[runner] failed to create ingress: ${apiReason(err)}\r\n`),
+          "tty",
+        );
       });
     }
 

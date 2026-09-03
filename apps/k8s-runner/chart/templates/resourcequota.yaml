@@ -2,10 +2,10 @@
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: {{ include "telo-k8s-runner.name" . }}-sessions
+  name: {{ include "k8s-runner.name" . }}-sessions
   namespace: {{ .Values.sessionNamespace }}
   labels:
-    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+    {{- include "k8s-runner.labels" . | nindent 4 }}
 spec:
   hard:
     {{- toYaml .Values.resourceQuota.hard | nindent 4 }}

@@ -92,6 +92,13 @@ jobs:
       - name: Check documentation version pins
         run: pnpm run check:docs
 
+      # A Helm chart's version and appVersion ARE the deployed package's version;
+      # the Version PR stamps them. Unchecked, a hand edit desynchronizes them
+      # invisibly until an operator installs a chart whose appVersion names an
+      # image tag that was never built from it.
+      - name: Check chart versions
+        run: pnpm run check:charts
+
       - name: Check module manifests
         run: pnpm run check modules/*/telo.yaml packages/runner-core/workspace-app/telo.yaml
 

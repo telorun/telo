@@ -225,6 +225,13 @@ jobs:
     name: Publish release Docker images
     needs: release
     if: needs.release.outputs.published == 'true'
+    # A called workflow's permissions can only be equal to or narrower than the
+    # caller job's, so the k8s-runner CHART job's `packages: write` has to be
+    # granted here as well — without it the helm push 403s on the release path
+    # only, where nothing else exercises it.
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/publish-docker.yml
     with:
       release: true

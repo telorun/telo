@@ -25,9 +25,9 @@ export interface KubernetesRunnerCapabilitiesOptions {
  *  studio renders an editable dropdown constrained to that allowlist — which the
  *  session route re-validates server-side. Without a catalog (disabled /
  *  first-fetch failure) the list collapses to the single `defaultImage` (locked
- *  via `enforced`). `pullPolicy` is client-editable: `always` re-pulls the base
- *  image when its tag has moved upstream (rebuilding the per-app image), which
- *  is how a picked moving tag like `latest-slim` stays current.
+ *  via `enforced`). `pullPolicy` is client-editable and is the pod's own
+ *  `imagePullPolicy`: `always` re-pulls the kernel image, which is how a picked
+ *  moving tag like `latest-slim` stays current.
  *
  *  `terms`, when set (operator-provided via RUNNER_TERMS_*), are enforced: a
  *  session won't start until the client acknowledges the current version. */
@@ -53,7 +53,7 @@ export function kubernetesRunnerCapabilities(
         enforced: true,
         imageEnum,
         pullPolicyDescription:
-          "Base-image freshness. `always` rebuilds the session image when the base tag has moved upstream (Docker Hub only); `missing` and `never` reuse the cached build.",
+          "Kernel-image freshness, applied as the Pod's imagePullPolicy. `always` re-pulls on every session, so a moving tag like `latest-slim` picks up a new release. `missing` pulls only when the node has no copy. `never` never pulls at all — on a node that has not already cached the image the session fails to start (ErrImageNeverPull), so it suits a cluster that pre-loads its images and nothing else.",
       }),
     },
     terms,

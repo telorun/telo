@@ -7,11 +7,9 @@ export {
   BaseImageCatalog,
   filterTags,
   parseDockerHubRef,
-  resolveTagDigest,
   type TagFilter,
   type BaseImageCatalogOptions,
 } from "./base-image-catalog.js";
-export { extractDependencyKey, type DependencyKey } from "./dependency-key.js";
 
 export {
   SessionRegistry,

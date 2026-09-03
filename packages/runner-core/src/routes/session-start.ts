@@ -99,12 +99,12 @@ export async function startWorkloadSession(
   const sessionEnv = withoutCacheOverride(args.env);
 
   // Respond as soon as the session is registered — BEFORE the backend starts.
-  // `backend.start()` now spans the on-cluster image build and pod bring-up,
-  // which can take seconds-to-minutes; awaiting it here would hide the event
-  // stream until the workload is already up, so the client never sees build /
-  // provision / boot progress live. Returning the streamUrl first lets the
-  // client connect immediately; start runs in the background and its progress,
-  // output, and terminal status flow over the stream.
+  // `backend.start()` spans image pull and workload bring-up, which can take
+  // seconds-to-minutes; awaiting it here would hide the event stream until the
+  // workload is already up, so the client never sees provision / boot progress
+  // live. Returning the streamUrl first lets the client connect immediately;
+  // start runs in the background and its progress, output, and terminal status
+  // flow over the stream.
   reply.code(201).send({
     sessionId,
     streamUrl: `/v1/sessions/${sessionId}/events`,
@@ -206,7 +206,7 @@ export function launchWorkload(
     .then(async (session) => {
       entry.session = session;
       // Pre-start DELETE race: a DELETE received during backend.start (e.g.
-      // while an image build was running) can't stop a workload that didn't
+      // while the image was still pulling) can't stop a workload that didn't
       // exist yet — it set userStopped and returned 204. Now that the workload
       // is live, honor the earlier DELETE.
       if (entry.userStopped) {

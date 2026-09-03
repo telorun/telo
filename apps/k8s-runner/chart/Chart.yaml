@@ -1,9 +1,15 @@
 apiVersion: v2
-name: telo-k8s-runner
+name: k8s-runner
 description: Telo Kubernetes Runner — runs Telo Applications as sandboxed Pods behind the /v1 session contract.
 type: application
-version: 0.1.0
-appVersion: "0.0.0"
+# BOTH are `@telorun/k8s-runner`'s package version, written by
+# `scripts/stamp-chart-version.mjs` from the changesets Version PR and checked on
+# every PR. The chart deploys exactly one image built from exactly one package in
+# this repo, so a second number to move would only ever be a way for the two to
+# disagree — and a chart-only edit already forces a package bump, because the
+# changeset gate attributes any file under `apps/k8s-runner/` to that package.
+version: 0.13.0
+appVersion: "0.13.0"
 keywords:
   - telo
   - kubernetes

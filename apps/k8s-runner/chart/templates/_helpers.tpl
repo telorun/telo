@@ -1,70 +1,31 @@
-{{- define "telo-k8s-runner.name" -}}
+{{/* The name every object this chart creates is derived from — a LITERAL, never
+     `.Chart.Name`. The two are deliberately allowed to differ: the chart is named
+     `k8s-runner` (after the component and its image, `telorun/k8s-runner`), while
+     the objects keep `telo-k8s-runner` because that string is also the runner's
+     default `RUNNER_MANAGED_BY`, which is the label selector its orphan reaper
+     and the session NetworkPolicy match on. Deriving this from the chart name
+     would make renaming the chart silently strand every pod a previous version
+     created. */}}
+{{- define "k8s-runner.name" -}}
 telo-k8s-runner
 {{- end -}}
 
-{{- define "telo-k8s-runner.labels" -}}
-app.kubernetes.io/name: {{ include "telo-k8s-runner.name" . }}
+{{- define "k8s-runner.labels" -}}
+app.kubernetes.io/name: {{ include "k8s-runner.name" . }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
-{{- define "telo-k8s-runner.selfUrl" -}}
-http://{{ include "telo-k8s-runner.name" . }}.{{ .Values.runnerNamespace }}.svc:{{ .Values.runner.port }}
-{{- end -}}
-
-{{/* In-cluster registry Service host:port (only meaningful when registry.enabled). */}}
-{{- define "telo-k8s-runner.registryHost" -}}
-{{ include "telo-k8s-runner.name" . }}-registry.{{ .Values.runnerNamespace }}.svc.cluster.local:{{ .Values.registry.port }}
-{{- end -}}
-
-{{/* Image repository for per-app builds: explicit build.repository wins, else
-     derive from the in-cluster registry. Empty when neither is configured. */}}
-{{- define "telo-k8s-runner.imageRepository" -}}
-{{- if .Values.build.repository -}}
-{{ .Values.build.repository }}
-{{- else if .Values.registry.enabled -}}
-{{ include "telo-k8s-runner.registryHost" . }}/telo-sessions
-{{- end -}}
-{{- end -}}
-
-{{/* Registry HTTP(S) base for the existence check: explicit value wins, else
-     derive from the in-cluster registry. Empty when neither is configured. */}}
-{{- define "telo-k8s-runner.registryApiUrl" -}}
-{{- if .Values.build.registryApiUrl -}}
-{{ .Values.build.registryApiUrl }}
-{{- else if .Values.registry.enabled -}}
-http://{{ include "telo-k8s-runner.registryHost" . }}
-{{- end -}}
-{{- end -}}
-
-{{/* Push-secret name (in the build namespace): chart-created from
-     registry.dockerconfigjson, else an operator-managed build.pushSecretName.
-     Empty when the registry needs no auth. */}}
-{{- define "telo-k8s-runner.pushSecretName" -}}
-{{- if .Values.registry.dockerconfigjson -}}
-{{ include "telo-k8s-runner.name" . }}-registry-push
-{{- else if .Values.build.pushSecretName -}}
-{{ .Values.build.pushSecretName }}
-{{- end -}}
-{{- end -}}
-
-{{/* Pull-secret name (in the session namespace): chart-created from
-     registry.dockerconfigjson, else an operator-managed build.pullSecretName.
-     Empty when the registry needs no auth. */}}
-{{- define "telo-k8s-runner.pullSecretName" -}}
-{{- if .Values.registry.dockerconfigjson -}}
-{{ include "telo-k8s-runner.name" . }}-registry-pull
-{{- else if .Values.build.pullSecretName -}}
-{{ .Values.build.pullSecretName }}
-{{- end -}}
+{{- define "k8s-runner.selfUrl" -}}
+http://{{ include "k8s-runner.name" . }}.{{ .Values.runnerNamespace }}.svc:{{ .Values.runner.port }}
 {{- end -}}
 
 {{/* Per-session ingress TLS Secret name (in the session namespace): chart-created
      from sessionIngress.tls.cert + sessionIngress.tls.key, else an operator-managed
      sessionIngress.tls.secretName. Empty when no origin cert is configured. */}}
-{{- define "telo-k8s-runner.sessionIngressTlsSecretName" -}}
+{{- define "k8s-runner.sessionIngressTlsSecretName" -}}
 {{- if and .Values.sessionIngress.tls.cert .Values.sessionIngress.tls.key -}}
-{{ include "telo-k8s-runner.name" . }}-ingress-tls
+{{ include "k8s-runner.name" . }}-ingress-tls
 {{- else if .Values.sessionIngress.tls.secretName -}}
 {{ .Values.sessionIngress.tls.secretName }}
 {{- end -}}

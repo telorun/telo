@@ -23,6 +23,7 @@ import {
 
 import type { K8sRunnerConfig } from "../config.js";
 import { clampLimits } from "../limits.js";
+import { apiFailure, apiReason } from "./api-error.js";
 import type { KubeClient } from "./client.js";
 import { buildSessionIngress, buildSessionService, endpointsFor } from "./ingress.js";
 import { buildWatchPod, inspectPortFor, WORKSPACE_PORT } from "./pod-spec.js";
@@ -54,11 +55,10 @@ export interface WatchSessionDeps {
  * A watch session: one pod, one workspace volume, one container per running
  * application, and the session outliving every run inside it.
  *
- * What it does NOT do is as load-bearing as what it does: it never builds an
- * image. The build path exists to put a dependency closure on disk before boot;
- * a watch session resolves its own into a per-app cache directory that lives as
- * long as the pod, so the download happens once per app per session and every
- * later reload resolves from local disk.
+ * Its cache is what separates it from a run session: the module closure lands in
+ * a directory that lives as long as the POD rather than as long as one run, so
+ * the download happens once per session and every later reload resolves from
+ * local disk.
  */
 export async function startWatchSession(
   deps: WatchSessionDeps,
@@ -117,12 +117,7 @@ export async function startWatchSession(
     try {
       created = await kube.core.createNamespacedPod({ namespace: ns, body: pod });
     } catch (err) {
-      throw new SessionStartError(
-        "start_failed",
-        "create",
-        `failed to create pod: ${msg(err)}`,
-        msg(err),
-      );
+      throw apiFailure(err, "create", "could not create the session pod");
     }
 
     const abort = new AbortController();
@@ -299,7 +294,7 @@ export async function startWatchSession(
         // channel rather than aborting the start.
         spec.onOutput(
           app.name,
-          Buffer.from(`\r\n[runner] failed to attach: ${msg(err)}\r\n`),
+          Buffer.from(`\r\n[runner] failed to attach: ${apiReason(err)}\r\n`),
           tagFor(app, "stderr"),
         );
       }
@@ -364,7 +359,7 @@ export async function startWatchSession(
       await publishEndpoints(rt, apps);
     } catch (err) {
       spec.onEndpoints(appName, {
-        rejected: accepted.map((p) => ({ port: p.port, reason: msg(err) })),
+        rejected: accepted.map((p) => ({ port: p.port, reason: apiReason(err) })),
       });
       return;
     }

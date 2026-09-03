@@ -16,9 +16,9 @@ interface StoredBundle {
 const STAGING_TTL_MS = 5 * 60 * 1000;
 
 /**
- * Holds image-build contexts in memory and serves them over a tokenized,
- * cluster-internal URL the build Job's initContainer fetches once. The
- * per-build unguessable token prevents cross-build disclosure; the entry is
+ * Holds session bundles in memory and serves them over a tokenized,
+ * cluster-internal URL the session pod's initContainer fetches once. The
+ * per-session unguessable token prevents cross-session disclosure; the entry is
  * dropped after first fetch (or explicitly on cleanup).
  */
 export class BundleStore {
@@ -27,22 +27,9 @@ export class BundleStore {
   constructor(private readonly selfUrl: string) {}
 
   /**
-   * Stages an image-build context — the bundle plus a generated `Dockerfile` at
-   * the context root — and returns the tokenized, single-use URL the build Job's
-   * initContainer fetches. Keyed by `id` (a build id).
-   */
-  async stageBuildContext(id: string, bundle: RunBundle, dockerfile: string): Promise<string> {
-    return this.stage(id, {
-      entryRelativePath: bundle.entryRelativePath,
-      files: [...bundle.files, { relativePath: "Dockerfile", contents: dockerfile }],
-    });
-  }
-
-  /**
-   * Stages the raw session bundle (no Dockerfile) and returns the tokenized,
-   * single-use URL the session Pod's body-delivery initContainer fetches into
-   * `/app`. Keyed by `sessionId`. The image is keyed only on the dependency
-   * closure, so the per-session body is delivered here at boot rather than baked.
+   * Stages the session bundle and returns the tokenized, single-use URL the
+   * session Pod's body-delivery initContainer fetches into `/app`. Keyed by
+   * `sessionId`.
    */
   async stageSessionBundle(sessionId: string, bundle: RunBundle): Promise<string> {
     return this.stage(sessionId, bundle);

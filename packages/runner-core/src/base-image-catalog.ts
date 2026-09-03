@@ -211,50 +211,6 @@ export function parseDockerHubRef(
   };
 }
 
-/**
- * Resolve a Docker Hub image ref's CURRENT manifest digest. A moving tag
- * (`latest-slim`) maps to a new digest once a new version is published, so a
- * build that folds this into its cache key detects that the base moved and
- * rebuilds. An already `@sha256:`-pinned ref returns its digest without a
- * network call. Returns `undefined` for a non-Docker-Hub ref (not an error —
- * resolution simply doesn't apply) or when a Hub request fails. A genuine
- * request failure is reported to `onError` rather than swallowed, so an operator
- * whose Hub calls persistently fail (auth / network / rate-limit) gets a signal
- * instead of an unexplained "always reuses the cached image".
- */
-export async function resolveTagDigest(
-  ref: string,
-  opts: {
-    fetchImpl?: typeof fetch;
-    requestTimeoutMs?: number;
-    onError?: (err: unknown) => void;
-  } = {},
-): Promise<string | undefined> {
-  const parsed = parseDockerHubRef(ref);
-  if (!parsed) return undefined;
-  if (parsed.digest) return parsed.digest;
-
-  const fetchImpl = opts.fetchImpl ?? fetch;
-  const url =
-    `https://hub.docker.com/v2/repositories/${encodeURIComponent(parsed.namespace)}/` +
-    `${encodeURIComponent(parsed.repo)}/tags/${encodeURIComponent(parsed.tag)}`;
-  try {
-    const res = await fetchImpl(url, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(opts.requestTimeoutMs ?? 10_000),
-    });
-    if (!res.ok) {
-      opts.onError?.(new Error(`Docker Hub tag request for '${ref}' failed: ${res.status} ${res.statusText}`));
-      return undefined;
-    }
-    const body = (await res.json()) as { digest?: string; images?: Array<{ digest?: string }> };
-    return body.digest ?? body.images?.find((i) => i.digest)?.digest ?? undefined;
-  } catch (err) {
-    opts.onError?.(err);
-    return undefined;
-  }
-}
-
 export class BaseImageCatalog {
   private readonly repository: string;
   private readonly defaultRef: string;

@@ -17,11 +17,11 @@ export interface BuildPodArgs {
   env: Record<string, string>;
   ports: PortMapping[];
   limits: ResolvedLimits;
-  /** Prebuilt per-app image to run. Controllers + module manifests are baked
-   *  into `/telo-cache/{manifests,npm}` (read-only) by the on-cluster build;
-   *  the image is keyed only on the dependency closure, so the per-session body
-   *  is NOT baked — it's delivered to `/app` at boot via the initContainer. */
+  /** The kernel image to run (`telorun/node`) — the session's picked base image,
+   *  or the runner's default. Nothing is baked per app: the body arrives over the
+   *  initContainer and the kernel resolves its module closure at boot. */
   image: string;
+  pullPolicy: PullPolicy;
   /** Tokenized, single-use URL the body-delivery initContainer fetches the
    *  session bundle tarball from (`BundleStore.stageSessionBundle`). */
   bundleUrl: string;
@@ -38,12 +38,11 @@ export const INSPECT_PORT = 9230;
 
 const APP_DIR = "/app";
 const WORK_DIR = "/work";
-/** Baked, read-only deps (`telo install` output). Set via TELO_CACHE_DIR, NOT
- *  mounted — it lives on the image rootfs, so `telo run --no-cache-write` reads
- *  it without writing. */
+/** The kernel's module cache for this session. A writable emptyDir: the closure
+ *  is resolved at boot and lives as long as the pod, so a re-run of the same app
+ *  is a fresh download — the price of having no prebuilt image. */
 const DEPS_DIR = "/telo-cache";
-/** Writable HOME / npm scratch under a read-only rootfs. Separate from DEPS_DIR
- *  (which is now read-only baked deps, not scratch). */
+/** Writable HOME / npm scratch under a read-only rootfs. */
 const HOME_DIR = "/home/telo";
 const TMP_MOUNT = "/tmp";
 
@@ -53,8 +52,8 @@ const TMP_MOUNT = "/tmp";
  * seccomp RuntimeDefault); a sandbox RuntimeClass is layered on when configured.
  *
  * The body-delivery initContainer fetches the session bundle into the writable
- * `/app` emptyDir; the session container runs `telo run /app/<entry>
- * --no-cache-write` reading its deps from the baked, read-only `/telo-cache`.
+ * `/app` emptyDir; the session container runs `telo run /app/<entry>` on the
+ * plain kernel image and resolves its module closure into `/telo-cache`.
  * `readOnlyRootFilesystem` stays on — every write lands on a mounted emptyDir.
  */
 export function buildSessionPod(args: BuildPodArgs): V1Pod {
@@ -73,8 +72,8 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
   };
 
   const envVars = Object.entries(args.env).map(([name, value]) => ({ name, value }));
-  // Read deps from the baked, read-only `/telo-cache`; keep HOME/npm scratch on a
-  // separate writable emptyDir under the read-only root filesystem.
+  // Resolve deps into the session's own `/telo-cache` emptyDir; keep HOME/npm
+  // scratch on a separate one under the read-only root filesystem.
   envVars.push({ name: "TELO_CACHE_DIR", value: DEPS_DIR });
   envVars.push({ name: "HOME", value: HOME_DIR });
   envVars.push({ name: "npm_config_cache", value: `${HOME_DIR}/.npm` });
@@ -95,11 +94,9 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
       restartPolicy: "Never",
       activeDeadlineSeconds: limits.ttlSeconds,
       automountServiceAccountToken: false,
-      // Pull the per-app image from a private registry. The Secret must exist in
+      // Pull the kernel image from a private registry. The Secret must exist in
       // the session namespace (pull secrets are namespace-scoped).
-      ...(config.build.imagePullSecret
-        ? { imagePullSecrets: [{ name: config.build.imagePullSecret }] }
-        : {}),
+      ...(config.imagePullSecret ? { imagePullSecrets: [{ name: config.imagePullSecret }] } : {}),
       ...(config.runtimeClass ? { runtimeClassName: config.runtimeClass } : {}),
       securityContext: {
         runAsNonRoot: true,
@@ -110,8 +107,7 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
       },
       initContainers: [
         {
-          // Deliver the per-session body into the writable /app emptyDir. The
-          // image bakes only the dependency closure, so the body arrives here.
+          // Deliver the session body into the writable /app emptyDir.
           name: "body-fetch",
           image: config.initImage,
           command: ["sh", "-c"],
@@ -129,13 +125,10 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
         {
           name: "session",
           image: args.image,
-          // The per-app tag is an immutable content hash, so IfNotPresent lets
-          // the kubelet reuse a node-cached layer across runs of the same app.
-          imagePullPolicy: "IfNotPresent",
-          // Run the delivered body by absolute path; `--no-cache-write` reads
-          // the baked deps from TELO_CACHE_DIR and validates in-memory without
-          // touching the read-only cache. WORK_DIR is a writable emptyDir cwd so
-          // the workload's relative paths resolve under readOnlyRootFilesystem.
+          imagePullPolicy: pullPolicyToK8s(args.pullPolicy),
+          // Run the delivered body by absolute path. WORK_DIR is a writable
+          // emptyDir cwd so the workload's relative paths resolve under
+          // readOnlyRootFilesystem.
           workingDir: WORK_DIR,
           // 0.0.0.0 (not the CLI's loopback default) lets the runner reach the
           // debug server across the pod network; the port is never published.
@@ -143,7 +136,6 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
             "telo",
             "run",
             `${APP_DIR}/${args.entryRelativePath}`,
-            "--no-cache-write",
             ...(args.inspect ? ["--inspect", `0.0.0.0:${INSPECT_PORT}`, "--no-open"] : []),
           ],
           env: envVars,
@@ -156,6 +148,7 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
           resources,
           volumeMounts: [
             { name: "app", mountPath: APP_DIR },
+            { name: "telo-cache", mountPath: DEPS_DIR },
             { name: "work", mountPath: WORK_DIR },
             { name: "home", mountPath: HOME_DIR },
             { name: "tmp", mountPath: TMP_MOUNT },
@@ -165,6 +158,7 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
       ],
       volumes: [
         { name: "app", emptyDir: {} },
+        { name: "telo-cache", emptyDir: {} },
         { name: "work", emptyDir: {} },
         { name: "home", emptyDir: {} },
         { name: "tmp", emptyDir: {} },
@@ -225,9 +219,7 @@ export function buildAppPod(args: BuildAppPodArgs): V1Pod {
       restartPolicy: "Never",
       activeDeadlineSeconds: limits.ttlSeconds,
       automountServiceAccountToken: false,
-      ...(config.build.imagePullSecret
-        ? { imagePullSecrets: [{ name: config.build.imagePullSecret }] }
-        : {}),
+      ...(config.imagePullSecret ? { imagePullSecrets: [{ name: config.imagePullSecret }] } : {}),
       ...(config.runtimeClass ? { runtimeClassName: config.runtimeClass } : {}),
       securityContext: {
         seccompProfile: { type: "RuntimeDefault" },
@@ -326,9 +318,8 @@ export interface BuildWatchPodArgs {
   agent?: ResolvedRunnerApp;
   limits: ResolvedLimits;
   /** Base image every app container and the workspace container run — the plain
-   *  kernel image (`telorun/node`). A watch session never builds an image: the
-   *  build path exists to put a closure on disk before boot, and a watch session
-   *  fetches its own and keeps it for the pod's life. */
+   *  kernel image (`telorun/node`). Each resolves its own module closure into
+   *  the shared workspace volume, which lives as long as the pod. */
   image: string;
   pullPolicy: PullPolicy;
   /** Name of the ConfigMap holding the workspace application's manifest. */
@@ -390,9 +381,7 @@ export function buildWatchPod(args: BuildWatchPodArgs): V1Pod {
       // conversation mid-turn.
       activeDeadlineSeconds: config.watch.maxTtlSeconds,
       automountServiceAccountToken: false,
-      ...(config.build.imagePullSecret
-        ? { imagePullSecrets: [{ name: config.build.imagePullSecret }] }
-        : {}),
+      ...(config.imagePullSecret ? { imagePullSecrets: [{ name: config.imagePullSecret }] } : {}),
       ...(config.runtimeClass ? { runtimeClassName: config.runtimeClass } : {}),
       securityContext: {
         runAsNonRoot: true,

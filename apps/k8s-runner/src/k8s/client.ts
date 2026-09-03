@@ -1,16 +1,8 @@
-import {
-  Attach,
-  BatchV1Api,
-  CoreV1Api,
-  KubeConfig,
-  NetworkingV1Api,
-  Watch,
-} from "@kubernetes/client-node";
+import { Attach, CoreV1Api, KubeConfig, NetworkingV1Api, Watch } from "@kubernetes/client-node";
 
 export interface KubeClient {
   kc: KubeConfig;
   core: CoreV1Api;
-  batch: BatchV1Api;
   networking: NetworkingV1Api;
   attach: Attach;
   watch: Watch;
@@ -31,7 +23,6 @@ export function createKubeClient(): KubeClient {
   return {
     kc,
     core: kc.makeApiClient(CoreV1Api),
-    batch: kc.makeApiClient(BatchV1Api),
     networking: kc.makeApiClient(NetworkingV1Api),
     attach: new Attach(kc),
     watch: new Watch(kc),

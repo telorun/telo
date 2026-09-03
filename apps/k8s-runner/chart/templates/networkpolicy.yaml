@@ -1,21 +1,20 @@
 {{- if .Values.networkPolicy.enabled }}
 # Session-pod network policy. HONEST SCOPE: this is NOT default-deny egress.
-# Until the trusted content-addressed build Job exists, session pods resolve
-# their own dependencies (telo run fetches modules in-pod), so they need broad
-# egress. This policy therefore allows egress to the public internet EXCEPT the
-# blocked CIDRs (cloud metadata + RFC1918), and isolates pod-to-pod traffic on
-# ingress. It does NOT confine exfiltration to a registry allowlist — core
-# NetworkPolicy is CIDR-only and cannot express FQDN allows; that requires a CNI
-# with FQDN policy (Cilium) or an egress proxy, and is only meaningful once the
-# build Job moves installation out of the session pod. Enforced only if the
-# cluster CNI supports NetworkPolicy at all.
+# Every session resolves its own module closure in-pod (`telo run` fetches
+# modules), so session pods need to reach the package registries. This policy
+# therefore allows egress to the public internet EXCEPT the blocked CIDRs (cloud
+# metadata + RFC1918), and isolates pod-to-pod traffic on ingress. It does NOT
+# confine exfiltration to a registry allowlist — core NetworkPolicy is CIDR-only
+# and cannot express FQDN allows; that requires a CNI with FQDN policy (Cilium)
+# or an egress proxy. Enforced only if the cluster CNI supports NetworkPolicy at
+# all.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "telo-k8s-runner.name" . }}-sessions
+  name: {{ include "k8s-runner.name" . }}-sessions
   namespace: {{ .Values.sessionNamespace }}
   labels:
-    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+    {{- include "k8s-runner.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:

@@ -506,6 +506,12 @@ jobs:
       (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')
     needs: [context, kernel-dev, kernel-release]
     runs-on: ubuntu-latest
+    outputs:
+      # The version this run released, or empty. Published so the chart job
+      # consumes the answer instead of re-deriving it from the same two files —
+      # which also makes "the chart is never published ahead of its image" a
+      # data dependency rather than a convention.
+      released-version: ${{ steps.imgtags.outputs.released-version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -535,6 +541,10 @@ jobs:
             fi
             echo EOF
           } >> "$GITHUB_OUTPUT"
+
+          if [ -n "$NOW" ] && [ "$NOW" != "null" ] && [ "$NOW" != "$PREV" ]; then
+            echo "released-version=$NOW" >> "$GITHUB_OUTPUT"
+          fi
 
           # The kernel image spawned for each session, baked into this build so a
           # RELEASED runner's tested kernel and its runtime kernel are the same
@@ -570,6 +580,48 @@ jobs:
           tags: ${{ steps.imgtags.outputs.tags }}
           cache-from: type=gha,scope=k8s-runner
           cache-to: type=gha,mode=max,scope=k8s-runner
+
+  k8s-runner-chart:
+    name: Publish the k8s-runner Helm chart
+    # RELEASE ONLY, and gated on the image job's OWN answer to "did this commit
+    # release the runner" — the chart's appVersion IS that image's tag, so the
+    # two must never disagree, and consuming the output rather than re-deriving
+    # it is what makes that structural. `needs` then also orders them: the chart
+    # is published after the image it points at exists, never beside it. There is
+    # deliberately no dev/sha chart — an OCI chart tag is its semver version, and
+    # nothing consumes a chart for an unreleased runner.
+    if: |
+      inputs.release &&
+      needs.k8s-runner.result == 'success' &&
+      needs.k8s-runner.outputs.released-version != ''
+    needs: [context, k8s-runner]
+    runs-on: ubuntu-latest
+    # GHCR is written with GITHUB_TOKEN, so this job needs `packages: write` —
+    # and, being a called workflow, it can only get it if the caller's job grants
+    # it too (see the `docker` job in publish.yml).
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+
+      # The same gate every PR runs, not a second reading of Chart.yaml: a chart
+      # whose appVersion disagrees with the package names an image tag nothing
+      # built, and the check that decides that already exists.
+      - name: Verify the chart carries the released version
+        run: node scripts/stamp-chart-version.mjs --check
+
+      - name: Package and push the chart
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${GITHUB_TOKEN}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm package apps/k8s-runner/chart --destination /tmp/charts
+          # The tarball is named for the chart, not for anything chosen here, and
+          # it pushes to ghcr.io/telorun/charts/<chart name>:<version> for the
+          # same reason — so the file is found rather than reconstructed.
+          helm push /tmp/charts/*.tgz oci://ghcr.io/telorun/charts
 
   authoring-agent:
     name: Build telorun/authoring-agent
