@@ -1,4 +1,4 @@
-import type { AnalysisRegistry } from "@telorun/analyzer";
+import type { AnalysisRegistry, ModuleGraph } from "@telorun/analyzer";
 import type { ImportableLibrary } from "../../loader";
 import type {
   DeploymentEnvironment,
@@ -25,6 +25,19 @@ export interface ViewProps {
    *  maps / capability lookups the overview graph needs. Null before the first
    *  analysis pass completes for the module. */
   registry: AnalysisRegistry | null;
+  /** The active module's graph — boxes, ordered rows and classed edges, folded
+   *  by the analyzer over the same flattened manifest set the checker ran on.
+   *  Null before the first analysis pass completes. */
+  moduleGraph: ModuleGraph | null;
+  /** The graph of an IMPORTED module, by its `metadata.name` — what lets the
+   *  canvas open a library in place instead of leaving it an opaque leaf. Null
+   *  for a module the workspace has not analyzed (an unresolved import, or a
+   *  dependency of a dependency). */
+  moduleGraphFor: (moduleName: string) => ModuleGraph | null;
+  /** Whether a module's own files can be edited here: false for one opened from
+   *  a registry / OCI source, where a write has nowhere to land. A boundary is
+   *  an EDIT boundary, and the canvas has to say so at the gesture. */
+  isEditableModule: (moduleName: string) => boolean;
   selectedResource: { kind: string; name: string } | null;
   /** Active pointer-scoped selection (e.g. an edge's inputs or a node's in/out
    *  type field). When set, a sub-part of a resource is focused — not the whole
@@ -136,7 +149,7 @@ export interface ViewProps {
    *  refused — with its reason — when anything else still names the resource. */
   onInlineReference: (host: { kind: string; name: string }, pointer: string) => void;
   /** Deployment config for the active Application. For Libraries this is still
-   *  populated (with a fresh ephemeral environment) but the Run tab is hidden so
+   *  populated (with a fresh ephemeral environment) but the Variables tab is hidden so
    *  it goes unused. */
   deployment: {
     activeEnvironment: DeploymentEnvironment;

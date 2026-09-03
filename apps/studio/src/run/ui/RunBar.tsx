@@ -28,7 +28,7 @@ interface RunBarProps {
 /** Run controls, docked at the right end of the module's own view-tab strip: the
  *  runner that will host the run, the trigger, the live status, and the toggle
  *  for the output dock. Living in this strip is the point — it is the module's
- *  scope, and it already holds the Run tab that configures the run. The
+ *  scope, and it already holds the Variables tab that configures the run. The
  *  environment is NOT named here: there is exactly one per Application, so a
  *  chip for it mimicked a selector over a constant. */
 export function RunBar({

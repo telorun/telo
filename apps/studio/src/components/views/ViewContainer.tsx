@@ -26,7 +26,7 @@ interface TabEntry {
 const VIEW_TABS: TabEntry[] = [
   { id: "topology", label: "Graph" },
   { id: "outline", label: "Outline" },
-  { id: "run", label: "Run", applicationOnly: true },
+  { id: "run", label: "Variables", applicationOnly: true },
   { id: "source", label: "Source" },
 ];
 

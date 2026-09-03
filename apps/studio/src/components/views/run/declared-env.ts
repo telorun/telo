@@ -7,7 +7,7 @@ interface ManifestLike {
 }
 
 /** Project a parsed Application manifest's declared env contract into the
- *  flat row model the editor's Run tab renders. Library manifests
+ *  flat row model the editor's Variables tab renders. Library manifests
  *  (which never carry `env:`) return an empty list — the tab is
  *  Application-only. */
 export function extractDeclaredEnvEntries(
@@ -22,7 +22,7 @@ export function extractDeclaredEnvEntries(
 
 /** Declared env entries that the kernel would reject at boot: required (no
  *  `default`) and with no value supplied in the active deployment environment.
- *  Used to pre-flight a run so the user is sent to the Run tab instead of
+ *  Used to pre-flight a run so the user is sent to the Variables tab instead of
  *  hitting `ERR_MANIFEST_VALIDATION_FAILED` on the runner. */
 export function findMissingRequiredEnv(
   manifest: ManifestLike | null | undefined,

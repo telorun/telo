@@ -9,6 +9,7 @@ import {
   type ManifestAnalysis,
   type LoadedGraph,
   type ManifestSource,
+  type ModuleGraph,
   type ZoneExportCache,
 } from "@telorun/analyzer";
 import { compromisedFiles, normalizeDiagnostic, type NormalizedDiagnostic } from "@telorun/ide-support";
@@ -75,6 +76,12 @@ export interface WorkspaceDiagnostics {
    *  against another closure's manifests would offer names this file's checker
    *  rejects. */
   analysisByFile: Map<string, () => ManifestAnalysis>;
+  /** filePath → the module graph of the closure that owns it: the boxes, rows
+   *  and classed edges the topology canvas draws. Built from the SAME flattened
+   *  manifest set the checker ran over, so a node the canvas shows is a node the
+   *  diagnostics are about, and a cross-module reference is an ordinary edge
+   *  rather than an opaque leaf. Lazy, per closure, like `analysisByFile`. */
+  moduleGraphByFile: Map<string, () => ModuleGraph>;
 }
 
 /** The set of modules that anchor an independent analysis context: every
@@ -98,6 +105,7 @@ interface MergeAccumulators {
   registryByFile: Map<string, AnalysisRegistry>;
   graphByFile: Map<string, LoadedGraph>;
   analysisByFile: Map<string, () => ManifestAnalysis>;
+  moduleGraphByFile: Map<string, () => ModuleGraph>;
   /** Dedup key set for diagnostics that route to no file at all. */
   unknownSeen: Set<string>;
   /** External (registry/remote) files already claimed by an earlier closure.
@@ -336,10 +344,36 @@ function analyzeClosure(
   let analysis: ManifestAnalysis | undefined;
   const analysisOf = (): ManifestAnalysis => (analysis ??= registry.analysisOf(manifests));
 
+  // The module doc of this closure's own root — the boot root, which is not a
+  // resource and which the flatten keeps only for the entry module. Found by
+  // source rather than by kind alone: a closure's manifest set may carry an
+  // imported library's doc, and the root is the one declared in the file this
+  // closure is rooted at.
+  let moduleGraph: ModuleGraph | undefined;
+  const moduleGraphOf = (): ModuleGraph => {
+    if (moduleGraph) return moduleGraph;
+    const rootDoc = manifests.find(
+      (m) =>
+        (m.kind === "Telo.Application" || m.kind === "Telo.Library") &&
+        (m.metadata as { source?: string }).source === graph.entry.owner.source,
+    );
+    const entryModule = rootDoc?.metadata?.name as string | undefined;
+    const options = {
+      ...(rootDoc ? { root: rootDoc } : {}),
+      ...(entryModule ? { entryModule } : {}),
+    };
+    // Through the ANALYSIS, so the projection shares its call graph rather than
+    // building a second one over the same set; the registry supplies the half
+    // that is its own — how a kind resolves and what its slots target.
+    moduleGraph = analysisOf().moduleGraph(registry.moduleGraphDeps(manifests, options), options);
+    return moduleGraph;
+  };
+
   for (const f of rootLocalFiles) {
     acc.registryByFile.set(f, registry);
     acc.graphByFile.set(f, graph);
     acc.analysisByFile.set(f, analysisOf);
+    acc.moduleGraphByFile.set(f, moduleGraphOf);
   }
   for (const f of closureFiles) {
     // External files surfaced here are now owned by this closure; later
@@ -348,6 +382,7 @@ function analyzeClosure(
     if (!acc.registryByFile.has(f)) acc.registryByFile.set(f, registry);
     if (!acc.graphByFile.has(f)) acc.graphByFile.set(f, graph);
     if (!acc.analysisByFile.has(f)) acc.analysisByFile.set(f, analysisOf);
+    if (!acc.moduleGraphByFile.has(f)) acc.moduleGraphByFile.set(f, moduleGraphOf);
   }
 }
 
@@ -383,6 +418,7 @@ export async function analyzeWorkspace(
     registryByFile: new Map(),
     graphByFile: new Map(),
     analysisByFile: new Map(),
+    moduleGraphByFile: new Map(),
     unknownSeen: new Set(),
     externalFilesClaimed: new Set(),
   };
@@ -410,5 +446,6 @@ export async function analyzeWorkspace(
     registryByFile: acc.registryByFile,
     graphByFile: acc.graphByFile,
     analysisByFile: acc.analysisByFile,
+    moduleGraphByFile: acc.moduleGraphByFile,
   };
 }

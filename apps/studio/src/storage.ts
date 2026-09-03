@@ -43,7 +43,7 @@ export function acceptTermsFor(runnerId: string, version: string): void {
 
 const VALID_VIEWS: Set<string> = new Set<ViewId>(["topology", "outline", "source", "run"]);
 
-/** Views a persisted hint may still name: "deployment" preceded the Run tab,
+/** Views a persisted hint may still name: "deployment" preceded the Variables tab,
  *  and four separate lists preceded the Outline tab. A hint from before either
  *  change still says where the user was, so it is mapped rather than dropped. */
 const RENAMED_VIEWS: Record<string, ViewId> = {

@@ -106,10 +106,8 @@ export function StepsView({
   viewData,
   refResolver,
   resolvedResources,
-  model,
+  registry,
   selection,
-  canFocus,
-  onFocusResource,
   onSelect,
   onSelectResource,
   onUpdateResource,
@@ -137,11 +135,22 @@ export function StepsView({
 
   const entries = useMemo(() => {
     if (!field || !stepSchema) return [];
-    // Signatures come from the canvas model, which already resolved each
-    // resource's `inputType` / `outputType` with the right precedence — the
-    // instance's own field first, then the kind. Reading them back is what keeps
-    // this list and the canvas from disagreeing about what a step's target takes.
-    const byName = new Map((model?.nodes ?? []).map((n) => [n.name, n] as const));
+    // What a step's target DECLARES it takes, resolved through the registry's
+    // own contract resolver — the same one `telo check` validates the call site
+    // against, so the form offers the keys the checker demands. It used to be
+    // read off the old canvas model, which no longer exists; leaving it
+    // unsupplied silently turned every typed `inputs:` form into a freeform map.
+    const signatureOf = (name: string) => {
+      const declared = viewData.manifest.resources.find((r) => r.name === name);
+      if (!declared || !registry) return undefined;
+      const input = registry.inputTypeForKind(declared.kind);
+      const output = registry.outputTypeForKind(declared.kind);
+      if (!input && !output) return undefined;
+      return {
+        ...(input ? { input: { schema: input, set: true } satisfies TypeSignature } : {}),
+        ...(output ? { output: { schema: output, set: true } satisfies TypeSignature } : {}),
+      };
+    };
     return buildStepList({
       steps,
       stepSchema,
@@ -151,12 +160,9 @@ export function StepsView({
       declared: new Set(
         viewData.manifest.resources.filter((r) => !isModuleRootKind(r.kind)).map((r) => r.name),
       ),
-      signatureOf: (name) => {
-        const node = byName.get(name);
-        return node ? { input: node.inputType, output: node.outputType } : undefined;
-      },
+      signatureOf,
     });
-  }, [field, stepSchema, variants, schema, steps, model, viewData]);
+  }, [field, stepSchema, variants, schema, steps, viewData, registry]);
 
   const target = { kind: resource.kind, name: resource.name };
   const editable = !!onMoveField && !!onRemoveField;
@@ -351,8 +357,6 @@ export function StepsView({
     // declared has no kind to carry.
     kindOf: (name: string) =>
       viewData.manifest.resources.find((r) => r.name === name)?.kind,
-    canFocus,
-    onFocusResource,
     onSelect,
     onSelectResource,
     onRemoveField,
@@ -413,8 +417,6 @@ interface RowProps {
   /** The declared kind of a resource this module holds, or undefined when it
    *  holds none by that name. */
   kindOf: (name: string) => string | undefined;
-  canFocus: TopologyViewProps["canFocus"];
-  onFocusResource: TopologyViewProps["onFocusResource"];
   onSelect: TopologyViewProps["onSelect"];
   onSelectResource: TopologyViewProps["onSelectResource"];
   onRemoveField: TopologyViewProps["onRemoveField"];
@@ -634,8 +636,6 @@ function StepCard({
   editable,
   selection,
   kindOf,
-  canFocus,
-  onFocusResource,
   onSelect,
   onSelectResource,
   onRemoveField,
@@ -662,14 +662,13 @@ function StepCard({
     onSelect({ resource: target, pointer: entry.pointer, schema: entry.schema });
   }
 
-  /** Opens the resource this step invokes — into the panel always, and into the
-   *  canvas when it has an interior worth entering. The same rule every list in
-   *  this editor follows. */
+  /** Shows the resource this step invokes, in this panel. It used to also
+   *  re-root the main canvas onto that resource, which replaced the graph the
+   *  reader was looking at — following a call is a request to SEE the callee. */
   function openTarget() {
     if (!entry.target) return;
     const kind = kindOf(entry.target);
     if (kind) onSelectResource(kind, entry.target);
-    if (canFocus(entry.target)) onFocusResource(entry.target);
   }
 
   return (
@@ -801,11 +800,11 @@ function StepCard({
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {entry.target && canFocus(entry.target) && (
+        {entry.target && (
           <button
             className="shrink-0 rounded text-zinc-300 hover:text-zinc-500 dark:text-zinc-600"
             onClick={openTarget}
-            title={`Open ${entry.target}`}
+            title={`Show ${entry.target}`}
           >
             <ChevronRight className="size-4" />
           </button>

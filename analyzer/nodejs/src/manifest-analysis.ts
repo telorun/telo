@@ -27,7 +27,14 @@ import { CelScopeQuery, type CelScopeQueryContext } from "./cel-scope-query.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import type { ContractDirection } from "./extends-resolution.js";
 import { analyzerContractScope, resolveContract } from "./invocation-contract.js";
+import { buildCallGraph, type CallGraph } from "./call-graph.js";
 import { findManifest } from "./find-manifest.js";
+import {
+  buildModuleGraph,
+  type BuildModuleGraphOptions,
+  type ModuleGraph,
+  type ModuleGraphDeps,
+} from "./module-graph.js";
 import { isModuleKind } from "./module-kinds.js";
 
 /**
@@ -43,6 +50,8 @@ export interface ManifestRef {
 export class ManifestAnalysis {
   private readonly scopes: ModuleScopes;
   private celScopeQuery: CelScopeQuery | undefined;
+  private callGraphMemo: CallGraph | undefined;
+  private moduleGraphMemo: ModuleGraph | undefined;
 
   constructor(
     readonly manifests: ResourceManifest[],
@@ -60,6 +69,36 @@ export class ManifestAnalysis {
    *  them. */
   get celScope(): CelScopeQuery {
     return (this.celScopeQuery ??= new CelScopeQuery(this.manifests, this.ctx));
+  }
+
+  /** What calls what. Built on first use and kept, so the projection and any
+   *  other consumer over this set share one. */
+  private get callGraph(): CallGraph {
+    return (this.callGraphMemo ??= buildCallGraph(this.manifests, this.ctx.defs, {
+      aliases: this.ctx.aliases,
+      aliasesByModule: this.ctx.aliasesByModule,
+    }));
+  }
+
+  /**
+   * The module graph: boxes, ordered rows and classed edges — the projection an
+   * editor draws.
+   *
+   * Here rather than on the registry because it is the registry AND a manifest
+   * set, which is the pairing this class exists to name; a fifth
+   * `registry.x(manifests, …)` factory is the accretion naming it stopped. It
+   * shares this analysis's call graph rather than building one of its own.
+   *
+   * `deps` is supplied by the registry, which owns capability resolution — this
+   * class holds the manifests, not the rules for reading a kind.
+   */
+  moduleGraph(deps: ModuleGraphDeps, options: BuildModuleGraphOptions = {}): ModuleGraph {
+    return (this.moduleGraphMemo ??= buildModuleGraph(
+      this.manifests,
+      this.callGraph,
+      deps,
+      options,
+    ));
   }
 
   /** The manifest a `(kind, name)` pair addresses. */

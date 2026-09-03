@@ -54,6 +54,7 @@ export function useDiagnosticsState(): { diagnostics: WorkspaceDiagnostics } {
       registryByFile: new Map(),
       graphByFile: new Map(),
       analysisByFile: new Map(),
+      moduleGraphByFile: new Map(),
     },
   };
 }

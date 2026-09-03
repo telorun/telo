@@ -65,17 +65,15 @@ export function PickCanvas({
     hasSteps: !!getStepSchema(schema),
     hasEntries: !!entryListOf(schema),
     isModuleRoot: isModuleRootKind(resource.kind),
-    // A peek has no analysis and so no containment relation; the views that
-    // draw an interior are not candidates here for exactly that reason.
-    hasInterior: false,
   };
   const view = resolveView(ctx, undefined);
   if (!view) return null;
 
   return (
     <view.Component
-      tree={null}
-      model={null}
+      moduleGraph={null}
+      moduleGraphFor={() => null}
+      isEditableModule={() => false}
       viewData={viewData}
       registry={null}
       refResolver={registry ?? null}
@@ -83,10 +81,6 @@ export function PickCanvas({
       schema={schema}
       resolvedResources={resolvedResources}
       typeKinds={typeKinds ?? []}
-      focusPath={[]}
-      onFocusPath={() => undefined}
-      onFocusResource={() => undefined}
-      canFocus={() => false}
       selectedResource={null}
       selection={null}
       state={undefined}

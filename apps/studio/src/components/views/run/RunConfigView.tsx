@@ -12,7 +12,7 @@ export interface RunConfigViewProps {
   onSetEnvVars: (env: Record<string, string>) => void;
 }
 
-/** The Run tab: everything that decides what a run gets — the environment, the
+/** The Variables tab: everything that decides what a run gets — the environment, the
  *  Application's declared variables/secrets and ports, and any extra env vars.
  *  Configuration only: the trigger and the status live in the run bar directly
  *  above this view, and the output in the dock below it. */

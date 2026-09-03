@@ -57,8 +57,6 @@ export function EntriesView({
   schema,
   viewData,
   selection,
-  canFocus,
-  onFocusResource,
   onSelect,
   onSelectResource,
   onUpdateResource,
@@ -180,17 +178,19 @@ export function EntriesView({
                     target={target}
                     editable={editable}
                     open={selection?.pointer === row.pointer}
-                    focusable={!!row.target && canFocus(row.target)}
+                    focusable={!!row.target}
                     onOpen={() =>
                       onSelect({ resource: target, pointer: row.pointer, schema: row.schema })
                     }
+                    // Shows the dispatched resource in this panel. It used to
+                    // re-root the main canvas onto it as well, which replaced
+                    // the graph the reader was looking at.
                     onOpenTarget={() => {
                       if (!row.target) return;
                       const declared = viewData.manifest.resources.find(
                         (r) => r.name === row.target,
                       );
                       if (declared) onSelectResource(declared.kind, declared.name);
-                      if (canFocus(row.target)) onFocusResource(row.target);
                     }}
                     onRemove={
                       onRemoveField ? () => onRemoveField(target, row.pointer) : undefined

@@ -16,7 +16,7 @@ import { TerminalView } from "./TerminalView";
 interface RunOutputProps {
   /** The Application whose dock this body fills. */
   appPath: string;
-  /** Open the app's Run tab — where every blocker's fix lives. */
+  /** Open the app's Variables tab — where every blocker's fix lives. */
   onOpenConfig: () => void;
 }
 

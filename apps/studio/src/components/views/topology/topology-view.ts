@@ -1,43 +1,39 @@
-import type { AnalysisRegistry } from "@telorun/analyzer";
+import type { AnalysisRegistry, ModuleGraph } from "@telorun/analyzer";
 import type { ComponentType } from "react";
 import type { CanvasViewport, ModuleViewData, ParsedResource, Selection } from "../../../model";
 import type { RefResolver } from "../../resource-schema-form/ref-candidates";
 import type { ResolvedResourceOption, TypeKindOption } from "../../resource-schema-form/types";
-import type { AppCanvasModel, GraphNode, RefWrite } from "./application-canvas-model";
-import type { ContainmentTree, NodeId } from "./containment";
+import type { GraphNode, RefWrite } from "./application-canvas-model";
 
 /**
- * The contract every topology view is handed. There are meant to be many views,
- * so the shape of this type is the thing that decides whether adding one is a
- * local change or an edit to shared code.
+ * The contract a canvas is handed — the module graph on the topology tab, and
+ * the kind-declared body editors (Routes, Steps, Entries, Fields) the detail
+ * panel renders for whatever is selected.
  *
- * The rule: **these props carry only what is meaningful to EVERY view. Anything
- * one view needs is that view's own state.** That is why the shared navigation
- * surface is `focusPath` and nothing more — a path is the one thing any view can
- * interpret (a drill view renders that node's interior, a nested view expands
- * that chain, an outline scrolls to it, a radial view centres it). A richer
- * shared state — an expansion set, say — would be one view's model imposed on
- * the rest, which is the mode flag this design exists to avoid; a view derives
- * its own from `focusPath` and keeps it in `state`.
+ * **There is no navigation in it.** A canvas used to be resolved per FOCUS, so
+ * selecting a route re-rooted the whole surface onto that route's own editor and
+ * the graph vanished. Selecting a thing is a request to SEE it, which the panel
+ * answers beside the canvas — so a focus path, a containment tree and a
+ * "can I focus this" predicate are all gone, and with them the only way the
+ * canvas could be replaced by something the reader did not ask for.
  *
- * `state` / `onStateChange` are the escape hatch that keeps the rule payable:
- * an opaque bag the host persists per view id and never reads. Adding a view
- * touches no type here.
+ * `state` / `onStateChange` are an opaque bag the host persists per view id and
+ * never reads.
  */
 export interface TopologyViewProps {
-  /** Containment relation over the module. Null until the first analysis pass
-   *  completes, or when the focused resource is not the module root. */
-  tree: ContainmentTree | null;
-  /** Module-wide canvas model the tree indexes into. Null with `tree`. */
-  model: AppCanvasModel | null;
+  /** The module graph the canvas draws — see `ViewProps.moduleGraph`. */
+  moduleGraph: ModuleGraph | null;
+  /** An imported module's own graph, by module name — see `ViewProps`. */
+  moduleGraphFor: (moduleName: string) => ModuleGraph | null;
+  /** Whether that module's files can be edited here — see `ViewProps`. */
+  isEditableModule: (moduleName: string) => boolean;
 
   viewData: ModuleViewData;
   registry: AnalysisRegistry | null;
   /** Ref-candidate resolver — the narrow slice the schema form needs. */
   refResolver: RefResolver | null;
 
-  /** The resource whose canvas this is: the module root for the module-wide
-   *  views, otherwise whatever the host navigated to. */
+  /** The resource whose canvas this is. */
   resource: ParsedResource;
   /** `resource`'s kind schema. */
   schema: Record<string, unknown>;
@@ -46,38 +42,17 @@ export interface TopologyViewProps {
   /** Imported `Telo.Type` kinds offered for inline type fields. */
   typeKinds: TypeKindOption[];
 
-  /** Shared navigation: node names below the tree root. Empty is the root. */
-  focusPath: NodeId[];
-  onFocusPath: (path: NodeId[]) => void;
-  /**
-   * Navigate to a resource NAMED rather than routed to — what a list row has.
-   * The host resolves the route (see `findPathTo`), because a view that lists
-   * resources knows the name and not the way there.
-   */
-  onFocusResource: (name: string) => void;
-  /**
-   * Whether navigating into `name` would show anything the detail panel does
-   * not already show — i.e. whether the focus offers a view beyond the bare
-   * field form. A row with no interior and no kind-declared canvas is a leaf,
-   * and a click that replaced the canvas with the same form the panel is
-   * already rendering would be a navigation that lost the reader their place
-   * for nothing.
-   */
-  canFocus: (name: string) => boolean;
-
-  selectedResource: { kind: string; name: string } | null;
-  selection: Selection | null;
-
   /** Opaque per-view state, persisted by the host under this view's id. */
   state: unknown;
   onStateChange: (next: unknown) => void;
 
-  /** Pan/zoom, keyed by the view — different views lay a module out
-   *  differently, so restoring one view's viewport into another drops the user
-   *  into empty space. A view passes whatever further key it needs (its focus
-   *  path, its expansion signature). */
+  /** Pan/zoom, keyed by whatever further key the view needs (its expansion
+   *  signature, say). */
   viewportFor: (key: string) => CanvasViewport | null;
   onViewportChange: (key: string, viewport: CanvasViewport) => void;
+
+  selectedResource: { kind: string; name: string } | null;
+  selection: Selection | null;
 
   onSelectResource: (kind: string, name: string) => void;
   onSelect: (selection: Selection) => void;
@@ -112,6 +87,15 @@ export interface TopologyViewProps {
   ) => void;
   /** Removes one item of a sequence field. Optional with `onMoveField`. */
   onRemoveField?: (target: { kind: string; name: string }, pointer: string) => void;
+  /** Moves the resource declared INLINE at `pointer` into its own document under
+   *  `name`, leaving a reference behind. Its own operation, not a field write —
+   *  it adds a document and rewrites a slot in ONE mutation, and a half-applied
+   *  one is either a resource declared twice or a slot pointing at nothing. */
+  onExtractInline?: (
+    host: { kind: string; name: string },
+    pointer: string,
+    name: string,
+  ) => void;
   onCreateResource?: () => void;
   onBackgroundClick: () => void;
   /** Suppresses a view's own header where the host already renders one (the
@@ -172,10 +156,6 @@ export interface TopologyViewContext {
   hasEntries: boolean;
   /** True at the tree root — the synthesized module root. */
   isModuleRoot: boolean;
-  /** The focused node has children in the containment relation. A view that
-   *  draws an interior has nothing to draw without one, so this is what keeps a
-   *  leaf from offering a canvas of one lonely node. */
-  hasInterior: boolean;
 }
 
 /**
@@ -229,16 +209,17 @@ export interface TopologyViewDescriptor {
  * of a workspace that may have changed underneath it.
  */
 export interface TopologyHostState {
-  focusPath: NodeId[];
-  onFocusPath: (path: NodeId[]) => void;
+  /** Retained so the host can clear a pending request; the canvas no longer
+   *  navigates, so nothing else reads it. */
+  focusPath: string[];
+  onFocusPath: (path: string[]) => void;
   /**
-   * A resource another tab asked to navigate to, still un-routed.
+   * A resource another tab asked to show, still unhandled.
    *
-   * Only the topology host has the containment tree, so a caller outside it can
-   * name a resource but cannot say how to get there; the host resolves it to a
-   * focus path on the next pass and `onFocusPath` clears it. A request that
-   * resolves to nothing is dropped rather than left pending — the resource may
-   * simply not be in this module's graph.
+   * It is a request to LOOK at that resource, which the host turns into a
+   * selection — the graph draws every resource, so there is nowhere to navigate
+   * to. Cleared on the next pass, or it re-fires and drags the reader back here
+   * after they have moved on.
    */
   focusRequest: string | null;
   /** Remembered view per candidate-set key — see `viewChoiceKey`. */

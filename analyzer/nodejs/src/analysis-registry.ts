@@ -1,12 +1,14 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import type { BuildModuleGraphOptions, ModuleGraphDeps } from "./module-graph.js";
 import { ManifestAnalysis } from "./manifest-analysis.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.js";
 import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
 import type { ContractDirection, DefResolver } from "./extends-resolution.js";
 import { resolveContract } from "./invocation-contract.js";
+import { createResolveCtx, resolveThrowsUnion } from "./resolve-throws-union.js";
 import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import type { AnalysisContext } from "./types.js";
@@ -277,6 +279,41 @@ export class AnalysisRegistry {
       aliases: this.aliases,
       aliasesByModule: this.aliasesByModule,
     });
+  }
+
+  /**
+   * What the projection needs that only this registry knows: how a kind
+   * resolves, what its reference slots are, which capabilities they target, and
+   * what a resource can raise.
+   *
+   * The GRAPH itself is built by `ManifestAnalysis.moduleGraph`, which is the
+   * pairing of a registry with a manifest set — a fifth
+   * `registry.x(manifests, …)` factory is the accretion naming that class
+   * stopped. This is the half the registry owns.
+   */
+  moduleGraphDeps(
+    manifests: ResourceManifest[],
+    options: BuildModuleGraphOptions = {},
+  ): ModuleGraphDeps {
+    // The error contract is resolved through the SAME resolver `telo check`
+    // uses, memoized across the whole graph — so what a box says it can raise
+    // is what a route's `catches:` is validated against.
+    const throwsCtx = createResolveCtx(
+      manifests,
+      this.defs,
+      this.aliases,
+      this.aliasesByModule,
+      new Set(options.entryModule ? [options.entryModule] : []),
+    );
+    return {
+      refFields: (resource) => this.refFieldsForResource(resource),
+      definition: (kind, module) => this.resolveDefinitionIn(kind, module),
+      aliasesForModule: (module) => this.aliases.aliasesFor(module),
+      throwsOf: (resource) => {
+        const union = resolveThrowsUnion(resource, throwsCtx);
+        return { codes: [...union.codes.keys()], unbounded: union.unbounded };
+      },
+    };
   }
 
   /**
