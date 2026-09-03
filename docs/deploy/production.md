@@ -182,16 +182,30 @@ spec:
 Notes specific to Telo:
 
 - **The image should be built with a warmed cache.** `telo install` in the build
-  stage puts every controller and imported manifest under `<manifest-dir>/.telo/`,
-  so boot does no network I/O. See [Docker image](/deploy/docker).
+  stage puts every controller and imported manifest under the `.telo/` cache
+  root, so boot does no network I/O. In a monorepo that root is beside
+  `telo-workspace.yaml`, not beside the manifest — see
+  [where the cache lands](/deploy/docker#where-the-cache-lands).
 - **The `.telo/` tree is read-only at run time** and identical in every replica,
   so it needs no volume and creates no shared state. Replicas are independent
   processes; nothing in the kernel coordinates between them. Coordination you
   want is declared — see the `lease`, `idempotency`, and `rate-limit` modules in
-  the [standard library](/reference/standard-library).
+  the [standard library](/reference/standard-library), and
+  [durable execution](/learn/durable-execution) for work that must survive a
+  replica dying.
 - **Pass `--no-cache-write`** when the container filesystem is read-only. The
   run still reads the baked cache; it just never persists derived entries.
 - One `telo` process is one Node.js process. Scale with replicas.
+- **Boot may touch your database.** A declared schema (`Sql.Schema` on a
+  backend) reconciles tables at boot, a durable journal creates its own tables,
+  and both run in every replica that starts. Each is written to tolerate
+  concurrent boots. The PostgreSQL journal can be told not to create its tables
+  (`createTable: false`) where your migrations own them or the runtime user
+  holds no DDL grant; a declared schema always reconciles, so its connection
+  needs the DDL grant — see each module's own docs on the hub.
+- **Pin the kernel image AND the module pins together.** A module published
+  against a newer Telo declares a floor the pinned image may not meet; see
+  [Upgrades & version skew](/deploy/upgrades).
 
 ## Observability
 
@@ -219,7 +233,7 @@ the host environment directly for exactly the following:
 
 | Variable | Read by | Effect |
 | --- | --- | --- |
-| `TELO_CACHE_DIR` | run, install, check | Relocates the `.telo` cache root (default: `<manifest-dir>/.telo`). Used for the manifest cache, compiled validators, the analysis stamp, and the npm install root. |
+| `TELO_CACHE_DIR` | run, install, check | Relocates the `.telo` cache root. Without it the root is `.telo/` beside `telo-workspace.yaml` when one sits above the manifest, otherwise `.telo/` beside the manifest — see [where the cache lands](/deploy/docker#where-the-cache-lands). Used for the manifest cache, compiled validators, the analysis stamp, and the npm install root. |
 | `TELO_PKG_MANAGER` | install | Package manager invoked for the controllers still delivered over npm. Defaults to `npm`. |
 | `TELO_HUB_URL` | search | Hub used by `telo search`. Overridden by `--hub-url`. |
 | `TELO_EGRESS` | run, install, check | Set to `public-only` to refuse fetches from private, loopback or link-local hosts. See [Security & supply chain](/deploy/security). |
@@ -262,6 +276,8 @@ the unit, so the first boot does not depend on the network.
 ## See also
 
 - [Docker image](/deploy/docker) — packaging and cache warming.
+- [Upgrades & version skew](/deploy/upgrades) — moving pins and images without
+  stranding one behind the other.
 - [Security & supply chain](/deploy/security) — pinning, verification, and what
   a module can reach.
 - [Diagnostics reference](/reference/diagnostics) — every error code, and what

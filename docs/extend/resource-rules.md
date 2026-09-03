@@ -1,3 +1,9 @@
+---
+sidebar_label: Resource Rules
+slug: /extend/resource-rules
+description: "Let a kind declare, as a CEL condition, how the fields of one resource must relate to each other — an index naming a real column, a foreign key whose sides agree — so telo check reports it before boot."
+---
+
 # Resource rules
 
 A kind's schema says a great deal about one field — its type, its shape, which

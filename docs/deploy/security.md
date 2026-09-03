@@ -48,9 +48,12 @@ cache miss, never retried against another source. The fragment is authoritative
 across every transport, so the same pin protects an OCI ref and a plain HTTPS
 URL alike.
 
-`telo upgrade` maintains these pins for you: it rewrites the version and drops
-the now-stale hash, so a pin never silently describes a different version than
-the ref beside it.
+`telo upgrade` maintains these pins for you: an upgraded import is rewritten
+with the new version **and** the new version's hash, and an import already at
+the latest version that carries no hash is pinned in place. Fetching the hash
+is best-effort — when it fails the version is still rewritten and the import is
+reported as `left unpinned`, so a pin never silently describes a different
+version than the ref beside it.
 
 **2. The layer index.** A published module is an artifact of several layers —
 the manifest, one controller layer per platform, assets, and everything else.
@@ -79,9 +82,11 @@ published. A module version cannot quietly acquire new contents.
 
 ## Reproducible, offline deployment
 
-`telo install` resolves the whole import graph and every controller into
-`<manifest-dir>/.telo/`. Run it in your build stage, ship the directory with the
-manifest, and the production process performs **zero network I/O at boot** — so
+`telo install` resolves the whole import graph and every controller into the
+`.telo/` cache root — beside the manifest, or beside `telo-workspace.yaml` in a
+monorepo (see [where the cache lands](/deploy/docker#where-the-cache-lands)).
+Run it in your build stage, ship that directory with the manifest, and the
+production process performs **zero network I/O at boot** — so
 a compromised or unavailable registry cannot affect a running deployment, and
 what you audited in CI is byte-for-byte what starts in production.
 

@@ -255,7 +255,6 @@ type RunArgv = {
   inspect?: string;
   /** `--no-open`: with `--inspect`, don't auto-open the UI in a browser. */
   open: boolean;
-  snapshotOnExit: boolean;
   watch: boolean;
   /** `--no-cache-write`: read the baked cache but never persist derived entries. */
   cacheWrite: boolean;
@@ -800,13 +799,14 @@ export function runCommand(yargs: Argv): Argv {
       // finding the manifest path and taking everything after it, excluding
       // known telo flags.
       const knownBooleanFlags = new Set([
-        "--verbose", "--debug", "--snapshot-on-exit", "--watch", "-w",
+        "--verbose", "--debug", "--watch", "-w",
         "--cache-write", "--no-cache-write", "--open", "--no-open",
         "--help", "--version",
       ]);
-      // `--inspect` is valued ([host:]port). The valued-flag branch below skips
-      // the `=` form and the space form alike, so neither leaks into kernel argv.
-      const knownValuedFlags = new Set(["--inspect"]);
+      // `--inspect` ([host:]port) and the global `-o` / `--output` are valued.
+      // The valued-flag branch below skips the `=` form and the space form
+      // alike, so neither leaks into kernel argv.
+      const knownValuedFlags = new Set(["--inspect", "--output", "-o"]);
       const rawArgs = process.argv;
       const pathIdx = rawArgs.indexOf(argv.path as string);
       const sliced = pathIdx >= 0 ? rawArgs.slice(pathIdx + 1) : [];

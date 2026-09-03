@@ -1,3 +1,7 @@
+---
+description: "v1.1 spec: the kernel's half of durable execution — the replay contract every step engine must satisfy, the determinism rules, the key scheme, suspension as a signal, and what a backend must guarantee about its journal"
+---
+
 <!--
 Normative. Two runtimes that guessed differently here would not merely accept
 different manifests — they would corrupt durable state, because a journal

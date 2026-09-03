@@ -1,3 +1,9 @@
+---
+sidebar_label: Sensitive Contract Fields
+slug: /extend/sensitive-contract-fields
+description: "Mark an inputType / outputType field with x-telo-sensitive so a token or credential is carried as [redacted] on the debug wire instead of verbatim — and why the annotation is reported when written anywhere it would not be read."
+---
+
 # Marking a contract field sensitive
 
 A resource's invoke **inputs and outputs ride the debug wire on every call** under

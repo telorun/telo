@@ -1,3 +1,9 @@
+---
+sidebar_label: Sharing Across Libraries
+slug: /extend/library-resource-inputs
+description: "Hand one instance down to several libraries with a resources: block, or let several libraries reach one shared library with lifecycle: shared — so two libraries over one database connection see one connection, not two."
+---
+
 # Sharing resources across libraries
 
 A library declares three kinds of input. Two are scalar and long-standing —

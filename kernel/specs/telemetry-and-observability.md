@@ -4,6 +4,15 @@ description: "Ambient context injection for OpenTelemetry tracing: engine-automa
 
 # Telo Engine Specification: Telemetry & Observability
 
+> **Status: exploratory draft — not implemented, not normative.** The ambient
+> telemetry provider described here does not exist. What ships today is
+> **structured logging** — normative in [logging.md](./logging.md), carrying
+> trace and span identifiers on every record emitted inside a dispatch, with an
+> OTLP sink in the `otlp` module — and the `--debug` / `--inspect` event stream.
+> There is no metrics endpoint and no span exporter; see
+> [Running in production → Observability](../../docs/deploy/production.md#observability)
+> for the honest current state.
+
 ## 1. Core Principles
 
 The Telo engine treats Observability (Logging, Tracing, and Metrics) as a cross-cutting concern, fundamentally distinct from business logic (Signals). To maintain a clean dependency graph (DAG) and zero-boilerplate YAML, Telo employs **Ambient Context Injection** and adheres strictly to **OpenTelemetry (OTel)** standards.

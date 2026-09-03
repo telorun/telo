@@ -1,3 +1,9 @@
+---
+sidebar_label: Releasing Modules
+slug: /extend/releasing-modules
+description: "Version and publish the modules of a workspace with telo release: the workspace marker, change fragments, the ledger, and why a dependent's version moves when a sibling's bytes do."
+---
+
 # Releasing modules
 
 `telo release` versions the modules of a **workspace**. It exists because a Telo

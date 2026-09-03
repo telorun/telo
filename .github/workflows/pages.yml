@@ -47,6 +47,9 @@ jobs:
         run: pnpm --filter "@telorun/pages..." build
         env:
           BASE_URL: ${{ steps.pages.outputs.base_path }}
+          # Set only here: this is the build that becomes telo.run, so no local
+          # or preview build can report into the production Plausible site.
+          PLAUSIBLE_DOMAIN: telo.run
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

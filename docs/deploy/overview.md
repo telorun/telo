@@ -23,11 +23,12 @@ The default recommendation is **Docker**: hermetic, reproducible, portable acros
 Every deployment model shares the same preparation steps:
 
 1. **Author the manifest.** A `Telo.Application` with `targets:` listing what to run, declaring `variables:` / `secrets:` against host env vars — see [Application Environment Variables](/reference/kernel/application-env-variables).
-2. **Warm the cache** with `telo install ./manifest.yaml`. Pre-downloads every controller and every imported module into `.telo/` next to the manifest, so the production host never touches the network at boot. Run this in your build pipeline, not at deploy time.
-3. **Ship the manifest and its `.telo/` tree together.** They are co-located by design — `COPY` the manifest directory and both caches travel with it; no environment variable points at the cache.
+2. **Warm the cache** with `telo install ./manifest.yaml`. Pre-downloads every controller and every imported module into the `.telo/` cache root, so the production host never touches the network at boot. Run this in your build pipeline, not at deploy time.
+3. **Ship the manifest and its `.telo/` tree together.** The root is `.telo/` beside the manifest — or, when a `telo-workspace.yaml` sits above it, beside that marker instead, so a monorepo has one cache. Copy whichever directory holds it, or pin the location with `TELO_CACHE_DIR`. See [where the cache lands](/deploy/docker#where-the-cache-lands).
 4. **Configure runtime env** so the manifest's `variables:` and `secrets:` resolve at `kernel.load()`.
 
-The pages that follow walk through each model. Two of them apply whichever you pick:
+The pages that follow walk through each model. Three of them apply whichever you pick:
 
 - [**Running in production**](/deploy/production) — how the process starts and stops, what it exits with, how to probe it, and every environment variable the runtime reads.
+- [**Upgrades & version skew**](/deploy/upgrades) — moving module pins and the kernel image without stranding one behind the other.
 - [**Security & supply chain**](/deploy/security) — what a module can reach on your host, and how import pins are verified end to end.

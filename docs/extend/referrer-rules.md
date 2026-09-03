@@ -1,3 +1,9 @@
+---
+sidebar_label: Referrer Rules
+slug: /extend/referrer-rules
+description: "Let a kind state, as data, what must be true of whoever references one of its resources — checked by telo check on the referrer's own line instead of failing at boot."
+---
+
 # Referrer rules
 
 [Resource rules](./resource-rules.md) relate the fields of one resource.
