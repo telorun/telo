@@ -1,3 +1,9 @@
+---
+sidebar_label: Step Bodies
+slug: /extend/step-bodies
+description: "Give a kind of your own a body of steps — a transaction, a batch, a durable run — by pointing an array at the shared step grammar, so it gets invoke / if / while / switch / try and steps.<name>.result for free."
+---
+
 # Giving a kind a step body
 
 A kind that wraps a region of work — a transaction, a durable run, a batch — can

@@ -260,6 +260,8 @@ probably wants to be a resource.
 ## See also
 
 - [`!ref` and `!cel`](/learn/refs-and-cel) — what is in scope inside a step.
+- [Durable execution](/learn/durable-execution) — the same step grammar, recorded
+  so a crash and a restart continue where the work stopped.
 - [Testing your manifests](/build/testing) — the same grammar, driving assertions.
 - [Diagnostics](/reference/diagnostics) — `UNCOVERED_THROW_CODE`,
   `CEL_NULLABLE_ACCESS`, and the rest.

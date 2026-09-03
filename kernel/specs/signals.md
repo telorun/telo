@@ -4,6 +4,14 @@ description: "Zero-cost point-to-point signals for business events with static r
 
 # Telo Signals
 
+> **Status: exploratory draft — not implemented, not normative.** No runtime
+> implements signals, no module declares one, and `exports:` carries `kinds`,
+> `resources` and `code` only. Nothing in this document describes shipped
+> behaviour; it is kept as design material. For the mechanisms that DO carry
+> control between resources today, see the `use:` vocabulary of
+> [`x-telo-ref`](../../docs/extend/authoring-a-module.md) and
+> [execution zones](./execution-zones.md).
+
 ## 1. Core Principles
 
 The Telo engine handles asynchronous communication for business logic and resource orchestration exclusively through **Signals**.

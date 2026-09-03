@@ -39,6 +39,34 @@ function collectDocIds(items: unknown): string[] {
 
 const docInclude = collectDocIds(sidebars.docs).map((id) => `${id}.md`);
 
+// Analytics ships only on the build that deploys telo.run, which is the one
+// place PLAUSIBLE_DOMAIN is set. Local and preview builds emit no tags at all,
+// so they cannot report into the production site. The variable both gates the
+// injection and supplies the site name, so there is no second place to keep in
+// sync. The stub queues calls made before the deferred loader arrives.
+const plausibleDomain = process.env.PLAUSIBLE_DOMAIN;
+const analyticsTags: Config["headTags"] = plausibleDomain
+  ? [
+      {
+        tagName: "script",
+        // Every attribute value must be a non-empty string — Docusaurus
+        // validates `headTags` more strictly than its own types admit — so a
+        // boolean attribute takes its own name as its value.
+        attributes: {
+          defer: "defer",
+          "data-domain": plausibleDomain,
+          src: "https://analytics.codenet.pl/js/script.outbound-links.js",
+        },
+      },
+      {
+        tagName: "script",
+        attributes: {},
+        innerHTML:
+          "window.plausible = window.plausible || function() { (window.plausible.q = window.plausible.q || []).push(arguments) }",
+      },
+    ]
+  : [];
+
 const config: Config = {
   title: "Telo",
   tagline: "Define how your app works. Telo builds and runs it.",
@@ -48,6 +76,8 @@ const config: Config = {
   favicon: "favicon.png",
 
   onBrokenLinks: "warn",
+
+  headTags: analyticsTags,
 
   // Each manifest is version-substituted at build time, exactly as the docs are;
   // the terminal panes are real captured output and pass through untouched.

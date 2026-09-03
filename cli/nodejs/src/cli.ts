@@ -44,11 +44,6 @@ cli
     default: false,
     describe: "Enable debug event streaming",
   })
-  .option("snapshot-on-exit", {
-    type: "boolean",
-    default: false,
-    describe: "Capture a snapshot on exit",
-  })
   .option("watch", {
     alias: "w",
     type: "boolean",

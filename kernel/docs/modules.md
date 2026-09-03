@@ -14,7 +14,7 @@ A Telo Module is a self-contained, encapsulated package of application logic, se
 
 Every module file begins with exactly one `Telo.Application` or `Telo.Library` document — the manifest and public interface for the package. Applications are runnable entry points; Libraries are units imported by others. Both use JSON Schema validation for their inputs.
 
-- **`metadata.name`**: The module's name — the canonical kind prefix (e.g. `HttpServer.*`) that the registry keys on and diagnostics print. PascalCase; see the [style guide](/guides/style-guide).
+- **`metadata.name`**: The module's name — the canonical kind prefix (e.g. `HttpServer.*`) that the registry keys on and diagnostics print. PascalCase; see the [style guide](/learn/style-guide).
 - **`variables`**: Standard configuration properties required by the module. JSON Schema object properties. Per the style guide, use **camelCase** (e.g., `dbConnectionString`).
 - **`secrets`**: Sensitive inputs. Also JSON Schema object properties, handled separately to ensure secure injection and prevent accidental exposure in logs.
 - **Optionality (No `required` block)**: Requirement validation is handled via defaults. Mandatory inputs are defined without a `default`. Optional inputs must be explicitly defined with `default: null`.

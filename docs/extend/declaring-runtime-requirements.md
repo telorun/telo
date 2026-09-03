@@ -1,3 +1,9 @@
+---
+sidebar_label: Runtime Requirements
+slug: /extend/declaring-runtime-requirements
+description: "Declare the Telo versions a module is verified against with a requires: block, so an older runtime reports one clear MODULE_REQUIRES_NEWER_RUNTIME instead of blaming the module's syntax, and telo upgrade never selects a version your runtime cannot read."
+---
+
 # Declaring runtime requirements
 
 A module declares which versions of Telo it is verified against, in a top-level

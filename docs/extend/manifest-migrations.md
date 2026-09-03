@@ -1,3 +1,9 @@
+---
+sidebar_label: Manifest Migrations
+slug: /extend/manifest-migrations
+description: "How a renamed keyword or annotation keeps loading: migrations rewrite a legacy spelling to the current one at load, report it in your own files, and telo migrate writes the repair back to disk."
+---
+
 # Manifest migrations
 
 Telo occasionally renames something a manifest can say — a schema annotation, a keyword, a value grammar. Published artifacts carry the old spelling and cannot be edited, so a rename can never simply *replace* the old form.

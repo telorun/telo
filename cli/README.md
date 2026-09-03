@@ -23,6 +23,26 @@ telo https://raw.githubusercontent.com/telorun/telo/main/examples/hello-api/telo
 telo --watch ./manifest.yaml
 ```
 
+## Global options
+
+These apply to every command.
+
+- `-o, --output text|json` — Encoding of the CLI's **own** output. Default `text`. Under `json`, **stdout carries one machine-readable document and nothing else**, while prose, progress and warnings keep going to **stderr** in both formats — so a script parses stdout and a human still sees why something failed. `telo run` is exempt: the application writes to the same two descriptors and neither is the CLI's to claim, so its machine surface is `--debug` instead. Under `json`, stdout is never coloured; stderr keeps its colour. An unrecognised format is an error, not a fallback to text.
+- `--verbose` — Verbose CLI logging on stderr.
+- `--help, -h` / `--version` — The usual.
+
+**Machine output shapes.** Commands that report a *result* (`check`, `install`, `upgrade`, `migrate`, `publish`, `release`) emit an envelope `{ ok, … }` under `-o json` and nothing on stdout under `text`. Commands that produce a *document* (`cel`, `search`, `module versions|manifest|digest|resources|kinds`) write that document under either format — their older per-command `--json` flags predate `-o` and keep working — and never mix an error envelope into it: a failure there is prose on stderr plus a non-zero exit.
+
+**The cache root.** Every command that reads or writes `.telo/` resolves its location the same way, in this order:
+
+1. `TELO_CACHE_DIR`, if set.
+2. `.telo/` beside the nearest `telo-workspace.yaml` above the manifest — so one repository has one cache, whatever the manifest's depth.
+3. `.telo/` beside the manifest, when no marker exists above it.
+
+A monorepo therefore keeps its cache at the workspace root, which matters when you `COPY` a single app into an image — see [Docker image](/deploy/docker#where-the-cache-lands).
+
+**Environment variables the CLI reads** are listed in [Running in production](/deploy/production#runtime-configuration).
+
 ## Commands
 
 ### `telo publish <paths..>`
@@ -157,7 +177,7 @@ telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
 
 - `TELO_PKG_MANAGER` — Override the package manager invoked for controller installs. Defaults to `npm`. Set to `pnpm` (or any compatible CLI) when the runtime environment ships a different manager.
 
-The cache lives next to the manifest at `<entry-manifest-dir>/.telo/`:
+The cache lives under the **cache root** — `.telo/` beside the manifest, or beside `telo-workspace.yaml` when one sits above it (see [Global options](#global-options)):
 
 - `.telo/npm/` — controller node_modules tree (one realm per manifest), for the modules that still deliver their controller from npm.
 - `.telo/controller-src/` — bundles built from a **local** module's controller sources. Only ever written for a module that is a working copy on disk: a published module ships a prebuilt bundle in its artifact and never reaches this path. Each entry is named by a digest of every input the build read, so an edit anywhere in the source graph yields a new entry rather than invalidating one.
@@ -168,7 +188,7 @@ The cache lives next to the manifest at `<entry-manifest-dir>/.telo/`:
 Every manifest entry is keyed `<transport>/<host>/<path…>/<version>/<file>`, the same grammar the
 discovery hub uses for its cached manifests.
 
-Per-manifest scope means the whole `.telo/` tree is naturally portable: `COPY` the manifest dir into your image and both caches travel with it; no environment variable is required.
+The whole `.telo/` tree is portable: `COPY` the directory that holds it into your image and both caches travel with it. Without a workspace marker that is the manifest's own directory; with one it is the marker's — copy that, or pin the location with `TELO_CACHE_DIR` in both build and production stages.
 
 **Example output:**
 
@@ -209,7 +229,7 @@ Available image variants:
 
 Pin to an exact CLI version for reproducible builds; `latest`, `<major>`, and `<major>.<minor>` are rolling tags.
 
-The build stage materializes `<manifest-dir>/.telo/npm/` and `<manifest-dir>/.telo/manifests/`; the production stage is a single `COPY` and does no network I/O at boot.
+The build stage materializes `.telo/npm/` and `.telo/manifests/` under the cache root; the production stage is a single `COPY` and does no network I/O at boot.
 
 ---
 
@@ -310,12 +330,13 @@ Load and run a Telo manifest. `run` is the default command, so `telo ./manifest.
 **Options:**
 
 - `--watch, -w` - Watch manifest file(s) for changes and restart automatically
-- `--verbose, -v` - Enable verbose logging
+- `--debug` - Write every kernel event, in order, to `.telo.debug.jsonl` next to the manifest. No network, no UI — the file is the machine-readable record of a run. `telo run` is exempt from `-o json` (the app owns stdout/stderr), so this is the machine surface for a run.
+- `--inspect[=[host:]port]` - Start the live inspection endpoint (default `127.0.0.1:9230`), serve the inspection UI and open it in a browser. Holds the app open even when it would otherwise exit. The endpoint streams event payloads — inputs and outputs of every call — so binding a non-loopback host is warned about; mark credentials with [`x-telo-sensitive`](/extend/sensitive-contract-fields) so they ride the wire as `[redacted]`.
+- `--no-open` - With `--inspect`, do not open the browser.
 - `--no-cache-write` - Validate in-memory and read the existing `.telo` cache, but never persist new derived entries (compiled validators, analysis stamp). For ephemeral, read-only runs (e.g. a prebuilt container whose deps are baked at `TELO_CACHE_DIR`); the cache is still used, only writes are suppressed.
-- `--help, -h` - Show help message
-- `--version` - Show version number
+- `--` - Everything after it is handed to the kernel as the application's own arguments, for controllers that read them.
 
-The cache root defaults to `<manifest-dir>/.telo`; set `TELO_CACHE_DIR` to relocate it (resolved once and used for the manifest cache, compiled validators, analysis stamp, and npm install root alike).
+See [Global options](#global-options) for `--verbose`, `-o` and the cache root.
 
 ---
 
