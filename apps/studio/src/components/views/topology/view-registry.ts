@@ -4,21 +4,20 @@ import { entryListOf } from "./entry-list-model";
 import type { TopologyViewContext, TopologyViewDescriptor } from "./topology-view";
 import { ResourceFormView, RouterView } from "./views/adapters";
 import { EntriesView } from "./views/EntriesView";
-import { LevelsView } from "./views/LevelsView";
 import { StepsView } from "./views/StepsView";
-import { SubflowCanvas } from "./views/SubflowCanvas";
 
 /**
- * Every topology view, in preference order — the first applicable one is what a
- * surface with no user choice renders.
+ * The body editors, in preference order — the first applicable one is what the
+ * detail panel renders for the selected resource.
+ *
+ * **These no longer replace the canvas**, and once did: a view was resolved per
+ * FOCUS, so selecting a route re-rooted the topology tab onto that route's own
+ * editor and the module graph vanished. The canvas is the module graph, and
+ * these are what the panel shows beside it — which is the surface they were
+ * always right for, being lists of a body rather than pictures of a module.
  *
  * A static array rather than runtime `register()` calls: these are all in-tree,
- * so a literal keeps the set tree-shakeable and exhaustively typed, and there is
- * no host to hand a registration API to. That changes the day a view can arrive
- * from outside the editor, and not before.
- *
- * Adding a view is this array plus one file. It is not an edit to
- * `TopologyViewProps`, which is the property the contract is shaped to protect.
+ * so a literal keeps the set tree-shakeable and exhaustively typed.
  */
 export const TOPOLOGY_VIEWS: readonly TopologyViewDescriptor[] = [
   // A kind that declares its own topology outranks the generic containment
@@ -57,20 +56,6 @@ export const TOPOLOGY_VIEWS: readonly TopologyViewDescriptor[] = [
     Component: EntriesView,
     supports: (ctx) => ctx.hasEntries,
     consumes: (schema) => named(entryListOf(schema)?.name),
-  },
-  {
-    id: "drill",
-    label: "Levels",
-    description: "One level at a time — the boot sequence, then what is inside each resource.",
-    Component: LevelsView,
-    supports: (ctx) => ctx.isModuleRoot || ctx.hasInterior,
-  },
-  {
-    id: "subflow",
-    label: "Nested",
-    description: "Containers drawn around their contents — the whole shape at once.",
-    Component: SubflowCanvas,
-    supports: (ctx) => ctx.isModuleRoot || ctx.hasInterior,
   },
   {
     id: "form",

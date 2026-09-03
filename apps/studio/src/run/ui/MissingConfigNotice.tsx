@@ -3,7 +3,7 @@ import type { MissingConfigEntry } from "../context";
 
 interface Props {
   entries: MissingConfigEntry[];
-  /** Opens the Run tab, where these values are filled in. */
+  /** Opens the Variables tab, where these values are filled in. */
   onOpenConfig: () => void;
   onDismiss: () => void;
 }
@@ -36,7 +36,7 @@ export function MissingConfigNotice({ entries, onOpenConfig, onDismiss }: Props)
       </div>
       <div className="flex gap-2">
         <Button size="sm" onClick={onOpenConfig}>
-          Fix in Run tab
+          Fix in Variables tab
         </Button>
         <Button size="sm" variant="outline" onClick={onDismiss}>
           Dismiss

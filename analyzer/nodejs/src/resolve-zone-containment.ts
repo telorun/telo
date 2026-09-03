@@ -195,8 +195,16 @@ function collect(
   }
 }
 
+/** A region as the WALK finds it, before any attribute is asked for: the slot
+ *  that opens it and everything it reaches. Every attribute query is a filter
+ *  over these, so a consumer wanting regions regardless of what they declare —
+ *  an editor drawing the enclosure, where a zone declaring no attribute is
+ *  still a zone — reads them directly instead of enumerating the vocabulary and
+ *  silently missing whatever is not in it. */
+export type ZoneProvider = Omit<ZoneRegion, "attribute" | "reason">;
+
 /**
- * Every region in the graph opened by a slot declaring `attribute`.
+ * Every region in the graph, keyed by the slot that opens it.
  *
  * The provider itself is NOT in `contents` — a zone constrains what runs inside
  * its body, not the resource that establishes it. A transaction's own
@@ -204,12 +212,11 @@ function collect(
  * treated the provider as contained would report the provider against its own
  * constraint.
  */
-export function findZoneRegions(
+export function findZoneProviders(
   graph: CallGraph,
   resolveDef: DefinitionLookup,
-  attribute: string,
-): ZoneRegion[] {
-  const regions: ZoneRegion[] = [];
+): ZoneProvider[] {
+  const regions: ZoneProvider[] = [];
 
   for (const node of graph.nodes.values()) {
     if (node.type !== "resource") continue;
@@ -221,8 +228,7 @@ export function findZoneRegions(
     // properties rather than by knowing any kind's field names.
     for (const [slot, slotSchema] of providingSlots(rootSchema)) {
       const provides = readProvidesZone(slotSchema);
-      const reason = provides?.attributes[attribute as keyof typeof provides.attributes];
-      if (!provides || typeof reason !== "string") continue;
+      if (!provides) continue;
 
       const contents = new Map<string, ContainedNode>();
       const boundaries: RegionBoundary[] = [];
@@ -257,8 +263,6 @@ export function findZoneRegions(
       }
 
       regions.push({
-        attribute,
-        reason,
         provider: node,
         slot,
         attributes: provides.attributes as Readonly<Record<string, string>>,
@@ -269,6 +273,42 @@ export function findZoneRegions(
   }
 
   return regions;
+}
+
+/**
+ * Every region opened by a slot declaring `attribute`.
+ *
+ * A filter over {@link findZoneProviders}, so the walk is stated once: what an
+ * attribute query adds is which regions are in scope and the author's `reason`,
+ * which is the attribute's own value.
+ *
+ * **The provider list is memoized per graph**, because the filter made the walk
+ * unconditional: it used to skip the containment BFS for any provider not
+ * declaring the queried attribute, and six queries per analysis (four zone
+ * attributes plus two durable ones) became six full walks over every provider
+ * in the module. The cache is keyed on the CallGraph object, which is itself
+ * built once per analysis — so it lives exactly as long as the answer stays
+ * true, and a rebuilt graph gets a fresh one.
+ */
+const providersByGraph = new WeakMap<CallGraph, ZoneProvider[]>();
+
+export function findZoneRegions(
+  graph: CallGraph,
+  resolveDef: DefinitionLookup,
+  attribute: string,
+): ZoneRegion[] {
+  let providers = providersByGraph.get(graph);
+  if (!providers) {
+    providers = findZoneProviders(graph, resolveDef);
+    providersByGraph.set(graph, providers);
+  }
+  const out: ZoneRegion[] = [];
+  for (const region of providers) {
+    const reason = region.attributes[attribute];
+    if (typeof reason !== "string") continue;
+    out.push({ ...region, attribute, reason });
+  }
+  return out;
 }
 
 /** Field-map paths of every slot in a kind's schema carrying a provides-zone

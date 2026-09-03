@@ -97,8 +97,12 @@ export interface RefWrite {
   concretePath: string;
   target: string | null;
   /** When set, create a new resource of this kind, then link the slot to it
-   *  (instead of `target`). The host generates a unique name. */
+   *  (instead of `target`). */
   createKind?: string;
+  /** The name to give it. Absent, the host generates a unique one — right for
+   *  a one-click create; a picker that ASKED for a name must be able to honour
+   *  the answer, or the field it showed was decoration. */
+  createName?: string;
 }
 
 /** The full data model the Application overview canvas renders. Pure data —

@@ -308,7 +308,12 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
       const local = scopeLocal.get(`${from.scopeOwner}\0${from.scopeSite}`)?.get(name);
       if (local) return local;
     }
-    return graph.resourceByName(name);
+    // In the scope that WROTE the name: a bare reference means the reader's own
+    // module, and two libraries may each declare one.
+    return graph.resourceByName(
+      name,
+      (from.manifest.metadata as { module?: string } | undefined)?.module,
+    );
   };
 
   const acceptedFor = (zone: string): ReadonlySet<string> => {
@@ -809,7 +814,7 @@ export function runZoneAnalysis(args: ZoneAnalysisArgs): AnalysisDiagnostic[] {
   for (const lib of rootLibraries) {
     for (const [exportName, specs] of openExports) {
       if (!lib.exportedNames.has(exportName)) continue;
-      const node = graph.resourceByName(exportName);
+      const node = graph.resourceByName(exportName, lib.module);
       if (!node || (node.manifest.metadata as { module?: string } | undefined)?.module !== lib.module) {
         continue;
       }

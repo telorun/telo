@@ -112,7 +112,13 @@ export {
   RedactionPathError,
 } from "./redaction-path.js";
 export type { RedactionSegment } from "./redaction-path.js";
-export { buildCallGraph, projectToPairs, resourceId } from "./call-graph.js";
+export {
+  buildCallGraph,
+  nodeIdFor,
+  projectToPairs,
+  resolveScopedName,
+  resourceId,
+} from "./call-graph.js";
 export type {
   BuildCallGraphOptions,
   CallGraph,
@@ -121,6 +127,31 @@ export type {
   ResourceGraphNode,
   StepGraphNode,
 } from "./call-graph.js";
+export {
+  AMBIENT_CAPABILITIES,
+  buildModuleGraph,
+  contentKey,
+  edgeClassOf,
+  isAmbientCapability,
+  isAmbientHold,
+  isOrderedRow,
+  isUnwired,
+} from "./module-graph.js";
+export type {
+  BuildModuleGraphOptions,
+  EdgeClass,
+  GraphEdge,
+  GraphKind,
+  GraphNode,
+  GraphPort,
+  GraphRegion,
+  GraphRow,
+  ModuleGraph,
+  ModuleGraphDeps,
+  NodeOwnership,
+  PortSlot,
+  RowKind,
+} from "./module-graph.js";
 export {
   buildReferenceFieldMap,
   isRefEntry,
@@ -304,7 +335,12 @@ export { validateDynamicSelectors, validateRefSlotDeclarations } from "./validat
 export type { RefSlotIssue } from "./validate-ref-slots.js";
 export { validateValueTypeSlots } from "./validate-value-type-slots.js";
 export type { ValueTypeSlotIssue } from "./validate-value-type-slots.js";
-export { checkSchemaCompatibility, resolveRefIn, selectUnionBranch } from "./schema-compat.js";
+export {
+  checkSchemaCompatibility,
+  collectProperties,
+  resolveRefIn,
+  selectUnionBranch,
+} from "./schema-compat.js";
 export type { CompatibilityResult, ExternalSchemaResolver } from "./schema-compat.js";
 export {
   ajvErrorToPath,

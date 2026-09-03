@@ -602,7 +602,7 @@ export function Editor() {
     // through `setError` / Settings instead, and a blocker left standing would
     // have the dock name a cause that is not this press's.
     runContext.clearBlocker(filePath);
-    // A run lives in its own Application's pane — the dock and the Run tab are
+    // A run lives in its own Application's pane — the dock and the Variables tab are
     // that module's. Running one from the sidebar therefore brings it forward,
     // or the output would stream into a pane nobody is looking at.
     if (state.activeModulePath !== filePath) handleOpenModule(filePath);
@@ -1292,6 +1292,38 @@ export function Editor() {
 
   const availableKinds = viewData ? [...viewData.kinds.values()] : [];
 
+  // A module's file, by the `metadata.name` a reference crosses the boundary
+  // with. Built from the workspace rather than from the graph, because the
+  // graph names a module and only the workspace knows where it lives.
+  const fileByModuleName = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const [filePath, manifest] of state.workspace?.modules ?? []) {
+      const name = manifest.metadata?.name;
+      if (typeof name === "string" && !out.has(name)) out.set(name, filePath);
+    }
+    return out;
+  }, [state.workspace]);
+
+  /** An imported module's own graph — what lets the canvas open a library in
+   *  place. Null when the workspace never analyzed it. */
+  const moduleGraphByName = useCallback(
+    (moduleName: string) => {
+      const file = fileByModuleName.get(moduleName);
+      return (file ? state.diagnostics.moduleGraphByFile.get(file)?.() : undefined) ?? null;
+    },
+    [fileByModuleName, state.diagnostics],
+  );
+
+  /** Whether that module's files are editable here — false for one resolved
+   *  from a registry / OCI source, whose bytes are not the workspace's. */
+  const isEditableModuleName = useCallback(
+    (moduleName: string) => {
+      const file = fileByModuleName.get(moduleName);
+      return !!file && !!state.workspace && isWorkspaceModule(state.workspace, file);
+    },
+    [fileByModuleName, state.workspace],
+  );
+
   const activeTopology = state.activeModulePath
     ? (state.topologyByModule[state.activeModulePath] ?? EMPTY_MODULE_TOPOLOGY)
     : EMPTY_MODULE_TOPOLOGY;
@@ -1482,7 +1514,7 @@ export function Editor() {
     // slot to it by the generated name.
     const resolved: RefWrite[] = writes.map((w) => {
       if (!w.createKind) return w;
-      const name = uniqueResourceName(ws.modules.get(modulePath), w.createKind);
+      const name = w.createName ?? uniqueResourceName(ws.modules.get(modulePath), w.createKind);
       ws = createResourceViaAst(ws, modulePath, w.createKind, name, {});
       return { source: w.source, concretePath: w.concretePath, target: name };
     });
@@ -2035,6 +2067,12 @@ export function Editor() {
                         (state.activeModulePath
                           ? state.diagnostics.registryByFile.get(state.activeModulePath)
                           : undefined) ?? null,
+                      moduleGraph:
+                        (state.activeModulePath
+                          ? state.diagnostics.moduleGraphByFile.get(state.activeModulePath)?.()
+                          : undefined) ?? null,
+                      moduleGraphFor: moduleGraphByName,
+                      isEditableModule: isEditableModuleName,
                       selectedResource: state.selectedResource,
                       selection,
                       onSelectResource: handleSelectResource,

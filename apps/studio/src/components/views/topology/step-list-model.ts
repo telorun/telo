@@ -150,7 +150,11 @@ export interface StepListOptions {
   pointer: string;
   /** Every resource this module declares, for the unresolved check. */
   declared: ReadonlySet<string>;
-  signatureOf: (resourceName: string) => StepTargetSignature | undefined;
+  /** A step target's declared input / output shapes, when the host can resolve
+   *  them. Optional: the panel that renders this list has no module graph to
+   *  read them from, and a row without a signature is a row that says less
+   *  rather than one that says something wrong. */
+  signatureOf?: (resourceName: string) => StepTargetSignature | undefined;
 }
 
 /** Reads one step body into ordered rows, descending into every branch. */
@@ -182,7 +186,7 @@ function readEntry(
   const pointer = `${containerPointer}/${index}`;
 
   const target = variant?.invokeField ? refTargetName(data[variant.invokeField]) : undefined;
-  const signature = target ? signatureOf(target) : undefined;
+  const signature = target ? signatureOf?.(target) : undefined;
   const inputsField = stepInputsField(stepSchema, variant);
   const written = isRecord(data[inputsField]) ? (data[inputsField] as Record<string, unknown>) : null;
   const inputSchema = signature?.input?.schema;

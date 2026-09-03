@@ -241,6 +241,10 @@ export const InvokeStepSchema = {
     when: {
       title: "When",
       description: "CEL guard — the dispatch is skipped when it evaluates false.",
+      // The same role `if:` and `while:` carry: it is the expression that
+      // decides whether the statement runs, and a surface showing what a step
+      // is conditional on should not have to know which keyword spelled it.
+      "x-telo-topology-role": "predicate",
       type: "string",
     },
     retry: {

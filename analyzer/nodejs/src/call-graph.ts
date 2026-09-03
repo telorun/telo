@@ -56,7 +56,12 @@ import {
   type RefUseCases,
 } from "./ref-slot.js";
 import { isStepSlot } from "./step-slot.js";
-import { isRefEntry, resolveFieldEntries, type RefFieldEntry } from "./reference-field-map.js";
+import {
+  isInlineResource,
+  isRefEntry,
+  resolveFieldEntries,
+  type RefFieldEntry,
+} from "./reference-field-map.js";
 import { DEPENDENCY_GRAPH_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 
 export interface ResourceGraphNode {
@@ -92,6 +97,42 @@ export interface StepGraphNode {
   index: number;
   /** The step value as written. */
   step: Record<string, unknown>;
+  /**
+   * Which branch of the step grammar this step IS — the branch's own title
+   * (`invoke`, `if/then/else`, `while/do`, `switch/cases/default`,
+   * `try/catch/finally`, `throw`, `value`).
+   *
+   * Matched on the branch's REQUIRED keys, and IS those keys — sorted and
+   * joined (`if+then`, `invoke`, `do+while`). A machine identity, so a consumer
+   * may branch on it; it was the branch's `title`, which is prose an author may
+   * reword at any time, and a view was splitting it on `/` to recover a keyword.
+   * Absent for a step matching no branch — one just added, and still empty.
+   */
+  variant?: string;
+  /** The branch's `title` as its author wrote it, for a view to render verbatim.
+   *  Never parsed: it is a label, and the moment anything reads its SHAPE it
+   *  becomes a vocabulary the author cannot change. */
+  variantLabel?: string;
+  /**
+   * The expression that decides whether or how this step runs, as written: an
+   * `if:`, a `while:`, a `switch:`, or the `when:` guard on a dispatch.
+   *
+   * Found through `x-telo-topology-role`, never by keyword, so a third-party
+   * composer annotating its own predicate is read the same way.
+   */
+  predicate?: string;
+  /**
+   * Every reference slot this step's grammar declares — filled, empty, or
+   * holding a declaration written at the site.
+   *
+   * Recorded here because this is the one place a step's item schema and its
+   * value are both in hand: a step array's items sit behind a local `$ref`, so
+   * the reference field map deliberately never reaches them, and a consumer
+   * asking "what may this step dispatch to, and where is that written" has
+   * nowhere else to look. An EMPTY slot is listed for exactly that reason — it
+   * is a site an editor can offer to fill, and an edge says nothing about one.
+   */
+  refSlots?: { key: string; path: string; kinds: string[]; inline?: boolean }[];
 }
 
 export type CallGraphNode = ResourceGraphNode | StepGraphNode;
@@ -154,7 +195,15 @@ export interface CallGraph {
   /** Edges arriving at a resource node. */
   edgesTo(id: string): CallGraphEdge[];
   resource(kind: string, name: string): ResourceGraphNode | undefined;
-  resourceByName(name: string): ResourceGraphNode | undefined;
+  /**
+   * The resource a bare name addresses, read from `fromModule`'s scope.
+   *
+   * A name is module-scoped, so the module is how two declarations of one name
+   * are told apart — see {@link resolveScopedName}. Omitting it answers for a
+   * name declared once and, where several modules declare it, declines rather
+   * than taking whichever came first.
+   */
+  resourceByName(name: string, fromModule?: string): ResourceGraphNode | undefined;
   /** Step nodes declared by a resource, in lexical order. */
   steps(resourceId: string): StepGraphNode[];
   /** Every edge whose `use` includes at least one control transfer, plus every
@@ -163,6 +212,55 @@ export interface CallGraph {
 }
 
 export const resourceId = (kind: string, name: string): string => `${kind}\0${name}`;
+
+/**
+ * The id a manifest's node is keyed by.
+ *
+ * **A resource name is MODULE-SCOPED**, so `(kind, name)` is unique inside one
+ * module and not across a flattened set: two libraries each exporting an
+ * `Http.Api` named `routes` are two declarations, and keying both as
+ * `http.Api\0routes` silently made them one — the second overwrote the first,
+ * taking its edges and its steps with it. The module is part of the identity
+ * wherever the loader stamped one; a manifest with no stamp keeps the bare form,
+ * so nothing that never crossed a module boundary moves.
+ */
+export function nodeIdFor(manifest: ResourceManifest): string {
+  const kind = manifest.kind as string;
+  const name = manifest.metadata?.name as string;
+  const module = (manifest.metadata as { module?: string } | undefined)?.module;
+  return module ? `${module}\0${resourceId(kind, name)}` : resourceId(kind, name);
+}
+
+/** The module a manifest was declared in, when the loader stamped one. */
+const declaringModule = (manifest: ResourceManifest): string | undefined =>
+  (manifest.metadata as { module?: string } | undefined)?.module;
+
+/**
+ * A bare `<name>` read from a resource declared in `fromModule`.
+ *
+ * **Same module first**, because that is what a bare name MEANS: it is resolved
+ * in the scope it was written in, and a cross-module reference is written with
+ * an alias. A name declared in exactly one module resolves to it whatever the
+ * reader's scope — which is what keeps an unstamped manifest set (every
+ * fixture, every single-module load) behaving as it did. A name declared in
+ * SEVERAL other modules and none of the reader's resolves to NOTHING: guessing
+ * between them attributes a reference to a resource the author never named, and
+ * some other pass reports the dangling name honestly.
+ *
+ * Exported because more than one pass resolves a bare name — the call graph's
+ * own sites, and the projection's inline declarations and CEL state reads. Two
+ * spellings of this rule is how a fix in one leaves a first-wins lookup in the
+ * other, which is exactly the collision it exists to prevent.
+ */
+export function resolveScopedName<T>(
+  candidates: readonly T[] | undefined,
+  moduleOf: (item: T) => string | undefined,
+  fromModule: string | undefined,
+): T | undefined {
+  if (!candidates || candidates.length === 0) return undefined;
+  if (candidates.length === 1) return candidates[0];
+  return candidates.find((candidate) => moduleOf(candidate) === fromModule);
+}
 
 /**
  * Does control reach this edge's target?
@@ -324,6 +422,65 @@ interface StepWalkContext {
 }
 
 /**
+ * What a step IS, and what decides whether it runs.
+ *
+ * Both come off the schema rather than off a keyword list: the variant is the
+ * `oneOf` branch whose REQUIRED keys the step carries, and the predicate is the
+ * field annotated as one. A composer that declares a step body of its own is
+ * therefore described in its own words, and nothing here knows that `while`
+ * exists.
+ *
+ * A step matching several branches takes the FIRST — the grammar is a `oneOf`,
+ * so more than one match is a manifest the checker rejects, and guessing among
+ * them would be a second opinion on a question the checker already answers.
+ */
+function classifyStep(
+  step: Record<string, unknown>,
+  itemSchema: Record<string, any> | undefined,
+  rootSchema: Record<string, any>,
+): { variant?: string; variantLabel?: string; predicate?: string } {
+  if (!itemSchema) return {};
+  const branches = Array.isArray(itemSchema.oneOf) ? itemSchema.oneOf : [];
+  let variant: string | undefined;
+  let variantLabel: string | undefined;
+  for (const raw of branches) {
+    const branch = resolveLocalRef(raw, rootSchema);
+    const required = Array.isArray(branch?.required) ? (branch.required as string[]) : [];
+    if (required.length === 0 || !required.every((key) => step[key] !== undefined)) continue;
+    // The keys are what the branch IS; the title is what it is called.
+    variant = [...required].sort().join("+");
+    if (typeof branch?.title === "string") variantLabel = branch.title;
+    break;
+  }
+
+  let predicate: string | undefined;
+  for (const [key, propSchema] of propertySchemas(itemSchema)) {
+    const role = propSchema?.["x-telo-topology-role"];
+    if (role !== "predicate" && role !== "discriminator") continue;
+    const written = expressionSource(step[key]);
+    if (written !== undefined) {
+      predicate = written;
+      break;
+    }
+  }
+  return {
+    ...(variant ? { variant } : {}),
+    ...(variantLabel ? { variantLabel } : {}),
+    ...(predicate ? { predicate } : {}),
+  };
+}
+
+/** A predicate as the author wrote it. A CEL value reaches here as a tagged
+ *  sentinel or as an already-compiled node, and the SOURCE is the only part of
+ *  either worth showing. */
+function expressionSource(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (value === null || typeof value !== "object") return undefined;
+  const record = value as { source?: unknown; __compiled?: unknown };
+  return typeof record.source === "string" ? record.source : undefined;
+}
+
+/**
  * Emit the edges a single step's own ref slots declare.
  *
  * Read from the step ITEM SCHEMA rather than from the reference field map: a
@@ -338,7 +495,21 @@ function emitStepEdges(node: StepGraphNode, ctx: StepWalkContext): void {
   for (const [key, propSchema] of propertySchemas(ctx.itemSchema)) {
     const slot = readRefSlot(propSchema);
     if (!slot || slot.kinds.length === 0) continue;
-    const targetName = refTargetName(node.step[key]);
+    const written = node.step[key];
+    const inline =
+      written !== null &&
+      typeof written === "object" &&
+      !Array.isArray(written) &&
+      isInlineResource(written as Record<string, unknown>);
+    // Every declared slot is recorded, whatever is in it: an empty one is a
+    // site an editor can fill, and a declaration written at the site is a real
+    // dispatch that emits no edge — which is what made an inline step read
+    // exactly like one that dispatches nothing.
+    node.refSlots = [
+      ...(node.refSlots ?? []),
+      { key, path: `${node.path}.${key}`, kinds: slot.kinds, ...(inline ? { inline: true } : {}) },
+    ];
+    const targetName = refTargetName(written);
     if (targetName === undefined) continue;
     const entry: RefFieldEntry = {
       refs: slot.kinds,
@@ -441,6 +612,10 @@ function walkSteps(
       step: value,
     };
     if (typeof value.name === "string") node.name = value.name;
+    const { variant, variantLabel, predicate } = classifyStep(value, ctx.itemSchema, ctx.rootSchema);
+    if (variant) node.variant = variant;
+    if (variantLabel) node.variantLabel = variantLabel;
+    if (predicate) node.predicate = predicate;
     if (parent) node.parent = parent;
     ctx.nodes.set(id, node);
     ctx.order.push(node);
@@ -498,7 +673,9 @@ export function buildCallGraph(
 ): CallGraph {
   const nodes = new Map<string, CallGraphNode>();
   const edges: CallGraphEdge[] = [];
-  const byName = new Map<string, ResourceGraphNode>();
+  /** Every declaration of a bare name, in declaration order — a name may be
+   *  declared once per module, so this is a list rather than one node. */
+  const byName = new Map<string, ResourceGraphNode[]>();
   const stepsByOwner = new Map<string, StepGraphNode[]>();
   const stepEdgesByPath = new Map<string, CallGraphEdge>();
 
@@ -527,14 +704,21 @@ export function buildCallGraph(
     if (!name || !manifest.kind || SYSTEM_KINDS.has(manifest.kind)) continue;
     const node: ResourceGraphNode = {
       type: "resource",
-      id: resourceId(manifest.kind, name as string),
+      id: nodeIdFor(manifest),
       kind: manifest.kind,
       name: name as string,
       manifest,
     };
+    if (nodes.has(node.id)) continue;
     nodes.set(node.id, node);
-    byName.set(node.name, node);
+    byName.set(node.name, [...(byName.get(node.name) ?? []), node]);
   }
+
+  const resolveByName = (
+    name: string,
+    fromModule: string | undefined,
+  ): ResourceGraphNode | undefined =>
+    resolveScopedName(byName.get(name), (node) => declaringModule(node.manifest), fromModule);
 
   // --- step nodes ---
   const collectStepsFor = (
@@ -565,7 +749,7 @@ export function buildCallGraph(
   };
 
   for (const node of [...nodes.values()] as ResourceGraphNode[]) {
-    collectStepsFor(node, (name) => byName.get(name));
+    collectStepsFor(node, (name) => resolveByName(name, declaringModule(node.manifest)));
   }
 
   // --- edges ---
@@ -593,7 +777,7 @@ export function buildCallGraph(
         scopeLocal = new Map();
         const ownerName = event.source.metadata?.name as string | undefined;
         if (!ownerName || !event.source.kind) return;
-        const ownerId = resourceId(event.source.kind, ownerName);
+        const ownerId = nodeIdFor(event.source);
 
         // Inline declarations inside `x-telo-scope` arrays become nodes of
         // their own, keyed by their scope site — the declaration-site identity
@@ -620,8 +804,9 @@ export function buildCallGraph(
         }
         if (scopeLocal.size === 0) return;
 
+        const ownerModule = declaringModule(event.source);
         const resolveScoped = (name: string): ResourceGraphNode | undefined =>
-          scopeLocal.get(name) ?? byName.get(name);
+          scopeLocal.get(name) ?? resolveByName(name, ownerModule);
 
         // The owner's own step edges were emitted before this scope was seen
         // (step collection precedes the visit), so their names resolved
@@ -680,7 +865,7 @@ export function buildCallGraph(
       onRef: (event) => {
         const sourceName = event.source.metadata?.name as string | undefined;
         if (!sourceName || !event.source.kind) return;
-        const sourceId = resourceId(event.source.kind, sourceName);
+        const sourceId = nodeIdFor(event.source);
         if (!nodes.has(sourceId)) return;
 
         // A site inside a step was already emitted by the step walk, which
@@ -719,9 +904,10 @@ export function buildCallGraph(
           path: event.concretePath,
           use,
         };
+        const sourceModule = declaringModule(event.source);
         const target = scopedNames.has(targetName)
-          ? (scopeLocal.get(targetName) ?? byName.get(targetName))
-          : byName.get(targetName);
+          ? (scopeLocal.get(targetName) ?? resolveByName(targetName, sourceModule))
+          : resolveByName(targetName, sourceModule);
         if (target) edge.to = target.id;
         if (unresolved) edge.unresolved = unresolved;
         if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
@@ -758,8 +944,15 @@ export function buildCallGraph(
     edges,
     edgesFrom: (id) => fromIndex.get(id) ?? [],
     edgesTo: (id) => toIndex.get(id) ?? [],
-    resource: (kind, name) => nodes.get(resourceId(kind, name)) as ResourceGraphNode | undefined,
-    resourceByName: (name) => byName.get(name),
+    // Both accessors take a name with no module, so both answer for the one
+    // declaration that name has — and, where a flattened set has several, the
+    // first in declaration order. A caller that must tell two apart holds a
+    // node id, which carries the module.
+    resource: (kind, name) =>
+      (nodes.get(resourceId(kind, name)) as ResourceGraphNode | undefined) ??
+      byName.get(name)?.find((n) => n.kind === kind),
+    resourceByName: (name, fromModule) =>
+      resolveScopedName(byName.get(name), (node) => declaringModule(node.manifest), fromModule),
     steps: (ownerId) => stepsByOwner.get(ownerId) ?? [],
     controlEdges: () => edges.filter(reachesTarget),
   };

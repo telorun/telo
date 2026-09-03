@@ -14,7 +14,7 @@ const MIN_VIEW_HEIGHT = 120;
 interface RunDockProps {
   /** The Application whose runs this dock shows. */
   appPath: string;
-  /** Switch the module pane to its Run tab — where a blocker's fix lives. */
+  /** Switch the module pane to its Variables tab — where a blocker's fix lives. */
   onOpenConfig: () => void;
 }
 
