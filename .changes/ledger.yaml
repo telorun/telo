@@ -4,23 +4,23 @@
 registry: oci://ghcr.io/telorun
 modules:
   apps/authoring-agent:
-    version: 0.10.2
+    version: 0.11.0
     layers:
-      image: sha256-41CWouctU_L1pNnOEIIv2h6Y6lXdnpHGgwD1ZWWZawA
+      image: sha256-Vsfjz_Zi0hMCUuVJ8ni-ueNu5v-Q5RxHWcAx3ZYvXNA
   apps/hub:
-    version: 0.6.6
+    version: 0.7.0
     layers:
       image: sha256-sD1yxH_j-O7awRVPDwF397Fm-vfusosAmJLopai1tF0
   modules/ai:
-    version: 0.18.0
+    version: 0.18.1
     layers:
       library/js: sha256-8vEShe6fwD3kSO95DNjzX6-0tBbE4UOTTvi4be3eaeE
-      manifest: sha256-tqW9isSk-rD1yKGwqTSXlbcjv6tC9KT-f0vW50Vi9r4
+      manifest: sha256-fzPRxJLI60CJehEPBu-2PLTnaTii60vWcvZ4lNAomqE
   modules/ai-mcp:
-    version: 0.13.0
+    version: 0.13.1
     layers:
       controller/js: sha256-bFUGXLUdslvL7ecxxDXyGc_FRyMDd_TiRPHXvRH6Opw
-      manifest: sha256-g6MveLLgEQIjF4lWAT9Dx70jmOOfdhsk9BIgx3ZYosA
+      manifest: sha256-Wegn8hNZC_XqVSdOP2SYuJHT2JXjEhvCp_gCeftKEvg
   modules/ai-openai:
     version: 0.17.0
     layers:
@@ -71,9 +71,9 @@ modules:
       controller/js: sha256-Avv_y4CsXG3CHZasm76RCuV-v82rKsJyIVIKBsSPVxI
       manifest: sha256-eMn16lEsDkJBPALXTyT043fXXFy_1rwAfAZpU4bm8vU
   modules/crud:
-    version: 0.14.1
+    version: 0.14.2
     layers:
-      manifest: sha256-2IiGJ8YVXWK6YIecjfZcMuiUp_yiuzHNL8jHYciaCUk
+      manifest: sha256-cso_G_5XUw63bbG5hOZM575qzVO4CQuah2IKs7D9Wrs
   modules/durable:
     version: 0.2.0
     layers:
@@ -95,10 +95,10 @@ modules:
       controller/js: sha256-E3sBDxYKQ_Feu1kV7Hv2znEak8XsK7tmwoUmYrriTiU
       manifest: sha256-IQRYvBQmc5HtDXfJZT_fpFqUH4QQooX02X2JlH9Bulk
   modules/embedding:
-    version: 0.11.3
+    version: 0.11.4
     layers:
       library/js: sha256-foZ_ce_yLV0HD8ME9JJe1VUhunBDxm2m3P8DkBFFGok
-      manifest: sha256-7EfY5I7Os8HoazmAijnJm5a8TtNo80k2brt5TPgTeGI
+      manifest: sha256-surte3EAjz94nVEw0unqkHH4hnkP6iJT2f_waGiAXq0
   modules/embedding-openai:
     version: 0.10.0
     layers:
@@ -129,9 +129,9 @@ modules:
     layers:
       manifest: sha256-ZMBb1E0SMfhr2hUp4nf71at3VY4upzBXRUQYrZopE8I
   modules/http-server:
-    version: 0.29.1
+    version: 0.29.2
     layers:
-      manifest: sha256-cKBkxJ5KWYL5E2mHiIR9ljkQInIoqUuF_eNB9oesEpI
+      manifest: sha256-zcPM2Te1C5EWV-VQiGNAIO6otKlQD6VBUWsft6rjWzA
   modules/idempotency:
     version: 0.10.0
     layers:
@@ -202,10 +202,10 @@ modules:
       controller/js: sha256-G51aOh9DHHq18qWwUokxyOYwFmMely01pNTmcsBuORY
       manifest: sha256-Pn8LuyMQJUGopmfI6ZVd0heMBBx-lZN1v0Q9hS-G-5Q
   modules/openai:
-    version: 0.3.0
+    version: 0.3.1
     layers:
       controller/js: sha256-Hy9JRQb6ZOeuI4_YdKQFYAgltCAFOzyeGShStPGk18k
-      manifest: sha256-4CXp9TieFk_HzlnaLLs8gSxVS6vA9GRKwnEpsLloj_M
+      manifest: sha256-QOE7RnzKPc0acmWwMDmjL5_I2wieW5GfSaHrpr9Wf8M
   modules/otlp:
     version: 0.5.0
     layers:

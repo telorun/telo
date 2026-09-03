@@ -1,6 +1,6 @@
 {
   "name": "@telorun/embedding",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "private": true,
   "description": "Telo embedding module — Embedding.Model abstract plus Query / Passage invocables that turn text into vectors.",
   "keywords": [

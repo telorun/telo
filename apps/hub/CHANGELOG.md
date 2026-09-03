@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-09-03
+### Added
+* BREAKING. The Telo HTTP registry is gone, so the hub no longer tracks bare `<namespace>/<name>` refs. `/register` now requires an `oci://` or `https://` scheme on the submitted ref, and the transport a registration records is `oci` or `url`. A migration DELETEs the rows already stored under transport `registry` and adds the CHECK constraint the column never had. Deleting is the honest option rather than filtering them out of reads: those refs resolve nowhere, so `telo module versions` on one exits non-zero and the row fails every tracking pass forever, while leaving them readable means search and `get_module_manifest` hand a caller a ref they cannot import — worse than a 404. The delete cascades to `module_versions`, `resource_kinds` and `module_resources`; rows orphaned in the pgvector backend's own table are left alone, since the hub does not reach into it and the RRF query joins vector ids back to the relational rows, so an id with no row yields no hit.
+
 ## 0.6.6 - 2026-08-30
 ### Fixed
 * Both apps declare an `Http.Client` account — bearer token where there is one, no credential where the endpoint needs none — and reference an `Http.Request` from their model resources, which is what `openai@0.2.0` requires. They were left writing the removed `apiKey:` field when their pins moved, so neither could boot. The hub's embedder keeps its own base URL, which now sits on the client rather than on the model.
