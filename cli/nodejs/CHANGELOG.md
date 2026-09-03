@@ -1,5 +1,23 @@
 # @telorun/cli
 
+## 0.85.0
+
+### Minor Changes
+
+- 8dc6e35: Remove the Telo HTTP registry. Modules resolve over `oci://` and direct `https://` URLs only; the bare `<namespace>/<name>@<version>` ref form and the `registry.telo.run` origin are gone.
+
+  **Breaking.** A manifest whose `imports:` names a bare ref no longer resolves — rewrite it to the module's `oci://` ref. `--registry-url` (run / check / install / upgrade / migrate / module), `--registry` (publish), `TELO_REGISTRY_URL` and `TELO_REGISTRY_TOKEN` are removed, as is `Kernel`'s `registryUrl` option; `defaultTransports` / `defaultTransportRegistry` / `defaultSources` take no argument. `RegistryTransport` becomes `HttpTransport` — it keeps direct `https://` module URLs and the `.telo/manifests/url/…` cache subtree, and enumerates no versions. `RegistrySource`, `parseModuleRef` and `isRegistryRef` are removed from `@telorun/analyzer`, and `withRefVersion` now accepts only `oci://` refs. The `registry/<host>/…` manifest-cache subtree is no longer written or read. `SessionConfig.registryUrl` leaves the runner `/v1` contract, `sessionConfigSchema` loses its `registryUrl` option, and the k8s chart drops `build.teloRegistryUrl` (which also changes every per-app image tag, since the registry URL was a digest input).
+
+### Patch Changes
+
+- 48ecad1: Remove the `--snapshot-on-exit` flag. It was accepted by the parser and read by nothing, so passing it changed no behaviour. It no longer appears in `--help`; `telo run` now forwards it to the application's own arguments like any other unrecognised flag, and the strict commands reject it.
+- 48ecad1: `telo run` no longer forwards the global `-o` / `--output` flag and its value into the application's own arguments. The flag is consumed by the CLI like `--inspect`; previously `telo ./app.yaml -o text` handed `-o text` to the kernel's argv.
+- Updated dependencies [7ddd502]
+- Updated dependencies [8dc6e35]
+  - @telorun/analyzer@0.69.0
+  - @telorun/kernel@0.85.0
+  - @telorun/ide-support@0.18.1
+
 ## 0.84.0
 
 ### Patch Changes
