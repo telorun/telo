@@ -1,6 +1,7 @@
 import type { V1ContainerState, V1ContainerStatus, V1Pod } from "@kubernetes/client-node";
 import type { RunStatus } from "@telorun/runner-core";
 
+import { statusCode } from "./api-error.js";
 import type { KubeClient } from "./client.js";
 
 /**
@@ -128,8 +129,7 @@ export async function deletePod(kube: KubeClient, ns: string, name: string): Pro
 }
 
 export function is404(err: unknown): boolean {
-  const e = err as { statusCode?: number; code?: number; response?: { statusCode?: number } };
-  return e?.statusCode === 404 || e?.code === 404 || e?.response?.statusCode === 404;
+  return statusCode(err) === 404;
 }
 
 export function msg(err: unknown): string {

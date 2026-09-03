@@ -10,9 +10,9 @@ export interface SessionConfigSchemaOptions {
   imageEnum?: string[];
   /** Default pull policy (defaults to `missing`). */
   pullPolicyDefault?: PullPolicy;
-  /** Override the `pullPolicy` field description. `pullPolicy` semantics differ
-   *  per backend (docker: container pull policy; k8s: base-image build
-   *  freshness), so each runner can supply wording that matches its behaviour. */
+  /** Override the `pullPolicy` field description. Wording differs per backend
+   *  (a container pull policy on docker, a Pod `imagePullPolicy` on k8s), so
+   *  each runner can supply text that matches what its workload sees. */
   pullPolicyDescription?: string;
   /** When true, `image` is server-enforced — advertised `readOnly` (locked to
    *  `imageDefault`) so the editor renders it disabled but still sends it. No

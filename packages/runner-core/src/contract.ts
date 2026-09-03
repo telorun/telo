@@ -248,6 +248,11 @@ export type RunStatus =
  * Coarse phase a session passes through while coming up, carried on `progress`
  * events. Additive to the status enum: `RunStatus` stays `starting` until the
  * workload is actually up; these messages drive the editor's spinner + step feed.
+ *
+ * `build` is kept though no runner in this repo emits it any more: it is the
+ * vocabulary a BACKEND reports in, and a backend that materializes an image
+ * before boot has a phase to name. A client must render an unknown phase as
+ * prose anyway — an older runner is still on the other end of the stream.
  */
 export type RunPhase = "build" | "provision" | "boot";
 

@@ -54,7 +54,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
         agents: deps.config.watch.enabled ? coResidentAgentNames(apps) : undefined,
       }),
     // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on
-    // /v1/capabilities; app sessions run the catalog image directly (no build).
+    // /v1/capabilities; app sessions run the catalog image directly.
     apps,
     validateConfig: catalog
       ? (sessionConfig: SessionConfig): string | undefined =>
@@ -64,8 +64,8 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
               `Allowed images: ${catalog.current().join(", ")}`
       : undefined,
   });
-  // Mount the internal, tokenized fetch route on the same app so a build Job's
-  // initContainer can pull the build-context tarball (bundle + Dockerfile).
+  // Mount the internal, tokenized fetch route on the same app so a session pod's
+  // initContainer can pull the bundle tarball.
   deps.bundleStore.registerRoute(handle.app);
   return handle;
 }

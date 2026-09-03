@@ -6,7 +6,6 @@ import { buildSessionPod, buildWatchPod } from "./pod-spec.js";
 
 const BASE_ENV = {
   RUNNER_SELF_URL: "http://k8s-runner.telo-runner.svc:8062",
-  RUNNER_IMAGE_REPOSITORY: "registry.telo-runner.svc:5000/telo-sessions",
   RUNNER_WATCH_SESSIONS: "true",
 };
 

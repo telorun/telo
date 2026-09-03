@@ -39,7 +39,8 @@
     "upgrade:imports": "node scripts/upgrade-imports.mjs",
     "release": "changeset publish",
     "publish-modules": "node scripts/publish-modules.mjs",
-    "version-packages": "changeset version"
+    "version-packages": "changeset version && node scripts/stamp-chart-version.mjs",
+    "check:charts": "node scripts/stamp-chart-version.mjs --check"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",

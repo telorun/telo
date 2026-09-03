@@ -1,10 +1,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "telo-k8s-runner.name" . }}
+  name: {{ include "k8s-runner.name" . }}
   namespace: {{ .Values.runnerNamespace }}
   labels:
-    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+    {{- include "k8s-runner.labels" . | nindent 4 }}
 spec:
   # Single replica is REQUIRED — the session registry is in-memory and the
   # runner reaps orphaned pods on boot; two replicas would double-manage pods.
@@ -13,13 +13,13 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "telo-k8s-runner.name" . }}
+      app.kubernetes.io/name: {{ include "k8s-runner.name" . }}
   template:
     metadata:
       labels:
-        {{- include "telo-k8s-runner.labels" . | nindent 8 }}
+        {{- include "k8s-runner.labels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "telo-k8s-runner.name" . }}
+      serviceAccountName: {{ include "k8s-runner.name" . }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: runner
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # The runner holds the cluster API credentials — it is the highest-value
           # target, so it gets the same container hardening as session pods.
@@ -89,7 +89,7 @@ spec:
               value: "{{ .Values.watch.checkpointSeconds }}"
             {{- end }}
             - name: RUNNER_SELF_URL
-              value: {{ include "telo-k8s-runner.selfUrl" . | quote }}
+              value: {{ include "k8s-runner.selfUrl" . | quote }}
             - name: RUNNER_SESSION_NAMESPACE
               value: {{ .Values.sessionNamespace | quote }}
             {{- if .Values.session.image }}
@@ -122,34 +122,9 @@ spec:
             - name: RUNNER_BASE_IMAGE_REFRESH_SECONDS
               value: "{{ .Values.session.baseImages.refreshSeconds }}"
             {{- end }}
-            {{- $repo := include "telo-k8s-runner.imageRepository" . }}
-            {{- if not $repo }}
-            {{- fail "set build.repository or registry.enabled — the runner prebuilds session images and requires an image registry" }}
-            {{- end }}
-            - name: RUNNER_IMAGE_REPOSITORY
-              value: {{ $repo | quote }}
-            - name: RUNNER_BUILD_NAMESPACE
-              value: {{ .Values.build.namespace | quote }}
-            - name: RUNNER_BUILDER_IMAGE
-              value: {{ .Values.build.builderImage | quote }}
-            - name: RUNNER_BUILD_TIMEOUT_SECONDS
-              value: "{{ .Values.build.timeoutSeconds }}"
-            - name: RUNNER_REGISTRY_INSECURE
-              value: "{{ .Values.build.insecureRegistry }}"
-            {{- $apiUrl := include "telo-k8s-runner.registryApiUrl" . }}
-            {{- if $apiUrl }}
-            - name: RUNNER_REGISTRY_API_URL
-              value: {{ $apiUrl | quote }}
-            {{- end }}
-            {{- $push := include "telo-k8s-runner.pushSecretName" . }}
-            {{- if $push }}
-            - name: RUNNER_REGISTRY_PUSH_SECRET
-              value: {{ $push | quote }}
-            {{- end }}
-            {{- $pull := include "telo-k8s-runner.pullSecretName" . }}
-            {{- if $pull }}
+            {{- if .Values.session.imagePullSecret }}
             - name: RUNNER_IMAGE_PULL_SECRET
-              value: {{ $pull | quote }}
+              value: {{ .Values.session.imagePullSecret | quote }}
             {{- end }}
             {{- if .Values.session.runtimeClass }}
             - name: RUNNER_RUNTIME_CLASS
@@ -163,7 +138,7 @@ spec:
             - name: SESSION_INGRESS_CLASS
               value: {{ .Values.sessionIngress.className | quote }}
             {{- end }}
-            {{- $sessionIngressTls := include "telo-k8s-runner.sessionIngressTlsSecretName" . }}
+            {{- $sessionIngressTls := include "k8s-runner.sessionIngressTlsSecretName" . }}
             {{- if $sessionIngressTls }}
             - name: SESSION_INGRESS_TLS_SECRET
               value: {{ $sessionIngressTls | quote }}
@@ -207,19 +182,19 @@ spec:
         {{- if .Values.runner.terms.enabled }}
         - name: terms
           configMap:
-            name: {{ include "telo-k8s-runner.name" . }}-terms
+            name: {{ include "k8s-runner.name" . }}-terms
         {{- end }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "telo-k8s-runner.name" . }}
+  name: {{ include "k8s-runner.name" . }}
   namespace: {{ .Values.runnerNamespace }}
   labels:
-    {{- include "telo-k8s-runner.labels" . | nindent 4 }}
+    {{- include "k8s-runner.labels" . | nindent 4 }}
 spec:
   selector:
-    app.kubernetes.io/name: {{ include "telo-k8s-runner.name" . }}
+    app.kubernetes.io/name: {{ include "k8s-runner.name" . }}
   ports:
     - name: http
       port: {{ .Values.runner.port }}

@@ -4,7 +4,6 @@ import {
   BaseImageCatalog,
   filterTags,
   parseDockerHubRef,
-  resolveTagDigest,
 } from "./base-image-catalog.js";
 
 const SAMPLE = [
@@ -166,44 +165,5 @@ describe("parseDockerHubRef", () => {
   it("returns null for a non-Docker-Hub registry", () => {
     expect(parseDockerHubRef("ghcr.io/telorun/node:latest")).toBeNull();
     expect(parseDockerHubRef("registry.telo-runner.svc:5000/x:y")).toBeNull();
-  });
-});
-
-describe("resolveTagDigest", () => {
-  it("returns an already-pinned digest without a network call", async () => {
-    let called = false;
-    const fetchImpl = (async () => {
-      called = true;
-      return new Response("{}");
-    }) as unknown as typeof fetch;
-    expect(await resolveTagDigest("telorun/node@sha256:deadbeef", { fetchImpl })).toBe(
-      "sha256:deadbeef",
-    );
-    expect(called).toBe(false);
-  });
-
-  it("reads the manifest digest from the Docker Hub tag endpoint", async () => {
-    const fetchImpl = (async () =>
-      new Response(JSON.stringify({ digest: "sha256:abc123", images: [{ digest: "sha256:zzz" }] }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      })) as unknown as typeof fetch;
-    expect(await resolveTagDigest("telorun/node:latest-slim", { fetchImpl })).toBe("sha256:abc123");
-  });
-
-  it("returns undefined for a non-Hub ref or on a failed request", async () => {
-    expect(await resolveTagDigest("ghcr.io/foo/bar:1")).toBeUndefined();
-    const fetchImpl = (async () => new Response("nope", { status: 404 })) as unknown as typeof fetch;
-    expect(await resolveTagDigest("telorun/node:missing", { fetchImpl })).toBeUndefined();
-  });
-
-  it("reports a genuine Hub failure to onError but stays silent for a non-Hub ref", async () => {
-    const errors: unknown[] = [];
-    const fail = (async () => new Response("boom", { status: 500 })) as unknown as typeof fetch;
-    await resolveTagDigest("telorun/node:latest", { fetchImpl: fail, onError: (e) => errors.push(e) });
-    expect(errors).toHaveLength(1);
-
-    await resolveTagDigest("ghcr.io/foo/bar:1", { onError: (e) => errors.push(e) });
-    expect(errors).toHaveLength(1); // non-Hub ref is not an error
   });
 });

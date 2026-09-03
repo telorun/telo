@@ -45,34 +45,6 @@ export interface LimitCeilings {
   ephemeralStorage: string;
 }
 
-/**
- * On-cluster image-build settings. The runner ALWAYS prebuilds a self-contained
- * per-app image (controllers + module manifests baked in via `telo install`) and
- * the session pod runs it directly — there is no in-pod install fallback, so a
- * registry repository (`RUNNER_IMAGE_REPOSITORY`) is required.
- */
-export interface ImageBuildConfig {
-  /** Registry repository the per-app image is pushed to / pulled from; the tag
-   *  is the bundle content hash (e.g. `registry.telo-runner.svc:5000/telo-sessions`). */
-  repository: string;
-  /** Namespace the trusted Kaniko build Jobs run in (registry egress lives here). */
-  namespace: string;
-  /** Builder image — Kaniko (or a compatible `--context`/`--destination` executor). */
-  builderImage: string;
-  /** Build Job `activeDeadlineSeconds` and the runner's wait budget. */
-  timeoutSeconds: number;
-  /** Push/pull to an insecure (HTTP / self-signed) registry — the in-cluster default. */
-  insecureRegistry: boolean;
-  /** HTTP(S) base for a best-effort manifest existence check (skip build on hit);
-   *  undefined → always build. */
-  registryApiUrl?: string;
-  /** Optional dockerconfig Secret (in the build namespace) Kaniko pushes with. */
-  pushSecretName?: string;
-  /** Optional dockerconfig Secret (in the session namespace) the kubelet uses to
-   *  pull per-app images from a private registry. */
-  imagePullSecret?: string;
-}
-
 export interface K8sRunnerConfig extends RunnerCoreConfig {
   /** Identity advertised on `/v1/capabilities` — studio labels the runner
    *  with these. */
@@ -84,8 +56,12 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
    *  image as `RUNNER_IMAGE` at build time (the kernel version the runner was
    *  built against); the literal fallback below is for a source checkout only. */
   defaultImage: string;
-  /** Small image for the bundle/build-context fetch initContainer (needs wget + tar). */
+  /** Small image for the bundle-fetch initContainer (needs wget + tar). */
   initImage: string;
+  /** Optional dockerconfig Secret (in the session namespace) the kubelet pulls
+   *  session images with — the kernel image, and any operator catalog image
+   *  (`RUNNER_APPS`) held in a private registry. */
+  imagePullSecret?: string;
   /** Optional sandbox RuntimeClass (gvisor/kata). Unset → cluster default (runc). */
   runtimeClass?: string;
   /** Wildcard base domain for per-session ingress; unset → logs-only. */
@@ -96,10 +72,8 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
    *  Ingress presents so an upstream (e.g. Cloudflare Full (Strict)) can validate
    *  the origin. Must cover the wildcard `*.<sessionIngressBaseDomain>`. Unset → no TLS block. */
   sessionIngressTlsSecretName?: string;
-  /** On-cluster image build — the only delivery path (always present). */
-  build: ImageBuildConfig;
-  /** Runner's own in-cluster base URL, used to build the bundle/build-context
-   *  fetch URL the initContainer curls (e.g. http://k8s-runner.telo-runner:8062). */
+  /** Runner's own in-cluster base URL, used to build the bundle fetch URL the
+   *  initContainer curls (e.g. http://k8s-runner.telo-runner:8062). */
   selfUrl: string;
   /** Label applied to every session object, used for orphan reaping. */
   managedByLabel: string;
@@ -162,30 +136,6 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     );
   }
 
-  const repository = env.RUNNER_IMAGE_REPOSITORY?.trim();
-  if (!repository) {
-    throw new RunnerConfigError(
-      "RUNNER_IMAGE_REPOSITORY env var is required. The runner prebuilds a per-app session image for " +
-        "every run (there is no in-pod install fallback); set it to the registry repository the built " +
-        "images are pushed to / pulled from (e.g. registry.example.com/telo-sessions). The tag is the " +
-        "bundle content hash.",
-    );
-  }
-  const build: ImageBuildConfig = {
-    repository: repository.replace(/\/+$/, ""),
-    namespace: env.RUNNER_BUILD_NAMESPACE?.trim() || "telo-builds",
-    builderImage: env.RUNNER_BUILDER_IMAGE?.trim() || "gcr.io/kaniko-project/executor:latest",
-    timeoutSeconds: parsePositiveInt(
-      env.RUNNER_BUILD_TIMEOUT_SECONDS,
-      600,
-      "RUNNER_BUILD_TIMEOUT_SECONDS",
-    ),
-    insecureRegistry: env.RUNNER_REGISTRY_INSECURE?.trim() === "true",
-    registryApiUrl: env.RUNNER_REGISTRY_API_URL?.trim() || undefined,
-    pushSecretName: env.RUNNER_REGISTRY_PUSH_SECRET?.trim() || undefined,
-    imagePullSecret: env.RUNNER_IMAGE_PULL_SECRET?.trim() || undefined,
-  };
-
   return {
     ...loadCoreConfig(env, { port: DEFAULT_PORT }),
     displayName: env.RUNNER_DISPLAY_NAME?.trim() || "Telo Runner",
@@ -194,18 +144,27 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     sessionNamespace: env.RUNNER_SESSION_NAMESPACE?.trim() || "telo-sessions",
     defaultImage: env.RUNNER_IMAGE?.trim() || "telorun/node:latest-slim",
     initImage: env.RUNNER_INIT_IMAGE?.trim() || "busybox:stable",
+    imagePullSecret: env.RUNNER_IMAGE_PULL_SECRET?.trim() || undefined,
     runtimeClass: env.RUNNER_RUNTIME_CLASS?.trim() || undefined,
     sessionIngressBaseDomain: env.SESSION_INGRESS_BASE_DOMAIN?.trim() || undefined,
     sessionIngressClassName: env.SESSION_INGRESS_CLASS?.trim() || undefined,
     sessionIngressTlsSecretName: env.SESSION_INGRESS_TLS_SECRET?.trim() || undefined,
-    build,
     selfUrl: selfUrl.replace(/\/+$/, ""),
     managedByLabel: env.RUNNER_MANAGED_BY?.trim() || "telo-k8s-runner",
+    // Sized for a pod that RESOLVES ITS OWN module closure. They used to be
+    // 50m / 100Mi / 512Mi, which described a different workload: the closure
+    // arrived in image layers, so the pod only ran it. It now downloads,
+    // unpacks and resolves it in-pod, into an emptyDir that counts against
+    // ephemeral-storage — so the old numbers meant an OOMKill on the memory
+    // ceiling and an eviction on the storage one, for the ordinary case. The
+    // watch path already ran this workload and already carried the roomier
+    // ceiling; these match it. `appLimits` stays separate: it still differs in
+    // TTL, and both remain the operator's policy to tighten.
     limits: {
-      cpu: env.RUNNER_MAX_CPU?.trim() || "50m",
-      memory: env.RUNNER_MAX_MEMORY?.trim() || "100Mi",
+      cpu: env.RUNNER_MAX_CPU?.trim() || "500m",
+      memory: env.RUNNER_MAX_MEMORY?.trim() || "512Mi",
       ttlSeconds: parsePositiveInt(env.RUNNER_MAX_TTL_SECONDS, 3600, "RUNNER_MAX_TTL_SECONDS"),
-      ephemeralStorage: env.RUNNER_MAX_EPHEMERAL_STORAGE?.trim() || "512Mi",
+      ephemeralStorage: env.RUNNER_MAX_EPHEMERAL_STORAGE?.trim() || "1Gi",
     },
     appLimits: {
       cpu: env.RUNNER_APP_MAX_CPU?.trim() || "500m",

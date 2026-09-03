@@ -31,40 +31,40 @@ for status, attaches a PTY over the Pod `attach` subresource for the interactive
 per-session Service + Ingress (`<sessionId>.<base-domain>`) garbage-collected via
 an ownerReference to the Pod.
 
-**Every session runs a prebuilt per-app image** — there is no in-pod install
-path. On a session-create the runner stages the bundle plus a generated
-`Dockerfile` (`FROM <base>`, `ENV TELO_CACHE_DIR=/telo-cache`, `RUN telo install`),
-runs a trusted **Kaniko** Job in the `telo-builds` namespace that bakes every
-controller and module manifest into `/telo-cache/{manifests,npm}` and pushes the
-result, then runs the session pod from that image — so the session never installs
-anything on the start path and a slow/unreachable package registry can't stall it.
+**Every session runs the plain kernel image.** A body-fetch initContainer untars
+the staged bundle into a writable `/app` emptyDir and the session container runs
+`telo run /app/<entry>`, resolving its own module closure into a `/telo-cache`
+emptyDir on the way up. `readOnlyRootFilesystem` stays on — every write lands on
+a mounted emptyDir. The runner needs **no image registry of its own**: it builds
+nothing, pushes nothing, and creates no Jobs.
 
-**The image is keyed on the dependency closure, not the whole bundle** — the
-`imports:` set plus any controllers declared by inline `Telo.Definition` docs
-(see `extractDependencyKey`). A body-only edit (resource config, CEL) reuses the
-existing image; only an import or controller change rebuilds. The per-session
-**body is delivered at boot**, not baked: a body-fetch initContainer untars the
-staged bundle into a writable `/app` emptyDir, and the session runs `telo run
-/app/<entry> --no-cache-write` — reading the baked deps from the read-only
-`/telo-cache` and validating in-memory, so `readOnlyRootFilesystem` stays on with
-nothing written to the cache. Builds are existence-checked before building and
-single-flighted; a build failure surfaces as an actionable error carrying the
-build pod's log tail. `RUNNER_IMAGE_REPOSITORY` is therefore **required** — the
-runner refuses to start without a registry to build into.
+The runner used to prebuild a self-contained per-app image with an on-cluster
+Kaniko Job, so that a slow package registry could not stall the start path. That
+is gone, and the cost is where it now shows: **a run session downloads its
+closure on every start**, since the cache lives and dies with the pod. A watch
+session pays it once and keeps the cache for the pod's life, which is the shape
+to reach for when start latency matters.
 
 **Coming-up progress** is reported over the `/v1` SSE stream as `progress` events
-(`build` → `provision`) while the session is still `starting`. The session is
-created with a fast `201` carrying the `streamUrl` **before** the build runs, so
-the client connects immediately and sees build + provision progress live; the
-backend then runs in the background and a start failure surfaces as a terminal
-`failed` status on the stream. The session flips to `running` when the Pod reaches
-`Running`.
+(`provision` → `boot`) while the session is still `starting`. The session is
+created with a fast `201` carrying the `streamUrl` **before** the pod is created,
+so the client connects immediately and sees provisioning live; the backend then
+runs in the background and a start failure surfaces as a terminal `failed` status
+on the stream. The session flips to `running` when the Pod reaches `Running`.
 
 Sandbox hardening is always on (non-root, read-only rootfs, drop-all caps, no
 service-account token, seccomp `RuntimeDefault`); a sandbox RuntimeClass
-(gVisor/Kata) is layered on when configured. In the prebuilt path the per-app
-image is single-tenant, so install scripts run normally inside the trusted build
-(native/postinstall controllers work) with no cross-tenant cache to poison.
+(gVisor/Kata) is layered on when configured. A controller whose install needs to
+run scripts or build native code runs them **inside the session pod** under that
+hardening — there is no trusted build step to run them in.
+
+**A Kubernetes API rejection reaches the client as its status and `reason`, never
+as the exception.** The API's error carries the full HTTP dump — the raw `Status`
+body naming the runner's ServiceAccount, the audit id, every response header —
+and a start failure's message travels verbatim to the client as the session's
+terminal status. So the client is told the operation, the HTTP code and the
+one-word reason (`Forbidden`, `NotFound`), plus who can fix a `403`; the raw
+exception rides along as the error's `cause` and lands in the runner's log.
 
 ## Watch sessions
 
@@ -74,7 +74,7 @@ different — a **workspace that runs continuously**. One pod holds a shared
 `/workspace` volume, a `workspace` container serving the editor's file routes, one
 `app-<name>` container per application running `telo run --watch`, and optionally
 a co-resident `agent` drawn from the `RUNNER_APPS` catalog. An edit then costs a
-kernel reload instead of a pod: no schedule, no pull, no build.
+kernel reload instead of a pod: no schedule, no pull, no module re-resolve.
 
 Off unless `RUNNER_WATCH_SESSIONS` is set. Run sessions are entirely unaffected.
 
@@ -128,10 +128,10 @@ runner reconciles into a content-addressed ConfigMap — there is no third image
 build, and a runner upgrade that changes the manifest leaves running sessions
 mounting the one they booted with.
 
-**Watch sessions never build an image.** The build path exists to put a dependency
-closure on disk before boot; a watch session resolves its own into the workspace
-volume, which lives as long as the pod, so the download happens once per session
-and every later reload resolves from local disk.
+**A watch session resolves its closure once.** It lands in the workspace volume,
+which lives as long as the pod, so the download happens once per session and
+every later reload resolves from local disk — where a run session, whose cache
+dies with its pod, pays for it on every start.
 
 **One cache for the whole session.** The runner seeds `telo-workspace.yaml` at
 the workspace root when the session starts, and the kernel anchors its `.telo`
@@ -144,13 +144,11 @@ manifest lives outside the workspace and the walk-up would never reach the
 marker. A workspace that brings its own marker keeps it — overwriting one with a
 real `modules:` list would change what `telo release` discovers.
 
-**Egress moves into the session namespace.** Module fetches used to be scoped to
-the build namespace; a watch session resolves them itself, so the session
-namespace's NetworkPolicy has to reach module registries as well as the model
-provider. Core NetworkPolicy is CIDR-only and registries sit behind rotating-IP
-CDNs, so a locked-down operator needs a CNI with FQDN policy or an egress proxy
-here — the same stated dependency the build namespace already carries, one
-namespace over.
+**Egress lives in the session namespace.** Every session resolves its own module
+closure, so the session namespace's NetworkPolicy has to reach the module
+registries as well as the model provider. Core NetworkPolicy is CIDR-only and
+registries sit behind rotating-IP CDNs, so a locked-down operator needs a CNI
+with FQDN policy or an egress proxy here.
 
 ### Two nouns on one stream
 
@@ -288,14 +286,15 @@ outcome than a URL that silently reaches the wrong app.
 | `PORT` | `8062` | HTTP listen port |
 | `RUNNER_DISPLAY_NAME` | `Telo Runner` | Display name advertised on `/v1/capabilities` (the editor's runner label) |
 | `RUNNER_DESCRIPTION` | `Runs the Telo application in a cloud environment` | Description advertised on `/v1/capabilities` |
-| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name (chart: inline `apps.catalog`, or `apps.catalogSecret` referencing a Secret holding the JSON — use the Secret whenever entries embed secrets in `env`); see the docker-runner README for the entry shape, including the `port` an entry must declare to be usable as a session's co-resident `agent`. App sessions run the catalog image directly as a pod — no on-cluster build |
+| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name (chart: inline `apps.catalog`, or `apps.catalogSecret` referencing a Secret holding the JSON — use the Secret whenever entries embed secrets in `env`); see the docker-runner README for the entry shape, including the `port` an entry must declare to be usable as a session's co-resident `agent`. App sessions run the catalog image directly as a pod |
 | `RUNNER_APP_MAX_CPU` | `500m` | CPU ceiling for predefined-app pods (separate from the anonymous-session ceiling) |
 | `RUNNER_APP_MAX_MEMORY` | `512Mi` | Memory ceiling for predefined-app pods |
 | `RUNNER_APP_MAX_TTL_SECONDS` | `21600` | Wall-clock TTL for predefined-app pods (agent sessions are long-lived) |
 | `RUNNER_APP_MAX_EPHEMERAL_STORAGE` | `1Gi` | Ephemeral-storage ceiling for predefined-app pods |
 | `RUNNER_SESSION_NAMESPACE` | `telo-sessions` | Namespace for session objects |
 | `RUNNER_IMAGE` | _(baked at build: the CLI version for a released runner, `telorun/node:latest-slim` for a dev build)_ | Default base image; always offered in the picker and the fallback when the catalog is unreachable. Leave the chart's `session.image` empty to keep the session kernel in lockstep with the runner |
-| `RUNNER_INIT_IMAGE` | `busybox:stable` | Build-context fetch initContainer image (wget + tar) |
+| `RUNNER_INIT_IMAGE` | `busybox:stable` | Bundle-fetch initContainer image (wget + tar) |
+| `RUNNER_IMAGE_PULL_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-sessions`) the kubelet pulls session images with — needed only for a kernel or catalog image in a private registry |
 | `RUNNER_RUNTIME_CLASS` | _(unset → runc)_ | Sandbox RuntimeClass (gvisor/kata) |
 | `SESSION_INGRESS_BASE_DOMAIN` | _(unset → logs-only)_ | Wildcard base for per-session ingress |
 | `SESSION_INGRESS_TLS_SECRET` | _(unset → no TLS block)_ | `kubernetes.io/tls` Secret (in `telo-sessions`) the session Ingress presents; must cover `*.<base-domain>`. Set for Cloudflare Full (Strict) / any origin-cert upstream |
@@ -327,12 +326,9 @@ against the same list, so a client that skips the editor can't widen the set.
 unreachable. Disable the catalog to lock `image` to `RUNNER_IMAGE`.
 
 Pinned tags (e.g. `0.30.1-slim`) are immutable. A picked **moving** tag like
-`latest-slim` only refreshes when the session's `pullPolicy` is `always`: the
-build then pins the per-app image to the base's current digest, so a moved tag
-yields a new image and rebuilds (otherwise the cached build — keyed on the tag
-string — is reused). Movement detection reads the digest from Docker Hub, so a
-base hosted elsewhere (GHCR, a private registry) can't be tracked — `always`
-degrades to reusing the cached build for it, same as `missing` / `never`.
+`latest-slim` only refreshes when the session's `pullPolicy` is `always`, which
+is the Pod's own `imagePullPolicy`: the kubelet re-pulls the tag on every
+session. `missing` and `never` reuse whatever that node already cached.
 
 | Env | Default | Purpose |
 | --- | --- | --- |
@@ -346,53 +342,38 @@ degrades to reusing the cached build for it, same as `missing` / `never`.
 | `RUNNER_BASE_IMAGE_LIMIT` | `20` | Cap on advertised tags (newest first) |
 | `RUNNER_BASE_IMAGE_REFRESH_SECONDS` | `3600` | Catalog re-fetch cadence |
 
-### Image build (required)
-
-| Env | Default | Purpose |
-| --- | --- | --- |
-| `RUNNER_IMAGE_REPOSITORY` | _(required)_ | Registry repo for per-app images; tag = bundle hash |
-| `RUNNER_BUILD_NAMESPACE` | `telo-builds` | Namespace the trusted Kaniko build Jobs run in |
-| `RUNNER_BUILDER_IMAGE` | `gcr.io/kaniko-project/executor:latest` | Image builder |
-| `RUNNER_BUILD_TIMEOUT_SECONDS` | `600` | Build Job deadline / wait budget |
-| `RUNNER_REGISTRY_INSECURE` | `false` | Push/pull over HTTP / self-signed |
-| `RUNNER_REGISTRY_API_URL` | _(unset → always build)_ | HTTP(S) base for the manifest existence check (authenticated via the push Secret) |
-| `RUNNER_REGISTRY_PUSH_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-builds`) Kaniko pushes with; also authenticates the existence check |
-| `RUNNER_IMAGE_PULL_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-sessions`) the kubelet pulls per-app images with |
-
 ## Deploy (Helm)
 
-The runner **requires a registry to build into** (there is no in-pod install
-fallback), so point it at one your cluster's kubelet can pull from:
+The chart is published as an OCI artifact at
+`oci://ghcr.io/telorun/charts/k8s-runner`:
 
 ```bash
-helm install telo-runner ./chart \
-  --set build.repository=registry.example.com/telo-sessions \
-  --set-file registry.dockerconfigjson=./dockerconfig.json \  # private-registry auth
+helm install telo-runner oci://ghcr.io/telorun/charts/k8s-runner \
+  --set watch.enabled=true \
   --set session.runtimeClass=gvisor
 ```
 
-For a private registry, `registry.dockerconfigjson` creates the dockerconfig
-Secret in **both** namespaces (push in `telo-builds`, pull in `telo-sessions`) and
-wires `RUNNER_REGISTRY_PUSH_SECRET` + `RUNNER_IMAGE_PULL_SECRET` — the kubelet
-needs the pull copy because the per-app image is private. (Or manage the Secrets
-yourself and reference them via `build.pushSecretName` / `build.pullSecretName`.)
-The push Secret doubles as the credential for the manifest existence check, so
-the runner can see an already-built image in a private registry and skip the
-rebuild — without it a private registry answers `401` and every run rebuilds.
-A no-auth registry needs none of this.
+Helm resolves the newest release when no `--version` is given; pass one to pin.
+From a checkout, `./chart` works the same way and is what you want when changing
+the chart itself.
+
+**The chart's version IS the runner's.** `version` and `appVersion` both carry
+`@telorun/k8s-runner`'s package version, stamped in the release PR and checked on
+every PR — so chart `0.13.0` installs runner image `0.13.0`, with no lookup
+table. That is also why `image.tag` defaults to empty and resolves to the chart's
+own `appVersion` rather than to `latest`: `--version 0.13.0` has to mean one
+thing, where a floating tag meant whatever it had moved to overnight.
 
 The chart provisions the static scaffolding: the runner Deployment (single
 replica — the registry is in-memory and the runner reaps orphaned pods on boot),
-Service, scoped RBAC, the `telo-runner` / restricted-PSS `telo-sessions` /
-baseline-PSS `telo-builds` namespaces, a `ResourceQuota`, and NetworkPolicies
-(session pod-to-pod isolation + the build namespace's registry egress). The
-runner creates per-session and per-build objects at runtime.
+Service, scoped RBAC, the `telo-runner` and restricted-PSS `telo-sessions`
+namespaces, a `ResourceQuota`, and the session pod-to-pod NetworkPolicy. The
+runner creates per-session objects at runtime. Nothing else is required — no
+image registry, no build namespace, no push credentials.
 
-The optional in-cluster registry (`--set registry.enabled=true --set
-build.insecureRegistry=true`) derives `build.repository` for you, but works only
-on clusters whose **nodes are configured to trust it** — otherwise an external/
-cloud registry is simpler. Installing with neither a `build.repository` nor
-`registry.enabled` is rejected at template time.
+For a kernel image or an operator catalog image held in a **private registry**,
+create the dockerconfigjson Secret in `telo-sessions` yourself and point
+`session.imagePullSecret` at it; the kubelet pulls with it.
 
 ### Origin TLS (Cloudflare et al.)
 
@@ -416,18 +397,17 @@ Either wires `SESSION_INGRESS_TLS_SECRET`, and the runner stamps a `spec.tls`
 block on every session Ingress. Leave all three empty to skip TLS at the origin
 (terminated entirely upstream).
 
-> **Egress notes.** (1) The kubelet pulls session images directly and does **not**
-> use cluster DNS, so the in-cluster registry only works where nodes trust it
-> (e.g. containerd `registries.conf`). (2) Core NetworkPolicy is CIDR-only and
-> cannot express the package-registry FQDN allowlist the build namespace needs —
-> use a CNI with FQDN policy (Cilium) or an egress proxy to tighten it.
+> **Egress note.** Core NetworkPolicy is CIDR-only and cannot express the
+> package-registry FQDN allowlist the session namespace needs — use a CNI with
+> FQDN policy (Cilium) or an egress proxy to tighten it.
 
 ## Development
 
 ```bash
 pnpm --filter @telorun/k8s-runner build   # tsc
-pnpm --filter @telorun/k8s-runner test    # vitest (limits clamp, tar, bundle token)
+pnpm --filter @telorun/k8s-runner test    # vitest (pod specs, limits clamp, tar, API errors)
 ```
 
 The Kubernetes backend can't be exercised without a cluster; unit tests cover the
-backend-independent logic (limit clamping, the tar writer, bundle tokens).
+backend-independent logic (the pod specs, limit clamping, the tar writer, and
+what an API rejection is allowed to tell a client).
