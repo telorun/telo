@@ -1,5 +1,106 @@
 # @telorun/k8s-runner
 
+## 0.14.0
+
+### Minor Changes
+
+- 4054830: A Kubernetes API rejection no longer reaches the session's client verbatim. The
+  client-node `ApiException`'s message is a full HTTP dump — the raw `Status` body,
+  the response headers — and a start failure's message travels unchanged to the
+  client as the session's terminal `failed` status, so a missing RBAC grant put the
+  runner's ServiceAccount name, the request's audit id and its flowschema UIDs on
+  an end user's screen in telo studio.
+
+  The client is now told the operation, the HTTP status and the API's own one-word
+  `reason` (`Forbidden`, `NotFound`), plus the one remediation a 401/403 implies —
+  enough for an operator to know which permission is at fault. The raw exception
+  rides along as the error's `cause`, which the runner's log serializer records, so
+  the detail moves to the log rather than disappearing. Same treatment for the pod
+  watch, the PTY attach and a watch session's endpoint publish, each of which wrote
+  the same dump into a status message or the user's terminal.
+
+- 4054830: k8s-runner no longer builds a per-app image. A run session runs the plain kernel
+  image, takes its body over the existing bundle initContainer, and resolves its
+  own module closure into a `/telo-cache` emptyDir at boot — the shape a watch
+  session already had. The on-cluster Kaniko path, the `telo-builds` namespace and
+  everything that fed them are gone.
+
+  **Breaking, and it needs a `helm upgrade` to clear.** `RUNNER_IMAGE_REPOSITORY`
+  is no longer read and is no longer required (the runner used to refuse to start
+  without it), along with `RUNNER_BUILD_NAMESPACE`, `RUNNER_BUILDER_IMAGE`,
+  `RUNNER_BUILD_TIMEOUT_SECONDS`, `RUNNER_REGISTRY_INSECURE`,
+  `RUNNER_REGISTRY_API_URL` and `RUNNER_REGISTRY_PUSH_SECRET`.
+  `RUNNER_IMAGE_PULL_SECRET` stays — it is now the kubelet's credential for the
+  kernel image and any operator catalog image in a private registry, and the chart
+  takes it from `session.imagePullSecret`. The chart drops its whole `build:` and
+  `registry:` blocks (including the optional in-cluster `registry:2`), the
+  `telo-builds` namespace and its Role/RoleBinding, and the build-egress
+  NetworkPolicy; an upgrade removes those objects, and a `telo-builds` deleted by
+  hand no longer breaks anything. `pullPolicy` now means the Pod's own
+  `imagePullPolicy` rather than base-image-freshness for a rebuild.
+
+  `RunPhase` keeps `build`, though nothing in this repo emits it any more: it is
+  the vocabulary a _backend_ reports in, and a client is still talking to whatever
+  runner is on the other end of the stream. `extractDependencyKey` /
+  `DependencyKey` and `resolveTagDigest` are removed from `@telorun/runner-core` —
+  the build was their only consumer.
+
+  **The cost is start latency**: a run session's cache dies with its pod, so it
+  re-downloads its closure on every start, where the build used to put it on disk
+  ahead of boot. A watch session pays it once per pod and is the shape to reach for
+  when that matters.
+
+  **Run-session ceilings move with the work**: 50m / 100Mi / 512Mi described a pod
+  that only RAN a prebuilt image, with the closure in image layers, which are not
+  charged to ephemeral-storage. The pod now downloads, unpacks and resolves the
+  closure into an emptyDir, which is — so those numbers meant an OOMKill on memory
+  and an eviction on storage for an ordinary session. `RUNNER_MAX_CPU` /
+  `RUNNER_MAX_MEMORY` / `RUNNER_MAX_EPHEMERAL_STORAGE` now default to 500m / 512Mi
+  / 1Gi, the tier the watch path already ran this same workload under. **The
+  chart's `resourceQuota` moves with them**: its old 4 CPU / 8Gi was exactly 32
+  pods at the old ceilings, so leaving it would have capped concurrency at four —
+  as a 403 the client sees — while `runner.maxSessions` still said 32. It is now
+  32 x the per-pod ceiling, and the arithmetic is written down beside it.
+
+- 4054830: Publish the Helm chart. It was hosted nowhere — `git clone` + `helm install
+./chart` was the only install path — and `Chart.yaml` had never moved off
+  `version: 0.1.0` / `appVersion: "0.0.0"`, a placeholder nothing read.
+
+  It now ships as an OCI artifact at `oci://ghcr.io/telorun/charts/k8s-runner`,
+  pushed on the release path only, gated on the same "package version moved in this
+  commit" test that produces the immutable `telorun/k8s-runner:<version>` image tag
+  and ordered after that image job — so a chart can never name an image the run did
+  not just build.
+
+  **The chart's version is `@telorun/k8s-runner`'s version**, in both `version` and
+  `appVersion`. `scripts/stamp-chart-version.mjs` writes them from `package.json`
+  in the changesets Version PR (`pnpm run version-packages`) and `pnpm run
+check:charts` fails a PR where the two disagree. A second number would only ever
+  be a way for the chart and the image to disagree about which runner is installed,
+  and a chart-only edit already forces a package bump anyway — the changeset gate
+  attributes any changed file to its nearest package directory. `version` therefore
+  jumps 0.1.0 → the runner's current version; nothing was published under the old
+  number.
+
+  **Chart renamed `telo-k8s-runner` → `k8s-runner`**, which is the OCI path's last
+  segment. It matches the image it installs (`telorun/k8s-runner`) and how this repo
+  already names OCI artifacts (`oci://ghcr.io/telorun/console`), and it is what
+  every comparable chart does — a chart takes its component's own name and does not
+  add a vendor prefix its image lacks. **No rendered object is renamed**: the name
+  helper returns a literal, not `.Chart.Name`, and that literal is also the runner's
+  default `RUNNER_MANAGED_BY` — the label its orphan reaper and the session
+  NetworkPolicy select on, so moving it would strand pods from a previous version.
+
+  **`image.tag` now defaults to empty and resolves to the chart's `appVersion`**,
+  with `pullPolicy: IfNotPresent` (was `latest` / `Always`). `--version 0.13.0` has
+  to install runner 0.13.0; with a floating tag it installed whatever `latest` had
+  moved to, independently of the chart. Set `image.tag` to run a different runner.
+
+### Patch Changes
+
+- Updated dependencies [4054830]
+  - @telorun/runner-core@0.12.0
+
 ## 0.13.0
 
 ### Minor Changes
