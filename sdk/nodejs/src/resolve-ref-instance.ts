@@ -77,7 +77,11 @@ export function resolveRefInstance<T>(
   const instance =
     ref.alias && ref.alias !== "Self"
       ? ctx.moduleContext.resolveImportedInstance(ref.alias, ref.name)
-      : (ctx.resolveLocalInstance?.(ref.name) ?? ctx.moduleContext.getInstance(ref.name));
+      : // The DECLARED door: this name came out of a ref slot, so the edge is
+        // already in the manifest and recording it would mark the target
+        // unreconcilable on the strength of a reference the host can see.
+        (ctx.resolveLocalInstance?.(ref.name) ??
+          ctx.moduleContext.getInstance(ref.name, { kind: ref.kind as string, name: ref.name }));
 
   if (!guard(instance)) {
     const label = ref.alias ? `${ref.alias}.${ref.name}` : ref.name;

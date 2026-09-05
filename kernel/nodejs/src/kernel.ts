@@ -3,12 +3,16 @@ import {
   authoredModuleMetadata,
   buildEvalPaths,
   collectZoneModuleDocuments,
+  declarationSignature,
+  diffManifests,
   flattenForAnalyzer,
   flattenLoadedModule,
   isModuleKind,
+  nodeIdFor,
   Loader,
   StaticAnalyzer,
   type DefResolver,
+  type DiffEntry,
   type LoadedGraph,
   type ManifestSource,
 } from "@telorun/analyzer";
@@ -47,6 +51,11 @@ import { KernelTracer } from "./tracing.js";
 import { KernelLogging, type LoggingManifestBlock } from "./logging/kernel-logging.js";
 import type { ScopeConfig } from "./logging/scope-config.js";
 import { formatSpanCounter } from "./logging/span-id.js";
+import {
+  graphFileSources,
+  modulesThatMoved,
+  type ReconcileOutcome,
+} from "./reconcile.js";
 import { ambientInvokeContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import { ResourceContextImpl } from "./resource-context.js";
@@ -118,6 +127,11 @@ function throwInvalidState(operation: string, reason: string): never {
   );
 }
 
+/** Docs that register a KIND. `DefinitionRegistry` only ever adds, so a change
+ *  to one of these cannot be reconciled into a running kernel — the previous
+ *  registration would survive it. */
+const DEFINITION_KINDS: ReadonlySet<string> = new Set(["Telo.Definition", "Telo.Abstract"]);
+
 export interface KernelOptions {
   stdin?: NodeJS.ReadableStream;
   stdout?: NodeJS.WritableStream;
@@ -172,6 +186,24 @@ export class Kernel implements IKernel {
    *  which module's library layer each resolves to. Rebuilt on every `load()`. */
   private readonly siblingLibraries = new Map<string, SiblingLibraryMap>();
   private _loadedGraph?: LoadedGraph;
+  /** Declaration signatures of the installed set, taken at load time — see
+   *  `ManifestDiffOptions.previousSignatures` for why they cannot be taken
+   *  later. */
+  private _declarationSignatures = new Map<string, string>();
+
+  /** Set while a reconciliation is in flight. Two overlapping calls would
+   *  interleave unwind, deregister and re-initialize on one context, and a watch
+   *  loop with fast saves is exactly the caller that would do it. */
+  private _reconciling = false;
+
+  /** The directories and cache policy `load()` produced with, replayed by
+   *  {@link reconcile} so a second production cannot differ from the first. */
+  private _produceOptions?: {
+    manifestsDir: string | undefined;
+    analysisDir: string | undefined;
+    writeCache: boolean;
+    analyzeOnly: boolean;
+  };
   // Lifecycle state — guards boot/runTargets/teardown/invoke transitions.
   // teardown() is the only idempotent method; everything else throws on misuse.
   private _bootCalled = false;
@@ -454,6 +486,263 @@ export class Kernel implements IKernel {
     // through spawnChild() to module imports and scoped handles.
     this.rootContext.getDefinition = (kind) => this.controllers.getDefinition(kind);
 
+    // Kept so `reconcile()` re-produces against the same directories and cache
+    // policy this load used — a second load resolving them again could differ.
+    this._produceOptions = { manifestsDir, analysisDir, writeCache, analyzeOnly: false };
+    const produced = await this.produceManifests(sourceUrl, {
+      manifestsDir,
+      analysisDir,
+      writeCache,
+      analyzeOnly: options?.analyzeOnly === true,
+    });
+    // `analyzeOnly` stops before instantiation, so there is nothing to install.
+    if (!produced) return;
+    this._declarationSignatures = produced.signatures;
+    this.installManifests(produced.manifests);
+  }
+
+  /**
+   * Re-read the entry and bring the running kernel into line with it, rebuilding
+   * only what changed.
+   *
+   * Three things decide what happens, in order, and each escalates rather than
+   * narrowing on a guess:
+   *
+   *  1. **A module other than the entry moved.** The kernel's runtime manifest
+   *     set is entry-only — an imported library's resources live in the child
+   *     context its `Telo.Import` owns — so a library edit is invisible to the
+   *     resource diff and cannot be narrowed here at all.
+   *  2. **A module doc changed.** `variables` / `secrets` / `ports` / `logging`
+   *     are resolved once for the whole application and read by anything, so a
+   *     change there has no bounded impact set.
+   *  3. **Otherwise**, the resources whose declarations moved are unwound
+   *     together with everything transitively holding them, re-registered, and
+   *     re-initialized. Everything else keeps running, its instances untouched.
+   *
+   * `restartRequired` is a REPORT, not a failure: the caller rebuilds the
+   * kernel, which is what it does for every edit today. Nothing has been
+   * unwound when it is set.
+   */
+  async reconcile(): Promise<ReconcileOutcome> {
+    if (this._isTornDown) throwInvalidState("reconcile", "kernel has been torn down");
+    if (!this._isBooted) throwInvalidState("reconcile", "boot() has not completed");
+    const entryUrl = this._entryUrl;
+    const previousGraph = this._loadedGraph;
+    const produceOptions = this._produceOptions;
+    if (!entryUrl || !previousGraph || !produceOptions) {
+      throwInvalidState("reconcile", "load() has not been called");
+    }
+    if (this._reconciling) {
+      throwInvalidState("reconcile", "a reconciliation is already in progress");
+    }
+    const previousManifests = this.staticManifests;
+    const previousSignatures = this._declarationSignatures;
+    this._reconciling = true;
+    try {
+      return await this.reconcileLocked(
+        entryUrl,
+        previousGraph,
+        produceOptions,
+        previousManifests,
+        previousSignatures,
+      );
+    } finally {
+      this._reconciling = false;
+    }
+  }
+
+  private async reconcileLocked(
+    entryUrl: string,
+    previousGraph: LoadedGraph,
+    produceOptions: NonNullable<Kernel["_produceOptions"]>,
+    previousManifests: ResourceManifest[],
+    previousSignatures: Map<string, string>,
+  ): Promise<ReconcileOutcome> {
+
+    // The loader memoizes a file's parse on the assumption its contents do not
+    // change underneath one Loader — precisely what a reload breaks — so every
+    // file the previous graph read is dropped before it is asked for again.
+    for (const source of graphFileSources(previousGraph)) this.loader.forget(source);
+
+    const produced = await this.produceManifests(entryUrl, produceOptions);
+    if (!produced) throwInvalidState("reconcile", "produced no manifests");
+
+    // `produceManifests` writes the kernel's static half as it goes — the graph,
+    // the flattened set, the module artifacts, the definition registry. Those
+    // writes describe manifests that are only INSTALLED further down, so every
+    // exit before that point puts them back: a caller told to restart would
+    // otherwise hold a kernel whose static half had already moved, and a second
+    // reconcile would diff the new set against itself and report no change
+    // while the live instances are still the originals.
+    const restoreProduced = (): void => {
+      this._loadedGraph = previousGraph;
+      this.staticManifests = previousManifests;
+      this._declarationSignatures = previousSignatures;
+    };
+    const halted = (reason: string): ReconcileOutcome => {
+      restoreProduced();
+      return { reinitialized: [], removed: [], restartRequired: reason };
+    };
+
+
+    const moved = modulesThatMoved(previousGraph, produced.graph);
+    if (moved.length > 0) {
+      return halted(`an imported module changed: ${moved.join(", ")}`);
+    }
+
+    const diff = diffManifests(previousManifests, produced.manifests, { previousSignatures });
+    if (diff.entries.length === 0) {
+      // Nothing to install, so the new record describes exactly what is already
+      // running — keep it rather than restoring, so the next diff compares
+      // against the freshest read of the same file.
+      return { reinitialized: [], removed: [] };
+    }
+
+    const movedDoc = diff.entries.find(
+      (entry: DiffEntry) => isModuleKind((entry.next ?? entry.previous)!.kind as string),
+    );
+    if (movedDoc) return halted("the application document changed");
+
+    // A kind registration is once per kernel: `DefinitionRegistry` only ever
+    // adds, so a deleted or edited `Telo.Definition` would leave the old kind
+    // registered and the running kernel enforcing a weaker contract than
+    // `telo check` does against the same file — a divergence nothing reports.
+    const movedKind = diff.entries.find((entry: DiffEntry) =>
+      DEFINITION_KINDS.has((entry.next ?? entry.previous)!.kind as string),
+    );
+    if (movedKind) return halted("a resource kind definition changed");
+
+    // Names rather than node ids from here on: the root context keys everything
+    // by the local name, and a manifest in this set is by definition the entry
+    // module's own.
+    const nameOf = (manifest: ResourceManifest): string => manifest.metadata.name as string;
+    const stale = diff.entries
+      .filter((entry: DiffEntry) => entry.change !== "added")
+      .map((entry: DiffEntry) => nameOf(entry.previous!));
+    // Closed under HOLDERS: a resource holding one of these has the live
+    // instance injected into its slot, so it cannot outlive the rebuild.
+    const { impacted, opaque } = this.rootContext.impactedBy(stale);
+
+    // A module document is a registered resource whose `targets:` and
+    // `logging.sinks` hold references, so it is a HOLDER of them and the closure
+    // reaches it whenever one of those moves. It is the one resource nothing
+    // here can rebuild: only `installManifests` re-applies what it carries —
+    // targets, module metadata, the resolved environment, logging — and
+    // unwinding it would report the application itself as a routine removal.
+    const impactedDoc = [...impacted].find((name) => {
+      const kind = this.rootContext.declaredManifestFor(name)?.kind as string | undefined;
+      return kind !== undefined && isModuleKind(kind);
+    });
+    if (impactedDoc) return halted("the application document is in the impact set");
+
+    if (opaque.length > 0) {
+      // Someone resolved these by name during initialization, so the set of
+      // holders is unknown and no closure over the declared edges is an answer.
+      return halted(`a resource is held through a by-name resolution: ${opaque.join(", ")}`);
+    }
+
+    // A resource that has been started is one nothing will start again: boot
+    // targets run once, and re-initializing a Service leaves it constructed and
+    // not listening while this call would report it as rebuilt.
+    const started = [...impacted].filter((name) => this.rootContext.wasStarted(name));
+    if (started.length > 0) return halted(`a running resource would be rebuilt: ${started.join(", ")}`);
+
+    // BEFORE the unwind: both are pure over the manifests plus the registry, so
+    // running them afterwards would turn a detectable condition — an invalid
+    // reference, a cycle the edit introduced — into a kernel whose resources are
+    // already gone.
+    const { diagnostics, order, cycleError } = this.analyzer.prepare(
+      produced.manifests,
+      this.registry,
+    );
+    if (diagnostics.length > 0) {
+      restoreProduced();
+      throw new RuntimeError(
+        "ERR_MANIFEST_VALIDATION_FAILED",
+        "Manifest validation failed",
+        diagnostics.map(staticDiagnosticToRuntime),
+      );
+    }
+    if (cycleError) {
+      restoreProduced();
+      throw new RuntimeError("ERR_CIRCULAR_DEPENDENCY", cycleError);
+    }
+
+    const surviving = new Map<string, ResourceManifest>();
+    for (const manifest of produced.manifests) {
+      if (!isModuleKind(manifest.kind as string)) surviving.set(nameOf(manifest), manifest);
+    }
+
+    await this.rootContext.unwindResources(impacted);
+    for (const name of impacted) this.rootContext.deregisterManifest(name);
+
+    const removed = [...impacted].filter((name) => !surviving.has(name));
+    const added = diff.entries
+      .filter((entry: DiffEntry) => entry.change === "added")
+      .map((entry: DiffEntry) => nameOf(entry.next!));
+    const reinitialized = [...new Set([...impacted, ...added])].filter((name) =>
+      surviving.has(name),
+    );
+    for (const name of reinitialized) this.rootContext.registerManifest(surviving.get(name)!);
+    // A survivor keeps its instance and its declaration, but the declaration
+    // object is the previous load's and carries that load's `sourceLine`. Swap
+    // in the fresh one so a diagnostic anchored on a resource nobody touched
+    // still points at the line it is on now.
+    const rebuilt = new Set(reinitialized);
+    for (const [name, manifest] of surviving) {
+      if (!rebuilt.has(name)) this.rootContext.refreshManifest(name, manifest);
+    }
+
+    // Re-open for another pass: a resource resolving a sibling that has not been
+    // rebuilt yet must get the deferral the init loop retries on. Closed in the
+    // `finally` so a failure cannot leave the context open, which would turn
+    // every later lookup into a deferral with no pass coming.
+    this.rootContext.reopenForInitialization();
+    try {
+      if (order) this.rootContext.setInitOrder(order);
+      await this.rootContext.initializeResources();
+    } catch (error) {
+      // The resources are already gone; there is no rollback to a state that no
+      // longer exists. Say so rather than letting the caller read a validation
+      // failure as though nothing had happened.
+      throw new RuntimeError(
+        "ERR_RECONCILE_FAILED",
+        `reconciliation failed after unwinding ${[...impacted].join(", ")} — the kernel is ` +
+          `degraded and must be rebuilt: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof RuntimeError ? error.diagnostics : undefined,
+      );
+    } finally {
+      this.rootContext.closeInitialization();
+    }
+
+    return { reinitialized, removed };
+  }
+
+  /**
+   * Everything between a URL and a set of manifests ready to install: load the
+   * graph, validate it, flatten it, and normalize inline resources.
+   *
+   * Split from {@link load} because it is the half that can run AGAIN. A
+   * reconciliation re-produces manifests against the same context to find what
+   * moved, where `load` also builds the context, the built-in definitions and
+   * the injection hooks — all of which exist once per kernel.
+   *
+   * Returns `undefined` under `analyzeOnly`, which deliberately stops before
+   * module instantiation and target wiring.
+   */
+  private async produceManifests(
+    sourceUrl: string,
+    opts: {
+      manifestsDir: string | undefined;
+      analysisDir: string | undefined;
+      writeCache: boolean;
+      analyzeOnly: boolean;
+    },
+  ): Promise<
+    | { graph: LoadedGraph; manifests: ResourceManifest[]; signatures: Map<string, string> }
+    | undefined
+  > {
+    const { manifestsDir, analysisDir, writeCache } = opts;
     // Static analysis pre-flight: validates schemas and invocation context compatibility.
     // All errors are fatal — kernel does not start if analysis fails.
     // `desugarImports` expands each module's inline `imports:` map into synthetic
@@ -590,7 +879,7 @@ export class Kernel implements IKernel {
     // before module instantiation / target wiring / application-env value
     // resolution — those need a running environment (e.g. session secrets) the
     // build does not have, and the runtime `load()` performs them anyway.
-    if (options?.analyzeOnly) {
+    if (opts.analyzeOnly) {
       if (rootModuleDoc?.kind === "Telo.Application") {
         precompileApplicationEnvSchemas(
           rootModuleDoc as Record<string, any>,
@@ -667,7 +956,27 @@ export class Kernel implements IKernel {
       staticManifests,
     );
     this.staticManifests = normalizedManifests;
+    // Signed HERE, while these are still declarations. Installing them hands
+    // the very same objects to the context, and resolving a reference writes a
+    // live instance into one — so a signature taken later is of something else.
+    const signatures = new Map<string, string>();
+    for (const manifest of normalizedManifests) {
+      signatures.set(nodeIdFor(manifest), declarationSignature(manifest));
+    }
+    return { graph: analysisGraph, manifests: normalizedManifests, signatures };
+  }
 
+  /**
+   * Install manifests into the root context: register each one, and apply what
+   * a module doc carries — boot targets, module metadata, the application's
+   * resolved environment and its logging configuration.
+   *
+   * The other half of the {@link load} split. A reconciliation registers only
+   * the declarations that moved, so it calls {@link EvaluationContext.registerManifest}
+   * itself rather than coming through here; what lives here is the whole-set
+   * install, which happens once.
+   */
+  private installManifests(normalizedManifests: ResourceManifest[]): void {
     let rootApplicationManifest: ResourceManifest | undefined;
     for (const manifest of normalizedManifests) {
       if (isModuleKind(manifest.kind)) {
