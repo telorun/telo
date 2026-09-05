@@ -1,0 +1,125 @@
+kind: Telo.Library
+metadata:
+  name: TeardownOrder
+  version: 1.0.0
+  description: >-
+    Test fixture for teardown ordering: labelled resources that each record when
+    their own inverse runs, and one that may hold another, so the order a
+    context unwinds in is observable from a probe after teardown.
+exports:
+  kinds:
+    - Node
+    - Group
+    - Task
+    - Journal
+  resources:
+    - provider
+    - journal
+files:
+  - "nodejs/*.mjs"
+---
+# One effect, one inverse, one line in the journal. `holds:` is what makes a
+# node a consumer of another: an init-order edge, so the kernel must unwind this
+# node before the one it names.
+kind: Telo.Definition
+metadata:
+  name: Node
+  description: >-
+    A resource that records its own inverse, optionally holding another whose
+    inverse must therefore run after it.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/nodes.mjs#node
+schema:
+  type: object
+  additionalProperties: false
+  required:
+    - label
+  properties:
+    label:
+      title: The name this node records itself under.
+      type: string
+    holds:
+      title: Another node this one holds for as long as it is alive.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+---
+# A node whose references live INSIDE an array, which is the shape that
+# distinguishes a manifest from its own declaration after Phase-5 injection: the
+# create-time expansion copies the resource shallowly, so a top-level slot is
+# written on the copy while an entry nested in an array is shared and is written
+# on the registered manifest itself.
+kind: Telo.Definition
+metadata:
+  name: Group
+  description: Holds several nodes through an array, so its ref slots are nested.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/nodes.mjs#group
+schema:
+  type: object
+  additionalProperties: false
+  required:
+    - label
+  properties:
+    label:
+      type: string
+    members:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          node:
+            x-telo-ref:
+              kind: Self.Node
+              use: dependency
+---
+# A boot target: something the kernel RUNS, not merely initializes. Nothing runs
+# a resource a second time, so rebuilding one that has already started would
+# leave it constructed and idle — which is what a reconciliation has to refuse.
+kind: Telo.Definition
+metadata:
+  name: Task
+  description: Records that it was run, so a rebuild that never re-runs is visible.
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/nodes.mjs#task
+schema:
+  type: object
+  additionalProperties: false
+  required:
+    - label
+  properties:
+    label:
+      type: string
+---
+# Reads the module-scope journal every node writes to: which inverses ran, and
+# in what order.
+kind: Telo.Definition
+metadata:
+  name: Journal
+  description: Reports the order in which the fixture's inverses ran.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/nodes.mjs#journal
+schema:
+  type: object
+  additionalProperties: false
+outputType:
+  type: object
+  properties:
+    entries:
+      type: array
+      items:
+        type: string
+---
+kind: Self.Node
+metadata:
+  name: provider
+label: provider
+---
+kind: Self.Journal
+metadata:
+  name: journal

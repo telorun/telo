@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: TeardownOrderApp
+  version: 1.0.0
+  description: >-
+    Exercises teardown ordering in both directions it can go wrong: `consumer`
+    holds a resource that lives in an imported library's own context, and
+    `localConsumer` holds a sibling declared in this same file.
+imports:
+  Fixture: ../teardown-order/telo.yaml
+---
+kind: Fixture.Node
+metadata:
+  name: localProvider
+label: localProvider
+---
+kind: Fixture.Node
+metadata:
+  name: localConsumer
+label: localConsumer
+holds: !ref localProvider
+---
+# The cross-boundary case: the target is in the child context the `Fixture`
+# import owns, so it is reached only through that import's own inverse.
+kind: Fixture.Node
+metadata:
+  name: consumer
+label: consumer
+holds: !ref Fixture.provider

@@ -65,6 +65,8 @@ import { isStepSlot } from "./step-slot.js";
 import { isInlineResource, resolveFieldEntries } from "./reference-field-map.js";
 import { findZoneProviders } from "./resolve-zone-containment.js";
 import { possibleUses, readRefSlot, type RefUse } from "./ref-slot.js";
+import { canonicalJson } from "./canonical-json.js";
+import { accessChains } from "./cel-access-chains.js";
 
 /** How a node's declaration reached the module, which is what decides where a
  *  view may draw it — an inline child exists nowhere but its parent's YAML, so
@@ -589,15 +591,6 @@ export function contentKey(value: unknown): string {
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
   return hash.toString(36);
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
 }
 
 /** Mints ids that are unique without being positional: the name where one
@@ -1938,21 +1931,6 @@ function buildKindPlane(
     out.push(kind);
   }
   return out;
-}
-
-/** The CEL environment used to PARSE a chain out of an expression. One per
- *  process: building it is the expensive half, and nothing here evaluates. */
-let parseEnv: ReturnType<typeof buildCelEnvironment> | undefined;
-
-/** Access chains an expression reads, or none when it does not parse — a syntax
- *  error is the engine pass's to report, not this one's. */
-function accessChains(source: string): string[][] {
-  try {
-    parseEnv ??= buildCelEnvironment();
-    return extractAccessChains(parseEnv.parse(source).ast);
-  } catch {
-    return [];
-  }
 }
 
 /**

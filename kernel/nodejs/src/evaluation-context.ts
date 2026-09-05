@@ -28,8 +28,9 @@ import {
   type Tracer,
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
-import { evalPathCovers } from "@telorun/analyzer";
+import { celResourceReads, evalPathCovers } from "@telorun/analyzer";
 import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
+import { impactClosure, reverseTopologicalOrder } from "./resource-edges.js";
 import {
   REDACTED,
   redactSensitive,
@@ -636,9 +637,31 @@ export class EvaluationContext implements IEvaluationContext {
 
   /** Per-resource dependency names, captured at create() time — BEFORE Phase-5
    *  injection swaps refs for live instances, so the walk sees plain objects and
-   *  cannot wander into a controller's (possibly cyclic) object graph. Read only
-   *  when init fails, to attribute each failure to its cause. */
+   *  cannot wander into a controller's (possibly cyclic) object graph.
+   *
+   *  Read twice, and RETAINED for the context's lifetime because of the second
+   *  reader: to attribute an init failure to its cause, and to order teardown
+   *  (`teardownOrder`) so a consumer's inverses run while the resources it holds
+   *  are still alive. */
   private readonly resourceDependencies = new Map<string, string[]>();
+
+  /**
+   * Names resolved by NAME during initialization, rather than through a
+   * declared reference slot — so a resource somebody may be holding, with no
+   * edge recording who.
+   *
+   * The set is of TARGETS, not of pairs: the door that records
+   * (`ModuleContext.getInstance`) is reached as `ctx.moduleContext`, which every
+   * resource of the module shares, so there is no caller to attribute the read
+   * to. That is enough for the one decision that depends on it — see
+   * {@link impactedBy}.
+   */
+  protected readonly opaquelyRead = new Set<string>();
+
+  /** Record a by-name resolution. Called by the recording door only. */
+  protected recordOpaqueRead(name: string): void {
+    this.opaquelyRead.add(name);
+  }
 
   /**
    * Optional hook called between create() and init() for each resource.
@@ -877,6 +900,32 @@ export class EvaluationContext implements IEvaluationContext {
   }
 
   /**
+   * Forget a declaration entirely — the inverse of {@link registerManifest}.
+   *
+   * Reconciliation's other half: {@link unwindResources} disposes the INSTANCE,
+   * and this clears everything keyed by the name so the same name can be
+   * declared again. Without it `registerManifest` refuses with
+   * `ERR_DUPLICATE_RESOURCE`, which is the right answer for a manifest
+   * declaring one name twice and the wrong one for a second load of the same
+   * manifest.
+   *
+   * Every per-name record goes, not just the declaration: a resource left in
+   * `withheldResources` would be skipped by the init loop for the life of the
+   * kernel, and a stale `createdInstances` entry would have the loop initialize
+   * the object built from the PREVIOUS declaration.
+   */
+  deregisterManifest(name: string): void {
+    this.declaredManifests.delete(name);
+    this.resourceDependencies.delete(name);
+    this.createdInstances.delete(name);
+    this.withheldResources.delete(name);
+    this.recreatedResources.delete(name);
+    this.opaquelyRead.delete(name);
+    const pending = this.pendingResources.findIndex((r) => r.metadata?.name === name);
+    if (pending >= 0) this.pendingResources.splice(pending, 1);
+  }
+
+  /**
    * The manifest a name was DECLARED with, resolved scope-local first and then
    * up the enclosing chain — the order `getInstance` and the CEL `resources`
    * layering already use, so a declaration lookup and an instance lookup agree
@@ -1048,7 +1097,12 @@ export class EvaluationContext implements IEvaluationContext {
             if (!this.recreatedResources.has(name)) progress = true;
             const createdRes = created.resource;
             const refs = collectResourceRefs(createdRes);
-            this.resourceDependencies.set(name, localDependencyNames(refs));
+            // `resource` rather than `createdRes`: the registered declaration
+            // still holds its expressions, while the created copy holds the
+            // values they were expanded to.
+            this.resourceDependencies.set(name, [
+              ...new Set([...localDependencyNames(refs), ...celResourceReads(resource)]),
+            ]);
             const payload: Record<string, unknown> = {
               resource: {
                 kind: createdRes.kind,
@@ -1164,9 +1218,6 @@ export class EvaluationContext implements IEvaluationContext {
           await this.publishSnapshot(name);
           this.resourceInstances.set(name, { resource, instance });
           this.createdInstances.delete(name);
-          // Read only on failure, and this one succeeded — drop it rather than
-          // holding a dep-name array per resource for the context's lifetime.
-          this.resourceDependencies.delete(name);
           errors.delete(name);
           progress = true;
           await this.emit(`${resource.kind}.${resource.metadata.name}.Initialized`, {
@@ -1365,16 +1416,33 @@ export class EvaluationContext implements IEvaluationContext {
   }
 
   /**
-   * Cascade teardown depth-first through the tree:
-   *   1. Tear down child contexts in reverse registration order.
-   *   2. Tear down own resource instances in reverse registration order,
-   *      emitting a Teardown event for each via the injected emit callback.
+   * Cascade teardown through the tree:
+   *   1. Tear down own resource instances in {@link teardownOrder}, emitting a
+   *      Teardown event for each via the injected emit callback.
+   *   2. Sweep any child context still standing, in {@link childTeardownOrder}.
+   *
+   * **Own resources go FIRST, and the child sweep is a backstop.** A child
+   * context that belongs to a resource is torn down by that resource's own
+   * inverse — an import's `init()` returns `child.teardownResources()`, and so
+   * does a template's — so it already unwinds at its owner's position in step 1,
+   * which is the position the edges put it at. Running a child cascade ahead of
+   * step 1 tore every imported library down before any resource of THIS context,
+   * so an app resource holding `!ref Alias.name` unwound after its provider was
+   * already gone, and the owner's inverse then found nothing left to do.
+   *
+   * Sweeping afterwards rather than not at all is what still reclaims a context
+   * no inverse claims: a `lifecycle: shared` library, which is spawned under the
+   * root and deliberately gives no importer a claim on it, and an import whose
+   * `init()` never ran to register one. `teardownResources` is idempotent, so a
+   * context already taken down in step 1 costs the sweep nothing.
    */
   // eslint-disable-next-line @typescript-eslint/member-ordering
   async teardownResources(): Promise<void> {
     this.state = "Draining";
-    const failures: Array<{ resource: string; error: unknown }> = [];
+    const failures = await this.unwindEach(this.teardownOrder());
 
+    // The backstop: whatever no resource's inverse claimed. Everything an import
+    // or a template owns is already down, so this is a no-op for it.
     for (const child of this.childTeardownOrder()) {
       try {
         await child.teardownResources();
@@ -1383,7 +1451,59 @@ export class EvaluationContext implements IEvaluationContext {
       }
     }
 
-    for (const [key, { resource, instance }] of this.teardownOrder()) {
+    this.state = "Teardown";
+    this.raiseTeardownFailures(failures);
+  }
+
+  /**
+   * Unwind SOME of this context's resources and leave the rest running.
+   *
+   * The reconciliation half of teardown: a host that has decided which
+   * declarations moved unwinds exactly {@link impactedBy}'s answer, then
+   * re-registers and re-initializes. Ordering is {@link teardownOrder}
+   * restricted to the selection, so a consumer still unwinds before what it
+   * holds — and the selection being closed under holders is what makes that
+   * true of the resources left standing as well, since none of them holds
+   * anything in it.
+   *
+   * The context keeps its state: it is neither draining nor torn down, and no
+   * child context is swept, because a child belonging to an unwound import goes
+   * down with that import's own inverse exactly as it does at teardown.
+   *
+   * A name with no live instance is skipped rather than reported — a resource
+   * that failed to initialize has nothing to unwind, and a host asking for it is
+   * asking about a declaration, not about an instance.
+   */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
+  async unwindResources(names: ReadonlySet<string>): Promise<void> {
+    const selected = this.teardownOrder().filter(([, entry]) =>
+      names.has(entry.resource.metadata.name as string),
+    );
+    this.raiseTeardownFailures(await this.unwindEach(selected));
+  }
+
+  private raiseTeardownFailures(failures: Array<{ resource: string; error: unknown }>): void {
+    if (failures.length === 0) return;
+    throw new RuntimeError(
+      "ERR_TEARDOWN_FAILED",
+      `${failures.length} resource(s) failed during teardown`,
+      failures.map(({ resource, error }) => ({
+        severity: "error" as const,
+        message: error instanceof Error ? error.message : String(error),
+        resource,
+      })),
+    );
+  }
+
+  /** Unwind the given entries in the order supplied, aggregating what refused.
+   *  Failures are returned rather than thrown so one refusing inverse cannot
+   *  strand the resources after it — the log sinks above all. */
+  private async unwindEach(
+    entries: Array<readonly [string, { resource: any; instance: any }]>,
+  ): Promise<Array<{ resource: string; error: unknown }>> {
+    const failures: Array<{ resource: string; error: unknown }> = [];
+
+    for (const [key, { resource, instance }] of entries) {
       const label = `${resource.kind}.${resource.metadata.name}`;
       // A reading belongs to the run that produced it. The WeakMap would drop it
       // with the instance anyway; clearing here also covers an instance something
@@ -1436,34 +1556,29 @@ export class EvaluationContext implements IEvaluationContext {
         failures.push({ resource: `${label} (Teardown event)`, error: err });
       }
       this.resourceInstances.delete(key);
+      // A torn-down resource must stop being readable: a CEL expansion that still
+      // found its reading would bake a value nothing is serving any more.
+      this.clearPublishedReading(resource.metadata.name as string);
     }
 
-    this.state = "Teardown";
-
-    if (failures.length > 0) {
-      throw new RuntimeError(
-        "ERR_TEARDOWN_FAILED",
-        `${failures.length} resource(s) failed during teardown`,
-        failures.map(({ resource, error }) => ({
-          severity: "error" as const,
-          message: error instanceof Error ? error.message : String(error),
-          resource,
-        })),
-      );
-    }
+    return failures;
   }
 
   /**
-   * Child contexts in teardown order: ascending `teardownPriority` (default 0),
-   * with the base reverse-registration order preserved within each tier.
+   * Child contexts for the backstop sweep: ascending `teardownPriority`
+   * (default 0), reverse registration within a tier.
    *
-   * The same rule `teardownOrder` applies to resource instances, and for the
-   * same reason: reverse registration is reverse init order in the happy path,
-   * but a node that must reliably outlive the rest has to say so rather than
-   * depend on when it happened to be created. A `lifecycle: shared` library is
-   * registered when the FIRST import reaches it — which, for an import declared
-   * inside another library, is after that library's own context — so reverse
-   * registration would tear the singleton down while a borrower still holds it.
+   * What reaches the sweep is a context no resource's inverse claimed, which in
+   * practice is the `lifecycle: shared` libraries. Those are spawned under the
+   * ROOT and give no importer a claim, so nothing but this orders them — and
+   * reverse registration alone does not, since a singleton is registered when
+   * the FIRST import reaches it, which for an import declared inside another
+   * library is after that library's own context. `TEARDOWN_LAST` on the context
+   * is what keeps a singleton alive until the libraries borrowing it have gone.
+   *
+   * Its protection now stops at library-against-library. Every resource of the
+   * context that owns the sweep has already unwound by the time it runs, which
+   * is the ordering the sweep used to invert.
    */
   private childTeardownOrder(): IEvaluationContext[] {
     return [...this.children]
@@ -1476,31 +1591,120 @@ export class EvaluationContext implements IEvaluationContext {
   }
 
   /**
-   * Resource instances in teardown order: ascending `teardownPriority`, with the
-   * base reverse-insertion order preserved within each priority tier.
+   * Resource instances in teardown order: ascending `teardownPriority` as a hard
+   * tier, and within a tier a consumer before every resource it holds
+   * ({@link reverseTopologicalOrder} over the create-time edges), with reverse
+   * insertion as the tiebreak.
    *
-   * The base order is reverse *insertion*, which is reverse init order in the
-   * happy path — but the init loop is a multi-pass retry, so a resource that
-   * failed its first pass lands later in the map than its topological rank
-   * implies. That makes the dependency graph an unreliable way to say "last".
-   * A resource that must reliably outlive the rest declares it directly via
-   * `teardownPriority` (log sinks set `TEARDOWN_LAST`), so the generic teardown
-   * path orders by a declared number rather than sniffing any one subsystem's
-   * instance shape.
+   * `teardownPriority` is a TIER rather than another edge because it is the
+   * author's statement about an edge nothing captured: a log sink is reached
+   * through `ctx.log` rather than through a ref slot, so no walk of the manifest
+   * can find the resources that will log on the way down. Letting topology
+   * reorder across tiers would let one discovered edge override a declaration
+   * made precisely because the edges are not all discoverable.
    */
-  private teardownOrder(): Array<[string, { resource: any; instance: any }]> {
+  private teardownOrder(): Array<readonly [string, { resource: any; instance: any }]> {
     // A borrowed instance is torn down by the scope that declared it, never
     // here — see `borrowedResources`.
     const entries = [...this.resourceInstances.entries()]
       .filter(([name]) => !this.borrowedResources.has(name))
       .reverse();
-    // Stable sort by priority (default 0); Array.prototype.sort is stable, so
-    // the reverse-insertion order survives within each tier.
-    return entries.sort(
-      ([, a], [, b]) =>
-        ((a.instance as { teardownPriority?: number })?.teardownPriority ?? 0) -
-        ((b.instance as { teardownPriority?: number })?.teardownPriority ?? 0),
-    );
+    const tiers = new Map<number, Array<readonly [string, { resource: any; instance: any }]>>();
+    for (const entry of entries) {
+      const priority = (entry[1].instance as { teardownPriority?: number })?.teardownPriority ?? 0;
+      const tier = tiers.get(priority);
+      if (tier) tier.push(entry);
+      else tiers.set(priority, [entry]);
+    }
+    return [...tiers.keys()]
+      .sort((a, b) => a - b)
+      .flatMap((priority) =>
+        reverseTopologicalOrder(
+          tiers.get(priority)!,
+          (value) => value.resource.metadata.name as string,
+          (name) => this.resourceDependencies.get(name),
+        ),
+      );
+  }
+
+  /**
+   * Every resource of this context that becomes invalid when `names` do — the
+   * named resources plus everything that transitively holds one
+   * ({@link impactClosure} over the same create-time edges teardown reads).
+   *
+   * What a reconciliation unwinds. A cross-module reference projects onto the
+   * local `Telo.Import` (`localDependencyNames`), so a change inside an
+   * imported library reaches this context as its import being impacted, and the
+   * library goes down with that import's own inverse — which is why this
+   * answers for one context rather than walking the tree.
+   *
+   * **`opaque` is what the answer cannot cover.** A name resolved by NAME during
+   * initialization ({@link opaquelyRead}) may be held by a resource no edge
+   * names, so a closure reaching one is not an answer at all. Those names are
+   * reported rather than absorbed: expanding the set to "every resource here"
+   * would sweep in the module document, which is not a resource a caller can
+   * unwind and re-register, and would present a whole-context rebuild as a
+   * narrowing. The caller escalates, and can say which resource forced it.
+   */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
+  impactedBy(names: Iterable<string>): { impacted: Set<string>; opaque: string[] } {
+    const impacted = impactClosure(names, this.resourceDependencies);
+    const opaque = [...impacted].filter((name) => this.opaquelyRead.has(name));
+    return { impacted, opaque };
+  }
+
+  /** Whether this resource's `run()` has been dispatched. A rebuilt resource
+   *  that had been started is one nothing will start again — boot targets run
+   *  once — so a caller reconciling has to escalate rather than leave it
+   *  constructed and idle. */
+  wasStarted(name: string): boolean {
+    const instance = this.resourceInstances.get(name)?.instance;
+    return instance !== undefined && startedInstances.has(instance);
+  }
+
+  /** Drop a resource's published reading. A context with no `resources` scope of
+   *  its own has nothing to drop; `ModuleContext` overrides. */
+  clearPublishedReading(name: string): void {
+    void name;
+  }
+
+  /** The declaration registered under `name` in THIS context, without the
+   *  walk up the enclosing chain a name lookup does. */
+  declaredManifestFor(name: string): ResourceManifest | undefined {
+    return this.declaredManifests.get(name);
+  }
+
+  /** Replace a declaration in place, without queueing the resource for
+   *  creation. For a survivor of a reconciliation: its declaration is
+   *  content-identical by construction, but the object carries fresh loader
+   *  stamps (`metadata.sourceLine` above all), and a diagnostic anchored on the
+   *  stale one points at a pre-edit line. */
+  refreshManifest(name: string, resource: ResourceManifest): void {
+    if (this.declaredManifests.has(name)) this.declaredManifests.set(name, resource);
+  }
+
+  /** Re-open an initialized context for another initialization pass.
+   *
+   *  The transition is the context's own, not a field a caller assigns: while it
+   *  is open, a reference to a resource that has not been rebuilt yet must
+   *  produce the deferral the init loop retries on rather than a hard
+   *  not-found, and leaving it open after a failed pass turns every later
+   *  lookup into that deferral with no pass coming. */
+  reopenForInitialization(): void {
+    if (this.state === "Initialized") this.state = "Validated";
+  }
+
+  /** Close a pass opened by {@link reopenForInitialization} that did not reach
+   *  the end of `initializeResources`. */
+  closeInitialization(): void {
+    if (this.state === "Validated") this.state = "Initialized";
+  }
+
+  /** Names a resource resolved by NAME while this context was initializing, so
+   *  no edge records who is holding them. Read by {@link impactedBy}; exposed so
+   *  a host can report why a reconciliation could not be narrowed. */
+  opaqueReads(): ReadonlySet<string> {
+    return this.opaquelyRead;
   }
 
   transientChild(context: Record<string, any>): EvaluationContext {

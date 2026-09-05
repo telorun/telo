@@ -43,7 +43,33 @@ export interface ModuleContext extends EvaluationContext {
   resolveImportedRef(alias: string, name: string): { kind: string; name: string } | undefined;
   /** Resolve a cross-module exported-instance reference `Alias.name` to its live instance. */
   resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined;
-  getInstance(name: string): unknown;
+  /**
+   * Resolve a sibling by NAME.
+   *
+   * A resolution taken while the module is still initializing is RECORDED,
+   * because a caller that resolves during `init()` may hold what it gets, and
+   * nothing in the manifest says so: a name passed here is invisible to the
+   * reference walk that builds the dependency edges, so a host rebuilding that
+   * resource cannot know this caller is holding it. Recording is what makes the
+   * host fall back to rebuilding the whole context instead of silently leaving
+   * a holder pointing at a dead instance.
+   *
+   * A resolution taken after initialization is not recorded: it re-resolves per
+   * dispatch, so there is nothing to hold and nothing to invalidate.
+   *
+   * Prefer an `x-telo-ref` slot, which declares the edge and costs the caller
+   * nothing at run time — the kernel injects the live instance before `init()`.
+   * This is for the case a slot cannot express, and its cost is that the
+   * resource it names can no longer be rebuilt on its own.
+   *
+   * `declaredBy` is for the one caller that has a declared slot behind it and
+   * only wants the lookup: the SDK's own `!ref` resolution, for a reference that
+   * reached a controller as a raw sentinel instead of being injected. Passing
+   * the resolved ref suppresses the record, because the edge is in the manifest
+   * already. There is deliberately no second METHOD for this — a public door
+   * whose documentation asks you not to use it is one that gets used.
+   */
+  getInstance(name: string, declaredBy?: { kind: string; name: string }): unknown;
   getInvocable<TInput = Record<string, any>, TOutput = any>(
     name: string,
   ): Invocable<TInput, TOutput>;

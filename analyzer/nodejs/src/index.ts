@@ -127,6 +127,14 @@ export type {
   ResourceGraphNode,
   StepGraphNode,
 } from "./call-graph.js";
+export { celResourceReads } from "./cel-access-chains.js";
+export { declarationSignature, diffManifests } from "./manifest-diff.js";
+export type {
+  DiffEntry,
+  ManifestDiff,
+  ManifestDiffOptions,
+  ResourceChangeKind,
+} from "./manifest-diff.js";
 export {
   AMBIENT_CAPABILITIES,
   buildModuleGraph,

@@ -23,6 +23,18 @@ Both fields are required. The kind constraint is declared in the definition sche
 
 `metadata.module` and import aliases remain plain strings — they are module identifiers, not resource references, and are outside of this contract.
 
+### Resolving a sibling by name instead
+
+A controller can also reach a sibling with `ctx.moduleContext.getInstance(name)`, without any declared slot. It works, and it costs something specific, so it is a last resort rather than an alternative spelling.
+
+A declared slot is the only thing that puts an **edge** in the manifest. That edge is what orders teardown, so a consumer's inverses run while what it holds is still alive, and it is what tells a host which other resources become invalid when one is rebuilt. A name passed to `getInstance` is invisible to both: nothing in the manifest says the caller is holding anything.
+
+The kernel therefore **records** a by-name resolution taken while the module is still initializing — the window in which a caller can keep what it gets. A resolution taken afterwards is not recorded, because it re-resolves on the next dispatch and there is nothing to invalidate. The consequence of being recorded is that the resource named can no longer be rebuilt on its own: a host reconciling a changed manifest has to rebuild the whole module context instead, since any resource in it might be the holder.
+
+That is a fallback to what a host does today, so nothing gets worse — but it is a real loss of precision, and it applies to the resource that was *named*, not to the one that named it. Declare an `x-telo-ref` slot wherever a slot can express the relationship; the kernel injects the live instance before `init()` runs, so the caller pays nothing at run time either.
+
+`resolveDeclaredInstance(name)` is the same lookup without the recording, and is reserved for a name that came out of a declared slot already — a `!ref` that reached the controller as a raw sentinel instead of being injected. Using it to avoid the recording does not make the edge exist; it only hides its absence from the host that needs it.
+
 ---
 
 ## 2. The `x-telo-ref` Schema Keyword

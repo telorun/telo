@@ -224,6 +224,23 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     this._rebuildContext();
   }
 
+  /**
+   * Drop a resource's published reading, so `resources.<name>` reads as absent.
+   *
+   * What makes an unwind observable to CEL. A compile-eval field is expanded at
+   * create time, so a reader rebuilt while its provider's OLD reading was still
+   * published would bake that stale value in and succeed — where on a fresh boot
+   * the same expansion finds nothing and defers until the provider is back. This
+   * is what makes the two agree.
+   */
+  override clearPublishedReading(name: string): void {
+    if (!(name in this._resources)) return;
+    const next = { ...this._resources };
+    delete next[name];
+    this._resources = next;
+    this._rebuildContext();
+  }
+
   setControllerPolicy(policy: ControllerPolicy | undefined): void {
     this._controllerPolicy = policy;
   }
@@ -458,7 +475,30 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return this.importAliases.has(alias);
   }
 
-  getInstance(name: string): unknown {
+  /**
+   * The recording door — see the contract in `@telorun/sdk`.
+   *
+   * A resolution taken while this module is still initializing is recorded
+   * against the NAME, because that is all this context has: it is reached as
+   * `ctx.moduleContext`, which is shared by every resource of the module, so
+   * there is no caller to attribute the read to. Recording the target is enough
+   * for the only decision that depends on it — a resource somebody may be
+   * holding cannot be rebuilt on its own — and the escalation that follows is
+   * never worse than rebuilding the whole context, which is what happens today.
+   *
+   * `state !== "Initialized"` is the same discriminator the deferral below
+   * already turns on, and it is the right one: before that point a caller is
+   * running `create()` or `init()` and may keep what it gets, after it a caller
+   * is handling a dispatch and resolves again next time.
+   */
+  getInstance(name: string, declaredBy?: { kind: string; name: string }): unknown {
+    // `declaredBy` means the name came out of a declared ref slot, so the edge
+    // is in the manifest and the host can already see it.
+    if (!declaredBy && this.state !== "Initialized") this.recordOpaqueRead(name);
+    return this.lookupInstance(name);
+  }
+
+  private lookupInstance(name: string): unknown {
     const entry = this.resourceInstances.get(name);
     if (!entry) {
       // A name this module DID declare but that has no instance is never an
