@@ -1,5 +1,21 @@
 # @telorun/cli
 
+## 0.86.0
+
+### Patch Changes
+
+- Updated dependencies [ad690e8]
+- Updated dependencies [ad690e8]
+- Updated dependencies [ad690e8]
+- Updated dependencies [ad690e8]
+- Updated dependencies [ad690e8]
+- Updated dependencies [ad690e8]
+  - @telorun/kernel@0.86.0
+  - @telorun/analyzer@0.70.0
+  - @telorun/sdk@0.86.0
+  - @telorun/ide-support@0.18.2
+  - @telorun/templating@0.18.0
+
 ## 0.85.0
 
 ### Minor Changes
