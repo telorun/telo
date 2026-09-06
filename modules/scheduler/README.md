@@ -6,6 +6,7 @@ Recurring time sources. Where `timer` ships the one-shot `Timer.Delay`, schedule
 
 - **Schedules live in the manifest** — a periodic job is a declared resource, not a `JS.Script` holding a `setInterval`.
 - **Orderable against boot** — both kinds are Services listed in `targets`, so a schedule starts *after* the migrations and seed targets it must not race, exactly like an `Http.Server`.
+- **A running schedule keeps the application alive** — it takes a kernel hold while armed, exactly as a listening socket does, so an app whose only work is scheduled needs nothing else to stay up. The hold is released when the schedule is torn down, and early when a bounded cron expression runs out of occurrences.
 - **A bad tick never kills the schedule** — a failing body is logged and the timer re-arms; the error surfaces rather than being swallowed.
 - **Composes with the rest of the stdlib** — wrap the body in `Lease.Critical` for cross-instance exclusion, or `Idempotency.Once` for at-most-once work.
 

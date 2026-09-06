@@ -171,7 +171,8 @@ export class RemoteWorkflowController {
   }
 
   async invoke(inputs: unknown, invokeCtx?: InvokeContext): Promise<unknown> {
-    const handle = new RemoteRunHandle(`remote:${Date.now()}`, this.ctx, this.#dispatcher!);
+    const runId = `remote:${Date.now()}`;
+    const handle = new RemoteRunHandle(runId, this.ctx, this.#dispatcher!);
     const steps: Record<string, unknown> = {};
     // The body starts outside every enclosing zone — a run outlives whatever
     // triggered it — and the workflow's own zone plus the handle are layered
@@ -184,7 +185,12 @@ export class RemoteWorkflowController {
         this.engine.executeSteps(this.resource.steps, steps, undefined, { inputs }, zoneCtx),
       durable,
     );
-    return { steps, shipped: handle.shipped };
+    // `runId` and `status` are `Durable.Run`'s floor: a start answers with what
+    // every later question about the run is asked by. This fixture runs the body
+    // inline and returns when it is done, so the status it reports is terminal —
+    // which is a truthful answer to "where does the run stand", not a pretence at
+    // being a detached engine.
+    return { runId, status: "completed", steps, shipped: handle.shipped };
   }
 
   snapshot(): Record<string, unknown> {

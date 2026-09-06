@@ -292,6 +292,11 @@ export class WorkflowController {
       result,
       collapsedRegions: handle.observations.collapsedRegions,
       collapseReasons: handle.observations.collapseReasons,
+      // Recorded rather than only returned, because the caller that STARTED the
+      // run is long gone by now: `invoke()` dispatched this detached and answered
+      // with a run id before the first step ran. `DurableLocal.Result` is the
+      // only thing positioned to report it.
+      replayedSteps: handle.observations.replayedSteps,
     });
     // Returned to whoever called `execute` directly — the resumer, and a start
     // that took over a lapsed claim. A caller that STARTED the run gets a run id

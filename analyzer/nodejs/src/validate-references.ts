@@ -14,6 +14,7 @@ import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } from "./types.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -484,9 +485,7 @@ export function validateReferences(
           const resolvedResourceKind = aliases.resolveKind(r.kind) ?? r.kind;
           const resourceDef =
             registry.resolve(r.kind) ?? registry.resolve(resolvedResourceKind);
-          const owningModule = (resourceDef?.metadata as { module?: string } | undefined)?.module;
-          const ownerScope =
-            (owningModule ? aliasesByModule?.get(owningModule) : undefined) ?? aliases;
+          const ownerScope = moduleAliasScope(resourceDef?.metadata, aliases, aliasesByModule);
 
           const targetKind = ownerScope.resolveKind(anchorName);
           if (!targetKind) {

@@ -29,6 +29,27 @@
       "path": "apps/ai-agent-console/telo.yaml"
     },
     {
+      "id": "scheduled-job",
+      "title": "Scheduled job",
+      "description": "A recurring job with two triggers onto one declaration: a cron schedule and an on-demand route.",
+      "category": "app",
+      "path": "apps/scheduled-job/telo.yaml"
+    },
+    {
+      "id": "webhook-receiver",
+      "title": "Webhook receiver",
+      "description": "An inbound webhook endpoint that is safe to redeliver: a shared-secret check and an idempotency claim.",
+      "category": "app",
+      "path": "apps/webhook-receiver/telo.yaml"
+    },
+    {
+      "id": "mcp-server",
+      "title": "MCP server",
+      "description": "Two tools an assistant can call, over a SQLite table — the handlers know nothing about MCP.",
+      "category": "app",
+      "path": "apps/mcp-server/telo.yaml"
+    },
+    {
       "id": "http-api-library",
       "title": "Reusable HTTP API library",
       "description": "A Telo.Library that exports an Http.Api importers can mount anywhere.",
@@ -41,6 +62,13 @@
       "description": "A Telo.Library that owns a table and exports typed SqlRepository resources.",
       "category": "library",
       "path": "libs/repository/telo.yaml"
+    },
+    {
+      "id": "custom-kind-library",
+      "title": "Custom resource kinds",
+      "description": "A Telo.Library that defines new kinds in YAML alone — one composed from an HTTP request, one that extends it.",
+      "category": "library",
+      "path": "libs/custom-kind/telo.yaml"
     }
   ]
 }

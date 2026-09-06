@@ -537,6 +537,25 @@ export class EvaluationContext implements IEvaluationContext {
    */
   private readonly withheldResources = new Set<string>();
 
+  /**
+   * Keys whose instance was REMOVED BY AN UNWIND — the fact a dispatch that
+   * misses actually needs, as opposed to the context-wide state that only
+   * approximates it.
+   *
+   * A miss because the resource went away is the runtime withdrawing, not a
+   * manifest defect, and the two want opposite follow-ups (see `invoke`). Both
+   * paths that withdraw one go through `unwindEach`, the single removal site, so
+   * recording it there covers a shutdown AND a reconciliation — where a check
+   * against `state` would have converted the first and missed the second, since
+   * `unwindResources` deliberately leaves the state untouched. The second is the
+   * one that fires on every watch-session save.
+   *
+   * Cleared when the key is registered again: after a reconcile the name means a
+   * live resource, and a stale entry would report a genuine missing-resource
+   * defect as a cancellation.
+   */
+  private readonly unwoundResources = new Set<string>();
+
   /** Resources discarded after a failed `init()` and re-queued for creation.
    *  Their re-creation is not progress — see the create sub-phase. */
   private readonly recreatedResources = new Set<string>();
@@ -572,6 +591,7 @@ export class EvaluationContext implements IEvaluationContext {
     owner: EvaluationContext,
   ): void | (() => void) {
     this.resourceInstances.set(name, { resource, instance });
+    this.unwoundResources.delete(name);
     this.borrowedResources.add(name);
     this.declaredManifests.set(name, resource);
     const unmirror = owner.mirrorPublications(resource.metadata.name as string, (props) =>
@@ -1217,6 +1237,10 @@ export class EvaluationContext implements IEvaluationContext {
           // so it resolves fine from here.
           await this.publishSnapshot(name);
           this.resourceInstances.set(name, { resource, instance });
+          // Live again: a reconcile re-initializes what it unwound, and leaving
+          // the mark would report a genuine missing-resource defect at this name
+          // as a cancellation for the rest of the process.
+          this.unwoundResources.delete(name);
           this.createdInstances.delete(name);
           errors.delete(name);
           progress = true;
@@ -1556,6 +1580,9 @@ export class EvaluationContext implements IEvaluationContext {
         failures.push({ resource: `${label} (Teardown event)`, error: err });
       }
       this.resourceInstances.delete(key);
+      // The single removal site, so it is also where "this went away because the
+      // runtime withdrew it" is recorded — the fact `invoke` reports a miss by.
+      this.unwoundResources.add(key);
       // A torn-down resource must stop being readable: a CEL expansion that still
       // found its reading would bake a value nothing is serving any more.
       this.clearPublishedReading(resource.metadata.name as string);
@@ -1732,6 +1759,52 @@ export class EvaluationContext implements IEvaluationContext {
     const entry = this.resourceInstances.get(name);
 
     if (!entry) {
+      // A MISS ON A RESOURCE THE RUNTIME WITHDREW is the runtime going away, not
+      // a manifest defect, and the two want opposite follow-ups. An unwind
+      // removes each instance as it goes, so work still in flight — a detached
+      // task the kernel waited for and then abandoned, above all — finds an
+      // emptying map and would otherwise be told its target does not exist. That
+      // verdict is durable where the withdrawal is not: a durable run records it
+      // as `failed`, which is terminal, so one ordinary Ctrl-C leaves a run id
+      // nothing will ever pick up again — from the one feature whose whole
+      // purpose is surviving that.
+      //
+      // Reported as a cancellation because that is what it is, and because every
+      // consumer already handles one correctly: a durable body leaves the run
+      // `running` for the resumer, and a step's retry budget is not spent
+      // re-issuing a call the runtime has no intention of answering.
+      //
+      // Keyed on `unwoundResources` — the recorded FACT — rather than on this
+      // context's state, which is only a proxy for it and misses the
+      // reconciliation path entirely: `unwindResources` withdraws an instance and
+      // deliberately leaves the state alone, and that is the path a watch session
+      // takes on every save. Only the MISS is converted; a resource still in the
+      // map is dispatched as before, because a teardown-time flush is legitimate
+      // work and refusing it would break shutdown to protect it.
+      if (this.unwoundResources.has(name)) {
+        const reason =
+          this.state === "Draining" || this.state === "Teardown"
+            ? "the runtime is shutting down"
+            : "the resource was unwound while the runtime reconciled";
+        // The SPAN payload, not an ad-hoc object: every consumer of this event
+        // reads `ref.kind` (the debug UI's kind facet) and `outcome` (its graph
+        // nodes and outcome tally) off the trace shape, so a payload carrying
+        // neither is an event that fires and is invisible — which is worse than
+        // no event, and precisely the cancellation an operator is looking for
+        // during a watch-session save. No span ids: this refusal happens before
+        // any span is opened, and `tracePayload` omits an undefined one.
+        await this.emit(
+          `${name}.InvokeCancelled`,
+          this.tracePayload(kind, name, undefined, undefined, undefined, "invoke", "end", "cancelled", {
+            reason,
+          }),
+        );
+        throw new RuntimeError(
+          "ERR_INVOKE_CANCELLED",
+          `Invoke ${kind}.${name} was cancelled: ${reason} and the resource has already ` +
+            `been torn down.`,
+        );
+      }
       throw new RuntimeError(
         "ERR_RESOURCE_NOT_FOUND",
         `Resource not found for invocation: ${kind}.${name}. Available resources: ${[...this.resourceInstances.keys()].join(", ")}`,

@@ -1,0 +1,225 @@
+kind: Telo.Application
+metadata:
+  name: ExclusiveWorker
+  version: 1.0.0
+  categories: [ Coordination, Reliability, Scheduling ]
+  description: |
+    Three replicas draining one queue, and no job processed twice.
+
+    Each replica arms the same schedule, and each tick asks for the same lease
+    before touching the queue. One replica is inside the work at a time; the
+    others are told who holds it and skip. Nothing is elected and no coordinator
+    is deployed — exclusion is a resource (`Lease.Critical`) wrapped around a
+    body that knows nothing about it, and the STORE decides how far the
+    exclusion reaches: `kv-store-sql` on a shared database excludes across
+    processes and machines, `kv-store-memory` only within one.
+
+    What the lease is protecting is a read-then-write gap. The worker claims
+    pending jobs, does the work, and only then marks them done — so two replicas
+    running it at once would both see the same pending rows and both process
+    them. The `worked_by` column is the proof: every job is stamped exactly
+    once, however many replicas are running.
+
+    Run three replicas, each in its own terminal:
+        INSTANCE_ID=a PORT=8051 telo ./examples/exclusive-worker
+        INSTANCE_ID=b PORT=8052 telo ./examples/exclusive-worker
+        INSTANCE_ID=c PORT=8053 telo ./examples/exclusive-worker
+    Then watch the queue drain and who did what:
+        curl -s localhost:8051/status
+
+    Kill whichever replica is working. Within `LEASE_TTL` another one takes over
+    — a lease expires on its own, so a holder that dies frees it rather than
+    wedging the queue.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.10.0#sha256-KYVWku7I0Er3AMKNwxSBaoGktrByiruLsoxvr-yVl_k
+  Lease: oci://ghcr.io/telorun/lease@0.13.0#sha256-HTQ8Fds5O9h15_gsOlVNSgVpGl7Ma3uKJRldfw-lfyI
+  Schedule: oci://ghcr.io/telorun/scheduler@0.9.0#sha256-4MpeweWGk4LedDa34TE9lELndNfl9YyBLAyOiHyap9s
+  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+targets:
+  - !ref migrate
+  - !ref worker
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8051
+variables:
+  instanceId:
+    env: INSTANCE_ID
+    type: string
+    default: a
+  tickEvery:
+    env: TICK_EVERY
+    type: string
+    default: "500ms"
+  leaseTtl:
+    env: LEASE_TTL
+    type: string
+    default: "10s"
+  dbFile:
+    env: DB_FILE
+    type: string
+    default: ./exclusive-worker.db
+---
+# One file, shared by every replica — that is what makes the lease mean
+# anything. Point this at Postgres and the same manifest coordinates across
+# machines.
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: jobs }
+table: jobs
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  payload: { type: text, nullable: false }
+  status: { type: text, nullable: false, default: pending }
+  worked_by: { type: text }
+  worked_at: { type: text }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref jobs
+# Seed rows are data, not shape, so they stay imperative — they run after the
+# reconciliation pass, once the table exists.
+migrations:
+  0001_seed_jobs:
+    statements:
+      - "INSERT OR IGNORE INTO jobs (id, payload) VALUES (1, 'invoice-1001'), (2, 'invoice-1002'), (3, 'invoice-1003'), (4, 'invoice-1004'), (5, 'invoice-1005'), (6, 'invoice-1006'), (7, 'invoice-1007'), (8, 'invoice-1008'), (9, 'invoice-1009'), (10, 'invoice-1010'), (11, 'invoice-1011'), (12, 'invoice-1012')"
+---
+# The lease lives in the database, so a second process sees the same claim. This
+# one line is what decides how far exclusion reaches.
+kind: KvStoreSql.Store
+metadata: { name: leases }
+connection: !ref db
+table: telo_leases
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+# The work. Read, work, then write — the gap between the read and the write is
+# exactly what two replicas must not be inside at once. Nothing here mentions a
+# lease, which is what lets the same body run unguarded in a single-replica
+# deployment.
+kind: Run.Sequence
+metadata: { name: drainQueue }
+steps:
+  - name: claim
+    invoke: !ref query
+    inputs:
+      sql: "SELECT id, payload FROM jobs WHERE status = 'pending' ORDER BY id LIMIT 3"
+      bindings: []
+  - name: work
+    if: !cel "size(steps.claim.result.rows) > 0"
+    then:
+      # Stands in for the real work — an upstream call, a render, a payment.
+      # It is what makes the critical section long enough to collide.
+      - name: takeTime
+        invoke: { kind: Timer.Delay }
+        inputs:
+          duration: "600ms"
+          value: {}
+      - name: markDone
+        invoke: !ref exec
+        inputs:
+          sql: "UPDATE jobs SET status = 'done', worked_by = ?, worked_at = datetime('now') WHERE id IN (SELECT id FROM jobs WHERE status = 'pending' ORDER BY id LIMIT 3)"
+          bindings:
+            - !cel "variables.instanceId"
+      - name: say
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel >-
+            '{green ✔} ' + variables.instanceId + ' processed ' +
+            steps.claim.result.rows.map(r, r.payload).join(', ')
+---
+# `ttl` is the safety valve: a holder that dies stops renewing and the lease
+# frees on its own. Set it above the body's worst case, or a slow run loses the
+# lease while it is still working.
+kind: Lease.Critical
+metadata: { name: drainOnce }
+store: !ref leases
+ttl: !cel "variables.leaseTtl"
+invoke: !ref drainQueue
+---
+# What every replica fires. Losing is not an error: `acquired: false` with the
+# current holder is the normal outcome for every replica but one.
+kind: Run.Sequence
+metadata: { name: tick }
+steps:
+  - name: attempt
+    invoke: !ref drainOnce
+    inputs:
+      key: drain-queue
+      holder: !cel "variables.instanceId"
+      inputs: {}
+  - name: report
+    if: !cel "!steps.attempt.result.acquired"
+    then:
+      - name: skipped
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel >-
+            '{dim ' + variables.instanceId + ' skipped — held by ' +
+            string(steps.attempt.result.holder) + '}'
+---
+kind: Schedule.Interval
+metadata: { name: worker }
+every: !cel "variables.tickEvery"
+invoke: !ref tick
+---
+kind: Run.Sequence
+metadata: { name: status }
+steps:
+  - name: perWorker
+    invoke: !ref query
+    inputs:
+      sql: "SELECT worked_by, COUNT(*) AS jobs FROM jobs WHERE status = 'done' GROUP BY worked_by ORDER BY jobs DESC"
+      bindings: []
+  - name: remaining
+    invoke: !ref query
+    inputs:
+      sql: "SELECT COUNT(*) AS pending FROM jobs WHERE status = 'pending'"
+      bindings: []
+outputs:
+  me: !cel "variables.instanceId"
+  pending: !cel "steps.remaining.result.rows[0].pending"
+  processedBy: !cel "steps.perWorker.result.rows"
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Exclusive worker
+    version: 1.0.0
+mounts:
+  - path: /
+    mount: !ref statusRoutes
+---
+kind: Http.Api
+metadata: { name: statusRoutes }
+routes:
+  - request:
+      path: /status
+      method: GET
+    handler: !ref status
+    inputs: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"

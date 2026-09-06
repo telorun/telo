@@ -1,0 +1,145 @@
+kind: Telo.Library
+metadata:
+  name: Alerts
+  version: 1.0.0
+  description: |
+    A `Telo.Library` that defines two new resource kinds in YAML alone — no
+    controller code, no npm package, no publish step. Importers write
+    `kind: <Alias>.Webhook` and use them exactly like a built-in.
+
+    `Webhook` COMPOSES: `resources:` is the body it stands up per instance,
+    `invoke:` names which of them runs, and `inputs:` / `result:` translate
+    between the caller's contract and that resource's. `PagerDuty` SPECIALIZES:
+    `extends:` inherits Webhook's body, `base:` is the super(...) call that
+    supplies its config, and the author-facing schema narrows to the one field
+    a pager alert actually needs.
+
+    Two things worth copying. `alertSource` is a library `variables:` entry —
+    the public contract an importer configures the whole library with, read
+    inside a kind's body as `variables.alertSource`. And the kinds are gated:
+    `exports.kinds` is what importers may reference, so a kind left off that
+    list stays internal.
+variables:
+  alertSource:
+    type: string
+    default: telo
+    description: >-
+      Identifies the system raising the alert. Set once by the importer; every
+      alert this library sends carries it.
+  eventsUrl:
+    type: string
+    default: https://events.pagerduty.com/v2/enqueue
+    description: >-
+      The PagerDuty Events v2 endpoint. Configurable so a test can point the
+      whole library at a local receiver without touching a resource.
+imports:
+  Http: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
+exports:
+  kinds:
+    - Webhook
+    - PagerDuty
+---
+kind: Telo.Definition
+metadata:
+  name: Webhook
+  description: >-
+    Posts a JSON payload to a fixed URL and reports the response status. The URL
+    and any standing headers belong to the resource; the payload is supplied per
+    call. A non-2xx response raises.
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  required: [ url ]
+  properties:
+    url:
+      title: URL
+      description: Absolute URL the payload is posted to.
+      type: string
+    headers:
+      title: Headers
+      description: Headers sent with every alert from this resource.
+      type: object
+      additionalProperties:
+        type: string
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ payload ]
+    properties:
+      payload:
+        type: object
+        additionalProperties: true
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ status ]
+    properties:
+      status: { type: integer }
+resources:
+  # A LITERAL name, and `invoke:` a `!ref` to it. The body's children live in
+  # this instance's own child context, so the name is unique there whatever the
+  # resource is called — and a literal is what lets `telo check` verify that
+  # `invoke:` names a sibling at all (`TEMPLATE_DISPATCH_UNKNOWN`, which can only
+  # decide when every sibling name is written down). Composing the name from
+  # `self.name` works at runtime and makes that check undecidable, so a typo here
+  # would surface as a failed dispatch instead of an error on this line.
+  - kind: Http.Request
+    metadata:
+      name: post
+    throwOnHttpError: true
+invoke: !ref post
+inputs:
+  url: !cel "self.url"
+  method: POST
+  headers: !cel "has(self.headers) ? self.headers : {}"
+  body: !cel "inputs.payload"
+result:
+  status: !cel "result.status"
+---
+kind: Telo.Definition
+metadata:
+  name: PagerDuty
+  description: >-
+    Raises a PagerDuty Events v2 alert. Takes the routing key at declaration and
+    a summary plus severity per call; the event envelope is supplied for you.
+extends: Self.Webhook
+schema:
+  type: object
+  additionalProperties: false
+  required: [ routingKey ]
+  properties:
+    routingKey:
+      title: Routing key
+      description: The integration (routing) key of the PagerDuty service to alert.
+      type: string
+# `base:` is the super(...) call: it supplies the parent's config, so `url` is
+# never written on an instance of this kind.
+base:
+  url: !cel "variables.eventsUrl"
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ summary ]
+    properties:
+      summary: { type: string }
+      severity:
+        type: string
+        enum: [ critical, error, warning, info ]
+        default: error
+inputs:
+  payload:
+    routing_key: !cel "self.routingKey"
+    event_action: trigger
+    payload:
+      summary: !cel "inputs.summary"
+      severity: !cel "has(inputs.severity) ? inputs.severity : 'error'"
+      # The library's own configuration, read inside a kind body like any other
+      # CEL scope.
+      source: !cel "variables.alertSource"

@@ -2,6 +2,7 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { ModuleScopes } from "./alias-resolver.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 
 /**
  * A `Telo.Definition`'s `resources:` entries — the bodies a kind writes for
@@ -47,11 +48,7 @@ export function templateBodies(
   // A nested kind is written through the alias scope of the module that DECLARED
   // the definition, never the consumer's — the same rule every other kind
   // resolution in a forwarded manifest follows.
-  const ownModule = (m.metadata as { module?: string } | undefined)?.module;
-  const scope =
-    (ownModule && scopes && !scopes.rootModules.has(ownModule)
-      ? scopes.aliasesByModule.get(ownModule)
-      : undefined) ?? aliases;
+  const scope = moduleAliasScope(m.metadata, aliases, scopes?.aliasesByModule);
 
   const out: TemplateBody[] = [];
   for (let i = 0; i < bodies.length; i++) {

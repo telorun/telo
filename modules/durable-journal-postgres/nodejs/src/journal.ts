@@ -68,6 +68,10 @@ interface RunRecord {
   error?: { code: string; message: string };
   collapsedRegions?: number;
   collapseReasons?: string[];
+  /** How many steps the execution that SETTLED this run was handed from the
+   *  record rather than executing. Absent — never zero — for a run settled
+   *  before the column existed. */
+  replayedSteps?: number;
 }
 
 /** The `LISTEN`/`NOTIFY` half, which only PostgreSQL answers — declared
@@ -97,6 +101,7 @@ interface RunRow {
   error: string | null;
   collapsed_regions: number | null;
   collapse_reasons: string | null;
+  replayed_steps: number | null;
 }
 
 interface EntryRow {
@@ -124,25 +129,46 @@ function encodeOptional(value: unknown): string | null {
 }
 
 /**
- * The three SQLSTATEs that mean "someone else created it first".
+ * The SQLSTATEs that mean "another instance got there first" — for a CREATE and
+ * for an ALTER alike, because this journal is the one meant for several machines
+ * and they all reconcile their schema on boot.
  *
- * `42P07` duplicate_table and `42710` duplicate_object are the direct forms;
- * `23505` is the one that actually shows up under a race, because the loser gets
- * as far as inserting into `pg_type` / `pg_class` and trips their unique index
- * rather than the DDL's own check.
+ * Creating: `42P07` duplicate_table and `42710` duplicate_object are the direct
+ * forms; `23505` is the one that actually shows up under a race, because the
+ * loser gets as far as inserting into `pg_type` / `pg_class` and trips their
+ * unique index rather than the DDL's own check.
+ *
+ * Altering: `IF NOT EXISTS` is checked under the table's lock, so two backends
+ * adding the same column serialize — but the loser can still surface `42701`
+ * duplicate_column, which is not in the create set. Leaving it out is what would
+ * make the additive-column claim above false: the losing instance would fail its
+ * boot on a column the winner had just added.
+ *
+ * **Matched by SQLSTATE only, never by message text.** The other symptom of a
+ * concurrent catalogue update is `XX000` "tuple concurrently updated", and the
+ * obvious guard is a substring test — but the server localizes its messages under
+ * `lc_messages`, so on a non-English server that test silently stops matching and
+ * the losing instance fails exactly the boot the guard exists to save. `XX000` is
+ * internal_error and far too broad to swallow wholesale, so it is not swallowed:
+ * the catalogue read in `addMissingColumns` is what keeps the ALTER off the
+ * steady-state path, leaving that race to a first deployment where a failed boot
+ * is visible and a restart resolves it.
  */
-const DUPLICATE_OBJECT_SQLSTATES = new Set(["42P07", "42710", "23505"]);
+const DUPLICATE_OBJECT_SQLSTATES = new Set(["42P07", "42710", "23505", "42701"]);
 
-function isDuplicateObject(err: unknown): boolean {
-  const code = (err as { code?: unknown })?.code;
+function isConcurrentSchemaChange(err: unknown): boolean {
+  const frame = (e: unknown): boolean => {
+    const code = (e as { code?: unknown })?.code;
+    return typeof code === "string" && DUPLICATE_OBJECT_SQLSTATES.has(code);
+  };
+
   // The driver's error may arrive wrapped by kysely, so the cause chain is
   // walked rather than only the top frame — a bounded walk, since a cycle in a
   // cause chain would otherwise hang a boot.
-  if (typeof code === "string" && DUPLICATE_OBJECT_SQLSTATES.has(code)) return true;
+  if (frame(err)) return true;
   let cause = (err as { cause?: unknown })?.cause;
   for (let depth = 0; cause && depth < 8; depth++) {
-    const causeCode = (cause as { code?: unknown }).code;
-    if (typeof causeCode === "string" && DUPLICATE_OBJECT_SQLSTATES.has(causeCode)) return true;
+    if (frame(cause)) return true;
     cause = (cause as { cause?: unknown }).cause;
   }
   return false;
@@ -185,6 +211,7 @@ function rowToRecord(row: RunRow): RunRecord {
     ...(row.collapse_reasons === null
       ? {}
       : { collapseReasons: decodeJsonValue(row.collapse_reasons) as string[] }),
+    ...(row.replayed_steps === null ? {} : { replayedSteps: row.replayed_steps }),
   };
 }
 
@@ -286,7 +313,7 @@ class PostgresJournalController {
   }
 
   private async createTables(): Promise<void> {
-    await this.createIfAbsent(
+    await this.reconcileSchemaObject(
       `CREATE TABLE IF NOT EXISTS ${this.#runs} (
          run TEXT PRIMARY KEY,
          status TEXT NOT NULL,
@@ -299,11 +326,28 @@ class PostgresJournalController {
          error TEXT,
          collapsed_regions INTEGER,
          collapse_reasons TEXT,
+         replayed_steps INTEGER,
          claim_holder TEXT,
          claim_until BIGINT
        )`,
     );
-    await this.createIfAbsent(
+    // `CREATE TABLE IF NOT EXISTS` says nothing about a table that already
+    // exists, so a column added after a deployment is created by nothing and
+    // every settlement fails on it. Additive and nullable, which is the only
+    // shape that needs no coordinated restart: an older instance writing this
+    // table simply leaves the column NULL, and NULL is already the reading for
+    // "this run was settled by a runtime that did not record it".
+    //
+    // ASKED FIRST, ALTERED ONLY IF ABSENT. `ALTER TABLE … ADD COLUMN IF NOT
+    // EXISTS` takes ACCESS EXCLUSIVE on the relation before it evaluates the
+    // `IF NOT EXISTS`, so issuing it unconditionally locks out the runs table on
+    // every boot of every instance — on the store whose whole reason to exist is
+    // several machines — and the statement list would grow by one per future
+    // column, all on the boot path. Reading `information_schema` first makes the
+    // steady state one ACCESS SHARE query, and narrows the write (and its race)
+    // to the deployment that actually migrates.
+    await this.addMissingColumns({ replayed_steps: "INTEGER" });
+    await this.reconcileSchemaObject(
       `CREATE TABLE IF NOT EXISTS ${this.#entries} (
          run TEXT NOT NULL,
          path TEXT NOT NULL,
@@ -318,22 +362,47 @@ class PostgresJournalController {
     // Write ORDER is a column, not the primary key: entries are keyed by path
     // because that is what makes a duplicate append refusable, and `readEntries`
     // must still return them in the order they were written.
-    await this.createIfAbsent(
+    await this.reconcileSchemaObject(
       `CREATE INDEX IF NOT EXISTS ${this.indexName("entries_seq")} ON ${this.#entries} (run, seq)`,
     );
     // A delivery looks a run up BY TOKEN, which is the operation a directory of
     // files answers with a full scan. Here it is an index.
-    await this.createIfAbsent(
+    await this.reconcileSchemaObject(
       `CREATE INDEX IF NOT EXISTS ${this.indexName("parked_token")} ` +
         `ON ${this.#runs} (parked_token) WHERE parked_token IS NOT NULL`,
     );
-    await this.createIfAbsent(
+    await this.reconcileSchemaObject(
       `CREATE INDEX IF NOT EXISTS ${this.indexName("due")} ON ${this.#runs} (status, due_at)`,
     );
   }
 
   /**
-   * Create one object, tolerating another process creating it at the same moment.
+   * Add the columns this table does not already have.
+   *
+   * One catalogue read, then an `ALTER` per genuinely missing column — see the
+   * call site for why the read is not an optimization but the thing that keeps a
+   * boot from taking an exclusive lock on the runs table. A column that appears
+   * between the read and the write is the ordinary race, and the SQLSTATE set
+   * still covers it.
+   */
+  private async addMissingColumns(columns: Record<string, string>): Promise<void> {
+    const present = await this.conn().execute<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = $1`,
+      [this.#runs.replaceAll('"', "")],
+    );
+    const have = new Set((present.rows ?? []).map((r) => r.column_name));
+    for (const [column, type] of Object.entries(columns)) {
+      if (have.has(column)) continue;
+      await this.reconcileSchemaObject(
+        `ALTER TABLE ${this.#runs} ADD COLUMN IF NOT EXISTS ${column} ${type}`,
+      );
+    }
+  }
+
+  /**
+   * Reconcile one schema object — create it or alter it — tolerating another
+   * process doing the same thing at the same moment.
    *
    * **`IF NOT EXISTS` is not race-safe, and believing it was is the defect.**
    * Postgres checks for the object and then creates it, so two connections
@@ -341,20 +410,22 @@ class PostgresJournalController {
    * own unique index — `duplicate key value violates unique constraint
    * "pg_type_typname_nsp_index"`, which reads like corruption and is nothing of
    * the kind. That is precisely the case this journal claims to support: several
-   * application instances booting against one database at once.
+   * application instances booting against one database at once. An `ALTER` adding
+   * a column loses the same race differently (see the SQLSTATE set), which is why
+   * this is named for reconciling rather than for creating.
    *
-   * A duplicate-object error IS the object existing, which is the outcome the
-   * statement asked for, so treating those three SQLSTATEs as success is not
-   * swallowing a failure — it is reading the one the server sent. Every other
-   * error propagates: a missing grant, an unreachable server and a syntax error
-   * must still fail the boot, loudly.
+   * The error IS the object already being as asked for, which is the outcome the
+   * statement wanted, so treating those SQLSTATEs as success is not swallowing a
+   * failure — it is reading the one the server sent. Every other error
+   * propagates: a missing grant, an unreachable server and a syntax error must
+   * still fail the boot, loudly.
    */
-  private async createIfAbsent(sql: string): Promise<void> {
+  private async reconcileSchemaObject(sql: string): Promise<void> {
     try {
       await this.conn().execute(sql);
     } catch (err) {
-      if (!isDuplicateObject(err)) throw err;
-      this.ctx.log.debug("schema object created concurrently by another instance", {
+      if (!isConcurrentSchemaChange(err)) throw err;
+      this.ctx.log.debug("schema object reconciled concurrently by another instance", {
         "db.query.text": sql,
       });
     }
@@ -397,7 +468,7 @@ class PostgresJournalController {
     await this.ready();
     const result = await this.conn().execute<RunRow>(
       `SELECT run, status, due_at, parked_path, parked_resource, parked_token,
-              inputs, result, error, collapsed_regions, collapse_reasons
+              inputs, result, error, collapsed_regions, collapse_reasons, replayed_steps
          FROM ${this.#runs} WHERE run = $1`,
       [run],
     );
@@ -474,7 +545,7 @@ class PostgresJournalController {
     await this.executeOutsideTransaction(
       `UPDATE ${this.#runs}
           SET status = $2, result = $3, error = $4,
-              collapsed_regions = $5, collapse_reasons = $6,
+              collapsed_regions = $5, collapse_reasons = $6, replayed_steps = $7,
               due_at = NULL, parked_path = NULL, parked_resource = NULL, parked_token = NULL,
               claim_holder = NULL, claim_until = NULL
         WHERE run = $1`,
@@ -485,6 +556,7 @@ class PostgresJournalController {
         encodeOptional(outcome.error),
         outcome.collapsedRegions ?? null,
         outcome.collapseReasons === undefined ? null : encodeJsonValue(outcome.collapseReasons),
+        outcome.replayedSteps ?? null,
       ],
     );
   }
@@ -522,7 +594,7 @@ class PostgresJournalController {
     await this.ready();
     const result = await this.conn().execute<RunRow>(
       `SELECT run, status, due_at, parked_path, parked_resource, parked_token,
-              inputs, result, error, collapsed_regions, collapse_reasons
+              inputs, result, error, collapsed_regions, collapse_reasons, replayed_steps
          FROM ${this.#runs} WHERE parked_token = $1 AND status = 'parked'`,
       [token],
     );

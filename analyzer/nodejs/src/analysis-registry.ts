@@ -9,6 +9,7 @@ import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manif
 import type { ContractDirection, DefResolver } from "./extends-resolution.js";
 import { resolveContract } from "./invocation-contract.js";
 import { createResolveCtx, resolveThrowsUnion } from "./resolve-throws-union.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import type { AnalysisContext } from "./types.js";
@@ -258,8 +259,7 @@ export class AnalysisRegistry {
    */
   resolveSchemaFrom(schemaFrom: string, declaringKind: string): Record<string, any> | undefined {
     const def = this.resolveDefinition(declaringKind);
-    const ownerModule = (def?.metadata as { module?: string } | undefined)?.module;
-    const scope = (ownerModule ? this.aliasesByModule.get(ownerModule) : undefined) ?? this.aliases;
+    const scope = moduleAliasScope(def?.metadata, this.aliases, this.aliasesByModule);
     return this.defs.resolveSchemaFromNode(schemaFrom, scope);
   }
 
@@ -337,7 +337,7 @@ export class AnalysisRegistry {
    *  the kind was read off. Falls back to the global table when the module is
    *  unknown or is a root. */
   resolveDefinitionIn(kind: string, module?: string): ResourceDefinition | undefined {
-    const scope = (module ? this.aliasesByModule.get(module) : undefined) ?? this.aliases;
+    const scope = moduleAliasScope({ module }, this.aliases, this.aliasesByModule);
     const canonical = scope.resolveKind(kind);
     return this.defs.resolve(kind) ?? (canonical ? this.defs.resolve(canonical) : undefined);
   }
@@ -354,8 +354,7 @@ export class AnalysisRegistry {
   resolverForDefinition(def: {
     metadata?: { module?: string };
   }): (kind: string) => ResourceDefinition | undefined {
-    const ownModule = def?.metadata?.module;
-    const scope = (ownModule ? this.aliasesByModule.get(ownModule) : undefined) ?? this.aliases;
+    const scope = moduleAliasScope(def?.metadata, this.aliases, this.aliasesByModule);
     return (kind) => {
       const canonical = scope.resolveKind(kind);
       return this.defs.resolve(kind) ?? (canonical ? this.defs.resolve(canonical) : undefined);

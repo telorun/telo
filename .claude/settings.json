@@ -1,5 +1,26 @@
 {
+  "permissions": {
+    "deny": [
+      "Bash(cat .env.local)",
+      "Bash(cat .env.local:*)",
+      "Bash(cat ./.env.local)",
+      "Bash(cat ./.env.local:*)",
+      "Read(.env.local)",
+      "Read(**/.env.local)"
+    ]
+  },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // \"\"' | grep -q \"\\.env\\.local\" && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Blocked: .env.local must not be read or otherwise accessed from a shell command (project policy).\"}}' || true"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",

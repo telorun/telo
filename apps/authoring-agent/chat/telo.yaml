@@ -19,10 +19,10 @@ metadata:
     its tests drive the same handler. Parameterized by the OpenAI key and the
     SQLite file; the workspace is ./workspace.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.18.0#sha256-OtJa8sQbyyLNKMTjbyy5-qiQWF9ouPj7a2-BSH0KGXg
-  OpenAI: oci://ghcr.io/telorun/openai@0.3.0#sha256-tlcGRgiTGfFkCB7n3lnGmzdSmduyFTDwZ_BqDw71rCk
+  Ai: oci://ghcr.io/telorun/ai@0.18.1#sha256-QKVK7-JK8AOmpm_6fwO5Hta75oUg0X9FL-aEy9A19YQ
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.1#sha256-FVg-jmRPGB43Or9_LU8XhDhG_G2Mio56iiSDwi_ofLk
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.13.0#sha256-GUeyyUnObEQcx--sTRlkoMx-3hi07HuqH9aSYA4XY7I
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.13.1#sha256-QxuPt5VxVqUQMrtb2M9yfZmKG1HdJZkDdB6kleDigJs
   Mcp: oci://ghcr.io/telorun/mcp-client@0.15.0#sha256-M3frsOwjZWR_Vo2LERsRjBqcN7iXZbVg_gTjK4OGq8s
   Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
@@ -1255,10 +1255,18 @@ system: |
   in a fresh process could send a replay down a branch the run never took.
 
   A START DOES NOT BLOCK. `Local.Workflow` records the run and returns
-  `{ runId, started }`; the body keeps going. A caller that wants the outcome
-  asks for it with `Local.Result` (optional `wait:`), which is also how a test
-  reads one. That split is what waiting makes necessary — a body that parks for
-  an approval does not return for days.
+  `{ runId, status }` — plus `started` or `attached` — and nothing else; the body
+  keeps going. That contract is DECLARED, so reading anything else off a start
+  (`steps.<name>.result.replayed` above all) is a `telo check` error rather than a
+  runtime surprise. A caller that wants the outcome asks for it with
+  `Local.Result` (optional `wait:`), which is also how a test reads one, and
+  which is the only thing that reports `replayed` / `replayedSteps` — whether the
+  attempt that finished the work continued an interrupted one. Its envelope is
+  declared too (`run`, `status`, `result`, `error`, and those two), so a typo
+  under `steps.<name>.result` is an error on its own line; the run's own output
+  is `result:` and its shape is the body's. That split is what waiting makes
+  necessary: a body that parks for an approval does not return for days, and the
+  process that started a run is routinely gone before it ends.
 
   Kinds: `Durable.Run` (a marker a backend's workflow extends — never
   instantiated), `Durable.Idempotent` (wraps a region you assert is safe to
@@ -1673,6 +1681,10 @@ system: |
     that must not race it. Every inbound source works this way — `Http.Server`,
     `Mcp.StdioServer`, and both `scheduler` kinds. A Service is never
     self-starting; a schedule left out of `targets:` never ticks.
+    A started schedule KEEPS THE APPLICATION ALIVE on its own, exactly as a
+    listening socket does, so an app whose only work is scheduled needs no
+    server: do not add one to keep the process up. Add a server only for what a
+    server gives you — a route, a health probe, an on-demand trigger.
   - **SQL schema is DECLARED, not migrated to.** `sql` holds the abstracts
     (`Sql.Connection`, `Sql.Table`, `Sql.Schema`); the backend modules own
     everything instantiable — `postgres` (`Postgres.Connection` / `.Table` /
@@ -1988,6 +2000,17 @@ system: |
   validates both directions on every call, and `telo check` validates each call
   site against the target's contract — so a misspelled or wrong-shaped input is
   an error where it is written, not a failure deep inside the callee.
+
+  A contract REPLACES rather than merges: it resolves to the nearest declaration
+  along `extends`. When you write a kind that extends an ABSTRACT and declare a
+  contract of your own, restate the fields the abstract declares — `telo check`
+  rejects one that cannot stand in for it (`CONTRACT_NOT_SUBSTITUTABLE`), because
+  a slot typed by the abstract reads the shape the abstract promised and nothing
+  else re-checks it at dispatch. Adding your own fields, narrowing a type or
+  restricting an enum is fine; dropping a required one is not. Extending a
+  CONCRETE kind is different and unaffected — there `base:` reshapes the parent's
+  config and `inputs:` / `result:` translate its call signature, which is the
+  whole point of putting a friendlier schema over an existing controller.
 
   ## Where `inputs:` belong — the #1 mistake to avoid
 

@@ -1,0 +1,121 @@
+kind: Telo.Application
+metadata:
+  name: ScheduledJob
+  version: 1.0.0
+  description: |
+    A recurring job with two triggers onto one declaration: `Schedule.Cron`
+    fires `runJob` on `JOB_CRON` (03:00 daily by default), and `POST /run`
+    fires the same resource on demand. Swap the body for whatever the job is —
+    a rollup, a prune, a sync — and both triggers follow.
+
+    The schedule keeps the application alive by itself, so the server here is
+    not holding the process up — it is what a job in production ends up wanting
+    anyway: a liveness probe (`GET /healthz`) and a way to run the job now
+    without waiting for the next tick. Delete the server, the routes and the
+    `ports:` block and what is left is a working scheduled worker.
+
+    Run, then:
+        curl -s localhost:8046/healthz
+        curl -s -XPOST localhost:8046/run
+    To watch it tick without waiting for 03:00:
+        JOB_CRON='*/10 * * * * *' telo .
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+  Schedule: oci://ghcr.io/telorun/scheduler@0.9.0#sha256-4MpeweWGk4LedDa34TE9lELndNfl9YyBLAyOiHyap9s
+  Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+targets:
+  - !ref server
+  - !ref nightly
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8046
+variables:
+  jobCron:
+    env: JOB_CRON
+    type: string
+    default: "0 3 * * *"
+  scanPath:
+    env: SCAN_PATH
+    type: string
+    default: "."
+---
+# The job itself: one Telo.Runnable, so nothing in it knows which trigger
+# started it. Replace the steps; leave the shape.
+kind: Run.Sequence
+metadata: { name: runJob }
+steps:
+  - name: list
+    invoke: !ref listFiles
+    inputs:
+      exclude: [ node_modules, .git, .telo ]
+
+  - name: report
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel >-
+        '{green ✔} scanned ' + variables.scanPath + ' — ' +
+        string(size(steps.list.result.entries.filter(e, e.type == 'file'))) + ' files, ' +
+        string(sum(steps.list.result.entries.map(e, e.size))) + ' bytes'
+outputs:
+  files: !cel "size(steps.list.result.entries.filter(e, e.type == 'file'))"
+  bytes: !cel "sum(steps.list.result.entries.map(e, e.size))"
+---
+kind: Fs.DirectoryListing
+metadata: { name: listFiles }
+cwd: !cel "variables.scanPath"
+---
+# The calendar trigger. `timezone` is explicit so the schedule means the same
+# thing on every host it is deployed to.
+kind: Schedule.Cron
+metadata: { name: nightly }
+cron: !cel "variables.jobCron"
+timezone: UTC
+invoke: !ref runJob
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Scheduled job
+    version: 1.0.0
+mounts:
+  - path: /
+    mount: !ref jobRoutes
+---
+kind: Http.Api
+metadata: { name: jobRoutes }
+routes:
+  # The on-demand trigger: the same resource the schedule fires.
+  - request:
+      path: /run
+      method: POST
+    handler: !ref runJob
+    inputs: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              files: !cel "result.files"
+              bytes: !cel "result.bytes"
+
+  - request:
+      path: /healthz
+      method: GET
+    handler: !ref health
+    inputs: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Run.Value
+metadata: { name: health }
+value:
+  status: ok

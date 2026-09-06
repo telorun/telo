@@ -1,0 +1,54 @@
+kind: Telo.Application
+metadata:
+  name: ScheduleHoldTest
+  version: 1.0.0
+  description: |
+    A running schedule holds the application open, and releases when it stops.
+
+    An armed timer is not what decides whether an app exits — `waitForIdle()`
+    resolves at zero kernel holds — so without a hold an app whose only work is
+    scheduled reached its first tick only when something else (a server) happened
+    to be holding, and exited immediately otherwise. The hold is the same thing a
+    listening socket takes, asserted the same way: `Kernel.Blocked` when the first
+    one is taken, `Kernel.Unblocked` when the last is released.
+
+    The schedule here is `with:`-scoped, so it is torn down when the sequence
+    ends — which is what makes BOTH halves observable inside one run.
+imports:
+  Schedule: ../
+  Timer: ../../timer
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref RunSchedule
+  - !ref AssertHeldThenReleased
+---
+kind: Run.Value
+metadata: { name: Tick }
+value: { ok: true }
+---
+kind: Run.Sequence
+metadata: { name: RunSchedule }
+with:
+  - kind: Schedule.Interval
+    metadata: { name: Ticker }
+    every: "50ms"
+    invoke: !ref Tick
+targets:
+  - !ref Ticker
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: "120ms"
+      value: {}
+---
+kind: Assert.Events
+metadata: { name: AssertHeldThenReleased }
+filter:
+  - type: "Kernel.*"
+expect:
+  - event: Kernel.Blocked
+    times: 1
+  - event: Kernel.Unblocked
+    times: 1

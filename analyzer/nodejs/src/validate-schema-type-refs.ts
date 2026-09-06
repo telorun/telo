@@ -3,6 +3,7 @@ import { canonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 
 const SOURCE = "telo-analyzer";
 const SCHEMA_FIELDS = ["schema", "inputType", "outputType"] as const;
@@ -38,7 +39,7 @@ export function validateSchemaTypeRefs(
     // Only validate refs authored in a root module's scope; imported defs are
     // validated against their own library when it's analyzed as a root.
     if (ownModule && !rootModules.has(ownModule)) continue;
-    const resolver = (ownModule ? aliasesByModule.get(ownModule) : undefined) ?? aliases;
+    const resolver = moduleAliasScope(m.metadata, aliases, aliasesByModule);
     const filePath = (m.metadata as { source?: string } | undefined)?.source;
     const label = `${m.kind}/${name}`;
 

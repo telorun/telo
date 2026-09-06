@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 
 /** Schema-bearing fields on a Telo.Definition / Telo.Type resource. */
 const SCHEMA_FIELDS = ["schema", "inputType", "outputType"];
@@ -96,7 +97,7 @@ export function resolveSchemaTypeRefs(
 
   for (const r of resources) {
     const ownModule = (r.metadata as { module?: string } | undefined)?.module;
-    const resolver = (ownModule ? aliasesByModule?.get(ownModule) : undefined) ?? aliases;
+    const resolver = moduleAliasScope(r.metadata, aliases, aliasesByModule);
     const resolveAuthority = (authority: string): string | undefined =>
       authority === "Self" ? ownModule : resolver?.moduleForAlias(authority);
     for (const field of SCHEMA_FIELDS) {

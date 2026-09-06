@@ -1,0 +1,152 @@
+kind: Telo.Application
+metadata:
+  name: McpServer
+  version: 1.0.0
+  description: |
+    An MCP server an assistant (Claude Desktop, Cursor, any MCP client) can
+    call: two tools — `search_notes` and `add_note` — over a SQLite table.
+
+    A tool is a description for a model plus a handler: `argumentsSchema` is
+    what the model must produce, `inputs:` maps that onto an ordinary
+    `Telo.Invocable`, and `result:` renders what comes back. The handlers know
+    nothing about MCP, so the same resources can be mounted on an HTTP route
+    later without being written twice.
+
+    Run, then point a client at http://localhost:8067/mcp, or:
+        curl -s -XPOST localhost:8067/mcp -H 'content-type: application/json' \
+          -H 'accept: application/json, text/event-stream' \
+          -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+  Mcp: oci://ghcr.io/telorun/mcp-server@0.16.0#sha256-GGSQyzXynfdHeMNTS3vqOceP1Uw9rCoJriPlL_Ph-fU
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
+targets:
+  - !ref migrate
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8067
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ./notes.db
+---
+kind: SQLite.Table
+metadata: { name: notes }
+table: notes
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+  body: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref notes
+---
+# The two operations, as plain resources. Nothing here knows a model is calling.
+kind: Sql.Query
+metadata: { name: searchNotes }
+connection: !ref db
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          properties:
+            id: { type: integer }
+            title: { type: string }
+            body: { type: string }
+---
+# `RETURNING` makes the insert a read, so the new id can be reported back to the
+# model — `Sql.Command` reports only how many rows it affected.
+kind: Sql.Query
+metadata: { name: addNote }
+connection: !ref db
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          properties:
+            id: { type: integer }
+---
+kind: Mcp.Tools
+metadata: { name: NoteTools }
+entries:
+  - name: search_notes
+    description: >-
+      Search notes by a free-text term matched against the title and body.
+      Returns each match with its id and title.
+    argumentsSchema:
+      type: object
+      additionalProperties: false
+      required: [ query ]
+      properties:
+        query:
+          type: string
+          description: Text to look for in the title or body.
+    handler: !ref searchNotes
+    inputs:
+      sql: "SELECT id, title, body FROM notes WHERE title LIKE ? OR body LIKE ? ORDER BY id"
+      bindings:
+        - !cel "'%' + request.arguments.query + '%'"
+        - !cel "'%' + request.arguments.query + '%'"
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            size(result.rows) == 0
+              ? 'No notes matched.'
+              : result.rows.map(r, '#' + string(r.id) + ' ' + r.title).join('\n')
+
+  - name: add_note
+    description: Store a new note with a title and a body.
+    argumentsSchema:
+      type: object
+      additionalProperties: false
+      required: [ title, body ]
+      properties:
+        title: { type: string, description: A short title for the note. }
+        body: { type: string, description: The note's contents. }
+    handler: !ref addNote
+    inputs:
+      sql: !sql "INSERT INTO notes (title, body) VALUES (${{ request.arguments.title }}, ${{ request.arguments.body }}) RETURNING id"
+    result:
+      content:
+        - type: text
+          text: !cel "'Saved note #' + string(result.rows[0].id)"
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpEndpoint }
+serverInfo:
+  name: notes
+  version: 1.0.0
+instructions: |
+  This server stores short notes. Use search_notes to find existing ones before
+  adding a duplicate, and add_note to store a new one.
+tools:
+  - !ref NoteTools
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Notes MCP server
+    version: 1.0.0
+mounts:
+  - path: /mcp
+    mount: !ref mcpEndpoint

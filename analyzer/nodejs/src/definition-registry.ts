@@ -2,6 +2,7 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 import {
   buildFieldMapAtPath,
   buildReferenceFieldMap,
@@ -372,9 +373,7 @@ export class DefinitionRegistry {
     // (e.g. `Ai.AgentStream` in a library that imports `Ai`), which the root/global
     // resolver doesn't know — using the global scope here left the base field map
     // unresolved, so Phase-5 injection saw no ref fields and skipped injection.
-    const ownModule = (resource.metadata as { module?: string } | undefined)?.module;
-    const moduleScope =
-      (ownModule ? aliasesByModule.get(ownModule) : undefined) ?? aliases;
+    const moduleScope = moduleAliasScope(resource.metadata, aliases, aliasesByModule);
 
     const baseMap = this.getFieldMapForKind(resource.kind, moduleScope);
     if (!baseMap) return undefined;
@@ -383,9 +382,7 @@ export class DefinitionRegistry {
     const def = this.resolve(resource.kind) ?? this.resolve(resolvedKind);
     // schema-from anchors resolve in the DEFINITION's module scope (where the anchor
     // kind is declared), which may differ from the resource's own module.
-    const ownerModule = (def?.metadata as { module?: string } | undefined)?.module;
-    const ownerScope =
-      (ownerModule ? aliasesByModule.get(ownerModule) : undefined) ?? aliases;
+    const ownerScope = moduleAliasScope(def?.metadata, aliases, aliasesByModule);
 
     const expanded: ReferenceFieldMap = new Map();
     for (const [path, entry] of baseMap) {

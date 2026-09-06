@@ -1,0 +1,49 @@
+kind: Telo.Library
+metadata:
+  name: RouteScopeLib
+  version: 1.0.0
+  description: |
+    Owns a route, and imports the transport under an alias of its own choosing.
+    `Http` is this library's name for http-server; a consumer has no reason to
+    know it, and every CEL binding in the route below — `request`, `result` —
+    comes from the annotations on the kind that alias resolves to.
+imports:
+  Http: ../../../../modules/http-server
+  Run: ../../../../modules/run
+exports:
+  resources:
+    - greetApi
+---
+kind: Http.Api
+metadata: { name: greetApi }
+routes:
+  - request:
+      path: /greet
+      method: GET
+      schema:
+        query:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string }
+    handler: !ref sayHello
+    inputs:
+      name: !cel "request.query.name"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Run.Value
+metadata: { name: sayHello }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [name]
+    additionalProperties: false
+    properties:
+      name: { type: string }
+value:
+  greeting: !cel "'hello ' + inputs.name"

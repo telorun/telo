@@ -24,3 +24,15 @@ exclude:
   # made a red module suite ambiguous. `apps/hub` is already separate this way
   # (`apps/hub/test-suite-e2e.yaml`); this is the same split for the rest.
   - "apps/**"
+  # Similar reasoning for examples, though not identical: most pin published
+  # module versions — that is what makes them copyable — so a red one here would
+  # mean the release sequence is behind rather than that the code is wrong. (Some
+  # deliberately import the workspace by relative path: `durable-orders` and
+  # `approval-workflow` are demonstrations of modules under development, and the
+  # module suites are what cover those.)
+  #
+  # An example with tests runs them from ITS OWN suite —
+  # `telo ./examples/<name>/test-suite.yaml` — which CI invokes explicitly. That
+  # invocation is not optional: excluding them here and adding no other caller is
+  # how the only example about testing ended up tested by nothing.
+  - "examples/**"

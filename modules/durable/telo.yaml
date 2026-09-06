@@ -47,6 +47,33 @@ metadata:
     it stopped. Implemented by an engine module; nothing instantiates this directly.
     Kinds that only make sense inside such a body name it as the region they require.
 capability: Telo.Invocable
+# THE FLOOR EVERY ENGINE ANSWERS WITH, and the only thing this level can say about
+# a start. A run's identity is what every later question about it is asked by —
+# its result, its status, its cancellation — so a start that did not return one
+# would leave the caller with nothing to address, and a manifest could not move
+# between engines. Everything past these two is one engine's vocabulary: how a
+# start reports having joined an existing run, and which states it distinguishes,
+# is exactly what the module comment above refuses to unify.
+#
+# Contracts REPLACE rather than merge, so a backend declaring its own restates
+# both fields. That is deliberate — a backend narrows `status` to the states it
+# actually has, which a merge could not express — and it is what makes this a
+# floor rather than a wish: `CONTRACT_NOT_SUBSTITUTABLE` compares a replacing
+# contract against the one it replaces, since replacement means neither the rest
+# of `telo check` nor dispatch ever does.
+outputType:
+  type: object
+  additionalProperties: true
+  required: [runId, status]
+  properties:
+    runId:
+      type: string
+      description: >-
+        The run's identity. Reading a run's outcome, asking after it, or calling it off
+        are all addressed by this.
+    status:
+      type: string
+      description: Where the run stood at the moment the start returned.
 ---
 # Durable.Idempotent — a region the author ASSERTS is safe to re-run.
 #

@@ -146,3 +146,199 @@ describe("CONTRACT_TYPE_NOT_FOUND", () => {
     expect(codes(diags)).not.toContain("CONTRACT_TYPE_NOT_FOUND");
   });
 });
+
+describe("CONTRACT_NOT_SUBSTITUTABLE", () => {
+  /** An abstract stating a floor every implementation must answer with — the
+   *  identity later calls are addressed by, plus where the work stands. */
+  const runAbstract = {
+    kind: "Telo.Abstract",
+    metadata: { name: "Run", module: "durable" },
+    capability: "Telo.Invocable",
+    outputType: {
+      type: "object",
+      additionalProperties: true,
+      required: ["runId", "status"],
+      properties: { runId: { type: "string" }, status: { type: "string" } },
+    },
+    inputType: {
+      type: "object",
+      additionalProperties: true,
+      properties: { run: { type: "string" } },
+    },
+  };
+
+  const engine = (extra: Record<string, unknown>) => ({
+    kind: "Telo.Definition",
+    metadata: { name: "Workflow", module: "engine" },
+    capability: "Telo.Invocable",
+    extends: "durable.Run",
+    controllers: [{ runtime: "node", entry: "x" }],
+    schema: { type: "object", additionalProperties: true },
+    ...extra,
+  });
+
+  it("rejects an engine whose own outputType drops a field the abstract requires", async () => {
+    // The failure the rule exists for: contracts replace rather than merge, so
+    // this engine is compared against `durable.Run` by nothing — not the pass,
+    // not dispatch — and a slot typed by the abstract is typed by a promise the
+    // implementation does not keep.
+    const diags = analyze([
+      runAbstract,
+      engine({
+        outputType: {
+          type: "object",
+          required: ["status"],
+          properties: { status: { type: "string" } },
+        },
+      }),
+    ]);
+    expect(codes(diags)).toContain("CONTRACT_NOT_SUBSTITUTABLE");
+  });
+
+  it("accepts an engine that restates the floor and adds its own vocabulary", async () => {
+    const diags = analyze([
+      runAbstract,
+      engine({
+        outputType: {
+          type: "object",
+          additionalProperties: false,
+          required: ["runId", "status"],
+          properties: {
+            runId: { type: "string" },
+            status: { type: "string" },
+            attached: { type: "boolean" },
+          },
+        },
+      }),
+    ]);
+    expect(codes(diags)).not.toContain("CONTRACT_NOT_SUBSTITUTABLE");
+  });
+
+  it("accepts an engine that declares nothing — the abstract's contract binds it", async () => {
+    expect(codes(analyze([runAbstract, engine({})]))).not.toContain("CONTRACT_NOT_SUBSTITUTABLE");
+  });
+
+  it("rejects an input contract that demands what a caller through the abstract cannot send", async () => {
+    // Contravariant: a caller holding this through `durable.Run` sends the
+    // abstract's shape, so an extra REQUIRED input is unsatisfiable for them.
+    const diags = analyze([
+      runAbstract,
+      engine({
+        inputType: {
+          type: "object",
+          required: ["deploymentId"],
+          properties: { deploymentId: { type: "string" } },
+        },
+      }),
+    ]);
+    expect(codes(diags)).toContain("CONTRACT_NOT_SUBSTITUTABLE");
+  });
+
+  it("checks a contract that NAMES its type, in the declaring module and outside it", async () => {
+    // A named type resolves against the whole manifest set, exactly as
+    // `analyzerContractScope` hands it to `resolveContract`. Scoping the lookup to
+    // the declaring module read as more careful and silently switched the check
+    // off for every library that factors its shapes into a shared module — and
+    // nothing else caught it, since `CONTRACT_TYPE_NOT_FOUND` resolves the same
+    // name through its own global fallback. Both placements are asserted here
+    // because only the pair pins the behaviour: one alone passes under the bug.
+    const shortfall = {
+      type: "object",
+      required: ["status"],
+      properties: { status: { type: "string" } },
+    };
+    const named = (module: string) => ({
+      kind: "Telo.JsonSchema",
+      metadata: { name: "Started", module },
+      schema: shortfall,
+    });
+
+    for (const module of ["engine", "shapes"]) {
+      const diags = analyze([runAbstract, named(module), engine({ outputType: "Started" })]);
+      expect(codes(diags), `named type declared in '${module}'`).toContain(
+        "CONTRACT_NOT_SUBSTITUTABLE",
+      );
+    }
+  });
+
+  it("accepts an input contract that only narrows a field's type", async () => {
+    const diags = analyze([
+      runAbstract,
+      engine({
+        inputType: {
+          type: "object",
+          properties: { run: { type: "string" }, wait: { type: "string" } },
+        },
+      }),
+    ]);
+    expect(codes(diags)).not.toContain("CONTRACT_NOT_SUBSTITUTABLE");
+  });
+});
+
+describe("CONTRACT_NOT_SUBSTITUTABLE — what it deliberately does not reach", () => {
+  /** A CONCRETE parent: a controller with a call signature of its own, which a
+   *  child puts a friendlier schema over. This is the sanctioned pattern — `base:`
+   *  reshapes the config and `inputs:` translates the call — so the child is
+   *  supposed to take different inputs, and checking substitutability here would
+   *  reject every custom-kind example in the repo. */
+  const webhookKind = {
+    kind: "Telo.Definition",
+    metadata: { name: "Webhook", module: "notify" },
+    capability: "Telo.Invocable",
+    controllers: [{ runtime: "node", entry: "x" }],
+    schema: { type: "object", additionalProperties: true },
+    inputType: {
+      type: "object",
+      required: ["payload"],
+      properties: { payload: { type: "object" } },
+    },
+  };
+
+  it("leaves a friendlier schema over a concrete parent alone", async () => {
+    const diags = analyze([
+      webhookKind,
+      {
+        kind: "Telo.Definition",
+        metadata: { name: "Slack", module: "notify" },
+        extends: "notify.Webhook",
+        schema: { type: "object", additionalProperties: true },
+        inputType: {
+          type: "object",
+          required: ["text"],
+          properties: { text: { type: "string" } },
+        },
+        inputs: { payload: { text: "x" } },
+      },
+    ]);
+    expect(codes(diags)).not.toContain("CONTRACT_NOT_SUBSTITUTABLE");
+  });
+
+  it("leaves a bridged direction alone even under an abstract", async () => {
+    // The mapping is the author saying the shapes differ deliberately and are
+    // translated — the same statement `CONTRACT_MISSING_MAPPING` demands one hop
+    // down.
+    const diags = analyze([
+      {
+        kind: "Telo.Abstract",
+        metadata: { name: "Sink", module: "pipe" },
+        capability: "Telo.Invocable",
+        outputType: {
+          type: "object",
+          required: ["written"],
+          properties: { written: { type: "integer" } },
+        },
+      },
+      {
+        kind: "Telo.Definition",
+        metadata: { name: "FileSink", module: "pipe" },
+        capability: "Telo.Invocable",
+        extends: "pipe.Sink",
+        controllers: [{ runtime: "node", entry: "x" }],
+        schema: { type: "object", additionalProperties: true },
+        outputType: { type: "object", properties: { bytes: { type: "integer" } } },
+        result: { written: "x" },
+      },
+    ]);
+    expect(codes(diags)).not.toContain("CONTRACT_NOT_SUBSTITUTABLE");
+  });
+});

@@ -38,6 +38,17 @@ interface ParkRecord {
   token?: string;
 }
 
+/**
+ * The record as this store holds it.
+ *
+ * A structural restatement of the backend-neutral shape rather than an import of
+ * it, because a journal is reachable by a kernel that never loaded the engine
+ * module. It has to be kept true all the same: this store carries a settlement
+ * by spreading it into a line and reads it back by casting, so a field missing
+ * from here still ROUND-TRIPS — and is a lie to every reader of the type, which
+ * is what would drop it silently the day this file projects columns explicitly
+ * the way the SQL journals already do.
+ */
 interface RunRecord {
   run: string;
   status: "scheduled" | "running" | "parked" | "completed" | "failed" | "cancelled";
@@ -48,6 +59,10 @@ interface RunRecord {
   error?: { code: string; message: string };
   collapsedRegions?: number;
   collapseReasons?: string[];
+  /** How many steps the execution that SETTLED this run was handed from the
+   *  record rather than executing. Absent — never zero — for a run settled
+   *  before it was recorded. */
+  replayedSteps?: number;
 }
 
 /** A run id is a caller-chosen string (`onboard:ada@example.com`), and it becomes
