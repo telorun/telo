@@ -28,7 +28,7 @@
 kind: Telo.Application
 metadata:
   name: TeloHub
-  version: 0.7.0
+  version: 0.8.0
   description: >-
     Federated discovery hub: tracks registered module refs across transports,
     caches manifests, and serves per-resource search over HTTP and MCP.

@@ -1,6 +1,0 @@
-modules:
-  modules/scheduler: Fixed
-body: A running schedule now takes a kernel hold, so an application whose only work is
-  scheduled stays alive between ticks instead of exiting before the first one. The hold
-  is released when the schedule is torn down, and early when a bounded cron expression
-  has no further occurrences.
