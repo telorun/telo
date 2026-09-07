@@ -1,0 +1,61 @@
+kind: Telo.Library
+metadata:
+  name: Cart
+  version: 1.0.0
+  categories: [ Testing ]
+  description: |
+    Cart pricing, as a rule and nothing else: no transport, no storage, no
+    server. Exported as an instance, so an application and a test dispatch the
+    same resource rather than two copies of one expression.
+imports:
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+variables:
+  discountThresholdCents:
+    type: integer
+    default: 10000
+    description: Subtotal at or above which the order discount applies.
+exports:
+  resources:
+    - priceCart
+---
+# The rule under test. `bindings:` name the intermediate values, so the
+# arithmetic reads as three named steps rather than one nested expression — and
+# a test asserts the whole shape at once.
+kind: Run.Value
+metadata: { name: priceCart }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ items ]
+    properties:
+      items:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [ sku, unitCents, quantity ]
+          properties:
+            sku: { type: string }
+            unitCents: { type: integer, minimum: 0 }
+            quantity: { type: integer, minimum: 1 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ subtotalCents, discountCents, totalCents ]
+    properties:
+      subtotalCents: { type: integer }
+      discountCents: { type: integer }
+      totalCents: { type: integer }
+bindings:
+  # `sum()` reduces to a double, so the money stays in integer cents only if the
+  # total is converted back — every value below is an int64 from here on.
+  subtotal: !cel "int(sum(inputs.items.map(i, i.unitCents * i.quantity)))"
+  discount: !cel "subtotal >= variables.discountThresholdCents ? subtotal / 10 : 0"
+value:
+  subtotalCents: !cel "subtotal"
+  discountCents: !cel "discount"
+  totalCents: !cel "subtotal - discount"

@@ -196,16 +196,29 @@ steps:
     invoke: !ref outcome
     inputs:
       run: !cel "steps.start.result.runId"
+  # `replayed` is asserted HERE and nowhere else, because this is the only test
+  # in which an attempt genuinely continues an interrupted one — which is the
+  # only thing the field claims. It is read off the RUN rather than off the
+  # resume's return value, because the process that starts a run is routinely
+  # gone by the time it ends, so the record is the only place the fact can live.
+  # `replayedSteps` is asserted as a count rather than a bound: `opened` and
+  # `waitForApproval` were both recorded before the resume, so exactly two steps
+  # were handed to it, and a `> 0` would pass just as well on a resume that
+  # replayed only one and re-executed the other.
   - name: assertCompleted
     inputs:
       actual:
         status: !cel "steps.finished.result.status"
         approvedBy: !cel "steps.finished.result.result.steps.waitForApproval.result.approvedBy"
         closed: !cel "steps.finished.result.result.steps.closed.result.stage"
+        replayed: !cel "steps.finished.result.replayed"
+        replayedSteps: !cel "steps.finished.result.replayedSteps"
       expected:
         status: completed
         approvedBy: ada
         closed: after
+        replayed: true
+        replayedSteps: 2
     invoke: { kind: Assert.Equals }
 
   # A payload of the wrong shape is refused AT THE DELIVERY. It has to be:

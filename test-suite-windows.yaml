@@ -25,6 +25,9 @@ exclude:
   # here but not yet been released and re-pinned — a real signal, but one about
   # the release sequence rather than about the code under test.
   - "apps/**"
+  # Same as the root suite: most examples pin published module versions, and an
+  # example with tests is run from ITS OWN suite, which CI invokes explicitly.
+  - "examples/**"
 
   # POSIX-only. These three drive the host shell in its own language — `printf`,
   # `pwd`, and `"$VAR"` expansion — none of which cmd.exe speaks, so on Windows

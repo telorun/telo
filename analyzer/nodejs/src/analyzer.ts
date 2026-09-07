@@ -47,6 +47,7 @@ import {
 } from "./validate-observed-state.js";
 import { computeSuggestKind } from "./kind-suggest.js";
 import { visitManifest } from "./manifest-visitor.js";
+import { declaringModuleScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
@@ -999,10 +1000,10 @@ export class StaticAnalyzer {
       if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
       const def = m as unknown as ResourceDefinition;
       const ownModule = (def.metadata as { module?: string } | undefined)?.module;
-      const scopeResolver =
-        ownModule && !rootModules.has(ownModule)
-          ? (aliasesByModule.get(ownModule) ?? new AliasResolver())
-          : aliases;
+      const scopeResolver = declaringModuleScope(ownModule, aliases, {
+        aliasesByModule,
+        rootModules,
+      });
       // Canonicalize alias-form `x-telo-ref` constraints in the DECLARING module's
       // scope, before the schema reaches `register()` and the lazily-built field
       // maps. Same pre-resolution `capability` / `extends` get below.
@@ -1425,7 +1426,7 @@ export class StaticAnalyzer {
       // analyzer knowing it exists: going native costs a module, not a change
       // here.
       const resolveRegionDef = (kind: string, module?: string) => {
-        const scope = (module ? aliasesByModule.get(module) : undefined) ?? aliases;
+        const scope = moduleAliasScope({ module }, aliases, aliasesByModule);
         const canonical = scope.resolveKind(kind);
         return defs.resolve(kind) ?? (canonical ? defs.resolve(canonical) : undefined);
       };
@@ -1456,8 +1457,10 @@ export class StaticAnalyzer {
       if (!ownModule || !m.metadata?.name || typeof m.schema !== "object" || m.schema === null) {
         continue;
       }
-      const scopeResolver =
-        rootModules.has(ownModule) ? aliases : (aliasesByModule.get(ownModule) ?? new AliasResolver());
+      const scopeResolver = declaringModuleScope(ownModule, aliases, {
+        aliasesByModule,
+        rootModules,
+      });
       const canonicalKind = scopeResolver.resolveKind(m.kind as string) ?? (m.kind as string);
       if (defs.resolve(canonicalKind)?.capability !== "Telo.Type") continue;
       const typeName = m.metadata.name as string;

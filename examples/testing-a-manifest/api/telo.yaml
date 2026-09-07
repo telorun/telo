@@ -1,0 +1,48 @@
+kind: Telo.Library
+metadata:
+  name: CartApi
+  version: 1.0.0
+  categories: [ Testing ]
+  description: |
+    The transport half: one route that maps a request onto the pricing rule and
+    the rule's result onto a response. Exported as an instance, so the
+    application mounts it on a port and an integration test mounts it on a
+    throwaway server — the route is written once.
+imports:
+  Cart: ../cart
+  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+exports:
+  resources:
+    - cartApi
+---
+kind: Http.Api
+metadata: { name: cartApi }
+routes:
+  - request:
+      path: /price
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ items ]
+          properties:
+            items:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                additionalProperties: false
+                required: [ sku, unitCents, quantity ]
+                properties:
+                  sku: { type: string }
+                  unitCents: { type: integer, minimum: 0 }
+                  quantity: { type: integer, minimum: 1 }
+    handler: !ref Cart.priceCart
+    inputs:
+      items: !cel "request.body.items"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"

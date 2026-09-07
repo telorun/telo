@@ -17,6 +17,7 @@ import {
   type SchemaFromFieldEntry,
 } from "./reference-field-map.js";
 import type { ModuleScopes } from "./alias-resolver.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 import { templateBodies, withTemplateSelf } from "./template-body.js";
 import { extractContextsFromSchema, pathMatchesScope } from "./validate-cel-context.js";
 
@@ -237,7 +238,14 @@ export function visitManifest(
     if (!r.metadata?.name || !r.kind) continue;
     if (skipKinds?.has(r.kind)) continue;
 
-    const resolvedKind = aliases?.resolveKind(r.kind);
+    // A resource's own kind is written in the alias scope of the module that
+    // DECLARED it — see `moduleAliasScope`, which is the one place that rule
+    // lives. Resolving it through the entry's aliases alone left `definition`
+    // undefined for every forwarded resource, so its `x-telo-context` regions
+    // contributed nothing and `request` / `result` read as unknown identifiers
+    // inside the library's own routes, on a file the consumer cannot fix.
+    const moduleScope = moduleAliasScope(r.metadata, aliases, aliasesByModule);
+    const resolvedKind = moduleScope?.resolveKind(r.kind);
     const definition =
       registry.resolve(r.kind) ??
       (resolvedKind ? registry.resolve(resolvedKind) : undefined);
@@ -249,8 +257,8 @@ export function visitManifest(
     const emittedRefPaths = wantsNested ? new Set<string>() : null;
 
     if (wantsRefs || wantsScope || wantsSchemaFrom) {
-      const baseMap = aliases
-        ? registry.getFieldMapForKind(r.kind, aliases)
+      const baseMap = moduleScope
+        ? registry.getFieldMapForKind(r.kind, moduleScope)
         : registry.getFieldMap(r.kind);
 
       // Expanded map drives ref/scope sites when requested; schema-from sites

@@ -1,0 +1,203 @@
+kind: Telo.Application
+metadata:
+  name: WebhookReceiver
+  version: 1.0.0
+  description: |
+    An inbound webhook endpoint that is safe to redeliver. Providers retry until
+    they get a 2xx, so the same delivery arrives more than once:
+    `Idempotency.Once` claims the delivery id, runs the body at most once, and
+    replays the stored result for every retry. The reply reports `fresh` or
+    `replayed`, so the behaviour is visible from the outside.
+
+    The shared-secret check is a step, not middleware — it throws a code the
+    route renders as a 401, and `telo check` refuses a route that leaves a code
+    the handler can throw unrendered.
+
+    Run, then send the same delivery twice:
+        curl -s -XPOST localhost:8047/webhooks/events \
+          -H 'content-type: application/json' \
+          -H 'authorization: Bearer local-dev-token' \
+          -d '{"deliveryId":"dlv_1","subject":"user.created","payload":{"id":42}}'
+    The first reply says "fresh", the second "replayed" — and one row exists.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
+  Idempotency: oci://ghcr.io/telorun/idempotency@0.10.0#sha256-PE0WF0dQRTcQvi8UbUNcvEoqBmwgH8xP_l661wTyt70
+  KvStore: oci://ghcr.io/telorun/kv-store-memory@0.7.0#sha256-i1Nen64mCl25XONkoBGRqiTptxBSBA8zBcW6om9autg
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+targets:
+  - !ref migrate
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8047
+secrets:
+  webhookToken:
+    env: WEBHOOK_TOKEN
+    type: string
+    default: local-dev-token
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ./events.db
+---
+kind: SQLite.Table
+metadata: { name: events }
+table: events
+columns:
+  delivery_id: { type: text, primaryKey: true }
+  subject: { type: text, nullable: false }
+  payload: { type: text, nullable: false }
+  received_at: { type: text, nullable: false, defaultExpression: "datetime('now')" }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref events
+---
+# Where the idempotency claims live. Swap this one line for kv-store-redis and
+# the guarantee survives a restart and spans every replica.
+kind: KvStore.Store
+metadata: { name: claims }
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+# The body that must run at most once per delivery id.
+kind: Run.Sequence
+metadata: { name: recordEvent }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ deliveryId, subject, payload ]
+    properties:
+      deliveryId: { type: string }
+      subject: { type: string }
+      payload: { type: object, additionalProperties: true }
+steps:
+  - name: insert
+    invoke: !ref exec
+    inputs:
+      sql: "INSERT INTO events (delivery_id, subject, payload) VALUES (?, ?, ?)"
+      bindings:
+        - !cel "inputs.deliveryId"
+        - !cel "inputs.subject"
+        - !cel "json(inputs.payload)"
+outputs:
+  subject: !cel "inputs.subject"
+---
+# `claimTtl` bounds a crashed in-flight attempt; `ttl` is how long a completed
+# delivery stays replayable — a provider that retries for a day needs a day.
+kind: Idempotency.Once
+metadata: { name: recordEventOnce }
+store: !ref claims
+claimTtl: "30s"
+ttl: "24h"
+invoke: !ref recordEvent
+---
+kind: Run.Sequence
+metadata: { name: handleDelivery }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ token, deliveryId, subject, payload ]
+    properties:
+      token: { type: string }
+      deliveryId: { type: string }
+      subject: { type: string }
+      payload: { type: object, additionalProperties: true }
+steps:
+  - name: rejectUnknownSender
+    if: !cel "inputs.token != 'Bearer ' + secrets.webhookToken"
+    then:
+      - name: deny
+        throw:
+          code: ERR_WEBHOOK_UNAUTHORIZED
+          message: bad or missing webhook token
+  - name: record
+    invoke: !ref recordEventOnce
+    inputs:
+      key: !cel "inputs.deliveryId"
+      inputs:
+        deliveryId: !cel "inputs.deliveryId"
+        subject: !cel "inputs.subject"
+        payload: !cel "inputs.payload"
+outputs:
+  state: !cel "steps.record.result.state"
+  subject: !cel "steps.record.result.result.subject"
+---
+kind: Http.Api
+metadata: { name: webhookRoutes }
+routes:
+  - request:
+      path: /events
+      method: POST
+      schema:
+        headers:
+          type: object
+          required: [ authorization ]
+          properties:
+            authorization: { type: string }
+        body:
+          type: object
+          additionalProperties: false
+          required: [ deliveryId, subject, payload ]
+          properties:
+            deliveryId: { type: string, minLength: 1 }
+            subject: { type: string, minLength: 1 }
+            payload: { type: object, additionalProperties: true }
+    handler: !ref handleDelivery
+    inputs:
+      token: !cel "request.headers.authorization"
+      deliveryId: !cel "request.body.deliveryId"
+      subject: !cel "request.body.subject"
+      payload: !cel "request.body.payload"
+    returns:
+      # 202, not 200: the delivery is accepted and recorded, and anything slower
+      # than that belongs off the request path.
+      - status: 202
+        content:
+          application/json:
+            body:
+              subject: !cel "result.subject"
+              state: !cel "result.state"
+    catches:
+      - when: !cel "error.code == 'ERR_WEBHOOK_UNAUTHORIZED'"
+        status: 401
+        content:
+          application/json:
+            body:
+              error: unauthorized
+      # The claim lapsed mid-flight, so the delivery is not recorded as done. A
+      # 5xx is the honest answer: it tells the provider to send it again.
+      - when: !cel "error.code == 'ERR_CLAIM_LOST'"
+        status: 503
+        headers:
+          Retry-After: "5"
+        content:
+          application/json:
+            body:
+              error: retry_later
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Webhook receiver
+    version: 1.0.0
+mounts:
+  - path: /webhooks
+    mount: !ref webhookRoutes

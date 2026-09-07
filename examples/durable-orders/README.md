@@ -58,6 +58,8 @@ Done — order A-1 finished, and the steps already recorded were not run again.
 
 **Nothing about reserving stock is printed**, because that step was not re-run — its result came back from the record. And look closer at the charge: `✓ card charged` appears *without* `charging card…` before it. The run resumed **inside** the charge, at the one step of it that had not finished.
 
+The closing line is not guesswork either: `Local.Result` reports `replayed` off the run's own record, which is the only place that fact can live — the process that started this run died before it finished.
+
 ## Things to try
 
 | | |
@@ -73,7 +75,9 @@ Done — order A-1 finished, and the steps already recorded were not run again.
 
 **More than results are recorded.** A step's resolved inputs and every branch predicate are recorded too. They are read from a scope that includes live readings — a resource's observed state is republished on every dispatch by design — so re-deriving one in a fresh process can answer differently. The failure that would cause has no error attached to it: a loop whose collection came out in a different order would hand a recorded result to a different element, and nothing would notice. Recording the decision removes that rather than detecting it.
 
-**Ctrl-C will not interrupt the run** — you need a hard kill. This surprises people, and it is deliberate: a durable run must outlive whatever triggered it, so it does not inherit the caller's cancellation. If it did, a run started by an HTTP request would be cancelled the moment the response went out. What *does* stop it is the process going away, which is exactly the case this feature exists for.
+**Starting a run and waiting for one are two calls.** `Local.Workflow` dispatches its body detached and answers with a run id before the first step has run — which is what lets an HTTP route start work that outlives its response — so this app starts the run and then asks `Local.Result` for the outcome. Waiting is the caller's choice, not the start's: a run may take days, and a start that waited could not answer at all.
+
+**A cancelled run is not a failed one.** Ctrl-C does not reach into the run — a durable run must outlive whatever triggered it, so it does not inherit the caller's cancellation, and if it did, a run started by an HTTP request would be cancelled the moment the response went out. What stops it is the process going away, which leaves the run `running` and therefore resumable. Recording it `failed` instead would be terminal, and one interruption would poison the run id forever.
 
 ## The collapsed region
 

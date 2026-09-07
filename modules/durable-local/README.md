@@ -92,8 +92,10 @@ Putting the choice here rather than on the start is what keeps both usable: the 
 
 ```json
 { "run": "onboard:ada@example.com", "status": "completed", "result": { … },
-  "collapsedRegions": 0, "collapseReasons": [] }
+  "collapsedRegions": 0, "collapseReasons": [], "replayed": true, "replayedSteps": 3 }
 ```
+
+`replayed` says whether the attempt that finished this work continued an interrupted one rather than running it from the top, and `replayedSteps` how many steps it was handed from the record instead of executing. It is reported **here** and not by the start, because the process that started a run is routinely gone by the time it finishes — the record is the only place the fact can live. Both are **absent, not false**, for work settled by a runtime too old to have recorded them; reading absence as `false` would assert something nothing knows.
 
 `collapsedRegions` is the one to watch. A region wrapped in `Durable.Idempotent` — or a transaction whose records land outside its own atomicity — is recorded as one entry and **re-runs whole** on a resume. That is at-least-once, and whether you got it can depend on runtime facts the manifest cannot show, so the run says which way it resolved rather than leaving it to be inferred. `collapseReasons` carries the author's own sentence for each.
 

@@ -1,0 +1,288 @@
+kind: Telo.Application
+metadata:
+  name: SemanticSearch
+  version: 1.0.0
+  categories: [ AI, Storage ]
+  description: |
+    Retrieval-augmented answering, as six resources: embed the documents at
+    boot, embed the question at request time, take the nearest passages, and
+    hand them to the model as context.
+
+    The two halves of retrieval are deliberately separate kinds.
+    `Embedding.Passage` embeds what you INDEX and `Embedding.Query` embeds what
+    you ASK — same model, different wrapping, because providers score a question
+    against a document better when each is told which it is. And
+    `VectorStore.Match` takes a vector rather than text: it never embeds, so the
+    index does not depend on an embedding provider and swapping one is a
+    one-resource change.
+
+    `VectorStoreMemory.Store` keeps the index in the process, so this runs with
+    nothing but an API key. Point the same `VectorStore.Record` / `Match` pair
+    at `vector-store-pgvector` and the manifest above them is unchanged.
+
+    Run with the OpenAI key in a sibling `.env.local` file:
+        OPENAI_API_KEY=sk-...
+    Then ask it something:
+        curl -s 'localhost:8079/ask?q=how+do+i+roll+back+a+bad+release'
+        curl -s 'localhost:8079/search?q=database+migrations'
+
+    `/search` returns the retrieved passages and their scores — worth looking at
+    before `/ask`, because a wrong answer is usually wrong retrieval rather than
+    a wrong model.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.1#sha256-FVg-jmRPGB43Or9_LU8XhDhG_G2Mio56iiSDwi_ofLk
+  Ai: oci://ghcr.io/telorun/ai@0.18.1#sha256-QKVK7-JK8AOmpm_6fwO5Hta75oUg0X9FL-aEy9A19YQ
+  Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
+  VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.8.0#sha256-xHjRmne30UlHnjpNgm8MVrlg_F-XqaLSeJv7pPanBE4
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+targets:
+  - !ref indexCorpus
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8079
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+---
+# The account: base URL and credential on the client, so neither model kind
+# carries a key and both inherit the 401 re-acquire-and-retry.
+kind: HttpClient.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: HttpClient.Client
+metadata: { name: openaiClient }
+baseUrl: https://api.openai.com/v1
+credential: !ref openaiKey
+---
+kind: HttpClient.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.EmbeddingModel
+metadata: { name: embedder }
+model: text-embedding-3-small
+request: !ref openaiRequest
+dimensions: 512
+---
+kind: OpenAI.ChatModel
+metadata: { name: answerModel }
+model: gpt-5.4-nano
+request: !ref openaiRequest
+---
+# `dimensions` is pinned to what the embedding model produces, so a mismatched
+# vector is rejected at the write rather than silently ranked against vectors it
+# has nothing to do with.
+kind: VectorStoreMemory.Store
+metadata: { name: knowledgeBase }
+metric: cosine
+dimensions: 512
+---
+# The corpus. Real deployments read this from a database, a bucket or a crawl —
+# it is inline here so the example needs no fixtures.
+kind: Run.Value
+metadata: { name: corpus }
+value:
+  - id: releases
+    title: Rolling back a release
+    text: >-
+      Every deployment is tagged with the release version it shipped. To roll
+      back, redeploy the previous tag; the schema is designed to tolerate the
+      last two releases at once, so a rollback never needs a database change.
+  - id: migrations
+    title: Database migrations
+    text: >-
+      Schema changes are declared, not scripted. A removed column is recorded
+      and kept for a grace window rather than dropped, so a rollback still finds
+      its data. Renames copy the values across and keep the old column until the
+      window expires.
+  - id: oncall
+    title: On-call escalation
+    text: >-
+      The primary on-call responds within fifteen minutes. If a page is not
+      acknowledged, it escalates to the secondary, then to the engineering
+      manager. Anything customer-visible is escalated immediately regardless of
+      acknowledgement.
+  - id: backups
+    title: Backups and restores
+    text: >-
+      Backups run nightly and are kept for thirty days. A restore is practised
+      quarterly against a scratch database; an untested backup is treated as no
+      backup at all.
+---
+kind: Embedding.Passage
+metadata: { name: embedPassages }
+model: !ref embedder
+---
+kind: Embedding.Query
+metadata: { name: embedQuery }
+model: !ref embedder
+---
+kind: VectorStore.Record
+metadata: { name: indexRecords }
+store: !ref knowledgeBase
+---
+kind: VectorStore.Match
+metadata: { name: findNearest }
+store: !ref knowledgeBase
+topK: 3
+---
+# Indexing, at boot: embed every passage in ONE batched call, then write the
+# vectors with the text alongside them as metadata — so a match carries what it
+# matched, and answering needs no second lookup.
+kind: Run.Sequence
+metadata: { name: indexCorpus }
+steps:
+  - name: docs
+    invoke: !ref corpus
+    inputs: {}
+  - name: vectors
+    invoke: !ref embedPassages
+    inputs:
+      input: !cel >-
+        steps.docs.result.map(d, d.title + '\n' + d.text)
+  - name: store
+    invoke: !ref indexRecords
+    inputs:
+      # Zipped by position: the embedder returns one vector per input, in input
+      # order, so `enumerate` pairs each document with the vector at its index.
+      items: !cel >-
+        enumerate(steps.docs.result).map(e,
+          {
+            'id': e.value.id,
+            'vector': steps.vectors.result.embeddings[e.index],
+            'metadata': { 'title': e.value.title, 'text': e.value.text }
+          })
+  - name: say
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel >-
+        '{green ✔} indexed ' + string(size(steps.store.result.ids)) +
+        ' passages at ' + string(steps.vectors.result.dimensions) + ' dimensions'
+---
+# Retrieval on its own, so it can be inspected without a model in the way.
+kind: Run.Sequence
+metadata: { name: search }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ q ]
+    additionalProperties: false
+    properties:
+      q: { type: string }
+steps:
+  - name: queryVector
+    invoke: !ref embedQuery
+    inputs:
+      input: !cel "inputs.q"
+  - name: nearest
+    invoke: !ref findNearest
+    inputs:
+      vector: !cel "steps.queryVector.result.embeddings[0]"
+outputs:
+  matches: !cel >-
+    steps.nearest.result.matches.map(m,
+      { 'id': m.id, 'score': m.score, 'title': m.metadata.title })
+  passages: !cel "steps.nearest.result.matches.map(m, m.metadata.text)"
+---
+kind: Ai.Text
+metadata: { name: answerFromContext }
+model: !ref answerModel
+system: >-
+  Answer using only the context provided. If the context does not contain the
+  answer, say so plainly rather than guessing. Keep it to two sentences.
+---
+kind: Run.Sequence
+metadata: { name: ask }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ q ]
+    additionalProperties: false
+    properties:
+      q: { type: string }
+steps:
+  - name: retrieved
+    invoke: !ref search
+    inputs:
+      q: !cel "inputs.q"
+  # The whole of "augmented generation": the retrieved passages are the prompt's
+  # context, and the instruction not to go beyond them is on the resource.
+  - name: answer
+    invoke: !ref answerFromContext
+    inputs:
+      prompt: !cel >-
+        'Context:\n' + steps.retrieved.result.passages.join('\n\n') +
+        '\n\nQuestion: ' + inputs.q
+outputs:
+  answer: !cel "steps.answer.result.text"
+  sources: !cel "steps.retrieved.result.matches"
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Semantic search
+    version: 1.0.0
+mounts:
+  - path: /
+    mount: !ref searchRoutes
+---
+kind: Http.Api
+metadata: { name: searchRoutes }
+routes:
+  - request:
+      path: /search
+      method: GET
+      schema:
+        query:
+          type: object
+          required: [ q ]
+          properties:
+            q: { type: string, minLength: 1 }
+    handler: !ref search
+    inputs:
+      q: !cel "request.query.q"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.matches"
+
+  - request:
+      path: /ask
+      method: GET
+      schema:
+        query:
+          type: object
+          required: [ q ]
+          properties:
+            q: { type: string, minLength: 1 }
+    handler: !ref ask
+    inputs:
+      q: !cel "request.query.q"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    # `telo check` knows what the handler can throw — here, everything Ai.Text
+    # declares — and refuses a route that leaves a code unrendered. A provider
+    # outage is a 502 rather than an unhandled 500.
+    catches:
+      - status: 502
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"

@@ -224,6 +224,12 @@ Two things follow from "a start does not wait":
   An HTTP route that starts a run therefore responds at once with the run id,
   and a second route hands the caller the result when they ask.
 
+  It is also the only place that can tell you a run **resumed**: `replayed` says
+  whether the attempt that finished it continued an interrupted one, and
+  `replayedSteps` how many steps came back from the record. The start cannot
+  report either — it returns before the first step has run, and the process that
+  called it is often gone by the time the run ends.
+
 ## 5. Regions that re-run whole
 
 Everything is recorded by default, so the burden sits on the cheap case:

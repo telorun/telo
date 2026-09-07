@@ -69,6 +69,20 @@ class ResultController {
           ...(record.collapseReasons === undefined
             ? {}
             : { collapseReasons: record.collapseReasons }),
+          // Reported as BOTH the count and the boolean, and neither is redundant:
+          // the count is what an operator compares between attempts, while
+          // `replayed` is the question a manifest actually asks — "did this
+          // continue an interrupted run?" — and deriving it in CEL at every call
+          // site is how a `> 0` becomes a `>= 0` somewhere.
+          //
+          // Absent, rather than zero, on a run settled before the count was
+          // recorded. A stored `0` says the final attempt replayed nothing; a
+          // missing one says nobody wrote it down, and reporting the second as
+          // the first would assert a run executed from the top when nothing knows
+          // whether it did.
+          ...(record.replayedSteps === undefined
+            ? {}
+            : { replayedSteps: record.replayedSteps, replayed: record.replayedSteps > 0 }),
         };
       }
       if (Date.now() >= deadline) {

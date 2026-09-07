@@ -1,0 +1,31 @@
+kind: Telo.Application
+metadata:
+  name: LibraryRouteCelScopeTest
+  version: 1.0.0
+  description: |
+    A library's own CEL is typed against the kind ITS alias resolves to, not the
+    consumer's alias table.
+
+    An application analysis is flattened, so an imported library's resources are
+    checked in the consumer's pass — but the kind on such a resource
+    (`kind: Http.Api`) is written in the alias scope of the module that DECLARED
+    it. Resolving it through the entry's aliases alone found no definition, so
+    the kind's `x-telo-context` regions contributed nothing and every binding
+    they provide — `request` in a route's `inputs:`, `result` in its `returns:`
+    — read as an unknown identifier, reported on a library file the consumer
+    cannot edit. The workaround was to import the transport in a manifest that
+    never mentions it.
+
+    Zero errors is the whole assertion: the consuming app imports the library
+    and nothing else, and `request` / `result` must still resolve.
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref RouteBindingsResolveInTheLibraryScope
+---
+kind: Assert.Manifest
+metadata:
+  name: RouteBindingsResolveInTheLibraryScope
+source: ./__fixtures__/library-route-scope/app.yaml
+expect:
+  errors: []

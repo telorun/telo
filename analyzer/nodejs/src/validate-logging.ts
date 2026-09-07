@@ -3,6 +3,7 @@ import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { parseRedactionPath, RedactionPathError } from "./redaction-path.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -124,9 +125,7 @@ function isSinkKind(
 ): boolean {
   if (typeof manifest.kind !== "string") return false;
   if (manifest.kind === "Telo.ConsoleSink" || manifest.kind === "Telo.FileSink") return true;
-  const ownModule = (manifest.metadata as { module?: string } | undefined)?.module;
-  const resolver =
-    (ownModule ? aliasesByModule?.get(ownModule) : undefined) ?? aliases;
+  const resolver = moduleAliasScope(manifest.metadata, aliases, aliasesByModule);
   const canonical = resolver.resolveKind(manifest.kind) ?? manifest.kind;
   return registry.resolve(canonical)?.capability === "Telo.Sink";
 }

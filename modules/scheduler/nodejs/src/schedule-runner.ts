@@ -34,6 +34,7 @@ export class ScheduleRunner {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | undefined;
   private stopped = false;
+  private releaseHold: (() => void) | undefined;
 
   constructor(
     private readonly resource: ScheduleResource,
@@ -44,11 +45,37 @@ export class ScheduleRunner {
 
   // Nothing is armed in `init()` on purpose — see the class docstring.
 
+  /**
+   * Two effects, in the order they must unwind in reverse.
+   *
+   * The hold is what keeps the application alive between ticks. An armed timer
+   * does not decide when the app exits — `waitForIdle()` resolves at zero holds
+   * — so without one an app whose only work is scheduled reached its first tick
+   * only if something ELSE (a server) happened to be holding, and exited
+   * immediately otherwise. A schedule is an inbound trigger like a listening
+   * socket, and the two now say so the same way.
+   *
+   * Taken here rather than in `init()` because a schedule that is never started
+   * must not keep the process up, and released by the run frame — so arming and
+   * holding unwind together, drain first (LIFO), then release.
+   */
   run() {
-    return this.ctx.effect("armed schedule", async () => {
-      this.arm();
-      return { result: undefined, inverse: () => this.disarm() };
-    });
+    return this.ctx
+      .effect("kernel hold", async () => {
+        this.releaseHold = this.ctx.acquireHold(`schedule ${this.label}`);
+        return { result: undefined, inverse: () => this.release() };
+      })
+      .effect("armed schedule", async () => {
+        this.arm();
+        return { result: undefined, inverse: () => this.disarm() };
+      });
+  }
+
+  /** Idempotent: `acquireHold` hands back a closure that ignores a second call,
+   *  so an ended schedule releasing early and teardown releasing again is one
+   *  release. */
+  private release(): void {
+    this.releaseHold?.();
   }
 
   /** Disarm and drain: the inverse of arming. An occurrence already in flight is
@@ -67,6 +94,10 @@ export class ScheduleRunner {
     const delay = this.nextDelay();
     if (delay === null) {
       this.ctx.log.info("No further occurrences; the schedule has ended");
+      // Nothing further will fire, so this schedule is no longer a reason for
+      // the application to stay up. Holding until teardown would leave an app
+      // whose only work has finished waiting for a signal that never comes.
+      this.release();
       return;
     }
     if (this.ctx.log.enabled(SEVERITY.debug)) {

@@ -1,0 +1,312 @@
+kind: Telo.Application
+metadata:
+  name: ApprovalWorkflow
+  version: 1.0.0
+  categories: [ Reliability, Coordination, Transport ]
+  description: |
+    An expense that needs a manager's approval before it is paid — so the work
+    stops for as long as a human takes, and the process is free to go away while
+    it waits.
+
+    `Durable.Await` is the whole difference between this and a job queue. The
+    run records where it stopped and stops executing: no connection is held, no
+    timer, no process. When a delivery arrives on the token it handed out, the
+    run is picked up and REPLAYS — every step that already finished returns its
+    record instead of running again — and continues at the wait. That is why
+    "waiting for two days" costs nothing here and why the app can be restarted
+    mid-approval.
+
+    The demo is the restart:
+
+        telo ./examples/approval-workflow &
+        curl -s -XPOST localhost:8081/expenses -H 'content-type: application/json' \
+          -d '{"employee":"ada","amountCents":250000,"reason":"conference"}'
+        # → {"runId":"expense:...","token":"approve:...","status":"running"}
+
+        curl -s localhost:8081/expenses/expense:ada:1        # parked, waiting
+        kill %1                                              # stop the app entirely
+        telo ./examples/approval-workflow &                  # start it again
+
+        curl -s -XPOST localhost:8081/approvals -H 'content-type: application/json' \
+          -d '{"token":"approve:expense:ada:1","approvedBy":"grace","note":"ok"}'
+        curl -s localhost:8081/expenses/expense:ada:1        # completed, and paid once
+
+    Two supporting pieces make that work. `DurableLocal.Resumer` polls for runs
+    whose process died and continues them, claiming each one first so two
+    replicas never take the same run. And a small expense skips the wait
+    entirely — the branch is a decision the run RECORDS, so a resume cannot
+    re-derive it differently and hand a recorded result to work it never
+    described.
+
+    Imports are relative because the durable modules are not published yet; they
+    become pinned `oci://` refs like every other example once they are.
+imports:
+  Durable: ../../modules/durable
+  Local: ../../modules/durable-local
+  Journal: ../../modules/durable-journal-file
+  Http: ../../modules/http-server
+  Run: ../../modules/run
+  Console: ../../modules/console
+  Timer: ../../modules/timer
+targets:
+  - !ref server
+  - !ref resumer
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8081
+variables:
+  autoApproveBelowCents:
+    env: AUTO_APPROVE_BELOW_CENTS
+    type: integer
+    default: 10000
+    description: Expenses under this amount are paid without a human in the loop.
+---
+# Where runs are recorded: one append-only file per run, flushed as each record
+# is written. It is newline-delimited JSON and meant to be read — open it while a
+# run is parked and the wait is the last line.
+kind: Journal.Journal
+metadata: { name: expenses }
+directory: ./.telo/expenses
+---
+kind: Console.WriteLine
+metadata: { name: say }
+---
+# The wait. `outputType` is what a delivery must carry, so the steps reading
+# `steps.approval.result.approvedBy` are type-checked — and the delivering route
+# is checked against the same declaration, at the only moment anything can look
+# at the value.
+kind: Durable.Await
+metadata: { name: awaitApproval }
+token: !cel "'approve:' + inputs.expense"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ approvedBy ]
+    additionalProperties: false
+    properties:
+      approvedBy: { type: string }
+      note: { type: string }
+---
+kind: Run.Sequence
+metadata: { name: payOut }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      expense: { type: string }
+      amountCents: { type: integer }
+      approvedBy: { type: string }
+steps:
+  - name: announce
+    invoke: !ref say
+    inputs:
+      output: !cel >-
+        '  {yellow paying} ' + inputs.expense + ' (' +
+        string(inputs.amountCents) + ' cents), approved by ' + inputs.approvedBy
+  - name: work
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "500ms", value: {} }
+  - name: done
+    invoke: !ref say
+    inputs: { output: "  {green ✓ paid}  ← the one you do not want to happen twice" }
+outputs:
+  paid: true
+---
+# THE DURABLE BODY. `runId` is derived from the expense, so submitting the same
+# expense twice attaches to the live run rather than starting a second one.
+kind: Local.Workflow
+metadata: { name: expenseRun }
+journal: !ref expenses
+runId: !cel "inputs.expense"
+onConflict: attach
+# What the run is STARTED with, recorded once. The body reads these on the first
+# pass and on every replay, so a resume in another process sees exactly the
+# values the run began with rather than whatever a caller sends later.
+inputs:
+  expense: !cel "inputs.expense"
+  amountCents: !cel "inputs.amountCents"
+  reason: !cel "inputs.reason"
+steps:
+  - name: received
+    invoke: !ref say
+    inputs:
+      output: !cel "'{bold ' + inputs.expense + '} received — ' + string(inputs.amountCents) + ' cents'"
+
+  # The branch is recorded, not re-derived: a resume must reach the same
+  # decision it reached the first time, or it would hand a recorded result to
+  # work it never described.
+  - name: approval
+    if: !cel "inputs.amountCents >= variables.autoApproveBelowCents"
+    then:
+      - name: waitForManager
+        invoke: !ref awaitApproval
+        inputs:
+          expense: !cel "inputs.expense"
+    else:
+      - name: autoApprove
+        invoke: !ref say
+        inputs:
+          output: "  {dim under the threshold — no approval needed}"
+
+  - name: pay
+    invoke: !ref payOut
+    inputs:
+      expense: !cel "inputs.expense"
+      amountCents: !cel "inputs.amountCents"
+      # A branch contributes its OWN step names, not the `if:` step's — and only
+      # the branch that ran has a result, so the read is guarded.
+      approvedBy: !cel >-
+        has(steps.waitForManager)
+          ? steps.waitForManager.result.approvedBy
+          : 'policy'
+---
+# Picks up runs whose process died and continues them. Without it, a run parked
+# when the app was killed would stay parked until something asked for it.
+kind: Local.Resumer
+metadata: { name: resumer }
+workflow: !ref expenseRun
+interval: "2s"
+---
+# Submitting an expense STARTS the run and answers immediately: the body is
+# dispatched detached, so the caller gets a run id back before the first step
+# has run. That is what lets an HTTP request start work that outlives its
+# response — and it is why this route reports where the run went, never what it
+# produced.
+kind: Run.Sequence
+metadata: { name: submitExpense }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ employee, amountCents, reason ]
+    additionalProperties: false
+    properties:
+      employee: { type: string }
+      amountCents: { type: integer }
+      reason: { type: string }
+steps:
+  - name: start
+    invoke: !ref expenseRun
+    inputs:
+      expense: !cel "'expense:' + inputs.employee + ':' + string(inputs.amountCents)"
+      amountCents: !cel "inputs.amountCents"
+      reason: !cel "inputs.reason"
+outputs:
+  runId: !cel "steps.start.result.runId"
+  status: !cel "steps.start.result.status"
+  # The address the approver must quote. It is derived the same way the wait
+  # derives it, which is what lets it be handed out before the run has reached
+  # the wait.
+  token: !cel "'approve:expense:' + inputs.employee + ':' + string(inputs.amountCents)"
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Expense approvals
+    version: 1.0.0
+mounts:
+  - path: /
+    mount: !ref routes
+---
+kind: Http.Api
+metadata: { name: routes }
+routes:
+  - request:
+      path: /expenses
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ employee, amountCents, reason ]
+          properties:
+            employee: { type: string, minLength: 1 }
+            amountCents: { type: integer, minimum: 1 }
+            reason: { type: string, minLength: 1 }
+    handler: !ref submitExpense
+    inputs:
+      employee: !cel "request.body.employee"
+      amountCents: !cel "request.body.amountCents"
+      reason: !cel "request.body.reason"
+    returns:
+      - status: 202
+        content:
+          application/json:
+            body: !cel "result"
+
+  # The delivering side. Naming the `await:` is what checks the payload against
+  # the shape that wait declared — a delivered value enters the record without
+  # being dispatched, so this is the only moment anything can look at it.
+  - request:
+      path: /approvals
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ token, approvedBy ]
+          properties:
+            token: { type: string, minLength: 1 }
+            approvedBy: { type: string, minLength: 1 }
+            note: { type: string }
+    handler: !ref approve
+    inputs:
+      token: !cel "request.body.token"
+      approvedBy: !cel "request.body.approvedBy"
+      # Guarded: `note` is optional in the request schema, and reading an absent
+      # key is an error rather than an empty string.
+      note: !cel "has(request.body.note) ? request.body.note : ''"
+    returns:
+      # A token nobody is waiting on is an ordinary answer, not a failure: it is
+      # what a stale approval link looks like.
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    # The payload is checked against the shape the named await declared, so a
+    # malformed approval is the caller's error rather than a broken run.
+    catches:
+      - when: !cel "error.code == 'ERR_DURABLE_PAYLOAD_INVALID'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"
+              message: !cel "error.message"
+
+  - request:
+      path: /expenses/{runId}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [ runId ]
+          properties:
+            runId: { type: string }
+    handler: !ref runStatus
+    inputs:
+      run: !cel "request.params.runId"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Local.Deliver
+metadata: { name: approve }
+journal: !ref expenses
+await: !ref awaitApproval
+token: !cel "inputs.token"
+payload:
+  approvedBy: !cel "inputs.approvedBy"
+  note: !cel "has(inputs.note) ? inputs.note : ''"
+---
+kind: Local.Status
+metadata: { name: runStatus }
+journal: !ref expenses

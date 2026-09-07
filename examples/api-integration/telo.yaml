@@ -1,0 +1,209 @@
+kind: Telo.Application
+metadata:
+  name: ApiIntegration
+  version: 1.0.0
+  categories: [ Transport, Security ]
+  description: |
+    Calling somebody else's API as a user, from a machine with no browser on it.
+
+    The device grant is the flow for exactly that: this prints a short code and a
+    URL, you approve on your phone or laptop, and the grant is stored. The
+    redirect flow would need a callback address the provider can reach, which a
+    terminal, a container and a CI job all lack.
+
+    The point worth copying is where the token is NOT. No step here reads an
+    access token or sets an Authorization header: the credential sits on the
+    HTTP client, so every request through that client is authenticated, and the
+    401-refresh-and-retry lives in the request controller rather than in this
+    manifest. Swap the device grant for client credentials and nothing below the
+    client changes.
+
+    The grant is stored in SQLite, so the second run does not sign in again — it
+    reads the stored grant, refreshes it if the access token has expired, and
+    goes straight to the call.
+
+    Defaults are GitHub, which publishes no discovery document, so its three
+    endpoints are given explicitly; a provider that publishes one needs only
+    `issuer:` and discovers the rest. Create an OAuth app (Settings → Developer
+    settings → OAuth Apps) with device flow enabled, then:
+
+        OAUTH_CLIENT_ID=Ov23li... telo ./examples/api-integration
+        # → open the URL, type the code, and it prints who you are
+        OAUTH_CLIENT_ID=Ov23li... telo ./examples/api-integration
+        # → second run: no sign-in, straight to the call
+
+    A `404 without a device_code` from the start step means GitHub does not know
+    that client id, or the app has device flow switched off — it answers 404
+    rather than naming either.
+imports:
+  OAuth: oci://ghcr.io/telorun/oauth-client@0.8.0#sha256-wREbvf_KoYtM7gJYN8nA5WmYuC9iN7aibaklxQVt3to
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.10.0#sha256-KYVWku7I0Er3AMKNwxSBaoGktrByiruLsoxvr-yVl_k
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+targets:
+  - !ref migrate
+  - !ref signInIfNeeded
+  - !ref whoAmI
+secrets:
+  clientId:
+    env: OAUTH_CLIENT_ID
+    type: string
+    description: The OAuth app's client id. A device-flow app needs no secret.
+variables:
+  issuer:
+    env: OAUTH_ISSUER
+    type: string
+    default: https://github.com
+  apiBaseUrl:
+    env: API_BASE_URL
+    type: string
+    default: https://api.github.com
+  scopes:
+    env: OAUTH_SCOPES
+    type: array
+    default: [ read:user ]
+  grantsFile:
+    env: GRANTS_FILE
+    type: string
+    default: ./grants.db
+---
+# Where the grant lives between runs. A memory store would work and would make
+# every run sign in again — persistence is what makes the second run boring.
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.grantsFile"
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+---
+kind: KvStoreSql.Store
+metadata: { name: grants }
+connection: !ref db
+table: oauth_grants
+---
+# The provider. GitHub publishes no metadata document, so the endpoints are
+# stated; for a provider that does publish one, delete all three and discovery
+# fills them in from `issuer:` alone.
+kind: OAuth.AuthorizationServer
+metadata: { name: provider }
+issuer: !cel "variables.issuer"
+authorizationEndpoint: https://github.com/login/oauth/authorize
+tokenEndpoint: https://github.com/login/oauth/access_token
+deviceAuthorizationEndpoint: https://github.com/login/device/code
+---
+# The app's identity. No client secret: a device-flow app is a public client and
+# cannot keep one.
+kind: OAuth.Client
+metadata: { name: client }
+authorizationServer: !ref provider
+clientId: !cel "secrets.clientId"
+scopes: !cel "variables.scopes"
+---
+# The pairing of a client with the store holding its grants. `key` names which
+# grant — one per user, per tenant, per anything you keep separate.
+kind: OAuth.TokenSource
+metadata: { name: tokens }
+client: !ref client
+store: !ref grants
+key: cli-user
+---
+kind: OAuth.GrantRead
+metadata: { name: readGrant }
+source: !ref tokens
+---
+kind: OAuth.DeviceAuthorization
+metadata: { name: startDeviceSignIn }
+source: !ref tokens
+---
+kind: OAuth.DeviceToken
+metadata: { name: awaitApproval }
+source: !ref tokens
+---
+# The credential, as a resource. It is asked for headers per request and
+# refreshes when a 401 comes back — which is why nothing below ever names a
+# token.
+kind: OAuth.Credential
+metadata: { name: githubAuth }
+source: !ref tokens
+---
+kind: HttpClient.Client
+metadata: { name: apiClient }
+baseUrl: !cel "variables.apiBaseUrl"
+credential: !ref githubAuth
+---
+kind: HttpClient.Request
+metadata: { name: apiRequest }
+client: !ref apiClient
+---
+kind: Console.WriteLine
+metadata: { name: say }
+---
+# Sign in only when there is nothing usable stored. `hasRefreshToken` is the
+# question that matters for an expired token: with one, the credential renews it
+# without the user; without one, an expiry is the end of the road and the user
+# has to approve again.
+kind: Run.Sequence
+metadata: { name: signInIfNeeded }
+steps:
+  - name: stored
+    invoke: !ref readGrant
+    inputs: {}
+  - name: signIn
+    if: !cel "!steps.stored.result.exists"
+    then:
+      - name: start
+        invoke: !ref startDeviceSignIn
+        inputs: {}
+      - name: prompt
+        invoke: !ref say
+        inputs:
+          output: !cel >-
+            '{bold Sign in:} open ' + steps.start.result.verificationUri +
+            ' and enter {green ' + steps.start.result.userCode + '}'
+      # Polls at the rate the server asked for, backing off when told to slow
+      # down. A refusal or an expired code comes back as an outcome rather than
+      # an exception — the user changing their mind is not an error.
+      - name: approved
+        invoke: !ref awaitApproval
+        inputs:
+          deviceCode: !cel "steps.start.result.deviceCode"
+          interval: !cel "steps.start.result.interval"
+          expiresAt: !cel "steps.start.result.expiresAt"
+      - name: outcome
+        invoke: !ref say
+        inputs:
+          output: !cel >-
+            steps.approved.result.ok
+              ? '{green ✔} signed in — scopes: ' + string(steps.approved.result.scope)
+              : '{red ✗} not signed in — ' + string(steps.approved.result.reason)
+    else:
+      - name: reuse
+        invoke: !ref say
+        inputs:
+          output: !cel >-
+            '{dim reusing the stored grant' +
+            (steps.stored.result.hasRefreshToken ? ' (renewable)' : '') + '}'
+---
+# The call itself. No Authorization header, no token: the credential is on the
+# client, so this is an ordinary request.
+kind: Run.Sequence
+metadata: { name: whoAmI }
+steps:
+  - name: user
+    invoke: !ref apiRequest
+    inputs:
+      url: /user
+      method: GET
+      headers:
+        accept: application/vnd.github+json
+  - name: report
+    invoke: !ref say
+    inputs:
+      output: !cel >-
+        steps.user.result.status == 200
+          ? '{green ✔} authenticated as ' + string(steps.user.result.body.login)
+          : '{red ✗} HTTP ' + string(steps.user.result.status)

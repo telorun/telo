@@ -1,0 +1,47 @@
+kind: Telo.Application
+metadata:
+  name: TestingAManifest
+  version: 1.0.0
+  categories: [ Testing ]
+  description: |
+    The same app twice: once as something you run, once as something you test.
+
+    A manifest is testable when the part worth asserting is not welded to the
+    process that serves it. `cart/` is the pricing rule and `api/` is the route
+    over it, each a `Telo.Library` exporting its instance; this application does
+    nothing but mount the route on a port. So `tests/` reaches the very same
+    instances — one test invoking the rule directly with no HTTP at all, one
+    standing a server up inside the test with `with:` and calling the route over
+    the network. A `with:` scope is created on entry and torn down on exit,
+    which is what lets an integration test own a real server without leaking a
+    listening port into whatever runs next.
+
+    Run the app:
+        telo ./examples/testing-a-manifest
+        curl -s -XPOST localhost:8078/cart/price -H 'content-type: application/json' \
+          -d '{"items":[{"sku":"cap","unitCents":2500,"quantity":2}]}'
+
+    Run its tests — every test manifest is its own kernel, so nothing leaks
+    between them:
+        telo ./examples/testing-a-manifest/test-suite.yaml
+imports:
+  Api: ./api
+  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+targets:
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8078
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Cart pricing
+    version: 1.0.0
+mounts:
+  - path: /cart
+    mount: !ref Api.cartApi

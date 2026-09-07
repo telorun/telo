@@ -55,17 +55,49 @@ controllers:
 # NO `status:` block, and the reason is a kernel limitation rather than a
 # choice. Observed state is illegal before a resource has started, and the kernel
 # marks a Telo.Invocable started only when it is a pure Runnable reached through
-# an invoke slot — so an Invocable cannot report observed state at all today.
-# The run's own observations therefore ride its RESULT for now:
+# an invoke slot — so an Invocable cannot report observed state at all today. The
+# run's own observations therefore ride the RUN RECORD, and `DurableLocal.Result`
+# is what reads them back — not this kind's result, which is a START
+# ACKNOWLEDGEMENT and nothing more.
 #
-#   { runId, replayed, collapsedRegions, collapseReasons, result }
-#
-# `collapsedRegions` is the one that matters to an operator, because whether a
-# deployment got exactly-once or at-least-once turns on whether the journal's
-# writes land inside the transaction's atomicity — a runtime coincidence the
-# manifest cannot show. It belongs in observed state, which is where it goes once
-# an invocable can report; the answer is constant (always collapsed) until a
-# journal that shares a transaction exists, so nothing is lost by waiting.
+# That distinction is what `outputType:` below exists to make unmissable. The body
+# is dispatched detached, so a caller gets a run id back before any step has run
+# and CANNOT observe the run's outcome here whatever it reads. Leaving the
+# contract undeclared typed every such read as an open object, so a manifest could
+# ask this for `replayed` — a field only the resumer's own return value carries —
+# and be told nothing until it failed at runtime.
+outputType:
+  type: object
+  additionalProperties: false
+  required: [runId, status]
+  properties:
+    runId:
+      type: string
+      description: >-
+        This run's identity — what `DurableLocal.Result`, `Status` and `Cancel` are asked
+        by. Submitting the same id again attaches to this run rather than starting a
+        second one.
+    status:
+      type: string
+      description: >-
+        Where the run stood when the start returned. `running` for a run this call
+        started or joined; a terminal state only when an existing run had already
+        reached one.
+    started:
+      type: boolean
+      description: Present when this call admitted the run rather than finding it already taken.
+    attached:
+      type: boolean
+      description: >-
+        Present when the run id was already taken and this call joined the existing run
+        instead of starting a second one.
+    result:
+      type: object
+      additionalProperties: true
+      description: >-
+        What the run produced, present only when attaching to a run that had ALREADY
+        completed. A run this call started has produced nothing yet — read its outcome
+        with `DurableLocal.Result`.
 schema:
   type: object
   required: [journal, steps]
@@ -350,21 +382,37 @@ metadata:
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#result
+# OPEN, and for a stated reason: a resource may configure `run:` as an expression
+# over the call's own inputs (`!cel "inputs.orderId"`), which is what lets ONE
+# addressing resource serve every run rather than one per id. Closing this would
+# reject the very inputs that expression reads. `Status` and `Cancel` are open
+# here for the same reason.
 inputType:
   type: object
   additionalProperties: true
   properties:
     run:
       type: string
+# CLOSED, like `Status`'s. This is the kind a start points every caller at, so
+# what it answers with is the one contract a manifest reads the outcome through —
+# left open, a typo below `result` was told nothing until it produced a blank at
+# runtime, which is the failure `Workflow`'s own declared contract exists to end
+# one step earlier.
 outputType:
   type: object
-  additionalProperties: true
+  additionalProperties: false
   required: [run, status]
   properties:
     run: { type: string }
     status:
       type: string
       enum: [unknown, scheduled, running, parked, completed, failed, cancelled]
+    result:
+      type: object
+      additionalProperties: true
+      description: >-
+        What the run produced, present once it has finished. Open, because its shape is
+        the body's rather than this kind's.
     error:
       type: object
       additionalProperties: true
@@ -377,6 +425,16 @@ outputType:
       type: array
       items: { type: string }
       description: The author's own stated reason for each such region.
+    replayed:
+      type: boolean
+      description: >-
+        Whether the attempt that finished this work continued an interrupted one, rather
+        than running it from the top. Absent for work settled by a runtime too old to
+        record it — which is not the same as false.
+    replayedSteps:
+      type: integer
+      description: >-
+        How many steps that attempt was handed from the record instead of executing.
 schema:
   type: object
   required: [journal]

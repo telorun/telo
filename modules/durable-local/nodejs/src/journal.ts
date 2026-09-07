@@ -97,6 +97,23 @@ export interface RunRecord {
    */
   collapsedRegions?: number;
   collapseReasons?: string[];
+  /**
+   * How many steps the execution that SETTLED this run answered from the record
+   * rather than executing.
+   *
+   * On the run for the same reason `collapsedRegions` is: a workflow serves many
+   * runs at once, and whether a particular one continued an interrupted attempt
+   * is a fact about that run. It is also the only way the fact leaves the process
+   * at all — a start returns before any step has run, so nothing a caller holds
+   * could ever carry it, and without a record here "did this resume?" is
+   * answerable only by watching which output lines failed to appear.
+   *
+   * The count belongs to the FINAL execution, not to the run's whole history: a
+   * run that was interrupted twice is settled by whichever attempt finished it,
+   * and that attempt's replay count is what says how much of the work it was
+   * handed rather than did.
+   */
+  replayedSteps?: number;
 }
 
 export interface DurableJournal {

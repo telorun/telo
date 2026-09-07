@@ -1,0 +1,181 @@
+kind: Telo.Application
+metadata:
+  name: DurableJournalPostgresMigrationTest
+  version: 1.0.0
+  description: |
+    A COLUMN ADDED AFTER A DEPLOYMENT REACHES A TABLE THAT ALREADY EXISTS.
+
+    `CREATE TABLE IF NOT EXISTS` says nothing about a table that is already there, so
+    every column this store has gained since it first shipped is created by the `ALTER`
+    beside it and by nothing else. A fresh database exercises none of that — the
+    `CREATE` already carries every column — which means the one statement that can fail
+    on a real deployment is the one nothing runs.
+
+    So this test writes out the PRE-MIGRATION table by hand and then has the journal
+    reconcile it. The journal is `with:`-scoped inside the inner sequence rather than
+    declared at module level, and that is the whole mechanism: a journal reconciles its
+    tables in `init()`, so a module-level one would have run before any step could set
+    the old table up. A scope is created when it is ENTERED, which puts its `init()`
+    after the setup steps — the ordering a second process would give, without needing
+    one.
+
+    NEEDS A LIVE POSTGRES. Kept out of `tests/` proper for exactly that reason.
+imports:
+  Durable: ../../../durable
+  Local: ../../../durable-local
+  Journal: ../../
+  Postgres: ../../../postgres
+  Sql: ../../../sql
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Run.Value
+metadata: { name: work }
+value: { done: true }
+---
+# Its OWN prefix, for the reason the sibling tests state: two journals over one
+# prefix are two applications sharing a store.
+kind: Run.Sequence
+metadata: { name: reconcileAndRun }
+with:
+  - kind: Journal.Journal
+    metadata: { name: journal }
+    connection: !ref db
+    table: !cel "'telo_durable_migration_test'"
+  - kind: Local.Workflow
+    metadata: { name: onboard }
+    journal: !ref journal
+    runId: !cel "'pgmigrate:' + inputs.ticket"
+    inputs:
+      ticket: !cel "inputs.ticket"
+    steps:
+      - name: did
+        invoke: !ref work
+  - kind: Local.Result
+    metadata: { name: outcome }
+    journal: !ref journal
+    wait: 20s
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ticket]
+    additionalProperties: false
+    properties:
+      ticket: { type: string }
+steps:
+  - name: start
+    invoke: !ref onboard
+    inputs:
+      ticket: !cel "inputs.ticket"
+  - name: settled
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.start.result.runId"
+outputs:
+  status: !cel "steps.settled.result.status"
+  replayed: !cel "steps.settled.result.replayed"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # THE PRE-MIGRATION TABLES, written out rather than derived: the point is that
+  # this is what a deployment made before `replayed_steps` existed still holds, so
+  # deriving them from today's DDL would test nothing.
+  - name: dropRuns
+    invoke: !ref exec
+    inputs:
+      sql: "DROP TABLE IF EXISTS telo_durable_migration_test_runs"
+      bindings: []
+  - name: dropEntries
+    invoke: !ref exec
+    inputs:
+      sql: "DROP TABLE IF EXISTS telo_durable_migration_test_entries"
+      bindings: []
+  - name: createOldRuns
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        CREATE TABLE telo_durable_migration_test_runs (
+          run TEXT PRIMARY KEY, status TEXT NOT NULL, due_at BIGINT,
+          parked_path TEXT, parked_resource TEXT, parked_token TEXT,
+          inputs TEXT, result TEXT, error TEXT,
+          collapsed_regions INTEGER, collapse_reasons TEXT,
+          claim_holder TEXT, claim_until BIGINT
+        )
+      bindings: []
+
+  # Entering the scope is what boots the journal against that table.
+  - name: ran
+    invoke: !ref reconcileAndRun
+    inputs:
+      ticket: t1
+
+  # A settlement that hit a missing column fails the whole run, so `completed` is
+  # already most of the answer — but `replayed` is the field the new column
+  # carries, and reading it back is what says the column is genuinely there rather
+  # than that the write was silently dropped.
+  - name: assertSettled
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.ran.result.status"
+      expected: completed
+  - name: assertReported
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.ran.result.replayed"
+      expected: false
+
+  # And the column is on the PRE-EXISTING table, not on one the journal quietly
+  # recreated — which is the difference between an `ALTER` that ran and a `CREATE`
+  # that never had to.
+  - name: columns
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT column_name FROM information_schema.columns
+         WHERE table_name = 'telo_durable_migration_test_runs'
+           AND column_name = 'replayed_steps'
+      bindings: []
+  - name: assertColumn
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "size(steps.columns.result.rows)"
+      expected: 1

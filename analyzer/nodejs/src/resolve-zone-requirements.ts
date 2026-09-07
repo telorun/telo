@@ -31,6 +31,7 @@ import {
 import type { ZoneModuleDocuments } from "./zone-module-documents.js";
 import { readProvidesZone, readRequiresZone } from "./zone-slot.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -125,7 +126,7 @@ function definitionResolver(
   aliasesByModule: Map<string, AliasResolver>,
 ) {
   return (kind: string, module?: string): ResourceDefinition | undefined => {
-    const scope = (module ? aliasesByModule.get(module) : undefined) ?? aliases;
+    const scope = moduleAliasScope({ module }, aliases, aliasesByModule);
     const canonical = scope.resolveKind(kind);
     return defs.resolve(kind) ?? (canonical ? defs.resolve(canonical) : undefined);
   };

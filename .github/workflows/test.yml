@@ -102,8 +102,20 @@ jobs:
       - name: Check module manifests
         run: pnpm run check modules/*/telo.yaml packages/runner-core/workspace-app/telo.yaml
 
+      # Both levels, plus the manifests that are not named `telo.yaml`: an example
+      # made of several applications keeps them in subdirectories, so a one-level
+      # glob checks the entry and silently skips everything it imports.
+      # `money-transfer/broken.yaml` is deliberately invalid and stays out.
       - name: Check example manifests
-        run: pnpm run check examples/*/telo.yaml
+        run: >-
+          pnpm run check examples/*/telo.yaml examples/*/*/telo.yaml
+          examples/schema-evolution/v1.yaml examples/templated-api/library.yaml
+
+      # A template is copied VERBATIM by users, so it is the last thing that
+      # should be checked by nothing — and it was: the only invocation lived in
+      # package.json's `ci` script, which no workflow runs.
+      - name: Check template manifests
+        run: pnpm run check templates/apps/*/telo.yaml templates/libs/*/telo.yaml
 
       # Packaging is picky in ways a build is not — `@types/vscode` outranking
       # `engines.vscode` fails here while `tsc` and esbuild both pass. Running it
@@ -154,6 +166,13 @@ jobs:
 
       - name: Run tests (bun)
         run: pnpm test
+
+      # An example that IS a test suite has to be RUN, not just checked. The root
+      # suite excludes `examples/**` because they pin published module versions —
+      # which is right, and left this one's tests running nowhere at all. Its own
+      # suite is the command its README tells a reader to use.
+      - name: Run the example test suite (bun)
+        run: pnpm run telo ./examples/testing-a-manifest/test-suite.yaml
 
   integration:
     name: "Linux: integration tests (Postgres)"
@@ -564,7 +583,13 @@ jobs:
 
       - name: Check example manifests
         shell: bash
-        run: pnpm run check examples/*/telo.yaml
+        run: >-
+          pnpm run check examples/*/telo.yaml examples/*/*/telo.yaml
+          examples/schema-evolution/v1.yaml examples/templated-api/library.yaml
+
+      - name: Check template manifests
+        shell: bash
+        run: pnpm run check templates/apps/*/telo.yaml templates/libs/*/telo.yaml
 
       # The manifest suite on the Node entry point. This is the step that
       # exercises the `pkg:npm` controller installer, which has to reach
@@ -651,10 +676,18 @@ jobs:
         run: pnpm run check modules/*/telo.yaml packages/runner-core/workspace-app/telo.yaml
 
       - name: Check example manifests
-        run: pnpm run check examples/*/telo.yaml
+        run: >-
+          pnpm run check examples/*/telo.yaml examples/*/*/telo.yaml
+          examples/schema-evolution/v1.yaml examples/templated-api/library.yaml
+
+      - name: Check template manifests
+        run: pnpm run check templates/apps/*/telo.yaml templates/libs/*/telo.yaml
 
       - name: Run telo manifest tests (Node)
         run: pnpm run test:node
+
+      - name: Run the example test suite (Node)
+        run: pnpm run telo:node ./examples/testing-a-manifest/test-suite.yaml
 
   rust:
     name: "Linux: Rust tests"

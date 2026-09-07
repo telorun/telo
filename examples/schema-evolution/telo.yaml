@@ -1,0 +1,129 @@
+kind: Telo.Application
+metadata:
+  name: SchemaEvolution
+  version: 2.0.0
+  categories: [ Storage, Data ]
+  description: |
+    The second release of an app, and what the database does about it.
+
+    `v1.yaml` beside this file is release 1. Run that first, then this one
+    against the same file, and three kinds of change happen without a migration
+    being written for any of them:
+
+      · `email` becomes `contactEmail` — declared with `renamedFrom:`, applied
+        as expand-contract. The new column is added, the values are COPIED, and
+        the old one is kept as a tombstone, so release 1 keeps working while
+        both are deployed. A native RENAME would break it mid-rollout.
+      · `signup_notes` is simply gone from the declaration. It is recorded as
+        removed and left in place, because dropping a column loses data: it is
+        reclaimed later, once `reclaim:` says enough releases and enough time
+        have passed.
+      · `plan` gains a declared enum. SQLite has no named types, so the values
+        become a CHECK on the column — and the same declaration on PostgreSQL
+        creates a real type. What the manifest states is the constraint, not the
+        DDL that expresses it.
+
+    Nothing is discovered by diffing the database: the schema keeps a ledger of
+    what it declared last time, which is what tells a REMOVAL apart from an
+    object it never owned.
+
+        telo ./examples/schema-evolution/v1.yaml    # release 1, seeds two rows
+        telo ./examples/schema-evolution            # release 2: renames, tombstones
+        telo ./examples/schema-evolution            # again: nothing left to do
+
+    Every boot prints the schema's observed state — what it tombstoned, revived
+    or reclaimed. To watch a tombstone actually age out, bump this manifest's
+    `metadata.version` twice (to 3.0.0, then 4.0.0) and run again: on the second
+    of those the removals have outlived `afterVersions: 2` and are dropped,
+    printed under `reclaimed`. Delete `schema-evolution.db` to start over.
+
+    `reclaim.afterDuration` is `1ms` here so four releases in one afternoon can
+    actually reclaim something. A deployment wants something like `30d`: the
+    window exists so that a rollback is still possible while an object is only
+    tombstoned. Setting it to `0ms` disables the time backstop entirely, and
+    `telo check` warns about that — a declared rule on the kind, not a special
+    case. Try it and see the warning; this manifest does not ship with one,
+    because it is meant to be copied.
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+targets:
+  - !ref appSchema
+  - !ref report
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    default: ./schema-evolution.db
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+# The permitted values, declared once. `typeName` is the durable identity the
+# ledger keys on — the resource name is free to change, the type name is not.
+kind: SQLite.Enum
+metadata: { name: accountPlan }
+typeName: account_plan
+baseType: text
+values: [ free, pro, enterprise ]
+---
+kind: SQLite.Table
+metadata: { name: accounts }
+table: accounts
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  # The rename. The column key is the identity, so this says "the column now
+  # called contactEmail is what used to be called email" — and the pass copies
+  # the data across rather than renaming in place.
+  contactEmail: { type: text, renamedFrom: email }
+  # A column whose type is a reference to the declaration above, not a string.
+  # Change the enum's values in one place and every column using it follows.
+  plan: { type: !ref accountPlan, nullable: false, default: free }
+  # `signup_notes` used to be here. Removing the line is the whole change.
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+enums:
+  - !ref accountPlan
+tables:
+  - !ref accounts
+# The grace window on removals. A tombstoned object is dropped only once BOTH
+# have passed — enough releases to roll back to, and enough wall-clock time.
+reclaim:
+  afterVersions: 2
+  # A real deployment wants something like 30d — the window exists so a rollback
+  # is still possible. `1ms` keeps the walkthrough above able to reclaim within
+  # one afternoon while leaving the backstop switched ON: `0ms` is the sentinel
+  # that disables it, and `telo check` says so on its own line, which is a poor
+  # first impression for a manifest you are meant to copy.
+  afterDuration: 1ms
+---
+kind: Run.Sequence
+metadata: { name: report }
+steps:
+  - name: rows
+    invoke:
+      kind: Sql.Query
+      connection: !ref db
+    inputs:
+      sql: "SELECT id, contactEmail, plan FROM accounts ORDER BY id"
+      bindings: []
+  # `status` is observed state — what this boot actually did, reported by the
+  # resource once it has run. It is not readable at start-up, because nothing
+  # has been observed yet.
+  - name: say
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel >-
+        '{green ✔} release ' + resources.appSchema.status.version +
+        ' (boot ' + string(resources.appSchema.status.sequence) + ')\n' +
+        '  rows:        ' + json(steps.rows.result.rows) + '\n' +
+        '  tombstoned:  ' + json(resources.appSchema.status.tombstoned) + '\n' +
+        '  revived:     ' + json(resources.appSchema.status.revived) + '\n' +
+        '  reclaimed:   ' + json(resources.appSchema.status.reclaimed) + '\n' +
+        '  inert renames: ' + json(resources.appSchema.status.inertRenames)

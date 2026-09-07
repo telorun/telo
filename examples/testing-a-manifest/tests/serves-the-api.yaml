@@ -1,0 +1,76 @@
+kind: Telo.Application
+metadata:
+  name: ServesTheApiTest
+  version: 1.0.0
+  description: |
+    Integration test: mount the exported route on a server the test itself owns,
+    then call it over the network. The server is declared in the sequence's
+    `with:` block, so it starts before the first step and is torn down after the
+    last one — the port is free again the moment the test ends, and the run
+    exits on its own instead of hanging on a listening socket.
+imports:
+  Api: ../api
+  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8971
+    openapi:
+      info:
+        title: Cart pricing under test
+        version: 1.0.0
+    mounts:
+      - path: /cart
+        mount: !ref Api.cartApi
+targets:
+  - !ref Server
+steps:
+  - name: price
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/cart/price
+      method: POST
+    inputs:
+      body:
+        items:
+          - { sku: jacket, unitCents: 10000, quantity: 1 }
+          - { sku: pin, unitCents: 500, quantity: 2 }
+  - name: verifyPriced
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.price.result.status"
+        body: !cel "steps.price.result.body"
+      expected:
+        status: 200
+        body:
+          subtotalCents: 11000
+          discountCents: 1100
+          totalCents: 9900
+
+  # The route declares its request schema, so a malformed body is refused before
+  # the handler runs. Asserting the 400 is what keeps that guarantee from being
+  # quietly removed later.
+  - name: badBody
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/cart/price
+      method: POST
+    inputs:
+      body:
+        items:
+          - { sku: pin, unitCents: 500 }
+  - name: verifyRejected
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.badBody.result.status"
+      expected: 400

@@ -90,6 +90,30 @@ try {
 }
 ```
 
+## A withdrawn resource is a cancellation too
+
+There is a second way an invoke is cancelled, and no token is involved: the
+target **is not there any more because the runtime took it away**. Both paths
+that withdraw a resource — the shutdown cascade, and the partial unwind a
+reconciliation performs — remove each instance as they go, so work still in
+flight finds an emptying map. A detached task is the case that matters, because
+its ambient scope is the uncancellable root and nothing else ever tells it to
+stop.
+
+That miss used to be `ERR_RESOURCE_NOT_FOUND`, which says *your manifest names a
+resource that does not exist* — a durable claim about the author's code, made
+about a condition that lasts as long as the shutdown. A durable run recorded it
+as a run failure, which is terminal, so one ordinary Ctrl-C left a run id nothing
+would ever pick up again. It is reported as `ERR_INVOKE_CANCELLED` instead,
+alongside the same scoped `<Kind>.<Name>.InvokeCancelled` event, because that is
+what it is and because every consumer already handles one correctly: a durable
+body leaves its run `running` for the resumer, and a step's retry budget is not
+spent re-issuing a call nobody intends to answer.
+
+Only the **miss** is converted. A resource still in the map is dispatched as
+before — a teardown-time flush is legitimate work — and a name that was never
+withdrawn still reports the manifest defect it is.
+
 A whole invocation tree shares one cancellation scope. Nested invokes from a
 composing controller inherit it automatically — nothing is threaded by hand:
 

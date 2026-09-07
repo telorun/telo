@@ -18,6 +18,7 @@ import { buildCelEnvironment } from "./cel-environment.js";
 import { CelScopeResolver, type CelScope } from "./cel-scope.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { buildKernelGlobalsIndex } from "./kernel-globals.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
 import { navigateConcretePath } from "./manifest-path.js";
 import { findManifest } from "./find-manifest.js";
@@ -41,6 +42,12 @@ export interface ContextDeclarationSite {
   kind: string;
   name: string;
   path: string;
+  /** The declaring module, when the manifest carries one. Part of the identity,
+   *  not decoration: a resource name is unique inside its module and not across a
+   *  flattened set, so `(kind, name)` alone lets a host locating this site land on
+   *  another library's same-named document — which for go-to-declaration means
+   *  jumping to the wrong file with nothing to indicate it. */
+  module?: string;
 }
 
 /** Join a concrete path segment, tolerating an empty base (the manifest root). */
@@ -210,9 +217,14 @@ export class CelScopeQuery {
       base = hit;
     }
 
-    const metadata = origin.manifest.metadata as { name?: string } | undefined;
+    const metadata = origin.manifest.metadata as { name?: string; module?: string } | undefined;
     if (!origin.manifest.kind || !metadata?.name) return undefined;
-    return { kind: origin.manifest.kind, name: metadata.name, path: base };
+    return {
+      kind: origin.manifest.kind,
+      name: metadata.name,
+      path: base,
+      ...(metadata.module === undefined ? {} : { module: metadata.module }),
+    };
   }
 
   /** The manifest and path an annotated context property is derived from, and
@@ -265,13 +277,29 @@ export class CelScopeQuery {
       if (hash <= 0) return undefined;
       const kindValue = navigateConcretePath(root, first.slice(0, hash).split("/").join("."));
       if (typeof kindValue !== "string") return undefined;
-      const canonical = this.ctx.aliases.resolveKind(kindValue) ?? kindValue;
-      const suffix = canonical.slice(canonical.indexOf(".") + 1);
-      const target = this.manifests.find(
+      // The kind was read off THIS resource, so it is spelled in the alias scope
+      // of the module that declared it — not the entry's.
+      const scope = moduleAliasScope(resource.metadata, this.ctx.aliases, this.ctx.aliasesByModule);
+      const canonical = scope.resolveKind(kindValue) ?? kindValue;
+      const dot = canonical.indexOf(".");
+      const owningModule = dot === -1 ? undefined : canonical.slice(0, dot);
+      const suffix = canonical.slice(dot + 1);
+      // Matched by MODULE AND NAME once the canonical form carries a module: a
+      // definition name is unique inside its module and not across a flattened
+      // set, so two libraries each declaring an `Api` would otherwise resolve to
+      // whichever came first — and the editor would type a context region off the
+      // wrong kind's annotations, silently. Falls back to name alone only when the
+      // kind did not resolve to a canonical form, where there is nothing to narrow
+      // by and a best-effort match is still better than none.
+      const named = this.manifests.filter(
         (m) =>
           (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") &&
           (m.metadata as { name?: string } | undefined)?.name === suffix,
-      ) as Record<string, any> | undefined;
+      ) as Record<string, any>[];
+      const target =
+        (owningModule
+          ? named.find((m) => (m.metadata as { module?: string } | undefined)?.module === owningModule)
+          : undefined) ?? (owningModule && named.length > 1 ? undefined : named[0]);
       if (!target) return undefined;
       return { manifest: target, path: first.slice(hash + 1), propertyMap: false };
     }
@@ -313,9 +341,18 @@ export class CelScopeQuery {
     return undefined;
   }
 
+  /** The kind's declaration, resolved in the scope of the module that DECLARED
+   *  this resource — the same rule the manifest visitor applies, and the reason
+   *  it has to be the same one: everything this query offers is read off the
+   *  definition, so resolving a forwarded library resource's `kind: Http.Api`
+   *  through the entry's aliases alone found nothing and the editor silently
+   *  offered no `request` / `result` at a site `telo check` accepts. A
+   *  completion list is a claim that the name it offers will pass the checker,
+   *  so the two must resolve a kind identically. */
   private definitionFor(resource: ResourceManifest): ResourceDefinition | undefined {
-    const { defs, aliases } = this.ctx;
-    const canonical = aliases.resolveKind(resource.kind);
+    const { defs, aliases, aliasesByModule } = this.ctx;
+    const scope = moduleAliasScope(resource.metadata, aliases, aliasesByModule);
+    const canonical = scope.resolveKind(resource.kind);
     return defs.resolve(resource.kind) ?? (canonical ? defs.resolve(canonical) : undefined);
   }
 

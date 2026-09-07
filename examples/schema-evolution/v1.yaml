@@ -1,0 +1,76 @@
+kind: Telo.Application
+metadata:
+  name: SchemaEvolutionV1
+  version: 1.0.0
+  description: |
+    Release 1 of the same app: the schema as it was before the change. Run this
+    first, against a database file that does not exist yet — it creates the
+    tables and seeds a couple of rows, so the release-2 manifest beside it has
+    real data to migrate.
+
+        telo ./examples/schema-evolution/v1.yaml
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+targets:
+  - !ref appSchema
+  - !ref report
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    default: ./schema-evolution.db
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: accounts }
+table: accounts
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  email: { type: text, nullable: false }
+  plan: { type: text, nullable: false, default: free }
+  signup_notes: { type: text }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+# The reclamation clock. `module.version` reads this manifest's own
+# `metadata.version`, so the released version is stated once.
+version: !cel "module.version"
+tables:
+  - !ref accounts
+reclaim:
+  afterVersions: 2
+  # A real deployment wants something like 30d — the window exists so a rollback
+  # is still possible. `1ms` keeps the walkthrough above able to reclaim within
+  # one afternoon while leaving the backstop switched ON: `0ms` is the sentinel
+  # that disables it, and `telo check` says so on its own line, which is a poor
+  # first impression for a manifest you are meant to copy.
+  afterDuration: 1ms
+migrations:
+  0001_seed_accounts:
+    statements:
+      - "INSERT OR IGNORE INTO accounts (id, email, plan, signup_notes) VALUES (1, 'ada@example.com', 'pro', 'came from the beta list')"
+      - "INSERT OR IGNORE INTO accounts (id, email, plan, signup_notes) VALUES (2, 'grace@example.com', 'free', NULL)"
+---
+kind: Run.Sequence
+metadata: { name: report }
+steps:
+  - name: rows
+    invoke:
+      kind: Sql.Query
+      connection: !ref db
+    inputs:
+      sql: "SELECT id, email, plan, signup_notes FROM accounts ORDER BY id"
+      bindings: []
+  - name: say
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel >-
+        '{green ✔} release ' + resources.appSchema.status.version +
+        ' — accounts: ' + json(steps.rows.result.rows)

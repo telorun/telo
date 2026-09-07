@@ -1,0 +1,252 @@
+kind: Telo.Application
+metadata:
+  name: StreamingExport
+  version: 1.0.0
+  categories: [ Streaming, Data, Transport ]
+  description: |
+    Data in as a file upload, data out as a stream — and the wire format on the
+    way out is a routing decision, not a handler decision.
+
+    `POST /import` takes a multipart upload. The route declares its body as a
+    stream of bytes, which is what a multipart body is: parsing it as text would
+    corrupt any binary part, and the decoder is an ordinary resource rather than
+    a parser configured on the server.
+
+    `GET /export` returns the stored rows in whichever format the caller asked
+    for. The handler produces a stream of records and knows nothing about NDJSON
+    or SSE; the route lists an encoder per media type and `Accept` picks one.
+    `mode: stream` pipes the handler's stream through that encoder straight to
+    the socket, so the response is written as it is produced rather than
+    assembled in memory first — and a third format is one more line under
+    `content:`, not another handler.
+
+    Run, then:
+        printf 'ada,pro\ngrace,free\nlin,enterprise\n' > /tmp/accounts.csv
+        curl -s -XPOST localhost:8080/import -F file=@/tmp/accounts.csv
+        curl -s localhost:8080/export -H 'accept: application/x-ndjson'
+        curl -s localhost:8080/export -H 'accept: text/event-stream'
+        curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/export \
+          -H 'accept: image/png'                                  # 406
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+  Multipart: oci://ghcr.io/telorun/multipart@0.2.2#sha256-RCqiT4UMwrVeRq1hU1xxkysRSxX4NC5DzsdrbbEBxv8
+  Ndjson: oci://ghcr.io/telorun/ndjson-codec@0.9.5#sha256-nV4xNsXHQi-iGes9fBxhtSmuvnnGtY7lk1SM_vZSLg0
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.0#sha256-PDIUJeHsa2-brpvFDmz5PQSQ7The15hMzcxlD0FSJGw
+  Stream: oci://ghcr.io/telorun/stream@0.11.0#sha256-nODqk6Vl8bhNF7R2yYT1WN0NrHL_rSzty9O7lrmlMsQ
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+targets:
+  - !ref migrate
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8080
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ./accounts.db
+---
+kind: SQLite.Table
+metadata: { name: accounts }
+table: accounts
+columns:
+  name: { type: text, primaryKey: true }
+  plan: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref accounts
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          properties:
+            name: { type: string }
+            plan: { type: string }
+---
+# The parts of an uploaded body, as a resource.
+#
+# NAMED AT MODULE LEVEL RATHER THAN INLINE AT THE ROUTE, and that is a runtime
+# limitation rather than a preference — worth saying plainly, because everything
+# else in this file is the shape you would choose. An inline `{ kind: … }`
+# declaration whose kind comes from an imported module is created inside the
+# route's own scope, where the import alias that named the kind is not in reach,
+# so it fails at dispatch (`ERR_RESOURCE_NOT_INVOKABLE`) rather than at
+# `telo check`. Declaring it here creates it in the module scope that does have
+# the alias. When that is fixed the inline form is the one to prefer: this
+# resource is used exactly once.
+kind: Multipart.Decoder
+metadata: { name: uploadDecoder }
+---
+kind: Ndjson.Encoder
+metadata: { name: ndjson }
+---
+kind: Sse.Encoder
+metadata: { name: sse }
+---
+# Turns a materialized list back into a stream, which is what a streamed
+# response needs from a handler that read rows out of a database.
+kind: Stream.Of
+metadata: { name: asStream }
+---
+# Ingest: decode the upload, split the text into lines, insert one row per line.
+kind: Run.Sequence
+metadata: { name: importAccounts }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ body, contentType ]
+    additionalProperties: false
+    properties:
+      body:
+        x-telo-type:
+          name: Telo.Stream
+          of: Telo.Bytes
+      contentType: { type: string }
+steps:
+  - name: parts
+    invoke: !ref uploadDecoder
+    inputs:
+      input: !cel "inputs.body"
+      contentType: !cel "inputs.contentType"
+  # Splitting in CEL keeps the parsing visible in the manifest — a real CSV,
+  # with quoting and embedded separators, wants a codec rather than an
+  # expression.
+  - name: lines
+    invoke: !ref splitLines
+    inputs:
+      text: !cel "string(steps.parts.result.parts[0].content)"
+  - name: store
+    invoke: !ref insertRows
+    inputs:
+      lines: !cel "steps.lines.result"
+outputs:
+  imported: !cel "size(steps.lines.result)"
+---
+kind: Run.Value
+metadata: { name: splitLines }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ text ]
+    additionalProperties: false
+    properties:
+      text: { type: string }
+# A block scalar, because a double-quoted YAML scalar decodes `\n` into a real
+# newline before CEL ever sees it — and CEL rejects a newline inside a
+# single-quoted string.
+value: !cel >-
+  inputs.text.split('\n').filter(l, l.trim() != '')
+---
+# One insert per line, in order. `item` is the element the loop is on.
+kind: Run.Iteration
+metadata: { name: insertRows }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ lines ]
+    additionalProperties: false
+    properties:
+      lines:
+        type: array
+        items: { type: string }
+collection: !cel "inputs.lines"
+steps:
+  - name: upsert
+    invoke: !ref exec
+    inputs:
+      sql: "INSERT INTO accounts (name, plan) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET plan = excluded.plan"
+      bindings:
+        - !cel "item.split(',')[0].trim()"
+        - !cel "item.split(',')[1].trim()"
+---
+# Export: read the rows, hand them back as a stream. Nothing here names a wire
+# format — that is the route's decision.
+kind: Run.Sequence
+metadata: { name: exportRows }
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: "SELECT name, plan FROM accounts ORDER BY name"
+      bindings: []
+  - name: stream
+    invoke: !ref asStream
+    inputs:
+      items: !cel "steps.rows.result.rows"
+outputs:
+  output: !cel "steps.stream.result.output"
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Streaming export
+    version: 1.0.0
+mounts:
+  - path: /
+    mount: !ref routes
+---
+kind: Http.Api
+metadata: { name: routes }
+routes:
+  - request:
+      path: /import
+      method: POST
+      schema:
+        # Raw bytes, not text: this is what lets a multipart body reach the
+        # decoder intact, and it is declared rather than configured on the
+        # server.
+        body:
+          x-telo-type:
+            name: Telo.Stream
+            of: Telo.Bytes
+    handler: !ref importAccounts
+    inputs:
+      body: !cel "request.body"
+      contentType: !cel "request.headers['content-type']"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              imported: !cel "result.imported"
+
+  - request:
+      path: /export
+      method: GET
+    handler: !ref exportRows
+    inputs: {}
+    returns:
+      # One entry, two formats. `Accept` selects; with none, the first declared
+      # key wins; with no match at all the server answers 406 and the handler
+      # never runs.
+      - status: 200
+        mode: stream
+        content:
+          application/x-ndjson:
+            encoder: !ref ndjson
+          text/event-stream:
+            encoder: !ref sse

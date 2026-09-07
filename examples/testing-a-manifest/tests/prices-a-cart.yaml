@@ -1,0 +1,51 @@
+kind: Telo.Application
+metadata:
+  name: PricesACartTest
+  version: 1.0.0
+  description: |
+    Unit test: invoke the pricing rule directly, with no server and no HTTP.
+    The library exports the instance, so the test dispatches the very resource
+    the application mounts — not a copy of it.
+imports:
+  Cart: ../cart
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: smallOrder
+    invoke: !ref Cart.priceCart
+    inputs:
+      items:
+        - { sku: cap, unitCents: 2500, quantity: 2 }
+        - { sku: pin, unitCents: 500, quantity: 1 }
+
+  # Assert.Equals compares the whole result against a literal, so a field that
+  # appears, disappears or changes shape fails here rather than in production.
+  - name: verifySmallOrder
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.smallOrder.result"
+      expected:
+        subtotalCents: 5500
+        discountCents: 0
+        totalCents: 5500
+
+  # At the threshold the discount applies — the boundary, not a value safely
+  # past it, because that is the case a wrong comparison operator gets wrong.
+  - name: atThreshold
+    invoke: !ref Cart.priceCart
+    inputs:
+      items:
+        - { sku: jacket, unitCents: 10000, quantity: 1 }
+  - name: verifyThreshold
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.atThreshold.result"
+      expected:
+        subtotalCents: 10000
+        discountCents: 1000
+        totalCents: 9000

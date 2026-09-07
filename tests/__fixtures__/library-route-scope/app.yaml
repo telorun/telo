@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: RouteScopeApp
+  version: 1.0.0
+  description: |
+    Imports the library and NOT the transport it is built on — the ordinary
+    shape, since a consumer of a library that owns its routes has no reason to
+    name http-server itself. The library's route is still analyzed here, in the
+    flattened set, and must type against the annotations of the kind ITS alias
+    resolves to.
+imports:
+  Routes: ./lib
+  Run: ../../../modules/run
+targets:
+  - !ref noop
+---
+kind: Run.Sequence
+metadata: { name: noop }
+steps:
+  - name: nothing
+    value: { ok: true }

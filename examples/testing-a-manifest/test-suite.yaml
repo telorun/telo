@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: CartTestSuite
+  version: 1.0.0
+  description: |
+    Discovers the test manifests beside it and runs each in its own fresh
+    kernel, a few at a time. A test is an ordinary application, so nothing here
+    is a test framework — the suite is a resource like any other.
+imports:
+  Test: oci://ghcr.io/telorun/test@0.10.3#sha256-8Wk8KfbBKIfujicodL8mDTWTbcL3AjTRp-vNFMuld28
+targets:
+  - !ref runAll
+---
+kind: Test.Suite
+metadata: { name: runAll }
+include:
+  - "tests/*.yaml"

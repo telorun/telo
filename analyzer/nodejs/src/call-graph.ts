@@ -63,6 +63,7 @@ import {
   type RefFieldEntry,
 } from "./reference-field-map.js";
 import { DEPENDENCY_GRAPH_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 
 export interface ResourceGraphNode {
   type: "resource";
@@ -693,8 +694,7 @@ export function buildCallGraph(
   const definitionFor = (manifest: ResourceManifest): ResourceDefinition | undefined => {
     const direct = registry.resolve(manifest.kind as string);
     if (direct) return direct;
-    const module = (manifest.metadata as { module?: string } | undefined)?.module;
-    const scope = (module ? options.aliasesByModule?.get(module) : undefined) ?? options.aliases;
+    const scope = moduleAliasScope(manifest.metadata, options.aliases, options.aliasesByModule);
     const canonical = scope?.resolveKind(manifest.kind as string);
     return canonical ? registry.resolve(canonical) : undefined;
   };
