@@ -4,23 +4,23 @@
 registry: oci://ghcr.io/telorun
 modules:
   apps/authoring-agent:
-    version: 0.11.0
+    version: 0.11.1
     layers:
-      image: sha256-Vsfjz_Zi0hMCUuVJ8ni-ueNu5v-Q5RxHWcAx3ZYvXNA
+      image: sha256-MLcs6oTh69TuQ2KUZHTYZfDIyU9Oeiw9qnjsfYxImZY
   apps/hub:
-    version: 0.7.0
+    version: 0.8.0
     layers:
-      image: sha256-sD1yxH_j-O7awRVPDwF397Fm-vfusosAmJLopai1tF0
+      image: sha256-ApQJFxD4LONHQQF1rTemwMmLnJ7kU4cz12x-U-1m7Lg
   modules/ai:
-    version: 0.18.1
+    version: 0.18.2
     layers:
       library/js: sha256-8vEShe6fwD3kSO95DNjzX6-0tBbE4UOTTvi4be3eaeE
-      manifest: sha256-fzPRxJLI60CJehEPBu-2PLTnaTii60vWcvZ4lNAomqE
+      manifest: sha256-8JoXHULli8pxErSk4uiFzaCoGBYEGIWObz1Zs900X94
   modules/ai-mcp:
-    version: 0.13.1
+    version: 0.13.2
     layers:
       controller/js: sha256-bFUGXLUdslvL7ecxxDXyGc_FRyMDd_TiRPHXvRH6Opw
-      manifest: sha256-Wegn8hNZC_XqVSdOP2SYuJHT2JXjEhvCp_gCeftKEvg
+      manifest: sha256-Hbf-sjSKeybsJIaS4P2q-G-Hpl6-Is1zAuuIrULOvaU
   modules/ai-openai:
     version: 0.17.0
     layers:
@@ -75,25 +75,25 @@ modules:
     layers:
       manifest: sha256-cso_G_5XUw63bbG5hOZM575qzVO4CQuah2IKs7D9Wrs
   modules/durable:
-    version: 0.2.0
+    version: 0.2.1
     layers:
       controller/js: sha256-i3Aoyk8PE3BOipLpEzHvhK7iDp-5BN6F44yYYIVsY8o
-      manifest: sha256-D-DXYAmmqdfi3FHlMYepXm0VvGuHFMyUdxVM7OPLuA4
+      manifest: sha256-UpOCnznsLANA4gBQYdyEMSSG8uIKZHqK98mirmejcpY
   modules/durable-journal-file:
-    version: 0.3.0
-    layers:
-      controller/js: sha256-JzNb2CUoeLU2r3St4Z121F2eYSbRnS00p5QPy1VZ95o
-      manifest: sha256-tUGXj0srZNcGA_CsMnu6BV4UnuVpa-BfUpjlkmU-86Q
-  modules/durable-journal-postgres:
     version: 0.4.0
     layers:
-      controller/js: sha256-Rv_n-EbmfFUcTuXVMdgPtqghu1CECd9gHfEWkyeezqE
-      manifest: sha256-sDj-92dTCaxISULE8ex7771UfpaVS_iFjmTzf24IJWM
-  modules/durable-local:
-    version: 0.3.0
+      controller/js: sha256-JzNb2CUoeLU2r3St4Z121F2eYSbRnS00p5QPy1VZ95o
+      manifest: sha256-yR2wcagJlAxgnkN7MvLTjZyWOjyMMQzX6zNt1DqD2Rc
+  modules/durable-journal-postgres:
+    version: 0.5.0
     layers:
-      controller/js: sha256-E3sBDxYKQ_Feu1kV7Hv2znEak8XsK7tmwoUmYrriTiU
-      manifest: sha256-IQRYvBQmc5HtDXfJZT_fpFqUH4QQooX02X2JlH9Bulk
+      controller/js: sha256-D58GAnMwgR9ZHbZ9dtjaYtPv9oPYeOcXsrPBh2ZTz34
+      manifest: sha256-M9gf6n6q_4lvHNPLr1KKSX1hKIenfrhB8wlxQCpb7zw
+  modules/durable-local:
+    version: 0.4.0
+    layers:
+      controller/js: sha256-6n-PdcjKE-dsGCfsdnCW_LD9MxwJfmi07QNWhfjKDNo
+      manifest: sha256-sEuE7a7rBMT4uhuI7ekyEYl38ZoTJgZfx0VQ5J2xV9Y
   modules/embedding:
     version: 0.11.4
     layers:
@@ -202,10 +202,10 @@ modules:
       controller/js: sha256-G51aOh9DHHq18qWwUokxyOYwFmMely01pNTmcsBuORY
       manifest: sha256-Pn8LuyMQJUGopmfI6ZVd0heMBBx-lZN1v0Q9hS-G-5Q
   modules/openai:
-    version: 0.3.1
+    version: 0.3.2
     layers:
       controller/js: sha256-Hy9JRQb6ZOeuI4_YdKQFYAgltCAFOzyeGShStPGk18k
-      manifest: sha256-QOE7RnzKPc0acmWwMDmjL5_I2wieW5GfSaHrpr9Wf8M
+      manifest: sha256-fJcPgIG4E4XCR_xlhA_w-Y7fXVg-BS7Z9NjPcu0CD5I
   modules/otlp:
     version: 0.5.0
     layers:
@@ -241,15 +241,15 @@ modules:
       controller/js: sha256-MhNmhTsHYIzR9Oxk0Vg8BOaYf1_Enbmf8ecBk2n5UCY
       manifest: sha256-V3ZW_68zwT2KgrqemXjOIgybj3IRSZGCrbwsUhYXFuU
   modules/run:
-    version: 0.26.0
+    version: 0.26.1
     layers:
-      controller/js: sha256-RcTlSLbZt_eoSd0FueHvbtCq-Jwzb_4mOWbOZLDvNBw
-      manifest: sha256-F3GK25B_Aia5qX5QBnVu2takVG3luWQd_vgkw9hIuQE
+      controller/js: sha256-IgoUvCN4isrjZUc-wF4tFdI2JehPmQTsQ16QOjfajUA
+      manifest: sha256-Xmt-1sAxWzj3euuXWI5e8skZoEs8TLOEeLcE_eNSfK0
   modules/scheduler:
-    version: 0.9.0
+    version: 0.9.1
     layers:
-      controller/js: sha256-IfQEDomh6xF2TvruSe0DiR7dk3bhfNYhnszPV1Rv9Ok
-      manifest: sha256-h5guKGHSySlL57zJa-edpEmhEmBfUM_8jn385a4xpYc
+      controller/js: sha256-Y0KMzgYSXftZ6tD-fvQtseG-R9EnR8OiQ9vdCYTFoZs
+      manifest: sha256-yY3UfpjkVukesolgEOc3zLMXAMLPC7VWzUFyp1utd7c
   modules/shell:
     version: 0.11.4
     layers:

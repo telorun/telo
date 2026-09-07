@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.1 - 2026-09-07
+### Fixed
+* Every item of a Run.Iteration, every turn of a Run.Loop and every element of a Run.Projection now runs when the body is durable. A composer that drives its own body journals under the prefix the kernel hands it for the whole dispatch, and sharing that one prefix across turns meant the journal — which takes the first writer at a key — returned turn 1's recorded outcome for turns 2..N. The work was silently skipped and the run still reported success. Each turn now carries its own prefix, the way the step engine's own while loop already did.
+
 ## 0.26.0 - 2026-08-23
 ### Added
 * Drops the retired `teardown()` from the surface: ai's model, image and embedding handle interfaces no longer declare it, and the run and vector-store-pgvector controllers no longer implement an empty one. Cleanup is what a controller returns from `init()` / `run()`. Nothing called these, so no behaviour changes; a third-party handle implementing `teardown()` simply has a method nobody invokes.

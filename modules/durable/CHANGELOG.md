@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2026-09-07
+### Fixed
+* Starting a run now declares what it answers with. `Durable.Run` states the floor every engine keeps — the run's id and where it stood — and `DurableLocal.Workflow` narrows it to `{ runId, status }` plus `started` / `attached` / `result`. Undeclared, that contract typed as an open object, so a manifest could read a field the start has never returned and hear about it only at runtime; reading one is now a `telo check` error naming the fields there are. A start is an acknowledgement, not an outcome: the body is dispatched detached and answers before its first step has run.
+
 ## 0.2.0 - 2026-08-20
 ### Added
 * New: durable execution. A body of steps records what each step returned AND every decision it reached, so a crash and a restart continue where the work stopped rather than repeating every effect or losing them all. Durable.Run is a marker a backend extends; Durable.Idempotent wraps a region the author asserts is safe to re-run so it is recorded as one entry; DurableLocal.Workflow holds the body and drives replay, with DurableLocal.Journal as its storage seam and DurableLocal.Resumer as the recovery path; DurableJournalFile.Journal stores runs as append-only files. Suspension is not in this version — a run that cannot park can still crash and resume.

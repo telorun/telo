@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-09-07
+### Added
+* `DurableLocal.Result` reports `replayed` and `replayedSteps` — whether the attempt that finished the work continued an interrupted one, and how many steps it was handed from the record rather than executing. Recorded on the run because that is the only place the fact can live: a start returns before the first step has run, so the process that made the call is routinely gone by the time the run ends. Both are absent, never false, for work settled before this shipped. Its result envelope is closed to match `Status`'s, and declares `result` rather than leaving it to an open object, so a typo below it is an error on its own line instead of a blank at runtime. The Postgres journal adds the column to a table that already exists: it reads `information_schema` first and issues the `ALTER` only for a column genuinely absent, so a boot against an up-to-date table takes no exclusive lock on the runs table, and tolerates another instance adding it at the same moment — the SQLSTATE an ALTER loses that race with is not one a CREATE produces.
+
 ## 0.2.0 - 2026-08-20
 ### Added
 * New: durable execution. A body of steps records what each step returned AND every decision it reached, so a crash and a restart continue where the work stopped rather than repeating every effect or losing them all. Durable.Run is a marker a backend extends; Durable.Idempotent wraps a region the author asserts is safe to re-run so it is recorded as one entry; DurableLocal.Workflow holds the body and drives replay, with DurableLocal.Journal as its storage seam and DurableLocal.Resumer as the recovery path; DurableJournalFile.Journal stores runs as append-only files. Suspension is not in this version — a run that cannot park can still crash and resume.
