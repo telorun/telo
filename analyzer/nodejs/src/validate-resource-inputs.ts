@@ -3,7 +3,11 @@ import { isRefSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { findDynamicLeaf } from "./resource-rule.js";
-import { readResourceInputs, readSuppliedResources } from "./resource-input.js";
+import {
+  isInjectedDeclaration,
+  readResourceInputs,
+  readSuppliedResources,
+} from "./resource-input.js";
 import { type AnalysisDiagnostic, DiagnosticSeverity } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -38,6 +42,9 @@ type RequiredResources = Record<string, string>;
  *
  * Browser-safe.
  */
+const declaringModule = (m: ResourceManifest): string | undefined =>
+  (m.metadata as { module?: string } | undefined)?.module;
+
 export function validateResourceInputs(
   manifests: ResourceManifest[],
   registry: DefinitionRegistry,
@@ -46,7 +53,11 @@ export function validateResourceInputs(
   /** Kind acceptance, transitively — the `checkKind` rule `validate-references`
    *  applies at an ordinary ref slot, passed in rather than re-derived so the
    *  two cannot disagree about what satisfies a constraint. */
-  acceptsKind: (suppliedKind: string, requiredKind: string) => boolean,
+  acceptsKind: (
+    suppliedKind: string,
+    requiredKind: string,
+    suppliedIsDeclaration: boolean,
+  ) => boolean,
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
 
@@ -220,7 +231,19 @@ export function validateResourceInputs(
       const suppliedKind = (value as { kind?: unknown }).kind;
       if (typeof suppliedKind !== "string") continue;
       const canonical = aliases.resolveKind(suppliedKind) ?? suppliedKind;
-      if (acceptsKind(canonical, entry)) continue;
+      // A library forwarding an input it was itself handed supplies a kind-only
+      // stand-in, whose kind is routinely the abstract the target declares. That
+      // is identity against an abstract, which an ordinary reference is refused
+      // — the referent there would be a resource nothing can instantiate, while
+      // here it is another declaration.
+      const suppliedName = (value as { name?: unknown }).name;
+      const supplied =
+        typeof suppliedName === "string"
+          ? manifests.find(
+              (c) => c.metadata?.name === suppliedName && isOwn(declaringModule(c)),
+            )
+          : undefined;
+      if (acceptsKind(canonical, entry, isInjectedDeclaration(supplied))) continue;
       out.push({
         severity: DiagnosticSeverity.Error,
         code: "RESOURCE_INPUT_KIND_MISMATCH",

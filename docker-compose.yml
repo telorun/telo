@@ -26,12 +26,15 @@ services:
     build:
       context: ./apps/hub
       target: ${DOCKER_TARGET:-development}
+    # The repository, mounted where the `development` stage expects it — that
+    # stage runs the WORKSPACE CLI rather than the image's, and says why.
     volumes:
-      - ./apps/hub:/app
-      # Anonymous volume overlay: telo writes its install cache here at boot.
-      # Without this, root-owned files leak into the host bind mount.
-      - /app/.telo
-    working_dir: /app
+      - .:/telo
+      # The module cache, which `TELO_CACHE_DIR` points at. Kept out of the
+      # checkout entirely — see the `development` stage, which also creates the
+      # directory so this volume inherits an ownership its non-root user can
+      # write.
+      - hub-cache:/telo-cache
     ports:
       - "${HUB_PORT:-8040}:8040"
     environment:
@@ -41,8 +44,8 @@ services:
       MANIFEST_BUCKET_ACCESS_KEY_ID: telo-registry-access
       MANIFEST_BUCKET_SECRET_ACCESS_KEY: telo-registry-secret
       MANIFEST_BUCKET_FORCE_PATH_STYLE: "true"
-      # Curated seed; the tracker enumerates these refs' versions on boot and
-      # every TRACK_INTERVAL thereafter.
+      # Curated seed; the reconcile pass enumerates these refs' versions at boot
+      # and on every TRACK_CRON tick thereafter.
       # `console` is seeded for the e2e: it is the only one of these that
       # exports ready-made INSTANCES (`writeLine` / `readLine`) rather than
       # only kinds, so it is what covers the `exportedResources` half of a
@@ -55,6 +58,10 @@ services:
       # Dev and the e2e suite re-register repeatedly from one address, so lift
       # the ceiling here — otherwise a second test run inside the window 429s.
       REGISTER_RATE_LIMIT: "1000"
+      # The image's released CLI, on PATH — see the note on the `development`
+      # stage in apps/hub/Dockerfile.
+      TELO_BIN: /usr/local/bin/telo
+      TELO_CACHE_DIR: /telo-cache
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8040/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 5s
@@ -66,6 +73,11 @@ services:
         condition: service_healthy
       embedder:
         condition: service_healthy
+      # The manifest bucket is created at INIT (`createIfMissing`), so the hub
+      # cannot start without it — `service_started` rather than `_healthy`
+      # because this image declares no healthcheck and the bucket call retries.
+      storage:
+        condition: service_started
 
   # Self-hosted embedding model for the hub's semantic search. Hugging Face
   # Text Embeddings Inference serves an OpenAI-compatible `/v1/embeddings`
@@ -206,6 +218,7 @@ services:
       - storage-data:/data
 
 volumes:
+  hub-cache:
   storage-data:
   db-data:
   runner-bundles:

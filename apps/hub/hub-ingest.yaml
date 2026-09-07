@@ -1,0 +1,783 @@
+# Turning one published version into rows, bytes and vectors — durably.
+#
+# The unit of work is ONE version of one module, and it is a durable run: a crash
+# part-way no longer leaves a version row with no kinds, because the relational
+# writes commit together and the journal's own record of them commits with them.
+# That last property is why this library declares the journal itself, over the
+# connection it was handed: a journal is exactly-once only when it writes inside
+# the same transaction as the work it records, and handing the library a
+# connection AND an unrelated journal would let a composition-root slip produce a
+# hub that ingests correctly, passes `telo check`, and silently degrades to
+# at-least-once.
+#
+# Enumeration and digest resolution stay OUTSIDE the run: they are cheap,
+# re-runnable, and are the schedule's job rather than the ingest's.
+kind: Telo.Library
+metadata:
+  name: HubIngest
+  description: >-
+    Ingests one published module version: reads its manifest from the origin,
+    caches it to the manifest bucket, writes its metadata, resource kinds and
+    exported instances in one transaction, and re-embeds the latest version.
+requires:
+  # `resources:` inputs on a library.
+  telo: ">=0.83.0"
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  Postgres: oci://ghcr.io/telorun/postgres@0.4.0#sha256-urAQgZtDIlbm4PFi0OlBgYPTU0fSdFbw3l3sHVdh-MQ
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
+  Durable: oci://ghcr.io/telorun/durable-local@0.3.0#sha256-zMx3J2RRD_eb5c8BRWE9CaWZ1_XsiiB_6SaF5o7csNg
+  Journal: oci://ghcr.io/telorun/durable-journal-postgres@0.4.0#sha256-HtLlbcZpqo6dsm0mLyQyteXgW8t4lqk_Jjddeosvq-E
+  Schema:
+    source: ./hub-schema.yaml
+    resources:
+      connection: !ref connection
+  Origin:
+    source: ./hub-origin.yaml
+    resources:
+      shellHost: !ref shellHost
+    variables:
+      teloBin: !cel "variables.teloBin"
+resources:
+  connection:
+    kind: Postgres.Connection
+    description: >-
+      The database the rows are written to AND the journal records through —
+      one connection, which is what makes a step's record commit with the step.
+  bucketPut:
+    kind: S3.Put
+    description: Writes each version's telo.yaml to the static manifest cache.
+  embedPassage:
+    kind: Embedding.Passage
+    description: Embeds a kind's composed passage for semantic search.
+  vectorUpsert:
+    kind: VectorStore.Record
+    description: Stores a kind's vector against its relational row id.
+  vectorRemove:
+    kind: VectorStore.Removal
+    description: Purges a module's vectors before the latest version is re-embedded.
+  shellHost:
+    kind: Shell.LocalHost
+    description: Forwarded to the origin reader — where the telo CLI runs.
+variables:
+  teloBin:
+    type: string
+    default: telo
+  # The revision of this ingest pipeline. Raising it makes every tracked version
+  # due exactly once, which is the whole-registry re-ingest control — and what
+  # replaced the per-column backfill probes, each of which had to be added and
+  # read one at a time.
+  ingestRev:
+    type: integer
+    default: 1
+exports:
+  resources:
+    - ingestVersion
+    - scheduleIngest
+    - scheduleDueVersions
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref connection
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref connection
+---
+kind: Console.WriteLine
+metadata:
+  name: logLine
+---
+# Runs and their step records, in this same database. Sharing the connection the
+# ingest writes through is what makes the record of a step land inside the same
+# transaction as the step's own writes — so a rollback discards both, and the
+# region is journaled per step rather than collapsed.
+kind: Journal.Journal
+metadata:
+  name: journal
+connection: !ref connection
+---
+# ONE version, ingested durably.
+#
+# The identity is the claim's: `(module, version, attempt)`, where the attempt is
+# minted by the claim statement. A fresh attempt is a fresh id, so a retry is
+# never blocked by the id of the attempt that failed.
+kind: Durable.Workflow
+metadata:
+  name: ingestVersion
+journal: !ref journal
+runId: !cel "'ingest:' + inputs.moduleId + ':' + inputs.version + ':' + string(inputs.attempt)"
+inputs:
+  moduleId: !cel "inputs.moduleId"
+  ref: !cel "inputs.ref"
+  version: !cel "inputs.version"
+  digest: !cel "inputs.digest"
+  latestVersion: !cel "inputs.latestVersion"
+  attempt: !cel "inputs.attempt"
+steps:
+  # The whole body is guarded, and the catch does NOT rethrow: a failure is
+  # RECORDED on the row and the run completes. Left to throw, the run would end
+  # `failed` — a terminal state nothing re-enters — and the row, which is what
+  # decides whether this version is ever attempted again, would never learn why.
+  - name: guarded
+    try:
+      # Retried with a growing backoff, and once that backoff passes 30s the run
+      # PARKS rather than sleeping: an origin outage then costs nothing while it
+      # waits, and the process is free to go away in the meantime.
+      - name: manifest
+        invoke: !ref Origin.moduleManifest
+        inputs:
+          ref: !cel "inputs.ref"
+          version: !cel "inputs.version"
+        retry:
+          attempts: 6
+          initialDelay: 2000
+          maxDelay: 300000
+      - name: manifestGate
+        if: !cel "!steps.manifest.result.ok"
+        then:
+          - name: fail
+            throw:
+              code: INGEST_MANIFEST_FAILED
+              message: !cel >-
+                'telo module manifest ' + inputs.ref + '@' + inputs.version + ' failed: '
+                  + steps.manifest.result.error
+      # Outside the transaction on purpose: the key is deterministic, so a
+      # replayed put is a no-op, while a put journaled INSIDE a transaction that
+      # then rolls back would have its record discarded and be repeated anyway.
+      - name: cache
+        invoke: !ref bucketPut
+        inputs:
+          key: !cel "steps.manifest.result.payload.cacheKey"
+          body: !cel "steps.manifest.result.payload.manifest"
+          contentType: text/yaml
+      - name: rows
+        invoke: !ref ingestTransaction
+        inputs:
+          moduleId: !cel "inputs.moduleId"
+          ref: !cel "inputs.ref"
+          version: !cel "inputs.version"
+          digest: !cel "inputs.digest"
+          latestVersion: !cel "inputs.latestVersion"
+          payload: !cel "steps.manifest.result.payload"
+          docs: !cel "steps.manifest.result.docs"
+      # Embed only the module's latest version, superseding any prior vectors so
+      # the vector table holds exactly one vector per (module, resource-kind).
+      # Older versions keep their relational rows (pinned reads, history) but no
+      # vector, keeping near-identical versions out of the ANN top-K.
+      #
+      # After the commit, and replayed from there: a resume that finds the rows
+      # already recorded re-runs exactly these steps.
+      - name: vectors
+        if: !cel "inputs.version == inputs.latestVersion"
+        then:
+          - name: embed
+            invoke: !ref embedVersion
+            inputs:
+              moduleId: !cel "inputs.moduleId"
+              version: !cel "inputs.version"
+              docs: !cel "steps.manifest.result.docs"
+            retry:
+              attempts: 4
+              initialDelay: 2000
+              maxDelay: 120000
+    catch:
+      - name: log
+        invoke: !ref logLine
+        inputs:
+          output: !cel >-
+            '{red ingest failed} ' + inputs.ref + '@' + inputs.version + ' — '
+              + error.code + ': ' + error.message
+      - name: record
+        invoke: !ref Schema.failVersion
+        inputs:
+          moduleId: !cel "inputs.moduleId"
+          version: !cel "inputs.version"
+          message: !cel "error.code + ': ' + error.message"
+          attempt: !cel "inputs.attempt"
+---
+# Admit the run now, execute it later. The resumer is what picks it up, so the
+# caller — a cron tick or an anonymous registration — returns immediately.
+#
+# Declared here and EXPORTED rather than restated by each caller: the run id is
+# derived from the claim, and two derivations of one identity would eventually
+# disagree about which attempt a run is.
+kind: Durable.Schedule
+metadata:
+  name: scheduleIngest
+workflow: !ref ingestVersion
+after: 0s
+runId: !cel "'ingest:' + inputs.moduleId + ':' + inputs.version + ':' + string(inputs.attempt)"
+inputs:
+  moduleId: !cel "inputs.moduleId"
+  ref: !cel "inputs.ref"
+  version: !cel "inputs.version"
+  digest: !cel "inputs.digest"
+  latestVersion: !cel "inputs.latestVersion"
+  attempt: !cel "inputs.attempt"
+---
+# Every relational write for one version, all-or-nothing.
+#
+# On this same connection, so the journal's record of each step commits with the
+# step — which is what turns the region from one collapsed record into a
+# per-step one, and is the only way exactly-once is reachable at all.
+kind: Sql.Transaction
+metadata:
+  name: ingestTransaction
+connection: !ref connection
+steps: !ref writeVersionRows
+inputs:
+  moduleId: !cel "inputs.moduleId"
+  ref: !cel "inputs.ref"
+  version: !cel "inputs.version"
+  digest: !cel "inputs.digest"
+  latestVersion: !cel "inputs.latestVersion"
+  payload: !cel "inputs.payload"
+  docs: !cel "inputs.docs"
+---
+kind: Run.Sequence
+metadata:
+  name: writeVersionRows
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      # modules.id is a bigint — the driver yields it as a string.
+      moduleId: { type: string }
+      ref: { type: string }
+      version: { type: string }
+      digest: { type: string }
+      latestVersion: { type: string }
+      # `telo module manifest --json` verbatim: cache key, integrity, runtime.
+      payload: { type: object, additionalProperties: true }
+      # The parsed manifest documents.
+      docs: { type: array }
+steps:
+  # The rows are SHAPED here, once, as pure values — the two inserts below bind
+  # them as one JSON parameter each. Several are not plain reads:
+  #
+  #   categories — the authored display labels, passed through verbatim; the
+  #     INSERT derives the match slugs from them. A kind's own list REPLACES its
+  #     module's (declaring it on a kind states where that kind belongs), so the
+  #     module's list is the fallback.
+  #   exported   — mirrors the kernel's gate (module-context `registerImport`): a
+  #     missing `exports.kinds` list means no restriction, a declared list gates
+  #     to the listed names. Re-exported entries (`Alias.Kind`) name another
+  #     module's kind, never a local definition, so they don't mark local rows.
+  #   extends / replacedBy — BOTH are alias-qualified kinds (`Cache.Store`,
+  #     `Self.Migrations`), and an alias is private to the manifest that declares
+  #     it, so it means nothing to anyone else. Resolving the prefix through the
+  #     module's own `imports:` map turns each into (owning module ref, kind
+  #     suffix): the identity that makes every backend of one contract joinable,
+  #     and a deprecation replacement a consumer can follow. `Self` is the
+  #     declaring module; a `Telo.*` built-in resolves to no import and so leaves
+  #     the ref empty. One expression resolves both — index 0 is the extends
+  #     target, index 1 the replacement — because they share the grammar exactly,
+  #     and a second copy would be a second thing to keep right.
+  #   runtimes / languages / portable — the matched `runtime.kinds` entry from
+  #     `telo module manifest --json`, derived by the CLI because the mapping
+  #     from a `controllers:` PURL to the kernels that can load it is loader
+  #     knowledge. Empty when an older CLI reported no entry for this kind: the
+  #     row records "no kernel claimed" rather than a guess, and the version's
+  #     revision is what schedules the re-ingest that fills it in.
+  - name: kindRows
+    value: !cel >-
+      inputs.docs.filter(d, d.kind == 'Telo.Definition' || d.kind == 'Telo.Abstract').map(d, {
+        'name': d.metadata.name,
+        'capability': d.?capability.orValue(''),
+        'abstract': d.kind == 'Telo.Abstract',
+        'description': d.metadata.?description.orValue(''),
+        'categories': d.metadata.?categories.orValue(inputs.docs[0].metadata.?categories.orValue([])),
+        'exported': 'exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports
+          ? inputs.docs[0].exports.kinds.exists(k, k == d.metadata.name)
+          : true,
+        'deprecated_reason': d.metadata.?deprecated.?reason.orValue(''),
+        'extends_kind': [d.?extends.orValue(''), d.metadata.?deprecated.?replacedBy.orValue('')]
+          .map(v, v == '' ? '' : v.split('.')[1])[0],
+        'replaced_by_kind': [d.?extends.orValue(''), d.metadata.?deprecated.?replacedBy.orValue('')]
+          .map(v, v == '' ? '' : v.split('.')[1])[1],
+        'extends_ref': [d.?extends.orValue(''), d.metadata.?deprecated.?replacedBy.orValue('')]
+          .map(v, v == '' ? ''
+            : (v.split('.')[0] == 'Self' ? inputs.ref
+              : ('imports' in inputs.docs[0] && v.split('.')[0] in inputs.docs[0].imports
+                ? (type(inputs.docs[0].imports[v.split('.')[0]]) == type('')
+                    ? inputs.docs[0].imports[v.split('.')[0]]
+                    : inputs.docs[0].imports[v.split('.')[0]].source).split('#')[0].split('@')[0]
+                : '')))[0],
+        'replaced_by_ref': [d.?extends.orValue(''), d.metadata.?deprecated.?replacedBy.orValue('')]
+          .map(v, v == '' ? ''
+            : (v.split('.')[0] == 'Self' ? inputs.ref
+              : ('imports' in inputs.docs[0] && v.split('.')[0] in inputs.docs[0].imports
+                ? (type(inputs.docs[0].imports[v.split('.')[0]]) == type('')
+                    ? inputs.docs[0].imports[v.split('.')[0]]
+                    : inputs.docs[0].imports[v.split('.')[0]].source).split('#')[0].split('@')[0]
+                : '')))[1],
+        'runtimes': inputs.payload.?runtime.?kinds.orValue([])
+          .filter(r, r.name == d.metadata.name).map(r, r.runtimes).size() > 0
+          ? inputs.payload.runtime.kinds.filter(r, r.name == d.metadata.name)[0].runtimes : [],
+        'languages': inputs.payload.?runtime.?kinds.orValue([])
+          .filter(r, r.name == d.metadata.name).size() > 0
+          ? inputs.payload.runtime.kinds.filter(r, r.name == d.metadata.name)[0].languages : [],
+        'portable': inputs.payload.?runtime.?kinds.orValue([])
+          .filter(r, r.name == d.metadata.name).size() > 0
+          && inputs.payload.runtime.kinds.filter(r, r.name == d.metadata.name)[0].portable
+      })
+  # A library's exported singleton INSTANCES (`exports.resources`) — the other
+  # half of its public surface. An importer references one as
+  # `!ref <Alias>.<name>`, so the NAME is the identity: a library can export an
+  # instance of a kind it deliberately does NOT export (singleton enforcement),
+  # and the console module exports only instances, no kinds at all.
+  #
+  # LIMIT: `docs` is telo.yaml alone. The origin read never fetches an
+  # `include:` partial, so an instance declared in a partial matches nothing and
+  # records an empty kind/description while `declared` says it is local — which
+  # reads like a re-export but is not. Nothing in the standard library hits
+  # this, and closing it means fetching partials per version, so the invariant
+  # is documented rather than enforced: empty means "not declared in telo.yaml",
+  # of which re-export is the usual cause.
+  - name: resourceRows
+    value: !cel >-
+      ('exports' in inputs.docs[0] && 'resources' in inputs.docs[0].exports
+        ? inputs.docs[0].exports.resources : []).map(e, {
+          'declared': string(e),
+          'name': string(e).split('.')[size(string(e).split('.')) - 1],
+          'kind': inputs.docs.filter(d,
+            !d.kind.startsWith('Telo.') &&
+            d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
+            .map(d, d.kind.contains('.')
+              ? d.kind.split('.')[size(d.kind.split('.')) - 1] : '')
+            .size() > 0
+            ? inputs.docs.filter(d,
+                !d.kind.startsWith('Telo.') &&
+                d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
+                .map(d, d.kind.contains('.')
+                  ? d.kind.split('.')[size(d.kind.split('.')) - 1] : '')[0]
+            : '',
+          'description': inputs.docs.filter(d,
+            !d.kind.startsWith('Telo.') &&
+            d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
+            .size() > 0
+            ? inputs.docs.filter(d,
+                !d.kind.startsWith('Telo.') &&
+                d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])[0]
+                .metadata.?description.orValue('')
+            : ''
+        })
+  - name: upsertVersion
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_versions
+          (module_id, version, digest, module_name, description, repository, license, manifest_key,
+           categories, category_labels, integrity,
+           homepage, deprecated_reason, replaced_by, runtimes, runtimes_full, languages, portable,
+           runtimes_asked)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
+                ARRAY(SELECT category_slug(l) FROM unnest($9::text[]) AS l), $9::text[],
+                COALESCE($10, ''),
+                $11, $12, $13,
+                -- NULL means "no runtime data" (a CLI too old to report it),
+                -- as distinct from '{}' meaning "asked, no kernel runs this".
+                -- CEL cannot express a list-or-null ternary, so the nullity is
+                -- decided here from $18.
+                CASE WHEN $18 THEN $14::text[] END,
+                $15::text[], $16::text[], $17,
+                TRUE)
+        ON CONFLICT (module_id, version) DO UPDATE SET
+          digest = EXCLUDED.digest,
+          module_name = EXCLUDED.module_name,
+          description = EXCLUDED.description,
+          repository = EXCLUDED.repository,
+          license = EXCLUDED.license,
+          manifest_key = EXCLUDED.manifest_key,
+          categories = EXCLUDED.categories,
+          category_labels = EXCLUDED.category_labels,
+          integrity = EXCLUDED.integrity,
+          homepage = EXCLUDED.homepage,
+          deprecated_reason = EXCLUDED.deprecated_reason,
+          replaced_by = EXCLUDED.replaced_by,
+          runtimes = EXCLUDED.runtimes,
+          runtimes_full = EXCLUDED.runtimes_full,
+          languages = EXCLUDED.languages,
+          portable = EXCLUDED.portable,
+          runtimes_asked = TRUE,
+          tracked_at = NOW()
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "inputs.digest"
+        - !cel "inputs.docs[0].metadata.name"
+        - !cel "inputs.docs[0].metadata.?description.orValue('')"
+        - !cel "inputs.docs[0].metadata.?repository.orValue('')"
+        - !cel "inputs.docs[0].metadata.?license.orValue('')"
+        - !cel "inputs.payload.cacheKey"
+        - !cel "inputs.docs[0].metadata.?categories.orValue([])"
+        # `telo module manifest --json` emits null where nothing could hash the
+        # ref (with the reason on its stderr); COALESCE above stores that as ''
+        # — "asked, none available" — so it is never mistaken for the NULL that
+        # means "never asked".
+        - !cel "inputs.payload.?integrity.orValue('')"
+        - !cel "inputs.docs[0].metadata.?homepage.orValue('')"
+        - !cel "inputs.docs[0].metadata.?deprecated.?reason.orValue('')"
+        - !cel "inputs.docs[0].metadata.?deprecated.?replacedBy.orValue('')"
+        - !cel "keys(inputs.payload.?runtime.?runtimes.orValue({}))"
+        - !cel >-
+          keys(inputs.payload.?runtime.?runtimes.orValue({}))
+            .filter(k, inputs.payload.runtime.runtimes[k] == 'full')
+        - !cel "inputs.payload.?runtime.?languages.orValue([])"
+        - !cel "inputs.payload.?runtime.?portable.orValue(false)"
+        # Whether the CLI reported a `runtime` block at all — a binary older than
+        # the field reports none. That is a different state from a module no
+        # kernel can run ('{}'), and recording '{}' for an old CLI would store a
+        # false fact that never self-corrects once the binary is upgraded.
+        - !cel "'runtime' in inputs.payload"
+  - name: clearKinds
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM resource_kinds WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  - name: insertKinds
+    invoke: !ref exec
+    inputs:
+      # ONE statement for every kind, not one per kind. Set-based because the
+      # rows are already a list by the time they reach here, and because a
+      # per-item dispatch inside a durable body is N journal subtrees for work
+      # that commits as a single transaction either way.
+      sql: >-
+        INSERT INTO resource_kinds
+          (module_id, version, name, capability, abstract, exported, description,
+           categories, category_labels, extends_kind, extends_ref,
+           runtimes, languages, portable, deprecated_reason, replaced_by_kind, replaced_by_ref)
+        SELECT $1, $2, r.name, r.capability, r.abstract, r.exported, r.description,
+               ARRAY(SELECT category_slug(l)
+                     FROM jsonb_array_elements_text(r.categories) AS l),
+               ARRAY(SELECT l FROM jsonb_array_elements_text(r.categories) AS l),
+               r.extends_kind, r.extends_ref,
+               ARRAY(SELECT x FROM jsonb_array_elements_text(r.runtimes) AS x),
+               ARRAY(SELECT x FROM jsonb_array_elements_text(r.languages) AS x),
+               r.portable, r.deprecated_reason, r.replaced_by_kind, r.replaced_by_ref
+        FROM jsonb_to_recordset($3::jsonb) AS r(
+          name text, capability text, abstract boolean, exported boolean,
+          description text, categories jsonb, extends_kind text, extends_ref text,
+          runtimes jsonb, languages jsonb, portable boolean,
+          deprecated_reason text, replaced_by_kind text, replaced_by_ref text)
+        ON CONFLICT (module_id, version, name) DO UPDATE SET
+          capability = EXCLUDED.capability,
+          abstract = EXCLUDED.abstract,
+          exported = EXCLUDED.exported,
+          description = EXCLUDED.description,
+          categories = EXCLUDED.categories,
+          category_labels = EXCLUDED.category_labels,
+          extends_kind = EXCLUDED.extends_kind,
+          extends_ref = EXCLUDED.extends_ref,
+          runtimes = EXCLUDED.runtimes,
+          languages = EXCLUDED.languages,
+          portable = EXCLUDED.portable,
+          deprecated_reason = EXCLUDED.deprecated_reason,
+          replaced_by_kind = EXCLUDED.replaced_by_kind,
+          replaced_by_ref = EXCLUDED.replaced_by_ref
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "json(steps.kindRows.result)"
+  - name: clearResources
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM module_resources WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  - name: insertResources
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_resources (module_id, version, name, declared, kind, description)
+        SELECT $1, $2, r.name, r.declared, r.kind, r.description
+        FROM jsonb_to_recordset($3::jsonb) AS r(
+          name text, declared text, kind text, description text)
+        ON CONFLICT (module_id, version, name) DO UPDATE SET
+          declared = EXCLUDED.declared,
+          kind = EXCLUDED.kind,
+          description = EXCLUDED.description
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "json(steps.resourceRows.result)"
+  # `latest_version` moves WITH the rows it points at. Every search join is
+  # `m.latest_version = rk.version`, so advancing it before this version's rows
+  # exist would empty the module out of search for as long as the ingest takes —
+  # which, now that ingest is asynchronous, is unbounded.
+  - name: markLatest
+    if: !cel "inputs.version == inputs.latestVersion"
+    then:
+      - name: set
+        invoke: !ref exec
+        inputs:
+          sql: >-
+            UPDATE modules
+            SET latest_version = $2, last_tracked_at = NOW(), last_error = NULL
+            WHERE id = $1
+          bindings:
+            - !cel "inputs.moduleId"
+            - !cel "inputs.version"
+  # Closes the claim, inside the same transaction as the rows it certifies. A
+  # version is therefore never recorded as ingested by a transaction that then
+  # rolled back.
+  - name: complete
+    invoke: !ref Schema.completeVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      version: !cel "inputs.version"
+      digest: !cel "inputs.digest"
+      rev: !cel "variables.ingestRev"
+---
+# The vector half, outside the transaction: a different backend, so it cannot
+# join one, and a replay after the commit re-runs exactly these steps.
+kind: Run.Sequence
+metadata:
+  name: embedVersion
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      moduleId: { type: string }
+      version: { type: string }
+      docs: { type: array }
+steps:
+  # Read back the just-inserted rows for their ids — the vector id is the
+  # resource_kinds row id, the join key the RRF search fuses on.
+  - name: kindRows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT id, name, capability, description
+        FROM resource_kinds WHERE module_id = $1 AND version = $2 ORDER BY id
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  # Drop every existing vector for this module first: a re-ingest reassigns
+  # resource_kinds ids, so superseding by (module, version) is insufficient —
+  # purge all, then re-upsert the latest.
+  - name: purge
+    invoke: !ref vectorRemove
+    inputs:
+      metadataFilter:
+        module_id: !cel "inputs.moduleId"
+  - name: embed
+    if: !cel "steps.kindRows.result.rows.size() > 0"
+    then:
+      # Composed passage: kind name + capability + curated description, framed
+      # by the owning module's name + description. The curated line is the
+      # primary signal; schema-derived enrichment is a follow-up.
+      - name: passages
+        invoke: !ref embedPassage
+        inputs:
+          input: !cel >-
+            steps.kindRows.result.rows.map(r,
+              r.name + ' (' + r.capability + '). ' + r.description +
+              ' — from module ' + inputs.docs[0].metadata.name + ': ' +
+              inputs.docs[0].metadata.?description.orValue(''))
+      - name: upsert
+        invoke: !ref vectorUpsert
+        inputs:
+          items: !cel >-
+            enumerate(steps.kindRows.result.rows).map(e, {
+              'id': string(e.value.id),
+              'vector': steps.passages.result.embeddings[e.index],
+              'metadata': {'module_id': inputs.moduleId, 'version': inputs.version, 'name': e.value.name}
+            })
+---
+# One reconcile pass: every registered module's versions are enumerated, each
+# version's digest resolved, and the ones that are due are claimed and scheduled.
+#
+# None of this is inside a run. It is cheap, idempotent and re-runnable, and a
+# tick that dies part-way costs the next tick nothing.
+kind: Run.Sequence
+metadata:
+  name: scheduleDueVersions
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      modules: { type: integer }
+    required: [modules]
+steps:
+  - name: modules
+    invoke: !ref query
+    inputs:
+      sql: SELECT id, ref FROM modules ORDER BY id
+  - name: each
+    invoke: !ref scheduleEachModule
+    inputs:
+      modules: !cel "steps.modules.result.rows"
+outputs:
+  modules: !cel "steps.modules.result.rows.size()"
+---
+kind: Run.Iteration
+metadata:
+  name: scheduleEachModule
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      modules: { type: array }
+collection: !cel "inputs.modules"
+concurrency: 2
+steps:
+  # A module whose origin cannot be read must not abort the pass — the failure
+  # is recorded on its row (surfaced via /refs and the module tables), never
+  # swallowed.
+  - name: guard
+    try:
+      - name: schedule
+        invoke: !ref scheduleModule
+        inputs:
+          moduleId: !cel "item.id"
+          ref: !cel "item.ref"
+    catch:
+      - name: recordFailure
+        invoke: !ref exec
+        inputs:
+          sql: UPDATE modules SET last_error = $2, last_tracked_at = NOW() WHERE id = $1
+          bindings:
+            - !cel "item.id"
+            - !cel "error.code + ': ' + error.message"
+---
+kind: Run.Sequence
+metadata:
+  name: scheduleModule
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      moduleId: { type: string }
+      ref: { type: string }
+steps:
+  - name: versions
+    invoke: !ref Origin.moduleVersions
+    inputs:
+      ref: !cel "inputs.ref"
+  - name: gate
+    if: !cel "!steps.versions.result.ok"
+    then:
+      - name: fail
+        throw:
+          code: TRACK_VERSIONS_FAILED
+          message: !cel >-
+            'telo module versions ' + inputs.ref + ' failed: ' + steps.versions.result.error
+  # The enumeration succeeded, so whatever failure the row carried is stale.
+  # `latest_version` is NOT touched here: it moves with the rows it points at,
+  # inside the ingest transaction.
+  - name: touch
+    invoke: !ref exec
+    inputs:
+      sql: UPDATE modules SET last_tracked_at = NOW(), last_error = NULL WHERE id = $1
+      bindings:
+        - !cel "inputs.moduleId"
+  - name: each
+    invoke: !ref scheduleEachVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      ref: !cel "inputs.ref"
+      versions: !cel "steps.versions.result.versions"
+      latestVersion: !cel "steps.versions.result.latest"
+---
+kind: Run.Iteration
+metadata:
+  name: scheduleEachVersion
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      moduleId: { type: string }
+      ref: { type: string }
+      versions: { type: array }
+      latestVersion: { type: string }
+collection: !cel "inputs.versions"
+steps:
+  - name: one
+    invoke: !ref claimAndSchedule
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      ref: !cel "inputs.ref"
+      version: !cel "string(item)"
+      latestVersion: !cel "inputs.latestVersion"
+---
+# Resolve the version's digest, ask the table whether it is due, and schedule the
+# attempt the table minted.
+#
+# The digest read is the cheap half of the old pass and stays here: a steady
+# state is digest-compare-only, and nothing durable is created for a version that
+# has not moved.
+kind: Run.Sequence
+metadata:
+  name: claimAndSchedule
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      moduleId: { type: string }
+      ref: { type: string }
+      version: { type: string }
+      latestVersion: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      claimed: { type: boolean }
+      runId: { type: string }
+    required: [claimed, runId]
+steps:
+  - name: digest
+    invoke: !ref Origin.moduleDigest
+    inputs:
+      ref: !cel "inputs.ref"
+      version: !cel "inputs.version"
+  - name: gate
+    if: !cel "!steps.digest.result.ok"
+    then:
+      - name: fail
+        throw:
+          code: TRACK_DIGEST_FAILED
+          message: !cel >-
+            'telo module digest ' + inputs.ref + '@' + inputs.version + ' failed: '
+              + steps.digest.result.error
+  - name: claim
+    invoke: !ref Schema.claimVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      version: !cel "inputs.version"
+      digest: !cel "steps.digest.result.digest"
+      rev: !cel "variables.ingestRev"
+  - name: due
+    if: !cel "steps.claim.result.claimed"
+    then:
+      - name: schedule
+        invoke: !ref scheduleIngest
+        inputs:
+          moduleId: !cel "inputs.moduleId"
+          ref: !cel "inputs.ref"
+          version: !cel "inputs.version"
+          digest: !cel "steps.digest.result.digest"
+          latestVersion: !cel "inputs.latestVersion"
+          attempt: !cel "steps.claim.result.attempt"
+outputs:
+  claimed: !cel "steps.claim.result.claimed"
+  runId: !cel "'schedule' in steps ? steps.schedule.result.runId : ''"

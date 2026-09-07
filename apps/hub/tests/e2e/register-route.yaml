@@ -5,15 +5,22 @@ metadata:
   description: |
     End-to-end tests for the hub's open self-service registration verb
     (POST /register), run against a live hub at http://localhost:8040. Covers
-    the validate-and-index success path (a reachable Telo module returns 200 and
-    becomes registered) and the inline-error path (an unresolvable ref returns
-    400 with a reason, never tracked).
+    the validate-and-schedule success path (a reachable Telo module returns 202
+    and its status reaches `ready`), the inline-error path (an unresolvable ref
+    returns 400 with a reason, never tracked), and the two rejection gates.
+
+    202, not 200: the ref is validated and recorded synchronously while the
+    indexing itself is a durable run, so "accepted" is what the response can
+    honestly claim. `GET /register/status?ref=` is what says when the module is
+    actually searchable.
 imports:
+  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
   Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
   Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
 targets:
   - !ref Register_ValidRefSucceeds
+  - !ref Register_StatusReachesReady
   - !ref Register_InvalidRefReturns400
   - !ref Register_LocalPathRejected
   - !ref Register_ApplicationRejected
@@ -30,13 +37,11 @@ steps:
       metadata: { name: PostValidRegister }
       url: http://localhost:8040/register
       method: POST
-      # /register does its work INLINE so a 200 means "actually searchable"
-      # rather than "queued" — three sequential origin round trips, each a
-      # `telo` subprocess doing an anonymous OCI token handshake (`module
-      # versions`, `module manifest`, then `module digest` in the track). The
-      # client's 10s default is marginal against that on a loaded CI runner, so
-      # the request that exercises the full path states its own budget. This is
-      # the verb behaving as designed, not a slow endpoint.
+      # Still network-bound even though indexing is asynchronous: the ref is
+      # VALIDATED synchronously, which is two origin round trips (`module
+      # versions`, `module manifest`), each a `telo` subprocess doing an
+      # anonymous OCI token handshake. The client's 10s default is marginal
+      # against that on a loaded CI runner.
       timeout: 30000
       body:
         ref: oci://ghcr.io/telorun/console
@@ -50,14 +55,77 @@ steps:
       schema:
         type: object
         properties:
-          status: { const: 200 }
+          status: { const: 202 }
           body:
             type: object
             properties:
               registered: { const: true }
               ref: { const: oci://ghcr.io/telorun/console }
-            required: [registered, ref]
+              status: { const: pending }
+            required: [registered, ref, status]
         required: [status, body]
+---
+# The other half of the 202 contract: what was accepted actually becomes
+# searchable. Polls `/register/status?ref=` until the module reports `ready`,
+# which is what the SPA does after a submission.
+#
+# The poll and the ASSERTION are separate steps, and that separation is the
+# test: `Run.Loop` exhausting `maxIterations` merely stops, so an assertion
+# inside the body behind `if ready` never runs when the pipeline never becomes
+# ready — and a test whose only assertion did not run is a green test. The loop
+# returns the last body it saw and the sequence asserts on that, so exhaustion
+# fails on the status it actually observed.
+kind: Run.Sequence
+metadata: { name: Register_StatusReachesReady }
+steps:
+  - name: poll
+    invoke: !ref PollRegisterStatus
+  - name: assert
+    inputs:
+      status: !cel "steps.poll.result.status"
+      body: !cel "steps.poll.result.body"
+    invoke:
+      kind: Assert.Schema
+      metadata: { name: AssertRegisterStatusReady }
+      schema:
+        type: object
+        properties:
+          status: { const: 200 }
+          body:
+            type: object
+            properties:
+              ref: { const: oci://ghcr.io/telorun/console }
+              status: { const: ready }
+              # At least the latest version is indexed, which is what `ready`
+              # claims.
+              versionsIngested: { type: integer, minimum: 1 }
+              latestVersion: { type: string, minLength: 1 }
+            required: [ref, status, versionsIngested, latestVersion]
+        required: [status, body]
+---
+# Bounded: a cold ingest is a manifest read, a bucket put and an embedding call,
+# none of which the request path waits for any more. `outputs:` carries the LAST
+# response out of the loop so the caller can assert on it whether the loop
+# finished early or ran out of budget.
+kind: Run.Loop
+metadata: { name: PollRegisterStatus }
+maxIterations: 30
+condition: !cel "iteration == 0 || previous.status.result.body.status != 'ready'"
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 2s
+  - name: status
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: GetRegisterStatus }
+      url: http://localhost:8040/register/status?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Fconsole
+      method: GET
+      timeout: 10000
+outputs:
+  status: !cel "steps.status.result.status"
+  body: !cel "steps.status.result.body"
 ---
 # An unresolvable ref fails validation → 400 with an inline reason, never
 # inserted for tracking.

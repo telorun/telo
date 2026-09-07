@@ -15,6 +15,7 @@ import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } fro
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { isInjectedDeclaration } from "./resource-input.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -28,20 +29,31 @@ const SOURCE = "telo-analyzer";
  *
  * A value satisfies the slot when it transitively extends the target kind, or —
  * for a CONCRETE target — IS that kind; `getByExtends` is the same transitive
- * subtype index for both, and an abstract is satisfied only by an implementer,
- * never by the abstract itself (which is non-instantiable). Accepts a constraint
- * that resolves to nothing, and an abstract with no loaded implementations:
- * partial context, where a rejection would be a guess.
+ * subtype index for both. Accepts a constraint that resolves to nothing, and an
+ * abstract with no loaded implementations: partial context, where a rejection
+ * would be a guess.
+ *
+ * An abstract is satisfied only by an implementer, never by the abstract itself,
+ * because a resource declared `kind: <some abstract>` is refused at `create()`
+ * and reported as `ABSTRACT_KIND_INSTANTIATED` at its declaration — so accepting
+ * it here would leave the reference sites silent about a manifest that cannot
+ * run. `isDeclaration` is the ONE exception and it is not an instance: a
+ * library's `resources:` entry is constrained by kind alone, so its kind-only
+ * stand-in routinely IS an abstract (`connection: {kind: Sql.Connection}`), and
+ * every use of that name inside the library is a reference to it.
  */
 export function kindSatisfies(
   resolved: string,
   targetKind: string,
   registry: DefinitionRegistry,
+  /** The referent is a kind-only stand-in for a `resources:` entry rather than a
+   *  resource anything instantiates, so identity satisfies an abstract slot. */
+  isDeclaration = false,
 ): boolean {
   const canonical = registry.resolveRef(targetKind) ?? targetKind;
   const targetDef = registry.resolve(canonical);
   if (!targetDef) return true;
-  if (targetDef.kind !== "Telo.Abstract" && resolved === canonical) return true;
+  if ((targetDef.kind !== "Telo.Abstract" || isDeclaration) && resolved === canonical) return true;
   const subtypes = registry.getByExtends(canonical);
   if (subtypes.some((d) => `${d.metadata.module}.${d.metadata.name}` === resolved)) return true;
   // Leniency is about the CANDIDATE, not about the population, and it is the
@@ -71,6 +83,8 @@ function checkKind(
   entry: RefFieldEntry,
   registry: DefinitionRegistry,
   aliases: AliasResolver,
+  /** See {@link kindSatisfies}: the referent is a `resources:` stand-in. */
+  isDeclaration = false,
 ): string[] {
   const resolved = aliases.resolveKind(kind) ?? kind;
   // A qualified kind whose prefix names no import in this scope is a bad NAME
@@ -93,7 +107,7 @@ function checkKind(
     if (!targetKind) return [];
     const targetDef = registry.resolve(targetKind);
     if (!targetDef) return [];
-    if (!unknownAlias && kindSatisfies(resolved, targetKind, registry)) return [];
+    if (!unknownAlias && kindSatisfies(resolved, targetKind, registry, isDeclaration)) return [];
     const subtypes = registry.getByExtends(targetKind);
     const subtypeKinds = new Set(subtypes.map((d) => `${d.metadata.module}.${d.metadata.name}`));
     if (targetDef.kind === "Telo.Abstract") {
@@ -336,7 +350,13 @@ export function validateReferences(
             });
             return;
           }
-          const kindErrors = checkKind(target.kind as string, entry, registry, aliases);
+          const kindErrors = checkKind(
+            target.kind as string,
+            entry,
+            registry,
+            aliases,
+            isInjectedDeclaration(target),
+          );
           if (kindErrors.length > 0) {
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
@@ -386,7 +406,18 @@ export function validateReferences(
         }
 
         // 2. Kind check
-        const kindErrors = checkKind(refVal.kind, entry, registry, aliases);
+        const objectTarget =
+          typeof refVal.name === "string"
+            ? (visibleScopeManifests.find((m) => m.metadata?.name === refVal.name) ??
+              byName.get(refVal.name))
+            : undefined;
+        const kindErrors = checkKind(
+          refVal.kind,
+          entry,
+          registry,
+          aliases,
+          isInjectedDeclaration(objectTarget),
+        );
         if (kindErrors.length > 0) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,

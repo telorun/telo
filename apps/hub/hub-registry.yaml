@@ -1,0 +1,268 @@
+# Open, unauthenticated self-service registration.
+#
+# The whole sanity check is SYNCHRONOUS — the ref is validated, the origin is
+# read, and the module row is inserted before anything is answered — while the
+# indexing that follows is not: the caller gets a claim and a `202`, and the
+# durable run does the work. That split is what the request path is for. It never
+# ingests, so an anonymous request can no longer cost two origin reads, a bucket
+# put, six statements and an embedding call.
+kind: Telo.Library
+metadata:
+  name: HubRegistry
+  description: >-
+    Validates a submitted module ref, records it, and schedules its first ingest:
+    the anti-abuse gate, the shape gate that keeps a local path off the CLI, and
+    the confirmation that the ref really serves an importable Telo library.
+requires:
+  # `resources:` inputs on a library.
+  telo: ">=0.83.0"
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  Postgres: oci://ghcr.io/telorun/postgres@0.4.0#sha256-urAQgZtDIlbm4PFi0OlBgYPTU0fSdFbw3l3sHVdh-MQ
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.4#sha256-_E2AqSEEsTotJXiSmk9GBqlnlwW8JRXNJXZWbx-olxY
+  Durable: oci://ghcr.io/telorun/durable-local@0.3.0#sha256-zMx3J2RRD_eb5c8BRWE9CaWZ1_XsiiB_6SaF5o7csNg
+  Schema:
+    source: ./hub-schema.yaml
+    resources:
+      connection: !ref connection
+  Origin:
+    source: ./hub-origin.yaml
+    resources:
+      shellHost: !ref shellHost
+    variables:
+      teloBin: !cel "variables.teloBin"
+resources:
+  connection:
+    kind: Postgres.Connection
+    description: The database the module row is written to.
+  rateLimit:
+    kind: RateLimit.Guard
+    description: Per-caller budget for this open endpoint.
+  shellHost:
+    kind: Shell.LocalHost
+    description: Forwarded to the origin reader — where the telo CLI runs.
+  scheduleIngest:
+    kind: Durable.Schedule
+    description: >-
+      Schedules the first ingest of the newly registered module's latest version.
+      Taken as an instance rather than declared here, so the run id is derived in
+      one place — two derivations of one identity eventually disagree about which
+      attempt a run is.
+variables:
+  teloBin:
+    type: string
+    default: telo
+  ingestRev:
+    type: integer
+    default: 1
+exports:
+  resources:
+    - registerModule
+    - registerAndValidate
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref connection
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref connection
+---
+kind: Console.WriteLine
+metadata:
+  name: logLine
+---
+# The row insert on its own — idempotent, and the only thing the curated seed
+# list needs.
+kind: Run.Sequence
+metadata:
+  name: registerModule
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+steps:
+  - name: upsert
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (ref, transport) VALUES ($1, $2)
+        ON CONFLICT (ref) DO NOTHING
+      bindings:
+        - !cel "inputs.ref"
+        # Transport is part of the record's identity. `url` is a single
+        # manifest at a fixed https location (no version list of its own; see
+        # the README).
+        - !cel "inputs.ref.startsWith('oci://') ? 'oci' : 'url'"
+---
+# Validate a submitted ref, record it, and schedule its first ingest.
+#
+# A validation failure resolves with `accepted: false` and a reason, which the
+# route turns into a 400. Everything past validation is recorded rather than
+# awaited: the row exists, the latest version is claimed, and the run is
+# scheduled — so even a scheduling failure leaves a registered module the next
+# reconcile pass picks up.
+kind: Run.Sequence
+metadata:
+  name: registerAndValidate
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      clientIp: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      accepted: { type: boolean }
+      rateLimited: { type: boolean }
+      retryAfter: { type: integer }
+      error: { type: string }
+    required: [ref, accepted, rateLimited, retryAfter, error]
+steps:
+  # Per-IP budget, checked before anything else — this endpoint is open and does
+  # real work, so it must not be free to hammer. Non-throwing: the verdict maps
+  # to a 429. An empty key fails closed (denied) rather than sharing one bucket.
+  - name: limit
+    invoke: !ref rateLimit
+    inputs:
+      key: !cel "inputs.clientIp"
+  # Shape gate — the FIRST thing that touches the submitted ref, before any
+  # subprocess. Only a remote module ref is accepted: an optional `oci://` or
+  # `https://` scheme, then host/path segments of safe characters, with at least
+  # one `/`. Plaintext `http://` is deliberately absent — the hub serves cached
+  # third-party manifests onward, so it never ingests over an unauthenticated
+  # channel. The character classes exclude `@` inside segments, so a userinfo
+  # authority (`https://evil.com@internal/…`) cannot match either.
+  #
+  # This is a security boundary, not a convenience check. The CLI's ref
+  # resolution treats a path-like or cwd-resolvable ref as a LOCAL manifest and
+  # reads it straight off disk — short-circuiting before any egress guard — so
+  # an ungated `/etc/passwd` would turn this open endpoint into a filesystem
+  # existence oracle. The pattern also rejects a leading `-`, so a submitted
+  # `--help` can't be read as a CLI flag (argument injection) instead of a
+  # positional. The transport-egress guard only covers refs that actually reach
+  # the network; this gate is what keeps local refs from getting that far.
+  - name: accepted
+    if: !cel "steps.limit.result.allowed && inputs.ref.matches('^(oci://|https://)[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)+(@[A-Za-z0-9][A-Za-z0-9._+-]*)?$')"
+    then:
+      # Enumerating versions proves the transport resolves the ref to a module
+      # repo, so the submitter supplies no version.
+      - name: versions
+        invoke: !ref Origin.moduleVersions
+        inputs:
+          ref: !cel "inputs.ref"
+      # Reading the latest version's telo.yaml confirms the ref actually serves
+      # a Telo manifest (a non-module OCI artifact fails here).
+      - name: hasVersions
+        if: !cel "steps.versions.result.ok && steps.versions.result.latest != ''"
+        then:
+          - name: manifest
+            invoke: !ref Origin.moduleManifest
+            inputs:
+              ref: !cel "inputs.ref"
+              version: !cel "steps.versions.result.latest"
+      # Only a Telo.Library is registerable. An Application is a runnable root
+      # that cannot be imported at all, so it defines no importable kinds —
+      # registering one would create a module row that indexes zero resource
+      # kinds and never surfaces in search. Reject it up front with a reason
+      # instead of silently storing an empty record.
+      - name: register
+        if: !cel >-
+          'manifest' in steps && steps.manifest.result.ok
+            && steps.manifest.result.docs[0].kind == 'Telo.Library'
+        then:
+          - name: insert
+            invoke: !ref registerModule
+            inputs:
+              ref: !cel "inputs.ref"
+          # Resolve the row id (just-inserted or pre-existing on
+          # re-registration) — the join key everything else is written under.
+          - name: lookup
+            invoke: !ref query
+            inputs:
+              sql: SELECT id FROM modules WHERE ref = $1
+              bindings:
+                - !cel "inputs.ref"
+          # Only the LATEST version is claimed here: it is the one that gets
+          # embedded and therefore the one that makes the module searchable. The
+          # reconcile pass backfills the rest.
+          #
+          # Scheduling failures are logged and swallowed DELIBERATELY, and only
+          # here: the module row is already written, so the reconcile pass will
+          # claim this version on its next tick. Rethrowing would answer a
+          # successful registration with a 500.
+          - name: schedule
+            try:
+              - name: digest
+                invoke: !ref Origin.moduleDigest
+                inputs:
+                  ref: !cel "inputs.ref"
+                  version: !cel "steps.versions.result.latest"
+              - name: claim
+                if: !cel "steps.digest.result.ok"
+                then:
+                  - name: take
+                    invoke: !ref Schema.claimVersion
+                    inputs:
+                      moduleId: !cel "steps.lookup.result.rows[0].id"
+                      version: !cel "steps.versions.result.latest"
+                      digest: !cel "steps.digest.result.digest"
+                      rev: !cel "variables.ingestRev"
+                  - name: due
+                    if: !cel "steps.take.result.claimed"
+                    then:
+                      - name: start
+                        invoke: !ref scheduleIngest
+                        inputs:
+                          moduleId: !cel "steps.lookup.result.rows[0].id"
+                          ref: !cel "inputs.ref"
+                          version: !cel "steps.versions.result.latest"
+                          digest: !cel "steps.digest.result.digest"
+                          latestVersion: !cel "steps.versions.result.latest"
+                          attempt: !cel "steps.take.result.attempt"
+            catch:
+              - name: log
+                invoke: !ref logLine
+                inputs:
+                  output: !cel >-
+                    '{yellow /register could not schedule ingest} ' + inputs.ref + ' — '
+                      + error.code + ': ' + error.message
+outputs:
+  ref: !cel "inputs.ref"
+  # Reaching `insert` means the ref validated and the module is recorded. Whether
+  # its content is searchable yet is a separate question, answered by the status
+  # route rather than by this response.
+  accepted: !cel "'insert' in steps"
+  rateLimited: !cel "!steps.limit.result.allowed"
+  retryAfter: !cel "steps.limit.result.retryAfter"
+  # Each branch is reachable only once the step it reads has run — CEL ternaries
+  # short-circuit, so an absent step is never dereferenced. `versions` absent
+  # means the rate limit or the shape gate stopped the call before any
+  # subprocess ran.
+  error: !cel >-
+    !steps.limit.result.allowed
+      ? 'too many registrations from this address — retry in ' + string(steps.limit.result.retryAfter) + 's'
+      : (!('versions' in steps)
+          ? 'invalid module ref — expected oci://<host>/<path> or https://<host>/<path>'
+          : (!steps.versions.result.ok
+              ? 'cannot resolve module ref: ' + steps.versions.result.error
+              : (!('manifest' in steps)
+                  ? 'no published versions for ' + inputs.ref
+                  : (!steps.manifest.result.ok
+                      ? 'not a readable Telo module: ' + steps.manifest.result.error
+                      : (steps.manifest.result.docs[0].kind != 'Telo.Library'
+                          ? 'only a Telo.Library can be registered — ' + inputs.ref + ' is a '
+                              + steps.manifest.result.docs[0].kind + ', which cannot be imported'
+                          : '')))))

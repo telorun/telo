@@ -1,7 +1,7 @@
 import {
   Loader,
   StaticAnalyzer,
-  collectZoneModuleDocuments,
+  collectModuleDocuments,
   diagnosticFix,
   flattenForAnalyzer,
   remapMigratedPaths,
@@ -9,7 +9,7 @@ import {
   type DiagnosticData,
   type LoadedGraph,
   type ManifestSource,
-  type ZoneModuleDocuments,
+  type ModuleDocuments,
 } from "@telorun/analyzer";
 import {
   Stream,
@@ -235,7 +235,7 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     let parseDiagnostics: AnalysisDiagnostic[] = [];
     let versionDiagnostics: AnalysisDiagnostic[] = [];
     let migrationDiagnostics: AnalysisDiagnostic[] = [];
-    let moduleDocuments: ZoneModuleDocuments[] = [];
+    let moduleDocuments: ModuleDocuments[] = [];
     // Carried out of the try for the same reason the diagnostics are: analysis
     // runs over the MIGRATED tree while every path a caller resolves points at
     // the raw file, so the driver's provenance record has to be in hand below.
@@ -257,7 +257,7 @@ export class KernelRuntimeSeam implements RuntimeSeam {
       manifests = flattenForAnalyzer(graph);
       // The zone stage derives each imported library's export contracts from
       // its own full documents, which the flattened list drops.
-      moduleDocuments = collectZoneModuleDocuments(graph);
+      moduleDocuments = collectModuleDocuments(graph);
     } catch (err) {
       // A graph that would not load is an answer, not a failure of the call —
       // "this manifest does not load, and here is the reason" is precisely what

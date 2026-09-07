@@ -1,0 +1,244 @@
+# Reading a module from wherever it is published.
+#
+# Every transport-specific read goes through the generic `telo module …` CLI
+# verbs, so nothing here — and nothing downstream — speaks OCI or HTTP directly.
+# This library owns the whole of that boundary: how a ref pins to a version, what
+# counts as a concrete version, and how a non-zero exit becomes a value the
+# caller decides about rather than an exception it has to catch.
+#
+# `lifecycle: shared` because ingest and registration both read origins and there
+# is one CLI and one shell host behind them. Isolated, each importer would get
+# its own, and the two would drift the moment one gained a timeout the other
+# lacked.
+#
+# Failures are RETURNED, not thrown: registration answers a bad ref with a 400
+# carrying the reason, while ingest turns the same failure into a recorded
+# attempt. Throwing here would force one of the two to catch and re-derive what
+# the other reads directly.
+kind: Telo.Library
+metadata:
+  name: HubOrigin
+  description: >-
+    Reads a published Telo module from its own host: which versions exist, what a
+    version's content digest is, and the version's manifest with the metadata the
+    CLI derives from it.
+lifecycle: shared
+requires:
+  # `resources:` inputs and `lifecycle:` on a library.
+  telo: ">=0.83.0"
+imports:
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  Yaml: oci://ghcr.io/telorun/yaml@0.10.3#sha256-xgWF987hJC2tA6q4SP3BUhSzZz2eSbVmVUK4DVOGupk
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+resources:
+  shellHost:
+    kind: Shell.LocalHost
+    description: Where the telo CLI runs.
+variables:
+  # Path of the telo CLI these reads shell out to (`telo` on PATH by default).
+  teloBin:
+    type: string
+    default: telo
+exports:
+  resources:
+    - pinnedRef
+    - moduleVersions
+    - moduleDigest
+    - moduleManifest
+---
+kind: Shell.Command
+metadata:
+  name: teloCli
+host: !ref shellHost
+---
+kind: Yaml.Parse
+metadata:
+  name: parseYaml
+---
+# How a ref pins to one version, in one place. A direct `https://` ref addresses
+# a single file at a fixed location and takes NO `@version` suffix — appending
+# one produces a 404. An OCI ref pins with `@<version>`.
+kind: Run.Value
+metadata:
+  name: pinnedRef
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      ref: { type: string }
+      version: { type: string }
+    required: [ref, version]
+value: !cel "inputs.ref.startsWith('https://') ? inputs.ref : inputs.ref + '@' + inputs.version"
+---
+# The versions a ref actually resolves to, newest-first, with the `latest` tag
+# dropped — it is an alias, not a version, and ingesting it would store the same
+# content twice under two names.
+kind: Run.Sequence
+metadata:
+  name: moduleVersions
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      ref: { type: string }
+    required: [ref]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      ok: { type: boolean }
+      error: { type: string }
+      versions: { type: array, items: { type: string } }
+      # '' when the ref resolves but publishes no concrete version.
+      latest: { type: string }
+    required: [ok, error, versions, latest]
+steps:
+  - name: run
+    invoke: !ref teloCli
+    inputs:
+      args:
+        - !cel "variables.teloBin"
+        - module
+        - versions
+        - !cel "inputs.ref"
+        - --json
+      timeoutMs: 120000
+  - name: parsed
+    if: !cel "steps.run.result.exitCode == 0"
+    then:
+      - name: docs
+        invoke: !ref parseYaml
+        inputs:
+          text: !cel "steps.run.result.stdout"
+outputs:
+  ok: !cel "steps.run.result.exitCode == 0"
+  error: !cel "steps.run.result.exitCode == 0 ? '' : steps.run.result.stderr"
+  versions: !cel >-
+    'docs' in steps
+      ? steps.docs.result.docs[0].filter(v, v != 'latest').map(v, string(v))
+      : []
+  latest: !cel >-
+    'docs' in steps && size(steps.docs.result.docs[0].filter(v, v != 'latest')) > 0
+      ? string(steps.docs.result.docs[0].filter(v, v != 'latest')[0])
+      : ''
+---
+# The transport-native content digest of one version. Opaque by design: it exists
+# to detect a re-pushed tag, never to be compared across transports.
+kind: Run.Sequence
+metadata:
+  name: moduleDigest
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      ref: { type: string }
+      version: { type: string }
+    required: [ref, version]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      ok: { type: boolean }
+      error: { type: string }
+      digest: { type: string }
+    required: [ok, error, digest]
+steps:
+  - name: pinned
+    invoke: !ref pinnedRef
+    inputs:
+      ref: !cel "inputs.ref"
+      version: !cel "inputs.version"
+  - name: run
+    invoke: !ref teloCli
+    inputs:
+      args:
+        - !cel "variables.teloBin"
+        - module
+        - digest
+        - !cel "steps.pinned.result"
+        - --json
+      timeoutMs: 60000
+  - name: parsed
+    if: !cel "steps.run.result.exitCode == 0"
+    then:
+      - name: docs
+        invoke: !ref parseYaml
+        inputs:
+          text: !cel "steps.run.result.stdout"
+outputs:
+  ok: !cel "steps.run.result.exitCode == 0"
+  error: !cel "steps.run.result.exitCode == 0 ? '' : steps.run.result.stderr"
+  digest: !cel "'docs' in steps ? steps.docs.result.docs[0].digest : ''"
+---
+# One version's manifest, plus everything the CLI derives from it.
+#
+# `payload` is the verb's own JSON object verbatim — cache key, integrity, the
+# runtime block — and `docs` the parsed manifest documents. Passed through rather
+# than projected, because what a consumer wants out of it is the consumer's
+# business: this library's job ends at "the origin answered, here is what it
+# said".
+kind: Run.Sequence
+metadata:
+  name: moduleManifest
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      ref: { type: string }
+      version: { type: string }
+    required: [ref, version]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      ok: { type: boolean }
+      error: { type: string }
+      payload: { type: object, additionalProperties: true }
+      docs: { type: array }
+    required: [ok, error, payload, docs]
+steps:
+  - name: pinned
+    invoke: !ref pinnedRef
+    inputs:
+      ref: !cel "inputs.ref"
+      version: !cel "inputs.version"
+  - name: run
+    invoke: !ref teloCli
+    inputs:
+      args:
+        - !cel "variables.teloBin"
+        - module
+        - manifest
+        - !cel "steps.pinned.result"
+        - --json
+      timeoutMs: 120000
+  - name: parsed
+    if: !cel "steps.run.result.exitCode == 0"
+    then:
+      - name: payload
+        invoke: !ref parseYaml
+        inputs:
+          text: !cel "steps.run.result.stdout"
+      - name: docs
+        invoke: !ref parseYaml
+        inputs:
+          text: !cel "steps.payload.result.docs[0].manifest"
+outputs:
+  ok: !cel "steps.run.result.exitCode == 0"
+  error: !cel "steps.run.result.exitCode == 0 ? '' : steps.run.result.stderr"
+  payload: !cel "'payload' in steps ? steps.payload.result.docs[0] : {}"
+  docs: !cel "'docs' in steps ? steps.docs.result.docs : []"

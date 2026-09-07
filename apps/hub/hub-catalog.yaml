@@ -1,0 +1,389 @@
+# The keyed read side: "tell me about this module", as opposed to search's
+# "which module should I use".
+#
+# Everything here is addressed by ref rather than ranked, serves a specific
+# version rather than only the latest, and carries the full per-kind detail a
+# search card has no room for — which is why it is its own library rather than a
+# projection of the search queries.
+kind: Telo.Library
+metadata:
+  name: HubCatalog
+  description: >-
+    Keyed reads over the discovery index: one module's metadata, kinds and
+    versions, the cached manifest text for a version, the kinds implementing a
+    contract, ref autocomplete, and how far a registration has got.
+requires:
+  # 0.83.0: `resources:` inputs on a library.
+  # 0.87.0: a `resources:` entry constrained by an ABSTRACT kind satisfies the
+  # slots that require it. An older runtime reports `!ref connection` as a kind
+  # mismatch against `Sql.Connection` itself.
+  telo: ">=0.87.0"
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.4#sha256-Z1My-TDPdE13s63NSi5rT0Qg0CZf-7tAXbJBRcBGCOQ
+resources:
+  connection:
+    kind: Sql.Connection
+    description: The database holding the indexed rows.
+  bucketGet:
+    kind: S3.Get
+    description: Reads a cached `telo.yaml` back out of the manifest bucket.
+exports:
+  resources:
+    - moduleManifestText
+    - moduleDetail
+    - moduleVersionList
+    - implementations
+    - refSuggestions
+    - registrationStatus
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref connection
+---
+# The cached telo.yaml for one version. A missing row falls back to a sentinel
+# key, so the bucket's own 404 is what surfaces — one not-found path rather than
+# two that can disagree.
+kind: Run.Sequence
+metadata:
+  name: moduleManifestText
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      version: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [text]
+steps:
+  - name: resolve
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT mv.manifest_key FROM module_versions mv
+        JOIN modules m ON m.id = mv.module_id
+        WHERE m.ref = $1
+          AND (($2 = 'latest' AND mv.version = m.latest_version) OR mv.version = $2)
+        LIMIT 1
+      bindings:
+        - !cel "inputs.ref"
+        - !cel "inputs.version"
+  - name: fetch
+    invoke: !ref bucketGet
+    inputs:
+      key: !cel "steps.resolve.result.rows.size() > 0 ? steps.resolve.result.rows[0].manifest_key : '__not_found__'"
+  - name: decode
+    invoke: { kind: PlainText.Decoder }
+    inputs:
+      input: !cel "steps.fetch.result.output"
+outputs:
+  text: !cel "steps.decode.result.text"
+---
+# Everything a module page renders, in one call. Without it a page needs three
+# round trips (search by ref, versions, implementations) and still cannot address
+# a non-latest version.
+kind: Run.Sequence
+metadata:
+  name: moduleDetail
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      # '' means the latest tracked version.
+      version: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      found: { type: boolean }
+      module: { type: object, additionalProperties: true }
+      kinds: { type: array }
+      exportedResources: { type: array }
+      versions: { type: array }
+    required: [found, module, kinds, exportedResources, versions]
+steps:
+  - name: row
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT m.ref, mv.version, m.latest_version AS "latestVersion",
+               mv.module_name AS name, mv.description, mv.repository, mv.license,
+               mv.homepage, module_publisher(m.ref, m.transport) AS publisher, m.transport,
+               COALESCE(mv.integrity, '') AS integrity,
+               mv.deprecated_reason, mv.replaced_by,
+               COALESCE(mv.runtimes, '{}') AS runtimes, mv.runtimes_full,
+               mv.languages, mv.portable,
+               (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
+                FROM unnest(mv.categories, mv.category_labels) AS t(s, l)) AS categories,
+               (SELECT COALESCE(json_agg(json_build_object(
+                         'kind', rk.name, 'capability', rk.capability,
+                         'abstract', rk.abstract, 'description', rk.description,
+                         'extends', json_build_object('kind', rk.extends_kind, 'ref', rk.extends_ref),
+                         'runtime', json_build_object('runtimes', rk.runtimes,
+                                                      'languages', rk.languages,
+                                                      'portable', rk.portable),
+                         'deprecated', json_build_object(
+                           'reason', rk.deprecated_reason,
+                           'replacedBy', json_build_object('kind', rk.replaced_by_kind,
+                                                           'ref', rk.replaced_by_ref)))
+                       ORDER BY rk.name), '[]'::json)
+                FROM resource_kinds rk
+                WHERE rk.module_id = mv.module_id AND rk.version = mv.version AND rk.exported) AS kinds,
+               (SELECT COALESCE(json_agg(json_build_object(
+                         'name', mr.name, 'kind', mr.kind,
+                         'description', mr.description, 'declared', mr.declared)
+                       ORDER BY mr.name), '[]'::json)
+                FROM module_resources mr
+                WHERE mr.module_id = mv.module_id AND mr.version = mv.version) AS "exportedResources",
+               /* Newest-first, the same ordering `/module/versions` and the CLI
+                  verb use, so a version picker built off either agrees. */
+               (SELECT COALESCE(json_agg(v.version ORDER BY
+                         version_sort_key(v.version) DESC NULLS LAST, v.version ASC), '[]'::json)
+                FROM module_versions v WHERE v.module_id = mv.module_id) AS versions
+        FROM modules m
+        JOIN module_versions mv
+          ON mv.module_id = m.id AND mv.version = COALESCE(NULLIF($2, ''), m.latest_version)
+        WHERE m.ref = $1
+      bindings:
+        - !cel "inputs.ref"
+        - !cel "inputs.version"
+outputs:
+  found: !cel "steps.row.result.rows.size() > 0"
+  # Same nesting as a `/search/*` hit's `module`, so a page reached from a search
+  # result and one reached by URL render off one shape.
+  module: !cel >-
+    steps.row.result.rows.size() == 0 ? {} :
+    {'ref': steps.row.result.rows[0].ref, 'version': steps.row.result.rows[0].version,
+     'latestVersion': steps.row.result.rows[0].latestVersion, 'name': steps.row.result.rows[0].name,
+     'transport': steps.row.result.rows[0].transport, 'integrity': steps.row.result.rows[0].integrity,
+     'description': steps.row.result.rows[0].description, 'repository': steps.row.result.rows[0].repository,
+     'license': steps.row.result.rows[0].license, 'homepage': steps.row.result.rows[0].homepage,
+     'publisher': steps.row.result.rows[0].publisher, 'categories': steps.row.result.rows[0].categories,
+     'deprecated': {'reason': steps.row.result.rows[0].deprecated_reason,
+                    'replacedBy': steps.row.result.rows[0].replaced_by},
+     'runtime': {'runtimes': steps.row.result.rows[0].runtimes, 'full': steps.row.result.rows[0].runtimes_full,
+                 'languages': steps.row.result.rows[0].languages, 'portable': steps.row.result.rows[0].portable}}
+  kinds: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].kinds : []"
+  exportedResources: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].exportedResources : []"
+  versions: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].versions : []"
+---
+# Newest-first, matching the `telo module versions` CLI verb this mirrors (one
+# contract, three front-ends): valid dotted-numeric versions sort by numeric
+# precedence descending, then any non-numeric tags (digests, `latest`) fall to
+# the end in lexical order. Consumers (IDE version completion) rely on index 0
+# being the latest version.
+kind: Run.Sequence
+metadata:
+  name: moduleVersionList
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      found: { type: boolean }
+      versions: { type: array }
+    required: [found, versions]
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT mv.version, COALESCE(mv.integrity, '') AS integrity
+        FROM module_versions mv
+        JOIN modules m ON m.id = mv.module_id
+        WHERE m.ref = $1
+        ORDER BY version_sort_key(mv.version) DESC NULLS LAST, mv.version ASC
+      bindings:
+        - !cel "inputs.ref"
+outputs:
+  found: !cel "steps.rows.result.rows.size() > 0"
+  # `{version, integrity}` per entry, not bare strings: the pin an editor writes
+  # when it upgrades an import belongs to exactly one version, and a parallel
+  # array or a keyed side-map could disagree with the list it annotates.
+  # `integrity` is omitted for a version ingested before the column existed or
+  # one nothing can hash — a consumer treats its absence as "no pin available",
+  # never as an error.
+  versions: !cel >-
+    steps.rows.result.rows.map(r,
+      r.integrity == '' ? {'version': r.version} : {'version': r.version, 'integrity': r.integrity})
+---
+# Every kind that implements a given contract, across module boundaries — the
+# derived grouping axis. A backend is discoverable from the abstract it extends
+# without the abstract's module knowing it exists.
+kind: Run.Sequence
+metadata:
+  name: implementations
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      kind: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      implementations: { type: array }
+    required: [implementations]
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT m.ref, rk.version, rk.name AS kind, rk.capability, rk.description,
+               (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
+                FROM unnest(rk.categories, rk.category_labels) AS t(s, l)) AS categories
+        FROM resource_kinds rk
+        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
+        WHERE rk.extends_ref = $1 AND rk.extends_kind = $2 AND rk.exported
+        ORDER BY m.ref, rk.name
+      bindings:
+        - !cel "inputs.ref"
+        - !cel "inputs.kind"
+outputs:
+  implementations: !cel "steps.rows.result.rows"
+---
+# Lexical ref typeahead (pg_trgm): completes a ref whose name the author already
+# knows — the memorable token at an OCI path's tail matches without the
+# scheme/host boilerplate, and a typo still hits. Not the semantic search — no
+# embedder in this path, ever.
+kind: Run.Sequence
+metadata:
+  name: refSuggestions
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      q: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      refs: { type: array }
+    required: [refs]
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT m.ref,
+               COALESCE(m.latest_version, '') AS "latestVersion",
+               COALESCE(mv.description, '') AS description,
+               COALESCE(mv.repository, '') AS repository,
+               COALESCE(mv.license, '') AS license
+        FROM modules m
+        LEFT JOIN module_versions mv
+          ON mv.module_id = m.id AND mv.version = m.latest_version
+        WHERE m.ref % $1 OR m.ref ILIKE '%' || $1 || '%'
+        ORDER BY (CASE WHEN regexp_replace(m.ref, '.*/', '') ILIKE '%' || $1 || '%' THEN 1 ELSE 0 END) DESC,
+                 similarity(m.ref, $1) DESC, m.ref
+        LIMIT 20
+      bindings:
+        - !cel "inputs.q"
+outputs:
+  refs: !cel "steps.rows.result.rows"
+---
+# How far a registration has got — the answer a client polls for after a 202.
+#
+# Read off the ROWS, not off a durable run: the run id carries the version, the
+# digest and the attempt, none of which a registering client holds, and a ref
+# spans many versions with a run each. The rows are the authoritative record of
+# what has been ingested, so they are what this reports.
+#
+# `pending` and `ingesting` are kept apart because they call for different
+# patience: nothing of this module is searchable yet, versus some of it is and
+# more is arriving.
+kind: Run.Sequence
+metadata:
+  name: registrationStatus
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      status:
+        type: string
+        enum: [unknown, pending, ingesting, ready, failed]
+      ref: { type: string }
+      latestVersion: { type: string }
+      versionsKnown: { type: integer }
+      versionsIngested: { type: integer }
+      error: { type: string }
+      nextAttemptAt: { type: string }
+    required:
+      - status
+      - ref
+      - latestVersion
+      - versionsKnown
+      - versionsIngested
+      - error
+      - nextAttemptAt
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT COALESCE(m.latest_version, '') AS "latestVersion",
+               (SELECT COUNT(*)::int FROM version_ingest vi WHERE vi.module_id = m.id)
+                 AS "versionsKnown",
+               (SELECT COUNT(*)::int FROM module_versions mv WHERE mv.module_id = m.id)
+                 AS "versionsIngested",
+               (SELECT COUNT(*)::int FROM version_ingest vi
+                WHERE vi.module_id = m.id AND vi.claimed_at IS NOT NULL
+                  AND vi.completed_at IS NULL) AS "inFlight",
+               COALESCE((SELECT vi.last_error FROM version_ingest vi
+                         WHERE vi.module_id = m.id AND vi.last_error <> ''
+                         ORDER BY vi.completed_at DESC LIMIT 1), '') AS error,
+               COALESCE((SELECT to_char(vi.next_attempt_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
+                         FROM version_ingest vi
+                         WHERE vi.module_id = m.id AND vi.next_attempt_at IS NOT NULL
+                         ORDER BY vi.next_attempt_at LIMIT 1), '') AS "nextAttemptAt"
+        FROM modules m
+        WHERE m.ref = $1
+      bindings:
+        - !cel "inputs.ref"
+outputs:
+  ref: !cel "inputs.ref"
+  # Order matters: an in-flight claim reads as progress even when an earlier
+  # version failed, because the failure may be the one this attempt is fixing.
+  status: !cel >-
+    steps.rows.result.rows.size() == 0
+      ? 'unknown'
+      : (steps.rows.result.rows[0].inFlight > 0
+          ? (steps.rows.result.rows[0].versionsIngested > 0 ? 'ingesting' : 'pending')
+          : (steps.rows.result.rows[0].versionsIngested > 0
+              ? 'ready'
+              : (steps.rows.result.rows[0].error != '' ? 'failed' : 'pending')))
+  latestVersion: !cel "steps.rows.result.rows.size() > 0 ? steps.rows.result.rows[0].latestVersion : ''"
+  versionsKnown: !cel "steps.rows.result.rows.size() > 0 ? steps.rows.result.rows[0].versionsKnown : 0"
+  versionsIngested: !cel "steps.rows.result.rows.size() > 0 ? steps.rows.result.rows[0].versionsIngested : 0"
+  error: !cel "steps.rows.result.rows.size() > 0 ? steps.rows.result.rows[0].error : ''"
+  nextAttemptAt: !cel "steps.rows.result.rows.size() > 0 ? steps.rows.result.rows[0].nextAttemptAt : ''"

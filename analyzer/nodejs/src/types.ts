@@ -1,6 +1,6 @@
 import type { HostVersions } from "./requires-block.js";
 
-import type { ZoneModuleDocuments } from "./zone-module-documents.js";
+import type { ModuleDocuments } from "./module-documents.js";
 /** Matches LSP DiagnosticSeverity values exactly.
  *  https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnosticSeverity */
 export const DiagnosticSeverity = {
@@ -142,10 +142,10 @@ export interface AnalysisOptions {
   /** Imported libraries' FULL document sets, for the zone stage's per-library
    *  export derivation — the flattened analysis view forwards only each
    *  library's export surface, never its internal dispatch chain. Collected
-   *  from a LoadedGraph via `collectZoneModuleDocuments`. Omitting it skips
+   *  from a LoadedGraph via `collectModuleDocuments`. Omitting it skips
    *  the derivation (the under-approximating direction — the runtime check
    *  remains the enforcement). */
-  moduleDocuments?: ZoneModuleDocuments[];
+  moduleDocuments?: ModuleDocuments[];
   /** When true, `analyze()` runs the state-mutating setup (module identity /
    *  alias / definition registration plus `normalizeInlineResources`) but
    *  skips every diagnostic-producing pass — per-resource validation, the

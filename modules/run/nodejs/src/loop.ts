@@ -1,9 +1,10 @@
 import {
   InvokeError,
+  StepEngine,
+  turnStepPath,
   type InvokeContext,
   type ResourceContext,
   type Step,
-  StepEngine,
 } from "@telorun/sdk";
 import { type CatchEntry, withCatches } from "./catches.js";
 
@@ -108,11 +109,21 @@ class RunLoop {
             break;
           }
           const steps: Record<string, unknown> = {};
-          await this.engine.executeSteps(this.resource.steps, steps, undefined, {
-            iteration: BigInt(iteration),
-            previous,
-            inputs,
-          }, invokeCtx);
+          // Per-turn prefix, for the reason the engine's own `while` carries
+          // one: the journal takes the first writer at a key, so a shared
+          // prefix makes every later turn replay the first turn's outcome.
+          await this.engine.executeSteps(
+            this.resource.steps,
+            steps,
+            undefined,
+            {
+              iteration: BigInt(iteration),
+              previous,
+              inputs,
+            },
+            invokeCtx,
+            turnStepPath(invokeCtx, iteration),
+          );
           previous = steps;
           iteration += 1;
         }

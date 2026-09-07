@@ -1,9 +1,10 @@
 import {
   InvokeError,
+  StepEngine,
+  turnStepPath,
   type InvokeContext,
   type ResourceContext,
   type Step,
-  StepEngine,
 } from "@telorun/sdk";
 import { type CatchEntry, withCatches } from "./catches.js";
 import { forEachConcurrent, mapConcurrent, resolveConcurrency } from "./concurrency.js";
@@ -93,12 +94,24 @@ class RunIteration {
           index: number,
           items: unknown[] | undefined,
         ): Promise<void> => {
-          await this.engine.executeSteps(this.resource.steps, {}, undefined, {
-            inputs,
-            item,
-            index: BigInt(index),
-            ...(items === undefined ? {} : { items }),
-          }, invokeCtx);
+          // Each item journals under its OWN prefix. Sharing one across items
+          // is not merely imprecise: the journal takes the first writer at a
+          // key, so under a durable body items 2..N replayed item 1's recorded
+          // outcome and their work never ran — silently, with the run still
+          // reporting success.
+          await this.engine.executeSteps(
+            this.resource.steps,
+            {},
+            undefined,
+            {
+              inputs,
+              item,
+              index: BigInt(index),
+              ...(items === undefined ? {} : { items }),
+            },
+            invokeCtx,
+            turnStepPath(invokeCtx, index),
+          );
         };
 
         if (Array.isArray(collection)) {

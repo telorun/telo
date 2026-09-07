@@ -1,9 +1,10 @@
 import {
   InvokeError,
+  StepEngine,
+  turnStepPath,
   type InvokeContext,
   type ResourceContext,
   type Step,
-  StepEngine,
 } from "@telorun/sdk";
 import { type CatchEntry, withCatches } from "./catches.js";
 import { mapConcurrent, resolveConcurrency } from "./concurrency.js";
@@ -90,12 +91,21 @@ class RunProjection {
         return mapConcurrent(items, concurrency, async (item, index) => {
           const steps: Record<string, unknown> = {};
           const celIndex = BigInt(index);
-          await this.engine.executeSteps(this.resource.steps, steps, undefined, {
-            inputs,
-            item,
-            index: celIndex,
-            items,
-          }, invokeCtx);
+          // Per-element prefix — see `Run.Iteration`: one prefix shared across
+          // elements makes a durable replay skip every element but the first.
+          await this.engine.executeSteps(
+            this.resource.steps,
+            steps,
+            undefined,
+            {
+              inputs,
+              item,
+              index: celIndex,
+              items,
+            },
+            invokeCtx,
+            turnStepPath(invokeCtx, index),
+          );
           if (this.resource.outputs !== undefined) {
             return this.ctx.expandValue(this.resource.outputs, {
               steps,

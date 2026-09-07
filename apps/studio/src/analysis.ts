@@ -1,7 +1,7 @@
 import {
   AnalysisRegistry,
   StaticAnalyzer,
-  collectZoneModuleDocuments,
+  collectModuleDocuments,
   flattenForAnalyzer,
   importResolutionDiagnostics,
   remapMigratedPaths,
@@ -162,7 +162,7 @@ function analyzeClosure(
       graph,
       analyzer.analyze(
         manifests,
-        { moduleDocuments: collectZoneModuleDocuments(graph) },
+        { moduleDocuments: collectModuleDocuments(graph) },
         registry,
         zoneExportCache,
       ),

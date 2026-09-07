@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: InstantiatesAnAbstract
+  version: 1.0.0
+  description: >-
+    Test fixture: an abstract declared as a RESOURCE. The kernel refuses it at
+    `create()`, so the analyzer has to name it at the declaration rather than
+    leaving it to boot.
+imports:
+  Sql: ../../../../modules/sql
+  Sqlite: ../../../../modules/sqlite
+  Run: ../../../../modules/run
+targets:
+  - !ref noop
+---
+kind: Sql.Connection
+metadata: { name: db }
+---
+kind: Run.Sequence
+metadata: { name: noop }
+steps:
+  - name: nothing
+    value: { ok: true }

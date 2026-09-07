@@ -1,0 +1,457 @@
+# The hub's database: the relational tables, the derivations two readers share,
+# and the ingest control plane.
+#
+# `lifecycle: shared` because the migrations are one instantiation for the whole
+# application whichever library reaches them — the app runs them at boot, and
+# ingest and registration both issue the claim below. An isolated library would
+# give each importer its own `Postgres.Schema` and run the same DDL three times.
+#
+# The three exported statements are here rather than with their callers because
+# each is a statement whose CORRECTNESS is a property of the table: the claim in
+# particular is what makes two concurrent passes over one version collapse to one
+# run, and restating it beside each caller is how two copies come to disagree.
+kind: Telo.Library
+metadata:
+  name: HubSchema
+  description: >-
+    The hub's relational schema: registered modules, their tracked versions, the
+    resource kinds and exported instances indexed per version, and the ingest
+    control plane that decides which versions are due.
+lifecycle: shared
+requires:
+  # `resources:` inputs and `lifecycle:` on a library.
+  telo: ">=0.83.0"
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  Postgres: oci://ghcr.io/telorun/postgres@0.4.0#sha256-urAQgZtDIlbm4PFi0OlBgYPTU0fSdFbw3l3sHVdh-MQ
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+resources:
+  connection:
+    kind: Postgres.Connection
+    description: The database this schema is applied to and these statements run on.
+exports:
+  resources:
+    - migrations
+    - claimVersion
+    - completeVersion
+    - failVersion
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref connection
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref connection
+---
+kind: Postgres.Schema
+metadata:
+  name: migrations
+connection: !ref connection
+migrations:
+  "20260716120000_CreateDiscoverySchema":
+    statements:
+      - |
+        CREATE TABLE modules (
+          id              BIGSERIAL PRIMARY KEY,
+          ref             TEXT NOT NULL UNIQUE,
+          transport       TEXT NOT NULL,
+          latest_version  TEXT,
+          registered_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_tracked_at TIMESTAMPTZ,
+          last_error      TEXT
+        )
+      - |
+        CREATE TABLE module_versions (
+          module_id    BIGINT NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+          version      TEXT NOT NULL,
+          digest       TEXT NOT NULL,
+          module_name  TEXT NOT NULL DEFAULT '',
+          description  TEXT NOT NULL DEFAULT '',
+          repository   TEXT NOT NULL DEFAULT '',
+          license      TEXT NOT NULL DEFAULT '',
+          manifest_key TEXT NOT NULL,
+          tracked_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (module_id, version)
+        )
+      - |
+        CREATE TABLE resource_kinds (
+          id          BIGSERIAL PRIMARY KEY,
+          module_id   BIGINT NOT NULL,
+          version     TEXT NOT NULL,
+          name        TEXT NOT NULL,
+          capability  TEXT NOT NULL DEFAULT '',
+          abstract    BOOLEAN NOT NULL DEFAULT FALSE,
+          exported    BOOLEAN NOT NULL DEFAULT FALSE,
+          description TEXT NOT NULL DEFAULT '',
+          search      TSVECTOR GENERATED ALWAYS AS
+                        (to_tsvector('english', name || ' ' || description)) STORED,
+          UNIQUE (module_id, version, name),
+          FOREIGN KEY (module_id, version)
+            REFERENCES module_versions(module_id, version) ON DELETE CASCADE
+        )
+      - CREATE EXTENSION IF NOT EXISTS pg_trgm
+      - CREATE INDEX resource_kinds_search_idx ON resource_kinds USING GIN (search)
+      - CREATE INDEX modules_ref_trgm_idx ON modules USING GIN (ref gin_trgm_ops)
+      - |
+        CREATE TABLE module_resources (
+          id        BIGSERIAL PRIMARY KEY,
+          module_id BIGINT NOT NULL,
+          version   TEXT NOT NULL,
+          -- The importable name: the segment after the last dot, since a
+          -- re-export (`Alias.name`) is referenced by the importer as `name`.
+          name      TEXT NOT NULL,
+          -- The entry verbatim, so a re-export's origin alias isn't lost.
+          declared  TEXT NOT NULL,
+          UNIQUE (module_id, version, name),
+          FOREIGN KEY (module_id, version)
+            REFERENCES module_versions(module_id, version) ON DELETE CASCADE
+        )
+  # The two grouping axes browse needs.
+  #
+  # `categories` is the declared facet. Authors write a DISPLAY LABEL
+  # (`metadata.categories: [AI, Storage]`) and this index derives the match key
+  # from it, so `AI` and `ai` collapse to one group and `Data Codecs` reaches a
+  # URL as `data-codecs` — an open vocabulary can't be validated into agreement,
+  # but spelling variance can be normalized out of it. (Only variance the rule
+  # sees: `A. I.` becomes `a-i`, a group of its own, and a synonym always is.)
+  # Both are stored, aligned by position: `categories` is what a filter
+  # matches and what a URL carries, `category_labels` is what a UI prints
+  # (`ai` → `AI` is not recoverable, so the authored text has to be kept).
+  #
+  # `extends_ref` / `extends_kind` is the derived axis: the contract a kind
+  # implements, resolved to the owning module's ref so backends of the same
+  # abstract group together across module boundaries.
+  "20260727090000_AddDiscoveryFacets":
+    statements:
+      # The slug rule lives here, once, so both ingest paths share it and a
+      # query can re-derive a slug without the writer's help.
+      - |
+        CREATE FUNCTION category_slug(label TEXT) RETURNS TEXT
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT trim(both '-' from lower(regexp_replace(label, '[^a-zA-Z0-9]+', '-', 'g')))
+        $$
+      - ALTER TABLE module_versions ADD COLUMN categories TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE module_versions ADD COLUMN category_labels TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE resource_kinds ADD COLUMN categories TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE resource_kinds ADD COLUMN category_labels TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE resource_kinds ADD COLUMN extends_kind TEXT NOT NULL DEFAULT ''
+      # Empty when the kind extends nothing, or when its prefix names a
+      # `Telo.*` built-in abstract — those belong to no published module.
+      - ALTER TABLE resource_kinds ADD COLUMN extends_ref TEXT NOT NULL DEFAULT ''
+      - CREATE INDEX module_versions_categories_idx ON module_versions USING GIN (categories)
+      - CREATE INDEX resource_kinds_categories_idx ON resource_kinds USING GIN (categories)
+      - CREATE INDEX resource_kinds_extends_idx ON resource_kinds (extends_ref, extends_kind)
+  # The import pin an editor writes when it upgrades a dependency:
+  # `sha256-<base64url>` over the bytes this version's transport verifies its own
+  # reads against, so the value is comparable to what `telo install` re-derives.
+  # Distinct from `digest` next to it, which is transport-NATIVE and opaque (for
+  # OCI, the image-manifest digest) and exists only to detect a re-pushed tag.
+  #
+  # Nullable, with two meanings kept apart: a hash, or '' for "asked, nothing
+  # could hash this ref". NULL survives only on rows that predate the column;
+  # `version_ingest.ingest_rev` is what schedules their re-ingest now.
+  "20260803090000_AddVersionIntegrity":
+    statements:
+      - ALTER TABLE module_versions ADD COLUMN integrity TEXT
+  # Runtime reach, implementation language, and structured deprecation.
+  #
+  # `runtimes` answers the question a polyglot runtime cannot leave unanswered:
+  # which kernel can actually load this. Without it `search_resources` hands an
+  # agent composing for the Rust kernel a kind whose only controller is
+  # JavaScript, and nothing in the response says so. It is derived from the
+  # `controllers:` PURL candidates by `telo module manifest --json` — the CLI
+  # links both kernels' loaders, so the mapping lives next to what it describes
+  # and this app parses no PURLs.
+  #
+  # Per KIND rather than per module, because coverage genuinely differs between
+  # kinds of one module: `console` ships Rust controllers for two of its four
+  # kinds. `module_versions.runtimes` is the roll-up (every kernel with at least
+  # partial reach) and `runtimes_full` the subset that covers every kind, so a
+  # filter reads one column and the UI still distinguishes full from partial.
+  #
+  # `portable` is a flag rather than "runs on [node, rust]": a kind declaring no
+  # controllers has no kernel constraint at all, and enumerating today's kernels
+  # would make every stored row wrong the day a third one ships.
+  #
+  # `module_versions.runtimes` is NULLABLE on purpose: NULL means "never asked",
+  # as distinct from '{}' meaning asked and nothing runs it.
+  "20260803120000_AddRuntimeAndDeprecation":
+    statements:
+      # Publisher is DERIVED, never declared: ownership is a property of the host
+      # (a self-asserted field on an open, unauthenticated registry verifies
+      # nothing), so it is a function over the ref rather than a column. Kept
+      # here beside category_slug so queries re-derive it without a writer.
+      - |
+        CREATE FUNCTION module_publisher(ref TEXT, transport TEXT) RETURNS TEXT
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT CASE
+            -- A `url` module is one FILE at a fixed location, so its path
+            -- segments are a directory, never an organisation: only the host
+            -- says who serves it. Without this an `https://host/a/telo.yaml`
+            -- module would be attributed to a publisher named "a".
+            WHEN transport = 'url' THEN split_part(bare, '/', 1)
+            WHEN split_part(bare, '/', 2) = '' THEN split_part(bare, '/', 1)
+            ELSE split_part(bare, '/', 1) || '/' || split_part(bare, '/', 2)
+          END
+          FROM (SELECT regexp_replace(ref, '^[a-z0-9+.-]+://', '') AS bare) AS s
+        $$
+      - ALTER TABLE resource_kinds ADD COLUMN runtimes TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE resource_kinds ADD COLUMN languages TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE resource_kinds ADD COLUMN portable BOOLEAN NOT NULL DEFAULT FALSE
+      # Resolved the same way `extends` is — through the declaring manifest's own
+      # imports map — so the replacement is a target a consumer can follow. An
+      # empty ref with a non-empty kind names a kernel built-in.
+      - ALTER TABLE resource_kinds ADD COLUMN deprecated_reason TEXT NOT NULL DEFAULT ''
+      - ALTER TABLE resource_kinds ADD COLUMN replaced_by_ref TEXT NOT NULL DEFAULT ''
+      - ALTER TABLE resource_kinds ADD COLUMN replaced_by_kind TEXT NOT NULL DEFAULT ''
+      - ALTER TABLE module_versions ADD COLUMN homepage TEXT NOT NULL DEFAULT ''
+      - ALTER TABLE module_versions ADD COLUMN deprecated_reason TEXT NOT NULL DEFAULT ''
+      # A module's replacement is another MODULE, addressed as an import source —
+      # so one column, not the ref/kind pair a kind-level replacement needs.
+      - ALTER TABLE module_versions ADD COLUMN replaced_by TEXT NOT NULL DEFAULT ''
+      - ALTER TABLE module_versions ADD COLUMN runtimes TEXT[]
+      - ALTER TABLE module_versions ADD COLUMN runtimes_full TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE module_versions ADD COLUMN languages TEXT[] NOT NULL DEFAULT '{}'
+      - ALTER TABLE module_versions ADD COLUMN portable BOOLEAN NOT NULL DEFAULT FALSE
+      - CREATE INDEX resource_kinds_runtimes_idx ON resource_kinds USING GIN (runtimes)
+      - CREATE INDEX module_versions_runtimes_idx ON module_versions USING GIN (runtimes)
+  # What an exported instance actually IS. The row carried only its importable
+  # name, which is enough to write a `!ref` but says nothing about what you get —
+  # so a reader had to open the manifest to find out. `kind` is the suffix of the
+  # instance doc's own `kind:` (`kind: Self.WriteLine` → `WriteLine`); both stay
+  # empty for a re-export, whose declaring doc lives in another module.
+  "20260803140000_AddResourceKindDetail":
+    statements:
+      - ALTER TABLE module_resources ADD COLUMN kind TEXT NOT NULL DEFAULT ''
+      - ALTER TABLE module_resources ADD COLUMN description TEXT NOT NULL DEFAULT ''
+  # Whether the runtime block was ever ASKED FOR, recorded independently of the
+  # answer. Still written on every ingest so `runtimes` NULL keeps meaning "no
+  # runtime data" rather than "no kernel runs this"; it is no longer READ as a
+  # re-ingest trigger, which `ingest_rev` now owns for every column at once.
+  "20260803150000_AddRuntimeProbeFlag":
+    statements:
+      - ALTER TABLE module_versions ADD COLUMN runtimes_asked BOOLEAN NOT NULL DEFAULT FALSE
+  # Newest-first version ordering, defined once.
+  #
+  # Two routes serve version lists (`/module/versions` and `/module`), and they
+  # must agree or an IDE that completes from one and a picker that renders from
+  # the other disagree about which version is latest. A shared function is the
+  # pattern this schema already uses for a derivation two callers need
+  # (`category_slug`, `module_publisher`). NULL for a non-dotted-numeric tag, so
+  # `ORDER BY version_sort_key(v) DESC NULLS LAST, v ASC` puts digests and
+  # `latest` after real versions in lexical order — the same shape as the CLI's
+  # `sortVersionsDesc`, which is the third copy and cannot share this one.
+  "20260803160000_AddVersionSortKey":
+    statements:
+      - |
+        CREATE FUNCTION version_sort_key(version TEXT) RETURNS INT[]
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT CASE WHEN version ~ '^[0-9]+(\.[0-9]+)*$'
+                      THEN string_to_array(version, '.')::int[] END
+        $$
+  # The `registry` transport is gone: a bare `<namespace>/<name>` ref resolves
+  # nowhere, so `telo module versions` on one exits non-zero and those rows fail
+  # every tracking pass forever. DELETED rather than filtered out of reads —
+  # filtering would hide rows that can never be repaired, while leaving them
+  # readable means search and `get_module_manifest` hand a caller a ref they
+  # cannot import, which is worse than a 404. Cascades to `module_versions`,
+  # `resource_kinds` and `module_resources`. Orphaned rows in the pgvector
+  # backend's own table are left alone — the hub does not reach into it, and the
+  # RRF query joins vector ids back to the relational rows, so an id with no row
+  # yields no hit.
+  "20260904090000_DropRegistryTransportModules":
+    statements:
+      - DELETE FROM modules WHERE transport = 'registry'
+      - |
+        ALTER TABLE modules ADD CONSTRAINT modules_transport_known
+        CHECK (transport IN ('oci', 'url'))
+  # The ingest control plane, and the reason it is its OWN table rather than
+  # columns on `module_versions`: a claim exists BEFORE the version has been
+  # ingested, while `module_versions` is the published catalog every search and
+  # catalog read joins. A placeholder row there would surface as a module version
+  # with no name, and every read would need a filter to hide it.
+  #
+  # `attempt` is minted by the claim below, so it is also the run identity —
+  # which is what makes each attempt a FRESH durable run id rather than a burnt
+  # one. `ingest_rev` records which revision of the ingest pipeline last wrote
+  # this version, so raising the revision makes every version due exactly once;
+  # it replaces the per-column backfill probes (`integrity IS NULL`,
+  # `NOT runtimes_asked`), which had to be added one at a time and read one at a
+  # time. `last_error` with a NULL `next_attempt_at` is a permanent stop: an
+  # artifact that is no longer a Telo module is not retried forever.
+  #
+  # Rows already fully ingested are seeded AT the first revision so this
+  # migration is not itself a full re-ingest; rows that the old probes would have
+  # re-ingested are seeded below it, so they backfill on the first pass exactly
+  # as they would have.
+  "20260907090000_AddVersionIngest":
+    statements:
+      - |
+        CREATE TABLE version_ingest (
+          module_id       BIGINT NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
+          version         TEXT NOT NULL,
+          -- The digest this claim was taken against. A version whose origin
+          -- digest has moved away from it is due again.
+          digest          TEXT NOT NULL DEFAULT '',
+          ingest_rev      INTEGER NOT NULL DEFAULT 0,
+          attempt         INTEGER NOT NULL DEFAULT 0,
+          claimed_at      TIMESTAMPTZ,
+          completed_at    TIMESTAMPTZ,
+          last_error      TEXT NOT NULL DEFAULT '',
+          next_attempt_at TIMESTAMPTZ,
+          PRIMARY KEY (module_id, version)
+        )
+      # Due-version lookups scan this table on every pass.
+      - |
+        CREATE INDEX version_ingest_due_idx
+        ON version_ingest (ingest_rev, next_attempt_at)
+      - |
+        INSERT INTO version_ingest
+          (module_id, version, digest, ingest_rev, attempt, claimed_at, completed_at)
+        SELECT mv.module_id, mv.version, mv.digest,
+               CASE WHEN mv.integrity IS NOT NULL AND mv.runtimes_asked THEN 1 ELSE 0 END,
+               0, mv.tracked_at, mv.tracked_at
+        FROM module_versions mv
+---
+# CLAIM — the single statement that decides a version is due and mints the
+# identity of the attempt that will ingest it.
+#
+# Deciding and minting are ONE statement on purpose. Split in two, two passes
+# reading the same row would both find it due, both compute the same run id, and
+# rely on the durable backend refusing the duplicate — which works only while
+# that id has never been used, and a terminal run id is never released. Folding
+# the increment into the claim makes every attempt a fresh id, so the backend's
+# refusal is a backstop rather than the mechanism.
+#
+# An in-flight claim (`claimed_at` set, `completed_at` null) is never re-claimed.
+# Recovering a run whose process died is the durable resumer's job, and a lease
+# here would be a second recovery path competing with it over the same run.
+kind: Run.Sequence
+metadata:
+  name: claimVersion
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      # modules.id is a bigint — the driver yields it as a string.
+      moduleId: { type: string }
+      version: { type: string }
+      digest: { type: string }
+      rev: { type: integer }
+    required: [moduleId, version, digest, rev]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      claimed: { type: boolean }
+      attempt: { type: integer }
+    required: [claimed, attempt]
+steps:
+  - name: claim
+    invoke: !ref query
+    inputs:
+      sql: >-
+        INSERT INTO version_ingest AS vi
+          (module_id, version, digest, ingest_rev, attempt, claimed_at, completed_at,
+           last_error, next_attempt_at)
+        VALUES ($1, $2, $3, 0, 1, NOW(), NULL, '', NULL)
+        ON CONFLICT (module_id, version) DO UPDATE SET
+          digest = EXCLUDED.digest,
+          attempt = vi.attempt + 1,
+          claimed_at = NOW(),
+          completed_at = NULL,
+          last_error = '',
+          next_attempt_at = NULL
+        WHERE (vi.claimed_at IS NULL OR vi.completed_at IS NOT NULL)
+          AND (vi.ingest_rev < $4::int
+               OR vi.digest IS DISTINCT FROM $3
+               OR (vi.last_error <> '' AND vi.next_attempt_at IS NOT NULL
+                   AND vi.next_attempt_at <= NOW()))
+        RETURNING vi.attempt
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "inputs.digest"
+        - !cel "inputs.rev"
+outputs:
+  claimed: !cel "steps.claim.result.rows.size() > 0"
+  attempt: !cel "steps.claim.result.rows.size() > 0 ? steps.claim.result.rows[0].attempt : 0"
+---
+# Closes a claim. Invoked from inside the ingest transaction on this same
+# connection, so it commits with the rows it certifies — a version is never
+# recorded as ingested by a transaction that rolled back.
+kind: Run.Sequence
+metadata:
+  name: completeVersion
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      moduleId: { type: string }
+      version: { type: string }
+      digest: { type: string }
+      rev: { type: integer }
+    required: [moduleId, version, digest, rev]
+steps:
+  - name: complete
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        UPDATE version_ingest
+        SET ingest_rev = $4::int, digest = $3, completed_at = NOW(),
+            last_error = '', next_attempt_at = NULL
+        WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "inputs.digest"
+        - !cel "inputs.rev"
+---
+# Closes a claim that failed, and decides whether there will be another.
+#
+# The backoff doubles from a minute; past the attempt ceiling nothing is
+# scheduled at all, so a ref that is no longer a Telo module stops being read
+# every quarter of an hour forever. Clearing the row's `ingest_rev` is the
+# operator's per-version override — clearing `last_error` alone would leave the
+# row current at the running revision and therefore not due.
+kind: Run.Sequence
+metadata:
+  name: failVersion
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      moduleId: { type: string }
+      version: { type: string }
+      message: { type: string }
+      attempt: { type: integer }
+    required: [moduleId, version, message, attempt]
+steps:
+  - name: record
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        UPDATE version_ingest
+        SET completed_at = NOW(),
+            last_error = $3,
+            next_attempt_at = CASE
+              WHEN $4::int >= 8 THEN NULL
+              ELSE NOW() + make_interval(secs => (60 * POWER(2, LEAST($4::int - 1, 6)))::int)
+            END
+        WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "inputs.message"
+        - !cel "inputs.attempt"

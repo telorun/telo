@@ -1880,6 +1880,37 @@ export class StaticAnalyzer {
         continue;
       }
 
+      // An abstract names a CONTRACT for reference slots, not something to
+      // instantiate — the kernel refuses it outright at `create()`. Reported
+      // here, at the declaration, because that is the line the author has to
+      // change and because a runtime-only refusal is exactly the shape static
+      // analysis exists to remove. The hint mirrors the kernel's: the concrete
+      // implementations this analysis holds, or the reason there are none.
+      //
+      // Injected declarations never reach this loop (skipped above), which is
+      // what keeps a `resources:` entry — kind-only and routinely abstract by
+      // design — out of it.
+      if (definition.kind === "Telo.Abstract") {
+        const canonical = resolvedKind ?? m.kind;
+        const impls = defs
+          .getByExtends(canonical)
+          .filter((d) => d.kind !== "Telo.Abstract")
+          .map((d) => `${d.metadata.module}.${d.metadata.name}`);
+        const kindInfo =
+          canonical !== m.kind ? `'${m.kind}' (resolved to '${canonical}')` : `'${m.kind}'`;
+        const hint = impls.length
+          ? `instantiate a concrete implementation: ${impls.join(", ")}`
+          : "no concrete implementations are registered — import a module that provides one";
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "ABSTRACT_KIND_INSTANTIATED",
+          source: SOURCE,
+          message: `Kind ${kindInfo} is abstract and cannot be instantiated directly; ${hint}.`,
+          data: { resource, filePath, path: "kind" },
+        });
+        continue;
+      }
+
       // Validate resource config against the definition's AUTHOR-FACING schema —
       // inheritance-resolved, with `kind` / `metadata` injected. See
       // `validationSchemaFor`, which is where both derivations and the reason
@@ -2693,9 +2724,25 @@ export class StaticAnalyzer {
     // Validate provider coherence rules for `provide:` template-target definitions.
     diagnostics.push(...validateProviderCoherence(allManifests, defs, aliases));
 
-    // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7)
+    // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7).
+    // The library document sets collected for the zone stage serve here too: a
+    // library's exported entry point is forwarded into the flat set while the
+    // siblings it invokes are not, so without them the walk stops at the
+    // boundary and reports an empty union for a body that plainly throws.
+    const libraryManifests = new Map<string, ResourceManifest[]>();
+    for (const doc of options?.moduleDocuments ?? []) {
+      libraryManifests.set(doc.module, doc.manifests);
+    }
     diagnostics.push(
-      ...validateThrowsCoverage(allManifests, defs, aliases, this.celEnv, aliasesByModule, rootModules),
+      ...validateThrowsCoverage(
+        allManifests,
+        defs,
+        aliases,
+        this.celEnv,
+        aliasesByModule,
+        rootModules,
+        libraryManifests,
+      ),
     );
 
     // Warn about declared variables / secrets / ports that no CEL references.
@@ -2713,7 +2760,8 @@ export class StaticAnalyzer {
         defs,
         aliases,
         rootModules,
-        (supplied, required) => kindSatisfies(supplied, required, defs),
+        (supplied, required, isDeclaration) =>
+          kindSatisfies(supplied, required, defs, isDeclaration),
       ),
     );
 

@@ -40,6 +40,7 @@
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import { refSentinelTarget } from "./ref-sentinel-target.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
@@ -962,7 +963,12 @@ export function buildCallGraph(
  *  here: an unresolved `!ref <name>` sentinel and the `{kind, name}` object
  *  `resolveRefSentinels` rewrites it into. */
 function refTargetName(value: unknown): string | undefined {
-  if (isRefSentinel(value)) return value.source;
+  // An edge's target is taken VERBATIM — `resolveScopedName` and the node index
+  // are what resolve it, and a cross-module `Alias.name` is a target this graph
+  // legitimately carries unresolved. That is this pass's reduction over the
+  // shared parse, not a second reading of the tag.
+  const sentinel = refSentinelTarget(value);
+  if (sentinel) return sentinel.source;
   if (!value || typeof value !== "object") return undefined;
   const name = (value as Record<string, unknown>).name;
   return typeof name === "string" ? name : undefined;

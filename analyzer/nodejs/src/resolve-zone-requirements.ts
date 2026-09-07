@@ -14,7 +14,7 @@
  * Browser-safe: no Node built-ins.
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { isRefSentinel } from "@telorun/templating";
+import { refSentinelTarget } from "./ref-sentinel-target.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import {
   buildCallGraph,
@@ -28,7 +28,7 @@ import {
   propertySchemas,
   resolveLocalRef,
 } from "./manifest-navigation.js";
-import type { ZoneModuleDocuments } from "./zone-module-documents.js";
+import type { ModuleDocuments } from "./module-documents.js";
 import { readProvidesZone, readRequiresZone } from "./zone-slot.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
@@ -194,17 +194,16 @@ function schemaNodeAt(
  * under-approximating direction the whole pass leans on. `Self.` is a local
  * name written the long way and does resolve.
  *
- * This deliberately differs from `call-graph`'s `refTargetName`, which answers a
- * different question (what an EDGE points at, cross-module included, for a graph
- * whose consumers tolerate an unresolved target) — hence two functions rather
- * than one shared helper.
+ * This is this pass's REDUCTION over the shared `refSentinelTarget` parse, not a
+ * second reading of the tag: `call-graph`'s answers a different question (what
+ * an EDGE points at, cross-module included, for a graph whose consumers tolerate
+ * an unresolved target) and states its own reduction the same way.
  */
 function refName(value: unknown): string | undefined {
-  if (isRefSentinel(value)) {
-    const source = value.source;
-    const dot = source.indexOf(".");
-    if (dot <= 0) return source;
-    return source.slice(0, dot) === "Self" ? source.slice(dot + 1) : undefined;
+  const sentinel = refSentinelTarget(value);
+  if (sentinel) {
+    if (sentinel.alias === undefined) return sentinel.name;
+    return sentinel.alias === "Self" ? sentinel.name : undefined;
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const v = value as Record<string, unknown>;
@@ -713,7 +712,7 @@ export function zoneDocumentsSignature(manifests: readonly ResourceManifest[]): 
  * the projection derive-only, and keep what reaches an exported instance.
  */
 export function deriveLibraryExportRequirements(
-  docs: ZoneModuleDocuments,
+  docs: ModuleDocuments,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   aliasesByModule: Map<string, AliasResolver>,
@@ -746,7 +745,7 @@ export interface ZoneAnalysisArgs {
   aliases: AliasResolver;
   aliasesByModule: Map<string, AliasResolver>;
   rootModules: ReadonlySet<string>;
-  moduleDocuments?: readonly ZoneModuleDocuments[];
+  moduleDocuments?: readonly ModuleDocuments[];
   cache?: ZoneExportCache;
 }
 

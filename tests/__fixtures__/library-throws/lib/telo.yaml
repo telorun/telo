@@ -1,0 +1,27 @@
+kind: Telo.Library
+metadata:
+  name: ThrowsLib
+  version: 1.0.0
+  description: >-
+    Test fixture: an exported entry point that raises its own code through an
+    INTERNAL guard — the sibling a consumer's flattened set never carries.
+imports:
+  Run: ../../../../modules/run
+exports:
+  resources: [entry]
+---
+kind: Run.Sequence
+metadata: { name: entry }
+steps:
+  - name: guarded
+    invoke: !ref guard
+---
+# Not exported, so the consumer's flat set has no manifest by this name. The
+# throws walk has to reach it through this library's own documents.
+kind: Run.Sequence
+metadata: { name: guard }
+steps:
+  - name: reject
+    throw:
+      code: LIB_INTERNAL
+      message: raised by a resource the consumer cannot see

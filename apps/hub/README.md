@@ -1,25 +1,48 @@
 # Telo Hub
 
 Federated discovery over Telo modules — the umbrella metadata index behind
-`telo.sh`, `manifests.telo.sh`, and the `search_resources` MCP tool. A single
-declarative Telo application ([telo.yaml](telo.yaml)): the ingest tracker, the
-search API, and the MCP endpoint are all resources in one manifest.
+`telo.sh`, `manifests.telo.sh`, and the `search_resources` MCP tool. A
+declarative Telo application: [telo.yaml](telo.yaml) is the composition root —
+it binds the environment, owns the one connection, bucket, embedder, vector index
+and shell host, and mounts the HTTP and MCP surfaces — while the work lives in
+six libraries beside it.
+
+| File | Owns |
+| --- | --- |
+| [hub-schema.yaml](hub-schema.yaml) | the tables, the derivations two readers share, and the ingest claim |
+| [hub-origin.yaml](hub-origin.yaml) | reading a module from wherever it is published |
+| [hub-ingest.yaml](hub-ingest.yaml) | one version → bucket bytes, rows and vectors, as a durable run |
+| [hub-search.yaml](hub-search.yaml) | ranked search over kinds and modules |
+| [hub-catalog.yaml](hub-catalog.yaml) | keyed reads: one module, one version, one manifest, one registration's progress |
+| [hub-registry.yaml](hub-registry.yaml) | validating and recording a submitted ref |
+
+Each library declares the instances it needs as a `resources:` block and is
+handed them by the root, so all six read and write **one** connection.
+`hub-schema` and `hub-origin` declare `lifecycle: shared`, which is what lets
+ingest and registration both reach the claim and the CLI without the composition
+being linearized into a chain.
 
 ## What it does
 
 - **Tracks registered module refs** across transports — OCI
   (`oci://<host>/<repo>`) and a direct manifest URL
   (`https://<host>/<path>/telo.yaml`, transport `url`).
-  A pull tracker periodically enumerates each registered module's versions by
-  shelling out to the generic CLI verbs — `telo module versions <ref>`,
+  A cron pass enumerates each registered module's versions by shelling out to
+  the generic CLI verbs — `telo module versions <ref>`,
   `telo module digest <ref@version>`, `telo module manifest <ref@version> --json`
   — so the transport protocol stays encapsulated behind the CLI and no
   discovery-specific resource kind exists.
-- **Digest-reconciles every version on every track.** Version content
+- **Digest-reconciles every version on every pass.** Version content
   immutability is a convention no transport enforces; an unchanged digest is
-  skipped (cheap read), a moved digest re-ingests that version. A version whose
-  stored integrity pin is null re-ingests too, which is what backfills the pin
-  for everything tracked before the hub recorded one.
+  skipped (cheap read), a moved digest re-ingests that version. Enumeration and
+  digest resolution are ordinary work; only the ingest itself is a durable run.
+- **Ingests one version as one durable run.** The manifest read, the bucket
+  write, the relational writes and the re-embed are recorded step by step, so a
+  crash part-way is resumed rather than restarted — and the relational writes
+  commit as one transaction on the same connection the journal records through,
+  which is what makes each step's record commit with the step it describes. A
+  transient origin failure is retried inside the run, and once the backoff passes
+  30s the run **parks**: an origin outage costs nothing while it waits.
 - **Caches each version's `telo.yaml`** to an S3-compatible bucket at the
   deterministic key `<transport>/<host>/<path…>/<version>/telo.yaml` — the key
   the CLI computes with the analyzer's shared `manifestCacheKey` helper, so the
@@ -84,7 +107,8 @@ search API, and the MCP endpoint are all resources in one manifest.
 | backends of a contract | `GET /implementations?ref=…&kind=…` |
 | everything about one module | `GET /module?ref=…&version=…` |
 | `telo module versions <ref>` | `GET /module/versions?ref=…` |
-| register a module | `POST /register` (`{ ref }` → validate + index; open, no auth) |
+| register a module | `POST /register` (`{ ref }` → validate + schedule, `202`; open, no auth) |
+| poll a registration | `GET /register/status?ref=` |
 | MCP (`search_resources`, `get_module_manifest`) | `POST /mcp` |
 | liveness | `GET /health` |
 
@@ -264,22 +288,31 @@ leak which refs are tracked.
 | `MANIFEST_BUCKET_ACCESS_KEY_ID` / `MANIFEST_BUCKET_SECRET_ACCESS_KEY` | Bucket credentials |
 | `MANIFEST_BUCKET_FORCE_PATH_STYLE` | `true` for MinIO/RustFS (default `false`) |
 | `SEED_REFS` | JSON array of module refs registered idempotently on boot (the curated seed; publishers also self-register via `POST /register`) |
-| `TRACK_INTERVAL` | Delay between tracking passes (default `15m`) |
-| `TRACK_LOOP` | `false` disables the periodic tracker (tests drive `TrackAll` directly) |
-| `TELO_BIN` | Path of the telo CLI the tracker shells out to (default `telo`) |
+| `TRACK_CRON` | When the reconcile pass runs, as a 5-field cron in UTC (default `*/15 * * * *`) |
+| `TRACK_ENABLED` | `false` disables the periodic reconcile (tests drive `Ingest.scheduleDueVersions` directly) |
+| `INGEST_REV` | Revision of the ingest pipeline (default `1`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
+| `TELO_BIN` | Path of the telo CLI the origin reads shell out to (default `telo`) |
 | `REGISTER_RATE_LIMIT` | Max `POST /register` calls per client IP per window (default `5`) |
 | `REGISTER_RATE_WINDOW` | Sliding window for that limit (default `10m`) |
-| `TELO_EGRESS` | `public-only` refuses tracker fetches to private/loopback/link-local hosts (set in the production image) |
+| `TELO_EGRESS` | `public-only` refuses origin fetches to private/loopback/link-local hosts (set in the production image) |
+
+`TRACK_INTERVAL` and `TRACK_LOOP` are **gone**; `TRACK_CRON` and `TRACK_ENABLED`
+replace them.
 
 ## Run locally
 
 The compose stack wires everything (hub, its Postgres, shared object storage):
 
 ```sh
-pnpm --filter @telorun/cli build   # the dev image shells out to the workspace CLI
 docker compose up -d hub
 curl "http://localhost:8040/search/resources?q=delay"
 ```
+
+The dev service mounts the repo and runs the **workspace** CLI, not the one
+baked into the image — so the stack exercises the code in your tree. That is
+also what lets the manifest declare a `requires: telo:` floor naming a release
+still in flight: the image ships the last released telo, and booting this
+manifest in it is refused by the load gate, correctly.
 
 Or directly against your own infra:
 
@@ -312,21 +345,29 @@ Modules enter the index two ways:
      doc must be a **`Telo.Library`**: an Application is a runnable root that
      cannot be imported, so it defines no importable kinds and would store a
      record indexing nothing.
-  4. **Insert, then index the latest version inline** — bounded, constant work
-     (one digest + one manifest read + one embed) regardless of how many versions
-     the module has, so a `200` means it is actually searchable. The periodic
-     loop backfills older versions; only the latest is embedded/searched anyway.
+  4. **Insert, then schedule the latest version** — the row is written and the
+     latest version is claimed and handed to a durable run, and the response is
+     `202`. The request path never ingests: a `200` used to mean *searchable*,
+     and once indexing is asynchronous that is a lie. The reconcile pass
+     backfills older versions; only the latest is embedded/searched anyway.
 
-  The row is inserted *before* the inline index, so even if that fails the module
-  stays registered and the loop retries it. A malformed, unreachable, or
-  non-module ref returns `400` with the reason; an indexing failure is logged
-  server-side with its cause and returns only the error **code** (this endpoint
-  is anonymous — raw messages can carry host paths or upstream detail). There is
-  **no moderation queue**; the hub never vouches for content (trust lives at host
-  + integrity-hash).
+  The row is inserted *before* the schedule, so even if scheduling fails the
+  module stays registered and the reconcile pass claims it. A malformed,
+  unreachable, or non-module ref returns `400` with the reason; a server-side
+  fault returns only the error **code** (this endpoint is anonymous — raw
+  messages can carry host paths or upstream detail). There is **no moderation
+  queue**; the hub never vouches for content (trust lives at host +
+  integrity-hash).
 
-The periodic tracker remains the **reconciler**: it picks up new versions,
-re-pushed digests, and any module whose inline first track failed.
+`GET /register/status?ref=` is what a client polls afterwards. It is answered
+from the **rows**, which are the authoritative record of what has been ingested —
+not from the durable run, whose id carries a version, a digest and an attempt a
+client does not hold, and of which a ref has one per version. It reports
+`pending` (recorded, nothing indexed yet), `ingesting` (some versions in, more
+arriving), `ready`, `failed`, or `unknown`.
+
+The reconcile pass remains the **reconciler**: it picks up new versions,
+re-pushed digests, and any module whose first ingest failed.
 
 The browser-facing registration form is a separate static SPA,
 [`apps/hub-web`](../hub-web) (deployed to GitHub Pages at `hub.telo.run`), which
@@ -349,6 +390,43 @@ from an OCI ref in ways worth knowing:
 
 Content changes are still caught: each track re-checks the digest and re-ingests
 when it moves, so the index and cache never drift from what the URL serves.
+
+## Re-ingesting
+
+The `version_ingest` table is the ingest control plane, one row per
+`(module, version)`. A version is due when its recorded digest no longer matches
+the origin's, when its `ingest_rev` is below `INGEST_REV`, or when a recorded
+failure's `next_attempt_at` has passed — and the statement that decides this also
+increments `attempt` and stamps `claimed_at`, in one write. That is what makes
+two concurrent passes over one version collapse to one run, and what makes every
+attempt a fresh durable run id (`ingest:<moduleId>:<version>:<attempt>`) rather
+than one burnt by the attempt that failed.
+
+An in-flight claim (`claimed_at` set, `completed_at` null) is never re-claimed:
+recovering a run whose process died is the resumer's job, and a second recovery
+path here would compete with it.
+
+Failure backoff doubles from a minute; past eight attempts `next_attempt_at` is
+left null and the version is **not** retried again — an artifact that is no
+longer a Telo module stops being read every quarter of an hour forever.
+
+Three levels of re-ingest, all writes to that table:
+
+```sql
+-- one version
+UPDATE version_ingest SET ingest_rev = 0
+WHERE module_id = $1 AND version = $2;
+
+-- every version of one module
+UPDATE version_ingest SET ingest_rev = 0 WHERE module_id = $1;
+
+-- a claim whose run was lost beyond the resumer's reach
+UPDATE version_ingest SET claimed_at = NULL WHERE module_id = $1 AND version = $2;
+```
+
+Clearing `last_error` alone does **not** make a version due — the digest still
+matches and the revision is still current. Raising `INGEST_REV` re-ingests
+everything, once.
 
 ## Limitations & follow-ups
 

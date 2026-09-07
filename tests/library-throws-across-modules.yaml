@@ -1,0 +1,32 @@
+kind: Telo.Application
+metadata:
+  name: LibraryThrowsAcrossModulesTest
+  version: 1.0.0
+  description: |
+    A library's exported entry point reports the throws it can actually raise.
+
+    A consumer's analysis is flattened: it carries a library's EXPORTED
+    instances and not the siblings they invoke. So the throws walk reached the
+    entry point, found a `!ref` to a resource that is not in the flat set, and
+    read "cannot see it" as "throws nothing" — presenting `{∅}` and rejecting
+    the consumer's `catches:` for the very code the entry point documents.
+
+    The fixture's consumer also declares an unrelated resource named `guard`,
+    which is the collision the lookup ORDER decides: the sentinel is
+    unambiguously library-internal, so the declaring library's own documents are
+    asked first. Asking the flat set first bound the reference to whatever
+    consumer resource shared the name and reported ITS union instead — the same
+    `{∅}` symptom, arrived at from the other side.
+
+    Zero errors is the whole assertion.
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref LibraryInternalThrowsReachTheConsumer
+---
+kind: Assert.Manifest
+metadata:
+  name: LibraryInternalThrowsReachTheConsumer
+source: ./__fixtures__/library-throws/app.yaml
+expect:
+  errors: []
