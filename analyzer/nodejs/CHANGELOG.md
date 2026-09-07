@@ -1,5 +1,55 @@
 # @telorun/analyzer
 
+## 0.71.0
+
+### Minor Changes
+
+- 61ad85e: Two defects a library's exported entry point exposed, and the diagnostic that
+  was missing behind one of them.
+
+  A `resources:` entry is constrained by kind alone, so its kind-only stand-in
+  routinely IS an abstract — and identity did not satisfy an abstract slot, so
+  every use of that name inside the library was reported as a kind mismatch
+  against the very kind the author wrote. Identity now satisfies it for that
+  stand-in and for nothing else: a resource genuinely declared `kind: <some
+abstract>` is refused by the kernel at `create()`, and is now reported as
+  `ABSTRACT_KIND_INSTANTIATED` at its declaration, carrying the same "instantiate
+  a concrete implementation: …" hint the kernel's own refusal does.
+
+  And the throws walk stopped at a `!ref` still carrying its parse-time sentinel,
+  reading "cannot see it" as "throws nothing": a consumer's flat set holds a
+  library's exported instances and not the siblings they invoke, so an entry point
+  that raises its own code through an internal guard presented an empty union and
+  had the consumer's `catches:` rejected for the code it documents. Such a name is
+  library-internal, so it resolves in the declaring library's own documents first —
+  asking the consumer's flat set first let any resource that happened to share the
+  name supply an unrelated union. An alias-qualified source resolves through the
+  declaring module's alias table; ambiguity, and a target in neither set, are
+  unbounded rather than empty.
+
+  The tag's grammar now has one reader (`refSentinelTarget`). Three passes had
+  grown their own parse and disagreed about what `!ref Alias.name` names; each
+  keeps its own reduction over the shared parse.
+
+  `ZoneModuleDocuments` is renamed `ModuleDocuments`: the zone stage's
+  per-library export derivation was its first consumer and the throws walk is
+  its second, so a third should not have to import "zone" to ask about
+  something else again. The CLI's patch is that call site and nothing more.
+
+- 7658f43: A library's own CEL is typed against the kind its own alias resolves to, so `request` / `result` inside a route an imported library declares no longer read as unknown identifiers — in `telo check` and in an editor alike.
+
+  An application analysis is flattened, so an imported library's resources are checked in the consumer's pass — but the kind on such a resource (`kind: Http.Api`) is written in the alias scope of the module that DECLARED it. Resolving it through the entry's aliases alone found no definition, and every binding the kind's `x-telo-context` regions provide went missing: a route's `inputs:` and `returns:` were reported as unknown-identifier errors, anchored on a library file the consumer cannot edit, and the only way out was importing the transport in a manifest that never mentions it.
+
+  The rule now has one reader instead of six copies and one omission. The omission was the CEL scope query — the way an editor asks what a site sees — so completion, hover, go-to-declaration and colouring resolved no definition for exactly the manifests the checker had started accepting. A completion list is a claim that the name it offers will pass `telo check`, so the two resolve a kind identically or neither answer can be trusted.
+
+  Go-to-declaration on a context binding also carries the declaring module, and resolves a kind two libraries both declare to the right one — a definition name is unique inside its module and not across a flattened set, so matching by name alone landed on whichever document came first.
+
+  Also adds `CONTRACT_NOT_SUBSTITUTABLE`: a definition that replaces the `inputType` / `outputType` declared by an ABSTRACT it extends must still stand in for it. Contracts resolve to the nearest declaration in both halves, so a child that declares its own was compared against its abstract by nothing — not the analyzer, not dispatch — and an abstract could state a floor for its implementors that held only for the implementations declaring nothing. Extending a concrete kind is untouched: `base:` and `inputs:` / `result:` exist to reshape a call signature there, and a direction the child bridges is skipped for the same reason.
+
+### Patch Changes
+
+- @telorun/templating@0.18.0
+
 ## 0.70.0
 
 ### Minor Changes
