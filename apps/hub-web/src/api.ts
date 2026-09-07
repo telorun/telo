@@ -7,9 +7,10 @@ export type RegisterResult =
   | { ok: true; ref: string }
   | { ok: false; error: string };
 
-/** POST a module ref to the hub's open /register verb. The hub validates the
- *  ref resolves to a real Telo module and, on success, indexes it for tracking;
- *  a bad ref comes back as a 400 with an inline reason. */
+/** POST a module ref to the hub's open /register verb. The hub validates the ref
+ *  resolves to a real Telo module and, on success, records it and schedules the
+ *  indexing — so a 202 means ACCEPTED, not searchable. A bad ref comes back as a
+ *  400 with an inline reason. Poll {@link registrationStatus} for the rest. */
 export async function registerModule(ref: string): Promise<RegisterResult> {
   let res: Response;
   try {
@@ -27,6 +28,90 @@ export async function registerModule(ref: string): Promise<RegisterResult> {
     return { ok: true, ref: data.ref };
   }
   return { ok: false, error: errorMessage(data, res.status) };
+}
+
+/** How far a registration has got.
+ *
+ *  `pending` — recorded, nothing of it indexed yet. `ingesting` — some versions
+ *  are in, more are arriving. `ready` — searchable. `failed` — the last attempt
+ *  recorded an error; `nextAttemptAt` is empty when the hub has given up and an
+ *  operator has to intervene. `unknown` — the hub answered, and has no such
+ *  module.
+ *
+ *  `unavailable` is NOT one of those: it means the hub could not be reached or
+ *  did not answer, which is a fact about the connection rather than about the
+ *  module. Folding it into `unknown` told a user their module was never
+ *  registered every time the hub restarted, and the poll could not tell the two
+ *  apart. */
+export type RegistrationState =
+  | "unavailable"
+  | "unknown"
+  | "pending"
+  | "ingesting"
+  | "ready"
+  | "failed";
+
+export interface RegistrationStatus {
+  ref: string;
+  status: RegistrationState;
+  latestVersion: string;
+  versionsKnown: number;
+  versionsIngested: number;
+  error: string;
+  nextAttemptAt: string;
+}
+
+/** The states the HUB reports. `unavailable` is this client's own and is never
+ *  read off a response. */
+const REPORTED_STATES: readonly RegistrationState[] = [
+  "unknown",
+  "pending",
+  "ingesting",
+  "ready",
+  "failed",
+];
+
+/** A response field is whatever the wire carried, so each is read with its own
+ *  type check rather than spread in wholesale: `versionsIngested` arriving as a
+ *  string and reaching an `${x} of ${y}` render is the bug a spread produces. */
+const asText = (v: unknown): string => (typeof v === "string" ? v : "");
+const asCount = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+
+/** Read a registration's progress.
+ *
+ *  A hub that cannot be reached, or answers with something this cannot read, is
+ *  `unavailable` — never a claim about the module. A 404 IS the hub answering,
+ *  and its body carries `status: unknown` like every other reply, so it is read
+ *  the same way. */
+export async function registrationStatus(ref: string): Promise<RegistrationStatus> {
+  const unavailable: RegistrationStatus = {
+    ref,
+    status: "unavailable",
+    latestVersion: "",
+    versionsKnown: 0,
+    versionsIngested: 0,
+    error: "",
+    nextAttemptAt: "",
+  };
+  try {
+    const res = await fetch(`${HUB_API}/register/status?ref=${encodeURIComponent(ref)}`);
+    const data: unknown = await res.json().catch(() => null);
+    if (typeof data !== "object" || data === null) return unavailable;
+    const d = data as Record<string, unknown>;
+    const status = REPORTED_STATES.find((s) => s === d.status);
+    if (!status) return unavailable;
+    return {
+      ref,
+      status,
+      latestVersion: asText(d.latestVersion),
+      versionsKnown: asCount(d.versionsKnown),
+      versionsIngested: asCount(d.versionsIngested),
+      error: asText(d.error),
+      nextAttemptAt: asText(d.nextAttemptAt),
+    };
+  } catch {
+    return unavailable;
+  }
 }
 
 /** One facet value. `label` is what the module's author wrote; `slug` is what

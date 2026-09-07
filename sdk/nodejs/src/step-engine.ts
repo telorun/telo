@@ -622,6 +622,25 @@ export function toSequenceError(err: unknown, stepName: string): SequenceError {
  * other segment the grammar produces (`then`, `do[2]`, `cases/x`) is distinct
  * from a step name, so nothing else can generate the same key.
  */
-function baseStepPath(invokeCtx?: InvokeContext): string {
+export function baseStepPath(invokeCtx?: InvokeContext): string {
   return invokeCtx?.durablePath ?? "steps";
+}
+
+/**
+ * The journal prefix for ONE turn of a composer that runs its body repeatedly —
+ * an iteration's item, a loop's turn, a projection's element.
+ *
+ * A composer that runs its body N times and journals every turn under the SAME
+ * prefix is not merely imprecise: the journal takes the first writer at a key,
+ * so turns 2..N replay turn 1's recorded outcome instead of executing. The work
+ * is silently skipped and the run still completes. The engine's own `while`
+ * already qualifies each turn this way (`stepPath(path, "do", turn)`); a
+ * controller driving the body itself has to do the same, and this is that
+ * prefix so the three of them cannot spell it differently.
+ *
+ * The index is the turn's position, which is stable across a replay because the
+ * collection it indexes is derived from values the run has already journaled.
+ */
+export function turnStepPath(invokeCtx: InvokeContext | undefined, turn: number): string {
+  return stepPath(baseStepPath(invokeCtx), turn);
 }

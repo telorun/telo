@@ -1,0 +1,45 @@
+kind: Telo.Application
+metadata:
+  name: ThrowsAcrossModulesApp
+  version: 1.0.0
+  description: |
+    Catches a code raised inside the library, by a resource the consumer's
+    flattened set does not carry.
+
+    The consumer ALSO declares a resource named `guard`, which is the collision
+    that matters: a lookup that asked the flat set first would bind the
+    library's internal reference to this unrelated resource, and its (empty)
+    union would be reported as the entry point's.
+imports:
+  Http: ../../../modules/http-server
+  Run: ../../../modules/run
+  Lib: ./lib
+ports:
+  http: { env: PORT, default: 8099 }
+targets:
+  - !ref server
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /go, method: GET }
+    handler: !ref Lib.entry
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+    catches:
+      - status: 400
+        when: !cel "error.code == 'LIB_INTERNAL'"
+        content: { application/json: { body: { error: rejected } } }
+---
+# Same name as the library's internal guard, and unrelated to it.
+kind: Run.Value
+metadata: { name: guard }
+value: { unrelated: true }

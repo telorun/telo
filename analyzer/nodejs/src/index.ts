@@ -11,7 +11,7 @@ export type {
     ParseError,
 } from "./loaded-types.js";
 export {
-    collectZoneModuleDocuments,
+    collectModuleDocuments,
     flattenForAnalyzer,
     flattenLoadedModule,
     forwardReExportManifests,
@@ -246,7 +246,7 @@ export type {
   ZoneExportRequirements,
   ZoneRequirementSpec,
 } from "./resolve-zone-requirements.js";
-export type { ZoneModuleDocuments } from "./zone-module-documents.js";
+export type { ModuleDocuments } from "./module-documents.js";
 export { validateZoneSlotDeclarations } from "./validate-zone-slots.js";
 export {
   RESOURCE_RULES_ANNOTATION,

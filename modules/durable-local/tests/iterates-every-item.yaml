@@ -1,0 +1,100 @@
+kind: Telo.Application
+metadata:
+  name: DurableLocalIterationTest
+  version: 1.0.0
+  description: |
+    Every item of an iteration inside a durable body actually runs.
+
+    A composer that drives its own body — `Run.Iteration`, `Run.Loop`,
+    `Run.Projection` — journals under a prefix the kernel hands it for the whole
+    dispatch. Sharing that one prefix across every turn is not merely imprecise:
+    the journal takes the FIRST writer at a key, so turns 2..N found a record
+    already there and replayed turn 1's outcome instead of executing. The work
+    was silently skipped and the run still reported success.
+
+    Measured before the fix, on the hub's ingest: one resource kind indexed per
+    module version instead of all of them, with no error anywhere.
+
+    THE ASSERTION IS THE KERNEL'S OWN DISPATCH RECORD, the same evidence
+    `replays-recorded-steps.yaml` uses: three items means three dispatches. One
+    would be the bug, and a counter kept by the work could not tell a replayed
+    step from a dispatched one.
+imports:
+  Durable: ../../durable
+  Local: ../
+  Journal: ../../durable-journal-file
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: DURABLE_ITERATION_TEST_DIR
+    type: string
+    default: .telo/durable-iteration-test
+targets:
+  - !ref test
+  - !ref dispatches
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+# The per-item effect. It keeps no state: what happened to it is read off the
+# dispatch record.
+kind: Run.Value
+metadata: { name: handleItem }
+value: { handled: true }
+---
+kind: Run.Iteration
+metadata: { name: eachItem }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      items: { type: array }
+collection: !cel "inputs.items"
+steps:
+  - name: handle
+    invoke: !ref handleItem
+---
+kind: Local.Workflow
+metadata: { name: process }
+journal: !ref journal
+runId: !cel "'iterate:' + inputs.batch"
+inputs:
+  batch: !cel "inputs.batch"
+steps:
+  - name: all
+    invoke: !ref eachItem
+    inputs:
+      items: [a, b, c]
+---
+kind: Assert.Events
+metadata: { name: dispatches }
+filter:
+  - type: "handleItem.Invoked"
+expect:
+  - event: handleItem.Invoked
+    times: 3
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # One batch id per process, so a journal directory left behind by an earlier
+  # run holds nothing this run could replay from.
+  - name: batch
+    value: !cel "'b' + string(nowMillis())"
+  - name: start
+    invoke: !ref process
+    inputs:
+      batch: !cel "steps.batch.result"
+  # The start is detached, so the body is still on its way when it returns.
+  - name: settle
+    invoke: !ref result
+    inputs:
+      run: !cel "'iterate:' + steps.batch.result"
+---
+kind: Local.Result
+metadata: { name: result }
+journal: !ref journal
+wait: 10s

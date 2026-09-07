@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata:
+  name: InjectedAbstractApp
+  version: 1.0.0
+  description: >-
+    Supplies a concrete connection for the library's abstract-constrained input.
+imports:
+  Sqlite: ../../../modules/sqlite
+  Run: ../../../modules/run
+  Lib:
+    source: ./lib
+    resources:
+      connection: !ref db
+targets:
+  - !ref noop
+---
+kind: Sqlite.Connection
+metadata: { name: db }
+filename: ":memory:"
+---
+kind: Run.Sequence
+metadata: { name: noop }
+steps:
+  - name: nothing
+    value: { ok: true }

@@ -1,7 +1,7 @@
 import {
   Loader,
   StaticAnalyzer,
-  collectZoneModuleDocuments,
+  collectModuleDocuments,
   flattenForAnalyzer,
 } from "@telorun/analyzer";
 import { assembleGraphDiagnostics } from "@telorun/ide-support";
@@ -214,7 +214,7 @@ async function checkOne(
     // requirements from the library's own internal dispatch chain. No cache:
     // the CLI analyzes once per process.
     const analysis = new StaticAnalyzer().analyze(flattenForAnalyzer(graph), {
-      moduleDocuments: collectZoneModuleDocuments(graph),
+      moduleDocuments: collectModuleDocuments(graph),
       hostVersions: nodeHostVersions(),
     });
     const { diagnostics } = assembleGraphDiagnostics(graph, analysis);

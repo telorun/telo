@@ -8,6 +8,22 @@
 # `(module-version, resource-kind)` for per-resource search. The hub stores
 # only derived metadata — never artifact payloads — so it can vanish and every
 # install still works (resolution is origin-direct).
+#
+# THIS FILE IS THE COMPOSITION ROOT and nothing else: it binds the environment,
+# owns the one connection, the one bucket, the one embedder, the one vector index
+# and the one shell host, hands each of them to the libraries that need it, and
+# mounts the HTTP and MCP surfaces over what they export. The nine concerns that
+# used to live here are six libraries beside it:
+#
+#   hub-schema.yaml   the tables, the shared derivations, the ingest claim
+#   hub-origin.yaml   reading a module from wherever it is published
+#   hub-ingest.yaml   one version → bucket bytes, rows and vectors, durably
+#   hub-search.yaml   ranked search over kinds and modules
+#   hub-catalog.yaml  keyed reads: one module, one version, one manifest
+#   hub-registry.yaml validating and recording a submitted ref
+#
+# No library knows any other exists, apart from the two dependency edges that are
+# real: ingest and registration both read origins, and both issue the claim.
 
 kind: Telo.Application
 metadata:
@@ -16,6 +32,13 @@ metadata:
   description: >-
     Federated discovery hub: tracks registered module refs across transports,
     caches manifests, and serves per-resource search over HTTP and MCP.
+requires:
+  # 0.83.0: `resources:` on an import — the instances handed down to each library.
+  # 0.87.0: a route's `catches:` is checked against a union the analyzer resolves
+  # by following an exported entry point into its declaring library. An older
+  # runtime sees `{∅}` for every cross-module handler and rejects seven of the
+  # codes below.
+  telo: ">=0.87.0"
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
@@ -23,10 +46,7 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Yaml: oci://ghcr.io/telorun/yaml@0.10.3#sha256-xgWF987hJC2tA6q4SP3BUhSzZz2eSbVmVUK4DVOGupk
   Mcp: oci://ghcr.io/telorun/mcp-server@0.16.0#sha256-GGSQyzXynfdHeMNTS3vqOceP1Uw9rCoJriPlL_Ph-fU
-  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
-  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.4#sha256-Z1My-TDPdE13s63NSi5rT0Qg0CZf-7tAXbJBRcBGCOQ
   Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
   Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
   OpenAI: oci://ghcr.io/telorun/openai@0.3.1#sha256-FVg-jmRPGB43Or9_LU8XhDhG_G2Mio56iiSDwi_ofLk
@@ -35,6 +55,53 @@ imports:
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.4#sha256-_E2AqSEEsTotJXiSmk9GBqlnlwW8JRXNJXZWbx-olxY
   VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
   VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.12.0#sha256-2PYbXSCmI2WlRtVQoQJO6ebJzmVHBOe1kJk8c3-wjfg
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.9.0#sha256-4MpeweWGk4LedDa34TE9lELndNfl9YyBLAyOiHyap9s
+  Durable: oci://ghcr.io/telorun/durable-local@0.3.0#sha256-zMx3J2RRD_eb5c8BRWE9CaWZ1_XsiiB_6SaF5o7csNg
+  # ── The hub's own libraries ────────────────────────────────────────────────
+  # Each is handed the instances declared below. `hub-schema` and `hub-origin`
+  # declare `lifecycle: shared`, so the imports of them here and inside
+  # `hub-ingest` / `hub-registry` all resolve to ONE instantiation — which is
+  # what lets those two reach the claim and the CLI without the composition
+  # being linearized into a chain.
+  Schema:
+    source: ./hub-schema.yaml
+    resources:
+      connection: !ref db
+  Search:
+    source: ./hub-search.yaml
+    resources:
+      connection: !ref db
+      embedQuery: !ref embedQuery
+      vectorMatch: !ref vectorMatch
+    variables:
+      minScore: !cel "variables.vectorMinScore"
+  Catalog:
+    source: ./hub-catalog.yaml
+    resources:
+      connection: !ref db
+      bucketGet: !ref getManifest
+  Ingest:
+    source: ./hub-ingest.yaml
+    resources:
+      connection: !ref db
+      bucketPut: !ref putManifest
+      embedPassage: !ref embedPassage
+      vectorUpsert: !ref vectorUpsert
+      vectorRemove: !ref vectorRemove
+      shellHost: !ref localShell
+    variables:
+      teloBin: !cel "variables.teloBin"
+      ingestRev: !cel "variables.ingestRev"
+  Registry:
+    source: ./hub-registry.yaml
+    resources:
+      connection: !ref db
+      rateLimit: !ref registerRateLimit
+      shellHost: !ref localShell
+      scheduleIngest: !ref Ingest.scheduleIngest
+    variables:
+      teloBin: !cel "variables.teloBin"
+      ingestRev: !cel "variables.ingestRev"
 ports:
   http:
     env: PORT
@@ -54,21 +121,31 @@ variables:
     type: boolean
     default: false
   # Curated first-party ref list, JSON array (e.g. '["oci://ghcr.io/telorun/console","oci://ghcr.io/acme/telo-s3"]').
-  # Registered idempotently on boot; public registration is a later phase.
+  # Registered idempotently on boot; the reconcile pass ingests them.
   seedRefs:
     env: SEED_REFS
     type: array
     default: []
-  trackInterval:
-    env: TRACK_INTERVAL
+  # When the reconcile pass runs. Standard 5-field cron, in UTC.
+  trackCron:
+    env: TRACK_CRON
     type: string
-    default: 15m
-  # Disable the periodic tracker (tests / one-shot ingest drive TrackAll directly).
-  trackLoop:
-    env: TRACK_LOOP
+    default: "*/15 * * * *"
+  # Disable the periodic reconcile (tests and one-shot ingests drive
+  # `Ingest.scheduleDueVersions` directly).
+  trackEnabled:
+    env: TRACK_ENABLED
     type: boolean
     default: true
-  # Path of the telo CLI the tracker shells out to (`telo` on PATH by default).
+  # The revision of the ingest pipeline. Raising it makes every tracked version
+  # due exactly once — the whole-registry re-ingest control, and what a change to
+  # what ingest EXTRACTS is deployed with. Per-version and per-module re-ingest
+  # is a write to `version_ingest.ingest_rev` instead; see the README.
+  ingestRev:
+    env: INGEST_REV
+    type: integer
+    default: 1
+  # Path of the telo CLI the origin reads shell out to (`telo` on PATH by default).
   teloBin:
     env: TELO_BIN
     type: string
@@ -78,29 +155,15 @@ variables:
   embedderBaseUrl:
     env: EMBEDDER_BASE_URL
     type: string
-  # Relevance floor for the semantic arm, as cosine similarity (the store's
-  # metric, so `score` is 1 - distance and higher is better).
-  #
-  # An ANN search always returns its nearest topK, however far away they are:
-  # ask for something the index has nothing like and it still hands back 50
-  # neighbours, which RRF then ranks and the response presents as results. The
-  # floor is what turns "the nearest 50" into "the ones actually near", so a
-  # query with no good answer returns nothing instead of a page of noise.
-  #
-  # Applied to the VECTOR arm only. The lexical arm has its own gate (a
-  # full-text match or a name substring), and thresholding it too would regress
-  # the exact-name lookup that hybrid ranking exists to protect.
-  #
-  # PINNED TO THE EMBEDDING MODEL, exactly as the stored vectors are: a
-  # different model puts its similarities on a different scale, so changing
-  # `EMBEDDING_MODEL` means re-tuning this alongside the re-embed.
+  # Relevance floor for the semantic arm — see the note beside `minScore` in
+  # hub-search.yaml, which is where it is applied.
   vectorMinScore:
     env: VECTOR_MIN_SCORE
     type: number
     default: 0.3
   # Per-IP budget for the open /register verb. Registration is unauthenticated
-  # and does real work (subprocess + remote reads + an embedding call), so it is
-  # the one endpoint that must not be free to hammer.
+  # and reads a remote origin, so it is the one endpoint that must not be free
+  # to hammer.
   registerRateLimit:
     env: REGISTER_RATE_LIMIT
     type: integer
@@ -117,22 +180,34 @@ secrets:
     env: MANIFEST_BUCKET_SECRET_ACCESS_KEY
     type: string
 targets:
-  - !ref Migrations
-  - !ref SeedModules
-  - !ref HubServer
-  - ref: !ref TrackLoop
-    when: !cel "variables.trackLoop"
+  # Migrations first: every read below and the ingest claim itself are written
+  # against tables this creates.
+  - !ref Schema.migrations
+  - !ref seedModules
+  - !ref hubServer
+  # Continues ingest runs whose process died, and starts the ones the reconcile
+  # pass and /register schedule.
+  - !ref resumer
+  # One pass at boot. A cron fires at calendar instants, so without this a fresh
+  # deployment — or a compose stack that has just seeded its refs — would sit
+  # unindexed until the next quarter hour. It only enumerates, claims and
+  # schedules; the runs themselves execute through the resumer above, so this
+  # does not hold the boot sequence open for the length of an ingest.
+  - ref: !ref Ingest.scheduleDueVersions
+    when: !cel "variables.trackEnabled"
+  - ref: !ref reconcile
+    when: !cel "variables.trackEnabled"
 ---
 # ── Storage ───────────────────────────────────────────────────────────────────
 # The static manifest cache (manifests.telo.sh in production): an S3-compatible
-# bucket (Cloudflare R2 / MinIO) the tracker writes each version's telo.yaml
-# into at the deterministic `<transport>/<host>/<path…>/<version>/telo.yaml`
-# key — the key the `telo` CLI computes with the analyzer's shared helper, so
-# the write key and studio's read key never drift. Never artifact payloads.
+# bucket (Cloudflare R2 / MinIO) ingest writes each version's telo.yaml into at
+# the deterministic `<transport>/<host>/<path…>/<version>/telo.yaml` key — the
+# key the `telo` CLI computes with the analyzer's shared helper, so the write key
+# and studio's read key never drift. Never artifact payloads.
 
 kind: S3.Bucket
 metadata:
-  name: ManifestStore
+  name: manifestStore
 bucketName: !cel "variables.bucketName"
 endpoint: !cel "variables.bucketEndpoint"
 forcePathStyle: !cel "variables.bucketForcePathStyle"
@@ -146,274 +221,29 @@ publicRead: true
 ---
 kind: S3.Put
 metadata:
-  name: PutManifest
-bucketRef: !ref ManifestStore
+  name: putManifest
+bucketRef: !ref manifestStore
 ---
 kind: S3.Get
 metadata:
-  name: GetManifest
-bucketRef: !ref ManifestStore
+  name: getManifest
+bucketRef: !ref manifestStore
 ---
 # ── Database ──────────────────────────────────────────────────────────────────
+# ONE connection, handed to every library that reads or writes. It is also the
+# connection the durable journal records through, which is what makes an ingest
+# step's record commit with the step — see hub-ingest.yaml.
 
 kind: Postgres.Connection
 metadata:
-  name: Db
+  name: db
 connectionString: !cel "variables.dbConnection"
----
-kind: Sql.Query
-metadata:
-  name: Query
-connection: !ref Db
----
-kind: Sql.Command
-metadata:
-  name: Exec
-connection: !ref Db
----
-kind: Postgres.Schema
-metadata:
-  name: Migrations
-connection: !ref Db
-migrations:
-  "20260716120000_CreateDiscoverySchema":
-    statements:
-      - |
-        CREATE TABLE modules (
-          id              BIGSERIAL PRIMARY KEY,
-          ref             TEXT NOT NULL UNIQUE,
-          transport       TEXT NOT NULL,
-          latest_version  TEXT,
-          registered_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          last_tracked_at TIMESTAMPTZ,
-          last_error      TEXT
-        )
-      - |
-        CREATE TABLE module_versions (
-          module_id    BIGINT NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
-          version      TEXT NOT NULL,
-          digest       TEXT NOT NULL,
-          module_name  TEXT NOT NULL DEFAULT '',
-          description  TEXT NOT NULL DEFAULT '',
-          repository   TEXT NOT NULL DEFAULT '',
-          license      TEXT NOT NULL DEFAULT '',
-          manifest_key TEXT NOT NULL,
-          tracked_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          PRIMARY KEY (module_id, version)
-        )
-      - |
-        CREATE TABLE resource_kinds (
-          id          BIGSERIAL PRIMARY KEY,
-          module_id   BIGINT NOT NULL,
-          version     TEXT NOT NULL,
-          name        TEXT NOT NULL,
-          capability  TEXT NOT NULL DEFAULT '',
-          abstract    BOOLEAN NOT NULL DEFAULT FALSE,
-          exported    BOOLEAN NOT NULL DEFAULT FALSE,
-          description TEXT NOT NULL DEFAULT '',
-          search      TSVECTOR GENERATED ALWAYS AS
-                        (to_tsvector('english', name || ' ' || description)) STORED,
-          UNIQUE (module_id, version, name),
-          FOREIGN KEY (module_id, version)
-            REFERENCES module_versions(module_id, version) ON DELETE CASCADE
-        )
-      - CREATE EXTENSION IF NOT EXISTS pg_trgm
-      - CREATE INDEX resource_kinds_search_idx ON resource_kinds USING GIN (search)
-      - CREATE INDEX modules_ref_trgm_idx ON modules USING GIN (ref gin_trgm_ops)
-      - |
-        CREATE TABLE module_resources (
-          id        BIGSERIAL PRIMARY KEY,
-          module_id BIGINT NOT NULL,
-          version   TEXT NOT NULL,
-          -- The importable name: the segment after the last dot, since a
-          -- re-export (`Alias.name`) is referenced by the importer as `name`.
-          name      TEXT NOT NULL,
-          -- The entry verbatim, so a re-export's origin alias isn't lost.
-          declared  TEXT NOT NULL,
-          UNIQUE (module_id, version, name),
-          FOREIGN KEY (module_id, version)
-            REFERENCES module_versions(module_id, version) ON DELETE CASCADE
-        )
-  # The two grouping axes browse needs.
-  #
-  # `categories` is the declared facet. Authors write a DISPLAY LABEL
-  # (`metadata.categories: [AI, Storage]`) and this index derives the match key
-  # from it, so `AI` and `ai` collapse to one group and `Data Codecs` reaches a
-  # URL as `data-codecs` — an open vocabulary can't be validated into agreement,
-  # but spelling variance can be normalized out of it. (Only variance the rule
-  # sees: `A. I.` becomes `a-i`, a group of its own, and a synonym always is.)
-  # Both are stored, aligned by position: `categories` is what a filter
-  # matches and what a URL carries, `category_labels` is what a UI prints
-  # (`ai` → `AI` is not recoverable, so the authored text has to be kept).
-  #
-  # `extends_ref` / `extends_kind` is the derived axis: the contract a kind
-  # implements, resolved to the owning module's ref so backends of the same
-  # abstract group together across module boundaries.
-  "20260727090000_AddDiscoveryFacets":
-    statements:
-      # The slug rule lives here, once, so both ingest paths share it and a
-      # query can re-derive a slug without the writer's help.
-      - |
-        CREATE FUNCTION category_slug(label TEXT) RETURNS TEXT
-        LANGUAGE sql IMMUTABLE STRICT AS $$
-          SELECT trim(both '-' from lower(regexp_replace(label, '[^a-zA-Z0-9]+', '-', 'g')))
-        $$
-      - ALTER TABLE module_versions ADD COLUMN categories TEXT[] NOT NULL DEFAULT '{}'
-      - ALTER TABLE module_versions ADD COLUMN category_labels TEXT[] NOT NULL DEFAULT '{}'
-      - ALTER TABLE resource_kinds ADD COLUMN categories TEXT[] NOT NULL DEFAULT '{}'
-      - ALTER TABLE resource_kinds ADD COLUMN category_labels TEXT[] NOT NULL DEFAULT '{}'
-      - ALTER TABLE resource_kinds ADD COLUMN extends_kind TEXT NOT NULL DEFAULT ''
-      # Empty when the kind extends nothing, or when its prefix names a
-      # `Telo.*` built-in abstract — those belong to no published module.
-      - ALTER TABLE resource_kinds ADD COLUMN extends_ref TEXT NOT NULL DEFAULT ''
-      - CREATE INDEX module_versions_categories_idx ON module_versions USING GIN (categories)
-      - CREATE INDEX resource_kinds_categories_idx ON resource_kinds USING GIN (categories)
-      - CREATE INDEX resource_kinds_extends_idx ON resource_kinds (extends_ref, extends_kind)
-  # The import pin an editor writes when it upgrades a dependency:
-  # `sha256-<base64url>` over the bytes this version's transport verifies its own
-  # reads against, so the value is comparable to what `telo install` re-derives.
-  # Distinct from `digest` next to it, which is transport-NATIVE and opaque (for
-  # OCI, the image-manifest digest) and exists only to detect a re-pushed tag.
-  #
-  # Nullable, with three meanings the tracker keeps distinct: a hash, '' for
-  # "asked, nothing could hash this ref", and NULL for "never asked". Only NULL
-  # triggers a re-ingest, so every version tracked before this column existed
-  # backfills itself on its next sync pass — no separate backfill job — and one
-  # that can never be hashed settles after a single pass instead of looping.
-  "20260803090000_AddVersionIntegrity":
-    statements:
-      - ALTER TABLE module_versions ADD COLUMN integrity TEXT
-  # Runtime reach, implementation language, and structured deprecation.
-  #
-  # `runtimes` answers the question a polyglot runtime cannot leave unanswered:
-  # which kernel can actually load this. Without it `search_resources` hands an
-  # agent composing for the Rust kernel a kind whose only controller is
-  # JavaScript, and nothing in the response says so. It is derived from the
-  # `controllers:` PURL candidates by `telo module manifest --json` — the CLI
-  # links both kernels' loaders, so the mapping lives next to what it describes
-  # and this app parses no PURLs.
-  #
-  # Per KIND rather than per module, because coverage genuinely differs between
-  # kinds of one module: `console` ships Rust controllers for two of its four
-  # kinds. `module_versions.runtimes` is the roll-up (every kernel with at least
-  # partial reach) and `runtimes_full` the subset that covers every kind, so a
-  # filter reads one column and the UI still distinguishes full from partial.
-  #
-  # `portable` is a flag rather than "runs on [node, rust]": a kind declaring no
-  # controllers has no kernel constraint at all, and enumerating today's kernels
-  # would make every stored row wrong the day a third one ships.
-  #
-  # `module_versions.runtimes` is NULLABLE on purpose, reusing the tri-state the
-  # integrity column established: NULL means "never asked" and re-ingests the row
-  # on the next pass, so versions tracked before this migration backfill
-  # themselves with no separate job. '{}' means asked and nothing runs it.
-  "20260803120000_AddRuntimeAndDeprecation":
-    statements:
-      # Publisher is DERIVED, never declared: ownership is a property of the host
-      # (a self-asserted field on an open, unauthenticated registry verifies
-      # nothing), so it is a function over the ref rather than a column. Kept
-      # here beside category_slug so queries re-derive it without a writer.
-      - |
-        CREATE FUNCTION module_publisher(ref TEXT, transport TEXT) RETURNS TEXT
-        LANGUAGE sql IMMUTABLE STRICT AS $$
-          SELECT CASE
-            -- A `url` module is one FILE at a fixed location, so its path
-            -- segments are a directory, never an organisation: only the host
-            -- says who serves it. Without this an `https://host/a/telo.yaml`
-            -- module would be attributed to a publisher named "a".
-            WHEN transport = 'url' THEN split_part(bare, '/', 1)
-            WHEN split_part(bare, '/', 2) = '' THEN split_part(bare, '/', 1)
-            ELSE split_part(bare, '/', 1) || '/' || split_part(bare, '/', 2)
-          END
-          FROM (SELECT regexp_replace(ref, '^[a-z0-9+.-]+://', '') AS bare) AS s
-        $$
-      - ALTER TABLE resource_kinds ADD COLUMN runtimes TEXT[] NOT NULL DEFAULT '{}'
-      - ALTER TABLE resource_kinds ADD COLUMN languages TEXT[] NOT NULL DEFAULT '{}'
-      - ALTER TABLE resource_kinds ADD COLUMN portable BOOLEAN NOT NULL DEFAULT FALSE
-      # Resolved the same way `extends` is — through the declaring manifest's own
-      # imports map — so the replacement is a target a consumer can follow. An
-      # empty ref with a non-empty kind names a kernel built-in.
-      - ALTER TABLE resource_kinds ADD COLUMN deprecated_reason TEXT NOT NULL DEFAULT ''
-      - ALTER TABLE resource_kinds ADD COLUMN replaced_by_ref TEXT NOT NULL DEFAULT ''
-      - ALTER TABLE resource_kinds ADD COLUMN replaced_by_kind TEXT NOT NULL DEFAULT ''
-      - ALTER TABLE module_versions ADD COLUMN homepage TEXT NOT NULL DEFAULT ''
-      - ALTER TABLE module_versions ADD COLUMN deprecated_reason TEXT NOT NULL DEFAULT ''
-      # A module's replacement is another MODULE, addressed as an import source —
-      # so one column, not the ref/kind pair a kind-level replacement needs.
-      - ALTER TABLE module_versions ADD COLUMN replaced_by TEXT NOT NULL DEFAULT ''
-      - ALTER TABLE module_versions ADD COLUMN runtimes TEXT[]
-      - ALTER TABLE module_versions ADD COLUMN runtimes_full TEXT[] NOT NULL DEFAULT '{}'
-      - ALTER TABLE module_versions ADD COLUMN languages TEXT[] NOT NULL DEFAULT '{}'
-      - ALTER TABLE module_versions ADD COLUMN portable BOOLEAN NOT NULL DEFAULT FALSE
-      - CREATE INDEX resource_kinds_runtimes_idx ON resource_kinds USING GIN (runtimes)
-      - CREATE INDEX module_versions_runtimes_idx ON module_versions USING GIN (runtimes)
-  # What an exported instance actually IS. The row carried only its importable
-  # name, which is enough to write a `!ref` but says nothing about what you get —
-  # so a reader had to open the manifest to find out. `kind` is the suffix of the
-  # instance doc's own `kind:` (`kind: Self.WriteLine` → `WriteLine`); both stay
-  # empty for a re-export, whose declaring doc lives in another module.
-  "20260803140000_AddResourceKindDetail":
-    statements:
-      - ALTER TABLE module_resources ADD COLUMN kind TEXT NOT NULL DEFAULT ''
-      - ALTER TABLE module_resources ADD COLUMN description TEXT NOT NULL DEFAULT ''
-  # Whether the runtime block was ever ASKED FOR, recorded independently of the
-  # answer.
-  #
-  # `runtimes IS NULL` cannot carry this: it is also what a CLI too old to report
-  # the block leaves behind, so a hub deployed ahead of a CLI release would
-  # re-enter the whole ingest branch on every pass, for every module, forever —
-  # a second origin pull, an R2 put, kinds and resources deleted and re-inserted,
-  # and for the latest version a vector purge plus re-embed, leaving a recurring
-  # window with no vectors at all. That is the exact failure the integrity column
-  # avoids by distinguishing NULL from ''; this is the same distinction, made
-  # observable rather than inferred from the answer.
-  #
-  # Set unconditionally on ingest, so an old CLI settles in one pass. Rows that
-  # predate this column read FALSE and backfill once. When the CLI is upgraded, a
-  # changed digest re-probes normally; to force it sooner, flip this to FALSE.
-  "20260803150000_AddRuntimeProbeFlag":
-    statements:
-      - ALTER TABLE module_versions ADD COLUMN runtimes_asked BOOLEAN NOT NULL DEFAULT FALSE
-  # Newest-first version ordering, defined once.
-  #
-  # Two routes serve version lists (`/module/versions` and `/module`), and they
-  # must agree or an IDE that completes from one and a picker that renders from
-  # the other disagree about which version is latest. A shared function is the
-  # pattern this schema already uses for a derivation two callers need
-  # (`category_slug`, `module_publisher`). NULL for a non-dotted-numeric tag, so
-  # `ORDER BY version_sort_key(v) DESC NULLS LAST, v ASC` puts digests and
-  # `latest` after real versions in lexical order — the same shape as the CLI's
-  # `sortVersionsDesc`, which is the third copy and cannot share this one.
-  "20260803160000_AddVersionSortKey":
-    statements:
-      - |
-        CREATE FUNCTION version_sort_key(version TEXT) RETURNS INT[]
-        LANGUAGE sql IMMUTABLE STRICT AS $$
-          SELECT CASE WHEN version ~ '^[0-9]+(\.[0-9]+)*$'
-                      THEN string_to_array(version, '.')::int[] END
-        $$
-  # The `registry` transport is gone: a bare `<namespace>/<name>` ref resolves
-  # nowhere, so `telo module versions` on one exits non-zero and those rows fail
-  # every tracking pass forever. DELETED rather than filtered out of reads —
-  # filtering would hide rows that can never be repaired, while leaving them
-  # readable means search and `get_module_manifest` hand a caller a ref they
-  # cannot import, which is worse than a 404. Cascades to `module_versions`,
-  # `resource_kinds` and `module_resources`. Orphaned rows in the pgvector
-  # backend's own table are left alone — the hub does not reach into it, and the
-  # RRF query joins vector ids back to the relational rows, so an id with no row
-  # yields no hit.
-  "20260904090000_DropRegistryTransportModules":
-    statements:
-      - DELETE FROM modules WHERE transport = 'registry'
-      - |
-        ALTER TABLE modules ADD CONSTRAINT modules_transport_known
-        CHECK (transport IN ('oci', 'url'))
 ---
 # ── Semantic search: embedding model + pgvector index ────────────────────────
 # The embedder is a self-hosted embeddinggemma-300m sidecar (OpenAI-compatible);
 # the vector index is a pgvector table the backend owns, living in the same
 # database as the relational rows. The RRF search query never touches that
-# table — it only fuses the ids VectorStore.Match returns (see Search).
+# table — it only fuses the ids VectorStore.Match returns.
 
 # The sidecar's endpoint, declared as an account. It carries no `credential:` at
 # all — the self-hosted server needs none, which is the honest spelling of what
@@ -430,7 +260,7 @@ client: !ref embedderClient
 ---
 kind: OpenAI.EmbeddingModel
 metadata:
-  name: Embedder
+  name: embedder
 # Pinned to the stored vectors: embeddinggemma-300m → 768 dims. A model change
 # is a re-embed, never an in-place swap.
 model: embeddinggemma-300m
@@ -445,39 +275,39 @@ passagePrompt: "title: none | text: {text}"
 ---
 kind: Embedding.Passage
 metadata:
-  name: EmbedPassage
-model: !ref Embedder
+  name: embedPassage
+model: !ref embedder
 ---
 kind: Embedding.Query
 metadata:
-  name: EmbedQuery
-model: !ref Embedder
+  name: embedQuery
+model: !ref embedder
 ---
 # The vectors table (`resource_vectors`) is provisioned by this Store on init —
 # CREATE EXTENSION vector + table + HNSW index. 768 dims is fixed at creation.
 kind: VectorStorePgvector.Store
 metadata:
-  name: VectorIndex
-connection: !ref Db
+  name: vectorIndex
+connection: !ref db
 dimensions: 768
 metric: cosine
 table: resource_vectors
 ---
 kind: VectorStore.Record
 metadata:
-  name: VectorUpsert
-store: !ref VectorIndex
+  name: vectorUpsert
+store: !ref vectorIndex
 ---
 kind: VectorStore.Match
 metadata:
-  name: VectorMatch
-store: !ref VectorIndex
+  name: vectorMatch
+store: !ref vectorIndex
 topK: 50
 ---
 kind: VectorStore.Removal
 metadata:
-  name: VectorRemove
-store: !ref VectorIndex
+  name: vectorRemove
+store: !ref vectorIndex
 ---
 # ── Rate limiting (open /register verb) ──────────────────────────────────────
 # Counters live in an in-process memory store: the hub is a single instance, and
@@ -487,1467 +317,54 @@ store: !ref VectorIndex
 
 kind: CacheMemory.Store
 metadata:
-  name: RateLimitCounters
+  name: rateLimitCounters
 ---
 kind: RateLimit.Guard
 metadata:
-  name: RegisterRateLimit
-store: !ref RateLimitCounters
+  name: registerRateLimit
+store: !ref rateLimitCounters
 limit: !cel "variables.registerRateLimit"
 window: !cel "variables.registerRateWindow"
 ---
-# ── Local shell (tracker → telo CLI) ─────────────────────────────────────────
+# ── Local shell (origin reads → telo CLI) ────────────────────────────────────
 # Every transport-specific read goes through the generic `telo module …` CLI
-# verbs — the tracker never speaks OCI or the registry protocol directly.
+# verbs — nothing here speaks OCI or the registry protocol directly.
 
 kind: Shell.LocalHost
 metadata:
-  name: LocalShell
+  name: localShell
 ---
-kind: Shell.Command
-metadata:
-  name: TeloCli
-host: !ref LocalShell
----
-kind: Yaml.Parse
-metadata:
-  name: ParseYaml
----
-kind: Timer.Delay
-metadata:
-  name: Sleep
----
-kind: Console.WriteLine
-metadata:
-  name: LogLine
----
-# Concrete versions (drops the `latest` alias), newest-first. The single home of
-# the "exclude latest" rule, reused across the tracker's version steps.
-kind: Run.Value
-metadata:
-  name: VersionedRef
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      ref: { type: string }
-      version: { type: string }
-# How a ref pins to one version, in one place. A direct `https://` ref addresses
-# a single file at a fixed location and takes NO `@version` suffix — appending
-# one produces a 404. An OCI ref pins with `@<version>`.
-value: !cel "inputs.ref.startsWith('https://') ? inputs.ref : inputs.ref + '@' + inputs.version"
----
-kind: Run.Value
-metadata:
-  name: ConcreteVersions
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      versions: { type: array }
-value: !cel "inputs.versions.filter(v, v != 'latest')"
----
-# ── Registration (curated seed) ──────────────────────────────────────────────
+# ── Boot and background work ─────────────────────────────────────────────────
 
+# The curated seed list: rows only. What ingests them is the reconcile pass,
+# which is also what re-ingests them when their content moves.
 kind: Run.Iteration
 metadata:
-  name: SeedModules
+  name: seedModules
 collection: !cel "variables.seedRefs"
 steps:
   - name: register
-    invoke: !ref RegisterModule
+    invoke: !ref Registry.registerModule
     inputs:
       ref: !cel "string(item)"
 ---
-kind: Run.Sequence
+# The reconcile pass. A cron rather than a sleep loop, so a tick means a
+# calendar instant rather than "an interval after whatever the last pass took",
+# and a pass that overruns does not push every later one along with it.
+kind: Scheduler.Cron
 metadata:
-  name: RegisterModule
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      ref: { type: string }
-steps:
-  - name: upsert
-    invoke: !ref Exec
-    inputs:
-      sql: >-
-        INSERT INTO modules (ref, transport) VALUES ($1, $2)
-        ON CONFLICT (ref) DO NOTHING
-      bindings:
-        - !cel "inputs.ref"
-        # Transport is part of the record's identity. `url` is a single
-        # manifest at a fixed https location (no version list of its own; see
-        # the README).
-        - !cel "inputs.ref.startsWith('oci://') ? 'oci' : 'url'"
+  name: reconcile
+cron: !cel "variables.trackCron"
+invoke: !ref Ingest.scheduleDueVersions
 ---
-# ── Public registration (POST /register) ─────────────────────────────────────
-# Validate a submitted module ref resolves to a real Telo module, insert it, and
-# index it inline (one immediate TrackModule pass) so a successful response means
-# the module is actually searchable — no waiting for the periodic loop, which
-# stays on as the reconciler (re-pushed digests, new versions, retry of a failed
-# first track). Open + unauthenticated — ref validation plus the transport-egress
-# guard is the anti-abuse / anti-SSRF boundary; the hub never vouches for content.
-# The row is inserted *before* the inline track, so even if that track throws the
-# module is registered and the next reconcile pass retries it. A validation
-# failure resolves with { ok: false, error } → 400; a track failure throws → the
-# route's catch surfaces the real code/message.
-kind: Run.Sequence
+# Picks up ingest runs whose process died, and starts the ones the reconcile pass
+# and /register schedule — a scheduled run is admitted immediately and executed
+# here, which is what keeps the request path free of the work.
+kind: Durable.Resumer
 metadata:
-  name: RegisterAndValidate
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      ref: { type: string }
-      clientIp: { type: string }
-steps:
-  # Per-IP budget, checked before anything else — this endpoint is open and does
-  # real work, so it must not be free to hammer. Non-throwing: the verdict maps
-  # to a 429. An empty key fails closed (denied) rather than sharing one bucket.
-  - name: limit
-    invoke: !ref RegisterRateLimit
-    inputs:
-      key: !cel "inputs.clientIp"
-  # Shape gate — the FIRST thing that touches the submitted ref, before any
-  # subprocess. Only a remote module ref is accepted: an optional `oci://` or
-  # `https://` scheme, then host/path segments of safe characters, with at least
-  # one `/`. Plaintext `http://` is deliberately absent — the hub serves cached
-  # third-party manifests onward, so it never ingests over an unauthenticated
-  # channel. The character classes exclude `@` inside segments, so a userinfo
-  # authority (`https://evil.com@internal/…`) cannot match either.
-  #
-  # This is a security boundary, not a convenience check. The CLI's ref
-  # resolution treats a path-like or cwd-resolvable ref as a LOCAL manifest and
-  # reads it straight off disk — short-circuiting before any egress guard — so
-  # an ungated `/etc/passwd` would turn this open endpoint into a filesystem
-  # existence oracle. The pattern also rejects a leading `-`, so a submitted
-  # `--help` can't be read as a CLI flag (argument injection) instead of a
-  # positional. The transport-egress guard only covers refs that actually reach
-  # the network; this gate is what keeps local refs from getting that far.
-  - name: accepted
-    if: !cel "steps.limit.result.allowed && inputs.ref.matches('^(oci://|https://)[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)+(@[A-Za-z0-9][A-Za-z0-9._+-]*)?$')"
-    then:
-      # `versions` proves the transport resolves the ref to a module repo, so
-      # the submitter supplies no version.
-      - name: versionsCmd
-        invoke: !ref TeloCli
-        inputs:
-          args:
-            - !cel "variables.teloBin"
-            - module
-            - versions
-            - !cel "inputs.ref"
-            - --json
-          timeoutMs: 120000
-      - name: resolved
-        if: !cel "steps.versionsCmd.result.exitCode == 0"
-        then:
-          - name: versions
-            invoke: !ref ParseYaml
-            inputs:
-              text: !cel "steps.versionsCmd.result.stdout"
-          - name: concrete
-            invoke: !ref ConcreteVersions
-            inputs:
-              versions: !cel "steps.versions.result.docs[0]"
-          # Reading the latest version's telo.yaml confirms the ref actually
-          # serves a Telo manifest (a non-module OCI artifact fails here).
-          - name: hasVersions
-            if: !cel "size(steps.concrete.result) > 0"
-            then:
-              - name: pinned
-                invoke: !ref VersionedRef
-                inputs:
-                  ref: !cel "inputs.ref"
-                  version: !cel "steps.concrete.result[0]"
-              - name: manifestCmd
-                invoke: !ref TeloCli
-                inputs:
-                  args:
-                    - !cel "variables.teloBin"
-                    - module
-                    - manifest
-                    - !cel "steps.pinned.result"
-                    - --json
-                  timeoutMs: 120000
-          # Only a Telo.Library is registerable. An Application is a runnable
-          # root that cannot be imported at all, so it defines no importable
-          # kinds — registering one would create a module row that indexes zero
-          # resource kinds and never surfaces in search. Reject it up front with
-          # a reason instead of silently storing an empty record.
-          - name: inspected
-            if: !cel "'manifestCmd' in steps && steps.manifestCmd.result.exitCode == 0"
-            then:
-              - name: manifestJson
-                invoke: !ref ParseYaml
-                inputs:
-                  text: !cel "steps.manifestCmd.result.stdout"
-              - name: docs
-                invoke: !ref ParseYaml
-                inputs:
-                  text: !cel "steps.manifestJson.result.docs[0].manifest"
-          # Valid library → insert the row, then index it inline.
-          - name: register
-            if: !cel "'docs' in steps && steps.docs.result.docs[0].kind == 'Telo.Library'"
-            then:
-              - name: insert
-                invoke: !ref RegisterModule
-                inputs:
-                  ref: !cel "inputs.ref"
-              # Resolve the row id (just-inserted or pre-existing on
-              # re-registration) to drive the track — the join key is that id.
-              - name: lookup
-                invoke: !ref Query
-                inputs:
-                  sql: SELECT id FROM modules WHERE ref = $1
-                  bindings:
-                    - !cel "inputs.ref"
-              # Index the LATEST version only, inline — bounded, constant work
-              # (one digest + one manifest read + one embed) no matter how many
-              # versions the module has. Tracking every version here would make
-              # an anonymous request cost ~2N subprocess spawns and N remote
-              # reads; the periodic loop backfills the older versions on its
-              # next pass, and only the latest is embedded/searched anyway, so
-              # "200 ⇒ searchable" still holds. `concrete` is reused from
-              # validation, so the ref's versions are enumerated once per call.
-              - name: guarded
-                try:
-                  - name: track
-                    invoke: !ref SyncVersion
-                    inputs:
-                      moduleId: !cel "steps.lookup.result.rows[0].id"
-                      ref: !cel "inputs.ref"
-                      version: !cel "steps.concrete.result[0]"
-                      latestVersion: !cel "steps.concrete.result[0]"
-                  - name: markLatest
-                    invoke: !ref Exec
-                    inputs:
-                      sql: >-
-                        UPDATE modules
-                        SET latest_version = $2, last_tracked_at = NOW(), last_error = NULL
-                        WHERE id = $1
-                      bindings:
-                        - !cel "steps.lookup.result.rows[0].id"
-                        - !cel "steps.concrete.result[0]"
-                catch:
-                  # Logged here (with the real cause) and re-thrown — the client
-                  # only ever sees the error code, never the message. Never
-                  # swallowed: the row is already inserted, so the periodic loop
-                  # retries and records `last_error` on it.
-                  - name: log
-                    invoke: !ref LogLine
-                    inputs:
-                      output: !cel "'{red /register inline index failed} ' + inputs.ref + ' — ' + error.code + ': ' + error.message"
-                  - name: rethrow
-                    throw:
-                      code: !cel "error.code"
-                      message: !cel "error.message"
-outputs:
-  ref: !cel "inputs.ref"
-  # Reaching here means validation passed AND the inline index succeeded (a
-  # failure throws before outputs render). So `track` present ≡ actually indexed.
-  ok: !cel "'track' in steps"
-  rateLimited: !cel "!steps.limit.result.allowed"
-  retryAfter: !cel "steps.limit.result.retryAfter"
-  # Each branch is reachable only once the step it reads has run — CEL ternaries
-  # short-circuit, so an absent step is never dereferenced. `versionsCmd` absent
-  # means the rate limit or the shape gate stopped the call before any
-  # subprocess ran.
-  error: !cel >-
-    !steps.limit.result.allowed
-      ? 'too many registrations from this address — retry in ' + string(steps.limit.result.retryAfter) + 's'
-      : (!('versionsCmd' in steps)
-          ? 'invalid module ref — expected oci://<host>/<path> or https://<host>/<path>'
-          : (steps.versionsCmd.result.exitCode != 0
-              ? 'cannot resolve module ref: ' + steps.versionsCmd.result.stderr
-              : (!('manifestCmd' in steps)
-                  ? 'no published versions for ' + inputs.ref
-                  : (steps.manifestCmd.result.exitCode != 0
-                      ? 'not a readable Telo module: ' + steps.manifestCmd.result.stderr
-                      : (steps.docs.result.docs[0].kind != 'Telo.Library'
-                          ? 'only a Telo.Library can be registered — ' + inputs.ref + ' is a ' + steps.docs.result.docs[0].kind + ', which cannot be imported'
-                          : '')))))
----
-# ── Ingest tracker ────────────────────────────────────────────────────────────
-# One pass: enumerate every registered module's versions, digest-reconcile each
-# version, ingest new/moved content. Version content immutability is a
-# convention no transport enforces — a tag can be re-pushed — so each version's
-# resolved digest is recorded and re-checked on every track; a steady-state
-# track is digest-compare-only.
-
-kind: Run.Loop
-metadata:
-  name: TrackLoop
-condition: !cel "true"
-steps:
-  # A pass-level failure (a transient Postgres hiccup on the module SELECT,
-  # say) must not kill the loop — the tracker would never re-track again. It
-  # is logged, never swallowed, and the next interval retries; per-module
-  # failures are already recorded on their own rows inside TrackAll.
-  - name: guard
-    try:
-      - name: track
-        invoke: !ref TrackAll
-    catch:
-      - name: log
-        invoke: !ref LogLine
-        inputs:
-          output: !cel "'{red tracking pass failed} ' + error.code + ': ' + error.message"
-  - name: sleep
-    invoke: !ref Sleep
-    inputs:
-      duration: !cel "variables.trackInterval"
----
-kind: Run.Sequence
-metadata:
-  name: TrackAll
-steps:
-  - name: modules
-    invoke: !ref Query
-    inputs:
-      sql: SELECT id, ref FROM modules ORDER BY id
-  - name: each
-    invoke: !ref TrackEachModule
-    inputs:
-      modules: !cel "steps.modules.result.rows"
-outputs:
-  tracked: !cel "steps.modules.result.rows.size()"
----
-kind: Run.Iteration
-metadata:
-  name: TrackEachModule
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      modules: { type: array }
-collection: !cel "inputs.modules"
-concurrency: 2
-steps:
-  # A broken module must not abort the whole track — the failure is recorded
-  # on its row (surfaced via /refs and the module tables), never swallowed.
-  - name: guard
-    try:
-      - name: track
-        invoke: !ref TrackModule
-        inputs:
-          moduleId: !cel "item.id"
-          ref: !cel "item.ref"
-    catch:
-      - name: recordFailure
-        invoke: !ref Exec
-        inputs:
-          sql: UPDATE modules SET last_error = $2, last_tracked_at = NOW() WHERE id = $1
-          bindings:
-            - !cel "item.id"
-            - !cel "error.code + ': ' + error.message"
----
-kind: Run.Sequence
-metadata:
-  name: TrackModule
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      # modules.id is a bigint — the driver yields it as a string.
-      moduleId: { type: string }
-      ref: { type: string }
-steps:
-  - name: versionsCmd
-    invoke: !ref TeloCli
-    inputs:
-      args:
-        - !cel "variables.teloBin"
-        - module
-        - versions
-        - !cel "inputs.ref"
-        - --json
-      timeoutMs: 120000
-  - name: versionsGate
-    if: !cel "steps.versionsCmd.result.exitCode != 0"
-    then:
-      - name: fail
-        throw:
-          code: TRACK_VERSIONS_FAILED
-          message: !cel "'telo module versions ' + inputs.ref + ' failed: ' + steps.versionsCmd.result.stderr"
-  - name: versions
-    invoke: !ref ParseYaml
-    inputs:
-      text: !cel "steps.versionsCmd.result.stdout"
-  # Concrete versions, newest-first — the "exclude latest alias" rule lives here
-  # once (an OCI repo's `latest` tag is an alias, not a version, never ingested).
-  - name: concrete
-    invoke: !ref ConcreteVersions
-    inputs:
-      versions: !cel "steps.versions.result.docs[0]"
-  - name: eachVersion
-    invoke: !ref TrackEachVersion
-    inputs:
-      moduleId: !cel "inputs.moduleId"
-      ref: !cel "inputs.ref"
-      versions: !cel "steps.concrete.result"
-      # [0] is the latest — the only version we embed. Empty when the module has
-      # no concrete versions (the iteration is then a no-op).
-      latestVersion: !cel "size(steps.concrete.result) > 0 ? steps.concrete.result[0] : ''"
-  - name: updateLatest
-    if: !cel "size(steps.concrete.result) > 0"
-    then:
-      - name: set
-        invoke: !ref Exec
-        inputs:
-          sql: >-
-            UPDATE modules
-            SET latest_version = $2, last_tracked_at = NOW(), last_error = NULL
-            WHERE id = $1
-          bindings:
-            - !cel "inputs.moduleId"
-            - !cel "steps.concrete.result[0]"
----
-kind: Run.Iteration
-metadata:
-  name: TrackEachVersion
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      # modules.id is a bigint — the driver yields it as a string.
-      moduleId: { type: string }
-      ref: { type: string }
-      versions: { type: array }
-      latestVersion: { type: string }
-collection: !cel "inputs.versions"
-steps:
-  - name: sync
-    invoke: !ref SyncVersion
-    inputs:
-      moduleId: !cel "inputs.moduleId"
-      ref: !cel "inputs.ref"
-      version: !cel "string(item)"
-      latestVersion: !cel "inputs.latestVersion"
----
-# Digest-reconcile one version: an unchanged digest is skipped (cheap read, no
-# re-download); a new or moved digest re-ingests — re-read telo.yaml, re-cache
-# to the same bucket key, re-extract its resource kinds.
-kind: Run.Sequence
-metadata:
-  name: SyncVersion
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      # modules.id is a bigint — the driver yields it as a string.
-      moduleId: { type: string }
-      ref: { type: string }
-      version: { type: string }
-      latestVersion: { type: string }
-steps:
-  - name: pinned
-    invoke: !ref VersionedRef
-    inputs:
-      ref: !cel "inputs.ref"
-      version: !cel "inputs.version"
-  - name: digestCmd
-    invoke: !ref TeloCli
-    inputs:
-      args:
-        - !cel "variables.teloBin"
-        - module
-        - digest
-        - !cel "steps.pinned.result"
-        - --json
-      timeoutMs: 60000
-  - name: digestGate
-    if: !cel "steps.digestCmd.result.exitCode != 0"
-    then:
-      - name: fail
-        throw:
-          code: TRACK_DIGEST_FAILED
-          message: !cel "'telo module digest ' + inputs.ref + '@' + inputs.version + ' failed: ' + steps.digestCmd.result.stderr"
-  - name: digest
-    invoke: !ref ParseYaml
-    inputs:
-      text: !cel "steps.digestCmd.result.stdout"
-  - name: existing
-    invoke: !ref Query
-    inputs:
-      # `needsPin` is true nullity, NOT an empty hash: those are different
-      # states and only one is worth re-ingesting for. NULL means the row
-      # predates the integrity column and was never asked; '' means it WAS
-      # asked and nothing could hash the ref. Collapsing them (COALESCE to '')
-      # would re-ingest the unhashable ones on every pass, forever — and an
-      # ingest is not a cheap read but the whole `then:` branch: a second
-      # origin pull for the hash, the R2 put, kinds and resources deleted and
-      # re-inserted, and for the latest version a vector purge plus a re-embed,
-      # leaving a recurring window where the module has no vectors at all.
-      sql: >-
-        SELECT digest, (integrity IS NULL) AS "needsPin", (NOT runtimes_asked) AS "needsRuntimes"
-        FROM module_versions WHERE module_id = $1 AND version = $2
-      bindings:
-        - !cel "inputs.moduleId"
-        - !cel "inputs.version"
-  # Re-ingest on a new version, a moved digest, or a row that predates the
-  # integrity or runtime columns — the last two are what backfill everything
-  # tracked before they existed, without a separate migration pass. Each settles
-  # in ONE pass: the hash lands, or '' records that there is none; the probe flag
-  # is set whether or not the CLI had an answer to give. Neither is inferred from
-  # the answer, because an absent answer is exactly the state that would
-  # otherwise re-trigger forever. Re-ingest is whole-row, so one sentinel
-  # refreshes every column added here — homepage and deprecation ride along on
-  # the same manifest read.
-  - name: ingest
-    if: !cel "steps.existing.result.rows.size() == 0 || steps.existing.result.rows[0].digest != steps.digest.result.docs[0].digest || steps.existing.result.rows[0].needsPin || steps.existing.result.rows[0].needsRuntimes"
-    then:
-      - name: manifestCmd
-        invoke: !ref TeloCli
-        inputs:
-          args:
-            - !cel "variables.teloBin"
-            - module
-            - manifest
-            - !cel "steps.pinned.result"
-            - --json
-          timeoutMs: 120000
-      - name: manifestGate
-        if: !cel "steps.manifestCmd.result.exitCode != 0"
-        then:
-          - name: fail
-            throw:
-              code: TRACK_MANIFEST_FAILED
-              message: !cel "'telo module manifest ' + inputs.ref + '@' + inputs.version + ' failed: ' + steps.manifestCmd.result.stderr"
-      - name: manifestJson
-        invoke: !ref ParseYaml
-        inputs:
-          text: !cel "steps.manifestCmd.result.stdout"
-      - name: cache
-        invoke: !ref PutManifest
-        inputs:
-          key: !cel "steps.manifestJson.result.docs[0].cacheKey"
-          body: !cel "steps.manifestJson.result.docs[0].manifest"
-          contentType: text/yaml
-      - name: docs
-        invoke: !ref ParseYaml
-        inputs:
-          text: !cel "steps.manifestJson.result.docs[0].manifest"
-      - name: upsertVersion
-        invoke: !ref Exec
-        inputs:
-          sql: >-
-            INSERT INTO module_versions
-              (module_id, version, digest, module_name, description, repository, license, manifest_key,
-               categories, category_labels, integrity,
-               homepage, deprecated_reason, replaced_by, runtimes, runtimes_full, languages, portable,
-               runtimes_asked)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-                    ARRAY(SELECT category_slug(l) FROM unnest($9::text[]) AS l), $9::text[],
-                    COALESCE($10, ''),
-                    $11, $12, $13,
-                    -- NULL means "no runtime data" (a CLI too old to report it),
-                    -- as distinct from '{}' meaning "asked, no kernel runs this".
-                    -- CEL cannot express a list-or-null ternary, so the nullity is
-                    -- decided here from $18. Whether we ASKED is recorded
-                    -- separately below, and is what gates re-ingest.
-                    CASE WHEN $18 THEN $14::text[] END,
-                    $15::text[], $16::text[], $17,
-                    TRUE)
-            ON CONFLICT (module_id, version) DO UPDATE SET
-              digest = EXCLUDED.digest,
-              module_name = EXCLUDED.module_name,
-              description = EXCLUDED.description,
-              repository = EXCLUDED.repository,
-              license = EXCLUDED.license,
-              manifest_key = EXCLUDED.manifest_key,
-              categories = EXCLUDED.categories,
-              category_labels = EXCLUDED.category_labels,
-              integrity = EXCLUDED.integrity,
-              homepage = EXCLUDED.homepage,
-              deprecated_reason = EXCLUDED.deprecated_reason,
-              replaced_by = EXCLUDED.replaced_by,
-              runtimes = EXCLUDED.runtimes,
-              runtimes_full = EXCLUDED.runtimes_full,
-              languages = EXCLUDED.languages,
-              portable = EXCLUDED.portable,
-              runtimes_asked = TRUE,
-              tracked_at = NOW()
-          bindings:
-            - !cel "inputs.moduleId"
-            - !cel "inputs.version"
-            - !cel "steps.digest.result.docs[0].digest"
-            - !cel "steps.docs.result.docs[0].metadata.name"
-            - !cel "steps.docs.result.docs[0].metadata.?description.orValue('')"
-            - !cel "steps.docs.result.docs[0].metadata.?repository.orValue('')"
-            - !cel "steps.docs.result.docs[0].metadata.?license.orValue('')"
-            - !cel "steps.manifestJson.result.docs[0].cacheKey"
-            - !cel "steps.docs.result.docs[0].metadata.?categories.orValue([])"
-            # `telo module manifest --json` emits null where nothing could hash
-            # the ref (with the reason on its stderr); COALESCE above stores
-            # that as '' — "asked, none available" — so it is never mistaken for
-            # the NULL that means "never asked".
-            - !cel "steps.manifestJson.result.docs[0].?integrity.orValue('')"
-            - !cel "steps.docs.result.docs[0].metadata.?homepage.orValue('')"
-            - !cel "steps.docs.result.docs[0].metadata.?deprecated.?reason.orValue('')"
-            - !cel "steps.docs.result.docs[0].metadata.?deprecated.?replacedBy.orValue('')"
-            - !cel >-
-              keys(steps.manifestJson.result.docs[0].?runtime.?runtimes.orValue({}))
-            - !cel >-
-              keys(steps.manifestJson.result.docs[0].?runtime.?runtimes.orValue({}))
-                .filter(k, steps.manifestJson.result.docs[0].runtime.runtimes[k] == 'full')
-            - !cel "steps.manifestJson.result.docs[0].?runtime.?languages.orValue([])"
-            - !cel "steps.manifestJson.result.docs[0].?runtime.?portable.orValue(false)"
-            # Whether the CLI reported a `runtime` block at all — a binary older
-            # than the field reports none. That is a different state from a
-            # module no kernel can run ('{}'), and only the first is worth
-            # retrying: recording '{}' for an old CLI would store a false fact
-            # that never self-corrects once the binary is upgraded.
-            - !cel "'runtime' in steps.manifestJson.result.docs[0]"
-      - name: clearKinds
-        invoke: !ref Exec
-        inputs:
-          sql: DELETE FROM resource_kinds WHERE module_id = $1 AND version = $2
-          bindings:
-            - !cel "inputs.moduleId"
-            - !cel "inputs.version"
-      - name: insertKinds
-        invoke: !ref InsertKinds
-        inputs:
-          moduleId: !cel "inputs.moduleId"
-          version: !cel "inputs.version"
-          ref: !cel "inputs.ref"
-          docs: !cel "steps.docs.result.docs"
-          runtimeKinds: !cel "steps.manifestJson.result.docs[0].?runtime.?kinds.orValue([])"
-      - name: clearResources
-        invoke: !ref Exec
-        inputs:
-          sql: DELETE FROM module_resources WHERE module_id = $1 AND version = $2
-          bindings:
-            - !cel "inputs.moduleId"
-            - !cel "inputs.version"
-      - name: insertResources
-        invoke: !ref InsertResources
-        inputs:
-          moduleId: !cel "inputs.moduleId"
-          version: !cel "inputs.version"
-          docs: !cel "steps.docs.result.docs"
-      # Embed only the module's latest version, superseding any prior vectors so
-      # the vector table holds exactly one vector per (module, resource-kind).
-      # Older versions keep their relational rows (pinned reads, history) but no
-      # vector, keeping near-identical versions out of the ANN top-K.
-      - name: embedLatest
-        if: !cel "inputs.version == inputs.latestVersion"
-        then:
-          # Read back the just-inserted rows for their ids — the vector id is the
-          # resource_kinds row id, the join key the RRF search fuses on.
-          - name: kindRows
-            invoke: !ref Query
-            inputs:
-              sql: >-
-                SELECT id, name, capability, description
-                FROM resource_kinds WHERE module_id = $1 AND version = $2 ORDER BY id
-              bindings:
-                - !cel "inputs.moduleId"
-                - !cel "inputs.version"
-          # Drop every existing vector for this module first: a re-ingest
-          # reassigns resource_kinds ids, so superseding by (module, version)
-          # is insufficient — purge all, then re-upsert the latest.
-          - name: purge
-            invoke: !ref VectorRemove
-            inputs:
-              metadataFilter:
-                module_id: !cel "inputs.moduleId"
-          - name: embed
-            if: !cel "steps.kindRows.result.rows.size() > 0"
-            then:
-              # Composed passage: kind name + capability + curated description,
-              # framed by the owning module's name + description. The curated
-              # line is the primary signal; schema-derived enrichment is a
-              # follow-up.
-              - name: passages
-                invoke: !ref EmbedPassage
-                inputs:
-                  input: !cel >-
-                    steps.kindRows.result.rows.map(r,
-                      r.name + ' (' + r.capability + '). ' + r.description +
-                      ' — from module ' + steps.docs.result.docs[0].metadata.name + ': ' +
-                      steps.docs.result.docs[0].metadata.?description.orValue(''))
-              - name: upsert
-                invoke: !ref VectorUpsert
-                inputs:
-                  items: !cel >-
-                    enumerate(steps.kindRows.result.rows).map(e, {
-                      'id': string(e.value.id),
-                      'vector': steps.passages.result.embeddings[e.index],
-                      'metadata': {'module_id': inputs.moduleId, 'version': inputs.version, 'name': e.value.name}
-                    })
----
-# One relational row per (module-version, resource-kind). A kind's identity is
-# (location ref + suffix) — the prefix in a manifest's `kind:` field is the
-# importer's own alias, so only the suffix is stored.
-kind: Run.Iteration
-metadata:
-  name: InsertKinds
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      # modules.id is a bigint — the driver yields it as a string.
-      moduleId: { type: string }
-      version: { type: string }
-      ref: { type: string }
-      docs: { type: array }
-      # Per-kind runtime classification from `telo module manifest --json`,
-      # matched to a doc by kind name. Derived by the CLI because the mapping
-      # from a `controllers:` PURL to the kernels that can load it is loader
-      # knowledge; re-deriving it here would hold a second copy that drifts.
-      runtimeKinds: { type: array }
-# The row is shaped here rather than in the bindings below so each fact is
-# derived exactly once. Several of them are not plain reads:
-#
-#   categories — the authored display labels, passed through verbatim; the
-#     INSERT derives the match slugs from them. A kind's own list REPLACES its
-#     module's (declaring it on a kind states where that kind belongs), so the
-#     module's list is the fallback.
-#   exported   — mirrors the kernel's gate (module-context `registerImport`): a
-#     missing `exports.kinds` list means no restriction, a declared list gates to
-#     the listed names. Re-exported entries (`Alias.Kind`) name another module's
-#     kind, never a local definition, so they don't mark local rows (see README).
-#   refs/suffixes — `extends:` and `deprecated.replacedBy` are BOTH
-#     alias-qualified kinds (`Cache.Store`, `Self.Migrations`), and an alias is
-#     private to the manifest that declares it, so it means nothing to anyone
-#     else. Resolving the prefix through the module's own `imports:` map turns
-#     each into (owning module ref, kind suffix): the identity that makes every
-#     backend of one contract joinable, and a deprecation replacement a consumer
-#     can follow. `Self` is the declaring module; a `Telo.*` built-in resolves to
-#     no import and so leaves the ref empty. One expression resolves both —
-#     index 0 is the extends target, index 1 the replacement — because they share
-#     the grammar exactly, and a second copy would be a second thing to keep right.
-#   rt         — the matched `runtimeKinds` entry, kept as a list so the lookup
-#     runs once here; the bindings unpack it. Empty when the CLI reported no
-#     entry for this kind (an older CLI, before this field existed).
-collection: !cel >-
-  inputs.docs.filter(d, d.kind == 'Telo.Definition' || d.kind == 'Telo.Abstract').map(d, {
-    'name': d.metadata.name,
-    'capability': d.?capability.orValue(''),
-    'abstract': d.kind == 'Telo.Abstract',
-    'description': d.metadata.?description.orValue(''),
-    'categories': d.metadata.?categories.orValue(inputs.docs[0].metadata.?categories.orValue([])),
-    'exported': 'exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports
-      ? inputs.docs[0].exports.kinds.exists(k, k == d.metadata.name)
-      : true,
-    'deprecatedReason': d.metadata.?deprecated.?reason.orValue(''),
-    'rt': inputs.runtimeKinds.filter(r, r.name == d.metadata.name),
-    'suffixes': [d.?extends.orValue(''), d.metadata.?deprecated.?replacedBy.orValue('')]
-      .map(v, v == '' ? '' : v.split('.')[1]),
-    'refs': [d.?extends.orValue(''), d.metadata.?deprecated.?replacedBy.orValue('')]
-      .map(v, v == '' ? ''
-        : (v.split('.')[0] == 'Self' ? inputs.ref
-          : ('imports' in inputs.docs[0] && v.split('.')[0] in inputs.docs[0].imports
-            ? (type(inputs.docs[0].imports[v.split('.')[0]]) == type('')
-                ? inputs.docs[0].imports[v.split('.')[0]]
-                : inputs.docs[0].imports[v.split('.')[0]].source).split('#')[0].split('@')[0]
-            : '')))
-  })
-steps:
-  - name: insert
-    invoke: !ref Exec
-    inputs:
-      sql: >-
-        INSERT INTO resource_kinds
-          (module_id, version, name, capability, abstract, exported, description,
-           categories, category_labels, extends_kind, extends_ref,
-           runtimes, languages, portable, deprecated_reason, replaced_by_kind, replaced_by_ref)
-        VALUES ($1, $2, $3, $4, $5, $6, $7,
-                ARRAY(SELECT category_slug(l) FROM unnest($8::text[]) AS l), $8::text[], $9, $10,
-                $11::text[], $12::text[], $13, $14, $15, $16)
-        ON CONFLICT (module_id, version, name) DO UPDATE SET
-          capability = EXCLUDED.capability,
-          abstract = EXCLUDED.abstract,
-          exported = EXCLUDED.exported,
-          description = EXCLUDED.description,
-          categories = EXCLUDED.categories,
-          category_labels = EXCLUDED.category_labels,
-          extends_kind = EXCLUDED.extends_kind,
-          extends_ref = EXCLUDED.extends_ref,
-          runtimes = EXCLUDED.runtimes,
-          languages = EXCLUDED.languages,
-          portable = EXCLUDED.portable,
-          deprecated_reason = EXCLUDED.deprecated_reason,
-          replaced_by_kind = EXCLUDED.replaced_by_kind,
-          replaced_by_ref = EXCLUDED.replaced_by_ref
-      bindings:
-        - !cel "inputs.moduleId"
-        - !cel "inputs.version"
-        - !cel "item.name"
-        - !cel "item.capability"
-        - !cel "item.abstract"
-        - !cel "item.exported"
-        - !cel "item.description"
-        - !cel "item.categories"
-        - !cel "item.suffixes[0]"
-        - !cel "item.refs[0]"
-        # An older CLI reports no entry for this kind, so the row records "no
-        # kernel claimed" rather than a guess — the version's NULL roll-up is
-        # what schedules the re-ingest that fills it in.
-        - !cel "item.rt.size() > 0 ? item.rt[0].runtimes : []"
-        - !cel "item.rt.size() > 0 ? item.rt[0].languages : []"
-        - !cel "item.rt.size() > 0 && item.rt[0].portable"
-        - !cel "item.deprecatedReason"
-        - !cel "item.suffixes[1]"
-        - !cel "item.refs[1]"
----
-# A library's exported singleton INSTANCES (`exports.resources`) — the other
-# half of its public surface. An importer references one as
-# `!ref <Alias>.<name>`, so the NAME is the identity: a library can export an
-# instance of a kind it deliberately does NOT export (singleton enforcement),
-# and the console module exports only instances, no kinds at all.
-#
-# The instance's own kind and description are carried alongside so a consumer can
-# see what it gets without opening the manifest. Both come from the declaring
-# doc in THIS module, so both are empty for a re-export, whose doc belongs to
-# another module entirely.
-kind: Run.Iteration
-metadata:
-  name: InsertResources
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      # modules.id is a bigint — the driver yields it as a string.
-      moduleId: { type: string }
-      version: { type: string }
-      docs: { type: array }
-# `doc` is the declaring instance doc, matched by name and kept as a list so the
-# lookup runs once here; the bindings unpack it. Every framework doc kind is
-# namespaced under `Telo.`, so excluding that prefix leaves exactly the resource
-# instances — no list of doc kinds to maintain as new ones land.
-#
-# LIMIT: `inputs.docs` is telo.yaml alone. The tracker reads one file from the
-# origin and never fetches an `include:` partial, so an instance declared in a
-# partial matches nothing and records an empty kind/description while `declared`
-# says it is local — which reads like a re-export but is not. Nothing in the
-# standard library hits this, and closing it means fetching partials per version,
-# so the invariant is documented rather than enforced: empty means "not declared
-# in telo.yaml", of which re-export is the usual cause.
-collection: !cel >-
-  ('exports' in inputs.docs[0] && 'resources' in inputs.docs[0].exports
-    ? inputs.docs[0].exports.resources : []).map(e, {
-      'declared': string(e),
-      'name': string(e).split('.')[size(string(e).split('.')) - 1],
-      'doc': inputs.docs.filter(d,
-        !d.kind.startsWith('Telo.') &&
-        d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
-    })
-steps:
-  - name: insert
-    invoke: !ref Exec
-    inputs:
-      sql: >-
-        INSERT INTO module_resources (module_id, version, name, declared, kind, description)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (module_id, version, name) DO UPDATE SET
-          declared = EXCLUDED.declared,
-          kind = EXCLUDED.kind,
-          description = EXCLUDED.description
-      bindings:
-        - !cel "inputs.moduleId"
-        - !cel "inputs.version"
-        # A re-export is declared `Alias.name` but imported as `name`, so the
-        # importable identity is the segment after the last dot.
-        - !cel "item.name"
-        - !cel "item.declared"
-        # The kind SUFFIX: an instance's `kind:` prefix is an alias private to
-        # this manifest, so only the suffix means anything to a reader.
-        - !cel >-
-          item.doc.size() > 0 && item.doc[0].kind.contains('.')
-            ? item.doc[0].kind.split('.')[size(item.doc[0].kind.split('.')) - 1] : ''
-        - !cel "item.doc.size() > 0 ? item.doc[0].metadata.?description.orValue('') : ''"
----
-# ── Search (hybrid: lexical + semantic RRF) ──────────────────────────────────
-# Two arms fused by Reciprocal Rank Fusion. The vector arm embeds the query and
-# asks VectorStore.Match for the nearest resource-kind ids — the ANN stays
-# inside the vector-store abstraction. The lexical arm is Postgres full-text
-# over kind name/description. A single Sql.Query takes the matched ids as a
-# bound JSON param, RRF-fuses their rank with the lexical rank, and joins the
-# relational rows — the vectors table is never touched here. Empty query → the
-# vector arm is skipped and results degrade to lexical-only.
-
-# The category vocabulary, and the guard over it — ONE query owns "what slugs
-# exist", because three populations checked by one guard drift. The set is the
-# UNION of module-level and kind-level categories: a kind doc's `categories:`
-# REPLACES its module's for that kind (see the ingest projection), so a module
-# whose every kind overrides it declares a slug that appears in no
-# `resource_kinds` row — and guarding against the kind-level set alone would
-# reject a slug the hub itself advertises over /categories.
-#
-# The vocabulary is open — whatever labels modules declare are the groups — so
-# it is read from the data, never owned as a list here. `selected` is computed
-# in SQL rather than in CEL because only the hub slugifies (`category_slug`),
-# and a second implementation of that rule would have to agree with this one
-# forever.
-#
-# One slug can carry several authored labels (`AI` and `ai` both index as `ai`)
-# and a facet list can print only one. The winner is the label the most MODULES
-# wrote, ties broken lexicographically — deterministic, so a dropdown does not
-# reshuffle between requests — falling back to the kind-level label for a slug
-# no module declares.
-kind: Run.Sequence
-metadata:
-  name: CategoryVocabulary
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      # The caller's category, or '' to just read the facet. Slugified here, so
-      # either the slug the API hands out (`storage`) or the label an author
-      # wrote (`AI`) selects the same group.
-      category: { type: string }
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      categories:
-        type: array
-        items:
-          type: object
-          # `category` rather than `slug`, matching what /categories has always
-          # returned: one concept must not have two key names depending on which
-          # endpoint answered. `selected` says whether this row is the one the
-          # caller's argument slugified to — decided in SQL, because only the
-          # hub slugifies.
-          properties:
-            category: { type: string }
-            label: { type: string }
-            modules: { type: integer }
-            kinds: { type: integer }
-            selected: { type: boolean }
-          required: [category, label, modules, kinds, selected]
-    required: [categories]
-steps:
-  - name: facets
-    invoke: !ref Query
-    inputs:
-      sql: >-
-        WITH mods AS (
-          SELECT c.slug, c.label
-          FROM module_versions mv
-          JOIN modules m ON m.id = mv.module_id AND m.latest_version = mv.version
-          CROSS JOIN LATERAL unnest(mv.categories, mv.category_labels) AS c(slug, label)
-        ),
-        kinds AS (
-          SELECT c.slug, c.label
-          FROM resource_kinds rk
-          JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-          CROSS JOIN LATERAL unnest(rk.categories, rk.category_labels) AS c(slug, label)
-          WHERE rk.exported
-        )
-        SELECT s.slug AS category,
-               COALESCE(
-                 (SELECT m.label FROM mods m WHERE m.slug = s.slug
-                  GROUP BY m.label ORDER BY COUNT(*) DESC, m.label LIMIT 1),
-                 (SELECT k.label FROM kinds k WHERE k.slug = s.slug
-                  GROUP BY k.label ORDER BY COUNT(*) DESC, k.label LIMIT 1)
-               ) AS label,
-               (SELECT COUNT(*)::int FROM mods WHERE mods.slug = s.slug) AS modules,
-               (SELECT COUNT(*)::int FROM kinds WHERE kinds.slug = s.slug) AS kinds,
-               s.slug = category_slug($1) AS selected
-        FROM (SELECT slug FROM mods UNION SELECT slug FROM kinds) s
-        ORDER BY s.slug
-      bindings:
-        - !cel "inputs.category"
-outputs:
-  categories: !cel >-
-    steps.facets.result.rows.map(r, {'category': r.category, 'label': r.label,
-                                     'modules': r.modules, 'kinds': r.kinds,
-                                     'selected': r.selected})
----
-# The guard, kept separate from the vocabulary it reads so /categories — which
-# passes a constant '' and therefore cannot trip it — is not made to catch an
-# unreachable throw. Every search goes through this one; the vocabulary is
-# forwarded so the caller still gets the facet from the same call.
-kind: Run.Sequence
-metadata:
-  name: RequireKnownCategory
-throws:
-  - code: ERR_UNKNOWN_CATEGORY
-    description: The `category` argument names no slug in the declared vocabulary.
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      category: { type: string }
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      categories: { type: array, items: { type: object } }
-    required: [categories]
-steps:
-  - name: vocabulary
-    invoke: !ref CategoryVocabulary
-    inputs:
-      category: !cel "inputs.category"
-  # A category matching no declared slug is a BAD ARGUMENT and is reported as
-  # one. Left to the filter it would simply select nothing, and an empty hit
-  # list is indistinguishable from "Telo has no such kind" — the same hazard
-  # `runtime` is enumerated to avoid, which this facet, being open-ended, cannot
-  # fix with an enum.
-  - name: guard
-    if: !cel "inputs.category != '' && !steps.vocabulary.result.categories.exists(c, c.selected)"
-    then:
-      - name: reject
-        throw:
-          code: ERR_UNKNOWN_CATEGORY
-          message: !cel >-
-            'unknown category "' + inputs.category + '" — known categories: '
-              + join(steps.vocabulary.result.categories.map(c, c.category), ', ')
-outputs:
-  categories: !cel >-
-    steps.vocabulary.result.categories.map(c, {'category': c.category, 'label': c.label,
-                                               'modules': c.modules, 'kinds': c.kinds})
----
-kind: Run.Sequence
-metadata:
-  name: SearchResources
-throws:
-  - code: ERR_UNKNOWN_CATEGORY
-    description: The `category` argument names no slug in the declared vocabulary.
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      q: { type: string }
-      category: { type: string }
-      runtime: { type: string }
-steps:
-  - name: vocabulary
-    invoke: !ref RequireKnownCategory
-    inputs:
-      category: !cel "inputs.category"
-  - name: vector
-    if: !cel "inputs.q != ''"
-    then:
-      - name: embed
-        invoke: !ref EmbedQuery
-        inputs:
-          input: !cel "inputs.q"
-      - name: match
-        invoke: !ref VectorMatch
-        inputs:
-          vector: !cel "steps.embed.result.embeddings[0]"
-  # Hoisted out of the binding list so the query below can be run twice (see
-  # `broaden`) off one neighbour set — recomputing it per run would re-filter
-  # the same matches, and duplicating the expression would let the two copies
-  # drift.
-  #
-  # Filtered here rather than in the CTE so the rejected neighbours are never
-  # serialized into the query at all. Survivors keep their relative order,
-  # which is what the CTE's ORDINALITY turns back into a rank.
-  - name: matches
-    value: !cel >-
-      'match' in steps
-        ? json(steps.match.result.matches.filter(m, m.score >= variables.vectorMinScore))
-        : '[]'
-  # Carried as a pure step rather than a YAML anchor: `broaden` re-runs the
-  # identical query with the facet dropped, and two copies would drift — but an
-  # alias has no visual representation, so studio, which pairs manifest
-  # nodes to YAML nodes and writes the pair back, would expand it into exactly
-  # the two copies the sharing exists to prevent. A `value:` step is the same
-  # sharing expressed as data flow, and it round-trips.
-  #
-  # $1 = query text, $2 = the vector arm's matches as JSON (ordered best-first,
-  # so ORDINALITY is the vector rank; '[]' when the arm was skipped),
-  # $3 = category slug or '' for no facet filter,
-  # $4 = kernel name or '' — see the runtime filter below.
-  #
-  # The facet is a filter on the SAME query, not a second endpoint: an empty
-  # `q` already degrades to an unranked listing, so `?q=&category=storage` is
-  # a browse. It has to be applied INSIDE `lex` (before that arm's cap) as
-  # well as after fusion — filtering only at the end would let the cap drop
-  # rows that the facet was going to select.
-  #
-  # `$3` runs through `category_slug` too, so a caller may pass either the
-  # slug the API hands out (`storage`) or the label an author wrote (`AI`).
-  - name: sql
-    value: >-
-      WITH q AS (
-        SELECT plainto_tsquery('english', $1) AS andq,
-               CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
-                    ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
-      ),
-      vec AS (
-        SELECT (elem->>'id')::bigint AS id, ord::int AS rank
-        FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS t(elem, ord)
-      ),
-      lex AS (
-        SELECT rk.id,
-               ROW_NUMBER() OVER (
-                 ORDER BY (COALESCE(ts_rank(v.vec, q.orq), 0.0)
-                           + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
-                           + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END) DESC, rk.name
-               ) AS rank
-        FROM resource_kinds rk
-        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-        LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
-        CROSS JOIN q
-        CROSS JOIN LATERAL (
-          SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
-        ) v
-        WHERE rk.exported
-          AND ($3 = '' OR rk.categories @> ARRAY[category_slug($3)]::text[])
-          -- A portable kind declares no controllers, so no kernel constraint
-          -- applies and it satisfies every runtime. Written as a flag rather
-          -- than by enumerating kernels into the row, which would go stale.
-          AND ($4 = '' OR rk.portable OR rk.runtimes @> ARRAY[$4]::text[])
-          AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%')
-        ORDER BY rank
-        LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
-      ),
-      fused AS (
-        SELECT id, SUM(1.0 / (60 + rank)) AS score
-        FROM (SELECT id, rank FROM vec UNION ALL SELECT id, rank FROM lex) s
-        GROUP BY id
-      )
-      SELECT rk.name AS kind, rk.capability, rk.description,
-             rk.extends_kind, rk.extends_ref,
-             rk.runtimes, rk.languages, rk.portable,
-             rk.deprecated_reason, rk.replaced_by_kind, rk.replaced_by_ref,
-             -- Facets travel as {slug, label}: a chip prints the label, a
-             -- click filters by the slug. Sending one without the other
-             -- would force the caller to re-derive the missing half.
-             (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
-              FROM unnest(rk.categories, rk.category_labels) AS t(s, l)) AS categories,
-             m.ref, rk.version, COALESCE(mv.module_name, '') AS module_name,
-             COALESCE(mv.description, '') AS module_description,
-             COALESCE(mv.repository, '') AS module_repository,
-             COALESCE(mv.license, '') AS module_license,
-             module_publisher(m.ref, m.transport) AS module_publisher,
-             COALESCE(mv.deprecated_reason, '') AS module_deprecated_reason,
-             (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
-              FROM unnest(mv.categories, mv.category_labels) AS t(s, l)) AS module_categories,
-             f.score::float8 AS score
-      FROM fused f
-      JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
-      JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-      LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
-      WHERE ($3 = '' OR rk.categories @> ARRAY[category_slug($3)]::text[])
-        AND ($4 = '' OR rk.portable OR rk.runtimes @> ARRAY[$4]::text[])
-      ORDER BY f.score DESC, rk.name
-      LIMIT 20
-  - name: query
-    invoke: !ref Query
-    inputs:
-      sql: !cel "steps.sql.result"
-      bindings:
-        - !cel "inputs.q"
-        - !cel "steps.matches.result"
-        - !cel "inputs.category"
-        - !cel "inputs.runtime"
-  # A KNOWN category that selects nothing for THIS query is a filter that was
-  # too narrow, not an absent capability — so the search is repeated without it
-  # and the response says which happened (`categoryFilterDropped`). Returning
-  # the empty set instead is what teaches a caller that the kind does not
-  # exist: `Run.Loop` is in `Compute`, and asking for it under `coordination`
-  # answered "no such kind" twice in a row.
-  - name: broaden
-    if: !cel "inputs.category != '' && steps.query.result.rows.size() == 0"
-    then:
-      - name: retry
-        invoke: !ref Query
-        inputs:
-          sql: !cel "steps.sql.result"
-          bindings:
-            - !cel "inputs.q"
-            - !cel "steps.matches.result"
-            - ""
-            - !cel "inputs.runtime"
-outputs:
-  # The facet travels with EVERY response, not only a browse: it is the only
-  # thing that makes an open vocabulary learnable from inside a search, and a
-  # caller that has to fetch it separately will guess instead.
-  categories: !cel "steps.vocabulary.result.categories"
-  # Stated rather than inferred: hits under a category the caller did not ask
-  # to drop would otherwise read as hits WITHIN it.
-  categoryFilterDropped: !cel "'retry' in steps"
-  # `deprecated` and `extends` are always present with empty strings when absent,
-  # rather than omitted: a fixed response shape is what lets an MCP client and a
-  # typed frontend consume this without probing for optional keys.
-  hits: !cel "('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).map(r, {'kind': r.kind, 'capability': r.capability, 'description': r.description, 'categories': r.categories, 'extends': {'kind': r.extends_kind, 'ref': r.extends_ref}, 'runtime': {'runtimes': r.runtimes, 'languages': r.languages, 'portable': r.portable}, 'deprecated': {'reason': r.deprecated_reason, 'replacedBy': {'kind': r.replaced_by_kind, 'ref': r.replaced_by_ref}}, 'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license, 'publisher': r.module_publisher, 'deprecated': {'reason': r.module_deprecated_reason}, 'categories': r.module_categories}, 'score': r.score})"
----
-# Module-first projection: the same fused hits grouped by owning module, with
-# every exported kind included so a module card needs no second manifest fetch.
-kind: Run.Sequence
-metadata:
-  name: SearchModules
-throws:
-  - code: ERR_UNKNOWN_CATEGORY
-    description: The `category` argument names no slug in the declared vocabulary.
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      q: { type: string }
-      category: { type: string }
-      runtime: { type: string }
-      limit: { type: integer }
-      offset: { type: integer }
-steps:
-  # Guarded through the SAME vocabulary as /search/resources. Leaving one of the
-  # two endpoints unguarded would just move the original defect: an agent that
-  # falls back from kinds to modules hits the silent empty set again.
-  - name: vocabulary
-    invoke: !ref RequireKnownCategory
-    inputs:
-      category: !cel "inputs.category"
-  - name: vector
-    if: !cel "inputs.q != ''"
-    then:
-      - name: embed
-        invoke: !ref EmbedQuery
-        inputs:
-          input: !cel "inputs.q"
-      - name: match
-        invoke: !ref VectorMatch
-        inputs:
-          vector: !cel "steps.embed.result.embeddings[0]"
-  # Hoisted so `broaden` re-runs off one neighbour set. Filtered here rather
-  # than in the CTE so the rejected neighbours are never serialized into the
-  # query at all; survivors keep their relative order, which is what the CTE's
-  # ORDINALITY turns back into a rank.
-  - name: matches
-    value: !cel >-
-      'match' in steps
-        ? json(steps.match.result.matches.filter(m, m.score >= variables.vectorMinScore))
-        : '[]'
-  # A `value:` step rather than a YAML anchor — see the note on the same step in
-  # SearchResources.
-  - name: sql
-    value: >-
-      WITH q AS (
-      SELECT plainto_tsquery('english', $1) AS andq,
-             CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
-                  ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
-      ),
-      vec AS (
-      SELECT (elem->>'id')::bigint AS id, ord::int AS rank
-      FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS t(elem, ord)
-      ),
-      lex AS (
-      SELECT rk.id,
-               ROW_NUMBER() OVER (
-                 ORDER BY (COALESCE(ts_rank(v.vec, q.orq), 0.0)
-                           + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
-                           + CASE WHEN rk.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END) DESC, rk.name
-               ) AS rank
-        FROM resource_kinds rk
-        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-        LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
-        CROSS JOIN q
-        CROSS JOIN LATERAL (
-          SELECT rk.search || to_tsvector('english', COALESCE(mv.description, '')) AS vec
-        ) v
-        WHERE rk.exported
-          AND ($3 = '' OR mv.categories @> ARRAY[category_slug($3)]::text[])
-          -- Module-level reach: a kernel that runs even one kind keeps the
-          -- module in the result, since the card shows full-vs-partial.
-          AND ($6 = '' OR mv.portable OR mv.runtimes @> ARRAY[$6]::text[])
-          AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR rk.name ILIKE '%' || $1 || '%')
-        ORDER BY rank
-        LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
-      ),
-      fused AS (
-        SELECT id, SUM(1.0 / (60 + rank)) AS score
-        FROM (SELECT id, rank FROM vec UNION ALL SELECT id, rank FROM lex) s
-        GROUP BY id
-      ),
-      hits AS (
-        SELECT rk.module_id, rk.version, rk.name, rk.capability, rk.description,
-               rk.extends_kind, rk.extends_ref,
-               rk.runtimes AS kind_runtimes, rk.languages AS kind_languages,
-               rk.portable AS kind_portable, rk.deprecated_reason AS kind_deprecated_reason,
-               rk.replaced_by_kind, rk.replaced_by_ref,
-               m.ref, COALESCE(mv.module_name, '') AS module_name,
-               COALESCE(mv.description, '') AS module_description,
-               COALESCE(mv.repository, '') AS module_repository,
-               COALESCE(mv.license, '') AS module_license,
-               COALESCE(mv.homepage, '') AS module_homepage,
-               module_publisher(m.ref, m.transport) AS module_publisher,
-               COALESCE(mv.deprecated_reason, '') AS module_deprecated_reason,
-               COALESCE(mv.replaced_by, '') AS module_replaced_by,
-               COALESCE(mv.runtimes, '{}') AS module_runtimes,
-               mv.runtimes_full AS module_runtimes_full,
-               mv.languages AS module_languages, mv.portable AS module_portable,
-               f.score
-        FROM fused f
-        JOIN resource_kinds rk ON rk.id = f.id AND rk.exported
-        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-        LEFT JOIN module_versions mv ON mv.module_id = rk.module_id AND mv.version = rk.version
-        WHERE ($3 = '' OR mv.categories @> ARRAY[category_slug($3)]::text[])
-          AND ($6 = '' OR mv.portable OR mv.runtimes @> ARRAY[$6]::text[])
-      )
-      SELECT h.ref, h.version, h.module_name, h.module_description,
-             h.module_repository, h.module_license, h.module_homepage,
-             h.module_publisher, h.module_deprecated_reason, h.module_replaced_by,
-             h.module_runtimes, h.module_runtimes_full,
-             h.module_languages, h.module_portable,
-             -- Projected here rather than in `hits` because json has no
-             -- equality operator and so cannot sit in the GROUP BY below.
-             -- Facets travel as {slug, label}: a chip prints the label, a
-             -- click filters by the slug.
-             (SELECT COALESCE(json_agg(json_build_object('slug', t.s, 'label', t.l) ORDER BY t.s), '[]'::json)
-              FROM module_versions mv2, unnest(mv2.categories, mv2.category_labels) AS t(s, l)
-              WHERE mv2.module_id = h.module_id AND mv2.version = h.version) AS module_categories,
-             COUNT(*) OVER ()::int AS total,
-             MAX(h.score)::float8 AS score,
-             json_agg(json_build_object('kind', h.name, 'capability', h.capability,
-                                        'description', h.description, 'score', h.score,
-                                        'extends', json_build_object('kind', h.extends_kind,
-                                                                     'ref', h.extends_ref),
-                                        'runtime', json_build_object('runtimes', h.kind_runtimes,
-                                                                     'languages', h.kind_languages,
-                                                                     'portable', h.kind_portable),
-                                        'deprecated', json_build_object(
-                                          'reason', h.kind_deprecated_reason,
-                                          'replacedBy', json_build_object('kind', h.replaced_by_kind,
-                                                                          'ref', h.replaced_by_ref)))
-                      ORDER BY h.score DESC) AS matched_kinds,
-             /* Full detail for EVERY exported kind, not just the matched
-                ones, so a result card can preview any of them without a
-                second request. The matched subset keeps its own list because
-                only that one carries a relevance score. */
-             (SELECT COALESCE(json_agg(json_build_object(
-                       'kind', rk2.name, 'capability', rk2.capability,
-                       'abstract', rk2.abstract, 'description', rk2.description,
-                       'extends', json_build_object('kind', rk2.extends_kind,
-                                                    'ref', rk2.extends_ref),
-                       'runtime', json_build_object('runtimes', rk2.runtimes,
-                                                    'languages', rk2.languages,
-                                                    'portable', rk2.portable),
-                       'deprecated', json_build_object(
-                         'reason', rk2.deprecated_reason,
-                         'replacedBy', json_build_object('kind', rk2.replaced_by_kind,
-                                                         'ref', rk2.replaced_by_ref)))
-                     ORDER BY rk2.name), '[]'::json)
-              FROM resource_kinds rk2
-              WHERE rk2.module_id = h.module_id AND rk2.version = h.version
-                AND rk2.exported) AS exported_kinds,
-             -- The other half of the public surface: ready-made singleton
-             -- instances an importer references as `!ref <Alias>.<name>`.
-             -- `kind`/`description` are empty for a re-export, whose declaring
-             -- doc belongs to another module.
-             (SELECT COALESCE(json_agg(json_build_object(
-                       'name', mr.name, 'kind', mr.kind,
-                       'description', mr.description, 'declared', mr.declared)
-                     ORDER BY mr.name), '[]'::json)
-              FROM module_resources mr
-              WHERE mr.module_id = h.module_id AND mr.version = h.version)
-               AS exported_resources
-      FROM hits h
-      GROUP BY h.module_id, h.ref, h.version, h.module_name, h.module_description,
-               h.module_repository, h.module_license, h.module_homepage,
-               h.module_publisher, h.module_deprecated_reason, h.module_replaced_by,
-               h.module_runtimes, h.module_runtimes_full,
-               h.module_languages, h.module_portable
-      /* `ref` breaks the tie so paging is stable: with an empty query every
-         module scores alike, and an unordered page boundary would repeat or
-         skip rows between requests. Block comment, not `--`: this block is a
-         folded YAML scalar, so a line comment at the base indentation joins
-         onto one line and swallows the SQL after it. */
-      ORDER BY MAX(h.score) DESC, h.ref
-      LIMIT $4 OFFSET $5
-  - name: query
-    invoke: !ref Query
-    inputs:
-      sql: !cel "steps.sql.result"
-      bindings:
-        - !cel "inputs.q"
-        - !cel "steps.matches.result"
-        - !cel "inputs.category"
-        - !cel "inputs.limit"
-        - !cel "inputs.offset"
-        - !cel "inputs.runtime"
-  # Same reduction as /search/resources: a KNOWN category that selects nothing
-  # for THIS query is too narrow a filter, not an absent capability.
-  - name: broaden
-    if: !cel "inputs.category != '' && steps.query.result.rows.size() == 0"
-    then:
-      - name: retry
-        invoke: !ref Query
-        inputs:
-          sql: !cel "steps.sql.result"
-          bindings:
-            - !cel "inputs.q"
-            - !cel "steps.matches.result"
-            - ""
-            - !cel "inputs.limit"
-            - !cel "inputs.offset"
-            - !cel "inputs.runtime"
-outputs:
-  categories: !cel "steps.vocabulary.result.categories"
-  categoryFilterDropped: !cel "'retry' in steps"
-  # `total` is the match count before LIMIT/OFFSET — a paging UI needs to know
-  # what it is not showing, and a browse that silently stopped at 20 would read
-  # as "that's all there is". An empty result carries no row to read it from,
-  # hence the fallback.
-  total: !cel >-
-    ('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).size() > 0
-      ? ('retry' in steps ? steps.retry.result.rows : steps.query.result.rows)[0].total : 0
-  # `runtimes` lists every kernel with at least partial reach and `full` the
-  # subset covering every kind, so a caller renders "Rust (partial)" without a
-  # second lookup — and a filter still reads one array.
-  hits: !cel "('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).map(r, {'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license, 'homepage': r.module_homepage, 'publisher': r.module_publisher, 'deprecated': {'reason': r.module_deprecated_reason, 'replacedBy': r.module_replaced_by}, 'runtime': {'runtimes': r.module_runtimes, 'full': r.module_runtimes_full, 'languages': r.module_languages, 'portable': r.module_portable}, 'categories': r.module_categories}, 'score': r.score, 'matchedKinds': r.matched_kinds, 'exportedKinds': r.exported_kinds, 'exportedResources': r.exported_resources})"
----
-# ── Manifest read (MCP get_module_manifest) ──────────────────────────────────
-# Keyed off the location ref. Reads
-# the cached telo.yaml from the manifest bucket; a missing row falls back to a
-# sentinel key that 404s into the Module-not-found catch.
-kind: Run.Sequence
-metadata:
-  name: GetModuleManifest
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      ref: { type: string }
-      version: { type: string }
-steps:
-  - name: resolve
-    invoke: !ref Query
-    inputs:
-      sql: >-
-        SELECT mv.manifest_key FROM module_versions mv
-        JOIN modules m ON m.id = mv.module_id
-        WHERE m.ref = $1
-          AND (($2 = 'latest' AND mv.version = m.latest_version) OR mv.version = $2)
-        LIMIT 1
-      bindings:
-        - !cel "inputs.ref"
-        - !cel "inputs.version"
-  - name: fetch
-    invoke: !ref GetManifest
-    inputs:
-      key: !cel "steps.resolve.result.rows.size() > 0 ? steps.resolve.result.rows[0].manifest_key : '__not_found__'"
-  - name: decode
-    invoke: { kind: PlainText.Decoder }
-    inputs:
-      input: !cel "steps.fetch.result.output"
-outputs:
-  text: !cel "steps.decode.result.text"
+  name: resumer
+workflow: !ref Ingest.ingestVersion
+interval: 2s
 ---
 # ── HTTP surface (telo.sh) ────────────────────────────────────────────────────
 # The cloud CLI: the generic read verbs plus discovery as HTTP paths. Dynamic
@@ -1956,7 +373,7 @@ outputs:
 
 kind: Http.Server
 metadata:
-  name: HubServer
+  name: hubServer
 host: "0.0.0.0"
 port: !cel "ports.http"
 cors:
@@ -1973,15 +390,15 @@ openapi:
       autocomplete, and version enumeration for registered modules.
 mounts:
   - path: /health
-    mount: !ref Health
+    mount: !ref health
   - path: /mcp
-    mount: !ref McpHttp
+    mount: !ref mcpHttp
   - path: /
-    mount: !ref PublicApi
+    mount: !ref publicApi
 ---
 kind: Http.Api
 metadata:
-  name: Health
+  name: health
 routes:
   - request:
       path: /readiness
@@ -2004,7 +421,7 @@ routes:
 ---
 kind: Http.Api
 metadata:
-  name: PublicApi
+  name: publicApi
 routes:
   # Search and browse are ONE surface: `category` narrows the same query, and an
   # empty `q` degrades to an unranked listing, so `?q=&category=storage` browses
@@ -2036,7 +453,7 @@ routes:
                 it; without this filter a caller composing for one kernel is
                 offered kinds it cannot run. Kinds with no controllers at all are
                 portable and always match. Empty means no filter.
-    handler: !ref SearchResources
+    handler: !ref Search.searchResources
     inputs:
       q: !cel "request.query.q"
       category: !cel "request.query.category"
@@ -2096,7 +513,7 @@ routes:
               maximum: 100
               description: "Page size. Browsing a whole category needs more than a ranked top-N."
             offset: { type: integer, default: 0, minimum: 0, description: "Rows to skip." }
-    handler: !ref SearchModules
+    handler: !ref Search.searchModules
     inputs:
       q: !cel "request.query.q"
       category: !cel "request.query.category"
@@ -2130,7 +547,7 @@ routes:
   - request:
       path: /categories
       method: GET
-    handler: !ref CategoryVocabulary
+    handler: !ref Search.categoryVocabulary
     inputs:
       category: ""
     returns:
@@ -2155,28 +572,17 @@ routes:
             ref: { type: string, description: "Ref of the module owning the extended kind." }
             kind: { type: string, description: "Extended kind's suffix, e.g. Store." }
           required: [ref, kind]
-    handler:
-      kind: Sql.Query
-      connection: !ref Db
+    handler: !ref Catalog.implementations
     inputs:
-      sql: >-
-        SELECT m.ref, rk.version, rk.name AS kind, rk.capability, rk.description,
-               (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
-                FROM unnest(rk.categories, rk.category_labels) AS t(s, l)) AS categories
-        FROM resource_kinds rk
-        JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version
-        WHERE rk.extends_ref = $1 AND rk.extends_kind = $2 AND rk.exported
-        ORDER BY m.ref, rk.name
-      bindings:
-        - !cel "request.query.ref"
-        - !cel "request.query.kind"
+      ref: !cel "request.query.ref"
+      kind: !cel "request.query.kind"
     returns:
       - status: 200
         content:
           application/json:
             body:
               extends: !cel "{'ref': request.query.ref, 'kind': request.query.kind}"
-              implementations: !cel "result.rows"
+              implementations: !cel "result.implementations"
 
   # Lexical ref typeahead (pg_trgm): completes a ref whose name the author
   # already knows — the memorable token at an OCI path's tail matches without
@@ -2190,40 +596,22 @@ routes:
           type: object
           properties:
             q: { type: string, default: "", description: "Fuzzy substring over registered refs." }
-    handler:
-      kind: Sql.Query
-      connection: !ref Db
+    handler: !ref Catalog.refSuggestions
     inputs:
-      sql: >-
-        SELECT m.ref,
-               COALESCE(m.latest_version, '') AS "latestVersion",
-               COALESCE(mv.description, '') AS description,
-               COALESCE(mv.repository, '') AS repository,
-               COALESCE(mv.license, '') AS license
-        FROM modules m
-        LEFT JOIN module_versions mv
-          ON mv.module_id = m.id AND mv.version = m.latest_version
-        WHERE m.ref % $1 OR m.ref ILIKE '%' || $1 || '%'
-        ORDER BY (CASE WHEN regexp_replace(m.ref, '.*/', '') ILIKE '%' || $1 || '%' THEN 1 ELSE 0 END) DESC,
-                 similarity(m.ref, $1) DESC, m.ref
-        LIMIT 20
-      bindings:
-        - !cel "request.query.q"
+      q: !cel "request.query.q"
     returns:
       - status: 200
         content:
           application/json:
             body:
               query: !cel "request.query.q"
-              refs: !cel "result.rows"
+              refs: !cel "result.refs"
 
   # Everything a module page renders, in one call. `/search/*` answers "which
   # module should I use"; this answers "tell me about this one", which a search
   # hit cannot: it is keyed by ref rather than ranked, serves a specific version
   # rather than only the latest, and carries the full kind list with the
-  # per-kind detail a card has no room for. Without it a page needs three round
-  # trips (search by ref, versions, implementations) and still cannot address a
-  # non-latest version.
+  # per-kind detail a card has no room for.
   - request:
       path: /module
       method: GET
@@ -2237,74 +625,20 @@ routes:
               default: ""
               description: "Tracked version to describe. Empty means the latest."
           required: [ref]
-    handler:
-      kind: Sql.Query
-      connection: !ref Db
+    handler: !ref Catalog.moduleDetail
     inputs:
-      sql: >-
-        SELECT m.ref, mv.version, m.latest_version AS "latestVersion",
-               mv.module_name AS name, mv.description, mv.repository, mv.license,
-               mv.homepage, module_publisher(m.ref, m.transport) AS publisher, m.transport,
-               COALESCE(mv.integrity, '') AS integrity,
-               mv.deprecated_reason, mv.replaced_by,
-               COALESCE(mv.runtimes, '{}') AS runtimes, mv.runtimes_full,
-               mv.languages, mv.portable,
-               (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
-                FROM unnest(mv.categories, mv.category_labels) AS t(s, l)) AS categories,
-               (SELECT COALESCE(json_agg(json_build_object(
-                         'kind', rk.name, 'capability', rk.capability,
-                         'abstract', rk.abstract, 'description', rk.description,
-                         'extends', json_build_object('kind', rk.extends_kind, 'ref', rk.extends_ref),
-                         'runtime', json_build_object('runtimes', rk.runtimes,
-                                                      'languages', rk.languages,
-                                                      'portable', rk.portable),
-                         'deprecated', json_build_object(
-                           'reason', rk.deprecated_reason,
-                           'replacedBy', json_build_object('kind', rk.replaced_by_kind,
-                                                           'ref', rk.replaced_by_ref)))
-                       ORDER BY rk.name), '[]'::json)
-                FROM resource_kinds rk
-                WHERE rk.module_id = mv.module_id AND rk.version = mv.version AND rk.exported) AS kinds,
-               (SELECT COALESCE(json_agg(json_build_object(
-                         'name', mr.name, 'kind', mr.kind,
-                         'description', mr.description, 'declared', mr.declared)
-                       ORDER BY mr.name), '[]'::json)
-                FROM module_resources mr
-                WHERE mr.module_id = mv.module_id AND mr.version = mv.version) AS "exportedResources",
-               /* Newest-first, the same ordering `/module/versions` and the CLI
-                  verb use, so a version picker built off either agrees. */
-               (SELECT COALESCE(json_agg(v.version ORDER BY
-                         version_sort_key(v.version) DESC NULLS LAST, v.version ASC), '[]'::json)
-                FROM module_versions v WHERE v.module_id = mv.module_id) AS versions
-        FROM modules m
-        JOIN module_versions mv
-          ON mv.module_id = m.id AND mv.version = COALESCE(NULLIF($2, ''), m.latest_version)
-        WHERE m.ref = $1
-      bindings:
-        - !cel "request.query.ref"
-        - !cel "request.query.version"
+      ref: !cel "request.query.ref"
+      version: !cel "request.query.version"
     returns:
       - status: 200
-        when: !cel "result.rows.size() > 0"
+        when: !cel "result.found"
         content:
           application/json:
             body:
-              # Same nesting as a `/search/*` hit's `module`, so a page reached
-              # from a search result and one reached by URL render off one shape.
-              module: !cel >-
-                {'ref': result.rows[0].ref, 'version': result.rows[0].version,
-                 'latestVersion': result.rows[0].latestVersion, 'name': result.rows[0].name,
-                 'transport': result.rows[0].transport, 'integrity': result.rows[0].integrity,
-                 'description': result.rows[0].description, 'repository': result.rows[0].repository,
-                 'license': result.rows[0].license, 'homepage': result.rows[0].homepage,
-                 'publisher': result.rows[0].publisher, 'categories': result.rows[0].categories,
-                 'deprecated': {'reason': result.rows[0].deprecated_reason,
-                                'replacedBy': result.rows[0].replaced_by},
-                 'runtime': {'runtimes': result.rows[0].runtimes, 'full': result.rows[0].runtimes_full,
-                             'languages': result.rows[0].languages, 'portable': result.rows[0].portable}}
-              kinds: !cel "result.rows[0].kinds"
-              exportedResources: !cel "result.rows[0].exportedResources"
-              versions: !cel "result.rows[0].versions"
+              module: !cel "result.module"
+              kinds: !cel "result.kinds"
+              exportedResources: !cel "result.exportedResources"
+              versions: !cel "result.versions"
       # One 404 for both "never registered" and "no such version": the caller's
       # next move is the same either way, and distinguishing them would leak
       # which refs are tracked.
@@ -2323,41 +657,17 @@ routes:
           properties:
             ref: { type: string, description: "Module ref exactly as registered." }
           required: [ref]
-    handler:
-      kind: Sql.Query
-      connection: !ref Db
+    handler: !ref Catalog.moduleVersionList
     inputs:
-      # Newest-first, matching the `telo module versions` CLI verb this HTTP path
-      # mirrors (one contract, three front-ends): valid dotted-numeric versions
-      # sort by numeric precedence descending, then any non-numeric tags
-      # (digests, `latest`) fall to the end in lexical order — the same shape as
-      # the CLI's sortVersionsDesc. Consumers (IDE version completion) rely on
-      # index 0 being the latest version.
-      sql: >-
-        SELECT mv.version, COALESCE(mv.integrity, '') AS integrity
-        FROM module_versions mv
-        JOIN modules m ON m.id = mv.module_id
-        WHERE m.ref = $1
-        ORDER BY version_sort_key(mv.version) DESC NULLS LAST, mv.version ASC
-      bindings:
-        - !cel "request.query.ref"
+      ref: !cel "request.query.ref"
     returns:
       - status: 200
-        when: !cel "result.rows.size() > 0"
+        when: !cel "result.found"
         content:
           application/json:
             body:
               ref: !cel "request.query.ref"
-              # `{version, integrity}` per entry, not bare strings: the pin an
-              # editor writes when it upgrades an import belongs to exactly one
-              # version, and a parallel array or a keyed side-map could disagree
-              # with the list it annotates. `integrity` is omitted for a version
-              # ingested before the column existed or one nothing can hash — a
-              # consumer treats its absence as "no pin available", never as an
-              # error.
-              versions: !cel >-
-                result.rows.map(r,
-                  r.integrity == '' ? {'version': r.version} : {'version': r.version, 'integrity': r.integrity})
+              versions: !cel "result.versions"
       - status: 404
         content:
           application/json:
@@ -2366,8 +676,10 @@ routes:
 
   # Open, unauthenticated self-service registration (the apps/hub-web SPA on
   # hub.telo.run POSTs here cross-origin). Validates the ref resolves to a real
-  # Telo module and, on success, inserts it for the tracker to ingest; a bad ref
-  # returns 400 with the inline reason. No moderation queue.
+  # Telo module and, on success, records it and schedules its first ingest.
+  #
+  # 202, not 200: indexing is asynchronous now, so "accepted" is the honest
+  # claim and `GET /register/status?ref=` is what says when it is searchable.
   - request:
       path: /register
       method: POST
@@ -2381,7 +693,7 @@ routes:
               minLength: 1
               description: "Module ref to register (e.g. oci://ghcr.io/acme/telo-s3 or https://host/path/telo.yaml)."
           required: [ref]
-    handler: !ref RegisterAndValidate
+    handler: !ref Registry.registerAndValidate
     inputs:
       ref: !cel "request.body.ref"
       clientIp: !cel "request.ip"
@@ -2395,13 +707,14 @@ routes:
             body:
               error: !cel "result.error"
               retryAfter: !cel "result.retryAfter"
-      - status: 200
-        when: !cel "result.ok"
+      - status: 202
+        when: !cel "result.accepted"
         content:
           application/json:
             body:
               registered: true
               ref: !cel "result.ref"
+              status: pending
       - status: 400
         content:
           application/json:
@@ -2412,8 +725,7 @@ routes:
       # as ERR_PARSE_FAILED — treat that as an unreadable module (400). Any other
       # throw is a server-side fault: return only the error CODE, never the
       # message, since this endpoint is anonymous and a raw message can carry
-      # host paths or upstream detail. The full cause is logged server-side by
-      # the handler's catch, and the periodic loop records it on the module row.
+      # host paths or upstream detail.
       - status: 400
         when: !cel "error.code == 'ERR_PARSE_FAILED'"
         content:
@@ -2425,7 +737,48 @@ routes:
           application/json:
             body:
               code: !cel "error.code"
-              error: registration failed while indexing the module
+              error: registration failed
+
+  # What a client polls after a 202. Answered from the ROWS — the authoritative
+  # record of what has been ingested — rather than from a durable run: a run is
+  # per version and its id carries a digest and an attempt the client does not
+  # hold, while a ref spans many versions.
+  - request:
+      path: /register/status
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            ref: { type: string, description: "Module ref exactly as submitted to /register." }
+          required: [ref]
+    handler: !ref Catalog.registrationStatus
+    inputs:
+      ref: !cel "request.query.ref"
+    returns:
+      # 404 with the SAME shape as every other answer: a client polling this
+      # reads one body, and `status` is the field it branches on. A 404 whose
+      # body carried only an error string is indistinguishable to that client
+      # from a hub it could not reach, which is a different fact entirely.
+      - status: 404
+        when: !cel "result.status == 'unknown'"
+        content:
+          application/json:
+            body:
+              ref: !cel "result.ref"
+              status: !cel "result.status"
+              error: Module not registered
+      - status: 200
+        content:
+          application/json:
+            body:
+              ref: !cel "result.ref"
+              status: !cel "result.status"
+              latestVersion: !cel "result.latestVersion"
+              versionsKnown: !cel "result.versionsKnown"
+              versionsIngested: !cel "result.versionsIngested"
+              error: !cel "result.error"
+              nextAttemptAt: !cel "result.nextAttemptAt"
 
   - request:
       path: /health
@@ -2465,8 +818,8 @@ entries:
           type: string
           default: ""
           # Not enumerable — the vocabulary is open, so the guard is a hard
-          # error naming the real slugs (see SearchResources' `guard` step) and
-          # every response carries the facet, rather than a silent empty set.
+          # error naming the real slugs and every response carries the facet,
+          # rather than a silent empty set.
           description: >-
             Optional domain slug to narrow the search. OMIT IT UNLESS YOU KNOW
             THE SLUG EXISTS: categories are declared by module authors and open-
@@ -2488,7 +841,7 @@ entries:
             always match. Omit unless the caller named a runtime.
       required: [query]
       additionalProperties: false
-    handler: !ref SearchResources
+    handler: !ref Search.searchResources
     inputs:
       q: !cel "request.arguments.query"
       category: !cel "request.arguments.?category.orValue('')"
@@ -2512,7 +865,7 @@ entries:
           message: !cel "error.message"
 
   # get_module_manifest — keyed off the module's location ref, serving the
-  # tracker-cached telo.yaml.
+  # cached telo.yaml.
   - name: get_module_manifest
     description: |
       Fetch the raw `telo.yaml` for a tracked module by its location ref
@@ -2530,7 +883,7 @@ entries:
           description: Exact version to fetch, or `latest` (default).
       required: [ref]
       additionalProperties: false
-    handler: !ref GetModuleManifest
+    handler: !ref Catalog.moduleManifestText
     inputs:
       ref: !cel "request.arguments.ref"
       version: !cel "request.arguments.?version.orValue('latest')"
@@ -2550,13 +903,13 @@ entries:
 ---
 kind: Mcp.HttpEndpoint
 metadata:
-  name: McpHttp
+  name: mcpHttp
 serverInfo:
   name: telo-hub
   # Restated for now. `!cel "module.version"` is what this should be — the
-  # binding exists — but `serverInfo` on the PINNED `mcp-server@0.14.0` is not
-  # yet a CEL slot. The annotation is in this repo's `modules/mcp-server`;
-  # switching here waits on publishing that and moving the pin.
+  # binding exists — but `serverInfo` on the PINNED mcp-server is not yet a CEL
+  # slot. The annotation is in this repo's `modules/mcp-server`; switching here
+  # waits on publishing that and moving the pin.
   version: 0.6.2
 instructions: !literal |
   This MCP server is the **Telo hub** — federated discovery over Telo modules

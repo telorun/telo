@@ -1,6 +1,8 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
 import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js";
+import { resolveScopedName } from "./call-graph.js";
+import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { readStepSlot } from "./step-slot.js";
 
@@ -40,6 +42,23 @@ export interface ResolveCtx {
   aliasesByModule: Map<string, AliasResolver>;
   /** The consumer/root module names; resources owned by these resolve against `aliases`. */
   rootModules: Set<string>;
+  /**
+   * Every imported library's FULL manifest list, keyed by module name.
+   *
+   * A consumer's flat set holds a library's EXPORTED instances and nothing else,
+   * so the siblings an exported entry point invokes are not in it. Without this
+   * the walk stops at the first such hop, and the difference is not academic: a
+   * library whose entry point raises its own code through an internal guard
+   * presented an empty union to its consumer, which then had its `catches:`
+   * rejected for the very code the entry point documents.
+   *
+   * Consulted only as a FALLBACK, after the flat set — the flat set is what the
+   * consumer's own resources resolve against, and a library-internal name must
+   * never shadow one of them.
+   */
+  moduleManifests: Map<string, ResourceManifest[]>;
+  /** Keyed `<module>\0<name>`: resource names are module-scoped, so two
+   *  libraries each declaring a `query` are two different unions. */
   memo: Map<string, ThrowsUnion>;
   inProgress: Set<string>;
 }
@@ -50,6 +69,7 @@ export function createResolveCtx(
   aliases: AliasResolver,
   aliasesByModule: Map<string, AliasResolver> = new Map(),
   rootModules: Set<string> = new Set(),
+  moduleManifests: Map<string, ResourceManifest[]> = new Map(),
 ): ResolveCtx {
   return {
     allManifests,
@@ -57,9 +77,88 @@ export function createResolveCtx(
     aliases,
     aliasesByModule,
     rootModules,
+    moduleManifests,
     memo: new Map(),
     inProgress: new Set(),
   };
+}
+
+/**
+ * A dispatch target named by a resolved `{kind, name}` ref.
+ *
+ * The flat set is the scope such a ref was resolved in, so it is asked first;
+ * the owning library's own documents are the fallback for a name the flattened
+ * view dropped. `kindMatches` applies to BOTH — one function, one rule, or the
+ * next caller inherits whichever half it happened to hit.
+ */
+function findTarget(
+  ctx: ResolveCtx,
+  name: string,
+  ownerModule: string | undefined,
+  kindMatches: (m: ResourceManifest) => boolean,
+): ResourceManifest | undefined {
+  const flat = ctx.allManifests.find((m) => m.metadata?.name === name && kindMatches(m));
+  if (flat) return flat;
+  if (!ownerModule) return undefined;
+  return ctx.moduleManifests
+    .get(ownerModule)
+    ?.find((m) => m.metadata?.name === name && kindMatches(m));
+}
+
+/**
+ * The target of a `!ref` that still carries its sentinel — a library-internal
+ * reference inside a manifest forwarded into a consumer's flat set, where Phase
+ * 2.5 had nothing to resolve it against.
+ *
+ * **The declaring library is asked FIRST**, and that ordering is the whole rule:
+ * a bare name in a library manifest is unambiguously library-internal, so
+ * searching the consumer's flat set first let any consumer resource that
+ * happened to share the name supply another library's throw union — the same
+ * false `{∅}` this branch exists to remove, arrived at from the other side.
+ *
+ * An ALIAS-qualified source is the cross-module case and is resolved through the
+ * declaring module's own alias table, never by dropping the alias and matching
+ * the bare name anywhere.
+ *
+ * Ambiguity resolves to NOTHING rather than to a guess (`resolveScopedName`'s
+ * rule), and the caller reads that as unbounded — the safe direction here, since
+ * a union that cannot be enumerated must not read as empty.
+ */
+function findSentinelTarget(
+  ctx: ResolveCtx,
+  target: RefSentinelTarget,
+  ownerModule: string | undefined,
+): ResourceManifest | undefined {
+  const named = (pool: readonly ResourceManifest[] | undefined): ResourceManifest[] =>
+    (pool ?? []).filter((m) => m.metadata?.name === target.name);
+
+  if (target.alias !== undefined && target.alias !== "Self") {
+    // A forwarded export: its module is whatever the DECLARING module aliases
+    // that prefix to, and it keeps its export name in the flat set.
+    // A root-owned manifest resolves aliases against the global table, which is
+    // what `scopeResolverForModule` returns undefined for — so fall back to it
+    // rather than reading a root's own alias as unresolvable.
+    const resolver = scopeResolverFor(ctx, ownerModule) ?? ctx.aliases;
+    const module = resolver.moduleForAlias(target.alias);
+    if (!module) return undefined;
+    return named(ctx.allManifests).find((m) => declaringModuleOf(m) === module);
+  }
+
+  const own = named(ctx.moduleManifests.get(ownerModule ?? ""));
+  if (own.length === 1) return own[0];
+  if (own.length > 1) return undefined;
+  return resolveScopedName(named(ctx.allManifests), declaringModuleOf, ownerModule);
+}
+
+const declaringModuleOf = (m: ResourceManifest): string | undefined =>
+  (m.metadata as { module?: string } | undefined)?.module;
+
+/** Memo key. Module-scoped, because resource names are. */
+function memoKey(manifest: ResourceManifest): string | undefined {
+  const name = manifest.metadata?.name as string | undefined;
+  if (!name) return undefined;
+  const mod = (manifest.metadata as { module?: string } | undefined)?.module ?? "";
+  return `${mod}\0${name}`;
 }
 
 function emptyUnion(): ThrowsUnion {
@@ -114,7 +213,7 @@ export function resolveThrowsUnion(
   manifest: ResourceManifest,
   ctx: ResolveCtx,
 ): ThrowsUnion {
-  const name = manifest.metadata?.name as string | undefined;
+  const name = memoKey(manifest);
 
   if (name) {
     const cached = ctx.memo.get(name);
@@ -314,7 +413,21 @@ function resolveStepInvokeThrows(
   const invokeRef = step[invokeField];
   if (!invokeRef || typeof invokeRef !== "object") return emptyUnion();
   const invokedKind = invokeRef.kind as string | undefined;
-  if (!invokedKind) return emptyUnion();
+  // A reference that still carries its parse-time sentinel — a library-internal
+  // `!ref` inside a manifest forwarded into a consumer's flat set, where Phase
+  // 2.5 had nothing to resolve it against. The target is in the declaring
+  // library's own documents, so it is looked up there; only a name that is not
+  // there either is UNKNOWN, which is unbounded rather than empty. Reading it as
+  // empty is what made a library's exported entry point present a `{∅}` union to
+  // its consumer and get the consumer's `catches:` rejected for the code the
+  // entry point documents.
+  if (!invokedKind) {
+    const sentinel = refSentinelTarget(invokeRef);
+    if (!sentinel) return emptyUnion();
+    const target = findSentinelTarget(ctx, sentinel, ownerModule);
+    if (target) return resolveThrowsUnion(target, ctx);
+    return { codes: new Map(), unbounded: true };
+  }
 
   // The invoked kind's alias resolves in the OWNER manifest's lexical scope (the
   // composer that declares the step), so a library's step referencing its own
@@ -331,13 +444,15 @@ function resolveStepInvokeThrows(
   const invokeName = invokeRef.name as string | undefined;
   if (invokeName) {
     const scopedInvokedKind = scopeResolver?.resolveKind(invokedKind);
-    const target = ctx.allManifests.find(
+    const target = findTarget(
+      ctx,
+      invokeName,
+      ownerModule,
       (m) =>
-        m.metadata?.name === invokeName &&
-        (m.kind === invokedKind ||
-          ctx.aliases.resolveKind(m.kind) === invokedKind ||
-          m.kind === ctx.aliases.resolveKind(invokedKind) ||
-          (scopedInvokedKind !== undefined && m.kind === scopedInvokedKind)),
+        m.kind === invokedKind ||
+        ctx.aliases.resolveKind(m.kind) === invokedKind ||
+        m.kind === ctx.aliases.resolveKind(invokedKind) ||
+        (scopedInvokedKind !== undefined && m.kind === scopedInvokedKind),
     );
     if (target) return resolveThrowsUnion(target, ctx);
   }

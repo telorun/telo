@@ -523,11 +523,22 @@ export function validateThrowsCoverage(
   env: Environment,
   aliasesByModule: Map<string, AliasResolver> = new Map(),
   rootModules: Set<string> = new Set(),
+  /** Each imported library's full document set, so the walk can follow an
+   *  exported entry point into the siblings it invokes — which a consumer's
+   *  flat set does not carry. */
+  moduleManifests: Map<string, ResourceManifest[]> = new Map(),
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   diagnostics.push(...validateThrowsDeclarations(manifests));
 
-  const resolveCtx = createResolveCtx(manifests, defs, aliases, aliasesByModule, rootModules);
+  const resolveCtx = createResolveCtx(
+    manifests,
+    defs,
+    aliases,
+    aliasesByModule,
+    rootModules,
+    moduleManifests,
+  );
 
   // The alias resolver for a manifest's own lexical scope — an imported library's
   // resolver when it owns the manifest, else undefined (fall back to root aliases).

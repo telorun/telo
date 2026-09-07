@@ -1,0 +1,52 @@
+kind: Telo.Application
+metadata:
+  name: InjectedAbstractDeclarationTest
+  version: 1.0.0
+  description: |
+    A `resources:` entry is a DECLARATION, so identity satisfies an abstract
+    slot — and an abstract declared as a RESOURCE is still refused.
+
+    The two halves are one rule seen from both sides. An input is constrained by
+    kind alone, so its kind-only stand-in routinely IS an abstract
+    (`connection: { kind: Sql.Connection }`), and every use of that name inside
+    the library is a reference to it: withholding identity reported each one as
+    a mismatch against the very kind the author wrote. But relaxing it for
+    everything left a manifest the kernel refuses at `create()` passing
+    `telo check` with nothing reported anywhere — runtime validation with no
+    static counterpart, which is what the second assertion pins.
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref AnInjectedAbstractSatisfiesItsOwnSlot
+  - !ref TheConsumerOfSuchALibraryIsClean
+  - !ref InstantiatingAnAbstractIsReported
+---
+# The LIBRARY on its own — the only pass that sees its internals, since a
+# consumer's flattened analysis drops the library doc and with it the stand-in
+# and every reference to it. Checking the consumer instead pins nothing here.
+kind: Assert.Manifest
+metadata:
+  name: AnInjectedAbstractSatisfiesItsOwnSlot
+source: ./__fixtures__/injected-abstract/lib/telo.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata:
+  name: TheConsumerOfSuchALibraryIsClean
+source: ./__fixtures__/injected-abstract/app.yaml
+expect:
+  errors: []
+---
+# Reported at the DECLARATION, with the same hint the kernel's own refusal
+# carries — the concrete implementations this analysis holds.
+kind: Assert.Manifest
+metadata:
+  name: InstantiatingAnAbstractIsReported
+source: ./__fixtures__/injected-abstract/bad/telo.yaml
+expect:
+  errors:
+    - code: ABSTRACT_KIND_INSTANTIATED
+      message: "is abstract and cannot be instantiated directly"
+    - code: ABSTRACT_KIND_INSTANTIATED
+      message: "instantiate a concrete implementation: SQLite.Connection"

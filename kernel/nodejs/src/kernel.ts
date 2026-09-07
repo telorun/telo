@@ -2,7 +2,7 @@ import {
   AnalysisRegistry,
   authoredModuleMetadata,
   buildEvalPaths,
-  collectZoneModuleDocuments,
+  collectModuleDocuments,
   declarationSignature,
   diffManifests,
   flattenForAnalyzer,
@@ -847,7 +847,7 @@ export class Kernel implements IKernel {
       // export surface, never its internal dispatch chain.
       {
         skipValidation,
-        moduleDocuments: collectZoneModuleDocuments(analysisGraph),
+        moduleDocuments: collectModuleDocuments(analysisGraph),
         hostVersions: nodeHostVersions(),
       },
       this.registry,

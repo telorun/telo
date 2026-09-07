@@ -8,7 +8,7 @@ import {
   readResourceInputs,
   type ResourceInput,
 } from "./resource-input.js";
-import type { ZoneModuleDocuments } from "./zone-module-documents.js";
+import type { ModuleDocuments } from "./module-documents.js";
 
 /** One parsed `exports.resources` / `exports.kinds` entry. `name` is the exported
  *  instance name or kind suffix (the part after the dot, or the whole entry); `alias`
@@ -557,8 +557,8 @@ function canonicalizeInputKind(
  *  projection needs the internal dispatch chain to derive an export's open
  *  requirements. Only libraries that actually export instances are included:
  *  a library exporting nothing has no export contract to derive. */
-export function collectZoneModuleDocuments(graph: LoadedGraph): ZoneModuleDocuments[] {
-  const out: ZoneModuleDocuments[] = [];
+export function collectModuleDocuments(graph: LoadedGraph): ModuleDocuments[] {
+  const out: ModuleDocuments[] = [];
   for (const [source, mod] of graph.modules) {
     if (source === graph.rootSource) continue;
     const libDoc = mod.owner.manifests.find((m) => m && isModuleKind(m.kind)) as

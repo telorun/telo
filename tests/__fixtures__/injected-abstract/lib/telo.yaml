@@ -1,0 +1,30 @@
+kind: Telo.Library
+metadata:
+  name: InjectedAbstractLib
+  version: 1.0.0
+  description: >-
+    Test fixture: a `resources:` entry constrained by an ABSTRACT kind, used at
+    a slot that requires that same abstract.
+imports:
+  Sql: ../../../../modules/sql
+  Run: ../../../../modules/run
+resources:
+  connection:
+    kind: Sql.Connection
+exports:
+  resources: [read]
+---
+# The stand-in behind `connection` IS `Sql.Connection`, an abstract, and this
+# slot requires `Sql.Connection`. Identity has to satisfy it here — the entry is
+# a declaration, not an instance.
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref connection
+---
+kind: Run.Sequence
+metadata: { name: read }
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: SELECT 1
