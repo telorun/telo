@@ -1,0 +1,45 @@
+kind: Telo.Application
+metadata:
+  name: CelFormattingBadLiterals
+  version: 1.0.0
+  description: |
+    Every formatting guard, reached with an argument written as a LITERAL.
+
+    Each of these is a defect the manifest states outright, so each must be a
+    `telo check` error rather than something a run discovers. Asserted by
+    `tests/cel-formatting.yaml` through `Assert.Manifest`, on the diagnostic
+    CODE — so an implementation that stops refusing fails the assertion, which
+    a `try:`/`catch:` alone cannot detect.
+imports:
+  Run: ../../modules/run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: unparseableSpecifier
+    value: !cel "format(1.0, '..2f')"
+  - name: unknownType
+    value: !cel "format(1.0, '.2q')"
+  - name: tooManyDigits
+    value: !cel "fixed(1.0, 11)"
+  - name: negativeDigits
+    value: !cel "fixed(1.0, -1)"
+  - name: roundDigits
+    value: !cel "round(1.0, 11)"
+  - name: integerTooLarge
+    value: !cel "format(9007199254740993, '.0f')"
+  - name: roundIntegerTooLarge
+    value: !cel "round(9007199254740993)"
+  - name: nonPositiveDay
+    value: !cel "formatDuration(510, 0)"
+  - name: unknownZoneDate
+    value: !cel "dateIn(timestamp(0), 'Mars/Olympus')"
+  - name: unknownZoneIso
+    value: !cel "isoIn(timestamp(0), 'Mars/Olympus')"
+  - name: unknownZoneMonth
+    value: !cel "string(startOfMonth(timestamp(0), 'Mars/Olympus'))"
+  - name: unknownZoneShift
+    value: !cel "string(addMonths(timestamp(0), 1, 'Mars/Olympus'))"

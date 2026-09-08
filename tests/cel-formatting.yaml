@@ -1,0 +1,275 @@
+kind: Telo.Application
+metadata:
+  name: CelFormattingTest
+  version: 1.0.0
+  description: |
+    Conformance for the CEL formatting surface — the number specifier grammar,
+    duration rendering, zone-aware calendar arithmetic and `compact`.
+
+    Written as a manifest rather than as assertions inside the templating
+    package's TypeScript tests, because the specifier grammar crosses runtimes
+    while the library implementing it does not. A manifest is the artifact every
+    Telo runtime already knows how to execute, so a second CEL engine conforms by
+    running this file rather than by reimplementing a test harness — and the
+    values are written in CEL itself, so an int64 and an instant need no encoding
+    convention to appear in the expectations.
+
+    Refusals are asserted in TWO layers, because they fire in two places. A bad
+    argument written as a LITERAL is a `telo check` error, asserted through
+    `Assert.Manifest` on the diagnostic code — an assertion an implementation
+    that stopped refusing would fail. A bad argument that is COMPUTED can only
+    fail at evaluation, so it is caught with `try:`/`catch:` and then followed by
+    a post-condition: a `catch:` that never runs leaves its step's result unset,
+    and asserting on that result is what stops the case passing vacuously.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref numbers
+  - !ref durations
+  - !ref dates
+  - !ref collections
+  - !ref literalRefusals
+  - !ref computedRefusals
+---
+# The number surface is the d3-format specifier grammar in full. Rounding is the
+# double's, not the decimal's: 1.005 is not representable and the nearest double
+# sits below the half, so `.2f` of it is "1.00".
+kind: Run.Sequence
+metadata:
+  name: numbers
+steps:
+  - name: check
+    inputs:
+      actual:
+        one: !cel "fixed(1.5, 2)"
+        small: !cel "fixed(0.05, 2)"
+        whole: !cel "fixed(7.0, 2)"
+        # The defect this family exists to kill: the hand-rolled minor-unit
+        # padding it replaces printed `-1.0-50` for a credit line.
+        negative: !cel "fixed(-1.5, 2)"
+        # A magnitude that rounds to zero drops its sign — the sign is applied
+        # once, at the front.
+        signDropped: !cel "fixed(-0.004, 2)"
+        zeroDigits: !cel "fixed(1.5, 0)"
+        # An int64 arriving from CEL's own integer surface. `d3-format` throws on
+        # a BigInt outright, so this is the conversion working.
+        fromInt: !cel "fixed(size('abc'), 2)"
+        grouped: !cel "format(1234.5, ',.2f')"
+        # ASCII hyphen-minus, not U+2212, which is what d3's default locale emits
+        # and what no downstream parser reads as a number.
+        groupedNegative: !cel "format(-1234.5, ',.2f')"
+        percent: !cel "format(0.075, '.1%')"
+        siPrefix: !cel "format(42000000.0, '.2s')"
+        halfBelow: !cel "format(1.005, '.2f')"
+        # `round`'s second arity shares the formatter's rounding rule, so a
+        # rounded value and the cell rendered beside it agree at the boundary.
+        rounded: !cel "round(8.165, 2)"
+        formatted: !cel "format(8.165, '.2f')"
+        roundedWhole: !cel "round(1.5)"
+      expected:
+        one: "1.50"
+        small: "0.05"
+        whole: "7.00"
+        negative: "-1.50"
+        signDropped: "0.00"
+        zeroDigits: "2"
+        fromInt: "3.00"
+        grouped: "1,234.50"
+        groupedNegative: "-1,234.50"
+        percent: "7.5%"
+        siPrefix: "42M"
+        halfBelow: "1.00"
+        rounded: 8.16
+        formatted: "8.16"
+        roundedWhole: 2.0
+    invoke:
+      kind: Assert.Equals
+---
+# The day length is an argument because it is a policy, not arithmetic — the same
+# minute count is `1d 30m` on an 8-hour day and `8h 30m` on a 24-hour one.
+kind: Run.Sequence
+metadata:
+  name: durations
+steps:
+  - name: check
+    inputs:
+      actual:
+        dayAndMinutes: !cel "formatDuration(510, 480)"
+        hoursAndMinutes: !cel "formatDuration(450, 480)"
+        exactDay: !cel "formatDuration(480, 480)"
+        zero: !cel "formatDuration(0, 480)"
+        negative: !cel "formatDuration(-510, 480)"
+        calendarDay: !cel "formatDuration(510, 1440)"
+        fractionalMinutes: !cel "formatDuration(90.4, 480)"
+      expected:
+        dayAndMinutes: "1d 30m"
+        hoursAndMinutes: "7h 30m"
+        exactDay: "1d"
+        zero: "0m"
+        negative: "-1d 30m"
+        calendarDay: "8h 30m"
+        fractionalMinutes: "1h 30m"
+    invoke:
+      kind: Assert.Equals
+---
+# An instant is only a date once a zone is chosen, so every calendar function
+# takes one, defaulting to UTC.
+kind: Run.Sequence
+metadata:
+  name: dates
+steps:
+  - name: check
+    inputs:
+      actual:
+        dateZoned: !cel "dateIn(timestamp('2026-03-01T00:30:00Z'), 'America/New_York')"
+        dateUtc: !cel "dateIn(timestamp('2026-03-01T00:30:00Z'))"
+        isoZoned: !cel "isoIn(timestamp('2026-03-01T00:30:00Z'), 'America/New_York')"
+        isoUtc: !cel "isoIn(timestamp('2026-03-01T00:30:00Z'))"
+        monthUtc: !cel "string(startOfMonth(timestamp('2026-03-17T12:00:00Z')))"
+        # Midnight on the 1st IN THE ZONE, which is 05:00Z while New York is on
+        # EST — the whole reason the zone is an argument rather than an assumption.
+        monthZoned: !cel "string(startOfMonth(timestamp('2026-03-17T12:00:00Z'), 'America/New_York'))"
+        # The day of month clamps to the length of the target month.
+        clamped: !cel "string(addMonths(timestamp('2026-01-31T00:00:00Z'), 1))"
+        backwards: !cel "string(addMonths(timestamp('2026-03-15T00:00:00Z'), -2))"
+        acrossYear: !cel "string(addMonths(timestamp('2026-11-30T00:00:00Z'), 3))"
+      expected:
+        dateZoned: "2026-02-28"
+        dateUtc: "2026-03-01"
+        isoZoned: "2026-02-28T19:30:00.000-05:00"
+        isoUtc: "2026-03-01T00:30:00.000Z"
+        monthUtc: "2026-03-01T00:00:00.000Z"
+        monthZoned: "2026-03-01T05:00:00.000Z"
+        clamped: "2026-02-28T00:00:00.000Z"
+        backwards: "2026-01-15T00:00:00.000Z"
+        acrossYear: "2027-02-28T00:00:00.000Z"
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata:
+  name: collections
+steps:
+  - name: checkMap
+    inputs:
+      actual: !cel "compact({'a': 'x', 'b': '', 'c': null})"
+      expected: { a: "x" }
+    invoke:
+      kind: Assert.Equals
+  - name: checkList
+    inputs:
+      actual: !cel "compact(['x', '', null])"
+      expected: ["x"]
+    invoke:
+      kind: Assert.Equals
+  # Only null and the empty string. An empty list or map is a value someone
+  # deliberately built, and a zero or a false is data.
+  - name: checkKeeps
+    inputs:
+      actual: !cel "compact({'a': [], 'b': {}, 'c': 0, 'd': false, 'e': ''})"
+      expected: { a: [], b: {}, c: 0, d: false }
+    invoke:
+      kind: Assert.Equals
+---
+# LAYER 1 — a bad argument written as a literal is a static error.
+#
+# Every entry names the call it expects to be refused, so the assertions cannot
+# all be satisfied by one diagnostic: `Assert.Manifest` matches by PRESENCE, and
+# twelve entries carrying only a code would be twelve matches against the first
+# error. The discriminator is the manifest's own text echoed back, never the
+# prose of the message.
+kind: Assert.Manifest
+metadata:
+  name: literalRefusals
+source: ./__fixtures__/cel-formatting-bad-literals.yaml
+expect:
+  errors:
+    - { code: CEL_INVALID_ARGUMENT, message: "format(1.0, '..2f')" }
+    - { code: CEL_INVALID_ARGUMENT, message: "format(1.0, '.2q')" }
+    - { code: CEL_INVALID_ARGUMENT, message: "fixed(1.0, 11)" }
+    - { code: CEL_INVALID_ARGUMENT, message: "fixed(1.0, -1)" }
+    - { code: CEL_INVALID_ARGUMENT, message: "round(1.0, 11)" }
+    - { code: CEL_INVALID_ARGUMENT, message: "format(9007199254740993, '.0f')" }
+    - { code: CEL_INVALID_ARGUMENT, message: "round(9007199254740993)" }
+    - { code: CEL_INVALID_ARGUMENT, message: "formatDuration(510, 0)" }
+    - { code: CEL_INVALID_ARGUMENT, message: "dateIn(timestamp(0), 'Mars/Olympus')" }
+    - { code: CEL_INVALID_ARGUMENT, message: "isoIn(timestamp(0), 'Mars/Olympus')" }
+    - { code: CEL_INVALID_ARGUMENT, message: "startOfMonth(timestamp(0), 'Mars/Olympus')" }
+    - { code: CEL_INVALID_ARGUMENT, message: "addMonths(timestamp(0), 1, 'Mars/Olympus')" }
+---
+# LAYER 2 — the same guards reached with a COMPUTED argument, which no static
+# check can judge. Each `try:` is followed by a post-condition asserting the
+# `catch:` actually ran: without it a guard that stopped throwing would leave the
+# catch unexecuted and the step would simply succeed, so the suite would be
+# green for an engine implementing none of these refusals.
+kind: Run.Sequence
+metadata:
+  name: computedRefusals
+steps:
+  - name: badSpec
+    value: ".2q"
+  - name: badZone
+    value: "Mars/Olympus"
+  - name: badDay
+    value: 0
+
+  - name: guardSpec
+    try:
+      - name: callSpec
+        value: !cel "format(1.0, steps.badSpec.result)"
+    catch:
+      - name: caughtSpec
+        value: refused
+  - name: assertSpecRefused
+    inputs:
+      actual: !cel "steps.caughtSpec.result"
+      expected: refused
+    invoke:
+      kind: Assert.Equals
+
+  - name: guardZone
+    try:
+      - name: callZone
+        value: !cel "dateIn(timestamp(0), steps.badZone.result)"
+    catch:
+      - name: caughtZone
+        value: refused
+  - name: assertZoneRefused
+    inputs:
+      actual: !cel "steps.caughtZone.result"
+      expected: refused
+    invoke:
+      kind: Assert.Equals
+
+  - name: guardDay
+    try:
+      - name: callDay
+        value: !cel "formatDuration(510, steps.badDay.result)"
+    catch:
+      - name: caughtDay
+        value: refused
+  - name: assertDayRefused
+    inputs:
+      actual: !cel "steps.caughtDay.result"
+      expected: refused
+    invoke:
+      kind: Assert.Equals
+
+  # A value that is not a number reaches the formatter only when it is computed;
+  # a literal is refused by the registered signature instead.
+  - name: notANumber
+    value: "abc"
+  - name: guardNaN
+    try:
+      - name: callNaN
+        value: !cel "format(steps.notANumber.result, '.2f')"
+    catch:
+      - name: caughtNaN
+        value: refused
+  - name: assertNaNRefused
+    inputs:
+      actual: !cel "steps.caughtNaN.result"
+      expected: refused
+    invoke:
+      kind: Assert.Equals

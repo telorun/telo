@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: IterationInlineStepTest
+  version: 1.0.0
+  description: |
+    A step's `invoke:` accepts an inline body kind, and a body kind requires no
+    `inputType:` — the collection reaches it through the step's own `inputs:`.
+
+    Both are ordinary consequences of the step grammar and neither was written
+    down, so rendering one line per row was routinely built as a named resource
+    with a hand-written `inputType:` schema declaring `rows: array of object` —
+    around 22 lines of manifest to carry a single expression.
+
+    The collection is read as `inputs.rows` and NOT as `steps.rows.result`: the
+    nested kind is its own resource, so the enclosing sequence's `steps` scope is
+    not bound inside it.
+imports:
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: rows
+    value:
+      - { user: ada, minutes: 510 }
+      - { user: linus, minutes: 450 }
+
+  # The inline form: no `metadata.name` and no `inputType:`, with `item` bound
+  # per element exactly as it is in a named body kind.
+  - name: lines
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.rows"
+      steps:
+        - name: keep
+          value: !cel "item"
+      outputs: !cel "item.user + ' ' + formatDuration(item.minutes, 480)"
+    inputs:
+      rows: !cel "steps.rows.result"
+
+  - name: check
+    inputs:
+      actual: !cel "steps.lines.result"
+      expected:
+        - "ada 1d 30m"
+        - "linus 7h 30m"
+    invoke:
+      kind: Assert.Equals
+
+  # The shape the iteration guide documents: an inline `Run.Iteration` driving a
+  # step per element for its effects. Held here so the guide's example cannot
+  # drift from something that runs — the projection above exercises the same
+  # inline form but a different kind.
+  - name: eachRow
+    invoke:
+      kind: Run.Iteration
+      collection: !cel "inputs.rows"
+      steps:
+        - name: assertShape
+          inputs:
+            actual: !cel "has(item.user) && has(item.minutes)"
+            expected: true
+          invoke:
+            kind: Assert.Equals
+    inputs:
+      rows: !cel "steps.rows.result"

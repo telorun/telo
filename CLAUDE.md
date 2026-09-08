@@ -6,6 +6,7 @@ Tests should live in the module they test: `modules/<name>/tests/*.yaml`.
 Test fixtures go in `__fixtures__/` subdirectories (excluded from test discovery).
 Prefer `Assert.Equals` (deep-equals `actual` against an `expected` literal) for asserting outputs in manifest tests — not `Assert.Schema`. It reads as a plain expected value, compares the whole result at once, and serializes BigInt safely.
 Implementation plans should live in the package they affect the most, eg. `apps/studio/plans/some-plan.md`.
+Plans MUST NOT have any open decisions, all open decisions must be resolved before plan is written.
 **Never cite a plan path from this file.** A plan is deleted the moment its work ships, so a path here becomes a dangling reference nothing catches — and a plan is a record of how a decision was reached, which is exactly what this file must not depend on. State the decision itself instead.
 
 Follow this strictly:

@@ -1,5 +1,5 @@
 import type { ASTNode, Environment } from "@marcbachmann/cel-js";
-import { CEL_FUNCTIONS } from "./catalog.js";
+import { CEL_FUNCTIONS, type CelFunctionDoc } from "./catalog.js";
 import type { CallSite, DiagnosticFix, EngineDiagnostic } from "../engine.js";
 
 /** Classifies every function call in a CEL expression against the environment's
@@ -77,7 +77,7 @@ interface RawCall extends CallSite {
  *  missing from here degrades to "no extra explanation" rather than to a false
  *  error on valid CEL. That is what keeps a cel-js upgrade from turning a new
  *  macro into a manifest this analyzer refuses. */
-const MACROS = new Set(["optMap", "optFlatMap"]);
+const MACROS = new Set(["optMap", "optFlatMap", "bind"]);
 
 function isNode(v: unknown): v is ASTNode {
   return typeof v === "object" && v !== null && "op" in (v as Record<string, unknown>);
@@ -210,9 +210,35 @@ function signaturesOf(name: string, index: FunctionIndex): string[] {
  *  field rather than carrying `undefined` into the diagnostic. */
 const withFix = (fix: DiagnosticFix | undefined): { fix?: DiagnosticFix } => (fix ? { fix } : {});
 
+/** The literal value of an argument, or `undefined` when it is an expression
+ *  whose value is not statically known. A negated numeric literal is one node
+ *  out (`-1` parses as unary minus over a value), and reading it is what lets a
+ *  bound like "0–10" catch the below-range case as well as the above. */
+function literalOf(node: ASTNode): unknown {
+  if (node.op === "value") return node.args;
+  if (node.op === "-_") {
+    const inner = node.args;
+    if (isNode(inner) && inner.op === "value") {
+      const v = inner.args as unknown;
+      if (typeof v === "number") return -v;
+      if (typeof v === "bigint") return -v;
+    }
+  }
+  return undefined;
+}
+
+const ARG_CHECKS: ReadonlyMap<string, NonNullable<CelFunctionDoc["checkArgs"]>> = new Map(
+  CEL_FUNCTIONS.flatMap((f) => (f.checkArgs ? [[f.name, f.checkArgs] as const] : [])),
+);
+
 export interface CallAudit {
   readonly diagnostics: readonly EngineDiagnostic[];
   readonly calls: readonly CallSite[];
+  /** Refusals decided from arguments written as literals. Reported whatever the
+   *  type-checker said, unlike {@link CallAudit.diagnostics}: a call whose types
+   *  are all correct and whose specifier is `.2q` type-checks perfectly, and is
+   *  exactly the defect this catches. */
+  readonly argumentIssues: readonly EngineDiagnostic[];
   /** Names that resolve, but that no registered signature accepts as written.
    *  The caller appends their signatures to a type-check failure it could not
    *  otherwise explain. */
@@ -276,10 +302,26 @@ export function auditCalls(source: string, ast: ASTNode, env: Environment): Call
     unresolved.push(call.name);
   }
 
+  const argumentIssues: EngineDiagnostic[] = [];
+  for (const call of calls) {
+    const check = ARG_CHECKS.get(call.name);
+    if (!check) continue;
+    const message = check(call.args.map(literalOf));
+    // No span on an EngineDiagnostic, so the written call goes in the message —
+    // an expression with two calls to the same function is otherwise ambiguous.
+    if (message) {
+      argumentIssues.push({
+        code: "CEL_INVALID_ARGUMENT",
+        message: `${message} (in \`${source.slice(call.start, call.end)}\`)`,
+      });
+    }
+  }
+
   return {
     diagnostics,
     calls: calls.map(({ receiver: _receiver, args: _args, ...site }) => site),
     unresolved,
+    argumentIssues,
   };
 }
 

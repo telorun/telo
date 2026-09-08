@@ -124,3 +124,22 @@ describe("call inventory", () => {
     expect(analyze("now()").calls[0]!.deterministic).toBeUndefined();
   });
 });
+
+describe("cel.bind", () => {
+  it("is never classified as an unknown method", () => {
+    expect(codes("cel.bind(c, 150, string(c))")).not.toContain("CEL_UNKNOWN_FUNCTION");
+  });
+
+  it("reports an unrelated bad call inside the body, and only that one", () => {
+    const ds = analyze("cel.bind(c, 150, nosuchfn(c))").diagnostics;
+    expect(ds.map((d) => d.code)).toEqual(["CEL_UNKNOWN_FUNCTION"]);
+    expect(ds[0]!.message).toContain("nosuchfn");
+    expect(ds[0]!.message).not.toContain("`bind`");
+  });
+
+  it("evaluates, so the analyzer and the runtime agree it is valid", () => {
+    expect(env.celEnv.evaluate("cel.bind(c, 150, string(c / 100) + '.' + string(c % 100))")).toBe(
+      "1.50",
+    );
+  });
+});
