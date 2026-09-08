@@ -34,6 +34,10 @@ onlyBuiltDependencies:
 # drift between them.
 catalog:
   esbuild: ^0.25.12
+  # Pinned here for the reason esbuild is: this library DEFINES OUTPUT BYTES.
+  # A rendered number is compared, stored and diffed downstream, and a minor
+  # release that changes one would move it under every manifest at once.
+  d3-format: 3.1.2
 
 # The catalog governs what this repo DECLARES; vite brings its own esbuild, and
 # vite 5 (under vitest 2) pins ^0.21.3. esbuild only learned the `es2024` target

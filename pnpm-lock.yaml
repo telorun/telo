@@ -4,6 +4,12 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    d3-format:
+      specifier: 3.1.2
+      version: 3.1.2
+
 overrides:
   esbuild: ^0.25.12
 
@@ -1526,7 +1532,7 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4
       d3-format:
-        specifier: ^3.1.0
+        specifier: 'catalog:'
         version: 3.1.2
       d3-scale:
         specifier: ^4.0.2
@@ -1902,6 +1908,9 @@ importers:
       '@marcbachmann/cel-js':
         specifier: ^7.6.1
         version: 7.6.1
+      d3-format:
+        specifier: 'catalog:'
+        version: 3.1.2
       re2js:
         specifier: ^2.8.3
         version: 2.8.3
@@ -1915,6 +1924,9 @@ importers:
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../sdk/nodejs
+      '@types/d3-format':
+        specifier: ^3.0.4
+        version: 3.0.4
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30

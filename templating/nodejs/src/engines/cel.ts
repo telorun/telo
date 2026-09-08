@@ -33,6 +33,12 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeRe
 
   const audit = auditCalls(source, parsed.ast, env.celEnv);
 
+  // Reported whatever the type-checker concludes. A literal argument a guard
+  // will refuse is a defect the manifest states outright, and leaving it to the
+  // run is the thing static analysis exists to prevent — so it is not gated on
+  // `checkError` the way the call audit is.
+  out.push(...audit.argumentIssues);
+
   let type: string | undefined;
   let checkError: string | undefined;
   try {

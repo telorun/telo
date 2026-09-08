@@ -162,3 +162,47 @@ describe("findNullableAccessIssues", () => {
     ]);
   });
 });
+
+describe("cel.bind", () => {
+  it("scopes the bound name to the body and leaves init in the enclosing scope", () => {
+    const ast = env.parse("cel.bind(c, request.q, string(c) + item.x)").ast;
+    const chains = extractAccessChains(ast);
+    expect(chains).toContainEqual(["request", "q"]);
+    expect(chains).toContainEqual(["item", "x"]);
+    expect(chains).not.toContainEqual(["c"]);
+  });
+
+  it("does not emit a chain for the `cel` pseudo-receiver", () => {
+    const ast = env.parse("cel.bind(c, 150, string(c))").ast;
+    expect(extractAccessChains(ast)).not.toContainEqual(["cel"]);
+  });
+
+  it("still reports a name used in init, which the binding does not cover", () => {
+    const ast = env.parse("cel.bind(c, c, string(c))").ast;
+    expect(extractAccessChains(ast)).toEqual([["c"]]);
+  });
+
+  it("resolves both names when binds are nested", () => {
+    const ast = env.parse("cel.bind(a, variables.x, cel.bind(b, a + 1, string(a) + string(b)))").ast;
+    const chains = extractAccessChains(ast);
+    expect(chains).toEqual([["variables", "x"]]);
+  });
+
+  it("does not treat a bound name as a nullable context field", () => {
+    const ast = env.parse("cel.bind(e, 1, error.code)").ast;
+    const schema = {
+      type: "object",
+      properties: { error: { type: ["object", "null"], properties: { code: { type: "string" } } } },
+    };
+    expect(findNullableAccessIssues(ast, schema)).toEqual([{ path: "error", member: "code" }]);
+  });
+
+  it("carries a null guard from init into the body", () => {
+    const ast = env.parse("error == null ? '' : cel.bind(c, 1, error.code)").ast;
+    const schema = {
+      type: "object",
+      properties: { error: { type: ["object", "null"], properties: { code: { type: "string" } } } },
+    };
+    expect(findNullableAccessIssues(ast, schema)).toEqual([]);
+  });
+});

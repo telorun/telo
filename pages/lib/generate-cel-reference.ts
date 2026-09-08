@@ -13,6 +13,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   json: "JSON",
   encoding: "Encoding",
   hashing: "Hashing",
+  formatting: "Formatting",
   null: "Null handling",
 };
 
@@ -45,7 +46,7 @@ export function generateCelReference(outFile: string): void {
   const lines: string[] = [
     "---",
     "slug: /cel",
-    "description: Every CEL function available in a Telo manifest expression — strings, math, collections, JSON, encoding, hashing, time and UUIDs — generated from the runtime registry.",
+    "description: Every CEL function available in a Telo manifest expression — strings, math, formatting, collections, JSON, encoding, hashing, time and UUIDs — generated from the runtime registry.",
     "---",
     "",
     "# CEL Functions",

@@ -15,10 +15,38 @@ export function extractAccessChains(node: ASTNode): string[][] {
 
 const COMPREHENSION_METHODS = new Set(["filter", "map", "exists", "all", "exists_one"]);
 
+/** `cel.bind(name, init, body)` — CEL's only binding form, and the one the
+ *  parser expands rather than dispatching, so it appears as a receiver call on a
+ *  bare `cel` identifier that is in no scope and never will be. Both walks below
+ *  need the same three facts out of it, so the shape is read once here.
+ *
+ *  The receiver is deliberately not returned: it contributes no chain, and
+ *  descending into it is what produced a `CEL_UNKNOWN_FIELD` for `cel` itself. */
+function bindCall(node: ASTNode): { name: string; init: ASTNode; body: ASTNode } | null {
+  if (node.op !== "rcall" || !Array.isArray(node.args)) return null;
+  const [method, receiver, callArgs] = node.args as [unknown, unknown, unknown];
+  if (method !== "bind") return null;
+  if (!isASTNode(receiver) || receiver.op !== "id" || receiver.args !== "cel") return null;
+  if (!Array.isArray(callArgs) || callArgs.length !== 3) return null;
+  const [nameNode, init, body] = callArgs as [unknown, unknown, unknown];
+  if (!isASTNode(nameNode) || nameNode.op !== "id") return null;
+  if (!isASTNode(init) || !isASTNode(body)) return null;
+  return { name: nameNode.args as string, init, body };
+}
+
 function visitNode(node: ASTNode, chains: string[][], boundVars: Set<string>): void {
   const chain = extractChain(node, boundVars);
   if (chain !== null) {
     chains.push(chain);
+    return;
+  }
+
+  // The bound name is in scope for the body ONLY; `init` is evaluated in the
+  // enclosing scope, so a name used there still has to resolve there.
+  const bind = bindCall(node);
+  if (bind) {
+    visitNode(bind.init, chains, boundVars);
+    visitNode(bind.body, chains, new Set(boundVars).add(bind.name));
     return;
   }
 
@@ -243,6 +271,15 @@ function walkNullable(
     const n = deriveNarrowing(a, boundVars);
     const carried = node.op === "&&" ? n.whenTrue : n.whenFalse;
     walkNullable(b, union(nonNull, carried), boundVars, issues, schema);
+    return;
+  }
+
+  // `cel.bind` binds a name for its body; mirror extractAccessChains so a bound
+  // name is never read as a nullable context field.
+  const bind = bindCall(node);
+  if (bind) {
+    walkNullable(bind.init, nonNull, boundVars, issues, schema);
+    walkNullable(bind.body, nonNull, new Set(boundVars).add(bind.name), issues, schema);
     return;
   }
 

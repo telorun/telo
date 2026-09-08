@@ -43,6 +43,30 @@ steps:
       n: !cel "index"
 ```
 
+## Inline, inside another step
+
+A `Run.Iteration` does not have to be a named resource. A step's `invoke:` accepts an
+inline declaration, and the kind requires no `inputType:` — the collection reaches it
+through the step's own `inputs:`. Printing one formatted line per row is the whole shape:
+
+```yaml
+- name: print
+  invoke:
+    kind: Run.Iteration
+    collection: !cel "inputs.rows"
+    steps:
+      - name: line
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel "item.user + '  ' + item.problem"
+  inputs:
+    rows: !cel "steps.scan.result.problems"
+```
+
+**Read the collection from `inputs`, not from the enclosing scope.** The nested kind is
+its own resource, so `steps.<name>.result` of the *enclosing* sequence is not bound inside
+it; the step's sibling `inputs:` is what carries a value across that boundary.
+
 ## Iterating a stream
 
 `collection` accepts a byte or record **stream** as well as an array. A stream is pulled lazily — one element at a time per worker, never read ahead — so a source too large to hold in memory can still be iterated. Pairs with [`Stream.Chunk`](../../stream/docs/chunk.md) for a chunked upload.

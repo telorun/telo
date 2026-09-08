@@ -1,0 +1,8 @@
+modules:
+  modules/run: Added
+body: "The iteration guide documents the inline form: a step's `invoke:` accepts an
+  inline `Run.Iteration` and the kind needs no `inputType:`, so printing one line per
+  row costs a step rather than a named resource with a hand-written schema. It also
+  records that the collection must reach the nested kind through the step's own
+  `inputs:` — the enclosing sequence's `steps` scope is not bound inside it, and writing
+  it directly passes `telo check` before failing at runtime."

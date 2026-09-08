@@ -1,3 +1,4 @@
+import { formatLocale } from "d3-format";
 import { RE2JS } from "re2js";
 import { v1, v3, v4, v5, v6, v7, validate as uuidValidate, version as uuidVersion } from "uuid";
 
@@ -67,6 +68,7 @@ export type CelFunctionCategory =
   | "json"
   | "encoding"
   | "hashing"
+  | "formatting"
   | "null";
 
 /** One entry in the CEL standard library — the single source of truth that both
@@ -94,7 +96,35 @@ export interface CelFunctionDoc {
    *  analyzer's stub throws if such a function is actually evaluated. */
   readonly hostBacked: boolean;
   readonly build: (h: CelHandlers) => (...args: any[]) => unknown;
+  /**
+   * Check the arguments that were written as LITERALS, at analysis time.
+   *
+   * A type is all a signature can constrain, so a guard over a value —
+   * an unparseable format specifier, a decimal count out of range, a day length
+   * of zero, an unknown IANA zone — fires only when the expression is evaluated.
+   * That puts a defect the manifest states in plain sight behind a run, which is
+   * the opposite of what static analysis is for.
+   *
+   * `literals[i]` is the value of argument `i` when it was written as a literal,
+   * and `undefined` when it is an expression whose value is not statically
+   * known — so a checker MUST skip an `undefined` rather than judge it.
+   * Returns a message, or `undefined` when there is nothing to report.
+   *
+   * Implementations call the SAME guard the runtime calls, so the static and
+   * dynamic answers cannot drift into disagreement.
+   */
+  readonly checkArgs?: (literals: readonly unknown[]) => string | undefined;
 }
+
+/** Run a runtime guard for its refusal, so a `checkArgs` never restates one. */
+const literalGuard = (run: () => void): string | undefined => {
+  try {
+    run();
+    return undefined;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+};
 
 /** Public, build-free view of a catalog entry (for `--json` / docs). */
 export type CelFunctionInfo = Omit<CelFunctionDoc, "build">;
@@ -124,6 +154,152 @@ const sortList = (list: unknown[]): unknown[] =>
     return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
   });
 
+/** The number-formatting locale, pinned rather than defaulted.
+ *
+ *  d3-format's default locale renders a negative with U+2212 MINUS SIGN, so
+ *  `format(-1.5, '.2f')` is `"−1.50"` and not `"-1.50"` — a string that no
+ *  downstream parser, comparison or diff treats as the number it looks like.
+ *  Every field here is fixed to its ASCII form for the same reason the layer is
+ *  locale-free at all: the same manifest must render the same bytes on every
+ *  runtime, and a second engine implementing the specifier grammar has to be
+ *  able to reproduce these exactly. */
+const FORMAT_LOCALE = formatLocale({
+  decimal: ".",
+  thousands: ",",
+  grouping: [3],
+  currency: ["$", ""],
+  minus: "-",
+  percent: "%",
+  nan: "NaN",
+});
+
+/** Largest integer a double represents exactly. */
+const MAX_EXACT_INT = 9007199254740991n;
+
+/** A CEL `int` is a BigInt in this runtime and `d3-format` throws on one
+ *  outright, so a formattable argument is converted here. Past 2^53 a double
+ *  stops representing every integer, and silently emitting a number that is not
+ *  the one the author computed is the defect class this family exists to close —
+ *  so that case raises instead. */
+const formattable = (fn: string, x: unknown): number => {
+  if (typeof x === "bigint") {
+    if (x > MAX_EXACT_INT || x < -MAX_EXACT_INT) {
+      throw new Error(
+        `${fn}: integer ${x} exceeds 2^53-1 and cannot be formatted exactly as a double`,
+      );
+    }
+    return Number(x);
+  }
+  const n = Number(x);
+  // The runtime backstop behind the typed registrations. A value that is not a
+  // number formats as the string "NaN", which is the failure this family exists
+  // to remove: it looks like an answer and prints into a document. Named here
+  // rather than coerced, the way an instant argument is.
+  if (!Number.isFinite(n)) {
+    throw new Error(`${fn}: expected a finite number, got ${JSON.stringify(x)}`);
+  }
+  return n;
+};
+
+/** Specifier type characters d3 implements. An unknown one PARSES — `.2q`
+ *  yields `"1"` rather than throwing — so a typo would silently format against
+ *  the default type. The set is checked here so a bad specifier is refused
+ *  rather than quietly answered. */
+const FORMAT_TYPES = new Set([..."efgrs%pbodxXcn"]);
+
+/** A specifier is a CEL value, so it can be request-derived — an `Http.Server`
+ *  evaluating `format(x, request.query.spec)` would otherwise grow this map for
+ *  the life of the process, and it is module-global, so every in-process kernel
+ *  shares it. Cleared wholesale at the cap rather than evicted one at a time: a
+ *  manifest's real specifier set is a handful of constants that repopulate
+ *  immediately, and an LRU is machinery for a hit rate nothing here needs. */
+const FORMATTER_CACHE_MAX = 256;
+const formatterCache = new Map<string, (n: number) => string>();
+
+const formatter = (fn: string, spec: unknown): ((n: number) => string) => {
+  const text = String(spec);
+  const cached = formatterCache.get(text);
+  if (cached) return cached;
+  const type = text.slice(-1);
+  if (text !== "" && /[a-zA-Z%]/.test(type) && !FORMAT_TYPES.has(type)) {
+    throw new Error(`${fn}: unknown format type '${type}' (one of ${[...FORMAT_TYPES].join("")})`);
+  }
+  // The `.precision` group — width is the digits BEFORE the dot, so this is the
+  // only `.`-digits sequence the grammar admits.
+  const precision = /\.(\d+)/.exec(text);
+  if (precision) digitCount(fn, precision[1]);
+  let built: (n: number) => string;
+  try {
+    built = FORMAT_LOCALE.format(text);
+  } catch {
+    throw new Error(`${fn}: invalid format specifier ${JSON.stringify(text)}`);
+  }
+  if (formatterCache.size >= FORMATTER_CACHE_MAX) formatterCache.clear();
+  formatterCache.set(text, built);
+  return built;
+};
+
+/** Decimal places, bounded. The ceiling is well below what `toFixed` accepts
+ *  because past it the digits are an artefact of the binary representation
+ *  rather than of the value.
+ *
+ *  ONE rule, enforced wherever a precision is written: `formatter` applies it to
+ *  a specifier's `.precision` group too. Bounding only this spelling let an
+ *  author route around the guard by writing `format(x, '.11f')` instead of
+ *  `fixed(x, 11)` — the family giving two answers to one question. It is not the
+ *  grammar subsetting the "full d3 surface" decision refuses: every specifier
+ *  type and flag stays available, and only the digit count is capped. */
+const MAX_DECIMALS = 10;
+
+const digitCount = (fn: string, digits: unknown): number => {
+  const n = Number(digits);
+  if (!Number.isInteger(n) || n < 0 || n > MAX_DECIMALS) {
+    throw new Error(
+      `${fn}: decimal places must be an integer 0-${MAX_DECIMALS}, got ${String(digits)}`,
+    );
+  }
+  return n;
+};
+
+/** Render a minute count against a declared day length. The day is a policy
+ *  argument, never an assumption — see the catalog entry's summary. */
+const durationText = (minutes: unknown, minutesPerDay: unknown): string => {
+  const perDay = Math.round(formattable("formatDuration", minutesPerDay));
+  if (!Number.isFinite(perDay) || perDay <= 0) {
+    throw new Error(`formatDuration: minutesPerDay must be a positive number, got ${perDay}`);
+  }
+  const total = Math.round(formattable("formatDuration", minutes));
+  if (!Number.isFinite(total)) {
+    throw new Error(`formatDuration: minutes must be a finite number`);
+  }
+  const magnitude = Math.abs(total);
+  const days = Math.floor(magnitude / perDay);
+  const withinDay = magnitude % perDay;
+  const hours = Math.floor(withinDay / 60);
+  const mins = withinDay % 60;
+  const parts: string[] = [];
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (mins) parts.push(`${mins}m`);
+  if (parts.length === 0) parts.push("0m");
+  return `${total < 0 ? "-" : ""}${parts.join(" ")}`;
+};
+
+/** Refuse an unknown zone in this family's own voice. Left to `Intl`, the
+ *  failure is a raw `RangeError` naming neither the function nor what was
+ *  wrong with the argument — the only refusal here that did not read
+ *  `<fn>: <what is wrong>`, and whose wording belongs to the JS engine rather
+ *  than to Telo. Also the guard `checkArgs` runs at analysis time, so a literal
+ *  zone is checked once and answered identically in both places. */
+const assertZone = (fn: string, tz: string): string => {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+  } catch {
+    throw new Error(`${fn}: unknown IANA time zone ${JSON.stringify(tz)}`);
+  }
+  return tz;
+};
+
 /** `Intl.DateTimeFormat` is an ECMA-402 global in Node (full ICU) and browsers,
  *  so timezone handling needs no Node-only API and stays browser-safe. */
 const zoneParts = (date: Date, tz: string, opts: Intl.DateTimeFormatOptions): Record<string, string> => {
@@ -138,8 +314,7 @@ const zoneParts = (date: Date, tz: string, opts: Intl.DateTimeFormatOptions): Re
  *  offset (e.g. `2026-06-06T18:30:00.000-05:00`). Uses only standard Intl
  *  fields and derives the offset arithmetically, so it needs no newer Intl
  *  type-lib features and stays portable. */
-const isoInZone = (tz: string): string => {
-  const now = new Date();
+const isoInZone = (now: Date, tz: string): string => {
   if (tz === "UTC" || tz === "Z") return now.toISOString();
   const p = zoneParts(now, tz, {
     hourCycle: "h23",
@@ -162,12 +337,127 @@ const isoInZone = (tz: string): string => {
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}.${ms}${offset}`;
 };
 
-/** Current calendar date (`YYYY-MM-DD`) in `tz`. */
-const dateInZone = (tz: string): string => {
-  const now = new Date();
+/** Calendar date (`YYYY-MM-DD`) of an instant in `tz`. */
+const dateInZone = (now: Date, tz: string): string => {
   if (tz === "UTC" || tz === "Z") return now.toISOString().slice(0, 10);
   const p = zoneParts(now, tz, { year: "numeric", month: "2-digit", day: "2-digit" });
   return `${p.year}-${p.month}-${p.day}`;
+};
+
+/** An instant is only a date once a zone is chosen, so every calendar function
+ *  reads its fields through one of these. `Intl` rejects an unknown zone, which
+ *  is what turns a typo into an error rather than a silently-UTC answer. */
+interface ZonedFields {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+}
+
+const zonedFields = (date: Date, tz: string): ZonedFields => {
+  const p = zoneParts(date, tz, {
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  return {
+    year: +p.year!,
+    month: +p.month!,
+    day: +p.day!,
+    hour: +p.hour!,
+    minute: +p.minute!,
+    second: +p.second!,
+  };
+};
+
+/** The zone's offset at `date`, in milliseconds — its wall clock read as UTC,
+ *  minus the real instant. The same arithmetic `isoInZone` does. */
+const zoneOffsetMs = (date: Date, tz: string): number => {
+  const f = zonedFields(date, tz);
+  return Date.UTC(f.year, f.month - 1, f.day, f.hour, f.minute, f.second) - date.getTime();
+};
+
+const sameWallClock = (a: ZonedFields, b: ZonedFields): boolean =>
+  a.year === b.year &&
+  a.month === b.month &&
+  a.day === b.day &&
+  a.hour === b.hour &&
+  a.minute === b.minute &&
+  a.second === b.second;
+
+/** The instant whose wall clock in `tz` is the given fields.
+ *
+ *  The offset depends on the instant being solved for, so this takes the offset
+ *  at the UTC reading, corrects, and then CHECKS by reading the result back.
+ *  That check is the whole point: a plain fixpoint settles on an instant whose
+ *  wall clock is not the one asked for whenever the requested time does not
+ *  exist, and it settles BACKWARDS — which silently moves the calendar day, the
+ *  one thing `addMonths` and `startOfMonth` exist to control. Chile jumps
+ *  00:00 → 01:00 on 2026-09-06 and Cuba on 2026-03-08, so "the 6th at midnight"
+ *  there is not a time; a fixpoint answered "the 5th at 23:00".
+ *
+ *  Resolution follows Java's `ZonedDateTime` and Temporal's `compatible`:
+ *  a wall clock that exists twice (a fall-back) takes the EARLIER instant, and
+ *  one that does not exist (a spring-forward gap) shifts FORWARD out of the gap,
+ *  which keeps the requested day. */
+const instantOfZoned = (f: ZonedFields, tz: string): Date => {
+  const asUtc = Date.UTC(f.year, f.month - 1, f.day, f.hour, f.minute, f.second);
+  const offsetA = zoneOffsetMs(new Date(asUtc), tz);
+  const candidateA = asUtc - offsetA;
+  const offsetB = zoneOffsetMs(new Date(candidateA), tz);
+  if (offsetA === offsetB) return new Date(candidateA);
+
+  const candidateB = asUtc - offsetB;
+  const aHolds = sameWallClock(zonedFields(new Date(candidateA), tz), f);
+  const bHolds = sameWallClock(zonedFields(new Date(candidateB), tz), f);
+  if (aHolds && bHolds) return new Date(Math.min(candidateA, candidateB));
+  if (aHolds) return new Date(candidateA);
+  if (bHolds) return new Date(candidateB);
+  return new Date(Math.max(candidateA, candidateB));
+};
+
+/** `Date.UTC` maps years 0-99 to 1900-1999, so the year is set explicitly. */
+const daysInMonth = (year: number, month: number): number => {
+  const d = new Date(Date.UTC(2000, month, 0));
+  d.setUTCFullYear(year, month, 0);
+  return d.getUTCDate();
+};
+
+/** An instant argument arrives as a `Date`; anything else is a caller error the
+ *  type-checker did not catch (a `dyn` slot), so it is named rather than
+ *  coerced into an Invalid Date that formats as `NaN`. */
+const instantArg = (fn: string, v: unknown): Date => {
+  if (v instanceof Date && Number.isFinite(v.getTime())) return v;
+  throw new Error(`${fn}: expected a timestamp`);
+};
+
+/** Drop entries whose value is null or the empty string. Nothing else: an empty
+ *  list or map is a value someone deliberately built. CEL hands a map over as a
+ *  plain object or a `Map` depending on how it was produced, so both are read. */
+const compactValue = (v: unknown): unknown => {
+  const keep = (x: unknown): boolean => x !== null && x !== undefined && x !== "";
+  if (Array.isArray(v)) return v.filter(keep);
+  if (v instanceof Map) {
+    return new Map([...v.entries()].filter(([, value]) => keep(value)));
+  }
+  // A PLAIN object only. Rebuilding an arbitrary object from its entries is how
+  // a byte buffer becomes `{"0":137,…}` and an instant becomes `{}` — silently,
+  // and looking like a value. The same rule the compile walker follows, and the
+  // same "name it rather than coerce it" the instant argument follows.
+  if (v !== null && typeof v === "object") {
+    const proto = Object.getPrototypeOf(v);
+    if (proto !== Object.prototype && proto !== null) {
+      throw new Error(`compact: expected a map or a list, got ${v.constructor?.name ?? "an object"}`);
+    }
+    return Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([, value]) => keep(value)));
+  }
+  throw new Error(`compact: expected a map or a list, got ${JSON.stringify(v)}`);
 };
 
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -489,12 +779,31 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
   },
   {
     name: "round",
-    signature: "round(dyn): double",
+    signature: "round(dyn, int?): double",
+    register: [
+      "round(double): double",
+      "round(int): double",
+      "round(double, int): double",
+      "round(int, int): double",
+    ],
     category: "math",
-    summary: "Round to the nearest integer.",
+    summary:
+      "Round to the nearest integer, or to the given number of decimal places (0–10). The two-argument form shares the formatter's rounding rule, so a rounded value and the cell rendered beside it agree at the boundary. An integer past 2^53 is refused rather than rounded to a neighbour.",
     deterministic: true,
     hostBacked: false,
-    build: () => (x: unknown) => Math.round(num(x)),
+    // Both arities go through `formattable`, so the 2^53 refusal does not depend
+    // on which one the author wrote. Guarding only the two-argument form left
+    // `round(x)` silently answering with a neighbouring integer — the defect
+    // this family exists to close, reachable by writing one fewer argument.
+    build: () => (x: unknown, digits?: unknown) =>
+      digits === undefined
+        ? Math.round(formattable("round", x))
+        : Number(formattable("round", x).toFixed(digitCount("round", digits))),
+    checkArgs: (lit) =>
+      literalGuard(() => {
+        if (lit[1] !== undefined) digitCount("round", lit[1]);
+        if (typeof lit[0] === "bigint") formattable("round", lit[0]);
+      }),
   },
   {
     name: "min",
@@ -694,7 +1003,7 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     summary: "Current time as ISO-8601; UTC by default, or in the given IANA timezone.",
     deterministic: false,
     hostBacked: false,
-    build: () => (tz?: string) => isoInZone(tz ?? "UTC"),
+    build: () => (tz?: string) => isoInZone(new Date(), tz ?? "UTC"),
   },
   {
     name: "today",
@@ -703,7 +1012,7 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     summary: "Current calendar date (YYYY-MM-DD); UTC by default, or in the given IANA timezone.",
     deterministic: false,
     hostBacked: false,
-    build: () => (tz?: string) => dateInZone(tz ?? "UTC"),
+    build: () => (tz?: string) => dateInZone(new Date(), tz ?? "UTC"),
   },
   {
     name: "nowMillis",
@@ -749,6 +1058,163 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     deterministic: true,
     hostBacked: false,
     build: () => (t: Date) => BigInt(Math.floor(t.getTime() / 1000)),
+  },
+  // Formatting. The number surface is the d3-format specifier grammar in full,
+  // `[[fill]align][sign][symbol][0][width][,][.precision][~][type]`, so a chart
+  // axis label and the table cell beside it cannot round the same value two
+  // ways. Rounding is therefore d3's: `f` rounds the double at the decimal
+  // place, so `.2f` of 1.005 is "1.00" — 1.005 is not representable and the
+  // nearest double sits below the half.
+  {
+    name: "format",
+    signature: "format(dyn, string): string",
+    // Registered per numeric type rather than as `dyn`. A `dyn` first parameter
+    // accepted a string and answered "NaN" — a value that looks like an answer
+    // and prints into a document. A genuinely dynamic expression still passes,
+    // because cel-js matches `dyn` against any declared parameter type; what
+    // this rejects is a STATICALLY known wrong type, at `telo check`.
+    register: ["format(double, string): string", "format(int, string): string"],
+    category: "formatting",
+    summary: "Format a number with a d3-format specifier (`.2f`, `,.2f`, `.1%`, `.2s`).",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (x: unknown, spec: unknown) => formatter("format", spec)(formattable("format", x)),
+    checkArgs: (lit) =>
+      literalGuard(() => {
+        if (lit[1] !== undefined) formatter("format", lit[1]);
+        if (typeof lit[0] === "bigint") formattable("format", lit[0]);
+      }),
+  },
+  {
+    name: "fixed",
+    signature: "fixed(dyn, int): string",
+    register: ["fixed(double, int): string", "fixed(int, int): string"],
+    category: "formatting",
+    summary: "Fixed-decimal string with the given number of places (0–10).",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (x: unknown, digits: unknown) =>
+      formatter("fixed", `.${digitCount("fixed", digits)}f`)(formattable("fixed", x)),
+    checkArgs: (lit) =>
+      literalGuard(() => {
+        if (lit[1] !== undefined) digitCount("fixed", lit[1]);
+        if (typeof lit[0] === "bigint") formattable("fixed", lit[0]);
+      }),
+  },
+  {
+    name: "formatDuration",
+    signature: "formatDuration(dyn, int): string",
+    register: [
+      "formatDuration(double, int): string",
+      "formatDuration(int, int): string",
+    ],
+    category: "formatting",
+    summary:
+      "Render a minute count against a declared day length: `formatDuration(510, 480)` is `1d 30m`. The day length is an argument because it is a policy, not arithmetic. The result is a rendering for a reader, not a duration literal — its `d` is the declared day, so it must not be fed back into a field that parses a duration.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (minutes: unknown, minutesPerDay: unknown) => durationText(minutes, minutesPerDay),
+    checkArgs: (lit) =>
+      literalGuard(() => {
+        if (lit[1] !== undefined) durationText(lit[0] ?? 0, lit[1]);
+      }),
+  },
+  {
+    name: "dateIn",
+    signature: "dateIn(timestamp, string?): string",
+    register: [
+      "dateIn(google.protobuf.Timestamp): string",
+      "dateIn(google.protobuf.Timestamp, string): string",
+    ],
+    category: "time",
+    summary: "Calendar date (`YYYY-MM-DD`) of an instant, in an IANA zone (UTC by default).",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (t: unknown, tz?: string) => dateInZone(instantArg("dateIn", t), assertZone("dateIn", tz ?? "UTC")),
+    checkArgs: (lit) =>
+      literalGuard(() => {
+        if (typeof lit[1] === "string") assertZone("dateIn", lit[1]);
+      }),
+  },
+  {
+    name: "isoIn",
+    signature: "isoIn(timestamp, string?): string",
+    register: [
+      "isoIn(google.protobuf.Timestamp): string",
+      "isoIn(google.protobuf.Timestamp, string): string",
+    ],
+    category: "time",
+    summary: "ISO-8601 rendering of an instant, in an IANA zone (UTC by default).",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (t: unknown, tz?: string) => isoInZone(instantArg("isoIn", t), assertZone("isoIn", tz ?? "UTC")),
+    checkArgs: (lit) =>
+      literalGuard(() => {
+        if (typeof lit[1] === "string") assertZone("isoIn", lit[1]);
+      }),
+  },
+  {
+    name: "startOfMonth",
+    signature: "startOfMonth(timestamp, string?): timestamp",
+    register: [
+      "startOfMonth(google.protobuf.Timestamp): google.protobuf.Timestamp",
+      "startOfMonth(google.protobuf.Timestamp, string): google.protobuf.Timestamp",
+    ],
+    category: "time",
+    summary: "Midnight on the 1st of the instant's month, in an IANA zone (UTC by default).",
+    deterministic: true,
+    hostBacked: false,
+    checkArgs: (lit) =>
+      literalGuard(() => {
+        if (typeof lit[1] === "string") assertZone("startOfMonth", lit[1]);
+      }),
+    build: () => (t: unknown, tz?: string) => {
+      const zone = assertZone("startOfMonth", tz ?? "UTC");
+      const f = zonedFields(instantArg("startOfMonth", t), zone);
+      return instantOfZoned(
+        { year: f.year, month: f.month, day: 1, hour: 0, minute: 0, second: 0 },
+        zone,
+      );
+    },
+  },
+  {
+    name: "addMonths",
+    signature: "addMonths(timestamp, int, string?): timestamp",
+    register: [
+      "addMonths(google.protobuf.Timestamp, int): google.protobuf.Timestamp",
+      "addMonths(google.protobuf.Timestamp, int, string): google.protobuf.Timestamp",
+    ],
+    category: "time",
+    summary:
+      "Shift an instant by whole months in an IANA zone, clamping the day of month (Jan 31 + 1 month is Feb 28).",
+    deterministic: true,
+    hostBacked: false,
+    checkArgs: (lit) =>
+      literalGuard(() => {
+        if (typeof lit[2] === "string") assertZone("addMonths", lit[2]);
+      }),
+    build: () => (t: unknown, months: unknown, tz?: string) => {
+      const zone = assertZone("addMonths", tz ?? "UTC");
+      const f = zonedFields(instantArg("addMonths", t), zone);
+      const shifted = f.year * 12 + (f.month - 1) + Number(months);
+      // `%` takes the dividend's sign in JS, so a negative total would yield
+      // month 0. Unreachable for realistic dates and wrong for free otherwise.
+      const year = Math.floor(shifted / 12);
+      const month = (((shifted % 12) + 12) % 12) + 1;
+      return instantOfZoned({ ...f, year, month, day: Math.min(f.day, daysInMonth(year, month)) }, zone);
+    },
+  },
+  {
+    name: "compact",
+    signature: "compact(dyn): dyn",
+    // A `dyn` parameter accepted an instant (yielding `{}`) and a byte buffer
+    // (yielding `{"0":137,…}`), both silently and both passing `telo check`.
+    register: ["compact(list): list", "compact(map): map"],
+    category: "collection",
+    summary: "Drop entries whose value is null or the empty string, from a map or a list.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (v: unknown) => compactValue(v),
   },
   // UUID
   {

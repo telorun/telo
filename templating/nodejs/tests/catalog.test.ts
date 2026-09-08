@@ -56,6 +56,10 @@ describe("CEL function catalog", () => {
       bool: "true",
       list: "[]",
       map: "{}",
+      // A timestamp has no literal syntax — it is only ever produced by a call,
+      // and the registered signature names the protobuf type rather than the
+      // documented `timestamp` spelling.
+      "google.protobuf.Timestamp": "timestamp(0)",
     };
     const litFor = (type: string) => placeholder[type.trim()] ?? "1";
     const env = buildCelEnvironment();

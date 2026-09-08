@@ -8,7 +8,7 @@
     "cel",
     "yaml"
   ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
@@ -43,12 +43,14 @@
   },
   "dependencies": {
     "@marcbachmann/cel-js": "^7.6.1",
+    "d3-format": "catalog:",
     "re2js": "^2.8.3",
     "uuid": "^14.0.1",
     "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
+    "@types/d3-format": "^3.0.4",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
