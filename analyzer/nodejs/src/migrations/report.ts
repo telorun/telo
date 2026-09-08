@@ -21,7 +21,7 @@ import type {
   MigrationPath,
   MigrationRewrite,
 } from "./types.js";
-import type { AnalysisDiagnostic, DiagnosticFix } from "../types.js";
+import { DiagnosticTag, type AnalysisDiagnostic, type DiagnosticFix } from "../types.js";
 
 /** One patch that applied, as the reporting side needs to see it. */
 export interface AppliedPatch {
@@ -63,6 +63,10 @@ export function toDiagnostic(
     severity: applied.entry.severity,
     code: applied.entry.code,
     source: "telo-analyzer",
+    // A migration IS a deprecation — a legacy spelling still read, and the one
+    // an author is being asked to stop writing — so the range carries the tag
+    // whatever severity the entry chose for itself.
+    tags: [DiagnosticTag.Deprecated],
     message: `${rewrite.summary}\n${applied.entry.reason}\n${closing}`,
     data: {
       filePath: source,

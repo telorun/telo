@@ -112,6 +112,11 @@ schema:
         title: Return Entry
         description: Conditional rendering entry for a successful return.
         type: object
+        # Closed, so a misspelled key is reported rather than ignored. The
+        # http-server route's own copy of this shape always was; this carrier was
+        # not, so the identical typo was an error on a route and silence in a
+        # `notFoundHandler`.
+        additionalProperties: false
         properties:
           status:
             title: Status
@@ -218,6 +223,8 @@ schema:
         title: Catch Entry
         description: Conditional rendering entry for a thrown InvokeError.
         type: object
+        # Closed for the same reason `Return Entry` is.
+        additionalProperties: false
         properties:
           status:
             title: Status

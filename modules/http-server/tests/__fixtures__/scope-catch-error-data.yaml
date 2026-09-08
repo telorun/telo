@@ -1,0 +1,53 @@
+kind: Telo.Library
+metadata:
+  name: ScopeCatchErrorDataFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+# A kind whose throw carries a typed `data` payload. Inheriting Run.Value's
+# controller is what lets the fixture declare one without shipping code: what is
+# under test is the DECLARATION the analyzer reads, not the throwing.
+kind: Telo.Definition
+metadata: { name: Locking }
+capability: Telo.Invocable
+extends: Run.Value
+base:
+  value: !cel "self.value"
+throws:
+  codes:
+    LOCKED:
+      description: The record is held by someone else.
+      data:
+        type: object
+        properties:
+          holder: { type: string }
+schema:
+  type: object
+  properties:
+    value:
+      type: object
+      additionalProperties: true
+      x-telo-eval: runtime
+---
+kind: Self.Locking
+metadata: { name: mayLock }
+value: { ok: true }
+---
+kind: Http.Api
+metadata: { name: api }
+catches:
+  - when: !cel "error.code == 'LOCKED'"
+    status: 409
+    content:
+      application/json:
+        # `holder` is declared; `holdre` is not, and a scope list is typed
+        # against its own denominator exactly as a route list is.
+        body: { holder: !cel "error.data.holdre" }
+routes:
+  - request: { path: /x, method: GET }
+    handler: !ref mayLock
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }

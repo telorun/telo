@@ -1,0 +1,36 @@
+kind: Telo.Library
+metadata:
+  name: ServerScopeCoversMountsFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: throwsNotFound }
+steps:
+  - name: raise
+    throw: { code: NOT_FOUND, message: "gone" }
+---
+# Neither the route nor the router says anything about NOT_FOUND.
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /x, method: GET }
+    handler: !ref throwsNotFound
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+# The server's catch-all covers it, one resource further out. Coverage crosses
+# the `throwsThrough` mount edge, so the route is answered for.
+kind: Http.Server
+metadata: { name: server }
+port: 8080
+catches:
+  - status: 500
+    content:
+      application/json:
+        body: { code: !cel "error.code" }
+mounts:
+  - mount: !ref api

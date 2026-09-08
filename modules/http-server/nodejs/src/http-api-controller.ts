@@ -50,6 +50,7 @@ type HttpApiRouteManifest = Static<typeof HttpApiRouteManifest>;
 
 const HttpApiManifest = Type.Object({
   routes: Type.Array(HttpApiRouteManifest),
+  catches: Type.Optional(Type.Array(CatchEntry)),
 });
 type HttpApiManifest = Static<typeof HttpApiManifest>;
 
@@ -212,15 +213,22 @@ export class HttpServerApi implements ResourceInstance {
             throw err;
           }
           await span.settle("rejected");
-          return dispatchCatches(
-            route.catches,
-            { code: err.code, message: err.message, data: err.data },
+          // The route's own entries, then this router's. An unmatched throw
+          // leaves the router entirely, so the server's list — and, failing
+          // that, the transport's envelope — renders it. Rendering it here
+          // would make every outer rung of the ladder unreachable.
+          const invokeError = { code: err.code, message: err.message, data: err.data };
+          const dispatchArgs = [
+            invokeError,
             requestContext,
             acceptHeader,
             this.ctx.moduleContext,
             this.ctx.validateSchema.bind(this.ctx),
             sink,
-          );
+          ] as const;
+          if (await dispatchCatches(route.catches, ...dispatchArgs)) return;
+          if (await dispatchCatches(this.manifest.catches, ...dispatchArgs)) return;
+          throw err;
         }
 
         await span.settle("ok");

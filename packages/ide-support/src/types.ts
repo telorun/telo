@@ -1,6 +1,6 @@
 // Runtime values (classes, enums) — consumers who need `new AnalysisRegistry()`
 // or `DiagnosticSeverity.Error` import from here.
-export { AnalysisRegistry, DiagnosticSeverity } from "@telorun/analyzer";
+export { AnalysisRegistry, DiagnosticSeverity, DiagnosticTag } from "@telorun/analyzer";
 
 // Pure types.
 export type {
@@ -13,6 +13,7 @@ export type {
 import type {
   AnalysisRegistry,
   DiagnosticSeverity,
+  DiagnosticTag,
   Position,
   PositionIndex,
   Range,
@@ -168,6 +169,10 @@ export interface NormalizedDiagnostic {
   /** Mechanically applicable repairs. `replacement` is the whole corrected
    *  value at the diagnostic's range — apply it by replacing that range. */
   suggestions?: Array<{ kind: "replace"; replacement: string }>;
+  /** LSP diagnostic tags, carried through verbatim. Orthogonal to `severity`:
+   *  they say what KIND of thing the range is (deprecated, unnecessary), which
+   *  is what a host renders as strikethrough or fading rather than as a colour. */
+  tags?: DiagnosticTag[];
   /** Preserved verbatim from the source `AnalysisDiagnostic`. Carries
    *  resource/path stamps that downstream UIs (popovers, "at <path>" hints,
    *  CodeAction wiring) read after normalization. Opaque on purpose so this

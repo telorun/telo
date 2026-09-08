@@ -1,0 +1,49 @@
+kind: Telo.Library
+metadata:
+  name: ServerScopeCatchRequestParamsFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: throwsNotFound }
+steps:
+  - name: raise
+    throw: { code: NOT_FOUND, message: "gone" }
+---
+kind: Http.Api
+metadata: { name: api }
+catches:
+  - when: !cel "error.code == 'NOT_FOUND'"
+    status: 404
+    content:
+      application/json:
+        body: { code: !cel "error.code" }
+routes:
+  - request:
+      path: /x/{id}
+      method: GET
+      schema:
+        params:
+          type: object
+          properties:
+            id: { type: string }
+    handler: !ref throwsNotFound
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+# The narrowing holds at the outermost rung too: a server is further from any one
+# route than a router is, so `params` is no more available here.
+kind: Http.Server
+metadata: { name: server }
+port: 8080
+catches:
+  - when: !cel "error.code == 'NOT_FOUND'"
+    status: 404
+    content:
+      application/json:
+        body: { id: !cel "request.params.id" }
+mounts:
+  - mount: !ref api

@@ -9,6 +9,8 @@
  * scope rule is consumed by the IDE, which must not pull the pass in behind it.
  */
 import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
+import { readRefSlot, type RefSlot } from "./ref-slot.js";
+import { readStepSlot, type StepSlot } from "./step-slot.js";
 
 /** Resolve a local `$ref` (only `#/$defs/<name>` form) against the root schema.
  *  Non-refs and unresolved refs pass through unchanged. */
@@ -142,3 +144,57 @@ export function walkStepArray(
     }
   });
 }
+/** A slot through which a resource drives another. */
+export type DrivenSlot =
+  | { kind: "step"; slot: StepSlot; data: unknown[]; path: string }
+  | { kind: "ref"; slot: RefSlot; data: unknown; path: string };
+
+/**
+ * Every slot of one resource through which it drives another, schema and data in
+ * tandem.
+ *
+ * One traversal with two consumers — the inherited union here, and the catch
+ * scope enclosure in `validate-throws-coverage.ts` — because both ask the same
+ * structural question and two copies would eventually disagree about where the
+ * walk stops. It terminates on the manifest's own depth, and it stops AT a step
+ * slot (that traversal owns everything below it, `try`/`catch` subtraction
+ * included) and AT a reference slot (a resolved ref is a leaf, `{kind, name}`,
+ * with nothing beneath it to visit).
+ */
+export function forEachDrivenSlot(
+  schema: unknown,
+  data: unknown,
+  visit: (slot: DrivenSlot) => void,
+  path = "",
+): void {
+  if (!schema || typeof schema !== "object" || data === undefined || data === null) return;
+  const node = schema as Record<string, any>;
+
+  const stepSlot = readStepSlot(node);
+  if (stepSlot) {
+    if (Array.isArray(data)) visit({ kind: "step", slot: stepSlot, data, path });
+    return;
+  }
+
+  const refSlot = readRefSlot(node);
+  if (refSlot) {
+    visit({ kind: "ref", slot: refSlot, data, path });
+    return;
+  }
+
+  const props = node.properties as Record<string, any> | undefined;
+  if (props && typeof data === "object" && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>;
+    for (const [key, propSchema] of Object.entries(props)) {
+      if (obj[key] === undefined) continue;
+      forEachDrivenSlot(propSchema, obj[key], visit, path ? `${path}.${key}` : key);
+    }
+  }
+
+  if (node.items && Array.isArray(data)) {
+    for (const [i, item] of data.entries()) {
+      forEachDrivenSlot(node.items, item, visit, `${path}[${i}]`);
+    }
+  }
+}
+

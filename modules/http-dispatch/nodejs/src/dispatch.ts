@@ -255,9 +255,16 @@ async function dispatchStream(
   await sink.stream(encoded.output, onError);
 }
 
-/** Render an InvokeError through a `catches:` list. Falls back to a structured
- *  500 when no entry matches. Plain (non-InvokeError) throws never reach this
- *  function — the caller re-throws them to its transport.
+/** Render an InvokeError through a `catches:` list, reporting whether any entry
+ *  matched. Plain (non-InvokeError) throws never reach this function — the
+ *  caller re-throws them to its transport.
+ *
+ *  **It never invents a response.** A catch list is one rung of a scope ladder —
+ *  a route's, its router's, its server's — so what an unmatched throw means is
+ *  the CALLER's to decide: try the next rung, or render the last-resort envelope
+ *  because there is no next rung. Answering it here rendered a fixed 500 from a
+ *  shared library, which both swallowed the error and made every outer rung
+ *  unreachable, since nothing ever escaped the innermost one.
  *
  *  Catches are buffer-mode only by design: by the time a catch fires the
  *  response is committed pre-stream and there's no upstream iterable to feed
@@ -271,24 +278,17 @@ export async function dispatchCatches(
   moduleContext: ModuleLikeContext,
   validateSchema: ValidateSchema,
   sink: ResponseSink,
-): Promise<void> {
+): Promise<boolean> {
   const celCtx = { error, ...requestContext };
   const entry = catches ? matchEntry(catches, celCtx, moduleContext) : undefined;
 
-  if (!entry) {
-    sink.setStatus(500);
-    sink.setHeader("Content-Type", "application/json");
-    await sink.send({
-      error: { code: error.code, message: error.message, data: error.data },
-    });
-    return;
-  }
+  if (!entry) return false;
 
   if (!entry.content || Object.keys(entry.content).length === 0) {
     sink.setStatus(entry.status);
     applyHeaders(entry.headers, undefined, celCtx, moduleContext, sink);
     await sink.send();
-    return;
+    return true;
   }
 
   const contentKeys = Object.keys(entry.content);
@@ -304,7 +304,7 @@ export async function dispatchCatches(
         available: contentKeys,
       },
     });
-    return;
+    return true;
   }
 
   const contentEntry = entry.content[matchedMime]!;
@@ -316,7 +316,7 @@ export async function dispatchCatches(
     const mappedBody = moduleContext.expandWith(contentEntry.body, celCtx);
     if (contentEntry.schema) validateSchema(mappedBody, contentEntry.schema);
     await sink.send(mappedBody);
-    return;
+    return true;
   }
 
   // Default error envelope when no body is given. The matched MIME may be
@@ -325,5 +325,22 @@ export async function dispatchCatches(
   // envelope honest. Authors who want the matched MIME on the wire must
   // provide an explicit `body:` for that content[mime] entry.
   sink.setHeader("Content-Type", "application/json");
-  await sink.send({ error: { code: error.code, message: error.message, data: error.data } });
+  await sink.send(errorEnvelope(error));
+  return true;
+}
+
+/** The last-resort rendering of a throw no `catches:` entry claimed, and the
+ *  body a matched entry falls back to when it declares no `body:`.
+ *
+ *  One function because the two must stay identical: the transport renders it
+ *  when the whole scope ladder declines, which is exactly the response this
+ *  module used to produce from inside `dispatchCatches`. Keeping the bytes the
+ *  same is what makes the ladder a pure addition for every manifest that
+ *  declares no scope-level list. */
+export function errorEnvelope(error: {
+  code: string;
+  message: string;
+  data?: unknown;
+}): { error: { code: string; message: string; data?: unknown } } {
+  return { error: { code: error.code, message: error.message, data: error.data } };
 }

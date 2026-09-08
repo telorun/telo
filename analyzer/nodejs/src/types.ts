@@ -11,6 +11,19 @@ export const DiagnosticSeverity = {
 } as const;
 export type DiagnosticSeverity = (typeof DiagnosticSeverity)[keyof typeof DiagnosticSeverity];
 
+/** Matches LSP DiagnosticTag values exactly.
+ *  https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnosticTag
+ *
+ *  Declared whole rather than trimmed to what Telo emits today, for the reason
+ *  the severity ladder above is: it is someone else's closed vocabulary, and a
+ *  partial copy of one is what drifts. `Unnecessary` (rendered faded) has an
+ *  obvious future consumer in the unused-declaration checks. */
+export const DiagnosticTag = {
+  Unnecessary: 1,
+  Deprecated: 2,
+} as const;
+export type DiagnosticTag = (typeof DiagnosticTag)[keyof typeof DiagnosticTag];
+
 /** Default entry-point filename when a directory is given instead of a file. */
 export const DEFAULT_MANIFEST_FILENAME = "telo.yaml";
 
@@ -70,6 +83,11 @@ export interface AnalysisDiagnostic {
   /** e.g. "telo-analyzer" */
   source?: string;
   message: string;
+  /** What KIND of thing this is, orthogonal to how loudly it asks to be dealt
+   *  with. A deprecation is warning-grade *and* a deprecation; severity alone
+   *  can only say the first, which is why an editor renders a deprecated symbol
+   *  struck through rather than merely yellow. */
+  tags?: DiagnosticTag[];
   /** Telo-specific extras such as { resource: { kind, name }, path } */
   data?: unknown;
 }

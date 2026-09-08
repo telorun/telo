@@ -66,8 +66,21 @@ export interface ScopeBoundaryEvent {
   source: ResourceManifest;
   /** Dot-form prefixes of every `x-telo-scope` field on this resource. */
   scopePrefixes: string[];
-  /** Scope-field JSON Pointer → manifests declared within that scope. */
+  /** VISIBILITY pointer (an `x-telo-scope` entry, e.g. `/steps`) → the manifests
+   *  visible there. Keyed by where scoped names may be REFERENCED, which is not
+   *  where they are DECLARED: `Run.Sequence` declares `x-telo-scope:
+   *  ["/steps", "/targets"]` on its `with:` field, so one declaration appears
+   *  under two keys and neither names `with`. Use {@link declarations} for the
+   *  declaration site. */
   manifestsByPointer: Map<string, ResourceManifest[]>;
+  /** Every inline declaration inside this resource's scopes, ONCE each, with the
+   *  concrete path it is written at in the owner's document (`with[0]`).
+   *
+   *  A diagnostic about a scoped resource has to anchor there: the resource is
+   *  not a top-level document, so position lookup finds the OWNER and then walks
+   *  this path into it. Deriving one from a visibility pointer instead names a
+   *  region the declaration is not in (`steps[0]`). */
+  declarations: { manifest: ResourceManifest; path: string }[];
   /** Names of every resource declared inside this resource's scopes. Used by
    *  the dependency graph to drop boot edges to scoped (on-demand) targets. */
   enclosedNames: Set<string>;
@@ -271,6 +284,7 @@ export function visitManifest(
       if (refScopeMap && (wantsRefs || wantsScope)) {
         const manifestsByPointer = new Map<string, ResourceManifest[]>();
         const scopeRefEntries: { path: string; refName: string }[] = [];
+        const declarations: { manifest: ResourceManifest; path: string }[] = [];
         for (const [fieldPath, entry] of refScopeMap) {
           if (!isScopeEntry(entry)) continue;
           const raw: ResourceManifest[] = [];
@@ -278,6 +292,7 @@ export function visitManifest(
             const items = Array.isArray(fe.value) ? fe.value : [fe.value];
             items.forEach((v, i) => {
               if (!v || typeof v !== "object") return;
+              const declarationPath = Array.isArray(fe.value) ? `${fe.path}[${i}]` : fe.path;
               // A scope entry must be an inline resource definition; a `!ref`
               // (tagged sentinel or resolved `{kind, name}`) is not — record it
               // so a static diagnostic flags it instead of registering a
@@ -288,12 +303,13 @@ export function visitManifest(
                 (typeof rec.kind === "string" && typeof rec.name === "string")
               ) {
                 scopeRefEntries.push({
-                  path: Array.isArray(fe.value) ? `${fe.path}[${i}]` : fe.path,
+                  path: declarationPath,
                   refName: isRefSentinel(v) ? v.source : String(rec.name),
                 });
                 return;
               }
               raw.push(v as ResourceManifest);
+              declarations.push({ manifest: v as ResourceManifest, path: declarationPath });
             });
           }
           const pointers = Array.isArray(entry.scope) ? entry.scope : [entry.scope];
@@ -313,6 +329,7 @@ export function visitManifest(
             source: r,
             scopePrefixes,
             manifestsByPointer,
+            declarations,
             enclosedNames,
             scopeRefEntries,
           });

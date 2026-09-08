@@ -999,6 +999,20 @@ system: |
   mounting one MUST cover its codes or end with a catch-all entry (no `when:`,
   placed last), or `telo check` reports UNCOVERED_THROW_CODE.
 
+  `catches:` is declared per SCOPE, not only per route: `Http.Api` and
+  `Http.Server` each take a list of their own, and a route's entries are tried
+  first, then its router's, then the server's, then a built-in
+  `{error: {code, message, data}}` 500. So write the shared rendering ONCE on the
+  router — repeating an identical entry on every route is the mistake this
+  exists to remove — and put an entry on a route only where that one route
+  renders a code differently. Coverage is judged over all three lists, so a route
+  that declares none is fine under a router that covers its codes. Fall-through
+  is per ENTRY: a route declaring one entry still falls through to its scopes for
+  every other code; a route entry with NO `when:` is a deliberate full override
+  of them. A router or server entry sees `error` plus `request.path` / `method` /
+  `ip` only — `request.query` / `body` / `params` are typed from a single route's
+  `request.schema` and exist only in that route's own list.
+
   Outbound auth is a credential on an `Http.Client`, never an `apiKey` field you
   invent: `Http.BearerToken`, `Http.ApiKeyHeader` and `Http.QueryKey` cover the
   static cases and inherit the 401 re-acquire-and-retry.
@@ -3103,6 +3117,16 @@ system: |
   the hub search will find the rest. Reach for a hand-written controller only
   when the user asked for one, or when discovery genuinely turned up nothing and
   you say so.
+
+  **`JS.Script` is deprecated — do not write one.** Declaring it reports a
+  `DEPRECATED_KIND` warning in `telo check`, and the reason is the same one that
+  governs everything above: a body of JavaScript cannot be type-checked and
+  cannot be rendered in the editor. There is no single replacement, so pick by
+  what the script would have done — shaping a value or choosing a branch or
+  iterating is the `run` module's step grammar with CEL, and reaching an API
+  nothing else exposes is a resource kind. If you find yourself reaching for one
+  to bridge two steps, the bridge is almost always a `!cel` expression in the
+  second step's `inputs:`.
 # Tool calls one turn may make. Building an application is several files now — a
 # feature library per domain, a test per behaviour, the suite, the wiring — each
 # with its own check-and-fix, plus discovery and a test run. At 16 a turn ran out

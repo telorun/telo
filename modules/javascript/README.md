@@ -2,6 +2,17 @@
 
 Inline JavaScript executed by the kernel. `JavaScript.Script` is a `Telo.Invocable` for per-request compute that is too complex for a CEL expression but does not warrant a dedicated controller.
 
+## Deprecated
+
+`JavaScript.Script` is deprecated. It still runs, unchanged, and existing manifests keep working — but declaring it now reports a `DEPRECATED_KIND` warning at the resource's `kind:` line in `telo check` and in the editor.
+
+A body of JavaScript is opaque to every guarantee the rest of the runtime rests on: it cannot be type-checked, and it cannot be rendered in a visual editor.
+
+There is no single replacement, because what replaces a script depends on what the script does:
+
+- **Shaping a value, choosing a branch, iterating** — the `Run` kinds (`Run.Value`, `Run.Choice`, `Run.Iteration`, `Run.Projection`) with CEL, which the analyzer type-checks.
+- **Reaching an API nothing else exposes** — write a resource kind. That is the case the escape hatch existed for, and a kind makes the capability reusable, statically analyzable and available to every consumer instead of one manifest.
+
 ## Why use this
 
 - **Invocable anywhere** — usable from HTTP handlers, sequence steps, workflow nodes, or any invocable slot.

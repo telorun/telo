@@ -90,7 +90,13 @@ metadata:
     replacedBy: Self.Migrations
 ```
 
-The point is that a sentence buried in a description cannot be badged, linked, or warned about — nothing can tell "this kind mentions the word deprecated" from "this kind is deprecated". Declared, the hub badges it and links the replacement.
+The point is that a sentence buried in a description cannot be badged, linked, or warned about — nothing can tell "this kind mentions the word deprecated" from "this kind is deprecated". Declared, the hub badges it and links the replacement, and every manifest declaring the kind is told.
+
+**A deprecated kind warns at the use site.** Declaring a resource of one reports `DEPRECATED_KIND` on its `kind:` line, in `telo check` and in the editor, carrying your `reason` verbatim and the resolved `replacedBy`. So the audience a deprecation is written for sees it where they can act on it, rather than only in a hub listing they would have to go looking for.
+
+It is a **warning**: the kind still works, and refusing to run a manifest over a successor recommendation would cost a consumer more than the deprecation does. It is also scoped to the manifests the person running the check owns — a library's internal use of a kind its own author deprecated is that author's concern, not a line their consumers are told about and cannot change. There is no quick fix, because a successor needs its own import and usually a different configuration; a kind swap is not a one-node replacement.
+
+Write the `reason` for someone reading it at a use site, mid-task, with no context: say why, and say what to do instead. It is quoted verbatim into the warning.
 
 **`replacedBy` is resolvable, and its form follows the level.** On a kind, it is an alias-qualified kind — the same grammar `kind:`, `extends:` and `x-telo-ref` use — resolved through this file's own `imports:`: `Self.<Kind>` for a sibling, `<Alias>.<Kind>` for an imported one, `Telo.<Kind>` for a kernel built-in. On a module doc it is a **module ref**, addressed exactly as an `imports:` source would be. `telo check` reports a replacement that does not resolve, because one a reader cannot follow is no better than none.
 

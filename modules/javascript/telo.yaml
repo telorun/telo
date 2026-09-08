@@ -24,6 +24,14 @@ metadata:
     optional `inputType` / `outputType` type references. Intended as a last
     resort for one-off glue — prefer a declarative resource kind whenever one
     exists.
+  # No `replacedBy`: there is no single successor. A body of JavaScript is
+  # whatever its author put in it, so what replaces one is decided per use —
+  # naming one kind here would be a link a consumer follows to the wrong place.
+  deprecated:
+    reason: >-
+      Inline JavaScript is opaque to every guarantee the runtime rests on — it
+      cannot be type-checked and it cannot be rendered in a visual editor. Move
+      the logic into a resource kind.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/javascript.mjs&local_path=./nodejs/src/index.ts#Script

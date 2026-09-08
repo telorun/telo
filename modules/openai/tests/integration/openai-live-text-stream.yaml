@@ -12,14 +12,14 @@ metadata:
 secrets:
   openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
 imports:
-  Ai: ../../ai
-  OpenAI: ../
-  Http: ../../http-client
-  Ndjson: ../../ndjson-codec
-  PlainText: ../../plain-text-codec
-  JS: ../../javascript
-  Run: ../../run
-  Assert: ../../assert
+  Ai: ../../../ai
+  OpenAI: ../../
+  Http: ../../../http-client
+  Ndjson: ../../../ndjson-codec
+  PlainText: ../../../plain-text-codec
+  JS: ../../../javascript
+  Run: ../../../run
+  Assert: ../../../assert
 targets:
   - !ref LiveTextStream
 ---

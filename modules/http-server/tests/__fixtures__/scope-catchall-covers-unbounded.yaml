@@ -1,0 +1,33 @@
+kind: Telo.Library
+metadata:
+  name: ScopeCatchAllCoversUnboundedFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+# The thrown code is computed rather than written, so the union cannot be
+# enumerated and a catch-all is mandatory somewhere on the ladder.
+kind: Run.Sequence
+metadata: { name: throwsComputedCode }
+steps:
+  - name: raise
+    throw:
+      code: !cel "'NOT' + '_FOUND'"
+      message: "computed"
+---
+kind: Http.Api
+metadata: { name: api }
+# One catch-all here answers the unbounded union for every route of this router,
+# which is the shape an author reaches for instead of repeating it per route.
+catches:
+  - status: 500
+    content:
+      application/json:
+        body: { code: !cel "error.code" }
+routes:
+  - request: { path: /x, method: GET }
+    handler: !ref throwsComputedCode
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }

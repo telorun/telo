@@ -13,6 +13,7 @@ import {
   renderFixReplacement,
   type NormalizedDiagnostic,
   DiagnosticSeverity,
+  DiagnosticTag,
 } from "@telorun/ide-support";
 import { NodeAdapter } from "./node-adapter.js";
 import * as path from "path";
@@ -46,6 +47,14 @@ const SEVERITY: Record<number, vscode.DiagnosticSeverity> = {
   [DiagnosticSeverity.Hint]: vscode.DiagnosticSeverity.Hint,
 };
 
+/** Both vocabularies are LSP's, so the values already agree — the map is here
+ *  so a tag VS Code does not know is DROPPED rather than passed through as a
+ *  number it would reject. */
+const TAG: Record<number, vscode.DiagnosticTag> = {
+  [DiagnosticTag.Unnecessary]: vscode.DiagnosticTag.Unnecessary,
+  [DiagnosticTag.Deprecated]: vscode.DiagnosticTag.Deprecated,
+};
+
 /** A `vscode.Diagnostic` carrying the repair the analyzer computed for it.
  *
  *  `vscode.Diagnostic` has no field for a suggested edit, so the fix rides on
@@ -72,6 +81,8 @@ function toVscodeDiagnostic(n: NormalizedDiagnostic): DiagnosticWithFix {
   );
   diag.source = n.source;
   if (n.code) diag.code = n.code;
+  const tags = n.tags?.map((t) => TAG[t]).filter((t): t is vscode.DiagnosticTag => t !== undefined);
+  if (tags?.length) diag.tags = tags;
   const replace = n.suggestions?.find((s) => s.kind === "replace");
   if (replace) diag.teloFix = { replacement: replace.replacement };
   return diag;

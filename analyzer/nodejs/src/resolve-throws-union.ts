@@ -4,7 +4,9 @@ import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js"
 import { resolveScopedName } from "./call-graph.js";
 import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { possibleUses, readRefSlot, transfersControl, type RefSlot } from "./ref-slot.js";
 import { readStepSlot } from "./step-slot.js";
+import { forEachDrivenSlot } from "./schema-walk.js";
 
 export interface ThrowsCodeMeta {
   data?: Record<string, any>;
@@ -263,6 +265,16 @@ export function resolveThrowsUnion(
   }
 }
 
+/**
+ * `throws.inherit: true` — the union a composer's own STEP BODIES reach.
+ *
+ * Deliberately steps only, and not every slot the resource drives: `inherit` is
+ * a DECLARATION that a kind's union is the union of what it dispatches, and a
+ * kind that does not make that claim must not have it inferred — a kind holding
+ * a `call` ref it catches internally would silently gain codes it never lets
+ * escape. What a CATCH SCOPE needs is a different question with a different
+ * answer, and it has its own resolver below.
+ */
 function resolveInherited(
   manifest: ResourceManifest,
   definition: ResourceDefinition,
@@ -280,6 +292,66 @@ function resolveInherited(
     if (!Array.isArray(steps)) continue;
     unionInto(result, collectStepArrayThrows(steps, stepCtx.invoke, undefined, ctx, ownerModule));
   }
+
+  return result;
+}
+
+/**
+ * The union a SCOPE-LEVEL `catches:` list can be asked to render — everything
+ * the resource it is written on drives, transitively.
+ *
+ * `x-telo-catches-for: ""` is itself the claim that this is the denominator, so
+ * nothing is inferred from a kind that did not opt in, and no definition has to
+ * declare a `throws:` block to carry a catch scope (the kernel forbids one on a
+ * `Telo.Service` and a `Telo.Mount`, and rightly: what a router renders is not
+ * what a router THROWS).
+ *
+ * Three edges, three answers. A **step body** contributes its own traversal,
+ * subtraction included. A **control-transferring ref** contributes the target's
+ * own declared union — a route handler is a leaf here, and asking what IT drives
+ * would credit this scope with codes the handler catches internally. A
+ * **`throwsThrough` ref** recurses, because the target is another scope on the
+ * same ladder: a server renders what its mounts' routes throw, not what the
+ * mounts themselves declare.
+ */
+export function resolveScopeUnion(
+  manifest: ResourceManifest,
+  definition: ResourceDefinition,
+  ctx: ResolveCtx,
+  seen: Set<ResourceManifest> = new Set(),
+): ThrowsUnion {
+  const result: ThrowsUnion = { codes: new Map(), unbounded: false };
+  if (seen.has(manifest)) return result;
+  seen.add(manifest);
+  const ownerModule = (manifest.metadata as { module?: string } | undefined)?.module;
+
+  forEachDrivenSlot(definition.schema, manifest, (driven) => {
+    if (driven.kind === "step") {
+      unionInto(
+        result,
+        collectStepArrayThrows(driven.data, driven.slot.invoke, undefined, ctx, ownerModule),
+      );
+      return;
+    }
+    if (driven.slot.throwsThrough) {
+      const target = resolveRefManifest(driven.data, ctx, ownerModule);
+      const targetDef = target
+        ? definitionFor(
+            target.kind,
+            ctx.defs,
+            ctx.aliases,
+            scopeResolverFor(ctx, (target.metadata as { module?: string } | undefined)?.module),
+          )
+        : undefined;
+      if (target && targetDef) unionInto(result, resolveScopeUnion(target, targetDef, ctx, seen));
+      // A target that cannot be resolved says nothing about what it throws, so
+      // the scope's union is no longer enumerable.
+      else result.unbounded = true;
+      return;
+    }
+    if (!possibleUses(driven.slot).some(transfersControl)) return;
+    unionInto(result, resolveRefTargetThrows(driven.data, ctx, ownerModule));
+  });
 
   return result;
 }
@@ -410,9 +482,32 @@ function resolveStepInvokeThrows(
   ctx: ResolveCtx,
   ownerModule: string | undefined,
 ): ThrowsUnion {
-  const invokeRef = step[invokeField];
-  if (!invokeRef || typeof invokeRef !== "object") return emptyUnion();
-  const invokedKind = invokeRef.kind as string | undefined;
+  return resolveRefTargetThrows(step[invokeField], ctx, ownerModule, () =>
+    resolvePassthroughAtCallSite(step, enclosingTryCodes),
+  );
+}
+
+/**
+ * The effective throw union behind a resolved reference value.
+ *
+ * Shared by both ways a resource drives another: a step's `invoke:` and a
+ * reference slot that carries throws. The two used to differ only in where the
+ * ref value was read from, and keeping one copy is what stops a router's
+ * denominator and a sequence's from disagreeing about what a name resolves to.
+ *
+ * `onPassthrough` is the one genuine difference: a passthrough kind's union is a
+ * property of the CALL SITE (`inputs.code`), which only a step has. A reference
+ * slot has no such site, so the union is unbounded there rather than guessed.
+ */
+function resolveRefTargetThrows(
+  refValue: unknown,
+  ctx: ResolveCtx,
+  ownerModule: string | undefined,
+  onPassthrough?: () => ThrowsUnion,
+): ThrowsUnion {
+  if (!refValue || typeof refValue !== "object" || Array.isArray(refValue)) return emptyUnion();
+  const ref = refValue as Record<string, any>;
+  const invokedKind = ref.kind as string | undefined;
   // A reference that still carries its parse-time sentinel — a library-internal
   // `!ref` inside a manifest forwarded into a consumer's flat set, where Phase
   // 2.5 had nothing to resolve it against. The target is in the declaring
@@ -422,7 +517,7 @@ function resolveStepInvokeThrows(
   // its consumer and get the consumer's `catches:` rejected for the code the
   // entry point documents.
   if (!invokedKind) {
-    const sentinel = refSentinelTarget(invokeRef);
+    const sentinel = refSentinelTarget(ref);
     if (!sentinel) return emptyUnion();
     const target = findSentinelTarget(ctx, sentinel, ownerModule);
     if (target) return resolveThrowsUnion(target, ctx);
@@ -430,32 +525,19 @@ function resolveStepInvokeThrows(
   }
 
   // The invoked kind's alias resolves in the OWNER manifest's lexical scope (the
-  // composer that declares the step), so a library's step referencing its own
+  // resource that declares the slot), so a library's step referencing its own
   // import resolves against that library, not the consumer.
   const scopeResolver = scopeResolverFor(ctx, ownerModule);
   const definition = definitionFor(invokedKind, ctx.defs, ctx.aliases, scopeResolver);
   if (!definition) return { codes: new Map(), unbounded: true };
 
   if (definition.throws?.passthrough) {
-    return resolvePassthroughAtCallSite(step, enclosingTryCodes);
+    return onPassthrough ? onPassthrough() : { codes: new Map(), unbounded: true };
   }
 
   // Named manifest: resolve the full chain (covers transitive inherit).
-  const invokeName = invokeRef.name as string | undefined;
-  if (invokeName) {
-    const scopedInvokedKind = scopeResolver?.resolveKind(invokedKind);
-    const target = findTarget(
-      ctx,
-      invokeName,
-      ownerModule,
-      (m) =>
-        m.kind === invokedKind ||
-        ctx.aliases.resolveKind(m.kind) === invokedKind ||
-        m.kind === ctx.aliases.resolveKind(invokedKind) ||
-        (scopedInvokedKind !== undefined && m.kind === scopedInvokedKind),
-    );
-    if (target) return resolveThrowsUnion(target, ctx);
-  }
+  const target = resolveRefManifest(ref, ctx, ownerModule);
+  if (target) return resolveThrowsUnion(target, ctx);
 
   // Fall back to the definition's own explicit codes. Mark unbounded when the
   // definition depends on call-site or transitive resolution we couldn't
@@ -464,6 +546,42 @@ function resolveStepInvokeThrows(
   const unbounded =
     definition.throws?.inherit === true || definition.throws?.passthrough === true;
   return { codes, unbounded };
+}
+
+/**
+ * The manifest a resolved reference value names, in either shape it arrives in —
+ * a `{kind, name}` pair, or a `!ref` still carrying its parse-time sentinel.
+ *
+ * Exported because the catch-scope enclosure walk asks the same question about
+ * the same values; resolving a name twice by two rules is how two passes end up
+ * disagreeing about which resource a slot points at.
+ */
+export function resolveRefManifest(
+  refValue: unknown,
+  ctx: ResolveCtx,
+  ownerModule: string | undefined,
+): ResourceManifest | undefined {
+  if (!refValue || typeof refValue !== "object" || Array.isArray(refValue)) return undefined;
+  const ref = refValue as Record<string, any>;
+  const kind = ref.kind as string | undefined;
+  if (!kind) {
+    const sentinel = refSentinelTarget(ref);
+    return sentinel ? findSentinelTarget(ctx, sentinel, ownerModule) : undefined;
+  }
+  const name = ref.name as string | undefined;
+  if (!name) return undefined;
+  const scopeResolver = scopeResolverFor(ctx, ownerModule);
+  const scopedKind = scopeResolver?.resolveKind(kind);
+  return findTarget(
+    ctx,
+    name,
+    ownerModule,
+    (m) =>
+      m.kind === kind ||
+      ctx.aliases.resolveKind(m.kind) === kind ||
+      m.kind === ctx.aliases.resolveKind(kind) ||
+      (scopedKind !== undefined && m.kind === scopedKind),
+  );
 }
 
 /** Resolve a passthrough-style invocable at a specific call site. Recognised forms

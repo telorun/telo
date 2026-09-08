@@ -53,10 +53,42 @@ const UNION_KEYWORDS = new Set(["anyOf", "oneOf"]);
  *  further in. These are what make a branch implausible. */
 const SHAPE_KEYWORDS = new Set(["required", "type", "additionalProperties", "enum", "const"]);
 
+/** Keywords that exist to DISCRIMINATE, so a mismatch is positive evidence that
+ *  the value is not this branch — at any depth, not only at the union node.
+ *
+ *  Depth is otherwise the tiebreak, and it inverts exactly here: a branch that
+ *  agreed on the discriminator and failed one constraint reported at the union
+ *  node loses to every branch that disagreed about the discriminator one level
+ *  in. That is how a `capability: Telo.Service` document declaring a forbidden
+ *  key was reported as `/capability must be equal to constant` — naming neither
+ *  the key at fault nor a branch the value could ever have been. */
+const DISCRIMINATOR_KEYWORDS = new Set(["const", "enum"]);
+
+/** RFC 6901 escapes: `~1` is a literal `/` in the key, `~0` a literal `~`.
+ *  Decoded wherever a segment is shown or matched, because encoded it is not the
+ *  key the manifest holds — a content map (`application/json`) anchors nowhere
+ *  and reads wrong in the sentence. `~0` is expanded LAST, or `~01` would decode
+ *  to `/` instead of the literal `~1` it encodes. */
+function unescapeSegment(part: string): string {
+  return part.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+/** The whole pointer, segment by segment, for prose that quotes it verbatim. */
+function unescapePointer(pointer: string): string {
+  return pointer
+    .split("/")
+    .map((segment, i) => (i === 0 ? segment : unescapeSegment(segment)))
+    .join("/");
+}
+
 /* ------------------------------------------------------------------ prose */
 
 export function formatSingleError(err: AjvErrorLike): string {
-  const p = err.instancePath || "/";
+  // Unescaped for the same reason the path is: a reader acting on this sentence
+  // needs the key the manifest holds (`application/json`), not its RFC 6901
+  // encoding. Reporting one form in `path` and the other in `message` made one
+  // diagnostic disagree with itself.
+  const p = unescapePointer(err.instancePath || "") || "/";
   const params = err.params ?? {};
   switch (err.keyword) {
     case "additionalProperties":
@@ -67,6 +99,16 @@ export function formatSingleError(err: AjvErrorLike): string {
       return `${p} ${err.message ?? "is invalid"} (${(params.allowedValues as unknown[])?.join(" | ")})`;
     case "type":
       return `${p} must be ${params.type}${describeActual(err)}`;
+    // A `false` schema at a property is how a branch forbids a key it otherwise
+    // declares. AJV's own text ("boolean schema is false") describes the schema
+    // rather than the value, and the path is the only part a reader can act on.
+    case "false schema":
+      return `${p} is not allowed here`;
+    // `not:` says a forbidden shape matched, and AJV reports nothing about the
+    // inner schema — so the honest message says where, and no more. A branch
+    // that wants to name the key writes `properties: { <key>: false }` instead.
+    case "not":
+      return `${p} matches a shape that is not allowed here`;
     default:
       return `${p} ${err.message ?? "is invalid"}`;
   }
@@ -130,11 +172,13 @@ function describeAlternatives(errors: AjvErrorLike[], unionInstancePath: string)
 }
 
 /** Is this branch a plausible reading of the value — does it accept the value's
- *  shape at the union node itself, and only disagree further in? */
+ *  shape at the union node itself, and agree with every discriminator it pins? */
 function isPlausible(errors: AjvErrorLike[], unionInstancePath: string): boolean {
-  return !errors.some(
-    (e) => (e.instancePath || "") === unionInstancePath && SHAPE_KEYWORDS.has(e.keyword ?? ""),
-  );
+  return !errors.some((e) => {
+    const keyword = e.keyword ?? "";
+    if (DISCRIMINATOR_KEYWORDS.has(keyword)) return true;
+    return (e.instancePath || "") === unionInstancePath && SHAPE_KEYWORDS.has(keyword);
+  });
 }
 
 /**
@@ -392,7 +436,7 @@ export function ajvErrorToPath(err: AjvErrorLike): string {
   let result = "";
   for (const part of parts) {
     if (/^\d+$/.test(part)) result += `[${part}]`;
-    else result += result ? `.${part}` : part;
+    else result += result ? `.${unescapeSegment(part)}` : unescapeSegment(part);
   }
   if (err.keyword === "required" && err.params?.missingProperty) {
     const missing = err.params.missingProperty as string;
