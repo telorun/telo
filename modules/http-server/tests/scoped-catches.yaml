@@ -1,0 +1,242 @@
+kind: Telo.Application
+metadata:
+  name: ScopedCatchesTest
+  version: 1.0.0
+  description: |
+    End-to-end: the three rungs of the catch ladder and their precedence. A
+    route's own `catches:` are tried first, then its router's, then the server's;
+    a throw no entry claims renders the built-in envelope. Each rendered response
+    carries a `source` field naming the rung that produced it, so a precedence
+    mistake shows up as a wrong string rather than as a coincidentally equal
+    status code.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+# Union {NOT_FOUND}. Its route declares no `catches:`, so the ROUTER renders it.
+kind: Run.Sequence
+metadata: { name: throwsNotFound }
+steps:
+  - name: raise
+    throw: { code: NOT_FOUND, message: "no such order" }
+---
+# Union {NOT_FOUND}. Its route declares an entry for that code, which wins.
+kind: Run.Sequence
+metadata: { name: throwsNotFoundOverridden }
+steps:
+  - name: raise
+    throw: { code: NOT_FOUND, message: "gone for good" }
+---
+# Union {NOT_FOUND}, behind a route whose own entry matches POST only. A GET
+# therefore falls PAST a route list that exists and declines — the case that
+# proves fall-through is decided per entry, not per list.
+kind: Run.Sequence
+metadata: { name: throwsNotFoundOnGet }
+steps:
+  - name: raise
+    throw: { code: NOT_FOUND, message: "declined by the route entry" }
+---
+# Declares no throws of its own. Its output violates its declared `outputType`,
+# so the kernel's ambient ERR_OUTPUT_INVALID reaches the ladder at run time —
+# an InvokeError no rung below the server claims, which is how the SERVER rung
+# is exercised across the mount boundary by a manifest that checks clean.
+#
+# The mismatch is deliberately behind an expression: `x-telo-value-schema-from`
+# checks this slot against `outputType`, and a literal string at a boolean field
+# is exactly what it would reject. What the contract cannot see statically is
+# what the expression EVALUATES to, which is the runtime failure under test.
+kind: Run.Value
+metadata: { name: producesInvalidOutput }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ok: { type: boolean }
+    required: [ ok ]
+value:
+  ok: !cel "'definitely-not-a-boolean'"
+---
+# Requires an integer it is handed a non-numeric string for, so the kernel's
+# ambient ERR_INPUT_INVALID is raised — named by no entry at any rung, which is
+# how the built-in envelope is reached.
+kind: Run.Value
+metadata: { name: requiresIntegerInput }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      id: { type: integer }
+    required: [ id ]
+value:
+  id: !cel "inputs.id"
+---
+kind: Http.Api
+metadata: { name: ordersApi }
+catches:
+  - when: !cel "error.code == 'NOT_FOUND'"
+    status: 404
+    content:
+      application/json:
+        body:
+          source: router
+          code: !cel "error.code"
+          path: !cel "request.path"
+routes:
+  - request: { path: /not-found, method: GET }
+    handler: !ref throwsNotFound
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+
+  - request: { path: /overridden, method: GET }
+    handler: !ref throwsNotFoundOverridden
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+    catches:
+      - when: !cel "error.code == 'NOT_FOUND'"
+        status: 410
+        content:
+          application/json:
+            body:
+              source: route
+              code: !cel "error.code"
+
+  - request: { path: /declined, method: GET }
+    handler: !ref throwsNotFoundOnGet
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+    catches:
+      # Renders NOT_FOUND differently for writes only. A GET leaves this entry
+      # unmatched, so the router's list answers.
+      - when: !cel "error.code == 'NOT_FOUND' && request.method == 'POST'"
+        status: 409
+        content:
+          application/json:
+            body: { source: route }
+
+  - request: { path: /server-rendered, method: GET }
+    handler: !ref producesInvalidOutput
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+
+  - request: { path: /unclaimed, method: GET }
+    handler: !ref requiresIntegerInput
+    inputs:
+      id: !cel "request.query.id"
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+# Every rung under test renders a 4xx/5xx, so the client must REPORT the status
+# rather than raise on it — that is what `throwOnHttpError: false` is for.
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8951
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: fetchJson }
+client: !ref client
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 8951
+    catches:
+      - when: !cel "error.code == 'ERR_OUTPUT_INVALID'"
+        status: 502
+        content:
+          application/json:
+            body:
+              source: server
+              code: !cel "error.code"
+              method: !cel "request.method"
+    mounts:
+      - mount: !ref ordersApi
+targets:
+  - !ref server
+steps:
+  # The router's list renders a code the route says nothing about.
+  - name: hitNotFound
+    inputs: { url: "http://127.0.0.1:8951/not-found" }
+    invoke: !ref fetchJson
+  - name: assertRouterRendered
+    inputs:
+      actual:
+        status: !cel "steps.hitNotFound.result.status"
+        body: !cel "steps.hitNotFound.result.body"
+      expected:
+        status: 404
+        body: { source: router, code: NOT_FOUND, path: /not-found }
+    invoke: { kind: Assert.Equals }
+
+  # A route entry beats the router entry matching the same code.
+  - name: hitOverridden
+    inputs: { url: "http://127.0.0.1:8951/overridden" }
+    invoke: !ref fetchJson
+  - name: assertRouteWins
+    inputs:
+      actual:
+        status: !cel "steps.hitOverridden.result.status"
+        body: !cel "steps.hitOverridden.result.body"
+      expected:
+        status: 410
+        body: { source: route, code: NOT_FOUND }
+    invoke: { kind: Assert.Equals }
+
+  # A route list that declines does not stop the outer rungs: declaring one entry
+  # must not opt the route out of everything else its scopes render.
+  - name: hitDeclined
+    inputs: { url: "http://127.0.0.1:8951/declined" }
+    invoke: !ref fetchJson
+  - name: assertFallsPastRouteList
+    inputs:
+      actual:
+        status: !cel "steps.hitDeclined.result.status"
+        body: !cel "steps.hitDeclined.result.body"
+      expected:
+        status: 404
+        body: { source: router, code: NOT_FOUND, path: /declined }
+    invoke: { kind: Assert.Equals }
+
+  # The server's list renders a throw that escaped the whole router — the rung
+  # that only exists because an unclaimed throw now leaves the mount.
+  - name: hitServerRendered
+    inputs: { url: "http://127.0.0.1:8951/server-rendered" }
+    invoke: !ref fetchJson
+  - name: assertServerRendered
+    inputs:
+      actual:
+        status: !cel "steps.hitServerRendered.result.status"
+        body: !cel "steps.hitServerRendered.result.body"
+      expected:
+        status: 502
+        body: { source: server, code: ERR_OUTPUT_INVALID, method: GET }
+    invoke: { kind: Assert.Equals }
+
+  # No rung claims it — the built-in envelope, which is byte-identical to what an
+  # unmatched throw produced before the ladder existed.
+  - name: hitUnclaimed
+    inputs: { url: "http://127.0.0.1:8951/unclaimed?id=not-a-number" }
+    invoke: !ref fetchJson
+  - name: assertBuiltInEnvelope
+    inputs:
+      actual:
+        status: !cel "steps.hitUnclaimed.result.status"
+        code: !cel "steps.hitUnclaimed.result.body.error.code"
+      expected:
+        status: 500
+        code: ERR_INPUT_INVALID
+    invoke: { kind: Assert.Equals }

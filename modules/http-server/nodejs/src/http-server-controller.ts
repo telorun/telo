@@ -4,6 +4,7 @@ import {
   CatchEntry,
   dispatchCatches,
   dispatchReturns,
+  errorEnvelope,
   ReturnEntry,
 } from "@telorun/http-dispatch";
 import {
@@ -75,6 +76,7 @@ type HttpServerResource = RuntimeResource & {
     };
   };
   mounts?: HttpMount[];
+  catches?: CatchEntry[];
   notFoundHandler?: {
     invoke: KindRef<Invocable>;
     inputs?: Record<string, unknown>;
@@ -406,15 +408,56 @@ class HttpServer implements ResourceInstance {
       await this.app.register(cors, corsOptions);
     }
 
-    // Register custom error handler for validation errors
-    this.app.setErrorHandler((error, request, reply) => {
+    // The outermost rung of the catch ladder, and the last-resort envelope.
+    //
+    // A route renders what its own `catches:` claims, then its router's; what
+    // neither claims is rethrown and arrives here. That is what makes a
+    // server-level list reach every mount — including a third-party one and an
+    // Mcp.HttpEndpoint, whose escaping errors genuinely are this server's to
+    // render — without widening the mount contract, which could only carry HTTP
+    // outcome entries onto seams that have no use for them.
+    //
+    // A non-InvokeError has no `error.code` for a `when:` to key on, so the
+    // validation mapping and Fastify's own default keep answering for those.
+    this.app.setErrorHandler(async (error, request, reply) => {
       const mappedError = convertFastifyValidationError(error);
       if (mappedError) {
         reply.code(400);
         return reply.send(mappedError);
       }
-      // Let Fastify handle other errors normally
-      throw error;
+      if (!isInvokeError(error)) throw error;
+
+      const invokeError = { code: error.code, message: error.message, data: error.data };
+      const normalizedHeaders: Record<string, any> = {};
+      for (const [key, value] of Object.entries(request.headers)) {
+        normalizedHeaders[key.toLowerCase()] = value;
+      }
+      const requestContext = {
+        request: {
+          method: request.method,
+          path: request.url,
+          ip: request.ip,
+          headers: normalizedHeaders,
+        },
+      };
+      const rendered = await dispatchCatches(
+        this.resource.catches,
+        invokeError,
+        requestContext,
+        (request.headers as Record<string, string | string[] | undefined>)["accept"]?.toString(),
+        this.ctx.moduleContext,
+        this.ctx.validateSchema.bind(this.ctx),
+        fastifyReplySink(reply),
+      );
+      if (rendered) return;
+
+      // No rung claimed it. This envelope is byte-for-byte what http-dispatch
+      // used to render from inside `dispatchCatches`, which is what keeps the
+      // whole ladder a pure addition for a manifest that declares no scope-level
+      // list.
+      reply.code(500);
+      reply.header("Content-Type", "application/json");
+      return reply.send(errorEnvelope(invokeError));
     });
     if (this.resource.openapi) {
       // Each route is documented at its full `mount-prefix + path` (see
@@ -527,7 +570,10 @@ class HttpServer implements ResourceInstance {
           });
         } catch (err) {
           if (!isInvokeError(err)) throw err;
-          return dispatchCatches(
+          // The not-found handler's own entries first; anything they decline
+          // rethrows to the server's error handler, which is the same ladder a
+          // mounted route's throw takes.
+          const rendered = await dispatchCatches(
             handler.catches,
             { code: err.code, message: err.message, data: err.data },
             requestContext,
@@ -536,6 +582,8 @@ class HttpServer implements ResourceInstance {
             this.ctx.validateSchema.bind(this.ctx),
             sink,
           );
+          if (!rendered) throw err;
+          return;
         }
 
         if (handler.returns) {

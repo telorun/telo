@@ -185,6 +185,8 @@ export {
 export type { RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
 export { isStepSlot, readStepSlot, STEP_FRAGMENT } from "./step-slot.js";
 export type { StepSlot } from "./step-slot.js";
+export { readDeprecation } from "./deprecation.js";
+export type { Deprecation } from "./deprecation.js";
 export {
   ANNOTATION_KEYWORDS,
   registerTeloKeywords,
@@ -489,7 +491,12 @@ export type { CelScopeQueryContext, ContextDeclarationSite } from "./cel-scope-q
 export { navigateConcretePath } from "./manifest-path.js";
 export { ManifestAnalysis } from "./manifest-analysis.js";
 export type { ManifestRef } from "./manifest-analysis.js";
-export { DEFAULT_MANIFEST_FILENAME, DiagnosticSeverity, diagnosticFix } from "./types.js";
+export {
+  DEFAULT_MANIFEST_FILENAME,
+  DiagnosticSeverity,
+  DiagnosticTag,
+  diagnosticFix,
+} from "./types.js";
 export type {
     AnalysisDiagnostic,
     AnalysisOptions,

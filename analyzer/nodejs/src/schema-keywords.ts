@@ -386,7 +386,10 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   },
   "x-telo-catches-for": {
     title: "Catches for",
-    description: "Names the field whose failures this branch list handles.",
+    description:
+      "Whose failures this catch list renders: a sibling field naming the handler, " +
+      "or the EMPTY string for everything this resource drives — a scope-level list, " +
+      "which owes coverage of nothing itself and answers for every site it encloses.",
     type: "string",
   },
 };

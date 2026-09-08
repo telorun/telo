@@ -36,3 +36,10 @@ exclude:
   # invocation is not optional: excluding them here and adding no other caller is
   # how the only example about testing ended up tested by nothing.
   - "examples/**"
+  # GENERATED, and gitignored: the authoring agent's e2e writes the apps it
+  # builds here, so this directory does not exist on a clean checkout and its
+  # contents are whatever the last run produced. Discovering it also ran the
+  # generated apps' tests TWICE — once directly, once through their own nested
+  # suite manifest — and the two copies raced for the same fixed ports, failing
+  # a different one each run.
+  - "workspace/**"

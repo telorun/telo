@@ -11,11 +11,11 @@ metadata:
 secrets:
   openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
 imports:
-  OpenAI: ../
-  Ai: ../../ai
-  Http: ../../http-client
-  Run: ../../run
-  Assert: ../../assert
+  OpenAI: ../../
+  Ai: ../../../ai
+  Http: ../../../http-client
+  Run: ../../../run
+  Assert: ../../../assert
 targets:
   - !ref LiveImage
 ---

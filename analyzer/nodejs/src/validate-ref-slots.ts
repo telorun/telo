@@ -38,7 +38,9 @@ export interface RefSlotIssue {
     | "X_TELO_REF_MISSING_USE"
     | "X_TELO_REF_MISSING_KIND"
     | "X_TELO_REF_USE_CONFLICT"
-    | "X_TELO_REF_DYNAMIC_SELECTOR";
+    | "X_TELO_REF_DYNAMIC_SELECTOR"
+    | "X_TELO_REF_UNKNOWN_KEY"
+    | "X_TELO_REF_INVALID_THROWS_THROUGH";
   /** The definition (schema issues) or resource (selector issues) at fault. */
   manifest: ResourceManifest;
   /** Schema path of the slot (schema issues) or concrete value path of the
@@ -140,8 +142,46 @@ function checkAnnotation(
     }
   }
 
+  // `throwsThrough` is read as `=== true`, so anything else is silently absent —
+  // and absent means the declaring resource's catch scope stops enclosing what
+  // it holds, so every route under it starts reporting UNCOVERED_THROW_CODE with
+  // nothing naming the cause. The same failure `X_TELO_REF_INVALID_USE` exists
+  // to prevent, one key over.
+  if (obj.throwsThrough !== undefined && typeof obj.throwsThrough !== "boolean") {
+    issues.push({
+      code: "X_TELO_REF_INVALID_THROWS_THROUGH",
+      manifest,
+      path,
+      message:
+        `x-telo-ref at '${path}' declares 'throwsThrough: ${JSON.stringify(obj.throwsThrough)}', ` +
+        `which is not a boolean. Only 'true' declares that throws from this slot's target ` +
+        `surface through the declaring resource; anything else reads as absent, which ` +
+        `silently stops its catch list from enclosing what it holds.`,
+    });
+  }
+
+  // Closed, for the reason the token sets are: a misspelled key is indexed by
+  // nothing and read by nothing, so it validates, ships, and does exactly what
+  // omitting it would.
+  for (const key of Object.keys(obj)) {
+    if (REF_ANNOTATION_KEYS.has(key)) continue;
+    issues.push({
+      code: "X_TELO_REF_UNKNOWN_KEY",
+      manifest,
+      path,
+      message:
+        `x-telo-ref at '${path}' declares unrecognized key '${key}'. Known keys: ` +
+        `${[...REF_ANNOTATION_KEYS].sort().join(", ")}. An unrecognized key is read by nothing, ` +
+        `so it has exactly the effect of leaving it out.`,
+    });
+  }
+
   return declaredUses(use);
 }
+
+/** Every key the structured `x-telo-ref` form accepts — the write side of
+ *  `readRefSlot`'s read side. Adding one belongs in both. */
+const REF_ANNOTATION_KEYS = new Set(["kind", "use", "inputs", "throwsThrough"]);
 
 /** True when a node is a reference slot: it carries `x-telo-ref` directly or on
  *  an `anyOf`/`oneOf` branch. */

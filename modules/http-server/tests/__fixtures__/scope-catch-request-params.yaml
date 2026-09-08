@@ -1,0 +1,38 @@
+kind: Telo.Library
+metadata:
+  name: ScopeCatchRequestParamsFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: throwsNotFound }
+steps:
+  - name: raise
+    throw: { code: NOT_FOUND, message: "gone" }
+---
+# A scope entry sees the request's `path` / `method` / `ip` and nothing a route
+# declares: there is no single route here to type `params` from, so reading one
+# is reported rather than left to fail at run time as an unknown variable.
+kind: Http.Api
+metadata: { name: api }
+catches:
+  - when: !cel "error.code == 'NOT_FOUND'"
+    status: 404
+    content:
+      application/json:
+        body: { id: !cel "request.params.id" }
+routes:
+  - request:
+      path: /x/{id}
+      method: GET
+      schema:
+        params:
+          type: object
+          properties:
+            id: { type: string }
+    handler: !ref throwsNotFound
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }

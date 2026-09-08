@@ -1,0 +1,36 @@
+kind: Telo.Library
+metadata:
+  name: ScopeEntryUndeclaredCodeFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: throwsNotFound }
+steps:
+  - name: raise
+    throw: { code: NOT_FOUND, message: "gone" }
+---
+# The router's own denominator is what its routes' handlers can throw, so an
+# entry naming anything else is reported at that entry's own path — a scope list
+# is exempt from owing coverage, never from the typo check.
+kind: Http.Api
+metadata: { name: api }
+catches:
+  - when: !cel "error.code == 'BOGUS'"
+    status: 418
+    content:
+      application/json:
+        body: { code: !cel "error.code" }
+  - when: !cel "error.code == 'NOT_FOUND'"
+    status: 404
+    content:
+      application/json:
+        body: { code: !cel "error.code" }
+routes:
+  - request: { path: /x, method: GET }
+    handler: !ref throwsNotFound
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }

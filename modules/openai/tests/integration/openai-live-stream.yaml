@@ -9,11 +9,11 @@ metadata:
 secrets:
   openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
 imports:
-  OpenAI: ../
-  Http: ../../http-client
-  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
-  Run: ../../run
-  Assert: ../../assert
+  OpenAI: ../../
+  Http: ../../../http-client
+  AiEcho: ../../../ai/tests/__fixtures__/ai-echo.yaml
+  Run: ../../../run
+  Assert: ../../../assert
 targets:
   - !ref LiveStream
 ---

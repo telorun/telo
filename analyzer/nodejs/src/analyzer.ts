@@ -24,6 +24,7 @@ import {
   type CelHandlers,
 } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
+import { readDeprecation } from "./deprecation.js";
 import { type ContractDirection, effectiveAuthorSchema } from "./extends-resolution.js";
 import {
   analyzerContractScope,
@@ -125,7 +126,12 @@ import {
   type SchemaIssue,
 } from "./schema-compat.js";
 import { collectValueSchemaIssues } from "./validate-value-schema.js";
-import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisOptions } from "./types.js";
+import {
+  DiagnosticSeverity,
+  DiagnosticTag,
+  type AnalysisDiagnostic,
+  type AnalysisOptions,
+} from "./types.js";
 import {
   extractAccessChains,
   extractContextsFromSchema,
@@ -1909,6 +1915,52 @@ export class StaticAnalyzer {
           data: { resource, filePath, path: "kind" },
         });
         continue;
+      }
+
+      // A kind its own author marked `metadata.deprecated` still works exactly as
+      // it did — the manifest is valid and keeps running — so this is a WARNING,
+      // reported at the declaration because `kind:` is the line that has to
+      // change. Emitted here rather than in a pass of its own so it reads the
+      // kind THIS walk resolved: the resolution is alias- and gate-aware and
+      // scope-dependent, and a second implementation of it would eventually
+      // disagree about which definition a name means.
+      //
+      // Entry-module-scoped, like every other "not the consumer's to fix" check:
+      // a library's internal use of a kind its own author deprecated is that
+      // author's concern, and reporting it floods a consumer with lines they
+      // cannot act on.
+      //
+      // No `DiagnosticFix`. `replacedBy` names a kind through the DECLARING
+      // module's aliases; writing it into the consumer's file would produce a
+      // prefix that resolves to nothing there — and a kind swap is not a
+      // whole-value replacement anyway, since the successor needs its own import
+      // and usually a different configuration.
+      const deprecation = readDeprecation(definition.metadata);
+      if (deprecation && (!ownModule || rootModules.has(ownModule))) {
+        // Quoted CANONICALLY, not verbatim: `Self.Thing` is how the declaring
+        // library names its own kind and means nothing where the warning lands.
+        const declaringScope =
+          scopeResolverForModule(
+            (definition.metadata as { module?: string } | undefined)?.module,
+            rootModules,
+            aliasesByModule,
+          ) ?? aliases;
+        const replacement = deprecation.replacedBy
+          ? (declaringScope.resolveKind(deprecation.replacedBy) ?? deprecation.replacedBy)
+          : undefined;
+        diagnostics.push({
+          severity: DiagnosticSeverity.Warning,
+          code: "DEPRECATED_KIND",
+          source: SOURCE,
+          // Warning-grade AND a deprecation: the severity says it must
+          // eventually be dealt with, the tag says what it is, and an editor
+          // strikes the kind through on the strength of the second.
+          tags: [DiagnosticTag.Deprecated],
+          message:
+            `Kind '${m.kind}' is deprecated: ${deprecation.reason}` +
+            (replacement ? ` Use '${replacement}' instead.` : ""),
+          data: { resource, filePath, path: "kind" },
+        });
       }
 
       // Validate resource config against the definition's AUTHOR-FACING schema —

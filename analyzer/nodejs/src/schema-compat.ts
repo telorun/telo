@@ -8,6 +8,7 @@ import {
 import {
   celBaseOfValueType,
   celTypeOfValueType,
+  isCompiledValue,
   readValueTypeSlot,
   valueBrandBases,
   valueTypeOf,
@@ -796,6 +797,18 @@ export function substituteCelFields(
     if (produced) return celPlaceholderForSchema(produced);
   }
   if (isTaggedSentinel(data)) {
+    mark();
+    return celPlaceholderForSchema(resolved);
+  }
+  // The same fact in its third spelling. An expression reaches this walk as a
+  // `${{ … }}` string or a `!cel` sentinel BEFORE `precompileDoc`, and as a
+  // CompiledValue after — so a caller running under `compile: true` (every
+  // `telo run`, unlike `telo check`) handed one to AJV as a plain object, and a
+  // slot typed `boolean` rejected a `when:` the author wrote correctly. The
+  // kernel's `stripCompiledValues` has always substituted here; missing it on
+  // this side made one manifest mean two things depending on which command read
+  // it.
+  if (isCompiledValue(data)) {
     mark();
     return celPlaceholderForSchema(resolved);
   }

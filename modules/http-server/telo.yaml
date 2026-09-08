@@ -14,11 +14,19 @@ metadata:
 requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
+  #
+  # Deliberately NOT raised for the scope-level `catches:` lists: verified by
+  # execution, 0.87.0 reads this module with no issues, because both new
+  # annotation forms degrade to silence there (`x-telo-catches-for: ""` is falsy,
+  # so the list is skipped; `throwsThrough` is an unknown key inside an
+  # x-telo-ref). A floor nothing can refute is a claim nothing checks.
   telo: ">=0.82.0"
 imports:
-  # Single source of truth for the returns:/catches: schema. Both Server.notFoundHandler
-  # and Api.routes[] anchor at HttpDispatch.Outcomes/$defs/{Returns,Catches} so the
-  # shape, MIME negotiation rules, and buffer/stream oneOf live in exactly one place.
+  # Single source of truth for the returns:/catches: schema. EVERY slot anchors at
+  # HttpDispatch.Outcomes/$defs/{Returns,Catches} — Server.notFoundHandler, the
+  # two scope-level catch lists, and Api.routes[], which carried its own inline
+  # copy of both shapes until they were collapsed here — so the entry shape, the
+  # MIME negotiation rules and the buffer/stream oneOf live in exactly one place.
   HttpDispatch: ../http-dispatch
   # The response-encoder contract this module's own encoder slots pin.
   Codec: ../codec
@@ -152,6 +160,14 @@ schema:
             x-telo-ref:
               kind: Telo.Mount
               use: dependency
+              # `dependency` is the honest use: the server holds the mount and
+              # calls a convention method on it, and control reaches a route
+              # through the MOUNT's own trigger.inbound slot, not through this
+              # one. Yet a throw from that route is exactly what this server
+              # renders — it arrives at the server's error handler because
+              # nothing below claimed it — so the throws closure and the catch
+              # scope both cross here, and nowhere else a `dependency` leads.
+              throwsThrough: true
           when:
             title: When
             description: >-
@@ -192,6 +208,41 @@ schema:
                 description: Minimum severity for this mount's access records.
                 type: string
                 enum: [ trace, debug, info, warn, error, fatal ]
+    catches:
+      title: Catches
+      description: >-
+        Rendering rules for structured (InvokeError) throws that reach the
+        server — from any mount, and from `notFoundHandler`. The outermost rung
+        of the catch ladder: a route's own entries are tried first, then its
+        router's, then these. A throw no entry claims renders the built-in
+        `{error: {code, message, data}}` envelope with status 500.
+
+        Entries see `error` and the request's `path` / `method` / `ip`. There is
+        no route here to type `request.query` / `body` / `params` from — those
+        belong to a route's own list.
+      x-telo-outcome-list: catches
+      # The EMPTY pointer: this list covers everything the server drives, not one
+      # sibling field's target.
+      x-telo-catches-for: ""
+      x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          request:
+            type: object
+            additionalProperties: false
+            properties:
+              path: { type: string }
+              method: { type: string }
+              ip: { type: string }
+          error:
+            type: object
+            additionalProperties: false
+            properties:
+              code: { type: string }
+              message: { type: string }
+              data: { type: object, additionalProperties: true }
     contentTypeParsers:
       title: Content Type Parsers
       description: Custom parsers for specific content types.
@@ -394,6 +445,45 @@ controllers:
 schema:
   type: "object"
   properties:
+    catches:
+      title: Catches
+      description: >-
+        Rendering rules for structured (InvokeError) throws from any route of
+        this router. A route's own `catches:` entries are tried first, then
+        these, then the server's; a throw no entry claims renders the built-in
+        `{error: {code, message, data}}` envelope with status 500.
+
+        This is what lets one route override the rendering of a single code
+        without restating every other. A route entry with no `when:` is a
+        deliberate full override — it makes these entries unreachable for that
+        route alone.
+
+        Entries see `error` and the request's `path` / `method` / `ip`. There is
+        no single route here to type `request.query` / `body` / `params` from —
+        those belong to a route's own list.
+      x-telo-outcome-list: catches
+      # The EMPTY pointer: this list covers every route of this router, not one
+      # sibling field's target.
+      x-telo-catches-for: ""
+      x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          request:
+            type: object
+            additionalProperties: false
+            properties:
+              path: { type: string }
+              method: { type: string }
+              ip: { type: string }
+          error:
+            type: object
+            additionalProperties: false
+            properties:
+              code: { type: string }
+              message: { type: string }
+              data: { type: object, additionalProperties: true }
     routes:
       title: Routes
       description: HTTP route definitions.
@@ -498,101 +588,7 @@ schema:
                   x-telo-context-ref-from: "handler/outputType"
                   type: object
                   additionalProperties: true
-            items:
-              title: Return Entry
-              description: Conditional rendering entry for a successful return.
-              type: "object"
-              additionalProperties: false
-              properties:
-                status:
-                  title: Status
-                  description: HTTP status code for this entry.
-                  type: "integer"
-                  minimum: 100
-                  maximum: 599
-                when:
-                  title: When
-                  type: "boolean"
-                  description: "CEL expression; entry is selected if this evaluates to true. In stream mode, `result.*` is unavailable (the handler result is an unconsumed Stream); reference only `request.*`."
-                mode:
-                  title: Mode
-                  type: "string"
-                  enum: [ "buffer", "stream" ]
-                  description: "buffer (default): CEL body expansion + schema validation per matched MIME. stream: pipe handler.result.output through content[mime].encoder, then bytes to the response."
-                headers:
-                  title: Headers
-                  description: Entry-level response headers; merged with per-MIME content[mime].headers (per-MIME wins). Content-Type is forbidden — the matched content map key is the only Content-Type source.
-                  type: "object"
-                  additionalProperties:
-                    type: "string"
-                content:
-                  title: Content
-                  description: Per-MIME response shape. Map key is the canonical Content-Type — the server sets Content-Type from the matched key automatically, with Accept-header negotiation across keys when there are multiple. Required when the status carries a body; omit for 204/304-style empty responses.
-                  type: "object"
-                  additionalProperties:
-                    type: "object"
-                    additionalProperties: false
-                    properties:
-                      body:
-                        title: Body
-                        description: >-
-                          Response body (buffer mode). Write it as a YAML
-                          object — it is serialized to JSON automatically; do
-                          not embed a JSON string. Field values may be `!cel`
-                          expressions (e.g. `count: !cel "result.rowCount"`)
-                          or inline CEL interpolations, so the body stays
-                          statically analyzable and type-checked. A bare
-                          `!cel` expression or a scalar is also accepted.
-                      schema:
-                        title: Schema
-                        description: >-
-                          JSON Schema for the response body (buffer mode).
-                          Validates the rendered body AND becomes this status's
-                          response schema in the generated OpenAPI document —
-                          declare it for every body-bearing return, with `type`,
-                          `description`, and `examples` on each field so the
-                          OpenAPI spec is complete.
-                        type: "object"
-                      encoder:
-                        title: Encoder
-                        description: Encoder ref (any kind extending Codec.Encoder) for stream mode. handler.result.output is piped through encoder.invoke({input}) and the encoder's result.output bytes flow to the response.
-                        x-telo-ref:
-                          kind: Codec.Encoder
-                          # The dispatcher awaits encoder.invoke({input}) inline —
-                          # the encoder's entry point, not a helper method.
-                          use: call
-                      headers:
-                        title: Headers
-                        description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
-                        type: "object"
-                        additionalProperties:
-                          type: "string"
-              required: [ "status" ]
-              oneOf:
-                - title: Buffer mode
-                  description: "mode: buffer (or omitted). Each content[mime] uses `body` (with optional `schema`); `encoder` is forbidden."
-                  anyOf:
-                    - not: { required: [ "mode" ] }
-                    - properties:
-                        mode: { const: "buffer" }
-                  properties:
-                    content:
-                      type: "object"
-                      additionalProperties:
-                        type: "object"
-                        not: { required: [ "encoder" ] }
-                - title: Stream mode
-                  description: "mode: stream. Every content[mime] must declare `encoder`; `body` is forbidden. `content` map must be non-empty."
-                  properties:
-                    mode: { const: "stream" }
-                    content:
-                      type: "object"
-                      minProperties: 1
-                      additionalProperties:
-                        type: "object"
-                        required: [ "encoder" ]
-                        not: { required: [ "body" ] }
-                  required: [ "mode", "content" ]
+            x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Returns"
           catches:
             title: Catches
             description: Rendering rules for structured (InvokeError) throws from the handler. Buffer-mode only — by the time a catch fires there is no upstream iterable to feed an encoder.
@@ -617,50 +613,7 @@ schema:
                     code: { type: string }
                     message: { type: string }
                     data: { type: object, additionalProperties: true }
-            items:
-              title: Catch Entry
-              description: Conditional rendering entry for a thrown InvokeError.
-              type: "object"
-              additionalProperties: false
-              properties:
-                status:
-                  title: Status
-                  description: HTTP status code for this entry.
-                  type: "integer"
-                  minimum: 100
-                  maximum: 599
-                when:
-                  title: When
-                  type: "boolean"
-                  description: "CEL expression; sees `error` and `request`"
-                headers:
-                  title: Headers
-                  description: Entry-level response headers. Content-Type is forbidden — the matched content map key is the only Content-Type source.
-                  type: "object"
-                  additionalProperties:
-                    type: "string"
-                content:
-                  title: Content
-                  description: Per-MIME error-body shape. Buffer-mode only.
-                  type: "object"
-                  additionalProperties:
-                    type: "object"
-                    additionalProperties: false
-                    properties:
-                      body:
-                        title: Body
-                        description: CEL expression or object mapping for the error body.
-                      schema:
-                        title: Schema
-                        description: JSON Schema used to validate the rendered body.
-                        type: "object"
-                      headers:
-                        title: Headers
-                        description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
-                        type: "object"
-                        additionalProperties:
-                          type: "string"
-              required: [ "status" ]
+            x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
         required: [ "request", "returns" ]
         examples:
           - request:

@@ -118,41 +118,40 @@ const KNOWN_CAPABILITIES = [
 /** Rule 8: `throws:` is only meaningful on Telo.Invocable or Telo.Runnable.
  *  On Service/Mount/Provider/Type/etc. a thrown error is a boot-time failure,
  *  not a structured runtime error for a downstream caller, so declaring one
- *  is a schema error. */
-const forbidThrows = { not: { required: ["throws"] } };
+ *  is a schema error.
+ *
+ *  Spelled as a `false` schema at the property rather than `not: {required}` so
+ *  the failure NAMES THE KEY: AJV reports `not` at the document root with
+ *  nothing about the inner schema, which left the whole union unable to say
+ *  which key was at fault — and the reducer then preferred a branch whose
+ *  `capability` const merely disagreed, reporting `/capability must be equal to
+ *  constant` about a document whose capability was right and whose `throws:` was
+ *  wrong. This form reports `/throws is not allowed here`. */
+/** One capability's branch. `throws` and `capability` live in ONE `properties`
+ *  map, built here — spreading a second object carrying `properties` silently
+ *  REPLACES the capability constant, which turns every forbidding branch into
+ *  "any definition with a capability and no throws" and makes the whole `oneOf`
+ *  match several branches at once. */
+const capabilityBranch = (capability: string, mayThrow: boolean) => ({
+  required: ["capability"],
+  properties: {
+    capability: { const: capability },
+    ...(mayThrow ? {} : { throws: false }),
+  },
+});
 
 export const ResourceDefinitionSchema = {
   ...baseDefinition,
   oneOf: [
-    {
-      required: ["capability"],
-      properties: { capability: { const: "Telo.Service" } },
-      ...forbidThrows,
-    },
-    { required: ["capability"], properties: { capability: { const: "Telo.Runnable" } } },
-    { required: ["capability"], properties: { capability: { const: "Telo.Invocable" } } },
-    {
-      required: ["capability"],
-      properties: { capability: { const: "Telo.Provider" } },
-      ...forbidThrows,
-    },
-    {
-      required: ["capability"],
-      properties: { capability: { const: "Telo.Type" } },
-      ...forbidThrows,
-    },
-    {
-      required: ["capability"],
-      properties: { capability: { const: "Telo.Mount" } },
-      ...forbidThrows,
-    },
-    {
-      // A sink is written to directly, never dispatched, so a thrown error is a
-      // boot-time failure rather than a structured runtime error for a caller.
-      required: ["capability"],
-      properties: { capability: { const: "Telo.Sink" } },
-      ...forbidThrows,
-    },
+    capabilityBranch("Telo.Service", false),
+    capabilityBranch("Telo.Runnable", true),
+    capabilityBranch("Telo.Invocable", true),
+    capabilityBranch("Telo.Provider", false),
+    capabilityBranch("Telo.Type", false),
+    capabilityBranch("Telo.Mount", false),
+    // A sink is written to directly, never dispatched, so a thrown error is a
+    // boot-time failure rather than a structured runtime error for a caller.
+    capabilityBranch("Telo.Sink", false),
     // Unknown/absent capability: open schema for third-party extensibility
     {
       not: {

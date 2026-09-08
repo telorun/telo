@@ -28,6 +28,10 @@ export function normalizeDiagnostic(
     source: d.source ?? "telo",
     message: d.message,
     ...(suggestions ? { suggestions } : {}),
+    // Carried through, never derived from the code: which diagnostics are
+    // deprecations is the analyzer's to say, and a code list here would be a
+    // second place to remember every time one is added.
+    ...(d.tags?.length ? { tags: [...d.tags] } : {}),
     ...(d.data !== undefined ? { data: d.data } : {}),
   };
 }

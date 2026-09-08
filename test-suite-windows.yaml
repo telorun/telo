@@ -28,6 +28,9 @@ exclude:
   # Same as the root suite: most examples pin published module versions, and an
   # example with tests is run from ITS OWN suite, which CI invokes explicitly.
   - "examples/**"
+  # Generated and gitignored — the authoring agent's e2e output. See
+  # `test-suite.yaml` for why discovering it also double-ran its nested suite.
+  - "workspace/**"
 
   # POSIX-only. These three drive the host shell in its own language — `printf`,
   # `pwd`, and `"$VAR"` expansion — none of which cmd.exe speaks, so on Windows

@@ -1,0 +1,31 @@
+kind: Telo.Library
+metadata:
+  name: ScopeCoversRoutesFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: throwsNotFound }
+steps:
+  - name: raise
+    throw: { code: NOT_FOUND, message: "gone" }
+---
+# The route declares no `catches:` at all; the router's list renders its throw.
+# Judged per list, this route would report UNCOVERED_THROW_CODE — the false
+# positive that fires on precisely the manifests a scope list exists to enable.
+kind: Http.Api
+metadata: { name: api }
+catches:
+  - when: !cel "error.code == 'NOT_FOUND'"
+    status: 404
+    content:
+      application/json:
+        body: { code: !cel "error.code", path: !cel "request.path" }
+routes:
+  - request: { path: /x, method: GET }
+    handler: !ref throwsNotFound
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }

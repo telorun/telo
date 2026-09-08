@@ -3,16 +3,25 @@ import { isTaggedSentinel } from "@telorun/templating";
 import {
   AMBIENT_CONTRACT_ERROR_CODES,
   isAmbientContractErrorCode,
+  type ResourceDefinition,
   type ResourceManifest,
 } from "@telorun/sdk";
 import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   createResolveCtx,
+  resolveScopeUnion,
   resolveThrowsUnion,
   type ThrowsCodeMeta,
   type ThrowsUnion,
 } from "./resolve-throws-union.js";
+import {
+  buildEnclosers,
+  collectScopedManifests,
+  enclosingCoverage,
+  type ProvenCoverage,
+  type ScopedManifest,
+} from "./catch-scope.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
 import { isStepSlot } from "./step-slot.js";
@@ -103,7 +112,11 @@ function walkSchemaData(
           }
         } else {
           const catchesFor = propSchema["x-telo-catches-for"] as string | undefined;
-          if (catchesFor) {
+          // The EMPTY pointer names the resource the list is written on, the
+          // spelling `x-telo-schema-projection-from` already uses for the same
+          // "this declaration, not one it references" meaning — so the test is
+          // presence, never truthiness.
+          if (catchesFor !== undefined) {
             // Fire even when absent so the coverage check can flag handlers
             // whose declared union is non-empty but the list is missing.
             ctx.onCatches(entries, nextPath, dataObj, catchesFor);
@@ -211,6 +224,7 @@ function checkCatchAllPlacement(
   channel: "returns" | "catches",
   filePath: string | undefined,
   arrayPath: string,
+  routing: { kind: string; name: string } = resource,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   for (let i = 0; i < entries.length - 1; i++) {
@@ -221,90 +235,120 @@ function checkCatchAllPlacement(
         code: "CATCHALL_NOT_LAST",
         source: SOURCE,
         message: `${channel}: catch-all entry (no \`when:\`) at index ${i} must be last — entries after it are unreachable.`,
-        data: { resource, filePath, path: `${arrayPath}[${i}]` },
+        data: { resource: routing, filePath, path: `${arrayPath}[${i}]` },
       });
     }
   }
   return diagnostics;
 }
 
-/** Rule 1 + Rule 4: check declared-union coverage and reject undeclared codes
- *  in coverage-proving `when:` clauses. Phase 2 accepts inherit/passthrough
- *  handler unions too — when the resolved union is unbounded, a catch-all is
- *  required (rule 4 extension). */
-function checkCatchesCoverage(
+/** Read one list's {@link ProvenCoverage} — the codes its coverage-proving
+ *  `when:` clauses name, and whether it ends in a catch-all. */
+function provenCoverage(entries: OutcomeEntry[], env: Environment): ProvenCoverage {
+  const codes = new Set<string>();
+  let hasCatchAll = false;
+  for (const e of entries) {
+    if (!e) continue;
+    if (!e.when) {
+      hasCatchAll = true;
+      continue;
+    }
+    const { proven, codes: entryCodes } = extractCoveredCodes(e.when, env);
+    if (!proven) continue;
+    for (const c of entryCodes) codes.add(c);
+  }
+  return { codes, hasCatchAll };
+}
+
+/** Rule 4: a coverage-proving `when:` may only name a code the list's own
+ *  denominator can produce. Runs for EVERY list, scope lists included — the
+ *  denominator differs (a handler's union, or the enclosing resource's own), the
+ *  typo check does not. */
+function checkUndeclaredCodes(
   entries: OutcomeEntry[],
   union: ThrowsUnion,
   resource: { kind: string; name: string },
   filePath: string | undefined,
   arrayPath: string,
   env: Environment,
-  handler: { kind: string; name?: string } | null,
+  denominator: string,
+  routing: { kind: string; name: string } = resource,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const declaredCodes = new Set(union.codes.keys());
-  const covered = new Set<string>();
-  let hasCatchAll = false;
 
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
-    if (!e) continue;
-    if (!e.when) {
-      hasCatchAll = true;
-      continue;
-    }
+    if (!e?.when) continue;
     const { proven, codes } = extractCoveredCodes(e.when, env);
-    if (proven) {
-      for (const c of codes) {
-        // An ambient kernel code (contract violations) is raised by the kernel,
-        // not declared by the kind, so naming it is legal and still typo-checked
-        // — but it is NOT part of the declared union, so it never counts toward
-        // coverage. Folding these into every union would make every bounded
-        // catches: block in the standard library incomplete overnight.
-        if (isAmbientContractErrorCode(c)) continue;
-        if (!declaredCodes.has(c)) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "UNDECLARED_THROW_CODE",
-            source: SOURCE,
-            message: `catches[${i}] references code '${c}' which is not in the handler's declared throw union {${[...declaredCodes].sort().join(", ") || "∅"}} (ambient kernel codes ${AMBIENT_CONTRACT_ERROR_CODES.join(", ")} may also be named)${union.unbounded ? "; the union is unbounded, so a catch-all is required" : ""}.`,
-            data: { resource, filePath, path: `${arrayPath}[${i}].when` },
-          });
-        } else {
-          covered.add(c);
-        }
-      }
+    if (!proven) continue;
+    for (const c of codes) {
+      // An ambient kernel code (contract violations) is raised by the kernel,
+      // not declared by the kind, so naming it is legal and still typo-checked
+      // — but it is NOT part of the declared union, so it never counts toward
+      // coverage. Folding these into every union would make every bounded
+      // catches: block in the standard library incomplete overnight.
+      if (isAmbientContractErrorCode(c)) continue;
+      if (declaredCodes.has(c)) continue;
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "UNDECLARED_THROW_CODE",
+        source: SOURCE,
+        message: `catches[${i}] references code '${c}' which is not in ${denominator} {${[...declaredCodes].sort().join(", ") || "∅"}} (ambient kernel codes ${AMBIENT_CONTRACT_ERROR_CODES.join(", ")} may also be named)${union.unbounded ? "; the union is unbounded, so a catch-all is required" : ""}.`,
+        data: { resource: routing, filePath, path: `${arrayPath}[${i}].when` },
+      });
     }
   }
 
+  return diagnostics;
+}
+
+/** Rule 1 + the unbounded-union rule, asked ONCE per dispatch site over every
+ *  list that can render its throws — the site's own, its resource's scope list,
+ *  and every scope enclosing that resource.
+ *
+ *  Asking it per list is what would make this a false check rather than a
+ *  missing one: a route that declares no `catches:` under a router that renders
+ *  everything is completely covered, and reporting it fires on precisely the
+ *  manifests scope lists exist to enable. */
+function checkCoverage(
+  union: ThrowsUnion,
+  resource: { kind: string; name: string },
+  filePath: string | undefined,
+  arrayPath: string,
+  handler: { kind: string; name?: string } | null,
+  covered: ProvenCoverage,
+  routing: { kind: string; name: string } = resource,
+): AnalysisDiagnostic[] {
+  const diagnostics: AnalysisDiagnostic[] = [];
+  if (covered.hasCatchAll) return diagnostics;
+
   // Unbounded union (passthrough or transitive): authors can't enumerate the
-  // codes, so a catch-all is mandatory.
-  if (union.unbounded && !hasCatchAll) {
+  // codes, so a catch-all is mandatory — at this list or any enclosing scope.
+  if (union.unbounded) {
     diagnostics.push({
       severity: DiagnosticSeverity.Error,
       code: "UNBOUNDED_UNION_NEEDS_CATCHALL",
       source: SOURCE,
-      message: `The handler's throw union is unbounded (inherit/passthrough resolution couldn't enumerate all codes). The catches: list must include a catch-all entry (no \`when:\`).`,
-      data: { resource, filePath, path: arrayPath },
+      message: `The handler's throw union is unbounded (inherit/passthrough resolution couldn't enumerate all codes). A catch-all entry (no \`when:\`) is required — on this catches: list or on an enclosing one.`,
+      data: { resource: routing, filePath, path: arrayPath },
     });
   }
 
-  if (!hasCatchAll) {
-    // One diagnostic per block, not per code: every uncovered code sits at the
-    // same `catches:` array, and one catch-all answers all of them at once. A
-    // diagnostic each repeated the same location and the same fix N times.
-    const uncovered = [...declaredCodes].filter((c) => !covered.has(c)).sort();
-    if (uncovered.length > 0) {
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        code: "UNCOVERED_THROW_CODE",
-        source: SOURCE,
-        message:
-          `handler ${handler?.name ? `\`!ref ${handler.name}\`` : `\`${handler?.kind ?? "?"}\``} can throw ${uncovered.length} code${uncovered.length === 1 ? "" : "s"} that no catches: entry handles: ${uncovered.map((c) => `'${c}'`).join(", ")}. ` +
-          `Give each a matching \`when:\` (e.g. \`when: !cel "error.code == '${uncovered[0]}'"\`), or add a catch-all entry — one with no \`when:\`, placed last.`,
-        data: { resource, filePath, path: arrayPath, uncovered },
-      });
-    }
+  // One diagnostic per site, not per code: every uncovered code sits at the
+  // same dispatch site, and one catch-all answers all of them at once. A
+  // diagnostic each repeated the same location and the same fix N times.
+  const uncovered = [...union.codes.keys()].filter((c) => !covered.codes.has(c)).sort();
+  if (uncovered.length > 0) {
+    diagnostics.push({
+      severity: DiagnosticSeverity.Error,
+      code: "UNCOVERED_THROW_CODE",
+      source: SOURCE,
+      message:
+        `handler ${handler?.name ? `\`!ref ${handler.name}\`` : `\`${handler?.kind ?? "?"}\``} can throw ${uncovered.length} code${uncovered.length === 1 ? "" : "s"} that no catches: entry handles — at this list or any enclosing scope: ${uncovered.map((c) => `'${c}'`).join(", ")}. ` +
+        `Give each a matching \`when:\` (e.g. \`when: !cel "error.code == '${uncovered[0]}'"\`), or add a catch-all entry — one with no \`when:\`, placed last.`,
+      data: { resource: routing, filePath, path: arrayPath, uncovered },
+    });
   }
 
   return diagnostics;
@@ -321,6 +365,7 @@ function checkTypedErrorData(
   filePath: string | undefined,
   arrayPath: string,
   env: Environment,
+  routing: { kind: string; name: string } = resource,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   // If the union is unbounded we can't narrow data schemas reliably — skip
@@ -350,20 +395,16 @@ function checkTypedErrorData(
     const schemas = applicable.map((c) => dataByCode[c]).filter(Boolean) as Record<string, any>[];
     if (schemas.length === 0) continue;
     const dataSchema = intersectDataSchemas(schemas);
-    // Walk CEL expressions inside this entry's body / headers — only
-    // string-valued fields can contain CEL templates.
-    collectCelStrings(e.body, `${arrayPath}[${i}].body`).forEach((entry) => {
+    // The WHOLE entry, not an enumerated `body` / `headers` pair. An HTTP catch
+    // entry keeps its body at `content[<mime>].body`, so reading `e.body` walked
+    // a field that shape never has and this check was inert for every catch list
+    // in the standard library. Walking the entry also covers `when:` and the
+    // per-MIME header overrides, which are equally places `error.data` is read.
+    collectCelStrings(e, `${arrayPath}[${i}]`).forEach((entry) => {
       diagnostics.push(
-        ...checkCelChainAgainstDataSchema(entry, dataSchema, resource, filePath, env),
+        ...checkCelChainAgainstDataSchema(entry, dataSchema, resource, filePath, env, routing),
       );
     });
-    if (e.headers) {
-      collectCelStrings(e.headers, `${arrayPath}[${i}].headers`).forEach((entry) => {
-        diagnostics.push(
-          ...checkCelChainAgainstDataSchema(entry, dataSchema, resource, filePath, env),
-        );
-      });
-    }
   }
   return diagnostics;
 }
@@ -404,6 +445,14 @@ interface CelString {
 
 function collectCelStrings(value: unknown, path: string): CelString[] {
   const out: CelString[] = [];
+  // A `!cel` sentinel and a `${{ … }}` string are load-equivalent, and the
+  // formatter normalizes to the tag — so recognising only the string form left
+  // this check answering about a spelling no manifest in the repository uses,
+  // while walking the sentinel as a plain object found nothing.
+  if (isTaggedSentinel(value)) {
+    if (value.engine === "cel") out.push({ expr: value.source.trim(), path });
+    return out;
+  }
   if (typeof value === "string") {
     for (const m of value.matchAll(TEMPLATE_REGEX)) {
       out.push({ expr: m[1].trim(), path });
@@ -430,6 +479,7 @@ function checkCelChainAgainstDataSchema(
   resource: { kind: string; name: string },
   filePath: string | undefined,
   env: Environment,
+  routing: { kind: string; name: string } = resource,
 ): AnalysisDiagnostic[] {
   let ast: ASTNode;
   try {
@@ -450,7 +500,7 @@ function checkCelChainAgainstDataSchema(
         code: "CEL_UNKNOWN_FIELD",
         source: SOURCE,
         message: `${resource.kind}/${resource.name}: CEL at '${entry.path}': error.data.${err}`,
-        data: { resource, filePath, path: entry.path },
+        data: { resource: routing, filePath, path: entry.path },
       });
     }
   }
@@ -463,6 +513,31 @@ function checkCelChainAgainstDataSchema(
  *  carrying the legacy `x-telo-step-context` annotation. That is what drives the
  *  resolver's generic step traversal; a definition with `inherit: true` and no
  *  such array has no invocables to inherit from. */
+/** The capabilities whose lifecycle includes a dispatch a caller can catch. On
+ *  every other one a thrown error is a boot-time failure, not a structured
+ *  runtime error for a downstream caller — a provider resolves configuration, a
+ *  type has no instance, a sink is written to directly, and a service or mount
+ *  is STARTED rather than called (what a router renders is not what a router
+ *  throws).
+ *
+ *  The strict half of the kernel's `ResourceDefinitionSchema` rule 8, and it has
+ *  to exist here for the reason every `x-telo-*` accessor has a strict half: the
+ *  kernel refuses at `create()`, which is a boot failure on a manifest that
+ *  passed `telo check` — the static/runtime disagreement this repository treats
+ *  as a defect. The two must agree; a change to either belongs in both.
+ *
+ *  **Reported for a DEPENDENCY's definition too**, unlike `X_TELO_REF_UNRESOLVED`
+ *  and `DEPRECATED_KIND`, which are entry-module-scoped. Those report something a
+ *  consumer can live with — a slot that cannot be checked, a kind that still
+ *  works — so silence costs them nothing and the noise is not theirs to fix.
+ *  This one reports a definition the kernel REFUSES, so the manifest importing it
+ *  cannot start at all: withholding that would replace a `telo check` error with
+ *  an identical boot failure and no earlier warning. The action is a consumer's
+ *  to take (pin another version, report upstream) even though the edit is not.
+ *  Matches the neighbouring `INHERIT_WITHOUT_STEP_CONTEXT`, which is fatal the
+ *  same way. */
+const THROWS_CAPABLE_CAPABILITIES = new Set(["Telo.Invocable", "Telo.Runnable"]);
+
 function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   for (const m of manifests) {
@@ -471,9 +546,29 @@ function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiag
     if (!throws) continue;
     const name = (m.metadata?.name as string | undefined) ?? "<unnamed>";
     const filePath = (m.metadata as { source?: string } | undefined)?.source;
+
+    // Only a DECLARED capability is judged. One inherited through `extends` is
+    // resolved elsewhere, and an unknown one is third-party extensibility the
+    // kernel's schema deliberately leaves open.
+    const capability = (m as Record<string, any>).capability as string | undefined;
+    if (typeof capability === "string" && !THROWS_CAPABLE_CAPABILITIES.has(capability)) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "THROWS_ON_NON_DISPATCH_CAPABILITY",
+        source: SOURCE,
+        message:
+          `Telo.Definition '${name}' declares throws: but its capability is '${capability}'. ` +
+          `A throw union describes what a CALLER can catch, so it is only meaningful on ` +
+          `${[...THROWS_CAPABLE_CAPABILITIES].join(" or ")}; on '${capability}' a thrown error is a ` +
+          `boot-time failure with no caller to render it. The kernel refuses this definition at ` +
+          `create(), so a manifest carrying it cannot start.`,
+        data: { resource: { kind: m.kind, name }, filePath, path: "throws" },
+      });
+      continue;
+    }
     if (throws.inherit === true) {
       const schema = (m as Record<string, any>).schema as Record<string, any> | undefined;
-      if (!schemaHasStepContext(schema)) {
+      if (!schemaDrivesInvocables(schema)) {
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
           code: "INHERIT_WITHOUT_STEP_CONTEXT",
@@ -491,25 +586,25 @@ function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiag
   return diagnostics;
 }
 
-function schemaHasStepContext(schema: Record<string, any> | undefined): boolean {
+function schemaDrivesInvocables(schema: Record<string, any> | undefined): boolean {
   if (!schema || typeof schema !== "object") return false;
   if (isStepSlot(schema)) return true;
   const props = schema.properties;
   if (props && typeof props === "object") {
     for (const v of Object.values(props as Record<string, any>)) {
-      if (schemaHasStepContext(v)) return true;
+      if (schemaDrivesInvocables(v)) return true;
     }
   }
-  if (schema.items && schemaHasStepContext(schema.items)) return true;
+  if (schema.items && schemaDrivesInvocables(schema.items)) return true;
   for (const key of ["oneOf", "anyOf", "allOf"] as const) {
     const arr = schema[key];
     if (Array.isArray(arr)) {
-      for (const sub of arr) if (schemaHasStepContext(sub)) return true;
+      for (const sub of arr) if (schemaDrivesInvocables(sub)) return true;
     }
   }
   if (schema.$defs && typeof schema.$defs === "object") {
     for (const v of Object.values(schema.$defs as Record<string, any>)) {
-      if (schemaHasStepContext(v)) return true;
+      if (schemaDrivesInvocables(v)) return true;
     }
   }
   return false;
@@ -531,8 +626,21 @@ export function validateThrowsCoverage(
   const diagnostics: AnalysisDiagnostic[] = [];
   diagnostics.push(...validateThrowsDeclarations(manifests));
 
+  // A `with:`-scoped declaration is a resource like any other — it has a kind, a
+  // name, and, for a scoped `Http.Server`, a catch list that renders what its
+  // mounts throw. It is simply not in the flat set, so every check here used to
+  // skip it: its own entries went unchecked AND its coverage reached nothing it
+  // encloses. Standing a server up around a test is exactly that shape, so the
+  // sanctioned pattern was the one the pass could not see.
+  //
+  // Discovered through the shared visitor rather than a second scope walk, and
+  // folded into the pool every name is resolved against — a scoped mount whose
+  // target the resolver cannot find reads as an empty union, which reports every
+  // entry of that server's list as naming a code nothing throws.
+  const scoped = collectScopedManifests(manifests, defs, aliases, aliasesByModule, rootModules);
+  const allManifests = [...manifests, ...scoped.map((s) => s.manifest)];
   const resolveCtx = createResolveCtx(
-    manifests,
+    allManifests,
     defs,
     aliases,
     aliasesByModule,
@@ -549,41 +657,174 @@ export function validateThrowsCoverage(
       aliasesByModule,
     );
 
-  for (const manifest of manifests) {
+  // Pass 1 — read every outcome list, and record which resources each scope
+  // list encloses. A scope list has to be known before any site it covers is
+  // judged, so collection and judgement cannot be one loop.
+  const sites: CatchSite[] = [];
+  const scopeOf = new Map<ResourceManifest, ProvenCoverage>();
+  const scopedBy = new Map<ResourceManifest, ScopedManifest>();
+  for (const s of scoped) scopedBy.set(s.manifest, s);
+
+  const definitionFor = (manifest: ResourceManifest) => {
+    // A scoped declaration's kind is written in the alias scope of the module
+    // that declared the ENCLOSING resource; it carries no `metadata.module` of
+    // its own to find one by.
+    const anchor = scopedBy.get(manifest)?.owner ?? manifest;
+    const scopeResolver = scopeResolverFor(anchor);
+    const resolvedKind =
+      scopeResolver?.resolveKind(manifest.kind) ?? aliases.resolveKind(manifest.kind);
+    return defs.resolve(manifest.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
+  };
+
+  const enclosers = buildEnclosers(
+    allManifests,
+    definitionFor,
+    (m) => ((scopedBy.get(m)?.owner ?? m).metadata as { module?: string } | undefined)?.module,
+    resolveCtx,
+  );
+
+  for (const manifest of allManifests) {
     if (!manifest.kind || !manifest.metadata?.name) continue;
     if (manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract") continue;
-    const scopeResolver = scopeResolverFor(manifest);
-    const resolvedKind = scopeResolver?.resolveKind(manifest.kind) ?? aliases.resolveKind(manifest.kind);
-    const definition =
-      defs.resolve(manifest.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
+    // A scoped declaration is reported against the document it is WRITTEN in —
+    // its owner's — at its own position inside that owner's scope array, because
+    // position lookup finds a TOP-LEVEL doc by (kind, name) and a scoped
+    // resource is not one. The message still names the scoped resource, so the
+    // reader is not sent to a resource that has no `catches:` at all.
+    const enclosing = scopedBy.get(manifest);
+    const anchor = enclosing?.owner ?? manifest;
+    const pathPrefix = enclosing ? `${enclosing.path}.` : "";
+    const scopeResolver = scopeResolverFor(anchor);
+    const definition = definitionFor(manifest);
     if (!definition?.schema) continue;
     const resource = { kind: manifest.kind, name: manifest.metadata.name as string };
-    const filePath = (manifest.metadata as { source?: string } | undefined)?.source;
+    const routing = enclosing
+      ? { kind: anchor.kind, name: anchor.metadata!.name as string }
+      : resource;
+    const filePath = (anchor.metadata as { source?: string } | undefined)?.source;
 
     collectOutcomeLists(
       manifest,
       definition.schema,
       (ret) => {
         diagnostics.push(
-          ...checkCatchAllPlacement(ret.entries, resource, "returns", filePath, ret.arrayPath),
+          ...checkCatchAllPlacement(
+            ret.entries,
+            resource,
+            "returns",
+            filePath,
+            `${pathPrefix}${ret.arrayPath}`,
+            routing,
+          ),
         );
       },
       (entries, arrayPath, siblingData, catchesFor) => {
-        diagnostics.push(
-          ...checkCatchAllPlacement(entries, resource, "catches", filePath, arrayPath),
-        );
-        const handlerRef = resolveHandlerRef(siblingData[catchesFor]);
-        const union = handlerRefUnion(handlerRef, manifests, resolveCtx, scopeResolver);
-        diagnostics.push(
-          ...checkCatchesCoverage(entries, union, resource, filePath, arrayPath, env, handlerRef),
-        );
-        diagnostics.push(
-          ...checkTypedErrorData(entries, union, resource, filePath, arrayPath, env),
-        );
+        const site: CatchSite = {
+          manifest,
+          definition,
+          resource,
+          routing,
+          filePath,
+          entries,
+          arrayPath: `${pathPrefix}${arrayPath}`,
+          scopeResolver,
+          handlerRef: catchesFor === "" ? null : resolveHandlerRef(siblingData[catchesFor]),
+          isScope: catchesFor === "",
+        };
+        sites.push(site);
+        if (site.isScope) scopeOf.set(manifest, provenCoverage(entries, env));
       },
     );
   }
+
+  const coverageMemo = new Map<ResourceManifest, ProvenCoverage>();
+  const scopeCoverageFor = (manifest: ResourceManifest): ProvenCoverage =>
+    enclosingCoverage(manifest, scopeOf, enclosers, coverageMemo);
+
+  // Pass 2 — judge each list against its own denominator, and each dispatch site
+  // against everything that can render its throws.
+  for (const site of sites) {
+    diagnostics.push(
+      ...checkCatchAllPlacement(
+        site.entries,
+        site.resource,
+        "catches",
+        site.filePath,
+        site.arrayPath,
+        site.routing,
+      ),
+    );
+    const union = site.isScope
+      ? resolveScopeUnion(site.manifest, site.definition, resolveCtx)
+      : handlerRefUnion(site.handlerRef, allManifests, resolveCtx, site.scopeResolver);
+    diagnostics.push(
+      ...checkUndeclaredCodes(
+        site.entries,
+        union,
+        site.resource,
+        site.filePath,
+        site.arrayPath,
+        env,
+        site.isScope
+          ? "the throw union of everything this resource drives"
+          : "the handler's declared throw union",
+        site.routing,
+      ),
+    );
+    diagnostics.push(
+      ...checkTypedErrorData(
+        site.entries,
+        union,
+        site.resource,
+        site.filePath,
+        site.arrayPath,
+        env,
+        site.routing,
+      ),
+    );
+    if (site.isScope) continue;
+
+    const own = provenCoverage(site.entries, env);
+    const scope = scopeCoverageFor(site.manifest);
+    const covered: ProvenCoverage = {
+      codes: new Set([...own.codes, ...scope.codes]),
+      hasCatchAll: own.hasCatchAll || scope.hasCatchAll,
+    };
+    diagnostics.push(
+      ...checkCoverage(
+        union,
+        site.resource,
+        site.filePath,
+        site.arrayPath,
+        site.handlerRef,
+        covered,
+        site.routing,
+      ),
+    );
+  }
+
   return diagnostics;
+}
+
+/** One `catches:` list in one manifest, with everything needed to judge it. */
+interface CatchSite {
+  manifest: ResourceManifest;
+  definition: ResourceDefinition;
+  /** Named in the MESSAGE — the resource whose list this is. */
+  resource: { kind: string; name: string };
+  /** Named in `data.resource`, which is how position lookup finds a document:
+   *  it searches TOP-LEVEL docs by (kind, name), so a scoped resource routes
+   *  through its owner while the message still names the scoped one. */
+  routing: { kind: string; name: string };
+  filePath: string | undefined;
+  entries: OutcomeEntry[];
+  arrayPath: string;
+  scopeResolver: AliasResolver | undefined;
+  /** The handler this list renders throws for; null for a scope list. */
+  handlerRef: { kind: string; name?: string } | null;
+  /** `x-telo-catches-for: ""` — the list covers everything its resource drives
+   *  and owes coverage of nothing on its own. */
+  isScope: boolean;
 }
 
 /** Resolve a handler ref's effective throw union. Prefers the named manifest

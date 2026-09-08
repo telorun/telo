@@ -94,6 +94,21 @@ export interface RefSlot {
    *  that carries this call's arguments. Replaces
    *  `x-telo-topology-role: inputs`. */
   inputs?: string;
+  /** Throws raised by the target — or by anything the target drives — surface
+   *  through the DECLARING resource, so its own throws union includes the
+   *  target's and its catch scope encloses the target's.
+   *
+   *  It exists because the relation is real where `use` correctly says nothing:
+   *  `Http.Server.mounts[].mount` is a `dependency` (the server holds the mount
+   *  and calls a convention method on it — control reaches a route through the
+   *  MOUNT's own `trigger.inbound` slot, not through this one), yet a throw from
+   *  that route is exactly what the server renders. Following every `dependency`
+   *  edge instead would drag a connection's throws into a router's denominator.
+   *
+   *  Declared by the kind that HOLDS, because only it knows the throws surface
+   *  through it, and it is the same fact its runtime establishes by rethrowing —
+   *  so the annotation and the behaviour cannot disagree. */
+  throwsThrough?: boolean;
   /** `x-telo-inline: true` on the slot or any `anyOf` branch — accepts an inline
    *  `{kind, ...config}` definition, not only a `!ref`. */
   inline: boolean;
@@ -228,6 +243,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   const uses = new Set<RefUse>();
   let useCases: RefUseCases | undefined;
   let inputs: string | undefined;
+  let throwsThrough = false;
 
   for (const carrier of nodes) {
     const annotation = carrier["x-telo-ref"];
@@ -239,6 +255,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
     for (const use of normalizeUses(obj.use)) uses.add(use);
     useCases ??= readUseCases(obj.use);
     if (typeof obj.inputs === "string") inputs ??= obj.inputs;
+    if (obj.throwsThrough === true) throwsThrough = true;
   }
 
   const slot: RefSlot = {
@@ -249,6 +266,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   };
   if (useCases) slot.useCases = useCases;
   if (inputs !== undefined) slot.inputs = inputs;
+  if (throwsThrough) slot.throwsThrough = true;
   return slot;
 }
 
@@ -274,6 +292,7 @@ export function refSlotAnnotation(slot: RefSlot): Record<string, unknown> {
   else if (slot.uses.length === 1) annotation.use = slot.uses[0];
   else if (slot.uses.length > 1) annotation.use = slot.uses;
   if (slot.inputs !== undefined) annotation.inputs = slot.inputs;
+  if (slot.throwsThrough) annotation.throwsThrough = true;
   return annotation;
 }
 

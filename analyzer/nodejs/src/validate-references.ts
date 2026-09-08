@@ -562,14 +562,44 @@ export function validateReferences(
 
           for (const { value: fieldValue, path: concretePath } of resolveFieldEntries(r, fieldPath)) {
             if (fieldValue == null) continue;
-            const issues = registry.validateWithRefs(fieldValue, subSchema as Record<string, any>);
+            // CEL leaves become schema-shaped placeholders first, exactly as the
+            // sibling-ref branch below does and for the same reason: a slot
+            // anchored at a shared value-shape is overwhelmingly written as
+            // expressions, so validating it raw reports every one of them as a
+            // type error and the check fires only on the literal case nobody
+            // writes. Omitting it here made one annotation mean two different
+            // things depending on which branch resolved it — a `when:` typed
+            // `boolean` accepted a `!cel` at a route's inline slot and rejected
+            // the identical expression at a slot anchored on the carrier that
+            // declares that very shape.
+            const substituted = substituteCelFields(
+              fieldValue,
+              subSchema as Record<string, any>,
+            );
+            // Anchored at the offending node INSIDE the value, not at the slot:
+            // a `returns:` list is an array of entries, and reporting every one
+            // of its issues on the `returns:` line puts three diagnostics on one
+            // line and none on the entry that is wrong.
+            const issues = registry.validateResourceConfig(
+              substituted,
+              subSchema as Record<string, any>,
+            );
             for (const issue of issues) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 code: "DEPENDENT_SCHEMA_MISMATCH",
                 source: SOURCE,
-                message: `${resourceLabel}: '${concretePath}' does not match schema from '${anchorName}${jsonPointer}': ${issue}`,
-                data: { resource: resourceData, filePath, path: concretePath },
+                message: `${resourceLabel}: '${concretePath}' does not match schema from '${anchorName}${jsonPointer}': ${issue.message}`,
+                data: {
+                  resource: resourceData,
+                  filePath,
+                  // An index-first sub-path (`[0].content`) joins with no dot.
+                  path: !issue.path
+                    ? concretePath
+                    : issue.path.startsWith("[")
+                      ? `${concretePath}${issue.path}`
+                      : `${concretePath}.${issue.path}`,
+                },
               });
             }
           }

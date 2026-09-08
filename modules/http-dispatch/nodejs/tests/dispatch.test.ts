@@ -295,9 +295,12 @@ describe("dispatchReturns", () => {
 });
 
 describe("dispatchCatches", () => {
-  it("renders a default 500 envelope when no catches list matches", async () => {
-    const { sink, result } = makeInMemorySink();
-    await dispatchCatches(
+  it("declines, writing nothing, when no entry matches", async () => {
+    // The caller owns what an unmatched throw means — try the next rung of the
+    // scope ladder, or render the last-resort envelope. Answering it here made
+    // every outer rung unreachable, because nothing ever escaped the innermost.
+    const { sink } = makeInMemorySink();
+    const rendered = await dispatchCatches(
       undefined,
       { code: "Internal", message: "boom" },
       {},
@@ -306,12 +309,21 @@ describe("dispatchCatches", () => {
       noopValidate,
       sink,
     );
-    const captured = await result;
-    expect(captured.status).toBe(500);
-    expect(captured.headers["content-type"]).toBe("application/json");
-    expect(JSON.parse(new TextDecoder().decode(captured.body))).toEqual({
-      error: { code: "Internal", message: "boom" },
-    });
+    expect(rendered).toBe(false);
+  });
+
+  it("reports that it rendered when an entry matches", async () => {
+    const { sink } = makeInMemorySink();
+    const rendered = await dispatchCatches(
+      [{ status: 503, content: {} }],
+      { code: "Internal", message: "boom" },
+      {},
+      undefined,
+      makeModuleContext(),
+      noopValidate,
+      sink,
+    );
+    expect(rendered).toBe(true);
   });
 
   it("renders a matched catch with its content body", async () => {

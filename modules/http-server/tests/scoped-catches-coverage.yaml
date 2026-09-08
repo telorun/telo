@@ -1,0 +1,84 @@
+kind: Telo.Application
+metadata:
+  name: ScopedCatchesCoverageTests
+  version: 1.0.0
+  description: |
+    The static half of the catch ladder: which list answers for which dispatch
+    site, and what each list's own denominator is. The first case is the one that
+    matters most — judged per list rather than per site, every route that leaves
+    its rendering to a scope reports as uncovered, which would fire on precisely
+    the manifests a scope list exists to enable.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref testRouterCoversItsRoutes
+  - !ref testServerCoversMountedRoutes
+  - !ref testScopeEntryUndeclaredCode
+  - !ref testScopeCatchCannotReadParams
+  - !ref testServerCatchCannotReadParams
+  - !ref testScopeCatchAllCoversUnbounded
+  - !ref testScopeCatchTypesErrorData
+---
+# A route declaring no `catches:` under a router that renders its throw is
+# completely covered.
+kind: Assert.Manifest
+metadata: { name: testRouterCoversItsRoutes }
+source: ./__fixtures__/scope-covers-routes.yaml
+expect:
+  errors: []
+---
+# Coverage crosses the `throwsThrough` mount edge: the server answers for a route
+# two resources away, with neither the route nor the router saying anything.
+kind: Assert.Manifest
+metadata: { name: testServerCoversMountedRoutes }
+source: ./__fixtures__/server-scope-covers-mounts.yaml
+expect:
+  errors: []
+---
+# A scope list owes coverage of nothing, but its entries are still checked
+# against its own denominator — everything the resource drives.
+kind: Assert.Manifest
+metadata: { name: testScopeEntryUndeclaredCode }
+source: ./__fixtures__/scope-entry-undeclared-code.yaml
+expect:
+  errors:
+    - code: UNDECLARED_THROW_CODE
+      message: "'BOGUS'"
+---
+# A scope entry gets the request minus the per-route typing, so reaching for a
+# route's `params` is a diagnostic rather than a run-time unknown variable.
+kind: Assert.Manifest
+metadata: { name: testScopeCatchCannotReadParams }
+source: ./__fixtures__/scope-catch-request-params.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "request.params"
+---
+# The same narrowing one rung further out — a server is no closer to any one
+# route than its router is.
+kind: Assert.Manifest
+metadata: { name: testServerCatchCannotReadParams }
+source: ./__fixtures__/server-scope-catch-request-params.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "request.params"
+---
+# One catch-all on the router answers an unenumerable union for every route it
+# mounts, which is the shape an author reaches for rather than repeating it.
+kind: Assert.Manifest
+metadata: { name: testScopeCatchAllCoversUnbounded }
+source: ./__fixtures__/scope-catchall-covers-unbounded.yaml
+expect:
+  errors: []
+---
+# `error.data` narrows to the matched code's declared payload in a scope list
+# exactly as in a route's, so a misspelled field is reported on its own line.
+kind: Assert.Manifest
+metadata: { name: testScopeCatchTypesErrorData }
+source: ./__fixtures__/scope-catch-error-data.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "error.data.'holdre'"
