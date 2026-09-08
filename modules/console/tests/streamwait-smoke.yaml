@@ -17,15 +17,15 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestForwardsItems
-  - !ref TestEmptyStream
-  - !ref TestSourceErrorBeforeFirstItem
-  - !ref TestCancellationPropagatesUpstream
+  - !ref testForwardsItems
+  - !ref testEmptyStream
+  - !ref testSourceErrorBeforeFirstItem
+  - !ref testCancellationPropagatesUpstream
 ---
 # Source that yields three string items with a small delay before the first
 # (so the animation has time to paint at least one frame).
 kind: JS.Script
-metadata: { name: DelayedSource }
+metadata: { name: delayedSource }
 code: |
   async function main() {
     async function* gen() {
@@ -38,7 +38,7 @@ code: |
   }
 ---
 kind: JS.Script
-metadata: { name: EmptySource }
+metadata: { name: emptySource }
 code: |
   async function main() {
     async function* gen() { /* yields nothing */ }
@@ -50,7 +50,7 @@ code: |
 # cell BEFORE propagating the error so the user doesn't see a
 # half-painted spinner next to the failure output.
 kind: JS.Script
-metadata: { name: ImmediateErrorSource }
+metadata: { name: immediateErrorSource }
 code: |
   async function main() {
     async function* gen() {
@@ -65,7 +65,7 @@ code: |
 # clear) by joining everything and checking the *contents* against expected
 # substrings — bytes after the clear sequence are the forwarded items.
 kind: JS.Script
-metadata: { name: CollectChunks }
+metadata: { name: collectChunks }
 code: |
   async function main({ input }) {
     const chunks = [];
@@ -77,26 +77,26 @@ code: |
   }
 ---
 kind: Console.StreamWait
-metadata: { name: Wait }
+metadata: { name: wait }
 prefix: "loading: "
 intervalMs: 50
 ---
 kind: Run.Sequence
-metadata: { name: TestForwardsItems }
+metadata: { name: testForwardsItems }
 steps:
-  - name: Source
-    invoke: !ref DelayedSource
-  - name: Wait
+  - name: source
+    invoke: !ref delayedSource
+  - name: wait
     inputs:
-      input: "${{ steps.Source.result.output }}"
-    invoke: !ref Wait
-  - name: Collect
+      input: "${{ steps.source.result.output }}"
+    invoke: !ref wait
+  - name: collect
     inputs:
-      input: "${{ steps.Wait.result.output }}"
-    invoke: !ref CollectChunks
-  - name: AssertContents
+      input: "${{ steps.wait.result.output }}"
+    invoke: !ref collectChunks
+  - name: assertContents
     inputs:
-      joined: "${{ steps.Collect.result.joined }}"
+      joined: "${{ steps.collect.result.joined }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -111,21 +111,21 @@ steps:
 # Empty source: StreamWait yields prefix + reserved cell + first frame +
 # clear, then ends without forwarding any items. No crash, output drains.
 kind: Run.Sequence
-metadata: { name: TestEmptyStream }
+metadata: { name: testEmptyStream }
 steps:
-  - name: EmptySrc
-    invoke: !ref EmptySource
-  - name: Wait
+  - name: emptySrc
+    invoke: !ref emptySource
+  - name: wait
     inputs:
-      input: "${{ steps.EmptySrc.result.output }}"
-    invoke: !ref Wait
-  - name: Collect
+      input: "${{ steps.emptySrc.result.output }}"
+    invoke: !ref wait
+  - name: collect
     inputs:
-      input: "${{ steps.Wait.result.output }}"
-    invoke: !ref CollectChunks
-  - name: AssertEmptyReached
+      input: "${{ steps.wait.result.output }}"
+    invoke: !ref collectChunks
+  - name: assertEmptyReached
     inputs:
-      joined: "${{ steps.Collect.result.joined }}"
+      joined: "${{ steps.collect.result.joined }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -141,22 +141,22 @@ steps:
 #      StreamWait wiped the spinner before the error fired).
 #   2. The error reaches the catch block with the source's original message.
 kind: Run.Sequence
-metadata: { name: TestSourceErrorBeforeFirstItem }
+metadata: { name: testSourceErrorBeforeFirstItem }
 steps:
-  - name: ErrSrc
-    invoke: !ref ImmediateErrorSource
-  - name: ErrWait
+  - name: errSrc
+    invoke: !ref immediateErrorSource
+  - name: errWait
     inputs:
-      input: "${{ steps.ErrSrc.result.output }}"
-    invoke: !ref Wait
-  - name: ErrTried
+      input: "${{ steps.errSrc.result.output }}"
+    invoke: !ref wait
+  - name: errTried
     try:
-      - name: ErrCollect
+      - name: errCollect
         inputs:
-          input: "${{ steps.ErrWait.result.output }}"
-        invoke: !ref CollectChunks
+          input: "${{ steps.errWait.result.output }}"
+        invoke: !ref collectChunks
     catch:
-      - name: AssertErrCaught
+      - name: assertErrCaught
         inputs:
           message: "${{ error.message }}"
         invoke:
@@ -172,7 +172,7 @@ steps:
 # State is communicated via globalThis because JS.Script re-evaluates its
 # user code each invoke (closures don't persist across calls).
 kind: JS.Script
-metadata: { name: TrackedSource }
+metadata: { name: trackedSource }
 code: |
   async function main() {
     globalThis.__sw_returnCalled = false;
@@ -193,7 +193,7 @@ code: |
 # triggers iter.return() on the StreamWait output, which must in turn
 # call reader.return() on the upstream source iterator.
 kind: JS.Script
-metadata: { name: TakeUntilXAndBreak }
+metadata: { name: takeUntilXAndBreak }
 code: |
   async function main({ input }) {
     let received = 0;
@@ -205,28 +205,28 @@ code: |
   }
 ---
 kind: JS.Script
-metadata: { name: ReadCancellationFlag }
+metadata: { name: readCancellationFlag }
 code: |
   async function main() {
     return { returnCalled: !!globalThis.__sw_returnCalled };
   }
 ---
 kind: Run.Sequence
-metadata: { name: TestCancellationPropagatesUpstream }
+metadata: { name: testCancellationPropagatesUpstream }
 steps:
-  - name: TrackedSrc
-    invoke: !ref TrackedSource
-  - name: WrapWait
-    inputs: { input: "${{ steps.TrackedSrc.result.output }}" }
-    invoke: !ref Wait
-  - name: BreakEarly
-    inputs: { input: "${{ steps.WrapWait.result.output }}" }
-    invoke: !ref TakeUntilXAndBreak
-  - name: ReadFlag
-    invoke: !ref ReadCancellationFlag
-  - name: AssertCancellationPropagated
+  - name: trackedSrc
+    invoke: !ref trackedSource
+  - name: wrapWait
+    inputs: { input: "${{ steps.trackedSrc.result.output }}" }
+    invoke: !ref wait
+  - name: breakEarly
+    inputs: { input: "${{ steps.wrapWait.result.output }}" }
+    invoke: !ref takeUntilXAndBreak
+  - name: readFlag
+    invoke: !ref readCancellationFlag
+  - name: assertCancellationPropagated
     inputs:
-      returnCalled: "${{ steps.ReadFlag.result.returnCalled }}"
+      returnCalled: "${{ steps.readFlag.result.returnCalled }}"
     invoke:
       kind: Assert.Schema
       schema:

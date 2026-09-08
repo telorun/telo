@@ -5,14 +5,14 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestCapabilityShadowsExtends
+  - !ref testCapabilityShadowsExtends
 ---
 # Asserts that `capability: <UserAbstract>` emits CAPABILITY_SHADOWS_EXTENDS (warning).
 # Builtin lifecycle capabilities (Telo.Invocable, etc.) must NOT trigger this — verified
 # implicitly since most fixtures declare `capability: Telo.Invocable` without complaint.
 kind: Assert.Manifest
 metadata:
-  name: TestCapabilityShadowsExtends
+  name: testCapabilityShadowsExtends
 source: ./__fixtures__/capability-shadows-extends.yaml
 expect:
   warnings:

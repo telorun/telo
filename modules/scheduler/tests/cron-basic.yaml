@@ -15,42 +15,42 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestCron
+  - !ref testCron
 ---
 kind: CacheMemory.Store
-metadata: { name: Counters }
+metadata: { name: counters }
 ---
 kind: Cache.Entry
-metadata: { name: Put }
-store: !ref Counters
+metadata: { name: put }
+store: !ref counters
 ttl: "60s"
 ---
 kind: Cache.Lookup
-metadata: { name: Get }
-store: !ref Counters
+metadata: { name: get }
+store: !ref counters
 ---
 kind: Run.Sequence
 metadata:
-  name: Bump
+  name: bump
 steps:
   - name: read
-    invoke: !ref Get
+    invoke: !ref get
     inputs: { key: cron }
   - name: write
-    invoke: !ref Put
+    invoke: !ref put
     inputs:
       key: cron
       value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
 ---
 kind: Run.Sequence
 metadata:
-  name: TestCron
+  name: testCron
 with:
   - kind: Schedule.Cron
     metadata: { name: EverySecond }
     cron: "* * * * * *"
     timezone: UTC
-    invoke: !ref Bump
+    invoke: !ref bump
 targets:
   - !ref EverySecond
 steps:
@@ -60,7 +60,7 @@ steps:
       duration: "2500ms"
       value: {}
   - name: read
-    invoke: !ref Get
+    invoke: !ref get
     inputs: { key: cron }
   - name: verifyFired
     inputs:

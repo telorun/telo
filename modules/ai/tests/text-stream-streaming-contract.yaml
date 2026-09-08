@@ -18,46 +18,46 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestNdjson
-  - !ref TestSse
-  - !ref TestPlain
+  - !ref testNdjson
+  - !ref testSse
+  - !ref testPlain
 ---
 kind: AiEcho.EchoModelStream
-metadata: { name: Echo }
+metadata: { name: echo }
 ---
 kind: Ai.TextStream
-metadata: { name: ChatStream }
-model: !ref Echo
+metadata: { name: chatStream }
+model: !ref echo
 ---
 kind: Ndjson.Encoder
-metadata: { name: NdjsonEnc }
+metadata: { name: ndjsonEnc }
 ---
 kind: Sse.Encoder
-metadata: { name: SseEnc }
+metadata: { name: sseEnc }
 ---
 kind: PlainText.Encoder
-metadata: { name: PlainEnc }
+metadata: { name: plainEnc }
 ---
 kind: PlainText.Decoder
-metadata: { name: TextDec }
+metadata: { name: textDec }
 ---
 kind: Run.Sequence
-metadata: { name: TestNdjson }
+metadata: { name: testNdjson }
 steps:
-  - name: NdjsonStream
+  - name: ndjsonStream
     inputs: { prompt: "hi" }
-    invoke: !ref ChatStream
-  - name: NdjsonEncode
+    invoke: !ref chatStream
+  - name: ndjsonEncode
     inputs:
-      input: "${{ steps.NdjsonStream.result.output }}"
-    invoke: !ref NdjsonEnc
-  - name: NdjsonDecode
+      input: "${{ steps.ndjsonStream.result.output }}"
+    invoke: !ref ndjsonEnc
+  - name: ndjsonDecode
     inputs:
-      input: "${{ steps.NdjsonEncode.result.output }}"
-    invoke: !ref TextDec
-  - name: NdjsonAssert
+      input: "${{ steps.ndjsonEncode.result.output }}"
+    invoke: !ref textDec
+  - name: ndjsonAssert
     inputs:
-      text: "${{ steps.NdjsonDecode.result.text }}"
+      text: "${{ steps.ndjsonDecode.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -71,22 +71,22 @@ steps:
         required: [ text ]
 ---
 kind: Run.Sequence
-metadata: { name: TestSse }
+metadata: { name: testSse }
 steps:
-  - name: SseStream
+  - name: sseStream
     inputs: { prompt: "hi" }
-    invoke: !ref ChatStream
-  - name: SseEncode
+    invoke: !ref chatStream
+  - name: sseEncode
     inputs:
-      input: "${{ steps.SseStream.result.output }}"
-    invoke: !ref SseEnc
-  - name: SseDecode
+      input: "${{ steps.sseStream.result.output }}"
+    invoke: !ref sseEnc
+  - name: sseDecode
     inputs:
-      input: "${{ steps.SseEncode.result.output }}"
-    invoke: !ref TextDec
-  - name: SseAssert
+      input: "${{ steps.sseEncode.result.output }}"
+    invoke: !ref textDec
+  - name: sseAssert
     inputs:
-      text: "${{ steps.SseDecode.result.text }}"
+      text: "${{ steps.sseDecode.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -97,22 +97,22 @@ steps:
         required: [ text ]
 ---
 kind: Run.Sequence
-metadata: { name: TestPlain }
+metadata: { name: testPlain }
 steps:
-  - name: PlainStream
+  - name: plainStream
     inputs: { prompt: "hi" }
-    invoke: !ref ChatStream
-  - name: PlainEncode
+    invoke: !ref chatStream
+  - name: plainEncode
     inputs:
-      input: "${{ steps.PlainStream.result.output }}"
-    invoke: !ref PlainEnc
-  - name: PlainDecode
+      input: "${{ steps.plainStream.result.output }}"
+    invoke: !ref plainEnc
+  - name: plainDecode
     inputs:
-      input: "${{ steps.PlainEncode.result.output }}"
-    invoke: !ref TextDec
-  - name: PlainAssert
+      input: "${{ steps.plainEncode.result.output }}"
+    invoke: !ref textDec
+  - name: plainAssert
     inputs:
-      text: "${{ steps.PlainDecode.result.text }}"
+      text: "${{ steps.plainDecode.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:

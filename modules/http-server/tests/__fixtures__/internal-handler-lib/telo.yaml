@@ -4,7 +4,7 @@ metadata:
   version: 1.0.0
   description: |
     Regression fixture for cross-import handler injection. Defines an Http.Api
-    (`Api`) whose route handler is a `!ref` to a library-INTERNAL Run.Value
+    (`api`) whose route handler is a `!ref` to a library-INTERNAL Run.Value
     (`Greet`). The handler's module (run) is imported only HERE, never by
     the consumer — so the consumer preloads the Http.Api controller (it imports
     http-server) but NOT the handler's controller. Mounting this Api must still
@@ -14,10 +14,10 @@ imports:
   Run: ../../../../run
 exports:
   resources:
-    - Api
+    - api
 ---
 kind: Run.Value
-metadata: { name: Greet }
+metadata: { name: greet }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -28,7 +28,7 @@ value:
   message: !cel "'Hello ' + inputs.name + '!'"
 ---
 kind: Http.Api
-metadata: { name: Api }
+metadata: { name: api }
 routes:
   - request:
       path: /greet
@@ -39,7 +39,7 @@ routes:
           properties:
             name: { type: string }
           required: [ name ]
-    handler: !ref Greet
+    handler: !ref greet
     inputs:
       name: "${{ request.query.name }}"
     returns:

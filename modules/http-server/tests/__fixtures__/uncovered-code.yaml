@@ -10,7 +10,7 @@ imports:
 # covers A but neither B nor a catch-all → UNCOVERED_THROW_CODE on B.
 kind: Run.Sequence
 metadata:
-  name: ThrowsAOrB
+  name: throwsAOrB
 steps:
   - name: branch
     if: "${{ true }}"
@@ -27,12 +27,12 @@ steps:
 ---
 kind: Http.Api
 metadata:
-  name: UncoveredApi
+  name: uncoveredApi
 routes:
   - request:
       path: /x
       method: GET
-    handler: !ref ThrowsAOrB
+    handler: !ref throwsAOrB
     returns:
       - status: 200
         content:

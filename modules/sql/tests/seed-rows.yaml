@@ -10,24 +10,24 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestPartial
-  - !ref TestMisspelled
-  - !ref TestWrongType
-  - !ref TestUnknownKey
-  - !ref TestNoIdentity
+  - !ref testPartial
+  - !ref testMisspelled
+  - !ref testWrongType
+  - !ref testUnknownKey
+  - !ref testNoIdentity
 ---
 # A row omitting a NON-key column passes: the projection emits no `required`, so
 # the insert takes the column default and an update leaves it alone.
 kind: Assert.Manifest
 metadata:
-  name: TestPartial
+  name: testPartial
 source: ./__fixtures__/seed-rows/partial.yaml
 expect:
   errors: []
 ---
 kind: Assert.Manifest
 metadata:
-  name: TestMisspelled
+  name: testMisspelled
 source: ./__fixtures__/seed-rows/misspelled.yaml
 expect:
   errors:
@@ -36,7 +36,7 @@ expect:
 ---
 kind: Assert.Manifest
 metadata:
-  name: TestWrongType
+  name: testWrongType
 source: ./__fixtures__/seed-rows/wrong-type.yaml
 expect:
   errors:
@@ -48,7 +48,7 @@ expect:
 # the position `SQL_INDEX_UNKNOWN_COLUMN` already takes one field over.
 kind: Assert.Manifest
 metadata:
-  name: TestUnknownKey
+  name: testUnknownKey
 source: ./__fixtures__/seed-rows/unknown-key.yaml
 expect:
   errors:
@@ -57,7 +57,7 @@ expect:
 ---
 kind: Assert.Manifest
 metadata:
-  name: TestNoIdentity
+  name: testNoIdentity
 source: ./__fixtures__/seed-rows/no-identity.yaml
 expect:
   errors:

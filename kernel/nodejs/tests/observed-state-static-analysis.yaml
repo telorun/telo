@@ -10,15 +10,15 @@ metadata:
 imports:
   Assert: ../../../modules/assert
 targets:
-  - !ref StartupRead
-  - !ref NeverRun
-  - !ref Typo
-  - !ref RequiredForbidden
-  - !ref CrossModuleTypo
+  - !ref startupRead
+  - !ref neverRun
+  - !ref typo
+  - !ref requiredForbidden
+  - !ref crossModuleTypo
 ---
 kind: Assert.Manifest
 metadata:
-  name: StartupRead
+  name: startupRead
 source: ./__fixtures__/observed-state-startup-read.yaml
 expect:
   errors:
@@ -27,7 +27,7 @@ expect:
 ---
 kind: Assert.Manifest
 metadata:
-  name: NeverRun
+  name: neverRun
 source: ./__fixtures__/observed-state-never-run.yaml
 expect:
   errors:
@@ -36,7 +36,7 @@ expect:
 ---
 kind: Assert.Manifest
 metadata:
-  name: Typo
+  name: typo
 source: ./__fixtures__/observed-state-typo.yaml
 expect:
   errors:
@@ -45,7 +45,7 @@ expect:
 ---
 kind: Assert.Manifest
 metadata:
-  name: RequiredForbidden
+  name: requiredForbidden
 source: ./__fixtures__/observed-state-required.yaml
 expect:
   errors:
@@ -56,7 +56,7 @@ expect:
 # import's exported instances are typed under `resources.<Alias>.<name>`.
 kind: Assert.Manifest
 metadata:
-  name: CrossModuleTypo
+  name: crossModuleTypo
 source: ./__fixtures__/observed-state-cross-module-typo.yaml
 expect:
   errors:

@@ -11,19 +11,19 @@ metadata:
 imports:
   Stream: ../../../stream
 targets:
-  - name: Source
-    invoke: !ref Src
+  - name: source
+    invoke: !ref src
     inputs:
       items: [a, b]
-  - name: Drain
-    invoke: !ref Sink
+  - name: drain
+    invoke: !ref sink
     inputs:
-      input: !cel "steps.Source.result.output"
+      input: !cel "steps.source.result.output"
     retry:
       attempts: 3
 ---
 kind: Stream.Of
-metadata: { name: Src }
+metadata: { name: src }
 ---
 kind: Stream.Collect
-metadata: { name: Sink }
+metadata: { name: sink }

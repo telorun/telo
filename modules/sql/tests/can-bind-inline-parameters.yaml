@@ -8,44 +8,44 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestInlineBinding
-  - !ref TestSqlPlusBindingsRejected
+  - !ref testInlineBinding
+  - !ref testSqlPlusBindingsRejected
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 kind: Run.Sequence
 metadata:
-  name: TestInlineBinding
+  name: testInlineBinding
 steps:
-  - name: CreateTable
+  - name: createTable
     inputs:
       sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
   # Inline interpolation: the apostrophe in the value would break the statement
   # if it were spliced into the SQL text. It must be bound as a parameter.
-  - name: InsertInline
+  - name: insertInline
     inputs:
       sql: !sql "INSERT INTO users (id, name) VALUES (${{ 1 }}, ${{ \"O'Brien\" }})"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: SelectInline
+  - name: selectInline
     inputs:
       sql: !sql "SELECT name FROM users WHERE id = ${{ 1 }}"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
 
-  - name: AssertInline
+  - name: assertInline
     inputs:
-      rows: "${{ steps.SelectInline.result.rows }}"
+      rows: "${{ steps.selectInline.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -62,7 +62,7 @@ steps:
                   const: "O'Brien"
 
   # Escape hatch: hand-written placeholder + explicit bindings still works.
-  - name: InsertBindings
+  - name: insertBindings
     inputs:
       sql: "INSERT INTO users (id, name) VALUES (?, ?)"
       bindings:
@@ -70,19 +70,19 @@ steps:
         - !cel "'Alice'"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: SelectBindings
+  - name: selectBindings
     inputs:
       sql: "SELECT name FROM users WHERE id = ?"
       bindings: [!cel "2"]
     invoke:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
 
-  - name: AssertBindings
+  - name: assertBindings
     inputs:
-      rows: "${{ steps.SelectBindings.result.rows }}"
+      rows: "${{ steps.selectBindings.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -101,18 +101,18 @@ steps:
 # Combining a !sql template with an explicit bindings array is rejected.
 kind: Run.Sequence
 metadata:
-  name: TestSqlPlusBindingsRejected
+  name: testSqlPlusBindingsRejected
 steps:
-  - name: Try
+  - name: try
     try:
-      - name: Invoke
+      - name: invoke
         inputs:
           sql: !sql "SELECT name FROM users WHERE id = ${{ 1 }}"
           bindings: [!cel "1"]
         invoke:
           kind: Sql.Query
-          connection: !ref Db
-      - name: NotReached
+          connection: !ref db
+      - name: notReached
         inputs: { note: "should not get here" }
         invoke:
           kind: Assert.Schema
@@ -121,7 +121,7 @@ steps:
             properties: { note: { const: "UNREACHABLE" } }
             required: [note]
     catch:
-      - name: AssertCaught
+      - name: assertCaught
         inputs:
           code: "${{ error.code }}"
         invoke:

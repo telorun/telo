@@ -12,16 +12,16 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestIntKeys
+  - !ref testIntKeys
 ---
 kind: Collection.Distinct
-metadata: { name: DistinctByTagCount }
+metadata: { name: distinctByTagCount }
 collection: !cel "inputs.items"
 key:
   n: !cel "size(item.tags)"
 ---
 kind: Collection.Join
-metadata: { name: JoinByTagCount }
+metadata: { name: joinByTagCount }
 left: !cel "inputs.left"
 right: !cel "inputs.right"
 on:
@@ -32,25 +32,25 @@ select:
   label: !cel "right.label"
 ---
 kind: Run.Sequence
-metadata: { name: TestIntKeys }
+metadata: { name: testIntKeys }
 steps:
-  - name: Distinct
-    invoke: !ref DistinctByTagCount
+  - name: distinct
+    invoke: !ref distinctByTagCount
     inputs:
       items:
         - { id: a, tags: [x] }
         - { id: b, tags: [x, y] }
         - { id: c, tags: [z] }
-  - name: AssertDistinct
+  - name: assertDistinct
     inputs:
-      actual: !cel "steps.Distinct.result.items"
+      actual: !cel "steps.distinct.result.items"
       expected:
         - { id: a, tags: [x] }
         - { id: b, tags: [x, y] }
     invoke:
       kind: Assert.Equals
-  - name: Join
-    invoke: !ref JoinByTagCount
+  - name: join
+    invoke: !ref joinByTagCount
     inputs:
       left:
         - { id: a, tags: [x] }
@@ -58,9 +58,9 @@ steps:
       right:
         - { count: 1, label: one }
         - { count: 2, label: two }
-  - name: AssertJoin
+  - name: assertJoin
     inputs:
-      actual: !cel "steps.Join.result.rows"
+      actual: !cel "steps.join.result.rows"
       expected:
         - { id: a, label: one }
         - { id: b, label: two }

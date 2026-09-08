@@ -7,15 +7,15 @@ imports:
   NapiTest: ./__fixtures__/napi-test/telo.yaml
   Assert: ../modules/assert
 targets:
-  - !ref VerifyKernelStarted
+  - !ref verifyKernelStarted
 ---
 kind: NapiTest.Echo
 metadata:
-  name: TheEcho
+  name: theEcho
 ---
 kind: Assert.Events
 metadata:
-  name: VerifyKernelStarted
+  name: verifyKernelStarted
 filter:
   - type: "Kernel.*"
 expect:

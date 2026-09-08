@@ -5,12 +5,12 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestWrongCallForm
-  - !ref TestWrongCallFormOffersFix
-  - !ref TestAmbiguousCandidateOffersNoFix
-  - !ref TestUnknownFunction
-  - !ref TestTimestampRoundTrip
-  - !ref TestNonDeterministicCompileField
+  - !ref testWrongCallForm
+  - !ref testWrongCallFormOffersFix
+  - !ref testAmbiguousCandidateOffersNoFix
+  - !ref testUnknownFunction
+  - !ref testTimestampRoundTrip
+  - !ref testNonDeterministicCompileField
 ---
 # A call written in the wrong form is not a type error, and the whole point of
 # classifying it separately is that no cast repairs it — cel-js reports
@@ -21,7 +21,7 @@ targets:
 # type-check-only analyzer showed `now()` only after `startsWith` was fixed.
 kind: Assert.Manifest
 metadata:
-  name: TestWrongCallForm
+  name: testWrongCallForm
 source: ./__fixtures__/cel-call-diagnostics/wrong-call-form.yaml
 expect:
   errors:
@@ -41,7 +41,7 @@ expect:
 # diagnostic and never silently rewrites the rest of the value.
 kind: Assert.Manifest
 metadata:
-  name: TestWrongCallFormOffersFix
+  name: testWrongCallFormOffersFix
 source: ./__fixtures__/cel-call-diagnostics/wrong-call-form.yaml
 expect:
   errors:
@@ -56,7 +56,7 @@ expect:
 # than the fact is worth.
 kind: Assert.Manifest
 metadata:
-  name: TestAmbiguousCandidateOffersNoFix
+  name: testAmbiguousCandidateOffersNoFix
 source: ./__fixtures__/cel-call-diagnostics/ambiguous-candidates.yaml
 expect:
   errors:
@@ -68,7 +68,7 @@ expect:
 # form and arity; edit distance alone never reaches `nowIso` from `now`.
 kind: Assert.Manifest
 metadata:
-  name: TestUnknownFunction
+  name: testUnknownFunction
 source: ./__fixtures__/cel-call-diagnostics/wrong-call-form.yaml
 expect:
   errors:
@@ -84,7 +84,7 @@ expect:
 # round-trip in one unit.
 kind: Assert.Manifest
 metadata:
-  name: TestTimestampRoundTrip
+  name: testTimestampRoundTrip
 source: ./__fixtures__/cel-call-diagnostics/timestamp-round-trip.yaml
 expect:
   errors: []
@@ -93,7 +93,7 @@ expect:
 # load. Warning, not error: freezing an instant at boot is sometimes the point.
 kind: Assert.Manifest
 metadata:
-  name: TestNonDeterministicCompileField
+  name: testNonDeterministicCompileField
 source: ./__fixtures__/cel-call-diagnostics/nondeterministic-compile-field.yaml
 expect:
   errors: []

@@ -18,10 +18,10 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Runner.Script
-metadata: { name: Fetch }
+metadata: { name: fetch }
 code: |
   async function main({ url }) {
     const r = await fetch(url);
@@ -44,7 +44,7 @@ outputType:
     required: [ status, body ]
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -53,18 +53,18 @@ with:
     baseUrl: http://127.0.0.1:8952
     mounts:
       - path: /
-        mount: !ref Lib.Api
+        mount: !ref Lib.api
 targets:
   - !ref Server
 steps:
-  - name: HitInline
+  - name: hitInline
     inputs:
       url: http://127.0.0.1:8952/inline
-    invoke: !ref Fetch
-  - name: AssertInline
+    invoke: !ref fetch
+  - name: assertInline
     inputs:
-      status: "${{ steps.HitInline.result.status }}"
-      body: "${{ steps.HitInline.result.body }}"
+      status: "${{ steps.hitInline.result.status }}"
+      body: "${{ steps.hitInline.result.body }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -74,14 +74,14 @@ steps:
           body: { const: '{"message":"inline handler in scope-lib"}' }
         required: [ status, body ]
 
-  - name: HitRef
+  - name: hitRef
     inputs:
       url: http://127.0.0.1:8952/ref
-    invoke: !ref Fetch
-  - name: AssertRef
+    invoke: !ref fetch
+  - name: assertRef
     inputs:
-      status: "${{ steps.HitRef.result.status }}"
-      body: "${{ steps.HitRef.result.body }}"
+      status: "${{ steps.hitRef.result.status }}"
+      body: "${{ steps.hitRef.result.body }}"
     invoke:
       kind: Assert.Schema
       schema:

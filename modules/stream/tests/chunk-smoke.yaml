@@ -13,43 +13,43 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 # 14 bytes arriving as 2 + 10 + 2, chunked at 5 → 5 / 5 / 4.
 kind: Stream.Of
-metadata: { name: Source }
+metadata: { name: source }
 items:
   - "he"
   - "llo world!"
   - "s!"
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Src
-    invoke: !ref Source
-  - name: Chunks
+  - name: src
+    invoke: !ref source
+  - name: chunks
     inputs:
-      input: !cel "steps.Src.result.output"
+      input: !cel "steps.src.result.output"
       size: 5
     invoke:
       kind: Stream.Chunk
-  - name: Collect
+  - name: collect
     inputs:
-      input: !cel "steps.Chunks.result.output"
+      input: !cel "steps.chunks.result.output"
     invoke:
       kind: Stream.Collect
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        count: !cel "size(steps.Collect.result.items)"
-        offsets: !cel "steps.Collect.result.items.map(r, r.offset)"
-        lengths: !cel "steps.Collect.result.items.map(r, r.length)"
-        indexes: !cel "steps.Collect.result.items.map(r, r.index)"
-        lastFlags: !cel "steps.Collect.result.items.map(r, r.last)"
+        count: !cel "size(steps.collect.result.items)"
+        offsets: !cel "steps.collect.result.items.map(r, r.offset)"
+        lengths: !cel "steps.collect.result.items.map(r, r.length)"
+        indexes: !cel "steps.collect.result.items.map(r, r.index)"
+        lastFlags: !cel "steps.collect.result.items.map(r, r.last)"
         # Rebuilt from the pieces: proves the split preserved the bytes and their
         # order, which asserting on offsets alone would not.
-        text: !cel "steps.Collect.result.items.map(r, string(r.bytes)).join('')"
+        text: !cel "steps.collect.result.items.map(r, string(r.bytes)).join('')"
       expected:
         count: 3
         offsets: [0, 5, 10]

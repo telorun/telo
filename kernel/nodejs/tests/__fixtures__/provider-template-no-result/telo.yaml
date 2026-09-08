@@ -8,5 +8,5 @@ imports:
 ---
 kind: Lib.RawProvider
 metadata:
-  name: PlainToken
+  name: plainToken
 value: abc

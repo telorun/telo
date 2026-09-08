@@ -10,19 +10,19 @@ variables:
     type: string
     default: ":memory:"
 exports:
-  resources: [ Db, Migrate ]
+  resources: [ db, migrate ]
 ---
 # `file` reads the contract var `dbFile`. The importer provides no override, so it
 # must resolve to the library default ":memory:" — not a missing key.
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: "${{ variables.dbFile }}"
 ---
 kind: SQLite.Schema
 metadata:
-  name: Migrate
-connection: !ref Db
+  name: migrate
+connection: !ref db
 version: !cel "module.version"
 migrations:
   20260601_seed:

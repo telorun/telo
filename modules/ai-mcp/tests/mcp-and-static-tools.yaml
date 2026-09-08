@@ -10,7 +10,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestMixed
+  - !ref testMixed
 ---
 # Mixed providers in one agent: a static Ai.Tools list AND an MCP server. This is the
 # headline scenario from the example, and it guards the analyzer fix — referencing
@@ -18,16 +18,16 @@ targets:
 # resolve cleanly (both are valid Ai.ToolProvider implementations).
 kind: Stub.StubClient
 metadata:
-  name: McpServer
+  name: mcpServer
 ---
 kind: AiMcp.ToolProvider
 metadata:
-  name: ServerTools
-client: !ref McpServer
+  name: serverTools
+client: !ref mcpServer
 ---
 kind: Run.Value
 metadata:
-  name: Multiplier
+  name: multiplier
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -40,9 +40,9 @@ value:
 ---
 kind: Ai.Tools
 metadata:
-  name: LocalTools
+  name: localTools
 tools:
-  - tool: !ref Multiplier
+  - tool: !ref multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -57,31 +57,31 @@ tools:
 # advertised, exercising tool assembly across both providers).
 kind: AiEcho.EchoModel
 metadata:
-  name: Echo
+  name: echo
 emitToolCall:
   name: multiply
   arguments: { a: 6, b: 7 }
 ---
 kind: Ai.Agent
 metadata:
-  name: Assistant
-model: !ref Echo
+  name: assistant
+model: !ref echo
 toolProviders:
-  - provider: !ref LocalTools
-  - provider: !ref ServerTools
+  - provider: !ref localTools
+  - provider: !ref serverTools
 ---
 kind: Run.Sequence
 metadata:
-  name: TestMixed
+  name: testMixed
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       prompt: "multiply 6 and 7"
-    invoke: !ref Assistant
-  - name: AssertText
+    invoke: !ref assistant
+  - name: assertText
     inputs:
-      text: "${{ steps.Invoke.result.text }}"
-      toolName: "${{ steps.Invoke.result.steps[0].toolCalls[0].name }}"
+      text: "${{ steps.invoke.result.text }}"
+      toolName: "${{ steps.invoke.result.steps[0].toolCalls[0].name }}"
     invoke:
       kind: Assert.Schema
       schema:

@@ -17,18 +17,18 @@ imports:
   Assert: ../../assert
   Run: ../../run
 targets:
-  - !ref PrintAndCheck
+  - !ref printAndCheck
 ---
 kind: Console.WriteLine
-metadata: { name: Greet }
+metadata: { name: greet }
 ---
 kind: Run.Sequence
-metadata: { name: PrintAndCheck }
+metadata: { name: printAndCheck }
 steps:
-  - name: Print
-    invoke: !ref Greet
+  - name: print
+    invoke: !ref greet
     inputs:
       output: "inline imports work"
-  - name: Check
+  - name: check
     invoke: { kind: Assert.Equals }
     inputs: { actual: true, expected: true }

@@ -22,12 +22,12 @@ imports:
   JS: ../modules/javascript
   Stream: ../modules/stream
 targets:
-  - !ref Test
+  - !ref test
 ---
 # Echoes back what it received, so a byte body can be checked for round-trip
 # rather than merely for "the request did not fail".
 kind: JS.Script
-metadata: { name: EchoBody }
+metadata: { name: echoBody }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -51,7 +51,7 @@ code: |
 # Fails twice, then succeeds. Proves a retry actually re-issues the request and
 # that the loop stops once the response is acceptable.
 kind: JS.Script
-metadata: { name: FlakyCounter }
+metadata: { name: flakyCounter }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -66,7 +66,7 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 with:
   - kind: Server.Api
     metadata: { name: TestApi }
@@ -79,7 +79,7 @@ with:
               type: string
         inputs:
           body: !cel "request.body"
-        handler: !ref EchoBody
+        handler: !ref echoBody
         returns:
           - status: 200
             content:
@@ -99,7 +99,7 @@ with:
       - request:
           path: /resume
           method: PUT
-        handler: !ref EchoBody
+        handler: !ref echoBody
         inputs:
           body: !cel "'ignored'"
         returns:
@@ -114,7 +114,7 @@ with:
       - request:
           path: /flaky
           method: GET
-        handler: !ref FlakyCounter
+        handler: !ref flakyCounter
         returns:
           - status: 503
             content:
@@ -140,7 +140,7 @@ targets:
 steps:
   # A byte body, produced by CEL rather than written as a literal — a byte slot is
   # never authorable inline, which is the point of the value type.
-  - name: PostBytes
+  - name: postBytes
     inputs:
       url: http://localhost:8871/api/echo
       method: POST
@@ -149,16 +149,16 @@ steps:
     invoke:
       kind: Http.Request
       throwOnHttpError: true
-  - name: AssertBytesRoundTrip
+  - name: assertBytesRoundTrip
     inputs:
-      actual: !cel "steps.PostBytes.result.body.echoed"
+      actual: !cel "steps.postBytes.result.body.echoed"
       expected: "hello bytes"
     invoke:
       kind: Assert.Equals
 
   # The same call read as raw bytes rather than parsed. `bytesToBase64` proves the
   # value really is a byte buffer and survived unmangled.
-  - name: ReadAsBytes
+  - name: readAsBytes
     inputs:
       url: http://localhost:8871/api/echo
       method: POST
@@ -168,16 +168,16 @@ steps:
     invoke:
       kind: Http.Request
       throwOnHttpError: true
-  - name: AssertBytesResponse
+  - name: assertBytesResponse
     inputs:
-      actual: !cel "bytesToBase64(slice(steps.ReadAsBytes.result.body, 0, 1))"
+      actual: !cel "bytesToBase64(slice(steps.readAsBytes.result.body, 0, 1))"
       expected: "ew=="
     invoke:
       kind: Assert.Equals
 
   # 308 declared successful: it neither raises under throwOnHttpError nor is
   # followed as a redirect.
-  - name: Resume
+  - name: resume
     inputs:
       url: http://localhost:8871/api/resume
       method: PUT
@@ -185,16 +185,16 @@ steps:
       kind: Http.Request
       throwOnHttpError: true
       success: [200, 201, 308]
-  - name: AssertResume
+  - name: assertResume
     inputs:
-      actual: !cel "steps.Resume.result.status"
+      actual: !cel "steps.resume.result.status"
       expected: 308
     invoke:
       kind: Assert.Equals
 
   # A 200 that `success` does NOT name is a failure, which is what makes the
   # field a narrowing rather than a widening.
-  - name: UnexpectedStatus
+  - name: unexpectedStatus
     inputs:
       url: http://localhost:8871/api/echo
       method: POST
@@ -203,9 +203,9 @@ steps:
     invoke:
       kind: Http.Request
       success: [201]
-  - name: AssertUnexpectedNotThrown
+  - name: assertUnexpectedNotThrown
     inputs:
-      actual: !cel "steps.UnexpectedStatus.result.status"
+      actual: !cel "steps.unexpectedStatus.result.status"
       expected: 200
     invoke:
       kind: Assert.Equals
@@ -213,7 +213,7 @@ steps:
   # The PREDICATE spelling of `success`, over the same scope as the list form.
   # A whole-field CEL leaf at a union-typed slot is what the placeholder fix made
   # writable at all.
-  - name: PredicateSuccess
+  - name: predicateSuccess
     inputs:
       url: http://localhost:8871/api/echo
       method: POST
@@ -223,16 +223,16 @@ steps:
       kind: Http.Request
       throwOnHttpError: true
       success: !cel "status == 200 && headers['content-type'].startsWith('application/json')"
-  - name: AssertPredicateSuccess
+  - name: assertPredicateSuccess
     inputs:
-      actual: !cel "steps.PredicateSuccess.result.status"
+      actual: !cel "steps.predicateSuccess.result.status"
       expected: 200
     invoke:
       kind: Assert.Equals
 
   # A streamed response arrives in `body`, the same slot every other response
   # type fills — one output shape, so `status` and `headers` stay typed.
-  - name: Streamed
+  - name: streamed
     inputs:
       url: http://localhost:8871/api/echo
       method: POST
@@ -242,14 +242,14 @@ steps:
     invoke:
       kind: Http.Request
       throwOnHttpError: true
-  - name: DrainStream
+  - name: drainStream
     inputs:
-      input: !cel "steps.Streamed.result.body"
+      input: !cel "steps.streamed.result.body"
     invoke:
       kind: Stream.Collect
-  - name: AssertStreamed
+  - name: assertStreamed
     inputs:
-      actual: !cel "steps.DrainStream.result.items.map(c, string(c)).join('')"
+      actual: !cel "steps.drainStream.result.items.map(c, string(c)).join('')"
       expected: '{"echoed":"streamed","length":8}'
     invoke:
       kind: Assert.Equals
@@ -257,7 +257,7 @@ steps:
   # A retryable status is re-attempted and the loop terminates by returning the
   # last response. The endpoint counts requests, so `attempt == 3` is the exact
   # statement that one attempt and two re-attempts were issued.
-  - name: Flaky
+  - name: flaky
     inputs:
       url: http://localhost:8871/api/flaky
       method: GET
@@ -269,11 +269,11 @@ steps:
         initialDelay: 1
         jitter: none
         honorRetryAfter: false
-  - name: AssertRetried
+  - name: assertRetried
     inputs:
       actual:
-        status: !cel "steps.Flaky.result.status"
-        requests: !cel "steps.Flaky.result.body.attempt"
+        status: !cel "steps.flaky.result.status"
+        requests: !cel "steps.flaky.result.body.attempt"
       expected:
         status: 503
         requests: 3

@@ -8,7 +8,7 @@ imports:
 # Every error field accessed inside the catch is valid → zero analyzer errors.
 kind: Run.Sequence
 metadata:
-  name: ValidSeq
+  name: validSeq
 steps:
   - name: outer
     try:

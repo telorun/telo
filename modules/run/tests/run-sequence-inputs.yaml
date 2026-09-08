@@ -6,7 +6,7 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestInputs
+  - !ref testInputs
 ---
 # A sub-sequence invoked with caller inputs reads them via the `inputs` CEL
 # variable across step `inputs:`, an `if:` predicate, and the `outputs:` mapping.
@@ -14,7 +14,7 @@ targets:
 # failed at runtime with "Unknown variable: inputs".
 kind: Run.Sequence
 metadata:
-  name: Greet
+  name: greet
 steps:
   - name: build
     if: "${{ inputs.shout }}"
@@ -41,10 +41,10 @@ outputs:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestInputs
+  name: testInputs
 steps:
   - name: callGreet
-    invoke: !ref Greet
+    invoke: !ref greet
     inputs:
       name: telo
       shout: true

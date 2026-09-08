@@ -10,7 +10,7 @@ imports:
 # catches: entry referencing 'BOGUS' is not in that union → UNDECLARED_THROW_CODE.
 kind: Run.Sequence
 metadata:
-  name: AlwaysThrowsFoo
+  name: alwaysThrowsFoo
 steps:
   - name: boom
     throw:
@@ -19,12 +19,12 @@ steps:
 ---
 kind: Http.Api
 metadata:
-  name: BadApi
+  name: badApi
 routes:
   - request:
       path: /x
       method: GET
-    handler: !ref AlwaysThrowsFoo
+    handler: !ref alwaysThrowsFoo
     returns:
       - status: 200
         content:

@@ -14,72 +14,72 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: KvStoreMemory.Store
-metadata: { name: Mem }
+metadata: { name: mem }
 ---
 kind: Lease.Critical
-metadata: { name: Lock }
-store: !ref Mem
+metadata: { name: lock }
+store: !ref mem
 ttl: 30s
-invoke: !ref Body
+invoke: !ref body
 ---
 # The body of the held lease re-enters the SAME lock with the same key. Because
 # the outer holder still owns it, the re-entry is refused and reports the holder.
 kind: Run.Sequence
-metadata: { name: Body }
+metadata: { name: body }
 steps:
-  - name: Reenter
-    invoke: !ref Lock
+  - name: reenter
+    invoke: !ref lock
     inputs:
       key: k1
       holder: B
       inputs: {}
 outputs:
-  reenterAcquired: !cel "steps.Reenter.result.acquired"
-  reenterHolder: !cel "steps.Reenter.result.holder"
+  reenterAcquired: !cel "steps.reenter.result.acquired"
+  reenterHolder: !cel "steps.reenter.result.holder"
 ---
 kind: Lease.Critical
-metadata: { name: Plain }
-store: !ref Mem
+metadata: { name: plain }
+store: !ref mem
 ttl: 30s
-invoke: !ref Const
+invoke: !ref constant
 ---
 kind: Run.Value
-metadata: { name: Const }
+metadata: { name: constant }
 value:
   ok: 1
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Conflict
-    invoke: !ref Lock
+  - name: conflict
+    invoke: !ref lock
     inputs:
       key: k1
       holder: A
       inputs: {}
-  - name: Happy1
-    invoke: !ref Plain
+  - name: happy1
+    invoke: !ref plain
     inputs:
       key: k2
       inputs: {}
   # Released after Happy1 returned, so the same key acquires again.
-  - name: Happy2
-    invoke: !ref Plain
+  - name: happy2
+    invoke: !ref plain
     inputs:
       key: k2
       inputs: {}
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        outerAcquired: !cel "steps.Conflict.result.acquired"
-        reenterAcquired: !cel "steps.Conflict.result.result.reenterAcquired"
-        reenterHolder: !cel "steps.Conflict.result.result.reenterHolder"
-        happy1Acquired: !cel "steps.Happy1.result.acquired"
-        happy1Ok: !cel "steps.Happy1.result.result.ok"
-        happy2Acquired: !cel "steps.Happy2.result.acquired"
+        outerAcquired: !cel "steps.conflict.result.acquired"
+        reenterAcquired: !cel "steps.conflict.result.result.reenterAcquired"
+        reenterHolder: !cel "steps.conflict.result.result.reenterHolder"
+        happy1Acquired: !cel "steps.happy1.result.acquired"
+        happy1Ok: !cel "steps.happy1.result.result.ok"
+        happy2Acquired: !cel "steps.happy2.result.acquired"
       expected:
         outerAcquired: true
         reenterAcquired: false

@@ -28,16 +28,16 @@ imports:
   JS: ../modules/javascript
   Lib: ./__fixtures__/include-assets/lib
 targets:
-  - !ref VerifyIncludes
-  - !ref VerifyLibraryEmbedsItsOwnAsset
-  - !ref VerifyEscapingPathIsRejected
-  - !ref VerifyEmbedOnModuleDocIsRejected
+  - !ref verifyIncludes
+  - !ref verifyLibraryEmbedsItsOwnAsset
+  - !ref verifyEscapingPathIsRejected
+  - !ref verifyEmbedOnModuleDocIsRejected
 ---
 # Reports on the embedded bytes from inside the running app: length, the PNG
 # magic number, and — the point — whether the value is still a Uint8Array by the
 # time a controller sees it.
 kind: JS.Script
-metadata: { name: DescribeBytes }
+metadata: { name: describeBytes }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -61,24 +61,24 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: VerifyIncludes }
+metadata: { name: verifyIncludes }
 steps:
   # Text embed, written with a leading `./` and an interior `..` that resolves
   # back down — both fold away to the same root-relative path.
-  - name: AssertText
+  - name: assertText
     inputs:
       actual: !include-text ./__fixtures__/include-assets/assets/../assets/theme.txt
       expected: "brand-colour: #1B36C4\n"
     invoke: { kind: Assert.Equals }
 
-  - name: Describe
+  - name: describe
     inputs:
       bytes: !include-bytes __fixtures__/include-assets/assets/logo.png
-    invoke: !ref DescribeBytes
+    invoke: !ref describeBytes
 
-  - name: AssertBytes
+  - name: assertBytes
     inputs:
-      actual: !cel "steps.Describe.result"
+      actual: !cel "steps.describe.result"
       expected:
         isUint8Array: true
         length: 20
@@ -89,14 +89,14 @@ steps:
 # rejects an escape without ever touching a filesystem — which is what lets the
 # browser-side analyzer enforce it too.
 kind: Assert.Manifest
-metadata: { name: VerifyEscapingPathIsRejected }
+metadata: { name: verifyEscapingPathIsRejected }
 source: ./__fixtures__/include-assets/escaping-path.yaml
 expect:
   errors:
     - code: INCLUDE_PATH_ESCAPES_MODULE
 ---
 kind: Assert.Manifest
-metadata: { name: VerifyEmbedOnModuleDocIsRejected }
+metadata: { name: verifyEmbedOnModuleDocIsRejected }
 source: ./__fixtures__/include-assets/embed-on-module-doc.yaml
 expect:
   errors:
@@ -110,12 +110,12 @@ expect:
 # theirs, silently. It also contradicted packaging, which is per-module and had
 # already put this file in the library's own artifact.
 kind: Run.Sequence
-metadata: { name: VerifyLibraryEmbedsItsOwnAsset }
+metadata: { name: verifyLibraryEmbedsItsOwnAsset }
 steps:
-  - name: Read
-    invoke: !ref Lib.LibTheme
-  - name: Assert
+  - name: read
+    invoke: !ref Lib.libTheme
+  - name: assert
     inputs:
-      actual: !cel "steps.Read.result.theme"
+      actual: !cel "steps.read.result.theme"
       expected: "LIBRARY-OWN-ASSET\n"
     invoke: { kind: Assert.Equals }

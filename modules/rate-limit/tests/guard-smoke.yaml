@@ -12,31 +12,31 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: CacheMemory.Store
-metadata: { name: Mem }
+metadata: { name: mem }
 ---
 kind: RateLimit.Guard
-metadata: { name: Limit }
-store: !ref Mem
+metadata: { name: limit }
+store: !ref mem
 limit: 2
 window: "60s"
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   - name: r1
-    invoke: !ref Limit
+    invoke: !ref limit
     inputs: { key: "1.2.3.4" }
   - name: r2
-    invoke: !ref Limit
+    invoke: !ref limit
     inputs: { key: "1.2.3.4" }
   - name: r3
-    invoke: !ref Limit
+    invoke: !ref limit
     inputs: { key: "1.2.3.4" }
   - name: empty
-    invoke: !ref Limit
+    invoke: !ref limit
     inputs: { key: "" }
   - name: assertVerdicts
     inputs:

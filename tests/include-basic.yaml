@@ -8,4 +8,4 @@ imports:
 include:
   - ./__fixtures__/include-basic-steps.yaml
 targets:
-  - !ref TestIncludeBasic
+  - !ref testIncludeBasic

@@ -12,44 +12,44 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: VectorStoreMemory.Store
-metadata: { name: Index }
+metadata: { name: index }
 metric: dot
 dimensions: 2
 maxEntries: 3
 ---
 kind: VectorStore.Record
-metadata: { name: Write }
-store: !ref Index
+metadata: { name: write }
+store: !ref index
 ---
 kind: VectorStore.Match
-metadata: { name: Search }
-store: !ref Index
+metadata: { name: search }
+store: !ref index
 topK: 10
 ---
 kind: VectorStore.Removal
-metadata: { name: Drop }
-store: !ref Index
+metadata: { name: drop }
+store: !ref index
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   - name: seed
-    invoke: !ref Write
+    invoke: !ref write
     inputs:
       items:
         - { id: a, vector: [1, 0], metadata: { tier: 1, kind: doc } }
         - { id: b, vector: [2, 0], metadata: { tier: 2, kind: doc } }
         - { id: c, vector: [3, 0], metadata: { tier: 3, kind: note } }
   - name: evict
-    invoke: !ref Write
+    invoke: !ref write
     inputs:
       items:
         - { id: d, vector: [4, 0], metadata: { tier: 4, kind: note } }
   - name: searchAll
-    invoke: !ref Search
+    invoke: !ref search
     inputs:
       vector: [1, 0]
   - name: assertEviction
@@ -65,7 +65,7 @@ steps:
           ok: { const: true }
           top: { const: "d" }
   - name: searchFiltered
-    invoke: !ref Search
+    invoke: !ref search
     inputs:
       vector: [1, 0]
       metadataFilter:
@@ -84,7 +84,7 @@ steps:
           ok: { const: true }
           top: { const: "d" }
   - name: dropByFilter
-    invoke: !ref Drop
+    invoke: !ref drop
     inputs:
       metadataFilter:
         $or:
@@ -103,7 +103,7 @@ steps:
   - name: rejectBadDim
     try:
       - name: badWrite
-        invoke: !ref Write
+        invoke: !ref write
         inputs:
           items:
             - { id: bad, vector: [1, 2, 3] }

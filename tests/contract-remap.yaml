@@ -7,7 +7,7 @@ imports:
   Remap: ./__fixtures__/contract-remap
   Run: ../modules/run
 targets:
-  - !ref Main
+  - !ref main
 ---
 # A child that inherits a concrete controller and REPLACES its invocation
 # contract, bridged by `inputs:` / `result:` mappings.
@@ -20,18 +20,18 @@ targets:
 # against the parent, runs, and maps the result back.
 kind: Remap.Doubler
 metadata:
-  name: Double
+  name: double
 ---
 kind: Run.Sequence
 metadata:
-  name: Main
+  name: main
 steps:
   - name: doubled
-    invoke: !ref Double
+    invoke: !ref double
     inputs:
       value: 21
   - name: check
-    invoke: !ref CheckResult
+    invoke: !ref checkResult
     inputs:
       actual: !cel "steps.doubled.result"
       expected:
@@ -39,4 +39,4 @@ steps:
 ---
 kind: Assert.Equals
 metadata:
-  name: CheckResult
+  name: checkResult

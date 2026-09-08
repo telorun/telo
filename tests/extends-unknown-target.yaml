@@ -5,13 +5,13 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestExtendsUnknownTarget
+  - !ref testExtendsUnknownTarget
 ---
 # Asserts the analyzer emits EXTENDS_UNKNOWN_TARGET when the identity resolves but
 # no registered definition with that name exists.
 kind: Assert.Manifest
 metadata:
-  name: TestExtendsUnknownTarget
+  name: testExtendsUnknownTarget
 source: ./__fixtures__/extends-unknown-target.yaml
 expect:
   errors:

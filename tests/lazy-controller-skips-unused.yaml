@@ -14,20 +14,20 @@ imports:
   Lazy: ./__fixtures__/lazy-controller/telo.yaml
   Assert: ../modules/assert
 targets:
-  - name: DoEcho
+  - name: doEcho
     inputs:
       text: "hi"
-    invoke: !ref Echoer
-  - name: Check
+    invoke: !ref echoer
+  - name: check
     inputs:
-      text: "${{ steps.DoEcho.result.text }}"
-    invoke: !ref AssertText
+      text: "${{ steps.doEcho.result.text }}"
+    invoke: !ref assertText
 ---
 kind: Lazy.Echo
-metadata: { name: Echoer }
+metadata: { name: echoer }
 ---
 kind: Assert.Schema
-metadata: { name: AssertText }
+metadata: { name: assertText }
 schema:
   type: object
   properties:

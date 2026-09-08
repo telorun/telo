@@ -17,34 +17,34 @@ imports:
   Assert: ../modules/assert
   Run: ../modules/run
 targets:
-  - !ref TestValueTypeArguments
+  - !ref testValueTypeArguments
 ---
 kind: Assert.Manifest
-metadata: { name: RejectsArgumentMismatch }
+metadata: { name: rejectsArgumentMismatch }
 source: ./__fixtures__/stream-argument-mismatch.yaml
 expect:
   errors:
     - code: CEL_TYPE_ARGUMENT_MISMATCH
 ---
 kind: Assert.Manifest
-metadata: { name: AcceptsMatchingAndOmittedArguments }
+metadata: { name: acceptsMatchingAndOmittedArguments }
 source: ./__fixtures__/stream-argument-gradual.yaml
 expect:
   errors: []
 ---
 kind: Assert.Manifest
-metadata: { name: RejectsUnknownValueType }
+metadata: { name: rejectsUnknownValueType }
 source: ./__fixtures__/value-type-unknown.yaml
 expect:
   errors:
     - code: X_TELO_TYPE_UNKNOWN
 ---
 kind: Run.Sequence
-metadata: { name: TestValueTypeArguments }
+metadata: { name: testValueTypeArguments }
 steps:
-  - name: Mismatch
-    invoke: !ref RejectsArgumentMismatch
-  - name: Gradual
-    invoke: !ref AcceptsMatchingAndOmittedArguments
-  - name: UnknownName
-    invoke: !ref RejectsUnknownValueType
+  - name: mismatch
+    invoke: !ref rejectsArgumentMismatch
+  - name: gradual
+    invoke: !ref acceptsMatchingAndOmittedArguments
+  - name: unknownName
+    invoke: !ref rejectsUnknownValueType

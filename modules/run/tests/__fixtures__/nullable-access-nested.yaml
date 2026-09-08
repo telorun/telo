@@ -10,7 +10,7 @@ imports:
 # catch (non-null) branch encloses it.
 kind: Run.Sequence
 metadata:
-  name: NestedFinally
+  name: nestedFinally
 steps:
   - name: outer
     try:

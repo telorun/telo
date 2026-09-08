@@ -11,50 +11,50 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Shell.LocalHost
-metadata: { name: Root }
+metadata: { name: root }
 cwd: /
 ---
 kind: Shell.LocalHost
-metadata: { name: Local }
+metadata: { name: local }
 ---
 kind: Run.Sequence
 metadata:
-  name: Test
+  name: test
 steps:
-  - name: Cwd
+  - name: cwd
     inputs:
       command: pwd
     invoke:
       kind: Shell.Command
-      host: !ref Root
+      host: !ref root
 
-  - name: Stdin
+  - name: stdin
     inputs:
       command: cat
       stdin: piped-input
     invoke:
       kind: Shell.Command
-      host: !ref Local
+      host: !ref local
 
   # `true` exits immediately without reading stdin — writing to it would EPIPE.
   # The controller absorbs that, so this returns cleanly rather than crashing.
-  - name: StdinIgnored
+  - name: stdinIgnored
     inputs:
       command: "true"
       stdin: ignored
     invoke:
       kind: Shell.Command
-      host: !ref Local
+      host: !ref local
 
-  - name: AssertBasics
+  - name: assertBasics
     inputs:
       actual:
-        cwd: !cel "steps.Cwd.result.stdout"
-        stdin: !cel "steps.Stdin.result.stdout"
-        ignoredCode: !cel "steps.StdinIgnored.result.exitCode"
+        cwd: !cel "steps.cwd.result.stdout"
+        stdin: !cel "steps.stdin.result.stdout"
+        ignoredCode: !cel "steps.stdinIgnored.result.exitCode"
       expected:
         cwd: "/\n"
         stdin: piped-input
@@ -62,17 +62,17 @@ steps:
     invoke:
       kind: Assert.Equals
 
-  - name: Timeout
+  - name: timeout
     try:
-      - name: Sleep
+      - name: sleep
         inputs:
           command: "sleep 5"
           timeoutMs: 100
         invoke:
           kind: Shell.Command
-          host: !ref Local
+          host: !ref local
     catch:
-      - name: AssertTimedOut
+      - name: assertTimedOut
         inputs:
           actual: !cel "error.message"
           pattern: "timed out"

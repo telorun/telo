@@ -25,7 +25,7 @@ async function bootKernel(): Promise<Kernel> {
 describe("invoke cancellation — kernel dispatch gate", () => {
   it("invokes normally when no cancellation is seeded (sentinel path)", async () => {
     const kernel = await bootKernel();
-    const result = await kernel.invoke("JS.Script.Echo", { value: 42 });
+    const result = await kernel.invoke("JS.Script.echo", { value: 42 });
     expect(result).toEqual({ echoed: 42 });
     await kernel.teardown();
   });
@@ -36,7 +36,7 @@ describe("invoke cancellation — kernel dispatch gate", () => {
     controller.abort("gone");
 
     await expect(
-      kernel.invoke("JS.Script.Echo", { value: 1 }, { signal: controller.signal }),
+      kernel.invoke("JS.Script.echo", { value: 1 }, { signal: controller.signal }),
     ).rejects.toMatchObject({ code: "ERR_INVOKE_CANCELLED" });
 
     await kernel.teardown();
@@ -46,7 +46,7 @@ describe("invoke cancellation — kernel dispatch gate", () => {
     const kernel = await bootKernel();
 
     await expect(
-      kernel.invoke("JS.Script.Echo", { value: 1 }, { deadlineAt: Date.now() - 1000 }),
+      kernel.invoke("JS.Script.echo", { value: 1 }, { deadlineAt: Date.now() - 1000 }),
     ).rejects.toMatchObject({ code: "ERR_INVOKE_CANCELLED" });
 
     await kernel.teardown();
@@ -55,14 +55,14 @@ describe("invoke cancellation — kernel dispatch gate", () => {
   it("emits a scoped InvokeCancelled event when the gate refuses", async () => {
     const kernel = await bootKernel();
     let cancelledReason: unknown = "unset";
-    kernel.on("Echo.InvokeCancelled", (event) => {
+    kernel.on("echo.InvokeCancelled", (event) => {
       cancelledReason = (event.payload as { reason?: unknown })?.reason;
     });
     const controller = new AbortController();
     controller.abort("client-gone");
 
     await expect(
-      kernel.invoke("JS.Script.Echo", { value: 1 }, { signal: controller.signal }),
+      kernel.invoke("JS.Script.echo", { value: 1 }, { signal: controller.signal }),
     ).rejects.toMatchObject({ code: "ERR_INVOKE_CANCELLED" });
     expect(cancelledReason).toBe("client-gone");
 
@@ -83,10 +83,10 @@ describe("nested inheritance — ALS-propagated tree token", () => {
     // mid-flight must refuse the second sub-invoke at the gate.
     const outer = {
       invoke: async () => {
-        await rootContext.invoke("JS.Script", "Echo", { value: 1 });
+        await rootContext.invoke("JS.Script", "echo", { value: 1 });
         seen.push("first-ran");
         source.cancel("mid-flight");
-        await rootContext.invoke("JS.Script", "Echo", { value: 2 });
+        await rootContext.invoke("JS.Script", "echo", { value: 2 });
         seen.push("second-ran"); // unreachable — refused by inheritance
         return {};
       },

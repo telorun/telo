@@ -8,22 +8,22 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestMessagesArray
+  - !ref testMessagesArray
 ---
 kind: AiEcho.EchoModel
-metadata: { name: Echo }
+metadata: { name: echo }
 ---
 kind: Ai.Text
-metadata: { name: C }
-model: !ref Echo
+metadata: { name: c }
+model: !ref echo
 ---
 # Full `messages` array is passed through unchanged; Echo returns the last message's
 # content. Verifies multi-turn shape without relying on prompt shorthand.
 kind: Run.Sequence
 metadata:
-  name: TestMessagesArray
+  name: testMessagesArray
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       messages:
         - role: user
@@ -32,10 +32,10 @@ steps:
           content: "ack"
         - role: user
           content: "second"
-    invoke: !ref C
-  - name: Assert
+    invoke: !ref c
+  - name: assert
     inputs:
-      text: "${{ steps.Invoke.result.text }}"
+      text: "${{ steps.invoke.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:

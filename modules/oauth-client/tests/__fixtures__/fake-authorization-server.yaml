@@ -8,7 +8,7 @@
 # device_code (`approve:<epochMs>`, `deny`, `slow`, `expire`) rather than counting
 # polls, so a poll sequence is reproducible without the fake keeping a tally.
 kind: JS.Script
-metadata: { name: TokenEndpoint }
+metadata: { name: tokenEndpoint }
 code: |
   async function main({ body }) {
     const p = new URLSearchParams(body ?? "");
@@ -66,7 +66,7 @@ outputType:
     additionalProperties: true
 ---
 kind: JS.Script
-metadata: { name: DeviceEndpoint }
+metadata: { name: deviceEndpoint }
 code: |
   async function main({ body }) {
     const p = new URLSearchParams(body ?? "");
@@ -102,7 +102,7 @@ outputType:
 # carrying a stale token exercises the 401 refresh-and-retry-once path in
 # http-client's request controller.
 kind: JS.Script
-metadata: { name: ProtectedResource }
+metadata: { name: protectedResource }
 code: |
   async function main({ authorization }) {
     return { authorized: authorization === "Bearer at-fresh", seen: authorization ?? "" };
@@ -126,7 +126,7 @@ outputType:
 # Echoes what the request actually carried, so a credentialed POST can assert that
 # attaching a credential did not strip the content-type derived from the body.
 kind: JS.Script
-metadata: { name: EchoRequest }
+metadata: { name: echoRequest }
 code: |
   async function main({ contentType, body }) {
     return { contentType: contentType ?? "", parsedBody: body ?? null };
@@ -149,7 +149,7 @@ outputType:
       parsedBody: {}
 ---
 kind: JS.Script
-metadata: { name: DiscoveryDocument }
+metadata: { name: discoveryDocument }
 code: |
   async function main({ issuer }) {
     return {
@@ -175,7 +175,7 @@ outputType:
     additionalProperties: true
 ---
 kind: Http.Api
-metadata: { name: FakeServerApi }
+metadata: { name: fakeServerApi }
 routes:
   - operationId: discovery
     request:
@@ -183,7 +183,7 @@ routes:
       path: /.well-known/openid-configuration
     inputs:
       issuer: !cel "variables.issuer"
-    handler: !ref DiscoveryDocument
+    handler: !ref discoveryDocument
     returns:
       - status: 200
         content:
@@ -197,7 +197,7 @@ routes:
         body: { type: string }
     inputs:
       body: !cel "request.body"
-    handler: !ref TokenEndpoint
+    handler: !ref tokenEndpoint
     returns:
       - status: 200
         content:
@@ -211,7 +211,7 @@ routes:
         body: { type: string }
     inputs:
       body: !cel "request.body"
-    handler: !ref DeviceEndpoint
+    handler: !ref deviceEndpoint
     returns:
       - status: 200
         content:
@@ -229,7 +229,7 @@ routes:
     inputs:
       contentType: !cel "request.headers['content-type']"
       body: !cel "request.body"
-    handler: !ref EchoRequest
+    handler: !ref echoRequest
     returns:
       - status: 200
         content:
@@ -241,7 +241,7 @@ routes:
       path: /resource
     inputs:
       authorization: !cel "request.headers.authorization"
-    handler: !ref ProtectedResource
+    handler: !ref protectedResource
     returns:
       - when: !cel "result.authorized"
         status: 200

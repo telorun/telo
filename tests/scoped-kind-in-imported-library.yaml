@@ -15,17 +15,17 @@ imports:
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Run
-    invoke: !ref Scoped.Work
-  - name: AssertScopeStoodUp
+  - name: run
+    invoke: !ref Scoped.work
+  - name: assertScopeStoodUp
     invoke:
       kind: Assert.Equals
     inputs:
-      actual: !cel "steps.Run.result"
+      actual: !cel "steps.run.result"
       expected:
         baseUrl: https://scoped.example

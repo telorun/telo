@@ -6,11 +6,11 @@ imports:
   JS: ../../../../../modules/javascript
 targets:
   - name: echoStep
-    invoke: !ref Echo
+    invoke: !ref echo
     inputs: { value: 7 }
 ---
 kind: JS.Script
 metadata:
-  name: Echo
+  name: echo
 code: |
   function main(input) { return { echoed: input.value }; }

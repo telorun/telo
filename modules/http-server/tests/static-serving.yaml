@@ -13,11 +13,11 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 # Fetch a URL, returning status, content-type, and the (text) body.
 kind: JS.Script
-metadata: { name: Fetch }
+metadata: { name: fetch }
 code: |
   async function main({ url }) {
     const r = await fetch(url);
@@ -44,13 +44,13 @@ outputType:
     required: [ status, contentType, body ]
 ---
 kind: Http.Static
-metadata: { name: Site }
+metadata: { name: site }
 root: ./__fixtures__/static-site
 spaFallback: true
 maxAge: 3600
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -58,17 +58,17 @@ with:
     port: 8971
     mounts:
       - path: /
-        mount: !ref Site
+        mount: !ref site
 targets:
   - !ref Server
 steps:
-  - name: HitIndex
+  - name: hitIndex
     inputs: { url: http://127.0.0.1:8971/ }
-    invoke: !ref Fetch
-  - name: AssertIndex
+    invoke: !ref fetch
+  - name: assertIndex
     inputs:
-      status: "${{ steps.HitIndex.result.status }}"
-      hasMarker: "${{ steps.HitIndex.result.body.contains('TELO_STATIC_INDEX') }}"
+      status: "${{ steps.hitIndex.result.status }}"
+      hasMarker: "${{ steps.hitIndex.result.body.contains('TELO_STATIC_INDEX') }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -78,14 +78,14 @@ steps:
           hasMarker: { const: true }
         required: [ status, hasMarker ]
 
-  - name: HitAsset
+  - name: hitAsset
     inputs: { url: http://127.0.0.1:8971/app.js }
-    invoke: !ref Fetch
-  - name: AssertAsset
+    invoke: !ref fetch
+  - name: assertAsset
     inputs:
-      status: "${{ steps.HitAsset.result.status }}"
-      isJs: "${{ steps.HitAsset.result.contentType.startsWith('text/javascript') || steps.HitAsset.result.contentType.startsWith('application/javascript') }}"
-      hasMarker: "${{ steps.HitAsset.result.body.contains('TELO_STATIC_APP') }}"
+      status: "${{ steps.hitAsset.result.status }}"
+      isJs: "${{ steps.hitAsset.result.contentType.startsWith('text/javascript') || steps.hitAsset.result.contentType.startsWith('application/javascript') }}"
+      hasMarker: "${{ steps.hitAsset.result.body.contains('TELO_STATIC_APP') }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -96,13 +96,13 @@ steps:
           hasMarker: { const: true }
         required: [ status, isJs, hasMarker ]
 
-  - name: HitDeepLink
+  - name: hitDeepLink
     inputs: { url: http://127.0.0.1:8971/some/client/route }
-    invoke: !ref Fetch
-  - name: AssertDeepLink
+    invoke: !ref fetch
+  - name: assertDeepLink
     inputs:
-      status: "${{ steps.HitDeepLink.result.status }}"
-      hasMarker: "${{ steps.HitDeepLink.result.body.contains('TELO_STATIC_INDEX') }}"
+      status: "${{ steps.hitDeepLink.result.status }}"
+      hasMarker: "${{ steps.hitDeepLink.result.body.contains('TELO_STATIC_INDEX') }}"
     invoke:
       kind: Assert.Schema
       schema:

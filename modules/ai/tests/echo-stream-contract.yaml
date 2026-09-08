@@ -8,32 +8,32 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestEchoStreamContract
+  - !ref testEchoStreamContract
 ---
 kind: AiEcho.EchoModelStream
-metadata: { name: Echo }
+metadata: { name: echo }
 ---
 # AiEcho.StreamCollector (a test-support Invocable) takes the Echo model as an
 # x-telo-ref so Phase 5 injection hands it the live instance. It then consumes
 # echo.stream(...) and returns the collected StreamPart data we can assert on.
 kind: AiEcho.StreamCollector
-metadata: { name: Collector }
-model: !ref Echo
+metadata: { name: collector }
+model: !ref echo
 ---
 kind: Run.Sequence
 metadata:
-  name: TestEchoStreamContract
+  name: testEchoStreamContract
 steps:
-  - name: Collect
+  - name: collect
     inputs:
       prompt: "hi"
-    invoke: !ref Collector
-  - name: Assert
+    invoke: !ref collector
+  - name: assert
     inputs:
-      deltas: "${{ steps.Collect.result.deltas }}"
-      deltaCount: "${{ steps.Collect.result.deltaCount }}"
-      finishReason: "${{ steps.Collect.result.finishReason }}"
-      totalTokens: "${{ steps.Collect.result.usage.totalTokens }}"
+      deltas: "${{ steps.collect.result.deltas }}"
+      deltaCount: "${{ steps.collect.result.deltaCount }}"
+      finishReason: "${{ steps.collect.result.finishReason }}"
+      totalTokens: "${{ steps.collect.result.usage.totalTokens }}"
     invoke:
       kind: Assert.Schema
       schema:

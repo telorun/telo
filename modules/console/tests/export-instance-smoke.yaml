@@ -17,12 +17,12 @@ imports:
   Console: ../
   Assert: ../../assert
 targets:
-  - name: Print
+  - name: print
     invoke: !ref Console.writeLine
     inputs:
       output: "exported singleton works"
-  - name: Check
+  - name: check
     invoke: !ref Assert.equals
     inputs:
-      actual: ${{ steps.Print.result }}
+      actual: ${{ steps.print.result }}
       expected: "exported singleton works"

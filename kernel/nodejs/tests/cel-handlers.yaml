@@ -7,17 +7,17 @@ imports:
   Assert: ../../../modules/assert
   Run: ../../../modules/run
 targets:
-  - !ref JsonString
-  - !ref JsonNumber
-  - !ref JsonBool
-  - !ref JsonNull
-  - !ref JsonStringList
-  - !ref JsonStructured
-  - !ref JsonInterpolated
-  - !ref JsonLargeInt
+  - !ref jsonString
+  - !ref jsonNumber
+  - !ref jsonBool
+  - !ref jsonNull
+  - !ref jsonStringList
+  - !ref jsonStructured
+  - !ref jsonInterpolated
+  - !ref jsonLargeInt
 ---
 kind: Run.Sequence
-metadata: { name: JsonString }
+metadata: { name: jsonString }
 steps:
   - name: stringify
     invoke: { kind: Assert.Equals }
@@ -26,7 +26,7 @@ steps:
       expected: '"hello"'
 ---
 kind: Run.Sequence
-metadata: { name: JsonNumber }
+metadata: { name: jsonNumber }
 steps:
   - name: stringify
     invoke: { kind: Assert.Equals }
@@ -35,7 +35,7 @@ steps:
       expected: '42'
 ---
 kind: Run.Sequence
-metadata: { name: JsonBool }
+metadata: { name: jsonBool }
 steps:
   - name: stringify
     invoke: { kind: Assert.Equals }
@@ -44,7 +44,7 @@ steps:
       expected: 'true'
 ---
 kind: Run.Sequence
-metadata: { name: JsonNull }
+metadata: { name: jsonNull }
 steps:
   - name: stringify
     invoke: { kind: Assert.Equals }
@@ -53,7 +53,7 @@ steps:
       expected: 'null'
 ---
 kind: Run.Sequence
-metadata: { name: JsonStringList }
+metadata: { name: jsonStringList }
 steps:
   - name: stringify
     invoke: { kind: Assert.Equals }
@@ -65,7 +65,7 @@ steps:
 # Mcp.Tools' `result.content[0].text` packages handler output as a JSON string
 # for the MCP client.
 kind: Run.Value
-metadata: { name: BuildPayload }
+metadata: { name: buildPayload }
 value:
   results:
     - { id: "std/foo@1.0.0" }
@@ -73,10 +73,10 @@ value:
   count: 2
 ---
 kind: Run.Sequence
-metadata: { name: JsonStructured }
+metadata: { name: jsonStructured }
 steps:
   - name: build
-    invoke: !ref BuildPayload
+    invoke: !ref buildPayload
     inputs: {}
   - name: stringify
     invoke: { kind: Assert.Equals }
@@ -87,7 +87,7 @@ steps:
 # Embeds json() inside an interpolated string — the path used by Mcp.Tools'
 # `result.content[0].text` to ship structured payloads as an MCP text block.
 kind: Run.Sequence
-metadata: { name: JsonInterpolated }
+metadata: { name: jsonInterpolated }
 steps:
   - name: stringify
     invoke: { kind: Assert.Equals }
@@ -101,7 +101,7 @@ steps:
 # accepted behaviour for Telo manifests, which never carry > 2^53 integer
 # values in practice. This test pins the safe-range round-trip.
 kind: Run.Sequence
-metadata: { name: JsonLargeInt }
+metadata: { name: jsonLargeInt }
 steps:
   - name: stringify
     invoke: { kind: Assert.Equals }

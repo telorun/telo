@@ -9,8 +9,8 @@ imports:
   Console: ../modules/console
   Assert: ../modules/assert
 targets:
-  - !ref RunScriptOnEvent
-  - !ref VerifyStarlarkBasicEvents
+  - !ref runScriptOnEvent
+  - !ref verifyStarlarkBasicEvents
 ---
 kind: Telo.JsonSchema
 metadata:
@@ -34,7 +34,7 @@ schema:
 ---
 kind: Starlark.Script
 metadata:
-  name: ExampleStarlarkScript
+  name: exampleStarlarkScript
 code: |
   def run(input):
     result = input["value"] * 2
@@ -44,22 +44,22 @@ outputType: !ref ScriptOutput
 ---
 kind: Run.Sequence
 metadata:
-  name: RunScriptOnEvent
+  name: runScriptOnEvent
 steps:
-  - name: Step1
+  - name: step1
     inputs:
       value: 42
-    invoke: !ref ExampleStarlarkScript
-  - name: Step2
+    invoke: !ref exampleStarlarkScript
+  - name: step2
     invoke: { kind: Console.WriteLine }
     inputs:
       output: |
         Evaluated starlark code.
-        Result is: ${{ steps.Step1.result.result }}
+        Result is: ${{ steps.step1.result.result }}
 ---
 kind: Assert.Events
 metadata:
-  name: VerifyStarlarkBasicEvents
+  name: verifyStarlarkBasicEvents
 filter:
   - type: "*"
 expect:

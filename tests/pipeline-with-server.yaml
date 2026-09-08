@@ -10,7 +10,7 @@ imports:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestServerWithLifecycle
+  name: testServerWithLifecycle
 with:
   - kind: Run.Value
     metadata:
@@ -60,16 +60,16 @@ with:
       - path: /api
         mount: !ref TestApi
 steps:
-  - name: FetchGreeting
+  - name: fetchGreeting
     inputs: {}
     invoke:
       kind: HttpClient.Request
       url: http://localhost:8845/api/hello?name=World
       method: GET
 
-  - name: VerifyResponse
+  - name: verifyResponse
     inputs:
-      message: "${{ steps.FetchGreeting.result.body.message }}"
+      message: "${{ steps.fetchGreeting.result.body.message }}"
     invoke:
       kind: Assert.Schema
       schema:

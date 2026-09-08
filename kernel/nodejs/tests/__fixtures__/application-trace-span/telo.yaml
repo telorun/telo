@@ -5,19 +5,19 @@ metadata:
 imports:
   Run: ../../../../../modules/run
 targets:
-  - !ref Seq
+  - !ref seq
 ---
 kind: Run.Sequence
 metadata:
-  name: Seq
+  name: seq
 steps:
-  - name: DoEcho
-    invoke: !ref Echo
+  - name: doEcho
+    invoke: !ref echo
     inputs: { value: 7 }
 ---
 kind: Run.Value
 metadata:
-  name: Echo
+  name: echo
 inputType:
   kind: Telo.JsonSchema
   schema:

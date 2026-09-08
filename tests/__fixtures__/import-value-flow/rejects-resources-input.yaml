@@ -10,4 +10,4 @@ imports:
     variables:
       dbFile: "${{ resources.Foo.value }}"
 targets:
-  - !ref Data.Migrate
+  - !ref Data.migrate

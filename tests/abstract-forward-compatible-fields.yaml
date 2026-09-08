@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestAbstractAcceptsSchemaAndForwardFields
+  - !ref testAbstractAcceptsSchemaAndForwardFields
 ---
 # Telo.Abstract is an extension point — it must accept `schema` as well as
 # forward-compatible fields like `inputType`/`outputType` from the typed-abstracts
@@ -13,6 +13,6 @@ targets:
 # against re-closing the Abstract schema (additionalProperties: false).
 kind: Assert.Manifest
 metadata:
-  name: TestAbstractAcceptsSchemaAndForwardFields
+  name: testAbstractAcceptsSchemaAndForwardFields
 source: ./__fixtures__/abstract-with-schema.yaml
 expect: {}

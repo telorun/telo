@@ -6,11 +6,11 @@ imports:
   Bench: ../../modules/benchmark
   Http: ../../modules/http-client
 targets:
-  - !ref FeedbackSmoke
+  - !ref feedbackSmoke
 ---
 kind: Bench.Suite
 metadata:
-  name: FeedbackSmoke
+  name: feedbackSmoke
   module: FeedbackTestBenchmark
 requests: 200
 concurrency: 2

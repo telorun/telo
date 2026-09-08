@@ -17,10 +17,10 @@ imports:
   Assert: ../../assert
   JS: ../../javascript
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Stream.Of
-metadata: { name: Source }
+metadata: { name: source }
 items:
   - "he"
   - "llo world!"
@@ -29,7 +29,7 @@ items:
 # Collects each chunk's offset as a side effect, which is the only way an
 # iteration (no result) can be observed.
 kind: JS.Script
-metadata: { name: Record }
+metadata: { name: record }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -54,23 +54,23 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Src
-    invoke: !ref Source
-  - name: Chunks
+  - name: src
+    invoke: !ref source
+  - name: chunks
     inputs:
-      input: !cel "steps.Src.result.output"
+      input: !cel "steps.src.result.output"
       size: 5
     invoke:
       kind: Stream.Chunk
-  - name: Walk
+  - name: walk
     inputs:
-      chunks: !cel "steps.Chunks.result.output"
-    invoke: !ref OverChunks
+      chunks: !cel "steps.chunks.result.output"
+    invoke: !ref overChunks
 ---
 kind: Run.Iteration
-metadata: { name: OverChunks }
+metadata: { name: overChunks }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -92,21 +92,21 @@ inputType:
 collection: !cel "inputs.chunks"
 concurrency: 1
 steps:
-  - name: Note
+  - name: note
     inputs:
       offset: !cel "item.offset"
       length: !cel "item.length"
       last: !cel "item.last"
-    invoke: !ref Record
+    invoke: !ref record
   # An iteration has no result, so the assertion runs INSIDE the body on the
   # final element, where the accumulator holds every element seen. Asserting
   # per-item only would pass vacuously if the loop ran zero times.
-  - name: OnLast
+  - name: onLast
     if: !cel "item.last"
     then:
-      - name: Final
+      - name: final
         inputs:
-          actual: !cel "steps.Note.result.seen"
+          actual: !cel "steps.note.result.seen"
           expected: ["0:5:false", "5:5:false", "10:4:true"]
         invoke:
           kind: Assert.Equals

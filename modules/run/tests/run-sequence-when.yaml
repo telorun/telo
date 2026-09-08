@@ -6,14 +6,14 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestWhenGuard
+  - !ref testWhenGuard
 ---
 kind: Run.Sequence
 metadata:
-  name: TestWhenGuard
+  name: testWhenGuard
 steps:
   # Step with when:false is skipped. If it ran, its Assert.Schema would fail (const: 0 vs. 999).
-  - name: ShouldSkip
+  - name: shouldSkip
     when: "${{ false }}"
     inputs:
       x: 999
@@ -27,7 +27,7 @@ steps:
             const: 0
 
   # Step with when:true must run. If skipped, the outer assertion below would have no result.
-  - name: ShouldRun
+  - name: shouldRun
     when: "${{ true }}"
     inputs:
       flag: "yes"
@@ -41,16 +41,16 @@ steps:
             const: "yes"
 
   # Data-driven guard: step only runs when a prior result satisfies the condition.
-  - name: Compute
+  - name: compute
     invoke:
       kind: Run.Value
       value:
         ready: true
 
-  - name: DataDrivenStep
-    when: "${{ steps.Compute.result.ready == true }}"
+  - name: dataDrivenStep
+    when: "${{ steps.compute.result.ready == true }}"
     inputs:
-      ready: "${{ steps.Compute.result.ready }}"
+      ready: "${{ steps.compute.result.ready }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -60,9 +60,9 @@ steps:
             const: true
 
   # Verify ShouldRun actually ran by checking its result.
-  - name: VerifyRan
+  - name: verifyRan
     inputs:
-      result: "${{ steps.ShouldRun.result }}"
+      result: "${{ steps.shouldRun.result }}"
     invoke:
       kind: Assert.Schema
       schema:

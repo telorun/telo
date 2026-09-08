@@ -31,62 +31,62 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestWriteLine
-  - !ref TestWriteStream
-  - !ref TestUnknownStyleFallback
+  - !ref testWriteLine
+  - !ref testWriteStream
+  - !ref testUnknownStyleFallback
 ---
 kind: Run.Sequence
-metadata: { name: TestWriteLine }
+metadata: { name: testWriteLine }
 steps:
-  - name: SoloStyle
+  - name: soloStyle
     invoke: !ref Console.writeLine
     inputs:
       output: "{red error}"
-  - name: ChainedStyles
+  - name: chainedStyles
     invoke: !ref Console.writeLine
     inputs:
       output: "{red.bold ERROR}"
-  - name: BackgroundStyle
+  - name: backgroundStyle
     invoke: !ref Console.writeLine
     inputs:
       output: "{red.bgWhite warning}"
-  - name: HexColor
+  - name: hexColor
     invoke: !ref Console.writeLine
     inputs:
       output: "{#ff8800 highlight}"
-  - name: Nesting
+  - name: nesting
     invoke: !ref Console.writeLine
     inputs:
       output: "hi {red {bold WORLD}!}"
-  - name: Escapes
+  - name: escapes
     invoke: !ref Console.writeLine
     inputs:
       output: "literal: \\{red\\} not a tag"
-  - name: PlainText
+  - name: plainText
     invoke: !ref Console.writeLine
     inputs:
       output: "no markup at all"
-  - name: AssertWriteLineReached
+  - name: assertWriteLineReached
     invoke: { kind: Assert.Equals }
     inputs: { actual: true, expected: true }
 ---
 kind: Stream.Of
-metadata: { name: MarkupSource }
+metadata: { name: markupSource }
 items:
   - "{cyan hello} "
   - "{magenta.bold world}\n"
 ---
 kind: Run.Sequence
-metadata: { name: TestWriteStream }
+metadata: { name: testWriteStream }
 steps:
-  - name: StreamSrc
-    invoke: !ref MarkupSource
-  - name: Stream
+  - name: streamSrc
+    invoke: !ref markupSource
+  - name: stream
     inputs:
-      input: "${{ steps.StreamSrc.result.output }}"
+      input: "${{ steps.streamSrc.result.output }}"
     invoke:
       kind: Console.WriteStream
-  - name: AssertStreamReached
+  - name: assertStreamReached
     invoke: { kind: Assert.Equals }
     inputs: { actual: true, expected: true }
 ---
@@ -96,17 +96,17 @@ steps:
 # stay literal); see the file-level KNOWN GAP for why this isn't
 # programmatically asserted.
 kind: Run.Sequence
-metadata: { name: TestUnknownStyleFallback }
+metadata: { name: testUnknownStyleFallback }
 steps:
-  - name: UnknownStyle
+  - name: unknownStyle
     invoke: !ref Console.writeLine
     inputs:
       output: "{notARealStyle hello}"
-  - name: PartiallyKnown
+  - name: partiallyKnown
     invoke: !ref Console.writeLine
     inputs:
       output: "{red.notARealAttr text}"
-  - name: NestedKnownInsideUnknown
+  - name: nestedKnownInsideUnknown
     invoke: !ref Console.writeLine
     # The inner `{red hi}` must come out as literal `{red hi}` — no
     # ANSI escapes, no markup stripping — because the outer wrapper
@@ -114,6 +114,6 @@ steps:
     # ANSI through the wrapper.
     inputs:
       output: "{notARealStyle {red hi}}"
-  - name: AssertUnknownReached
+  - name: assertUnknownReached
     invoke: { kind: Assert.Equals }
     inputs: { actual: true, expected: true }

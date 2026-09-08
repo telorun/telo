@@ -14,43 +14,43 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: CacheMemory.Store
-metadata: { name: Mem }
+metadata: { name: mem }
 ---
 kind: RateLimit.Budget
-metadata: { name: Budget }
-store: !ref Mem
+metadata: { name: budget }
+store: !ref mem
 limit: 100
 window: "60s"
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   - name: reserve1
-    invoke: !ref Budget
+    invoke: !ref budget
     inputs: { op: reserve, key: global, amount: 40 }
   - name: reserve2
-    invoke: !ref Budget
+    invoke: !ref budget
     inputs: { op: reserve, key: global, amount: 40 }
   - name: reserve3
-    invoke: !ref Budget
+    invoke: !ref budget
     inputs: { op: reserve, key: global, amount: 40 }
   - name: settle1
-    invoke: !ref Budget
+    invoke: !ref budget
     inputs:
       op: settle
       key: global
       amount: 10
       reserved: !cel "steps.reserve1.result.reserved"
   - name: reserve4
-    invoke: !ref Budget
+    invoke: !ref budget
     inputs: { op: reserve, key: global, amount: 40 }
   - name: empty
-    invoke: !ref Budget
+    invoke: !ref budget
     inputs: { op: reserve, key: "", amount: 5 }
-  - name: Assert
+  - name: assert
     inputs:
       actual:
         r1Allowed: !cel "steps.reserve1.result.allowed"

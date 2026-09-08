@@ -9,7 +9,7 @@ ports:
     env: PORT
     default: 8080
 targets:
-  - !ref Server
+  - !ref server
 ---
 # `host` is `x-telo-eval: compile`, so this `nowIso()` is evaluated once at load
 # and frozen for the process's lifetime. That is occasionally the intent (a boot
@@ -17,7 +17,7 @@ targets:
 # `deterministic: false` was read only to print a label in `telo cel functions`.
 kind: Http.Server
 metadata:
-  name: Server
+  name: server
 host: !cel "nowIso()"
 port: !cel "ports.http"
 mounts: []

@@ -21,11 +21,11 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref RouteBindingsResolveInTheLibraryScope
+  - !ref routeBindingsResolveInTheLibraryScope
 ---
 kind: Assert.Manifest
 metadata:
-  name: RouteBindingsResolveInTheLibraryScope
+  name: routeBindingsResolveInTheLibraryScope
 source: ./__fixtures__/library-route-scope/app.yaml
 expect:
   errors: []

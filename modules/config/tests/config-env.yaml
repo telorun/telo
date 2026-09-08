@@ -6,11 +6,11 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestConfigEnv
+  - !ref testConfigEnv
 ---
 kind: Config.Env
 metadata:
-  name: AppConfig
+  name: appConfig
 variables:
   port:
     env: PORT
@@ -29,11 +29,11 @@ secrets:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestConfigEnv
+  name: testConfigEnv
 steps:
-  - name: AssertPort
+  - name: assertPort
     inputs:
-      port: "${{ resources.AppConfig.port }}"
+      port: "${{ resources.appConfig.port }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -44,9 +44,9 @@ steps:
             const: 1234
         required: [ port ]
 
-  - name: AssertLogLevel
+  - name: assertLogLevel
     inputs:
-      logLevel: "${{ resources.AppConfig.logLevel }}"
+      logLevel: "${{ resources.appConfig.logLevel }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -57,9 +57,9 @@ steps:
             const: info
         required: [ logLevel ]
 
-  - name: AssertApiKey
+  - name: assertApiKey
     inputs:
-      apiKey: "${{ resources.AppConfig.apiKey }}"
+      apiKey: "${{ resources.appConfig.apiKey }}"
     invoke:
       kind: Assert.Schema
       schema:

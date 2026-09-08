@@ -6,10 +6,10 @@ imports:
   JS: ../../javascript
   Run: ../../run
   Assert: ../../assert
-targets: [ !ref TestRun ]
+targets: [ !ref testRun ]
 ---
 kind: JS.Script
-metadata: { name: McpFetch }
+metadata: { name: mcpFetch }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -72,7 +72,7 @@ code: |
   }
 ---
 kind: Run.Value
-metadata: { name: WeatherImpl }
+metadata: { name: weatherImpl }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -83,7 +83,7 @@ value:
   summary: !cel "'Sunny in ' + inputs.city"
 ---
 kind: Run.Value
-metadata: { name: DbImpl }
+metadata: { name: dbImpl }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -102,7 +102,7 @@ entries:
       type: object
       properties: { city: { type: string } }
       required: [ city ]
-    handler: !ref WeatherImpl
+    handler: !ref weatherImpl
     inputs: { city: "${{ request.arguments.city }}" }
     result:
       content:
@@ -118,7 +118,7 @@ entries:
       type: object
       properties: { table: { type: string } }
       required: [ table ]
-    handler: !ref DbImpl
+    handler: !ref dbImpl
     inputs: { table: "${{ request.arguments.table }}" }
     result:
       content:
@@ -126,12 +126,12 @@ entries:
           text: "rows=${{ result.rows }}"
 ---
 kind: Mcp.HttpEndpoint
-metadata: { name: McpHttp }
+metadata: { name: mcpHttp }
 serverInfo: { name: telo-test-merge, version: 1.0.0 }
 tools: [ !ref WeatherTools, !ref DatabaseTools ]
 ---
 kind: Run.Sequence
-metadata: { name: TestRun }
+metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -139,19 +139,19 @@ with:
     port: 8953
     baseUrl: http://127.0.0.1:8953
     mounts:
-      - { path: /mcp, mount: !ref McpHttp }
+      - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
 steps:
-  - name: ListTools
+  - name: listTools
     inputs:
       url: http://127.0.0.1:8953/mcp
       method: tools/list
-    invoke: !ref McpFetch
-  - name: AssertListed
+    invoke: !ref mcpFetch
+  - name: assertListed
     inputs:
-      hasError: "${{ steps.ListTools.result.hasError }}"
-      firstName: "${{ steps.ListTools.result.result.tools[0].name }}"
-      secondName: "${{ steps.ListTools.result.result.tools[1].name }}"
+      hasError: "${{ steps.listTools.result.hasError }}"
+      firstName: "${{ steps.listTools.result.result.tools[0].name }}"
+      secondName: "${{ steps.listTools.result.result.tools[1].name }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -162,15 +162,15 @@ steps:
           secondName: { const: "count_rows" }
         required: [ hasError, firstName, secondName ]
 
-  - name: CallWeather
+  - name: callWeather
     inputs:
       url: http://127.0.0.1:8953/mcp
       method: tools/call
       params: { name: get_weather, arguments: { city: Mars } }
-    invoke: !ref McpFetch
-  - name: AssertWeather
+    invoke: !ref mcpFetch
+  - name: assertWeather
     inputs:
-      contentText: "${{ steps.CallWeather.result.result.content[0].text }}"
+      contentText: "${{ steps.callWeather.result.result.content[0].text }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -179,15 +179,15 @@ steps:
           contentText: { const: "Sunny in Mars" }
         required: [ contentText ]
 
-  - name: CallDb
+  - name: callDb
     inputs:
       url: http://127.0.0.1:8953/mcp
       method: tools/call
       params: { name: count_rows, arguments: { table: users } }
-    invoke: !ref McpFetch
-  - name: AssertDb
+    invoke: !ref mcpFetch
+  - name: assertDb
     inputs:
-      contentText: "${{ steps.CallDb.result.result.content[0].text }}"
+      contentText: "${{ steps.callDb.result.result.content[0].text }}"
     invoke:
       kind: Assert.Schema
       schema:

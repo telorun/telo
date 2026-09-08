@@ -6,10 +6,10 @@ imports:
   Http: ../../http-server
   Run: ../../run
   Assert: ../../assert
-targets: [ !ref TestRun ]
+targets: [ !ref testRun ]
 ---
 kind: Run.Value
-metadata: { name: PingImpl }
+metadata: { name: pingImpl }
 value:
   pong: true
 ---
@@ -22,7 +22,7 @@ entries:
       type: object
       properties: {}
       additionalProperties: false
-    handler: !ref PingImpl
+    handler: !ref pingImpl
     inputs: {}
     result:
       content:
@@ -30,21 +30,21 @@ entries:
           text: pong
 ---
 kind: Mcp.HttpEndpoint
-metadata: { name: McpHttp }
+metadata: { name: mcpHttp }
 serverInfo: { name: telo-test-list, version: 1.0.0 }
 tools: [ !ref ListedTools ]
 ---
 kind: McpClient.HttpClient
-metadata: { name: ClientUnderTest }
+metadata: { name: clientUnderTest }
 url: http://127.0.0.1:8956/mcp
 clientInfo: { name: telo-test, version: 1.0.0 }
 ---
 kind: McpClient.ToolsList
-metadata: { name: ListTools }
-client: !ref ClientUnderTest
+metadata: { name: listTools }
+client: !ref clientUnderTest
 ---
 kind: Run.Sequence
-metadata: { name: TestRun }
+metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -52,16 +52,16 @@ with:
     port: 8956
     baseUrl: http://127.0.0.1:8956
     mounts:
-      - { path: /mcp, mount: !ref McpHttp }
+      - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
 steps:
-  - name: List
+  - name: list
     inputs: {}
-    invoke: !ref ListTools
-  - name: AssertListed
+    invoke: !ref listTools
+  - name: assertListed
     inputs:
-      toolName: "${{ steps.List.result.tools[0].name }}"
-      toolDescription: "${{ steps.List.result.tools[0].description }}"
+      toolName: "${{ steps.list.result.tools[0].name }}"
+      toolDescription: "${{ steps.list.result.tools[0].description }}"
     invoke:
       kind: Assert.Schema
       schema:

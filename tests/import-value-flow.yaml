@@ -3,7 +3,7 @@
 # both reach the leaf's SQLite.Connection as a concrete string. Before the
 # fix the CEL hop was baked verbatim as a compiled-value object and crashed the
 # connection. `:memory:` keeps it hermetic; the forwarding hops are still CEL, so
-# the bug is exercised. `Mid.Db`/`Mid.Migrate` are re-exported from data, proving
+# the bug is exercised. `Mid.db`/`Mid.migrate` are re-exported from data, proving
 # the value reached the single owning instance.
 kind: Telo.Application
 metadata:
@@ -23,22 +23,22 @@ imports:
   Assert: ../modules/assert
   Run: ../modules/run
 targets:
-  - !ref Mid.Migrate
-  - !ref Verify
+  - !ref Mid.migrate
+  - !ref verify
 ---
 kind: Run.Sequence
 metadata:
-  name: Verify
+  name: verify
 steps:
-  - name: Select
+  - name: select
     inputs:
       sql: "SELECT name FROM marker WHERE id = 1"
     invoke:
       kind: Sql.Query
-      connection: !ref Mid.Db
-  - name: AssertSeeded
+      connection: !ref Mid.db
+  - name: assertSeeded
     inputs:
-      actual: "${{ steps.Select.result.rows[0].name }}"
+      actual: "${{ steps.select.result.rows[0].name }}"
       expected: "flowed"
     invoke:
       kind: Assert.Equals

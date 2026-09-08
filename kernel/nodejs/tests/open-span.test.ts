@@ -29,7 +29,7 @@ describe("openSpan — inbound boundary span", () => {
     kernel.on("api.Request", (e) => {
       requests.push(e.payload as Payload);
     });
-    kernel.on("Echo.Invoked", (e) => {
+    kernel.on("echo.Invoked", (e) => {
       echoes.push(e.payload as Payload);
     });
 
@@ -38,7 +38,7 @@ describe("openSpan — inbound boundary span", () => {
       label: "GET /x",
       attributes: { method: "GET", path: "/x" },
     });
-    await rootContext.invoke("JS.Script", "Echo", { value: 1 }, span.context);
+    await rootContext.invoke("JS.Script", "echo", { value: 1 }, span.context);
     await span.settle("ok");
 
     expect(requests).toHaveLength(1);

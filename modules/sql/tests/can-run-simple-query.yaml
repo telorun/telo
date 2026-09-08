@@ -8,27 +8,27 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestSimpleQuery
+  - !ref testSimpleQuery
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 kind: Run.Sequence
 metadata:
-  name: TestSimpleQuery
+  name: testSimpleQuery
 steps:
-  - name: RunQuery
+  - name: runQuery
     inputs:
       sql: "SELECT 1 as result"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
 
-  - name: AssertResult
+  - name: assertResult
     inputs:
-      rows: "${{ steps.RunQuery.result.rows }}"
+      rows: "${{ steps.runQuery.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:

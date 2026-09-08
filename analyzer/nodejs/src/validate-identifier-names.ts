@@ -1,8 +1,13 @@
-import type { ResourceManifest } from "@telorun/sdk";
+import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 
-import type { AliasResolver } from "./alias-resolver.js";
+import {
+  moduleScopedDefResolver,
+  type AliasResolver,
+  type ModuleScopes,
+} from "./alias-resolver.js";
 import type { CallGraph } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import {
   TYPE_LEVEL_DOC_KINDS,
   checkName,
@@ -44,8 +49,10 @@ export function validateIdentifierNames(
   aliases: AliasResolver,
   rootModules: Set<string>,
   graph: CallGraph,
+  scopes: ModuleScopes,
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
+  const resolveDef = moduleScopedDefResolver<ResourceDefinition>(registry, aliases, scopes);
 
   for (const manifest of manifests) {
     const metadata = manifest.metadata as Record<string, unknown> | undefined;
@@ -65,7 +72,7 @@ export function validateIdentifierNames(
     const ownModule = metadata?.module as string | undefined;
     if (ownModule && !rootModules.has(ownModule)) continue;
 
-    const level = levelFor(manifest, registry, aliases);
+    const level = levelFor(manifest, resolveDef, ownModule);
     push(out, checkName(name, level, surfaceFor(manifest.kind)), {
       kind: manifest.kind,
       name,
@@ -126,20 +133,32 @@ export function validateIdentifierNames(
  * a resource. Capability-driven rather than by kind name, so no resource kind
  * is hardcoded here.
  *
+ * **The capability is the INHERITED one**, not the leaf declaration. Capability
+ * is inherited and immutable along `extends` — a kind omits it to take its
+ * ancestor's — so reading the leaf answers `undefined` for every kind that does,
+ * and the fallback then calls a type a value. That is not hypothetical: it is
+ * exactly `Type.JsonSchema`, a pure alias of the built-in (`extends:
+ * Telo.JsonSchema`, no `capability:` of its own), so a shape declared through
+ * the deprecated spelling was reported as miscased while the identical
+ * declaration written as `kind: Telo.JsonSchema` was not. Renaming on that
+ * report is worse than the warning: `extends:` between two named shapes is not a
+ * reference slot, so the inheritance edge does not move with the name.
+ *
  * An unresolvable kind falls back to value level — the honest default, since
  * `UNDEFINED_KIND` already reports the real problem and guessing type level
  * would stack a case error on top of it.
  */
 function levelFor(
   manifest: ResourceManifest,
-  registry: DefinitionRegistry,
-  aliases: AliasResolver,
+  resolveDef: DefResolver & { in(kind: string, module?: string): ResourceDefinition | undefined },
+  ownModule: string | undefined,
 ): NameLevel {
   if (TYPE_LEVEL_DOC_KINDS.has(manifest.kind as string)) return "type";
-  // The root resolver is the right one unconditionally: every manifest
-  // reaching here belongs to a root module, the others having been skipped.
-  const canonical = aliases.resolveKind(manifest.kind as string) ?? (manifest.kind as string);
-  return registry.resolve(canonical)?.capability === "Telo.Type" ? "type" : "value";
+  // The top-level lookup is in the module that WROTE the `kind:` — a root one,
+  // the others having been skipped above — while the chain walk re-scopes at
+  // every hop, since an `extends` alias belongs to the file declaring it.
+  const def = resolveDef.in(manifest.kind as string, ownModule);
+  return inheritedCapability(def, resolveDef) === "Telo.Type" ? "type" : "value";
 }
 
 /** The noun phrase a diagnostic uses as its subject. */

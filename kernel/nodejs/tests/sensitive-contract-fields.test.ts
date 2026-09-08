@@ -33,11 +33,11 @@ describe("x-telo-sensitive contract fields", () => {
   it("carries a marked output as [redacted] and leaves its siblings intact", async () => {
     const kernel = await bootKernel();
     let payload: Payload;
-    kernel.on("Credential.Invoked", (event) => {
+    kernel.on("credential.Invoked", (event) => {
       payload = event.payload as Payload;
     });
 
-    const result = (await kernel.invoke("JS.Script.Credential", {})) as Record<string, unknown>;
+    const result = (await kernel.invoke("JS.Script.credential", {})) as Record<string, unknown>;
 
     const outputs = payload?.outputs as Record<string, unknown>;
     expect(outputs.headers).toBe("[redacted]");
@@ -56,11 +56,11 @@ describe("x-telo-sensitive contract fields", () => {
   it("leaves an unmarked contract's payload verbatim", async () => {
     const kernel = await bootKernel();
     let payload: Payload;
-    kernel.on("Plain.Invoked", (event) => {
+    kernel.on("plain.Invoked", (event) => {
       payload = event.payload as Payload;
     });
 
-    await kernel.invoke("JS.Script.Plain", {});
+    await kernel.invoke("JS.Script.plain", {});
 
     expect((payload?.outputs as Record<string, unknown>).headers).toEqual({
       authorization: "Bearer visible",
@@ -72,11 +72,11 @@ describe("x-telo-sensitive contract fields", () => {
   it("redacts each value of a marked map, and keeps its keys and siblings", async () => {
     const kernel = await bootKernel();
     let payload: Payload;
-    kernel.on("MapValued.Invoked", (event) => {
+    kernel.on("mapValued.Invoked", (event) => {
       payload = event.payload as Payload;
     });
 
-    await kernel.invoke("JS.Script.MapValued", {});
+    await kernel.invoke("JS.Script.mapValued", {});
 
     const outputs = payload?.outputs as Record<string, unknown>;
     // Marked on `additionalProperties`, which names no properties — so without a
@@ -90,11 +90,11 @@ describe("x-telo-sensitive contract fields", () => {
   it("redacts a whole output that is itself the secret", async () => {
     const kernel = await bootKernel();
     let payload: Payload;
-    kernel.on("WholeValue.Invoked", (event) => {
+    kernel.on("wholeValue.Invoked", (event) => {
       payload = event.payload as Payload;
     });
 
-    const result = await kernel.invoke("JS.Script.WholeValue", {});
+    const result = await kernel.invoke("JS.Script.wholeValue", {});
 
     // The empty path. Refusing a root-level mark left exactly the simplest
     // shape — a contract whose entire output is the secret — unredacted.
@@ -108,9 +108,9 @@ describe("x-telo-sensitive contract fields", () => {
     const kernel = await bootKernel();
     kernel.setTracing(true);
     const payloads: Payload[] = [];
-    kernel.on("Credential.Invoking", (event) => payloads.push(event.payload as Payload));
+    kernel.on("credential.Invoking", (event) => payloads.push(event.payload as Payload));
 
-    await kernel.invoke("JS.Script.Credential", { forceRefresh: true });
+    await kernel.invoke("JS.Script.credential", { forceRefresh: true });
 
     // `forceRefresh` is not auth material and is marked by nothing, so the start
     // span keeps saying what was asked for.

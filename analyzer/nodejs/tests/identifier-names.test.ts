@@ -38,6 +38,15 @@ const jsonSchemaDef = {
   schema: { type: "object", properties: { schema: { type: "object" } } },
 } as unknown as ResourceManifest;
 
+/** A pure alias of the shape kind: it inherits `Telo.Type` through `extends`
+ *  and declares no `capability` of its own — the `Type.JsonSchema` shape. */
+const aliasShapeDef = {
+  kind: "Telo.Definition",
+  metadata: { name: "AliasShape", module: "Run" },
+  extends: "Run.Shape",
+  schema: { type: "object", properties: { schema: { type: "object" } } },
+} as unknown as ResourceManifest;
+
 function analyze(...manifests: ResourceManifest[]) {
   return new StaticAnalyzer().analyze(
     withSyntheticPositions([sequenceDef, jsonSchemaDef, ...manifests]),
@@ -185,6 +194,34 @@ describe("validateIdentifierNames", () => {
       app(),
       {
         kind: "Run.Shape",
+        metadata: { name: "order", module: "NamesApp" },
+        schema: { type: "object" },
+      } as unknown as ResourceManifest,
+    );
+    expect(codes(lower, "INVALID_TYPE_NAME")).toHaveLength(1);
+  });
+
+  it("reads the INHERITED capability, so an alias kind's shapes are still type-level", () => {
+    // `capability` is inherited and immutable along `extends`, so a kind that
+    // omits it — every pure alias of another, `Type.JsonSchema` above all —
+    // declares none of its own. Reading the leaf called those shapes values and
+    // asked for a rename that `extends:` between two shapes cannot follow.
+    const diagnostics = analyze(
+      app(),
+      aliasShapeDef,
+      {
+        kind: "Run.AliasShape",
+        metadata: { name: "Order", module: "NamesApp" },
+        schema: { type: "object" },
+      } as unknown as ResourceManifest,
+    );
+    expect(codes(diagnostics, "NAME_CASE_CONVENTION")).toEqual([]);
+
+    const lower = analyze(
+      app(),
+      aliasShapeDef,
+      {
+        kind: "Run.AliasShape",
         metadata: { name: "order", module: "NamesApp" },
         schema: { type: "object" },
       } as unknown as ResourceManifest,

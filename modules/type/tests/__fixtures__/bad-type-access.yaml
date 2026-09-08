@@ -7,7 +7,7 @@ imports:
   Run: ../../../run
   JavaScript: ../../../javascript
 targets:
-  - !ref TestBadAccess
+  - !ref testBadAccess
 ---
 kind: Type.JsonSchema
 metadata:
@@ -21,7 +21,7 @@ schema:
 ---
 kind: JavaScript.Script
 metadata:
-  name: AddNumbers
+  name: addNumbers
 outputType: !ref SumOutput
 code: |
   function main({ a, b }) {
@@ -30,16 +30,16 @@ code: |
 ---
 kind: Run.Sequence
 metadata:
-  name: TestBadAccess
+  name: testBadAccess
 steps:
-  - name: Add
+  - name: add
     inputs:
       a: 1
       b: 2
-    invoke: !ref AddNumbers
-  - name: Bad
+    invoke: !ref addNumbers
+  - name: bad
     inputs:
-      value: "${{ steps.Add.result.nonExistent }}"
+      value: "${{ steps.add.result.nonExistent }}"
     invoke:
       kind: JavaScript.Script
       code: |

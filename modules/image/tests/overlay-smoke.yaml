@@ -13,20 +13,20 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestOverlay
-  - !ref TestZeroWidthShape
-  - !ref TestUndecodableBytes
+  - !ref testOverlay
+  - !ref testZeroWidthShape
+  - !ref testUndecodableBytes
 ---
 kind: Image.Blank
-metadata: { name: Canvas }
+metadata: { name: canvas }
 ---
 kind: Image.Overlay
-metadata: { name: Draw }
+metadata: { name: draw }
 stroke: { color: "#FF3B30", width: 3 }
 label: { color: "#FFFFFF", placement: top-left }
 ---
 kind: JS.Script
-metadata: { name: CheckPngMagic }
+metadata: { name: checkPngMagic }
 code: |
   async function main(input) {
     const img = input.image;
@@ -38,23 +38,23 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: TestOverlay }
+metadata: { name: testOverlay }
 steps:
-  - name: Fixture
+  - name: fixture
     inputs: { width: 120, height: 80 }
-    invoke: !ref Canvas
-  - name: Draw
+    invoke: !ref canvas
+  - name: draw
     inputs:
-      image: "${{ steps.Fixture.result.image }}"
+      image: "${{ steps.fixture.result.image }}"
       shapes:
         - { x: 20, y: 20, width: 60, height: 40, label: "firstName (text)" }
         - { x: 100, y: 60, width: 40, height: 40, color: "#0000FF" }
-    invoke: !ref Draw
-  - name: AssertDimensions
+    invoke: !ref draw
+  - name: assertDimensions
     inputs:
-      width: "${{ steps.Draw.result.width }}"
-      height: "${{ steps.Draw.result.height }}"
-      mediaType: "${{ steps.Draw.result.mediaType }}"
+      width: "${{ steps.draw.result.width }}"
+      height: "${{ steps.draw.result.height }}"
+      mediaType: "${{ steps.draw.result.mediaType }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -64,13 +64,13 @@ steps:
           height: { const: 80 }
           mediaType: { const: image/png }
         required: [ width, height, mediaType ]
-  - name: CheckPng
+  - name: checkPng
     inputs:
-      image: "${{ steps.Draw.result.image }}"
-    invoke: !ref CheckPngMagic
-  - name: AssertPng
+      image: "${{ steps.draw.result.image }}"
+    invoke: !ref checkPngMagic
+  - name: assertPng
     inputs:
-      isPng: "${{ steps.CheckPng.result.isPng }}"
+      isPng: "${{ steps.checkPng.result.isPng }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -78,16 +78,16 @@ steps:
         properties:
           isPng: { const: true }
         required: [ isPng ]
-  - name: DrawWebp
+  - name: drawWebp
     inputs:
-      image: "${{ steps.Fixture.result.image }}"
+      image: "${{ steps.fixture.result.image }}"
       shapes:
         - { x: 20, y: 20, width: 60, height: 40, label: "firstName (text)" }
       format: webp
-    invoke: !ref Draw
-  - name: AssertWebp
+    invoke: !ref draw
+  - name: assertWebp
     inputs:
-      mediaType: "${{ steps.DrawWebp.result.mediaType }}"
+      mediaType: "${{ steps.drawWebp.result.mediaType }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -97,23 +97,23 @@ steps:
         required: [ mediaType ]
 ---
 kind: Run.Sequence
-metadata: { name: TestZeroWidthShape }
+metadata: { name: testZeroWidthShape }
 steps:
-  - name: Fixture
+  - name: fixture
     inputs: { width: 120, height: 80 }
-    invoke: !ref Canvas
-  - name: TryDraw
+    invoke: !ref canvas
+  - name: tryDraw
     try:
-      - name: Draw
+      - name: draw
         inputs:
-          image: "${{ steps.Fixture.result.image }}"
+          image: "${{ steps.fixture.result.image }}"
           shapes:
             # Deliberately invalid, routed through CEL: a literal is rejected
             # by `telo check`; this test is about the RUNTIME boundary.
             - { x: 10, y: 10, width: !cel "0", height: 10 }
-        invoke: !ref Draw
+        invoke: !ref draw
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:
@@ -125,25 +125,25 @@ steps:
             required: [ code ]
 ---
 kind: Run.Sequence
-metadata: { name: TestUndecodableBytes }
+metadata: { name: testUndecodableBytes }
 steps:
-  - name: NotAnImage
+  - name: notAnImage
     invoke:
       kind: JS.Script
       code: |
         async function main() {
           return { image: new Uint8Array([1, 2, 3, 4]) };
         }
-  - name: TryDraw
+  - name: tryDraw
     try:
-      - name: Draw
+      - name: draw
         inputs:
-          image: "${{ steps.NotAnImage.result.image }}"
+          image: "${{ steps.notAnImage.result.image }}"
           shapes:
             - { x: 0, y: 0, width: 5, height: 5 }
-        invoke: !ref Draw
+        invoke: !ref draw
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:

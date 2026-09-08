@@ -14,10 +14,10 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestEncode
+  - !ref testEncode
 ---
 kind: Stream.Of
-metadata: { name: Source }
+metadata: { name: source }
 items:
   - { type: "text-delta", delta: "h" }
   - { type: "text-delta", delta: "i" }
@@ -26,7 +26,7 @@ items:
 # Local byte→text drain. Avoids depending on plain-text-codec — keeps this test
 # focused on Ndjson.Encoder alone.
 kind: JS.Script
-metadata: { name: Drain }
+metadata: { name: drain }
 code: |
   async function main({ bytes }) {
     const chunks = [];
@@ -35,24 +35,24 @@ code: |
   }
 ---
 kind: Ndjson.Encoder
-metadata: { name: Encoder }
+metadata: { name: encoder }
 ---
 kind: Run.Sequence
-metadata: { name: TestEncode }
+metadata: { name: testEncode }
 steps:
-  - name: Source
-    invoke: !ref Source
-  - name: Encode
+  - name: source
+    invoke: !ref source
+  - name: encode
     inputs:
-      input: "${{ steps.Source.result.output }}"
-    invoke: !ref Encoder
-  - name: Drain
+      input: "${{ steps.source.result.output }}"
+    invoke: !ref encoder
+  - name: drain
     inputs:
-      bytes: "${{ steps.Encode.result.output }}"
-    invoke: !ref Drain
-  - name: Assert
+      bytes: "${{ steps.encode.result.output }}"
+    invoke: !ref drain
+  - name: assert
     inputs:
-      text: "${{ steps.Drain.result.text }}"
+      text: "${{ steps.drain.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:

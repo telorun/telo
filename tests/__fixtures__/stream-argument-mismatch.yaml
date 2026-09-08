@@ -11,10 +11,10 @@ metadata:
 imports:
   Run: ../../modules/run
 targets:
-  - !ref Pipeline
+  - !ref pipeline
 ---
 kind: Run.Value
-metadata: { name: ProduceBytes }
+metadata: { name: produceBytes }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -27,7 +27,7 @@ value:
   output: !cel "null"
 ---
 kind: Run.Value
-metadata: { name: ConsumeText }
+metadata: { name: consumeText }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -42,11 +42,11 @@ value:
   ok: true
 ---
 kind: Run.Sequence
-metadata: { name: Pipeline }
+metadata: { name: pipeline }
 steps:
-  - name: Produce
-    invoke: !ref ProduceBytes
-  - name: Consume
+  - name: produce
+    invoke: !ref produceBytes
+  - name: consume
     inputs:
-      input: !cel "steps.Produce.result.output"
-    invoke: !ref ConsumeText
+      input: !cel "steps.produce.result.output"
+    invoke: !ref consumeText

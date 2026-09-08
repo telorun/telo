@@ -6,15 +6,15 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestWhileLoop
+  - !ref testWhileLoop
 ---
 kind: Run.Sequence
 metadata:
-  name: TestWhileLoop
+  name: testWhileLoop
 steps:
   # --- while: basic counter loop ---
   # Pre-initialize Counter at n=0. The while loop overwrites it each iteration.
-  - name: Counter
+  - name: counter
     inputs:
       n: 0
     invoke:
@@ -24,12 +24,12 @@ steps:
       value:
         n: !cel "inputs.n"
 
-  - name: Increment
-    while: "${{ steps.Counter.result.n < 3 }}"
+  - name: increment
+    while: "${{ steps.counter.result.n < 3 }}"
     do:
-      - name: Counter
+      - name: counter
         inputs:
-          n: "${{ steps.Counter.result.n }}"
+          n: "${{ steps.counter.result.n }}"
         invoke:
           kind: Run.Value
           inputs:
@@ -37,9 +37,9 @@ steps:
           value:
             n: !cel "inputs.n + 1.0"
 
-  - name: AssertThreeIterations
+  - name: assertThreeIterations
     inputs:
-      n: "${{ steps.Counter.result.n }}"
+      n: "${{ steps.counter.result.n }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -50,13 +50,13 @@ steps:
             const: 3
 
   # --- while: loop body can reference outer steps ---
-  - name: Multiplier
+  - name: multiplier
     invoke:
       kind: Run.Value
       value:
         factor: 2
 
-  - name: Accumulator
+  - name: accumulator
     inputs:
       total: 0
     invoke:
@@ -66,13 +66,13 @@ steps:
       value:
         total: !cel "inputs.total"
 
-  - name: Multiply
-    while: "${{ steps.Accumulator.result.total < 8 }}"
+  - name: multiply
+    while: "${{ steps.accumulator.result.total < 8 }}"
     do:
-      - name: Accumulator
+      - name: accumulator
         inputs:
-          total: "${{ steps.Accumulator.result.total }}"
-          factor: "${{ steps.Multiplier.result.factor }}"
+          total: "${{ steps.accumulator.result.total }}"
+          factor: "${{ steps.multiplier.result.factor }}"
         invoke:
           kind: Run.Value
           inputs:
@@ -81,9 +81,9 @@ steps:
           value:
             total: !cel "inputs.total + inputs.factor"
 
-  - name: AssertAccumulated
+  - name: assertAccumulated
     inputs:
-      total: "${{ steps.Accumulator.result.total }}"
+      total: "${{ steps.accumulator.result.total }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -94,11 +94,11 @@ steps:
             const: 8
 
   # --- while: condition false from the start, body never runs ---
-  - name: NeverRuns
+  - name: neverRuns
     while: "${{ false }}"
     do:
       # Would fail if this ran.
-      - name: ShouldNotExecute
+      - name: shouldNotExecute
         inputs:
           x: 1
         invoke:

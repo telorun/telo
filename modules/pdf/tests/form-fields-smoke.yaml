@@ -17,46 +17,46 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestAddFields
-  - !ref TestBoxOutOfBounds
-  - !ref TestNegativeCoordinates
-  - !ref TestPageOutOfRange
+  - !ref testAddFields
+  - !ref testBoxOutOfBounds
+  - !ref testNegativeCoordinates
+  - !ref testPageOutOfRange
 ---
 kind: Pdf.Rasterizer
-metadata: { name: Render }
+metadata: { name: render }
 scale: 2
 ---
 kind: Pdf.FormFields
-metadata: { name: AddFields }
+metadata: { name: addFields }
 scale: 2
 ---
 kind: Run.Sequence
-metadata: { name: TestAddFields }
+metadata: { name: testAddFields }
 steps:
-  - name: Fixture
-    invoke: !ref Fixture.SampleFormPdf
-  - name: Page
+  - name: fixture
+    invoke: !ref Fixture.sampleFormPdf
+  - name: page
     inputs:
-      data: "${{ steps.Fixture.result.data }}"
+      data: "${{ steps.fixture.result.data }}"
       page: 1
-    invoke: !ref Render
-  - name: Fielded
+    invoke: !ref render
+  - name: fielded
     inputs:
-      data: "${{ steps.Fixture.result.data }}"
-      scale: "${{ steps.Page.result.scale }}"
+      data: "${{ steps.fixture.result.data }}"
+      scale: "${{ steps.page.result.scale }}"
       fields:
         - { name: firstName, type: text, page: 1, x: 240, y: 64, width: 300, height: 40 }
         - { name: subscribe, type: checkbox, page: 2, x: 240, y: 64, width: 40, height: 40 }
-    invoke: !ref AddFields
-  - name: ReRender
+    invoke: !ref addFields
+  - name: reRender
     inputs:
-      data: "${{ steps.Fielded.result.data }}"
+      data: "${{ steps.fielded.result.data }}"
       page: 2
-    invoke: !ref Render
-  - name: AssertStillValidPdf
+    invoke: !ref render
+  - name: assertStillValidPdf
     inputs:
-      width: "${{ steps.ReRender.result.width }}"
-      pageCount: "${{ steps.ReRender.result.pageCount }}"
+      width: "${{ steps.reRender.result.width }}"
+      pageCount: "${{ steps.reRender.result.pageCount }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -65,16 +65,16 @@ steps:
           width: { const: 600 }
           pageCount: { const: 2 }
         required: [ width, pageCount ]
-  - name: TryDuplicate
+  - name: tryDuplicate
     try:
-      - name: Duplicate
+      - name: duplicate
         inputs:
-          data: "${{ steps.Fielded.result.data }}"
+          data: "${{ steps.fielded.result.data }}"
           fields:
             - { name: firstName, type: text, page: 1, x: 240, y: 64, width: 300, height: 40 }
-        invoke: !ref AddFields
+        invoke: !ref addFields
     catch:
-      - name: CaughtDuplicate
+      - name: caughtDuplicate
         inputs:
           code: "${{ error.code }}"
         invoke:
@@ -86,21 +86,21 @@ steps:
             required: [ code ]
 ---
 kind: Run.Sequence
-metadata: { name: TestBoxOutOfBounds }
+metadata: { name: testBoxOutOfBounds }
 steps:
-  - name: Fixture
-    invoke: !ref Fixture.SampleFormPdf
-  - name: TryOutOfBounds
+  - name: fixture
+    invoke: !ref Fixture.sampleFormPdf
+  - name: tryOutOfBounds
     try:
       # Page is 300×200 pt → 600×400 px at scale 2; x 500 + width 200 overflows.
-      - name: OutOfBounds
+      - name: outOfBounds
         inputs:
-          data: "${{ steps.Fixture.result.data }}"
+          data: "${{ steps.fixture.result.data }}"
           fields:
             - { name: oob, type: text, page: 1, x: 500, y: 64, width: 200, height: 40 }
-        invoke: !ref AddFields
+        invoke: !ref addFields
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:
@@ -112,21 +112,21 @@ steps:
             required: [ code ]
 ---
 kind: Run.Sequence
-metadata: { name: TestNegativeCoordinates }
+metadata: { name: testNegativeCoordinates }
 steps:
-  - name: Fixture
-    invoke: !ref Fixture.SampleFormPdf
-  - name: TryNegative
+  - name: fixture
+    invoke: !ref Fixture.sampleFormPdf
+  - name: tryNegative
     try:
-      - name: Negative
+      - name: negative
         inputs:
-          data: "${{ steps.Fixture.result.data }}"
+          data: "${{ steps.fixture.result.data }}"
           fields:
             # Deliberately invalid, routed through CEL — see blank-smoke.yaml.
             - { name: neg, type: text, page: 1, x: !cel "-10", y: 64, width: 100, height: 40 }
-        invoke: !ref AddFields
+        invoke: !ref addFields
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:
@@ -138,20 +138,20 @@ steps:
             required: [ code ]
 ---
 kind: Run.Sequence
-metadata: { name: TestPageOutOfRange }
+metadata: { name: testPageOutOfRange }
 steps:
-  - name: Fixture
-    invoke: !ref Fixture.SampleFormPdf
-  - name: TryBadPage
+  - name: fixture
+    invoke: !ref Fixture.sampleFormPdf
+  - name: tryBadPage
     try:
-      - name: BadPage
+      - name: badPage
         inputs:
-          data: "${{ steps.Fixture.result.data }}"
+          data: "${{ steps.fixture.result.data }}"
           fields:
             - { name: late, type: text, page: 9, x: 10, y: 10, width: 40, height: 20 }
-        invoke: !ref AddFields
+        invoke: !ref addFields
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:

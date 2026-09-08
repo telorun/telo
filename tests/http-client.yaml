@@ -7,34 +7,34 @@ imports:
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
-  - !ref TestGetAbsoluteUrl
-  - !ref TestGetWithClient
-  - !ref TestPostWithJsonBody
-  - !ref TestNotFoundDoesNotThrow
+  - !ref testGetAbsoluteUrl
+  - !ref testGetWithClient
+  - !ref testPostWithJsonBody
+  - !ref testNotFoundDoesNotThrow
 ---
 # Shared Http.Client with baseUrl for tests that exercise client resolution
 kind: Http.Client
 metadata:
-  name: PlaceholderApi
+  name: placeholderApi
 baseUrl: https://jsonplaceholder.typicode.com
 timeout: 10000
 ---
 # Test 1: GET with absolute URL — verifies status + JSON body deserialization
 kind: Run.Sequence
 metadata:
-  name: TestGetAbsoluteUrl
+  name: testGetAbsoluteUrl
 steps:
-  - name: FetchTodo
+  - name: fetchTodo
     inputs: {}
     invoke:
       kind: Http.Request
       url: https://jsonplaceholder.typicode.com/todos/1
       method: GET
 
-  - name: AssertGetResponse
+  - name: assertGetResponse
     inputs:
-      status: "${{ steps.FetchTodo.result.status }}"
-      id: "${{ steps.FetchTodo.result.body.id }}"
+      status: "${{ steps.fetchTodo.result.status }}"
+      id: "${{ steps.fetchTodo.result.body.id }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -53,20 +53,20 @@ steps:
 # Test 2: GET with Http.Client (relative URL) — verifies baseUrl merging
 kind: Run.Sequence
 metadata:
-  name: TestGetWithClient
+  name: testGetWithClient
 steps:
-  - name: FetchUser
+  - name: fetchUser
     inputs: {}
     invoke:
       kind: Http.Request
-      client: !ref PlaceholderApi
+      client: !ref placeholderApi
       url: /users/1
       method: GET
 
-  - name: AssertClientResponse
+  - name: assertClientResponse
     inputs:
-      status: "${{ steps.FetchUser.result.status }}"
-      id: "${{ steps.FetchUser.result.body.id }}"
+      status: "${{ steps.fetchUser.result.status }}"
+      id: "${{ steps.fetchUser.result.body.id }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -85,9 +85,9 @@ steps:
 # Test 3: POST with JSON body — verifies serialization + 201 response
 kind: Run.Sequence
 metadata:
-  name: TestPostWithJsonBody
+  name: testPostWithJsonBody
 steps:
-  - name: CreatePost
+  - name: createPost
     inputs: {}
     invoke:
       kind: Http.Request
@@ -98,10 +98,10 @@ steps:
         body: World
         userId: 1
 
-  - name: AssertPostResponse
+  - name: assertPostResponse
     inputs:
-      status: "${{ steps.CreatePost.result.status }}"
-      title: "${{ steps.CreatePost.result.body.title }}"
+      status: "${{ steps.createPost.result.status }}"
+      title: "${{ steps.createPost.result.body.title }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -120,18 +120,18 @@ steps:
 # Test 4: 4xx response must NOT throw — returns response object per spec section 3.1
 kind: Run.Sequence
 metadata:
-  name: TestNotFoundDoesNotThrow
+  name: testNotFoundDoesNotThrow
 steps:
-  - name: FetchMissing
+  - name: fetchMissing
     inputs: {}
     invoke:
       kind: Http.Request
       url: https://jsonplaceholder.typicode.com/todos/999999
       method: GET
 
-  - name: AssertNotFoundGraceful
+  - name: assertNotFoundGraceful
     inputs:
-      status: "${{ steps.FetchMissing.result.status }}"
+      status: "${{ steps.fetchMissing.result.status }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -145,7 +145,7 @@ steps:
 ---
 kind: Assert.Events
 metadata:
-  name: VerifyAllInvocations
+  name: verifyAllInvocations
 filter:
   - type: "*"
 expect:

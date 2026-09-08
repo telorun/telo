@@ -12,7 +12,7 @@ imports:
 ---
 kind: Run.Choice
 metadata:
-  name: BadRow
+  name: badRow
 inputType:
   kind: Telo.JsonSchema
   schema:

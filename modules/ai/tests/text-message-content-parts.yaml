@@ -8,34 +8,34 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestContentParts
+  - !ref testContentParts
 ---
 kind: AiEcho.EchoModel
 metadata:
-  name: Echo
+  name: echo
 ---
 kind: Ai.Text
 metadata:
-  name: Texter
-model: !ref Echo
+  name: texter
+model: !ref echo
 ---
 kind: Run.Sequence
 metadata:
-  name: TestContentParts
+  name: testContentParts
 steps:
   # A multimodal user message: a text part plus an image part (base64 bytes). The
   # widened `content` schema accepts the array; the echo flattens it to its text.
-  - name: Invoke
+  - name: invoke
     inputs:
       messages:
         - role: user
           content:
             - { type: text, text: "describe this" }
             - { type: image, data: "aGVsbG8=", mediaType: "image/png" }
-    invoke: !ref Texter
-  - name: AssertText
+    invoke: !ref texter
+  - name: assertText
     inputs:
-      text: "${{ steps.Invoke.result.text }}"
+      text: "${{ steps.invoke.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:

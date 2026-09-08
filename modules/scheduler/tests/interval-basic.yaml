@@ -17,24 +17,24 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestTicks
+  - !ref testTicks
 ---
 kind: CacheMemory.Store
-metadata: { name: Counters }
+metadata: { name: counters }
 ---
 kind: Cache.Entry
-metadata: { name: Put }
-store: !ref Counters
+metadata: { name: put }
+store: !ref counters
 ttl: "60s"
 ---
 kind: Cache.Lookup
-metadata: { name: Get }
-store: !ref Counters
+metadata: { name: get }
+store: !ref counters
 ---
 # The scheduled body: bump a counter so ticks are observable.
 kind: Run.Sequence
 metadata:
-  name: Bump
+  name: bump
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -43,23 +43,23 @@ inputType:
       slot: { type: string }
 steps:
   - name: read
-    invoke: !ref Get
+    invoke: !ref get
     inputs:
       key: !cel "inputs.slot"
   - name: write
-    invoke: !ref Put
+    invoke: !ref put
     inputs:
       key: !cel "inputs.slot"
       value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
 ---
 kind: Run.Sequence
 metadata:
-  name: TestTicks
+  name: testTicks
 with:
   - kind: Schedule.Interval
     metadata: { name: Ticker }
     every: "80ms"
-    invoke: !ref Bump
+    invoke: !ref bump
     inputs:
       slot: ticks
   # Same schedule, gated shut — proves `when: false` skips the dispatch entirely
@@ -68,7 +68,7 @@ with:
     metadata: { name: GatedTicker }
     every: "80ms"
     when: !cel "false"
-    invoke: !ref Bump
+    invoke: !ref bump
     inputs:
       slot: gated
 targets:
@@ -81,7 +81,7 @@ steps:
       duration: "400ms"
       value: {}
   - name: readTicks
-    invoke: !ref Get
+    invoke: !ref get
     inputs: { key: ticks }
   # At 80ms over a 400ms window the body should have run several times; assert
   # "at least twice" so the test isn't a timing race on a loaded machine.
@@ -91,7 +91,7 @@ steps:
       expected: true
     invoke: { kind: Assert.Equals }
   - name: readGated
-    invoke: !ref Get
+    invoke: !ref get
     inputs: { key: gated }
   - name: verifyGated
     inputs:

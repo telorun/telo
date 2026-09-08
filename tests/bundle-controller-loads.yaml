@@ -13,61 +13,61 @@ imports:
   PlainText: ../modules/plain-text-codec
   Assert: ../modules/assert
 targets:
-  - name: Produce
+  - name: produce
     inputs:
       text: "bundled hello"
-    invoke: !ref Producer
-  - name: ToText
+    invoke: !ref producer
+  - name: toText
     inputs:
-      input: "${{ steps.Produce.result.output }}"
-    invoke: !ref ToText
-  - name: Assert
+      input: "${{ steps.produce.result.output }}"
+    invoke: !ref toText
+  - name: assert
     inputs:
-      text: "${{ steps.ToText.result.text }}"
-    invoke: !ref AssertText
+      text: "${{ steps.toText.result.text }}"
+    invoke: !ref assertText
   # Env-missing fallback: ProducerFallback's first candidate bundle is missing,
   # so the loader must skip it and load the second. If it works, the contract holds.
-  - name: ProduceFallback
+  - name: produceFallback
     inputs:
       text: "bundled hello"
-    invoke: !ref ProducerFb
-  - name: ToTextFallback
+    invoke: !ref producerFb
+  - name: toTextFallback
     inputs:
-      input: "${{ steps.ProduceFallback.result.output }}"
-    invoke: !ref ToText
-  - name: AssertFallback
+      input: "${{ steps.produceFallback.result.output }}"
+    invoke: !ref toText
+  - name: assertFallback
     inputs:
-      text: "${{ steps.ToTextFallback.result.text }}"
-    invoke: !ref AssertText
+      text: "${{ steps.toTextFallback.result.text }}"
+    invoke: !ref assertText
   # Format-based fallback: first candidate is format=napi (file present, but the
   # Node kernel can't host that format) → env-missing → loads the format=js one.
-  - name: ProduceFormat
+  - name: produceFormat
     inputs:
       text: "bundled hello"
-    invoke: !ref ProducerFmt
-  - name: ToTextFormat
+    invoke: !ref producerFmt
+  - name: toTextFormat
     inputs:
-      input: "${{ steps.ProduceFormat.result.output }}"
-    invoke: !ref ToText
-  - name: AssertFormat
+      input: "${{ steps.produceFormat.result.output }}"
+    invoke: !ref toText
+  - name: assertFormat
     inputs:
-      text: "${{ steps.ToTextFormat.result.text }}"
-    invoke: !ref AssertText
+      text: "${{ steps.toTextFormat.result.text }}"
+    invoke: !ref assertText
 ---
 kind: Bundle.Producer
-metadata: { name: Producer }
+metadata: { name: producer }
 ---
 kind: Bundle.ProducerFallback
-metadata: { name: ProducerFb }
+metadata: { name: producerFb }
 ---
 kind: Bundle.ProducerFormatFallback
-metadata: { name: ProducerFmt }
+metadata: { name: producerFmt }
 ---
 kind: PlainText.Decoder
-metadata: { name: ToText }
+metadata: { name: toText }
 ---
 kind: Assert.Schema
-metadata: { name: AssertText }
+metadata: { name: assertText }
 schema:
   type: object
   properties:

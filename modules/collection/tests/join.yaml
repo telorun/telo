@@ -12,10 +12,10 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestJoin
+  - !ref testJoin
 ---
 kind: Collection.Join
-metadata: { name: JoinOrders }
+metadata: { name: joinOrders }
 left: !cel "inputs.orders"
 right: !cel "inputs.customers"
 type: left
@@ -27,10 +27,10 @@ select:
   customer: !cel "right != null ? right.name : 'unknown'"
 ---
 kind: Run.Sequence
-metadata: { name: TestJoin }
+metadata: { name: testJoin }
 steps:
-  - name: Join
-    invoke: !ref JoinOrders
+  - name: join
+    invoke: !ref joinOrders
     inputs:
       orders:
         - { id: o1, customerId: c1 }
@@ -39,9 +39,9 @@ steps:
       customers:
         - { id: c1, name: Ann }
         - { id: c2, name: Bob }
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Join.result.rows"
+      actual: !cel "steps.join.result.rows"
       expected:
         - { orderId: o1, customer: Ann }
         - { orderId: o2, customer: Bob }

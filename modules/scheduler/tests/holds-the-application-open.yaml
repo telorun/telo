@@ -20,20 +20,20 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref RunSchedule
-  - !ref AssertHeldThenReleased
+  - !ref runSchedule
+  - !ref assertHeldThenReleased
 ---
 kind: Run.Value
-metadata: { name: Tick }
+metadata: { name: tick }
 value: { ok: true }
 ---
 kind: Run.Sequence
-metadata: { name: RunSchedule }
+metadata: { name: runSchedule }
 with:
   - kind: Schedule.Interval
     metadata: { name: Ticker }
     every: "50ms"
-    invoke: !ref Tick
+    invoke: !ref tick
 targets:
   - !ref Ticker
 steps:
@@ -44,7 +44,7 @@ steps:
       value: {}
 ---
 kind: Assert.Events
-metadata: { name: AssertHeldThenReleased }
+metadata: { name: assertHeldThenReleased }
 filter:
   - type: "Kernel.*"
 expect:

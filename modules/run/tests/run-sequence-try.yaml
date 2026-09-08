@@ -7,22 +7,22 @@ imports:
   JavaScript: ../../javascript
   Assert: ../../assert
 targets:
-  - !ref TestTryBlocks
+  - !ref testTryBlocks
 ---
 kind: Run.Sequence
 metadata:
-  name: TestTryBlocks
+  name: testTryBlocks
 steps:
   # --- try/catch: error is thrown, caught, swallowed; sequence continues ---
-  - name: CatchError
+  - name: catchError
     try:
-      - name: Thrower
+      - name: thrower
         invoke:
           kind: JavaScript.Script
           code: |
             function main() { throw new Error("caught me") }
     catch:
-      - name: CaughtMessage
+      - name: caughtMessage
         inputs:
           msg: "${{ error.message }}"
           step: "${{ error.step }}"
@@ -42,7 +42,7 @@ steps:
                 const: "INTERNAL_ERROR"
 
   # Error was swallowed — sequence continues here.
-  - name: AfterCatch
+  - name: afterCatch
     inputs:
       continued: true
     invoke:
@@ -54,17 +54,17 @@ steps:
             const: true
 
   # --- try/finally: success path, finally always runs with error==null ---
-  - name: TrySuccess
+  - name: trySuccess
     try:
-      - name: WorkDone
+      - name: workDone
         invoke:
           kind: JavaScript.Script
           code: |
             function main() { return { done: true } }
     finally:
-      - name: FinallyOnSuccess
+      - name: finallyOnSuccess
         inputs:
-          done: "${{ steps.WorkDone.result.done }}"
+          done: "${{ steps.workDone.result.done }}"
         invoke:
           kind: Assert.Schema
           schema:
@@ -73,9 +73,9 @@ steps:
               done:
                 const: true
 
-  - name: VerifyFinallyRan
+  - name: verifyFinallyRan
     inputs:
-      result: "${{ steps.FinallyOnSuccess.result }}"
+      result: "${{ steps.finallyOnSuccess.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -85,15 +85,15 @@ steps:
             const: true
 
   # --- try/catch/finally: error thrown, catch runs, finally always runs ---
-  - name: FullTryCatchFinally
+  - name: fullTryCatchFinally
     try:
-      - name: FailStep
+      - name: failStep
         invoke:
           kind: JavaScript.Script
           code: |
             function main() { throw new Error("boom") }
     catch:
-      - name: CatchRan
+      - name: catchRan
         inputs:
           msg: "${{ error.message }}"
         invoke:
@@ -104,7 +104,7 @@ steps:
               msg:
                 const: "boom"
     finally:
-      - name: FinallyRan
+      - name: finallyRan
         inputs:
           x: 1
         invoke:
@@ -115,9 +115,9 @@ steps:
               x:
                 const: 1
 
-  - name: VerifyCatchRan
+  - name: verifyCatchRan
     inputs:
-      result: "${{ steps.CatchRan.result }}"
+      result: "${{ steps.catchRan.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -126,9 +126,9 @@ steps:
           result:
             const: true
 
-  - name: VerifyFinallyAfterCatch
+  - name: verifyFinallyAfterCatch
     inputs:
-      result: "${{ steps.FinallyRan.result }}"
+      result: "${{ steps.finallyRan.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -138,11 +138,11 @@ steps:
             const: true
 
   # --- try: when guard skips entire block ---
-  - name: SkippedTry
+  - name: skippedTry
     when: "${{ false }}"
     try:
       # Would fail if reached.
-      - name: TryShouldNotRun
+      - name: tryShouldNotRun
         inputs:
           x: 1
         invoke:
@@ -154,18 +154,18 @@ steps:
                 const: 0
 
   # --- try/catch nested inside if ---
-  - name: NestedTryCatch
+  - name: nestedTryCatch
     if: "${{ true }}"
     then:
-      - name: InnerTry
+      - name: innerTry
         try:
-          - name: InnerFail
+          - name: innerFail
             invoke:
               kind: JavaScript.Script
               code: |
                 function main() { throw new Error("inner") }
         catch:
-          - name: InnerCaught
+          - name: innerCaught
             inputs:
               msg: "${{ error.message }}"
             invoke:
@@ -176,9 +176,9 @@ steps:
                   msg:
                     const: "inner"
 
-  - name: VerifyNestedCatch
+  - name: verifyNestedCatch
     inputs:
-      result: "${{ steps.InnerCaught.result }}"
+      result: "${{ steps.innerCaught.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -189,22 +189,22 @@ steps:
 
   # --- rethrow of a plain error's code: must propagate INTERNAL_ERROR, not
   # fail with INVALID_THROW_STEP (the bug this guards against). ---
-  - name: RethrowPlain
+  - name: rethrowPlain
     try:
-      - name: InnerRethrow
+      - name: innerRethrow
         try:
-          - name: PlainFail
+          - name: plainFail
             invoke:
               kind: JavaScript.Script
               code: |
                 function main() { throw new Error("deep") }
         catch:
-          - name: Reraise
+          - name: reraise
             throw:
               code: "${{ error.code }}"
               message: "${{ error.message }}"
     catch:
-      - name: CaughtReraised
+      - name: caughtReraised
         inputs:
           code: "${{ error.code }}"
           msg: "${{ error.message }}"

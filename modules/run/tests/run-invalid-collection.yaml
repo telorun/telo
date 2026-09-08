@@ -6,7 +6,7 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref Verify
+  - !ref verify
 ---
 # `collection` flows from an untyped input, so the analyzer can't reject it
 # statically; at runtime it resolves to a non-array and the controller throws
@@ -14,7 +14,7 @@ targets:
 # compile-time SCHEMA_VIOLATION — see analyzer coverage.)
 kind: Run.Iteration
 metadata:
-  name: BadIteration
+  name: badIteration
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -31,7 +31,7 @@ steps:
 ---
 kind: Run.Projection
 metadata:
-  name: BadProjection
+  name: badProjection
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -48,12 +48,12 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: Verify
+  name: verify
 steps:
   - name: iterationFails
     try:
       - name: run
-        invoke: !ref BadIteration
+        invoke: !ref badIteration
         inputs:
           thing: 42
     catch:
@@ -69,7 +69,7 @@ steps:
   - name: projectionFails
     try:
       - name: run
-        invoke: !ref BadProjection
+        invoke: !ref badProjection
         inputs:
           thing: "not an array"
     catch:

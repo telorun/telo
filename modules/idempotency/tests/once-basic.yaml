@@ -18,30 +18,30 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestFreshThenReplay
-  - !ref TestDistinctKey
-  - !ref TestFailureIsRetryable
+  - !ref testFreshThenReplay
+  - !ref testDistinctKey
+  - !ref testFailureIsRetryable
 ---
 kind: KvStoreMemory.Store
-metadata: { name: Store }
+metadata: { name: store }
 ---
 # A counter standing in for an outbound side effect. Every body invocation
 # increments it, so the test can assert the body did NOT run on a replay.
 kind: CacheMemory.Store
-metadata: { name: Counters }
+metadata: { name: counters }
 ---
 kind: Cache.Entry
-metadata: { name: PutCount }
-store: !ref Counters
+metadata: { name: putCount }
+store: !ref counters
 ttl: "60s"
 ---
 kind: Cache.Lookup
-metadata: { name: GetCount }
-store: !ref Counters
+metadata: { name: getCount }
+store: !ref counters
 ---
 kind: Run.Sequence
 metadata:
-  name: Charge
+  name: charge
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -50,10 +50,10 @@ inputType:
       amount: { type: integer }
 steps:
   - name: read
-    invoke: !ref GetCount
+    invoke: !ref getCount
     inputs: { key: "charges" }
   - name: bump
-    invoke: !ref PutCount
+    invoke: !ref putCount
     inputs:
       key: "charges"
       value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
@@ -62,16 +62,16 @@ outputs:
 ---
 kind: Idempotency.Once
 metadata:
-  name: ChargeOnce
-store: !ref Store
+  name: chargeOnce
+store: !ref store
 claimTtl: "30s"
 ttl: "60s"
-invoke: !ref Charge
+invoke: !ref charge
 ---
 # A body that always fails, to prove a failure releases the key.
 kind: Run.Sequence
 metadata:
-  name: AlwaysFails
+  name: alwaysFails
 steps:
   - name: boom
     throw:
@@ -80,18 +80,18 @@ steps:
 ---
 kind: Idempotency.Once
 metadata:
-  name: FailingOnce
-store: !ref Store
+  name: failingOnce
+store: !ref store
 claimTtl: "30s"
 ttl: "60s"
-invoke: !ref AlwaysFails
+invoke: !ref alwaysFails
 ---
 kind: Run.Sequence
 metadata:
-  name: TestFreshThenReplay
+  name: testFreshThenReplay
 steps:
   - name: first
-    invoke: !ref ChargeOnce
+    invoke: !ref chargeOnce
     inputs:
       key: "order-1"
       inputs: { amount: 500 }
@@ -104,7 +104,7 @@ steps:
         result: { charged: 500 }
     invoke: { kind: Assert.Equals }
   - name: second
-    invoke: !ref ChargeOnce
+    invoke: !ref chargeOnce
     inputs:
       key: "order-1"
       inputs: { amount: 500 }
@@ -118,7 +118,7 @@ steps:
     invoke: { kind: Assert.Equals }
   # The decisive assertion: the body ran exactly once across both calls.
   - name: count
-    invoke: !ref GetCount
+    invoke: !ref getCount
     inputs: { key: "charges" }
   - name: verifyRanOnce
     inputs:
@@ -130,10 +130,10 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestDistinctKey
+  name: testDistinctKey
 steps:
   - name: other
-    invoke: !ref ChargeOnce
+    invoke: !ref chargeOnce
     inputs:
       key: "order-2"
       inputs: { amount: 900 }
@@ -145,12 +145,12 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestFailureIsRetryable
+  name: testFailureIsRetryable
 steps:
   - name: firstAttempt
     try:
       - name: go
-        invoke: !ref FailingOnce
+        invoke: !ref failingOnce
         inputs: { key: "order-3" }
     catch:
       - name: verifyError
@@ -162,7 +162,7 @@ steps:
   - name: secondAttempt
     try:
       - name: go
-        invoke: !ref FailingOnce
+        invoke: !ref failingOnce
         inputs: { key: "order-3" }
     catch:
       - name: verifyRetryable

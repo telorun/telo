@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestMismatchedAliases
+  - !ref testMismatchedAliases
 ---
 # Regression: when a consumer imports libraries under different alias names than
 # the ones those libraries use internally for their own dependencies, the loader
@@ -16,6 +16,6 @@ targets:
 # false-positive EXTENDS_MALFORMED on the forwarded def.
 kind: Assert.Manifest
 metadata:
-  name: TestMismatchedAliases
+  name: testMismatchedAliases
 source: ./__fixtures__/abstract-mismatched-aliases.yaml
 expect: {}

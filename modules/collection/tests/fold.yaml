@@ -13,12 +13,12 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestAllocate
-  - !ref TestRunningTotal
-  - !ref TestNoProjection
+  - !ref testAllocate
+  - !ref testRunningTotal
+  - !ref testNoProjection
 ---
 kind: Collection.Fold
-metadata: { name: AllocatePayment }
+metadata: { name: allocatePayment }
 collection: !cel "inputs.invoices"
 accType:
   kind: Telo.JsonSchema
@@ -51,7 +51,7 @@ value: !cel "acc.allocations"
 # A scalar accumulator — the shape `Summarize`'s fixed aggregators cannot carry
 # between elements.
 kind: Collection.Fold
-metadata: { name: RunningTotal }
+metadata: { name: runningTotal }
 collection: !cel "inputs.amounts"
 accType:
   kind: Telo.JsonSchema
@@ -61,7 +61,7 @@ accumulate: !cel "acc + item"
 value: !cel "acc"
 ---
 kind: Collection.Fold
-metadata: { name: LongestWord }
+metadata: { name: longestWord }
 collection: !cel "inputs.words"
 initial: ""
 # The accumulator IS the result — written out, since `value` is required.
@@ -69,21 +69,21 @@ accumulate: !cel "size(item) > size(acc) ? item : acc"
 value: !cel "acc"
 ---
 kind: Run.Sequence
-metadata: { name: TestAllocate }
+metadata: { name: testAllocate }
 steps:
-  - name: Allocate
-    invoke: !ref AllocatePayment
+  - name: allocate
+    invoke: !ref allocatePayment
     inputs:
       amount: 25.0
       invoices:
         - { id: a, due: 10.0 }
         - { id: b, due: 30.0 }
         - { id: c, due: 5.0 }
-  - name: Assert
+  - name: assert
     inputs:
       # `c` is never reached: the payment is exhausted by `b`, so `while` stops
       # the fold before the third element rather than after it.
-      actual: !cel "steps.Allocate.result"
+      actual: !cel "steps.allocate.result"
       expected:
         - { invoice: a, applied: 10.0 }
         - { invoice: b, applied: 15.0 }
@@ -91,29 +91,29 @@ steps:
       kind: Assert.Equals
 ---
 kind: Run.Sequence
-metadata: { name: TestRunningTotal }
+metadata: { name: testRunningTotal }
 steps:
-  - name: Total
-    invoke: !ref RunningTotal
+  - name: total
+    invoke: !ref runningTotal
     inputs:
       amounts: [1.5, 2.5, 6.0]
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Total.result"
+      actual: !cel "steps.total.result"
       expected: 10.0
     invoke:
       kind: Assert.Equals
 ---
 kind: Run.Sequence
-metadata: { name: TestNoProjection }
+metadata: { name: testNoProjection }
 steps:
-  - name: Longest
-    invoke: !ref LongestWord
+  - name: longest
+    invoke: !ref longestWord
     inputs:
       words: [ox, telo, manifest, cel]
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Longest.result"
+      actual: !cel "steps.longest.result"
       expected: manifest
     invoke:
       kind: Assert.Equals

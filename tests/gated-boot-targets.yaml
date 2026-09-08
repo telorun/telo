@@ -27,18 +27,18 @@ variables:
     type: boolean
     default: false
 targets:
-  - ref: !ref RanWhenTrue
+  - ref: !ref ranWhenTrue
     when: !cel "variables.enabled"
-  - ref: !ref MustNotRun
+  - ref: !ref mustNotRun
     when: !cel "variables.disabled"
-  - name: InlineWhenTrue
-    invoke: !ref AssertTrue
+  - name: inlineWhenTrue
+    invoke: !ref assertTrue
     inputs:
       actual: !cel "variables.enabled"
       expected: true
     when: !cel "variables.enabled"
-  - name: InlineWhenFalse
-    invoke: !ref AssertUnreachable
+  - name: inlineWhenFalse
+    invoke: !ref assertUnreachable
     inputs:
       actual: "gate open"
       expected: "gate closed"
@@ -46,17 +46,17 @@ targets:
 ---
 kind: Assert.Equals
 metadata:
-  name: AssertTrue
+  name: assertTrue
 ---
 kind: Assert.Equals
 metadata:
-  name: AssertUnreachable
+  name: assertUnreachable
 ---
 kind: Run.Sequence
 metadata:
-  name: RanWhenTrue
+  name: ranWhenTrue
 steps:
-  - name: Check
+  - name: check
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "variables.enabled"
@@ -64,9 +64,9 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: MustNotRun
+  name: mustNotRun
 steps:
-  - name: Unreachable
+  - name: unreachable
     invoke: { kind: Assert.Equals }
     inputs:
       actual: "gate open"

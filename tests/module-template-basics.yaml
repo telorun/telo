@@ -15,7 +15,7 @@ imports:
 ---
 kind: Http.Api
 metadata:
-  name: StatusApi
+  name: statusApi
 routes:
   - request:
       path: /status

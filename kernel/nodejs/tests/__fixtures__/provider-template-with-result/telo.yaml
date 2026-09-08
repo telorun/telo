@@ -8,5 +8,5 @@ imports:
 ---
 kind: Lib.TokenProvider
 metadata:
-  name: VaultToken
+  name: vaultToken
 secret: s3cret

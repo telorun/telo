@@ -8,36 +8,36 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestBothPromptAndMessagesRejected
-  - !ref TestNeitherPromptNorMessagesRejected
+  - !ref testBothPromptAndMessagesRejected
+  - !ref testNeitherPromptNorMessagesRejected
 ---
 kind: AiEcho.EchoModel
-metadata: { name: Echo }
+metadata: { name: echo }
 ---
 kind: Ai.Text
-metadata: { name: C }
-model: !ref Echo
+metadata: { name: c }
+model: !ref echo
 ---
 # Both prompt AND messages → throws.
 kind: Run.Sequence
 metadata:
-  name: TestBothPromptAndMessagesRejected
+  name: testBothPromptAndMessagesRejected
 steps:
-  - name: Try
+  - name: try
     try:
-      - name: Invoke
+      - name: invoke
         inputs:
           prompt: "x"
           messages:
             - { role: user, content: "y" }
-        invoke: !ref C
-      - name: NotReached
+        invoke: !ref c
+      - name: notReached
         inputs: { note: "should not get here" }
         invoke:
           kind: Assert.Schema
           schema: { type: object, properties: { note: { const: "UNREACHABLE" } }, required: [ note ] }
     catch:
-      - name: AssertCaught
+      - name: assertCaught
         inputs:
           code: "${{ error.code }}"
         invoke:
@@ -51,20 +51,20 @@ steps:
 # Neither prompt NOR messages → throws.
 kind: Run.Sequence
 metadata:
-  name: TestNeitherPromptNorMessagesRejected
+  name: testNeitherPromptNorMessagesRejected
 steps:
-  - name: Try
+  - name: try
     try:
-      - name: Invoke
+      - name: invoke
         inputs: {}
-        invoke: !ref C
-      - name: NotReached
+        invoke: !ref c
+      - name: notReached
         inputs: { note: "should not get here" }
         invoke:
           kind: Assert.Schema
           schema: { type: object, properties: { note: { const: "UNREACHABLE" } }, required: [ note ] }
     catch:
-      - name: AssertCaught
+      - name: assertCaught
         inputs:
           code: "${{ error.code }}"
         invoke:

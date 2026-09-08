@@ -10,13 +10,13 @@ imports:
   Gw: ./__fixtures__/re-export-kind/gateway
   Run: ../modules/run
 targets:
-  - !ref Check
+  - !ref check
 ---
 kind: Run.Sequence
 metadata:
-  name: Check
+  name: check
 steps:
-  - name: Assert
+  - name: assert
     inputs:
       actual: 42
       expected: 42

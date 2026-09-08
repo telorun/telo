@@ -14,7 +14,7 @@ imports:
 # object instead of a number and fail to start on the right port.
 kind: Run.Sequence
 metadata:
-  name: TestCompileEval
+  name: testCompileEval
 with:
   - kind: Http.Api
     metadata:
@@ -41,15 +41,15 @@ with:
 targets:
   - !ref TestServer
 steps:
-  - name: Ping
+  - name: ping
     invoke:
       kind: HttpClient.Request
       url: http://localhost:8857/api/ping
       method: GET
 
-  - name: AssertPong
+  - name: assertPong
     inputs:
-      pong: "${{ steps.Ping.result.body.pong }}"
+      pong: "${{ steps.ping.result.body.pong }}"
     invoke:
       kind: Assert.Schema
       schema:

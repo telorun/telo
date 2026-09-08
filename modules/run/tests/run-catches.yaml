@@ -6,23 +6,23 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref VerifyCatches
+  - !ref verifyCatches
 ---
 # A throw that escapes the whole projection is mapped to a fallback result by
 # the kind-level `catches`; an unmatched throw would propagate (fail-fast).
 kind: Run.Projection
 metadata:
-  name: MightFail
+  name: mightFail
 collection: !cel "[1, 2, 3]"
 steps:
-  - name: Guard
+  - name: guard
     if: !cel "item == 2"
     then:
-      - name: Boom
+      - name: boom
         throw:
           code: BAD_ITEM
           message: "item 2 is bad"
-  - name: Keep
+  - name: keep
     inputs:
       n: !cel "item"
     invoke:
@@ -32,7 +32,7 @@ steps:
       value:
         ok: !cel "double(inputs.n)"
 outputs:
-  ok: !cel "steps.Keep.result.ok"
+  ok: !cel "steps.keep.result.ok"
 catches:
   - when: !cel "error.code == 'BAD_ITEM'"
     value:
@@ -41,13 +41,13 @@ catches:
 ---
 kind: Run.Sequence
 metadata:
-  name: VerifyCatches
+  name: verifyCatches
 steps:
-  - name: Project
-    invoke: !ref MightFail
-  - name: Check
+  - name: project
+    invoke: !ref mightFail
+  - name: check
     inputs:
-      result: !cel "steps.Project.result"
+      result: !cel "steps.project.result"
     invoke:
       kind: Assert.Schema
       schema:

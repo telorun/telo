@@ -8,35 +8,35 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestProviderErrorSurfacesUnchanged
+  - !ref testProviderErrorSurfacesUnchanged
 ---
 # Echo configured to throw a provider-side InvokeError when it sees the marker
 # message. This is the actual provider error used by the test below.
 kind: AiEcho.EchoModel
-metadata: { name: Echo }
+metadata: { name: echo }
 failOn:
   message: TRIGGER_FAILURE
   code: ERR_PROVIDER_RATE_LIMITED
   reason: simulated provider rate-limit from echo fixture
 ---
 kind: Ai.Text
-metadata: { name: C }
-model: !ref Echo
+metadata: { name: c }
+model: !ref echo
 ---
 # When the provider (Echo) throws, the completion controller must surface the
 # error unchanged — same code, same message, no retry, no swallowing, no wrapping.
 kind: Run.Sequence
 metadata:
-  name: TestProviderErrorSurfacesUnchanged
+  name: testProviderErrorSurfacesUnchanged
 steps:
-  - name: Try
+  - name: try
     try:
-      - name: Invoke
+      - name: invoke
         inputs:
           prompt: TRIGGER_FAILURE
-        invoke: !ref C
+        invoke: !ref c
     catch:
-      - name: AssertPassthrough
+      - name: assertPassthrough
         inputs:
           code: "${{ error.code }}"
           message: "${{ error.message }}"

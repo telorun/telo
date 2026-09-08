@@ -6,14 +6,14 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestCaught
+  - !ref testCaught
 ---
 # A `throw:` step throws InvokeError("UNAUTHORIZED", "bad token", {reason: "expired"}).
 # The enclosing try/catch binds it to `error` — we verify every field is
 # surfaced (code, message, data, step).
 kind: Run.Sequence
 metadata:
-  name: TestCaught
+  name: testCaught
 steps:
   - name: outer
     try:

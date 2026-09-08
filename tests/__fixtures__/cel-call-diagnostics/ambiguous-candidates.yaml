@@ -6,7 +6,7 @@ imports:
   Run: ../../../modules/run
   JavaScript: ../../../modules/javascript
 targets:
-  - !ref MakeId
+  - !ref makeId
 ---
 # `uuid` is registered under no call form, and several names match the form and
 # arity written (`uuidv1`, `uuidv4`, `uuidv6`, `uuidv7`). The diagnostic lists
@@ -14,9 +14,9 @@ targets:
 # repair's clothes.
 kind: Run.Sequence
 metadata:
-  name: MakeId
+  name: makeId
 steps:
-  - name: Id
+  - name: id
     inputs:
       value: !cel "uuid()"
     invoke:

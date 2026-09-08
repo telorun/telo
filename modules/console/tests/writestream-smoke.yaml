@@ -12,19 +12,19 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestStringStream
-  - !ref TestBytesStream
-  - !ref TestInvalidInput
+  - !ref testStringStream
+  - !ref testBytesStream
+  - !ref testInvalidInput
 ---
 kind: Stream.Of
-metadata: { name: StringSource }
+metadata: { name: stringSource }
 items:
   - "hi "
   - "there"
   - "\n"
 ---
 kind: JS.Script
-metadata: { name: BytesSource }
+metadata: { name: bytesSource }
 code: |
   async function main() {
     async function* gen() {
@@ -36,23 +36,23 @@ code: |
   }
 ---
 kind: Stream.Of
-metadata: { name: BadSource }
+metadata: { name: badSource }
 items:
   - 42
 ---
 kind: Console.WriteStream
-metadata: { name: Stdout }
+metadata: { name: stdout }
 ---
 kind: Run.Sequence
-metadata: { name: TestStringStream }
+metadata: { name: testStringStream }
 steps:
-  - name: StringSrc
-    invoke: !ref StringSource
-  - name: StringWrite
+  - name: stringSrc
+    invoke: !ref stringSource
+  - name: stringWrite
     inputs:
-      input: "${{ steps.StringSrc.result.output }}"
-    invoke: !ref Stdout
-  - name: AssertStringReached
+      input: "${{ steps.stringSrc.result.output }}"
+    invoke: !ref stdout
+  - name: assertStringReached
     inputs:
       reached: true
     invoke:
@@ -63,15 +63,15 @@ steps:
         required: [ reached ]
 ---
 kind: Run.Sequence
-metadata: { name: TestBytesStream }
+metadata: { name: testBytesStream }
 steps:
-  - name: BytesSrc
-    invoke: !ref BytesSource
-  - name: BytesWrite
+  - name: bytesSrc
+    invoke: !ref bytesSource
+  - name: bytesWrite
     inputs:
-      input: "${{ steps.BytesSrc.result.output }}"
-    invoke: !ref Stdout
-  - name: AssertBytesReached
+      input: "${{ steps.bytesSrc.result.output }}"
+    invoke: !ref stdout
+  - name: assertBytesReached
     inputs:
       reached: true
     invoke:
@@ -82,18 +82,18 @@ steps:
         required: [ reached ]
 ---
 kind: Run.Sequence
-metadata: { name: TestInvalidInput }
+metadata: { name: testInvalidInput }
 steps:
-  - name: BadSrc
-    invoke: !ref BadSource
-  - name: BadTried
+  - name: badSrc
+    invoke: !ref badSource
+  - name: badTried
     try:
-      - name: BadWrite
+      - name: badWrite
         inputs:
-          input: "${{ steps.BadSrc.result.output }}"
-        invoke: !ref Stdout
+          input: "${{ steps.badSrc.result.output }}"
+        invoke: !ref stdout
     catch:
-      - name: AssertBadCaught
+      - name: assertBadCaught
         inputs:
           code: "${{ error.code }}"
         invoke:

@@ -28,10 +28,10 @@ schema:
 # so the analyzer accepts it for the greeter field.
 kind: AbstractImpl.Shouter
 metadata:
-  name: MyShouter
+  name: myShouter
 prefix: "HEY "
 ---
 kind: AbstractXRefConsumer.GreeterUser
 metadata:
-  name: UsesTheGreeter
-greeter: !ref MyShouter
+  name: usesTheGreeter
+greeter: !ref myShouter

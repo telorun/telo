@@ -8,11 +8,11 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestSelectionBuilder
+  - !ref testSelectionBuilder
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 # Every clause here goes through the connection's SqlDialect: identifiers are
@@ -20,7 +20,7 @@ file: ":memory:"
 # element, PostgreSQL binds the whole array).
 kind: Sql.Selection
 metadata:
-  name: SelectMembers
+  name: selectMembers
 from: users
 columns:
   - id
@@ -31,20 +31,20 @@ where:
 orderBy:
   - { column: id, direction: desc }
 limit: 10
-connection: !ref Db
+connection: !ref db
 ---
 kind: Run.Sequence
 metadata:
-  name: TestSelectionBuilder
+  name: testSelectionBuilder
 steps:
-  - name: CreateTable
+  - name: createTable
     inputs:
       sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, status TEXT NOT NULL, deleted_at TEXT)"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: SeedRows
+  - name: seedRows
     inputs:
       sql: >-
         INSERT INTO users (id, name, status, deleted_at) VALUES
@@ -54,14 +54,14 @@ steps:
         (4, 'Dave', 'active', '2026-01-01')
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: SelectMembers
-    invoke: !ref SelectMembers
+  - name: selectMembers
+    invoke: !ref selectMembers
 
-  - name: AssertRows
+  - name: assertRows
     inputs:
-      actual: !cel "steps.SelectMembers.result.rows"
+      actual: !cel "steps.selectMembers.result.rows"
       expected:
         - { id: 2, label: Bob }
         - { id: 1, label: Alice }

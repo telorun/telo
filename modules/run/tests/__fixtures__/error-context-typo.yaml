@@ -9,7 +9,7 @@ imports:
 # catch must flag it → CEL_UNKNOWN_FIELD.
 kind: Run.Sequence
 metadata:
-  name: TypoSeq
+  name: typoSeq
 steps:
   - name: outer
     try:

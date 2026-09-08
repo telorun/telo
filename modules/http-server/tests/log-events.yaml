@@ -31,10 +31,10 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestLogEvents
+  - !ref testLogEvents
 ---
 kind: JS.Script
-metadata: { name: Slow }
+metadata: { name: slow }
 code: |
   async function main() {
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -42,11 +42,11 @@ code: |
   }
 ---
 kind: Http.Api
-metadata: { name: Api }
+metadata: { name: api }
 routes:
   # Quoted: an unquoted `{id}` would open a nested YAML flow map.
   - request: { path: "/things/{id}", method: GET }
-    handler: !ref Slow
+    handler: !ref slow
     returns:
       - status: 200
         content:
@@ -54,7 +54,7 @@ routes:
             body: { ok: !cel "result.ok" }
 ---
 kind: JS.Script
-metadata: { name: Summarize }
+metadata: { name: summarize }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -116,7 +116,7 @@ code: |
 ---
 kind: Run.Sequence
 metadata:
-  name: TestLogEvents
+  name: testLogEvents
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -125,7 +125,7 @@ with:
     baseUrl: http://127.0.0.1:8913
     mounts:
       - path: /api
-        mount: !ref Api
+        mount: !ref api
   - kind: HttpClient.Request
     metadata: { name: Call }
   - kind: Fs.File
@@ -148,7 +148,7 @@ steps:
     invoke: !ref ReadLog
     inputs: { path: /tmp/telo-http-log-events.jsonl }
   - name: summary
-    invoke: !ref Summarize
+    invoke: !ref summarize
     inputs: { text: !cel "steps.read.result.content" }
   - name: verify
     invoke: { kind: Assert.Equals }

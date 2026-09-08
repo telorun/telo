@@ -6,12 +6,12 @@ imports:
   JS: ../../javascript
   Run: ../../run
   Assert: ../../assert
-targets: [ !ref TestRun ]
+targets: [ !ref testRun ]
 ---
 # Hand-rolled `initialize` call. Returns the parsed `result` so the test can
 # assert the `instructions` string lands in the InitializeResult envelope.
 kind: JS.Script
-metadata: { name: McpInitialize }
+metadata: { name: mcpInitialize }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -71,7 +71,7 @@ metadata: { name: NoTools }
 entries: []
 ---
 kind: Mcp.HttpEndpoint
-metadata: { name: McpHttp }
+metadata: { name: mcpHttp }
 serverInfo: { name: telo-test-mcp, version: 1.0.0 }
 instructions: |
   This is a test primer carried on the SDK Server's `instructions` option.
@@ -79,7 +79,7 @@ instructions: |
 tools: [ !ref NoTools ]
 ---
 kind: Run.Sequence
-metadata: { name: TestRun }
+metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -87,16 +87,16 @@ with:
     port: 8954
     baseUrl: http://127.0.0.1:8954
     mounts:
-      - { path: /mcp, mount: !ref McpHttp }
+      - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
 steps:
-  - name: Initialize
+  - name: initialize
     inputs:
       url: http://127.0.0.1:8954/mcp
-    invoke: !ref McpInitialize
-  - name: AssertInstructions
+    invoke: !ref mcpInitialize
+  - name: assertInstructions
     inputs:
-      instructions: "${{ steps.Initialize.result.result.instructions }}"
+      instructions: "${{ steps.initialize.result.result.instructions }}"
     invoke:
       kind: Assert.Schema
       schema:

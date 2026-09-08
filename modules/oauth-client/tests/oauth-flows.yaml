@@ -23,93 +23,93 @@ variables:
     type: string
     default: http://127.0.0.1:8991
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Store.Store
-metadata: { name: TokenStore }
+metadata: { name: tokenStore }
 ---
 # Configured from the issuer alone — every endpoint below comes from the fake
 # server's discovery document, which is what keeps the module provider-neutral.
 kind: OAuth.AuthorizationServer
-metadata: { name: FakeServer }
+metadata: { name: fakeServer }
 issuer: !cel "variables.issuer"
 ---
 kind: OAuth.Client
-metadata: { name: TestClient }
-authorizationServer: !ref FakeServer
+metadata: { name: testClient }
+authorizationServer: !ref fakeServer
 clientId: test-client
 clientSecret: test-secret
 scopes: [read, write]
 tokenEndpointAuthMethod: client_secret_post
 ---
 kind: OAuth.TokenSource
-metadata: { name: Tokens }
-client: !ref TestClient
-store: !ref TokenStore
+metadata: { name: tokens }
+client: !ref testClient
+store: !ref tokenStore
 key: default
 ---
 kind: OAuth.Authorization
-metadata: { name: Authorize }
-source: !ref Tokens
+metadata: { name: authorize }
+source: !ref tokens
 ---
 kind: OAuth.Callback
-metadata: { name: HandleCallback }
-authorization: !ref Authorize
+metadata: { name: handleCallback }
+authorization: !ref authorize
 ---
 kind: OAuth.TokenExchange
-metadata: { name: Exchange }
-source: !ref Tokens
+metadata: { name: exchange }
+source: !ref tokens
 ---
 kind: OAuth.TokenRefresh
-metadata: { name: Refresh }
-source: !ref Tokens
+metadata: { name: refresh }
+source: !ref tokens
 ---
 kind: OAuth.ClientCredentials
-metadata: { name: MachineGrant }
-source: !ref Tokens
+metadata: { name: machineGrant }
+source: !ref tokens
 ---
 kind: OAuth.DeviceAuthorization
-metadata: { name: StartDevice }
-source: !ref Tokens
+metadata: { name: startDevice }
+source: !ref tokens
 ---
 kind: OAuth.DeviceToken
-metadata: { name: AwaitDevice }
-source: !ref Tokens
+metadata: { name: awaitDevice }
+source: !ref tokens
 ---
 kind: OAuth.AccessToken
-metadata: { name: CurrentToken }
-source: !ref Tokens
+metadata: { name: currentToken }
+source: !ref tokens
 ---
 kind: OAuth.GrantRead
-metadata: { name: ReadGrant }
-source: !ref Tokens
+metadata: { name: readGrant }
+source: !ref tokens
 ---
 kind: OAuth.GrantWrite
-metadata: { name: WriteGrant }
-source: !ref Tokens
+metadata: { name: writeGrant }
+source: !ref tokens
 ---
 kind: OAuth.GrantClear
-metadata: { name: ClearGrant }
-source: !ref Tokens
+metadata: { name: clearGrant }
+source: !ref tokens
 ---
 kind: OAuth.Credential
-metadata: { name: TestCredential }
-source: !ref Tokens
+metadata: { name: testCredential }
+source: !ref tokens
 key: console
 ---
 # The credential rides the client, so the request below is an ordinary one — no
 # header wiring at the call site, and no unauthenticated inner request exists.
 kind: HttpClient.Client
-metadata: { name: ApiClient }
+metadata: { name: apiClient }
 baseUrl: !cel "variables.issuer"
-credential: !ref TestCredential
+credential: !ref testCredential
 ---
 kind: HttpClient.Request
-metadata: { name: CallProtected }
-client: !ref ApiClient
+metadata: { name: callProtected }
+client: !ref apiClient
 ---
 kind: HttpClient.Request
-metadata: { name: Browser }
+metadata: { name: browser }
 ---
 # A module-level resource SHADOWED by the scope-local one of the same name below.
 # It is never started, so if either the `listener:` ref or the scope's `targets:`
@@ -118,11 +118,11 @@ metadata: { name: Browser }
 # CEL `resources` layering already use.
 #
 # It also covers the Phase-5 interaction: because this name exists at module
-# level, the scope's `!ref Loopback` targets entry is injected as a live instance
+# level, the scope's `!ref loopback` targets entry is injected as a live instance
 # rather than left as a sentinel, which is the shape `scopeTargetName` has to
 # recognize.
 kind: OAuth.RedirectListener
-metadata: { name: Loopback }
+metadata: { name: loopback }
 port: 1
 path: /NEVER
 ---
@@ -130,31 +130,31 @@ path: /NEVER
 # scoped Service started from `targets:`, so it is bound BEFORE the steps build
 # the consent URL and torn down when the sequence ends.
 kind: Run.Sequence
-metadata: { name: ConsoleLogin }
+metadata: { name: consoleLogin }
 with:
   - kind: OAuth.RedirectListener
-    metadata: { name: Loopback }
+    metadata: { name: loopback }
   - kind: OAuth.RedirectAwait
     metadata: { name: AwaitRedirect }
-    listener: !ref Loopback
+    listener: !ref loopback
     timeout: 30s
 targets:
-  - !ref Loopback
+  - !ref loopback
 steps:
   - name: auth
-    invoke: !ref Authorize
+    invoke: !ref authorize
     inputs:
-      redirectUri: !cel "resources.Loopback.status.redirectUri"
+      redirectUri: !cel "resources.loopback.status.redirectUri"
       key: console
   - name: assertConsentUrl
-    invoke: !ref AssertContains
+    invoke: !ref assertContains
     inputs:
       actual: !cel "steps.auth.result.url"
       pattern: "code_challenge_method=S256"
   # Stands in for the user's browser following the redirect. Carries `iss`, as a
   # server advertising RFC 9207 support does.
   - name: browserRedirect
-    invoke: !ref Browser
+    invoke: !ref browser
     inputs:
       method: GET
       url: !cel "steps.auth.result.redirectUri + '?code=good-code&iss=' + variables.issuer + '&state=' + steps.auth.result.state"
@@ -163,36 +163,36 @@ steps:
     inputs:
       state: !cel "steps.auth.result.state"
   - name: assertCode
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.redirect.result.code"
       expected: good-code
   - name: tokens
-    invoke: !ref Exchange
+    invoke: !ref exchange
     inputs:
       code: !cel "steps.redirect.result.code"
       codeVerifier: !cel "steps.auth.result.codeVerifier"
       redirectUri: !cel "steps.auth.result.redirectUri"
       iss: !cel "steps.redirect.result.iss"
   - name: stored
-    invoke: !ref WriteGrant
+    invoke: !ref writeGrant
     inputs:
       key: console
       tokens: !cel "steps.tokens.result"
   - name: assertStoredKey
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.stored.result.key"
       expected: console
 ---
 kind: Assert.Equals
-metadata: { name: AssertEquals }
+metadata: { name: assertEquals }
 ---
 kind: Assert.Matches
-metadata: { name: AssertContains }
+metadata: { name: assertContains }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: FakeServer8991 }
@@ -203,19 +203,19 @@ with:
       - contentType: application/x-www-form-urlencoded
     mounts:
       - path: /
-        mount: !ref FakeServerApi
+        mount: !ref fakeServerApi
 targets:
   - !ref FakeServer8991
 steps:
   # ---- Terminal sign-in over the loopback listener --------------------------
   - name: consoleLogin
-    invoke: !ref ConsoleLogin
+    invoke: !ref consoleLogin
 
   - name: grantAfterLogin
-    invoke: !ref ReadGrant
+    invoke: !ref readGrant
     inputs: { key: console }
   - name: assertGrantExists
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.grantAfterLogin.result"
       expected:
@@ -226,29 +226,29 @@ steps:
 
   # ---- Refresh rotates the stored refresh token ----------------------------
   - name: refreshed
-    invoke: !ref Refresh
+    invoke: !ref refresh
     inputs: { key: console }
   - name: assertRefreshed
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.refreshed.result.accessToken"
       expected: at-fresh
 
   # ---- The credential authenticates an ordinary request --------------------
   - name: authorizedCall
-    invoke: !ref CallProtected
+    invoke: !ref callProtected
     inputs:
       method: GET
       url: /resource
   - name: assertAuthorized
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.authorizedCall.result.body"
       expected: { ok: true }
 
   # ---- A stale token: 401 → forceRefresh → retry once, all in http-client ---
   - name: staleGrant
-    invoke: !ref WriteGrant
+    invoke: !ref writeGrant
     inputs:
       key: console
       tokens:
@@ -260,12 +260,12 @@ steps:
         refreshToken: rt-1
         scope: read write
   - name: retriedCall
-    invoke: !ref CallProtected
+    invoke: !ref callProtected
     inputs:
       method: GET
       url: /resource
   - name: assertRetried
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.retriedCall.result.body"
       expected: { ok: true }
@@ -275,14 +275,14 @@ steps:
   # the body (rather than declared by anyone) is exactly what a naive rebuild
   # drops — and the body then arrives unparsed.
   - name: credentialedPost
-    invoke: !ref CallProtected
+    invoke: !ref callProtected
     inputs:
       method: POST
       url: /echo
       body:
         hello: world
   - name: assertContentTypeKept
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.credentialedPost.result.body"
       expected:
@@ -291,147 +291,147 @@ steps:
 
   # ---- Browser-served callback ---------------------------------------------
   - name: browserAuth
-    invoke: !ref Authorize
+    invoke: !ref authorize
     inputs:
       redirectUri: http://127.0.0.1:8991/callback
       key: web-user
   # The server advertises that it sends `iss`, so a callback without one is refused
   # rather than skipped — the case a mix-up attack produces.
   - name: callbackNoIss
-    invoke: !ref HandleCallback
+    invoke: !ref handleCallback
     inputs:
       code: good-code
       state: !cel "steps.browserAuth.result.state"
   - name: assertIssMissing
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.callbackNoIss.result.reason"
       expected: issuer_missing
   - name: browserAuth2
-    invoke: !ref Authorize
+    invoke: !ref authorize
     inputs:
       redirectUri: http://127.0.0.1:8991/callback
       key: web-user
   - name: callbackWrongIss
-    invoke: !ref HandleCallback
+    invoke: !ref handleCallback
     inputs:
       code: good-code
       state: !cel "steps.browserAuth2.result.state"
       iss: https://attacker.example
   - name: assertIssMismatch
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.callbackWrongIss.result.reason"
       expected: issuer_mismatch
   - name: browserAuth3
-    invoke: !ref Authorize
+    invoke: !ref authorize
     inputs:
       redirectUri: http://127.0.0.1:8991/callback
       key: web-user
   - name: callbackOk
-    invoke: !ref HandleCallback
+    invoke: !ref handleCallback
     inputs:
       code: good-code
       state: !cel "steps.browserAuth3.result.state"
       iss: !cel "variables.issuer"
   - name: assertCallbackOk
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.callbackOk.result"
       expected: { ok: true, reason: null, key: web-user, scope: read write }
   # The pending record is single-use, so replaying the same callback finds nothing.
   - name: callbackReplay
-    invoke: !ref HandleCallback
+    invoke: !ref handleCallback
     inputs:
       code: good-code
       state: !cel "steps.browserAuth3.result.state"
       iss: !cel "variables.issuer"
   - name: assertReplayRefused
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.callbackReplay.result"
       expected: { ok: false, reason: unknown_state, key: null, scope: null }
   - name: callbackDenied
-    invoke: !ref HandleCallback
+    invoke: !ref handleCallback
     inputs:
       error: access_denied
   - name: assertDenied
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.callbackDenied.result.reason"
       expected: denied
 
   # ---- Device grant: polls through authorization_pending, then approves -----
   - name: deviceStart
-    invoke: !ref StartDevice
+    invoke: !ref startDevice
   - name: assertUserCode
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.deviceStart.result.userCode"
       expected: WDJB-MJHT
   - name: devicePoll
-    invoke: !ref AwaitDevice
+    invoke: !ref awaitDevice
     inputs:
       deviceCode: !cel "steps.deviceStart.result.deviceCode"
       interval: 1
       expiresAt: !cel "steps.deviceStart.result.expiresAt"
       key: device-user
   - name: assertDeviceApproved
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.devicePoll.result.ok"
       expected: true
 
   # ---- Device grant: refusal is a returned outcome, not a throw -------------
   - name: deniedStart
-    invoke: !ref StartDevice
+    invoke: !ref startDevice
     inputs: { scopes: [deny] }
   - name: deniedPoll
-    invoke: !ref AwaitDevice
+    invoke: !ref awaitDevice
     inputs:
       deviceCode: !cel "steps.deniedStart.result.deviceCode"
       interval: 1
       expiresAt: !cel "steps.deniedStart.result.expiresAt"
   - name: assertDeviceDenied
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.deniedPoll.result"
       expected: { ok: false, reason: denied, key: null, scope: null, expiresAt: null }
 
   # ---- Machine-to-machine --------------------------------------------------
   - name: machine
-    invoke: !ref MachineGrant
+    invoke: !ref machineGrant
     inputs: { key: service }
   - name: assertMachine
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.machine.result.accessToken"
       expected: at-machine
 
   # ---- A stored grant is returned without a refresh ------------------------
   - name: current
-    invoke: !ref CurrentToken
+    invoke: !ref currentToken
     inputs: { key: service }
   - name: assertCurrent
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.current.result.accessToken"
       expected: at-machine
 
   # ---- Clearing ------------------------------------------------------------
   - name: cleared
-    invoke: !ref ClearGrant
+    invoke: !ref clearGrant
     inputs: { key: service }
   - name: assertCleared
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.cleared.result.cleared"
       expected: true
   - name: goneGrant
-    invoke: !ref ReadGrant
+    invoke: !ref readGrant
     inputs: { key: service }
   - name: assertGone
-    invoke: !ref AssertEquals
+    invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.goneGrant.result.exists"
       expected: false

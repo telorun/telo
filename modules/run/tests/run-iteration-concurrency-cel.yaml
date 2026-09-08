@@ -8,19 +8,19 @@ imports:
 variables:
   conc: { env: CONC, type: integer, default: 2 }
 targets:
-  - !ref IterateEach
-  - !ref ExpectEvents
+  - !ref iterateEach
+  - !ref expectEvents
 ---
 # Regression: Run.Iteration shares the concurrency code path with Run.Projection.
 # A `!cel` concurrency must resolve to an integer; reading it raw zeroed the
 # worker pool, so the body never ran (no events emitted).
 kind: Run.Iteration
 metadata:
-  name: IterateEach
+  name: iterateEach
 collection: !cel "['x', 'y']"
 concurrency: !cel "variables.conc"
 steps:
-  - name: Notify
+  - name: notify
     inputs:
       who: !cel "item"
     invoke:
@@ -32,7 +32,7 @@ steps:
 ---
 kind: Assert.Events
 metadata:
-  name: ExpectEvents
+  name: expectEvents
 filter:
   - type: "*"
 expect:

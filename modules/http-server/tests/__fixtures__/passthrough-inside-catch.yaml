@@ -10,7 +10,7 @@ imports:
 # Resolver must see that the sequence's propagated union equals the try block's {A, B}.
 kind: Run.Sequence
 metadata:
-  name: CatchAndRethrow
+  name: catchAndRethrow
 steps:
   - name: outer
     try:
@@ -31,12 +31,12 @@ steps:
 # Route covers both A and B explicitly — zero analyzer errors.
 kind: Http.Api
 metadata:
-  name: CatchRethrowApi
+  name: catchRethrowApi
 routes:
   - request:
       path: /x
       method: GET
-    handler: !ref CatchAndRethrow
+    handler: !ref catchAndRethrow
     returns:
       - status: 200
         content:

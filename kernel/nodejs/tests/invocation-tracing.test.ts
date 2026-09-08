@@ -21,14 +21,14 @@ describe("invocation tracing — spanId in event payload", () => {
   it("does not mint span ids when tracing is off (default)", async () => {
     const kernel = await bootKernel();
     let payload: Payload;
-    kernel.on("Echo.Invoked", (event) => {
+    kernel.on("echo.Invoked", (event) => {
       payload = event.payload as Payload;
     });
 
-    await kernel.invoke("JS.Script.Echo", { value: 1 });
+    await kernel.invoke("JS.Script.echo", { value: 1 });
     expect(payload?.spanId).toBeUndefined();
     // The structured payload is still present; only the trace ids are absent.
-    expect(payload?.ref).toMatchObject({ name: "Echo" });
+    expect(payload?.ref).toMatchObject({ name: "echo" });
 
     await kernel.teardown();
   });
@@ -37,12 +37,12 @@ describe("invocation tracing — spanId in event payload", () => {
     const kernel = await bootKernel();
     kernel.setTracing(true);
     const payloads: Payload[] = [];
-    kernel.on("Echo.Invoked", (event) => {
+    kernel.on("echo.Invoked", (event) => {
       payloads.push(event.payload as Payload);
     });
 
-    await kernel.invoke("JS.Script.Echo", { value: 1 });
-    await kernel.invoke("JS.Script.Echo", { value: 2 });
+    await kernel.invoke("JS.Script.echo", { value: 1 });
+    await kernel.invoke("JS.Script.echo", { value: 2 });
 
     expect(payloads[0]?.spanId).toMatch(/^[0-9a-f]{16}$/);
     expect(payloads[0]).toMatchObject({ capability: "invoke", phase: "end", outcome: "ok" });
@@ -73,7 +73,7 @@ describe("invocation tracing — spanId in event payload", () => {
     // real controller's `this.ctx.invoke(...)`.
     const outer = {
       invoke: async () => {
-        await rootContext.invoke("JS.Script", "Echo", { value: 1 });
+        await rootContext.invoke("JS.Script", "echo", { value: 1 });
         return {};
       },
     };
@@ -86,7 +86,7 @@ describe("invocation tracing — spanId in event payload", () => {
     await rootContext.invokeResolved("Test.Outer", "Outer", outer, {}, source.context);
 
     const outerPayload = byEvent.get("Outer.Invoked");
-    const echoPayload = byEvent.get("Echo.Invoked");
+    const echoPayload = byEvent.get("echo.Invoked");
     expect(outerPayload?.spanId).toMatch(/^[0-9a-f]{16}$/);
     // Outer is the trace root; Echo's parent is Outer.
     expect(outerPayload?.parentSpanId).toBeUndefined();

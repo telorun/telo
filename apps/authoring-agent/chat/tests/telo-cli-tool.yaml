@@ -29,26 +29,26 @@ targets:
   # The workspace is gitignored, so a fresh checkout has none — and every
   # command spawns with it as cwd.
   - !ref Chat.ensureWorkspace
-  - !ref TestAllowedVerb
-  - !ref TestDeniedVerbs
+  - !ref testAllowedVerb
+  - !ref testDeniedVerbs
 ---
 # An allowed verb passes the guard, and the argv handed to the program is
 # `teloProgram + args` — exactly. Pinning the whole line is what catches a
 # regression in the program PREFIX: an earlier version derived it as a single
 # element and silently dropped everything after it.
 kind: Run.Sequence
-metadata: { name: TestAllowedVerb }
+metadata: { name: testAllowedVerb }
 steps:
-  - name: Run
+  - name: run
     invoke: !ref Chat.runTelo
     inputs:
       args: [cel, functions, --json]
-  - name: AssertOk
+  - name: assertOk
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        exitCode: !cel "steps.Run.result.exitCode"
-        argv: !cel "trim(steps.Run.result.output)"
+        exitCode: !cel "steps.run.result.exitCode"
+        argv: !cel "trim(steps.run.result.output)"
       expected:
         exitCode: 0
         argv: "cel functions --json"
@@ -59,52 +59,52 @@ steps:
 # `run ./x.yaml`, so a guard that only inspected a `run` literal would let a
 # path straight through.
 kind: Run.Sequence
-metadata: { name: TestDeniedVerbs }
+metadata: { name: testDeniedVerbs }
 steps:
-  - name: DenyRun
+  - name: denyRun
     try:
-      - name: Attempt
+      - name: attempt
         invoke: !ref Chat.runTelo
         inputs:
           args: [run, ./anything.yaml]
     catch:
-      - name: AssertCode
+      - name: assertCode
         invoke: { kind: Assert.Equals }
         inputs:
           actual: !cel "error.code"
           expected: ERR_TELO_VERB_NOT_ALLOWED
-  - name: DenyBarePath
+  - name: denyBarePath
     try:
-      - name: Attempt
+      - name: attempt
         invoke: !ref Chat.runTelo
         inputs:
           args: [./anything.yaml]
     catch:
-      - name: AssertCode
+      - name: assertCode
         invoke: { kind: Assert.Equals }
         inputs:
           actual: !cel "error.code"
           expected: ERR_TELO_VERB_NOT_ALLOWED
-  - name: DenyPublish
+  - name: denyPublish
     try:
-      - name: Attempt
+      - name: attempt
         invoke: !ref Chat.runTelo
         inputs:
           args: [publish, ./telo.yaml]
     catch:
-      - name: AssertCode
+      - name: assertCode
         invoke: { kind: Assert.Equals }
         inputs:
           actual: !cel "error.code"
           expected: ERR_TELO_VERB_NOT_ALLOWED
-  - name: DenyEmpty
+  - name: denyEmpty
     try:
-      - name: Attempt
+      - name: attempt
         invoke: !ref Chat.runTelo
         inputs:
           args: []
     catch:
-      - name: AssertCode
+      - name: assertCode
         invoke: { kind: Assert.Equals }
         inputs:
           actual: !cel "error.code"

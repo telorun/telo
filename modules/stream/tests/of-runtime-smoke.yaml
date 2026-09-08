@@ -13,28 +13,28 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Stream.Of
-metadata: { name: Source }
+metadata: { name: source }
 items: [ "placeholder" ]
 ---
 kind: Stream.Collect
-metadata: { name: Collect }
+metadata: { name: collect }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Emit
-    invoke: !ref Source
+  - name: emit
+    invoke: !ref source
     inputs:
       items: !cel "['runtime-a', 'runtime-b']"
-  - name: Collect
-    invoke: !ref Collect
+  - name: collect
+    invoke: !ref collect
     inputs:
-      input: !cel "steps.Emit.result.output"
-  - name: Assert
+      input: !cel "steps.emit.result.output"
+  - name: assert
     invoke: !ref Assert.equals
     inputs:
-      actual: !cel "join(steps.Collect.result.items, ',')"
+      actual: !cel "join(steps.collect.result.items, ',')"
       expected: "runtime-a,runtime-b"

@@ -8,41 +8,41 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestInsertAndSelect
+  - !ref testInsertAndSelect
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 kind: Run.Sequence
 metadata:
-  name: TestInsertAndSelect
+  name: testInsertAndSelect
 steps:
-  - name: CreateTable
+  - name: createTable
     inputs:
       sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER NOT NULL)"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: InsertRow
+  - name: insertRow
     inputs:
       sql: "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: SelectRow
+  - name: selectRow
     inputs:
       sql: "SELECT id, name, age FROM users WHERE id = 1"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
 
-  - name: AssertResult
+  - name: assertResult
     inputs:
-      rows: "${{ steps.SelectRow.result.rows }}"
+      rows: "${{ steps.selectRow.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:

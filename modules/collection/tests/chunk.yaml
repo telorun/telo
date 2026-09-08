@@ -11,24 +11,24 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestChunk
+  - !ref testChunk
 ---
 kind: Collection.Chunk
-metadata: { name: ChunkNumbers }
+metadata: { name: chunkNumbers }
 collection: !cel "inputs.numbers"
 size: !cel "inputs.size"
 ---
 kind: Run.Sequence
-metadata: { name: TestChunk }
+metadata: { name: testChunk }
 steps:
-  - name: Chunk
-    invoke: !ref ChunkNumbers
+  - name: chunk
+    invoke: !ref chunkNumbers
     inputs:
       numbers: [1, 2, 3, 4, 5]
       size: 2
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Chunk.result.chunks"
+      actual: !cel "steps.chunk.result.chunks"
       expected: [[1, 2], [3, 4], [5]]
     invoke:
       kind: Assert.Equals

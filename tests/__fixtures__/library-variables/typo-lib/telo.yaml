@@ -14,10 +14,10 @@ variables:
     type: string
     default: hello
 exports:
-  resources: [ Work ]
+  resources: [ work ]
 ---
 kind: Run.Value
-metadata: { name: Echo }
+metadata: { name: echo }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -28,9 +28,9 @@ value:
   echoed: !cel "inputs.text"
 ---
 kind: Run.Sequence
-metadata: { name: Work }
+metadata: { name: work }
 steps:
-  - name: Echo
-    invoke: !ref Echo
+  - name: echo
+    invoke: !ref echo
     inputs:
       text: !cel "variables.typoNotDeclared"

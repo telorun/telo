@@ -15,72 +15,72 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestGenerateThenSave
+  - !ref testGenerateThenSave
 ---
 kind: AiEcho.EchoImageModel
-metadata: { name: Echo }
+metadata: { name: echo }
 count: 1
 ---
 kind: Ai.Image
-metadata: { name: Draw }
-model: !ref Echo
+metadata: { name: draw }
+model: !ref echo
 ---
 kind: Fs.FileWrite
-metadata: { name: SaveImage }
+metadata: { name: saveImage }
 cwd: ./modules/ai/tests/__fixtures__/scratch-image
 ---
 kind: Fs.TreeSync
-metadata: { name: SaveTree }
+metadata: { name: saveTree }
 cwd: ./modules/ai/tests/__fixtures__/scratch-image
 ---
 kind: Fs.File
-metadata: { name: ReadBack }
+metadata: { name: readBack }
 cwd: ./modules/ai/tests/__fixtures__/scratch-image
 ---
 kind: Fs.FileRemoval
-metadata: { name: Remove }
+metadata: { name: remove }
 cwd: ./modules/ai/tests/__fixtures__
 ---
 kind: Run.Sequence
-metadata: { name: TestGenerateThenSave }
+metadata: { name: testGenerateThenSave }
 steps:
-  - name: Generate
+  - name: generate
     inputs: { prompt: a lighthouse }
-    invoke: !ref Draw
+    invoke: !ref draw
 
-  - name: Save
+  - name: save
     inputs:
       path: poster.png
-      content: !cel "steps.Generate.result.images[0].data"
+      content: !cel "steps.generate.result.images[0].data"
       createParents: true
-    invoke: !ref SaveImage
+    invoke: !ref saveImage
 
-  - name: ReadItBack
+  - name: readItBack
     inputs: { path: poster.png }
-    invoke: !ref ReadBack
+    invoke: !ref readBack
 
   # The batch write takes the same bytes through a different controller, so the
   # branch is covered where it lives rather than by proxy.
-  - name: SaveViaTree
+  - name: saveViaTree
     inputs:
       write:
         - path: nested/from-tree.png
-          content: !cel "steps.Generate.result.images[0].data"
-    invoke: !ref SaveTree
+          content: !cel "steps.generate.result.images[0].data"
+    invoke: !ref saveTree
 
-  - name: ReadTreeBack
+  - name: readTreeBack
     inputs: { path: nested/from-tree.png }
-    invoke: !ref ReadBack
+    invoke: !ref readBack
 
-  - name: Assert
+  - name: assert
     inputs:
       actual:
         # Byte count reported by the write matches what the model produced, and the
         # round-tripped text is the echo descriptor verbatim — no base64 hop.
-        bytesWritten: !cel "steps.Save.result.bytesWritten"
-        roundTripped: !cel "steps.ReadItBack.result.content"
-        treeWritten: !cel "steps.SaveViaTree.result.written"
-        treeRoundTripped: !cel "steps.ReadTreeBack.result.content"
+        bytesWritten: !cel "steps.save.result.bytesWritten"
+        roundTripped: !cel "steps.readItBack.result.content"
+        treeWritten: !cel "steps.saveViaTree.result.written"
+        treeRoundTripped: !cel "steps.readTreeBack.result.content"
       expected:
         bytesWritten: 62
         roundTripped: 'prompt=a lighthouse|intent=|images=0|mask=0|options={}|index=0'
@@ -88,6 +88,6 @@ steps:
         treeRoundTripped: 'prompt=a lighthouse|intent=|images=0|mask=0|options={}|index=0'
     invoke: !ref Assert.equals
 
-  - name: Cleanup
+  - name: cleanup
     inputs: { path: scratch-image, recursive: true }
-    invoke: !ref Remove
+    invoke: !ref remove

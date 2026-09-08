@@ -14,33 +14,33 @@ imports:
   Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
   Yaml: oci://ghcr.io/telorun/yaml@0.10.3#sha256-xgWF987hJC2tA6q4SP3BUhSzZz2eSbVmVUK4DVOGupk
 targets:
-  - !ref SearchResources_ReturnsKindHits
-  - !ref SearchResources_CarriesCategoryVocabulary
-  - !ref GetModuleManifest_ReturnsCachedYaml
+  - !ref searchResources_ReturnsKindHits
+  - !ref searchResources_CarriesCategoryVocabulary
+  - !ref getModuleManifest_ReturnsCachedYaml
 ---
 kind: McpClient.HttpClient
-metadata: { name: HubMcp }
+metadata: { name: hubMcp }
 url: http://localhost:8040/mcp
 clientInfo: { name: telo-test, version: 1.0.0 }
 ---
 kind: McpClient.ToolsCall
-metadata: { name: McpToolCall }
-client: !ref HubMcp
+metadata: { name: mcpToolCall }
+client: !ref hubMcp
 ---
 kind: Yaml.Parse
-metadata: { name: ParsePayload }
+metadata: { name: parsePayload }
 ---
 kind: Run.Sequence
-metadata: { name: SearchResources_ReturnsKindHits }
+metadata: { name: searchResources_ReturnsKindHits }
 steps:
   - name: call
-    invoke: !ref McpToolCall
+    invoke: !ref mcpToolCall
     inputs:
       name: search_resources
       arguments:
         query: delay a task
   - name: parse
-    invoke: !ref ParsePayload
+    invoke: !ref parsePayload
     inputs:
       text: !cel "steps.call.result.content[0].text"
   # The hit list itself is not assertable as a literal — scores and the rest of
@@ -60,16 +60,16 @@ steps:
       kind: Assert.Equals
 ---
 kind: Run.Sequence
-metadata: { name: GetModuleManifest_ReturnsCachedYaml }
+metadata: { name: getModuleManifest_ReturnsCachedYaml }
 steps:
   - name: call
-    invoke: !ref McpToolCall
+    invoke: !ref mcpToolCall
     inputs:
       name: get_module_manifest
       arguments:
         ref: oci://ghcr.io/telorun/timer
   - name: parse
-    invoke: !ref ParsePayload
+    invoke: !ref parsePayload
     inputs:
       text: !cel "steps.call.result.content[0].text"
   # Projected to the two facts this route owes a caller — the whole owner doc
@@ -93,16 +93,16 @@ steps:
 # from "Telo has no such kind", and enough to send an agent hunting for a
 # capability it had already been shown.
 kind: Run.Sequence
-metadata: { name: SearchResources_CarriesCategoryVocabulary }
+metadata: { name: searchResources_CarriesCategoryVocabulary }
 steps:
   - name: call
-    invoke: !ref McpToolCall
+    invoke: !ref mcpToolCall
     inputs:
       name: search_resources
       arguments:
         query: repeat a step while a condition holds
   - name: parse
-    invoke: !ref ParsePayload
+    invoke: !ref parsePayload
     inputs:
       text: !cel "steps.call.result.content[0].text"
   # `run` is categorized Compute, and Run.Loop is what an app that repeats work

@@ -5,15 +5,15 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestErrorTypo
-  - !ref TestErrorValid
-  - !ref TestNullableAccess
-  - !ref TestNullableAccessNested
+  - !ref testErrorTypo
+  - !ref testErrorValid
+  - !ref testNullableAccess
+  - !ref testNullableAccessNested
 ---
 # A typo on the `error` object inside a catch is caught at any nesting depth.
 kind: Assert.Manifest
 metadata:
-  name: TestErrorTypo
+  name: testErrorTypo
 source: ./__fixtures__/error-context-typo.yaml
 expect:
   errors:
@@ -25,7 +25,7 @@ expect:
 # Valid error fields (code/message/step/data) inside a catch produce no errors.
 kind: Assert.Manifest
 metadata:
-  name: TestErrorValid
+  name: testErrorValid
 source: ./__fixtures__/error-context-valid.yaml
 expect:
   errors: []
@@ -33,7 +33,7 @@ expect:
 # Unguarded access on the nullable `error` inside finally is rejected.
 kind: Assert.Manifest
 metadata:
-  name: TestNullableAccess
+  name: testNullableAccess
 source: ./__fixtures__/nullable-access.yaml
 expect:
   errors:
@@ -43,7 +43,7 @@ expect:
 # A finally nested inside a catch: the innermost branch's nullability governs.
 kind: Assert.Manifest
 metadata:
-  name: TestNullableAccessNested
+  name: testNullableAccessNested
 source: ./__fixtures__/nullable-access-nested.yaml
 expect:
   errors:

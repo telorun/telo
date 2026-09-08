@@ -17,11 +17,11 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestBoundStatement
+  - !ref testBoundStatement
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 # A Run.Sequence in `steps:` — what the Telo.Executable widening buys, and what
@@ -29,18 +29,18 @@ file: ":memory:"
 # `InsertAccount` may point its `transaction:` back at this transaction.
 kind: Sql.Transaction
 metadata:
-  name: AccountTx
-connection: !ref Db
-steps: !ref AccountWrites
+  name: accountTx
+connection: !ref db
+steps: !ref accountWrites
 inputs:
   email: !cel "inputs.email"
 ---
 kind: Run.Sequence
 metadata:
-  name: AccountWrites
+  name: accountWrites
 steps:
-  - name: Insert
-    invoke: !ref InsertAccount
+  - name: insert
+    invoke: !ref insertAccount
     inputs:
       sql: "INSERT INTO accounts (email) VALUES (?)"
       bindings:
@@ -52,35 +52,35 @@ steps:
 # does at runtime.
 kind: Sql.Command
 metadata:
-  name: InsertAccount
-transaction: !ref AccountTx
+  name: insertAccount
+transaction: !ref accountTx
 ---
 kind: Run.Sequence
 metadata:
-  name: TestBoundStatement
+  name: testBoundStatement
 steps:
-  - name: CreateTable
+  - name: createTable
     inputs:
       sql: "CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT NOT NULL)"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: WriteInTx
+  - name: writeInTx
     inputs:
       email: ada@example.com
-    invoke: !ref AccountTx
+    invoke: !ref accountTx
 
-  - name: SelectBack
+  - name: selectBack
     inputs:
       sql: "SELECT email FROM accounts"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
 
-  - name: AssertCommitted
+  - name: assertCommitted
     inputs:
-      actual: !cel "steps.SelectBack.result.rows"
+      actual: !cel "steps.selectBack.result.rows"
       expected:
         - email: ada@example.com
     invoke:
@@ -95,26 +95,26 @@ steps:
 
   # The rollback is what proves the write really was inside the transaction:
   # nothing from the failed body survives.
-  - name: FailingTx
+  - name: failingTx
     try:
-      - name: CallDoomed
-        invoke: !ref RollbackTx
+      - name: callDoomed
+        invoke: !ref rollbackTx
         inputs:
           email: doomed@example.com
     catch:
-      - name: Ignored
+      - name: ignored
         value: rolled-back
 
-  - name: SelectAfterRollback
+  - name: selectAfterRollback
     inputs:
       sql: "SELECT email FROM accounts"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
 
-  - name: AssertRolledBack
+  - name: assertRolledBack
     inputs:
-      actual: !cel "steps.SelectAfterRollback.result.rows"
+      actual: !cel "steps.selectAfterRollback.result.rows"
       expected:
         - email: ada@example.com
     invoke:
@@ -122,30 +122,30 @@ steps:
 ---
 kind: Sql.Transaction
 metadata:
-  name: RollbackTx
-connection: !ref Db
-steps: !ref RollbackWrites
+  name: rollbackTx
+connection: !ref db
+steps: !ref rollbackWrites
 inputs:
   email: !cel "inputs.email"
 ---
 kind: Run.Sequence
 metadata:
-  name: RollbackWrites
+  name: rollbackWrites
 steps:
-  - name: Insert
-    invoke: !ref InsertDoomed
+  - name: insert
+    invoke: !ref insertDoomed
     inputs:
       sql: "INSERT INTO accounts (email) VALUES (?)"
       bindings:
         - !cel "inputs.email"
-  - name: Boom
+  - name: boom
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
     inputs:
       sql: "INSERT INTO accounts (id, email) VALUES (1, 'duplicate-primary-key')"
 ---
 kind: Sql.Command
 metadata:
-  name: InsertDoomed
-transaction: !ref RollbackTx
+  name: insertDoomed
+transaction: !ref rollbackTx

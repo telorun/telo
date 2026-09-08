@@ -6,15 +6,15 @@ imports:
   Http: ../../modules/http-server
   Run: ../../modules/run
 exports:
-  # `HelloApi` is a resource instance (`kind: Http.Api`), not a kind — it belongs in
+  # `helloApi` is a resource instance (`kind: Http.Api`), not a kind — it belongs in
   # `resources:`, as its non-fixture twin (examples/templated-api/library.yaml) has it.
   # Under `kinds:` it declared a gate exporting zero real kinds.
   resources:
-    - HelloApi
+    - helloApi
 ---
 kind: Http.Api
 metadata:
-  name: HelloApi
+  name: helloApi
 routes:
   - request:
       path: /hello
@@ -26,7 +26,7 @@ routes:
             name:
               type: string
           required: [ "name" ]
-    handler: !ref SayHello
+    handler: !ref sayHello
     inputs:
       name: "${{ request.query.name }}" # CEL expression
     returns:
@@ -46,7 +46,7 @@ routes:
 ---
 kind: Run.Value
 metadata:
-  name: SayHello
+  name: sayHello
 inputType:
   kind: Telo.JsonSchema
   schema:

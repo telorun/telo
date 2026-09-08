@@ -5,18 +5,18 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestUndeclaredCode
-  - !ref TestUncoveredCode
-  - !ref TestCatchAllNotLast
-  - !ref TestPassthroughInsideCatch
-  - !ref TestInheritCycle
-  - !ref TestRethrowPlain
+  - !ref testUndeclaredCode
+  - !ref testUncoveredCode
+  - !ref testCatchAllNotLast
+  - !ref testPassthroughInsideCatch
+  - !ref testInheritCycle
+  - !ref testRethrowPlain
 ---
 # A catches: entry references a code not in the handler's declared / resolved
 # throw union → UNDECLARED_THROW_CODE.
 kind: Assert.Manifest
 metadata:
-  name: TestUndeclaredCode
+  name: testUndeclaredCode
 source: ./__fixtures__/undeclared-code.yaml
 expect:
   errors:
@@ -27,7 +27,7 @@ expect:
 # UNCOVERED_THROW_CODE on the missing code.
 kind: Assert.Manifest
 metadata:
-  name: TestUncoveredCode
+  name: testUncoveredCode
 source: ./__fixtures__/uncovered-code.yaml
 expect:
   errors:
@@ -38,7 +38,7 @@ expect:
 # CATCHALL_NOT_LAST.
 kind: Assert.Manifest
 metadata:
-  name: TestCatchAllNotLast
+  name: testCatchAllNotLast
 source: ./__fixtures__/catchall-not-last.yaml
 expect:
   errors:
@@ -48,7 +48,7 @@ expect:
 # enclosing try block's union. Route covers both codes → zero analyzer errors.
 kind: Assert.Manifest
 metadata:
-  name: TestPassthroughInsideCatch
+  name: testPassthroughInsideCatch
 source: ./__fixtures__/passthrough-inside-catch.yaml
 expect:
   errors: []
@@ -57,7 +57,7 @@ expect:
 # resolver's cycle detection returns an empty union and the analysis finishes.
 kind: Assert.Manifest
 metadata:
-  name: TestInheritCycle
+  name: testInheritCycle
 source: ./__fixtures__/inherit-cycle.yaml
 expect:
   errors: []
@@ -68,7 +68,7 @@ expect:
 # fold-in the union would be empty and the when: would be UNDECLARED_THROW_CODE).
 kind: Assert.Manifest
 metadata:
-  name: TestRethrowPlain
+  name: testRethrowPlain
 source: ./__fixtures__/rethrow-plain-uncovered.yaml
 expect:
   errors: []

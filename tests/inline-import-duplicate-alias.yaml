@@ -5,11 +5,11 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestDuplicateAlias
+  - !ref testDuplicateAlias
 ---
 kind: Assert.Manifest
 metadata:
-  name: TestDuplicateAlias
+  name: testDuplicateAlias
 source: ./__fixtures__/inline-import-duplicate-alias.yaml
 expect:
   errors:

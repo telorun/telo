@@ -8,5 +8,5 @@ imports:
 ---
 kind: Lib.GreetWrapper
 metadata:
-  name: Greeter
+  name: greeter
 prefix: hello

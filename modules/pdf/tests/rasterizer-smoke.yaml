@@ -15,17 +15,17 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestRenderPage
-  - !ref TestJpegFormat
-  - !ref TestPageOutOfRange
-  - !ref TestPageBelowOne
+  - !ref testRenderPage
+  - !ref testJpegFormat
+  - !ref testPageOutOfRange
+  - !ref testPageBelowOne
 ---
 kind: Pdf.Rasterizer
-metadata: { name: Render }
+metadata: { name: render }
 scale: 2
 ---
 kind: JS.Script
-metadata: { name: DetectFormat }
+metadata: { name: detectFormat }
 code: |
   async function main(input) {
     const b = input.image;
@@ -35,22 +35,22 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: TestRenderPage }
+metadata: { name: testRenderPage }
 steps:
-  - name: Fixture
-    invoke: !ref Fixture.SampleFormPdf
-  - name: Render
+  - name: fixture
+    invoke: !ref Fixture.sampleFormPdf
+  - name: render
     inputs:
-      data: "${{ steps.Fixture.result.data }}"
+      data: "${{ steps.fixture.result.data }}"
       page: 1
-    invoke: !ref Render
-  - name: AssertDimensions
+    invoke: !ref render
+  - name: assertDimensions
     inputs:
-      width: "${{ steps.Render.result.width }}"
-      height: "${{ steps.Render.result.height }}"
-      pageCount: "${{ steps.Render.result.pageCount }}"
-      scale: "${{ steps.Render.result.scale }}"
-      mediaType: "${{ steps.Render.result.mediaType }}"
+      width: "${{ steps.render.result.width }}"
+      height: "${{ steps.render.result.height }}"
+      pageCount: "${{ steps.render.result.pageCount }}"
+      scale: "${{ steps.render.result.scale }}"
+      mediaType: "${{ steps.render.result.mediaType }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -62,13 +62,13 @@ steps:
           scale: { const: 2 }
           mediaType: { const: image/png }
         required: [ width, height, pageCount, scale, mediaType ]
-  - name: Detect
+  - name: detect
     inputs:
-      image: "${{ steps.Render.result.image }}"
-    invoke: !ref DetectFormat
-  - name: AssertPng
+      image: "${{ steps.render.result.image }}"
+    invoke: !ref detectFormat
+  - name: assertPng
     inputs:
-      magic: "${{ steps.Detect.result.magic }}"
+      magic: "${{ steps.detect.result.magic }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -78,25 +78,25 @@ steps:
         required: [ magic ]
 ---
 kind: Run.Sequence
-metadata: { name: TestJpegFormat }
+metadata: { name: testJpegFormat }
 steps:
-  - name: Fixture
-    invoke: !ref Fixture.SampleFormPdf
-  - name: Render
+  - name: fixture
+    invoke: !ref Fixture.sampleFormPdf
+  - name: render
     inputs:
-      data: "${{ steps.Fixture.result.data }}"
+      data: "${{ steps.fixture.result.data }}"
       page: 1
       format: jpeg
       quality: 70
-    invoke: !ref Render
-  - name: Detect
+    invoke: !ref render
+  - name: detect
     inputs:
-      image: "${{ steps.Render.result.image }}"
-    invoke: !ref DetectFormat
-  - name: AssertJpeg
+      image: "${{ steps.render.result.image }}"
+    invoke: !ref detectFormat
+  - name: assertJpeg
     inputs:
-      mediaType: "${{ steps.Render.result.mediaType }}"
-      magic: "${{ steps.Detect.result.magic }}"
+      mediaType: "${{ steps.render.result.mediaType }}"
+      magic: "${{ steps.detect.result.magic }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -107,19 +107,19 @@ steps:
         required: [ mediaType, magic ]
 ---
 kind: Run.Sequence
-metadata: { name: TestPageOutOfRange }
+metadata: { name: testPageOutOfRange }
 steps:
-  - name: Fixture
-    invoke: !ref Fixture.SampleFormPdf
-  - name: TryRender
+  - name: fixture
+    invoke: !ref Fixture.sampleFormPdf
+  - name: tryRender
     try:
-      - name: Render
+      - name: render
         inputs:
-          data: "${{ steps.Fixture.result.data }}"
+          data: "${{ steps.fixture.result.data }}"
           page: 9
-        invoke: !ref Render
+        invoke: !ref render
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:
@@ -131,21 +131,21 @@ steps:
             required: [ code ]
 ---
 kind: Run.Sequence
-metadata: { name: TestPageBelowOne }
+metadata: { name: testPageBelowOne }
 steps:
-  - name: Fixture
-    invoke: !ref Fixture.SampleFormPdf
-  - name: TryRender
+  - name: fixture
+    invoke: !ref Fixture.sampleFormPdf
+  - name: tryRender
     try:
-      - name: Render
+      - name: render
         inputs:
-          data: "${{ steps.Fixture.result.data }}"
+          data: "${{ steps.fixture.result.data }}"
           # Deliberately invalid, routed through CEL: a literal is rejected by
           # `telo check`, and this test is about the RUNTIME contract boundary.
           page: !cel "0"
-        invoke: !ref Render
+        invoke: !ref render
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:

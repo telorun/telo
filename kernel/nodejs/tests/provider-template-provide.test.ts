@@ -30,7 +30,7 @@ describe("template provider — provide() dispatcher", () => {
     await kernel.load(WITH_RESULT);
     await kernel.boot();
 
-    const value = await readProvideValue(kernel, "VaultToken");
+    const value = await readProvideValue(kernel, "vaultToken");
     expect(value).toEqual({ token: "bearer s3cret" });
 
     await kernel.teardown();
@@ -41,7 +41,7 @@ describe("template provider — provide() dispatcher", () => {
     await kernel.load(NO_RESULT);
     await kernel.boot();
 
-    const value = await readProvideValue(kernel, "PlainToken");
+    const value = await readProvideValue(kernel, "plainToken");
     expect(value).toEqual({ raw: "abc" });
 
     await kernel.teardown();
@@ -52,7 +52,7 @@ describe("template provider — provide() dispatcher", () => {
     await kernel.load(INVOKE_RESULT);
     await kernel.boot();
 
-    const value = (await kernel.invoke("Lib.GreetWrapper.Greeter", { who: "world" })) as Record<
+    const value = (await kernel.invoke("Lib.GreetWrapper.greeter", { who: "world" })) as Record<
       string,
       unknown
     >;
@@ -76,8 +76,8 @@ describe("template provider — provide() dispatcher", () => {
 
     const ctx = (kernel as unknown as { rootContext: any }).rootContext;
     const before = ctx.resourceInstances.size;
-    await readProvideValue(kernel, "VaultToken");
-    await readProvideValue(kernel, "VaultToken");
+    await readProvideValue(kernel, "vaultToken");
+    await readProvideValue(kernel, "vaultToken");
     const after = ctx.resourceInstances.size;
 
     expect(after).toBe(before);

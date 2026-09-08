@@ -8,4 +8,4 @@ imports:
 include:
   - ./__fixtures__/templating-engines-include-steps.yaml
 targets:
-  - !ref TestTaggedInInclude
+  - !ref testTaggedInInclude

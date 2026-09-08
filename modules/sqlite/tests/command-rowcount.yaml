@@ -13,69 +13,69 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 kind: Run.Sequence
 metadata:
-  name: Test
+  name: test
 steps:
-  - name: Create
+  - name: create
     inputs:
       sql: "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: Insert
+  - name: insert
     inputs:
       sql: "INSERT INTO t (id, v) VALUES (?, ?)"
       bindings: [ !cel "1", !cel "'a'" ]
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: Insert2
+  - name: insert2
     inputs:
       sql: "INSERT INTO t (id, v) VALUES (?, ?)"
       bindings: [ !cel "2", !cel "'b'" ]
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: UpdateAll
+  - name: updateAll
     inputs:
       sql: "UPDATE t SET v = 'x'"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: DeleteOne
+  - name: deleteOne
     inputs:
       sql: "DELETE FROM t WHERE id = ?"
       bindings: [ !cel "2" ]
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: DeleteMissing
+  - name: deleteMissing
     inputs:
       sql: "DELETE FROM t WHERE id = ?"
       bindings: [ !cel "999" ]
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
-  - name: Assert
+  - name: assert
     inputs:
-      insert: "${{ steps.Insert.result.rowCount }}"
-      updateAll: "${{ steps.UpdateAll.result.rowCount }}"
-      deleteOne: "${{ steps.DeleteOne.result.rowCount }}"
-      deleteMissing: "${{ steps.DeleteMissing.result.rowCount }}"
+      insert: "${{ steps.insert.result.rowCount }}"
+      updateAll: "${{ steps.updateAll.result.rowCount }}"
+      deleteOne: "${{ steps.deleteOne.result.rowCount }}"
+      deleteMissing: "${{ steps.deleteMissing.result.rowCount }}"
     invoke:
       kind: Assert.Schema
       schema:

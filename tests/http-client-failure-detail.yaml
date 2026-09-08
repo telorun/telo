@@ -21,13 +21,13 @@ imports:
   Assert: ../modules/assert
   JS: ../modules/javascript
 targets:
-  - !ref Test
+  - !ref test
 ---
 # The shape a provider actually refuses with: a nested message rather than a
 # bare string, so the assertion proves the whole body is carried and not just a
 # top-level field somebody happened to look for.
 kind: JS.Script
-metadata: { name: Denial }
+metadata: { name: denial }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -51,7 +51,7 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 with:
   - kind: Server.Api
     metadata: { name: TestApi }
@@ -59,7 +59,7 @@ with:
       - request:
           path: /deny
           method: POST
-        handler: !ref Denial
+        handler: !ref denial
         returns:
           - status: 400
             content:
@@ -92,9 +92,9 @@ targets:
 steps:
   # A BUFFERED refusal. The body was already parsed, so what this pins is that
   # the error carries it rather than discarding it on the way out.
-  - name: Buffered
+  - name: buffered
     try:
-      - name: Call
+      - name: call
         inputs:
           url: http://localhost:8879/api/deny
           method: POST
@@ -104,19 +104,19 @@ steps:
           kind: Http.Request
           throwOnHttpError: true
     catch:
-      - name: AssertBufferedCode
+      - name: assertBufferedCode
         inputs:
           actual: !cel "error.code"
           expected: ERR_HTTP_STATUS
         invoke: !ref Assert.equals
-      - name: AssertBufferedMessage
+      - name: assertBufferedMessage
         inputs:
           actual: !cel "error.message"
           value: "Function tools with reasoning_effort are not supported"
         invoke: !ref Assert.contains
       # The status rides the structured data, so a caller branches on the number
       # rather than parsing it back out of a sentence.
-      - name: AssertBufferedStatus
+      - name: assertBufferedStatus
         inputs:
           actual: !cel "error.data.status"
           expected: 400
@@ -124,9 +124,9 @@ steps:
 
   # The STREAMED refusal — the case this fix exists for. The body arrives as an
   # unread stream, and reading it is what turns "HTTP 400" into the reason.
-  - name: Streamed
+  - name: streamed
     try:
-      - name: Call
+      - name: call
         inputs:
           url: http://localhost:8879/api/deny
           method: POST
@@ -137,19 +137,19 @@ steps:
           kind: Http.Request
           throwOnHttpError: true
     catch:
-      - name: AssertStreamedCode
+      - name: assertStreamedCode
         inputs:
           actual: !cel "error.code"
           expected: ERR_HTTP_STATUS
         invoke: !ref Assert.equals
-      - name: AssertStreamedMessage
+      - name: assertStreamedMessage
         inputs:
           actual: !cel "error.message"
           value: "Function tools with reasoning_effort are not supported"
         invoke: !ref Assert.contains
       # Byte-for-byte the response body, so nothing about the streamed path
       # truncates or re-encodes what the server said.
-      - name: AssertStreamedBody
+      - name: assertStreamedBody
         inputs:
           actual: !cel "error.data.body"
           expected: '{"error":{"message":"Function tools with reasoning_effort are not supported","type":"invalid_request_error"}}'

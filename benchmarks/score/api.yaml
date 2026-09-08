@@ -7,29 +7,29 @@ imports:
   Http: ../../modules/http-server
   Run: ../../modules/run
 targets:
-  - !ref Server
+  - !ref server
 ---
 # Pure passthrough — keeps the handler trivial so per-request time is dominated
 # by CEL evaluation in the route-level inputs and returns blocks.
 kind: Run.Value
 metadata:
-  name: PassThrough
+  name: passThrough
   module: ScoreApi
 value: !cel "inputs"
 ---
 kind: Http.Server
 metadata:
-  name: Server
+  name: server
   module: ScoreApi
 baseUrl: http://localhost:8845
 port: 8845
 mounts:
   - path: /v1
-    mount: !ref Routes
+    mount: !ref routes
 ---
 kind: Http.Api
 metadata:
-  name: Routes
+  name: routes
   module: ScoreApi
 routes:
   # POST /score — lead scoring, ~70 CEL expressions per request.
@@ -50,7 +50,7 @@ routes:
           properties:
             lead:
               type: object
-    handler: !ref PassThrough
+    handler: !ref passThrough
     # Route-level inputs (~20 CEL) — pre-compute reusable signals once and
     # pass them to the handler. The handler returns them verbatim so the
     # `returns` block sees them as `result.*`.

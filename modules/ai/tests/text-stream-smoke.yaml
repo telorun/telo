@@ -17,39 +17,39 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestNdjson
+  - !ref testNdjson
 ---
 kind: AiEcho.EchoModelStream
-metadata: { name: Echo }
+metadata: { name: echo }
 ---
 kind: Ai.TextStream
-metadata: { name: ChatStream }
-model: !ref Echo
+metadata: { name: chatStream }
+model: !ref echo
 ---
 kind: Ndjson.Encoder
-metadata: { name: NdjsonEnc }
+metadata: { name: ndjsonEnc }
 ---
 kind: PlainText.Decoder
-metadata: { name: TextDec }
+metadata: { name: textDec }
 ---
 kind: Run.Sequence
-metadata: { name: TestNdjson }
+metadata: { name: testNdjson }
 steps:
-  - name: TextStream
+  - name: textStream
     inputs:
       prompt: "hi"
-    invoke: !ref ChatStream
-  - name: Encode
+    invoke: !ref chatStream
+  - name: encode
     inputs:
-      input: "${{ steps.TextStream.result.output }}"
-    invoke: !ref NdjsonEnc
-  - name: Decode
+      input: "${{ steps.textStream.result.output }}"
+    invoke: !ref ndjsonEnc
+  - name: decode
     inputs:
-      input: "${{ steps.Encode.result.output }}"
-    invoke: !ref TextDec
-  - name: Assert
+      input: "${{ steps.encode.result.output }}"
+    invoke: !ref textDec
+  - name: assert
     inputs:
-      text: "${{ steps.Decode.result.text }}"
+      text: "${{ steps.decode.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:

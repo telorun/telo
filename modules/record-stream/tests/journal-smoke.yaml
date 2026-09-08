@@ -14,28 +14,28 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: RecordStream.Journal
-metadata: { name: Turns }
+metadata: { name: turns }
 ---
 kind: RecordStream.JournalSink
-metadata: { name: Sink }
-journal: !ref Turns
+metadata: { name: sink }
+journal: !ref turns
 ---
 kind: RecordStream.JournalSource
-metadata: { name: Source }
-journal: !ref Turns
+metadata: { name: source }
+journal: !ref turns
 ---
 kind: Stream.Of
-metadata: { name: TurnStream }
+metadata: { name: turnStream }
 items:
   - { type: text-delta, delta: "he" }
   - { type: text-delta, delta: "llo" }
   - { type: finish, finishReason: stop }
 ---
 kind: JS.Script
-metadata: { name: Collect }
+metadata: { name: collect }
 code: |
   async function main({ input }) {
     const ids = [];
@@ -50,39 +50,39 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Src
-    invoke: !ref TurnStream
-  - name: Write
-    invoke: !ref Sink
+  - name: src
+    invoke: !ref turnStream
+  - name: write
+    invoke: !ref sink
     inputs:
       key: t1
-      input: !cel "steps.Src.result.output"
+      input: !cel "steps.src.result.output"
 
-  - name: ReadAll
-    invoke: !ref Source
+  - name: readAll
+    invoke: !ref source
     inputs: { key: t1, fromId: 0 }
-  - name: CollectAll
-    invoke: !ref Collect
-    inputs: { input: !cel "steps.ReadAll.result.output" }
+  - name: collectAll
+    invoke: !ref collect
+    inputs: { input: !cel "steps.readAll.result.output" }
 
-  - name: ReadResume
-    invoke: !ref Source
+  - name: readResume
+    invoke: !ref source
     inputs: { key: t1, fromId: 1 }
-  - name: CollectResume
-    invoke: !ref Collect
-    inputs: { input: !cel "steps.ReadResume.result.output" }
+  - name: collectResume
+    invoke: !ref collect
+    inputs: { input: !cel "steps.readResume.result.output" }
 
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        writtenCount: !cel "steps.Write.result.count"
-        allIds: !cel "steps.CollectAll.result.ids"
-        allTypes: !cel "steps.CollectAll.result.types"
-        allDeltas: !cel "steps.CollectAll.result.deltas"
-        resumeIds: !cel "steps.CollectResume.result.ids"
-        resumeDeltas: !cel "steps.CollectResume.result.deltas"
+        writtenCount: !cel "steps.write.result.count"
+        allIds: !cel "steps.collectAll.result.ids"
+        allTypes: !cel "steps.collectAll.result.types"
+        allDeltas: !cel "steps.collectAll.result.deltas"
+        resumeIds: !cel "steps.collectResume.result.ids"
+        resumeDeltas: !cel "steps.collectResume.result.deltas"
       expected:
         writtenCount: 3
         allIds: [1, 2, 3]

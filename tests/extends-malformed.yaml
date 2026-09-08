@@ -5,12 +5,12 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestExtendsMalformed
+  - !ref testExtendsMalformed
 ---
 # Asserts the analyzer emits EXTENDS_MALFORMED when `extends` is not in identity form.
 kind: Assert.Manifest
 metadata:
-  name: TestExtendsMalformed
+  name: testExtendsMalformed
 source: ./__fixtures__/extends-malformed.yaml
 expect:
   errors:

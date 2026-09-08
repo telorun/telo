@@ -8,18 +8,18 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestRunnableTool
+  - !ref testRunnableTool
 ---
 kind: AiEcho.EchoModel
 metadata:
-  name: Echo
+  name: echo
 emitToolCall:
   name: compute
   arguments: { n: 21 }
 ---
 kind: Run.Value
 metadata:
-  name: Doubler
+  name: doubler
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -34,7 +34,7 @@ value:
 # pipeline is dispatched as a single tool the model can call.
 kind: Run.Sequence
 metadata:
-  name: ComputePipeline
+  name: computePipeline
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -42,18 +42,18 @@ inputType:
     properties:
       n: { type: integer }
 steps:
-  - name: Double
-    invoke: !ref Doubler
+  - name: double
+    invoke: !ref doubler
     inputs:
       n: "${{ inputs.n }}"
 outputs:
-  doubled: "${{ steps.Double.result.doubled }}"
+  doubled: "${{ steps.double.result.doubled }}"
 ---
 kind: Ai.Tools
 metadata:
-  name: PipelineTools
+  name: pipelineTools
 tools:
-  - tool: !ref ComputePipeline
+  - tool: !ref computePipeline
     name: compute
     description: Double a number through a pipeline.
     parameters:
@@ -66,27 +66,27 @@ tools:
 ---
 kind: Ai.Agent
 metadata:
-  name: PipelineAgent
-model: !ref Echo
+  name: pipelineAgent
+model: !ref echo
 toolProviders:
-  - provider: !ref PipelineTools
+  - provider: !ref pipelineTools
 ---
 kind: Run.Sequence
 metadata:
-  name: TestRunnableTool
+  name: testRunnableTool
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       prompt: "double 21"
-    invoke: !ref PipelineAgent
+    invoke: !ref pipelineAgent
   # Turn 1 → tool call compute(n:21) → ComputePipeline runs Doubler → {doubled:42},
   # the `result:` mapping yields 42 → tool message content "42". Turn 2 → Echo
   # echoes that content as the final answer.
-  - name: AssertResult
+  - name: assertResult
     inputs:
-      toolName: "${{ steps.Invoke.result.steps[0].toolCalls[0].name }}"
-      toolResult: "${{ steps.Invoke.result.steps[0].toolResults[0].content }}"
-      finalText: "${{ steps.Invoke.result.text }}"
+      toolName: "${{ steps.invoke.result.steps[0].toolCalls[0].name }}"
+      toolResult: "${{ steps.invoke.result.steps[0].toolResults[0].content }}"
+      finalText: "${{ steps.invoke.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:

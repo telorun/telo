@@ -10,16 +10,16 @@ metadata:
 imports:
   Run: ../../modules/run
 targets:
-  - !ref Typo
+  - !ref typo
 ---
 kind: Run.Sequence
-metadata: { name: Typo }
+metadata: { name: typo }
 steps:
-  - name: Produce
-    invoke: !ref Misspelled
+  - name: produce
+    invoke: !ref misspelled
 ---
 kind: Run.Value
-metadata: { name: Misspelled }
+metadata: { name: misspelled }
 outputType:
   kind: Telo.JsonSchema
   schema:

@@ -16,38 +16,38 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 # Streaming only — it implements Ai.ModelStream and nothing else, which is the
 # situation the adapter exists for.
 kind: AiEcho.EchoModelStream
-metadata: { name: Streaming }
+metadata: { name: streaming }
 suffix: "!"
 emitProviderState: "reasoning-token-abc"
 ---
 kind: Ai.Buffered
-metadata: { name: Folded }
-model: !ref Streaming
+metadata: { name: folded }
+model: !ref streaming
 ---
 kind: Ai.Text
-metadata: { name: Chat }
-model: !ref Folded
+metadata: { name: chat }
+model: !ref folded
 ---
 # The same adapter driving a TOOL LOOP. This is the payoff: a provider that only
 # streams becomes usable by `Ai.Agent`, whose loop needs a complete answer per
 # turn to read `toolCalls` off — so the fold has to carry them, not just text.
 kind: AiEcho.EchoModelStream
-metadata: { name: StreamingWithTool }
+metadata: { name: streamingWithTool }
 emitToolCall:
   name: multiply
   arguments: { a: 6, b: 7 }
 ---
 kind: Ai.Buffered
-metadata: { name: FoldedWithTool }
-model: !ref StreamingWithTool
+metadata: { name: foldedWithTool }
+model: !ref streamingWithTool
 ---
 kind: Run.Value
-metadata: { name: Multiplier }
+metadata: { name: multiplier }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -59,9 +59,9 @@ value:
   product: !cel "inputs.a * inputs.b"
 ---
 kind: Ai.Tools
-metadata: { name: LocalTools }
+metadata: { name: localTools }
 tools:
-  - tool: !ref Multiplier
+  - tool: !ref multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -73,45 +73,45 @@ tools:
         b: { type: number }
 ---
 kind: Ai.Agent
-metadata: { name: Assistant }
-model: !ref FoldedWithTool
+metadata: { name: assistant }
+model: !ref foldedWithTool
 toolProviders:
-  - provider: !ref LocalTools
+  - provider: !ref localTools
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Ask
+  - name: ask
     inputs:
       prompt: hello
-    invoke: !ref Chat
+    invoke: !ref chat
   # The echo streams one delta per code point; folding them back must produce
   # exactly what a buffered echo would have returned.
-  - name: AssertText
+  - name: assertText
     inputs:
-      actual: !cel "steps.Ask.result.text"
+      actual: !cel "steps.ask.result.text"
       expected: "hello!"
     invoke: !ref Assert.equals
-  - name: AssertFinish
+  - name: assertFinish
     inputs:
-      actual: !cel "steps.Ask.result.finishReason"
+      actual: !cel "steps.ask.result.finishReason"
       expected: stop
     invoke: !ref Assert.equals
-  - name: AssertUsage
+  - name: assertUsage
     inputs:
-      actual: !cel "steps.Ask.result.usage.totalTokens"
+      actual: !cel "steps.ask.result.usage.totalTokens"
       expected: 0
     invoke: !ref Assert.equals
 
   # The loop runs to completion over a stream-only provider: the fold surfaced
   # the tool call, the agent dispatched it, and the second turn saw its result.
-  - name: Loop
+  - name: toolLoop
     inputs:
       prompt: "multiply please"
-    invoke: !ref Assistant
-  - name: AssertToolResult
+    invoke: !ref assistant
+  - name: assertToolResult
     inputs:
-      actual: !cel "steps.Loop.result.text"
+      actual: !cel "steps.toolLoop.result.text"
       expected: "{\"product\":42}"
     invoke: !ref Assert.equals
 
@@ -119,21 +119,21 @@ steps:
   # survive a tool loop, and it is optional on the output — so dropping it was
   # silent. Asserted against the ADAPTER, since `Ai.Text`'s own contract is
   # deliberately narrower and stops at text.
-  - name: Direct
+  - name: direct
     inputs:
       messages:
         - role: user
           content: hello
-    invoke: !ref Folded
-  - name: AssertProviderState
+    invoke: !ref folded
+  - name: assertProviderState
     inputs:
-      actual: !cel "steps.Direct.result.providerState"
+      actual: !cel "steps.direct.result.providerState"
       expected: "reasoning-token-abc"
     invoke: !ref Assert.equals
   # And the parts really are folded into `content`, not just concatenated text.
-  - name: AssertContent
+  - name: assertContent
     inputs:
-      actual: !cel "steps.Direct.result.content"
+      actual: !cel "steps.direct.result.content"
       expected:
         - { type: text, text: "hello!" }
     invoke: !ref Assert.equals

@@ -34,9 +34,9 @@ schema:
 # validation as "partial context" — the wrong-kind reference would pass unchecked.
 kind: AL.Concrete
 metadata:
-  name: NotAGreeter
+  name: notAGreeter
 ---
 kind: AbstractMismatchedAliasesRejectsWrongKind.GreeterUser
 metadata:
-  name: UsesWrongKind
-greeter: !ref NotAGreeter
+  name: usesWrongKind
+greeter: !ref notAGreeter

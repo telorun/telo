@@ -7,4 +7,4 @@ imports:
 ---
 kind: Lib.BrokenProvider
 metadata:
-  name: Anything
+  name: anything

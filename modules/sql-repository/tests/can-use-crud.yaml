@@ -10,11 +10,11 @@ imports:
   Assert: ../../assert
 targets:
   - !ref appSchema
-  - !ref TestCrud
+  - !ref testCrud
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 kind: SQLite.Table
@@ -28,46 +28,46 @@ columns:
 kind: SQLite.Schema
 metadata:
   name: appSchema
-connection: !ref Db
+connection: !ref db
 version: !cel "module.version"
 tables: [!ref users]
 ---
 kind: SqlRepository.Create
 metadata:
-  name: InsertUser
-connection: !ref Db
+  name: insertUser
+connection: !ref db
 table: !ref users
 ---
 kind: SqlRepository.Read
 metadata:
-  name: GetUsers
-connection: !ref Db
+  name: getUsers
+connection: !ref db
 table: !ref users
 ---
 kind: SqlRepository.Delete
 metadata:
-  name: DeleteUser
-connection: !ref Db
+  name: deleteUser
+connection: !ref db
 table: !ref users
 ---
 kind: Run.Sequence
 metadata:
-  name: TestCrud
+  name: testCrud
 steps:
-  - name: Insert
+  - name: insert
     inputs:
       data:
         name: Alice
-    invoke: !ref InsertUser
+    invoke: !ref insertUser
 
-  - name: Read
+  - name: read
     inputs:
       filters: {}
-    invoke: !ref GetUsers
+    invoke: !ref getUsers
 
-  - name: AssertRead
+  - name: assertRead
     inputs:
-      rows: "${{ steps.Read.result.rows }}"
+      rows: "${{ steps.read.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -82,20 +82,20 @@ steps:
                 name:
                   const: Alice
 
-  - name: Delete
+  - name: delete
     inputs:
       filters:
         name: Alice
-    invoke: !ref DeleteUser
+    invoke: !ref deleteUser
 
-  - name: ReadAfterDelete
+  - name: readAfterDelete
     inputs:
       filters: {}
-    invoke: !ref GetUsers
+    invoke: !ref getUsers
 
-  - name: AssertEmpty
+  - name: assertEmpty
     inputs:
-      rows: "${{ steps.ReadAfterDelete.result.rows }}"
+      rows: "${{ steps.readAfterDelete.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:

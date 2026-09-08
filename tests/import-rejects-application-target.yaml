@@ -5,11 +5,11 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestImportApplicationRejected
+  - !ref testImportApplicationRejected
 ---
 kind: Assert.Manifest
 metadata:
-  name: TestImportApplicationRejected
+  name: testImportApplicationRejected
 source: ./__fixtures__/imports-an-application.yaml
 expect:
   loadError: "Telo.Application"

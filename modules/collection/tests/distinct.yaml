@@ -11,27 +11,27 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestDistinct
+  - !ref testDistinct
 ---
 kind: Collection.Distinct
-metadata: { name: DistinctEvents }
+metadata: { name: distinctEvents }
 collection: !cel "inputs.events"
 key:
   user: !cel "item.userId"
 ---
 kind: Run.Sequence
-metadata: { name: TestDistinct }
+metadata: { name: testDistinct }
 steps:
-  - name: Distinct
-    invoke: !ref DistinctEvents
+  - name: distinct
+    invoke: !ref distinctEvents
     inputs:
       events:
         - { userId: u1, at: 1 }
         - { userId: u2, at: 2 }
         - { userId: u1, at: 3 }
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Distinct.result.items"
+      actual: !cel "steps.distinct.result.items"
       expected:
         - { userId: u1, at: 1 }
         - { userId: u2, at: 2 }

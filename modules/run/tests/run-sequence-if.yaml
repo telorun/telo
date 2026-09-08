@@ -6,17 +6,17 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestIfBranches
+  - !ref testIfBranches
 ---
 kind: Run.Sequence
 metadata:
-  name: TestIfBranches
+  name: testIfBranches
 steps:
   # --- if/then: condition true, then branch executes ---
-  - name: TrueCondition
+  - name: trueCondition
     if: "${{ true }}"
     then:
-      - name: ThenRan
+      - name: thenRan
         inputs:
           branch: "then"
         invoke:
@@ -28,9 +28,9 @@ steps:
                 const: "then"
 
   # Verify then branch produced a result (Assert.Schema returns true on pass).
-  - name: VerifyThenRan
+  - name: verifyThenRan
     inputs:
-      result: "${{ steps.ThenRan.result }}"
+      result: "${{ steps.thenRan.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -40,11 +40,11 @@ steps:
             const: true
 
   # --- if/then/else: condition false, else branch executes ---
-  - name: FalseCondition
+  - name: falseCondition
     if: "${{ false }}"
     then:
       # If this ran, assertion would fail (1 != 0).
-      - name: WrongBranch
+      - name: wrongBranch
         inputs:
           x: 1
         invoke:
@@ -55,7 +55,7 @@ steps:
               x:
                 const: 0
     else:
-      - name: ElseRan
+      - name: elseRan
         inputs:
           branch: "else"
         invoke:
@@ -66,9 +66,9 @@ steps:
               branch:
                 const: "else"
 
-  - name: VerifyElseRan
+  - name: verifyElseRan
     inputs:
-      result: "${{ steps.ElseRan.result }}"
+      result: "${{ steps.elseRan.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -78,18 +78,18 @@ steps:
             const: true
 
   # --- data-driven condition: branch chosen by a prior step result ---
-  - name: Setup
+  - name: setup
     invoke:
       kind: Run.Value
       value:
         value: 42
 
-  - name: DataDrivenIf
-    if: "${{ steps.Setup.result.value == 42 }}"
+  - name: dataDrivenIf
+    if: "${{ steps.setup.result.value == 42 }}"
     then:
-      - name: CorrectBranch
+      - name: correctBranch
         inputs:
-          value: "${{ steps.Setup.result.value }}"
+          value: "${{ steps.setup.result.value }}"
         invoke:
           kind: Assert.Schema
           schema:
@@ -99,7 +99,7 @@ steps:
                 const: 42
     else:
       # Would fail if reached.
-      - name: WrongValueBranch
+      - name: wrongValueBranch
         inputs:
           x: 1
         invoke:
@@ -110,9 +110,9 @@ steps:
               x:
                 const: 0
 
-  - name: VerifyDataBranch
+  - name: verifyDataBranch
     inputs:
-      result: "${{ steps.CorrectBranch.result }}"
+      result: "${{ steps.correctBranch.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -122,11 +122,11 @@ steps:
             const: true
 
   # --- if/elseif: first elseif branch matches ---
-  - name: ElseIfFirstMatches
+  - name: elseIfFirstMatches
     if: "${{ false }}"
     then:
       # Would fail if reached.
-      - name: WrongIfBranch
+      - name: wrongIfBranch
         inputs:
           x: 1
         invoke:
@@ -139,7 +139,7 @@ steps:
     elseif:
       - if: "${{ true }}"
         then:
-          - name: FirstElseIfRan
+          - name: firstElseIfRan
             inputs:
               branch: "elseif-1"
             invoke:
@@ -152,7 +152,7 @@ steps:
       - if: "${{ true }}"
         then:
           # Would fail if reached — first matching elseif must short-circuit.
-          - name: SecondElseIfWrong
+          - name: secondElseIfWrong
             inputs:
               x: 1
             invoke:
@@ -163,9 +163,9 @@ steps:
                   x:
                     const: 0
 
-  - name: VerifyFirstElseIf
+  - name: verifyFirstElseIf
     inputs:
-      result: "${{ steps.FirstElseIfRan.result }}"
+      result: "${{ steps.firstElseIfRan.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -175,10 +175,10 @@ steps:
             const: true
 
   # --- if/elseif: later elseif branch matches after earlier ones fail ---
-  - name: ElseIfLaterMatches
+  - name: elseIfLaterMatches
     if: "${{ false }}"
     then:
-      - name: WrongIfBranch2
+      - name: wrongIfBranch2
         inputs: { x: 1 }
         invoke:
           kind: Assert.Schema
@@ -186,14 +186,14 @@ steps:
     elseif:
       - if: "${{ false }}"
         then:
-          - name: SkippedElseIf
+          - name: skippedElseIf
             inputs: { x: 1 }
             invoke:
               kind: Assert.Schema
               schema: { type: object, properties: { x: { const: 0 } } }
       - if: "${{ true }}"
         then:
-          - name: SecondElseIfRan
+          - name: secondElseIfRan
             inputs:
               branch: "elseif-2"
             invoke:
@@ -204,9 +204,9 @@ steps:
                   branch:
                     const: "elseif-2"
 
-  - name: VerifySecondElseIf
+  - name: verifySecondElseIf
     inputs:
-      result: "${{ steps.SecondElseIfRan.result }}"
+      result: "${{ steps.secondElseIfRan.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -216,10 +216,10 @@ steps:
             const: true
 
   # --- if/elseif/else: no elseif matches, fall through to else ---
-  - name: ElseIfFallsThroughToElse
+  - name: elseIfFallsThroughToElse
     if: "${{ false }}"
     then:
-      - name: WrongIfBranch3
+      - name: wrongIfBranch3
         inputs: { x: 1 }
         invoke:
           kind: Assert.Schema
@@ -227,13 +227,13 @@ steps:
     elseif:
       - if: "${{ false }}"
         then:
-          - name: ElseIfNoMatch
+          - name: elseIfNoMatch
             inputs: { x: 1 }
             invoke:
               kind: Assert.Schema
               schema: { type: object, properties: { x: { const: 0 } } }
     else:
-      - name: ElseRanAfterElseIf
+      - name: elseRanAfterElseIf
         inputs:
           branch: "else-after-elseif"
         invoke:
@@ -244,9 +244,9 @@ steps:
               branch:
                 const: "else-after-elseif"
 
-  - name: VerifyElseAfterElseIf
+  - name: verifyElseAfterElseIf
     inputs:
-      result: "${{ steps.ElseRanAfterElseIf.result }}"
+      result: "${{ steps.elseRanAfterElseIf.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -256,26 +256,26 @@ steps:
             const: true
 
   # --- if/elseif: data-driven dispatch via a prior step ---
-  - name: SetupRole
+  - name: setupRole
     invoke:
       kind: Run.Value
       value:
         role: "editor"
 
-  - name: ElseIfDataDriven
-    if: "${{ steps.SetupRole.result.role == 'admin' }}"
+  - name: elseIfDataDriven
+    if: "${{ steps.setupRole.result.role == 'admin' }}"
     then:
-      - name: AdminBranch
+      - name: adminBranch
         inputs: { x: 1 }
         invoke:
           kind: Assert.Schema
           schema: { type: object, properties: { x: { const: 0 } } }
     elseif:
-      - if: "${{ steps.SetupRole.result.role == 'editor' }}"
+      - if: "${{ steps.setupRole.result.role == 'editor' }}"
         then:
-          - name: EditorBranch
+          - name: editorBranch
             inputs:
-              role: "${{ steps.SetupRole.result.role }}"
+              role: "${{ steps.setupRole.result.role }}"
             invoke:
               kind: Assert.Schema
               schema:
@@ -283,23 +283,23 @@ steps:
                 properties:
                   role:
                     const: "editor"
-      - if: "${{ steps.SetupRole.result.role == 'viewer' }}"
+      - if: "${{ steps.setupRole.result.role == 'viewer' }}"
         then:
-          - name: ViewerBranch
+          - name: viewerBranch
             inputs: { x: 1 }
             invoke:
               kind: Assert.Schema
               schema: { type: object, properties: { x: { const: 0 } } }
     else:
-      - name: UnknownRoleBranch
+      - name: unknownRoleBranch
         inputs: { x: 1 }
         invoke:
           kind: Assert.Schema
           schema: { type: object, properties: { x: { const: 0 } } }
 
-  - name: VerifyDataDrivenElseIf
+  - name: verifyDataDrivenElseIf
     inputs:
-      result: "${{ steps.EditorBranch.result }}"
+      result: "${{ steps.editorBranch.result }}"
     invoke:
       kind: Assert.Schema
       schema:

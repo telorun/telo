@@ -12,10 +12,10 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestGroupBy
+  - !ref testGroupBy
 ---
 kind: Collection.GroupBy
-metadata: { name: Report }
+metadata: { name: report }
 collection: !cel "inputs.items"
 key:
   user: !cel "item.author.name"
@@ -28,19 +28,19 @@ orderBy:
   - by: !cel "row.project"
 ---
 kind: Run.Sequence
-metadata: { name: TestGroupBy }
+metadata: { name: testGroupBy }
 steps:
-  - name: Report
-    invoke: !ref Report
+  - name: report
+    invoke: !ref report
     inputs:
       items:
         - { author: { name: Ann }, issue: { project: { name: Apollo } }, duration: { minutes: 30 } }
         - { author: { name: Ann }, issue: { project: { name: Apollo } }, duration: { minutes: 90 } }
         - { author: { name: Bob }, issue: { project: { name: Apollo } }, duration: { minutes: 45 } }
         - { author: { name: Ann }, issue: { project: { name: Zephyr } }, duration: { minutes: 60 } }
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Report.result.rows"
+      actual: !cel "steps.report.result.rows"
       expected:
         - { user: Ann, project: Apollo, minutes: 120, hours: 2 }
         - { user: Ann, project: Zephyr, minutes: 60, hours: 1 }

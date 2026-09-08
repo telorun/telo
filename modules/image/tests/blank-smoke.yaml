@@ -16,18 +16,18 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestBlank
-  - !ref TestJpegFormat
-  - !ref TestZeroWidth
-  - !ref TestBadColor
-  - !ref TestBadFormat
-  - !ref TestBadQuality
+  - !ref testBlank
+  - !ref testJpegFormat
+  - !ref testZeroWidth
+  - !ref testBadColor
+  - !ref testBadFormat
+  - !ref testBadQuality
 ---
 kind: Image.Blank
-metadata: { name: Canvas }
+metadata: { name: canvas }
 ---
 kind: JS.Script
-metadata: { name: DetectFormat }
+metadata: { name: detectFormat }
 code: |
   async function main(input) {
     const b = input.image;
@@ -37,21 +37,21 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: TestBlank }
+metadata: { name: testBlank }
 steps:
-  - name: Blank
+  - name: blank
     inputs: { width: 120, height: 80, color: "#003366" }
-    invoke: !ref Canvas
-  - name: Detect
+    invoke: !ref canvas
+  - name: detect
     inputs:
-      image: "${{ steps.Blank.result.image }}"
-    invoke: !ref DetectFormat
-  - name: AssertBlank
+      image: "${{ steps.blank.result.image }}"
+    invoke: !ref detectFormat
+  - name: assertBlank
     inputs:
-      width: "${{ steps.Blank.result.width }}"
-      height: "${{ steps.Blank.result.height }}"
-      mediaType: "${{ steps.Blank.result.mediaType }}"
-      magic: "${{ steps.Detect.result.magic }}"
+      width: "${{ steps.blank.result.width }}"
+      height: "${{ steps.blank.result.height }}"
+      mediaType: "${{ steps.blank.result.mediaType }}"
+      magic: "${{ steps.detect.result.magic }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -64,19 +64,19 @@ steps:
         required: [ width, height, mediaType, magic ]
 ---
 kind: Run.Sequence
-metadata: { name: TestJpegFormat }
+metadata: { name: testJpegFormat }
 steps:
-  - name: Blank
+  - name: blank
     inputs: { width: 120, height: 80, format: jpeg, quality: 70 }
-    invoke: !ref Canvas
-  - name: Detect
+    invoke: !ref canvas
+  - name: detect
     inputs:
-      image: "${{ steps.Blank.result.image }}"
-    invoke: !ref DetectFormat
-  - name: AssertJpeg
+      image: "${{ steps.blank.result.image }}"
+    invoke: !ref detectFormat
+  - name: assertJpeg
     inputs:
-      mediaType: "${{ steps.Blank.result.mediaType }}"
-      magic: "${{ steps.Detect.result.magic }}"
+      mediaType: "${{ steps.blank.result.mediaType }}"
+      magic: "${{ steps.detect.result.magic }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -87,19 +87,19 @@ steps:
         required: [ mediaType, magic ]
 ---
 kind: Run.Sequence
-metadata: { name: TestZeroWidth }
+metadata: { name: testZeroWidth }
 steps:
-  - name: TryBlank
+  - name: tryBlank
     try:
-      - name: Blank
+      - name: blank
         # Deliberately invalid, routed through CEL: a literal is rejected by
         # `telo check` (CONTRACT_INPUTS_MISMATCH), and this test is about the
         # RUNTIME boundary — which is how a real violation arrives anyway, from a
         # computed value rather than something visible in the manifest.
         inputs: { width: !cel "0", height: 80 }
-        invoke: !ref Canvas
+        invoke: !ref canvas
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:
@@ -111,15 +111,15 @@ steps:
             required: [ code ]
 ---
 kind: Run.Sequence
-metadata: { name: TestBadColor }
+metadata: { name: testBadColor }
 steps:
-  - name: TryBlank
+  - name: tryBlank
     try:
-      - name: Blank
+      - name: blank
         inputs: { width: 8, height: 8, color: not-a-color }
-        invoke: !ref Canvas
+        invoke: !ref canvas
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:
@@ -131,19 +131,19 @@ steps:
             required: [ code ]
 ---
 kind: Run.Sequence
-metadata: { name: TestBadFormat }
+metadata: { name: testBadFormat }
 steps:
-  - name: TryBlank
+  - name: tryBlank
     try:
-      - name: Blank
+      - name: blank
         # Deliberately invalid, routed through CEL: a literal is rejected by
         # `telo check` (CONTRACT_INPUTS_MISMATCH), and this test is about the
         # RUNTIME boundary — which is how a real violation arrives anyway, from a
         # computed value rather than something visible in the manifest.
         inputs: { width: 8, height: 8, format: !cel "'tiff'" }
-        invoke: !ref Canvas
+        invoke: !ref canvas
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:
@@ -155,20 +155,20 @@ steps:
             required: [ code ]
 ---
 kind: Run.Sequence
-metadata: { name: TestBadQuality }
+metadata: { name: testBadQuality }
 steps:
-  - name: TryBlank
+  - name: tryBlank
     try:
       # Library would silently clamp 150 → 100; the controller rejects it.
-      - name: Blank
+      - name: blank
         # Deliberately invalid, routed through CEL: a literal is rejected by
         # `telo check` (CONTRACT_INPUTS_MISMATCH), and this test is about the
         # RUNTIME boundary — which is how a real violation arrives anyway, from a
         # computed value rather than something visible in the manifest.
         inputs: { width: 8, height: 8, format: jpeg, quality: !cel "150" }
-        invoke: !ref Canvas
+        invoke: !ref canvas
     catch:
-      - name: Caught
+      - name: caught
         inputs:
           code: "${{ error.code }}"
         invoke:

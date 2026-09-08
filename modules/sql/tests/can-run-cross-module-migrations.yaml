@@ -8,29 +8,29 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Lib.Migrate
-  - !ref VerifyCrossModule
+  - !ref Lib.migrate
+  - !ref verifyCrossModule
 ---
 # Regression: an imported library's schema resource holds `connection: !ref Db`
 # to a sibling resource in its own scope. The library's `!ref` must be resolved
 # (normalized to {kind, name}) when the import-controller registers it, or the
 # migration's controller receives a raw ref sentinel and throws
 # "Sql: invalid connection reference". Verifying through the exported connection
-# also exercises the cross-module `!ref Lib.Db` value resolution.
+# also exercises the cross-module `!ref Lib.db` value resolution.
 kind: Run.Sequence
 metadata:
-  name: VerifyCrossModule
+  name: verifyCrossModule
 steps:
-  - name: SelectSeeded
+  - name: selectSeeded
     inputs:
       sql: "SELECT name FROM users WHERE id = 1"
     invoke:
       kind: Sql.Query
-      connection: !ref Lib.Db
+      connection: !ref Lib.db
 
-  - name: AssertSeeded
+  - name: assertSeeded
     inputs:
-      rows: "${{ steps.SelectSeeded.result.rows }}"
+      rows: "${{ steps.selectSeeded.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:

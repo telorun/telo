@@ -11,9 +11,9 @@ metadata:
 imports:
   Run: ../../../../modules/run
 exports:
-  resources: [LibTheme]
+  resources: [libTheme]
 ---
 kind: Run.Value
-metadata: { name: LibTheme }
+metadata: { name: libTheme }
 value:
   theme: !include-text assets/lib-theme.txt

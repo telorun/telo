@@ -6,10 +6,10 @@ imports:
   Http: ../../http-server
   Run: ../../run
   Assert: ../../assert
-targets: [ !ref TestRun ]
+targets: [ !ref testRun ]
 ---
 kind: Run.Value
-metadata: { name: GetWeatherImpl }
+metadata: { name: getWeatherImpl }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -29,7 +29,7 @@ entries:
       properties:
         city: { type: string }
       required: [ city ]
-    handler: !ref GetWeatherImpl
+    handler: !ref getWeatherImpl
     inputs:
       city: "${{ request.arguments.city }}"
     result:
@@ -38,7 +38,7 @@ entries:
           text: "${{ result.summary }}"
 ---
 kind: Mcp.HttpEndpoint
-metadata: { name: McpHttp }
+metadata: { name: mcpHttp }
 serverInfo: { name: telo-test-mcp, version: 1.0.0 }
 tools: [ !ref WeatherTools ]
 ---
@@ -47,16 +47,16 @@ tools: [ !ref WeatherTools ]
 # self-handshakes lazily and reuses the cached session for the lifetime of the
 # test. The server is stateless here, so no session header is echoed.
 kind: McpClient.HttpClient
-metadata: { name: WeatherMcpClient }
+metadata: { name: weatherMcpClient }
 url: http://127.0.0.1:8951/mcp
 clientInfo: { name: telo-test, version: 1.0.0 }
 ---
 kind: McpClient.ToolsCall
-metadata: { name: CallGetWeather }
-client: !ref WeatherMcpClient
+metadata: { name: callGetWeather }
+client: !ref weatherMcpClient
 ---
 kind: Run.Sequence
-metadata: { name: TestRun }
+metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -64,17 +64,17 @@ with:
     port: 8951
     baseUrl: http://127.0.0.1:8951
     mounts:
-      - { path: /mcp, mount: !ref McpHttp }
+      - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
 steps:
-  - name: CallGetWeather
+  - name: callGetWeather
     inputs:
       name: get_weather
       arguments: { city: Atlantis }
-    invoke: !ref CallGetWeather
-  - name: AssertResponse
+    invoke: !ref callGetWeather
+  - name: assertResponse
     inputs:
-      contentText: "${{ steps.CallGetWeather.result.content[0].text }}"
+      contentText: "${{ steps.callGetWeather.result.content[0].text }}"
     invoke:
       kind: Assert.Schema
       schema:

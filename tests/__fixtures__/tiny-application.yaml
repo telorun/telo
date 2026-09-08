@@ -7,4 +7,4 @@ imports:
 ---
 kind: Console.WriteLine
 metadata:
-  name: Unreachable
+  name: unreachable

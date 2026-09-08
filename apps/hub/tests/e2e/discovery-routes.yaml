@@ -14,28 +14,28 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
   Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
 targets:
-  - !ref Health
-  - !ref SearchResources_FindsSeededKind
-  - !ref SearchResources_SemanticMatch
-  - !ref SearchModules_GroupsByModule
-  - !ref Refs_FuzzyMatchesSeededRef
-  - !ref ModuleVersions_ListsSeededVersions
-  - !ref ModuleVersions_UntrackedReturns404
-  - !ref Categories_ListsDeclaredFacet
-  - !ref SearchModules_FiltersByCategory
-  - !ref Implementations_ListsBackendsOfContract
-  - !ref Module_ReturnsDetailForSeededRef
-  - !ref Module_UntrackedReturns404
-  - !ref Module_UnknownVersionReturns404
-  - !ref SearchResources_RejectsUnknownRuntime
-  - !ref SearchResources_AcceptsKnownRuntime
-  - !ref SearchResources_RejectsUnknownCategory
-  - !ref SearchResources_BroadensWhenCategoryExcludesEverything
-  - !ref SearchResources_CarriesCategoryFacet
-  - !ref SearchModules_RejectsUnknownCategory
+  - !ref health
+  - !ref searchResources_FindsSeededKind
+  - !ref searchResources_SemanticMatch
+  - !ref searchModules_GroupsByModule
+  - !ref refs_FuzzyMatchesSeededRef
+  - !ref moduleVersions_ListsSeededVersions
+  - !ref moduleVersions_UntrackedReturns404
+  - !ref categories_ListsDeclaredFacet
+  - !ref searchModules_FiltersByCategory
+  - !ref implementations_ListsBackendsOfContract
+  - !ref module_ReturnsDetailForSeededRef
+  - !ref module_UntrackedReturns404
+  - !ref module_UnknownVersionReturns404
+  - !ref searchResources_RejectsUnknownRuntime
+  - !ref searchResources_AcceptsKnownRuntime
+  - !ref searchResources_RejectsUnknownCategory
+  - !ref searchResources_BroadensWhenCategoryExcludesEverything
+  - !ref searchResources_CarriesCategoryFacet
+  - !ref searchModules_RejectsUnknownCategory
 ---
 kind: Run.Sequence
-metadata: { name: Health }
+metadata: { name: health }
 steps:
   - name: hit
     invoke:
@@ -65,7 +65,7 @@ steps:
 # query on "delay" must surface it as a kind hit carrying the exact location
 # ref + version (the shape search_resources / the editor build on).
 kind: Run.Sequence
-metadata: { name: SearchResources_FindsSeededKind }
+metadata: { name: searchResources_FindsSeededKind }
 steps:
   - name: hit
     invoke:
@@ -123,7 +123,7 @@ steps:
 # The module-first projection groups the same hits and lists every exported
 # kind, so a module card needs no second manifest fetch.
 kind: Run.Sequence
-metadata: { name: SearchModules_GroupsByModule }
+metadata: { name: searchModules_GroupsByModule }
 steps:
   - name: hit
     invoke:
@@ -211,7 +211,7 @@ steps:
 # Lexical typeahead: a partial (even typo-adjacent) token must complete to the
 # registered ref, deduped to the latest tracked version.
 kind: Run.Sequence
-metadata: { name: Refs_FuzzyMatchesSeededRef }
+metadata: { name: refs_FuzzyMatchesSeededRef }
 steps:
   - name: hit
     invoke:
@@ -248,7 +248,7 @@ steps:
         required: [status, body]
 ---
 kind: Run.Sequence
-metadata: { name: ModuleVersions_ListsSeededVersions }
+metadata: { name: moduleVersions_ListsSeededVersions }
 steps:
   - name: hit
     invoke:
@@ -300,7 +300,7 @@ steps:
         required: [status, body]
 ---
 kind: Run.Sequence
-metadata: { name: ModuleVersions_UntrackedReturns404 }
+metadata: { name: moduleVersions_UntrackedReturns404 }
 steps:
   - name: hit
     invoke:
@@ -331,7 +331,7 @@ steps:
 # the vector arm. This can only pass if ingest embedded the seeded kinds and the
 # RRF query fuses the vector hits — it fails on lexical-only ranking.
 kind: Run.Sequence
-metadata: { name: SearchResources_SemanticMatch }
+metadata: { name: searchResources_SemanticMatch }
 steps:
   - name: hit
     invoke:
@@ -374,7 +374,7 @@ steps:
 # that the facet query, the array-containment filter, and the contract join all
 # execute and project the documented shape.
 kind: Run.Sequence
-metadata: { name: Categories_ListsDeclaredFacet }
+metadata: { name: categories_ListsDeclaredFacet }
 steps:
   - name: hit
     invoke:
@@ -414,7 +414,7 @@ steps:
 # must carry the pagination contract (`total`) so a caller can tell a complete
 # listing from a truncated one.
 kind: Run.Sequence
-metadata: { name: SearchModules_FiltersByCategory }
+metadata: { name: searchModules_FiltersByCategory }
 steps:
   - name: hit
     invoke:
@@ -470,7 +470,7 @@ steps:
         required: [status, body]
 ---
 kind: Run.Sequence
-metadata: { name: Implementations_ListsBackendsOfContract }
+metadata: { name: implementations_ListsBackendsOfContract }
 steps:
   - name: hit
     invoke:
@@ -536,7 +536,7 @@ steps:
 # echoes back, and the kind list is non-empty and carries the per-kind fields a
 # page needs.
 kind: Run.Sequence
-metadata: { name: Module_ReturnsDetailForSeededRef }
+metadata: { name: module_ReturnsDetailForSeededRef }
 steps:
   - name: hit
     invoke:
@@ -612,7 +612,7 @@ steps:
 # One 404 covers both "never registered" and "no such version": the caller's
 # next move is identical, and separating them would leak which refs are tracked.
 kind: Run.Sequence
-metadata: { name: Module_UntrackedReturns404 }
+metadata: { name: module_UntrackedReturns404 }
 steps:
   - name: hit
     invoke:
@@ -634,7 +634,7 @@ steps:
 # rather than falling back to the latest version and quietly answering a
 # question the caller did not ask.
 kind: Run.Sequence
-metadata: { name: Module_UnknownVersionReturns404 }
+metadata: { name: module_UnknownVersionReturns404 }
 steps:
   - name: hit
     invoke:
@@ -655,7 +655,7 @@ steps:
 # `node` is exactly the mistake a caller makes, since `nodejs` is what an
 # `imports:` entry's `runtime:` field uses.
 kind: Run.Sequence
-metadata: { name: SearchResources_RejectsUnknownRuntime }
+metadata: { name: searchResources_RejectsUnknownRuntime }
 steps:
   - name: hit
     invoke:
@@ -675,7 +675,7 @@ steps:
 # which predates the runtime block, so every seeded row has an empty runtime set
 # until a CLI release lands (same bootstrap as `integrity` above).
 kind: Run.Sequence
-metadata: { name: SearchResources_AcceptsKnownRuntime }
+metadata: { name: searchResources_AcceptsKnownRuntime }
 steps:
   - name: hit
     invoke:
@@ -707,7 +707,7 @@ steps:
 # to be a 400: left to the filter, an unknown category selects nothing, and an
 # empty hit list reads as "Telo has no such kind" rather than "bad argument".
 kind: Run.Sequence
-metadata: { name: SearchResources_RejectsUnknownCategory }
+metadata: { name: searchResources_RejectsUnknownCategory }
 steps:
   - name: hit
     invoke:
@@ -733,7 +733,7 @@ steps:
 # arm is reliably non-empty, while terminal I/O is far enough from key/value
 # storage — lexically and semantically — that the filtered arm is reliably empty.
 kind: Run.Sequence
-metadata: { name: SearchResources_BroadensWhenCategoryExcludesEverything }
+metadata: { name: searchResources_BroadensWhenCategoryExcludesEverything }
 steps:
   - name: hit
     invoke:
@@ -757,7 +757,7 @@ steps:
 # open vocabulary learnable from inside a search, and a caller who has to fetch
 # it separately guesses instead.
 kind: Run.Sequence
-metadata: { name: SearchResources_CarriesCategoryFacet }
+metadata: { name: searchResources_CarriesCategoryFacet }
 steps:
   - name: hit
     invoke:
@@ -798,7 +798,7 @@ steps:
 # would just relocate the defect: an agent that falls back from kinds to modules
 # would hit the silent empty set again.
 kind: Run.Sequence
-metadata: { name: SearchModules_RejectsUnknownCategory }
+metadata: { name: searchModules_RejectsUnknownCategory }
 steps:
   - name: hit
     invoke:

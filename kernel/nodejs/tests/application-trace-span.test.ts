@@ -25,8 +25,8 @@ describe("application trace span — the app is a trace participant", () => {
     await kernel.runTargets();
 
     const app = byName.get("AppTraceSpanApp.Run");
-    const seq = byName.get("Seq.Run");
-    const echo = byName.get("Echo.Invoked");
+    const seq = byName.get("seq.Run");
+    const echo = byName.get("echo.Invoked");
 
     // The application is the trace root.
     expect(app).toMatchObject({ capability: "run", phase: "end", outcome: "ok", ref: { kind: "Telo.Application", name: "AppTraceSpanApp" } });
@@ -36,11 +36,11 @@ describe("application trace span — the app is a trace participant", () => {
 
     // A bare `!ref` runnable target is dispatched through the chokepoint
     // (runResolved), so it emits its own run span parented to the app.
-    expect(seq).toMatchObject({ capability: "run", ref: { kind: "Run.Sequence", name: "Seq" } });
+    expect(seq).toMatchObject({ capability: "run", ref: { kind: "Run.Sequence", name: "seq" } });
     expect(seq?.parentSpanId).toBe(app?.spanId);
 
     // The sequence's step invoke nests under the sequence.
-    expect(echo).toMatchObject({ capability: "invoke", ref: { kind: "Run.Value", name: "Echo" } });
+    expect(echo).toMatchObject({ capability: "invoke", ref: { kind: "Run.Value", name: "echo" } });
     expect(echo?.parentSpanId).toBe(seq?.spanId);
 
     await kernel.teardown();

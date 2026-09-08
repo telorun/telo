@@ -14,14 +14,14 @@ imports:
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
-  - !ref VerifyNormalization
+  - !ref verifyNormalization
 ---
 # A plain `Run.Value`: its `value:` leaves are YAML literals, so they reach the
 # contract boundary as ordinary JS numbers — the same shape any controller hands
 # back, and the input the normalization exists to correct.
 kind: Run.Value
 metadata:
-  name: Producer
+  name: producer
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -55,10 +55,10 @@ value:
 ---
 kind: Run.Sequence
 metadata:
-  name: VerifyNormalization
+  name: verifyNormalization
 steps:
   - name: produced
-    invoke: !ref Producer
+    invoke: !ref producer
   - name: check
     inputs:
       actual:

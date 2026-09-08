@@ -11,10 +11,10 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestSort
+  - !ref testSort
 ---
 kind: Collection.Sort
-metadata: { name: SortPeople }
+metadata: { name: sortPeople }
 collection: !cel "inputs.people"
 order:
   - by: !cel "item.lastName"
@@ -22,18 +22,18 @@ order:
     descending: true
 ---
 kind: Run.Sequence
-metadata: { name: TestSort }
+metadata: { name: testSort }
 steps:
-  - name: Sort
-    invoke: !ref SortPeople
+  - name: sort
+    invoke: !ref sortPeople
     inputs:
       people:
         - { firstName: A, lastName: Smith, age: 30 }
         - { firstName: B, lastName: Jones, age: 25 }
         - { firstName: C, lastName: Smith, age: 40 }
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Sort.result.items"
+      actual: !cel "steps.sort.result.items"
       expected:
         - { firstName: B, lastName: Jones, age: 25 }
         - { firstName: C, lastName: Smith, age: 40 }

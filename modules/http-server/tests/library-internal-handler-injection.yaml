@@ -26,10 +26,10 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -38,20 +38,20 @@ with:
     baseUrl: http://127.0.0.1:8957
     mounts:
       - path: /
-        mount: !ref Lib.Api
+        mount: !ref Lib.api
 targets:
   - !ref Server
 steps:
-  - name: Hit
+  - name: hit
     inputs: {}
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8957/greet?name=World
       method: GET
-  - name: AssertOk
+  - name: assertOk
     inputs:
-      status: "${{ steps.Hit.result.status }}"
-      message: "${{ steps.Hit.result.body.message }}"
+      status: "${{ steps.hit.result.status }}"
+      message: "${{ steps.hit.result.body.message }}"
     invoke:
       kind: Assert.Schema
       schema:

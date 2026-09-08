@@ -18,7 +18,7 @@ ports:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestPorts
+  name: testPorts
 with:
   - kind: Http.Api
     metadata:
@@ -45,15 +45,15 @@ with:
 targets:
   - !ref TestServer
 steps:
-  - name: Ping
+  - name: ping
     invoke:
       kind: HttpClient.Request
       url: http://localhost:8858/api/ping
       method: GET
 
-  - name: AssertPong
+  - name: assertPong
     inputs:
-      pong: "${{ steps.Ping.result.body.pong }}"
+      pong: "${{ steps.ping.result.body.pong }}"
     invoke:
       kind: Assert.Schema
       schema:

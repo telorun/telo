@@ -11,13 +11,13 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestValueBindings
-  - !ref TestChoiceBindings
+  - !ref testValueBindings
+  - !ref testChoiceBindings
 ---
 # `net` is declared first and reads `gross`/`discount`, which are declared after
 # it: the evaluation order comes from the references, not the manifest order.
 kind: Run.Value
-metadata: { name: PriceLine }
+metadata: { name: priceLine }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -41,7 +41,7 @@ value:
 # once. `poison` is read only by a row that never wins, so it is never computed;
 # evaluating it would divide by zero and fail the call.
 kind: Run.Choice
-metadata: { name: ShippingTier }
+metadata: { name: shippingTier }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -62,27 +62,27 @@ default:
   value: { tier: letter, kg: 0.0 }
 ---
 kind: Run.Sequence
-metadata: { name: TestValueBindings }
+metadata: { name: testValueBindings }
 steps:
-  - name: Price
-    invoke: !ref PriceLine
+  - name: price
+    invoke: !ref priceLine
     inputs: { qty: 2.0, unitPrice: 10.0, discountRate: 0.1, taxRate: 0.5 }
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Price.result"
+      actual: !cel "steps.price.result"
       expected: { gross: 20.0, net: 18.0, tax: 9.0 }
     invoke:
       kind: Assert.Equals
 ---
 kind: Run.Sequence
-metadata: { name: TestChoiceBindings }
+metadata: { name: testChoiceBindings }
 steps:
-  - name: Tier
-    invoke: !ref ShippingTier
+  - name: tier
+    invoke: !ref shippingTier
     inputs: { grams: 5000.0, zero: 0 }
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Tier.result"
+      actual: !cel "steps.tier.result"
       expected: { tier: parcel, kg: 5.0 }
     invoke:
       kind: Assert.Equals

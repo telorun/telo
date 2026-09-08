@@ -31,17 +31,17 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestMountLevels
+  - !ref testMountLevels
 ---
 kind: JS.Script
-metadata: { name: Ok }
+metadata: { name: ok }
 code: |
   function main() {
     return { ok: true };
   }
 ---
 kind: JS.Script
-metadata: { name: Boom }
+metadata: { name: boom }
 code: |
   function main() {
     throw new Error("boom");
@@ -50,17 +50,17 @@ code: |
 # Polled constantly in production; its access records are the noise this exists
 # to remove.
 kind: Http.Api
-metadata: { name: HealthApi }
+metadata: { name: healthApi }
 routes:
   - request: { path: /live, method: GET }
-    handler: !ref Ok
+    handler: !ref ok
     returns:
       - status: 200
         content:
           application/json:
             body: { ok: !cel "result.ok" }
   - request: { path: /broken, method: GET }
-    handler: !ref Boom
+    handler: !ref boom
     returns:
       - status: 200
         content:
@@ -68,10 +68,10 @@ routes:
             body: { ok: true }
 ---
 kind: Http.Api
-metadata: { name: BusinessApi }
+metadata: { name: businessApi }
 routes:
   - request: { path: /things, method: GET }
-    handler: !ref Ok
+    handler: !ref ok
     returns:
       - status: 200
         content:
@@ -79,7 +79,7 @@ routes:
             body: { ok: !cel "result.ok" }
 ---
 kind: JS.Script
-metadata: { name: Summarize }
+metadata: { name: summarize }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -121,7 +121,7 @@ code: |
 ---
 kind: Run.Sequence
 metadata:
-  name: TestMountLevels
+  name: testMountLevels
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -130,12 +130,12 @@ with:
     baseUrl: http://127.0.0.1:8912
     mounts:
       - path: /health
-        mount: !ref HealthApi
+        mount: !ref healthApi
         # Access records are `info`, so `warn` is how a mount goes quiet.
         logging:
           level: warn
       - path: /api
-        mount: !ref BusinessApi
+        mount: !ref businessApi
   - kind: HttpClient.Request
     metadata: { name: Call }
   - kind: Fs.File
@@ -159,7 +159,7 @@ steps:
     invoke: !ref ReadLog
     inputs: { path: /tmp/telo-mount-access-log.jsonl }
   - name: summary
-    invoke: !ref Summarize
+    invoke: !ref summarize
     inputs: { text: !cel "steps.read.result.content" }
   - name: verify
     invoke: { kind: Assert.Equals }

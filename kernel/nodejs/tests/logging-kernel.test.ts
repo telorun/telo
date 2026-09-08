@@ -480,8 +480,8 @@ describe("§7.3 — resource identity on a record a controller actually emitted"
     expect(emitted, "the controller's record never reached the sink").toBeDefined();
     expect(emitted!["resource"]).toEqual({
       kind: "LogIdentityFixture.Emitter",
-      name: "Emit",
-      id: "LogIdentityFixture.Emitter.Emit",
+      name: "emit",
+      id: "LogIdentityFixture.Emitter.emit",
     });
   });
 });

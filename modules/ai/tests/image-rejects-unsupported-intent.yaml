@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestAnalyzerRejectsUnsupportedIntent
+  - !ref testAnalyzerRejectsUnsupportedIntent
 ---
 # The whole point of deriving Ai.Image's `intent` from the referenced model's
 # `$defs/Intent` (x-telo-schema-from) rather than fixing an enum on the abstract:
@@ -14,7 +14,7 @@ targets:
 # replaced.
 kind: Assert.Manifest
 metadata:
-  name: TestAnalyzerRejectsUnsupportedIntent
+  name: testAnalyzerRejectsUnsupportedIntent
 source: ./__fixtures__/image-unsupported-intent.yaml
 expect:
   errors:
