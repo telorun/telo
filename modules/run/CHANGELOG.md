@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.27.0 - 2026-09-09
+### Added
+* The iteration guide documents the inline form: a step's `invoke:` accepts an inline `Run.Iteration` and the kind needs no `inputType:`, so printing one line per row costs a step rather than a named resource with a hand-written schema. It also records that the collection must reach the nested kind through the step's own `inputs:` — the enclosing sequence's `steps` scope is not bound inside it, and writing it directly passes `telo check` before failing at runtime.
+
 ## 0.26.1 - 2026-09-07
 ### Fixed
 * Every item of a Run.Iteration, every turn of a Run.Loop and every element of a Run.Projection now runs when the body is durable. A composer that drives its own body journals under the prefix the kernel hands it for the whole dispatch, and sharing that one prefix across turns meant the journal — which takes the first writer at a key — returned turn 1's recorded outcome for turns 2..N. The work was silently skipped and the run still reported success. Each turn now carries its own prefix, the way the step engine's own while loop already did.
