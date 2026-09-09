@@ -79,6 +79,23 @@ export function RunOutput({ appPath, onOpenConfig }: RunOutputProps) {
           ))}
         </div>
       )}
+      {[...selectedRun.portRoutes].some(([, r]) => r.state === "unprogrammed") && (
+        <div className="flex shrink-0 flex-col gap-1 border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+          {[...selectedRun.portRoutes]
+            .filter(([, r]) => r.state === "unprogrammed")
+            .map(([port, route]) => (
+              <div key={port} className="flex items-start gap-2">
+                {/* The app may be running perfectly — this is the cluster's routing
+                    layer never claiming the URL, which is why it names the host
+                    rather than the port and quotes the controller's own reason. */}
+                <span className="font-medium">No route to {route.host}:</span>
+                <span className="flex-1 break-words">
+                  {route.reason ?? "the cluster's routing layer did not program this host"}
+                </span>
+              </div>
+            ))}
+        </div>
+      )}
       {selectedRun.historyUnavailable && (
         <div className="flex shrink-0 items-center gap-3 border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
           <span className="flex-1">

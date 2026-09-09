@@ -38,6 +38,15 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["get", "list", "watch", "create", "update", "delete"]
+  # Gateway API is the other current routing layer, and the runner supports both.
+  # `list` + `delete` are load-bearing rather than symmetric with Ingress: Gateway
+  # API scopes `hostnames` to the whole HTTPRoute, so a session needs ONE ROUTE PER
+  # PORT, and a reload that drops a port must delete that port's object — where an
+  # Ingress simply loses a rule on replace. Granted unconditionally: the CRDs may
+  # not exist, and RBAC on an unserved group is inert rather than an error.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -55,7 +64,12 @@ subjects:
     name: {{ include "k8s-runner.name" . }}
     namespace: {{ .Values.runnerNamespace }}
 ---
-# Read-only namespace check used by /v1/probe.
+# Read-only namespace check used by /v1/probe, plus the cluster-scoped reads that
+# let `sessionRouting.mode: auto` tell an installed routing layer from a usable
+# one. IngressClasses are the usable signal for Ingress — `networking.k8s.io` is
+# always served, so the API's presence proves nothing, while a registered class
+# means a controller installed itself. Both reads fail soft in the runner, so a
+# cluster that withholds them falls through to explicit configuration.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -65,6 +79,9 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["namespaces"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingressclasses"]
     verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

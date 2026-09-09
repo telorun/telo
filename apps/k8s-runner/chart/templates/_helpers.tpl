@@ -21,12 +21,20 @@ http://{{ include "k8s-runner.name" . }}.{{ .Values.runnerNamespace }}.svc:{{ .V
 {{- end -}}
 
 {{/* Per-session ingress TLS Secret name (in the session namespace): chart-created
-     from sessionIngress.tls.cert + sessionIngress.tls.key, else an operator-managed
-     sessionIngress.tls.secretName. Empty when no origin cert is configured. */}}
+     from sessionRouting.ingress.tls.cert + .key, else an operator-managed
+     sessionRouting.ingress.tls.secretName. Empty when no origin cert is configured.
+
+     INGRESS ONLY. Under Gateway API the origin certificate belongs to the
+     Gateway listener's own certificateRefs, so this stays empty there and the
+     runner refuses the combination at boot rather than presenting no cert and
+     calling it configured. A named gateway counts under `auto` too — that is the
+     DEFAULT mode, and it is where a Gateway wins the layer, so testing the mode
+     alone would leave the common configuration silently un-TLS'd. */}}
 {{- define "k8s-runner.sessionIngressTlsSecretName" -}}
-{{- if and .Values.sessionIngress.tls.cert .Values.sessionIngress.tls.key -}}
+{{- if or (eq .Values.sessionRouting.mode "gateway") (and .Values.sessionRouting.gateway.name (ne .Values.sessionRouting.mode "ingress")) -}}
+{{- else if and .Values.sessionRouting.ingress.tls.cert .Values.sessionRouting.ingress.tls.key -}}
 {{ include "k8s-runner.name" . }}-ingress-tls
-{{- else if .Values.sessionIngress.tls.secretName -}}
-{{ .Values.sessionIngress.tls.secretName }}
+{{- else if .Values.sessionRouting.ingress.tls.secretName -}}
+{{ .Values.sessionRouting.ingress.tls.secretName }}
 {{- end -}}
 {{- end -}}

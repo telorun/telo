@@ -45,12 +45,58 @@ export interface LimitCeilings {
   ephemeralStorage: string;
 }
 
+/**
+ * Which routing layer the runner publishes per-session routes on.
+ *
+ *  - `auto`    — resolve from what is CONFIGURED, then from what the cluster
+ *                serves; refuse at boot when the answer is genuinely ambiguous.
+ *  - `ingress` — `networking.k8s.io/v1` Ingress.
+ *  - `gateway` — `gateway.networking.k8s.io/v1` HTTPRoute.
+ *  - `none`    — publish nothing; the session is logs-only even with a base
+ *                domain set.
+ */
+export type SessionRoutingMode = "auto" | "ingress" | "gateway" | "none";
+
+const ROUTING_MODES: readonly SessionRoutingMode[] = ["auto", "ingress", "gateway", "none"];
+
+/** The Gateway a session's HTTPRoute attaches to. Never detected: picking one of
+ *  several Gateways is the same guess as picking one of two routing APIs, and a
+ *  route attached to the wrong Gateway fails exactly as silently as no route. */
+export interface GatewayParentConfig {
+  name: string;
+  /** Defaults to the session namespace — mirroring Gateway API's own
+   *  `parentRefs[].namespace` default, which is the route's own namespace. */
+  namespace: string;
+  /** Optional listener name, when the Gateway has several and only one should
+   *  carry session traffic. */
+  sectionName?: string;
+}
+
+export interface SessionRoutingConfig {
+  mode: SessionRoutingMode;
+  /** Wildcard base domain for per-session hosts; unset → logs-only whatever the
+   *  mode, since without it no host can be constructed at all. */
+  baseDomain?: string;
+  /** IngressClass for created session Ingresses (ingress mode). */
+  ingressClassName?: string;
+  /** `kubernetes.io/tls` Secret (in the session namespace) the per-session
+   *  Ingress presents so an upstream (e.g. Cloudflare Full (Strict)) can validate
+   *  the origin. Must cover `*.<baseDomain>`. INGRESS MODE ONLY — under Gateway
+   *  API the certificate belongs to the Gateway's listener, so setting this in
+   *  gateway mode is refused at boot rather than silently ignored. */
+  tlsSecretName?: string;
+  gateway?: GatewayParentConfig;
+  /** How long a published route may go unclaimed by any controller before it is
+   *  reported `unprogrammed`. */
+  routeReadyTimeoutMs: number;
+}
+
 export interface K8sRunnerConfig extends RunnerCoreConfig {
   /** Identity advertised on `/v1/capabilities` — studio labels the runner
    *  with these. */
   displayName: string;
   description: string;
-  /** Namespace where session Pods/Services/Ingresses are created. */
+  /** Namespace where session Pods/Services and routing objects are created. */
   sessionNamespace: string;
   /** Default image for spawned session Pods (telorun/node). Baked into the runner
    *  image as `RUNNER_IMAGE` at build time (the kernel version the runner was
@@ -64,14 +110,8 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   imagePullSecret?: string;
   /** Optional sandbox RuntimeClass (gvisor/kata). Unset → cluster default (runc). */
   runtimeClass?: string;
-  /** Wildcard base domain for per-session ingress; unset → logs-only. */
-  sessionIngressBaseDomain?: string;
-  /** Optional IngressClass name for created session Ingresses. */
-  sessionIngressClassName?: string;
-  /** Optional `kubernetes.io/tls` Secret (in the session namespace) the per-session
-   *  Ingress presents so an upstream (e.g. Cloudflare Full (Strict)) can validate
-   *  the origin. Must cover the wildcard `*.<sessionIngressBaseDomain>`. Unset → no TLS block. */
-  sessionIngressTlsSecretName?: string;
+  /** How per-session routes are published. */
+  sessionRouting: SessionRoutingConfig;
   /** Runner's own in-cluster base URL, used to build the bundle fetch URL the
    *  initContainer curls (e.g. http://k8s-runner.telo-runner:8062). */
   selfUrl: string;
@@ -100,6 +140,69 @@ function parseTagRegex(raw: string | undefined, field: string): RegExp[] | undef
       `${field} is not a valid regular expression: ${(err as Error).message}`,
     );
   }
+}
+
+/** Parse the routing mode, THROWING on an unrecognized one rather than degrading
+ *  to a default — a typo'd mode that silently fell back to `auto` is the same
+ *  class of failure this whole mechanism exists to remove. */
+function parseRoutingMode(raw: string | undefined): SessionRoutingMode {
+  const v = raw?.trim();
+  if (!v) return "auto";
+  if ((ROUTING_MODES as readonly string[]).includes(v)) return v as SessionRoutingMode;
+  throw new RunnerConfigError(
+    `SESSION_ROUTING_MODE must be one of ${ROUTING_MODES.join(" | ")} (got '${v}').`,
+  );
+}
+
+function loadSessionRoutingConfig(
+  env: NodeJS.ProcessEnv,
+  sessionNamespace: string,
+): SessionRoutingConfig {
+  const mode = parseRoutingMode(env.SESSION_ROUTING_MODE);
+  const gatewayName = env.SESSION_GATEWAY_NAME?.trim() || undefined;
+  const tlsSecretName = env.SESSION_INGRESS_TLS_SECRET?.trim() || undefined;
+
+  // A certificate configured for a layer that will never present it is a silent
+  // downgrade to plaintext origin traffic, so it is refused rather than ignored.
+  // This is only the FAST PATH, for the mode that states the layer outright: the
+  // authoritative refusal is at routing resolution, because under `auto` a named
+  // Gateway decides the layer and nothing here can see that yet.
+  if (mode === "gateway" && tlsSecretName) {
+    throw new RunnerConfigError(
+      "SESSION_INGRESS_TLS_SECRET is set but SESSION_ROUTING_MODE=gateway. Under Gateway API the " +
+        "origin certificate belongs to the Gateway listener's own `tls.certificateRefs`, not to the " +
+        "per-session route. Move the Secret reference to the Gateway and unset this.",
+    );
+  }
+  if (mode === "gateway" && !gatewayName) {
+    throw new RunnerConfigError(
+      "SESSION_ROUTING_MODE=gateway requires SESSION_GATEWAY_NAME — the Gateway each session's " +
+        "HTTPRoute attaches to. Set it (and SESSION_GATEWAY_NAMESPACE when the Gateway is not in " +
+        `'${sessionNamespace}').`,
+    );
+  }
+
+  return {
+    mode,
+    baseDomain: env.SESSION_ROUTING_BASE_DOMAIN?.trim() || undefined,
+    ingressClassName: env.SESSION_INGRESS_CLASS?.trim() || undefined,
+    tlsSecretName,
+    ...(gatewayName
+      ? {
+          gateway: {
+            name: gatewayName,
+            namespace: env.SESSION_GATEWAY_NAMESPACE?.trim() || sessionNamespace,
+            sectionName: env.SESSION_GATEWAY_SECTION_NAME?.trim() || undefined,
+          },
+        }
+      : {}),
+    routeReadyTimeoutMs:
+      parsePositiveInt(
+        env.SESSION_ROUTE_READY_TIMEOUT_SECONDS,
+        60,
+        "SESSION_ROUTE_READY_TIMEOUT_SECONDS",
+      ) * 1000,
+  };
 }
 
 function loadBaseImageCatalogConfig(env: NodeJS.ProcessEnv): BaseImageCatalogConfig {
@@ -136,19 +239,19 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     );
   }
 
+  const sessionNamespace = env.RUNNER_SESSION_NAMESPACE?.trim() || "telo-sessions";
+
   return {
     ...loadCoreConfig(env, { port: DEFAULT_PORT }),
     displayName: env.RUNNER_DISPLAY_NAME?.trim() || "Telo Runner",
     description:
       env.RUNNER_DESCRIPTION?.trim() || "Runs the Telo application in a cloud environment",
-    sessionNamespace: env.RUNNER_SESSION_NAMESPACE?.trim() || "telo-sessions",
+    sessionNamespace,
     defaultImage: env.RUNNER_IMAGE?.trim() || "telorun/node:latest-slim",
     initImage: env.RUNNER_INIT_IMAGE?.trim() || "busybox:stable",
     imagePullSecret: env.RUNNER_IMAGE_PULL_SECRET?.trim() || undefined,
     runtimeClass: env.RUNNER_RUNTIME_CLASS?.trim() || undefined,
-    sessionIngressBaseDomain: env.SESSION_INGRESS_BASE_DOMAIN?.trim() || undefined,
-    sessionIngressClassName: env.SESSION_INGRESS_CLASS?.trim() || undefined,
-    sessionIngressTlsSecretName: env.SESSION_INGRESS_TLS_SECRET?.trim() || undefined,
+    sessionRouting: loadSessionRoutingConfig(env, sessionNamespace),
     selfUrl: selfUrl.replace(/\/+$/, ""),
     managedByLabel: env.RUNNER_MANAGED_BY?.trim() || "telo-k8s-runner",
     // Sized for a pod that RESOLVES ITS OWN module closure. They used to be

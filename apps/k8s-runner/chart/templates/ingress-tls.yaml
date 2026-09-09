@@ -1,8 +1,11 @@
-{{- if and .Values.sessionIngress.tls.cert .Values.sessionIngress.tls.key }}
+{{- if and (include "k8s-runner.sessionIngressTlsSecretName" .) .Values.sessionRouting.ingress.tls.cert .Values.sessionRouting.ingress.tls.key }}
 # Origin TLS for per-session Ingresses. Created in sessionNamespace because the
 # runner creates each session Ingress there, and a kubernetes.io/tls Secret is
-# namespace-scoped. Skip this and set sessionIngress.tls.secretName to reference a
-# Secret you manage yourself (cert-manager, kubectl, your own sync).
+# namespace-scoped. Skip this and set sessionRouting.ingress.tls.secretName to
+# reference a Secret you manage yourself (cert-manager, kubectl, your own sync).
+#
+# Not rendered in gateway mode: there the certificate belongs to the Gateway
+# listener, so a Secret here would sit unused and read as configured TLS.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -12,6 +15,6 @@ metadata:
     {{- include "k8s-runner.labels" . | nindent 4 }}
 type: kubernetes.io/tls
 stringData:
-  tls.crt: {{ .Values.sessionIngress.tls.cert | quote }}
-  tls.key: {{ .Values.sessionIngress.tls.key | quote }}
+  tls.crt: {{ .Values.sessionRouting.ingress.tls.cert | quote }}
+  tls.key: {{ .Values.sessionRouting.ingress.tls.key | quote }}
 {{- end }}

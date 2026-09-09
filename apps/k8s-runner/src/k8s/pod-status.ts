@@ -132,6 +132,14 @@ export function is404(err: unknown): boolean {
   return statusCode(err) === 404;
 }
 
+/** A name-already-taken rejection — what makes a create idempotent by falling
+ *  through to a replace. Reads the status through `statusCode` like every other
+ *  classification here, so an `ECONNREFUSED` or a `DOMException`'s legacy number
+ *  in `code` cannot be mistaken for one. */
+export function isConflict(err: unknown): boolean {
+  return statusCode(err) === 409;
+}
+
 export function msg(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;

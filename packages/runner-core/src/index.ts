@@ -52,4 +52,5 @@ export {
   watchReachability,
   type WatchReachabilityOptions,
 } from "./reachability.js";
+export { abortableDelay } from "./abortable-delay.js";
 export type { DebugFrame, DebugEvent, DebugLog } from "@telorun/debug-wire";
