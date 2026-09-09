@@ -185,6 +185,8 @@ export function launchWorkload(
         }),
       onReachability: (app, port, state) =>
         deps.registry.emit(sessionId, { type: "reachability", app, port, state }),
+      onRoute: (app, route) =>
+        deps.registry.emit(sessionId, { type: "route", ...(app ? { app } : {}), ...route }),
       onEndpoints: (appName, change) => {
         // The registry's own channel is what `GET /v1/sessions/:id` reports, so
         // the delta has to land there too — otherwise the session document keeps

@@ -130,18 +130,32 @@ spec:
             - name: RUNNER_RUNTIME_CLASS
               value: {{ .Values.session.runtimeClass | quote }}
             {{- end }}
-            {{- if .Values.sessionIngress.baseDomain }}
-            - name: SESSION_INGRESS_BASE_DOMAIN
-              value: {{ .Values.sessionIngress.baseDomain | quote }}
+            - name: SESSION_ROUTING_MODE
+              value: {{ .Values.sessionRouting.mode | quote }}
+            {{- if .Values.sessionRouting.baseDomain }}
+            - name: SESSION_ROUTING_BASE_DOMAIN
+              value: {{ .Values.sessionRouting.baseDomain | quote }}
             {{- end }}
-            {{- if .Values.sessionIngress.className }}
+            - name: SESSION_ROUTE_READY_TIMEOUT_SECONDS
+              value: "{{ .Values.sessionRouting.routeReadyTimeoutSeconds }}"
+            {{- if .Values.sessionRouting.ingress.className }}
             - name: SESSION_INGRESS_CLASS
-              value: {{ .Values.sessionIngress.className | quote }}
+              value: {{ .Values.sessionRouting.ingress.className | quote }}
             {{- end }}
             {{- $sessionIngressTls := include "k8s-runner.sessionIngressTlsSecretName" . }}
             {{- if $sessionIngressTls }}
             - name: SESSION_INGRESS_TLS_SECRET
               value: {{ $sessionIngressTls | quote }}
+            {{- end }}
+            {{- if .Values.sessionRouting.gateway.name }}
+            - name: SESSION_GATEWAY_NAME
+              value: {{ .Values.sessionRouting.gateway.name | quote }}
+            - name: SESSION_GATEWAY_NAMESPACE
+              value: {{ default .Values.sessionNamespace .Values.sessionRouting.gateway.namespace | quote }}
+            {{- if .Values.sessionRouting.gateway.sectionName }}
+            - name: SESSION_GATEWAY_SECTION_NAME
+              value: {{ .Values.sessionRouting.gateway.sectionName | quote }}
+            {{- end }}
             {{- end }}
             - name: RUNNER_MAX_CPU
               value: {{ .Values.limits.maxCpu | quote }}

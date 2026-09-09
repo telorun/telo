@@ -1,9 +1,23 @@
-import { Attach, CoreV1Api, KubeConfig, NetworkingV1Api, Watch } from "@kubernetes/client-node";
+import {
+  ApisApi,
+  Attach,
+  CoreV1Api,
+  CustomObjectsApi,
+  KubeConfig,
+  NetworkingV1Api,
+  Watch,
+} from "@kubernetes/client-node";
 
 export interface KubeClient {
   kc: KubeConfig;
   core: CoreV1Api;
   networking: NetworkingV1Api;
+  /** Gateway API has no typed client in `@kubernetes/client-node`, so HTTPRoutes
+   *  are read and written as unstructured custom objects. */
+  custom: CustomObjectsApi;
+  /** API-group discovery, used to decide whether Gateway API is served at all
+   *  when the routing mode is `auto`. */
+  apis: ApisApi;
   attach: Attach;
   watch: Watch;
 }
@@ -24,6 +38,8 @@ export function createKubeClient(): KubeClient {
     kc,
     core: kc.makeApiClient(CoreV1Api),
     networking: kc.makeApiClient(NetworkingV1Api),
+    custom: kc.makeApiClient(CustomObjectsApi),
+    apis: kc.makeApiClient(ApisApi),
     attach: new Attach(kc),
     watch: new Watch(kc),
   };

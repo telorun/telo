@@ -80,7 +80,7 @@ export function openSseClient(deps: SseClientDeps): SseClient {
     }
   };
 
-  const FORWARDED = ["status", "progress", "debug", "reachability", "run", "endpoints"];
+  const FORWARDED = ["status", "progress", "debug", "reachability", "run", "endpoints", "route"];
   for (const name of FORWARDED) source.addEventListener(name, forward);
   source.addEventListener("gap", handleGap);
   source.addEventListener("error", handleError);
@@ -116,7 +116,8 @@ function isRunEvent(value: unknown): value is RunEvent {
     v.type === "status" ||
     v.type === "progress" ||
     v.type === "debug" ||
-    v.type === "reachability"
+    v.type === "reachability" ||
+    v.type === "route"
   );
 }
 

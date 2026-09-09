@@ -1,0 +1,12 @@
+{{/*
+Refuse a values file that still uses the pre-rename routing keys.
+
+Helm IGNORES unknown values keys, so without this an operator upgrading with
+their existing `sessionIngress.*` file gets a runner that boots successfully,
+logs `session routing disabled (logs-only)` at warn, and drops every session URL
+— the exact silent failure the routing work exists to close, moved into the
+upgrade path. A rename is only a breaking change if something refuses it.
+*/}}
+{{- if .Values.sessionIngress }}
+{{- fail (printf "sessionIngress.* was renamed to sessionRouting.*: baseDomain stays, className and tls move under sessionRouting.ingress, controllerNamespace becomes sessionRouting.dataPlaneNamespace (it must name the routing DATA PLANE, which is not an ingress controller under Gateway API). See apps/k8s-runner/README.md.") }}
+{{- end }}

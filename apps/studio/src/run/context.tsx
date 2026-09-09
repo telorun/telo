@@ -24,6 +24,7 @@ import {
   type RunnerEndpoint,
   type RunReachabilityState,
   type RunRequest,
+  type RunRouteState,
   type RunSession,
   type RunStatus,
   type WorkspaceChangeSet,
@@ -75,6 +76,12 @@ export interface RunRecord {
   /** Per-port reachability of declared ports, watched by the runner and rendered
    *  on the endpoint badge (spinner → ok / error). Keyed by port. */
   portReachability: Map<number, RunReachabilityState>;
+  /** Whether the runner's cluster programmed each published host, keyed by port.
+   *  Deliberately beside `portReachability` rather than merged into it: a route
+   *  nothing reconciles leaves the port perfectly reachable from the runner and
+   *  the public URL dead, so collapsing the two would hide exactly the failure
+   *  this reports. */
+  portRoutes: Map<number, { state: RunRouteState; host: string; app?: string; reason?: string }>;
   /** Latest run outcome per application, keyed by app name. Separate from
    *  `status`, which is the SESSION's: in a watch session a one-shot app
    *  completing leaves the session running and starts a new generation on the
@@ -756,6 +763,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
         debugFrames: [],
         debugFrameSeq: 0,
         portReachability: new Map(),
+        portRoutes: new Map(),
         runs: {},
         unroutablePorts: new Map(),
       };
@@ -957,6 +965,7 @@ function shellFromEntry(entry: PersistedRunEntry): RunRecord {
     debugFrames: [],
     debugFrameSeq: 0,
     portReachability: new Map(),
+    portRoutes: new Map(),
     runs: {},
     unroutablePorts: new Map(),
   };
@@ -1005,6 +1014,26 @@ function applyRunEvent(
     return;
   }
 
+  if (event.type === "route") {
+    // Kept apart from reachability on purpose: an unprogrammed route is the one
+    // failure where the port answers the runner and the URL the user was handed
+    // does not, so folding the two would restore exactly that silence.
+    updateRecord(runId, (record) => ({
+      ...record,
+      portRoutes: new Map(record.portRoutes).set(event.port, {
+        state: event.state,
+        host: event.host,
+        // Retained rather than dropped: a route belongs to one app, and the
+        // banner should be able to say which. (The view is not scoped by app
+        // yet — `unroutablePorts` beside it has the same shape today, so doing
+        // one and not the other would leave the dock inconsistent.)
+        ...(event.app ? { app: event.app } : {}),
+        ...(event.reason ? { reason: event.reason } : {}),
+      }),
+    }));
+    return;
+  }
+
   if (event.type === "run") {
     // A run outcome is per APP per generation, and is deliberately not a session
     // status: a one-shot app completing leaves the session up, so the chip must
@@ -1031,9 +1060,19 @@ function applyRunEvent(
       const unroutable = new Map(record.unroutablePorts);
       for (const entry of rejected) unroutable.set(entry.port, entry.reason);
       for (const entry of event.added ?? []) unroutable.delete(entry.port);
+      // A dropped port takes its route verdict with it. Without this an
+      // `unprogrammed` entry outlives the port and the dock keeps warning about
+      // a host the session no longer serves.
+      const routes = new Map(record.portRoutes);
+      for (const entry of event.removed ?? []) routes.delete(entry.port);
       return record.status.kind === "running"
-        ? { ...record, status: { ...record.status, endpoints }, unroutablePorts: unroutable }
-        : { ...record, unroutablePorts: unroutable };
+        ? {
+            ...record,
+            status: { ...record.status, endpoints },
+            unroutablePorts: unroutable,
+            portRoutes: routes,
+          }
+        : { ...record, unroutablePorts: unroutable, portRoutes: routes };
     });
     return;
   }

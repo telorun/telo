@@ -4,6 +4,7 @@ import { workspaceAppManifest, WORKSPACE_APP_FILENAME } from "@telorun/runner-co
 
 import type { K8sRunnerConfig } from "../config.js";
 import type { KubeClient } from "./client.js";
+import { is404, isConflict } from "./pod-status.js";
 
 /**
  * The workspace application's manifest, delivered to the pod as a ConfigMap.
@@ -39,7 +40,7 @@ export async function ensureWorkspaceConfigMap(
     await kube.core.readNamespacedConfigMap({ name, namespace: config.sessionNamespace });
     return name;
   } catch (err) {
-    if (!isNotFound(err)) throw err;
+    if (!is404(err)) throw err;
   }
   try {
     await kube.core.createNamespacedConfigMap({
@@ -62,19 +63,6 @@ export async function ensureWorkspaceConfigMap(
     if (!isConflict(err)) throw err;
   }
   return name;
-}
-
-function statusOf(err: unknown): number | undefined {
-  const e = err as { statusCode?: number; code?: number; response?: { statusCode?: number } };
-  return e?.statusCode ?? e?.code ?? e?.response?.statusCode;
-}
-
-function isNotFound(err: unknown): boolean {
-  return statusOf(err) === 404;
-}
-
-function isConflict(err: unknown): boolean {
-  return statusOf(err) === 409;
 }
 
 /**
@@ -126,7 +114,7 @@ export async function sweepWorkspaceConfigMaps(
       await kube.core.deleteNamespacedConfigMap({ name, namespace: config.sessionNamespace });
       removed += 1;
     } catch (err) {
-      if (!isNotFound(err)) log.warn({ err, name }, "failed to delete a stale workspace ConfigMap");
+      if (!is404(err)) log.warn({ err, name }, "failed to delete a stale workspace ConfigMap");
     }
   }
   if (removed > 0) log.info({ removed }, "swept stale workspace-app ConfigMaps");

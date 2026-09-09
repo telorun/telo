@@ -16,6 +16,7 @@ import { kubernetesRunnerCapabilities } from "./capabilities.js";
 import { loadK8sRunnerConfig, RunnerConfigError, type K8sRunnerConfig } from "./config.js";
 import { createKubernetesBackend } from "./k8s/backend.js";
 import { createKubeClient } from "./k8s/client.js";
+import { createSessionRouter } from "./k8s/routing/index.js";
 import { sweepWorkspaceConfigMaps } from "./k8s/workspace-configmap.js";
 
 const VERSION: string = packageJson.version;
@@ -84,7 +85,22 @@ async function main(): Promise<void> {
 
   const kube = createKubeClient();
   const bundleStore = new BundleStore(config.selfUrl);
-  const backend = createKubernetesBackend({ kube, config, bundleStore });
+
+  // Resolve the routing layer ONCE, here: an unroutable configuration must fail
+  // the runner rather than every session it would otherwise accept, publish
+  // routes for, and leave 404-ing with nothing reported.
+  let routing: Awaited<ReturnType<typeof createSessionRouter>>;
+  try {
+    routing = await createSessionRouter(kube, config);
+  } catch (err) {
+    if (err instanceof RunnerConfigError) {
+      process.stderr.write(`${err.message}\n`);
+      process.exit(2);
+    }
+    throw err;
+  }
+
+  const backend = createKubernetesBackend({ kube, config, bundleStore, router: routing.router });
 
   const catalog = config.baseImageCatalog.enabled
     ? new BaseImageCatalog({
@@ -97,6 +113,27 @@ async function main(): Promise<void> {
     : undefined;
 
   const { app, registry } = await buildServer({ backend, config, bundleStore, catalog });
+
+  // Say which layer carries session traffic. An operator reading "logs-only" here
+  // is the difference between a misconfiguration found at boot and one found as a
+  // 404 on a URL the editor handed a user.
+  if (routing.resolved.layer === "none") {
+    app.log.warn({ reason: routing.resolved.reason }, "session routing disabled (logs-only)");
+  } else {
+    app.log.info(
+      {
+        layer: routing.resolved.layer,
+        ...(routing.resolved.layer === "gateway"
+          ? {
+              apiVersion: routing.resolved.apiVersion,
+              gateway: `${config.sessionRouting.gateway?.namespace}/${config.sessionRouting.gateway?.name}`,
+            }
+          : { ingressClass: config.sessionRouting.ingressClassName ?? "(cluster default)" }),
+        baseDomain: config.sessionRouting.baseDomain,
+      },
+      "session routing resolved",
+    );
+  }
 
   // Populate the catalog before serving so the first /v1/capabilities carries the
   // full menu; a fetch failure degrades to the default image (surfaced, not

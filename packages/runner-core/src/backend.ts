@@ -8,6 +8,7 @@ import type {
   PortMapping,
   ProbeConfig,
   ReachabilityState,
+  RouteState,
   RunBundle,
   RunnerEndpoint,
   RunPhase,
@@ -111,6 +112,15 @@ export interface BackendStartSpec extends WorkloadLaunch {
    *  while the workload comes up, then `reachable`, or `unreachable` after a
    *  timeout. Surfaced on the editor's endpoint badge, not the log stream. */
   onReachability(app: string, port: number, state: ReachabilityState): void;
+  /** Report whether the cluster's routing layer programmed a published host.
+   *  Separate from `onReachability`, which only proves the workload is listening
+   *  on its own address — a route nothing reconciles leaves every port reachable
+   *  and every public URL dead. Backends that front nothing (docker publishes
+   *  host ports directly) never call this. */
+  onRoute(
+    app: string | undefined,
+    route: { host: string; port: number; state: RouteState; reason?: string },
+  ): void;
   /** One app's workload ended on its own. A run session's workload ending IS the
    *  session ending, so this is a watch-session concern: under `--watch` a
    *  finished run leaves the container up, and a container that goes away has

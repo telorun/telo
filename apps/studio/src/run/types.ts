@@ -247,6 +247,11 @@ export type RunPhase = "build" | "provision" | "boot";
  *  runner-core's `ReachabilityState`. */
 export type RunReachabilityState = "checking" | "reachable" | "unreachable";
 
+/** Whether the runner's cluster actually programmed a published host. A separate
+ *  axis from reachability, which only proves the workload is listening: a route
+ *  nothing reconciles leaves every port reachable and every URL dead. */
+export type RunRouteState = "pending" | "programmed" | "unprogrammed";
+
 /** What started one generation of an application. */
 export type RunTrigger = "initial" | "watch" | "manual" | "resume";
 
@@ -280,6 +285,17 @@ export type RunEvent =
   | { type: "debug"; app: string; frame: DebugFrame }
   /** Per-port reachability transition, rendered on the badge. */
   | { type: "reachability"; app: string; port: number; state: RunReachabilityState }
+  /** A routing-layer verdict for one published host. `reason` is the routing
+   *  controller's own words, and is operator-facing: every cause is fixed in the
+   *  cluster, not in the manifest. */
+  | {
+      type: "route";
+      app?: string;
+      host: string;
+      port: number;
+      state: RunRouteState;
+      reason?: string;
+    }
   | RunOutcomeEvent
   /** An app's declared port set changed on reload and the runner re-patched its
    *  routing. Without this the app binds the new port and is unreachable with no

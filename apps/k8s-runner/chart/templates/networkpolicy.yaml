@@ -29,14 +29,20 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.runnerNamespace }}
-    {{- if and .Values.sessionIngress.baseDomain .Values.sessionIngress.controllerNamespace }}
-    # Per-session ingress traffic enters via the ingress controller, usually in
-    # its own namespace — without this peer the controller's requests are dropped
-    # and the per-session ingress feature breaks.
+    {{- if and .Values.sessionRouting.baseDomain .Values.sessionRouting.dataPlaneNamespace }}
+    # Session traffic enters via the routing DATA PLANE, usually in its own
+    # namespace — ingress-nginx, an Envoy Gateway deployment, an Istio gateway.
+    # Without this peer its requests are dropped and per-session routing breaks
+    # AFTER the route programmed correctly, which is the confusing failure: the
+    # routing layer reports success and the workload is still unreachable.
+    #
+    # Named for the data plane rather than for an ingress controller because the
+    # two routing layers put it in different places, and a mesh may put it
+    # somewhere else again.
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.sessionIngress.controllerNamespace }}
+              kubernetes.io/metadata.name: {{ .Values.sessionRouting.dataPlaneNamespace }}
     {{- end }}
   egress:
     # DNS — scoped to the cluster DNS namespace (default kube-system) rather than

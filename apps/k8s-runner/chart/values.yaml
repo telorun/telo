@@ -188,30 +188,82 @@ session:
     # Re-fetch cadence, in seconds.
     refreshSeconds: 3600
 
-# Per-session ingress. When baseDomain is empty the runner is logs-only.
-# Requires a wildcard DNS record + wildcard TLS cert + an ingress controller.
-sessionIngress:
+# Per-session routing. When baseDomain is empty the runner is logs-only.
+# Requires a wildcard DNS record + a wildcard TLS cert + a routing layer.
+#
+# BOTH ROUTING APIS ARE CURRENT, so the runner supports both: clusters ship
+# Ingress, Gateway API, or both, and one that hardcodes either is unroutable on
+# half of them. The failure it produces is silent — routing objects nothing
+# reconciles are created without error, the pod is healthy, and every public URL
+# 404s — which is why `auto` REFUSES rather than guesses, and why the runner
+# verifies that what it published was actually programmed.
+sessionRouting:
+  # auto | ingress | gateway | none
+  #
+  # `auto` resolves on what is CONFIGURED before what is INSTALLED: a named
+  # gateway wins, then an ingress className, and only then does it look at the
+  # cluster. That order matters because Gateway API CRDs are frequently present
+  # without being the intended path, so "the API exists" is not evidence of
+  # intent. A cluster offering two usable layers with nothing configured is
+  # genuinely ambiguous, and the runner refuses to start rather than picking one.
+  #
+  # `none` is logs-only even with a baseDomain set.
+  mode: auto
+
+  # Wildcard base domain for session hosts (`<port>-<sessionId>.<baseDomain>`).
+  # Empty → logs-only, whatever the mode: without it no host exists to route.
   baseDomain: ""
-  className: ""
-  # Namespace the ingress controller runs in. Set when baseDomain is set so the
-  # session NetworkPolicy admits the controller's traffic (e.g. ingress-nginx).
-  controllerNamespace: ""
-  # Origin TLS for the per-session Ingress. Set this so the origin presents a cert
-  # (e.g. a Cloudflare Origin cert) and an upstream in Full (Strict) mode can
-  # validate it. The cert MUST cover the wildcard `*.<baseDomain>` — session hosts
-  # are a single label (`<port>-<sessionId>.<baseDomain>`). The Secret lives in
-  # sessionNamespace because the runner creates each session Ingress there. Leave
-  # all empty to skip the TLS block (TLS terminated entirely upstream).
-  tls:
-    # Reference a `kubernetes.io/tls` Secret you manage in sessionNamespace
-    # (cert-manager, `kubectl create secret tls`, your own sync).
-    secretName: ""
-    # OR supply the cert + key and the chart creates the Secret in sessionNamespace
-    # for you. Supply via `--set-file sessionIngress.tls.cert=origin.pem
-    # --set-file sessionIngress.tls.key=origin.key`. When both are set they win over
-    # secretName.
-    cert: ""
-    key: ""
+
+  # How long a published route may go unclaimed by any controller before the
+  # session reports it `unprogrammed`. Reported, never fatal — a slow controller
+  # and an absent one look alike for the first few seconds.
+  routeReadyTimeoutSeconds: 60
+
+  # Namespace the routing DATA PLANE runs in (ingress-nginx, an Envoy Gateway
+  # deployment, an Istio gateway). Set it whenever baseDomain is set: the session
+  # NetworkPolicy admits traffic from this namespace, and without it the routing
+  # layer's requests to session pods are dropped — routing that resolves and
+  # programs correctly and still cannot reach the workload.
+  dataPlaneNamespace: ""
+
+  ingress:
+    className: ""
+    # Origin TLS for the per-session Ingress. Set this so the origin presents a
+    # cert (e.g. a Cloudflare Origin cert) and an upstream in Full (Strict) mode
+    # can validate it. The cert MUST cover the wildcard `*.<baseDomain>` —
+    # session hosts are a single label. The Secret lives in sessionNamespace
+    # because the runner creates each session Ingress there. Leave all empty to
+    # skip the TLS block (TLS terminated entirely upstream).
+    #
+    # INGRESS ONLY: under Gateway API the certificate belongs to the Gateway
+    # listener, and setting this in gateway mode is refused at boot.
+    tls:
+      # Reference a `kubernetes.io/tls` Secret you manage in sessionNamespace
+      # (cert-manager, `kubectl create secret tls`, your own sync).
+      secretName: ""
+      # OR supply the cert + key and the chart creates the Secret in
+      # sessionNamespace for you. Supply via
+      # `--set-file sessionRouting.ingress.tls.cert=origin.pem
+      #  --set-file sessionRouting.ingress.tls.key=origin.key`.
+      # When both are set they win over secretName.
+      cert: ""
+      key: ""
+
+  # The Gateway each session's HTTPRoute attaches to. Required in gateway mode —
+  # never detected, because picking one of several Gateways is the same guess as
+  # picking one of two routing APIs, and a route on the wrong Gateway fails
+  # exactly as silently as no route.
+  #
+  # The Gateway must have a listener admitting routes from sessionNamespace
+  # (`spec.listeners[].allowedRoutes.namespaces`) and a hostname covering
+  # `*.<baseDomain>`. A route the listener does not admit is reported per session
+  # with the controller's own reason (`NotAllowedByListeners`).
+  gateway:
+    name: ""
+    # Defaults to sessionNamespace, mirroring Gateway API's own parentRef default.
+    namespace: ""
+    # Optional listener name, when only one listener should carry session traffic.
+    sectionName: ""
 
 # DoS backstop on the session namespace.
 #

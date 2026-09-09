@@ -25,7 +25,15 @@ import type { K8sRunnerConfig } from "../config.js";
 import { clampLimits } from "../limits.js";
 import { apiFailure, apiReason } from "./api-error.js";
 import type { KubeClient } from "./client.js";
-import { buildSessionIngress, buildSessionService, endpointsFor } from "./ingress.js";
+import {
+  buildSessionService,
+  createOrReplace,
+  endpointsFor,
+  sessionObjectName,
+  watchRouteHealth,
+  type PublishedRoute,
+  type SessionRouter,
+} from "./routing/index.js";
 import { buildWatchPod, inspectPortFor, WORKSPACE_PORT } from "./pod-spec.js";
 import { deletePod, is404, msg, podPhase, podStatus, provisionMessage } from "./pod-status.js";
 import { ensureWorkspaceConfigMap } from "./workspace-configmap.js";
@@ -49,6 +57,8 @@ interface ResizableSocket {
 export interface WatchSessionDeps {
   kube: KubeClient;
   config: K8sRunnerConfig;
+  /** Resolved at boot; absent → logs-only. */
+  router?: SessionRouter;
 }
 
 /**
@@ -64,7 +74,7 @@ export async function startWatchSession(
   deps: WatchSessionDeps,
   spec: BackendStartSpec,
 ): Promise<BackendSession> {
-  const { kube, config } = deps;
+  const { kube, config, router } = deps;
   const ns = config.sessionNamespace;
   const limits = clampLimits(config.appLimits, undefined);
 
@@ -86,6 +96,9 @@ export async function startWatchSession(
     stdins: Map<string, PassThrough>;
     abort: AbortController;
     stopWatch: () => void;
+    /** Aborts the previous route-health watch when a reload republishes routes —
+     *  the old host set is no longer what the session serves. */
+    routeAbort?: AbortController;
   }
   let runtime: PodRuntime | null = null;
 
@@ -166,22 +179,22 @@ export async function startWatchSession(
     const agent = agentEndpoint();
     spec.onStatus({
       kind: "running",
-      endpoints: endpointsFor(config, spec.sessionId, allPorts(apps)),
+      endpoints: endpointsFor(config, spec.sessionId, allPorts(apps), Boolean(router)),
       ...(agent ? { agent } : {}),
     });
   }
 
   /** Where this session's co-resident agent answers. The pod's containers share
    *  one network namespace, so the agent rides the session's own Service and
-   *  Ingress — the port is simply in the routed set, and the host follows the
+   *  routing objects — the port is simply in the routed set, and the host follows the
    *  same `<port>-<sessionId>` scheme every app port does. */
   function agentEndpoint(): RunnerEndpoint | undefined {
     const port = spec.agent?.port;
     if (port === undefined) return undefined;
-    return endpointsFor(config, spec.sessionId, [{ port, protocol: "tcp" }])[0];
+    return endpointsFor(config, spec.sessionId, [{ port, protocol: "tcp" }], Boolean(router))[0];
   }
 
-  /** Every port the session's Service and Ingress must carry: the apps' declared
+  /** Every port the session's Service and routing objects must carry: the apps' declared
    *  ports plus the agent's. Kept apart from `allPorts`, which answers what the
    *  APPLICATIONS declare — that set is what the client is told about and what a
    *  reload re-reads, and the agent belongs in neither. */
@@ -322,8 +335,8 @@ export async function startWatchSession(
    * which matters, because a manifest the runner could not parse would otherwise
    * have to leave routing alone and report, on the hot path of every save.
    *
-   * A pod's `containerPort` list is documentation; the Service and the Ingress
-   * are what make a port reachable, so this needs no pod recreate.
+   * A pod's `containerPort` list is documentation; the Service and the routing
+   * objects are what make a port reachable, so this needs no pod recreate.
    */
   async function applyPortsResolved(appName: string, frame: DebugFrame): Promise<void> {
     const declared = portsResolvedFrom(frame);
@@ -365,10 +378,10 @@ export async function startWatchSession(
     }
     spec.onEndpoints(appName, {
       ...(accepted.length > 0
-        ? { added: endpointsFor(config, spec.sessionId, accepted) }
+        ? { added: endpointsFor(config, spec.sessionId, accepted, Boolean(router)) }
         : {}),
       ...(removed.length > 0
-        ? { removed: endpointsFor(config, spec.sessionId, removed) }
+        ? { removed: endpointsFor(config, spec.sessionId, removed, Boolean(router)) }
         : {}),
       ...(rejected.length > 0
         ? {
@@ -488,21 +501,25 @@ export async function startWatchSession(
   }
 
   /**
-   * Create or re-patch the Service and Ingress for the session's whole declared
-   * port set. Adding a `ports:` entry is as ordinary an edit as adding an
-   * import, and a container may bind any port regardless of what the pod spec
-   * declares — so without this the app listens and is simply unreachable: no
-   * ingress, no error, no event. The pod's `containerPort` list is
-   * documentation; the Service and Ingress are what make a port reachable, which
-   * is why this needs no pod recreate.
+   * Create or re-patch the Service and the routing objects for the session's
+   * whole declared port set. Adding a `ports:` entry is as ordinary an edit as
+   * adding an import, and a container may bind any port regardless of what the
+   * pod spec declares — so without this the app listens and is simply
+   * unreachable: no route, no error, no event. The pod's `containerPort` list is
+   * documentation; the Service and the routing objects are what make a port
+   * reachable, which is why this needs no pod recreate.
+   *
+   * An EMPTY routed set still reaches the router, because dropping the last
+   * declared port is a reload like any other and its routes must go with it —
+   * returning early here left them serving a port nothing listens on.
    */
   async function publishEndpoints(rt: PodRuntime, forApps: BackendAppSpec[]): Promise<void> {
-    if (!config.sessionIngressBaseDomain) return;
+    if (!router) return;
     const ports = routedPorts(forApps);
-    if (ports.length === 0) return;
-    const service = buildSessionService(config, spec.sessionId, rt.name, rt.uid, ports);
-    const serviceName = service.metadata!.name!;
-    await upsert(
+    const serviceName = sessionObjectName(spec.sessionId);
+    if (ports.length > 0) {
+      const service = buildSessionService(config, spec.sessionId, rt.name, rt.uid, ports);
+      await createOrReplace(
       () => kube.core.createNamespacedService({ namespace: ns, body: service }),
       async () => {
         // A Service replace must carry the assigned `clusterIP` and the current
@@ -527,37 +544,51 @@ export async function startWatchSession(
           },
         });
       },
-    );
-    const { ingress } = buildSessionIngress(
-      config,
-      spec.sessionId,
+      );
+    }
+    const published = await router.publish({
+      sessionId: spec.sessionId,
       serviceName,
-      rt.name,
-      rt.uid,
+      podName: rt.name,
+      podUid: rt.uid,
       ports,
-    );
-    if (!ingress.spec?.rules?.length) return;
-    const ingressName = ingress.metadata!.name!;
-    await upsert(
-      () => kube.networking.createNamespacedIngress({ namespace: ns, body: ingress }),
-      async () => {
-        const existing = await kube.networking.readNamespacedIngress({
-          name: ingressName,
-          namespace: ns,
-        });
-        await kube.networking.replaceNamespacedIngress({
-          name: ingressName,
-          namespace: ns,
-          body: {
-            ...ingress,
-            metadata: {
-              ...ingress.metadata,
-              resourceVersion: existing.metadata?.resourceVersion,
-            },
-          },
-        });
-      },
-    );
+    });
+    watchRoutes(rt, router, published, forApps);
+  }
+
+  /** Verify the routing layer programmed what was just published, and report each
+   *  host. A watch session republishes on every reload, so the previous watch is
+   *  dropped and a fresh one started against the new host set. */
+  function watchRoutes(
+    rt: PodRuntime,
+    sessionRouter: SessionRouter,
+    published: PublishedRoute[],
+    forApps: BackendAppSpec[],
+  ): void {
+    rt.routeAbort?.abort();
+    if (published.length === 0) return;
+    const abort = new AbortController();
+    rt.routeAbort = abort;
+    // A port belongs to at most one app (the session-wide uniqueness rule); the
+    // co-resident agent's port belongs to none, and reports with no `app`.
+    const ownerOf = new Map<number, string>();
+    for (const app of forApps) {
+      for (const p of app.ports) ownerOf.set(p.port, app.name);
+    }
+    void watchRouteHealth({
+      router: sessionRouter,
+      sessionId: spec.sessionId,
+      routes: published,
+      onState: (route, state, reason) =>
+        spec.onRoute(ownerOf.get(route.port), {
+          host: route.host,
+          port: route.port,
+          state,
+          reason,
+        }),
+      signal: AbortSignal.any([abort.signal, rt.abort.signal]),
+      timeoutMs: config.sessionRouting.routeReadyTimeoutMs,
+    });
   }
 
   async function teardownPod(): Promise<void> {
@@ -639,14 +670,6 @@ export async function startWatchSession(
     return app.io === "tty" ? "tty" : real;
   }
 
-  async function upsert(create: () => Promise<unknown>, replace: () => Promise<unknown>) {
-    try {
-      await create();
-    } catch (err) {
-      if (!isConflict(err)) throw err;
-      await replace();
-    }
-  }
 }
 
 function allPorts(apps: BackendAppSpec[]): PortMapping[] {
@@ -666,11 +689,6 @@ let podSequence = 0;
 function freshPodName(sessionId: string): string {
   podSequence += 1;
   return `telo-watch-${sessionId}-${Date.now().toString(36)}${podSequence.toString(36)}`;
-}
-
-function isConflict(err: unknown): boolean {
-  const e = err as { statusCode?: number; code?: number; response?: { statusCode?: number } };
-  return (e?.statusCode ?? e?.code ?? e?.response?.statusCode) === 409;
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

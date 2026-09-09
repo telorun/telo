@@ -17,7 +17,14 @@ import type { K8sRunnerConfig } from "../config.js";
 import { clampLimits } from "../limits.js";
 import { apiFailure, apiReason, withCause } from "./api-error.js";
 import type { KubeClient } from "./client.js";
-import { buildSessionIngress, buildSessionService, endpointsFor } from "./ingress.js";
+import {
+  buildSessionService,
+  endpointsFor,
+  hostForPort,
+  watchRouteHealth,
+  type PublishedRoute,
+  type SessionRouter,
+} from "./routing/index.js";
 import { buildAppPod, buildSessionPod, INSPECT_PORT } from "./pod-spec.js";
 import {
   deletePod,
@@ -50,10 +57,13 @@ export interface K8sBackendDeps {
   kube: KubeClient;
   config: K8sRunnerConfig;
   bundleStore: BundleStore;
+  /** How this cluster publishes session routes, resolved once at boot. Absent →
+   *  logs-only: no base domain, or `SESSION_ROUTING_MODE=none`. */
+  router?: SessionRouter;
 }
 
 export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
-  const { kube, config, bundleStore } = deps;
+  const { kube, config, bundleStore, router } = deps;
   const ns = config.sessionNamespace;
 
   async function probe(probeConfig: ProbeConfig): Promise<AvailabilityReport> {
@@ -82,7 +92,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     // outlives its runs — so it takes its own path rather than accreting
     // branches through this one.
     if (spec.mode === "watch") {
-      return startWatchSession({ kube, config }, spec);
+      return startWatchSession({ kube, config, router }, spec);
     }
     return startRunSession(spec);
   }
@@ -155,7 +165,9 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     let startDeadline: NodeJS.Timeout | undefined;
     let podIP: string | undefined;
     const debugAbort = new AbortController();
-    const reachAbort = new AbortController();
+    // Aborts every background watcher this session started: the per-port
+    // reachability probes and the route-health watch.
+    const watchersAbort = new AbortController();
 
     const stdin = new PassThrough();
     const stdout = new Writable({
@@ -178,7 +190,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       clearStartDeadline();
       abortWatch();
       debugAbort.abort();
-      reachAbort.abort();
+      watchersAbort.abort();
       bundleStore.drop(spec.sessionId);
       spec.onStatus(status);
       try {
@@ -197,7 +209,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     const flipRunning = (): void => {
       if (readyFlipped || finished) return;
       readyFlipped = true;
-      spec.onStatus({ kind: "running", endpoints: endpointsFor(config, spec.sessionId, app.ports) });
+      spec.onStatus({ kind: "running", endpoints: endpointsFor(config, spec.sessionId, app.ports, Boolean(router)) });
     };
 
     let resolveRunning!: () => void;
@@ -327,13 +339,52 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       );
     }
 
-    if (config.sessionIngressBaseDomain && app.ports.length > 0) {
-      await createIngress(deps, spec.sessionId, podName, podUid, app.ports).catch((err) => {
-        spec.onOutput(
-          appName,
-          Buffer.from(`\r\n[runner] failed to create ingress: ${apiReason(err)}\r\n`),
-          "tty",
+    if (router && app.ports.length > 0) {
+      let published: PublishedRoute[] = [];
+      try {
+        published = await publishRoutes(
+          deps,
+          router,
+          spec.sessionId,
+          podName,
+          podUid,
+          app.ports,
         );
+      } catch (err) {
+        // A publish failure is reported on the ROUTE channel, not only as a
+        // terminal line: the endpoints were already advertised on the `running`
+        // status, so leaving this to a log line is the silence this whole change
+        // exists to remove.
+        const reason = `could not publish the session route: ${apiReason(err)}`;
+        for (const p of app.ports) {
+          if (p.protocol !== "tcp") continue;
+          spec.onRoute(appName, {
+            host: hostForPort(config, spec.sessionId, p.port),
+            port: p.port,
+            state: "unprogrammed",
+            reason,
+          });
+        }
+        spec.onOutput(appName, Buffer.from(`\r\n[runner] ${reason}\r\n`), "tty");
+      }
+      // Verify the routing layer actually PROGRAMMED what we published. Without
+      // this a cluster whose routing objects nothing reconciles is indistinguishable
+      // from a healthy one: reachability below dials the pod directly and stays
+      // green while every public URL 404s.
+      void watchRouteHealth({
+        router,
+        sessionId: spec.sessionId,
+        routes: published,
+        onState: (route, state, reason) =>
+          spec.onRoute(appName, { host: route.host, port: route.port, state, reason }),
+        onReadError: (err) =>
+          spec.onOutput(
+            appName,
+            Buffer.from(`\r\n[runner] could not read route status: ${apiReason(err)}\r\n`),
+            "tty",
+          ),
+        signal: watchersAbort.signal,
+        timeoutMs: config.sessionRouting.routeReadyTimeoutMs,
       });
     }
 
@@ -372,7 +423,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     if (tcpPorts.length > 0) {
       void (async () => {
         const ip = await resolvePodIP();
-        if (reachAbort.signal.aborted) return;
+        if (watchersAbort.signal.aborted) return;
         if (!ip) {
           // Couldn't resolve the pod IP to probe — report unverified rather than
           // leaving the badge spinning forever.
@@ -383,7 +434,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
           host: ip,
           ports: tcpPorts,
           onState: (port, state) => spec.onReachability(appName, port, state),
-          signal: reachAbort.signal,
+          signal: watchersAbort.signal,
         });
       })();
     }
@@ -443,28 +494,27 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
   return { probe, start, reapOrphans };
 }
 
-async function createIngress(
+/** Create the session Service and publish its routes on whichever layer the
+ *  cluster resolved to. Returns the hosts published, for the route watch. */
+async function publishRoutes(
   deps: K8sBackendDeps,
+  router: SessionRouter,
   sessionId: string,
   podName: string,
   podUid: string,
   ports: PortMapping[],
-): Promise<void> {
+): Promise<PublishedRoute[]> {
   const { kube, config } = deps;
   const ns = config.sessionNamespace;
   const service = buildSessionService(config, sessionId, podName, podUid, ports);
   await kube.core.createNamespacedService({ namespace: ns, body: service });
-  const { ingress } = buildSessionIngress(
-    config,
+  return router.publish({
     sessionId,
-    service.metadata!.name!,
+    serviceName: service.metadata!.name!,
     podName,
     podUid,
     ports,
-  );
-  // No tcp ports → no HTTP-routable rules; the Service still exists for any udp.
-  if (!ingress.spec?.rules?.length) return;
-  await kube.networking.createNamespacedIngress({ namespace: ns, body: ingress });
+  });
 }
 
 async function clusterReachable(kube: KubeClient): Promise<boolean> {

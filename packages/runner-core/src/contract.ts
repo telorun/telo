@@ -261,6 +261,23 @@ export type RunPhase = "build" | "provision" | "boot";
  *  (spinner → ok / error) instead of an app-log line. */
 export type ReachabilityState = "checking" | "reachable" | "unreachable";
 
+/**
+ * Whether the cluster's routing layer actually PROGRAMMED the public route for a
+ * session port — a separate axis from `ReachabilityState`, deliberately.
+ *
+ * Reachability is the runner dialling the workload's own address; it answers "is
+ * the app listening". It says nothing about whether anything routes to it, so a
+ * session whose routing objects are reconciled by no controller reports every
+ * port `reachable` while every public URL 404s. The two fail independently and
+ * want different actions — one is the user's manifest, the other the operator's
+ * cluster — so they are two states, not one.
+ *
+ *  - `pending`      — published, no verdict from the routing layer yet.
+ *  - `programmed`   — a controller claimed the route and resolved its backend.
+ *  - `unprogrammed` — a controller rejected it, or none claimed it in time.
+ */
+export type RouteState = "pending" | "programmed" | "unprogrammed";
+
 /** What started one generation of an application.
  *  - `initial` — the session came up
  *  - `watch`   — a file changed under the app's watcher
@@ -302,10 +319,24 @@ export type RunEvent =
   | { type: "debug"; app: string; frame: DebugFrame }
   /** A reachability transition for one declared port of one app. */
   | { type: "reachability"; app: string; port: number; state: ReachabilityState }
+  /** A routing-layer verdict for one published host. `app` is absent for a port
+   *  that belongs to no application (a co-resident agent's). `reason` carries the
+   *  routing controller's own words for a refusal — the operator-facing half,
+   *  since every cause here (no controller for the class, a Gateway listener that
+   *  does not admit the session namespace) is fixed in the cluster, not the
+   *  manifest. */
+  | {
+      type: "route";
+      app?: string;
+      host: string;
+      port: number;
+      state: RouteState;
+      reason?: string;
+    }
   | RunOutcomeEvent
   /** An app's declared port set changed on reload and the runner re-patched the
-   *  Service and Ingress. Without this the app binds the new port inside the pod
-   *  and is simply unreachable: no ingress, no error, no event. */
+   *  Service and its routing objects. Without this the app binds the new port
+   *  inside the pod and is simply unreachable: no route, no error, no event. */
   | {
       type: "endpoints";
       app: string;

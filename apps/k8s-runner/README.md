@@ -27,9 +27,10 @@ serving an anonymous tier, the ceiling *is* the policy.
 
 Per session the runner resolves the image, creates a Pod (`telo run`), watches it
 for status, attaches a PTY over the Pod `attach` subresource for the interactive
-`/io` channel, and — when an ingress base domain is configured — creates a
-per-session Service + Ingress (`<sessionId>.<base-domain>`) garbage-collected via
-an ownerReference to the Pod.
+`/io` channel, and — when a routing base domain is configured — creates a
+per-session Service plus routing objects (an Ingress, or one HTTPRoute per port)
+at `<port>-<sessionId>.<base-domain>`, garbage-collected via an ownerReference to
+the Pod.
 
 **Every session runs the plain kernel image.** A body-fetch initContainer untars
 the staged bundle into a writable `/app` emptyDir and the session container runs
@@ -105,7 +106,7 @@ agent's port the **manifest wins**: the session starts without the agent and say
 so on its stream, rather than refusing to run the user's app over a container
 they never asked for and cannot decline. Nothing else is arranged: the pod's containers
 share one network namespace, so the port simply joins the session's own Service
-and Ingress and answers at `<agentPort>-<sessionId>.<base-domain>`. The `running`
+and routing objects and answers at `<agentPort>-<sessionId>.<base-domain>`. The `running`
 status carries it as an `agent` endpoint beside `endpoints` — separate, because
 `endpoints` are the ports the user's applications declared, and an
 operator-launched container is not one of them. It is reachable without auth for
@@ -212,10 +213,10 @@ transport whose kind does not emit one would silently get no routing.
 one-shot app completed is not a change. It touches the named app's entry manifest
 through the same path everything else uses, so it needs no signalling into the
 container, no shared PID namespace and no `exec` — **RBAC gains only `configmaps:
-get, create` and `update` on services/ingresses**, the latter so a reload that
-changes an app's declared port set can re-patch its routing. Without that, adding a
-`ports:` entry leaves the app bound to a port with no ingress, no error and no
-event.
+get, create` and `update` on services and routing objects**, the latter so a reload
+that changes an app's declared port set can re-patch its routing. Without that,
+adding a `ports:` entry leaves the app bound to a port with no route, no error and
+no event.
 
 Changing the app set costs a pod recreate because a pod's container list is fixed
 at creation. That is the only editing action in the design that costs a pod, and
@@ -296,8 +297,14 @@ outcome than a URL that silently reaches the wrong app.
 | `RUNNER_INIT_IMAGE` | `busybox:stable` | Bundle-fetch initContainer image (wget + tar) |
 | `RUNNER_IMAGE_PULL_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-sessions`) the kubelet pulls session images with — needed only for a kernel or catalog image in a private registry |
 | `RUNNER_RUNTIME_CLASS` | _(unset → runc)_ | Sandbox RuntimeClass (gvisor/kata) |
-| `SESSION_INGRESS_BASE_DOMAIN` | _(unset → logs-only)_ | Wildcard base for per-session ingress |
-| `SESSION_INGRESS_TLS_SECRET` | _(unset → no TLS block)_ | `kubernetes.io/tls` Secret (in `telo-sessions`) the session Ingress presents; must cover `*.<base-domain>`. Set for Cloudflare Full (Strict) / any origin-cert upstream |
+| `SESSION_ROUTING_MODE` | `auto` | `auto` \| `ingress` \| `gateway` \| `none`. See [Routing layer](#routing-layer) |
+| `SESSION_ROUTING_BASE_DOMAIN` | _(unset → logs-only)_ | Wildcard base for per-session hosts |
+| `SESSION_ROUTE_READY_TIMEOUT_SECONDS` | `60` | How long a published route may go unclaimed before the session reports it `unprogrammed` |
+| `SESSION_INGRESS_CLASS` | _(unset → cluster default)_ | IngressClass for session Ingresses (ingress mode) |
+| `SESSION_INGRESS_TLS_SECRET` | _(unset → no TLS block)_ | `kubernetes.io/tls` Secret (in `telo-sessions`) the session Ingress presents; must cover `*.<base-domain>`. Set for Cloudflare Full (Strict) / any origin-cert upstream. **Ingress mode only** — refused at boot in gateway mode, where the cert belongs to the Gateway listener |
+| `SESSION_GATEWAY_NAME` | _(unset)_ | Gateway each session's HTTPRoute attaches to. Required in gateway mode |
+| `SESSION_GATEWAY_NAMESPACE` | _(= session namespace)_ | Namespace of that Gateway |
+| `SESSION_GATEWAY_SECTION_NAME` | _(unset → any listener)_ | Listener name, when only one should carry session traffic |
 | `RUNNER_MAX_CPU` | `50m` | CPU ceiling |
 | `RUNNER_MAX_MEMORY` | `100Mi` | Memory ceiling |
 | `RUNNER_MAX_TTL_SECONDS` | `3600` | Wall-clock TTL (Pod `activeDeadlineSeconds`) |
@@ -375,22 +382,94 @@ For a kernel image or an operator catalog image held in a **private registry**,
 create the dockerconfigjson Secret in `telo-sessions` yourself and point
 `session.imagePullSecret` at it; the kubelet pulls with it.
 
+### Routing layer
+
+Session hosts are `<port>-<sessionId>.<base-domain>` — a single label, so one
+wildcard DNS record and one wildcard cert cover every session. **Both current
+routing APIs are supported**, because clusters ship Ingress, Gateway API, or
+both, and hardcoding either leaves the runner unroutable on the rest.
+
+`sessionRouting.mode` picks the layer:
+
+| mode | behaviour |
+| --- | --- |
+| `auto` (default) | Resolve from what is **configured**, then from what the cluster serves |
+| `ingress` | `networking.k8s.io/v1` Ingress |
+| `gateway` | `gateway.networking.k8s.io` HTTPRoute (`v1`, falling back to `v1beta1`) |
+| `none` | Publish nothing — logs-only even with a base domain set |
+
+`auto` reads configuration before installation, and that order is the point: a
+named Gateway wins, then a configured IngressClass, then a **default-marked**
+IngressClass (`ingressclass.kubernetes.io/is-default-class` — the cluster has
+nominated where an unqualified Ingress goes, and unqualified is what this runner
+creates), and only then does it look at what merely exists. **Gateway API CRDs are frequently present without being the intended
+path**, so "the API exists" is not evidence of intent. Where two usable layers
+exist and nothing was configured, the runner **refuses to start** rather than
+guessing — a wrong guess publishes routing objects nothing reconciles, which
+produces a healthy pod and a 404 on every URL, with nothing reported anywhere.
+
+```bash
+# Gateway API
+helm install telo-runner ./chart \
+  --set sessionRouting.mode=gateway \
+  --set sessionRouting.baseDomain=telo.run \
+  --set sessionRouting.gateway.name=public \
+  --set sessionRouting.gateway.namespace=gateway-system \
+  --set sessionRouting.dataPlaneNamespace=gateway-system
+```
+
+The Gateway needs a listener whose hostname covers `*.<base-domain>` and whose
+`allowedRoutes.namespaces` admits `telo-sessions`. A route it does not admit is
+reported per session with the controller's own reason (`NotAllowedByListeners`).
+
+**Upgrading from `sessionIngress.*`** is a breaking values change and the chart
+refuses the old keys rather than ignoring them — Helm drops unknown values
+silently, so an un-migrated file would otherwise boot a runner that logs
+`session routing disabled (logs-only)` and drops every session URL.
+
+> **One HTTPRoute per port.** Gateway API scopes `hostnames` to the whole route
+> while a rule matches on path, never host — so a single route carrying every
+> session hostname would send them all to whichever rule matched `/` first. An
+> Ingress rule owns its host, which is why that layer needs only one object.
+
+**`sessionRouting.dataPlaneNamespace` is not optional when routing is on.** The
+session NetworkPolicy admits traffic from that namespace only; without it the
+route programs correctly and the workload is still unreachable.
+
+### Route verification
+
+The runner already dials each declared port from its own network — that proves
+the app is **listening** and says nothing about whether traffic can **reach** it.
+So it separately verifies that what it published was actually programmed, and
+reports each host as `pending` → `programmed` / `unprogrammed` on the session
+event stream (`type: "route"`). Reported, never fatal: a slow controller and an
+absent one look alike for the first few seconds.
+
+Gateway API answers this precisely, from the `Accepted` / `ResolvedRefs`
+conditions a controller writes. Ingress has no rejection signal — a controller
+that refuses a rule simply never writes status — so there an unclaimed route is
+caught by the timeout rather than by a reason the cluster gave.
+
 ### Origin TLS (Cloudflare et al.)
+
+**Ingress mode only.** Under Gateway API the origin certificate belongs to the
+Gateway listener's own `certificateRefs`; setting `SESSION_INGRESS_TLS_SECRET`
+alongside `mode: gateway` is refused at boot rather than silently ignored.
 
 To have the per-session Ingress present an origin cert (so an upstream like
 Cloudflare in **Full (Strict)** mode validates the origin), give the chart a
 `kubernetes.io/tls` Secret in `telo-sessions`. The cert must cover the wildcard
-`*.<sessionIngress.baseDomain>` — session hosts are a single label
+`*.<sessionRouting.baseDomain>` — session hosts are a single label
 (`<port>-<sessionId>.<base-domain>`). Two ways:
 
 ```bash
 # A — reference a Secret you manage in telo-sessions (cert-manager, your own sync)
-helm install telo-runner ./chart --set sessionIngress.tls.secretName=telo-origin-tls
+helm install telo-runner ./chart --set sessionRouting.ingress.tls.secretName=telo-origin-tls
 
 # B — let the chart create the Secret from your cert + key
 helm install telo-runner ./chart \
-  --set-file sessionIngress.tls.cert=origin.pem \
-  --set-file sessionIngress.tls.key=origin.key
+  --set-file sessionRouting.ingress.tls.cert=origin.pem \
+  --set-file sessionRouting.ingress.tls.key=origin.key
 ```
 
 Either wires `SESSION_INGRESS_TLS_SECRET`, and the runner stamps a `spec.tls`
