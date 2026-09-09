@@ -7,11 +7,11 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref Check
+  - !ref check
 ---
 kind: Assert.Manifest
 metadata:
-  name: Check
+  name: check
 source: ./__fixtures__/import-value-flow/rejects-resources-input.yaml
 expect:
   errors:

@@ -5,11 +5,11 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestSystemKindRejected
+  - !ref testSystemKindRejected
 ---
 kind: Assert.Manifest
 metadata:
-  name: TestSystemKindRejected
+  name: testSystemKindRejected
 source: ./__fixtures__/include-rejects-system-kinds.yaml
 expect:
   loadError: "not allowed in partial files"

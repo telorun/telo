@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestBaseCelClean
+  - !ref testBaseCelClean
 ---
 # A base mapping made entirely of !cel values must analyze CLEAN. Regression for
 # a bug where raw !cel sentinels in a base mapping were AJV-checked against the
@@ -14,7 +14,7 @@ targets:
 # asserts a wrong LITERAL is still caught).
 kind: Assert.Manifest
 metadata:
-  name: TestBaseCelClean
+  name: testBaseCelClean
 source: ./__fixtures__/base-cel-clean/telo.yaml
 expect:
   errors: []

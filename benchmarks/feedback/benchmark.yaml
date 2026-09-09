@@ -6,11 +6,11 @@ imports:
   Bench: ../../modules/benchmark
   Http: ../../modules/http-client
 targets:
-  - !ref FeedbackLoad
+  - !ref feedbackLoad
 ---
 kind: Bench.Suite
 metadata:
-  name: FeedbackLoad
+  name: feedbackLoad
   module: FeedbackBenchmark
 duration: 30s
 concurrency: 10

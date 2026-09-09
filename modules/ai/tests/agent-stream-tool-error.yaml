@@ -24,16 +24,16 @@ imports:
   Stream: ../../stream
   Assert: ../../assert
 targets:
-  - !ref TestToolError
+  - !ref testToolError
 ---
 kind: AiEcho.EchoModelStream
-metadata: { name: Echo }
+metadata: { name: echo }
 emitToolCall:
   name: ghost
   arguments: {}
 ---
 kind: Run.Value
-metadata: { name: Multiplier }
+metadata: { name: multiplier }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -45,9 +45,9 @@ value:
   product: !cel "inputs.a * inputs.b"
 ---
 kind: Ai.Tools
-metadata: { name: LocalTools }
+metadata: { name: localTools }
 tools:
-  - tool: !ref Multiplier
+  - tool: !ref multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -59,18 +59,18 @@ tools:
         b: { type: number }
 ---
 kind: Ai.AgentStream
-metadata: { name: Assistant }
-model: !ref Echo
+metadata: { name: assistant }
+model: !ref echo
 system: "Use tools when needed."
 onToolError: throw
 toolProviders:
-  - provider: !ref LocalTools
+  - provider: !ref localTools
 ---
 kind: Ndjson.Encoder
-metadata: { name: NdjsonEnc }
+metadata: { name: ndjsonEnc }
 ---
 kind: Http.Api
-metadata: { name: Api }
+metadata: { name: api }
 routes:
   - request:
       path: /chat
@@ -81,7 +81,7 @@ routes:
           required: [ prompt ]
           properties:
             prompt: { type: string }
-    handler: !ref Assistant
+    handler: !ref assistant
     inputs:
       prompt: !cel "request.body.prompt"
     returns:
@@ -89,7 +89,7 @@ routes:
         mode: stream
         content:
           application/x-ndjson:
-            encoder: !ref NdjsonEnc
+            encoder: !ref ndjsonEnc
     # A catch-all. The handler's throw union is declared now, so the analyzer
     # requires every code to be covered or a final entry with no `when:`. It
     # fires BEFORE streaming starts — once frames are on the wire the encoder's
@@ -107,7 +107,7 @@ routes:
               error: !cel "error.code"
 ---
 kind: JS.Script
-metadata: { name: FetchAndSummarize }
+metadata: { name: fetchAndSummarize }
 code: |
   async function main({ url, prompt }) {
     const r = await fetch(url, {
@@ -142,7 +142,7 @@ outputType:
     additionalProperties: true
 ---
 kind: Run.Sequence
-metadata: { name: TestToolError }
+metadata: { name: testToolError }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -155,21 +155,21 @@ with:
         version: 1.0.0
     mounts:
       - path: /
-        mount: !ref Api
+        mount: !ref api
 targets:
   - !ref Server
 steps:
-  - name: Hit
+  - name: hit
     inputs:
       url: http://127.0.0.1:8952/chat
       prompt: "call the ghost"
-    invoke: !ref FetchAndSummarize
-  - name: AssertTerminalError
+    invoke: !ref fetchAndSummarize
+  - name: assertTerminalError
     inputs:
-      lastType: !cel "steps.Hit.result.lastType"
-      lastCode: !cel "steps.Hit.result.lastCode"
-      finishCount: !cel "steps.Hit.result.finishCount"
-      errorCount: !cel "steps.Hit.result.errorCount"
+      lastType: !cel "steps.hit.result.lastType"
+      lastCode: !cel "steps.hit.result.lastCode"
+      finishCount: !cel "steps.hit.result.finishCount"
+      errorCount: !cel "steps.hit.result.errorCount"
     invoke:
       kind: Assert.Schema
       schema:
@@ -184,19 +184,19 @@ steps:
   # The same failure reached directly rather than over the wire. Draining the
   # agent's own stream rejects, and the rejection is catchable BY NAME — which
   # is what a terminal data part could never be.
-  - name: Direct
+  - name: direct
     try:
-      - name: Start
+      - name: start
         inputs:
           prompt: "call the ghost"
-        invoke: !ref Assistant
-      - name: Drain
+        invoke: !ref assistant
+      - name: drain
         inputs:
-          input: !cel "steps.Start.result.output"
+          input: !cel "steps.start.result.output"
         invoke:
           kind: Stream.Collect
     catch:
-      - name: AssertCatchableByName
+      - name: assertCatchableByName
         inputs:
           actual: !cel "error.code"
           expected: ERR_AGENT_UNKNOWN_TOOL

@@ -18,16 +18,16 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestAgentStream
+  - !ref testAgentStream
 ---
 kind: AiEcho.EchoModelStream
-metadata: { name: Echo }
+metadata: { name: echo }
 emitToolCall:
   name: multiply
   arguments: { a: 6, b: 7 }
 ---
 kind: Run.Value
-metadata: { name: Multiplier }
+metadata: { name: multiplier }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -39,9 +39,9 @@ value:
   product: !cel "inputs.a * inputs.b"
 ---
 kind: Ai.Tools
-metadata: { name: LocalTools }
+metadata: { name: localTools }
 tools:
-  - tool: !ref Multiplier
+  - tool: !ref multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -53,17 +53,17 @@ tools:
         b: { type: number }
 ---
 kind: Ai.AgentStream
-metadata: { name: Assistant }
-model: !ref Echo
+metadata: { name: assistant }
+model: !ref echo
 system: "Use tools when needed."
 toolProviders:
-  - provider: !ref LocalTools
+  - provider: !ref localTools
 ---
 kind: Ndjson.Encoder
-metadata: { name: NdjsonEnc }
+metadata: { name: ndjsonEnc }
 ---
 kind: Http.Api
-metadata: { name: Api }
+metadata: { name: api }
 routes:
   - request:
       path: /chat
@@ -74,7 +74,7 @@ routes:
           required: [ prompt ]
           properties:
             prompt: { type: string }
-    handler: !ref Assistant
+    handler: !ref assistant
     inputs:
       prompt: !cel "request.body.prompt"
     returns:
@@ -82,7 +82,7 @@ routes:
         mode: stream
         content:
           application/x-ndjson:
-            encoder: !ref NdjsonEnc
+            encoder: !ref ndjsonEnc
     # A catch-all. The handler's throw union is declared now, so the analyzer
     # requires every code to be covered or a final entry with no `when:`. It
     # fires BEFORE streaming starts — once frames are on the wire the encoder's
@@ -102,7 +102,7 @@ routes:
 # Fetch the agent stream, parse each NDJSON line into an event, and summarize the
 # sequence into a flat shape the assertion can check by equality.
 kind: JS.Script
-metadata: { name: FetchAndSummarize }
+metadata: { name: fetchAndSummarize }
 code: |
   async function main({ url, prompt }) {
     const r = await fetch(url, {
@@ -146,7 +146,7 @@ outputType:
     additionalProperties: true
 ---
 kind: Run.Sequence
-metadata: { name: TestAgentStream }
+metadata: { name: testAgentStream }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -159,27 +159,27 @@ with:
         version: 1.0.0
     mounts:
       - path: /
-        mount: !ref Api
+        mount: !ref api
 targets:
   - !ref Server
 steps:
-  - name: Hit
+  - name: hit
     inputs:
       url: http://127.0.0.1:8951/chat
       prompt: "multiply 6 and 7"
-    invoke: !ref FetchAndSummarize
-  - name: AssertStream
+    invoke: !ref fetchAndSummarize
+  - name: assertStream
     inputs:
-      status: !cel "steps.Hit.result.status"
-      firstType: !cel "steps.Hit.result.firstType"
-      firstToolName: !cel "steps.Hit.result.firstToolName"
-      secondType: !cel "steps.Hit.result.secondType"
-      secondToolCallId: !cel "steps.Hit.result.secondToolCallId"
-      secondContent: !cel "steps.Hit.result.secondContent"
-      textConcat: !cel "steps.Hit.result.textConcat"
-      finishCount: !cel "steps.Hit.result.finishCount"
-      lastType: !cel "steps.Hit.result.lastType"
-      lastFinishReason: !cel "steps.Hit.result.lastFinishReason"
+      status: !cel "steps.hit.result.status"
+      firstType: !cel "steps.hit.result.firstType"
+      firstToolName: !cel "steps.hit.result.firstToolName"
+      secondType: !cel "steps.hit.result.secondType"
+      secondToolCallId: !cel "steps.hit.result.secondToolCallId"
+      secondContent: !cel "steps.hit.result.secondContent"
+      textConcat: !cel "steps.hit.result.textConcat"
+      finishCount: !cel "steps.hit.result.finishCount"
+      lastType: !cel "steps.hit.result.lastType"
+      lastFinishReason: !cel "steps.hit.result.lastFinishReason"
     invoke:
       kind: Assert.Schema
       schema:

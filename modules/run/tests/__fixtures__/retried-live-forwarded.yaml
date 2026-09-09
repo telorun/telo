@@ -9,23 +9,23 @@ imports:
   Run: ../../
   Stream: ../../../stream
 targets:
-  - !ref Boot
+  - !ref boot
 ---
 kind: Run.Sequence
-metadata: { name: Boot }
+metadata: { name: boot }
 steps:
-  - name: Source
+  - name: source
     inputs:
       items: [a, b]
     invoke:
       kind: Stream.Of
-  - name: Handle
+  - name: handle
     inputs:
-      payload: !cel "steps.Source.result.output"
-    invoke: !ref Handler
+      payload: !cel "steps.source.result.output"
+    invoke: !ref handler
 ---
 kind: Run.Sequence
-metadata: { name: Handler }
+metadata: { name: handler }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -37,7 +37,7 @@ inputType:
           name: Telo.Stream
           of: Telo.Bytes
 steps:
-  - name: Drain
+  - name: drain
     inputs:
       input: !cel "inputs.payload"
     retry:

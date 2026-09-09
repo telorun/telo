@@ -8,14 +8,14 @@ imports:
   JavaScript: ../../javascript
   Assert: ../../assert
 targets:
-  - !ref TestTypeValidation
-  - !ref TestTypeRejection
-  - !ref TestTypeInheritance
-  - !ref TestCelRules
-  - !ref TestOutputTypeRejection
-  - !ref TestMultipleRules
-  - !ref TestMultipleExtends
-  - !ref TestExtendsComposition
+  - !ref testTypeValidation
+  - !ref testTypeRejection
+  - !ref testTypeInheritance
+  - !ref testCelRules
+  - !ref testOutputTypeRejection
+  - !ref testMultipleRules
+  - !ref testMultipleExtends
+  - !ref testExtendsComposition
 ---
 # ─── Type definitions ──────────────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ schema:
 
 kind: JavaScript.Script
 metadata:
-  name: AddNumbers
+  name: addNumbers
 inputType: !ref AdditionInput
 outputType: !ref AdditionOutput
 code: |
@@ -71,7 +71,7 @@ code: |
 ---
 kind: JavaScript.Script
 metadata:
-  name: Identity
+  name: identity
 inputType: !ref NamedEntity
 code: |
   function main(input) {
@@ -93,7 +93,7 @@ rules:
 ---
 kind: JavaScript.Script
 metadata:
-  name: ProcessAmount
+  name: processAmount
 inputType: !ref PositiveAmount
 code: |
   function main({ amount }) {
@@ -104,16 +104,16 @@ code: |
 
 kind: Run.Sequence
 metadata:
-  name: TestTypeValidation
+  name: testTypeValidation
 steps:
-  - name: Add
+  - name: add
     inputs:
       a: 10
       b: 20
-    invoke: !ref AddNumbers
-  - name: VerifySum
+    invoke: !ref addNumbers
+  - name: verifySum
     inputs:
-      sum: "${{ steps.Add.result.sum }}"
+      sum: "${{ steps.add.result.sum }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -127,19 +127,19 @@ steps:
 
 kind: Run.Sequence
 metadata:
-  name: TestTypeRejection
+  name: testTypeRejection
 steps:
-  - name: BadInput
+  - name: badInput
     try:
-      - name: CallWithString
+      - name: callWithString
         # Deliberately invalid, routed through CEL: a literal is rejected by
         # `telo check`, and this test is about the RUNTIME contract boundary.
         inputs:
           a: !cel "'not a number'"
           b: 5
-        invoke: !ref AddNumbers
+        invoke: !ref addNumbers
     catch:
-      - name: VerifyError
+      - name: verifyError
         inputs:
           msg: "${{ error.message }}"
         invoke:
@@ -154,18 +154,18 @@ steps:
 
 kind: Run.Sequence
 metadata:
-  name: TestTypeInheritance
+  name: testTypeInheritance
 steps:
   # NamedEntity extends Entity — requires both id and name
-  - name: ValidInherited
+  - name: validInherited
     inputs:
       id: "abc-123"
       name: "Alice"
-    invoke: !ref Identity
-  - name: VerifyPassthrough
+    invoke: !ref identity
+  - name: verifyPassthrough
     inputs:
-      id: "${{ steps.ValidInherited.result.id }}"
-      name: "${{ steps.ValidInherited.result.name }}"
+      id: "${{ steps.validInherited.result.id }}"
+      name: "${{ steps.validInherited.result.name }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -178,18 +178,18 @@ steps:
             type: string
             const: "Alice"
   # Missing required 'id' from parent Entity should fail
-  - name: MissingParentField
+  - name: missingParentField
     try:
-      - name: CallWithoutId
+      - name: callWithoutId
         # Deliberately invalid, routed through CEL: a literal is rejected by
         # `telo check`, and this test is about the RUNTIME contract boundary.
         # The whole map comes from one expression so the omission is only
         # visible at runtime — a statically-absent required input is a
         # `telo check` error, and this test is about the runtime boundary.
         inputs: !cel "{'name': 'Bob'}"
-        invoke: !ref Identity
+        invoke: !ref identity
     catch:
-      - name: VerifyInheritanceError
+      - name: verifyInheritanceError
         inputs:
           msg: "${{ error.message }}"
         invoke:
@@ -204,16 +204,16 @@ steps:
 
 kind: Run.Sequence
 metadata:
-  name: TestCelRules
+  name: testCelRules
 steps:
   # Valid: positive amount passes both schema and rule
-  - name: ValidAmount
+  - name: validAmount
     inputs:
       amount: 42
-    invoke: !ref ProcessAmount
-  - name: VerifyDoubled
+    invoke: !ref processAmount
+  - name: verifyDoubled
     inputs:
-      doubled: "${{ steps.ValidAmount.result.doubled }}"
+      doubled: "${{ steps.validAmount.result.doubled }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -223,14 +223,14 @@ steps:
             type: number
             const: 84
   # Invalid: zero fails the "amount > 0" CEL rule
-  - name: ZeroAmount
+  - name: zeroAmount
     try:
-      - name: CallWithZero
+      - name: callWithZero
         inputs:
           amount: 0
-        invoke: !ref ProcessAmount
+        invoke: !ref processAmount
     catch:
-      - name: VerifyRuleError
+      - name: verifyRuleError
         inputs:
           msg: "${{ error.message }}"
         invoke:
@@ -262,7 +262,7 @@ rules:
 ---
 kind: JavaScript.Script
 metadata:
-  name: ProcessNonNegative
+  name: processNonNegative
 inputType: !ref NonNegativeAmount
 code: |
   function main({ amount }) {
@@ -292,7 +292,7 @@ schema:
 ---
 kind: JavaScript.Script
 metadata:
-  name: FullIdentity
+  name: fullIdentity
 inputType: !ref FullEntity
 code: |
   function main(input) {
@@ -301,7 +301,7 @@ code: |
 ---
 kind: JavaScript.Script
 metadata:
-  name: BadOutput
+  name: badOutput
 outputType: !ref AdditionOutput
 code: |
   function main() {
@@ -312,14 +312,14 @@ code: |
 
 kind: Run.Sequence
 metadata:
-  name: TestOutputTypeRejection
+  name: testOutputTypeRejection
 steps:
-  - name: BadReturn
+  - name: badReturn
     try:
-      - name: CallBadOutput
-        invoke: !ref BadOutput
+      - name: callBadOutput
+        invoke: !ref badOutput
     catch:
-      - name: VerifyOutputError
+      - name: verifyOutputError
         inputs:
           msg: "${{ error.message }}"
         invoke:
@@ -334,16 +334,16 @@ steps:
 
 kind: Run.Sequence
 metadata:
-  name: TestMultipleRules
+  name: testMultipleRules
 steps:
   # Valid: 500 passes both rules (>= 0 and <= 1000)
-  - name: ValidMid
+  - name: validMid
     inputs:
       amount: 500
-    invoke: !ref ProcessNonNegative
-  - name: VerifyMid
+    invoke: !ref processNonNegative
+  - name: verifyMid
     inputs:
-      result: "${{ steps.ValidMid.result.result }}"
+      result: "${{ steps.validMid.result.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -353,14 +353,14 @@ steps:
             type: number
             const: 500
   # Invalid: -1 fails the first rule
-  - name: NegativeAmount
+  - name: negativeAmount
     try:
-      - name: CallNegative
+      - name: callNegative
         inputs:
           amount: -1
-        invoke: !ref ProcessNonNegative
+        invoke: !ref processNonNegative
     catch:
-      - name: VerifyNegativeError
+      - name: verifyNegativeError
         inputs:
           msg: "${{ error.message }}"
         invoke:
@@ -372,14 +372,14 @@ steps:
                 type: string
                 pattern: "Amount must not be negative$"
   # Invalid: 2000 passes first rule but fails second
-  - name: OverLimit
+  - name: overLimit
     try:
-      - name: CallOverLimit
+      - name: callOverLimit
         inputs:
           amount: 2000
-        invoke: !ref ProcessNonNegative
+        invoke: !ref processNonNegative
     catch:
-      - name: VerifyLimitError
+      - name: verifyLimitError
         inputs:
           msg: "${{ error.message }}"
         invoke:
@@ -395,19 +395,19 @@ steps:
 
 kind: Run.Sequence
 metadata:
-  name: TestMultipleExtends
+  name: testMultipleExtends
 steps:
   # FullEntity extends [Entity, Timestamped] — requires id, updatedAt, label
-  - name: ValidFull
+  - name: validFull
     inputs:
       id: "x-1"
       updatedAt: "2026-01-01"
       label: "Test"
-    invoke: !ref FullIdentity
-  - name: VerifyFull
+    invoke: !ref fullIdentity
+  - name: verifyFull
     inputs:
-      id: "${{ steps.ValidFull.result.id }}"
-      label: "${{ steps.ValidFull.result.label }}"
+      id: "${{ steps.validFull.result.id }}"
+      label: "${{ steps.validFull.result.label }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -420,15 +420,15 @@ steps:
             type: string
             const: "Test"
   # Missing updatedAt from Timestamped parent
-  - name: MissingTimestamp
+  - name: missingTimestamp
     try:
-      - name: CallWithoutTimestamp
+      - name: callWithoutTimestamp
         # Whole map from one expression: the omission is only visible at
         # runtime, which is the boundary this test is about.
         inputs: !cel "{'id': 'x-2', 'label': 'Oops'}"
-        invoke: !ref FullIdentity
+        invoke: !ref fullIdentity
     catch:
-      - name: VerifyTimestampError
+      - name: verifyTimestampError
         inputs:
           msg: "${{ error.message }}"
         invoke:
@@ -458,24 +458,24 @@ schema:
 ---
 kind: JavaScript.Script
 metadata:
-  name: UseScored
+  name: useScored
 inputType: !ref Scored
 code: |
   function main(input) { return input }
 ---
 kind: Run.Sequence
 metadata:
-  name: TestExtendsComposition
+  name: testExtendsComposition
 steps:
   # Valid: id (inherited) present, score satisfies the allOf minimum.
-  - name: ValidScore
+  - name: validScore
     inputs:
       id: "x"
       score: 15
-    invoke: !ref UseScored
-  - name: VerifyValid
+    invoke: !ref useScored
+  - name: verifyValid
     inputs:
-      score: !cel "steps.ValidScore.result.score"
+      score: !cel "steps.validScore.result.score"
     invoke:
       kind: Assert.Schema
       schema:
@@ -485,17 +485,17 @@ steps:
         required: [ score ]
   # Invalid: score 5 passes the merged object shape but violates the inherited
   # allOf minimum — must be rejected (regression: extends used to drop allOf).
-  - name: LowScore
+  - name: lowScore
     try:
-      - name: CallLowScore
+      - name: callLowScore
         # Deliberately invalid, routed through CEL: a literal is rejected by
         # `telo check`, and this test is about the RUNTIME contract boundary.
         inputs:
           id: "x"
           score: !cel "5"
-        invoke: !ref UseScored
+        invoke: !ref useScored
     catch:
-      - name: VerifyCompositionError
+      - name: verifyCompositionError
         inputs:
           msg: !cel "error.message"
         invoke:

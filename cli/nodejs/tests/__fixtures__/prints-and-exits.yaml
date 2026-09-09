@@ -14,7 +14,7 @@ targets:
 kind: Run.Sequence
 metadata: { name: main }
 steps:
-  - name: Say
+  - name: say
     invoke:
       kind: Console.WriteLine
     inputs:

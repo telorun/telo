@@ -69,7 +69,7 @@ secrets:
 targets:
   - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
-  - !ref Server
+  - !ref server
 ---
 kind: Sse.Encoder
 metadata: { name: sseEnc }
@@ -319,7 +319,7 @@ routes:
               error: !cel "error.message"
 ---
 kind: Http.Server
-metadata: { name: Server }
+metadata: { name: server }
 host: 0.0.0.0
 port: !cel "ports.http"
 # Behind the ingress proxy: derive request.ip from the rightmost X-Forwarded-For

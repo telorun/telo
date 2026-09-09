@@ -6,11 +6,11 @@ imports:
   Bench: ../../modules/benchmark
   Http: ../../modules/http-client
 targets:
-  - !ref ScoreSmoke
+  - !ref scoreSmoke
 ---
 kind: Bench.Suite
 metadata:
-  name: ScoreSmoke
+  name: scoreSmoke
   module: ScoreTestBenchmark
 requests: 200
 concurrency: 2

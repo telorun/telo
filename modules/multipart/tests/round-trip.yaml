@@ -17,16 +17,16 @@ imports:
   Assert: ../../assert
   JS: ../../javascript
 targets:
-  - !ref Test
-  - !ref StreamedPart
-  - !ref ReaderSkipsSafely
-  - !ref MinimalParts
-  - !ref ReaderPreservesBytes
+  - !ref test
+  - !ref streamedPart
+  - !ref readerSkipsSafely
+  - !ref minimalParts
+  - !ref readerPreservesBytes
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Encode
+  - name: encode
     inputs:
       subtype: related
       parts:
@@ -45,30 +45,30 @@ steps:
 
   # The content type carries the generated boundary, so it is what the decoder is
   # given — proving the pair travels together rather than being reassembled.
-  - name: Decode
+  - name: decode
     inputs:
-      input: !cel "steps.Encode.result.output"
-      contentType: !cel "steps.Encode.result.contentType"
+      input: !cel "steps.encode.result.output"
+      contentType: !cel "steps.encode.result.contentType"
     invoke:
       kind: Multipart.Decoder
 
-  - name: AssertRoundTrip
+  - name: assertRoundTrip
     inputs:
       actual:
-        count: !cel "size(steps.Decode.result.parts)"
+        count: !cel "size(steps.decode.result.parts)"
         # The subtype reaches the header, which is what a server dispatches on.
-        related: !cel "steps.Encode.result.contentType.startsWith('multipart/related; boundary=')"
-        firstType: !cel "steps.Decode.result.parts[0].contentType"
-        firstBody: !cel "string(steps.Decode.result.parts[0].content)"
+        related: !cel "steps.encode.result.contentType.startsWith('multipart/related; boundary=')"
+        firstType: !cel "steps.decode.result.parts[0].contentType"
+        firstBody: !cel "string(steps.decode.result.parts[0].content)"
         # An unnamed part carries no Content-Disposition at all, so it comes back
         # with no `content-disposition` header rather than an empty one.
-        firstHeaders: !cel "sort(keys(steps.Decode.result.parts[0].headers))"
-        secondName: !cel "steps.Decode.result.parts[1].name"
-        secondBody: !cel "string(steps.Decode.result.parts[1].content)"
-        fileName: !cel "steps.Decode.result.parts[2].filename"
+        firstHeaders: !cel "sort(keys(steps.decode.result.parts[0].headers))"
+        secondName: !cel "steps.decode.result.parts[1].name"
+        secondBody: !cel "string(steps.decode.result.parts[1].content)"
+        fileName: !cel "steps.decode.result.parts[2].filename"
         # Base64 back out: proves the byte part survived framing unmangled, which
         # comparing decoded text could not show.
-        fileBytes: !cel "bytesToBase64(steps.Decode.result.parts[2].content)"
+        fileBytes: !cel "bytesToBase64(steps.decode.result.parts[2].content)"
       expected:
         count: 3
         related: true
@@ -87,39 +87,39 @@ steps:
 # larger than memory costs no more than one chunk. The round trip proves the
 # framing survives being interleaved with a producer.
 kind: Run.Sequence
-metadata: { name: StreamedPart }
+metadata: { name: streamedPart }
 steps:
-  - name: Source
+  - name: source
     invoke:
       kind: Stream.Of
     inputs:
       items: ["chunk-one|", "chunk-two|", "chunk-three"]
-  - name: Encode
+  - name: encode
     inputs:
       parts:
         - name: meta
           content: "before"
         - name: payload
           filename: big.bin
-          content: !cel "steps.Source.result.output"
+          content: !cel "steps.source.result.output"
     invoke:
       kind: Multipart.Encoder
-  - name: Decode
+  - name: decode
     inputs:
-      input: !cel "steps.Encode.result.output"
-      contentType: !cel "steps.Encode.result.contentType"
+      input: !cel "steps.encode.result.output"
+      contentType: !cel "steps.encode.result.contentType"
     invoke:
       kind: Multipart.Decoder
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        count: !cel "size(steps.Decode.result.parts)"
+        count: !cel "size(steps.decode.result.parts)"
         # Reassembled from three source chunks, so the part boundary was not
         # confused with a stream chunk boundary.
-        payload: !cel "string(steps.Decode.result.parts[1].content)"
-        filename: !cel "steps.Decode.result.parts[1].filename"
+        payload: !cel "string(steps.decode.result.parts[1].content)"
+        filename: !cel "steps.decode.result.parts[1].filename"
         # `form-data` is the default subtype even when a part streams.
-        formData: !cel "steps.Encode.result.contentType.startsWith('multipart/form-data;')"
+        formData: !cel "steps.encode.result.contentType.startsWith('multipart/form-data;')"
       expected:
         count: 2
         payload: "chunk-one|chunk-two|chunk-three"
@@ -134,9 +134,9 @@ steps:
 # the second part still decodes correctly, because advancing discards the
 # remainder rather than leaving the cursor mid-part.
 kind: Run.Sequence
-metadata: { name: ReaderSkipsSafely }
+metadata: { name: readerSkipsSafely }
 steps:
-  - name: Encode
+  - name: encode
     inputs:
       parts:
         - name: skipped
@@ -146,29 +146,29 @@ steps:
           content: "this one is"
     invoke:
       kind: Multipart.Encoder
-  - name: Read
+  - name: read
     inputs:
-      input: !cel "steps.Encode.result.output"
-      contentType: !cel "steps.Encode.result.contentType"
+      input: !cel "steps.encode.result.output"
+      contentType: !cel "steps.encode.result.contentType"
     invoke:
       kind: Multipart.Reader
-  - name: Walk
+  - name: walk
     inputs:
-      parts: !cel "steps.Read.result.parts"
-    invoke: !ref CollectSecond
+      parts: !cel "steps.read.result.parts"
+    invoke: !ref collectSecond
   # An iteration has no result, so the accumulator is read back afterwards.
-  - name: Seen
-    invoke: !ref ReadSeen
-  - name: Assert
+  - name: seen
+    invoke: !ref readSeen
+  - name: assert
     inputs:
-      actual: !cel "steps.Seen.result.seen"
+      actual: !cel "steps.seen.result.seen"
       expected: ["skipped:", "wanted:this one is"]
     invoke:
       kind: Assert.Equals
 ---
 # Reads each part's NAME always, but its body only for the second part.
 kind: Run.Iteration
-metadata: { name: CollectSecond }
+metadata: { name: collectSecond }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -189,28 +189,28 @@ inputType:
 collection: !cel "inputs.parts"
 concurrency: 1
 steps:
-  - name: Body
+  - name: body
     if: !cel "item.name == 'wanted'"
     then:
-      - name: Drain
+      - name: drain
         inputs:
           input: !cel "item.content"
         invoke:
           kind: Stream.Collect
-      - name: NoteWanted
+      - name: noteWanted
         inputs:
           label: !cel "item.name"
-          text: !cel "steps.Drain.result.items.map(c, string(c)).join('')"
-        invoke: !ref Note
+          text: !cel "steps.drain.result.items.map(c, string(c)).join('')"
+        invoke: !ref note
     else:
-      - name: NoteSkipped
+      - name: noteSkipped
         inputs:
           label: !cel "item.name"
           text: ""
-        invoke: !ref Note
+        invoke: !ref note
 ---
 kind: JS.Script
-metadata: { name: Note }
+metadata: { name: note }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -234,7 +234,7 @@ code: |
   }
 ---
 kind: JS.Script
-metadata: { name: ReadSeen }
+metadata: { name: readSeen }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -258,9 +258,9 @@ code: |
 # file name as the field name, which is worse than missing because it is wrong and
 # `has(p.name)` answers yes.
 kind: Run.Sequence
-metadata: { name: MinimalParts }
+metadata: { name: minimalParts }
 steps:
-  - name: Encode
+  - name: encode
     inputs:
       parts:
         - content: no headers at all
@@ -269,19 +269,19 @@ steps:
           content: png bytes
     invoke:
       kind: Multipart.Encoder
-  - name: Decode
+  - name: decode
     inputs:
-      input: !cel "steps.Encode.result.output"
-      contentType: !cel "steps.Encode.result.contentType"
+      input: !cel "steps.encode.result.output"
+      contentType: !cel "steps.encode.result.contentType"
     invoke:
       kind: Multipart.Decoder
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        count: !cel "size(steps.Decode.result.parts)"
-        bodies: !cel "steps.Decode.result.parts.map(p, string(p.content))"
-        names: !cel "steps.Decode.result.parts.map(p, has(p.name) ? p.name : '<absent>')"
-        filenames: !cel "steps.Decode.result.parts.map(p, has(p.filename) ? p.filename : '<absent>')"
+        count: !cel "size(steps.decode.result.parts)"
+        bodies: !cel "steps.decode.result.parts.map(p, string(p.content))"
+        names: !cel "steps.decode.result.parts.map(p, has(p.name) ? p.name : '<absent>')"
+        filenames: !cel "steps.decode.result.parts.map(p, has(p.filename) ? p.filename : '<absent>')"
       expected:
         count: 2
         bodies: [no headers at all, png bytes]
@@ -304,43 +304,43 @@ steps:
 # headerless, which exercises the reader's zero-header path against the same
 # payload.
 kind: Run.Sequence
-metadata: { name: ReaderPreservesBytes }
+metadata: { name: readerPreservesBytes }
 steps:
-  - name: Source
+  - name: source
     inputs:
       items: ["abcde\n", f]
     invoke:
       kind: Stream.Of
-  - name: Encode
+  - name: encode
     inputs:
       boundary: XY
       parts:
-        - content: !cel "steps.Source.result.output"
+        - content: !cel "steps.source.result.output"
         - name: after
           content: tail
     invoke:
       kind: Multipart.Encoder
-  - name: Read
+  - name: read
     inputs:
-      input: !cel "steps.Encode.result.output"
-      contentType: !cel "steps.Encode.result.contentType"
+      input: !cel "steps.encode.result.output"
+      contentType: !cel "steps.encode.result.contentType"
     invoke:
       kind: Multipart.Reader
-  - name: Walk
+  - name: walk
     inputs:
-      parts: !cel "steps.Read.result.parts"
-    invoke: !ref CollectAll
-  - name: Seen
-    invoke: !ref ReadCollected
-  - name: Assert
+      parts: !cel "steps.read.result.parts"
+    invoke: !ref collectAll
+  - name: seen
+    invoke: !ref readCollected
+  - name: assert
     inputs:
-      actual: !cel "steps.Seen.result.seen"
+      actual: !cel "steps.seen.result.seen"
       expected: ["abcde\nf", tail]
     invoke:
       kind: Assert.Equals
 ---
 kind: Run.Iteration
-metadata: { name: CollectAll }
+metadata: { name: collectAll }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -360,18 +360,18 @@ inputType:
 collection: !cel "inputs.parts"
 concurrency: 1
 steps:
-  - name: Drain
+  - name: drain
     inputs:
       input: !cel "item.content"
     invoke:
       kind: Stream.Collect
-  - name: Record
+  - name: record
     inputs:
-      text: !cel "steps.Drain.result.items.map(c, string(c)).join('')"
-    invoke: !ref Collected
+      text: !cel "steps.drain.result.items.map(c, string(c)).join('')"
+    invoke: !ref collected
 ---
 kind: JS.Script
-metadata: { name: Collected }
+metadata: { name: collected }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -394,7 +394,7 @@ code: |
   }
 ---
 kind: JS.Script
-metadata: { name: ReadCollected }
+metadata: { name: readCollected }
 outputType:
   kind: Telo.JsonSchema
   schema:

@@ -15,18 +15,18 @@ imports:
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Ask
+  - name: ask
     invoke: !ref XMod.ask
     inputs:
       prompt: "hello"
-  - name: AssertText
+  - name: assertText
     inputs:
-      text: !cel "steps.Ask.result.text"
+      text: !cel "steps.ask.result.text"
     invoke:
       kind: Assert.Schema
       schema:

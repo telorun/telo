@@ -12,10 +12,10 @@ imports:
   Run: ../../../modules/run
 exports:
   resources:
-    - Work
+    - work
 ---
 kind: Run.Sequence
-metadata: { name: Work }
+metadata: { name: work }
 outputs:
   baseUrl: !cel "steps.read.result.baseUrl"
 with:
@@ -24,14 +24,14 @@ with:
     baseUrl: https://scoped.example
 steps:
   - name: read
-    invoke: !ref Echo
+    invoke: !ref echo
     inputs:
       baseUrl: !cel "resources.Scoped.baseUrl"
 ---
 # Hands the scoped resource's published config back out, so the test asserts the
 # scope actually stood the resource up rather than merely resolving its kind.
 kind: Run.Sequence
-metadata: { name: Echo }
+metadata: { name: echo }
 inputType:
   kind: Telo.JsonSchema
   schema:

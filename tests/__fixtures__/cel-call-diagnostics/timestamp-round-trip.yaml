@@ -6,20 +6,20 @@ imports:
   Run: ../../../modules/run
   Console: ../../../modules/console
 targets:
-  - !ref Expiry
+  - !ref expiry
 ---
 # Every conversion an instant needs to be useful in a manifest: arithmetic on a
 # timestamp, back out to a string for a field that stores it, and back out to
 # epoch seconds — the same unit `timestamp(int)` reads.
 kind: Run.Sequence
 metadata:
-  name: Expiry
+  name: expiry
 steps:
-  - name: Report
+  - name: report
     inputs:
       output: !cel "'expires ' + string(timestamp(nowSeconds()) + duration('24h'))"
-    invoke: !ref Say
+    invoke: !ref say
 ---
 kind: Console.WriteLine
 metadata:
-  name: Say
+  name: say

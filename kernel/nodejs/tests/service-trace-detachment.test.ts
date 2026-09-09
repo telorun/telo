@@ -30,7 +30,7 @@ function deferredInvoker(rootContext: any) {
       run: async () => {
         done = new Promise<void>((resolve) => {
           setImmediate(async () => {
-            await rootContext.invoke("JS.Script", "Echo", { value: 1 });
+            await rootContext.invoke("JS.Script", "echo", { value: 1 });
             resolve();
           });
         });
@@ -50,7 +50,7 @@ describe("service trace detachment — a Service's run() does not leak its ambie
       kind === "Test.Service" ? { capability: "Telo.Service" } : orig?.(kind);
 
     const echoes: Payload[] = [];
-    kernel.on("Echo.Invoked", (e) => echoes.push(e.payload as Payload));
+    kernel.on("echo.Invoked", (e) => echoes.push(e.payload as Payload));
 
     const svc = deferredInvoker(rootContext);
     await rootContext.runResolved("Test.Service", "Srv", svc.instance, undefined);
@@ -74,7 +74,7 @@ describe("service trace detachment — a Service's run() does not leak its ambie
     const runSpans: Payload[] = [];
     const echoes: Payload[] = [];
     kernel.on("Run.Run", (e) => runSpans.push(e.payload as Payload));
-    kernel.on("Echo.Invoked", (e) => echoes.push(e.payload as Payload));
+    kernel.on("echo.Invoked", (e) => echoes.push(e.payload as Payload));
 
     const runnable = deferredInvoker(rootContext);
     await rootContext.runResolved("Test.Runnable", "Run", runnable.instance, undefined);

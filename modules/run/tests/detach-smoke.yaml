@@ -13,29 +13,29 @@ imports:
   Timer: ../../timer
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: CacheMemory.Store
-metadata: { name: Mem }
+metadata: { name: mem }
 ---
 kind: Cache.Entry
-metadata: { name: Put }
-store: !ref Mem
+metadata: { name: put }
+store: !ref mem
 ttl: "60s"
 ---
 kind: Cache.Lookup
-metadata: { name: Get }
-store: !ref Mem
+metadata: { name: get }
+store: !ref mem
 ---
 kind: Run.Detach
-metadata: { name: PutDetached }
-invoke: !ref Put
+metadata: { name: putDetached }
+invoke: !ref put
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   - name: detach
-    invoke: !ref PutDetached
+    invoke: !ref putDetached
     inputs:
       key: "bg"
       value: { hello: "detached" }
@@ -55,7 +55,7 @@ steps:
       duration: "100ms"
       value: {}
   - name: read
-    invoke: !ref Get
+    invoke: !ref get
     inputs:
       key: "bg"
   - name: assertWritten

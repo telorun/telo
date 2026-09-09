@@ -7,6 +7,6 @@ imports:
 ---
 kind: JS.Script
 metadata:
-  name: Echo
+  name: echo
 code: |
   function main(input) { return { echoed: input.value }; }

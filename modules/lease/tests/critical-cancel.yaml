@@ -15,85 +15,85 @@ imports:
   Timer: ../../timer
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: KvStoreMemory.Store
-metadata: { name: Mem }
+metadata: { name: mem }
 ---
 kind: Lease.Critical
-metadata: { name: Turn }
-store: !ref Mem
+metadata: { name: turn }
+store: !ref mem
 ttl: 30s
 detach: true
-invoke: !ref Slow
+invoke: !ref slow
 ---
 # Long enough that the body can only end via cancellation within the test run.
 kind: Run.Sequence
-metadata: { name: Slow }
+metadata: { name: slow }
 steps:
-  - name: Wait
-    invoke: !ref Pause
+  - name: wait
+    invoke: !ref pause
     inputs:
       duration: 30s
 ---
 kind: Timer.Delay
-metadata: { name: Pause }
+metadata: { name: pause }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Start
-    invoke: !ref Turn
+  - name: start
+    invoke: !ref turn
     inputs:
       key: c1
       holder: T1
       inputs: {}
-  - name: CancelWrongHolder
-    invoke: !ref Turn
+  - name: cancelWrongHolder
+    invoke: !ref turn
     inputs:
       op: cancel
       key: c1
       holder: OTHER
-  - name: Cancel
-    invoke: !ref Turn
+  - name: cancel
+    invoke: !ref turn
     inputs:
       op: cancel
       key: c1
       holder: T1
-  - name: CancelIdleKey
-    invoke: !ref Turn
+  - name: cancelIdleKey
+    invoke: !ref turn
     inputs:
       op: cancel
       key: never-started
   # The cancelled body's terminal (release) lands within a few microtasks; give
   # it a beat before proving the key is free again.
-  - name: Settle
-    invoke: !ref Pause
+  - name: settle
+    invoke: !ref pause
     inputs:
       duration: 300ms
-  - name: Reacquire
-    invoke: !ref Turn
+  - name: reacquire
+    invoke: !ref turn
     inputs:
       key: c1
       holder: T2
       inputs: {}
   # Don't leave the reacquired 30s body running past the test.
-  - name: Cleanup
-    invoke: !ref Turn
+  - name: cleanup
+    invoke: !ref turn
     inputs:
       op: cancel
       key: c1
       holder: T2
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        startAcquired: !cel "steps.Start.result.acquired"
-        wrongHolderCancelled: !cel "steps.CancelWrongHolder.result.cancelled"
-        wrongHolderReported: !cel "steps.CancelWrongHolder.result.holder"
-        cancelled: !cel "steps.Cancel.result.cancelled"
-        idleCancelled: !cel "steps.CancelIdleKey.result.cancelled"
-        reacquired: !cel "steps.Reacquire.result.acquired"
-        cleanupCancelled: !cel "steps.Cleanup.result.cancelled"
+        startAcquired: !cel "steps.start.result.acquired"
+        wrongHolderCancelled: !cel "steps.cancelWrongHolder.result.cancelled"
+        wrongHolderReported: !cel "steps.cancelWrongHolder.result.holder"
+        cancelled: !cel "steps.cancel.result.cancelled"
+        idleCancelled: !cel "steps.cancelIdleKey.result.cancelled"
+        reacquired: !cel "steps.reacquire.result.acquired"
+        cleanupCancelled: !cel "steps.cleanup.result.cancelled"
       expected:
         startAcquired: true
         wrongHolderCancelled: false

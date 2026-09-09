@@ -8,31 +8,31 @@ imports:
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
-  - !ref TestMergeClient
+  - !ref testMergeClient
 ---
 # TaggedClient extends Http.Client with NO base: — additive merge. The author sets
 # the parent's baseUrl directly (inherited field) plus its own `label`.
 kind: Ph.TaggedClient
 metadata:
-  name: Tagged
+  name: tagged
 baseUrl: https://jsonplaceholder.typicode.com
 label: demo
 ---
 kind: Run.Sequence
 metadata:
-  name: TestMergeClient
+  name: testMergeClient
 steps:
-  - name: FetchUser
+  - name: fetchUser
     inputs: {}
     invoke:
       kind: Http.Request
-      client: !ref Tagged
+      client: !ref tagged
       url: /users/2
       method: GET
-  - name: AssertResponse
+  - name: assertResponse
     inputs:
-      status: !cel "steps.FetchUser.result.status"
-      id: !cel "steps.FetchUser.result.body.id"
+      status: !cel "steps.fetchUser.result.status"
+      id: !cel "steps.fetchUser.result.body.id"
     invoke:
       kind: Assert.Schema
       schema:
@@ -45,12 +45,12 @@ steps:
   # The child's own declared field publishes beside the parent's reading: the
   # inherited controller lays it over the parent instance's snapshot, so both
   # halves are readable from one expression.
-  - name: AssertOwnFieldPublished
+  - name: assertOwnFieldPublished
     inputs:
       actual:
-        label: !cel "resources.Tagged.label"
-        baseUrl: !cel "resources.Tagged.baseUrl"
-        timeout: !cel "resources.Tagged.timeout"
+        label: !cel "resources.tagged.label"
+        baseUrl: !cel "resources.tagged.baseUrl"
+        timeout: !cel "resources.tagged.timeout"
       expected:
         label: demo
         baseUrl: https://jsonplaceholder.typicode.com

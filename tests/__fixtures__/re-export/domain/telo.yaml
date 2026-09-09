@@ -6,17 +6,17 @@ imports:
   Sql: ../../../../modules/sql
   SQLite: ../../../../modules/sqlite
 exports:
-  resources: [ Db, Migrate ]
+  resources: [ db, migrate ]
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 kind: SQLite.Schema
 metadata:
-  name: Migrate
-connection: !ref Db
+  name: migrate
+connection: !ref db
 version: !cel "module.version"
 migrations:
   20260401_create_users:

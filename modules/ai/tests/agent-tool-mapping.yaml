@@ -8,11 +8,11 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestMapping
+  - !ref testMapping
 ---
 kind: AiEcho.EchoModel
 metadata:
-  name: Echo
+  name: echo
 emitToolCall:
   name: greet
   arguments: { who: "world" }
@@ -21,7 +21,7 @@ emitToolCall:
 # ({ who }); the tool entry's `inputs:`/`result:` mappings bridge the gap.
 kind: Run.Value
 metadata:
-  name: Greeter
+  name: greeter
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -33,9 +33,9 @@ value:
 ---
 kind: Ai.Tools
 metadata:
-  name: GreetTools
+  name: greetTools
 tools:
-  - tool: !ref Greeter
+  - tool: !ref greeter
     name: greet
     description: Greet someone by name.
     parameters:
@@ -50,24 +50,24 @@ tools:
 ---
 kind: Ai.Agent
 metadata:
-  name: GreetAgent
-model: !ref Echo
+  name: greetAgent
+model: !ref echo
 toolProviders:
-  - provider: !ref GreetTools
+  - provider: !ref greetTools
 ---
 kind: Run.Sequence
 metadata:
-  name: TestMapping
+  name: testMapping
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       prompt: "greet the world"
-    invoke: !ref GreetAgent
+    invoke: !ref greetAgent
   # arguments.who="world" → inputs maps to {target:"world"} → Greeter →
   # {greeting:"Hello, world!"} → result maps to the bare string → fed back → echoed.
-  - name: AssertText
+  - name: assertText
     inputs:
-      text: "${{ steps.Invoke.result.text }}"
+      text: "${{ steps.invoke.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:

@@ -11,17 +11,17 @@ imports:
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
-  - !ref Flow
+  - !ref flow
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 kind: SQLite.Schema
 metadata:
-  name: Migrate
-connection: !ref Db
+  name: migrate
+connection: !ref db
 version: !cel "module.version"
 migrations:
   init:
@@ -31,19 +31,19 @@ migrations:
 ---
 kind: Run.Sequence
 metadata:
-  name: Flow
+  name: flow
 steps:
-  - name: RunMigrate
-    invoke: !ref Migrate
-  - name: Select
+  - name: runMigrate
+    invoke: !ref migrate
+  - name: select
     inputs:
       sql: "SELECT id FROM t"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
-  - name: Assert
+      connection: !ref db
+  - name: assert
     inputs:
-      rows: "${{ steps.Select.result.rows }}"
+      rows: "${{ steps.select.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:

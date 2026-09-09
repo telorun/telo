@@ -6,14 +6,14 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestObject
-  - !ref TestConstant
-  - !ref TestScalar
+  - !ref testObject
+  - !ref testConstant
+  - !ref testScalar
 ---
 # Object result shaped from inputs — the value-binding case (concat + arithmetic).
 kind: Run.Value
 metadata:
-  name: Shape
+  name: shape
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -29,7 +29,7 @@ value:
 # Constant result with no inputs — a plain literal array, any shape.
 kind: Run.Value
 metadata:
-  name: Parts
+  name: parts
 value:
   - { type: text, text: page rendered }
   - { type: image, data: aGVsbG8=, mediaType: image/png }
@@ -37,7 +37,7 @@ value:
 # Scalar result — `value` need not be an object.
 kind: Run.Value
 metadata:
-  name: Answer
+  name: answer
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -48,10 +48,10 @@ value: "${{ double(inputs.n) * 2.0 }}"
 ---
 kind: Run.Sequence
 metadata:
-  name: TestObject
+  name: testObject
 steps:
   - name: shape
-    invoke: !ref Shape
+    invoke: !ref shape
     inputs: { name: telo, a: 6, b: 7 }
   - name: verify
     inputs:
@@ -68,10 +68,10 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestConstant
+  name: testConstant
 steps:
   - name: parts
-    invoke: !ref Parts
+    invoke: !ref parts
   - name: verify
     inputs:
       type0: "${{ steps.parts.result[0].type }}"
@@ -89,10 +89,10 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestScalar
+  name: testScalar
 steps:
   - name: answer
-    invoke: !ref Answer
+    invoke: !ref answer
     inputs: { n: 21 }
   - name: verify
     inputs:

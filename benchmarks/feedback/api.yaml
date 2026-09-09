@@ -11,28 +11,28 @@ imports:
   SQLite: ../../modules/sqlite
   Run: ../../modules/run
 targets:
-  - !ref SetupDb
-  - !ref Server
+  - !ref setupDb
+  - !ref server
 ---
 # SQLite database — swap to Sql.PostgresConnection for PostgreSQL
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
   module: FeedbackApi
 file: /tmp/feedback.db
 ---
 # Startup migration: runs once before the server accepts requests
 kind: Run.Sequence
 metadata:
-  name: SetupDb
+  name: setupDb
   module: FeedbackApi
 steps:
-  - name: CreateTable
+  - name: createTable
     invoke:
       kind: Sql.Command
       connection:
         kind: Sql.SqliteConnection
-        name: Db
+        name: db
     inputs:
       sql: |
         CREATE TABLE IF NOT EXISTS feedback (
@@ -45,7 +45,7 @@ steps:
 ---
 kind: Http.Server
 metadata:
-  name: Server
+  name: server
   module: FeedbackApi
 baseUrl: http://localhost:8844
 port: 8844
@@ -55,11 +55,11 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /v1
-    mount: !ref FeedbackRoutes
+    mount: !ref feedbackRoutes
 ---
 kind: Http.Api
 metadata:
-  name: FeedbackRoutes
+  name: feedbackRoutes
   module: FeedbackApi
 routes:
   # POST /v1/feedback — insert a new entry, score derived from body length heuristic
@@ -78,7 +78,7 @@ routes:
           required: [ text ]
     handler:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
     inputs:
       sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
       bindings:
@@ -99,7 +99,7 @@ routes:
       method: GET
     handler:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
     inputs:
       sql: "SELECT id, text, source, score, created_at FROM feedback ORDER BY created_at DESC"
     returns:
@@ -121,7 +121,7 @@ routes:
           required: [ id ]
     handler:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
     inputs:
       sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"
       bindings:

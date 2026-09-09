@@ -5,14 +5,14 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestExtendsCapabilityMismatch
+  - !ref testExtendsCapabilityMismatch
 ---
 # Extending a concrete kind is now valid (general single inheritance). What stays
 # forbidden is changing the lifecycle role — asserts the analyzer emits
 # EXTENDS_CAPABILITY_MISMATCH when `capability` differs from the inherited one.
 kind: Assert.Manifest
 metadata:
-  name: TestExtendsCapabilityMismatch
+  name: testExtendsCapabilityMismatch
 source: ./__fixtures__/extends-non-abstract.yaml
 expect:
   errors:

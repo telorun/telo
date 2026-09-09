@@ -5,15 +5,15 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestAbstractImportClean
-  - !ref TestAbstractXRefResolution
+  - !ref testAbstractImportClean
+  - !ref testAbstractXRefResolution
 ---
 # Asserts that a library declaring a Telo.Abstract plus a canonical `capability +
 # extends` implementation analyzes with zero diagnostics. This is the baseline
 # sanity check for library-declared abstracts.
 kind: Assert.Manifest
 metadata:
-  name: TestAbstractImportClean
+  name: testAbstractImportClean
 source: ./__fixtures__/abstract-lib.yaml
 expect: {}
 ---
@@ -22,6 +22,6 @@ expect: {}
 # abstract) is accepted as a valid reference target.
 kind: Assert.Manifest
 metadata:
-  name: TestAbstractXRefResolution
+  name: testAbstractXRefResolution
 source: ./__fixtures__/abstract-xref-consumer.yaml
 expect: {}

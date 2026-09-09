@@ -8,30 +8,30 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestPromptShorthand
+  - !ref testPromptShorthand
 ---
 kind: AiEcho.EchoModel
 metadata:
-  name: Echo
+  name: echo
 ---
 kind: Ai.Text
 metadata:
-  name: Summarize
-model: !ref Echo
+  name: summarize
+model: !ref echo
 ---
 # `inputs.prompt` is shorthand for `messages: [{role: "user", content: prompt}]`.
 # Echo returns the content of the last message verbatim → result.text === prompt.
 kind: Run.Sequence
 metadata:
-  name: TestPromptShorthand
+  name: testPromptShorthand
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       prompt: "hello world"
-    invoke: !ref Summarize
-  - name: AssertText
+    invoke: !ref summarize
+  - name: assertText
     inputs:
-      text: "${{ steps.Invoke.result.text }}"
+      text: "${{ steps.invoke.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -41,10 +41,10 @@ steps:
             type: string
             const: "hello world"
         required: [ text ]
-  - name: AssertUsage
+  - name: assertUsage
     inputs:
-      usage: "${{ steps.Invoke.result.usage }}"
-      finishReason: "${{ steps.Invoke.result.finishReason }}"
+      usage: "${{ steps.invoke.result.usage }}"
+      finishReason: "${{ steps.invoke.result.finishReason }}"
     invoke:
       kind: Assert.Schema
       schema:

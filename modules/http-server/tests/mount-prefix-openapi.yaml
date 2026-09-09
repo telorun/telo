@@ -15,21 +15,21 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Run.Value
-metadata: { name: RootList }
+metadata: { name: rootList }
 value: { where: "root" }
 ---
 kind: Run.Value
-metadata: { name: AdminList }
+metadata: { name: adminList }
 value: { where: "admin" }
 ---
 kind: Http.Api
-metadata: { name: RootApi }
+metadata: { name: rootApi }
 routes:
   - request: { path: /links, method: GET }
-    handler: !ref RootList
+    handler: !ref rootList
     returns:
       - status: 200
         content:
@@ -37,10 +37,10 @@ routes:
             body: { where: "${{ result.where }}" }
 ---
 kind: Http.Api
-metadata: { name: AdminApi }
+metadata: { name: adminApi }
 routes:
   - request: { path: /links, method: GET }
-    handler: !ref AdminList
+    handler: !ref adminList
     returns:
       - status: 200
         content:
@@ -49,7 +49,7 @@ routes:
 ---
 # Fetch a URL and parse JSON.
 kind: JS.Script
-metadata: { name: Fetch }
+metadata: { name: fetch }
 code: |
   async function main({ url }) {
     const r = await fetch(url);
@@ -72,7 +72,7 @@ outputType:
 ---
 # Read the OpenAPI doc and surface what the regression cares about.
 kind: JS.Script
-metadata: { name: InspectDoc }
+metadata: { name: inspectDoc }
 code: |
   async function main({ url }) {
     const r = await fetch(url);
@@ -106,7 +106,7 @@ kind: Http.Reference
 metadata: { name: docs }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -116,21 +116,21 @@ with:
       info: { title: MountPrefix, version: 1.0.0 }
     mounts:
       - path: /
-        mount: !ref RootApi
+        mount: !ref rootApi
       - path: /admin
-        mount: !ref AdminApi
+        mount: !ref adminApi
       - path: /reference
         mount: !ref docs
 targets:
   - !ref Server
 steps:
-  - name: HitRoot
+  - name: hitRoot
     inputs: { url: http://127.0.0.1:8963/links }
-    invoke: !ref Fetch
-  - name: AssertRoot
+    invoke: !ref fetch
+  - name: assertRoot
     inputs:
-      status: "${{ steps.HitRoot.result.status }}"
-      where: "${{ steps.HitRoot.result.body.where }}"
+      status: "${{ steps.hitRoot.result.status }}"
+      where: "${{ steps.hitRoot.result.body.where }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -140,13 +140,13 @@ steps:
           where: { const: "root" }
         required: [ status, where ]
 
-  - name: HitAdmin
+  - name: hitAdmin
     inputs: { url: http://127.0.0.1:8963/admin/links }
-    invoke: !ref Fetch
-  - name: AssertAdmin
+    invoke: !ref fetch
+  - name: assertAdmin
     inputs:
-      status: "${{ steps.HitAdmin.result.status }}"
-      where: "${{ steps.HitAdmin.result.body.where }}"
+      status: "${{ steps.hitAdmin.result.status }}"
+      where: "${{ steps.hitAdmin.result.body.where }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -156,15 +156,15 @@ steps:
           where: { const: "admin" }
         required: [ status, where ]
 
-  - name: Doc
+  - name: doc
     inputs: { url: http://127.0.0.1:8963/reference/openapi.json }
-    invoke: !ref InspectDoc
-  - name: AssertDoc
+    invoke: !ref inspectDoc
+  - name: assertDoc
     inputs:
-      serverUrl: "${{ steps.Doc.result.serverUrl }}"
-      serverCount: "${{ steps.Doc.result.serverCount }}"
-      hasRoot: "${{ steps.Doc.result.hasRoot }}"
-      hasAdmin: "${{ steps.Doc.result.hasAdmin }}"
+      serverUrl: "${{ steps.doc.result.serverUrl }}"
+      serverCount: "${{ steps.doc.result.serverCount }}"
+      hasRoot: "${{ steps.doc.result.hasRoot }}"
+      hasAdmin: "${{ steps.doc.result.hasAdmin }}"
     invoke:
       kind: Assert.Schema
       schema:

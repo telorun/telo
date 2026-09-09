@@ -6,13 +6,13 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestInvokeStep
+  - !ref testInvokeStep
 ---
 kind: Run.Sequence
 metadata:
-  name: TestInvokeStep
+  name: testInvokeStep
 steps:
-  - name: AddNumbers
+  - name: addNumbers
     inputs:
       a: 5
       b: 3
@@ -23,9 +23,9 @@ steps:
         b: { type: number }
       value:
         sum: !cel "inputs.a + inputs.b"
-  - name: VerifySum
+  - name: verifySum
     inputs:
-      sum: "${{ steps.AddNumbers.result.sum }}"
+      sum: "${{ steps.addNumbers.result.sum }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -37,7 +37,7 @@ steps:
 ---
 kind: Assert.Events
 metadata:
-  name: ExpectEvents
+  name: expectEvents
 filter:
   - type: "*"
 expect:

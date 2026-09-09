@@ -16,12 +16,12 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 # Fetch the served OpenAPI document and surface its first server URL, so the
 # assertion compares a plain string instead of indexing a dynamic body.
 kind: JS.Script
-metadata: { name: FetchServerUrl }
+metadata: { name: fetchServerUrl }
 code: |
   async function main({ url, headers }) {
     const r = await fetch(url, { headers: headers || {} });
@@ -49,14 +49,14 @@ outputType:
     required: [ status, serverUrl, path ]
 ---
 kind: Run.Value
-metadata: { name: Ping }
+metadata: { name: ping }
 value: { ok: true }
 ---
 kind: Http.Api
-metadata: { name: ApiRelative }
+metadata: { name: apiRelative }
 routes:
   - request: { path: /ping, method: GET }
-    handler: !ref Ping
+    handler: !ref ping
     returns:
       - status: 200
         content:
@@ -64,10 +64,10 @@ routes:
             body: { ok: "${{ result.ok }}" }
 ---
 kind: Http.Api
-metadata: { name: ApiForwarded }
+metadata: { name: apiForwarded }
 routes:
   - request: { path: /ping, method: GET }
-    handler: !ref Ping
+    handler: !ref ping
     returns:
       - status: 200
         content:
@@ -80,7 +80,7 @@ kind: Http.Reference
 metadata: { name: docs }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: RelativeServer }
@@ -90,7 +90,7 @@ with:
       info: { title: RelativeServer, version: 1.0.0 }
     mounts:
       - path: /v1
-        mount: !ref ApiRelative
+        mount: !ref apiRelative
       - path: /reference
         mount: !ref docs
   - kind: Http.Server
@@ -102,21 +102,21 @@ with:
       info: { title: ForwardedServer, version: 1.0.0 }
     mounts:
       - path: /v1
-        mount: !ref ApiForwarded
+        mount: !ref apiForwarded
       - path: /reference
         mount: !ref docs
 targets:
   - !ref RelativeServer
   - !ref ForwardedServer
 steps:
-  - name: HitRelative
+  - name: hitRelative
     inputs:
       url: http://127.0.0.1:8961/reference/openapi.json
-    invoke: !ref FetchServerUrl
-  - name: AssertRelative
+    invoke: !ref fetchServerUrl
+  - name: assertRelative
     inputs:
-      serverUrl: "${{ steps.HitRelative.result.serverUrl }}"
-      path: "${{ steps.HitRelative.result.path }}"
+      serverUrl: "${{ steps.hitRelative.result.serverUrl }}"
+      path: "${{ steps.hitRelative.result.path }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -125,17 +125,17 @@ steps:
           serverUrl: { const: "/" }
           path: { const: "/v1/ping" }
         required: [ serverUrl, path ]
-  - name: HitForwarded
+  - name: hitForwarded
     inputs:
       url: http://127.0.0.1:8962/reference/openapi.json
       headers:
         X-Forwarded-Host: api.example.com
         X-Forwarded-Proto: https
-    invoke: !ref FetchServerUrl
-  - name: AssertForwarded
+    invoke: !ref fetchServerUrl
+  - name: assertForwarded
     inputs:
-      serverUrl: "${{ steps.HitForwarded.result.serverUrl }}"
-      path: "${{ steps.HitForwarded.result.path }}"
+      serverUrl: "${{ steps.hitForwarded.result.serverUrl }}"
+      path: "${{ steps.hitForwarded.result.path }}"
     invoke:
       kind: Assert.Schema
       schema:

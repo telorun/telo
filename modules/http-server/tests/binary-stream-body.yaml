@@ -15,11 +15,11 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestUpload
+  - !ref testUpload
 ---
 # Handler: drain the streamed request body and echo it back decoded.
 kind: JS.Script
-metadata: { name: DrainBody }
+metadata: { name: drainBody }
 code: |
   async function main({ body }) {
     const chunks = [];
@@ -46,7 +46,7 @@ outputType:
 # Client: POST raw bytes with Content-Type application/gzip; the stream parser
 # passes them through undecoded. Read back the JSON echo.
 kind: JS.Script
-metadata: { name: Upload }
+metadata: { name: upload }
 code: |
   async function main({ url, payload }) {
     const r = await fetch(url, {
@@ -76,7 +76,7 @@ outputType:
     required: [ status, length, text ]
 ---
 kind: Http.Api
-metadata: { name: Api }
+metadata: { name: api }
 routes:
   - request:
       path: /upload
@@ -84,7 +84,7 @@ routes:
       schema:
         body:
           x-telo-stream: true
-    handler: !ref DrainBody
+    handler: !ref drainBody
     inputs:
       body: "${{ request.body }}"
     returns:
@@ -96,7 +96,7 @@ routes:
               text: "${{ result.text }}"
 ---
 kind: Run.Sequence
-metadata: { name: TestUpload }
+metadata: { name: testUpload }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -108,20 +108,20 @@ with:
         stream: true
     mounts:
       - path: /
-        mount: !ref Api
+        mount: !ref api
 targets:
   - !ref Server
 steps:
-  - name: Upload
+  - name: upload
     inputs:
       url: http://127.0.0.1:8958/upload
       payload: "hello stream body"
-    invoke: !ref Upload
-  - name: Assert
+    invoke: !ref upload
+  - name: assert
     inputs:
-      status: "${{ steps.Upload.result.status }}"
-      length: "${{ steps.Upload.result.length }}"
-      text: "${{ steps.Upload.result.text }}"
+      status: "${{ steps.upload.result.status }}"
+      length: "${{ steps.upload.result.length }}"
+      text: "${{ steps.upload.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:

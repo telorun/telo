@@ -17,12 +17,12 @@ describe("trace context — root scope on a trace's root span", () => {
     kernel.setTracing(true);
 
     const echoes: Payload[] = [];
-    kernel.on("Echo.Invoked", (e) => {
+    kernel.on("echo.Invoked", (e) => {
       echoes.push(e.payload as Payload);
     });
 
     // A top-level invoke is a trace root → its terminal span carries the scope.
-    await kernel.invoke("Run.Value.Echo", { value: 1 });
+    await kernel.invoke("Run.Value.echo", { value: 1 });
 
     const ctx = echoes[0]?.context as Record<string, any> | undefined;
     expect(ctx).toBeDefined();
@@ -52,7 +52,7 @@ describe("trace context — root scope on a trace's root span", () => {
     // Outer is the root; its nested Echo invoke inherits the trace and is not a root.
     const outer = {
       invoke: async () => {
-        await rootContext.invoke("Run.Value", "Echo", { value: 1 });
+        await rootContext.invoke("Run.Value", "echo", { value: 1 });
         return {};
       },
     };
@@ -63,7 +63,7 @@ describe("trace context — root scope on a trace's root span", () => {
     await rootContext.invokeResolved("Test.Outer", "Outer", outer, {});
 
     expect((byEvent.get("Outer.Invoked") as any)?.context).toBeDefined(); // root
-    expect((byEvent.get("Echo.Invoked") as any)?.context).toBeUndefined(); // nested
+    expect((byEvent.get("echo.Invoked") as any)?.context).toBeUndefined(); // nested
 
     await kernel.teardown();
   });

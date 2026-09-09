@@ -5,4 +5,4 @@ metadata:
 imports:
   Domain: ../domain
 exports:
-  resources: [ Domain.Db, Domain.Migrate ]
+  resources: [ Domain.db, Domain.migrate ]

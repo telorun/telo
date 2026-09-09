@@ -12,25 +12,25 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: FakeEmbedding.Model
-metadata: { name: Model }
+metadata: { name: model }
 dimensions: 8
 ---
 kind: Embedding.Query
-metadata: { name: QueryVector }
-model: !ref Model
+metadata: { name: queryVector }
+model: !ref model
 ---
 kind: Embedding.Passage
-metadata: { name: PassageVector }
-model: !ref Model
+metadata: { name: passageVector }
+model: !ref model
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   - name: query
-    invoke: !ref QueryVector
+    invoke: !ref queryVector
     inputs:
       input: "telo"
   - name: assertQuery
@@ -55,7 +55,7 @@ steps:
               maxItems: 8
           head: { const: 116 }
   - name: passage
-    invoke: !ref PassageVector
+    invoke: !ref passageVector
     inputs:
       input: ["telo", "run"]
   - name: assertPassage

@@ -12,49 +12,49 @@ imports:
   Run: ../../run
   JS: ../../javascript
 targets:
-  - !ref TestEqualsHappy
-  - !ref TestEqualsFails
-  - !ref TestEqualsRejectsNonPlainObjects
-  - !ref TestMatchesHappy
-  - !ref TestMatchesFails
-  - !ref TestContainsString
-  - !ref TestContainsArray
-  - !ref TestContainsFails
+  - !ref testEqualsHappy
+  - !ref testEqualsFails
+  - !ref testEqualsRejectsNonPlainObjects
+  - !ref testMatchesHappy
+  - !ref testMatchesFails
+  - !ref testContainsString
+  - !ref testContainsArray
+  - !ref testContainsFails
 ---
 # --- Assert.Equals ---------------------------------------------------------
 kind: Run.Sequence
-metadata: { name: TestEqualsHappy }
+metadata: { name: testEqualsHappy }
 steps:
-  - name: StringEq
+  - name: stringEq
     invoke: { kind: Assert.Equals }
     inputs: { actual: "hello", expected: "hello" }
-  - name: NumberEq
+  - name: numberEq
     invoke: { kind: Assert.Equals }
     inputs: { actual: 42, expected: 42 }
-  - name: BoolEq
+  - name: boolEq
     invoke: { kind: Assert.Equals }
     inputs: { actual: true, expected: true }
-  - name: ObjEq
+  - name: objEq
     invoke: { kind: Assert.Equals }
     inputs:
       actual: { a: 1, b: [ 2, 3 ], c: { d: 4 } }
       expected: { a: 1, b: [ 2, 3 ], c: { d: 4 } }
-  - name: ArrEq
+  - name: arrEq
     invoke: { kind: Assert.Equals }
     inputs:
       actual: [ 1, 2, 3 ]
       expected: [ 1, 2, 3 ]
 ---
 kind: Run.Sequence
-metadata: { name: TestEqualsFails }
+metadata: { name: testEqualsFails }
 steps:
-  - name: Tried
+  - name: tried
     try:
-      - name: ShouldFail
+      - name: shouldFail
         invoke: { kind: Assert.Equals }
         inputs: { actual: "hello", expected: "world" }
     catch:
-      - name: AssertCaught
+      - name: assertCaught
         invoke: { kind: Assert.Equals }
         inputs:
           actual: "${{ error.code }}"
@@ -67,7 +67,7 @@ steps:
 # values. The fix refuses structural compare for non-plain objects;
 # only `Object.is`-equal instances pass.
 kind: JS.Script
-metadata: { name: BuildDistinctDates }
+metadata: { name: buildDistinctDates }
 code: |
   async function main() {
     return {
@@ -77,7 +77,7 @@ code: |
   }
 ---
 kind: JS.Script
-metadata: { name: BuildDistinctMaps }
+metadata: { name: buildDistinctMaps }
 code: |
   async function main() {
     return {
@@ -87,34 +87,34 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: TestEqualsRejectsNonPlainObjects }
+metadata: { name: testEqualsRejectsNonPlainObjects }
 steps:
-  - name: Dates
-    invoke: !ref BuildDistinctDates
-  - name: DatesTried
+  - name: dates
+    invoke: !ref buildDistinctDates
+  - name: datesTried
     try:
-      - name: ShouldFail
+      - name: shouldFail
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ steps.Dates.result.a }}"
-          expected: "${{ steps.Dates.result.b }}"
+          actual: "${{ steps.dates.result.a }}"
+          expected: "${{ steps.dates.result.b }}"
     catch:
-      - name: AssertDateMismatchCaught
+      - name: assertDateMismatchCaught
         invoke: { kind: Assert.Equals }
         inputs:
           actual: "${{ error.code }}"
           expected: "ERR_ASSERTION_FAILED"
-  - name: Maps
-    invoke: !ref BuildDistinctMaps
-  - name: MapsTried
+  - name: maps
+    invoke: !ref buildDistinctMaps
+  - name: mapsTried
     try:
-      - name: ShouldFail
+      - name: shouldFail
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ steps.Maps.result.a }}"
-          expected: "${{ steps.Maps.result.b }}"
+          actual: "${{ steps.maps.result.a }}"
+          expected: "${{ steps.maps.result.b }}"
     catch:
-      - name: AssertMapMismatchCaught
+      - name: assertMapMismatchCaught
         invoke: { kind: Assert.Equals }
         inputs:
           actual: "${{ error.code }}"
@@ -122,28 +122,28 @@ steps:
 ---
 # --- Assert.Matches --------------------------------------------------------
 kind: Run.Sequence
-metadata: { name: TestMatchesHappy }
+metadata: { name: testMatchesHappy }
 steps:
-  - name: BasicMatch
+  - name: basicMatch
     invoke: { kind: Assert.Matches }
     inputs: { actual: "hello world", pattern: "^hello" }
-  - name: WithFlags
+  - name: withFlags
     invoke: { kind: Assert.Matches }
     inputs: { actual: "HELLO", pattern: "^hello$", flags: "i" }
-  - name: ContainsDigit
+  - name: containsDigit
     invoke: { kind: Assert.Matches }
     inputs: { actual: "abc123", pattern: "[0-9]+" }
 ---
 kind: Run.Sequence
-metadata: { name: TestMatchesFails }
+metadata: { name: testMatchesFails }
 steps:
-  - name: Tried
+  - name: tried
     try:
-      - name: ShouldFail
+      - name: shouldFail
         invoke: { kind: Assert.Matches }
         inputs: { actual: "hello", pattern: "^world$" }
     catch:
-      - name: AssertCaught
+      - name: assertCaught
         invoke: { kind: Assert.Equals }
         inputs:
           actual: "${{ error.code }}"
@@ -151,51 +151,51 @@ steps:
 ---
 # --- Assert.Contains -------------------------------------------------------
 kind: Run.Sequence
-metadata: { name: TestContainsString }
+metadata: { name: testContainsString }
 steps:
-  - name: SubstringMatch
+  - name: substringMatch
     invoke: { kind: Assert.Contains }
     inputs: { actual: "hello world", value: "lo wo" }
-  - name: WholeStringMatch
+  - name: wholeStringMatch
     invoke: { kind: Assert.Contains }
     inputs: { actual: "hello", value: "hello" }
-  - name: EmptyString
+  - name: emptyString
     invoke: { kind: Assert.Contains }
     inputs: { actual: "anything", value: "" }
 ---
 kind: Run.Sequence
-metadata: { name: TestContainsArray }
+metadata: { name: testContainsArray }
 steps:
-  - name: PrimitiveElement
+  - name: primitiveElement
     invoke: { kind: Assert.Contains }
     inputs: { actual: [ 1, 2, 3 ], value: 2 }
-  - name: ObjectElement
+  - name: objectElement
     invoke: { kind: Assert.Contains }
     inputs:
       actual: [ { id: 1 }, { id: 2 }, { id: 3 } ]
       value: { id: 2 }
 ---
 kind: Run.Sequence
-metadata: { name: TestContainsFails }
+metadata: { name: testContainsFails }
 steps:
-  - name: SubstringMissing
+  - name: substringMissing
     try:
-      - name: ShouldFail
+      - name: shouldFail
         invoke: { kind: Assert.Contains }
         inputs: { actual: "hello", value: "xyz" }
     catch:
-      - name: AssertCaught
+      - name: assertCaught
         invoke: { kind: Assert.Equals }
         inputs:
           actual: "${{ error.code }}"
           expected: "ERR_ASSERTION_FAILED"
-  - name: ElementMissing
+  - name: elementMissing
     try:
-      - name: ShouldFail
+      - name: shouldFail
         invoke: { kind: Assert.Contains }
         inputs: { actual: [ 1, 2, 3 ], value: 99 }
     catch:
-      - name: AssertCaught
+      - name: assertCaught
         invoke: { kind: Assert.Equals }
         inputs:
           actual: "${{ error.code }}"

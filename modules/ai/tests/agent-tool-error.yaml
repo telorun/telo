@@ -8,20 +8,20 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestToolError
+  - !ref testToolError
 ---
 # Echo requests a tool that doesn't exist. With the default onToolError "feedback",
 # the agent records the error and feeds it back to the model rather than aborting.
 kind: AiEcho.EchoModel
 metadata:
-  name: Echo
+  name: echo
 emitToolCall:
   name: ghost
   arguments: {}
 ---
 kind: Run.Value
 metadata:
-  name: Multiplier
+  name: multiplier
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -34,9 +34,9 @@ value:
 ---
 kind: Ai.Tools
 metadata:
-  name: LocalTools
+  name: localTools
 tools:
-  - tool: !ref Multiplier
+  - tool: !ref multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -49,25 +49,25 @@ tools:
 ---
 kind: Ai.Agent
 metadata:
-  name: Assistant
-model: !ref Echo
+  name: assistant
+model: !ref echo
 onToolError: feedback
 toolProviders:
-  - provider: !ref LocalTools
+  - provider: !ref localTools
 ---
 kind: Run.Sequence
 metadata:
-  name: TestToolError
+  name: testToolError
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       prompt: "do something"
-    invoke: !ref Assistant
+    invoke: !ref assistant
   # The unknown-tool error is surfaced as the tool result (not swallowed), then echoed.
-  - name: AssertText
+  - name: assertText
     inputs:
-      text: "${{ steps.Invoke.result.text }}"
-      hadError: "${{ steps.Invoke.result.steps[0].toolResults[0].error }}"
+      text: "${{ steps.invoke.result.text }}"
+      hadError: "${{ steps.invoke.result.steps[0].toolResults[0].error }}"
     invoke:
       kind: Assert.Schema
       schema:

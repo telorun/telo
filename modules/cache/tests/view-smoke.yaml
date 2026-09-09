@@ -12,14 +12,14 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: CacheMemory.Store
-metadata: { name: Mem }
+metadata: { name: mem }
 ---
 # Wrapped source-of-truth: echoes a value derived from the cache key.
 kind: Run.Value
-metadata: { name: Loader }
+metadata: { name: loader }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -30,17 +30,17 @@ value:
   source: !cel "'value-for-' + inputs.key"
 ---
 kind: Cache.View
-metadata: { name: V }
-store: !ref Mem
-invoke: !ref Loader
+metadata: { name: v }
+store: !ref mem
+invoke: !ref loader
 ttl: "60s"
 revalidate: sync
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   - name: first
-    invoke: !ref V
+    invoke: !ref v
     inputs:
       key: "k1"
   - name: assertMiss
@@ -56,7 +56,7 @@ steps:
           state: { const: "miss" }
           source: { const: "value-for-k1" }
   - name: second
-    invoke: !ref V
+    invoke: !ref v
     inputs:
       key: "k1"
   - name: assertFresh

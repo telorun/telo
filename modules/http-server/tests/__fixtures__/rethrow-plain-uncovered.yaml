@@ -11,7 +11,7 @@ imports:
 # catch rethrows error.code. The handler's resolved union is {INTERNAL_ERROR}.
 kind: Run.Sequence
 metadata:
-  name: InvokeThenRethrow
+  name: invokeThenRethrow
 steps:
   - name: outer
     try:
@@ -32,12 +32,12 @@ steps:
 # UNDECLARED_THROW_CODE.
 kind: Http.Api
 metadata:
-  name: RethrowPlainApi
+  name: rethrowPlainApi
 routes:
   - request:
       path: /x
       method: GET
-    handler: !ref InvokeThenRethrow
+    handler: !ref invokeThenRethrow
     returns:
       - status: 200
         content:

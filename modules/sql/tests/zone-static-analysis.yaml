@@ -8,21 +8,21 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestSatisfied
-  - !ref TestUnsatisfiedAtRoute
-  - !ref TestUnsatisfiedAtBoot
-  - !ref TestCrossConnection
-  - !ref TestDeferredAtConsumer
-  - !ref TestCacheDefaultIsClean
-  - !ref TestCacheBackgroundErrors
-  - !ref TestExportUnsatisfiable
+  - !ref testSatisfied
+  - !ref testUnsatisfiedAtRoute
+  - !ref testUnsatisfiedAtBoot
+  - !ref testCrossConnection
+  - !ref testDeferredAtConsumer
+  - !ref testCacheDefaultIsClean
+  - !ref testCacheBackgroundErrors
+  - !ref testExportUnsatisfiable
 ---
 # The positive control: a bound statement inside its own transaction, reached
 # through a Run.Sequence. Correlation resolves through the derived
 # `/transaction/connection` pointer, since the statement omits `connection:`.
 kind: Assert.Manifest
 metadata:
-  name: TestSatisfied
+  name: testSatisfied
 source: ./__fixtures__/zone-satisfied.yaml
 expect:
   errors: []
@@ -32,7 +32,7 @@ expect:
 # GUARANTEES a fresh context — so it can never be satisfied, and errors.
 kind: Assert.Manifest
 metadata:
-  name: TestUnsatisfiedAtRoute
+  name: testUnsatisfiedAtRoute
 source: ./__fixtures__/zone-unsatisfied-at-route.yaml
 expect:
   errors:
@@ -43,7 +43,7 @@ expect:
 # arriving there errors at boot.
 kind: Assert.Manifest
 metadata:
-  name: TestUnsatisfiedAtBoot
+  name: testUnsatisfiedAtBoot
 source: ./__fixtures__/zone-unsatisfied-at-boot.yaml
 expect:
   errors:
@@ -55,7 +55,7 @@ expect:
 # simply not transactional — the provider is passed undischarged.
 kind: Assert.Manifest
 metadata:
-  name: TestCrossConnection
+  name: testCrossConnection
 source: ./__fixtures__/zone-cross-connection.yaml
 expect:
   errors:
@@ -68,7 +68,7 @@ expect:
 # assertion stays the enforcement.
 kind: Assert.Manifest
 metadata:
-  name: TestDeferredAtConsumer
+  name: testDeferredAtConsumer
 source: ./__fixtures__/zone-deferred-at-consumer.yaml
 expect:
   errors: []
@@ -80,7 +80,7 @@ expect:
 # working cached transactional call.
 kind: Assert.Manifest
 metadata:
-  name: TestCacheDefaultIsClean
+  name: testCacheDefaultIsClean
 source: ./__fixtures__/zone-through-cache-sync.yaml
 expect:
   errors: []
@@ -92,7 +92,7 @@ expect:
 # ERR_ZONE_REQUIRED on every stale revalidation.
 kind: Assert.Manifest
 metadata:
-  name: TestCacheBackgroundErrors
+  name: testCacheBackgroundErrors
 source: ./__fixtures__/zone-through-cache-background.yaml
 expect:
   errors:
@@ -105,7 +105,7 @@ expect:
 # against a file it does not own.
 kind: Assert.Manifest
 metadata:
-  name: TestExportUnsatisfiable
+  name: testExportUnsatisfiable
 source: ./__fixtures__/zone-export-unsatisfiable/telo.yaml
 expect:
   errors:

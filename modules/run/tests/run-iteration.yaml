@@ -6,15 +6,15 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref NotifyEach
-  - !ref ExpectEvents
+  - !ref notifyEach
+  - !ref expectEvents
 ---
 kind: Run.Iteration
 metadata:
-  name: NotifyEach
+  name: notifyEach
 collection: !cel "['a', 'b', 'c']"
 steps:
-  - name: Notify
+  - name: notify
     inputs:
       who: !cel "item"
       # `index + 1`, not a bare `index`: the declared type is `integer`, so a
@@ -32,7 +32,7 @@ steps:
 ---
 kind: Assert.Events
 metadata:
-  name: ExpectEvents
+  name: expectEvents
 filter:
   - type: "*"
 expect:

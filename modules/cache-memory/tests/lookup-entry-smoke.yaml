@@ -12,30 +12,30 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: CacheMemory.Store
-metadata: { name: Mem }
+metadata: { name: mem }
 ---
 kind: Cache.Entry
-metadata: { name: Put }
-store: !ref Mem
+metadata: { name: put }
+store: !ref mem
 ttl: "60s"
 ---
 kind: Cache.Lookup
-metadata: { name: Get }
-store: !ref Mem
+metadata: { name: get }
+store: !ref mem
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   - name: write
-    invoke: !ref Put
+    invoke: !ref put
     inputs:
       key: "greeting"
       value: { hello: "world" }
   - name: read
-    invoke: !ref Get
+    invoke: !ref get
     inputs:
       key: "greeting"
   - name: assertFresh
@@ -51,7 +51,7 @@ steps:
           state: { const: "fresh" }
           hello: { const: "world" }
   - name: readAbsent
-    invoke: !ref Get
+    invoke: !ref get
     inputs:
       key: "nope"
   - name: assertMiss

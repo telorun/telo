@@ -9,20 +9,20 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestClean
-  - !ref TestChain
-  - !ref TestSwap
+  - !ref testClean
+  - !ref testChain
+  - !ref testSwap
 ---
 kind: Assert.Manifest
 metadata:
-  name: TestClean
+  name: testClean
 source: ./__fixtures__/rename-declaration/clean.yaml
 expect:
   errors: []
 ---
 kind: Assert.Manifest
 metadata:
-  name: TestChain
+  name: testChain
 source: ./__fixtures__/rename-declaration/chain.yaml
 expect:
   errors:
@@ -34,7 +34,7 @@ expect:
 # claimant answers for itself and each gets its own anchor.
 kind: Assert.Manifest
 metadata:
-  name: TestSwap
+  name: testSwap
 source: ./__fixtures__/rename-declaration/swap.yaml
 expect:
   errors:

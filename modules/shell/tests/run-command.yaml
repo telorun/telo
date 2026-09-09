@@ -11,56 +11,56 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Shell.LocalHost
 metadata:
-  name: Local
+  name: local
 env:
   GREETING: hi
 ---
 kind: Run.Sequence
 metadata:
-  name: Test
+  name: test
 steps:
-  - name: Echo
+  - name: echo
     inputs:
       command: "printf hello"
     invoke:
       kind: Shell.Command
-      host: !ref Local
+      host: !ref local
 
-  - name: Fail
+  - name: fail
     inputs:
       command: "exit 3"
     invoke:
       kind: Shell.Command
-      host: !ref Local
+      host: !ref local
 
-  - name: Pipe
+  - name: pipe
     inputs:
       command: "printf X | cat"
     invoke:
       kind: Shell.Command
-      host: !ref Local
+      host: !ref local
 
-  - name: Env
+  - name: env
     inputs:
       command: 'printf %s "$GREETING-$NAME"'
       env:
         NAME: world
     invoke:
       kind: Shell.Command
-      host: !ref Local
+      host: !ref local
 
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        echoOut: !cel "steps.Echo.result.stdout"
-        echoCode: !cel "steps.Echo.result.exitCode"
-        failCode: !cel "steps.Fail.result.exitCode"
-        pipeOut: !cel "steps.Pipe.result.stdout"
-        envOut: !cel "steps.Env.result.stdout"
+        echoOut: !cel "steps.echo.result.stdout"
+        echoCode: !cel "steps.echo.result.exitCode"
+        failCode: !cel "steps.fail.result.exitCode"
+        pipeOut: !cel "steps.pipe.result.stdout"
+        envOut: !cel "steps.env.result.stdout"
       expected:
         echoOut: hello
         echoCode: 0

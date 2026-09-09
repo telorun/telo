@@ -15,9 +15,9 @@ variables:
     type: string
     default: !include-text assets/theme.txt
 targets:
-  - invoke: !ref Noop
+  - invoke: !ref noop
 ---
 kind: Run.Value
-metadata: { name: Noop }
+metadata: { name: noop }
 value:
   ok: true

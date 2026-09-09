@@ -20,17 +20,17 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 # Named rather than inline at the route: an inline `{kind}` handler from an
 # imported library inside a `with:` scope fails to resolve to a live instance
 # (ERR_RESOURCE_NOT_INVOKABLE) — a pre-existing cross-module mount limitation,
 # unrelated to multipart.
 kind: Multipart.Decoder
-metadata: { name: ServerDecoder }
+metadata: { name: serverDecoder }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 with:
   - kind: Server.Api
     metadata: { name: TestApi }
@@ -52,7 +52,7 @@ with:
         inputs:
           input: !cel "request.body"
           contentType: !cel "request.headers['content-type']"
-        handler: !ref ServerDecoder
+        handler: !ref serverDecoder
         returns:
           - status: 200
             content:
@@ -84,7 +84,7 @@ with:
 targets:
   - !ref TestServer
 steps:
-  - name: Encode
+  - name: encode
     inputs:
       subtype: related
       parts:
@@ -101,22 +101,22 @@ steps:
   # `multipart/related` by hand here would omit the boundary and the server would
   # find no parts — which is why the encoder returns the header rather than
   # letting a caller compose one.
-  - name: Post
+  - name: post
     inputs:
       url: http://localhost:8873/api/upload
       method: POST
       headers:
-        content-type: !cel "steps.Encode.result.contentType"
-      body: !cel "steps.Encode.result.output"
+        content-type: !cel "steps.encode.result.contentType"
+      body: !cel "steps.encode.result.output"
     invoke:
       kind: Http.Request
 
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        count: !cel "steps.Post.result.body.count"
-        names: !cel "steps.Post.result.body.names"
-        texts: !cel "steps.Post.result.body.texts"
+        count: !cel "steps.post.result.body.count"
+        names: !cel "steps.post.result.body.names"
+        texts: !cel "steps.post.result.body.texts"
       expected:
         count: 2
         names: [unnamed, note.txt]

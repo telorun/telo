@@ -8,18 +8,18 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Migrate
-  - !ref VerifyMigrations
+  - !ref migrate
+  - !ref verifyMigrations
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 kind: SQLite.Schema
 metadata:
-  name: Migrate
-connection: !ref Db
+  name: migrate
+connection: !ref db
 # No `version:` and no `reclaim:` — this app only runs migrations, so it looks
 # exactly like the imperative kind it replaced. The version is the reclamation
 # clock and nothing else reads it.
@@ -36,18 +36,18 @@ migrations:
 ---
 kind: Run.Sequence
 metadata:
-  name: VerifyMigrations
+  name: verifyMigrations
 steps:
-  - name: SelectSeeded
+  - name: selectSeeded
     inputs:
       sql: "SELECT name FROM users WHERE id = 1"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
 
-  - name: AssertSeeded
+  - name: assertSeeded
     inputs:
-      rows: "${{ steps.SelectSeeded.result.rows }}"
+      rows: "${{ steps.selectSeeded.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -63,16 +63,16 @@ steps:
                 name:
                   const: Alice
 
-  - name: SelectLedger
+  - name: selectLedger
     inputs:
       sql: "SELECT key FROM telo_schema_migrations ORDER BY key"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
 
-  - name: AssertLedger
+  - name: assertLedger
     inputs:
-      rows: "${{ steps.SelectLedger.result.rows }}"
+      rows: "${{ steps.selectLedger.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:

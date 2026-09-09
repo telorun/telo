@@ -15,7 +15,7 @@ imports:
   Run: ../../../run
   Assert: ../../../assert
 targets:
-  - !ref LiveStream
+  - !ref liveStream
 ---
 # The account: base URL and credential in one place, so the key is declared once
 # and the 401 re-acquire-and-retry is inherited rather than re-implemented.
@@ -36,7 +36,7 @@ client: !ref openaiClient
 # schema validation. The model is constructed (just config — no API call until
 # stream()), but never reached because the run-step is gated.
 kind: OpenAI.ChatModelStream
-metadata: { name: Live }
+metadata: { name: live }
 model: gpt-4o-mini
 request: !ref openaiRequest
 options:
@@ -47,27 +47,27 @@ options:
 # iterate stream(), and assert the contract shape (deltas concatenate to text,
 # exactly one finish part, usage populated).
 kind: AiEcho.StreamCollector
-metadata: { name: Collector }
-model: !ref Live
+metadata: { name: collector }
+model: !ref live
 ---
 kind: Run.Sequence
 metadata:
-  name: LiveStream
+  name: liveStream
 steps:
-  - name: GuardEnv
+  - name: guardEnv
     if: !cel "secrets.openaiApiKey != ''"
     then:
-      - name: Collect
+      - name: collect
         inputs:
           prompt: "Reply with exactly: hello"
-        invoke: !ref Collector
-      - name: Assert
+        invoke: !ref collector
+      - name: assert
         inputs:
-          deltas: "${{ steps.Collect.result.deltas }}"
-          deltaCount: "${{ steps.Collect.result.deltaCount }}"
-          finishReason: "${{ steps.Collect.result.finishReason }}"
-          promptTokens: "${{ steps.Collect.result.usage.promptTokens }}"
-          completionTokens: "${{ steps.Collect.result.usage.completionTokens }}"
+          deltas: "${{ steps.collect.result.deltas }}"
+          deltaCount: "${{ steps.collect.result.deltaCount }}"
+          finishReason: "${{ steps.collect.result.finishReason }}"
+          promptTokens: "${{ steps.collect.result.usage.promptTokens }}"
+          completionTokens: "${{ steps.collect.result.usage.completionTokens }}"
         invoke:
           kind: Assert.Schema
           schema:

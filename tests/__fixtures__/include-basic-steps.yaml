@@ -1,8 +1,8 @@
 kind: Run.Sequence
 metadata:
-  name: TestIncludeBasic
+  name: testIncludeBasic
 steps:
-  - name: AddNumbers
+  - name: addNumbers
     inputs:
       a: 10
       b: 20
@@ -13,9 +13,9 @@ steps:
         b: { type: number }
       value:
         sum: !cel "inputs.a + inputs.b"
-  - name: VerifySum
+  - name: verifySum
     inputs:
-      sum: "${{ steps.AddNumbers.result.sum }}"
+      sum: "${{ steps.addNumbers.result.sum }}"
     invoke:
       kind: Assert.Schema
       schema:

@@ -12,13 +12,13 @@ imports:
   Assert: ../
   Run: ../../run
 targets:
-  - !ref EmitIntegers
-  - !ref ExpectIntegerPayload
+  - !ref emitIntegers
+  - !ref expectIntegerPayload
 ---
 kind: Run.Sequence
-metadata: { name: EmitIntegers }
+metadata: { name: emitIntegers }
 steps:
-  - name: Count
+  - name: count
     inputs:
       # `size()` returns an int64; `+ 1` keeps it one. Both cross into the event
       # payload as BigInts.
@@ -35,7 +35,7 @@ steps:
         next: !cel "inputs.next"
 ---
 kind: Assert.Events
-metadata: { name: ExpectIntegerPayload }
+metadata: { name: expectIntegerPayload }
 filter:
   - type: "*"
 expect:

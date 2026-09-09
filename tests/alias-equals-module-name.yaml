@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestAliasEqualsModuleName
+  - !ref testAliasEqualsModuleName
 ---
 # The `exports.kinds` gate must not be sidestepped by naming. The definition registry is
 # keyed `<metadata.module>.<Kind>`, so a library called `Lib` imported under the alias `Lib`
@@ -14,7 +14,7 @@ targets:
 # threw at boot. That divergence is the defect class the static gate exists to remove.
 kind: Assert.Manifest
 metadata:
-  name: TestAliasEqualsModuleName
+  name: testAliasEqualsModuleName
 source: ./__fixtures__/alias-equals-module-name.yaml
 expect:
   errors:

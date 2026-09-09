@@ -14,18 +14,18 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestEncode
-  - !ref TestResumeEnvelope
+  - !ref testEncode
+  - !ref testResumeEnvelope
 ---
 kind: Stream.Of
-metadata: { name: Source }
+metadata: { name: source }
 items:
   - { type: "text-delta", delta: "h" }
   - { type: "text-delta", delta: "i" }
   - { type: "finish", usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: "stop" }
 ---
 kind: JS.Script
-metadata: { name: Drain }
+metadata: { name: drain }
 code: |
   async function main({ bytes }) {
     const chunks = [];
@@ -34,24 +34,24 @@ code: |
   }
 ---
 kind: Sse.Encoder
-metadata: { name: Encoder }
+metadata: { name: encoder }
 ---
 kind: Run.Sequence
-metadata: { name: TestEncode }
+metadata: { name: testEncode }
 steps:
-  - name: Source
-    invoke: !ref Source
-  - name: Encode
+  - name: source
+    invoke: !ref source
+  - name: encode
     inputs:
-      input: "${{ steps.Source.result.output }}"
-    invoke: !ref Encoder
-  - name: Drain
+      input: "${{ steps.source.result.output }}"
+    invoke: !ref encoder
+  - name: drain
     inputs:
-      bytes: "${{ steps.Encode.result.output }}"
-    invoke: !ref Drain
-  - name: Assert
+      bytes: "${{ steps.encode.result.output }}"
+    invoke: !ref drain
+  - name: assert
     inputs:
-      text: "${{ steps.Drain.result.text }}"
+      text: "${{ steps.drain.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -65,27 +65,27 @@ steps:
 # entry) frames as a `message` event carrying an `id:` line, so a client can
 # checkpoint and reconnect. The `id` becomes the SSE id line; the rest is data.
 kind: Stream.Of
-metadata: { name: ResumeSource }
+metadata: { name: resumeSource }
 items:
   - { id: 1, data: { type: "text-delta", delta: "h" } }
   - { id: 2, data: { type: "finish" } }
 ---
 kind: Run.Sequence
-metadata: { name: TestResumeEnvelope }
+metadata: { name: testResumeEnvelope }
 steps:
-  - name: Source
-    invoke: !ref ResumeSource
-  - name: Encode
+  - name: source
+    invoke: !ref resumeSource
+  - name: encode
     inputs:
-      input: !cel "steps.Source.result.output"
-    invoke: !ref Encoder
-  - name: Drain
+      input: !cel "steps.source.result.output"
+    invoke: !ref encoder
+  - name: drain
     inputs:
-      bytes: !cel "steps.Encode.result.output"
-    invoke: !ref Drain
-  - name: Assert
+      bytes: !cel "steps.encode.result.output"
+    invoke: !ref drain
+  - name: assert
     inputs:
-      text: !cel "steps.Drain.result.text"
+      text: !cel "steps.drain.result.text"
     invoke:
       kind: Assert.Schema
       schema:

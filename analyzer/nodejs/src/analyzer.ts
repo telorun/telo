@@ -1541,6 +1541,7 @@ export class StaticAnalyzer {
           aliases,
           rootModules,
           getCallGraph(),
+          { aliasesByModule, rootModules },
         ),
       );
       // A file embed resolves at resource creation, so one written on a doc that

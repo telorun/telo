@@ -12,18 +12,18 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestTransactionForwardsInputs
+  - !ref testTransactionForwardsInputs
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
+  name: db
 file: ":memory:"
 ---
 kind: Sql.Transaction
 metadata:
-  name: InsertTx
-connection: !ref Db
-steps: !ref InsertUser
+  name: insertTx
+connection: !ref db
+steps: !ref insertUser
 inputs:
   sql: "INSERT INTO users (id, name) VALUES (?, ?)"
   bindings:
@@ -35,40 +35,40 @@ inputs:
 # transaction's own `steps:` ref back to this command).
 kind: Sql.Command
 metadata:
-  name: InsertUser
-connection: !ref Db
+  name: insertUser
+connection: !ref db
 ---
 kind: Run.Sequence
 metadata:
-  name: TestTransactionForwardsInputs
+  name: testTransactionForwardsInputs
 steps:
-  - name: CreateTable
+  - name: createTable
     inputs:
       sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 
   # The transaction is invoked with {id, name}; its inputs map turns them into
   # the command's positional bindings inside the open transaction.
-  - name: InsertViaTx
+  - name: insertViaTx
     inputs:
       id: !cel "7"
       name: Ada
-    invoke: !ref InsertTx
+    invoke: !ref insertTx
 
-  - name: SelectBack
+  - name: selectBack
     inputs:
       sql: "SELECT name FROM users WHERE id = ?"
       bindings:
         - !cel "7"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
+      connection: !ref db
 
-  - name: AssertRow
+  - name: assertRow
     inputs:
-      actual: !cel "steps.SelectBack.result.rows"
+      actual: !cel "steps.selectBack.result.rows"
       expected:
         - name: Ada
     invoke:

@@ -12,38 +12,38 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: VectorStoreMemory.Store
-metadata: { name: Index }
+metadata: { name: index }
 metric: cosine
 dimensions: 3
 ---
 kind: VectorStore.Record
-metadata: { name: Write }
-store: !ref Index
+metadata: { name: write }
+store: !ref index
 ---
 kind: VectorStore.Match
-metadata: { name: Search }
-store: !ref Index
+metadata: { name: search }
+store: !ref index
 topK: 3
 ---
 kind: VectorStore.Removal
-metadata: { name: Drop }
-store: !ref Index
+metadata: { name: drop }
+store: !ref index
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   - name: write
-    invoke: !ref Write
+    invoke: !ref write
     inputs:
       items:
         - { id: a, vector: [1, 0, 0], metadata: { lang: en } }
         - { id: b, vector: [0, 1, 0], metadata: { lang: fr } }
         - { id: c, vector: [0, 0, 1], metadata: { lang: en } }
   - name: search
-    invoke: !ref Search
+    invoke: !ref search
     inputs:
       vector: [0.9, 0.1, 0]
   - name: assertTop
@@ -57,7 +57,7 @@ steps:
         properties:
           ok: { const: true }
   - name: searchFiltered
-    invoke: !ref Search
+    invoke: !ref search
     inputs:
       vector: [0.9, 0.1, 0]
       metadataFilter: { lang: en }
@@ -72,7 +72,7 @@ steps:
         properties:
           ok: { const: true }
   - name: drop
-    invoke: !ref Drop
+    invoke: !ref drop
     inputs:
       ids: [a]
   - name: assertRemoved
@@ -86,7 +86,7 @@ steps:
         properties:
           removed: { const: 1 }
   - name: searchAgain
-    invoke: !ref Search
+    invoke: !ref search
     inputs:
       vector: [0.9, 0.1, 0]
   - name: assertGone

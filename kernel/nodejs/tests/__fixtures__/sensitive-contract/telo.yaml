@@ -10,7 +10,7 @@ imports:
 # the secret and the key names nothing sensitive.
 kind: JS.Script
 metadata:
-  name: Credential
+  name: credential
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -41,7 +41,7 @@ code: |
 # stops "redacts everything" from passing this suite.
 kind: JS.Script
 metadata:
-  name: Plain
+  name: plain
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -61,7 +61,7 @@ code: |
 # headers or query bag takes, which carries no property names to walk.
 kind: JS.Script
 metadata:
-  name: MapValued
+  name: mapValued
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -83,7 +83,7 @@ code: |
 # The whole output IS the secret. The empty path is a legal mark.
 kind: JS.Script
 metadata:
-  name: WholeValue
+  name: wholeValue
 outputType:
   kind: Telo.JsonSchema
   schema:

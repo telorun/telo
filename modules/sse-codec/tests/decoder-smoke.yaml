@@ -18,16 +18,16 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   # The bytes arrive split at points chosen to break a naive parser: mid-field
   # name, mid-payload, and between the CR and LF of one line terminator. Written
   # at the step because that is where a CEL slot is — `items` on the declaration
   # is literal data.
-  - name: Bytes
+  - name: bytes
     inputs:
       items:
         - !cel "bytesFromBase64('OiBrZWVwLWFsaXZlCgo=')"
@@ -38,19 +38,19 @@ steps:
         - !cel "bytesFromBase64('ZXZlbnQ6IG5vZGF0YQoKZGF0YTogW0RPTkVdCgo=')"
     invoke:
       kind: Stream.Of
-  - name: Decode
+  - name: decode
     inputs:
-      input: !cel "steps.Bytes.result.output"
+      input: !cel "steps.bytes.result.output"
     invoke:
       kind: Sse.Decoder
-  - name: Collect
+  - name: collect
     inputs:
-      input: !cel "steps.Decode.result.records"
+      input: !cel "steps.decode.result.records"
     invoke:
       kind: Stream.Collect
-  - name: AssertRecords
+  - name: assertRecords
     inputs:
-      actual: !cel "steps.Collect.result.items"
+      actual: !cel "steps.collect.result.items"
       expected:
         # The keep-alive comment dispatched nothing.
         # A payload spanning two `data:` lines is joined with a newline.
@@ -64,50 +64,50 @@ steps:
     invoke: !ref Assert.equals
 
   # Round trip: what the encoder writes, the decoder reads back.
-  - name: Records
-    invoke: !ref SourceRecords
-  - name: Encode
+  - name: records
+    invoke: !ref sourceRecords
+  - name: encode
     inputs:
-      input: !cel "steps.Records.result.output"
+      input: !cel "steps.records.result.output"
     invoke:
       kind: Sse.Encoder
-  - name: DecodeRoundTrip
+  - name: decodeRoundTrip
     inputs:
-      input: !cel "steps.Encode.result.output"
+      input: !cel "steps.encode.result.output"
     invoke:
       kind: Sse.Decoder
-  - name: CollectRoundTrip
+  - name: collectRoundTrip
     inputs:
-      input: !cel "steps.DecodeRoundTrip.result.records"
+      input: !cel "steps.decodeRoundTrip.result.records"
     invoke:
       kind: Stream.Collect
-  - name: AssertRoundTrip
+  - name: assertRoundTrip
     inputs:
       # The encoder JSON-encodes the non-`type` fields into `data`, so what comes
       # back is the same event name carrying that JSON as text — the decoder
       # deliberately does not parse it.
-      actual: !cel "steps.CollectRoundTrip.result.items"
+      actual: !cel "steps.collectRoundTrip.result.items"
       expected:
         - { event: "text-delta", data: '{"delta":"Hi"}' }
         - { event: finish, data: '{"reason":"stop"}' }
     invoke: !ref Assert.equals
 
-  - name: NotAStream
+  - name: notAStream
     try:
-      - name: Call
+      - name: call
         inputs:
           input: "not a stream"
         invoke:
           kind: Sse.Decoder
     catch:
-      - name: AssertRefused
+      - name: assertRefused
         inputs:
           actual: !cel "error.code"
           expected: ERR_INVALID_INPUT
         invoke: !ref Assert.equals
 ---
 kind: Stream.Of
-metadata: { name: SourceRecords }
+metadata: { name: sourceRecords }
 items:
   - { type: "text-delta", delta: "Hi" }
   - { type: finish, reason: stop }

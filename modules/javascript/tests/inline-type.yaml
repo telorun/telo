@@ -7,7 +7,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestInlineInputOutputType
+  - !ref testInlineInputOutputType
 ---
 # Inline {kind, schema} for both inputType and outputType — the analyzer
 # normalizes these into synthesized Telo.JsonSchema resources. The kernel
@@ -15,7 +15,7 @@ targets:
 # instead of trying to compile it as a JSON Schema literal.
 kind: JavaScript.Script
 metadata:
-  name: Greet
+  name: greet
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -37,15 +37,15 @@ code: |
 ---
 kind: Run.Sequence
 metadata:
-  name: TestInlineInputOutputType
+  name: testInlineInputOutputType
 steps:
-  - name: Call
+  - name: call
     inputs:
       name: "World"
-    invoke: !ref Greet
-  - name: VerifyMessage
+    invoke: !ref greet
+  - name: verifyMessage
     inputs:
-      message: "${{ steps.Call.result.message }}"
+      message: "${{ steps.call.result.message }}"
     invoke:
       kind: Assert.Schema
       schema:

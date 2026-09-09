@@ -17,7 +17,7 @@ imports:
   Run: ../../../run
   Assert: ../../../assert
 targets:
-  - !ref LiveImage
+  - !ref liveImage
 ---
 # The token defaults to "" when OPENAI_API_KEY is unset so the credential passes
 # schema validation. The model is constructed (just config — no API call until
@@ -37,7 +37,7 @@ metadata: { name: openaiRequest }
 client: !ref openaiClient
 ---
 kind: OpenAI.ImageModel
-metadata: { name: Live }
+metadata: { name: live }
 model: gpt-image-1
 request: !ref openaiRequest
 options:
@@ -46,29 +46,29 @@ options:
   n: 1
 ---
 kind: Ai.Image
-metadata: { name: Draw }
-model: !ref Live
+metadata: { name: draw }
+model: !ref live
 ---
 kind: Run.Sequence
 metadata:
-  name: LiveImage
+  name: liveImage
 steps:
-  - name: GuardEnv
+  - name: guardEnv
     if: !cel "secrets.openaiApiKey != ''"
     then:
-      - name: Invoke
+      - name: invoke
         inputs:
           prompt: A single small red circle centered on a white background.
-        invoke: !ref Draw
-      - name: Assert
+        invoke: !ref draw
+      - name: assert
         inputs:
           # Compared as a boolean: CEL's size() is an int, which reaches a JSON
           # Schema validator as a string and would never match a numeric const.
-          singleImage: !cel "size(steps.Invoke.result.images) == 1"
-          mediaType: !cel "steps.Invoke.result.images[0].mediaType"
-          width: !cel "steps.Invoke.result.images[0].width"
-          finishReason: !cel "steps.Invoke.result.finishReason"
-          usageUnit: !cel "steps.Invoke.result.usage.unit"
+          singleImage: !cel "size(steps.invoke.result.images) == 1"
+          mediaType: !cel "steps.invoke.result.images[0].mediaType"
+          width: !cel "steps.invoke.result.images[0].width"
+          finishReason: !cel "steps.invoke.result.finishReason"
+          usageUnit: !cel "steps.invoke.result.usage.unit"
         invoke:
           kind: Assert.Schema
           schema:

@@ -9,7 +9,7 @@ imports:
 # error.code without a null-guard must be flagged → CEL_NULLABLE_ACCESS.
 kind: Run.Sequence
 metadata:
-  name: UnguardedFinally
+  name: unguardedFinally
 steps:
   - name: outer
     try:

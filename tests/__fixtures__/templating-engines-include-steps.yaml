@@ -1,11 +1,11 @@
 kind: Run.Sequence
 metadata:
-  name: TestTaggedInInclude
+  name: testTaggedInInclude
 steps:
   # Tagged values inside an included partial must round-trip through
   # loadPartialFile's parseAllDocuments call site (the second of the five
   # wired sites). Both !cel and !literal must reach the controller correctly.
-  - name: CelInPartial
+  - name: celInPartial
     inputs:
       computed: !cel "20.0 + 22.0"
       raw: !literal "literal-${{ untouched }}"
@@ -17,10 +17,10 @@ steps:
       value:
         computed: !cel "inputs.computed"
         raw: !cel "inputs.raw"
-  - name: AssertPartial
+  - name: assertPartial
     inputs:
-      computed: "${{ steps.CelInPartial.result.computed }}"
-      raw: "${{ steps.CelInPartial.result.raw }}"
+      computed: "${{ steps.celInPartial.result.computed }}"
+      raw: "${{ steps.celInPartial.result.raw }}"
     invoke:
       kind: Assert.Schema
       schema:

@@ -8,21 +8,21 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestAgentLoop
+  - !ref testAgentLoop
 ---
 # Echo emits one deterministic tool call (multiply 6×7) on the first turn when tools
 # are present, then echoes the tool result on the second turn — driving a full agent
 # loop without a live model.
 kind: AiEcho.EchoModel
 metadata:
-  name: Echo
+  name: echo
 emitToolCall:
   name: multiply
   arguments: { a: 6, b: 7 }
 ---
 kind: Run.Value
 metadata:
-  name: Multiplier
+  name: multiplier
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -35,9 +35,9 @@ value:
 ---
 kind: Ai.Tools
 metadata:
-  name: LocalTools
+  name: localTools
 tools:
-  - tool: !ref Multiplier
+  - tool: !ref multiplier
     name: multiply
     description: Multiply two numbers.
     parameters:
@@ -50,27 +50,27 @@ tools:
 ---
 kind: Ai.Agent
 metadata:
-  name: Assistant
-model: !ref Echo
+  name: assistant
+model: !ref echo
 system: "Use tools when needed."
 toolProviders:
-  - provider: !ref LocalTools
+  - provider: !ref localTools
 ---
 kind: Run.Sequence
 metadata:
-  name: TestAgentLoop
+  name: testAgentLoop
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       prompt: "multiply 6 and 7"
-    invoke: !ref Assistant
+    invoke: !ref assistant
   # Turn 1 → tool call multiply(6,7) → Multiplier returns {product:42} → tool message
   # content is the JSON-stringified output. Turn 2 → Echo echoes that content as the
   # final answer.
-  - name: AssertText
+  - name: assertText
     inputs:
-      text: "${{ steps.Invoke.result.text }}"
-      finishReason: "${{ steps.Invoke.result.finishReason }}"
+      text: "${{ steps.invoke.result.text }}"
+      finishReason: "${{ steps.invoke.result.finishReason }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -83,10 +83,10 @@ steps:
             type: string
             const: stop
         required: [ text, finishReason ]
-  - name: AssertTrace
+  - name: assertTrace
     inputs:
-      toolName: "${{ steps.Invoke.result.steps[0].toolCalls[0].name }}"
-      toolResult: "${{ steps.Invoke.result.steps[0].toolResults[0].content }}"
+      toolName: "${{ steps.invoke.result.steps[0].toolCalls[0].name }}"
+      toolResult: "${{ steps.invoke.result.steps[0].toolResults[0].content }}"
     invoke:
       kind: Assert.Schema
       schema:

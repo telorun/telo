@@ -18,135 +18,135 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestNesting
+  - !ref testNesting
 ---
 kind: SQLite.Connection
 metadata:
-  name: DbA
+  name: dbA
 file: ":memory:"
 ---
 kind: SQLite.Connection
 metadata:
-  name: DbB
+  name: dbB
 file: ":memory:"
 ---
 # Outer transaction on DbA whose body opens another transaction on DbA (joined,
 # so it shares the outer commit) and one on DbB (its own).
 kind: Sql.Transaction
 metadata:
-  name: OuterTx
-connection: !ref DbA
-steps: !ref OuterBody
+  name: outerTx
+connection: !ref dbA
+steps: !ref outerBody
 ---
 kind: Run.Sequence
 metadata:
-  name: OuterBody
+  name: outerBody
 steps:
-  - name: WriteA
+  - name: writeA
     invoke:
       kind: Sql.Command
-      connection: !ref DbA
+      connection: !ref dbA
     inputs:
       sql: "INSERT INTO a (v) VALUES ('outer')"
-  - name: NestedSameConnection
-    invoke: !ref InnerTxA
-  - name: NestedOtherConnection
-    invoke: !ref InnerTxB
+  - name: nestedSameConnection
+    invoke: !ref innerTxA
+  - name: nestedOtherConnection
+    invoke: !ref innerTxB
   # Fails after every write above, so the rollback boundary is observable:
   # DbA's writes (outer + joined inner) all vanish, DbB's committed inner
   # transaction survives.
-  - name: Boom
+  - name: boom
     invoke:
       kind: Sql.Command
-      connection: !ref DbA
+      connection: !ref dbA
     inputs:
       sql: "INSERT INTO missing_table (v) VALUES ('boom')"
 ---
 kind: Sql.Transaction
 metadata:
-  name: InnerTxA
-connection: !ref DbA
-steps: !ref InnerBodyA
+  name: innerTxA
+connection: !ref dbA
+steps: !ref innerBodyA
 ---
 kind: Run.Sequence
 metadata:
-  name: InnerBodyA
+  name: innerBodyA
 steps:
-  - name: WriteNestedA
+  - name: writeNestedA
     invoke:
       kind: Sql.Command
-      connection: !ref DbA
+      connection: !ref dbA
     inputs:
       sql: "INSERT INTO a (v) VALUES ('inner-same')"
 ---
 kind: Sql.Transaction
 metadata:
-  name: InnerTxB
-connection: !ref DbB
-steps: !ref InnerBodyB
+  name: innerTxB
+connection: !ref dbB
+steps: !ref innerBodyB
 ---
 kind: Run.Sequence
 metadata:
-  name: InnerBodyB
+  name: innerBodyB
 steps:
-  - name: WriteNestedB
+  - name: writeNestedB
     invoke:
       kind: Sql.Command
-      connection: !ref DbB
+      connection: !ref dbB
     inputs:
       sql: "INSERT INTO b (v) VALUES ('inner-other')"
 ---
 kind: Run.Sequence
 metadata:
-  name: TestNesting
+  name: testNesting
 steps:
-  - name: CreateA
+  - name: createA
     invoke:
       kind: Sql.Command
-      connection: !ref DbA
+      connection: !ref dbA
     inputs:
       sql: "CREATE TABLE a (v TEXT NOT NULL)"
-  - name: CreateB
+  - name: createB
     invoke:
       kind: Sql.Command
-      connection: !ref DbB
+      connection: !ref dbB
     inputs:
       sql: "CREATE TABLE b (v TEXT NOT NULL)"
 
-  - name: RunOuter
+  - name: runOuter
     try:
-      - name: Call
-        invoke: !ref OuterTx
+      - name: call
+        invoke: !ref outerTx
     catch:
-      - name: Expected
+      - name: expected
         value: outer-failed
 
   # Joined nesting: the inner DbA transaction shared the outer commit, so its
   # write rolled back with it. Two separate transactions would have left
   # 'inner-same' behind.
-  - name: SelectA
+  - name: selectA
     invoke:
       kind: Sql.Query
-      connection: !ref DbA
+      connection: !ref dbA
     inputs:
       sql: "SELECT v FROM a"
-  - name: AssertARolledBack
+  - name: assertARolledBack
     inputs:
-      actual: !cel "steps.SelectA.result.rows"
+      actual: !cel "steps.selectA.result.rows"
       expected: []
     invoke:
       kind: Assert.Equals
 
   # Separate connection: its own transaction, committed independently.
-  - name: SelectB
+  - name: selectB
     invoke:
       kind: Sql.Query
-      connection: !ref DbB
+      connection: !ref dbB
     inputs:
       sql: "SELECT v FROM b"
-  - name: AssertBCommitted
+  - name: assertBCommitted
     inputs:
-      actual: !cel "steps.SelectB.result.rows"
+      actual: !cel "steps.selectB.result.rows"
       expected:
         - v: inner-other
     invoke:

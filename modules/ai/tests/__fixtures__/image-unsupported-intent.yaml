@@ -12,12 +12,12 @@ imports:
   Ai: ../../
   AiEcho: ../__fixtures__/ai-echo.yaml
 targets:
-  - invoke: !ref Draw
+  - invoke: !ref draw
 ---
 kind: AiEcho.EchoImageModel
-metadata: { name: Echo }
+metadata: { name: echo }
 ---
 kind: Ai.Image
-metadata: { name: Draw }
-model: !ref Echo
+metadata: { name: draw }
+model: !ref echo
 intent: variation

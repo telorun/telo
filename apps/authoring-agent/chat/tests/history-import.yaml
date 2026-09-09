@@ -22,12 +22,12 @@ imports:
   Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
 targets:
   - !ref Chat.initSchema
-  - !ref Test
+  - !ref test
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
-  - name: Seed
+  - name: seed
     invoke: !ref Chat.importMessages
     inputs:
       conversationId: c1
@@ -36,24 +36,24 @@ steps:
         - { id: m2, role: assistant, content: hi!, createdAt: "2026-07-09 10:00:05" }
   # Re-import with one duplicate (mutated content) and one new row: the
   # duplicate must neither double nor overwrite, the new row must land.
-  - name: Reseed
+  - name: reseed
     invoke: !ref Chat.importMessages
     inputs:
       conversationId: c1
       messages:
         - { id: m2, role: assistant, content: changed, createdAt: "2026-07-09 10:00:05" }
         - { id: m3, role: user, content: next, createdAt: "2026-07-09 10:01:00" }
-  - name: Read
+  - name: read
     invoke: !ref Chat.historyQuery
     inputs:
       sql: "SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY id ASC"
       bindings:
         - c1
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        ids: !cel "steps.Read.result.rows.map(r, r.id)"
-        contents: !cel "steps.Read.result.rows.map(r, r.content)"
+        ids: !cel "steps.read.result.rows.map(r, r.id)"
+        contents: !cel "steps.read.result.rows.map(r, r.content)"
       expected:
         ids: [m1, m2, m3]
         contents: [hello, hi!, next]

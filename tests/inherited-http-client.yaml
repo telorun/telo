@@ -8,33 +8,33 @@ imports:
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
-  - !ref TestInheritedClient
+  - !ref testInheritedClient
 ---
 # A PlaceholderClient IS an Http.Client (inherits its controller + capability),
 # constructed from { host } via the definition's base: mapping.
 kind: Ph.PlaceholderClient
 metadata:
-  name: Placeholder
+  name: placeholder
 host: jsonplaceholder.typicode.com
 ---
 # The inherited client drops into Http.Request's `client` slot with no special
 # handling — it duck-types as a Client (its snapshot() carries baseUrl/headers).
 kind: Run.Sequence
 metadata:
-  name: TestInheritedClient
+  name: testInheritedClient
 steps:
-  - name: FetchUser
+  - name: fetchUser
     inputs: {}
     invoke:
       kind: Http.Request
-      client: !ref Placeholder
+      client: !ref placeholder
       url: /users/1
       method: GET
 
-  - name: AssertResponse
+  - name: assertResponse
     inputs:
-      status: !cel "steps.FetchUser.result.status"
-      id: !cel "steps.FetchUser.result.body.id"
+      status: !cel "steps.fetchUser.result.status"
+      id: !cel "steps.fetchUser.result.body.id"
     invoke:
       kind: Assert.Schema
       schema:
@@ -54,9 +54,9 @@ steps:
   # mapping, so they are NOT published — the reading is the parent's alone.
   # Asserted as the whole reading so the narrowing cannot drift into publishing
   # `host` alongside it.
-  - name: AssertBaseFormPublishesParentOnly
+  - name: assertBaseFormPublishesParentOnly
     inputs:
-      actual: !cel "resources.Placeholder"
+      actual: !cel "resources.placeholder"
       expected:
         baseUrl: https://jsonplaceholder.typicode.com
         headers:

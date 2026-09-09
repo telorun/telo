@@ -10,49 +10,49 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestMcpAgent
+  - !ref testMcpAgent
 ---
 # A stub MCP server advertising one tool (echo_text).
 kind: Stub.StubClient
 metadata:
-  name: McpServer
+  name: mcpServer
 ---
 # The bridge: turns the Mcp.Client into an Ai.ToolProvider the agent can discover.
 kind: AiMcp.ToolProvider
 metadata:
-  name: ServerTools
-client: !ref McpServer
+  name: serverTools
+client: !ref mcpServer
 ---
 # Echo discovers the tool (echo_text) and requests it on the first turn.
 kind: AiEcho.EchoModel
 metadata:
-  name: Echo
+  name: echo
 emitToolCall:
   name: echo_text
   arguments: { text: "hi" }
 ---
 kind: Ai.Agent
 metadata:
-  name: Assistant
-model: !ref Echo
+  name: assistant
+model: !ref echo
 toolProviders:
-  - provider: !ref ServerTools
+  - provider: !ref serverTools
 ---
 kind: Run.Sequence
 metadata:
-  name: TestMcpAgent
+  name: testMcpAgent
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       prompt: "echo hi please"
-    invoke: !ref Assistant
+    invoke: !ref assistant
   # Discovery → tools/list → echo_text. Echo calls it → tools/call → content echoed
   # back. The MCP `content` array is itself content parts, so the agent carries the
   # text part through and the (text) model flattens it to "echoed: hi".
-  - name: AssertText
+  - name: assertText
     inputs:
-      text: "${{ steps.Invoke.result.text }}"
-      toolName: "${{ steps.Invoke.result.steps[0].toolCalls[0].name }}"
+      text: "${{ steps.invoke.result.text }}"
+      toolName: "${{ steps.invoke.result.steps[0].toolCalls[0].name }}"
     invoke:
       kind: Assert.Schema
       schema:

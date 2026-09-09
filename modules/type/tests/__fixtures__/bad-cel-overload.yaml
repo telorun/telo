@@ -6,16 +6,16 @@ imports:
   Run: ../../../run
   JavaScript: ../../../javascript
 targets:
-  - !ref TestBadOverload
+  - !ref testBadOverload
 ---
 # `.slice(int)` is not a CEL string method — `slice` is a three-argument function
 # over a sequence, and the string method is `.substring(int)`. The analyzer's
 # env.check() must catch this and the audit must name the signatures that exist.
 kind: Run.Sequence
 metadata:
-  name: TestBadOverload
+  name: testBadOverload
 steps:
-  - name: Typo
+  - name: typo
     inputs:
       value: "${{ inputs.s.slice(7) }}"
     invoke:

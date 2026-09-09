@@ -7,7 +7,7 @@ imports:
   Run: ../../../run
   JavaScript: ../../../javascript
 targets:
-  - !ref T
+  - !ref t
 ---
 kind: Type.JsonSchema
 metadata:
@@ -33,21 +33,21 @@ schema:
 ---
 kind: JavaScript.Script
 metadata:
-  name: Make
+  name: make
 outputType: !ref Child
 code: |
   function main() { return { id: "x", name: "y" } }
 ---
 kind: Run.Sequence
 metadata:
-  name: T
+  name: t
 steps:
-  - name: M
-    invoke: !ref Make
-  - name: Use
+  - name: m
+    invoke: !ref make
+  - name: use
     inputs:
-      a: !cel "steps.M.result.id"
-      b: !cel "steps.M.result.name"
+      a: !cel "steps.m.result.id"
+      b: !cel "steps.m.result.name"
     invoke:
       kind: JavaScript.Script
       code: |

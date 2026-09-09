@@ -10,23 +10,23 @@ imports:
   Stream: ../../../stream
   Http: ../../../http-client
 targets:
-  - !ref Seq
+  - !ref seq
 ---
 kind: Http.Request
-metadata: { name: Upload }
+metadata: { name: upload }
 retries: 3
 ---
 kind: Run.Sequence
-metadata: { name: Seq }
+metadata: { name: seq }
 steps:
-  - name: Source
+  - name: source
     inputs:
       items: [a, b]
     invoke:
       kind: Stream.Of
-  - name: Post
+  - name: post
     inputs:
       url: http://example.test/upload
       method: POST
-      body: !cel "steps.Source.result.output"
-    invoke: !ref Upload
+      body: !cel "steps.source.result.output"
+    invoke: !ref upload

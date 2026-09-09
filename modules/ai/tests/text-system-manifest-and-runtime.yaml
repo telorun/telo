@@ -8,17 +8,17 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestManifestSystemPrepends
-  - !ref TestRuntimeSystemOverridesManifest
+  - !ref testManifestSystemPrepends
+  - !ref testRuntimeSystemOverridesManifest
 ---
 # Echo with a ":::" suffix so we can observe the full message trail when the echoed
 # content is the last message's content (verifying prepend order).
 kind: AiEcho.EchoModel
-metadata: { name: Echo }
+metadata: { name: echo }
 ---
 kind: Ai.Text
-metadata: { name: WithSystem }
-model: !ref Echo
+metadata: { name: withSystem }
+model: !ref echo
 system: "manifest-system"
 ---
 # Case 1: manifest `system` is prepended when inputs carry no system override and
@@ -27,15 +27,15 @@ system: "manifest-system"
 # last message is still the user message → text equals the user content.
 kind: Run.Sequence
 metadata:
-  name: TestManifestSystemPrepends
+  name: testManifestSystemPrepends
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       prompt: "user-content"
-    invoke: !ref WithSystem
-  - name: AssertText
+    invoke: !ref withSystem
+  - name: assertText
     inputs:
-      text: "${{ steps.Invoke.result.text }}"
+      text: "${{ steps.invoke.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -49,16 +49,16 @@ steps:
 # deeper observation of the system prompt requires a non-echo model.
 kind: Run.Sequence
 metadata:
-  name: TestRuntimeSystemOverridesManifest
+  name: testRuntimeSystemOverridesManifest
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       prompt: "u"
       system: "runtime-system"
-    invoke: !ref WithSystem
-  - name: Assert
+    invoke: !ref withSystem
+  - name: assert
     inputs:
-      text: "${{ steps.Invoke.result.text }}"
+      text: "${{ steps.invoke.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:

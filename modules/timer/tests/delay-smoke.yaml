@@ -11,19 +11,19 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestDelay
+  - !ref testDelay
 ---
 kind: Run.Sequence
-metadata: { name: TestDelay }
+metadata: { name: testDelay }
 steps:
-  - name: Wait
+  - name: wait
     inputs:
       duration: "50ms"
       value: { hello: "world" }
     invoke: { kind: Timer.Delay }
-  - name: AssertPassthrough
+  - name: assertPassthrough
     inputs:
-      hello: "${{ steps.Wait.result.value.hello }}"
+      hello: "${{ steps.wait.result.value.hello }}"
     invoke:
       kind: Assert.Schema
       schema:

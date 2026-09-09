@@ -6,7 +6,7 @@ imports:
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
-  - !ref TestTagged
+  - !ref testTagged
 ---
 # Mixed templating engines on the same field type. Each step exercises one
 # delivery mode and asserts the value the Run.Value controller actually
@@ -15,10 +15,10 @@ targets:
 # and untagged ${{ ... }} interpolates as before.
 kind: Run.Sequence
 metadata:
-  name: TestTagged
+  name: testTagged
 steps:
   # !cel — entire scalar is one CEL expression, no ${{ }} wrapping.
-  - name: CelTaggedSum
+  - name: celTaggedSum
     inputs:
       a: !cel "1.0 + 2.0"
       b: !cel "10.0 * 4.0"
@@ -29,9 +29,9 @@ steps:
         b: { type: number }
       value:
         value: !cel "inputs.a + inputs.b"
-  - name: AssertCelSum
+  - name: assertCelSum
     inputs:
-      value: "${{ steps.CelTaggedSum.result.value }}"
+      value: "${{ steps.celTaggedSum.result.value }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -44,7 +44,7 @@ steps:
 
   # !literal — the controller must receive the raw string, including the
   # literal `${{ }}` braces. No interpolation, no compile.
-  - name: LiteralTagged
+  - name: literalTagged
     inputs:
       raw: !literal "Hello ${{ this is not interpolated }}"
     invoke:
@@ -53,9 +53,9 @@ steps:
         raw: { type: string }
       value:
         passthrough: !cel "inputs.raw"
-  - name: AssertLiteralPassthrough
+  - name: assertLiteralPassthrough
     inputs:
-      passthrough: "${{ steps.LiteralTagged.result.passthrough }}"
+      passthrough: "${{ steps.literalTagged.result.passthrough }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -68,7 +68,7 @@ steps:
 
   # Mixing tagged + untagged on the same field. Untagged ${{ }} still
   # interpolates; tagged !cel still evaluates as a single expression.
-  - name: MixedField
+  - name: mixedField
     inputs:
       interpolated: "answer is ${{ 42 }}"
       celField: !cel "100.0 - 58.0"
@@ -80,10 +80,10 @@ steps:
       value:
         interpolated: !cel "inputs.interpolated"
         celField: !cel "inputs.celField"
-  - name: AssertMixed
+  - name: assertMixed
     inputs:
-      interpolated: "${{ steps.MixedField.result.interpolated }}"
-      celField: "${{ steps.MixedField.result.celField }}"
+      interpolated: "${{ steps.mixedField.result.interpolated }}"
+      celField: "${{ steps.mixedField.result.celField }}"
     invoke:
       kind: Assert.Schema
       schema:

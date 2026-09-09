@@ -32,11 +32,11 @@ kind: Run.Sequence
 metadata:
   name: bodyA
 steps:
-  - name: Enqueue
+  - name: enqueue
     invoke: !ref insideA
 outputs:
-  zone: !cel "steps.Enqueue.result.zone"
-  correlatedOn: !cel "steps.Enqueue.result.correlatedOn"
+  zone: !cel "steps.enqueue.result.zone"
+  correlatedOn: !cel "steps.enqueue.result.correlatedOn"
 ---
 # Correlated on sessionB — a requirer keyed on sessionA must NOT be satisfied
 # by this one, which is the whole point of correlation.
@@ -50,11 +50,11 @@ kind: Run.Sequence
 metadata:
   name: bodyB
 steps:
-  - name: Enqueue
+  - name: enqueue
     invoke: !ref insideB
 outputs:
-  zone: !cel "steps.Enqueue.result.zone"
-  correlatedOn: !cel "steps.Enqueue.result.correlatedOn"
+  zone: !cel "steps.enqueue.result.zone"
+  correlatedOn: !cel "steps.enqueue.result.correlatedOn"
 ---
 kind: Zone.Enqueue
 metadata:
@@ -111,5 +111,5 @@ kind: Run.Sequence
 metadata:
   name: crossBody
 steps:
-  - name: Enqueue
+  - name: enqueue
     invoke: !ref insideA

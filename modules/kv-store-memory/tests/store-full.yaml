@@ -16,31 +16,31 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestOverflow
+  - !ref testOverflow
 ---
 kind: KvStoreMemory.Store
-metadata: { name: TinyStore }
+metadata: { name: tinyStore }
 maxEntries: 1
 ---
 kind: Run.Value
-metadata: { name: Body }
+metadata: { name: body }
 value:
   ok: true
 ---
 kind: Idempotency.Once
 metadata:
-  name: Once
-store: !ref TinyStore
+  name: once
+store: !ref tinyStore
 claimTtl: "30s"
 ttl: "60s"
-invoke: !ref Body
+invoke: !ref body
 ---
 kind: Run.Sequence
 metadata:
-  name: TestOverflow
+  name: testOverflow
 steps:
   - name: first
-    invoke: !ref Once
+    invoke: !ref once
     inputs: { key: "k1" }
   - name: verifyFirst
     inputs:
@@ -50,7 +50,7 @@ steps:
   - name: overflow
     try:
       - name: go
-        invoke: !ref Once
+        invoke: !ref once
         inputs: { key: "k2" }
     catch:
       - name: verifyRaised
@@ -61,7 +61,7 @@ steps:
   # The record that was already there must be untouched — an overflow may not
   # cost a settled result.
   - name: replay
-    invoke: !ref Once
+    invoke: !ref once
     inputs: { key: "k1" }
   - name: verifyRetained
     inputs:

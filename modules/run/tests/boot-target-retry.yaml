@@ -16,20 +16,20 @@ imports:
 targets:
   # Fails twice, then succeeds — `attempt: 3` is the assertion that the boot
   # runner re-issued it rather than merely not raising.
-  - name: Recovers
-    invoke: !ref FlakyTwice
+  - name: recovers
+    invoke: !ref flakyTwice
     retry:
       attempts: 2
       initialDelay: 1
       jitter: none
-  - name: Check
-    invoke: !ref CheckEquals
+  - name: check
+    invoke: !ref checkEquals
     inputs:
-      actual: !cel "steps.Recovers.result.attempt"
+      actual: !cel "steps.recovers.result.attempt"
       expected: 3
 ---
 kind: JS.Script
-metadata: { name: FlakyTwice }
+metadata: { name: flakyTwice }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -45,4 +45,4 @@ code: |
   }
 ---
 kind: Assert.Equals
-metadata: { name: CheckEquals }
+metadata: { name: checkEquals }

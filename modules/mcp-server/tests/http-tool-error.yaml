@@ -6,13 +6,13 @@ imports:
   JS: ../../javascript
   Run: ../../run
   Assert: ../../assert
-targets: [ !ref TestRun ]
+targets: [ !ref testRun ]
 ---
 # Same hand-rolled MCP client as http-tool-call.yaml. Inlined because
 # resources defined in an imported library aren't visible to the parent
 # module — only kinds are exported.
 kind: JS.Script
-metadata: { name: McpFetch }
+metadata: { name: mcpFetch }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -80,7 +80,7 @@ code: |
 # Handler unconditionally throws an InvokeError. The catches: entry maps the
 # `not_found` Telo error code to JSON-RPC error -32001.
 kind: Run.Sequence
-metadata: { name: ThrowsNotFoundImpl }
+metadata: { name: throwsNotFoundImpl }
 throws:
   - code: not_found
 steps:
@@ -99,7 +99,7 @@ entries:
       properties:
         city: { type: string }
       required: [ city ]
-    handler: !ref ThrowsNotFoundImpl
+    handler: !ref throwsNotFoundImpl
     inputs:
       city: "${{ request.arguments.city }}"
     result:
@@ -113,12 +113,12 @@ entries:
           message: "${{ error.message }}"
 ---
 kind: Mcp.HttpEndpoint
-metadata: { name: McpHttp }
+metadata: { name: mcpHttp }
 serverInfo: { name: telo-test-mcp, version: 1.0.0 }
 tools: [ !ref WeatherTools ]
 ---
 kind: Run.Sequence
-metadata: { name: TestRun }
+metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -126,20 +126,20 @@ with:
     port: 8952
     baseUrl: http://127.0.0.1:8952
     mounts:
-      - { path: /mcp, mount: !ref McpHttp }
+      - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
 steps:
-  - name: CallGetWeather
+  - name: callGetWeather
     inputs:
       url: http://127.0.0.1:8952/mcp
       method: tools/call
       params: { name: get_weather, arguments: { city: Atlantis } }
-    invoke: !ref McpFetch
-  - name: AssertResponse
+    invoke: !ref mcpFetch
+  - name: assertResponse
     inputs:
-      hasError: "${{ steps.CallGetWeather.result.hasError }}"
-      errorCode: "${{ steps.CallGetWeather.result.error.code }}"
-      errorMessage: "${{ steps.CallGetWeather.result.error.message }}"
+      hasError: "${{ steps.callGetWeather.result.hasError }}"
+      errorCode: "${{ steps.callGetWeather.result.error.code }}"
+      errorMessage: "${{ steps.callGetWeather.result.error.message }}"
     invoke:
       kind: Assert.Schema
       schema:

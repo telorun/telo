@@ -13,22 +13,22 @@ imports:
   Assert: ../modules/assert
   Run: ../modules/run
 targets:
-  - !ref Gw.Migrate
-  - !ref Verify
+  - !ref Gw.migrate
+  - !ref verify
 ---
 kind: Run.Sequence
 metadata:
-  name: Verify
+  name: verify
 steps:
-  - name: Select
+  - name: select
     inputs:
       sql: "SELECT name FROM users WHERE id = 1"
     invoke:
       kind: Sql.Query
-      connection: !ref Gw.Db
-  - name: AssertSeeded
+      connection: !ref Gw.db
+  - name: assertSeeded
     inputs:
-      rows: "${{ steps.Select.result.rows }}"
+      rows: "${{ steps.select.result.rows }}"
     invoke:
       kind: Assert.Schema
       schema:

@@ -6,7 +6,7 @@ imports:
   Run: ../../../modules/run
   JavaScript: ../../../modules/javascript
 targets:
-  - !ref BadCalls
+  - !ref badCalls
 ---
 # Two independent mistakes in ONE expression. `check()` reports only its first,
 # so before the call audit the second was invisible until the first was fixed
@@ -17,9 +17,9 @@ targets:
 # is registered under no form at all.
 kind: Run.Sequence
 metadata:
-  name: BadCalls
+  name: badCalls
 steps:
-  - name: Both
+  - name: both
     inputs:
       flag: !cel "startsWith(inputs.key, 'uploads/') && now() > 5"
     invoke:

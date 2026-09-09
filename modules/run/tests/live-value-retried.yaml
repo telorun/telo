@@ -16,18 +16,18 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref StepRetry
-  - !ref TargetRetry
-  - !ref LegacyRetries
-  - !ref ForwardedInput
-  - !ref BootTarget
-  - !ref ReplayableValue
-  - !ref NoRetryDeclared
+  - !ref stepRetry
+  - !ref targetRetry
+  - !ref legacyRetries
+  - !ref forwardedInput
+  - !ref bootTarget
+  - !ref replayableValue
+  - !ref noRetryDeclared
 ---
 # The re-attempt is on the STEP.
 kind: Assert.Manifest
 metadata:
-  name: StepRetry
+  name: stepRetry
 source: ./__fixtures__/retried-live-step.yaml
 expect:
   errors:
@@ -39,7 +39,7 @@ expect:
 # client-level policy, which is the common shape.
 kind: Assert.Manifest
 metadata:
-  name: TargetRetry
+  name: targetRetry
 source: ./__fixtures__/retried-live-target.yaml
 expect:
   errors:
@@ -51,7 +51,7 @@ expect:
 # leave the spelling most manifests in the wild still use unchecked.
 kind: Assert.Manifest
 metadata:
-  name: LegacyRetries
+  name: legacyRetries
 source: ./__fixtures__/retried-live-legacy.yaml
 expect:
   errors:
@@ -63,7 +63,7 @@ expect:
 # reading only `steps.` chains reports nothing here.
 kind: Assert.Manifest
 metadata:
-  name: ForwardedInput
+  name: forwardedInput
 source: ./__fixtures__/retried-live-forwarded.yaml
 expect:
   errors:
@@ -75,7 +75,7 @@ expect:
 # it and so never met the loader that expands one.
 kind: Assert.Manifest
 metadata:
-  name: BootTarget
+  name: bootTarget
 source: ./__fixtures__/retried-live-boot-target.yaml
 expect:
   errors:
@@ -86,7 +86,7 @@ expect:
 # check must not fire on the fix it recommends.
 kind: Assert.Manifest
 metadata:
-  name: ReplayableValue
+  name: replayableValue
 source: ./__fixtures__/retried-value-ok.yaml
 expect:
   errors: []
@@ -95,7 +95,7 @@ expect:
 # the false positive that would make the diagnostic unusable.
 kind: Assert.Manifest
 metadata:
-  name: NoRetryDeclared
+  name: noRetryDeclared
 source: ./__fixtures__/live-no-retry.yaml
 expect:
   errors: []

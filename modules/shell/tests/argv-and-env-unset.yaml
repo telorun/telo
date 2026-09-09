@@ -12,21 +12,21 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: Shell.LocalHost
 metadata:
-  name: Local
+  name: local
 env:
   SECRET: shh
   KEEP: "yes"
 ---
 kind: Run.Sequence
 metadata:
-  name: Test
+  name: test
 steps:
   # argv: `a; b` reaches the program as one literal argument, not two commands.
-  - name: Argv
+  - name: argv
     inputs:
       args:
         - node
@@ -35,23 +35,23 @@ steps:
         - "a; b && echo pwned"
     invoke:
       kind: Shell.Command
-      host: !ref Local
+      host: !ref local
 
   # env null unsets an inherited host var; KEEP is untouched.
-  - name: Unset
+  - name: unset
     inputs:
       command: 'printf %s "$SECRET|$KEEP"'
       env:
         SECRET: null
     invoke:
       kind: Shell.Command
-      host: !ref Local
+      host: !ref local
 
-  - name: Assert
+  - name: assert
     inputs:
       actual:
-        argvOut: !cel "steps.Argv.result.stdout"
-        unsetOut: !cel "steps.Unset.result.stdout"
+        argvOut: !cel "steps.argv.result.stdout"
+        unsetOut: !cel "steps.unset.result.stdout"
       expected:
         argvOut: "a; b && echo pwned"
         unsetOut: "|yes"

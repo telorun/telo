@@ -8,24 +8,24 @@ imports:
   Run: ../../
   Stream: ../../../stream
 targets:
-  - !ref Seq
+  - !ref seq
 ---
 kind: Run.Sequence
-metadata: { name: Seq }
+metadata: { name: seq }
 steps:
-  - name: Source
+  - name: source
     inputs:
       items: [a, b]
     invoke:
       kind: Stream.Of
-  - name: Collect
+  - name: collect
     inputs:
-      input: !cel "steps.Source.result.output"
+      input: !cel "steps.source.result.output"
     invoke:
       kind: Stream.Collect
-  - name: Replay
+  - name: replay
     inputs:
-      items: !cel "steps.Collect.result.items"
+      items: !cel "steps.collect.result.items"
     retry:
       attempts: 3
     invoke:

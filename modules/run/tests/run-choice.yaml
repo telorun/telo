@@ -13,18 +13,18 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestFirstMatch
-  - !ref TestSecondRow
-  - !ref TestDefault
-  - !ref TestNoMatch
-  - !ref TestOutputInvalid
-  - !ref TestInvalidPredicate
+  - !ref testFirstMatch
+  - !ref testSecondRow
+  - !ref testDefault
+  - !ref testNoMatch
+  - !ref testOutputInvalid
+  - !ref testInvalidPredicate
 ---
 # A shipping tier: two predicates plus a default, with a declared outputType
 # every row must satisfy.
 kind: Run.Choice
 metadata:
-  name: ShippingTier
+  name: shippingTier
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -61,7 +61,7 @@ default:
 # instead, which is why this case has to be built from a dyn input.
 kind: Run.Choice
 metadata:
-  name: BadShape
+  name: badShape
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -87,7 +87,7 @@ choices:
 # and only a dyn expression can still reach the runtime guard.
 kind: Run.Choice
 metadata:
-  name: BadPredicate
+  name: badPredicate
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -101,7 +101,7 @@ choices:
 # No default — a non-exhaustive table must error, never return null.
 kind: Run.Choice
 metadata:
-  name: Exhaustive
+  name: exhaustive
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -114,11 +114,11 @@ choices:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestFirstMatch
+  name: testFirstMatch
 steps:
   # Matches BOTH rows; row order decides, so `free` wins over `freight`.
   - name: tier
-    invoke: !ref ShippingTier
+    invoke: !ref shippingTier
     inputs:
       order: { total: 150.0, weight: 30.0 }
   - name: verify
@@ -130,11 +130,11 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestSecondRow
+  name: testSecondRow
 steps:
   # Fails row 1, matches row 2 — and the row's `!cel` leaf is evaluated.
   - name: tier
-    invoke: !ref ShippingTier
+    invoke: !ref shippingTier
     inputs:
       order: { total: 20.0, weight: 30.0 }
   - name: verify
@@ -146,10 +146,10 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestDefault
+  name: testDefault
 steps:
   - name: tier
-    invoke: !ref ShippingTier
+    invoke: !ref shippingTier
     inputs:
       order: { total: 20.0, weight: 1.0 }
   - name: verify
@@ -161,12 +161,12 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestNoMatch
+  name: testNoMatch
 steps:
   - name: attempt
     try:
       - name: choose
-        invoke: !ref Exhaustive
+        invoke: !ref exhaustive
         inputs: { n: -1 }
     catch:
       - name: verify
@@ -178,12 +178,12 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestOutputInvalid
+  name: testOutputInvalid
 steps:
   - name: attempt
     try:
       - name: choose
-        invoke: !ref BadShape
+        invoke: !ref badShape
         inputs: { n: 1 }
     catch:
       - name: verify
@@ -195,12 +195,12 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestInvalidPredicate
+  name: testInvalidPredicate
 steps:
   - name: attempt
     try:
       - name: choose
-        invoke: !ref BadPredicate
+        invoke: !ref badPredicate
         inputs: { n: 1 }
     catch:
       - name: verify

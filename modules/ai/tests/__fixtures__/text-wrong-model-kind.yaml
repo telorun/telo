@@ -14,11 +14,11 @@ imports:
 # Referencing it from Ai.Text.model is a REFERENCE_KIND_MISMATCH.
 kind: JS.Script
 metadata:
-  name: NotAModel
+  name: notAModel
 code: |
   function main() { return { text: "x", usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: "stop" }; }
 ---
 kind: Ai.Text
 metadata:
-  name: Bad
-model: !ref NotAModel
+  name: bad
+model: !ref notAModel

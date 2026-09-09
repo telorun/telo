@@ -12,36 +12,36 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestRoundtrip
+  - !ref testRoundtrip
 ---
 kind: Stream.Of
-metadata: { name: Source }
+metadata: { name: source }
 items:
   - { delta: "h" }
   - { delta: "i" }
 ---
 kind: PlainText.Encoder
-metadata: { name: Encoder }
+metadata: { name: encoder }
 ---
 kind: PlainText.Decoder
-metadata: { name: Decoder }
+metadata: { name: decoder }
 ---
 kind: Run.Sequence
-metadata: { name: TestRoundtrip }
+metadata: { name: testRoundtrip }
 steps:
-  - name: Source
-    invoke: !ref Source
-  - name: Encode
+  - name: source
+    invoke: !ref source
+  - name: encode
     inputs:
-      input: "${{ steps.Source.result.output }}"
-    invoke: !ref Encoder
-  - name: Decode
+      input: "${{ steps.source.result.output }}"
+    invoke: !ref encoder
+  - name: decode
     inputs:
-      input: "${{ steps.Encode.result.output }}"
-    invoke: !ref Decoder
-  - name: Assert
+      input: "${{ steps.encode.result.output }}"
+    invoke: !ref decoder
+  - name: assert
     inputs:
-      text: "${{ steps.Decode.result.text }}"
+      text: "${{ steps.decode.result.text }}"
     invoke:
       kind: Assert.Schema
       schema:

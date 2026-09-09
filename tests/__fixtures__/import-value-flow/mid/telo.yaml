@@ -11,4 +11,4 @@ variables:
   dbFile:
     type: string
 exports:
-  resources: [ Data.Db, Data.Migrate ]
+  resources: [ Data.db, Data.migrate ]

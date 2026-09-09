@@ -19,39 +19,39 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestReplay
-  - !ref TestFailureReleases
+  - !ref testReplay
+  - !ref testFailureReleases
 ---
 kind: SQLite.Connection
-metadata: { name: Db }
+metadata: { name: db }
 file: ":memory:"
 ---
 kind: KvStoreSql.Store
-metadata: { name: Store }
-connection: !ref Db
+metadata: { name: store }
+connection: !ref db
 table: idempotency_keys
 ---
 kind: CacheMemory.Store
-metadata: { name: Counters }
+metadata: { name: counters }
 ---
 kind: Cache.Entry
-metadata: { name: Put }
-store: !ref Counters
+metadata: { name: put }
+store: !ref counters
 ttl: "60s"
 ---
 kind: Cache.Lookup
-metadata: { name: Get }
-store: !ref Counters
+metadata: { name: get }
+store: !ref counters
 ---
 kind: Run.Sequence
 metadata:
-  name: Body
+  name: body
 steps:
   - name: read
-    invoke: !ref Get
+    invoke: !ref get
     inputs: { key: runs }
   - name: bump
-    invoke: !ref Put
+    invoke: !ref put
     inputs:
       key: runs
       value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
@@ -64,15 +64,15 @@ outputs:
 ---
 kind: Idempotency.Once
 metadata:
-  name: OnceSql
-store: !ref Store
+  name: onceSql
+store: !ref store
 claimTtl: "30s"
 ttl: "60s"
-invoke: !ref Body
+invoke: !ref body
 ---
 kind: Run.Sequence
 metadata:
-  name: AlwaysFails
+  name: alwaysFails
 steps:
   - name: boom
     throw:
@@ -81,18 +81,18 @@ steps:
 ---
 kind: Idempotency.Once
 metadata:
-  name: FailingOnceSql
-store: !ref Store
+  name: failingOnceSql
+store: !ref store
 claimTtl: "30s"
 ttl: "60s"
-invoke: !ref AlwaysFails
+invoke: !ref alwaysFails
 ---
 kind: Run.Sequence
 metadata:
-  name: TestReplay
+  name: testReplay
 steps:
   - name: first
-    invoke: !ref OnceSql
+    invoke: !ref onceSql
     inputs: { key: "sql-key-1" }
   - name: verifyFirst
     inputs:
@@ -100,7 +100,7 @@ steps:
       expected: fresh
     invoke: { kind: Assert.Equals }
   - name: second
-    invoke: !ref OnceSql
+    invoke: !ref onceSql
     inputs: { key: "sql-key-1" }
   - name: verifySecond
     inputs:
@@ -117,7 +117,7 @@ steps:
       expected: "1/true"
     invoke: { kind: Assert.Equals }
   - name: count
-    invoke: !ref Get
+    invoke: !ref get
     inputs: { key: runs }
   - name: verifyRanOnce
     inputs:
@@ -127,12 +127,12 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestFailureReleases
+  name: testFailureReleases
 steps:
   - name: attempt
     try:
       - name: go
-        invoke: !ref FailingOnceSql
+        invoke: !ref failingOnceSql
         inputs: { key: "sql-key-2" }
     catch:
       - name: verifyError
@@ -144,7 +144,7 @@ steps:
   - name: retry
     try:
       - name: go
-        invoke: !ref FailingOnceSql
+        invoke: !ref failingOnceSql
         inputs: { key: "sql-key-2" }
     catch:
       - name: verifyRetryable

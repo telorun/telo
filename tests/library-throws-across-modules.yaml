@@ -22,11 +22,11 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref LibraryInternalThrowsReachTheConsumer
+  - !ref libraryInternalThrowsReachTheConsumer
 ---
 kind: Assert.Manifest
 metadata:
-  name: LibraryInternalThrowsReachTheConsumer
+  name: libraryInternalThrowsReachTheConsumer
 source: ./__fixtures__/library-throws/app.yaml
 expect:
   errors: []

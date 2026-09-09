@@ -11,7 +11,7 @@ variables:
 ---
 kind: Run.Value
 metadata:
-  name: Handler
+  name: handler
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -22,12 +22,12 @@ value: { ok: true }
 ---
 kind: Http.Api
 metadata:
-  name: TestApi
+  name: testApi
 routes:
   - request:
       path: /test
       method: GET
-    handler: !ref Handler
+    handler: !ref handler
     inputs:
       key: "${{ variables.nonExistent }}"
     returns:

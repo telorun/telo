@@ -8,7 +8,7 @@ imports:
 ---
 kind: Run.Sequence
 metadata:
-  name: TestWithResources
+  name: testWithResources
 with:
   - kind: Run.Value
     metadata:
@@ -18,14 +18,14 @@ with:
     value:
       doubled: !cel "inputs.value * 2"
 steps:
-  - name: UseHelper
+  - name: useHelper
     inputs:
       value: 5
     invoke: !ref SharedHelper
 
-  - name: VerifyResult
+  - name: verifyResult
     inputs:
-      doubled: "${{ steps.UseHelper.result.doubled }}"
+      doubled: "${{ steps.useHelper.result.doubled }}"
     invoke:
       kind: Assert.Schema
       schema:

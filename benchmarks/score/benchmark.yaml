@@ -6,11 +6,11 @@ imports:
   Bench: ../../modules/benchmark
   Http: ../../modules/http-client
 targets:
-  - !ref ScoreLoad
+  - !ref scoreLoad
 ---
 kind: Bench.Suite
 metadata:
-  name: ScoreLoad
+  name: scoreLoad
   module: ScoreBenchmark
 duration: 30s
 concurrency: 10

@@ -17,7 +17,7 @@ secrets:
 ---
 kind: Run.Value
 metadata:
-  name: Echo
+  name: echo
 inputType:
   kind: Telo.JsonSchema
   schema:

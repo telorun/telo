@@ -22,12 +22,12 @@ imports:
     runtime: [rust, any]
   Assert: ../../assert
 targets:
-  - name: Print
+  - name: print
     invoke: !ref Console.writeLine
     inputs:
       output: "printed by the {green rust} controller"
-  - name: Check
+  - name: check
     invoke: !ref Assert.equals
     inputs:
-      actual: !cel "steps.Print.result"
+      actual: !cel "steps.print.result"
       expected: "printed by the {green rust} controller"

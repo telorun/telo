@@ -22,13 +22,13 @@ variables:
       type: string
     minItems: 1
 targets:
-  - !ref TestApplicationEnvObjectArray
+  - !ref testApplicationEnvObjectArray
 ---
 kind: Run.Sequence
 metadata:
-  name: TestApplicationEnvObjectArray
+  name: testApplicationEnvObjectArray
 steps:
-  - name: AssertTls
+  - name: assertTls
     inputs:
       cert: !cel "variables.tls.cert"
       key: !cel "variables.tls.key"
@@ -44,7 +44,7 @@ steps:
             type: string
             const: def
         required: [ cert, key ]
-  - name: AssertOrigins
+  - name: assertOrigins
     inputs:
       first: !cel "variables.origins[0]"
       second: !cel "variables.origins[1]"

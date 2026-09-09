@@ -8,18 +8,18 @@ imports:
 variables:
   conc: { env: CONC, type: integer, default: 2 }
 targets:
-  - !ref VerifyProjection
+  - !ref verifyProjection
 ---
 # Regression: a `!cel` concurrency must be resolved to an integer before the
 # scheduler reads it. Reading it raw left a CompiledValue, zeroing the worker
 # pool and silently returning `[null, null, null]`.
 kind: Run.Projection
 metadata:
-  name: TagEach
+  name: tagEach
 collection: !cel "['a', 'b', 'c']"
 concurrency: !cel "variables.conc"
 steps:
-  - name: Tag
+  - name: tag
     inputs:
       x: !cel "item"
     invoke:
@@ -29,18 +29,18 @@ steps:
       value:
         text: !cel "inputs.x"
 outputs:
-  text: !cel "steps.Tag.result.text"
+  text: !cel "steps.tag.result.text"
   at: !cel "index"
 ---
 kind: Run.Sequence
 metadata:
-  name: VerifyProjection
+  name: verifyProjection
 steps:
-  - name: Project
-    invoke: !ref TagEach
-  - name: Check
+  - name: project
+    invoke: !ref tagEach
+  - name: check
     inputs:
-      result: !cel "steps.Project.result"
+      result: !cel "steps.project.result"
     invoke:
       kind: Assert.Schema
       schema:

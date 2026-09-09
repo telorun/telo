@@ -14,14 +14,14 @@ imports:
   Run: ../../../../run
 exports:
   resources:
-    - Api
+    - api
 ---
 kind: Run.Value
-metadata: { name: LocalGreet }
+metadata: { name: localGreet }
 value: { message: "ref handler in scope-lib" }
 ---
 kind: Http.Api
-metadata: { name: Api }
+metadata: { name: api }
 routes:
   # Inline `kind:` handler — an anonymous child declared in this library.
   - request:
@@ -43,7 +43,7 @@ routes:
   - request:
       path: /ref
       method: GET
-    handler: !ref LocalGreet
+    handler: !ref localGreet
     returns:
       - status: 200
         content:

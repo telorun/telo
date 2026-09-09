@@ -13,36 +13,36 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 kind: CacheMemory.Store
-metadata: { name: Fallback }
+metadata: { name: fallback }
 ---
 kind: CacheRedis.Store
-metadata: { name: Redis }
+metadata: { name: redis }
 url: "redis://127.0.0.1:6390"
 connectTimeout: "500ms"
-fallback: !ref Fallback
+fallback: !ref fallback
 ---
 kind: Cache.Entry
-metadata: { name: Put }
-store: !ref Redis
+metadata: { name: put }
+store: !ref redis
 ttl: "60s"
 ---
 kind: Cache.Lookup
-metadata: { name: Get }
-store: !ref Redis
+metadata: { name: get }
+store: !ref redis
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   - name: write
-    invoke: !ref Put
+    invoke: !ref put
     inputs:
       key: "k"
       value: { ok: true }
   - name: read
-    invoke: !ref Get
+    invoke: !ref get
     inputs:
       key: "k"
   - name: assert

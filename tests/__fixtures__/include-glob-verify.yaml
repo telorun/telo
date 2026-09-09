@@ -1,8 +1,8 @@
 kind: Run.Sequence
 metadata:
-  name: TestIncludeGlob
+  name: testIncludeGlob
 steps:
-  - name: Multiply
+  - name: multiply
     inputs:
       x: 7
       y: 6
@@ -13,9 +13,9 @@ steps:
         y: { type: number }
       value:
         product: !cel "inputs.x * inputs.y"
-  - name: VerifyProduct
+  - name: verifyProduct
     inputs:
-      product: "${{ steps.Multiply.result.product }}"
+      product: "${{ steps.multiply.result.product }}"
     invoke:
       kind: Assert.Schema
       schema:

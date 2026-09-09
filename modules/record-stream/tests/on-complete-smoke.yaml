@@ -17,17 +17,17 @@ imports:
   SQLite: ../../sqlite
   Assert: ../../assert
 targets:
-  - !ref InitSchema
-  - !ref TestPersistOnComplete
-  - !ref TestEarlyCancelSuppressesHandler
+  - !ref initSchema
+  - !ref testPersistOnComplete
+  - !ref testEarlyCancelSuppressesHandler
 ---
 kind: SQLite.Connection
-metadata: { name: Db }
+metadata: { name: db }
 file: ":memory:"
 ---
 kind: SQLite.Schema
-metadata: { name: InitSchema }
-connection: !ref Db
+metadata: { name: initSchema }
+connection: !ref db
 version: !cel "module.version"
 migrations:
   create_turns:
@@ -41,14 +41,14 @@ migrations:
 # A tagged-record stream in the shape an agent produces: two text deltas then a
 # terminal finish.
 kind: Stream.Of
-metadata: { name: Source }
+metadata: { name: source }
 items:
   - { type: text-delta, delta: "he" }
   - { type: text-delta, delta: "llo" }
   - { type: finish, finishReason: stop }
 ---
 kind: JS.Script
-metadata: { name: CollectArray }
+metadata: { name: collectArray }
 code: |
   async function main({ input }) {
     const items = [];
@@ -57,7 +57,7 @@ code: |
   }
 ---
 kind: JS.Script
-metadata: { name: TakeTwo }
+metadata: { name: takeTwo }
 code: |
   async function main({ input }) {
     let n = 0;
@@ -68,7 +68,7 @@ code: |
 # The completion handler: project the buffered records to the assistant text and
 # persist a row. This is the record→store projection the OnComplete kind delegates.
 kind: Run.Sequence
-metadata: { name: PersistTurn }
+metadata: { name: persistTurn }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -77,7 +77,7 @@ inputType:
       records: {}
       context: {}
 steps:
-  - name: Insert
+  - name: insert
     inputs:
       sql: "INSERT INTO turns (tag, content) VALUES (?, ?)"
       bindings:
@@ -85,45 +85,45 @@ steps:
         - !cel "inputs.records.filter(r, r.type == 'text-delta').map(r, r.delta).join('')"
     invoke:
       kind: Sql.Command
-      connection: !ref Db
+      connection: !ref db
 ---
 kind: RecordStream.OnComplete
-metadata: { name: Persist }
-handler: !ref PersistTurn
+metadata: { name: persist }
+handler: !ref persistTurn
 ---
 kind: Run.Sequence
-metadata: { name: TestPersistOnComplete }
+metadata: { name: testPersistOnComplete }
 steps:
-  - name: Src
-    invoke: !ref Source
-  - name: Tap
+  - name: src
+    invoke: !ref source
+  - name: tap
     inputs:
-      input: !cel "steps.Src.result.output"
+      input: !cel "steps.src.result.output"
       context: { tag: "t1" }
-    invoke: !ref Persist
-  - name: Drain
+    invoke: !ref persist
+  - name: drain
     inputs:
-      input: !cel "steps.Tap.result.output"
-    invoke: !ref CollectArray
-  - name: AssertForwarded
+      input: !cel "steps.tap.result.output"
+    invoke: !ref collectArray
+  - name: assertForwarded
     inputs:
-      count: !cel "steps.Drain.result.count"
+      count: !cel "steps.drain.result.count"
     invoke:
       kind: Assert.Schema
       schema:
         type: object
         properties: { count: { const: 3 } }
         required: [ count ]
-  - name: Query
+  - name: query
     inputs:
       sql: "SELECT tag, content FROM turns WHERE tag = 't1'"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
-  - name: AssertRow
+      connection: !ref db
+  - name: assertRow
     inputs:
-      tag: !cel "steps.Query.result.rows[0].tag"
-      content: !cel "steps.Query.result.rows[0].content"
+      tag: !cel "steps.query.result.rows[0].tag"
+      content: !cel "steps.query.result.rows[0].content"
     invoke:
       kind: Assert.Schema
       schema:
@@ -136,28 +136,28 @@ steps:
 # The consumer breaks after two items — completion never happens, so the handler
 # must not fire and no row is written for tag t2.
 kind: Run.Sequence
-metadata: { name: TestEarlyCancelSuppressesHandler }
+metadata: { name: testEarlyCancelSuppressesHandler }
 steps:
-  - name: Src
-    invoke: !ref Source
-  - name: Tap
+  - name: src
+    invoke: !ref source
+  - name: tap
     inputs:
-      input: !cel "steps.Src.result.output"
+      input: !cel "steps.src.result.output"
       context: { tag: "t2" }
-    invoke: !ref Persist
-  - name: TakeTwo
+    invoke: !ref persist
+  - name: takeTwo
     inputs:
-      input: !cel "steps.Tap.result.output"
-    invoke: !ref TakeTwo
-  - name: Query
+      input: !cel "steps.tap.result.output"
+    invoke: !ref takeTwo
+  - name: query
     inputs:
       sql: "SELECT tag FROM turns WHERE tag = 't2'"
     invoke:
       kind: Sql.Query
-      connection: !ref Db
-  - name: AssertNoRow
+      connection: !ref db
+  - name: assertNoRow
     inputs:
-      rows: !cel "steps.Query.result.rows"
+      rows: !cel "steps.query.result.rows"
     invoke:
       kind: Assert.Schema
       schema:

@@ -21,7 +21,7 @@ imports:
   Run: ../../../run
   Assert: ../../../assert
 targets:
-  - !ref LiveTextStream
+  - !ref liveTextStream
 ---
 # The account: base URL and credential in one place, so the key is declared once
 # and the 401 re-acquire-and-retry is inherited rather than re-implemented.
@@ -42,7 +42,7 @@ client: !ref openaiClient
 # schema validation. The model is just config — no API call until stream() —
 # and the run-step is gated on the key being present.
 kind: OpenAI.ChatModelStream
-metadata: { name: Live }
+metadata: { name: live }
 model: gpt-4o-mini
 request: !ref openaiRequest
 options:
@@ -50,21 +50,21 @@ options:
   maxTokens: 32
 ---
 kind: Ai.TextStream
-metadata: { name: ChatStream }
-model: !ref Live
+metadata: { name: chatStream }
+model: !ref live
 ---
 kind: Ndjson.Encoder
-metadata: { name: NdjsonEnc }
+metadata: { name: ndjsonEnc }
 ---
 kind: PlainText.Decoder
-metadata: { name: TextDec }
+metadata: { name: textDec }
 ---
 # Inspect the assembled NDJSON wire output: extract the last line, parse it as
 # JSON, and surface usage/finishReason/deltaCount fields the live assertion
 # verifies. Done in JS so we don't pull a JSON-line-decoder dependency just for
 # the live test.
 kind: JS.Script
-metadata: { name: AnalyzeNdjson }
+metadata: { name: analyzeNdjson }
 code: |
   async function main({ ndjson }) {
     const lines = ndjson.split("\n").filter(l => l.length > 0);
@@ -88,34 +88,34 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: LiveTextStream }
+metadata: { name: liveTextStream }
 steps:
-  - name: GuardEnv
+  - name: guardEnv
     if: !cel "secrets.openaiApiKey != ''"
     then:
-      - name: Stream
+      - name: stream
         inputs:
           prompt: "Reply with exactly: hello"
-        invoke: !ref ChatStream
-      - name: Encode
+        invoke: !ref chatStream
+      - name: encode
         inputs:
-          input: "${{ steps.Stream.result.output }}"
-        invoke: !ref NdjsonEnc
-      - name: Decode
+          input: "${{ steps.stream.result.output }}"
+        invoke: !ref ndjsonEnc
+      - name: decode
         inputs:
-          input: "${{ steps.Encode.result.output }}"
-        invoke: !ref TextDec
-      - name: Analyze
+          input: "${{ steps.encode.result.output }}"
+        invoke: !ref textDec
+      - name: analyze
         inputs:
-          ndjson: "${{ steps.Decode.result.text }}"
-        invoke: !ref AnalyzeNdjson
-      - name: Assert
+          ndjson: "${{ steps.decode.result.text }}"
+        invoke: !ref analyzeNdjson
+      - name: assert
         inputs:
-          lineCount: "${{ steps.Analyze.result.lineCount }}"
-          deltaCount: "${{ steps.Analyze.result.deltaCount }}"
-          text: "${{ steps.Analyze.result.text }}"
-          finishReason: "${{ steps.Analyze.result.finishReason }}"
-          totalTokens: "${{ steps.Analyze.result.totalTokens }}"
+          lineCount: "${{ steps.analyze.result.lineCount }}"
+          deltaCount: "${{ steps.analyze.result.deltaCount }}"
+          text: "${{ steps.analyze.result.text }}"
+          finishReason: "${{ steps.analyze.result.finishReason }}"
+          totalTokens: "${{ steps.analyze.result.totalTokens }}"
         invoke:
           kind: Assert.Schema
           schema:

@@ -8,19 +8,19 @@ imports:
 ---
 kind: Run.Value
 metadata:
-  name: Handler
+  name: handler
 value: { ok: true }
 ---
 # A no-when returns: entry followed by a when:-qualified entry — the later
 # entry is unreachable → CATCHALL_NOT_LAST.
 kind: Http.Api
 metadata:
-  name: CatchAllApi
+  name: catchAllApi
 routes:
   - request:
       path: /x
       method: GET
-    handler: !ref Handler
+    handler: !ref handler
     returns:
       - status: 200
         content:

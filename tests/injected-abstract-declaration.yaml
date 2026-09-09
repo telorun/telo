@@ -17,23 +17,23 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref AnInjectedAbstractSatisfiesItsOwnSlot
-  - !ref TheConsumerOfSuchALibraryIsClean
-  - !ref InstantiatingAnAbstractIsReported
+  - !ref anInjectedAbstractSatisfiesItsOwnSlot
+  - !ref theConsumerOfSuchALibraryIsClean
+  - !ref instantiatingAnAbstractIsReported
 ---
 # The LIBRARY on its own — the only pass that sees its internals, since a
 # consumer's flattened analysis drops the library doc and with it the stand-in
 # and every reference to it. Checking the consumer instead pins nothing here.
 kind: Assert.Manifest
 metadata:
-  name: AnInjectedAbstractSatisfiesItsOwnSlot
+  name: anInjectedAbstractSatisfiesItsOwnSlot
 source: ./__fixtures__/injected-abstract/lib/telo.yaml
 expect:
   errors: []
 ---
 kind: Assert.Manifest
 metadata:
-  name: TheConsumerOfSuchALibraryIsClean
+  name: theConsumerOfSuchALibraryIsClean
 source: ./__fixtures__/injected-abstract/app.yaml
 expect:
   errors: []
@@ -42,7 +42,7 @@ expect:
 # carries — the concrete implementations this analysis holds.
 kind: Assert.Manifest
 metadata:
-  name: InstantiatingAnAbstractIsReported
+  name: instantiatingAnAbstractIsReported
 source: ./__fixtures__/injected-abstract/bad/telo.yaml
 expect:
   errors:

@@ -5,4 +5,4 @@ metadata:
 imports:
   Api: ../api
 exports:
-  resources: [ Api.Db, Api.Migrate ]
+  resources: [ Api.db, Api.migrate ]

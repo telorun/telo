@@ -20,11 +20,11 @@ imports:
   Run: ../modules/run
   Assert: ../modules/assert
 targets:
-  - !ref VerifyIntegersCrossJson
+  - !ref verifyIntegersCrossJson
 ---
 kind: Run.Sequence
 metadata:
-  name: VerifyIntegersCrossJson
+  name: verifyIntegersCrossJson
 with:
   - kind: Run.Value
     metadata:
@@ -75,21 +75,21 @@ with:
 targets:
   - !ref CountServer
 steps:
-  - name: Local
+  - name: local
     invoke: !ref CountItems
     inputs:
       items: [ a, b, c ]
   # An integer result compares equal to an integer literal: YAML has no way to
   # write an int64, so requiring an exact type match would make every
   # integer-valued expression unassertable without a cast.
-  - name: AssertLocal
+  - name: assertLocal
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.Local.result.count"
+      actual: !cel "steps.local.result.count"
       expected: 3
   # The encoding itself, before any transport: exact digits, not a rounded
   # double. This is the same encoder every JSON boundary in the runtime uses.
-  - name: AssertExactDigits
+  - name: assertExactDigits
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "json({'big': 9007199254740993})"
@@ -97,14 +97,14 @@ steps:
   # Over the wire: the route validates both values against `type: integer` and
   # serializes them. `count` is asserted; `big` is proven by the request
   # succeeding at all, since neither door would let it through before.
-  - name: Fetch
+  - name: fetch
     inputs: {}
     invoke:
       kind: HttpClient.Request
       url: http://localhost:8846/count
       method: GET
-  - name: AssertWire
+  - name: assertWire
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.Fetch.result.body.count"
+      actual: !cel "steps.fetch.result.body.count"
       expected: 3

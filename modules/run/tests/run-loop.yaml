@@ -6,16 +6,16 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref VerifyLoop
-  - !ref VerifyIterationIsInteger
+  - !ref verifyLoop
+  - !ref verifyIterationIsInteger
 ---
 kind: Run.Loop
 metadata:
-  name: CountToThree
+  name: countToThree
 condition: !cel "iteration < 3"
 maxIterations: 10
 steps:
-  - name: Tick
+  - name: tick
     inputs:
       n: !cel "iteration"
     invoke:
@@ -26,13 +26,13 @@ steps:
         seen: !cel "inputs.n"
 outputs:
   total: !cel "iteration"
-  last: !cel "previous.Tick.result.seen"
+  last: !cel "previous.tick.result.seen"
 ---
 # maxIterations flows from an untyped input; a runtime-resolved non-number must
 # surface INVALID_LOOP rather than silently no-op (NaN cap → zero iterations).
 kind: Run.Loop
 metadata:
-  name: BadCap
+  name: badCap
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -41,7 +41,7 @@ inputType:
       cap: {}
 maxIterations: !cel "inputs.cap"
 steps:
-  - name: Tick
+  - name: tick
     invoke:
       kind: Run.Value
       value:
@@ -49,14 +49,14 @@ steps:
 ---
 kind: Run.Sequence
 metadata:
-  name: VerifyLoop
+  name: verifyLoop
 steps:
-  - name: Run
-    invoke: !ref CountToThree
-  - name: Check
+  - name: runLoop
+    invoke: !ref countToThree
+  - name: check
     inputs:
-      total: !cel "steps.Run.result.total"
-      last: !cel "steps.Run.result.last"
+      total: !cel "steps.runLoop.result.total"
+      last: !cel "steps.runLoop.result.last"
     invoke:
       kind: Assert.Schema
       schema:
@@ -64,10 +64,10 @@ steps:
         properties:
           total: { type: number, const: 3 }
           last: { type: number, const: 2 }
-  - name: BadCapFails
+  - name: badCapFails
     try:
       - name: run
-        invoke: !ref BadCap
+        invoke: !ref badCap
         inputs:
           cap: "not a number"
     catch:
@@ -89,10 +89,10 @@ steps:
 # literal exercises the overload.
 kind: Run.Loop
 metadata:
-  name: CountFromOne
+  name: countFromOne
 maxIterations: 3
 steps:
-  - name: Tick
+  - name: tick
     inputs:
       label: !cel "'#' + string(iteration + 1)"
     invoke:
@@ -103,17 +103,17 @@ steps:
         label: !cel "inputs.label"
 outputs:
   ordinal: !cel "iteration + 1"
-  lastLabel: !cel "previous.Tick.result.label"
+  lastLabel: !cel "previous.tick.result.label"
 ---
 kind: Run.Sequence
 metadata:
-  name: VerifyIterationIsInteger
+  name: verifyIterationIsInteger
 steps:
-  - name: Run
-    invoke: !ref CountFromOne
-  - name: Check
+  - name: run
+    invoke: !ref countFromOne
+  - name: check
     inputs:
-      actual: !cel "steps.Run.result"
+      actual: !cel "steps.run.result"
       expected:
         ordinal: 4
         lastLabel: "#3"

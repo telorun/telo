@@ -11,11 +11,11 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestSequencePureStep
-  - !ref TestProjectionPureStep
+  - !ref testSequencePureStep
+  - !ref testProjectionPureStep
 ---
 kind: Run.Value
-metadata: { name: LoadCart }
+metadata: { name: loadCart }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -32,49 +32,49 @@ value:
 # `total` derives from the step before it with no resource, no span, no
 # topology node — and the step after it reads it like any other step result.
 kind: Run.Sequence
-metadata: { name: TestSequencePureStep }
+metadata: { name: testSequencePureStep }
 steps:
-  - name: Cart
-    invoke: !ref LoadCart
+  - name: cart
+    invoke: !ref loadCart
     inputs: { id: "42" }
-  - name: Total
-    value: !cel "sum(steps.Cart.result.lines.map(l, l.price * l.qty))"
+  - name: total
+    value: !cel "sum(steps.cart.result.lines.map(l, l.price * l.qty))"
   # A pure step whose expression is a plain chain carries the type through, so
   # `steps.Customer.result.<typo>` would be a static error rather than silence.
-  - name: Customer
-    value: !cel "steps.Cart.result.customerId"
-  - name: Assert
+  - name: customer
+    value: !cel "steps.cart.result.customerId"
+  - name: assert
     inputs:
       actual:
-        customer: !cel "steps.Cart.result.customerId"
-        total: !cel "steps.Total.result"
+        customer: !cel "steps.cart.result.customerId"
+        total: !cel "steps.total.result"
       expected: { customer: customer-42, total: 14.0 }
     invoke:
       kind: Assert.Equals
 ---
 # The same step form inside a per-element body, where it also sees `item`.
 kind: Run.Projection
-metadata: { name: LabelWeights }
+metadata: { name: labelWeights }
 collection: !cel "inputs.parcels"
 steps:
-  - name: Kilos
+  - name: kilos
     value: !cel "item.grams / 1000.0"
 outputs:
   id: !cel "item.id"
-  kg: !cel "steps.Kilos.result"
+  kg: !cel "steps.kilos.result"
 ---
 kind: Run.Sequence
-metadata: { name: TestProjectionPureStep }
+metadata: { name: testProjectionPureStep }
 steps:
-  - name: Label
-    invoke: !ref LabelWeights
+  - name: label
+    invoke: !ref labelWeights
     inputs:
       parcels:
         - { id: a, grams: 1500.0 }
         - { id: b, grams: 250.0 }
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Label.result"
+      actual: !cel "steps.label.result"
       expected:
         - { id: a, kg: 1.5 }
         - { id: b, kg: 0.25 }

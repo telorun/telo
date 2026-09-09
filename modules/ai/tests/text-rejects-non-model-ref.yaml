@@ -5,14 +5,14 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestAnalyzerRejectsNonModelRef
+  - !ref testAnalyzerRejectsNonModelRef
 ---
 # The analyzer must reject an Ai.Text whose `model` field references a resource
 # whose kind is NOT an Ai.Model implementation. The x-telo-ref on Ai.Text.model
 # is typed as `std/ai#Model`, so only definitions extending that abstract are accepted.
 kind: Assert.Manifest
 metadata:
-  name: TestAnalyzerRejectsNonModelRef
+  name: testAnalyzerRejectsNonModelRef
 source: ./__fixtures__/text-wrong-model-kind.yaml
 expect:
   errors:

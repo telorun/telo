@@ -15,22 +15,22 @@ imports:
   Assert: ../
   Run: ../../run
 targets:
-  - !ref Check
+  - !ref check
 ---
 kind: Run.Sequence
-metadata: { name: Check }
+metadata: { name: check }
 steps:
-  - name: Equals
+  - name: equals
     invoke: !ref Assert.equals
     inputs:
       actual: "hello"
       expected: "hello"
-  - name: Matches
+  - name: matches
     invoke: !ref Assert.matches
     inputs:
       actual: "hello world"
       pattern: "^hello"
-  - name: Contains
+  - name: contains
     invoke: !ref Assert.contains
     inputs:
       actual: [ 1, 2, 3 ]

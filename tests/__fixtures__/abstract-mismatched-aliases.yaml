@@ -32,10 +32,10 @@ schema:
 ---
 kind: AImpl.Shouter
 metadata:
-  name: MyShouter
+  name: myShouter
 prefix: "HEY "
 ---
 kind: AbstractMismatchedAliases.GreeterUser
 metadata:
-  name: UsesShouter
-greeter: !ref MyShouter
+  name: usesShouter
+greeter: !ref myShouter

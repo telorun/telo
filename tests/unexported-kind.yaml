@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestUnexportedKind
+  - !ref testUnexportedKind
 ---
 # The `exports.kinds` gate: a library's kinds are private unless explicitly exported.
 # The fixture's library defines `Public` and `Private` but exports only `Public`, so a
@@ -13,7 +13,7 @@ targets:
 # rather than receiving a "no such kind" suggestion echoing back what it wrote.
 kind: Assert.Manifest
 metadata:
-  name: TestUnexportedKind
+  name: testUnexportedKind
 source: ./__fixtures__/unexported-kind.yaml
 expect:
   errors:

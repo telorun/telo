@@ -6,19 +6,19 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref TestSwitch
+  - !ref testSwitch
 ---
 kind: Run.Sequence
 metadata:
-  name: TestSwitch
+  name: testSwitch
 steps:
   # --- switch: matching case executes, others do not ---
-  - name: RouteToB
+  - name: routeToB
     switch: "${{ 'b' }}"
     cases:
       a:
         # Would fail if reached.
-        - name: BranchA
+        - name: branchA
           inputs:
             x: 1
           invoke:
@@ -29,7 +29,7 @@ steps:
                 x:
                   const: 0
       b:
-        - name: BranchB
+        - name: branchB
           inputs:
             matched: "b"
           invoke:
@@ -41,7 +41,7 @@ steps:
                   const: "b"
       c:
         # Would fail if reached.
-        - name: BranchC
+        - name: branchC
           inputs:
             x: 1
           invoke:
@@ -52,9 +52,9 @@ steps:
                 x:
                   const: 0
 
-  - name: VerifyBranchB
+  - name: verifyBranchB
     inputs:
-      result: "${{ steps.BranchB.result }}"
+      result: "${{ steps.branchB.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -64,12 +64,12 @@ steps:
             const: true
 
   # --- switch: no match falls through to default ---
-  - name: RouteToDefault
+  - name: routeToDefault
     switch: "${{ 'unknown' }}"
     cases:
       known:
         # Would fail if reached.
-        - name: KnownCase
+        - name: knownCase
           inputs:
             x: 1
           invoke:
@@ -80,7 +80,7 @@ steps:
                 x:
                   const: 0
     default:
-      - name: DefaultCase
+      - name: defaultCase
         inputs:
           matched: "default"
         invoke:
@@ -91,9 +91,9 @@ steps:
               matched:
                 const: "default"
 
-  - name: VerifyDefault
+  - name: verifyDefault
     inputs:
-      result: "${{ steps.DefaultCase.result }}"
+      result: "${{ steps.defaultCase.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -103,19 +103,19 @@ steps:
             const: true
 
   # --- switch: data-driven dispatch ---
-  - name: ComputeRole
+  - name: computeRole
     invoke:
       kind: Run.Value
       value:
         role: "admin"
 
-  - name: RouteByRole
-    switch: "${{ steps.ComputeRole.result.role }}"
+  - name: routeByRole
+    switch: "${{ steps.computeRole.result.role }}"
     cases:
       admin:
-        - name: AdminAction
+        - name: adminAction
           inputs:
-            role: "${{ steps.ComputeRole.result.role }}"
+            role: "${{ steps.computeRole.result.role }}"
           invoke:
             kind: Assert.Schema
             schema:
@@ -125,7 +125,7 @@ steps:
                   const: "admin"
       viewer:
         # Would fail if reached.
-        - name: ViewerAction
+        - name: viewerAction
           inputs:
             x: 1
           invoke:
@@ -136,9 +136,9 @@ steps:
                 x:
                   const: 0
 
-  - name: VerifyAdminAction
+  - name: verifyAdminAction
     inputs:
-      result: "${{ steps.AdminAction.result }}"
+      result: "${{ steps.adminAction.result }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -148,14 +148,14 @@ steps:
             const: true
 
   # --- switch inside if: nesting ---
-  - name: Nested
+  - name: nested
     if: "${{ true }}"
     then:
-      - name: InnerSwitch
+      - name: innerSwitch
         switch: "${{ 'x' }}"
         cases:
           x:
-            - name: NestedMatch
+            - name: nestedMatch
               inputs:
                 val: "x"
               invoke:
@@ -166,9 +166,9 @@ steps:
                     val:
                       const: "x"
 
-  - name: VerifyNested
+  - name: verifyNested
     inputs:
-      result: "${{ steps.NestedMatch.result }}"
+      result: "${{ steps.nestedMatch.result }}"
     invoke:
       kind: Assert.Schema
       schema:

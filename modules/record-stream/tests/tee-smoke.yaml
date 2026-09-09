@@ -13,22 +13,22 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestSequentialDrain
-  - !ref TestErrorPropagation
-  - !ref TestEarlyCancellation
+  - !ref testSequentialDrain
+  - !ref testErrorPropagation
+  - !ref testEarlyCancellation
 ---
 kind: Stream.Of
-metadata: { name: NumberSource }
+metadata: { name: numberSource }
 items: [ 1, 2, 3 ]
 ---
 kind: Stream.Of
-metadata: { name: FiveItemSource }
+metadata: { name: fiveItemSource }
 items: [ 1, 2, 3, 4, 5 ]
 ---
 # Drains only the first two items then breaks. The Tee's `return()` should
 # fire, marking side A closed; side B must still see every item from source.
 kind: JS.Script
-metadata: { name: TakeTwo }
+metadata: { name: takeTwo }
 code: |
   async function main({ input }) {
     const items = [];
@@ -40,7 +40,7 @@ code: |
   }
 ---
 kind: JS.Script
-metadata: { name: ErrorSource }
+metadata: { name: errorSource }
 code: |
   async function main() {
     async function* gen() { yield 1; throw new Error("boom"); }
@@ -48,7 +48,7 @@ code: |
   }
 ---
 kind: JS.Script
-metadata: { name: CollectArray }
+metadata: { name: collectArray }
 code: |
   async function main({ input }) {
     const items = [];
@@ -57,38 +57,38 @@ code: |
   }
 ---
 kind: RecordStream.Tee
-metadata: { name: TeeStream }
+metadata: { name: teeStream }
 ---
 # Drain consumer A entirely, then consumer B. Both must see [1, 2, 3].
 kind: Run.Sequence
-metadata: { name: TestSequentialDrain }
+metadata: { name: testSequentialDrain }
 steps:
-  - name: SeqSource
-    invoke: !ref NumberSource
-  - name: SeqTee
+  - name: seqSource
+    invoke: !ref numberSource
+  - name: seqTee
     inputs:
-      input: "${{ steps.SeqSource.result.output }}"
-    invoke: !ref TeeStream
-  - name: SeqDrainA
+      input: "${{ steps.seqSource.result.output }}"
+    invoke: !ref teeStream
+  - name: seqDrainA
     inputs:
-      input: "${{ steps.SeqTee.result.outputA }}"
-    invoke: !ref CollectArray
-  - name: SeqDrainB
+      input: "${{ steps.seqTee.result.outputA }}"
+    invoke: !ref collectArray
+  - name: seqDrainB
     inputs:
-      input: "${{ steps.SeqTee.result.outputB }}"
-    invoke: !ref CollectArray
-  - name: SeqAssertA
+      input: "${{ steps.seqTee.result.outputB }}"
+    invoke: !ref collectArray
+  - name: seqAssertA
     inputs:
-      count: "${{ steps.SeqDrainA.result.count }}"
+      count: "${{ steps.seqDrainA.result.count }}"
     invoke:
       kind: Assert.Schema
       schema:
         type: object
         properties: { count: { const: 3 } }
         required: [ count ]
-  - name: SeqAssertB
+  - name: seqAssertB
     inputs:
-      count: "${{ steps.SeqDrainB.result.count }}"
+      count: "${{ steps.seqDrainB.result.count }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -101,22 +101,22 @@ steps:
 # "throws on next pull" but isn't exercised here — would deadlock the
 # sequential drain pattern.)
 kind: Run.Sequence
-metadata: { name: TestErrorPropagation }
+metadata: { name: testErrorPropagation }
 steps:
-  - name: ErrSource
-    invoke: !ref ErrorSource
-  - name: ErrTee
+  - name: errSource
+    invoke: !ref errorSource
+  - name: errTee
     inputs:
-      input: "${{ steps.ErrSource.result.output }}"
-    invoke: !ref TeeStream
-  - name: ErrTried
+      input: "${{ steps.errSource.result.output }}"
+    invoke: !ref teeStream
+  - name: errTried
     try:
-      - name: ErrDrainA
+      - name: errDrainA
         inputs:
-          input: "${{ steps.ErrTee.result.outputA }}"
-        invoke: !ref CollectArray
+          input: "${{ steps.errTee.result.outputA }}"
+        invoke: !ref collectArray
     catch:
-      - name: AssertErrCaught
+      - name: assertErrCaught
         inputs:
           message: "${{ error.message }}"
         invoke:
@@ -129,34 +129,34 @@ steps:
 # Side A breaks after 2 items; side B must still drain all 5. Confirms the
 # early-cancellation path doesn't starve the running consumer or deadlock.
 kind: Run.Sequence
-metadata: { name: TestEarlyCancellation }
+metadata: { name: testEarlyCancellation }
 steps:
-  - name: EarlySource
-    invoke: !ref FiveItemSource
-  - name: EarlyTee
+  - name: earlySource
+    invoke: !ref fiveItemSource
+  - name: earlyTee
     inputs:
-      input: "${{ steps.EarlySource.result.output }}"
-    invoke: !ref TeeStream
-  - name: EarlyTakeTwo
+      input: "${{ steps.earlySource.result.output }}"
+    invoke: !ref teeStream
+  - name: earlyTakeTwo
     inputs:
-      input: "${{ steps.EarlyTee.result.outputA }}"
-    invoke: !ref TakeTwo
-  - name: EarlyDrainAll
+      input: "${{ steps.earlyTee.result.outputA }}"
+    invoke: !ref takeTwo
+  - name: earlyDrainAll
     inputs:
-      input: "${{ steps.EarlyTee.result.outputB }}"
-    invoke: !ref CollectArray
-  - name: AssertEarlyA
+      input: "${{ steps.earlyTee.result.outputB }}"
+    invoke: !ref collectArray
+  - name: assertEarlyA
     inputs:
-      count: "${{ steps.EarlyTakeTwo.result.count }}"
+      count: "${{ steps.earlyTakeTwo.result.count }}"
     invoke:
       kind: Assert.Schema
       schema:
         type: object
         properties: { count: { const: 2 } }
         required: [ count ]
-  - name: AssertEarlyB
+  - name: assertEarlyB
     inputs:
-      count: "${{ steps.EarlyDrainAll.result.count }}"
+      count: "${{ steps.earlyDrainAll.result.count }}"
     invoke:
       kind: Assert.Schema
       schema:

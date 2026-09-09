@@ -5,13 +5,13 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestBaseMismatch
+  - !ref testBaseMismatch
 ---
 # base: maps a wrong literal type onto the parent's config — asserts the analyzer
 # statically catches it (BASE_SCHEMA_MISMATCH) instead of deferring to boot.
 kind: Assert.Manifest
 metadata:
-  name: TestBaseMismatch
+  name: testBaseMismatch
 source: ./__fixtures__/base-mismatch/telo.yaml
 expect:
   errors:

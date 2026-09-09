@@ -5,7 +5,7 @@ metadata:
 imports:
   Assert: ../modules/assert
 targets:
-  - !ref TestRejectsWrongKind
+  - !ref testRejectsWrongKind
 ---
 # Strengthens the mismatched-aliases coverage by asserting that the analyzer
 # *actually validates* the x-telo-ref slot, not just "produces no errors." A
@@ -15,7 +15,7 @@ targets:
 # with `resolvedModuleName` from the per-URL identity cache.
 kind: Assert.Manifest
 metadata:
-  name: TestRejectsWrongKind
+  name: testRejectsWrongKind
 source: ./__fixtures__/abstract-mismatched-aliases-rejects-wrong-kind.yaml
 expect:
   errors:

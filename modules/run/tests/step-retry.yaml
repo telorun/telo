@@ -15,11 +15,11 @@ imports:
   Assert: ../../assert
   JS: ../../javascript
 targets:
-  - !ref Test
+  - !ref test
 ---
 # Fails on its first two invocations, succeeds on the third.
 kind: JS.Script
-metadata: { name: FlakyTwice }
+metadata: { name: flakyTwice }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -35,7 +35,7 @@ code: |
   }
 ---
 kind: JS.Script
-metadata: { name: AlwaysFails }
+metadata: { name: alwaysFails }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -50,7 +50,7 @@ code: |
   }
 ---
 kind: JS.Script
-metadata: { name: ReadCounter }
+metadata: { name: readCounter }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -64,40 +64,40 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: Test }
+metadata: { name: test }
 steps:
   # Two re-attempts are exactly enough. `attempt: 3` is the assertion that the
   # step was re-issued rather than merely not raising.
-  - name: Recovers
-    invoke: !ref FlakyTwice
+  - name: recovers
+    invoke: !ref flakyTwice
     retry:
       attempts: 2
       initialDelay: 1
       jitter: none
-  - name: AssertRecovered
+  - name: assertRecovered
     inputs:
-      actual: !cel "steps.Recovers.result.attempt"
+      actual: !cel "steps.recovers.result.attempt"
       expected: 3
     invoke:
       kind: Assert.Equals
 
   # Budget exhausted: the error propagates rather than being swallowed, and the
   # target was called exactly attempts+1 times.
-  - name: Exhausts
+  - name: exhausts
     try:
-      - name: Doomed
-        invoke: !ref AlwaysFails
+      - name: doomed
+        invoke: !ref alwaysFails
         retry:
           attempts: 2
           initialDelay: 1
           jitter: none
     catch:
-      - name: Count
-        invoke: !ref ReadCounter
-      - name: AssertExhausted
+      - name: count
+        invoke: !ref readCounter
+      - name: assertExhausted
         inputs:
           actual:
-            calls: !cel "steps.Count.result.calls"
+            calls: !cel "steps.count.result.calls"
             caught: !cel "error.message.contains('always fails')"
           expected:
             calls: 3

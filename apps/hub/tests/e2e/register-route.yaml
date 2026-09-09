@@ -19,17 +19,17 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
   Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
 targets:
-  - !ref Register_ValidRefSucceeds
-  - !ref Register_StatusReachesReady
-  - !ref Register_InvalidRefReturns400
-  - !ref Register_LocalPathRejected
-  - !ref Register_ApplicationRejected
+  - !ref register_ValidRefSucceeds
+  - !ref register_StatusReachesReady
+  - !ref register_InvalidRefReturns400
+  - !ref register_LocalPathRejected
+  - !ref register_ApplicationRejected
 ---
 # A reachable Telo module (the seeded console module) validates and registers.
 # Re-registering an already-tracked ref is idempotent (INSERT ... ON CONFLICT
 # DO NOTHING), so this stays green regardless of prior runs.
 kind: Run.Sequence
-metadata: { name: Register_ValidRefSucceeds }
+metadata: { name: register_ValidRefSucceeds }
 steps:
   - name: hit
     invoke:
@@ -76,10 +76,10 @@ steps:
 # returns the last body it saw and the sequence asserts on that, so exhaustion
 # fails on the status it actually observed.
 kind: Run.Sequence
-metadata: { name: Register_StatusReachesReady }
+metadata: { name: register_StatusReachesReady }
 steps:
   - name: poll
-    invoke: !ref PollRegisterStatus
+    invoke: !ref pollRegisterStatus
   - name: assert
     inputs:
       status: !cel "steps.poll.result.status"
@@ -108,7 +108,7 @@ steps:
 # response out of the loop so the caller can assert on it whether the loop
 # finished early or ran out of budget.
 kind: Run.Loop
-metadata: { name: PollRegisterStatus }
+metadata: { name: pollRegisterStatus }
 maxIterations: 30
 condition: !cel "iteration == 0 || previous.status.result.body.status != 'ready'"
 steps:
@@ -130,7 +130,7 @@ outputs:
 # An unresolvable ref fails validation → 400 with an inline reason, never
 # inserted for tracking.
 kind: Run.Sequence
-metadata: { name: Register_InvalidRefReturns400 }
+metadata: { name: register_InvalidRefReturns400 }
 steps:
   - name: hit
     invoke:
@@ -167,7 +167,7 @@ steps:
 # filesystem existence oracle. An existing and a non-existing path must be
 # indistinguishable in the response.
 kind: Run.Sequence
-metadata: { name: Register_LocalPathRejected }
+metadata: { name: register_LocalPathRejected }
 steps:
   - name: existing
     invoke:
@@ -205,7 +205,7 @@ steps:
 # Only a Telo.Library is registerable — an Application cannot be imported, so it
 # defines no importable kinds and would store a record that indexes nothing.
 kind: Run.Sequence
-metadata: { name: Register_ApplicationRejected }
+metadata: { name: register_ApplicationRejected }
 steps:
   - name: hit
     invoke:

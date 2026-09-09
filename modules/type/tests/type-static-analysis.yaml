@@ -5,17 +5,17 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestBadFieldAccess
-  - !ref TestValidFieldAccess
-  - !ref TestUntypedStepAccess
-  - !ref TestBadCelOverload
-  - !ref TestExtendsInheritedAccess
-  - !ref TestExtendsUnknownAccess
+  - !ref testBadFieldAccess
+  - !ref testValidFieldAccess
+  - !ref testUntypedStepAccess
+  - !ref testBadCelOverload
+  - !ref testExtendsInheritedAccess
+  - !ref testExtendsUnknownAccess
 ---
 # Bad field access on typed output — should produce CEL_UNKNOWN_FIELD
 kind: Assert.Manifest
 metadata:
-  name: TestBadFieldAccess
+  name: testBadFieldAccess
 source: ./__fixtures__/bad-type-access.yaml
 expect:
   errors:
@@ -25,7 +25,7 @@ expect:
 # Valid field access on typed output — should produce zero errors
 kind: Assert.Manifest
 metadata:
-  name: TestValidFieldAccess
+  name: testValidFieldAccess
 source: ./__fixtures__/valid-type-access.yaml
 expect:
   errors: []
@@ -33,7 +33,7 @@ expect:
 # Untyped step result — any access allowed, no false positives
 kind: Assert.Manifest
 metadata:
-  name: TestUntypedStepAccess
+  name: testUntypedStepAccess
 source: ./__fixtures__/untyped-step-access.yaml
 expect:
   errors: []
@@ -44,7 +44,7 @@ expect:
 # listing the signatures that do exist.
 kind: Assert.Manifest
 metadata:
-  name: TestBadCelOverload
+  name: testBadCelOverload
 source: ./__fixtures__/bad-cel-overload.yaml
 expect:
   errors:
@@ -61,7 +61,7 @@ expect:
 # and produces zero errors (regression: previously a false CEL_UNKNOWN_FIELD).
 kind: Assert.Manifest
 metadata:
-  name: TestExtendsInheritedAccess
+  name: testExtendsInheritedAccess
 source: ./__fixtures__/extends-inherited-access.yaml
 expect:
   errors: []
@@ -70,7 +70,7 @@ expect:
 # that is neither own nor inherited is still caught.
 kind: Assert.Manifest
 metadata:
-  name: TestExtendsUnknownAccess
+  name: testExtendsUnknownAccess
 source: ./__fixtures__/extends-unknown-access.yaml
 expect:
   errors:

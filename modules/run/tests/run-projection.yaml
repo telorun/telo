@@ -6,15 +6,15 @@ imports:
   Run: ../
   Assert: ../../assert
 targets:
-  - !ref VerifyProjection
-  - !ref VerifyIndexIsInteger
+  - !ref verifyProjection
+  - !ref verifyIndexIsInteger
 ---
 kind: Run.Projection
 metadata:
-  name: DoubleEach
+  name: doubleEach
 collection: !cel "[1, 2, 3]"
 steps:
-  - name: Double
+  - name: double
     inputs:
       n: !cel "item"
     invoke:
@@ -24,18 +24,18 @@ steps:
       value:
         doubled: !cel "double(inputs.n) * 2.0"
 outputs:
-  value: !cel "steps.Double.result.doubled"
+  value: !cel "steps.double.result.doubled"
   at: !cel "index"
 ---
 kind: Run.Sequence
 metadata:
-  name: VerifyProjection
+  name: verifyProjection
 steps:
-  - name: Project
-    invoke: !ref DoubleEach
-  - name: Check
+  - name: project
+    invoke: !ref doubleEach
+  - name: check
     inputs:
-      result: !cel "steps.Project.result"
+      result: !cel "steps.project.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -54,10 +54,10 @@ steps:
 # literal exercises the overload that used to fail at dispatch.
 kind: Run.Projection
 metadata:
-  name: PositionEach
+  name: positionEach
 collection: !cel "['a', 'b']"
 steps:
-  - name: Label
+  - name: label
     inputs:
       ordinal: !cel "index + 1"
     invoke:
@@ -67,18 +67,18 @@ steps:
       value:
         ordinal: !cel "inputs.ordinal"
 outputs:
-  ordinal: !cel "steps.Label.result.ordinal"
+  ordinal: !cel "steps.label.result.ordinal"
   next: !cel "index + 1"
 ---
 kind: Run.Sequence
 metadata:
-  name: VerifyIndexIsInteger
+  name: verifyIndexIsInteger
 steps:
-  - name: Project
-    invoke: !ref PositionEach
-  - name: Check
+  - name: project
+    invoke: !ref positionEach
+  - name: check
     inputs:
-      actual: !cel "steps.Project.result"
+      actual: !cel "steps.project.result"
       expected:
         - { ordinal: 1, next: 1 }
         - { ordinal: 2, next: 2 }

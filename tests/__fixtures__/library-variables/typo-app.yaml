@@ -14,4 +14,4 @@ variables:
     type: string
     default: a
 targets:
-  - !ref Lib.Work
+  - !ref Lib.work

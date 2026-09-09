@@ -15,14 +15,14 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestEmitAndDrop
-  - !ref TestThrow
-  - !ref TestUnknownRecord
+  - !ref testEmitAndDrop
+  - !ref testThrow
+  - !ref testUnknownRecord
 ---
 # Source: emits two text-delta parts then a finish part. ExtractText should
 # drop the finish part and yield the two delta strings.
 kind: Stream.Of
-metadata: { name: AiLikeSource }
+metadata: { name: aiLikeSource }
 items:
   - { type: "text-delta", delta: "he" }
   - { type: "text-delta", delta: "llo" }
@@ -30,7 +30,7 @@ items:
 ---
 # Drains a Stream<string> into a single concatenated string for assertion.
 kind: JS.Script
-metadata: { name: CollectStrings }
+metadata: { name: collectStrings }
 code: |
   async function main({ input }) {
     let text = "";
@@ -43,7 +43,7 @@ code: |
   }
 ---
 kind: RecordStream.ExtractText
-metadata: { name: Deltas }
+metadata: { name: deltas }
 discriminator: type
 records:
   text-delta: { do: emit, field: delta }
@@ -51,22 +51,22 @@ records:
   error: { do: throw, field: error }
 ---
 kind: Run.Sequence
-metadata: { name: TestEmitAndDrop }
+metadata: { name: testEmitAndDrop }
 steps:
-  - name: Source
-    invoke: !ref AiLikeSource
-  - name: Project
+  - name: source
+    invoke: !ref aiLikeSource
+  - name: project
     inputs:
-      input: "${{ steps.Source.result.output }}"
-    invoke: !ref Deltas
-  - name: Collect
+      input: "${{ steps.source.result.output }}"
+    invoke: !ref deltas
+  - name: collect
     inputs:
-      input: "${{ steps.Project.result.output }}"
-    invoke: !ref CollectStrings
-  - name: Assert
+      input: "${{ steps.project.result.output }}"
+    invoke: !ref collectStrings
+  - name: assert
     inputs:
-      text: "${{ steps.Collect.result.text }}"
-      count: "${{ steps.Collect.result.count }}"
+      text: "${{ steps.collect.result.text }}"
+      count: "${{ steps.collect.result.count }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -79,7 +79,7 @@ steps:
 # Source emits an error part. ExtractText should throw with the error's
 # message; Run.Sequence's try/catch surfaces the failure as a structured error.
 kind: JS.Script
-metadata: { name: ErrorSource }
+metadata: { name: errorSource }
 code: |
   async function main() {
     async function* gen() {
@@ -90,22 +90,22 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata: { name: TestThrow }
+metadata: { name: testThrow }
 steps:
-  - name: ErrorSource
-    invoke: !ref ErrorSource
-  - name: ErrorProject
+  - name: errorSource
+    invoke: !ref errorSource
+  - name: errorProject
     inputs:
-      input: "${{ steps.ErrorSource.result.output }}"
-    invoke: !ref Deltas
-  - name: ErrorTried
+      input: "${{ steps.errorSource.result.output }}"
+    invoke: !ref deltas
+  - name: errorTried
     try:
-      - name: ErrorDrain
+      - name: errorDrain
         inputs:
-          input: "${{ steps.ErrorProject.result.output }}"
-        invoke: !ref CollectStrings
+          input: "${{ steps.errorProject.result.output }}"
+        invoke: !ref collectStrings
     catch:
-      - name: AssertErrorCaught
+      - name: assertErrorCaught
         inputs:
           message: "${{ error.message }}"
         invoke:
@@ -119,27 +119,27 @@ steps:
 # Source emits a record whose discriminator value isn't listed in `records`.
 # ExtractText must throw ERR_UNKNOWN_RECORD.
 kind: Stream.Of
-metadata: { name: UnknownSource }
+metadata: { name: unknownSource }
 items:
   - { type: "tool-call-delta", id: "abc", arguments: "{}" }
 ---
 kind: Run.Sequence
-metadata: { name: TestUnknownRecord }
+metadata: { name: testUnknownRecord }
 steps:
-  - name: UnknownSource
-    invoke: !ref UnknownSource
-  - name: UnknownProject
+  - name: unknownSource
+    invoke: !ref unknownSource
+  - name: unknownProject
     inputs:
-      input: "${{ steps.UnknownSource.result.output }}"
-    invoke: !ref Deltas
-  - name: UnknownTried
+      input: "${{ steps.unknownSource.result.output }}"
+    invoke: !ref deltas
+  - name: unknownTried
     try:
-      - name: UnknownDrain
+      - name: unknownDrain
         inputs:
-          input: "${{ steps.UnknownProject.result.output }}"
-        invoke: !ref CollectStrings
+          input: "${{ steps.unknownProject.result.output }}"
+        invoke: !ref collectStrings
     catch:
-      - name: AssertUnknownCaught
+      - name: assertUnknownCaught
         inputs:
           code: "${{ error.code }}"
         invoke:

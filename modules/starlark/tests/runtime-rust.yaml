@@ -10,28 +10,28 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref RunScript
-  - !ref VerifyRustMarker
+  - !ref runScript
+  - !ref verifyRustMarker
 ---
 kind: Starlark.Script
 metadata:
-  name: SimpleScript
+  name: simpleScript
 code: |
   def run(input):
     return {"result": input["value"] * 2}
 ---
 kind: Run.Sequence
 metadata:
-  name: RunScript
+  name: runScript
 steps:
-  - name: Invoke
+  - name: invoke
     inputs:
       value: 21
-    invoke: !ref SimpleScript
+    invoke: !ref simpleScript
 ---
 kind: Assert.Events
 metadata:
-  name: VerifyRustMarker
+  name: verifyRustMarker
 filter:
   - type: "*.Invoked"
 expect:

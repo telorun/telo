@@ -4,35 +4,35 @@ imports:
   McpClient: ../
   Run: ../../run
   Assert: ../../assert
-targets: [ !ref TestRun ]
+targets: [ !ref testRun ]
 ---
 # Stdio MCP server child process: spawned at boot, handshake completes before
 # init() returns, terminated on teardown. The fixture lives under __fixtures__
 # so the kernel test runner skips it directly.
 kind: McpClient.StdioClient
-metadata: { name: LocalMcp }
+metadata: { name: localMcp }
 command: node
 args:
   - ./__fixtures__/stdio-server.mjs
 clientInfo: { name: telo-test, version: 1.0.0 }
 ---
 kind: McpClient.ToolsCall
-metadata: { name: EchoCall }
-client: !ref LocalMcp
+metadata: { name: echoCall }
+client: !ref localMcp
 ---
 kind: Run.Sequence
-metadata: { name: TestRun }
+metadata: { name: testRun }
 steps:
-  - name: Echo
+  - name: echo
     inputs:
       name: echo
       arguments:
         message: "hello stdio"
-    invoke: !ref EchoCall
-  - name: AssertEcho
+    invoke: !ref echoCall
+  - name: assertEcho
     inputs:
-      contentType: "${{ steps.Echo.result.content[0].type }}"
-      contentText: "${{ steps.Echo.result.content[0].text }}"
+      contentType: "${{ steps.echo.result.content[0].type }}"
+      contentText: "${{ steps.echo.result.content[0].text }}"
     invoke:
       kind: Assert.Schema
       schema:

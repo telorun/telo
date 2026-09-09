@@ -10,26 +10,26 @@ imports:
 # without infinite recursion and still produce a clean diagnostic set.
 kind: Run.Sequence
 metadata:
-  name: CyclicA
+  name: cyclicA
 steps:
   - name: callB
-    invoke: !ref CyclicB
+    invoke: !ref cyclicB
 ---
 kind: Run.Sequence
 metadata:
-  name: CyclicB
+  name: cyclicB
 steps:
   - name: callA
-    invoke: !ref CyclicA
+    invoke: !ref cyclicA
 ---
 kind: Http.Api
 metadata:
-  name: CycleApi
+  name: cycleApi
 routes:
   - request:
       path: /x
       method: GET
-    handler: !ref CyclicA
+    handler: !ref cyclicA
     returns:
       - status: 200
         content:

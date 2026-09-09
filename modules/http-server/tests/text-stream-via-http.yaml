@@ -19,28 +19,28 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestAllFormats
+  - !ref testAllFormats
 ---
 kind: AiEcho.EchoModelStream
-metadata: { name: Echo }
+metadata: { name: echo }
 ---
 # One source — wire format is decided by the route's encoder, not by the source.
 kind: Ai.TextStream
-metadata: { name: ChatStream }
-model: !ref Echo
+metadata: { name: chatStream }
+model: !ref echo
 ---
 kind: Ndjson.Encoder
-metadata: { name: NdjsonEnc }
+metadata: { name: ndjsonEnc }
 ---
 kind: Sse.Encoder
-metadata: { name: SseEnc }
+metadata: { name: sseEnc }
 ---
 kind: PlainText.Encoder
-metadata: { name: PlainEnc }
+metadata: { name: plainEnc }
 ---
 # Helper: POST to a URL with {prompt}, drain the body, return {status, contentType, body}.
 kind: JS.Script
-metadata: { name: FetchAndDrain }
+metadata: { name: fetchAndDrain }
 code: |
   async function main({ url, prompt, accept }) {
     const headers = { "Content-Type": "application/json" };
@@ -78,7 +78,7 @@ outputType:
     required: [ status, contentType, body ]
 ---
 kind: Http.Api
-metadata: { name: Api }
+metadata: { name: api }
 routes:
   # Single-format routes — byte-exact wire output.
   - request:
@@ -90,7 +90,7 @@ routes:
           properties:
             prompt: { type: string }
           required: [ prompt ]
-    handler: !ref ChatStream
+    handler: !ref chatStream
     inputs:
       prompt: "${{ request.body.prompt }}"
     returns:
@@ -98,7 +98,7 @@ routes:
         mode: stream
         content:
           application/x-ndjson:
-            encoder: !ref NdjsonEnc
+            encoder: !ref ndjsonEnc
     # The handler's throw union is declared now, so a route mounting it covers
     # its codes or ends with a catch-all. This fires BEFORE streaming starts.
     catches:
@@ -121,7 +121,7 @@ routes:
           properties:
             prompt: { type: string }
           required: [ prompt ]
-    handler: !ref ChatStream
+    handler: !ref chatStream
     inputs:
       prompt: "${{ request.body.prompt }}"
     returns:
@@ -129,7 +129,7 @@ routes:
         mode: stream
         content:
           text/event-stream:
-            encoder: !ref SseEnc
+            encoder: !ref sseEnc
     # The handler's throw union is declared now, so a route mounting it covers
     # its codes or ends with a catch-all. This fires BEFORE streaming starts.
     catches:
@@ -152,7 +152,7 @@ routes:
           properties:
             prompt: { type: string }
           required: [ prompt ]
-    handler: !ref ChatStream
+    handler: !ref chatStream
     inputs:
       prompt: "${{ request.body.prompt }}"
     returns:
@@ -160,7 +160,7 @@ routes:
         mode: stream
         content:
           text/plain; charset=utf-8:
-            encoder: !ref PlainEnc
+            encoder: !ref plainEnc
     # The handler's throw union is declared now, so a route mounting it covers
     # its codes or ends with a catch-all. This fires BEFORE streaming starts.
     catches:
@@ -185,7 +185,7 @@ routes:
           properties:
             prompt: { type: string }
           required: [ prompt ]
-    handler: !ref ChatStream
+    handler: !ref chatStream
     inputs:
       prompt: "${{ request.body.prompt }}"
     returns:
@@ -193,11 +193,11 @@ routes:
         mode: stream
         content:
           application/x-ndjson:
-            encoder: !ref NdjsonEnc
+            encoder: !ref ndjsonEnc
           text/event-stream:
-            encoder: !ref SseEnc
+            encoder: !ref sseEnc
           text/plain; charset=utf-8:
-            encoder: !ref PlainEnc
+            encoder: !ref plainEnc
     # The handler's throw union is declared now, so a route mounting it covers
     # its codes or ends with a catch-all. This fires BEFORE streaming starts.
     catches:
@@ -213,7 +213,7 @@ routes:
               error: !cel "error.code"
 ---
 kind: Run.Sequence
-metadata: { name: TestAllFormats }
+metadata: { name: testAllFormats }
 with:
   - kind: Http.Server
     metadata: { name: Server }
@@ -226,20 +226,20 @@ with:
         version: 1.0.0
     mounts:
       - path: /
-        mount: !ref Api
+        mount: !ref api
 targets:
   - !ref Server
 steps:
-  - name: HitNdjson
+  - name: hitNdjson
     inputs:
       url: http://127.0.0.1:8946/ndjson
       prompt: "hi"
-    invoke: !ref FetchAndDrain
-  - name: AssertNdjson
+    invoke: !ref fetchAndDrain
+  - name: assertNdjson
     inputs:
-      status: "${{ steps.HitNdjson.result.status }}"
-      contentType: "${{ steps.HitNdjson.result.contentType }}"
-      body: "${{ steps.HitNdjson.result.body }}"
+      status: "${{ steps.hitNdjson.result.status }}"
+      contentType: "${{ steps.hitNdjson.result.contentType }}"
+      body: "${{ steps.hitNdjson.result.body }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -254,16 +254,16 @@ steps:
               {"type":"finish","usage":{"promptTokens":0,"completionTokens":0,"totalTokens":0,"unit":"tokens","total":0},"finishReason":"stop"}
         required: [ status, contentType, body ]
 
-  - name: HitSse
+  - name: hitSse
     inputs:
       url: http://127.0.0.1:8946/sse
       prompt: "hi"
-    invoke: !ref FetchAndDrain
-  - name: AssertSse
+    invoke: !ref fetchAndDrain
+  - name: assertSse
     inputs:
-      status: "${{ steps.HitSse.result.status }}"
-      contentType: "${{ steps.HitSse.result.contentType }}"
-      body: "${{ steps.HitSse.result.body }}"
+      status: "${{ steps.hitSse.result.status }}"
+      contentType: "${{ steps.hitSse.result.contentType }}"
+      body: "${{ steps.hitSse.result.body }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -275,16 +275,16 @@ steps:
             const: "event: text-delta\ndata: {\"delta\":\"h\"}\n\nevent: text-delta\ndata: {\"delta\":\"i\"}\n\nevent: finish\ndata: {\"usage\":{\"promptTokens\":0,\"completionTokens\":0,\"totalTokens\":0,\"unit\":\"tokens\",\"total\":0},\"finishReason\":\"stop\"}\n\n"
         required: [ status, contentType, body ]
 
-  - name: HitPlain
+  - name: hitPlain
     inputs:
       url: http://127.0.0.1:8946/plain
       prompt: "hi"
-    invoke: !ref FetchAndDrain
-  - name: AssertPlain
+    invoke: !ref fetchAndDrain
+  - name: assertPlain
     inputs:
-      status: "${{ steps.HitPlain.result.status }}"
-      contentType: "${{ steps.HitPlain.result.contentType }}"
-      body: "${{ steps.HitPlain.result.body }}"
+      status: "${{ steps.hitPlain.result.status }}"
+      contentType: "${{ steps.hitPlain.result.contentType }}"
+      body: "${{ steps.hitPlain.result.body }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -296,15 +296,15 @@ steps:
         required: [ status, contentType, body ]
 
   # Negotiation — Accept: application/x-ndjson picks NDJSON.
-  - name: NegotiateNdjson
+  - name: negotiateNdjson
     inputs:
       url: http://127.0.0.1:8946/chat
       prompt: "hi"
       accept: "application/x-ndjson"
-    invoke: !ref FetchAndDrain
-  - name: AssertNegotiateNdjson
+    invoke: !ref fetchAndDrain
+  - name: assertNegotiateNdjson
     inputs:
-      contentType: "${{ steps.NegotiateNdjson.result.contentType }}"
+      contentType: "${{ steps.negotiateNdjson.result.contentType }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -314,15 +314,15 @@ steps:
         required: [ contentType ]
 
   # Accept: text/event-stream picks SSE.
-  - name: NegotiateSse
+  - name: negotiateSse
     inputs:
       url: http://127.0.0.1:8946/chat
       prompt: "hi"
       accept: "text/event-stream"
-    invoke: !ref FetchAndDrain
-  - name: AssertNegotiateSse
+    invoke: !ref fetchAndDrain
+  - name: assertNegotiateSse
     inputs:
-      contentType: "${{ steps.NegotiateSse.result.contentType }}"
+      contentType: "${{ steps.negotiateSse.result.contentType }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -332,15 +332,15 @@ steps:
         required: [ contentType ]
 
   # No Accept (or */*) — first declared key wins (NDJSON, by declaration order).
-  - name: NegotiateDefault
+  - name: negotiateDefault
     inputs:
       url: http://127.0.0.1:8946/chat
       prompt: "hi"
       accept: "*/*"
-    invoke: !ref FetchAndDrain
-  - name: AssertNegotiateDefault
+    invoke: !ref fetchAndDrain
+  - name: assertNegotiateDefault
     inputs:
-      contentType: "${{ steps.NegotiateDefault.result.contentType }}"
+      contentType: "${{ steps.negotiateDefault.result.contentType }}"
     invoke:
       kind: Assert.Schema
       schema:
@@ -350,15 +350,15 @@ steps:
         required: [ contentType ]
 
   # No matching Accept → 406.
-  - name: NotAcceptable
+  - name: notAcceptable
     inputs:
       url: http://127.0.0.1:8946/chat
       prompt: "hi"
       accept: "image/png"
-    invoke: !ref FetchAndDrain
-  - name: Assert406
+    invoke: !ref fetchAndDrain
+  - name: assert406
     inputs:
-      status: "${{ steps.NotAcceptable.result.status }}"
+      status: "${{ steps.notAcceptable.result.status }}"
     invoke:
       kind: Assert.Schema
       schema:

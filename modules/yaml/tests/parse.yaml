@@ -8,14 +8,14 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref SingleDoc
-  - !ref MultiDoc
-  - !ref EmptyInput
-  - !ref WhitespaceOnly
-  - !ref MalformedInput
+  - !ref singleDoc
+  - !ref multiDoc
+  - !ref emptyInput
+  - !ref whitespaceOnly
+  - !ref malformedInput
 ---
 kind: Run.Sequence
-metadata: { name: SingleDoc }
+metadata: { name: singleDoc }
 steps:
   - name: parse
     invoke: { kind: Yaml.Parse }
@@ -47,7 +47,7 @@ steps:
       expected: A single document.
 ---
 kind: Run.Sequence
-metadata: { name: MultiDoc }
+metadata: { name: multiDoc }
 steps:
   - name: parse
     invoke: { kind: Yaml.Parse }
@@ -83,7 +83,7 @@ steps:
       expected: Bar
 ---
 kind: Run.Sequence
-metadata: { name: EmptyInput }
+metadata: { name: emptyInput }
 steps:
   - name: parse
     invoke: { kind: Yaml.Parse }
@@ -96,7 +96,7 @@ steps:
       expected: "0"
 ---
 kind: Run.Sequence
-metadata: { name: WhitespaceOnly }
+metadata: { name: whitespaceOnly }
 steps:
   - name: parse
     invoke: { kind: Yaml.Parse }
@@ -110,7 +110,7 @@ steps:
 ---
 # Malformed YAML must raise ERR_PARSE_FAILED — assert via try/catch.
 kind: Run.Sequence
-metadata: { name: MalformedInput }
+metadata: { name: malformedInput }
 steps:
   - name: parseShouldThrow
     try:

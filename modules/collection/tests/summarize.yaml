@@ -11,10 +11,10 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref TestSummarize
+  - !ref testSummarize
 ---
 kind: Collection.Summarize
-metadata: { name: SummarizeOrders }
+metadata: { name: summarizeOrders }
 collection: !cel "inputs.orders"
 aggregate:
   count: !cel "size(group)"
@@ -22,18 +22,18 @@ aggregate:
   average: !cel "avg(group.map(o, o.amount))"
 ---
 kind: Run.Sequence
-metadata: { name: TestSummarize }
+metadata: { name: testSummarize }
 steps:
-  - name: Summarize
-    invoke: !ref SummarizeOrders
+  - name: summarize
+    invoke: !ref summarizeOrders
     inputs:
       orders:
         - { amount: 10 }
         - { amount: 20 }
         - { amount: 30 }
-  - name: Assert
+  - name: assert
     inputs:
-      actual: !cel "steps.Summarize.result.summary"
+      actual: !cel "steps.summarize.result.summary"
       expected: { count: 3, total: 60, average: 20 }
     invoke:
       kind: Assert.Equals

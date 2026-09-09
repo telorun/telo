@@ -18,7 +18,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref Test
+  - !ref test
 ---
 # The account: base URL and credential in one place, so the key is declared once
 # and the 401 re-acquire-and-retry is inherited rather than re-implemented.
@@ -36,7 +36,7 @@ metadata: { name: openaiRequest }
 client: !ref openaiClient
 ---
 kind: OpenAI.EmbeddingModel
-metadata: { name: Model }
+metadata: { name: model }
 model: embeddinggemma-300m
 request: !ref openaiRequest
 queryPrompt: "task: search result | query: {text}"
@@ -45,16 +45,16 @@ passagePrompt: "title: none | text: {text}"
 # A dependent consumer — its ref must resolve, proving the model initialized
 # past schema validation rather than deferring forever.
 kind: Embedding.Query
-metadata: { name: QueryVector }
-model: !ref Model
+metadata: { name: queryVector }
+model: !ref model
 ---
 kind: Run.Sequence
 metadata:
-  name: Test
+  name: test
 steps:
-  - name: Inspect
+  - name: inspect
     inputs:
-      probe: !cel resources.Model
+      probe: !cel resources.model
     invoke:
       kind: Run.Value
       inputs:
@@ -62,10 +62,10 @@ steps:
       value:
         queryPrompt: !cel "'queryPrompt' in inputs.probe ? inputs.probe.queryPrompt : null"
         passagePrompt: !cel "'passagePrompt' in inputs.probe ? inputs.probe.passagePrompt : null"
-  - name: Assert
+  - name: assert
     inputs:
-      queryPrompt: !cel steps.Inspect.result.queryPrompt
-      passagePrompt: !cel steps.Inspect.result.passagePrompt
+      queryPrompt: !cel steps.inspect.result.queryPrompt
+      passagePrompt: !cel steps.inspect.result.passagePrompt
     invoke:
       kind: Assert.Schema
       schema:

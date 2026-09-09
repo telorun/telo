@@ -20,13 +20,13 @@ secrets:
     env: APP_DATABASE_URL
     type: string
 targets:
-  - !ref TestApplicationEnv
+  - !ref testApplicationEnv
 ---
 kind: Run.Sequence
 metadata:
-  name: TestApplicationEnv
+  name: testApplicationEnv
 steps:
-  - name: AssertPort
+  - name: assertPort
     inputs:
       port: !cel "variables.port"
     invoke:
@@ -38,7 +38,7 @@ steps:
             type: integer
             const: 1234
         required: [ port ]
-  - name: AssertLogLevel
+  - name: assertLogLevel
     inputs:
       logLevel: !cel "variables.logLevel"
     invoke:
@@ -50,7 +50,7 @@ steps:
             type: string
             const: info
         required: [ logLevel ]
-  - name: AssertDatabaseUrl
+  - name: assertDatabaseUrl
     inputs:
       url: !cel "secrets.databaseUrl"
     invoke:

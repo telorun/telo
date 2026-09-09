@@ -5,14 +5,14 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestValidGlobalsAccess
-  - !ref TestBadGlobalsAccess
+  - !ref testValidGlobalsAccess
+  - !ref testBadGlobalsAccess
 ---
 # Kernel globals (variables, secrets, resources, imports, env) must be
 # available inside x-telo-context scopes without being re-declared.
 kind: Assert.Manifest
 metadata:
-  name: TestValidGlobalsAccess
+  name: testValidGlobalsAccess
 source: ./__fixtures__/valid-globals-access.yaml
 expect:
   errors: []
@@ -20,7 +20,7 @@ expect:
 # Non-existent variable must still be flagged — type safety preserved.
 kind: Assert.Manifest
 metadata:
-  name: TestBadGlobalsAccess
+  name: testBadGlobalsAccess
 source: ./__fixtures__/bad-globals-access.yaml
 expect:
   errors:

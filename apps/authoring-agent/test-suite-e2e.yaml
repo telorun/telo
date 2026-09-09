@@ -12,11 +12,11 @@ metadata:
 imports:
   Test: ../../modules/test
 targets:
-  - !ref RunAll
+  - !ref runAll
 ---
 kind: Test.Suite
 metadata:
-  name: RunAll
+  name: runAll
 include:
   - "chat/tests/*.yaml"
 exclude:

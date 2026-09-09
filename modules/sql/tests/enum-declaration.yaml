@@ -9,20 +9,20 @@ metadata:
 imports:
   Assert: ../../assert
 targets:
-  - !ref TestListed
-  - !ref TestUnlisted
-  - !ref TestStorageClassOnly
+  - !ref testListed
+  - !ref testUnlisted
+  - !ref testStorageClassOnly
 ---
 kind: Assert.Manifest
 metadata:
-  name: TestListed
+  name: testListed
 source: ./__fixtures__/enum-declaration/listed.yaml
 expect:
   errors: []
 ---
 kind: Assert.Manifest
 metadata:
-  name: TestUnlisted
+  name: testUnlisted
 source: ./__fixtures__/enum-declaration/unlisted.yaml
 expect:
   errors:
@@ -34,7 +34,7 @@ expect:
 # declaring no enums at all stays clean.
 kind: Assert.Manifest
 metadata:
-  name: TestStorageClassOnly
+  name: testStorageClassOnly
 source: ./__fixtures__/enum-declaration/storage-class.yaml
 expect:
   errors: []

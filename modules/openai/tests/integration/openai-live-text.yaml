@@ -14,7 +14,7 @@ imports:
   Run: ../../../run
   Assert: ../../../assert
 targets:
-  - !ref LiveText
+  - !ref liveText
 ---
 # The account: base URL and credential in one place, so the key is declared once
 # and the 401 re-acquire-and-retry is inherited rather than re-implemented.
@@ -32,7 +32,7 @@ metadata: { name: openaiRequest }
 client: !ref openaiClient
 ---
 kind: OpenAI.ChatModel
-metadata: { name: Live }
+metadata: { name: live }
 model: gpt-4o-mini
 request: !ref openaiRequest
 options:
@@ -40,26 +40,26 @@ options:
   maxTokens: 32
 ---
 kind: Ai.Text
-metadata: { name: C }
-model: !ref Live
+metadata: { name: c }
+model: !ref live
 ---
 kind: Run.Sequence
 metadata:
-  name: LiveText
+  name: liveText
 steps:
-  - name: GuardEnv
+  - name: guardEnv
     if: !cel "secrets.openaiApiKey != ''"
     then:
-      - name: Invoke
+      - name: invoke
         inputs:
           prompt: "Say the single word: pong."
-        invoke: !ref C
-      - name: Assert
+        invoke: !ref c
+      - name: assert
         inputs:
-          text: "${{ steps.Invoke.result.text }}"
-          promptTokens: "${{ steps.Invoke.result.usage.promptTokens }}"
-          completionTokens: "${{ steps.Invoke.result.usage.completionTokens }}"
-          finishReason: "${{ steps.Invoke.result.finishReason }}"
+          text: "${{ steps.invoke.result.text }}"
+          promptTokens: "${{ steps.invoke.result.usage.promptTokens }}"
+          completionTokens: "${{ steps.invoke.result.usage.completionTokens }}"
+          finishReason: "${{ steps.invoke.result.finishReason }}"
         invoke:
           kind: Assert.Schema
           schema:

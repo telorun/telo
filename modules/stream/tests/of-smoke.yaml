@@ -12,35 +12,35 @@ imports:
   PlainText: ../../plain-text-codec
   Assert: ../../assert
 targets:
-  - name: Source
-    invoke: !ref Source
-  - name: ToBytes
+  - name: source
+    invoke: !ref source
+  - name: toBytes
     inputs:
-      input: "${{ steps.Source.result.output }}"
-    invoke: !ref ToBytes
-  - name: ToText
+      input: "${{ steps.source.result.output }}"
+    invoke: !ref toBytes
+  - name: toText
     inputs:
-      input: "${{ steps.ToBytes.result.output }}"
-    invoke: !ref ToText
-  - name: Assert
+      input: "${{ steps.toBytes.result.output }}"
+    invoke: !ref toText
+  - name: assert
     inputs:
-      text: "${{ steps.ToText.result.text }}"
-    invoke: !ref AssertText
+      text: "${{ steps.toText.result.text }}"
+    invoke: !ref assertText
 ---
 kind: Stream.Of
-metadata: { name: Source }
+metadata: { name: source }
 items:
   - "hello "
   - "telo"
 ---
 kind: PlainText.Encoder
-metadata: { name: ToBytes }
+metadata: { name: toBytes }
 ---
 kind: PlainText.Decoder
-metadata: { name: ToText }
+metadata: { name: toText }
 ---
 kind: Assert.Schema
-metadata: { name: AssertText }
+metadata: { name: assertText }
 schema:
   type: object
   properties:

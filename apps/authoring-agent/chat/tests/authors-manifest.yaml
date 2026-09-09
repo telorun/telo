@@ -63,7 +63,7 @@ targets:
   - !ref cleanWorkspace
   - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
-  - !ref TestAuthors
+  - !ref testAuthors
 ---
 kind: Run.Sequence
 metadata: { name: cleanWorkspace }
@@ -83,21 +83,21 @@ steps:
         value: true
 ---
 kind: Shell.LocalHost
-metadata: { name: RepoHost }
+metadata: { name: repoHost }
 ---
 kind: Shell.Command
-metadata: { name: TeloCheck }
-host: !ref RepoHost
+metadata: { name: teloCheck }
+host: !ref repoHost
 ---
 kind: Run.Sequence
-metadata: { name: TestAuthors }
+metadata: { name: testAuthors }
 # The whole live run is gated on the key being present, so `pnpm test` (and fork
 # PRs without the secret) skip it silently instead of failing on a missing key.
 steps:
-  - name: RunIfKey
+  - name: runIfKey
     if: !cel "secrets.openaiApiKey != ''"
     then:
-      - name: Chat
+      - name: chat
         invoke: !ref Chat.chatStart
         inputs:
           conversationId: authors-1
@@ -120,21 +120,21 @@ steps:
       # The turn runs detached into the journal under the returned turnId. Read
       # it back through the journal source — it replays from the start and tails
       # live until the turn completes — then materialize the { id, data } envelopes.
-      - name: Read
+      - name: read
         invoke: !ref Chat.journalSource
         inputs:
-          key: !cel "steps.Chat.result.turnId"
+          key: !cel "steps.chat.result.turnId"
           fromId: 0
-      - name: Drain
+      - name: drain
         invoke:
           kind: Stream.Collect
         inputs:
-          input: !cel "steps.Read.result.output"
-      - name: AssertWrote
+          input: !cel "steps.read.result.output"
+      - name: assertWrote
         inputs:
-          calledWriteFile: !cel "steps.Drain.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'write_file')"
-          calledRegistry: !cel "steps.Drain.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'get_module_manifest')"
-          toolNames: !cel "steps.Drain.result.items.filter(r, r.data.type == 'tool-call').map(r, r.data.toolCall.name)"
+          calledWriteFile: !cel "steps.drain.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'write_file')"
+          calledRegistry: !cel "steps.drain.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'get_module_manifest')"
+          toolNames: !cel "steps.drain.result.items.filter(r, r.data.type == 'tool-call').map(r, r.data.toolCall.name)"
         invoke:
           kind: Assert.Schema
           schema:
@@ -144,13 +144,13 @@ steps:
               calledRegistry: { const: true }
             required: [calledWriteFile, calledRegistry]
       # Independently validate the manifest the agent authored.
-      - name: Validate
+      - name: validate
         inputs:
           command: !cel "'bun ./cli/nodejs/bin/telo.ts check ' + variables.workspaceDir + '/hello-api.yaml'"
-        invoke: !ref TeloCheck
-      - name: AssertValid
+        invoke: !ref teloCheck
+      - name: assertValid
         inputs:
-          exitCode: !cel "steps.Validate.result.exitCode"
+          exitCode: !cel "steps.validate.result.exitCode"
         invoke:
           kind: Assert.Schema
           schema:
@@ -160,13 +160,13 @@ steps:
             required: [exitCode]
       # Prove the manifest is real — it composed the live http-server module (not
       # a self-contained stub) and wired the requested /hello route.
-      - name: Content
+      - name: content
         inputs:
           command: !cel "'grep -q http-server ' + variables.workspaceDir + '/hello-api.yaml && grep -q /hello ' + variables.workspaceDir + '/hello-api.yaml'"
-        invoke: !ref TeloCheck
-      - name: AssertContent
+        invoke: !ref teloCheck
+      - name: assertContent
         inputs:
-          exitCode: !cel "steps.Content.result.exitCode"
+          exitCode: !cel "steps.content.result.exitCode"
         invoke:
           kind: Assert.Schema
           schema:

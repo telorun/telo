@@ -6,12 +6,12 @@ imports:
   Run: ../../../run
   JavaScript: ../../../javascript
 targets:
-  - !ref TestUntypedAccess
+  - !ref testUntypedAccess
 ---
 # Script with no outputType — result should be untyped (any access allowed)
 kind: JavaScript.Script
 metadata:
-  name: Compute
+  name: compute
 code: |
   function main() {
     return { anything: 42 }
@@ -19,14 +19,14 @@ code: |
 ---
 kind: Run.Sequence
 metadata:
-  name: TestUntypedAccess
+  name: testUntypedAccess
 steps:
-  - name: Step1
-    invoke: !ref Compute
-  - name: Step2
+  - name: step1
+    invoke: !ref compute
+  - name: step2
     inputs:
-      val: "${{ steps.Step1.result.anything }}"
-      deep: "${{ steps.Step1.result.some.deeply.nested.field }}"
+      val: "${{ steps.step1.result.anything }}"
+      deep: "${{ steps.step1.result.some.deeply.nested.field }}"
     invoke:
       kind: JavaScript.Script
       code: |
