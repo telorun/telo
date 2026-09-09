@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0 - 2026-09-09
+### Deprecated
+* `JavaScript.Script` is deprecated. It runs unchanged and existing manifests keep working, but declaring it now reports a `DEPRECATED_KIND` warning at the resource's `kind:` line in `telo check` and in the editor.
+
+A body of JavaScript is opaque to every guarantee the rest of the runtime rests on: it cannot be type-checked, and it cannot be rendered in a visual editor.
+
+No `replacedBy` is declared, because what replaces a script depends on what the script does — value shaping and control flow move to the `Run` kinds with CEL, and reaching an API nothing else exposes is what a resource kind is for. Naming one successor here would be a link a consumer follows to the wrong place.
+
 ## 0.12.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
