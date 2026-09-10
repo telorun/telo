@@ -1,5 +1,63 @@
 # @telorun/cli
 
+## 0.89.0
+
+### Minor Changes
+
+- 5e89ea5: `telo-workspace.yaml` gains per-subtree release settings and an `env:` block, and every field now lives in a block scoped to what it governs.
+
+  **`modules:` moves under `release:`.** This is a breaking edit to every existing marker: indent the list one level. Top-level `modules:` is a recognized-and-moved key whose message names the move rather than a generic unknown-field rejection, and no second spelling is kept. It is a release inventory, not an inventory of manifests, and leaving it at the top level made it read as a fact about the tree — which is why a runner had to seed `modules: ["*"]` into every session workspace to satisfy a reader that never runs there. A marker whose whole content is comments is now valid, so it seeds one.
+
+  `release:` carries `registry:` (the publish base), `ignore:` (module-relative gitignore-style paths whose changes ask for no changelog fragment — the built-in default is now `**/`-prefixed, so a nested `nodejs/tests/` suite stops being reported as a semantic change) and `modules:`. An entry is a bare pattern or `{path, registry?, ignore?}` overriding the block's keys key-wise, evaluated last-match-wins.
+
+  `env:` carries `roots:` (how far up `telo run` walks collecting env files) and `files:` (which filenames, later winning within one directory). Both default to today's behaviour exactly.
+
+  Also:
+
+  - **Destinations are checked before any payload is built.** `DESTINATION_COLLISION` when two modules resolve to one ref; `IMPORT_DESTINATION_CONFLICT` when a relative import does not agree about where its target publishes.
+  - **The registry cascade is entry → block → `--registry` → `TELO_OCI_REGISTRY` → the ledger.** The ledger is last, where it used to win; a disagreement is now a per-module `LEDGER_REGISTRY_MISMATCH` inside a plan that is still produced, rather than an abort.
+  - **The ledger records a base per entry**, unconditionally. A top-level `registry:` is read as every entry's and never written again.
+  - **`telo release order` emits `{key, destination}`**, so a publisher no longer derives a destination of its own.
+  - **`telo run` reads the marker's `env:` block** and nothing else in it: a problem elsewhere is printed and the run proceeds; one inside `env:` fails the run rather than widening the walk.
+  - **The marker gets diagnostics and completion**, in the editor and in `telo release` alike, including three checks that need to see the repo — an entry matching nothing, an entry a later one shadows, and a marker nested under another.
+  - **`@telorun/glob` gains `lastMatchIndex`**, which reports _which_ pattern decided a path rather than reducing the walk to a boolean. That is what makes a module's settings attributable to the entry that claimed it, and what the shadowed-entry check reads.
+  - **`@telorun/runner-core` seeds a marker with no blocks at all.** It used to write `modules: ["*"]` — release scope a session never reads — purely because an empty list was a parse error, so every session workspace carried a release claim the runner did not mean.
+
+### Patch Changes
+
+- f4ac842: **CEL gains `merge(map, map)`, right-hand precedence.** The map case had no
+  spelling at all — `+` joins lists and strings and refuses maps — so a child kind
+  inheriting a map-valued field could only REPLACE it. That turns a default the
+  parent set for a reason into something every consumer must restate, and a
+  consumer who restates it incompletely gets a system that works until the omitted
+  entry matters: an OAuth client whose `access_type: offline` was dropped issues a
+  refresh token until the first hour is up, and then does not. `merge(defaults,
+overrides)` makes adding to a map the short spelling and replacing it the
+  deliberate one. Maps only, since `+` already concatenates lists; a list argument
+  is named rather than coerced. The generated CEL reference picks it up from the
+  catalog, so the docs need no separate edit.
+
+  **`telo module digest --help` says which digest it prints.** It is a
+  transport-specific change-detection token — for an `oci://` ref, the registry's
+  own digest over the OCI manifest (`sha256:<hex>`) — and NOT the
+  `#sha256-<base64url>` an `imports:` entry pins with, which hashes `telo.yaml`.
+  The two are not inter-convertible, and only the local-path branch happens to emit
+  the pin form, so the command looked like a pin source from one direction and not
+  the other. The help line now says so and points at `telo upgrade`, which is what
+  writes a pin. A value that looks like the one you want is worse than no value.
+
+- Updated dependencies [f4ac842]
+- Updated dependencies [f4ac842]
+- Updated dependencies [f4ac842]
+- Updated dependencies [f4ac842]
+- Updated dependencies [f4ac842]
+- Updated dependencies [5e89ea5]
+  - @telorun/kernel@0.89.0
+  - @telorun/analyzer@0.73.0
+  - @telorun/templating@0.20.0
+  - @telorun/ide-support@0.20.0
+  - @telorun/glob@0.3.0
+
 ## 0.88.0
 
 ### Minor Changes

@@ -1,5 +1,12 @@
 # @telorun/k8s-runner
 
+## 0.15.1
+
+### Patch Changes
+
+- Updated dependencies [5e89ea5]
+  - @telorun/runner-core@0.14.0
+
 ## 0.15.0
 
 ### Minor Changes

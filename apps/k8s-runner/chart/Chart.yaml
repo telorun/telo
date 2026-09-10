@@ -8,8 +8,8 @@ type: application
 # this repo, so a second number to move would only ever be a way for the two to
 # disagree — and a chart-only edit already forces a package bump, because the
 # changeset gate attributes any file under `apps/k8s-runner/` to that package.
-version: 0.15.0
-appVersion: "0.15.0"
+version: 0.15.1
+appVersion: "0.15.1"
 keywords:
   - telo
   - kubernetes
