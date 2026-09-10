@@ -1,7 +1,7 @@
 {
   "name": "telo-vscode",
   "displayName": "Telo",
-  "version": "0.2.24",
+  "version": "0.2.25",
   "private": true,
   "description": "YAML diagnostics and completions for Telo manifests",
   "keywords": [
@@ -10,7 +10,7 @@
     "yaml",
     "diagnostics"
   ],
-  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",

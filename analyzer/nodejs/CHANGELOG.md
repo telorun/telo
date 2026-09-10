@@ -1,5 +1,236 @@
 # @telorun/analyzer
 
+## 0.73.0
+
+### Minor Changes
+
+- f4ac842: Three shapes that passed `telo check` and then behaved differently at run, all
+  found while answering a report about composing kinds.
+
+  **A template body's `!ref` now reaches the declaring module's own resources from
+  a step, as it already did from a reference slot.** Both sites stamp
+  `{kind, name}`, and the kind was left empty for anything that was not a sibling
+  entry. That was survivable at a reference slot — Phase-5 injection dispatches by
+  name and recovers the kind, so `client: !ref apiClient` worked — and fatal at a
+  step's `invoke:`, where `ensureKindRef` reads an empty kind as a malformed inline
+  declaration and boot fails with `Resource must have 'kind' property. Got:
+{"kind":"","name":"…"}`. So the same reference resolved at one site and died at
+  the other, with nothing static reporting either. The kind is now resolved from
+  the siblings first and then from the declaration the name reaches in the
+  enclosing scope; it stays empty only for a name that reaches nothing, which is a
+  genuinely unresolved reference the existing errors own.
+
+  **A module's own name resolves its own kinds.** `<module>.<Kind>` IS the
+  canonical identity the registry keys on and every diagnostic prints, so an author
+  reading an error copies that spelling back into the manifest. The analyzer
+  resolved it and the kernel registered only `Self` plus imported aliases, so it
+  passed `telo check` and failed at boot with "no module imported with alias
+  '<name>'". Both the root context and every import's child context now register it
+  beside `Self`.
+
+  **A missing required field inherited from a parent says where it came from.** A
+  child that `extends` and declares no `base:` is authored against
+  `merge(parent, own)`, so the parent's `required` stays on the CHILD's surface and
+  a kind written to wire that field internally still demands it from its consumer.
+  `base:` is what narrows, and nothing in "is missing required property" pointed
+  there — three steps to discover a dead end. The hint names the inherited fields
+  and the parent, derived from the definition rather than parsed out of the
+  validator's prose.
+
+  All three are pinned in `tests/check-run-agreement.yaml`. The first two assert a
+  clean check AND a clean run, since the fix is that the spelling works rather than
+  that it is reported.
+
+- f4ac842: **An application named after one of its own imports passed `telo check` and died at
+  boot.** `metadata.name: Scheduler` beside `Scheduler: oci://…/scheduler` declares
+  `Scheduler` twice, and the kernel refused it with `ERR_DUPLICATE_RESOURCE` naming only
+  the string — nothing about the two lines looks like one name written twice, so the
+  error read as a runtime mystery rather than as a manifest defect.
+
+  **The duplicate-name check modelled a narrower namespace than the kernel's.**
+  `registerManifest` keys on `metadata.name` alone, per module context, for EVERY kind, so
+  an import alias, a kind definition and an ordinary resource are one namespace. The check
+  excluded `Telo.Import` outright — on the stated grounds that an alias "lives in a
+  separate namespace from resources", which is false — and let `Telo.Definition` /
+  `Telo.Abstract` fall through the ref-validation skip set, which answers a different
+  question. Three collisions therefore checked clean and failed at boot: an alias against
+  the module's own name, an alias against a resource, and a kind definition against a
+  resource. All three are now `DUPLICATE_RESOURCE_NAME`, whose message names what each
+  side IS — an alias is not a resource, and a module's own name is not a declaration
+  inside it, so calling all three "resource name" described two of them wrongly.
+
+  **Grouped per declaring module, which is what makes including imports sound.** A
+  library's own `Telo.Import` / `Telo.Definition` docs are forwarded into a consumer's flat
+  set, so an app and a library it imports both aliasing `Console` is ordinary rather than a
+  collision; a scope whose module doc is absent is a dependency's, left to that
+  dependency's own `telo check`. A module doc carries no `metadata.module` and is its own
+  scope, which is what puts an application's name beside its imports.
+
+  **Kept apart from the by-name resolution lookup it shared a map with.** That map holds
+  resolution TARGETS alone — an alias and a kind definition are neither — so the two
+  questions disagree about membership by design, and merging them re-keys every bare-name
+  reference into an `UNRESOLVED_REFERENCE`. Two imports sharing an alias stays exactly one
+  `DUPLICATE_IMPORT_ALIAS`, since that code says what to do about it.
+
+  Pinned in `tests/check-run-agreement.yaml` in both halves: statically where the analyzer
+  now reports it, and at a consumer of a library carrying the collision, whose entry-scoped
+  analysis is silent by design and where `ERR_DUPLICATE_RESOURCE` is the only thing left.
+
+- f4ac842: Review fixes on the template-body change set. Two were breaking, two made the
+  suite that guards all of this weaker than it reads.
+
+  **The kernel reads the legacy dispatch spellings again.** Refusing a bare string,
+  a `{ kind, name }` dispatch and a CEL-named entry broke every app pinning a
+  version that carries them — `crud@0.14.2` ships `mount: api` and four
+  `!cel "self.name + '-…'"` entry names — and `telo check` was silent, because a
+  dependency's body is entry-scoped. So the failure was a boot-time `ERR_*` naming
+  a kind the consumer never wrote: the check/run disagreement this work exists to
+  remove, reintroduced at the dependency boundary and blaming an author for a
+  spelling that was valid when they published. Migrations cannot finish the job
+  (`mount: api` is a `set-tag`, the object form needs a patch verb that does not
+  exist, and a computed entry name has no literal a rewrite could compute), so
+  compatibility is the answer and the push is
+  `DEPRECATED_TEMPLATE_DISPATCH_FORM` / `DEPRECATED_TEMPLATE_ENTRY_NAME` —
+  warnings, in the entry module.
+
+  **The `Telo.Definition` dispatch slots are constrained again.** They had been
+  left as `{title, description}` on the reasoning that `validate-template-body`
+  resolves them; that pass is entry-scoped, so a dependency's definition had
+  nothing checking the slot where AJV used to. An `anyOf` of the three real shapes
+  restores the floor.
+
+  **`BASE_WITH_TEMPLATE_BODY` used one predicate, not two.** The analyzer scanned
+  keys with a length test while the kernel branched on
+  `hasOwnControllerOrTemplate`, so an empty `resources: []` checked clean and threw
+  at boot — a brand-new guard shipping with the gap it was written to close. The
+  analyzer now calls the shared predicate and uses the scan only to name the key.
+
+  **`Assert.Manifest` gains `expect.runs`, and `runFails` is bounded.** `expect: {}`
+  runs nothing, so the four "checks clean AND runs clean" fixtures asserted only
+  half of what their headers claimed and the two kernel-only fixes had no runtime
+  coverage at all. `runs: true` asserts exit 0; both run paths race a 30s timer,
+  `cancel()` in a `finally`, and report a timeout as an ordinary assertion failure
+  — a fixture that regresses into running forever is now a failing test rather than
+  a hung suite.
+
+  **The inherited-required hint keys on structured data.** `SchemaIssue` carries
+  `keyword` and `missingProperty`, so the hint no longer substring-matches the
+  validator's prose — which would have broken silently when the wording changed and
+  mis-fired on any other issue quoting the same field name.
+
+  **`x-telo-context-from-ref-kind`'s dispatch reading is gated to `Telo.Definition`.**
+  `resources:` means "entry list" only there; the annotation is generic vocabulary,
+  so a third-party kind with its own `resources:` array would have had a slot
+  silently resolved against it. The IDE's declaration resolver also now falls
+  through per spec exactly as the type resolver does, instead of aborting on a
+  malformed one and returning a field the target does not declare.
+
+  **`validate-provider-coherence` reads the inherited capability**, so an `extends`
+  child that inherits `Telo.Provider` and declares `provide:` is no longer reported
+  as `PROVIDE_ON_NON_PROVIDER (found '<unset>')`.
+
+  **One suggestion helper** (`nearest-name.ts`), replacing two byte-identical copies
+  that differed from the repo's existing ones in both threshold and tie handling.
+  A tie now returns undefined everywhere: these suggestions are emitted as an
+  applicable `DiagnosticFix`, and an arbitrary pick one click from being applied is
+  worse than none.
+
+- f4ac842: Five shapes passed `telo check` with a clean exit and then failed at run — four of
+  them on the very thing the checker was silent about. The common factor was not five
+  missing checks: it was that each of those rules lived in a controller with no analyzer
+  twin, and nothing anywhere asserted the two agree.
+
+  **A template body is now written like every other manifest and checked like one.**
+  `validate-template-body.ts` is the one reader of a body's reference surface, replacing
+  `validate-template-dispatch.ts` and the target half of `validate-provider-coherence.ts`.
+  Between them those covered `provide:` and `mount:` for the object form, `!ref` for all
+  four slots but only when every sibling name was literal, and `invoke:` / `run:` not at
+  all — so a typo'd `invoke:` target was a runtime miss nothing reported. Every entry is
+  named by a LITERAL (`TEMPLATE_ENTRY_NAME_DYNAMIC`), every dispatch slot is a `!ref` to
+  one (`TEMPLATE_DISPATCH_UNKNOWN`), and a reference slot
+  INSIDE an entry follows the rule every other slot follows — `!ref` or an inline
+  declaration, naming a sibling or a resource of the declaring module
+  (`INVALID_REFERENCE_FORM`, `TEMPLATE_REF_UNKNOWN`).
+
+  **The `{ kind, name }` object form and the CEL-computed entry name are DEPRECATED,
+  not removed.** They are one feature — a `!ref` is looked up verbatim, so only the object
+  form could ever reach a CEL-named sibling — and neither buys anything now that each
+  template instance owns its children in a child context of its own. What they cost is
+  decidability: one dynamic sibling switches the target check off for the whole
+  definition, which the warning says. But the KERNEL reads both forever, because published
+  artifacts carry them (`crud@0.14.2` ships `mount: api` and four
+  `!cel "self.name + '-…'"` entry names) and the runtime must read artifacts published
+  years ago. `DEPRECATED_TEMPLATE_DISPATCH_FORM` / `DEPRECATED_TEMPLATE_ENTRY_NAME`,
+  warnings, entry-scoped — so a dependency's spelling is never reported to a consumer who
+  cannot change it.
+
+  **`base:` beside a body is refused** (`BASE_WITH_TEMPLATE_BODY`,
+  `ERR_BASE_WITH_TEMPLATE_BODY`). `resources:` selects the template path, which never
+  reads `base:`, so the kind silently became an empty template that dispatched nothing and
+  published nothing — surfacing in the CONSUMER's resource as `Got: {}`, with nothing
+  connecting it back to the mapping that produced it.
+
+  **A base-form child's own fields are compile-eval without annotation.** They are
+  construction inputs no controller sees, read once by `base:` at `create()` — the
+  `Telo.Provider` posture, for the same reason. Saying so is what makes them CHECKED: the
+  `CEL_IN_NON_EVAL_FIELD` gate read the DECLARED capability, which an `extends` child never
+  writes, so the rule was off for every inheritance kind and their expressions were neither
+  flagged nor typed. A `!cel "variables.whoo"` there passed `telo check` and failed at boot.
+
+  **A library's export list is resolved where it is written** (`EXPORT_KIND_UNKNOWN`,
+  `EXPORT_RESOURCE_UNKNOWN`). An entry naming nothing was read as a gate value and failed
+  in whichever consumer first used it, so the author who could fix it saw green and a
+  stranger saw red on a file with nothing wrong in it. A bare name that is an IMPORTED kind
+  gets its own message and its own fix: it is the natural first attempt at a re-export, and
+  a clean check read as confirmation that it worked.
+
+  **A template child is stamped with its defining module.** Phase-5 injection resolves a
+  resource's ref-slot field map through `metadata.module`; a child registered without one
+  was resolved against the ROOT application's aliases, so a library's template body worked
+  or failed depending on which aliases its consumer happened to import — and when it
+  failed, injection was skipped silently and `http-client` explained the residue as a rule
+  about scopes, sending the author to a remedy for a problem they did not have. That
+  raw-manifest fallback is gone: the request resolves its client through `ctx.resolveRef`
+  like every other slot.
+
+  **The kernel registers `Self` on the root context.** The analyzer registers it for a root
+  module and the import controller for every library, so a root Application instantiating
+  its own kind as `kind: Self.<Kind>` checked clean and failed at boot with "no module
+  imported with alias 'Self'". Found by the agreement suite below, which is the point of
+  having one.
+
+  **`Assert.Manifest` gains `expect.runFails`**, and `tests/check-run-agreement.yaml` is
+  the suite built on it: each defect is pinned twice — at the library where `telo check`
+  now reports it, and at a consumer whose entry-scoped analysis is silent by design, where
+  the kernel's own guard is the only thing left. A guard that gains a kernel half and no
+  static half fails the first assertion; one that gains a static half and no kernel half
+  fails the second. Repaired twins are asserted too, or a suite passes by refusing
+  everything.
+
+- 5e89ea5: `telo-workspace.yaml` gains per-subtree release settings and an `env:` block, and every field now lives in a block scoped to what it governs.
+
+  **`modules:` moves under `release:`.** This is a breaking edit to every existing marker: indent the list one level. Top-level `modules:` is a recognized-and-moved key whose message names the move rather than a generic unknown-field rejection, and no second spelling is kept. It is a release inventory, not an inventory of manifests, and leaving it at the top level made it read as a fact about the tree — which is why a runner had to seed `modules: ["*"]` into every session workspace to satisfy a reader that never runs there. A marker whose whole content is comments is now valid, so it seeds one.
+
+  `release:` carries `registry:` (the publish base), `ignore:` (module-relative gitignore-style paths whose changes ask for no changelog fragment — the built-in default is now `**/`-prefixed, so a nested `nodejs/tests/` suite stops being reported as a semantic change) and `modules:`. An entry is a bare pattern or `{path, registry?, ignore?}` overriding the block's keys key-wise, evaluated last-match-wins.
+
+  `env:` carries `roots:` (how far up `telo run` walks collecting env files) and `files:` (which filenames, later winning within one directory). Both default to today's behaviour exactly.
+
+  Also:
+
+  - **Destinations are checked before any payload is built.** `DESTINATION_COLLISION` when two modules resolve to one ref; `IMPORT_DESTINATION_CONFLICT` when a relative import does not agree about where its target publishes.
+  - **The registry cascade is entry → block → `--registry` → `TELO_OCI_REGISTRY` → the ledger.** The ledger is last, where it used to win; a disagreement is now a per-module `LEDGER_REGISTRY_MISMATCH` inside a plan that is still produced, rather than an abort.
+  - **The ledger records a base per entry**, unconditionally. A top-level `registry:` is read as every entry's and never written again.
+  - **`telo release order` emits `{key, destination}`**, so a publisher no longer derives a destination of its own.
+  - **`telo run` reads the marker's `env:` block** and nothing else in it: a problem elsewhere is printed and the run proceeds; one inside `env:` fails the run rather than widening the walk.
+  - **The marker gets diagnostics and completion**, in the editor and in `telo release` alike, including three checks that need to see the repo — an entry matching nothing, an entry a later one shadows, and a marker nested under another.
+  - **`@telorun/glob` gains `lastMatchIndex`**, which reports _which_ pattern decided a path rather than reducing the walk to a boolean. That is what makes a module's settings attributable to the entry that claimed it, and what the shadowed-entry check reads.
+  - **`@telorun/runner-core` seeds a marker with no blocks at all.** It used to write `modules: ["*"]` — release scope a session never reads — purely because an empty list was a parse error, so every session workspace carried a release claim the runner did not mean.
+
+### Patch Changes
+
+- Updated dependencies [f4ac842]
+  - @telorun/templating@0.20.0
+
 ## 0.72.0
 
 ### Minor Changes
