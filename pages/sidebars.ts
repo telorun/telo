@@ -19,6 +19,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/guides/configuration", label: "Configuring an application" },
         { type: "doc", id: "docs/guides/logging-basics", label: "Logging basics" },
         { type: "doc", id: "docs/guides/libraries", label: "Libraries" },
+        { type: "doc", id: "docs/guides/workspaces", label: "Workspaces" },
         { type: "doc", id: "cli/README", label: "Installation & CLI" },
         { type: "doc", id: "docs/guides/coming-from", label: "Coming from somewhere else" },
         { type: "doc", id: "docs/guides/vs-low-code", label: "Compared to low-code platforms" },

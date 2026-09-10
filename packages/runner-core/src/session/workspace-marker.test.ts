@@ -27,9 +27,14 @@ describe("workspaceMarkerWrite", () => {
     expect(workspaceMarkerWrite(bundle(["telo.yaml", WORKSPACE_MARKER_FILENAME]))).toEqual([]);
   });
 
-  it("writes a marker the workspace parser accepts", () => {
-    // An empty `modules:` is a hard error in that parser, so a marker seeded
-    // with one would be a file this repo's own tooling rejects.
-    expect(WORKSPACE_MARKER_CONTENTS).toMatch(/^modules: \[.+\]$/m);
+  it("declares no blocks — a session reads none of them", () => {
+    // It used to write `modules: ["*"]`, release scope a session has no use
+    // for, purely because an empty list was a parse error. A marker whose whole
+    // content is comments is valid, so the runner stops shipping a fabricated
+    // claim into every user's workspace.
+    expect(WORKSPACE_MARKER_CONTENTS.split("\n").filter((line) => line.trim() !== "")).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^#/)]),
+    );
+    expect(WORKSPACE_MARKER_CONTENTS).not.toMatch(/^[A-Za-z]/m);
   });
 });

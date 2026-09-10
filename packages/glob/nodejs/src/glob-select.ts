@@ -129,6 +129,27 @@ function decide(rel: string, compiled: CompiledPattern[]): boolean {
 }
 
 /**
+ * The index of the LAST pattern matching `rel`, or `-1` when none does.
+ *
+ * `selectByPatterns` reduces the same walk to a boolean, which answers *is this
+ * selected* and loses *by which pattern* — and a list whose entries carry
+ * settings needs the second: the entry that decides a path is the one whose
+ * settings apply. A negated pattern is a legitimate answer, so the caller reads
+ * the entry it names to learn whether the decision was to exclude.
+ *
+ * The ignore tiers are deliberately not applied: this answers a question about
+ * one authored list, not about which files a selection yields.
+ */
+export function lastMatchIndex(rel: string, patterns: readonly string[]): number {
+  const compiled = normalize([...patterns]).map(compile);
+  let index = -1;
+  for (let i = 0; i < compiled.length; i++) {
+    if (compiled[i]!.re.test(rel)) index = i;
+  }
+  return index;
+}
+
+/**
  * Select the relative POSIX paths in `relPaths` that `patterns` match under the
  * Telo glob grammar (positive patterns opt in, `!` patterns carve out,
  * last-match-wins). {@link HARD_IGNORE} is always subtracted; {@link

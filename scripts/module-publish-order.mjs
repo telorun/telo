@@ -30,9 +30,16 @@ function moduleKeyOf(manifestPath) {
 
 /**
  * `paths` (absolute module manifest paths) sorted so a dependency precedes its
- * dependents. Modules the release model does not know about keep their incoming
- * order at the end, so a manifest outside the workspace is still pushed rather
- * than dropped.
+ * dependents, each with the destination it publishes to.
+ *
+ * **The destination travels with the order**, because a workspace may declare a
+ * registry base per subtree and deriving one here — `$TELO_OCI_REGISTRY` plus the
+ * directory name — would plan several bases and push them all to one, silently.
+ * That was the last fact this script still derived for itself.
+ *
+ * Modules the release model does not know about keep their incoming order at the
+ * end with no destination, so a manifest outside the workspace is still visible
+ * rather than dropped; the caller decides what to do with one it cannot address.
  */
 export function orderByDependencies(paths) {
   const byKey = new Map(paths.map((p) => [moduleKeyOf(p), p]));
@@ -45,14 +52,36 @@ export function orderByDependencies(paths) {
   ).order;
 
   const sorted = [];
-  for (const key of ordered) {
-    const path = byKey.get(key);
+  for (const entry of ordered) {
+    const path = byKey.get(entry.key);
     if (path) {
-      sorted.push(path);
-      byKey.delete(key);
+      sorted.push({ path, destination: entry.destination });
+      byKey.delete(entry.key);
     }
   }
-  return [...sorted, ...byKey.values()];
+  return [...sorted, ...[...byKey.values()].map((path) => ({ path, destination: undefined }))];
+}
+
+/**
+ * Every module's publish destination, keyed by absolute manifest path.
+ *
+ * The presence gate ("is this version already published?") has to ask the SAME
+ * registry the push will use. Deriving it from the ambient base was the last
+ * place this script answered a destination question for itself: in a workspace
+ * that publishes its subtrees to different bases it would query the wrong
+ * repository, and a same-named repo under the ambient base carrying that version
+ * would read as already published — so the module would never be pushed, with no
+ * error anywhere.
+ */
+export function destinationsByManifest() {
+  const ordered = JSON.parse(
+    execFileSync("node", ["./cli/nodejs/bin/telo.mjs", "release", "order", "-o", "json"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+    }),
+  ).order;
+  return new Map(ordered.map((entry) => [manifestPathFor(entry.key), entry.destination]));
 }
 
 /** Absolute manifest path for a workspace-relative module key. */

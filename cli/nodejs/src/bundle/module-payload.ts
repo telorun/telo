@@ -175,22 +175,56 @@ export class ModulePayloadBuilder {
   }
 
   /**
-   * The in-repo siblings this module imports relatively, without building a
-   * single controller.
+   * The in-repo siblings this module imports relatively, and the ref each import
+   * canonicalizes to — from the manifest text alone.
+   *
+   * **It claims no destination and builds no payload**, which is what the two
+   * callers need and what this used to only claim. It delegated to
+   * `transformManifest`, which CLAIMS each sibling's derived destination and
+   * hashes it — and hashing a sibling builds that sibling's payload, controller
+   * bundles and all. So asking who imports whom built most of the workspace, and
+   * a destination disagreement was refused by `claimDestination` from inside
+   * this call, before any check that could explain it in terms of the workspace
+   * file could run.
    *
    * Publish ORDER needs only this — a dependency must be pushed before its
    * dependents, because canonicalization writes the sibling's ref into the
-   * manifest and publish then hard-fails when it does not resolve — and running
-   * esbuild across the whole standard library to answer it would be minutes of
-   * work for a question the manifests already contain.
+   * manifest and publish then hard-fails when it does not resolve.
+   *
+   * The traversal is the same `importSourceRefs` / `resolveSiblingManifest` pair
+   * `transformManifest` walks; what it omits is the pin, which answers a
+   * different question.
    */
   async relativeImportsOf(
     manifestPath: string,
     destination: string,
   ): Promise<readonly { manifestPath: string; ref: string }[]> {
     const key = path.resolve(manifestPath);
-    this.claimDestination(key, destination);
-    return (await this.transformManifest(key)).relativeImports;
+    const manifestDir = path.dirname(key);
+    const docs = parseAllDocuments(fs.readFileSync(key, "utf8"), {
+      customTags: defaultCustomTags(),
+    });
+    const moduleDoc = findModuleDoc(docs);
+    if (!moduleDoc) return [];
+
+    // Resolved from the destination passed in rather than through
+    // `transportFor`, which reads a CLAIMED one — claiming is exactly what this
+    // must not do.
+    const transport = defaultTransportRegistry().forRef(destination);
+    if (!transport) throw new Error(`no transport owns publish destination '${destination}'`);
+
+    const imports: { manifestPath: string; ref: string }[] = [];
+    for (const entry of importSourceRefs(moduleDoc)) {
+      const source = entry.source;
+      if (!source.startsWith(".") && !source.startsWith("/")) continue;
+      imports.push({
+        manifestPath: resolveSiblingManifest(manifestDir, source),
+        // The destination the import resolves to, unversioned: the question here
+        // is WHERE a sibling publishes, and the version is the pin's business.
+        ref: transport.source.resolveRelative(destination, source),
+      });
+    }
+    return imports;
   }
 
   /**

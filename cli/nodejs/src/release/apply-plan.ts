@@ -25,7 +25,7 @@ import {
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ModulePayloadBuilder } from "../bundle/module-payload.js";
-import { destinationFor, digestPayload, imageDigest } from "./evidence.js";
+import { digestPayload, imageDigest, type ModuleTarget } from "./evidence.js";
 import { readLedger } from "./ledger-store.js";
 import { loadWorkspace, requireModule, type Workspace } from "./workspace.js";
 
@@ -158,7 +158,7 @@ function writeChangelog(
  */
 export async function recordLedger(
   root: string,
-  registry: string,
+  targets: ReadonlyMap<ModuleKey, ModuleTarget>,
   plan: ReleasePlan,
 ): Promise<Ledger> {
   // Re-read the workspace so discovery sees the versions just written.
@@ -172,15 +172,16 @@ export async function recordLedger(
   const entries = new Map<ModuleKey, LedgerEntry>(readLedger(workspace.root).modules);
   for (const module of workspace.modules) {
     if (!planned.has(module.key)) continue;
+    const target = targets.get(module.key);
+    if (!target) continue;
     entries.set(module.key, {
       version: module.version,
+      registry: target.registry,
       layers:
         module.artifactKind === "image"
           ? { image: await imageDigest(module) }
-          : await digestPayload(
-              await builder.payload(module.manifestPath, destinationFor(registry, module)),
-            ),
+          : await digestPayload(await builder.payload(module.manifestPath, target.destination)),
     });
   }
-  return { registry, modules: entries };
+  return { modules: entries };
 }

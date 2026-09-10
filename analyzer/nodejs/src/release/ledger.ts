@@ -14,10 +14,22 @@
  * drift: it means nothing is published, which is the correct reading for a
  * module that has never shipped.
  *
- * **It records the registry base**, because canonicalizing a relative `imports:`
- * source writes the destination into the manifest layer — so the digests below
- * are digests *against that base*, and comparing them to digests taken against
- * another one would be comparing two different artifacts.
+ * **Every entry records its own registry base**, because canonicalizing a
+ * relative `imports:` source writes the destination into the manifest layer — so
+ * each digest is a digest *against that base*, and comparing it to one taken
+ * against another would be comparing two different artifacts.
+ *
+ * Per entry rather than one top-level base with per-entry deltas: a workspace
+ * whose `release.modules` entries each author a destination has no meaningful
+ * top-level base, an absent one already means *nothing has been published yet*,
+ * and the agreement check returns early on that — so the multi-destination
+ * workspace would be the one whose bases are never compared. The file is
+ * generated and never hand-maintained, so the redundancy costs nothing and it
+ * removes the "differs from what?" question and the absent-versus-unknown
+ * conflation together. A **top-level `registry:` is a legacy form the reader
+ * accepts and never writes**, applied to every entry: the credential-free PR
+ * gate reads whatever ledger is committed on the branch, and that stays in the
+ * old shape until a release regenerates it.
  */
 
 import { Document, parseDocument } from "yaml";
@@ -31,17 +43,14 @@ export interface LedgerEntry {
   /** The version these digests were taken at — the tag the artifact published
    *  under. */
   readonly version: string;
+  /** The publish destination base these digests were taken against
+   *  (`oci://ghcr.io/telorun`). Absent only in a ledger written before the base
+   *  was recorded at all. */
+  readonly registry?: string;
   readonly layers: LayerDigests;
 }
 
 export interface Ledger {
-  /**
-   * The publish destination base the digests were taken against
-   * (`oci://ghcr.io/telorun`). Absent in a workspace that has published nothing
-   * yet, which is why it is optional rather than required — but a `check` that
-   * has entries and no base cannot reproduce them, and says so.
-   */
-  readonly registry?: string;
   readonly modules: ReadonlyMap<ModuleKey, LedgerEntry>;
 }
 
@@ -72,13 +81,14 @@ export function parseLedger(text: string, where: string): Ledger {
     }
   }
 
-  const registry = record.registry;
-  if (registry !== undefined && typeof registry !== "string") {
+  // The legacy top-level base: read and applied to every entry, never written.
+  const inherited = record.registry;
+  if (inherited !== undefined && typeof inherited !== "string") {
     throw new LedgerError(`${where}: 'registry' must be the publish destination base, as a string.`);
   }
 
   const rawModules = record.modules;
-  if (rawModules === undefined || rawModules === null) return { ...(registry ? { registry } : {}), modules: new Map() };
+  if (rawModules === undefined || rawModules === null) return { modules: new Map() };
   if (typeof rawModules !== "object" || Array.isArray(rawModules)) {
     throw new LedgerError(`${where}: 'modules' must be a mapping of module path to entry.`);
   }
@@ -89,6 +99,20 @@ export function parseLedger(text: string, where: string): Ledger {
       throw new LedgerError(`${where}: entry '${key}' must be a mapping.`);
     }
     const entry = raw as Record<string, unknown>;
+    for (const field of Object.keys(entry)) {
+      if (field !== "version" && field !== "registry" && field !== "layers") {
+        throw new LedgerError(
+          `${where}: entry '${key}' has unknown field '${field}'. An entry carries 'version:', ` +
+            `'registry:' and 'layers:'.`,
+        );
+      }
+    }
+    if (entry.registry !== undefined && typeof entry.registry !== "string") {
+      throw new LedgerError(
+        `${where}: entry '${key}' has a non-string 'registry'. It is the publish destination base ` +
+          `the digests beside it were taken against.`,
+      );
+    }
     if (!isReleaseVersion(entry.version)) {
       throw new LedgerError(
         `${where}: entry '${key}' has no major.minor.patch 'version'. The ledger records the ` +
@@ -108,10 +132,15 @@ export function parseLedger(text: string, where: string): Ledger {
         layers[layer] = digest;
       }
     }
-    modules.set(normalizeModuleKey(key), { version: entry.version, layers });
+    const registry = (entry.registry as string | undefined) ?? inherited;
+    modules.set(normalizeModuleKey(key), {
+      version: entry.version,
+      ...(registry ? { registry } : {}),
+      layers,
+    });
   }
 
-  return { ...(registry ? { registry } : {}), modules };
+  return { modules };
 }
 
 /**
@@ -127,12 +156,13 @@ export function serializeLedger(ledger: Ledger): string {
     const entry = ledger.modules.get(key)!;
     const layers: Record<string, string> = {};
     for (const layer of Object.keys(entry.layers).sort()) layers[layer] = entry.layers[layer];
-    modules[key] = { version: entry.version, layers };
+    modules[key] = {
+      version: entry.version,
+      ...(entry.registry ? { registry: entry.registry } : {}),
+      layers,
+    };
   }
-  const doc = new Document({
-    ...(ledger.registry ? { registry: ledger.registry } : {}),
-    modules,
-  });
+  const doc = new Document({ modules });
   return (
     "# Generated by `telo release apply` — what each module looks like as published.\n" +
     "# A cache of the registry's answer, so a PR gate needs no credentials.\n" +

@@ -53,8 +53,8 @@ if (manifests.length === 0) {
 
 const publishOrder = orderByDependencies(manifests);
 
-console.log(`\nBackfilling ${publishOrder.length} module manifest(s) to ${ociRegistry}:`);
-for (const m of publishOrder) console.log(`  ${m.replace(ROOT + "/", "")}`);
+console.log(`\nBackfilling ${publishOrder.length} module manifest(s):`);
+for (const m of publishOrder) console.log(`  ${m.path.replace(ROOT + "/", "")} → ${m.destination}`);
 console.log("");
 
 if (dryRun) {
@@ -69,11 +69,15 @@ if (dryRun) {
 // cause.
 const failures = [];
 for (const m of publishOrder) {
-  const rel = m.replace(ROOT + "/", "");
-  const destination = `${ociRegistry}/${basename(dirname(m))}`;
+  const rel = m.path.replace(ROOT + "/", "");
+  if (!m.destination) {
+    failures.push({ path: rel, message: "not a module of this workspace — no destination." });
+    console.error(`\n  ${rel} has no destination in the release plan — stopping.`);
+    break;
+  }
   try {
     execSync(
-      `node ./cli/nodejs/bin/telo.mjs publish --skip-controllers ${destination} ${m}`,
+      `node ./cli/nodejs/bin/telo.mjs publish --skip-controllers ${m.destination} ${m.path}`,
       { stdio: "inherit", cwd: ROOT },
     );
   } catch (err) {

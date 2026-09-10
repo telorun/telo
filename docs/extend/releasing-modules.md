@@ -21,20 +21,22 @@ relative to that directory.
 
 ```yaml
 # telo-workspace.yaml
-modules:
-  - modules/*
-  - apps/*
+release:
+  modules:
+    - modules/*
+    - apps/*
 ```
 
-`modules:` names the subtrees that may hold modules. That is not derivable — a
-whole-tree scan would read every example, template and cached
-`.telo/manifests/**` copy as a released module.
+`release.modules` names the subtrees that may hold modules. That is not
+derivable — a whole-tree scan would read every example, template and cached
+`.telo/manifests/**` copy as a released module. It sits inside `release:` because
+that is what it is: a release inventory, not an inventory of manifests.
 
-**The file is optional, and `telo release` is the only thing that reads it.**
-`run`, `check`, `publish`, `install`, `upgrade`, `migrate` and `module` behave
-identically without one, and the kernel never looks for it. A single-manifest
-repo, a bare `examples/` directory and a third-party module checkout all keep
-working with nothing added.
+**The file is optional, and so is every block in it.** `check`, `publish`,
+`install`, `upgrade`, `migrate` and `module` behave identically without one, and
+the kernel only ever reads its location. `telo run` reads the location too, plus
+an `env:` block if one is declared — see [Workspaces](../guides/workspaces.md)
+for every key the file carries, including per-subtree publish destinations.
 
 Within those subtrees, **a module is a directory holding a `telo.yaml` whose
 module doc carries a `metadata.version`**. Nothing registers the set. A module's
@@ -81,14 +83,17 @@ integrity **as published**, plus the registry base those digests were taken
 against.
 
 ```yaml
-registry: oci://ghcr.io/telorun
 modules:
   modules/sql:
     version: 0.21.0
+    registry: oci://ghcr.io/telorun
     layers:
       manifest: sha256-4f1c…
       controller/js: sha256-9ab7…
 ```
+
+Every entry records its own base, because a workspace may publish its subtrees to
+different ones.
 
 That is what lets the PR gate and the publish gate compute **the same number**.
 The gate reads the ledger, so it needs no merge base, no shallow-clone

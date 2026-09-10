@@ -63,5 +63,36 @@ export {
   stampPackageVersion,
 } from "./version-stamp.js";
 
-export { WORKSPACE_FILENAME, WorkspaceConfigError, parseWorkspaceConfig } from "./workspace-config.js";
-export type { WorkspaceConfig } from "./workspace-config.js";
+export { checkDestinationCollisions, checkImportDestinations } from "./destinations.js";
+export type { ImportDestination, ModuleDestination } from "./destinations.js";
+
+export {
+  DEFAULT_ENV_FILES,
+  DEFAULT_RELEASE_IGNORE,
+  WORKSPACE_FILENAME,
+  WorkspaceConfigError,
+  diagnosticsFor,
+  hasError,
+  matchesPatterns,
+  readWorkspaceConfig,
+  requireReleaseSettings,
+  settingsForModule,
+} from "./workspace-config.js";
+export type {
+  EnvSettings,
+  ModuleEntry,
+  ModuleSettings,
+  PatternMatch,
+  ReleaseSettings,
+  WorkspaceConfig,
+  WorkspaceDiagnostic,
+  WorkspaceDiagnosticCode,
+  WorkspaceRead,
+} from "./workspace-config.js";
+
+export {
+  MODULE_ENTRY_KEYS,
+  WORKSPACE_BLOCKS,
+  WORKSPACE_SCHEMA,
+} from "./workspace-schema.js";
+export type { WorkspaceBlockSchema, WorkspaceKeySchema } from "./workspace-schema.js";

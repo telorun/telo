@@ -214,10 +214,27 @@ These come from the release planner rather than from `telo check`. See
 | Code | What it means and what to do |
 | --- | --- |
 | `CHANGELOG_ENTRY_REQUESTED` ⚠️ | A module's own files changed but no fragment under `.changes/pending/` names it, so its changelog will not mention this release. `telo release add --module <path> --kind <Kind> --body "…"`. |
-| `FRAGMENT_UNKNOWN_MODULE` | A fragment names a module key that is not in the workspace (`modules:` in `telo-workspace.yaml`). |
+| `FRAGMENT_UNKNOWN_MODULE` | A fragment names a module key that is not in the workspace (`release.modules` in `telo-workspace.yaml`). |
 | `MAJOR_BUMP_REJECTED` | A fragment declares a `Changed` / `Removed` kind, which induces a major bump. The repo is deliberately pre-1.0 and ships breaking changes as minors — use `Added` or `Fixed`. |
 | `LEDGER_VERSION_MISMATCH` | A module's `metadata.version` disagrees with what `.changes/ledger.yaml` records as published. Reconcile with `telo release verify`. |
-| `LEDGER_REGISTRY_MISMATCH` | The ledger's digests were taken against a different registry base than this run built against, so nothing can be compared. |
+| `LEDGER_REGISTRY_MISMATCH` | A module's ledger digests were taken against a different registry base than this run built against, so nothing can be compared. Per module, because a workspace may publish its subtrees to different bases. |
+| `NO_DESTINATION_KNOWN` | A module has never published, its `release.modules` entry declares no `registry:` and neither does the block. Declare one, pass `--registry`, or set `TELO_OCI_REGISTRY`. |
+| `DESTINATION_COLLISION` | Two modules resolve to one ref, because a ref is the registry base plus the module's own directory name. Rename a directory, or give one subtree its own `registry:`. |
+| `IMPORT_DESTINATION_CONFLICT` | A relative import between two workspace modules does not agree about where the target publishes. Publishing rewrites the import to the ref the importer's own path yields, so the artifact would name a module nobody pushes. Use a pinned remote import across a publish boundary. |
+
+### The workspace marker (`telo-workspace.yaml`)
+
+Reported by `telo release`, and by the editor as you type. See
+[Workspaces](/guides/workspaces).
+
+| Code | What it means and what to do |
+| --- | --- |
+| `WORKSPACE_MODULES_MOVED` | `modules:` is at the top level. It is release scope — indent it under `release:`. |
+| `WORKSPACE_UNKNOWN_KEY` | A key nothing reads. A near-miss of a known one is an error, since its settings would go silently unapplied; an unrecognized top-level block is a warning, so a marker written for a newer telo still runs. |
+| `WORKSPACE_INVALID_VALUE` | A wrong type, an entry that is neither a pattern string nor a mapping carrying `path:`, an `env.files` entry that is a path or a glob, or an empty `release.modules`. |
+| `WORKSPACE_ENTRY_MATCHES_NOTHING` ⚠️ | A `release.modules` pattern under which no directory holds a `telo.yaml`, or an `env.roots` pattern matching no directory — usually a typo in a subtree name. |
+| `WORKSPACE_ENTRY_SHADOWED` ⚠️ | Every module an entry matches is also matched by a later one, so last-match-wins leaves this entry's settings applying to nothing. |
+| `WORKSPACE_MARKER_SHADOWED` ⚠️ | Another marker sits above this one, so everything beneath it takes a different cache root, different module keys and a different release scope. |
 
 ⚠️ = warning, ℹ️ = information; everything else is an error.
 

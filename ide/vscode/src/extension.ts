@@ -3,6 +3,7 @@ import {
   AnalysisRegistry,
   Loader,
   StaticAnalyzer,
+  WORKSPACE_FILENAME,
   flattenForAnalyzer,
 } from "@telorun/analyzer";
 import { defaultTransportRegistry } from "@telorun/kernel/transports";
@@ -30,6 +31,12 @@ import {
   UPGRADE_IMPORT_COMMAND,
 } from "./import-upgrade-lens.js";
 import { TeloSemanticTokensProvider, TELO_SEMANTIC_LEGEND } from "./semantic-tokens.js";
+import {
+  WorkspaceMarkerCompletionProvider,
+  invalidateListings,
+  isWorkspaceMarker,
+  markerDiagnostics,
+} from "./workspace-marker.js";
 
 const TELO_KIND_RE = /^kind:\s+Telo\./m;
 // Broader signature for the language-promote check: any line declaring a
@@ -174,12 +181,27 @@ export function activate(context: vscode.ExtensionContext): void {
   const importUpgradeProvider = new TeloImportUpgradeLensProvider(cache, output);
 
   const teloSelector: vscode.DocumentSelector = [{ language: "telo" }, { language: "yaml" }];
+  const manifestWatcher = vscode.workspace.createFileSystemWatcher("**/telo.yaml");
 
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(
       teloSelector,
       completionProvider,
       " ", ":", "/", "@",
+    ),
+    // The marker's checks and completions rest on a listing of the repo; a
+    // module appearing or disappearing is what makes one stale, and that is
+    // exactly what this watches.
+    manifestWatcher,
+    manifestWatcher.onDidCreate(() => invalidateListings()),
+    manifestWatcher.onDidDelete(() => invalidateListings()),
+    // Its own provider on a filename pattern, because the marker stays language
+    // id `yaml` — it declares no `kind:`, so nothing promotes it — and its keys
+    // have nothing to do with a manifest's.
+    vscode.languages.registerCompletionItemProvider(
+      { pattern: `**/${WORKSPACE_FILENAME}` },
+      new WorkspaceMarkerCompletionProvider(),
+      " ", ":", "-",
     ),
     vscode.languages.registerHoverProvider(teloSelector, hoverProvider),
     vscode.languages.registerDocumentSemanticTokensProvider(
@@ -231,6 +253,14 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   async function analyzeDocument(rawDocument: vscode.TextDocument): Promise<void> {
+    // The workspace marker is not a manifest — no `kind:`, no imports, no graph
+    // — so it is recognised by name and checked on its own before the manifest
+    // path gets a chance to dismiss it as unrelated YAML.
+    if (isWorkspaceMarker(rawDocument)) {
+      collection.set(rawDocument.uri, markerDiagnostics(rawDocument));
+      return;
+    }
+
     const document = await maybePromoteToTelo(rawDocument);
     if (document.languageId !== "telo" && document.languageId !== "yaml") return;
 

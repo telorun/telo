@@ -9,7 +9,7 @@
     "manifest",
     "yaml"
   ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
@@ -54,6 +54,7 @@
     "yaml": "^2.8.3"
   },
   "devDependencies": {
+    "@telorun/glob": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",
