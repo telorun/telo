@@ -1,0 +1,28 @@
+# The same two defects as dispatch-object-form.yaml, in a LIBRARY. A consumer's
+# analysis is entry-scoped, so its `telo check` says nothing about this file —
+# which makes the kernel's own guard the only thing standing between the defect
+# and a running application. That is what the consumer's `runFails` asserts.
+kind: Telo.Library
+metadata:
+  name: DispatchObjectFormLib
+exports:
+  kinds: [Op]
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Op
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    name: { type: string }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: !cel "self.name + '-real'"
+    value: ok
+invoke:
+  kind: Run.Value
+  name: literallyNotDeclared

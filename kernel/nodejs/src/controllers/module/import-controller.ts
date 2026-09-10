@@ -230,7 +230,12 @@ export async function create(
   // A library references its own kinds via `Self.<Kind>` (e.g. when it declares an
   // instance to export). Register `Self` → the library's own module in the child context
   // so those resolve at runtime — ungated, since this is internal use, not an importer.
+  // Its OWN NAME resolves the same kinds and for the same reason: `<module>.<Kind>` is
+  // the canonical identity the registry keys on and every diagnostic prints, which the
+  // analyzer resolves and the kernel did not — so that spelling passed `telo check` and
+  // failed at boot with "no module imported with alias '<name>'".
   childCtx.registerUngatedAlias("Self", targetModule);
+  childCtx.registerUngatedAlias(targetModule, targetModule);
 
   // Stamp the resolved controller policy on the child only when the import
   // specifies a `runtime:` field that resolves to something other than the

@@ -21,6 +21,7 @@ import { buildKernelGlobalsIndex } from "./kernel-globals.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
 import { navigateConcretePath } from "./manifest-path.js";
+import { kindAtPath } from "./validate-cel-context.js";
 import { findManifest } from "./find-manifest.js";
 import { resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
@@ -269,14 +270,27 @@ export class CelScopeQuery {
     }
 
     // A kind's own declaration: the target is the `Telo.Definition` document,
-    // which is an ordinary manifest in the set.
+    // which is an ordinary manifest in the set. The slot holds a `!ref` to a
+    // `resources:` entry; the entry's own field wins where it narrows one, else
+    // the declaration is the entry's KIND. The first slot that resolves to an
+    // entry is the one the type resolver reads, so it is the one navigated.
     const fromRefKind = annotated["x-telo-context-from-ref-kind"];
-    const first = Array.isArray(fromRefKind) ? fromRefKind[0] : fromRefKind;
-    if (typeof first === "string") {
-      const hash = first.indexOf("#");
-      if (hash <= 0) return undefined;
-      const kindValue = navigateConcretePath(root, first.slice(0, hash).split("/").join("."));
-      if (typeof kindValue !== "string") return undefined;
+    const slots = Array.isArray(fromRefKind) ? fromRefKind : [fromRefKind];
+    for (const slotSpec of slots) {
+      if (typeof slotSpec !== "string") continue;
+      const hash = slotSpec.indexOf("#");
+      // `continue`, never `return`: a malformed spec is one entry of a list the
+      // type resolver walks to the end, and aborting here made the two answer
+      // differently for the same annotation.
+      if (hash <= 0) continue;
+      const field = slotSpec.slice(hash + 1);
+      const namedKind = kindAtPath(root, slotSpec.slice(0, hash));
+      if (!namedKind) continue;
+      if (namedKind.entry?.[field] !== undefined) {
+        const index = (root.resources as unknown[]).indexOf(namedKind.entry);
+        return { manifest: resource, path: `resources[${index}].${field}`, propertyMap: false };
+      }
+      const kindValue = namedKind.kind;
       // The kind was read off THIS resource, so it is spelled in the alias scope
       // of the module that declared it — not the entry's.
       const scope = moduleAliasScope(resource.metadata, this.ctx.aliases, this.ctx.aliasesByModule);
@@ -300,9 +314,14 @@ export class CelScopeQuery {
         (owningModule
           ? named.find((m) => (m.metadata as { module?: string } | undefined)?.module === owningModule)
           : undefined) ?? (owningModule && named.length > 1 ? undefined : named[0]);
-      if (!target) return undefined;
-      return { manifest: target, path: first.slice(hash + 1), propertyMap: false };
+      // Fall through to the next spec when this one names no kind, or names one
+      // that does not declare the field — the same order the TYPE resolver
+      // takes, so go-to-declaration lands where the type came from instead of on
+      // a field the target never had.
+      if (!target || target[field] === undefined) continue;
+      return { manifest: target, path: field, propertyMap: false };
     }
+    if (slots.some((s) => typeof s === "string")) return undefined;
 
     // `x-telo-context-element-from` / `-collection-from` type a binding from an
     // EXPRESSION, so there is no declaration to navigate to.

@@ -21,10 +21,11 @@ describe("Telo.Definition template bodies: tagged-CEL parity", () => {
       resources: [
         {
           kind: "Sql.Query",
-          metadata: { name: makeTaggedSentinel("cel", "self.tabel") },
+          metadata: { name: "query" },
+          sql: makeTaggedSentinel("cel", "self.tabel"),
         },
       ],
-      invoke: "x",
+      invoke: makeTaggedSentinel("ref", "query"),
     } as unknown as ResourceManifest;
 
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
@@ -47,10 +48,11 @@ describe("Telo.Definition template bodies: tagged-CEL parity", () => {
       resources: [
         {
           kind: "Sql.Query",
-          metadata: { name: makeTaggedSentinel("cel", "self.table") },
+          metadata: { name: "query" },
+          sql: makeTaggedSentinel("cel", "self.table"),
         },
       ],
-      invoke: "x",
+      invoke: makeTaggedSentinel("ref", "query"),
     } as unknown as ResourceManifest;
 
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
@@ -66,7 +68,8 @@ describe("Telo.Definition template bodies: tagged-CEL parity", () => {
       metadata: { name: "T", module: "m" },
       capability: "Telo.Invocable",
       schema: { type: "object", properties: { table: { type: "string" } } },
-      run: makeTaggedSentinel("cel", "self.tabel"),
+      resources: [{ kind: "X", metadata: { name: "body" }, a: makeTaggedSentinel("cel", "self.tabel") }],
+      run: makeTaggedSentinel("ref", "body"),
     } as unknown as ResourceManifest;
 
     const untaggedDef: ResourceManifest = {
@@ -74,7 +77,8 @@ describe("Telo.Definition template bodies: tagged-CEL parity", () => {
       metadata: { name: "U", module: "m" },
       capability: "Telo.Invocable",
       schema: { type: "object", properties: { table: { type: "string" } } },
-      run: "${{ self.tabel }}",
+      resources: [{ kind: "X", metadata: { name: "body" }, a: "${{ self.tabel }}" }],
+      run: makeTaggedSentinel("ref", "body"),
     } as unknown as ResourceManifest;
 
     const taggedDiag = new StaticAnalyzer()

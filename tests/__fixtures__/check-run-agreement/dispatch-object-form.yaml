@@ -1,0 +1,38 @@
+# The two LEGACY spellings, both of which the kernel still reads because
+# published artifacts carry them: an entry named by an expression, and the
+# `{ kind, name }` object form at a dispatch slot. Reported as deprecations
+# rather than errors — refusing them broke every app pinning such a version,
+# with `telo check` silent because a dependency's body is entry-scoped.
+#
+# The dispatch target here is deliberately WRONG (`literally-not-declared`), so
+# this also pins what a legacy definition costs: while a computed entry name is
+# present the target checks are switched off, and the miss surfaces only at run.
+kind: Telo.Application
+metadata:
+  name: DispatchObjectForm
+imports:
+  Run: ../../../modules/run
+targets:
+  - invoke: !ref op
+---
+kind: Telo.Definition
+metadata:
+  name: Op
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    name: { type: string }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: !cel "self.name + '-real'"
+    value: ok
+invoke:
+  kind: Run.Value
+  name: literally-not-declared
+---
+kind: Self.Op
+metadata:
+  name: op
+name: op

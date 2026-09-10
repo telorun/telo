@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata:
+  name: BaseWithBodyApp
+imports:
+  Lib: ./lib
+---
+kind: Lib.Client
+metadata:
+  name: api
+name: api
+baseUrl: https://example.invalid
+token: tok

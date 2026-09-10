@@ -1,0 +1,46 @@
+# A kind that extends a contract and declares a template body, meaning to expose
+# `token` alone and supply `transport` itself. Without `base:` its author surface
+# is merge(parent, own), so the parent's required fields stay on it and the
+# consumer must supply the very thing the kind exists to supply.
+#
+# The diagnostic was correct and the merge rule is documented; what was missing
+# was any sign that `base:` is what narrows, which turned one mistake into a
+# three-step dead end. The hint names the parent and the mapping.
+kind: Telo.Application
+metadata:
+  name: InheritedRequired
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+targets: []
+---
+kind: Telo.Abstract
+metadata:
+  name: Sender
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [transport]
+  properties:
+    transport: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Facade
+extends: Self.Sender
+schema:
+  type: object
+  required: [token]
+  properties:
+    token: { type: string }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: !cel "'sent with ' + self.token"
+invoke: !ref body
+---
+kind: Self.Facade
+metadata:
+  name: sender
+token: tok-123

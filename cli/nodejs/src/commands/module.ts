@@ -277,7 +277,15 @@ async function runManifest(argv: { ref: string; json: boolean }): Promise<void> 
 
 /** Cheap content-identity digest of one published version — what the discovery
  *  tracker records per version and re-checks on every track to detect a
- *  re-pushed tag. Opaque and transport-specific: compare for equality only. */
+ *  re-pushed tag. Opaque and transport-specific: compare for equality only.
+ *
+ *  NOT the `#sha256-<base64url>` an `imports:` entry pins with, and the two are
+ *  not inter-convertible: for an `oci://` ref this is the registry's own digest
+ *  over the OCI manifest (`sha256:<hex>`), while a pin hashes `telo.yaml`. Only
+ *  the local-path branch below happens to emit the pin form, which makes the
+ *  command look like a pin source from one direction and not the other. `telo
+ *  upgrade` is what writes a pin; the help line says so, because a value that
+ *  looks like the one you want is worse than no value at all. */
 async function runDigest(argv: { ref: string; json: boolean }): Promise<void> {
   const log = createLogger(false);
 
@@ -503,7 +511,7 @@ export function moduleCommand(yargs: Argv): Argv {
         )
         .command(
           "digest <ref>",
-          "Print a version's content-identity digest (cheap read, no payload download)",
+          "Print a version's change-detection digest — NOT the '#sha256-' import pin (use 'telo upgrade' for that)",
           (yy) =>
             yy
               .positional("ref", {

@@ -651,6 +651,7 @@ export class CelScopeResolver {
       manifestRoot: rootForResolver,
       defs,
       aliases,
+      aliasesByModule: scopes?.aliasesByModule,
       allManifests: allManifests as Record<string, any>[],
     });
     return mergeKernelGlobalsIntoContext(

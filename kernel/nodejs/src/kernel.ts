@@ -7,6 +7,7 @@ import {
   diffManifests,
   flattenForAnalyzer,
   flattenLoadedModule,
+  implicitEvalSites,
   isModuleKind,
   nodeIdFor,
   Loader,
@@ -1022,7 +1023,26 @@ export class Kernel implements IKernel {
         );
         if (manifest.kind === "Telo.Application") {
           rootApplicationManifest = manifest;
-          this._appName = (manifest.metadata as { name?: string } | undefined)?.name;
+          const appName = (manifest.metadata as { name?: string } | undefined)?.name;
+          this._appName = appName;
+          // `Self` names the declaring module's own kinds, ungated — the import
+          // controller registers it for every imported library, and the
+          // analyzer registers it for a root module too. Without the kernel's
+          // half a root Application declaring its own `Telo.Definition` and
+          // instantiating it as `kind: Self.<Kind>` passed `telo check` and
+          // failed at boot with "no module imported with alias 'Self'".
+          //
+          // The module's OWN NAME resolves the same kinds, for the same reason
+          // it needs no import: `<module>.<Kind>` IS the canonical identity the
+          // registry keys on and every diagnostic prints, so an author reading
+          // one copies that spelling back into the manifest. The analyzer
+          // resolves it (it is canonical, not an alias), the kernel did not, and
+          // the gap passed `telo check` and failed at boot with "no module
+          // imported with alias '<name>'".
+          if (appName) {
+            this.rootContext.registerUngatedAlias("Self", appName);
+            this.rootContext.registerUngatedAlias(appName, appName);
+          }
         }
       }
       this.rootContext.registerManifest(manifest);
@@ -1671,7 +1691,11 @@ export class Kernel implements IKernel {
     const ownEval = definition?.schema
       ? buildEvalPaths(definition.schema)
       : { compile: [], runtime: [] };
-    const compile = [...parentEval.compile, ...ownEval.compile];
+    // A base-form child's own fields are construction inputs read once by
+    // `base:`, so they are compile-eval without annotation — the rule is the
+    // analyzer's, shared so `telo check` and dispatch agree on it.
+    const implicitEval = implicitEvalSites(definition);
+    const compile = [...parentEval.compile, ...ownEval.compile, ...implicitEval.compile];
     const runtime = [...parentEval.runtime, ...ownEval.runtime];
 
     // Embedded files are read here, at the single instance-production site, and

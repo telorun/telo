@@ -191,7 +191,11 @@ describe("a deeply nested recursive union", () => {
     for (const depth of [1, 4, 12]) {
       const issues = schemaIssues(deepErrors(nest(depth, { text: 42 })));
       const path = `${"stack[0].".repeat(depth)}text`;
-      expect(issues).toEqual([{ path, message: `/${"stack/0/".repeat(depth)}text must be string` }]);
+      // `keyword` is part of the issue now: a consumer keys the inherited-required
+      // hint on WHAT failed rather than on how the sentence reads.
+      expect(issues).toEqual([
+        { path, message: `/${"stack/0/".repeat(depth)}text must be string`, keyword: "type" },
+      ]);
     }
   });
 

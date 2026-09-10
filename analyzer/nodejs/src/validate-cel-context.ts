@@ -6,7 +6,9 @@ import {
   parseCanonicalTypeSchemaId,
 } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 import { withRefSlotsAsReadings } from "./ref-slot-reading.js";
+import { dispatchTargetOf } from "./template-body.js";
 // Where CEL is evaluated is one reader (`eval-paths.ts`), and the region half of
 // it moved there so the scope walk and the `x-telo-eval` walk answer the same
 // question in one place. Re-exported: this module is where every existing
@@ -51,6 +53,9 @@ export interface ContextResolveOpts {
   aliases?: {
     resolveKind(kind: string): string | undefined;
   };
+  /** Per-declaring-module alias tables, so a kind read off a forwarded
+   *  definition resolves in the module that wrote it. */
+  aliasesByModule?: ReadonlyMap<string, { resolveKind(kind: string): string | undefined }>;
   allManifests?: Record<string, any>[];
 }
 
@@ -334,18 +339,20 @@ function collectionBindingWithheld(
  *   Example: `properties.self.x-telo-context-from-root: "schema"` reads
  *   `manifestRoot.schema` and uses it as the schema of the `self` CEL variable.
  *
- * - `x-telo-context-from-ref-kind`: reads a kind name from `manifestRoot.<refPath>`,
- *   resolves it via the definition registry, and returns that kind's `<field>` schema
- *   (e.g. `outputType`/`inputType`). Used to type `result` against the dispatch
- *   target's declared output shape.
+ * - `x-telo-context-from-ref-kind`: reads a KIND from `manifestRoot.<refPath>` —
+ *   a field holding a kind name, or a definition's dispatch slot holding a
+ *   `!ref` to a `resources:` entry (whose kind it is) — and returns the
+ *   `<field>` schema (e.g. `outputType`/`inputType`) the entry itself declares,
+ *   else the one the kind's definition declares. Used to type `result` against
+ *   the dispatch target's declared output shape.
  *
  *   Syntax: `<refPath>#<field>` — slashes traverse the manifest tree.
  *
- *   Example: `x-telo-context-from-ref-kind: "provide/kind#outputType"` reads
- *   `manifestRoot.provide.kind` as a kind name, looks up the kind's Telo.Definition,
- *   and returns the `outputType` schema.
+ *   Example: `x-telo-context-from-ref-kind: "provide#outputType"` resolves
+ *   `manifestRoot.provide` (`!ref source`) to the entry named `source`, and
+ *   returns its `outputType` schema, or its kind's.
  *
- *   Accepts either a single string or an array of strings. With an array, paths
+ *   Accepts either a single string or an array of strings. With an array, slots
  *   are tried in order and the first one that resolves to a usable schema wins —
  *   used by `result:` to find its dispatch target under whichever entry-point
  *   field (`provide:` or `invoke:`) the definition declares.
@@ -370,7 +377,8 @@ export function resolveContextAnnotations(
   const normalizedOpts: ContextResolveOpts = Array.isArray(opts)
     ? { allManifests: opts }
     : (opts ?? {});
-  const { manifestRoot = manifestItem, defs, aliases, allManifests } = normalizedOpts;
+  const { manifestRoot = manifestItem, defs, aliases, aliasesByModule, allManifests } =
+    normalizedOpts;
 
   const from = schema["x-telo-context-from"] as string | undefined;
   if (from) {
@@ -459,18 +467,29 @@ export function resolveContextAnnotations(
       }
     }
     if (defs) {
+      // The kind is read off THIS document, so it is spelled in the alias scope
+      // of the module that declared it — a library's dispatch target is written
+      // through an import the consumer has no reason to have.
+      const scope = moduleAliasScope(
+        (manifestRoot as { metadata?: { module?: unknown } }).metadata,
+        aliases,
+        aliasesByModule,
+      );
       for (const fromRefKind of fromRefKinds) {
         const hashIdx = fromRefKind.indexOf("#");
         if (hashIdx <= 0) continue;
         const refPath = fromRefKind.slice(0, hashIdx);
         const field = fromRefKind.slice(hashIdx + 1);
-        const kindValue = navigatePath(manifestRoot, refPath.split("/"));
-        if (typeof kindValue !== "string" || kindValue.length === 0) continue;
-        const canonical = aliases?.resolveKind(kindValue) ?? kindValue;
-        const def = defs.resolve(canonical);
-        const typeField = def
-          ? (def as Record<string, unknown>)[field]
-          : undefined;
+        const target = kindAtPath(manifestRoot, refPath);
+        if (!target) continue;
+        // The entry's own field first — a per-instance narrowing (`outputType:`
+        // on the entry) is what the kernel binds — then the kind's.
+        const own = target.entry?.[field];
+        const ownResolved = own !== undefined ? resolveTypeFieldToSchema(own, allManifests ?? []) : undefined;
+        if (ownResolved && typeof ownResolved === "object") return ownResolved;
+        const canonical = scope?.resolveKind(target.kind) ?? target.kind;
+        const def = defs.resolve(canonical) ?? defs.resolve(target.kind);
+        const typeField = def ? (def as Record<string, unknown>)[field] : undefined;
         const resolved = resolveTypeFieldToSchema(typeField, allManifests ?? []);
         if (resolved && typeof resolved === "object") {
           return resolved;
@@ -595,6 +614,28 @@ function navigatePath(obj: unknown, segments: string[]): unknown {
     cur = (cur as Record<string, unknown>)[seg];
   }
   return cur;
+}
+
+/** The kind an `x-telo-context-from-ref-kind` path names: a field holding a
+ *  kind NAME (`targetKind`), or a definition's dispatch slot holding a `!ref`
+ *  to a `resources:` entry, which carries the kind — and, where it narrows
+ *  one, the contract field itself. */
+export function kindAtPath(
+  manifestRoot: Record<string, any>,
+  refPath: string,
+): { kind: string; entry?: Record<string, any> } | undefined {
+  const segments = refPath.split("/");
+  const value = navigatePath(manifestRoot, segments);
+  if (typeof value === "string") return value.length > 0 ? { kind: value } : undefined;
+  // The dispatch-slot reading is a fact about ONE built-in document, not about
+  // the annotation: `resources:` is a `Telo.Definition`'s entry list. The
+  // annotation itself is generic vocabulary any kind may declare, and without
+  // this gate a third-party kind whose own `resources:` array means something
+  // else would have a slot silently resolved against it — a wrong answer with
+  // nothing reporting it, which is worse than no answer.
+  if (segments.length !== 1 || manifestRoot.kind !== "Telo.Definition") return undefined;
+  const dispatch = dispatchTargetOf(manifestRoot, segments[0]!);
+  return dispatch ? { kind: dispatch.kind, entry: dispatch.entry } : undefined;
 }
 
 /**

@@ -1,0 +1,11 @@
+# A library whose export list names a kind it never declares, an imported kind
+# by its bare suffix, and an instance that does not exist — the report's
+# finding 3. All three used to pass here and fail in the CONSUMER's file.
+kind: Telo.Library
+metadata:
+  name: BadExportsLib
+imports:
+  Http: ../../../../../modules/http-client
+exports:
+  kinds: [TotallyMadeUpKind, Client]
+  resources: [noSuchInstance]

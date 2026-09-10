@@ -71,8 +71,9 @@ inputs:
   bindings: !cel "keys(inputs.filters).map(k, inputs.filters[k])"
 ```
 
-- `resources` declares the internal `Sql.Query`.
-- `invoke` names it with a `!ref`, the same spelling every other reference uses. A `!ref` naming no entry is `TEMPLATE_DISPATCH_UNKNOWN` at `telo check`. The older `{ kind, name }` form still works and is what a template naming its entries with CEL (`name: !cel "self.name + '-query'"`) has to use, since a `!ref` takes a literal name.
+- `resources` declares the internal `Sql.Query`, under a **literal** name. A name composed from `self` (`!cel "self.name + '-query'"`) is refused — `TEMPLATE_ENTRY_NAME_DYNAMIC` at `telo check`, `ERR_TEMPLATE_ENTRY_NAME_DYNAMIC` at the kernel. Every instance of a template owns its children in a child context of its own, so two instances never collide on a literal name and a per-instance suffix buys nothing; what it costs is that a `!ref` is looked up verbatim, so a CEL-named entry is one nothing can name.
+- `invoke` names it with a `!ref`, the same spelling every other reference uses, and it is the **only** spelling. A `!ref` naming no entry is `TEMPLATE_DISPATCH_UNKNOWN`; anything that is not a `!ref` — a bare string, the removed `{ kind, name }` object — is `INVALID_REFERENCE_FORM`, the same code that form gets at every other slot in Telo.
+- Reference slots **inside** an entry follow the same rule: `!ref` or an inline declaration, naming a sibling entry or a resource of the declaring module (`TEMPLATE_REF_UNKNOWN` otherwise).
 - `inputs` is what gets passed to the `Sql.Query`. Inside it, CEL sees both `self` and `inputs` (the caller's arguments to `Read`).
 
 ## Provider template

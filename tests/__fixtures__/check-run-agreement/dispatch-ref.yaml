@@ -1,0 +1,30 @@
+# The repaired twin of dispatch-object-form: a literal entry name and a `!ref`
+# dispatch. Checks clean and runs clean, so the agreement holds in both
+# directions.
+kind: Telo.Application
+metadata:
+  name: DispatchRef
+imports:
+  Run: ../../../modules/run
+targets:
+  - invoke: !ref op
+---
+kind: Telo.Definition
+metadata:
+  name: Op
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    name: { type: string }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: real
+    value: ok
+invoke: !ref real
+---
+kind: Self.Op
+metadata:
+  name: op
+name: op

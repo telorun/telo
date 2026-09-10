@@ -23,6 +23,62 @@ const observedStateSlot = {
     "What a resource of this kind reports while running, published at `resources.<name>.status.<field>`.",
   $ref: manifestFragmentRef("JsonSchema7"),
 };
+
+/** The `self`-only CEL scope a dispatch slot's name template is written in. */
+const dispatchSelfContext = {
+  type: "object",
+  additionalProperties: false,
+  properties: { self: { "x-telo-context-from-root": "schema" } },
+};
+
+/**
+ * A `Telo.Definition` dispatch slot: which `resources:` entry receives the call.
+ *
+ * Three shapes, and the union is what keeps the slot CONSTRAINED for manifests
+ * no pass walks — `validate-template-body` resolves the target and its
+ * capability, but it is entry-scoped, so a dependency's definition would
+ * otherwise have nothing checking this slot at all. An array or a number fails
+ * every branch here, which is the floor AJV used to provide.
+ *
+ * `anyOf`, never `oneOf`: a `!ref` sentinel is an object, so it would match both
+ * the sentinel branch and any permissive object branch and then fail for
+ * matching twice. That is also how the sentinel used to pass — the legacy object
+ * branch required nothing, so it accepted one by accident; here it is a branch
+ * of its own that says so.
+ */
+function dispatchSlot(title: string, description: string): Record<string, unknown> {
+  return {
+    title,
+    description,
+    anyOf: [
+      // `!ref <entry>` — the spelling to write.
+      {
+        type: "object",
+        required: ["__tagged", "engine", "source"],
+        properties: {
+          __tagged: { const: true },
+          engine: { const: "ref" },
+          source: { type: "string", minLength: 1 },
+        },
+        additionalProperties: false,
+      },
+      // Legacy: a name template expanded against `self`. Read forever, because
+      // published artifacts carry it; `DEPRECATED_TEMPLATE_DISPATCH_FORM` is
+      // what moves an author off it.
+      { type: "string", "x-telo-context": dispatchSelfContext },
+      // Legacy: `{ kind?, name }`, where `name` is that same template.
+      {
+        type: "object",
+        required: ["name"],
+        properties: {
+          kind: { type: "string" },
+          name: { type: "string", "x-telo-context": dispatchSelfContext },
+        },
+        additionalProperties: true,
+      },
+    ],
+  };
+}
 import type { ResourceDefinition } from "@telorun/sdk";
 
 /** Descriptive provenance a module declares about itself, shared by
@@ -480,99 +536,31 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             },
           },
         },
-        invoke: {
-          oneOf: [
-            {
-              type: "string",
-              "x-telo-context": {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  self: { "x-telo-context-from-root": "schema" },
-                },
-              },
-            },
-            {
-              type: "object",
-              additionalProperties: true,
-              properties: {
-                kind: { type: "string" },
-                name: {
-                  type: "string",
-                  "x-telo-context": {
-                    type: "object",
-                    additionalProperties: false,
-                    properties: {
-                      self: { "x-telo-context-from-root": "schema" },
-                    },
-                  },
-                },
-              },
-            },
-          ],
-        },
-        provide: {
-          type: "object",
-          additionalProperties: true,
-          properties: {
-            kind: { type: "string" },
-            name: {
-              type: "string",
-              "x-telo-context": {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  self: { "x-telo-context-from-root": "schema" },
-                },
-              },
-            },
-          },
-        },
-        run: {
-          type: "string",
-          "x-telo-context": {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              self: { "x-telo-context-from-root": "schema" },
-            },
-          },
-        },
-        // Mount dispatch: names the `resources:` entry (a Telo.Mount, e.g. an
-        // Http.Api) whose `register()` this definition delegates to. Same
-        // string / { kind, name } grammar as `invoke:`. The named child stays
-        // persistent so the produced mount's routes can `!ref` its siblings.
-        mount: {
-          oneOf: [
-            {
-              type: "string",
-              "x-telo-context": {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  self: { "x-telo-context-from-root": "schema" },
-                },
-              },
-            },
-            {
-              type: "object",
-              additionalProperties: true,
-              properties: {
-                kind: { type: "string" },
-                name: {
-                  type: "string",
-                  "x-telo-context": {
-                    type: "object",
-                    additionalProperties: false,
-                    properties: {
-                      self: { "x-telo-context-from-root": "schema" },
-                    },
-                  },
-                },
-              },
-            },
-          ],
-        },
+        // A dispatch slot names the `resources:` entry that receives the call,
+        // as `!ref <entry>` — the one spelling every reference in Telo has. The
+        // string and `{ kind, name }` forms it used to admit (a CEL name
+        // template matched against CEL-named entries) were the removed
+        // reference object surviving in the one place nothing resolved it;
+        // `validate-template-body` is what resolves this slot, so the schema
+        // stays open here rather than reporting the same defect twice.
+        invoke: dispatchSlot(
+          "Invoke target",
+          "The `resources:` entry whose `invoke()` this kind dispatches to, as `!ref <entry>`.",
+        ),
+        provide: dispatchSlot(
+          "Provide target",
+          "The `resources:` entry whose `invoke()` produces this provider's value, as `!ref <entry>`.",
+        ),
+        run: dispatchSlot(
+          "Run target",
+          "The `resources:` entry whose `run()` this kind dispatches to, as `!ref <entry>`.",
+        ),
+        // The named child stays persistent so the produced mount's routes can
+        // `!ref` its siblings.
+        mount: dispatchSlot(
+          "Mount target",
+          "The `resources:` entry (a Telo.Mount, e.g. an Http.Api) whose `register()` this kind delegates to, as `!ref <entry>`.",
+        ),
         inputs: {
           type: "object",
           additionalProperties: true,
@@ -593,11 +581,11 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             additionalProperties: false,
             properties: {
               self: { "x-telo-context-from-root": "schema" },
+              // Typed from the dispatch target's declared output: the slot
+              // holds a `!ref` to a `resources:` entry, resolved to that
+              // entry's kind (or its own `outputType`, where it narrows one).
               result: {
-                "x-telo-context-from-ref-kind": [
-                  "provide/kind#outputType",
-                  "invoke/kind#outputType",
-                ],
+                "x-telo-context-from-ref-kind": ["provide#outputType", "invoke#outputType"],
               },
             },
           },

@@ -62,11 +62,9 @@ outputType:
 resources:
   - kind: Http.Request
     metadata:
-      name: !cel "self.name + '-post'"
+      name: post
     throwOnHttpError: true
-invoke:
-  kind: Http.Request
-  name: !cel "self.name + '-post'"
+invoke: !ref post
 inputs:
   url: !cel "self.url"
   method: POST

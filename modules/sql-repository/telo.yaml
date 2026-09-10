@@ -54,14 +54,12 @@ schema:
 resources:
   - kind: Sql.Query
     metadata:
-      name: "${{ self.name }}-query"
-    connection: "${{ self.connection }}"
+      name: query
+    connection: !cel "self.connection"
 inputs:
-  sql: "${{ 'SELECT * FROM ' + self.table.table + (keys(inputs.filters).size() > 0 ? ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') : '') }}"
-  bindings: "${{ keys(inputs.filters).map(k, inputs.filters[k]) }}"
-invoke:
-  kind: Sql.Query
-  name: "${{ self.name }}-query"
+  sql: !cel "'SELECT * FROM ' + self.table.table + (keys(inputs.filters).size() > 0 ? ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') : '')"
+  bindings: !cel "keys(inputs.filters).map(k, inputs.filters[k])"
+invoke: !ref query
 inputType:
   type: object
   properties:
@@ -120,12 +118,12 @@ schema:
 resources:
   - kind: Sql.Command
     metadata:
-      name: "${{ self.name }}-exec"
-    connection: "${{ self.connection }}"
-invoke: "${{ self.name }}-exec"
+      name: exec
+    connection: !cel "self.connection"
+invoke: !ref exec
 inputs:
-  sql: "${{ 'INSERT INTO ' + self.table.table + ' (' + join(keys(inputs.data), ', ') + ') VALUES (' + join(keys(inputs.data).map(k, '?'), ', ') + ')' }}"
-  bindings: "${{ keys(inputs.data).map(k, inputs.data[k]) }}"
+  sql: !cel "'INSERT INTO ' + self.table.table + ' (' + join(keys(inputs.data), ', ') + ') VALUES (' + join(keys(inputs.data).map(k, '?'), ', ') + ')'"
+  bindings: !cel "keys(inputs.data).map(k, inputs.data[k])"
 inputType:
   type: object
   required: [data]
@@ -172,12 +170,12 @@ schema:
 resources:
   - kind: Sql.Command
     metadata:
-      name: "${{ self.name }}-exec"
-    connection: "${{ self.connection }}"
-invoke: "${{ self.name }}-exec"
+      name: exec
+    connection: !cel "self.connection"
+invoke: !ref exec
 inputs:
-  sql: "${{ 'DELETE FROM ' + self.table.table + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') }}"
-  bindings: "${{ keys(inputs.filters).map(k, inputs.filters[k]) }}"
+  sql: !cel "'DELETE FROM ' + self.table.table + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ')"
+  bindings: !cel "keys(inputs.filters).map(k, inputs.filters[k])"
 inputType:
   type: object
   required: [filters]
@@ -226,12 +224,12 @@ schema:
 resources:
   - kind: Sql.Command
     metadata:
-      name: "${{ self.name }}-exec"
-    connection: "${{ self.connection }}"
-invoke: "${{ self.name }}-exec"
+      name: exec
+    connection: !cel "self.connection"
+invoke: !ref exec
 inputs:
-  sql: "${{ 'UPDATE ' + self.table.table + ' SET ' + join(keys(inputs.data).map(k, k + ' = ?'), ', ') + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') }}"
-  bindings: "${{ keys(inputs.data).map(k, inputs.data[k]) + keys(inputs.filters).map(k, inputs.filters[k]) }}"
+  sql: !cel "'UPDATE ' + self.table.table + ' SET ' + join(keys(inputs.data).map(k, k + ' = ?'), ', ') + ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ')"
+  bindings: !cel "keys(inputs.data).map(k, inputs.data[k]) + keys(inputs.filters).map(k, inputs.filters[k])"
 inputType:
   type: object
   required: [data, filters]

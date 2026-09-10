@@ -329,3 +329,144 @@ describe("object-form reference with an unknown alias prefix", () => {
     expect(bad).toBeUndefined();
   });
 });
+
+/**
+ * The kernel registers EVERY manifest under `metadata.name`, one namespace per
+ * module context — an import alias and a kind definition included. The check
+ * modelled a narrower namespace, excluding `Telo.Import` outright and letting
+ * `Telo.Definition` / `Telo.Abstract` fall through the ref-validation skip set,
+ * so each of these passed `telo check` and died at boot.
+ */
+describe("names that share the kernel's one namespace", () => {
+  const dup = (diags: { code: string; message: string }[]) =>
+    diags.filter((d) => d.code === "DUPLICATE_RESOURCE_NAME");
+
+  it("reports an application named after one of its own imports", () => {
+    // The reported shape: `metadata.name: Scheduler` beside `Scheduler: <ref>`.
+    const app = {
+      kind: "Telo.Application",
+      metadata: { name: "Scheduler", version: "1.0.0" },
+    } as unknown as ResourceManifest;
+    const selfNamedImport = {
+      kind: "Telo.Import",
+      metadata: { name: "Scheduler", module: "Scheduler", resolvedModuleName: "scheduler" },
+      source: "../scheduler",
+    } as unknown as ResourceManifest;
+
+    const found = dup(new StaticAnalyzer().analyze(withSyntheticPositions([app, selfNamedImport])));
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain("import alias 'Scheduler'");
+    expect(found[0].message).toContain("this module's own name");
+  });
+
+  it("reports an import alias colliding with a resource", () => {
+    const collidingResource = {
+      kind: "Lib.Script",
+      metadata: { name: "Lib" },
+      code: "noop",
+    } as unknown as ResourceManifest;
+
+    const found = dup(
+      new StaticAnalyzer().analyze(withSyntheticPositions([...base, collidingResource])),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain("Lib");
+  });
+
+  it("reports a kind definition colliding with a resource in the same module", () => {
+    // Both stamped to the entry module — a library's definition and an app's
+    // resource live in different contexts and correctly do NOT collide, so the
+    // shared scope is what makes this the runtime's situation.
+    const localDef = {
+      kind: "Telo.Definition",
+      metadata: { name: "Job", module: "TestApp" },
+      capability: "Telo.Invocable",
+      schema: { type: "object" },
+    } as unknown as ResourceManifest;
+    const collidingResource = {
+      kind: "Lib.Script",
+      metadata: { name: "Job", module: "TestApp" },
+      code: "noop",
+    } as unknown as ResourceManifest;
+
+    const found = dup(
+      new StaticAnalyzer().analyze(withSyntheticPositions([...base, localDef, collidingResource])),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain("Telo.Definition/Job");
+  });
+
+  it("leaves two modules sharing an alias alone", () => {
+    // The reason including imports has to be scoped per declaring module: a
+    // library's own `Telo.Import` docs are forwarded into a consumer's flat
+    // set, and an app and a library it imports both aliasing `Console` is
+    // ordinary rather than a collision.
+    const app = {
+      kind: "Telo.Application",
+      metadata: { name: "App", version: "1.0.0" },
+    } as unknown as ResourceManifest;
+    const appImport = {
+      kind: "Telo.Import",
+      metadata: { name: "Console", module: "App", resolvedModuleName: "console" },
+      source: "../console",
+    } as unknown as ResourceManifest;
+    const libraryImport = {
+      kind: "Telo.Import",
+      metadata: { name: "Console", module: "SomeLib", resolvedModuleName: "console" },
+      source: "../console",
+    } as unknown as ResourceManifest;
+
+    const found = dup(
+      new StaticAnalyzer().analyze(withSyntheticPositions([app, appImport, libraryImport])),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("leaves a dependency's internal collision to that dependency's own check", () => {
+    // Its module doc is dropped from a consumer's flat set, so the scope has no
+    // doc here — the library's own `telo check` is where this is actionable.
+    const app = {
+      kind: "Telo.Application",
+      metadata: { name: "App", version: "1.0.0" },
+    } as unknown as ResourceManifest;
+    const libDef = {
+      kind: "Telo.Definition",
+      metadata: { name: "Thing", module: "SomeLib" },
+      capability: "Telo.Invocable",
+      schema: { type: "object" },
+    } as unknown as ResourceManifest;
+    const libImport = {
+      kind: "Telo.Import",
+      metadata: { name: "Thing", module: "SomeLib", resolvedModuleName: "other" },
+      source: "../other",
+    } as unknown as ResourceManifest;
+
+    const found = dup(
+      new StaticAnalyzer().analyze(withSyntheticPositions([app, libDef, libImport])),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("reports two imports sharing an alias once, as DUPLICATE_IMPORT_ALIAS", () => {
+    // One defect, one diagnostic: the alias-specific code says what to do about
+    // it, so a second under DUPLICATE_RESOURCE_NAME would describe it twice.
+    const app = {
+      kind: "Telo.Application",
+      metadata: { name: "App", version: "1.0.0" },
+    } as unknown as ResourceManifest;
+    const first = {
+      kind: "Telo.Import",
+      metadata: { name: "Dep", module: "App", resolvedModuleName: "one" },
+      source: "../one",
+    } as unknown as ResourceManifest;
+    const second = {
+      kind: "Telo.Import",
+      metadata: { name: "Dep", module: "App", resolvedModuleName: "two" },
+      source: "../two",
+    } as unknown as ResourceManifest;
+
+    const diags = new StaticAnalyzer().analyze(withSyntheticPositions([app, first, second]));
+    expect(dup(diags)).toEqual([]);
+    expect(diags.filter((d) => d.code === "DUPLICATE_IMPORT_ALIAS")).toHaveLength(1);
+  });
+});

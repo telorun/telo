@@ -1,0 +1,30 @@
+# THE REPORTED SHAPE: an application named after one of its own imports. The
+# kernel registers a module doc's own name and every import alias in one
+# namespace, so `Scheduler` is declared twice and boot fails — while nothing
+# about the two lines looks like one name written twice, which is why this
+# reached an author with a clean `telo check` and a runtime `ERR_DUPLICATE_RESOURCE`.
+#
+# Asserted statically ONLY: the analyzer now refuses this at load, so the run
+# never reaches the kernel guard. The kernel half is pinned on the library
+# fixture next door, where an entry-scoped analysis is silent by design.
+kind: Telo.Application
+metadata:
+  name: Scheduler
+  version: 1.0.0
+imports:
+  Scheduler: ../../../modules/scheduler
+  Console: ../../../modules/console
+targets:
+  - !ref nightly
+variables:
+  jobCron:
+    env: JOB_CRON
+    type: string
+    default: "0 3 * * *"
+---
+kind: Scheduler.Cron
+metadata:
+  name: nightly
+cron: !cel "variables.jobCron"
+timezone: UTC
+invoke: !ref Console.writeLine

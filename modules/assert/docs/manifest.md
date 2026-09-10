@@ -1,5 +1,5 @@
 ---
-description: "Assert.Manifest: runs static analyzer on YAML and asserts on diagnostic codes/messages for negative testing"
+description: "Assert.Manifest: runs static analyzer on YAML and asserts on diagnostic codes/messages for negative testing, and optionally that the manifest also fails to run"
 sidebar_label: Assert.Manifest
 ---
 
@@ -46,6 +46,9 @@ expect:
 | `expect.errors[].code` | string | no | Diagnostic code to match (e.g. `CEL_UNKNOWN_FIELD`, `UNRESOLVED_REFERENCE`). |
 | `expect.errors[].message` | string | no | Substring to match in the diagnostic message. |
 | `expect.errors[].fix` | string | no | Substring to match in the diagnostic's suggested replacement. Matching it also asserts that a repair was offered at all — a diagnostic with no fix never matches. |
+| `expect.warnings` | array | no | Expected analysis warnings, matched the same way. Checked only when declared; extra warnings are not failures. |
+| `expect.loadError` | string | no | Substring to match in a manifest load error. Asserts that loading fails. |
+| `expect.runFails` | string | no | Runs the manifest as well, and asserts it exits non-zero with this substring on stderr. |
 
 ## Behaviour
 
@@ -67,6 +70,61 @@ expect:
 ```
 
 Assert the repair rather than only the message when the repair is the point: a message can read correctly while the replacement is missing, stale, or anchored to the wrong span, and only `fix:` catches that. A diagnostic that deliberately offers no repair (an ambiguous correction, where applying a guess would be worse than none) never matches a `fix:` expectation.
+
+## Asserting that the kernel refuses it too
+
+`runFails:` runs the manifest and asserts it exits non-zero with the given
+substring on stderr. It exists to pin a **static verdict to the runtime one** in
+one test: a manifest `telo check` refuses is a manifest the kernel refuses.
+
+That agreement is not automatic. A rule enforced only in a controller passes
+`telo check` and fails at boot — which is how a template dispatching to a
+nonexistent entry, a `base:` that was never evaluated, and a client whose
+credential could not be resolved all shipped as clean checks. Each of those had
+an excellent runtime message and no static half, and nothing anywhere asserted
+the two agree.
+
+Point `source:` at a CONSUMER of the library carrying the defect. Analysis is
+entry-scoped, so the consumer's own `telo check` is silent about a dependency's
+internals by design — which makes the kernel's guard the only thing left, and
+therefore the thing worth asserting:
+
+```yaml
+# The library's own check reports it…
+kind: Assert.Manifest
+metadata:
+  name: baseWithBody
+source: ./__fixtures__/base-with-body/lib/telo.yaml
+expect:
+  errors:
+    - code: BASE_WITH_TEMPLATE_BODY
+---
+# …and a consumer, whose check is clean, still cannot run it.
+kind: Assert.Manifest
+metadata:
+  name: baseWithBodyAtRuntime
+source: ./__fixtures__/base-with-body/telo.yaml
+expect:
+  runFails: "may not also declare 'resources:'"
+```
+
+Assert the repaired twin too, or a suite passes by refusing everything — and use
+`runs: true` for it, not `expect: {}`:
+
+```yaml
+kind: Assert.Manifest
+metadata:
+  name: baseWithBodyRepaired
+source: ./__fixtures__/base-with-body-repaired/telo.yaml
+expect:
+  runs: true
+```
+
+`expect: {}` asserts a clean check and **nothing about running**, so on its own it
+cannot tell a working fixture from one the kernel would refuse. `runs: true` runs
+the manifest and requires exit 0; `runFails` is its negative counterpart. Both are
+bounded — a fixture still going after 30s is cancelled and reported as a failure,
+so a regression into "runs forever" is a failing test rather than a hung suite.
 
 ## Test file conventions
 

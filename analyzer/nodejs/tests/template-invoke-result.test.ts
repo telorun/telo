@@ -43,8 +43,8 @@ function makeInvokeReshaper(result: Record<string, unknown>): ResourceManifest {
     capability: "Telo.Invocable",
     extends: "Auth.Token",
     schema: { type: "object", additionalProperties: true },
-    resources: [{ kind: "echo.Echo", metadata: { name: "${{ self.name }}-src" } }],
-    invoke: { kind: "echo.Echo", name: "${{ self.name }}-src" },
+    resources: [{ kind: "echo.Echo", metadata: { name: "src" } }],
+    invoke: { __tagged: true, engine: "ref", source: "src" },
     inputs: {},
     result,
   } as unknown as ResourceManifest;

@@ -460,6 +460,40 @@ const compactValue = (v: unknown): unknown => {
   throw new Error(`compact: expected a map or a list, got ${JSON.stringify(v)}`);
 };
 
+/** A CEL map as entries. Read the way `compact` reads one — a map arrives as a
+ *  plain object or a `Map` depending on how it was produced — and refusing
+ *  anything that is not one, since rebuilding an arbitrary object from its
+ *  entries is how a byte buffer becomes `{"0":137,…}` silently. A LIST is named
+ *  rather than coerced: CEL's `+` already concatenates lists, so a list here is
+ *  a mistake with a spelling that works, not a case to support. */
+const mapEntries = (fn: string, v: unknown): [string, unknown][] => {
+  if (v instanceof Map) return [...v.entries()] as [string, unknown][];
+  if (Array.isArray(v)) throw new Error(`${fn}: expected a map, got a list — use '+' to join lists`);
+  if (v !== null && typeof v === "object") {
+    const proto = Object.getPrototypeOf(v);
+    if (proto !== Object.prototype && proto !== null) {
+      throw new Error(`${fn}: expected a map, got ${v.constructor?.name ?? "an object"}`);
+    }
+    return Object.entries(v as Record<string, unknown>);
+  }
+  throw new Error(`${fn}: expected a map, got ${JSON.stringify(v)}`);
+};
+
+/** Right-hand precedence, so `merge(defaults, overrides)` reads as it looks.
+ *
+ *  The map case is the one with no spelling at all — `+` joins lists and
+ *  strings and refuses maps — so a child kind inheriting a map-valued field
+ *  could only REPLACE it. That turns a default the parent set for a reason into
+ *  something every consumer must restate, and a consumer who restates it
+ *  incompletely gets a system that works until the omitted entry matters.
+ *
+ *  Follows the LEFT argument's shape: this extends that map, so what comes back
+ *  is what was extended. */
+const mergeMaps = (a: unknown, b: unknown): unknown => {
+  const entries = [...mapEntries("merge", a), ...mapEntries("merge", b)];
+  return a instanceof Map ? new Map(entries) : Object.fromEntries(entries);
+};
+
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /** Base64 → bytes, written out rather than delegated: `Buffer` is not browser-
@@ -1215,6 +1249,17 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     deterministic: true,
     hostBacked: false,
     build: () => (v: unknown) => compactValue(v),
+  },
+  {
+    name: "merge",
+    signature: "merge(map, map): map",
+    register: ["merge(map, map): map"],
+    category: "collection",
+    summary:
+      "Combine two maps, with the right-hand map winning on a shared key. Use it to add to a map rather than replace it — `merge(defaults, overrides)`.",
+    deterministic: true,
+    hostBacked: false,
+    build: () => (a: unknown, b: unknown) => mergeMaps(a, b),
   },
   // UUID
   {

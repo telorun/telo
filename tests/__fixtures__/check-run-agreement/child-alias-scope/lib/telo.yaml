@@ -1,0 +1,38 @@
+# A template whose body declares a credentialed Http.Client and a request
+# holding it — the report's finding 4. The body's kinds are written through
+# THIS library's `Http` alias, which the consumer never declares: injection has
+# to resolve the children in the defining module's scope, or the request's
+# `client:` slot arrives as a raw reference.
+kind: Telo.Library
+metadata:
+  name: ChildAliasScopeLib
+exports:
+  kinds: [Op]
+imports:
+  Http: ../../../../../modules/http-client
+---
+kind: Telo.Definition
+metadata:
+  name: Op
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    name: { type: string }
+resources:
+  - kind: Http.BearerToken
+    metadata:
+      name: cred
+    token: tok
+  - kind: Http.Client
+    metadata:
+      name: client
+    baseUrl: !cel "self.name"
+    credential: !ref cred
+  - kind: Http.Request
+    metadata:
+      name: req
+    client: !ref client
+invoke: !ref req
+inputs:
+  url: /x

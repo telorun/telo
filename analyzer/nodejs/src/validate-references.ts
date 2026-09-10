@@ -15,9 +15,140 @@ import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } fro
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { isModuleKind } from "./module-kinds.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 
 const SOURCE = "telo-analyzer";
+
+/** What a name IS on one side of a collision. The three shapes share the
+ *  kernel's one namespace but read as different things to an author — an alias
+ *  is not a resource, and a module's own name is not a declaration inside it —
+ *  so calling all three "resource name" describes two of them wrongly. */
+function describeNamed(m: ResourceManifest, name: string): string {
+  if (m.kind === "Telo.Import") return `import alias '${name}'`;
+  if (isModuleKind(m.kind)) return `this module's own name (${m.kind} '${name}')`;
+  return `resource ${m.kind}/${name}`;
+}
+
+/**
+ * WHAT SHARES A NAME AT THE KERNEL.
+ *
+ * `registerManifest` keys on `metadata.name` alone, per module context, for
+ * EVERY kind — so an import alias, a kind definition and an ordinary resource
+ * are one namespace. This check used to model a narrower one: `Telo.Import` was
+ * excluded outright, on the stated grounds that an alias "lives in a separate
+ * namespace from resources", and `Telo.Definition` / `Telo.Abstract` fell out
+ * through the ref-validation skip set, which answers a different question. All
+ * three passed `telo check` and then died at boot with `ERR_DUPLICATE_RESOURCE`
+ * — an application named after one of its own imports (`metadata.name: Schedule`
+ * beside `Schedule: oci://…/scheduler`) being the shape that reaches an author,
+ * since nothing about the two lines looks like one name written twice.
+ *
+ * Grouped per DECLARING MODULE, which is what makes including imports sound: a
+ * library's own `Telo.Import` / `Telo.Definition` docs are forwarded into a
+ * consumer's flat set, and two modules sharing an alias (`Console` in an app and
+ * again in a library it imports) is ordinary rather than a collision. A module
+ * doc carries no `metadata.module` and IS its own scope — that is what puts an
+ * application's own name in the same group as its imports.
+ *
+ * Kept apart from the resolution lookup it used to share a map with: that one
+ * must hold resolution targets alone, so the two disagree about membership by
+ * design and merging them re-keyed every bare-name reference.
+ */
+function duplicateNameDiagnostics(
+  resources: ResourceManifest[],
+  isForeign: (r: ResourceManifest) => boolean,
+  moduleOf: (r: ResourceManifest) => string | undefined,
+): AnalysisDiagnostic[] {
+  const diagnostics: AnalysisDiagnostic[] = [];
+
+  const moduleDocNames = new Set<string>();
+  for (const r of resources) {
+    if (isModuleKind(r.kind) && typeof r.metadata?.name === "string") {
+      moduleDocNames.add(r.metadata.name);
+    }
+  }
+  // A module doc belongs in the scope its OWN resources are in. Flattened, they
+  // carry `metadata.module` equal to its name, so it scopes to itself — which is
+  // what puts an application's name beside its imports. Unflattened (a hand-built
+  // fixture, a single-file editor analysis) nothing is stamped, so its resources
+  // sit in the unnamed scope and the doc has to join them there or a collision
+  // with one of them splits across two groups and goes unreported.
+  const stampedModules = new Set<string>();
+  for (const r of resources) {
+    const m = moduleOf(r);
+    if (m) stampedModules.add(m);
+  }
+
+  // scope → name → declarations, so no separator has to be safe against a name.
+  const byScope = new Map<string, Map<string, ResourceManifest[]>>();
+  const seen = new Set<string>();
+  for (const r of resources) {
+    if (!r.metadata?.name || isForeign(r)) continue;
+    const name = r.metadata.name as string;
+    const scope = isModuleKind(r.kind)
+      ? (stampedModules.has(name) ? name : "")
+      : (moduleOf(r) ?? "");
+    // A scope with no module doc in this set is an imported library's, whose
+    // doc `selectModuleManifestsForAnalysis` drops — its internals are its own
+    // author's to fix, and its own `telo check` reports them.
+    if (scope !== "" && moduleDocNames.size > 0 && !moduleDocNames.has(scope)) continue;
+    // Dedup pipeline echoes — the same physical document emitted twice through
+    // an analyzer host's pipeline (telo studio walks a file reachable as both an
+    // entry module and an `include:` partial). Keyed on (kind, name, source,
+    // sourceLine), so two textually-distinct docs in one file keep separate
+    // fingerprints and still trip the diagnostic.
+    const meta = r.metadata as unknown as { source?: string; sourceLine?: number };
+    const fingerprint = `${r.kind} ${name} ${meta.source} ${meta.sourceLine}`;
+    if (seen.has(fingerprint)) continue;
+    seen.add(fingerprint);
+    let names = byScope.get(scope);
+    if (!names) byScope.set(scope, (names = new Map()));
+    const existing = names.get(name);
+    if (existing) existing.push(r);
+    else names.set(name, [r]);
+  }
+
+  for (const names of byScope.values()) {
+    for (const [name, list] of names) {
+      if (list.length <= 1) continue;
+      const [first, ...rest] = list;
+      for (const dup of rest) {
+        // Two imports sharing an alias is ONE defect with its own diagnostic
+        // (`DUPLICATE_IMPORT_ALIAS`), which says what to do about it; reporting
+        // it again here would describe one mistake as two.
+        if (dup.kind === "Telo.Import" && first.kind === "Telo.Import") continue;
+        const dupMeta = dup.metadata as { source?: string; sourceLine?: number } | undefined;
+        // The precomputed range matters because editor hosts resolve positions
+        // via a `${file}::${kind}::${name}` lookup, which collides on duplicates.
+        const range =
+          typeof dupMeta?.sourceLine === "number"
+            ? {
+                start: { line: dupMeta.sourceLine, character: 0 },
+                end: { line: dupMeta.sourceLine, character: Number.MAX_SAFE_INTEGER },
+              }
+            : undefined;
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "DUPLICATE_RESOURCE_NAME",
+          source: SOURCE,
+          message:
+            `${dup.kind}/${name}: ${describeNamed(dup, name)} collides with ` +
+            `${describeNamed(first, name)} declared earlier — the kernel registers both ` +
+            `under '${name}' in one namespace, so boot fails with ERR_DUPLICATE_RESOURCE. ` +
+            `Rename one of them.`,
+          ...(range ? { range } : {}),
+          data: {
+            resource: { kind: dup.kind, name },
+            filePath: dupMeta?.source,
+            path: "metadata.name",
+          },
+        });
+      }
+    }
+  }
+  return diagnostics;
+}
 
 /**
  * Liskov substitutability at a kind constraint: is `resolved` (a canonical
@@ -162,40 +293,16 @@ export function validateReferences(
   const aliasesByModule = context.aliasesByModule;
   if (!aliases || !registry) return diagnostics;
 
-  // Build outer resource lookup by name for resolution check, collecting
-  // every entry per name so we can surface name collisions as diagnostics
-  // (the kernel's resource registry shares one namespace across all
-  // non-system kinds — e.g. `Telo.Application HelloApi` and `Http.Api
-  // HelloApi` collide at boot with `ERR_DUPLICATE_RESOURCE`. Catching it
-  // statically removes a class of "everything analyzes clean, then the
-  // kernel refuses to start" surprises.)
+  // Build the outer resource lookup by name, for the resolution checks below.
+  // WHICH NAMES COLLIDE is a different question over a different namespace and
+  // is answered by `duplicateNameDiagnostics`; this map answers only "what does
+  // a bare `!ref <name>` resolve to", so it holds resolution TARGETS alone — an
+  // import alias and a kind definition are neither, and admitting them here
+  // would resolve a reference to something no ref slot can accept.
   //
-  // Telo.Import is excluded from the duplicate check on top of the
-  // SYSTEM_KINDS skip: its `metadata.name` is an alias, not a resource
-  // identity (aliases live in a separate namespace from resources, and
-  // colliding aliases vs. resource names is benign — the alias is only
-  // ever read as a kind prefix).
-  // Group manifests by name to detect collisions. Two subtleties:
-  //
-  //   1. Some analyzer hosts emit the SAME physical document twice through
-  //      their pipeline — e.g. telo studio's `toAnalysisManifests` walks
-  //      each workspace module's documents independently, and a file
-  //      reachable from two angles (entry module + `include:` partial)
-  //      shows up twice. The fingerprint includes `sourceLine` so identical
-  //      docs (same kind, name, source, AND source line) collapse to one,
-  //      while two textually-separate documents in the same file (different
-  //      source lines) keep separate fingerprints and trip the diagnostic.
-  //   2. The diagnostic carries a precomputed `range` pointing at the
-  //      duplicate's source line — editor hosts that resolve diagnostic
-  //      positions via a `${file}::${kind}::${name}` lookup would otherwise
-  //      collide on duplicates (Map.set overwrites) and place the squiggle
-  //      ambiguously. The explicit `range` short-circuits that lookup.
-  // Dedup pipeline echoes — the same physical document emitted twice
-  // through an analyzer host's pipeline. Keyed on (kind, name, source,
-  // sourceLine), so two textually-distinct docs in the same file (same
-  // source, different sourceLine) keep separate fingerprints and still
-  // trip the diagnostic. `analyze()` enforces that every non-system
-  // manifest carries both positional fields — no defensive guard needed.
+  // The list per name survives because resolution falls back to the FIRST
+  // occurrence when a collision exists, which keeps the rest of the pass
+  // behaving as it did before duplicates were reported at all.
   // Forwarded foreign exports (an imported library's exported instances, carrying a
   // metadata.module that isn't a root module) are resolution TARGETS only: excluded from
   // duplicate detection and local name resolution, and never walked as ref sources.
@@ -246,33 +353,7 @@ export function validateReferences(
     if (existing) existing.push(r);
     else byNameAll.set(name, [r]);
   }
-  for (const [name, list] of byNameAll) {
-    if (list.length <= 1) continue;
-    const [first, ...rest] = list;
-    const firstLabel = `${first.kind}/${name}`;
-    for (const dup of rest) {
-      const dupMeta = dup.metadata as { source?: string; sourceLine?: number } | undefined;
-      const range =
-        typeof dupMeta?.sourceLine === "number"
-          ? {
-              start: { line: dupMeta.sourceLine, character: 0 },
-              end: { line: dupMeta.sourceLine, character: Number.MAX_SAFE_INTEGER },
-            }
-          : undefined;
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        code: "DUPLICATE_RESOURCE_NAME",
-        source: SOURCE,
-        message: `${dup.kind}/${name}: resource name collides with ${firstLabel} declared earlier (kernel runtime would fail with ERR_DUPLICATE_RESOURCE)`,
-        ...(range ? { range } : {}),
-        data: {
-          resource: { kind: dup.kind, name },
-          filePath: dupMeta?.source,
-          path: "metadata.name",
-        },
-      });
-    }
-  }
+  diagnostics.push(...duplicateNameDiagnostics(resources, isForeign, moduleOf));
   // The dot rule that used to live here is now the strictest special case of
   // the identifier grammar in `validate-identifier-names.ts` — a dot is one of
   // several characters that make a name unreferenceable, and checking one of

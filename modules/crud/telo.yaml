@@ -84,7 +84,7 @@ schema:
       x-telo-ref:
         kind: Telo.Type
         use: schema
-mount: api
+mount: !ref api
 resources:
   # SQL handlers (crud-internal kinds below) — each builds parameterized SQL
   # from the per-request map it is handed (data / filters) and this resource's
@@ -272,11 +272,9 @@ schema:
 resources:
   - kind: Sql.Query
     metadata:
-      name: !cel "self.name + '-query'"
+      name: query
     connection: !cel "self.connection"
-invoke:
-  kind: Sql.Query
-  name: !cel "self.name + '-query'"
+invoke: !ref query
 inputs:
   sql: !cel "'SELECT id' + (keys(self.props).size() > 0 ? ', ' + join(keys(self.props).map(p, lower(regexReplace(p, '([A-Z])', '_$1')) + ' AS ' + p), ', ') : '') + ' FROM ' + self.table + (keys(inputs.filters).size() > 0 ? ' WHERE ' + join(keys(inputs.filters).map(k, lower(regexReplace(k, '([A-Z])', '_$1')) + ' = ?'), ' AND ') : '')"
   bindings: !cel "keys(inputs.filters).map(k, inputs.filters[k])"
@@ -301,11 +299,9 @@ schema:
 resources:
   - kind: Sql.Command
     metadata:
-      name: !cel "self.name + '-exec'"
+      name: exec
     connection: !cel "self.connection"
-invoke:
-  kind: Sql.Command
-  name: !cel "self.name + '-exec'"
+invoke: !ref exec
 inputs:
   sql: !cel "'INSERT INTO ' + self.table + ' (' + join(keys(inputs.data).map(k, lower(regexReplace(k, '([A-Z])', '_$1'))), ', ') + ') VALUES (' + join(keys(inputs.data).map(k, '?'), ', ') + ')'"
   bindings: !cel "keys(inputs.data).map(k, inputs.data[k])"
@@ -330,11 +326,9 @@ schema:
 resources:
   - kind: Sql.Command
     metadata:
-      name: !cel "self.name + '-exec'"
+      name: exec
     connection: !cel "self.connection"
-invoke:
-  kind: Sql.Command
-  name: !cel "self.name + '-exec'"
+invoke: !ref exec
 inputs:
   sql: !cel "'UPDATE ' + self.table + ' SET ' + join(keys(inputs.data).map(k, lower(regexReplace(k, '([A-Z])', '_$1')) + ' = ?'), ', ') + ' WHERE ' + join(keys(inputs.filters).map(k, lower(regexReplace(k, '([A-Z])', '_$1')) + ' = ?'), ' AND ')"
   bindings: !cel "keys(inputs.data).map(k, inputs.data[k]) + keys(inputs.filters).map(k, inputs.filters[k])"
@@ -359,11 +353,9 @@ schema:
 resources:
   - kind: Sql.Command
     metadata:
-      name: !cel "self.name + '-exec'"
+      name: exec
     connection: !cel "self.connection"
-invoke:
-  kind: Sql.Command
-  name: !cel "self.name + '-exec'"
+invoke: !ref exec
 inputs:
   sql: !cel "'DELETE FROM ' + self.table + ' WHERE ' + join(keys(inputs.filters).map(k, lower(regexReplace(k, '([A-Z])', '_$1')) + ' = ?'), ' AND ')"
   bindings: !cel "keys(inputs.filters).map(k, inputs.filters[k])"

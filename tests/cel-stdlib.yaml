@@ -74,6 +74,29 @@ steps:
   - name: sort
     invoke: { kind: Assert.Equals }
     inputs: { actual: !cel "sort(['c','a','b'])", expected: ["a", "b", "c"] }
+  - name: merge
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "merge({'a':'1'},{'b':'2'})"
+      expected: { a: "1", b: "2" }
+  # Right-hand precedence is the whole point: it is what makes
+  # `merge(defaults, self.overrides)` add to a parent's map rather than
+  # replace it, so a consumer no longer has to restate a default to keep it.
+  - name: mergeRightWins
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "merge({'access_type':'offline','prompt':'consent'},{'prompt':'none'})"
+      expected: { access_type: "offline", prompt: "none" }
+  - name: mergeEmptyBase
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "merge({},{'a':'1'})"
+      expected: { a: "1" }
+  - name: mergeEmptyAddition
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "merge({'a':'1'},{})"
+      expected: { a: "1" }
 ---
 kind: Run.Sequence
 metadata: { name: indexing }

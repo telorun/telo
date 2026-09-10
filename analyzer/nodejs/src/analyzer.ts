@@ -25,7 +25,13 @@ import {
 } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { readDeprecation } from "./deprecation.js";
-import { type ContractDirection, effectiveAuthorSchema } from "./extends-resolution.js";
+import {
+  type ContractDirection,
+  type DefResolver,
+  effectiveAuthorSchema,
+  inheritedCapability,
+  inheritedRequiredFields,
+} from "./extends-resolution.js";
 import {
   analyzerContractScope,
   type ContractScope,
@@ -142,6 +148,7 @@ import {
 import {
   celEvalModeAt,
   celEvalSites,
+  implicitEvalSites,
   mergeCelEvalSites,
   NO_CEL_EVAL_SITES,
   type CelEvalSites,
@@ -172,7 +179,8 @@ import { kindSatisfies, validateReferences } from "./validate-references.js";
 import { validateReferenceForms } from "./validate-reference-forms.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import { validateResourceInputs } from "./validate-resource-inputs.js";
-import { validateTemplateDispatch } from "./validate-template-dispatch.js";
+import { validateExports } from "./validate-exports.js";
+import { validateTemplateBody } from "./validate-template-body.js";
 import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 import { readStepSlot } from "./step-slot.js";
@@ -2029,12 +2037,41 @@ export class StaticAnalyzer {
           allManifests as Record<string, any>[],
         );
         const issues = [...ajvIssues, ...valueSchemaIssues];
+        // WHY A FIELD THIS KIND EXISTS TO SUPPLY IS STILL REQUIRED OF ITS
+        // CONSUMER. A child that `extends` and declares no `base:` is authored
+        // against merge(parent, own), so the parent's `required` stays on the
+        // CHILD's surface — and a kind written to wire that field internally
+        // then demands it from the consumer anyway. The `base:` mapping is what
+        // narrows (with it the surface is the child's own schema alone), and
+        // nothing in "is missing required property" points there, which is what
+        // turns one mistake into a three-step dead end.
+        //
+        // Matched against names DERIVED from the parent, never by parsing the
+        // message: which fields are inherited is a fact about the definition,
+        // and a check that reads a validator's prose breaks when the prose does.
+        const inheritedRequired = inheritedRequiredFields(definition, (k) =>
+          defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
+        );
+        const parentKind = (definition as { extends?: string } | undefined)?.extends;
         for (const issue of issues) {
+          // Keyed on the STRUCTURED failure, never on the sentence: the field
+          // names are derived from the parent, and matching them against the
+          // validator's prose would break when the prose changes and mis-fire on
+          // any other issue quoting the same name (an `additionalProperties`
+          // rejection, an `enum` listing).
+          const inherited =
+            issue.keyword === "required" && issue.missingProperty !== undefined
+              ? inheritedRequired.filter((f) => f === issue.missingProperty)
+              : [];
+          const hint =
+            inherited.length > 0 && parentKind
+              ? ` — ${inherited.map((f) => `'${f}'`).join(", ")} ${inherited.length > 1 ? "come" : "comes"} from '${parentKind}', which this kind extends without a 'base:' mapping, so the parent's required fields stay on this kind's author surface. Add 'base:' to set them internally; that also narrows the surface to this kind's own schema.`
+              : "";
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
             code: "SCHEMA_VIOLATION",
             source: SOURCE,
-            message: `${m.kind}/${resource.name}: ${issue.message}`,
+            message: `${m.kind}/${resource.name}: ${issue.message}${hint}`,
             data: { resource, filePath, path: issue.path },
           });
         }
@@ -2472,8 +2509,15 @@ export class StaticAnalyzer {
 
           // The non-eval-field check only applies to runtime resource instances:
           // structural / templating kinds (capability `Telo.Template`, or no
-          // definition) carry CEL the kernel evaluates by other rules.
-          const capability = e.definition?.capability;
+          // definition) carry CEL the kernel evaluates by other rules. The
+          // capability is INHERITED along `extends` — an inheritance kind
+          // writes none of its own — and reading the declared one left the
+          // rule off for every such kind, and its expressions untyped.
+          const resolveDef: DefResolver = (k) =>
+            defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
+          const capability = e.definition
+            ? inheritedCapability(e.definition as unknown as ResourceDefinition, resolveDef)
+            : undefined;
           celRuleApplies =
             !!e.definition?.schema && capability !== undefined && capability !== "Telo.Template";
           if (celRuleApplies) {
@@ -2487,15 +2531,18 @@ export class StaticAnalyzer {
             // disagreeing about what the manifest means.
             const ownSchema = effectiveAuthorSchema(
               e.definition as unknown as ResourceDefinition,
-              (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
+              resolveDef,
             ) as Record<string, any>;
             const capabilityDef = capability ? defs.resolve(capability) : undefined;
             // A `Telo.Provider`'s fields are implicitly compile-eval — the
             // capability abstract carries the root annotation — so its reads are
-            // covered here without the provider restating anything.
+            // covered here without the provider restating anything. A base-form
+            // child's own fields are too (`implicitEvalSites`): `base:` reads
+            // them once at create().
             celSites = mergeCelEvalSites(
               celEvalSites(ownSchema),
               celEvalSites(capabilityDef?.schema as Record<string, any> | undefined),
+              implicitEvalSites(e.definition as { base?: unknown }),
             );
           } else {
             celSites = NO_CEL_EVAL_SITES;
@@ -2801,10 +2848,16 @@ export class StaticAnalyzer {
     // Warn about declared variables / secrets / ports that no CEL references.
     diagnostics.push(...validateUnusedDeclarations(allManifests, this.celEnv));
 
-    // A `!ref` at a definition's dispatch slot must name a sibling `resources:`
-    // entry — the slot no reference pass reaches, so the tag would otherwise
-    // advertise a resolution nothing performs.
-    diagnostics.push(...validateTemplateDispatch(allManifests, rootModules));
+    // A template body's reference surface — its entry names, its dispatch slots
+    // and the ref slots inside each entry — which no reference pass reaches,
+    // since a `Telo.Definition` is in both skip sets.
+    diagnostics.push(
+      ...validateTemplateBody(allManifests, defs, aliases, aliasesByModule, rootModules),
+    );
+
+    // A library's export list, resolved against what it declares — otherwise a
+    // listed name that exists nowhere fails in the consumer's file.
+    diagnostics.push(...validateExports(allManifests, defs, aliases, rootModules));
 
     // A library's declared resource inputs, and every import that supplies them.
     diagnostics.push(

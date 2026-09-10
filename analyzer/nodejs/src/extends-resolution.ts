@@ -138,6 +138,30 @@ export function effectiveAuthorSchema(
 }
 
 /**
+ * The parent's required fields that a merge-form child leaves on its OWN author
+ * surface — inherited by the rule above, and not redeclared by the child.
+ *
+ * The one fact behind a confusing diagnostic: a kind written to wire a field
+ * internally still demands it from its consumer, because without `base:` the
+ * child is authored against merge(parent, own) and the parent's `required` comes
+ * along. Empty for a child with `base:` (its surface is its own schema) and for
+ * a kind that extends nothing, so a caller can use a non-empty result as the
+ * condition itself.
+ */
+export function inheritedRequiredFields(
+  def: ResourceDefinition | undefined,
+  resolve: DefResolver,
+): string[] {
+  if (!body(def).extends || body(def).base) return [];
+  const parent = resolveParent(def, resolve);
+  if (!parent) return [];
+  const required = effectiveAuthorSchema(parent, resolve).required;
+  if (!Array.isArray(required)) return [];
+  const own = ((body(def).schema ?? {}).properties ?? {}) as Record<string, unknown>;
+  return required.filter((f): f is string => typeof f === "string" && !(f in own));
+}
+
+/**
  * The fields a merge-form inheriting child publishes over its parent's reading.
  *
  * A child that inherits its controller by delegation and declares no `base:` IS

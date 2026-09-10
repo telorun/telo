@@ -186,6 +186,36 @@ export function celEvalSites(schema: Record<string, any> | undefined): CelEvalSi
   return { compile, runtime, regions: extractCelRegionScopes(schema) };
 }
 
+/**
+ * A BASE-FORM CHILD'S OWN FIELDS ARE COMPILE-EVAL WITHOUT ANNOTATION.
+ *
+ * A definition with `base:` has no controller of its own: the kernel evaluates
+ * the mapping once, at `create()`, against `self` — the instance's config — and
+ * hands the result to the inherited controller as the parent's config. The
+ * child's own schema fields never reach a controller; they exist to be read by
+ * `base:`, and the mapping expands whatever compiled value it reads. So every
+ * own field is evaluated exactly once at creation against the startup scope,
+ * which is what compile-eval IS. Declared here as the rule rather than left as a
+ * property of the mapping walk — the `Telo.Provider` posture, where a
+ * construction-time-only surface declares compile-eval once for all its fields
+ * rather than per field. Without it the rule was off for every inheritance kind
+ * (its capability is inherited, so the gate read `undefined`) and the
+ * expressions were never typed either: a `!cel "variables.whoo"` passed `telo
+ * check` and failed at boot.
+ *
+ * Read by the kernel's instance production and the analyzer's coverage decision,
+ * so the two cannot disagree about which fields a base child evaluates. An
+ * explicitly `runtime` own field still wins, through the same overlap rule a
+ * root `x-telo-eval: compile` follows.
+ */
+export const IMPLICIT_COMPILE_SITES: CelEvalSites = { compile: ["**"], runtime: [], regions: [] };
+
+export function implicitEvalSites(
+  definition: { base?: unknown } | undefined,
+): CelEvalSites {
+  return definition?.base != null ? IMPLICIT_COMPILE_SITES : NO_CEL_EVAL_SITES;
+}
+
 /** The union of several schemas' sites — a kind's own and its capability
  *  abstract's, which is how a `Telo.Provider`'s implicit compile-eval reaches
  *  fields the provider never annotated. */
@@ -201,11 +231,16 @@ export function mergeCelEvalSites(...sites: CelEvalSites[]): CelEvalSites {
  * Whether the value at `path` is evaluated, and when — null for a field whose
  * value is read as a literal.
  *
- * `compile` wins over `runtime`, and both win over a region: a field's own
- * annotation is more specific than the region it sits in, which is the same
- * precedence a nested annotation has over an enclosing one. A region resolves to
- * `runtime` because that is what a region IS — a per-invocation scope naming
- * what its expressions can read.
+ * An annotated field wins over the region it sits in — a field's own annotation
+ * is more specific than an enclosing one, and a region resolves to `runtime`
+ * because that is what a region IS, a per-invocation scope naming what its
+ * expressions can read. Between the two annotations, `runtime` wins wherever
+ * they OVERLAP and `compile` answers everywhere else.
+ *
+ * That overlap rule is the kernel's, read back: its compile expansion skips any
+ * compile path a runtime path contains or is contained by, and under a root
+ * `**` it skips per top-level key — so a runtime-annotated field under an
+ * implicit compile root stays runtime, here as at dispatch.
  *
  * `path` is the `walkCelExpressions` spelling (`routes[0].returns[1].when`).
  */
@@ -213,8 +248,20 @@ export function celEvalModeAt(
   sites: CelEvalSites,
   path: string,
 ): "compile" | "runtime" | null {
-  if (evalPathsCover(sites.compile, path)) return "compile";
+  const compiled = sites.compile.some((p) => {
+    if (!evalPathCovers(p, path)) return false;
+    const effective = p === "**" ? topLevelKey(path) : p;
+    return !sites.runtime.some(
+      (rp) => evalPathCovers(rp, effective) || evalPathCovers(effective, rp),
+    );
+  });
+  if (compiled) return "compile";
   if (evalPathsCover(sites.runtime, path)) return "runtime";
   if (sites.regions.some((scope) => pathMatchesScope(path, scope))) return "runtime";
   return null;
+}
+
+function topLevelKey(path: string): string {
+  const end = path.search(/[.[]/);
+  return end === -1 ? path : path.slice(0, end);
 }

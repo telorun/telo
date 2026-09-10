@@ -1,0 +1,55 @@
+# A template body reaching OUTWARD — a `!ref` naming a resource of the declaring
+# module rather than a sibling entry. Both sites are exercised, because they used
+# to disagree: a reference SLOT resolved (Phase-5 injection dispatches by name and
+# recovers the kind), while a STEP's `invoke:` died at boot with
+# `Resource must have 'kind' property. Got: {"kind":"","name":"shared"}` — the
+# same reference, one working and one not, with nothing static reporting either.
+#
+# Checks clean AND runs.
+kind: Telo.Application
+metadata:
+  name: BodyOutwardRef
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Http: ../../../modules/http-client
+targets:
+  - !ref wrapper
+---
+kind: Run.Value
+metadata:
+  name: shared
+value: reached-from-a-body
+---
+kind: Http.Client
+metadata:
+  name: sharedClient
+baseUrl: https://example.invalid
+---
+kind: Telo.Definition
+metadata:
+  name: Wrapper
+capability: Telo.Runnable
+schema:
+  type: object
+resources:
+  # The STEP site — what used to fail at boot.
+  - kind: Run.Sequence
+    metadata:
+      name: body
+    steps:
+      - name: outward
+        invoke: !ref shared
+    outputs:
+      value: !cel "steps.outward.result"
+  # The REFERENCE SLOT site — what already worked, kept so a fix to one is not
+  # allowed to regress the other.
+  - kind: Http.Request
+    metadata:
+      name: req
+    client: !ref sharedClient
+run: !ref body
+---
+kind: Self.Wrapper
+metadata:
+  name: wrapper

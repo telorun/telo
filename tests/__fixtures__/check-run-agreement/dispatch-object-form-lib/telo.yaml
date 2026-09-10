@@ -1,0 +1,24 @@
+# Consumes the legacy library next door and INVOKES it. The invoke matters: a
+# template resolves its dispatch target lazily, at the call, so a target naming
+# no entry is not a boot failure — nothing declares the miss until something
+# asks for it. A consumer that only declares the resource proves nothing.
+kind: Telo.Application
+metadata:
+  name: DispatchObjectFormApp
+imports:
+  Lib: ./lib
+  Run: ../../../../modules/run
+targets:
+  - !ref main
+---
+kind: Lib.Op
+metadata:
+  name: op
+name: op
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: call
+    invoke: !ref op
