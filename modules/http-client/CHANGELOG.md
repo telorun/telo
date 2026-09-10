@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.1 - 2026-09-10
+### Fixed
+* A template body now has ONE reference spelling: every `resources:` entry is named by a literal and every dispatch slot is a `!ref` to one. The `{ kind, name }` object form and the CEL-computed entry name it existed to reach are removed — each template instance owns its children in a child context of its own, so a per-instance suffix bought nothing, while a `!ref` is looked up verbatim and so could never name such an entry. `crud` and `sql-repository` are rewritten to it. `http-client` drops the raw-manifest fallback in `Http.Request`: a client is resolved through `ctx.resolveRef` like every other slot, so a reference that does not resolve says so instead of being explained as a rule about scopes. `assert` gains `Assert.Manifest.expect.runFails`, which runs the manifest as well and asserts it fails — pinning a static verdict to the runtime one in a single test.
+
 ## 0.22.0 - 2026-08-29
 ### Added
 * Three static credentials — `Http.BearerToken`, `Http.ApiKeyHeader` and `Http.QueryKey`. `Http.Credential` had exactly one implementation, OAuth's, which is why every module talking to a keyed API grew its own `apiKey` field: a second way to say the same thing, and a second place for the 401 re-acquire-and-retry not to happen. A static credential answers `forceRefresh` with the same material, which the abstract already anticipates. Material that resolved to nothing is refused at the credential rather than sent and answered 401, one indirection from the line that has to change.
