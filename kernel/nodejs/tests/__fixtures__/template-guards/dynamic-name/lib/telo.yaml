@@ -1,0 +1,30 @@
+kind: Telo.Library
+metadata:
+  name: DynamicNameLib
+  version: 1.0.0
+  description: >-
+    Test fixture: a VALID library in the legacy spelling — a body entry named by
+    an expression, dispatched by the `{ kind, name }` form carrying the same
+    expression. Published artifacts look like this, so the kernel reads it.
+exports:
+  kinds:
+    - Op
+imports:
+  Run: ../../../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Op
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    name: { type: string }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: !cel "self.name + '-real'"
+    value: ok
+invoke:
+  kind: Run.Value
+  name: !cel "self.name + '-real'"

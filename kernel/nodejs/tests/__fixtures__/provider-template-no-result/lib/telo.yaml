@@ -24,9 +24,7 @@ schema:
 resources:
   - kind: Run.Value
     metadata:
-      name: !cel "self.name + '-source'"
+      name: source
     value:
       raw: !cel "self.value"
-provide:
-  kind: Run.Value
-  name: !cel "self.name + '-source'"
+provide: !ref source

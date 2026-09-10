@@ -81,13 +81,11 @@ outputType:
     properties:
       status: { type: integer }
 resources:
-  # A LITERAL name, and `invoke:` a `!ref` to it. The body's children live in
-  # this instance's own child context, so the name is unique there whatever the
-  # resource is called — and a literal is what lets `telo check` verify that
-  # `invoke:` names a sibling at all (`TEMPLATE_DISPATCH_UNKNOWN`, which can only
-  # decide when every sibling name is written down). Composing the name from
-  # `self.name` works at runtime and makes that check undecidable, so a typo here
-  # would surface as a failed dispatch instead of an error on this line.
+  # A LITERAL name, and `invoke:` a `!ref` to it — the only spelling. The body's
+  # children live in this instance's own child context, so the name is unique
+  # there whatever the resource is called, and `telo check` verifies that
+  # `invoke:` names a sibling (`TEMPLATE_DISPATCH_UNKNOWN`). A name composed from
+  # `self.name` is refused (`TEMPLATE_ENTRY_NAME_DYNAMIC`): nothing can `!ref` it.
   - kind: Http.Request
     metadata:
       name: post

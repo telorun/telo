@@ -1,0 +1,26 @@
+# Imports the library ALONE: no `Http` alias here.
+kind: Telo.Application
+metadata:
+  name: ChildAliasScopeApp
+imports:
+  Lib: ./lib
+  Run: ../../../../modules/run
+targets:
+  - !ref main
+---
+kind: Lib.Op
+metadata:
+  name: op
+name: https://example.invalid
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: call
+    try:
+      - name: request
+        invoke: !ref op
+    catch:
+      - name: swallowed
+        value: !cel "error.code"

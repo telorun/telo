@@ -1,0 +1,36 @@
+# A kind declaration and an ordinary instance sharing one name. The kernel
+# registers every manifest under `metadata.name` in one namespace per module
+# context, kind definitions included, so this is `ERR_DUPLICATE_RESOURCE` at
+# boot. It lives in a LIBRARY because a consumer's analysis is entry-scoped:
+# the internal instance is not forwarded at all, so nothing static reaches
+# this from the app next door and the kernel's guard is the only thing left.
+kind: Telo.Library
+metadata:
+  name: DuplicateNameLib
+  version: 1.0.0
+  description: >-
+    Fixture library declaring a kind and an instance under one name, which the
+    kernel refuses at boot and this library's own `telo check` reports.
+exports:
+  kinds:
+    - Job
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Job
+capability: Telo.Invocable
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: ok
+invoke: !ref body
+---
+kind: Run.Value
+metadata:
+  name: Job
+value: collides-with-the-kind-above

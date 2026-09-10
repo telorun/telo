@@ -213,6 +213,20 @@ schema:
         loadError:
           type: string
           description: Substring to match in a manifest load error (asserts that loading fails)
+        runFails:
+          type: string
+          description: >-
+            Runs the manifest as well, and asserts it exits non-zero with this
+            substring on stderr. Pins a static verdict to the runtime one: a
+            manifest `telo check` refuses is one the kernel refuses too, asserted
+            in the same test.
+        runs:
+          type: boolean
+          description: >-
+            Runs the manifest and asserts it exits 0. The positive counterpart to
+            `runFails`, and the only thing that catches a repair which is really
+            a refusal — a suite whose fixtures are all rejected passes without it.
+            `expect: {}` asserts a clean check and nothing about running.
   required: [source, expect]
 ---
 # Deep-equality assertion. Compare via step inputs:

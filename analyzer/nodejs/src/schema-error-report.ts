@@ -44,6 +44,13 @@ export interface SchemaIssue {
   message: string;
   /** Dotted path to the field (e.g. "config.handler"). Empty string means root. */
   path: string;
+  /** The AJV keyword that produced it, so a consumer can key on WHAT failed
+   *  rather than on how the sentence reads. Prose is the renderer's to change;
+   *  a caller matching on it breaks silently when it does, and mis-fires on any
+   *  other issue whose text happens to quote the same name. */
+  keyword?: string;
+  /** For `required`, the property that is missing. */
+  missingProperty?: string;
 }
 
 const UNION_KEYWORDS = new Set(["anyOf", "oneOf"]);
@@ -447,10 +454,15 @@ export function ajvErrorToPath(err: AjvErrorLike): string {
 
 /** Reduced, path-anchored issues — what a diagnostic list is built from. */
 export function schemaIssues(errors: AjvErrorLike[] | null | undefined): SchemaIssue[] {
-  return reduceSchemaErrors(errors).map((err) => ({
-    message: formatSingleError(err),
-    path: ajvErrorToPath(err),
-  }));
+  return reduceSchemaErrors(errors).map((err) => {
+    const missing = (err.params ?? {}).missingProperty;
+    return {
+      message: formatSingleError(err),
+      path: ajvErrorToPath(err),
+      ...(err.keyword ? { keyword: err.keyword } : {}),
+      ...(typeof missing === "string" ? { missingProperty: missing } : {}),
+    };
+  });
 }
 
 /** Reduced, rendered as one sentence — what a thrown runtime error carries. */

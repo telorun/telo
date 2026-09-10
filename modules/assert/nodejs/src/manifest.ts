@@ -13,7 +13,56 @@ interface ManifestAssertManifest {
     errors?: ExpectError[];
     warnings?: ExpectError[];
     loadError?: string;
+    runFails?: string;
+    runs?: boolean;
   };
+}
+
+/** How long a fixture may run before it is stopped and reported as a failure.
+ *  A fixture is a few resources and no server; anything still going is either a
+ *  regression into success or something holding a kernel hold. */
+const RUN_TIMEOUT_MS = 30_000;
+
+/**
+ * Run the manifest to completion and report how it ended. Both streams are
+ * drained — a stream left unread stalls the child once its channel fills — and
+ * only stderr is kept, since that is where a load or init failure is written.
+ *
+ * BOUNDED AND ALWAYS CANCELLED. `exitCode` is raced against a timer and
+ * `cancel()` runs in a `finally`, because a child nobody stops is a child that
+ * runs forever: a fixture that regresses into succeeding, or one declaring
+ * anything that takes a kernel hold (an `Http.Server`, a `Schedule.Interval`),
+ * would otherwise hang the whole suite with no diagnosis — and a rejection
+ * inside the `Promise.all` would leak the kernel. `cancel()` is on the runtime
+ * seam from the start for exactly this reason: a supervisor needs termination
+ * before anything else.
+ */
+async function runToExit(
+  runtime: ResourceContext["runtime"],
+  source: string,
+): Promise<{ exitCode: number; stderr: string; timedOut: boolean }> {
+  const run = await runtime.run(source, { env: {} });
+  const drain = async (stream: AsyncIterable<string>, keep: boolean): Promise<string> => {
+    let text = "";
+    for await (const chunk of stream) if (keep) text += chunk;
+    return text;
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), RUN_TIMEOUT_MS);
+    });
+    const settled = await Promise.race([
+      Promise.all([drain(run.stdout, false), drain(run.stderr, true), run.exitCode]),
+      timeout,
+    ]);
+    if (settled === "timeout") return { exitCode: -1, stderr: "", timedOut: true };
+    const [, stderr, exitCode] = settled;
+    return { exitCode, stderr, timedOut: false };
+  } finally {
+    if (timer) clearTimeout(timer);
+    await run.cancel("assert.manifest finished").catch(() => {});
+  }
 }
 
 function matchesDiagnostic(diag: CheckDiagnostic, expected: ExpectError): boolean {
@@ -150,6 +199,52 @@ export async function create(
               `expected warning ${expected.code ?? "*"}${describeExpectation(expected)} — not found`,
             );
           }
+        }
+      }
+
+      // The static verdict pinned to the runtime one, in BOTH directions: a
+      // fixture `telo check` refuses is one the kernel refuses (`runFails`), and
+      // a fixture that checks clean is one the kernel STARTS (`runs`). Only the
+      // second catches a repair that is really a refusal — without it a suite
+      // whose every fixture is rejected passes, which is the property this
+      // suite's own header claims it cannot have. `expect: {}` alone asserts
+      // nothing about running, so a fixture meant to prove a fix works says
+      // `runs: true`.
+      if (manifest.expect.runFails !== undefined) {
+        const { exitCode, stderr, timedOut } = await runToExit(ctx.runtime, resolvedUrl);
+        if (timedOut) {
+          failures.push(
+            `expected the run to fail with "${manifest.expect.runFails}" — it was still ` +
+              `running after ${RUN_TIMEOUT_MS / 1000}s and was cancelled`,
+          );
+        } else if (exitCode === 0) {
+          failures.push(
+            `expected the run to fail with "${manifest.expect.runFails}" — it exited 0`,
+          );
+        } else if (!stderr.includes(manifest.expect.runFails)) {
+          failures.push(
+            `expected the run to fail with "${manifest.expect.runFails}" — it failed with:\n` +
+              stderr.trim().split("\n").map((l) => `      ${l}`).join("\n"),
+          );
+        } else {
+          matched.push(`run fails: ${manifest.expect.runFails}`);
+        }
+      }
+
+      if (manifest.expect.runs) {
+        const { exitCode, stderr, timedOut } = await runToExit(ctx.runtime, resolvedUrl);
+        if (timedOut) {
+          failures.push(
+            `expected the run to succeed — it was still running after ` +
+              `${RUN_TIMEOUT_MS / 1000}s and was cancelled`,
+          );
+        } else if (exitCode !== 0) {
+          failures.push(
+            `expected the run to succeed — it exited ${exitCode}:\n` +
+              stderr.trim().split("\n").map((l) => `      ${l}`).join("\n"),
+          );
+        } else {
+          matched.push("runs");
         }
       }
 

@@ -134,12 +134,21 @@ describe("x-telo-context-from-ref-kind", () => {
     };
     const fakeAliases = { resolveKind: () => undefined };
 
-    const manifestRoot = { provide: { kind: "Sql.Query" } };
+    // The slot holds a `!ref` to a `resources:` entry; the entry's kind is
+    // what the field is read off.
+    const manifestRoot = {
+      // The dispatch-slot reading applies to a `Telo.Definition` and nothing
+      // else: `resources:` means "entry list" only there, and a third-party
+      // kind with its own `resources:` must not be resolved against it.
+      kind: "Telo.Definition",
+      resources: [{ kind: "Sql.Query", metadata: { name: "query" } }],
+      provide: { __tagged: true, engine: "ref", source: "query" },
+    };
 
     const contextSchema = {
       type: "object",
       properties: {
-        result: { "x-telo-context-from-ref-kind": "provide/kind#outputType" },
+        result: { "x-telo-context-from-ref-kind": "provide#outputType" },
       },
     };
 
@@ -151,15 +160,50 @@ describe("x-telo-context-from-ref-kind", () => {
     expect(resolved.properties.result).toEqual(queryDef.outputType);
   });
 
+  it("prefers the entry's own <field> over its kind's", () => {
+    const queryDef = {
+      kind: "Telo.Definition",
+      metadata: { name: "Query", module: "sql" },
+      outputType: { type: "object", properties: { rows: { type: "array" } } },
+    };
+    const narrowed = { type: "object", properties: { count: { type: "integer" } } };
+    const fakeDefs = {
+      resolve(kind: string): Record<string, any> | undefined {
+        return kind === "Sql.Query" ? queryDef : undefined;
+      },
+    };
+    const manifestRoot = {
+      kind: "Telo.Definition",
+      resources: [{ kind: "Sql.Query", metadata: { name: "query" }, outputType: narrowed }],
+      invoke: { __tagged: true, engine: "ref", source: "query" },
+    };
+    const contextSchema = {
+      type: "object",
+      properties: {
+        result: { "x-telo-context-from-ref-kind": ["provide#outputType", "invoke#outputType"] },
+      },
+    };
+    const resolved = resolveContextAnnotations(contextSchema, manifestRoot, {
+      manifestRoot,
+      defs: fakeDefs,
+      aliases: { resolveKind: () => undefined },
+    });
+    expect(resolved.properties.result).toEqual(narrowed);
+  });
+
   it("falls back to an open schema when the kind cannot be resolved", () => {
     const fakeDefs = { resolve: () => undefined };
     const fakeAliases = { resolveKind: () => undefined };
 
-    const manifestRoot = { provide: { kind: "Unknown.Kind" } };
+    const manifestRoot = {
+      kind: "Telo.Definition",
+      resources: [{ kind: "Unknown.Kind", metadata: { name: "source" } }],
+      provide: { __tagged: true, engine: "ref", source: "source" },
+    };
     const contextSchema = {
       type: "object",
       properties: {
-        result: { "x-telo-context-from-ref-kind": "provide/kind#outputType" },
+        result: { "x-telo-context-from-ref-kind": "provide#outputType" },
       },
     };
 

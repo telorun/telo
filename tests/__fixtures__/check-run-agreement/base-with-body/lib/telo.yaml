@@ -1,0 +1,31 @@
+# An inheritance kind declaring `base:` AND `resources:` — the report's finding
+# 2. `resources:` selects the template path, on which `base:` is never
+# evaluated, so the kind silently became an empty template and the failure
+# landed in the CONSUMER's resource as `Got: {}`.
+kind: Telo.Library
+metadata:
+  name: BaseWithBodyLib
+exports:
+  kinds: [Client]
+imports:
+  Http: ../../../../../modules/http-client
+---
+kind: Telo.Definition
+metadata:
+  name: Client
+extends: Http.Client
+schema:
+  type: object
+  required: [name, baseUrl, token]
+  properties:
+    name: { type: string }
+    baseUrl: { type: string }
+    token: { type: string }
+resources:
+  - kind: Http.BearerToken
+    metadata:
+      name: cred
+    token: !cel "self.token"
+base:
+  baseUrl: !cel "self.baseUrl"
+  credential: !ref cred

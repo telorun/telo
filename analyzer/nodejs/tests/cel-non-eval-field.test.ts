@@ -137,4 +137,69 @@ describe("CEL in a non-eval field", () => {
     expect(codes).toHaveLength(1);
     expect(codes[0].message).toContain("label");
   });
+
+  describe("on an inheritance kind, whose capability is inherited", () => {
+    // The gate read the DECLARED capability, and an `extends` child writes
+    // none — so the rule was off for every inheritance kind, and the
+    // expressions in its fields were never typed either.
+    const parent = makeKind("Test.Base", { type: "string" }, "Telo.Service", {
+      properties: { field: { type: "string" }, label: { type: "string" } },
+    });
+    const mergeChild = {
+      kind: "Telo.Definition",
+      metadata: { name: "Merge", module: "Test" },
+      extends: "Test.Base",
+      schema: { type: "object", properties: { extra: { type: "string" } } },
+    } as unknown as ResourceManifest;
+    const baseChild = {
+      kind: "Telo.Definition",
+      metadata: { name: "Mapped", module: "Test" },
+      extends: "Test.Base",
+      schema: { type: "object", properties: { label: { type: "string" } } },
+      base: { field: makeTaggedSentinel("cel", "self.label") },
+    } as unknown as ResourceManifest;
+    const analyze = (res: ResourceManifest, code: string) =>
+      new StaticAnalyzer()
+        .analyze(withSyntheticPositions([parent, mergeChild, baseChild, res]))
+        .filter((d) => d.code === code);
+
+    it("flags a !cel in a merge-form child's un-annotated field, as on the parent", () => {
+      const res = { kind: "Test.Merge", metadata: { name: "r" }, extra: makeTaggedSentinel("cel", "variables.x") } as unknown as ResourceManifest;
+      expect(analyze(res, "CEL_IN_NON_EVAL_FIELD")).toHaveLength(1);
+    });
+
+    it("reads a base-form child's own fields as compile-eval, and types them", () => {
+      // `base:` reads `self` once at create(), so every own field IS evaluated
+      // there — the rule says so rather than leaving it to the mapping walk.
+      const ok = { kind: "Test.Mapped", metadata: { name: "r" }, label: makeTaggedSentinel("cel", "variables.x") } as unknown as ResourceManifest;
+      expect(analyze(ok, "CEL_IN_NON_EVAL_FIELD")).toEqual([]);
+      // A field the rule reads as evaluated is a field the engine checks: the
+      // non-eval branch used to return before analysis, so a broken expression
+      // here reached boot.
+      const broken = { kind: "Test.Mapped", metadata: { name: "r" }, label: makeTaggedSentinel("cel", "variables.x +") } as unknown as ResourceManifest;
+      expect(analyze(broken, "CEL_IN_NON_EVAL_FIELD")).toEqual([]);
+      expect(analyze(broken, "CEL_SYNTAX_ERROR")).toHaveLength(1);
+    });
+
+    it("reports observed-state reads in a base-form child's field as startup reads", () => {
+      const producerKind = {
+        kind: "Telo.Definition",
+        metadata: { name: "Producer", module: "Test" },
+        capability: "Telo.Service",
+        schema: { type: "object" },
+        status: { type: "object", properties: { ready: { type: "boolean" } } },
+      } as unknown as ResourceManifest;
+      const producer = { kind: "Test.Producer", metadata: { name: "other" } } as unknown as ResourceManifest;
+      const app = {
+        kind: "Telo.Application",
+        metadata: { name: "App" },
+        targets: [{ kind: "Test.Producer", name: "other" }],
+      } as unknown as ResourceManifest;
+      const res = { kind: "Test.Mapped", metadata: { name: "r" }, label: makeTaggedSentinel("cel", "resources.other.status.ready") } as unknown as ResourceManifest;
+      const startup = new StaticAnalyzer()
+        .analyze(withSyntheticPositions([app, parent, mergeChild, baseChild, producerKind, producer, res]))
+        .filter((d) => d.code === "OBSERVED_STATE_IN_STARTUP_FIELD");
+      expect(startup).toHaveLength(1);
+    });
+  });
 });

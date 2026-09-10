@@ -1,0 +1,34 @@
+kind: Telo.Library
+metadata:
+  name: BaseWithBodyLib
+  version: 1.0.0
+  description: >-
+    Test fixture: an inheritance kind that declares `base:` AND `resources:`.
+    `resources:` selects the template path, on which `base:` is never
+    evaluated; the kernel refuses the pair at registration as the analyzer's
+    BASE_WITH_TEMPLATE_BODY twin.
+exports:
+  kinds:
+    - Client
+imports:
+  Http: ../../../../../../../modules/http-client
+---
+kind: Telo.Definition
+metadata:
+  name: Client
+extends: Http.Client
+schema:
+  type: object
+  properties:
+    name: { type: string }
+    baseUrl: { type: string }
+    token: { type: string }
+  required: [name, baseUrl, token]
+resources:
+  - kind: Http.BearerToken
+    metadata:
+      name: cred
+    token: !cel "self.token"
+base:
+  baseUrl: !cel "self.baseUrl"
+  credential: !ref cred

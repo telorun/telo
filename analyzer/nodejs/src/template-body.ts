@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { isRefSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { ModuleScopes } from "./alias-resolver.js";
@@ -66,6 +67,30 @@ export function templateBodies(
     });
   }
   return out;
+}
+
+/** What a definition's dispatch slot names: the `resources:` entry a `!ref` at
+ *  `slot` (`invoke` / `provide` / `run` / `mount`) resolves to, with its kind.
+ *  The entry is matched by its LITERAL `metadata.name`; a slot holding anything
+ *  but a `!ref`, or naming no entry, resolves to nothing — `validate-template-body`
+ *  is what reports either. `Self.<entry>` is the explicit self-qualifier. */
+export function dispatchTargetOf(
+  definition: Record<string, any>,
+  slot: string,
+): { entry: Record<string, any> | undefined; kind: string; name: string } | undefined {
+  const value = definition[slot];
+  if (!isRefSentinel(value)) return undefined;
+  const source = value.source;
+  const name = source.startsWith("Self.") ? source.slice("Self.".length) : source;
+  const bodies = definition.resources;
+  if (!Array.isArray(bodies)) return undefined;
+  for (const body of bodies) {
+    if (!body || typeof body !== "object") continue;
+    const entry = body as Record<string, any>;
+    if (entry.metadata?.name !== name || typeof entry.kind !== "string") continue;
+    return { entry, kind: entry.kind, name };
+  }
+  return undefined;
 }
 
 /** True when a CEL path lies at or inside a body's own subtree. */

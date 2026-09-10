@@ -9,12 +9,13 @@ import {
   celEvalSites,
   effectiveAuthorSchema,
   evalPathCovers,
+  implicitEvalSites,
   mergeCelEvalSites,
   NO_CEL_EVAL_SITES,
   pathMatchesScope,
   type CelEvalSites,
 } from "@telorun/analyzer";
-import { isCompiledValue, type ResourceDefinition } from "@telorun/sdk";
+import { isCompiledValue, RuntimeError, type ResourceDefinition } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { celSelfView } from "../../evaluation-context.js";
 
@@ -70,9 +71,11 @@ function referencesBeyondSelf(value: CompiledValue): boolean {
  *  the `.<path>` tail) — the form resolved by direct navigation rather than CEL. */
 const SELF_PATH = /^self((?:\.[A-Za-z_$][\w$]*)+)$/;
 
-/** Reports the resources: entries available to dispatch against, by expanded
- *  name and kind. Used in error messages to guide the developer back to the
- *  template's `resources:` array when a dispatch target doesn't match. */
+/** Reports the resources: entries available to dispatch against, by EXPANDED
+ *  name and kind — an entry may still be named by a CEL template, so the raw
+ *  node is not what a dispatch target is compared against. Used in error
+ *  messages to guide the developer back to the template's `resources:` array
+ *  when a dispatch target doesn't match. */
 function describeAvailableTargets(
   ctx: EvaluationContext,
   resources: any[] | undefined,
@@ -88,14 +91,37 @@ function describeAvailableTargets(
     .join(", ");
 }
 
+/**
+ * THE KERNEL READS BOTH SPELLINGS, AND THAT IS NOT NEGOTIABLE.
+ *
+ * A dispatch slot is written `!ref <entry>` and a body entry is named by a
+ * literal — that is the one spelling `telo check` can decide, since a `!ref` is
+ * looked up verbatim and so can never reach a CEL-named sibling. But the older
+ * pair (a bare string or `{ kind, name }` naming an entry whose `metadata.name`
+ * is itself CEL) is in ARTIFACTS THAT ARE ALREADY PUBLISHED — `crud@0.14.2`
+ * carries `mount: api` and four `!cel "self.name + '-…'"` entry names — and the
+ * runtime must read artifacts published years ago. Refusing them here made every
+ * app pinning such a version fail at boot, with `telo check` silent (a
+ * dependency's body is entry-scoped) and the error naming a kind the consumer
+ * never wrote.
+ *
+ * Migrations are the mechanism for a legacy spelling, and they cannot finish
+ * this one: `mount: api` is a `set-tag`, the object form needs a verb the patch
+ * vocabulary does not have, and a CEL-computed entry name has no literal a
+ * rewrite could compute. So compatibility is the answer and the analyzer carries
+ * the push: `DEPRECATED_TEMPLATE_DISPATCH_FORM` /
+ * `DEPRECATED_TEMPLATE_ENTRY_NAME`, warnings in the ENTRY module, where the
+ * author can act on them.
+ */
 export function createTemplateController(definition: {
+  metadata?: { name?: string; module?: string };
   schema: Record<string, any>;
   resources?: any[];
-  invoke?: string | { kind?: string; name: string };
+  invoke?: unknown;
   inputs?: Record<string, any>;
-  run?: string;
-  mount?: string | { kind?: string; name: string };
-  provide?: { kind: string; name: string };
+  run?: unknown;
+  mount?: unknown;
+  provide?: unknown;
   result?: Record<string, any>;
 }, definingContext: EvaluationContext): ControllerInstance {
   return {
@@ -106,26 +132,29 @@ export function createTemplateController(definition: {
       // expansion reads the current resource state instead.
       const getSelf = () => ({ ...resource, name: resource.metadata.name });
 
-      // A dispatch field names which `resources:` entry receives the call. It is
-      // a string name template (legacy shorthand) or an object `{ kind?, name }`
-      // for explicit kind-typed dispatch. Per-call data lives on the top-level
+      // A dispatch field names which `resources:` entry receives the call. The
+      // spelling to write is `!ref <entry>`, the same one every other reference
+      // uses — Phase 2.5 does not descend into a `Telo.Definition`, so the
+      // sentinel arrives raw, and `Self.` is the explicit self-qualifier naming
+      // the same local entry. The bare string and `{ kind?, name }` forms are
+      // READ FOREVER: published artifacts carry them (see the note above), and
+      // their `name` is a CEL template expanded against `self`, which is what a
+      // CEL-named entry is matched by. Per-call data lives on the top-level
       // `inputs:` sibling (same factoring as Run.Sequence steps), never in the
       // target's resource body — the body is `self`-only so every child can be
       // created once at init and reused across calls.
       const targetName = (
-        field: string | { kind?: string; name: string } | undefined,
+        field: unknown,
       ): string | null => {
         if (field == null) return null;
-        // `invoke: !ref body` names a sibling `resources:` entry — the same
-        // spelling every other reference uses. Phase 2.5 does not descend into a
-        // `Telo.Definition`, so the sentinel arrives raw; `Self.` is the
-        // explicit self-qualifier and names the same local entry.
         if (isRefSentinel(field)) {
           const source = field.source;
           return source.startsWith("Self.") ? source.slice("Self.".length) : source;
         }
         const nameTemplate =
-          typeof field === "object" && !isCompiledValue(field) ? field.name : field;
+          typeof field === "object" && !isCompiledValue(field)
+            ? (field as { name?: unknown }).name
+            : field;
         return nameTemplate
           ? (definingContext.expandWith(nameTemplate, { self: getSelf() }) as string)
           : null;
@@ -179,9 +208,9 @@ export function createTemplateController(definition: {
         definingContext.expandWith(definingContext.expandWith(value, extra), extra);
 
       // A local `!ref` inside a template body names a sibling `resources:` entry.
-      // The entry carries the kind, so resolve each sibling's expanded name to its
-      // kind — used to stamp the ref's `{kind, name}` injection shape (an empty
-      // kind is rejected downstream as a malformed inline resource).
+      // The entry carries the kind, so map each sibling's name to its kind —
+      // used to stamp the ref's `{kind, name}` injection shape (an empty kind is
+      // rejected downstream as a malformed inline resource).
       const siblingKinds = new Map<string, string>();
       for (const template of definition.resources ?? []) {
         const expandedName = definingContext.expandWith(template?.metadata?.name ?? "", {
@@ -192,14 +221,50 @@ export function createTemplateController(definition: {
         }
       }
 
+      // A child is DECLARED by the defining library, so its kind and every
+      // alias-qualified name in its body are written in that library's alias
+      // scope. Phase-5 injection resolves a resource's ref-slot map through its
+      // `metadata.module`, and a child registered without one was resolved
+      // against the ROOT application's imports instead — which found a field map
+      // only when the consumer happened to import the same alias, and otherwise
+      // silently injected nothing, leaving every ref slot a raw `{kind, name}`.
+      const definingModule = definition.metadata?.module;
+      const stampDeclaringModule = (child: any): any => {
+        if (!definingModule || !child || typeof child !== "object") return child;
+        return { ...child, metadata: { ...(child.metadata ?? {}), module: definingModule } };
+      };
+
+      /**
+       * The kind a body's `!ref` resolves to: a sibling entry's, else the
+       * declaration the name reaches in the enclosing scope.
+       *
+       * The fallback is what makes a body's two reference sites agree. Both are
+       * stamped `{kind, name}` here, but they are read by different machinery:
+       * Phase-5 injection dispatches a REFERENCE SLOT by name and recovers the
+       * kind from whatever it finds, so an empty one was harmless there and a
+       * module-level `client: !ref apiClient` worked — while a STEP's `invoke:`
+       * goes through `ensureKindRef`, where an empty kind is not a reference at
+       * all but a malformed inline declaration, failing at boot with `Resource
+       * must have 'kind' property. Got: {"kind":"","name":"…"}`. So the same
+       * name resolved at one site and died at the other, with nothing static
+       * reporting either. Naming the kind here fixes the site that was wrong
+       * rather than teaching a second reader to tolerate the gap.
+       *
+       * Still empty when the name reaches nothing — that is a genuinely
+       * unresolved reference, and the errors that own it report it.
+       */
+      const refKind = (name: string, alias?: string): string =>
+        siblingKinds.get(name) ??
+        ((definingContext.resolveDeclaredManifest?.(name, alias)?.kind as string | undefined) ??
+          "");
+
       // Expand a persistent child's body against `self`. Self-only CEL resolves
       // to literals now; a node the NESTED KIND evaluates later (see
       // `deferredPaths`) passes through compiled for the child's own controller. `!ref` sentinels are
       // rewritten to the `{kind, name, alias?}` injection shape here — Phase 2.5
       // (`resolveRefSentinels`) does not descend into template bodies, so the
       // child context's Phase 5 injection would otherwise see an unrecognized
-      // sentinel and leave the slot unresolved. Kind is left empty: injection
-      // dispatches by name and recovers the kind from the resolved instance.
+      // sentinel and leave the slot unresolved.
       const expandSelf = (value: any, path: string, deferred: CelEvalSites): any => {
         if (isCompiledValue(value)) {
           if (isDeferredPath(deferred, path) && referencesBeyondSelf(value)) return value;
@@ -231,10 +296,10 @@ export function createTemplateController(definition: {
           const alias = dot > 0 ? source.slice(0, dot) : undefined;
           if (alias && alias !== "Self") {
             const name = source.slice(dot + 1);
-            return { kind: siblingKinds.get(name) ?? "", name, alias };
+            return { kind: refKind(name, alias), name, alias };
           }
           const name = alias === "Self" ? source.slice(dot + 1) : source;
-          return { kind: siblingKinds.get(name) ?? "", name };
+          return { kind: refKind(name), name };
         }
         if (Array.isArray(value)) {
           return value.map((item, i) => expandSelf(item, `${path}[${i}]`, deferred));
@@ -278,6 +343,7 @@ export function createTemplateController(definition: {
                   | Record<string, any>
                   | undefined,
               ),
+              implicitEvalSites(def),
             )
           : NO_CEL_EVAL_SITES;
         deferredByKind.set(kind, sites);
@@ -312,7 +378,7 @@ export function createTemplateController(definition: {
               childContext.bindContextValue?.("self", celSelfView(getSelf()));
               for (const template of definition.resources ?? []) {
                 childContext.registerManifest(
-                  expandSelf(template, "", deferredPathsFor(template?.kind)),
+                  stampDeclaringModule(expandSelf(template, "", deferredPathsFor(template?.kind))),
                 );
               }
               registered = true;

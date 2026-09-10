@@ -30,13 +30,11 @@ schema:
   properties:
     value: { type: string }
 resources:
-  # A fixed child name (not derived from self.name), so two Boxed instances both
-  # spawn a child called `inner` — the collision the owner identity must resolve.
+  # Two Boxed instances both spawn a child called `inner` — the collision the
+  # owner identity must resolve.
   - kind: Run.Value
     metadata:
       name: inner
     value:
       echoed: !cel "self.value"
-provide:
-  kind: Run.Value
-  name: inner
+provide: !ref inner

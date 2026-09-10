@@ -1,0 +1,48 @@
+# A module naming its own kinds by its OWN NAME — the canonical `<module>.<Kind>`
+# form the registry keys on and every diagnostic prints, which is where an author
+# copies it from. The analyzer resolved it (it is canonical, not an alias) and the
+# kernel registered only `Self` and imported aliases, so it checked clean and
+# failed at boot with "no module imported with alias 'OwnNamePrefix'".
+#
+# Checks clean AND runs, so the two halves agree in the direction that matters:
+# the spelling works rather than merely being reported.
+kind: Telo.Application
+metadata:
+  name: OwnNamePrefix
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Console: ../../../modules/console
+targets:
+  - !ref main
+---
+kind: Telo.Definition
+metadata:
+  name: Greeting
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    who: { type: string }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: !cel "'hello ' + self.who"
+invoke: !ref body
+---
+kind: OwnNamePrefix.Greeting
+metadata:
+  name: greeting
+who: telo
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: greet
+    invoke: !ref greeting
+  - name: show
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel "string(steps.greet.result)"

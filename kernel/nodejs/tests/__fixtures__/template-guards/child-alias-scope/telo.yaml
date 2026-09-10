@@ -1,0 +1,13 @@
+# Imports the library ALONE: no `Http` alias here, so the template's children
+# resolve only if the kernel scopes them to the defining library.
+kind: Telo.Application
+metadata:
+  name: ChildAliasScopeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+---
+kind: Lib.Op
+metadata:
+  name: op
+name: op

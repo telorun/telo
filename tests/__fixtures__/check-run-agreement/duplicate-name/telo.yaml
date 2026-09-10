@@ -1,0 +1,13 @@
+# Consumes the library next door. Its analysis is entry-scoped, so the
+# library's internal collision is invisible here by design — the kernel's own
+# guard is what refuses this at boot.
+kind: Telo.Application
+metadata:
+  name: DuplicateNameApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+---
+kind: Lib.Job
+metadata:
+  name: job

@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: DynamicNameApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+---
+kind: Lib.Op
+metadata:
+  name: op
+name: op

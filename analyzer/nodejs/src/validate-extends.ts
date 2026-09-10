@@ -4,6 +4,7 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   controllerBearingAncestor,
   effectiveAuthorSchema,
+  hasOwnControllerOrTemplate,
   inheritedCapability,
   isInheritedDelegation,
   type DefResolver,
@@ -73,6 +74,44 @@ export function validateExtends(
     const filePath = (m.metadata as { source?: string } | undefined)?.source;
     const resource = { kind: m.kind, name };
     const label = `${m.kind}/${name}`;
+
+    // `base:` is read on exactly one path — the inherited-controller one, which
+    // the kernel takes only when the definition has NO body of its own. A
+    // `resources:` block or a dispatch slot selects the template path, and
+    // `base:` is then never evaluated: the kind silently became an empty
+    // template, and the failure landed in the CONSUMER's resource as a `{}`
+    // where a parent instance should have been. Refused here, where the two
+    // blocks sit side by side, and at registration in the kernel.
+    //
+    // WHETHER there is a body is `hasOwnControllerOrTemplate` — the same
+    // predicate the kernel branches on, so the two halves cannot disagree about
+    // what a body is. Deciding it here with a key scan did disagree: an empty
+    // `resources: []` is falsy to a length test and truthy to the kernel's, so
+    // it passed `telo check` and threw `ERR_BASE_WITH_TEMPLATE_BODY` at boot —
+    // a brand-new guard shipping with the very gap it was written to close. The
+    // scan survives for one job only: naming the offending key in the message.
+    if ((m as { base?: unknown }).base != null) {
+      const hasBody = hasOwnControllerOrTemplate(m as ResourceDefinition);
+      const bodyKey =
+        (["resources", "controllers", "invoke", "run", "provide", "mount"] as const).find(
+          (key) => (m as Record<string, unknown>)[key] !== undefined,
+        ) ?? "resources";
+      if (hasBody) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "BASE_WITH_TEMPLATE_BODY",
+          source: SOURCE,
+          message:
+            `${label}: 'base:' maps this kind's config onto the inherited controller of ` +
+            `'${typeof extendsOf(m) === "string" ? extendsOf(m) : "<no extends>"}', so the ` +
+            `definition may not also declare '${bodyKey}:'. With '${bodyKey}:' the kind is a ` +
+            `template and 'base:' is never evaluated. Either drop 'base:' and dispatch to a ` +
+            `'resources:' entry with '!ref', or drop '${bodyKey}:' and build the parent's config ` +
+            `in 'base:' alone.`,
+          data: { resource, filePath, path: bodyKey },
+        });
+      }
+    }
 
     // --- extends validation ---
     // At this point `m.extends` is whatever the manifest declared (alias form, e.g.
@@ -242,4 +281,8 @@ export function validateExtends(
   }
 
   return diagnostics;
+}
+
+function extendsOf(m: ResourceManifest): unknown {
+  return (m as { extends?: unknown }).extends;
 }

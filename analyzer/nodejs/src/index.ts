@@ -33,6 +33,7 @@ export {
   celEvalSites,
   declaresCelRegion,
   evalPathCovers,
+  implicitEvalSites,
   mergeCelEvalSites,
   pathMatchesScope,
   NO_CEL_EVAL_SITES,

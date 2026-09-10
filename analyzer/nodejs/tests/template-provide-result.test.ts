@@ -52,13 +52,8 @@ function makeVaultSession(resultBody: Record<string, unknown>): ResourceManifest
     capability: "Telo.Provider",
     extends: "Mcp.SessionProvider",
     schema: { type: "object", additionalProperties: true },
-    resources: [
-      { kind: "http-client.Request", metadata: { name: "${{ self.name }}-read" } },
-    ],
-    provide: {
-      kind: "http-client.Request",
-      name: "${{ self.name }}-read",
-    },
+    resources: [{ kind: "http-client.Request", metadata: { name: "read" } }],
+    provide: { __tagged: true, engine: "ref", source: "read" },
     result: resultBody,
   } as unknown as ResourceManifest;
 }
@@ -91,7 +86,8 @@ describe("Telo.Definition: structural validation of top-level `result`", () => {
       capability: "Telo.Provider",
       extends: "Mcp.SessionProvider",
       schema: { type: "object", additionalProperties: true },
-      provide: { kind: "http-client.Request", name: "x" },
+      resources: [{ kind: "http-client.Request", metadata: { name: "x" } }],
+      provide: { __tagged: true, engine: "ref", source: "x" },
       result: { other: "static-value" },
     } as unknown as ResourceManifest;
 

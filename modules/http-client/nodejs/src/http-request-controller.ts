@@ -728,39 +728,6 @@ interface ResolvedClient {
   credential: CredentialApplier | undefined;
 }
 
-/**
- * Normalize the `client` x-telo-ref value to a `{ name, alias? }` lookup.
- *
- * The value's shape depends on where the Http.Request sits:
- *   - Inline inside a scope (e.g. a Run.Sequence step's `invoke:`) hits the kernel's
- *     hidden-slot limitation (see resource-context.ts), so the reference arrives
- *     unresolved — a `!ref` sentinel or a `{kind, name, alias?}` object.
- *   - A bare resource-name string is still accepted by the analyzer as a legacy name
- *     reference, so it stays supported here.
- *
- * `{kind, name, alias?}` objects are read directly rather than routed through
- * `ctx.ensureKindRef`: an `alias` key there registers a spurious inline manifest and
- * drops the alias. Sentinels still go through `ensureKindRef`, which performs the
- * Self./Alias. split and cross-module export resolution.
- */
-function normalizeClientRef(
-  client: unknown,
-  ctx: ResourceContext,
-): { name: string; alias?: string } {
-  if (typeof client === "string") return { name: client };
-  if (client && typeof client === "object") {
-    const ref = client as Record<string, unknown>;
-    if (typeof ref.name === "string") {
-      return { name: ref.name, alias: typeof ref.alias === "string" ? ref.alias : undefined };
-    }
-    const resolved = ctx.ensureKindRef(client) as { name: string; alias?: string };
-    return { name: resolved.name, alias: resolved.alias };
-  }
-  throw new Error(
-    "Http.Request: 'client' must reference an Http.Client (use 'client: !ref MyClient').",
-  );
-}
-
 function clientOf(instance: ClientSnapshotInstance): ResolvedClient {
   return { config: instance.snapshot(), credential: instance.credential?.() };
 }
@@ -769,49 +736,22 @@ function clientOf(instance: ClientSnapshotInstance): ResolvedClient {
  * Resolve the `client` x-telo-ref slot to its config (baseUrl / headers / timeout)
  * and its `credential` slot. The returned config may still carry `${{ }}`
  * expressions; the caller expands them.
+ *
+ * Always a LIVE instance, through the context's own resolver: a top-level
+ * request holds one after Phase-5 injection, and a request declared inline in
+ * a step or a `with:` scope — where the slot is not an injection site — is
+ * rescued by `ctx.resolveRef`, which resolves scope-local first and crosses
+ * module boundaries for an `Alias.name`. There used to be a raw-manifest
+ * fallback for a client that had no live instance at the site, and what it
+ * mostly caught was a kernel defect (a template child injected against the
+ * wrong alias scope), which it then explained as a rule about scopes; a client
+ * whose instance genuinely cannot be found is an unresolved reference, and
+ * says so.
  */
 function resolveClient(client: unknown, ctx: ResourceContext): ResolvedClient {
-  // Top-level Http.Request: the kernel injects the live Http.Client instance at Phase 5.
-  if (hasSnapshot(client)) return clientOf(client);
-
-  const { name, alias } = normalizeClientRef(client, ctx);
-
-  // Cross-module reference into an imported library's exported Http.Client instance.
-  if (alias && alias !== "Self") {
-    const instance = ctx.moduleContext.resolveImportedInstance(alias, name);
-    if (!hasSnapshot(instance)) {
-      throw new Error(
-        `Http.Request: client reference '${alias}.${name}' did not resolve to an imported Http.Client instance.`,
-      );
-    }
-    return clientOf(instance);
-  }
-
-  // Local reference. Prefer the live instance: a kind that inherits Http.Client
-  // by `extends` (general single inheritance) is a delegated Client whose
-  // snapshot() carries the resolved baseUrl/headers — its raw manifest holds the
-  // child's own config (e.g. `host`), not a Client config. Only fall back to the
-  // raw manifest for a genuine Http.Client at a scope site where no live instance
-  // is registered.
-  const live = ctx.moduleContext.resourceInstances.get(name)?.instance;
-  if (hasSnapshot(live)) return clientOf(live);
-  const resource = ctx.getResourcesByName("Client", name);
-  if (!resource) {
-    throw new Error(`Http.Request: Http.Client "${name}" not found.`);
-  }
-  // Raw-manifest fallback: no live client exists at this scope site, so there is
-  // no owning context to resolve the credential in. Config still applies; a
-  // credential declared on such a client is not reachable from here, and silently
-  // resolving it against the REQUEST's imports would bind the wrong resource.
-  const manifest = resource as unknown as Record<string, unknown>;
-  if (manifest.credential !== undefined) {
-    throw new Error(
-      `Http.Request: Http.Client "${name}" declares a 'credential' but is not initialized at this ` +
-        `site, so the credential cannot be resolved in the client's own context. ` +
-        `Declare the client at module level rather than inside a scope.`,
-    );
-  }
-  return { config: manifest, credential: undefined };
+  return clientOf(
+    ctx.resolveRef(client, hasSnapshot, () => "Http.Request 'client'", "Http.Client"),
+  );
 }
 
 class HttpRequestResource implements ResourceInstance {

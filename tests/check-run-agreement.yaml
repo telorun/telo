@@ -1,0 +1,180 @@
+# THE AGREEMENT SUITE: a manifest the kernel refuses is a manifest `telo check`
+# refuses.
+#
+# Every shape below passed `telo check` with a clean exit and then failed at
+# run — four of them on the very thing the checker was silent about. The common
+# factor was that each kernel guard lived in a controller with no analyzer twin,
+# and nothing anywhere asserted the two agree. So each defect is pinned TWICE:
+# once at the library that declares it, where `telo check` now reports it, and
+# once at a CONSUMER of that library, whose entry-scoped analysis is silent by
+# design and where the kernel's own guard is therefore the only thing left
+# (`runFails`). A guard that gains a kernel half and no static half fails the
+# first assertion; one that gains a static half and no kernel half fails the
+# second.
+kind: Telo.Application
+metadata:
+  name: CheckRunAgreementTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref dispatchObjectForm
+  - !ref dispatchObjectFormAtRuntime
+  - !ref dispatchRef
+  - !ref baseWithBody
+  - !ref baseWithBodyAtRuntime
+  - !ref badExports
+  - !ref childAliasScope
+  - !ref moduleNameAlias
+  - !ref duplicateName
+  - !ref duplicateNameAtRuntime
+  - !ref ownNamePrefix
+  - !ref bodyOutwardRef
+  - !ref inheritedRequiredHint
+---
+# The two legacy spellings a published artifact may carry. DEPRECATIONS, not
+# errors: the kernel still reads them, so refusing them statically would be the
+# check/run disagreement pointed the other way.
+kind: Assert.Manifest
+metadata:
+  name: dispatchObjectForm
+source: ./__fixtures__/check-run-agreement/dispatch-object-form.yaml
+expect:
+  warnings:
+    - code: DEPRECATED_TEMPLATE_ENTRY_NAME
+      message: "is deprecated"
+    - code: DEPRECATED_TEMPLATE_DISPATCH_FORM
+      message: "write '!ref <entry>'"
+---
+# A dispatch target that names no entry is still a runtime miss — the legacy
+# spelling buys compatibility, not decidability, and the kernel's message is
+# what an author gets.
+kind: Assert.Manifest
+metadata:
+  name: dispatchObjectFormAtRuntime
+source: ./__fixtures__/check-run-agreement/dispatch-object-form-lib/telo.yaml
+expect:
+  runFails: "no entry in 'resources:' has that metadata.name"
+---
+# The repaired twin, which must check clean AND run clean — the agreement holds
+# in both directions, or the suite would pass by refusing everything. `runs: true`
+# is what makes the second half an assertion: `expect: {}` runs nothing.
+kind: Assert.Manifest
+metadata:
+  name: dispatchRef
+source: ./__fixtures__/check-run-agreement/dispatch-ref.yaml
+expect:
+  runs: true
+---
+# `base:` beside a template body. The kind silently became an empty template and
+# the failure surfaced in the CONSUMER's resource as `Got: {}`.
+kind: Assert.Manifest
+metadata:
+  name: baseWithBody
+source: ./__fixtures__/check-run-agreement/base-with-body/lib/telo.yaml
+expect:
+  errors:
+    - code: BASE_WITH_TEMPLATE_BODY
+      message: "'base:' maps this kind's config onto the inherited controller"
+---
+kind: Assert.Manifest
+metadata:
+  name: baseWithBodyAtRuntime
+source: ./__fixtures__/check-run-agreement/base-with-body/telo.yaml
+expect:
+  runFails: "ERR_BASE_WITH_TEMPLATE_BODY"
+---
+# A library's export list, resolved where it is written rather than in whichever
+# consumer first tries to use it.
+kind: Assert.Manifest
+metadata:
+  name: badExports
+source: ./__fixtures__/check-run-agreement/bad-exports/lib/telo.yaml
+expect:
+  errors:
+    - code: EXPORT_KIND_UNKNOWN
+      message: "names no Telo.Definition or Telo.Abstract of this library"
+    - code: EXPORT_KIND_UNKNOWN
+      message: "an imported kind"
+      fix: "Http.Client"
+    - code: EXPORT_RESOURCE_UNKNOWN
+      message: "names no resource declared in this library"
+---
+# A template body whose kinds are written through the DEFINING library's alias:
+# the consumer declares no `Http`, so the children resolve only if injection is
+# scoped to the module that declared them. Checks clean and runs clean.
+kind: Assert.Manifest
+metadata:
+  name: childAliasScope
+source: ./__fixtures__/check-run-agreement/child-alias-scope/telo.yaml
+expect:
+  runs: true
+---
+# One name registered twice, which the kernel has always refused and the
+# analyzer modelled a narrower namespace than: an import alias and a kind
+# definition were both excluded from the duplicate check, the alias on the
+# stated grounds that it "lives in a separate namespace from resources".
+#
+# The reported shape — an application named after one of its own imports.
+kind: Assert.Manifest
+metadata:
+  name: moduleNameAlias
+source: ./__fixtures__/check-run-agreement/module-name-alias.yaml
+expect:
+  errors:
+    - code: DUPLICATE_RESOURCE_NAME
+      message: "import alias 'Scheduler' collides with this module's own name"
+---
+# A kind definition and an instance sharing a name, reported at the library
+# that declares both.
+kind: Assert.Manifest
+metadata:
+  name: duplicateName
+source: ./__fixtures__/check-run-agreement/duplicate-name/lib/telo.yaml
+expect:
+  errors:
+    - code: DUPLICATE_RESOURCE_NAME
+      message: "collides with resource Telo.Definition/Job"
+---
+# The same library from a CONSUMER, whose entry-scoped analysis does not reach
+# a dependency's internals — so the kernel's own guard is what refuses it, and
+# asserting its code is what pins the two halves together.
+kind: Assert.Manifest
+metadata:
+  name: duplicateNameAtRuntime
+source: ./__fixtures__/check-run-agreement/duplicate-name/telo.yaml
+expect:
+  runFails: "ERR_DUPLICATE_RESOURCE"
+---
+# A module naming its own kinds by its own name — the canonical `<module>.<Kind>`
+# every diagnostic prints, which the analyzer resolved and the kernel refused.
+# Asserted BOTH ways: clean check and a clean run, since the fix is that the
+# spelling works rather than that it is reported.
+kind: Assert.Manifest
+metadata:
+  name: ownNamePrefix
+source: ./__fixtures__/check-run-agreement/own-name-prefix.yaml
+expect:
+  runs: true
+---
+# A template body reaching outward to a resource of its declaring module. The
+# reference slot resolved and the step dispatch died at boot on the same name;
+# both sites are in this fixture, so repairing one cannot regress the other.
+kind: Assert.Manifest
+metadata:
+  name: bodyOutwardRef
+source: ./__fixtures__/check-run-agreement/body-outward-ref.yaml
+expect:
+  runs: true
+---
+# The signpost, not a new rule: a kind that extends without `base:` keeps its
+# parent's required fields on its own surface, and "missing required property"
+# alone sent an author down a three-step dead end.
+kind: Assert.Manifest
+metadata:
+  name: inheritedRequiredHint
+source: ./__fixtures__/check-run-agreement/inherited-required/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "extends without a 'base:' mapping"

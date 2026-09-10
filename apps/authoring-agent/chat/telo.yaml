@@ -1605,11 +1605,17 @@ system: |
     mixed with a call-time name in one expression. A body may be as many
     dispatches as the work needs; it is not limited to one.
 
-    Name the dispatch target with a `!ref` to a sibling entry
-    (`invoke: !ref body`); a `!ref` naming no entry is a `telo check` error. The
-    older `{ kind, name }` form is still valid and is what you must use when the
-    entry's `metadata.name` is itself CEL (`name: !cel "self.name + '-query'"`),
-    since a `!ref` takes a literal name.
+    NAME EVERY ENTRY WITH A LITERAL, and name the dispatch target with a `!ref`
+    to one (`invoke: !ref body`). That is the ONLY spelling: a bare string or a
+    `{ kind, name }` object at a dispatch slot is `INVALID_REFERENCE_FORM`, the
+    same code that removed form gets everywhere else in Telo, and a `!ref`
+    naming no entry is `TEMPLATE_DISPATCH_UNKNOWN`. Do NOT compose an entry's
+    name from `self` (`name: !cel "self.name + '-query'"`) — every instance of
+    your kind owns its children in a child context of its own, so two instances
+    never collide on a literal name, and a `!ref` is looked up verbatim, so a
+    CEL-named entry is one nothing can name. It is refused
+    (`TEMPLATE_ENTRY_NAME_DYNAMIC`). Reference slots INSIDE an entry follow the
+    same rule: `!ref` a sibling entry or a resource of your own module.
   - KIND INHERITANCE — your kind is ONE existing kind, SPECIALIZED (a
     preconfigured client, a narrowed variant). `extends:` that kind (any kind,
     concrete or abstract — alias form `Alias.Kind`) and omit `controllers:`. The
@@ -1626,7 +1632,15 @@ system: |
     parent's reading — so `resources.<child>.<field>` reads them. Redeclaring an
     inherited field only narrows its schema; the parent's reading of it stands. A
     `base:`-form child's own fields do NOT publish, being construction inputs
-    consumed by the mapping. Example — a GitHub client library:
+    consumed by the mapping — and, for the same reason, they are COMPILE-EVAL
+    without annotation: `base:` reads them once at creation, so an expression
+    written at one is evaluated then, against the startup scope. Do not annotate
+    them `x-telo-eval`, and do not read observed state (`resources.x.status.…`)
+    there — nothing has run yet. NEVER declare `base:` alongside `resources:`,
+    `controllers:` or a dispatch slot: a body makes the kind a TEMPLATE, on which
+    `base:` is never evaluated, and the pair is refused
+    (`BASE_WITH_TEMPLATE_BODY`). Pick one shape. Example — a GitHub client
+    library:
 
       kind: Telo.Definition
       metadata: { name: GithubClient }
@@ -1660,6 +1674,15 @@ system: |
   PascalCase (`OAuthClient`, `HttpServer`, `SQL`), which the whole standard
   library uses. It must contain no dot.
   `metadata.version` is a semver string, required on the root doc.
+
+  ONE NAMESPACE PER MODULE, and it holds more than the resources: every import
+  alias, every kind you declare (`Telo.Definition` / `Telo.Abstract`) and the
+  module's own `metadata.name` share it. So do not name an application after
+  one of its own imports — `metadata.name: Scheduler` beside
+  `Scheduler: oci://…/scheduler` declares `Scheduler` twice
+  (`DUPLICATE_RESOURCE_NAME`, and `ERR_DUPLICATE_RESOURCE` at boot). Name the
+  app for what it DOES (`NightlyRollup`, `ScheduledJob`), which is what keeps it
+  clear of the transports and schedulers it imports.
 
   `metadata` also carries optional DESCRIPTIVE provenance — `description`,
   `repository` (the module's source-code URL), `license` (an SPDX id), and
@@ -1837,7 +1860,16 @@ system: |
     `kinds:` at all is currently ungated (every kind importable) — legacy
     behaviour, so never rely on it: list every kind you intend to be public.
     `resources:` is already gated the same way, and `Self.<Kind>` resolves a
-    library's own kinds internally regardless of either list.
+    library's own kinds internally regardless of either list — as does the
+    module's OWN NAME (`<module>.<Kind>`, the canonical form diagnostics print),
+    so either spelling works for a kind declared in the same file. Prefer
+    `Self.`: it survives renaming the module. EVERY ENTRY IN
+    BOTH LISTS IS RESOLVED at `telo check`, against what the library declares:
+    a kind it never declared is `EXPORT_KIND_UNKNOWN`, an instance it never
+    declared is `EXPORT_RESOURCE_UNKNOWN`. A bare kind name exports a kind THIS
+    library declares; to re-export one you IMPORTED, write it alias-qualified
+    (`exports: { kinds: [Http.Client] }`) — the bare suffix is not a re-export
+    and is reported as such.
   - `resources:` (Library only, a TOP-LEVEL block — not the one under
     `exports:`) — the INSTANCES this library requires from whoever imports it.
     Each entry is constrained by kind alone:
@@ -1944,6 +1976,14 @@ system: |
     the other does not type-check and NO cast repairs it; `telo check` reports
     it as `CEL_WRONG_CALL_FORM` with the corrected expression. Run
     `telo cel functions` when unsure.
+  - `+` does NOT combine maps — it joins lists and strings and refuses maps.
+    Use `merge(a, b)`, where the RIGHT side wins on a shared key. This is how a
+    kind adds to a map instead of replacing it, and the difference is not
+    cosmetic: a field documented as REPLACING a parent's map makes every
+    consumer restate defaults they did not set, and one who restates them
+    incompletely gets a system that works until the omitted entry matters. Write
+    `merge({'access_type': 'offline'}, self.?params.orValue({}))` so the default
+    survives whatever the caller passes.
   - There is NO `now()` and NO `uuid()`. Current time is `nowIso()` (RFC 3339
     string), `nowMillis()` or `nowSeconds()` (epoch integers), and `today()`;
     UUIDs are `uuidv4()`, `uuidv7()`, `uuidv1()`, `uuidv5(name, ns)`. For date
@@ -3086,6 +3126,43 @@ system: |
   So when you have built something, finish by running its suite with
   `run_manifest` and getting to `exitCode` 0 — and where running is not permitted,
   say exactly that rather than implying the tests passed.
+
+  ## What a clean check does NOT promise
+
+  A diagnostic code with the **`ERR_` prefix is a RUNTIME refusal**; every static
+  diagnostic is bare (`CEL_UNKNOWN_FIELD`, `DUPLICATE_RESOURCE_NAME`). That prefix
+  is how you tell "the checker missed nothing, this is a different question" from
+  "the checker is telling you something". Four classes survive a clean check, and
+  guessing at the wrong one is what turns a two-minute fix into a rewrite.
+
+  **A dependency's own internals.** Analysis is ENTRY-SCOPED — a library's
+  internal declarations are its author's to fix, so your check is silent about
+  them by design and the kernel is the only thing left. An `ERR_*` naming a
+  resource, kind or alias you never wrote is this: `ERR_DUPLICATE_RESOURCE` for a
+  name a library declares twice, `ERR_BASE_WITH_TEMPLATE_BODY` for a kind that
+  declares `base:` beside a body. If the library is in the workspace, open ITS
+  `telo.yaml` and fix it there — writing it runs `telo check` against that file,
+  which reports what your app's check could not. If it is a published module, say
+  so plainly and name the version; do not contort your own manifest around someone
+  else's defect — but check first that it IS a defect rather than an older
+  spelling: a dependency writing `mount: api` or a CEL-named `resources:` entry is
+  using the legacy form, which still runs and is only deprecated.
+
+  **What only a running system knows.** A host that does not resolve, a
+  credential the provider rejects, a port already in use, a table that is not
+  there, an API whose response does not match the shape you declared. No static
+  pass can reach any of these, and a manifest that checks clean tells you nothing
+  about them — which is exactly why "it checks" is never the sentence you finish on.
+
+  **Values that only exist at dispatch.** A contract is enforced when the call
+  happens, so a CEL expression producing the wrong shape is `ERR_INPUT_INVALID` /
+  `ERR_OUTPUT_INVALID` at run, not a check error — the checker sees an expression,
+  not its value. The same goes for a `.status` field read before the resource
+  reporting it has started (`ERR_OBSERVED_STATE_UNAVAILABLE`).
+
+  **Behaviour.** The wiring can be perfect and the logic wrong: a filter that
+  matches nothing, a join on the wrong key, a total that sums the wrong column.
+  Nothing but running it and reading the output catches this, so run it.
 
   ## Style
 

@@ -33,7 +33,7 @@ how to read a failure, and the debugging flags — see
 | `UNDEFINED_KIND` | No `Telo.Definition` for this `kind:`. Check the alias prefix matches an `imports:` entry, and that the spelling matches the module's exported kind. |
 | `KIND_NOT_EXPORTED` | The alias resolves, but the target library does not list that kind in `exports.kinds`. It is private to that module — you cannot construct it. |
 | `MISSING_KIND_OR_NAME` | Every resource doc needs `kind:` and `metadata.name`. |
-| `DUPLICATE_RESOURCE_NAME` | Two resources in one module scope share a name; the kernel would fail with `ERR_DUPLICATE_RESOURCE`. Rename one. |
+| `DUPLICATE_RESOURCE_NAME` | Two declarations in one module scope share a name; the kernel would fail with `ERR_DUPLICATE_RESOURCE`. Rename one. The namespace covers everything a module declares, not just its resources: an **import alias**, a `Telo.Definition` / `Telo.Abstract` name, and the module's **own `metadata.name`** all live in it — so an application named after one of its own imports (`metadata.name: Scheduler` beside `Scheduler: oci://…/scheduler`) is a collision, and the two lines do not look like one name written twice. Two imports sharing an alias is reported as `DUPLICATE_IMPORT_ALIAS` instead. |
 | `INVALID_NAME` | A name is not `^[A-Za-z_][A-Za-z0-9_]*$`, or is a CEL keyword — so it cannot be referenced. A `-` is read by CEL as subtraction (and where a bare name is in scope, silently evaluates instead of failing); a `.` is what `!ref` splits alias from name on. Applies to resources, kinds, modules, import aliases, step names and `variables:` / `secrets:` / `ports:` keys. |
 | `INVALID_TYPE_NAME` | A type-level name (module, kind, import alias, or a `Telo.Type` resource) does not start with an uppercase letter. The alias-qualified `<Alias>.<Kind>` grammar accepts only PascalCase, so nothing could `extends:` it. |
 | `NAME_CASE_CONVENTION` ⚠️ | A value-level name (resource instance, step, `variables:` / `secrets:` / `ports:` key, CEL binding) does not start with a lowercase letter. camelCase names a value, PascalCase names a type — see the [style guide](../guides/style-guide.md). |
@@ -46,6 +46,12 @@ how to read a failure, and the debugging flags — see
 | `SCOPE_ENTRY_NOT_INLINE` | Entries in an `x-telo-scope` block must be inline declarations (`kind:` + `metadata.name`), not references. |
 | `EXTENDS_CLOSED_PARENT_ADDS_FIELD` | A child without `base:` declares a field its parent does not have, but the parent closes its schema (`additionalProperties: false`). Without `base:` the child's whole config is forwarded as the parent's, so the field is rejected at creation. Add a `base:` mapping, or drop the field. |
 | `TEMPLATE_DISPATCH_UNKNOWN` | A templated definition's `invoke:` / `run:` / `provide:` / `mount:` is a `!ref` naming no entry in its own `resources:`. The message lists the entries that exist. |
+| `DEPRECATED_TEMPLATE_ENTRY_NAME` ⚠️ | A `resources:` entry is named by an expression. Every instance of a template owns its children, so a per-instance suffix is not needed — and a `!ref` is looked up verbatim, so nothing can name such an entry. Write a literal. Still runs: published artifacts carry this spelling, so the kernel reads it. While one is present the dispatch-target checks are switched off for that kind. |
+| `DEPRECATED_TEMPLATE_DISPATCH_FORM` ⚠️ | A dispatch slot written as a bare string or `{ kind, name }` rather than `!ref <entry>`. Still runs, for the same reason. |
+| `TEMPLATE_REF_UNKNOWN` | A `!ref` inside a template body's entry names neither a sibling entry nor a resource of the declaring module. |
+| `BASE_WITH_TEMPLATE_BODY` | A definition declares `base:` alongside `resources:` / `controllers:` / a dispatch slot. `base:` is read only on the inherited-controller path, which a body switches off — so it would never be evaluated. Drop one or the other. |
+| `EXPORT_KIND_UNKNOWN` | A `Telo.Library`'s `exports.kinds` entry names no kind the library declares. A bare name that is an IMPORTED kind is called out separately: re-export it as `Alias.Kind`, or declare a local kind that extends it. |
+| `EXPORT_RESOURCE_UNKNOWN` | A `Telo.Library`'s `exports.resources` entry names no resource the library declares, or an instance the aliased import does not export. |
 
 ### References
 
@@ -62,9 +68,7 @@ how to read a failure, and the debugging flags — see
 | `X_TELO_REF_MISSING_KIND` | A structured `x-telo-ref` declares no `kind`, so the slot constrains nothing and the editor has nothing to pick against. |
 | `X_TELO_REF_USE_CONFLICT` | `anyOf` branches of one slot declare disagreeing `use`s. `use` is a property of the slot — declare the acceptable kinds as one `kind:` list with one `use`. |
 | `X_TELO_REF_DYNAMIC_SELECTOR` | A `use` case map's selector field is written in CEL, so which `use` holds cannot be resolved statically. Write the mode as a literal (or rely on the schema default), or split the wiring into one resource per mode. |
-| `MOUNT_TARGET_UNKNOWN` / `MOUNT_TARGET_NOT_MOUNTABLE` | A `mount:` names something that does not exist, or whose capability is not `Telo.Mount`. |
 | `MOUNT_ON_NON_MOUNT` / `MOUNT_DISPATCHER_CONFLICT` | `mount:` used on a non-Mount definition, or alongside another dispatcher (`invoke:` / `provide:` / `run:`). |
-| `PROVIDE_TARGET_UNKNOWN` / `PROVIDE_TARGET_NOT_INVOCABLE` / `PROVIDE_KIND_MISMATCH` | The `provide:` target is missing, not invocable, or its declared kind disagrees with the resolved one. |
 | `PROVIDE_ON_NON_PROVIDER` / `PROVIDE_DISPATCHER_CONFLICT` | `provide:` on a definition that is not a `Telo.Provider`, or beside another dispatcher. |
 
 ### CEL
@@ -171,7 +175,7 @@ how to read a failure, and the debugging flags — see
 
 | Code | What it means and what to do |
 | --- | --- |
-| `SCHEMA_VIOLATION` | The resource does not match its kind's schema — usually an unknown or misspelled field, since kind schemas are closed. |
+| `SCHEMA_VIOLATION` | The resource does not match its kind's schema — usually an unknown or misspelled field, since kind schemas are closed. A **required field the kind's parent declares** names that parent and points at `base:`: a child that `extends` without a `base:` mapping is authored against `merge(parent, own)`, so the parent's required fields stay on the child's surface and a kind written to supply one still demands it from the consumer. Adding `base:` sets them internally and narrows the surface to the child's own schema. |
 | `SCHEMA_COMPILE_ERROR` | A definition's `schema:` is not valid JSON Schema. |
 | `DUPLICATE_SCHEMA_ID` | A type name collides with a kind name in the same module. |
 | `SCHEMA_TYPE_REF_UNKNOWN_ALIAS` / `SCHEMA_TYPE_REF_UNRESOLVED` | A schema `$ref` names an unknown alias, or a module that does not declare that type. |

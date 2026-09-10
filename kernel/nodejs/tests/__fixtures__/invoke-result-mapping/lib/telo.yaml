@@ -24,15 +24,13 @@ schema:
 resources:
   - kind: JS.Script
     metadata:
-      name: ${{ self.name }}-echo
+      name: echo
     inputType: { type: object, additionalProperties: true }
     outputType: { type: object, additionalProperties: true }
     code: |
       function main(input) { return { greeting: input.text }; }
-invoke:
-  kind: JS.Script
-  name: ${{ self.name }}-echo
+invoke: !ref echo
 inputs:
-  text: "${{ self.prefix }} ${{ inputs.who }}"
+  text: !cel "self.prefix + ' ' + inputs.who"
 result:
-  shouted: "${{ result.greeting }}!"
+  shouted: !cel "result.greeting + '!'"

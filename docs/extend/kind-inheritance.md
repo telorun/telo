@@ -144,6 +144,25 @@ the parent controller's contract: fixed for kinds that consume config in
 `create()` (like `Http.Client`), or baked defaults the controller re-layers per
 call (like `Http.Request`, whose `inputs` a caller can still override).
 
+**A base-form child's own fields are compile-eval, without annotation.** They are
+construction inputs and nothing else — no controller ever sees them, `base:`
+reads them once at creation — so an expression written at one is evaluated there,
+against the startup scope (`variables`, `secrets`, `ports`, `module`, and the
+resources already published). That is the same posture `Telo.Provider` takes for
+the same reason, and it is why such a field needs no `x-telo-eval: compile`. The
+consequences are the ones compile-eval always has: the expression is
+type-checked at `telo check`, and a read of observed state (`resources.x.status.…`)
+is `OBSERVED_STATE_IN_STARTUP_FIELD`, because nothing has run yet. A field the
+child annotates `x-telo-eval: runtime` still wins.
+
+**A definition may not declare `base:` and a body.** `base:` is read only on the
+inherited-controller path, and `resources:` / `controllers:` / a dispatch slot
+selects the template path instead — where `base:` is never evaluated. Declaring
+both is `BASE_WITH_TEMPLATE_BODY` at `telo check` and `ERR_BASE_WITH_TEMPLATE_BODY`
+at the kernel. A kind that stands up children of its own is a
+[template](./templated-definitions.md); one that reshapes an existing
+controller's config is this.
+
 > **Forwarding a reference field.** When `base:` forwards a reference the child
 > holds (e.g. `client: !cel "self.client"`), write it as a **bare** `self.<field>`
 > access — nothing more. By the time `base:` runs, that field is a **live resource

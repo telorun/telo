@@ -1,0 +1,30 @@
+kind: Telo.Library
+metadata:
+  name: ObjectDispatchLib
+  version: 1.0.0
+  description: >-
+    Test fixture: a template whose dispatch slot is the removed `{ kind, name }`
+    object form, which the kernel refuses at create() as the analyzer's
+    INVALID_REFERENCE_FORM twin.
+exports:
+  kinds:
+    - Op
+imports:
+  Run: ../../../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Op
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    name: { type: string }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: real
+    value: ok
+invoke:
+  kind: Run.Value
+  name: real

@@ -109,6 +109,27 @@ class ResourceDefinition implements ResourceInstance {
       );
     }
 
+    // `base:` is the construction mapping of a kind that has NO body of its own:
+    // it is evaluated only on the inherited-controller path below, and a
+    // `resources:` block (or any dispatch slot / controller) selects the
+    // template path, which never reads it. Declaring both used to flip the kind
+    // silently — an empty template that dispatched nothing and published
+    // nothing, failing in the CONSUMER's resource as `Got: {}`. The analyzer's
+    // twin is `BASE_WITH_TEMPLATE_BODY`.
+    if (
+      (this.resource as { base?: unknown }).base != null &&
+      hasOwnControllerOrTemplate(this.resource as ResourceDefinitionManifest)
+    ) {
+      throw new RuntimeError(
+        "ERR_BASE_WITH_TEMPLATE_BODY",
+        `Telo.Definition '${this.resource.metadata.name}': 'base:' maps this kind's config onto ` +
+          `the inherited controller of '${this.resource.extends ?? "<no extends>"}', so the ` +
+          `definition may not also declare 'resources:', 'controllers:' or a dispatch slot ` +
+          `('invoke:' / 'run:' / 'provide:' / 'mount:'). A kind that stands up its own children ` +
+          `is a template: drop 'base:' and dispatch to a child with '!ref'.`,
+      );
+    }
+
     // Inherited-controller delegation: a definition that `extends` a concrete
     // kind, declares no own `controllers:` / template body, inherits the parent
     // controller by delegation and maps its config via `base:`.
