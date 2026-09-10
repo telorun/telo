@@ -46,12 +46,12 @@
 
 import { execFile, execSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { promisify } from "node:util";
 
-import { orderByDependencies } from "./module-publish-order.mjs";
+import { destinationsByManifest, orderByDependencies } from "./module-publish-order.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -137,10 +137,12 @@ async function ociVersions(dest) {
   return parsed;
 }
 
-// TELO_OCI_REGISTRY has no default: unset skips the pass entirely, so its presence is
-// the gate and a fork or local run never pushes to someone else's registry off
-// ambient Docker credentials. The repo is the module's directory name under the base
-// — never `metadata.namespace`/`name`, since identity is the ref.
+// TELO_OCI_REGISTRY is the SWITCH, not the destination: unset skips the pass
+// entirely, so a fork or local run never pushes to someone else's registry off
+// ambient Docker credentials. Where each module publishes comes from the release
+// model (`telo release order`), which reads the workspace's authored
+// `release.registry` — per subtree where one is declared — and falls back to this
+// variable for a workspace that authors none.
 const ociRegistry = process.env.TELO_OCI_REGISTRY?.replace(/\/+$/, "");
 if (!ociRegistry) {
   console.log("TELO_OCI_REGISTRY unset — skipping the module publish pass.");
@@ -198,8 +200,15 @@ const toCheck = allManifests
   .map((e) => ({ ...e, version: manifestVersionAt("HEAD", e.rel) }))
   .filter((e) => e.version);
 
+// Where each module publishes, from the release model — the same answer the push
+// uses, so the gate cannot query a different registry than the one written to.
+const destinations = destinationsByManifest();
+
 const checked = await mapLimit(toCheck, PRESENCE_CONCURRENCY, async (entry) => {
-  const dest = `${ociRegistry}/${basename(dirname(entry.abs))}`;
+  const dest = destinations.get(entry.abs);
+  if (!dest) {
+    return { ...entry, published: null, error: "not a module of this workspace — no destination." };
+  }
   try {
     return { ...entry, published: await ociVersions(dest) };
   } catch (err) {
@@ -262,16 +271,27 @@ const publishOrder = orderByDependencies(manifests);
 // the same OCI base and resolve there, so a sibling must be pushed before its
 // dependents. Failures are collected rather than thrown so one module can't abort the
 // rest; a failed push leaves its version absent from OCI, so gate (b) retries it.
-console.log(`\nPushing ${publishOrder.length} module manifest(s) to ${ociRegistry}:`);
-for (const m of publishOrder) console.log(`  ${m.replace(ROOT + "/", "")}`);
+console.log(`\nPushing ${publishOrder.length} module manifest(s):`);
+for (const m of publishOrder) console.log(`  ${m.path.replace(ROOT + "/", "")} → ${m.destination}`);
 console.log("");
 
 const failures = [];
 for (const m of publishOrder) {
-  const rel = m.replace(ROOT + "/", "");
-  const destination = `${ociRegistry}/${basename(dirname(m))}`;
+  const rel = m.path.replace(ROOT + "/", "");
+  // The destination comes from the release model with the order. Deriving it
+  // here would be the one fact this script still answered for itself, and a
+  // workspace with a registry base per subtree would have every module pushed to
+  // whichever base the environment happened to name.
+  if (!m.destination) {
+    failures.push({
+      path: rel,
+      message: `no publish destination — '${rel}' is not a module of this workspace.`,
+    });
+    console.error(`\n  ${rel} has no destination in the release plan — skipping.`);
+    continue;
+  }
   try {
-    runLive(`node ./cli/nodejs/bin/telo.mjs publish --skip-controllers ${destination} ${m}`);
+    runLive(`node ./cli/nodejs/bin/telo.mjs publish --skip-controllers ${m.destination} ${m.path}`);
   } catch (err) {
     failures.push({ path: rel, message: err instanceof Error ? err.message : String(err) });
     console.error(`\n  push failed for ${rel} — continuing with remaining manifests.`);

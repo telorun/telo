@@ -150,10 +150,13 @@ DATABASE_URL=postgres://localhost/dev
 It reads the manifest's own directory, and — when a `telo-workspace.yaml` sits
 somewhere above it — every directory up to and including that one, so a
 monorepo keeps shared development values in one file at the root instead of a
-copy beside every manifest. Only the marker's location is used; its `modules:`
-list is release scope and has no say here, so a manifest outside every release
-subtree is covered too. With no marker above the manifest, only its own
-directory is read.
+copy beside every manifest. The marker's `release.modules` list has no say here,
+so a manifest outside every release subtree is covered too. With no marker above
+the manifest, only its own directory is read.
+
+A marker can narrow both halves of that — how far the walk climbs, and which
+filenames it collects — with an [`env:` block](./workspaces.md#bounding-what-a-run-can-read),
+which is how a monorepo keeps one team's `.env` out of another's runs.
 
 The nearest declaration wins — a value in the manifest's directory overrides
 the same key at the root, `.env.local` overrides `.env` within one directory,

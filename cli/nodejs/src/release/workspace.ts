@@ -2,9 +2,9 @@
  * Finding the workspace, and the modules inside it.
  *
  * The Node half of `telo-workspace.yaml`: walking up from the cwd to find the
- * marker, and filtering its named subtrees down to actual modules. Finding the
- * marker is `workspace-marker.ts`'s — its location is a general anchor, not a
- * release concept — and parsing it is the analyzer's
+ * marker, and filtering the subtrees its `release.modules` names down to actual
+ * modules. Finding the marker is `workspace-marker.ts`'s — its location is a
+ * general anchor, not a release concept — and parsing it is the analyzer's
  * (`release/workspace-config.ts`), so the editor reads the same file the same
  * way.
  *
@@ -19,19 +19,34 @@
  * `version: 1.0.0` as a second module — and a listed directory holding no
  * manifest simply is not one, which is how `apps/hub-web` and `apps/studio`
  * fall out.
+ *
+ * **Selection and attribution are ONE decision.** The entry list is evaluated
+ * last-match-wins, so the entry that decides whether a directory is a module is
+ * the same entry whose settings that module resolves — which is why this reads
+ * the deciding index rather than asking for a filtered set and then guessing
+ * which pattern produced it.
  */
 
 import {
   DEFAULT_MANIFEST_FILENAME,
   WORKSPACE_FILENAME,
   normalizeModuleKey,
-  parseWorkspaceConfig,
   readManifestVersion,
+  readWorkspaceConfig,
+  requireReleaseSettings,
+  settingsForModule,
   type ArtifactKind,
   type ModuleKey,
-  type WorkspaceConfig,
+  type ModuleSettings,
+  type ReleaseDiagnostic,
+  type ReleaseSettings,
 } from "@telorun/analyzer";
-import { GLOB_PRUNE_DIRS, selectByPatterns } from "@telorun/glob";
+import { GLOB_PRUNE_DIRS, lastMatchIndex } from "@telorun/glob";
+import {
+  DiagnosticSeverity,
+  workspaceDiagnostics,
+  type NormalizedDiagnostic,
+} from "@telorun/ide-support";
 import { findWorkspaceRoot } from "../workspace-marker.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -47,13 +62,19 @@ export interface DiscoveredModule {
   readonly name: string;
   readonly version: string;
   readonly artifactKind: ArtifactKind;
+  /** What the `release.modules` entry that claimed this module settles: the
+   *  authored registry base (before the flag / env / ledger rungs) and the
+   *  ignore list in force. */
+  readonly settings: ModuleSettings;
 }
 
 export interface Workspace {
   /** Absolute path of the directory holding `telo-workspace.yaml` — the anchor
    *  every key, ledger entry and fragment path is relative to. */
   readonly root: string;
-  readonly config: WorkspaceConfig;
+  readonly release: ReleaseSettings;
+  /** What the marker itself got wrong, in the plan's own vocabulary. */
+  readonly diagnostics: readonly ReleaseDiagnostic[];
   readonly modules: readonly DiscoveredModule[];
 }
 
@@ -72,12 +93,76 @@ export function loadWorkspace(from: string = process.cwd()): Workspace {
     throw new WorkspaceNotFoundError(
       `No ${WORKSPACE_FILENAME} found in '${path.resolve(from)}' or any parent directory. ` +
         `\`telo release\` works over a declared workspace — create one at the repo root naming ` +
-        `the subtrees that hold modules:\n\n  modules:\n    - modules/*\n    - apps/*\n`,
+        `the subtrees that hold modules:\n\n  release:\n    modules:\n      - modules/*\n      - apps/*\n`,
     );
   }
   const file = path.join(root, WORKSPACE_FILENAME);
-  const config = parseWorkspaceConfig(fs.readFileSync(file, "utf8"), WORKSPACE_FILENAME);
-  return { root, config, modules: discoverModules(root, config) };
+  const text = fs.readFileSync(file, "utf8");
+  const read = readWorkspaceConfig(text, WORKSPACE_FILENAME);
+  const release = requireReleaseSettings(read, WORKSPACE_FILENAME);
+  const manifestDirs = findManifestDirs(root);
+  return {
+    root,
+    release,
+    // The repo-shaped checks run HERE, not only in the editor. They exist to
+    // name the failure a four-way workspace split hid for months — an entry that
+    // discovers nothing — and a check that squiggles in VS Code while CI stays
+    // silent is the editor and the checker disagreeing, which is the one thing
+    // this repo does not let a surface do.
+    diagnostics: workspaceDiagnostics(text, {
+      match: lastMatchIndex,
+      moduleDirectories: () => manifestDirs,
+      directories: () => directoriesUnder(root),
+      enclosingMarkers: () => enclosingMarkers(root),
+    }).map(asReleaseDiagnostic),
+    modules: discoverModules(root, release, manifestDirs),
+  };
+}
+
+/** A marker diagnostic in the vocabulary the release plan already reports in, so
+ *  one printer renders both. */
+function asReleaseDiagnostic(diagnostic: NormalizedDiagnostic): ReleaseDiagnostic {
+  return {
+    severity: diagnostic.severity === DiagnosticSeverity.Error ? "error" : "warning",
+    code: diagnostic.code,
+    message: `${WORKSPACE_FILENAME}: ${diagnostic.message}`,
+  };
+}
+
+/** Workspace-relative directories, pruned the way discovery prunes — the same
+ *  set `env.roots` patterns are matched against at run time. */
+function directoriesUnder(root: string): string[] {
+  const found: string[] = [];
+  const walk = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || GLOB_PRUNE_DIRS.has(entry.name)) continue;
+      const child = path.join(dir, entry.name);
+      found.push(path.relative(root, child).split(path.sep).join("/"));
+      walk(child);
+    }
+  };
+  walk(root);
+  return found;
+}
+
+/** Markers above this one — each gives everything beneath it a different cache
+ *  root, different module keys and a different release scope. */
+function enclosingMarkers(root: string): string[] {
+  const found: string[] = [];
+  let dir = path.dirname(root);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, WORKSPACE_FILENAME))) found.push(dir);
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return found;
 }
 
 /**
@@ -90,14 +175,15 @@ export function loadWorkspace(from: string = process.cwd()): Workspace {
  * manifests under `**\/.telo/manifests/` out — each of those is a published
  * module's `telo.yaml` and would otherwise read as a module of this workspace.
  */
-function discoverModules(root: string, config: WorkspaceConfig): DiscoveredModule[] {
-  const candidates = findManifestDirs(root);
-  const matched = new Set(
-    selectByPatterns(candidates, [...config.modules], { applyDefaultIgnore: false }),
-  );
-
+function discoverModules(
+  root: string,
+  release: ReleaseSettings,
+  manifestDirs: readonly string[],
+): DiscoveredModule[] {
   const modules: DiscoveredModule[] = [];
-  for (const key of [...matched].sort()) {
+  for (const key of [...manifestDirs].sort()) {
+    const settings = settingsForModule(release, key, lastMatchIndex);
+    if (!settings) continue;
     const dir = path.join(root, key);
     const manifestPath = path.join(dir, DEFAULT_MANIFEST_FILENAME);
     const text = fs.readFileSync(manifestPath, "utf8");
@@ -110,6 +196,7 @@ function discoverModules(root: string, config: WorkspaceConfig): DiscoveredModul
       name: readModuleName(text) ?? path.basename(dir),
       version,
       artifactKind: fs.existsSync(path.join(dir, "Dockerfile")) ? "image" : "registry",
+      settings,
     });
   }
   return modules;
@@ -162,6 +249,8 @@ export function requireModule(workspace: Workspace, key: string): DiscoveredModu
         ? ` A module is named by its workspace-relative path — did you mean ${suffixMatches
             .map((module) => `'${module.key}'`)
             .join(" or ")}?`
-        : ` Modules are discovered under ${workspace.config.modules.join(", ")}.`),
+        : ` Modules are discovered under ${workspace.release.modules
+            .map((entry) => entry.path)
+            .join(", ")}.`),
   );
 }

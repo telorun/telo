@@ -5,11 +5,12 @@
  * the CI gate; `apply` produces the Version PR; `verify` reconciles the ledger
  * against the registry. `telo publish` still keys off version movement.
  *
- * The command reads `telo-workspace.yaml` and **nothing else does**: `run`,
- * `check`, `publish`, `install`, `upgrade`, `migrate`, `module` and the kernel
- * behave identically with or without one, which is what keeps a single-manifest
- * repo, a bare `examples/` directory and a third-party module checkout working
- * with nothing added.
+ * It is the only reader of the marker's `release:` block. `telo run` reads its
+ * `env:` block and the editor reads the whole file, but `check`, `publish`,
+ * `install`, `upgrade`, `migrate`, `module` and the kernel behave identically
+ * with or without one — and every block is optional — which is what keeps a
+ * single-manifest repo, a bare `examples/` directory and a third-party module
+ * checkout working with nothing added.
  */
 
 import {
@@ -26,6 +27,7 @@ import {
   type Ledger,
   type LedgerEntry,
   type ModuleKey,
+  type ReleaseDiagnostic,
   type ReleasePlan,
 } from "@telorun/analyzer";
 import * as fs from "node:fs";
@@ -37,7 +39,8 @@ import { createLogger, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine, outProgress } from "../output.js";
 import { recordLedger, writePlannedVersions } from "../release/apply-plan.js";
 import { checkWorkspaceRequires } from "../release/check-requires.js";
-import { collectEvidence, destinationFor, digestPayload } from "../release/evidence.js";
+import { collectEvidence, digestPayload, type ModuleTarget } from "../release/evidence.js";
+import { readImportGraph, resolveTargets } from "../release/targets.js";
 import {
   deleteFragment,
   readFragments,
@@ -53,49 +56,44 @@ interface CommonArgv {
   base: string;
 }
 
-/**
- * The publish destination base.
- *
- * The ledger's recorded base wins, because the digests beside it were taken
- * against it — building against a different one produces different manifest
- * layers and would report every module as changed. A flag or the ambient
- * variable seeds it for a workspace that has published nothing yet.
- */
-function resolveRegistry(workspace: Workspace, argv: CommonArgv, ledger: Ledger): string {
-  const recorded = ledger.registry;
-  const requested = argv.registry ?? process.env.TELO_OCI_REGISTRY;
-  if (recorded && requested && recorded !== requested) {
-    throw new Error(
-      `${LEDGER_PATH} records its digests against '${recorded}', but '${requested}' was requested. ` +
-        `Canonicalization writes the destination into every relative import, so the two produce ` +
-        `different manifest bytes. Publish to the recorded base, or re-record the ledger with ` +
-        `\`telo release verify --registry ${requested}\`.`,
-    );
-  }
-  const registry = recorded ?? requested;
-  if (!registry) {
-    throw new Error(
-      `No publish destination is known. ${LEDGER_PATH} records none (nothing has been published ` +
-        `from this workspace yet), so pass --registry oci://host/org or set TELO_OCI_REGISTRY. ` +
-        `It is recorded on the first \`telo release apply\`, because the digests only mean ` +
-        `anything against the base they were taken at.`,
-    );
-  }
-  return registry.replace(/\/+$/, "");
+function registryRungs(argv: CommonArgv): { flag?: string; env?: string } {
+  return {
+    ...(argv.registry ? { flag: argv.registry } : {}),
+    ...(process.env.TELO_OCI_REGISTRY ? { env: process.env.TELO_OCI_REGISTRY } : {}),
+  };
 }
 
+/**
+ * Resolve, check the destinations, then collect evidence.
+ *
+ * The two destination checks run FIRST and short-circuit: both are decidable
+ * from the manifests alone, and reporting them after sixty payload builds would
+ * spend two minutes to say the workspace file is inconsistent — while the
+ * payload builder's own refusal, which is what would fire instead, speaks about
+ * a manifest published to two places rather than about the file that said so.
+ */
 async function buildPlan(argv: CommonArgv, log: Logger): Promise<{
   workspace: Workspace;
-  registry: string;
+  targets: ReadonlyMap<ModuleKey, ModuleTarget>;
   plan: ReleasePlan;
 }> {
   const workspace = loadWorkspace();
   const ledger = readLedger(workspace.root);
-  const registry = resolveRegistry(workspace, argv, ledger);
   const fragments = readFragments(workspace.root);
+  const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo") });
+
+  const { targets, diagnostics } = resolveTargets(workspace, ledger, registryRungs(argv));
+  const graph = await readImportGraph(workspace, targets, builder);
+  // The marker's own diagnostics travel with the plan, so an entry that
+  // discovers nothing is reported by CI and not only by the editor.
+  const upfront = [...workspace.diagnostics, ...diagnostics, ...graph.diagnostics];
+  if (upfront.some((diagnostic) => diagnostic.severity === "error")) {
+    return { workspace, targets, plan: { modules: [], fragments: [], diagnostics: upfront } };
+  }
 
   const modules = await collectEvidence(workspace, {
-    registry,
+    targets,
+    builder,
     baseRef: argv.base,
     // A ticker, not a diagnostic: sixty-one of these are what a human watching a
     // two-minute build wants and what a CI log or a `-o json` consumer does not.
@@ -103,7 +101,12 @@ async function buildPlan(argv: CommonArgv, log: Logger): Promise<{
       outProgress(log.err.dim(`  [${index + 1}/${total}] ${module.key}`)),
   });
 
-  return { workspace, registry, plan: planRelease({ modules, ledger, fragments, registry }) };
+  const plan = planRelease({ modules, ledger, fragments });
+  return {
+    workspace,
+    targets,
+    plan: { ...plan, diagnostics: [...upfront, ...plan.diagnostics] },
+  };
 }
 
 /** The registry-verifiable half of a digest map. */
@@ -123,6 +126,27 @@ function localOnly(layers: LayerDigests): LayerDigests {
 function reportDiagnostics(plan: ReleasePlan, log: Logger): number {
   for (const line of renderDiagnostics(plan, log)) outErrLine(line);
   return plan.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
+}
+
+/**
+ * Print, and stop the command where anything is an error.
+ *
+ * Shared because a command that reports a problem and then answers `ok: true` is
+ * error swallowing at the one boundary where a MACHINE reads the answer: the
+ * module publisher consumes `order`'s payload, so an order printed beside a
+ * destination collision would be an order it knows is unpublishable, and both
+ * modules would be pushed to the ref they share.
+ */
+function refuseOnErrors(diagnostics: readonly ReleaseDiagnostic[], log: Logger): boolean {
+  for (const diagnostic of diagnostics) {
+    const label =
+      diagnostic.severity === "error" ? log.err.error(diagnostic.code) : log.err.warn(diagnostic.code);
+    outErrLine(`${label}  ${diagnostic.message}`);
+  }
+  if (!diagnostics.some((diagnostic) => diagnostic.severity === "error")) return false;
+  outEmit({ ok: false, diagnostics: [...diagnostics] });
+  process.exitCode = 1;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +277,7 @@ async function check(argv: CommonArgv): Promise<void> {
  */
 async function apply(argv: CommonArgv & { date?: string }): Promise<void> {
   const log = createLogger(false);
-  const { workspace, registry, plan } = await buildPlan(argv, log);
+  const { workspace, targets, plan } = await buildPlan(argv, log);
   const errors = reportDiagnostics(plan, log);
   if (errors > 0) {
     outEmit({ ok: false, ...(planPayload(plan) as object) });
@@ -275,7 +299,7 @@ async function apply(argv: CommonArgv & { date?: string }): Promise<void> {
     outLine(`${log.ok("✓")}  ${module.key}  ${module.from} → ${module.to}`);
   }
 
-  writeLedger(workspace.root, await recordLedger(workspace.root, registry, plan));
+  writeLedger(workspace.root, await recordLedger(workspace.root, targets, plan));
   for (const fragment of plan.fragments) deleteFragment(workspace.root, fragment);
 
   outLine(`${log.ok("✓")}  ${LEDGER_PATH}, ${plan.fragments.length} fragment(s) consumed`);
@@ -302,39 +326,35 @@ async function apply(argv: CommonArgv & { date?: string }): Promise<void> {
  * call from a release script.
  */
 async function order(argv: CommonArgv): Promise<void> {
+  const log = createLogger(false);
   const workspace = loadWorkspace();
-  const registry = resolveRegistry(workspace, argv, readLedger(workspace.root));
+  const ledger = readLedger(workspace.root);
   const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo") });
 
-  const byDir = new Map(workspace.modules.map((module) => [path.resolve(module.dir), module]));
-  const evidence = [];
-  for (const module of workspace.modules) {
-    // Only the manifest transform runs here, which is what carries the imports.
-    const imports =
-      module.artifactKind === "image"
-        ? []
-        : (
-            await builder.relativeImportsOf(
-              module.manifestPath,
-              destinationFor(registry, module),
-            )
-          )
-            .map((entry) => byDir.get(path.resolve(path.dirname(entry.manifestPath)))?.key)
-            .filter((key): key is ModuleKey => key !== undefined && key !== module.key);
-    evidence.push({
-      key: module.key,
-      name: module.name,
-      version: module.version,
-      artifactKind: module.artifactKind,
-      layers: {},
-      inlines: new Map<ModuleKey, string[]>(),
-      imports,
-      ownFilesChanged: false,
-    });
-  }
+  const { targets, diagnostics } = resolveTargets(workspace, ledger, registryRungs(argv));
+  const graph = await readImportGraph(workspace, targets, builder);
+  if (refuseOnErrors([...workspace.diagnostics, ...diagnostics, ...graph.diagnostics], log)) return;
 
-  const ordered = orderByImports(evidence).map((module) => module.key);
-  for (const key of ordered) outLine(key);
+  const evidence = workspace.modules.map((module) => ({
+    key: module.key,
+    name: module.name,
+    version: module.version,
+    artifactKind: module.artifactKind,
+    registry: targets.get(module.key)?.registry ?? "",
+    layers: {},
+    inlines: new Map<ModuleKey, string[]>(),
+    imports: graph.imports.get(module.key) ?? [],
+    ownFilesChanged: false,
+  }));
+
+  // The destination travels WITH the order, because the publisher needs both and
+  // deriving one of them for itself is how a multi-destination workspace plans
+  // several bases and pushes them all to one.
+  const ordered = orderByImports(evidence).map((module) => ({
+    key: module.key,
+    destination: targets.get(module.key)?.destination,
+  }));
+  for (const entry of ordered) outLine(`${entry.key}\t${entry.destination ?? ""}`);
   outEmit({ ok: true, order: ordered });
 }
 
@@ -364,7 +384,11 @@ async function verify(argv: CommonArgv & { write: boolean }): Promise<void> {
   const log = createLogger(false);
   const workspace = loadWorkspace();
   const ledger = readLedger(workspace.root);
-  const registry = resolveRegistry(workspace, argv, ledger);
+  const { targets, diagnostics } = resolveTargets(workspace, ledger, registryRungs(argv));
+  // Before any reconciliation, and before `--write`: re-recording a ledger from
+  // destinations that cannot all be right is how a wrong base gets cached as the
+  // authoritative one.
+  if (refuseOnErrors([...workspace.diagnostics, ...diagnostics], log)) return;
 
   const drifted: Array<{ key: ModuleKey; detail: string }> = [];
   const repaired = new Map<ModuleKey, LedgerEntry>(ledger.modules);
@@ -377,11 +401,14 @@ async function verify(argv: CommonArgv & { write: boolean }): Promise<void> {
   // Only the registry-artifact modules are reconciled — an image module has no
   // published artifact to read a layer index from — so the count is theirs, not
   // the workspace's, or the ticker would stall at a number it never reaches.
-  const reconciled = workspace.modules.filter((module) => module.artifactKind !== "image");
+  const reconciled = workspace.modules.filter(
+    (module) => module.artifactKind !== "image" && targets.has(module.key),
+  );
   for (const [index, module] of reconciled.entries()) {
     outProgress(log.err.dim(`  [${index + 1}/${reconciled.length}] ${module.key}`));
+    const target = targets.get(module.key)!;
     const recorded = ledger.modules.get(module.key);
-    const published = await readPublishedDigests(destinationFor(registry, module), module.version);
+    const published = await readPublishedDigests(target.destination, module.version);
 
     if (published === null) {
       // Nothing published at this version. Not drift on its own — a module that
@@ -399,7 +426,13 @@ async function verify(argv: CommonArgv & { write: boolean }): Promise<void> {
       // Recorded without a `manifest` digest, which nothing here can supply.
       // `check` then reads that as drift and plans a patch — the safe direction
       // (bump rather than miss), and the next `apply` fills it in.
-      if (argv.write) repaired.set(module.key, { version: module.version, layers: published });
+      if (argv.write) {
+        repaired.set(module.key, {
+          version: module.version,
+          registry: target.registry,
+          layers: published,
+        });
+      }
       continue;
     }
 
@@ -423,13 +456,14 @@ async function verify(argv: CommonArgv & { write: boolean }): Promise<void> {
     if (argv.write) {
       repaired.set(module.key, {
         version: module.version,
+        registry: target.registry,
         layers: { ...localOnly(recorded.layers), ...published },
       });
     }
   }
 
   if (argv.write) {
-    writeLedger(workspace.root, { registry, modules: repaired });
+    writeLedger(workspace.root, { modules: repaired });
     outLine(`${log.ok("✓")}  ${LEDGER_PATH} re-recorded from the registry`);
   } else if (drifted.length === 0) {
     outLine(`${log.ok("✓")}  ${LEDGER_PATH} matches the registry`);
@@ -468,7 +502,7 @@ export function releaseCommand(yargs: Argv): Argv {
         .option("registry", {
           type: "string",
           describe:
-            "Publish destination base (oci://host/org). Defaults to the ledger's recorded base, then TELO_OCI_REGISTRY.",
+            "Publish destination base (oci://host/org) for modules whose workspace entry declares none. Outranked by an authored 'release.registry'; falls back to TELO_OCI_REGISTRY, then to each module's own recorded base.",
         })
         .option("base", {
           type: "string",

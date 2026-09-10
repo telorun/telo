@@ -30,8 +30,8 @@ function write(dir: string, name: string, body: string): void {
   fs.writeFileSync(path.join(root, dir, name), body);
 }
 
-function markWorkspace(): void {
-  fs.writeFileSync(path.join(root, "telo-workspace.yaml"), "modules:\n  - modules/*\n");
+function markWorkspace(body = "release:\n  modules:\n    - modules/*\n"): void {
+  fs.writeFileSync(path.join(root, "telo-workspace.yaml"), body);
 }
 
 describe("resolveEnvFiles", () => {
@@ -92,7 +92,10 @@ describe("resolveEnvFiles", () => {
       fs.writeFileSync(path.join(outer, ".env.local"), "ENV_C=outer\n");
       const inner = path.join(outer, "repo");
       fs.mkdirSync(path.join(inner, "apps"), { recursive: true });
-      fs.writeFileSync(path.join(inner, "telo-workspace.yaml"), "modules:\n  - apps/*\n");
+      fs.writeFileSync(
+        path.join(inner, "telo-workspace.yaml"),
+        "release:\n  modules:\n    - apps/*\n",
+      );
       const manifest = path.join(inner, "apps", "app.yaml");
       fs.writeFileSync(manifest, "kind: Telo.Application\n");
 
@@ -129,5 +132,80 @@ describe("resolveEnvFiles", () => {
     expect(values).toEqual({ ENV_A: "own" });
     expect(loaded).toEqual([path.join(root, "apps", "one", ".env")]);
     expect(unreadable).toEqual([{ path: path.join(root, ".env.local"), reason: "EISDIR" }]);
+  });
+});
+
+describe("the env: block", () => {
+  it("stops the walk at the nearest env.roots match", () => {
+    // The case the block exists for: collapsing per-vendor workspaces into one
+    // anchor would otherwise widen every vendor app's walk to the repo root.
+    markWorkspace("release:\n  modules:\n    - vendor/*/*\nenv:\n  roots:\n    - vendor/*\n");
+    const manifest = manifestAt("vendor/aws/s3");
+    write(".", ".env", "SHARED=repo\n");
+    write("vendor/aws", ".env", "VENDOR=aws\n");
+
+    const { values } = resolveEnvFiles(manifest);
+
+    expect(values).toEqual({ VENDOR: "aws" });
+  });
+
+  it("leaves a directory no pattern matches walking to the marker", () => {
+    markWorkspace("release:\n  modules:\n    - modules/*\nenv:\n  roots:\n    - vendor/*\n");
+    const manifest = manifestAt("modules/sql");
+    write(".", ".env", "SHARED=repo\n");
+
+    expect(resolveEnvFiles(manifest).values).toEqual({ SHARED: "repo" });
+  });
+
+  it("collects the files env.files names, later winning within one directory", () => {
+    markWorkspace(
+      "release:\n  modules:\n    - apps/*\nenv:\n  files:\n    - .env\n    - .env.production\n",
+    );
+    const manifest = manifestAt("apps/one");
+    write("apps/one", ".env", "MODE=base\n");
+    write("apps/one", ".env.production", "MODE=prod\n");
+    write("apps/one", ".env.local", "MODE=local\n");
+
+    const { values } = resolveEnvFiles(manifest);
+
+    // `.env.local` is not in the declared list, so it is not read at all — the
+    // list replaces the default rather than extending it.
+    expect(values).toEqual({ MODE: "prod" });
+  });
+
+  it("collects nothing for an empty env.files", () => {
+    markWorkspace("release:\n  modules:\n    - apps/*\nenv:\n  files: []\n");
+    const manifest = manifestAt("apps/one");
+    write("apps/one", ".env", "MODE=base\n");
+
+    expect(resolveEnvFiles(manifest).values).toEqual({});
+  });
+
+  it("fails rather than widening when env: itself cannot be read", () => {
+    // Degrading to the marker-wide bound would read files the block was written
+    // to keep out, so a block that opted into a boundary and got nothing is a
+    // defect rather than a default.
+    markWorkspace("release:\n  modules:\n    - apps/*\nenv:\n  files: ['cfg/.env']\n");
+    const manifest = manifestAt("apps/one");
+    write(".", ".env", "SHARED=repo\n");
+
+    const { failed, values } = resolveEnvFiles(manifest);
+
+    expect(failed).toMatch(/env\.files/);
+    expect(values).toEqual({});
+  });
+
+  it("reports a problem outside env: and still resolves", () => {
+    // A run has no interest in a release typo, and aborting every app in a
+    // workspace over one is not a trade to make silently.
+    markWorkspace("release:\n  modules:\n    - apps/*\n  nope: 1\n");
+    const manifest = manifestAt("apps/one");
+    write(".", ".env", "SHARED=repo\n");
+
+    const { failed, values, diagnostics } = resolveEnvFiles(manifest);
+
+    expect(failed).toBeUndefined();
+    expect(values).toEqual({ SHARED: "repo" });
+    expect(diagnostics.map((d) => d.code)).toEqual(["WORKSPACE_UNKNOWN_KEY"]);
   });
 });

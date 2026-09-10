@@ -67,14 +67,15 @@ export interface ModuleEvidence {
   /** Whether a file under this module's own directory that reaches the artifact
    *  changed. Decides only whether a changelog line is requested. */
   readonly ownFilesChanged: boolean;
+  /** The publish destination base THIS module's payload was built against —
+   *  per module, because a workspace may declare one per subtree. */
+  readonly registry: string;
 }
 
 export interface ReleaseEvidence {
   readonly modules: readonly ModuleEvidence[];
   readonly ledger: Ledger;
   readonly fragments: readonly ReleaseFragment[];
-  /** The publish destination base the digests above were built against. */
-  readonly registry?: string;
 }
 
 /** Why a module is in the plan. A module usually carries several. */
@@ -123,14 +124,25 @@ export function planRelease(evidence: ReleaseEvidence): ReleasePlan {
   const diagnostics: ReleaseDiagnostic[] = [];
   const byKey = new Map(evidence.modules.map((module) => [module.key, module]));
 
-  checkRegistryAgreement(evidence, diagnostics);
-
   // What the digest says, per module. A module with no ledger entry has never
   // been published, which is not drift — there is nothing to differ from.
   const drift = new Map<ModuleKey, LayerChange[]>();
   for (const module of evidence.modules) {
     const recorded = evidence.ledger.modules.get(module.key);
     if (!recorded) continue;
+    if (recorded.registry && recorded.registry !== module.registry) {
+      diagnostics.push({
+        severity: "error",
+        code: "LEDGER_REGISTRY_MISMATCH",
+        message:
+          `${module.key}: its ledger digests were taken against '${recorded.registry}', but this ` +
+          `run built against '${module.registry}'. Publishing rewrites each relative import to ` +
+          `'<base>/<sibling>@<version>', so the manifest layers of the two are different bytes ` +
+          `and comparing them would report the module as changed. Publish to the recorded base, ` +
+          `or re-record with \`telo release verify --write\`.`,
+      });
+      continue;
+    }
     if (recorded.version !== module.version) {
       diagnostics.push({
         severity: "error",
@@ -337,28 +349,6 @@ function requestMissingChangelogEntries(
       `${missing.length} module(s) have their own changes but no fragment describes them, so ` +
       `their changelogs will not mention this release: ${missing.join(", ")}. ` +
       `One \`telo release add\` can name them all.`,
-  });
-}
-
-/**
- * The base the digests were built against has to be the base they were recorded
- * against, or the manifest layers are not comparable: canonicalization writes
- * the destination into them.
- */
-function checkRegistryAgreement(
-  evidence: ReleaseEvidence,
-  diagnostics: ReleaseDiagnostic[],
-): void {
-  const recorded = evidence.ledger.registry;
-  if (!recorded || !evidence.registry || recorded === evidence.registry) return;
-  diagnostics.push({
-    severity: "error",
-    code: "LEDGER_REGISTRY_MISMATCH",
-    message:
-      `The ledger's digests were taken against '${recorded}', but this run built against ` +
-      `'${evidence.registry}'. Publishing rewrites each relative import to ` +
-      `'<base>/<sibling>@<version>', so the manifest layers of the two are different bytes ` +
-      `and comparing them would report every module as changed.`,
   });
 }
 

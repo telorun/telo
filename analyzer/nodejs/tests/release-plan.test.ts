@@ -13,12 +13,22 @@ function moduleEvidence(over: Partial<ModuleEvidence> & { key: string }): Module
     inlines: new Map(),
     imports: [],
     ownFilesChanged: false,
+    registry: "oci://example/org",
     ...over,
   };
 }
 
-function ledger(entries: Record<string, { version: string; layers: Record<string, string> }>): Ledger {
-  return { registry: "oci://example/org", modules: new Map(Object.entries(entries)) };
+function ledger(
+  entries: Record<string, { version: string; layers: Record<string, string>; registry?: string }>,
+): Ledger {
+  return {
+    modules: new Map(
+      Object.entries(entries).map(([key, entry]) => [
+        key,
+        { registry: "oci://example/org", ...entry },
+      ]),
+    ),
+  };
 }
 
 const fragment = (text: string, source = ".changes/pending/f.yaml") => parseFragment(text, source);
@@ -216,14 +226,24 @@ describe("planRelease — what makes a plan inconsistent", () => {
     expect(plan.modules).toEqual([]);
   });
 
-  it("rejects digests taken against another registry base", () => {
+  it("rejects digests taken against another registry base, per module", () => {
+    // Per module rather than once for the run: a workspace may declare a base
+    // per subtree, so the answer differs between two modules of one plan and a
+    // single verdict would report the wrong one for one of them.
     const plan = planRelease({
-      modules: [moduleEvidence({ key: "modules/sql" })],
-      ledger: ledger({ "modules/sql": { version: "1.0.0", layers: { manifest: "sha256-same" } } }),
+      modules: [
+        moduleEvidence({ key: "modules/sql", registry: "oci://other/org" }),
+        moduleEvidence({ key: "modules/http" }),
+      ],
+      ledger: ledger({
+        "modules/sql": { version: "1.0.0", layers: { manifest: "sha256-same" } },
+        "modules/http": { version: "1.0.0", layers: { manifest: "sha256-same" } },
+      }),
       fragments: [],
-      registry: "oci://other/org",
     });
-    expect(plan.diagnostics.map((d) => d.code)).toContain("LEDGER_REGISTRY_MISMATCH");
+    const mismatches = plan.diagnostics.filter((d) => d.code === "LEDGER_REGISTRY_MISMATCH");
+    expect(mismatches).toHaveLength(1);
+    expect(mismatches[0].message).toContain("modules/sql");
   });
 
   it("asks for a changelog entry — as a WARNING — when a module's own files changed", () => {
@@ -274,11 +294,22 @@ describe("ledger", () => {
       "modules/sql": { version: "0.13.1", layers: { manifest: "sha256-a", "controller/js": "sha256-b" } },
     });
     const parsed = parseLedger(serializeLedger(original), "ledger.yaml");
-    expect(parsed.registry).toBe("oci://example/org");
     expect(parsed.modules.get("modules/sql")).toEqual({
       version: "0.13.1",
+      registry: "oci://example/org",
       layers: { manifest: "sha256-a", "controller/js": "sha256-b" },
     });
+  });
+
+  it("reads a legacy top-level base as every entry's own", () => {
+    // The credential-free PR gate reads whatever ledger is committed on the
+    // branch, and that stays in the old shape until a release regenerates it.
+    const parsed = parseLedger(
+      "registry: oci://example/org\nmodules:\n  modules/sql:\n    version: 0.1.0\n    layers: {}\n",
+      "ledger.yaml",
+    );
+    expect(parsed.modules.get("modules/sql")?.registry).toBe("oci://example/org");
+    expect(serializeLedger(parsed)).not.toContain("\nregistry:");
   });
 
   it("refuses an entry with no version, because a digest without one says nothing", () => {

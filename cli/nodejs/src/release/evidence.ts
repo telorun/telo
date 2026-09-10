@@ -19,41 +19,36 @@
 import {
   MANIFEST_LAYER,
   layerDigestKey,
+  matchesPatterns,
   type LayerDigests,
   type ModuleEvidence,
   type ModuleKey,
 } from "@telorun/analyzer";
 import { computeFilesIntegrity } from "@telorun/kernel";
-import { selectByPatterns } from "@telorun/glob";
+import { lastMatchIndex, selectByPatterns } from "@telorun/glob";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
 import type { DiscoveredModule, Workspace } from "./workspace.js";
 
-export interface EvidenceOptions {
-  /** `oci://host/org` — the base each module's destination derives from. */
+/** Where one module publishes: the resolved base, and the ref it derives. */
+export interface ModuleTarget {
   readonly registry: string;
+  readonly destination: string;
+}
+
+export interface EvidenceOptions {
+  /** Per module, because a workspace may declare a base per subtree. Resolved
+   *  by the caller, which owns the flag / env / ledger rungs of the cascade. */
+  readonly targets: ReadonlyMap<ModuleKey, ModuleTarget>;
   /** Git ref the changed-files reading diffs against. */
   readonly baseRef: string;
   /** Called before each module is built, so a long batch shows progress. */
   readonly onModule?: (module: DiscoveredModule, index: number, total: number) => void;
-}
-
-/**
- * A module's publish destination: the registry base plus its own directory name.
- *
- * Identity is the ref, never `metadata.name` — this is the same rule the release
- * job has always applied, lifted out of a shell script.
- *
- * This is the ROOT destination, which is a policy rather than a derivation:
- * nothing in the graph can say which repo a module publishes to. The payload
- * builder derives a SIBLING's from it instead of re-applying this rule, so the
- * ref an artifact carries and the destination its dependency is pushed to are
- * the same string by construction.
- */
-export function destinationFor(registry: string, module: DiscoveredModule): string {
-  return `${registry.replace(/\/+$/, "")}/${path.basename(module.dir)}`;
+  /** Reused where the caller already read the import graph through one, so the
+   *  manifest transform is not repeated per module. */
+  readonly builder?: ModulePayloadBuilder;
 }
 
 /**
@@ -88,15 +83,18 @@ export async function collectEvidence(
 ): Promise<ModuleEvidence[]> {
   const byDir = new Map(workspace.modules.map((module) => [path.resolve(module.dir), module]));
   const changed = changedModules(workspace, options.baseRef);
-  const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo") });
+  const builder =
+    options.builder ?? new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo") });
 
   const evidence: ModuleEvidence[] = [];
   for (const [index, module] of workspace.modules.entries()) {
     options.onModule?.(module, index, workspace.modules.length);
+    const target = options.targets.get(module.key);
+    if (!target) throw new Error(`no publish destination was resolved for '${module.key}'.`);
     evidence.push(
       module.artifactKind === "image"
-        ? await imageEvidence(module, changed)
-        : await registryEvidence(workspace, module, byDir, builder, options, changed),
+        ? await imageEvidence(module, target, changed)
+        : await registryEvidence(workspace, module, byDir, builder, target, changed),
     );
   }
   return evidence;
@@ -110,19 +108,17 @@ async function registryEvidence(
   module: DiscoveredModule,
   byDir: ReadonlyMap<string, DiscoveredModule>,
   builder: ModulePayloadBuilder,
-  options: EvidenceOptions,
+  target: ModuleTarget,
   changed: ReadonlySet<ModuleKey>,
 ): Promise<ModuleEvidence> {
-  const payload = await builder.payload(
-    module.manifestPath,
-    destinationFor(options.registry, module),
-  );
+  const payload = await builder.payload(module.manifestPath, target.destination);
 
   return {
     key: module.key,
     name: module.name,
     version: module.version,
     artifactKind: "registry",
+    registry: target.registry,
     layers: await digestPayload(payload),
     inlines: attributeInputs(workspace, payload.buildInputs, module, byDir),
     imports: payload.relativeImports
@@ -148,6 +144,7 @@ async function registryEvidence(
  */
 async function imageEvidence(
   module: DiscoveredModule,
+  target: ModuleTarget,
   changed: ReadonlySet<ModuleKey>,
 ): Promise<ModuleEvidence> {
   return {
@@ -155,6 +152,7 @@ async function imageEvidence(
     name: module.name,
     version: module.version,
     artifactKind: "image",
+    registry: target.registry,
     layers: { image: await imageDigest(module) },
     inlines: new Map(),
     imports: [],
@@ -257,14 +255,18 @@ function ownerOf(
   }
 }
 
-/** Paths under a module that never reach its artifact, so editing one is not a
- *  semantic change worth a changelog line. Kept deliberately short: this rule no
- *  longer decides a version, so a false positive costs one sentence and the old
- *  per-language guesswork bought nothing. */
-const NON_ARTIFACT_PATHS = [/^docs\//, /^plans\//, /^tests\//, /^README\.md$/, /^CHANGELOG\.md$/];
-
 /**
  * Modules with a change of their own on this branch.
+ *
+ * Which of a module's paths are not release-relevant is that module's resolved
+ * `ignore` list — the workspace's, or its entry's override, or the built-in
+ * default — matched module-relative and gitignore-style. It no longer decides a
+ * version, so a false positive costs one sentence rather than a spurious
+ * republish.
+ *
+ * Attribution is to the NEAREST enclosing module, matching how build inputs are
+ * already attributed: the shortest matching key is the wrong answer the moment a
+ * nested module would be judged against an enclosing entry's ignore list.
  *
  * No merge base — a shallow clone, a fresh repo — means the reading cannot be
  * taken, and guessing would ask for a changelog entry at random. The digest is
@@ -283,12 +285,13 @@ function changedModules(workspace: Workspace, baseRef: string): Set<ModuleKey> {
     return new Set();
   }
 
+  const nearestFirst = [...workspace.modules].sort((a, b) => b.key.length - a.key.length);
   const changed = new Set<ModuleKey>();
   for (const file of diff.split("\n").map((line) => line.trim()).filter(Boolean)) {
-    const module = workspace.modules.find((candidate) => file.startsWith(`${candidate.key}/`));
+    const module = nearestFirst.find((candidate) => file.startsWith(`${candidate.key}/`));
     if (!module) continue;
     const rest = file.slice(module.key.length + 1);
-    if (NON_ARTIFACT_PATHS.some((pattern) => pattern.test(rest))) continue;
+    if (matchesPatterns(rest, module.settings.ignore, lastMatchIndex)) continue;
     changed.add(module.key);
   }
   return changed;

@@ -30,14 +30,23 @@ import { resolveUiBundle } from "../ui-fetch.js";
 /**
  * Apply the env files visible to the manifest, then report.
  *
- * The walk itself is `env-files.ts`'s; what belongs here is the two decisions a
- * command makes about it — that these values go into `process.env` without
- * displacing anything the real environment already carries, and that the file
- * list is `--debug` detail while a file that could not be READ is never quiet,
- * whatever the flags say.
+ * The walk itself is `env-files.ts`'s; what belongs here is the three decisions
+ * a command makes about it — that these values go into `process.env` without
+ * displacing anything the real environment already carries, that the file list
+ * is `--debug` detail while a file that could not be READ is never quiet
+ * whatever the flags say, and that a marker problem OUTSIDE `env:` is printed
+ * rather than fatal. A run has no interest in a release typo; it does have an
+ * interest in the bound on its own env walk, so a problem inside `env:` throws.
  */
 function applyEnvFiles(manifestPath: string, report: boolean): void {
-  const { values, loaded, unreadable } = resolveEnvFiles(manifestPath);
+  const { values, loaded, unreadable, diagnostics, failed } = resolveEnvFiles(manifestPath);
+  for (const diagnostic of diagnostics) outErrLine(`[env] ${diagnostic.message}`);
+  if (failed) {
+    throw new Error(
+      `${failed}\nThe 'env:' block bounds which .env files this run may read, so a run cannot ` +
+        `proceed on one it could not read — it would widen the walk rather than narrow it.`,
+    );
+  }
   for (const [key, value] of Object.entries(values)) {
     if (!(key in process.env)) process.env[key] = value;
   }
