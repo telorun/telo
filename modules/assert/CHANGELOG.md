@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.0 - 2026-09-10
+### Added
+* A template body now has ONE reference spelling: every `resources:` entry is named by a literal and every dispatch slot is a `!ref` to one. The `{ kind, name }` object form and the CEL-computed entry name it existed to reach are removed — each template instance owns its children in a child context of its own, so a per-instance suffix bought nothing, while a `!ref` is looked up verbatim and so could never name such an entry. `crud` and `sql-repository` are rewritten to it. `http-client` drops the raw-manifest fallback in `Http.Request`: a client is resolved through `ctx.resolveRef` like every other slot, so a reference that does not resolve says so instead of being explained as a rule about scopes. `assert` gains `Assert.Manifest.expect.runFails`, which runs the manifest as well and asserts it fails — pinning a static verdict to the runtime one in a single test.
+
 ## 0.18.0 - 2026-08-20
 ### Added
 * Assert.Events entries take an optional times:, asserting how many matching events the stream holds rather than merely that one occurred. The ordered form is a subsequence match that ignores extras, so it could never express 'exactly once' — the assertion a test needs when something may return a cached, memoised or replayed result without dispatching. Counted over the whole capture and consuming no position, so ordered and counted entries mix without either changing what the other means; times: 0 asserts the event never happened.
