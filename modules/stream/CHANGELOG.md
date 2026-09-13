@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0 - 2026-09-13
+### Added
+* Stream.Tap passes every value of a stream through unchanged and in order, handing each to a handler — any invocable or run-only resource, optionally gated by a `when` condition — before delivering it, so a command's output can be printed live while a later stage still consumes the same stream, with nothing buffered. The handler runs under the tap's own invocation; its failure rejects the drain with the handler's own error and the failing value is not delivered, and `telo check` counts the handler's codes in the tap's throw union.
+### Fixed
+* `index` in Stream.Map, Stream.Scan and Stream.FlatMap is now an integer, as each kind declares, instead of a floating-point number. Integer arithmetic on it — `index % 2`, `index + 1` — passed `telo check` and then failed as the stream was drained with "no such overload". A value computed from `index` is now an int64 wherever it flows: equal as before in CEL, in JSON and in assertions, while a controller reading one should accept both integer representations.
+* Stream.Map, Stream.Scan and Stream.FlatMap no longer bind `inputs` in their expressions. The only input is the stream being drained, so an expression reading `inputs.input` pulled values out from under the stage and silently lost them. Reading `inputs` there is now `CEL_UNKNOWN_IDENTIFIER` at `telo check`.
+
 ## 0.11.0 - 2026-08-29
 ### Added
 * `Stream.Map`, `Stream.Scan` and `Stream.FlatMap` — the three element-wise transforms a streaming protocol is assembled from, so turning wire frames into a provider's records is expressible in a manifest instead of only in a controller. All three are lazy, so a stage never drains its source to build a result, and a consumer's early exit propagates to the transport by construction. `Scan` emits the running state after every value, which a terminal fold cannot do and which reassembling a token stream needs; `FlatMap` changes cardinality in both directions, emitting [] to drop a value.
