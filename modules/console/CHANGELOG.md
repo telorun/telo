@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.0 - 2026-09-13
+### Added
+* Console.Write and the exported Console.write instance: write one string or byte chunk to standard output exactly as given — no trailing newline and no markup interpretation, so command output, file contents and escaped JSON are not altered. It ships a Rust controller too, which writes text only and refuses bytes and any other non-string value.
+
 ## 0.17.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
