@@ -441,20 +441,37 @@ export {
   ArtifactSelectorError,
   describeSelector,
   isLayerRole,
+  normalizeAxisValue,
   normalizeSelector,
   roleCarriesSelector,
+  selectorContradictions,
   selectorFromQualifiers,
   selectorKey,
   selectorMatches,
+  undeterminedAxesBlockingMatch,
 } from "./artifact-selector.js";
 export type {
   ArtifactSelector,
   LayerRole,
   PlatformAxis,
   PlatformTarget,
+  SelectorContradiction,
 } from "./artifact-selector.js";
 export { collectModuleFileClaims } from "./module-file-claims.js";
-export type { ModuleFileClaim } from "./module-file-claims.js";
+export type { LocatedClaim, ModuleFileClaim } from "./module-file-claims.js";
+export {
+  crossLayerSourceLinks,
+  describeClaim,
+  nativeClaimConflicts,
+  stageableFiles,
+  unclaimedSourceEntries,
+} from "./module-named-files.js";
+export type {
+  CrossLayerLink,
+  LocatedSourceEntry,
+  NativeClaimConflict,
+  StageableFile,
+} from "./module-named-files.js";
 export { readLibraryCandidates } from "./module-library.js";
 export type {
   LibraryCandidate,
@@ -470,6 +487,24 @@ export {
 } from "./artifact-layer-index.js";
 export type { ArtifactLayer } from "./artifact-layer-index.js";
 export { validateModuleArtifact } from "./validate-module-artifact.js";
+export { normalizeNativePath, readNativeEntries } from "./native-entries.js";
+export type { NativeEntries, NativeEntry, NativeEntryProblem } from "./native-entries.js";
+export {
+  SOURCE_ARCHIVE_FORMATS,
+  readModuleSources,
+  resolveSourceUrl,
+  sourceUrlProblem,
+} from "./source-entries.js";
+export type {
+  ModuleSource,
+  ModuleSources,
+  SourceArchiveFormat,
+  SourceBuild,
+  SourceEntry,
+  SourcePin,
+  SourceProblem,
+  SourceProblemCode,
+} from "./source-entries.js";
 // Warnings everywhere, fatal at `telo publish` — descriptive metadata has no
 // runtime failure mode, so it must not stop a manifest running, but it is the
 // module's public face the moment it is published.

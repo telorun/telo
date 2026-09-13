@@ -4,19 +4,27 @@ import { Readable } from "node:stream";
 
 import type { PayloadFile } from "./files-integrity.js";
 
-export interface BundleEntry {
-  /** POSIX-relative path inside the archive (e.g. `telo.yaml`, `public/app.js`). */
-  name: string;
-  content: Buffer | string;
-}
+export type BundleEntry =
+  | {
+      /** POSIX-relative path inside the archive (e.g. `telo.yaml`, `public/app.js`). */
+      name: string;
+      content: Buffer | Uint8Array | string;
+      executable?: boolean;
+    }
+  | {
+      name: string;
+      /** A symbolic link's target, exactly as the link stores it. */
+      link: string;
+    };
 
 /** Normalize decoded tar entries to `PayloadFile`s (Buffer-backed content) —
  *  the fixed step both transports run after `readTarGz`. */
 export function toPayloadFiles(entries: BundleEntry[]): PayloadFile[] {
-  return entries.map((e) => ({
-    name: e.name,
-    content: typeof e.content === "string" ? Buffer.from(e.content) : e.content,
-  }));
+  return entries.map((e) => {
+    if ("link" in e) return { name: e.name, link: e.link };
+    const content = typeof e.content === "string" ? Buffer.from(e.content) : e.content;
+    return e.executable ? { name: e.name, content, executable: true } : { name: e.name, content };
+  });
 }
 
 /**
@@ -33,6 +41,9 @@ export function toPayloadFiles(entries: BundleEntry[]): PayloadFile[] {
  * Reproducibility is the same property seen from outside: re-running publish on
  * one commit produces byte-identical layers. Node's gzip already writes no
  * timestamp, so the tar header is the whole of it.
+ *
+ * An executable file differs only in {@link EXECUTABLE_MODE}; a link is a
+ * symlink entry carrying its target under the same fields.
  */
 const FIXED_HEADER = {
   mtime: new Date(0),
@@ -42,6 +53,8 @@ const FIXED_HEADER = {
   uname: "",
   gname: "",
 } as const;
+
+const EXECUTABLE_MODE = 0o755;
 
 /**
  * Pack `entries` into a gzipped tar (`module.tar.gz`) — the module-artifact
@@ -53,7 +66,7 @@ const FIXED_HEADER = {
  * Deterministic: identical entries in identical order produce identical bytes
  * (see {@link FIXED_HEADER}).
  */
-export async function makeTarGz(entries: BundleEntry[]): Promise<Buffer> {
+export async function makeTarGz(entries: readonly BundleEntry[]): Promise<Buffer> {
   const pack = tarPack();
   const chunks: Buffer[] = [];
   pack.on("data", (c: Buffer) => chunks.push(c));
@@ -64,9 +77,25 @@ export async function makeTarGz(entries: BundleEntry[]): Promise<Buffer> {
   });
 
   for (const entry of entries) {
-    const buf = typeof entry.content === "string" ? Buffer.from(entry.content, "utf-8") : entry.content;
     await new Promise<void>((resolve, reject) => {
-      pack.entry({ name: entry.name, ...FIXED_HEADER }, buf, (err) => (err ? reject(err) : resolve()));
+      const callback = (err?: Error | null) => (err ? reject(err) : resolve());
+      if ("link" in entry) {
+        pack.entry(
+          { name: entry.name, type: "symlink", linkname: entry.link, ...FIXED_HEADER },
+          callback,
+        );
+        return;
+      }
+      const buf =
+        typeof entry.content === "string"
+          ? Buffer.from(entry.content, "utf-8")
+          : Buffer.isBuffer(entry.content)
+            ? entry.content
+            : Buffer.from(entry.content);
+      const header = entry.executable
+        ? { name: entry.name, ...FIXED_HEADER, mode: EXECUTABLE_MODE }
+        : { name: entry.name, ...FIXED_HEADER };
+      pack.entry(header, buf, callback);
     });
   }
   pack.finalize();
@@ -75,23 +104,43 @@ export async function makeTarGz(entries: BundleEntry[]): Promise<Buffer> {
   return gzipSync(Buffer.concat(chunks));
 }
 
-/** Decompress + untar a `module.tar.gz` buffer into its file entries. */
-export async function readTarGz(buf: Buffer): Promise<BundleEntry[]> {
-  const tar = gunzipSync(buf);
+/** Decompress + untar a `module.tar.gz` buffer into its file and symbolic-link
+ *  entries; any other entry type is skipped. `maxBytes` bounds the decompressed
+ *  size, for an archive whose origin is not trusted to be small. */
+export async function readTarGz(
+  buf: Buffer,
+  options: { maxBytes?: number } = {},
+): Promise<BundleEntry[]> {
+  let tar: Buffer;
+  try {
+    tar = gunzipSync(buf, options.maxBytes === undefined ? {} : { maxOutputLength: options.maxBytes });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE") {
+      throw new Error(`it decompresses to more than the ${options.maxBytes}-byte limit`);
+    }
+    throw err;
+  }
   const ex = tarExtract();
   const entries: BundleEntry[] = [];
 
   await new Promise<void>((resolve, reject) => {
     ex.on("entry", (header, stream, next) => {
+      if (header.type === "symlink") {
+        entries.push({ name: header.name, link: header.linkname ?? "" });
+      }
       if (header.type !== "file") {
         stream.on("end", next);
         stream.resume();
         return;
       }
+      const executable = ((header.mode ?? 0) & 0o111) !== 0;
       const chunks: Buffer[] = [];
       stream.on("data", (c: Buffer) => chunks.push(c));
       stream.on("end", () => {
-        entries.push({ name: header.name, content: Buffer.concat(chunks) });
+        const content = Buffer.concat(chunks);
+        entries.push(
+          executable ? { name: header.name, content, executable: true } : { name: header.name, content },
+        );
         next();
       });
       stream.on("error", reject);

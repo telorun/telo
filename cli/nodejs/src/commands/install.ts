@@ -262,14 +262,18 @@ async function installOne(
   return false;
 }
 
-export async function install(argv: { paths: string[]; platform?: string }): Promise<void> {
+export async function install(argv: {
+  paths: string[];
+  platform?: string;
+  abi?: string;
+}): Promise<void> {
   const log = createLogger(false);
 
   // The platform whose layers get warmed. Explicit so a baked image can be built
   // from a machine of a different architecture; the host otherwise.
   let platform: PlatformTarget;
   try {
-    platform = parsePlatformTarget(argv.platform);
+    platform = parsePlatformTarget(argv.platform, argv.abi);
   } catch (err) {
     outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
@@ -312,6 +316,13 @@ export function installCommand(yargs: Argv): Argv {
             "Platform whose module layers to pre-fetch, as os/arch[/libc] " +
             "(e.g. linux/amd64, linux/arm64/musl). Defaults to the host — set it " +
             "when baking an image for a different architecture.",
+        })
+        .option("abi", {
+          type: "string",
+          describe:
+            "Runtime ABI whose module layers to pre-fetch, as <family>-<version> " +
+            "(e.g. node-137 for Node 24). Omitted, layers built for one ABI are " +
+            "skipped and reported.",
         }),
     async (argv) => {
       await install(argv as any);

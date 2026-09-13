@@ -4,16 +4,22 @@ import {
   walkCelExpressions,
   type TemplatingEngineRegistry,
 } from "@telorun/templating";
+import type { ResourceManifest } from "@telorun/sdk";
 import { PackageURL } from "packageurl-js";
 import { parseAllDocuments } from "yaml";
-import { selectorFromQualifiers, selectorKey, type ArtifactSelector } from "./artifact-selector.js";
+import {
+  ArtifactSelectorError,
+  selectorFromQualifiers,
+  selectorKey,
+  type ArtifactSelector,
+} from "./artifact-selector.js";
 import { readLibraryCandidates } from "./module-library.js";
 
 /**
  * One module-relative file a manifest names, and the artifact layer it belongs
  * to.
  *
- * The single answer to "why is this file in the payload", replacing two
+ * The answer to "why is this file in the payload" for everything but `native:` entries (read by `native-entries.ts`), replacing two
  * derivations that happened to agree: publish used to re-parse the manifest with
  * PURL knowledge hardcoded into the CLI, and any second vocabulary — a tag that
  * embeds a file, say — would have had to be added there by hand. Here the
@@ -189,10 +195,63 @@ export function collectModuleFileClaims(
   manifestText: string,
   registry: TemplatingEngineRegistry = defaultRegistry(),
 ): ModuleFileClaim[] {
+  return collectDocumentFileClaims(
+    parseAllDocuments(manifestText, { customTags: defaultCustomTags() }).map(
+      (doc) => doc.toJSON() as unknown,
+    ),
+    registry,
+  );
+}
+
+/** A claim, with the document that made it when the caller knows which. */
+export interface LocatedClaim {
+  readonly claim: ModuleFileClaim;
+  /** `<kind>/<name>` of the declaring document. */
+  readonly where?: string;
+}
+
+/**
+ * The claims one module's own documents make, out of an analysis set that also
+ * holds its dependencies' documents. A document whose candidate selector cannot
+ * be read contributes none — `validateModuleArtifact` reports it.
+ */
+export function moduleDocumentClaims(
+  manifests: readonly ResourceManifest[],
+  moduleName: string | undefined,
+  registry: TemplatingEngineRegistry = defaultRegistry(),
+): LocatedClaim[] {
+  const out: LocatedClaim[] = [];
+  for (const doc of manifests) {
+    const metadata = (doc.metadata ?? {}) as Record<string, unknown>;
+    const docModule =
+      typeof metadata.module === "string"
+        ? metadata.module
+        : doc.kind === "Telo.Application" || doc.kind === "Telo.Library"
+          ? metadata.name
+          : undefined;
+    if (docModule !== moduleName) continue;
+    let claims: ModuleFileClaim[];
+    try {
+      claims = collectDocumentFileClaims([doc], registry);
+    } catch (err) {
+      if (err instanceof ArtifactSelectorError) continue;
+      throw err;
+    }
+    const where = `${doc.kind}/${typeof metadata.name === "string" ? metadata.name : "(unnamed)"}`;
+    for (const claim of claims) out.push({ claim, where });
+  }
+  return out;
+}
+
+/** The same claims, from one module's already-parsed documents — the form the
+ *  analysis pass holds. */
+export function collectDocumentFileClaims(
+  docs: readonly unknown[],
+  registry: TemplatingEngineRegistry = defaultRegistry(),
+): ModuleFileClaim[] {
   const seen = new Set<string>();
   const claims: ModuleFileClaim[] = [];
-  for (const doc of parseAllDocuments(manifestText, { customTags: defaultCustomTags() })) {
-    const json = doc.toJSON() as unknown;
+  for (const json of docs) {
     for (const claim of [
       ...libraryClaims(json),
       ...controllerClaims(json),

@@ -6,9 +6,11 @@
 //! `local_path` and an import's relative `source` both resolve as paths — and a
 //! path is one fewer conversion at every use.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use telo_analyzer::{LoadError, ManifestSource, ReadManifest, DEFAULT_MANIFEST_FILENAME};
+
+use crate::lexical_path;
 
 pub struct LocalFileSource;
 
@@ -18,7 +20,10 @@ impl ManifestSource for LocalFileSource {
     }
 
     fn read(&self, path_or_url: &str) -> Result<ReadManifest, LoadError> {
-        let path = absolute(Path::new(path_or_url));
+        let path = lexical_path::absolute(Path::new(path_or_url)).map_err(|err| LoadError::Io {
+            path: path_or_url.to_string(),
+            message: format!("the working directory cannot be read to resolve it: {err}"),
+        })?;
         let file = if path.is_dir() {
             path.join(DEFAULT_MANIFEST_FILENAME)
         } else {
@@ -32,15 +37,5 @@ impl ManifestSource for LocalFileSource {
             text,
             source: file.display().to_string(),
         })
-    }
-}
-
-fn absolute(path: &Path) -> PathBuf {
-    if path.is_absolute() {
-        return path.to_path_buf();
-    }
-    match std::env::current_dir() {
-        Ok(cwd) => cwd.join(path),
-        Err(_) => path.to_path_buf(),
     }
 }

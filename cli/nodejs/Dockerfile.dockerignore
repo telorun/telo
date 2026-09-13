@@ -3,6 +3,7 @@
 !kernel/nodejs
 !analyzer/nodejs
 !analyzer/migrations
+!analyzer/artifact-axes
 !templating/nodejs
 !sdk/nodejs
 !sdk/value-types

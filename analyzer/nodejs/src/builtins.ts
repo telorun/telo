@@ -1,3 +1,4 @@
+import { PLATFORM_AXES } from "./artifact-axes.js";
 import { manifestFragment, manifestFragmentRef, withSchemaFragments } from "./manifest-schemas.js";
 
 /** A slot holding author-written JSON Schema. Localized and hoisted by
@@ -157,9 +158,70 @@ const LIBRARY_CANDIDATES_SCHEMA = {
       format: { type: "string" },
       path: { type: "string" },
       source: { type: "string" },
-      os: { type: "string" },
-      arch: { type: "string" },
-      libc: { type: "string" },
+      ...Object.fromEntries(PLATFORM_AXES.map((axis) => [axis, { type: "string" }])),
+    },
+    additionalProperties: false,
+  },
+};
+
+/** `native:` — the module's platform-specific files, one entry per logical name
+ *  per platform tuple. Closed, so a mistyped axis is a schema violation rather
+ *  than a platform-neutral entry. Grammar and rules live in
+ *  `analyzer/nodejs/src/native-entries.ts` and `validate-native-entries.ts`. */
+const NATIVE_ENTRIES_SCHEMA = {
+  type: "array",
+  items: {
+    type: "object",
+    required: ["name", "format", "os", "arch", "path"],
+    properties: {
+      name: { type: "string" },
+      format: { type: "string" },
+      path: { type: "string" },
+      ...Object.fromEntries(PLATFORM_AXES.map((axis) => [axis, { type: "string" }])),
+    },
+    additionalProperties: false,
+  },
+};
+
+/** `sources:` — where every staged file comes from, keyed by source name, each
+ *  entry keyed by the module-relative path it produces. Closed at every level.
+ *  An entry is a file (`upstream` + `member`, pinned with `sha256` +
+ *  `executable`) or a link (`target`); a mix of the two, and every other rule,
+ *  is reported by `analyzer/nodejs/src/validate-source-entries.ts`. `archive`
+ *  names the upstream's format. A source built in the repo names its build under
+ *  `build`, keyed by build system (`cargo: <crate dir>`), with the digest of its
+ *  build inputs (`inputs`). */
+const SOURCES_SCHEMA = {
+  type: "object",
+  additionalProperties: {
+    type: "object",
+    required: ["version", "url", "archive", "notices", "entries"],
+    properties: {
+      version: { type: "string" },
+      url: { type: "string" },
+      archive: { enum: ["tar.gz"] },
+      notices: { type: "array", minItems: 1, items: { type: "string" } },
+      build: {
+        type: "object",
+        required: ["cargo"],
+        properties: { cargo: { type: "string" }, inputs: { type: "string" } },
+        additionalProperties: false,
+      },
+      entries: {
+        type: "object",
+        additionalProperties: {
+          type: "object",
+          anyOf: [{ required: ["upstream", "member"] }, { required: ["target"] }],
+          properties: {
+            upstream: { type: "string" },
+            member: { type: "string" },
+            sha256: { type: "string" },
+            executable: { type: "boolean" },
+            target: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      },
     },
     additionalProperties: false,
   },
@@ -169,25 +231,18 @@ const LIBRARY_CANDIDATES_SCHEMA = {
  *  One entry per layer except the manifest layer, which cannot list its own hash
  *  inside itself and is pinned by the importer's `#sha256-...` instead. Shape and
  *  matching rules are normative in kernel/specs/module-artifact.md; the parser
- *  that enforces them is `artifact-layer-index.ts`. */
+ *  that enforces them is `artifact-layer-index.ts`. `role` stays open and
+ *  `selector` unconstrained: an entry for a newer runtime is skipped, not
+ *  rejected, and its selector is not examined (spec §3.1). A known role's
+ *  selector is validated by the parser, which `telo check` runs. */
 const LAYER_INDEX_SCHEMA = {
   type: "array",
   items: {
     type: "object",
     required: ["role", "blob", "integrity"],
     properties: {
-      role: { type: "string", enum: ["controller", "library", "assets", "common"] },
-      selector: {
-        type: "object",
-        required: ["format"],
-        properties: {
-          format: { type: "string" },
-          os: { type: "string" },
-          arch: { type: "string" },
-          libc: { type: "string" },
-        },
-        additionalProperties: false,
-      },
+      role: { type: "string", minLength: 1 },
+      selector: {},
       blob: { type: "string", pattern: "^sha256:[0-9a-f]{64}$" },
       integrity: { type: "string", pattern: "^sha256-[A-Za-z0-9_-]{43}$" },
     },
@@ -751,6 +806,8 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           items: { type: "string" },
         },
         assets: ASSETS_FILES_SCHEMA,
+        native: NATIVE_ENTRIES_SCHEMA,
+        sources: SOURCES_SCHEMA,
         layers: LAYER_INDEX_SCHEMA,
         filesIntegrity: LEGACY_FILES_INTEGRITY_SCHEMA,
         // Inline imports — name-keyed map sugar for separate `Telo.Import`
@@ -924,6 +981,8 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           items: { type: "string" },
         },
         assets: ASSETS_FILES_SCHEMA,
+        native: NATIVE_ENTRIES_SCHEMA,
+        sources: SOURCES_SCHEMA,
         layers: LAYER_INDEX_SCHEMA,
         filesIntegrity: LEGACY_FILES_INTEGRITY_SCHEMA,
         // Inline imports — same name-keyed map sugar as Telo.Application; the

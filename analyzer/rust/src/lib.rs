@@ -5,13 +5,22 @@
 //! sentinels. The static-analysis passes that make up the rest of the Node
 //! package have no Rust counterpart yet — this crate is where they belong when
 //! they arrive, which is why loading lives here rather than in the kernel.
+//!
+//! The artifact model — selectors, the layer index, the OCI ref grammar and
+//! inline integrity — lives here for the same reason it lives in the Node
+//! analyzer: every reader of a published module must agree on it.
 
+pub mod artifact_layer_index;
+pub mod artifact_selector;
 pub mod builtins;
 pub mod loaded_types;
 pub mod manifest_loader;
+pub mod native_entries;
 pub mod parse_loaded_file;
 pub mod release;
 pub mod resolve_ref_sentinels;
+pub mod source_entries;
+pub mod sources;
 pub mod system_kinds;
 pub mod types;
 

@@ -51,7 +51,7 @@ import { fileURLToPath } from "node:url";
 
 import { promisify } from "node:util";
 
-import { destinationsByManifest, orderByDependencies } from "./module-publish-order.mjs";
+import { destinationsByManifest, importClosure, orderByDependencies } from "./module-publish-order.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -274,6 +274,27 @@ const publishOrder = orderByDependencies(manifests);
 console.log(`\nPushing ${publishOrder.length} module manifest(s):`);
 for (const m of publishOrder) console.log(`  ${m.path.replace(ROOT + "/", "")} → ${m.destination}`);
 console.log("");
+
+// Stage the `sources:` of what this pass reads before any push: the queued
+// modules and every in-repo module they import, transitively. Publish reads
+// staged files off disk and verifies them against their pins, and never fetches
+// one itself; a dependent's pin is derived from its sibling's published bytes,
+// which is why the import closure is staged and not only the queued set. Nothing
+// else is — an upstream a module outside the closure names is no reason for this
+// pass to fail. A module declaring no sources stages nothing. A staging failure
+// fails the job before anything is pushed.
+const staged = importClosure(publishOrder.map((m) => m.path));
+try {
+  runLive(
+    `node ./cli/nodejs/bin/telo.mjs release stage ${staged.map((key) => `--module ${key}`).join(" ")}`,
+  );
+} catch (err) {
+  console.error(
+    `\nStaging the workspace's sources: failed — nothing was pushed. ` +
+      `${err instanceof Error ? err.message.split("\n")[0] : String(err)}`,
+  );
+  process.exit(1);
+}
 
 const failures = [];
 for (const m of publishOrder) {

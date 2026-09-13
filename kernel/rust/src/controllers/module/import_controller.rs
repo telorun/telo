@@ -16,6 +16,7 @@
 
 use serde_json::Value;
 use telo_analyzer::resolve_source;
+use telo_analyzer::sources::oci_ref::is_oci_ref;
 
 use crate::error::KernelError;
 use crate::runtime_registry::{normalize_runtime, ControllerPolicy};
@@ -61,11 +62,11 @@ pub fn parse_import(
         }
     };
 
-    if source.contains("://") {
+    if source.contains("://") && !is_oci_ref(source) {
         return Err(KernelError::new(
             "ERR_UNSUPPORTED_MANIFEST_FEATURE",
             format!(
-                "import '{alias}' resolves through a transport this kernel has no implementation for: {source}. It reads local paths only."
+                "import '{alias}' resolves through a transport this kernel has no implementation for: {source}. It reads local paths and oci:// refs only."
             ),
         ));
     }

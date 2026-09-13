@@ -1,3 +1,4 @@
+import type { ModuleSources } from "@telorun/analyzer";
 import { ControllerInstance, RuntimeError, type Logger } from "@telorun/sdk";
 import { BundleControllerLoader } from "./controller-loaders/bundle-loader.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
@@ -177,11 +178,12 @@ export class ControllerLoader {
     policy?: ControllerPolicy,
     artifact?: ModuleArtifact,
     libraries: SiblingLibraryMap = NO_SIBLING_LIBRARIES,
+    sources?: ModuleSources,
   ): Promise<ControllerInstance> {
     // Resolution — which is what installs, compiles and fetches — reports its
     // own work and its own candidate fallthrough, so this is the import half
     // and the announcement of what resolution decided.
-    const resolved = await this.resolve(purlCandidates, baseUri, policy, artifact, libraries);
+    const resolved = await this.resolve(purlCandidates, baseUri, policy, artifact, libraries, sources);
     await this.emit?.({
       name: "ControllerLoading",
       payload: { purl: resolved.purl, source: resolved.source },
@@ -225,6 +227,9 @@ export class ControllerLoader {
     policy?: ControllerPolicy,
     artifact?: ModuleArtifact,
     libraries: SiblingLibraryMap = NO_SIBLING_LIBRARIES,
+    /** The declaring module's `sources:` block, so a prebuilt file a source
+     *  checkout stages is checked against its pin before it loads. */
+    sources?: ModuleSources,
   ): Promise<ResolvedController> {
     if (!purlCandidates || purlCandidates.length === 0) {
       throw new RuntimeError("ERR_CONTROLLER_NOT_FOUND", "Missing controller PURL candidates");
@@ -254,6 +259,7 @@ export class ControllerLoader {
           artifact,
           libraries,
           report,
+          sources,
         );
         let importStartedAt: number | undefined;
         return {
@@ -295,6 +301,7 @@ export class ControllerLoader {
     artifact: ModuleArtifact | undefined,
     libraries: SiblingLibraryMap,
     report: ControllerWorkReporter,
+    sources: ModuleSources | undefined,
   ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     if (purl.startsWith("pkg:npm")) {
       return this.npmLoader.resolve(purl, baseUri, report);
@@ -303,7 +310,7 @@ export class ControllerLoader {
       return this.napiLoader.resolve(purl, baseUri, report);
     }
     if (purl.startsWith("pkg:telo")) {
-      return this.bundleLoader.resolve(purl, baseUri, artifact, libraries, report);
+      return this.bundleLoader.resolve(purl, baseUri, artifact, libraries, report, sources);
     }
     throw new ControllerEnvMissingError(`Unsupported PURL scheme: ${purl}`);
   }

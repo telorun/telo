@@ -4,6 +4,7 @@ import { parseLayerIndex, LayerIndexError } from "./artifact-layer-index.js";
 import {
   ArtifactSelectorError,
   PLATFORM_AXES,
+  selectorContradictions,
   selectorFromQualifiers,
   selectorKey,
 } from "./artifact-selector.js";
@@ -26,10 +27,12 @@ const SOURCE = "telo-analyzer";
  * selector (spec §1), which is what every module with two `js` controllers relies
  * on.
  *
- * 1. **Controller selector qualifiers.** `os` / `arch` / `libc` / `siblings` are
+ * 1. **Controller selector qualifiers.** The platform axes and `siblings` are
  *    authored surface. An unknown qualifier is reported rather than ignored, since
  *    ignoring is what makes a typo invisible; an invalid value is reported here
- *    instead of throwing from the loader later.
+ *    instead of throwing from the loader later, and so is a combination no host
+ *    can match (`selectorContradictions`, shared with `native:` and
+ *    `exports.code:`).
  * 2. **The published layer index.** The owner doc's JSON Schema covers shape; the
  *    semantic rules — controller-requires-selector, singletons carry none, no
  *    duplicate selector, the token grammar (`os: Linux` passes the schema and
@@ -79,6 +82,16 @@ function validateLibraryCandidates(manifest: ResourceManifest, out: AnalysisDiag
   // mean a consumer's import resolves by whichever candidate is read first.
   const seen = new Map<string, LibraryCandidate>();
   for (const candidate of candidates) {
+    for (const contradiction of selectorContradictions(candidate.selector)) {
+      out.push({
+        severity: DiagnosticSeverity.Error,
+        code: `LIBRARY_${contradiction.rule}`,
+        source: SOURCE,
+        message:
+          `Telo.Library/${metadata?.name ?? "(unnamed)"}: ${candidate.origin}: ${contradiction.detail}`,
+        data: { resource, filePath: metadata?.source, path: "exports/code" },
+      });
+    }
     const key = selectorKey(candidate.selector);
     const first = seen.get(key);
     if (first) {
@@ -162,7 +175,37 @@ function validateControllerSelectors(
     // Validate the selector; the value is not otherwise needed here, since
     // candidates sharing a selector legitimately share a layer.
     try {
-      selectorFromQualifiers(parsed.format, parsed.qualifiers, candidate);
+      const selector = selectorFromQualifiers(parsed.format, parsed.qualifiers, candidate);
+      for (const contradiction of selectorContradictions(selector)) {
+        out.push({
+          severity: DiagnosticSeverity.Error,
+          code: `CONTROLLER_${contradiction.rule}`,
+          source: SOURCE,
+          message:
+            `${manifest.kind}/${name ?? "(unnamed)"}: controller candidate "${candidate}": ` +
+            contradiction.detail,
+          data: { resource, filePath, path: `${at}?${contradiction.axis}` },
+        });
+      }
+      // A `dylib` opens over the Rust controller ABI, and a library built
+      // against another version of it must never match — so the candidate states
+      // which, in the `telo` family.
+      if (parsed.format === "dylib" && !selector.abi?.startsWith("telo-")) {
+        out.push({
+          severity: DiagnosticSeverity.Error,
+          code: "CONTROLLER_DYLIB_ABI_MISSING",
+          source: SOURCE,
+          message:
+            `${manifest.kind}/${name ?? "(unnamed)"}: dylib candidate "${candidate}" ` +
+            (selector.abi === undefined
+              ? `states no abi. `
+              : `states abi=${selector.abi}, which is not a Rust controller ABI. `) +
+            `A dylib is built against one version of the Rust controller ABI and must say which — ` +
+            `add abi=telo-<version>, e.g. abi=telo-2. Without it the Rust kernel downloads the ` +
+            `library on every host and refuses it only when it opens it.`,
+          data: { resource, filePath, path: at },
+        });
+      }
     } catch (err) {
       if (!(err instanceof ArtifactSelectorError)) throw err;
       out.push({

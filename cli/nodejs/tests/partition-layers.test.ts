@@ -1,4 +1,4 @@
-import { collectModuleFileClaims, selectorKey } from "@telorun/analyzer";
+import { collectModuleFileClaims, readNativeEntries, selectorKey } from "@telorun/analyzer";
 import { describe, expect, it } from "vitest";
 import { describePartition, partitionLayers } from "../src/bundle/partition-layers.js";
 
@@ -217,5 +217,58 @@ describe("partitionLayers", () => {
   it("ignores an embed whose path is not usable — the engine reports that", () => {
     expect(partitionLayers(manifestWithEmbed("include-text", "../escape.txt"), [], []).layers)
       .toEqual([]);
+  });
+});
+
+describe("partitionLayers native entries", () => {
+  const linux = { format: "node", os: "linux", arch: "amd64", libc: "gnu", abi: "node-137" };
+  const darwin = { format: "napi", os: "darwin", arch: "arm64" };
+  const { entries: native } = readNativeEntries({
+    native: [
+      { name: "addon", ...linux, path: "./native/linux/addon.node" },
+      { name: "helper", ...linux, path: "./native/linux/libhelper.so" },
+      { name: "addon", ...darwin, path: "./native/darwin/addon.node" },
+    ],
+  });
+
+  it("puts each selector's files in its own native layer, over files:, assets: and siblings patterns", () => {
+    const p = partitionLayers(
+      manifest("pkg:telo/local/js?path=./nodejs/c.mjs&siblings=./native/**"),
+      ["native/linux/addon.node", "native/linux/libhelper.so", "native/darwin/addon.node", "a.txt"],
+      ["native/**"],
+      native,
+    );
+    expect(p.layers).toEqual([
+      { role: "controller", selector: { format: "js" }, files: ["nodejs/c.mjs"] },
+      {
+        role: "native",
+        selector: linux,
+        files: ["native/linux/addon.node", "native/linux/libhelper.so"],
+      },
+      { role: "native", selector: darwin, files: ["native/darwin/addon.node"] },
+      { role: "common", files: ["a.txt"] },
+    ]);
+    expect(describePartition(p)).toContain("native node (linux/amd64/gnu/node-137): 2 file(s)");
+  });
+
+  it("refuses a native file also named by a controller candidate or an exports.code entry", () => {
+    const claims = collectModuleFileClaims(
+      [
+        "kind: Telo.Library",
+        "metadata: { name: demo, version: 1.0.0 }",
+        "exports:",
+        "  code:",
+        "    - { specifier: demo, format: napi, path: ./native/darwin/addon.node }",
+        "---",
+        "kind: Telo.Definition",
+        "metadata: { name: K }",
+        "controllers:",
+        "  - pkg:telo/local/node?path=./native/linux/addon.node",
+        "",
+      ].join("\n"),
+    );
+    expect(() => partitionLayers(claims, [], [], native)).toThrow(
+      /'native\/linux\/addon\.node': native\[0\] \('addon'\)[^\n]*controller candidate pkg:telo\/local\/node[\s\S]*'native\/darwin\/addon\.node': native\[2\] \('addon'\)[^\n]*exports\.code entry/,
+    );
   });
 });

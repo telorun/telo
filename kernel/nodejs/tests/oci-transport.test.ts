@@ -1,5 +1,6 @@
 import { IntegrityError, selectorKey } from "@telorun/analyzer";
 import { createHash } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OciTransport } from "../src/transports/oci/oci-transport.js";
@@ -197,6 +198,34 @@ async function bundleFor(manifest: string, layers: PayloadLayer[]) {
     layers,
   };
 }
+
+describe("OciTransport layer framing", () => {
+  // Captured from the framing and integrity code before executable and link
+  // entries existed: a layer of regular files must keep its tar bytes and its
+  // integrity, or every published index stops verifying. The tar is what framing
+  // decides; the gzip stream around it varies with the zlib build and the CPU it
+  // runs on, so the blob is checked against this host's own framing.
+  it("frames and digests a layer of regular files exactly as before", async () => {
+    const files = [
+      { name: "nodejs/b.mjs", content: Buffer.from("export const b = 2;\n") },
+      { name: "a.bin", content: new Uint8Array([0, 1, 2, 255]) },
+    ];
+    const [layer] = await new OciTransport().layerIndex([
+      { role: "controller", selector: { format: "js" }, files },
+    ]);
+    const framed = await makeTarGz(files);
+    const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+    expect(sha256(gunzipSync(framed))).toBe(
+      "0b872a0463627dc0996a1edf37368906ceba384a1b4b4c6e1154c9108a221587",
+    );
+    expect(layer).toEqual({
+      role: "controller",
+      selector: { format: "js" },
+      blob: `sha256:${sha256(framed)}`,
+      integrity: "sha256-R9FFIYRw1NxyEPJ0x5WnFhjIVZHSIzCToAvfF_Fs-ew",
+    });
+  });
+});
 
 describe("OciTransport round-trip against a mock registry", () => {
   it("publishes, then reads and fetches the artifact back", async () => {

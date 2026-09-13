@@ -1,0 +1,28 @@
+# A kind that inherits its controller from NativeLib.Reader. The controller that
+# runs is the library's, so its native file is the library's too — this module's
+# own `greeting` must not be what it reads.
+kind: Telo.Library
+metadata:
+  name: NativeChild
+  version: 1.0.0
+imports:
+  Lib: ../lib
+exports:
+  kinds:
+    - Greeter
+native:
+  - { name: greeting, format: txt, os: linux, arch: amd64, path: ./native/linux-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: linux, arch: arm64, path: ./native/linux-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: amd64, path: ./native/darwin-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: arm64, path: ./native/darwin-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: amd64, path: ./native/windows-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: arm64, path: ./native/windows-arm64/greeting.txt }
+---
+kind: Telo.Definition
+metadata:
+  name: Greeter
+  description: Reads the greeting through the inherited Reader controller.
+extends: Lib.Reader
+schema:
+  type: object
+  additionalProperties: false

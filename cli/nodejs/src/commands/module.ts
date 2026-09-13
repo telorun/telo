@@ -3,6 +3,7 @@ import {
   isOciRef,
   manifestCacheKey,
   ociManifestCacheCoords,
+  readNativeEntries,
   sha256Base64Url,
   splitIntegrity,
   urlManifestCacheCoords,
@@ -19,6 +20,7 @@ import {
   kindRuntimeSupport,
   type ModuleRuntimeReport,
   moduleRuntimeReport,
+  nativeReach,
 } from "../controller-runtime.js";
 import { createLogger, type Logger } from "../logger.js";
 import { outErrLine, outLine, output } from "../output.js";
@@ -259,7 +261,7 @@ export async function buildManifestJsonPayload(
     cacheKey: local ? null : cacheKeyForRef(ref, text),
     manifest: text,
     integrity: local ? null : await integrityForRef(ref, log),
-    runtime: extractKindRuntimes(parseDocs(text)),
+    runtime: extractKindRuntimes(parseDocs(text), log),
   };
 }
 
@@ -385,7 +387,7 @@ function toStringArray(raw: unknown): string[] {
  *  Lives with the verb rather than in the hub: the PURL-to-kernel mapping is
  *  loader knowledge, and a consumer re-deriving it would hold a second copy that
  *  drifts silently the day a loader lands. */
-function extractKindRuntimes(docs: Document[]): ModuleRuntimeReport {
+function extractKindRuntimes(docs: Document[], log: Logger): ModuleRuntimeReport {
   const entries: KindRuntimeEntry[] = [];
   for (const doc of docs) {
     const kind = doc.get("kind");
@@ -394,7 +396,13 @@ function extractKindRuntimes(docs: Document[]): ModuleRuntimeReport {
     if (typeof name !== "string") continue;
     entries.push({ name, ...kindRuntimeSupport(toStringArray(doc.get("controllers"))) });
   }
-  return moduleRuntimeReport(entries);
+  // An entry that cannot be read covers no platform; saying so keeps the
+  // reported reach from quietly narrowing.
+  const native = readNativeEntries(findModuleDoc(docs)?.toJSON());
+  for (const problem of native.problems) {
+    outErrLine(`${log.err.warn("warn")}  native reach omits ${problem.message}`);
+  }
+  return moduleRuntimeReport(entries, nativeReach(native.entries));
 }
 
 /** The resource kinds a module defines: each `Telo.Definition` / `Telo.Abstract`

@@ -1,8 +1,12 @@
 import {
   parseLayerIndex,
   readLibraryCandidates,
+  readModuleSources,
+  readNativeEntries,
   type ArtifactLayer,
   type LibraryCandidate,
+  type ModuleSources,
+  type NativeEntries,
 } from "@telorun/analyzer";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments, type Document } from "yaml";
@@ -43,6 +47,13 @@ export interface OwnerManifest {
   library: LibraryCandidate[];
   /** True when the owner doc declares a non-empty `files:` list. */
   declaresFiles: boolean;
+  /** The `native:` block, read whole: an entry that cannot be read is a problem
+   *  beside the entries rather than a dropped line, so a lookup that finds no
+   *  entry can say why. */
+  native: NativeEntries;
+  /** The `sources:` block, which a published manifest no longer carries — only a
+   *  source checkout has one to verify staged files against. */
+  sources: ModuleSources;
   /** Descriptive provenance a transport projects into its backend's metadata
    *  (OCI annotations). Never used to address the artifact. */
   description?: string;
@@ -78,6 +89,8 @@ export function readOwnerManifest(text: string): OwnerManifest {
     // specifier unresolved at load, which fails loudly rather than silently.
     library: readLibraryCandidates(parsed).candidates,
     declaresFiles: Array.isArray(parsed?.files) && parsed.files.length > 0,
+    native: readNativeEntries(parsed),
+    sources: readModuleSources(parsed),
     description: str(md.description),
     repository: str(md.repository),
     license: str(md.license),

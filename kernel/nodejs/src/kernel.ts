@@ -16,6 +16,7 @@ import {
   type DiffEntry,
   type LoadedGraph,
   type ManifestSource,
+  type ModuleSources,
 } from "@telorun/analyzer";
 import {
   bindContract,
@@ -82,6 +83,7 @@ import {
   resolveEntryDir,
 } from "./manifest-sources/local-manifest-cache-source.js";
 import { readOwnerManifest, type OwnerManifest } from "./bundle/module-manifest.js";
+import { resolveNativeFileUri, type NativeFileModule } from "./module-file-resolution.js";
 import {
   moduleArtifactFor,
   moduleDirectoryFor,
@@ -186,6 +188,14 @@ export class Kernel implements IKernel {
    *  source: which bare specifiers this module's controller bundles import, and
    *  which module's library layer each resolves to. Rebuilt on every `load()`. */
   private readonly siblingLibraries = new Map<string, SiblingLibraryMap>();
+  /** Each module's `native:` / `sources:` blocks, keyed by the source of every
+   *  file of the module — owner and `include:` partials alike, since a
+   *  definition's `metadata.source` names the file that declared it. Rebuilt on
+   *  every `load()`. */
+  private readonly nativeFileModules = new Map<string, NativeFileModule>();
+  /** Resolved native file URIs per module and name; a rejection is dropped so a
+   *  file staged after a failed lookup resolves on the next ask. */
+  private readonly nativeFileUris = new Map<string, Promise<string>>();
   private _loadedGraph?: LoadedGraph;
   /** Declaration signatures of the installed set, taken at load time — see
    *  `ManifestDiffOptions.previousSignatures` for why they cannot be taken
@@ -1387,6 +1397,8 @@ export class Kernel implements IKernel {
   private buildModuleArtifacts(graph: LoadedGraph, manifestsDir: string | undefined): void {
     this.moduleArtifacts.clear();
     this.siblingLibraries.clear();
+    this.nativeFileModules.clear();
+    this.nativeFileUris.clear();
     const transports = defaultTransportRegistry();
     const entryDir = this._entryUrl ? resolveEntryDir(this._entryUrl) ?? "" : "";
     // The same pre-anchor root `LocalManifestCacheSource` falls back to. Layers
@@ -1421,6 +1433,14 @@ export class Kernel implements IKernel {
         log: this.logging.kernelLogger(),
       });
       if (artifact) this.moduleArtifacts.set(file.source, artifact);
+      const native: NativeFileModule = {
+        source: file.source,
+        native: owner.native,
+        sources: owner.sources,
+      };
+      for (const declaring of [file, ...module.partials]) {
+        this.nativeFileModules.set(declaring.source, native);
+      }
     }
 
     // The sibling-library join is a pure function of the graph and these three
@@ -1440,6 +1460,46 @@ export class Kernel implements IKernel {
    *  manifest-only, or not cacheable). */
   getModuleArtifact(source: string | undefined): ModuleArtifact | undefined {
     return source ? this.moduleArtifacts.get(source) : undefined;
+  }
+
+  /**
+   * Resolve a native file by name for a resource of `resolvedKind`, against the
+   * module that declared that kind — the module whose controller is asking, and
+   * whose artifact ships the file. A resource of a kind that inherits its
+   * controller is created through its ancestor's kind, so the ancestor's module
+   * answers there without a special case.
+   */
+  resolveNativeFile(resolvedKind: string | undefined, name: string): Promise<string> {
+    const definition = resolvedKind ? this.controllers.getDefinition(resolvedKind) : undefined;
+    // Stamped by the loader on every manifest, and not on the SDK's narrower type.
+    const source = (definition?.metadata as { source?: unknown } | undefined)?.source;
+    const module = typeof source === "string" ? this.nativeFileModules.get(source) : undefined;
+    if (!module) {
+      return Promise.reject(
+        new RuntimeError(
+          "ERR_NATIVE_FILE_UNAVAILABLE",
+          `Cannot resolve native file '${name}': the kind ` +
+            `${resolvedKind ? `'${resolvedKind}'` : "of this resource"} has no declaring module ` +
+            `loaded from a manifest, so there is no native: block to resolve it against.`,
+        ),
+      );
+    }
+    const key = `${module.source}\0${name}`;
+    let pending = this.nativeFileUris.get(key);
+    if (!pending) {
+      pending = resolveNativeFileUri(name, module, this).catch((err) => {
+        this.nativeFileUris.delete(key);
+        throw err;
+      });
+      this.nativeFileUris.set(key, pending);
+    }
+    return pending;
+  }
+
+  /** The `sources:` block of the module one of whose files resolved from
+   *  `source`, or `undefined` for a module this load did not read. */
+  getModuleSources(source: string | undefined): ModuleSources | undefined {
+    return source ? this.nativeFileModules.get(source)?.sources : undefined;
   }
 
   /** The module-owned libraries the module at `source` imports by bare

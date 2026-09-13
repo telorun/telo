@@ -1,4 +1,12 @@
-import { describeSelector, selectorFromQualifiers, selectorMatches } from "@telorun/analyzer";
+import {
+  describeSelector,
+  normalizeNativePath,
+  selectorFromQualifiers,
+  selectorMatches,
+  type ArtifactSelector,
+  type ModuleSources,
+} from "@telorun/analyzer";
+import { checkStagedEntry } from "../bundle/staged-entry.js";
 import { ControllerInstance, RuntimeError, type Logger } from "@telorun/sdk";
 import { existsSync, readFileSync } from "fs";
 import * as fs from "fs/promises";
@@ -6,10 +14,16 @@ import { createRequire } from "module";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
-import { hostPlatformTarget, type ModuleArtifact } from "../bundle/module-artifact.js";
+import {
+  hostPlatformTarget,
+  NODE_HOSTED_FORMATS,
+  type ModuleArtifact,
+} from "../bundle/module-artifact.js";
 import type { ControllerResolveSource, ControllerWorkReporter } from "../controller-loader.js";
-import { ControllerEnvMissingError } from "./napi-loader.js";
+import { ControllerEnvMissingError, projectNapiController } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
+
+const requireFromHere = createRequire(import.meta.url);
 import {
   buildControllerFromSource,
   canBuildFromSource,
@@ -299,10 +313,10 @@ function findPackageRoot(entryFile: string, name: string): string | null {
  *  - `name=<format>` — the artifact format the loader dispatches on (`js` /
  *    `napi` / `wasm`). Bundling is the one delivery not tied to an ecosystem's
  *    runtime (npm ⇒ JS, cargo ⇒ Rust; a bundle is just files), so the format is
- *    explicit. `js` is `import()`ed directly; a format this kernel can't host →
- *    `ControllerEnvMissingError`, so `[pkg:telo/local/napi …, pkg:telo/local/js …]`
- *    (or `[pkg:telo …, pkg:npm …]`) falls through to a candidate this — or
- *    another runtime's — kernel can load.
+ *    explicit. `js` is `import()`ed directly, a `napi` addon is `require`d; a
+ *    format this kernel can't host → `ControllerEnvMissingError`, so
+ *    `[pkg:telo/local/dylib …, pkg:telo/local/js …]` (or `[pkg:telo …, pkg:npm …]`)
+ *    falls through to a candidate this — or another runtime's — kernel can load.
  *  - `path` — the file in the bundle; `#export` — the named export.
  *  - `local_path` — the TypeScript source `path=` was built from. Present only
  *    while the module is a working copy; a published artifact ships no `src/`.
@@ -329,6 +343,11 @@ function findPackageRoot(entryFile: string, name: string): string | null {
  * through); a bundle that loads but is malformed is a hard `ERR_CONTROLLER_INVALID`.
  */
 export class BundleControllerLoader {
+  /** The pin check of each staged addon, by absolute path: every kind a module
+   *  selects out of one addon resolves it, and the file is hashed once. A failed
+   *  check is dropped, so a restage is seen by the next resolution. */
+  private readonly stagedAddons = new Map<string, Promise<string | undefined>>();
+
   /** Where a dev build from `local_path` is cached (`<cache-root>/controller-src`).
    *  Absent for callers that resolved no cache root, which simply disables the
    *  source path — a prebuilt `path=` still loads. */
@@ -486,6 +505,7 @@ export class BundleControllerLoader {
     artifact?: ModuleArtifact,
     libraries: SiblingLibraryMap = NO_SIBLING_LIBRARIES,
     report?: ControllerWorkReporter,
+    sources?: ModuleSources,
   ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     let parsed: PackageURL;
     try {
@@ -505,13 +525,15 @@ export class BundleControllerLoader {
       );
     }
 
-    // Format is the PURL name. Only `js` is hostable by the Node kernel today;
-    // any other format (napi/wasm/future) is env-missing so the list falls
-    // through to a sibling this — or another runtime's — kernel can load.
+    // Format is the PURL name. The Node kernel hosts `js` bundles and `napi`
+    // addons; any other format (`dylib`, which only the Rust kernel opens, `wasm`,
+    // a future one) is env-missing so the list falls through to a sibling this —
+    // or another runtime's — kernel can load.
     const format = parsed.name;
-    if (format !== "js") {
+    if (!NODE_HOSTED_FORMATS.has(format)) {
       throw new ControllerEnvMissingError(
-        `pkg:telo controller "${purl}": format "${format}" is not hostable by the Node bundle loader (supports "js" today)`,
+        `pkg:telo controller "${purl}": format "${format}" is not hostable by the Node bundle loader ` +
+          `(supports ${[...NODE_HOSTED_FORMATS].map((f) => `"${f}"`).join(", ")})`,
       );
     }
 
@@ -531,11 +553,17 @@ export class BundleControllerLoader {
       throw new ControllerEnvMissingError(
         `pkg:telo controller "${purl}" targets ${describeSelector(selector)}, which does not ` +
           `match this host (${host.os ?? "unknown os"}/${host.arch ?? "unknown arch"}` +
-          `${host.libc ? `/${host.libc}` : ""})`,
+          `${host.libc ? `/${host.libc}` : ""}${host.abi ? `, abi ${host.abi}` : ""})`,
       );
     }
 
     const fragment = parsed.subpath;
+
+    // A prebuilt addon: nothing to build, no bundle directory to prepare — an
+    // N-API module imports nothing by bare specifier.
+    if (format === "napi") {
+      return this.resolveNapi(purl, relPath, selector, fragment, baseUri, artifact, report, sources);
+    }
 
     // Dev path: a module that is a working copy — no artifact behind it — with a
     // `local_path` source on disk is built from that source, because the source
@@ -655,6 +683,84 @@ export class BundleControllerLoader {
     };
   }
 
+  /**
+   * Resolve a `napi` candidate: the addon at `path=`, out of the controller layer
+   * carrying its selector for a published module, beside the manifest for a
+   * source checkout. A missing file is env-missing like a missing bundle. The
+   * addon has no ESM shape, so it is opened through `createRequire` and the
+   * fragment names a property of its exports object.
+   *
+   * In a source checkout an addon a `sources:` entry stages is checked against
+   * its pin first — the rule `ctx.resolveNativeFile` applies — and a stale or
+   * altered one is a hard `ERR_STAGED_FILE_INVALID`, never a fallthrough that
+   * would quietly load the next candidate instead.
+   */
+  private async resolveNapi(
+    purl: string,
+    relPath: string,
+    selector: ArtifactSelector,
+    fragment: string | undefined,
+    baseUri: string,
+    artifact: ModuleArtifact | undefined,
+    report: ControllerWorkReporter | undefined,
+    sources: ModuleSources | undefined,
+  ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
+    let dir: string;
+    let source: ControllerResolveSource = "local";
+    let stagedBy: string | undefined;
+    if (artifact) {
+      const resolved = await artifact.materializeController(selector, report);
+      if (!resolved) {
+        throw new ControllerEnvMissingError(
+          `pkg:telo controller "${purl}": the module artifact ships no layer for ` +
+            `${describeSelector(selector)} (has: ${artifact.describeLayers()})`,
+        );
+      }
+      dir = resolved.layer.dir;
+      source = resolved.transferred ? "bundle" : "cache";
+    } else if (isLocalBase(baseUri)) {
+      dir = this.moduleDir(baseUri);
+      const key = path.resolve(dir, relPath);
+      let check = this.stagedAddons.get(key);
+      if (!check) {
+        check = assertStagedAddon(purl, dir, relPath, sources);
+        this.stagedAddons.set(key, check);
+        check.catch(() => this.stagedAddons.delete(key));
+      }
+      stagedBy = await check;
+    } else {
+      throw new ControllerEnvMissingError(
+        `pkg:telo controller "${purl}" cannot be located: the declaring module resolved from ` +
+          `"${baseUri}", which is neither a local path nor an artifact with a layer index.`,
+      );
+    }
+    const absFile = path.resolve(dir, relPath);
+    if (!(await pathExists(absFile))) {
+      throw new ControllerEnvMissingError(
+        `pkg:telo controller addon not found at "${absFile}" (from "${purl}")` +
+          (stagedBy === undefined
+            ? ""
+            : ` — it is staged by source '${stagedBy}': run \`telo release stage\` to fetch it`),
+      );
+    }
+    return {
+      source,
+      importInstance: async () => {
+        let exports: unknown;
+        try {
+          exports = requireFromHere(absFile);
+        } catch (err) {
+          throw new RuntimeError(
+            "ERR_CONTROLLER_INVALID",
+            `pkg:telo controller "${purl}": failed to load the addon at "${absFile}": ` +
+              `${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        return projectNapiController(exports, fragment, absFile, `pkg:telo controller "${purl}"`);
+      },
+    };
+  }
+
   /** The `local_path` source this candidate names, resolved against the declaring
    *  module's directory — or `undefined` when the candidate declares none, or the
    *  module is not on disk to resolve it against. */
@@ -669,6 +775,49 @@ export class BundleControllerLoader {
   private moduleDir(baseUri: string): string {
     return path.dirname(baseUri.startsWith("file://") ? fileURLToPath(baseUri) : baseUri);
   }
+}
+
+/**
+ * Refuse a staged addon that does not match its `sources:` pin, or whose staging
+ * cannot be known because the block does not read. Resolves to the staging
+ * source's name when the addon is absent — left to the missing-file fallthrough,
+ * which says how to fetch it.
+ */
+async function assertStagedAddon(
+  purl: string,
+  moduleDir: string,
+  relPath: string,
+  sources: ModuleSources | undefined,
+): Promise<string | undefined> {
+  const verdict = normalizeNativePath(relPath.trim());
+  if (!("path" in verdict) || !sources) return undefined;
+  for (const source of sources.sources) {
+    const entry = source.entries.find((candidate) => candidate.path === verdict.path);
+    if (!entry) continue;
+    const state = await checkStagedEntry(moduleDir, source, entry);
+    if (state.state === "match") return undefined;
+    if (state.state === "missing") return source.name;
+    throw new RuntimeError(
+      "ERR_STAGED_FILE_INVALID",
+      `pkg:telo controller "${purl}": the addon '${verdict.path}' is staged by source ` +
+        `'${source.name}', but ` +
+        (state.state === "unpinned"
+          ? `the source carries no pin to verify it against — run \`telo release stage --pin\`.`
+          : `${state.detail} — run \`telo release stage\` to restage it.`),
+    );
+  }
+  // No readable source stages it; one that could not be read might, so the addon
+  // is not loaded unverified — the rule `ctx.resolveNativeFile` applies.
+  if (sources.problems.length > 0) {
+    throw new RuntimeError(
+      "ERR_STAGED_FILE_INVALID",
+      `pkg:telo controller "${purl}": the module's sources: block cannot be read, so whether ` +
+        `the addon '${verdict.path}' is staged — and what it must hash to — is unknown:\n` +
+        sources.problems.map((problem) => `  ${problem.message}`).join("\n") +
+        `\nRun \`telo check\` on the module.`,
+    );
+  }
+  return undefined;
 }
 
 /** Import a built bundle and project out the controller the fragment names. A

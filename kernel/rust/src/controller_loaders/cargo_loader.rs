@@ -18,9 +18,12 @@ use std::rc::Rc;
 use serde_json::Value;
 use telo_analyzer::DEFAULT_MANIFEST_FILENAME;
 
+use crate::bundle::module_artifact::ModuleFiles;
 use crate::controller_loaders::native_abi::LoadedController;
+use crate::controller_loaders::purl::Purl;
 use crate::error::KernelError;
-use crate::workspace_marker::resolve_cache_root;
+use crate::lexical_path;
+use crate::manifest_sources::local_manifest_cache_source::resolve_cache_root;
 
 /// The SDK crate whose backend feature selects the FFI bridge.
 const SDK_CRATE_NAME: &str = "telorun-sdk";
@@ -77,13 +80,35 @@ thread_local! {
 pub struct CargoControllerLoader;
 
 impl CargoControllerLoader {
+    /// `files` is where the declaring module's files are: a crate is built only
+    /// from a source checkout. A published module's directory holds whatever its
+    /// layers shipped, which is never the crate its binaries were built from, so
+    /// building there would compile a copy nobody pinned — the candidate falls
+    /// through to one the artifact ships instead.
     pub fn resolve(
         &self,
         purl: &str,
         base_uri: &str,
+        files: &ModuleFiles,
     ) -> Result<Rc<LoadedController>, ResolveError> {
         let parsed = Purl::parse(purl)
-            .ok_or_else(|| env_missing(format!("unparseable PURL: {purl}")))?;
+            .filter(|parsed| parsed.purl_type == "cargo")
+            .ok_or_else(|| env_missing(format!("unparseable pkg:cargo PURL: {purl}")))?;
+        match files {
+            ModuleFiles::OnDisk => {}
+            ModuleFiles::Artifact(_) => {
+                return Err(env_missing(
+                    "pkg:cargo builds a crate from a source checkout, and the declaring module was loaded \
+                     from a published artifact, which ships no crate to build",
+                ))
+            }
+            ModuleFiles::Unlocatable => {
+                return Err(env_missing(
+                    "pkg:cargo builds a crate from a source checkout, and the declaring module was fetched \
+                     from a registry",
+                ))
+            }
+        }
         let Some(local_path) = parsed.qualifiers.get("local_path") else {
             return Err(env_missing(
                 "pkg:cargo distribution-mode resolution is not implemented; supply ?local_path=...",
@@ -91,7 +116,7 @@ impl CargoControllerLoader {
         };
 
         let manifest_dir = manifest_dir(base_uri);
-        let crate_path = normalize(&manifest_dir.join(local_path));
+        let crate_path = lexical_path::normalize(&manifest_dir.join(local_path));
         if !crate_path.join("Cargo.toml").is_file() {
             return Err(env_missing(format!(
                 "pkg:cargo local_path has no Cargo.toml: {}",
@@ -100,7 +125,7 @@ impl CargoControllerLoader {
         }
 
         let entry = parsed
-            .fragment
+            .subpath
             .clone()
             .unwrap_or_else(|| telorun_abi::DEFAULT_ENTRY.to_string());
         let cache_key = format!("{}\0{entry}", crate_path.display());
@@ -144,6 +169,12 @@ fn build_cdylib(crate_path: &Path, crate_name: &str) -> Result<PathBuf, ResolveE
     // cargo's default target directory. Give both one directory and every
     // alternation between kernels rebuilds the whole dependency tree.
     let target_dir = resolve_cache_root(crate_path)
+        .map_err(|err| {
+            ResolveError::Fatal(KernelError::controller_build_failed(format!(
+                "cannot resolve the build cache for {}: the working directory cannot be read: {err}",
+                crate_path.display()
+            )))
+        })?
         .join("cargo")
         .join(SDK_BACKEND_FEATURE.rsplit('/').next().unwrap_or(SDK_BACKEND_FEATURE))
         .join("target");
@@ -262,7 +293,8 @@ fn find_cdylib(stdout: &[u8], crate_name: &str) -> Option<PathBuf> {
     None
 }
 
-fn manifest_dir(base_uri: &str) -> PathBuf {
+/// The directory of the manifest a definition was declared in.
+pub(crate) fn manifest_dir(base_uri: &str) -> PathBuf {
     let path = Path::new(base_uri);
     if path.file_name().map(|name| name == DEFAULT_MANIFEST_FILENAME) == Some(true) || path.is_file()
     {
@@ -271,69 +303,36 @@ fn manifest_dir(base_uri: &str) -> PathBuf {
     path.to_path_buf()
 }
 
-fn normalize(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                out.pop();
-            }
-            std::path::Component::CurDir => {}
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
-}
-
-/// The slice of the PURL grammar this loader needs: `pkg:cargo/<name>?<k=v&…>#<entry>`.
-struct Purl {
-    name: String,
-    qualifiers: HashMap<String, String>,
-    fragment: Option<String>,
-}
-
-impl Purl {
-    fn parse(purl: &str) -> Option<Self> {
-        let rest = purl.strip_prefix("pkg:cargo/")?;
-        let (rest, fragment) = match rest.split_once('#') {
-            Some((head, fragment)) => (head, Some(fragment.to_string())),
-            None => (rest, None),
-        };
-        let (name, query) = match rest.split_once('?') {
-            Some((name, query)) => (name, Some(query)),
-            None => (rest, None),
-        };
-        let mut qualifiers = HashMap::new();
-        if let Some(query) = query {
-            for pair in query.split('&') {
-                if let Some((key, value)) = pair.split_once('=') {
-                    qualifiers.insert(key.to_string(), value.to_string());
-                }
-            }
-        }
-        Some(Self {
-            name: name.to_string(),
-            qualifiers,
-            fragment,
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::Purl;
+    use super::*;
+    use crate::bundle::files_integrity::PayloadFile;
+    use crate::bundle::module_artifact::{LayerFetcher, ModuleArtifact};
 
-    #[test]
-    fn parses_name_qualifiers_and_entry() {
-        let purl =
-            Purl::parse("pkg:cargo/telorun-console?local_path=./rust#writeline_controller").unwrap();
-        assert_eq!(purl.name, "telorun-console");
-        assert_eq!(purl.qualifiers.get("local_path").unwrap(), "./rust");
-        assert_eq!(purl.fragment.as_deref(), Some("writeline_controller"));
+    struct NoLayers;
+
+    impl LayerFetcher for NoLayers {
+        fn fetch_layer(&self, _pinned_ref: &str, blob: &str) -> Result<Vec<PayloadFile>, KernelError> {
+            Err(KernelError::new("ERR_TEST", format!("fetched {blob}")))
+        }
     }
 
+    /// A crate source beside a published module's manifest is not built: the
+    /// candidate falls through before anything is read or compiled.
     #[test]
-    fn rejects_other_purl_types() {
-        assert!(Purl::parse("pkg:npm/@telorun/console@1.0.0").is_none());
+    fn falls_through_for_a_published_or_unlocatable_module() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("rust")).unwrap();
+        std::fs::write(dir.path().join("rust/Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        let base = dir.path().join("telo.yaml").display().to_string();
+        let artifact = ModuleArtifact::new("oci://r.test/x@1".into(), Vec::new(), dir.path().into(), Rc::new(NoLayers)).unwrap();
+        for files in [ModuleFiles::Artifact(Rc::new(artifact)), ModuleFiles::Unlocatable] {
+            match CargoControllerLoader.resolve("pkg:cargo/x?local_path=./rust", &base, &files) {
+                Err(ResolveError::EnvMissing(missing)) => assert!(missing.reason.contains("source checkout"), "{}", missing.reason),
+                Err(ResolveError::Fatal(err)) => panic!("expected a fall-through, got {err}"),
+                Ok(_) => panic!("expected a fall-through, got a controller"),
+            }
+        }
     }
 }
+

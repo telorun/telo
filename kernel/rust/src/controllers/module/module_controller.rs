@@ -125,6 +125,7 @@ pub fn load_module(
     reject_leftover_references(&context, &documents)?;
 
     let mut includes = IncludeCache::new();
+    let module_files = env.loader.module_files(&context.source);
     for document in documents.iter_mut().skip(1) {
         // Owned, because reading the kind borrows the document that the embed
         // resolution below rewrites in place.
@@ -144,7 +145,7 @@ pub fn load_module(
         // divergence is silent, because an unresolved marker left in a `schema:`
         // default is injected verbatim into every consumer's config by AJV's
         // `useDefaults` with nothing raising.
-        resolve_include_sentinels(document, &context.source, &mut includes)?;
+        resolve_include_sentinels(document, &context.source, &module_files, &mut includes)?;
         if kind == DEFINITION {
             continue;
         }

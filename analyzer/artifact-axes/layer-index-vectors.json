@@ -1,0 +1,322 @@
+{
+  "$comment": "Shared conformance vectors for kernel/specs/module-artifact.md §2-§3. Selectors, matching and layer indexes are run by analyzer/nodejs/tests/layer-index-vectors.test.ts and analyzer/rust/src/artifact_layer_index.rs; 'filesIntegrity' by kernel/nodejs/tests/files-integrity-vectors.test.ts and kernel/rust/src/bundle/files_integrity.rs. Every kernel must agree with every case, error messages included. Selectors in 'selectorKeys' and 'matching' are raw index selectors, normalized before use.",
+  "axisValues": [
+    { "axis": "abi", "value": "node-137", "normalized": "node-137" },
+    { "axis": "abi", "value": "telo-2", "normalized": "telo-2" },
+    { "axis": "abi", "value": " NODE-137 ", "normalized": "node-137" },
+    { "axis": "abi", "value": "node-1.2.3", "normalized": "node-1.2.3" },
+    { "axis": "abi", "value": "node_js-24", "normalized": "node_js-24" },
+    {
+      "axis": "abi",
+      "value": "137",
+      "error": "selector: abi value '137' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+    },
+    {
+      "axis": "abi",
+      "value": "node",
+      "error": "selector: abi value 'node' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+    },
+    {
+      "axis": "abi",
+      "value": "node-",
+      "error": "selector: abi value 'node-' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+    },
+    {
+      "axis": "abi",
+      "value": "node-1.",
+      "error": "selector: abi value 'node-1.' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+    },
+    {
+      "axis": "abi",
+      "value": "node-v137",
+      "error": "selector: abi value 'node-v137' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+    },
+    {
+      "axis": "abi",
+      "value": "9node-1",
+      "error": "selector: abi value '9node-1' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+    },
+    {
+      "axis": "abi",
+      "value": "-137",
+      "error": "selector: abi value '-137' is not a canonical token. Use lowercase letters, digits, '.', '-' or '_', starting with a letter or digit."
+    },
+    { "axis": "os", "value": "Linux", "normalized": "linux" },
+    { "axis": "libc", "value": "gnu-2.31", "normalized": "gnu-2.31" },
+    {
+      "axis": "arch",
+      "value": "x 64",
+      "error": "selector: arch value 'x 64' is not a canonical token. Use lowercase letters, digits, '.', '-' or '_', starting with a letter or digit."
+    }
+  ],
+  "selectorKeys": [
+    { "selector": { "format": "js" }, "key": "format=js", "description": "js" },
+    {
+      "selector": { "format": "napi", "os": "linux", "arch": "amd64", "libc": "gnu" },
+      "key": "arch=amd64;format=napi;libc=gnu;os=linux",
+      "description": "napi (linux/amd64/gnu)"
+    },
+    {
+      "selector": { "format": "node", "abi": "node-137", "libc": "musl", "arch": "arm64", "os": "linux" },
+      "key": "abi=node-137;arch=arm64;format=node;libc=musl;os=linux",
+      "description": "node (linux/arm64/musl/node-137)"
+    },
+    {
+      "selector": { "format": "DYLIB", "abi": "Telo-2", "os": "darwin" },
+      "key": "abi=telo-2;format=dylib;os=darwin",
+      "description": "dylib (darwin/telo-2)"
+    }
+  ],
+  "matching": [
+    {
+      "name": "an axis the selector omits accepts any target value",
+      "selector": { "format": "js" },
+      "target": { "os": "linux", "arch": "amd64" },
+      "matches": true
+    },
+    {
+      "name": "every stated axis equals the target's",
+      "selector": { "format": "napi", "os": "linux", "arch": "amd64", "libc": "gnu" },
+      "target": { "format": "napi", "os": "linux", "arch": "amd64", "libc": "gnu" },
+      "matches": true
+    },
+    {
+      "name": "a stated axis differing from the target's",
+      "selector": { "format": "napi", "os": "linux", "arch": "amd64", "libc": "gnu" },
+      "target": { "os": "linux", "arch": "amd64", "libc": "musl" },
+      "matches": false
+    },
+    {
+      "name": "an undetermined target axis matches only a selector that does not constrain it",
+      "selector": { "format": "napi", "os": "linux", "libc": "gnu" },
+      "target": { "os": "linux", "arch": "amd64" },
+      "matches": false
+    },
+    {
+      "name": "a target format constrains the selector's",
+      "selector": { "format": "js" },
+      "target": { "format": "napi", "os": "linux" },
+      "matches": false
+    },
+    {
+      "name": "an abi of another family does not match",
+      "selector": { "format": "dylib", "os": "linux", "abi": "telo-2" },
+      "target": { "os": "linux", "abi": "node-137" },
+      "matches": false
+    },
+    {
+      "name": "an abi of another version does not match",
+      "selector": { "format": "dylib", "os": "linux", "abi": "telo-2" },
+      "target": { "os": "linux", "abi": "telo-3" },
+      "matches": false
+    },
+    {
+      "name": "an equal abi matches",
+      "selector": { "format": "dylib", "os": "linux", "abi": "telo-2" },
+      "target": { "os": "linux", "arch": "amd64", "abi": "telo-2" },
+      "matches": true
+    }
+  ],
+  "layerIndexes": [
+    {
+      "name": "reads every role, with code and native layers sharing one selector across roles",
+      "layers": [
+        { "role": "controller", "selector": { "format": "node", "os": "linux", "arch": "amd64", "libc": "gnu", "abi": "node-137" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "library", "selector": { "format": "node", "os": "linux", "arch": "amd64", "libc": "gnu", "abi": "node-137" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "native", "selector": { "format": "node", "os": "linux", "arch": "amd64", "libc": "gnu", "abi": "node-137" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "assets", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "common", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "expected": [
+        { "role": "controller", "selector": { "format": "node", "os": "linux", "arch": "amd64", "libc": "gnu", "abi": "node-137" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "library", "selector": { "format": "node", "os": "linux", "arch": "amd64", "libc": "gnu", "abi": "node-137" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "native", "selector": { "format": "node", "os": "linux", "arch": "amd64", "libc": "gnu", "abi": "node-137" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "assets", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "common", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ]
+    },
+    {
+      "name": "normalizes selector values and reads an empty axis value as absent",
+      "layers": [
+        { "role": "controller", "selector": { "format": " JS ", "os": "Linux", "libc": "" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "expected": [
+        { "role": "controller", "selector": { "format": "js", "os": "linux" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ]
+    },
+    {
+      "name": "skips an entry whose role it does not recognize, without examining its selector",
+      "layers": [
+        { "role": "firmware", "selector": "not a selector", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "controller", "selector": { "format": "js" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "expected": [
+        { "role": "controller", "selector": { "format": "js" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ]
+    },
+    {
+      "name": "skips an entry whose selector carries an unknown axis whole, even when its known axes repeat another's",
+      "layers": [
+        { "role": "controller", "selector": { "format": "node", "os": "linux" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "controller", "selector": { "format": "node", "os": "linux", "gpu": "cuda" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "expected": [
+        { "role": "controller", "selector": { "format": "node", "os": "linux" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ]
+    },
+    {
+      "name": "rejects a value that is not an array",
+      "layers": { "role": "common" },
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers: expected an array of layer entries." }
+    },
+    {
+      "name": "rejects an entry that is not an object",
+      "layers": ["common"],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: expected an object." }
+    },
+    {
+      "name": "rejects an entry with no role",
+      "layers": [
+        { "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: role is required and must be a non-empty string; got nothing." }
+    },
+    {
+      "name": "rejects a non-string role",
+      "layers": [
+        { "role": 5, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: role is required and must be a non-empty string; got '5'." }
+    },
+    {
+      "name": "rejects an empty role",
+      "layers": [
+        { "role": "", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: role is required and must be a non-empty string; got ''." }
+    },
+    {
+      "name": "still validates the blob of an entry it skips for an unknown role",
+      "layers": [
+        { "role": "firmware", "blob": "sha256:nope", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: blob 'sha256:nope' is not an OCI digest (expected 'sha256:' + 64 hex characters)." }
+    },
+    {
+      "name": "rejects an entry with no integrity",
+      "layers": [
+        { "role": "common", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: integrity is required and must be a string." }
+    },
+    {
+      "name": "rejects a padded integrity",
+      "layers": [
+        { "role": "common", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: integrity 'sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' is not a content digest (expected 'sha256-' + 43 base64url characters)." }
+    },
+    {
+      "name": "rejects a native layer with no selector",
+      "layers": [
+        { "role": "native", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: a native layer must declare a selector." }
+    },
+    {
+      "name": "rejects a singleton layer declaring a selector",
+      "layers": [
+        { "role": "common", "selector": { "format": "js" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[0]: a 'common' layer must not declare a selector — it is a singleton." }
+    },
+    {
+      "name": "rejects a second singleton of one role",
+      "layers": [
+        { "role": "assets", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "assets", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[1]: a second 'assets' layer is declared." }
+    },
+    {
+      "name": "rejects a second native layer claiming one selector after normalization",
+      "layers": [
+        { "role": "native", "selector": { "format": "node", "os": "linux", "abi": "node-137" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" },
+        { "role": "native", "selector": { "abi": "NODE-137", "os": "linux", "format": "node" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_LAYER_INDEX", "message": "layers[1]: a second native layer claims the selector abi=node-137;format=node;os=linux. Each selector addresses exactly one layer of a role." }
+    },
+    {
+      "name": "rejects a selector that is not an object",
+      "layers": [
+        { "role": "controller", "selector": "js", "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_ARTIFACT_SELECTOR", "message": "layers[0]: expected an object of selector axes." }
+    },
+    {
+      "name": "rejects a selector with no format",
+      "layers": [
+        { "role": "controller", "selector": { "os": "linux" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_ARTIFACT_SELECTOR", "message": "layers[0]: format must be a string, got undefined." }
+    },
+    {
+      "name": "rejects a null axis value",
+      "layers": [
+        { "role": "library", "selector": { "format": "js", "libc": null }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_ARTIFACT_SELECTOR", "message": "layers[0]: libc must be a string, got null." }
+    },
+    {
+      "name": "still validates the known axes of an entry it would skip for an unknown axis",
+      "layers": [
+        { "role": "controller", "selector": { "format": "node", "os": "Linux!", "gpu": "cuda" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_ARTIFACT_SELECTOR", "message": "layers[0]: os value 'Linux!' is not a canonical token. Use lowercase letters, digits, '.', '-' or '_', starting with a letter or digit." }
+    },
+    {
+      "name": "rejects an abi without its family",
+      "layers": [
+        { "role": "native", "selector": { "format": "node", "abi": "137" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+      ],
+      "error": { "code": "INVALID_ARTIFACT_SELECTOR", "message": "layers[0]: abi value '137' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'." }
+    }
+  ],
+  "filesIntegrity": [
+    {
+      "name": "a layer of regular files",
+      "files": [
+        { "name": "nodejs/c.mjs", "content": "export const x = 1" },
+        { "name": "public/index.html", "content": "<h1>hi</h1>" }
+      ],
+      "integrity": "sha256-wq3_Gflfuk684x-y2GYM4kq_PBAQ4nJ8xUNnKP_friU"
+    },
+    {
+      "name": "executable files and links each carry their own line",
+      "files": [
+        { "name": "native/tool", "content": "#!/bin/sh\n", "executable": true },
+        { "name": "native/libx.so.1.2", "content": "elf" },
+        { "name": "native/libx.so.1", "link": "libx.so.1.2" },
+        { "name": "native/libx.so", "link": "./libx.so.1" }
+      ],
+      "integrity": "sha256-V6cp2Y44Hv2SPF9YWQH6ftGMo4ouN7UtZnfq56IuWRs"
+    },
+    {
+      "name": "telo.yaml takes no part",
+      "files": [
+        { "name": "telo.yaml", "content": "kind: Telo.Library\n" },
+        { "name": "a.txt", "content": "a" }
+      ],
+      "integrity": "sha256-jz5ojtJfl50TPM8Amb0ZZaGsrWIAtiVho1AVLio-gh0"
+    },
+    {
+      "name": "lines sort by UTF-16 code unit, not by byte",
+      "files": [
+        { "name": "�.txt", "content": "a" },
+        { "name": "😀.txt", "content": "b" }
+      ],
+      "integrity": "sha256-IzRPkFB7LMONqhOdROYL-n4RvEaWjgLelqi793kUiUI"
+    },
+    { "name": "an empty layer", "files": [], "integrity": "sha256-47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU" }
+  ]
+}

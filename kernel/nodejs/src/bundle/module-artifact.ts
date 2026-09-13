@@ -1,11 +1,15 @@
 import {
   codeLayerFor,
   matchCodeLayers,
+  selectorKey,
+  selectorMatches,
   singletonLayer,
   splitIntegrity,
   describeSelector,
+  undeterminedAxesBlockingMatch,
   type ArtifactLayer,
   type ArtifactSelector,
+  type PlatformAxis,
   type PlatformTarget,
 } from "@telorun/analyzer";
 import { NOOP_LOGGER, RuntimeError, type Logger } from "@telorun/sdk";
@@ -20,7 +24,8 @@ import type { ControllerWorkReporter } from "../controller-loader.js";
 import { withDirectoryLock } from "../directory-lock.js";
 import { cachePathForCanonical } from "../manifest-sources/local-manifest-cache-source.js";
 import type { TransportRegistry } from "../transports/transport-registry.js";
-import { computeFilesIntegrity, type PayloadFile } from "./files-integrity.js";
+import { computeFilesIntegrity, isPayloadLink, type PayloadFile } from "./files-integrity.js";
+import { describeLayerViolations, findLayerViolations } from "./layer-entry-rules.js";
 
 /** A materialized layer: the directory its files were extracted into (the
  *  module's cache directory) and the manifest-relative paths it wrote. */
@@ -87,6 +92,18 @@ function detectLibc(): string | undefined {
 }
 
 /**
+ * The native-addon ABI this process loads, or `undefined` under Bun. Qualified
+ * with its family because the number alone is not an identity: Bun reports the
+ * same `process.versions.modules` as the Node release it tracks and loads none
+ * of the addons built against it.
+ */
+function detectAbi(): string | undefined {
+  if (typeof (globalThis as any).Bun !== "undefined") return undefined;
+  const modules = process.versions.modules;
+  return modules ? `node-${modules}` : undefined;
+}
+
+/**
  * The platform this kernel is running on, in the published vocabulary. An axis
  * Node cannot name is left absent rather than guessed.
  *
@@ -98,13 +115,24 @@ function detectLibc(): string | undefined {
 let cachedHostTarget: PlatformTarget | undefined;
 
 export function hostPlatformTarget(): PlatformTarget {
-  cachedHostTarget ??= {
-    os: NODE_OS_TO_OCI[process.platform],
-    arch: NODE_ARCH_TO_OCI[process.arch],
-    libc: detectLibc(),
-  };
+  if (!cachedHostTarget) {
+    // Every axis answered, so an axis added to the vocabulary fails to compile
+    // here until this host can detect it.
+    const detected: Record<PlatformAxis, string | undefined> = {
+      os: NODE_OS_TO_OCI[process.platform],
+      arch: NODE_ARCH_TO_OCI[process.arch],
+      libc: detectLibc(),
+      abi: detectAbi(),
+    };
+    cachedHostTarget = detected;
+  }
   return cachedHostTarget;
 }
+
+/** The bundle formats the Node kernel opens as controllers or libraries: an ES
+ *  module bundle and an N-API addon. What the bundle loader dispatches on, and
+ *  what a cache warm for this kernel is limited to. */
+export const NODE_HOSTED_FORMATS: ReadonlySet<string> = new Set(["js", "napi"]);
 
 /**
  * A module's artifact, scoped to one loaded module.
@@ -234,6 +262,24 @@ export class ModuleArtifact {
   }
 
   /**
+   * Materialize the `native` layer carrying `selector` exactly, and nothing else.
+   *
+   * By exact key for the reason `materializeController` gives: the `native:`
+   * entry that won resolution already is the selector. No `common` layer rides
+   * along — a native file is opened by path, never imported, so it has no
+   * undeclared sidecar that the sink rule would have to deliver.
+   *
+   * Returns `undefined` when the artifact ships no native layer for this selector.
+   */
+  async materializeNative(selector: ArtifactSelector): Promise<MaterializedLayer | undefined> {
+    const key = selectorKey(selector);
+    const layer = this.layers.find(
+      (l) => l.role === "native" && l.selector !== undefined && selectorKey(l.selector) === key,
+    );
+    return layer ? this.materialize(layer) : undefined;
+  }
+
+  /**
    * Materialize everything a module-relative file read could need: the `assets`
    * layer **and** the `common` layer.
    *
@@ -270,18 +316,48 @@ export class ModuleArtifact {
 
   /**
    * Materialize every layer a `target` platform could need — both singletons and
-   * each controller layer matching it. `telo install`'s make-this-offline pass,
-   * where being exhaustive for one platform is the point.
+   * each code and native layer matching it. `telo install`'s make-this-offline
+   * pass, where being exhaustive for one platform is the point.
    */
   async materializeAll(target: PlatformTarget): Promise<MaterializedLayer[]> {
-    const wanted = [
-      ...matchCodeLayers(this.layers, target),
+    const out: MaterializedLayer[] = [];
+    for (const layer of this.warmPlan(target).layers) out.push(await this.materialize(layer));
+    return out;
+  }
+
+  /**
+   * What `materializeAll(target)` fetches, and the selector-keyed layers it
+   * leaves out only because they constrain an axis `target` leaves undetermined —
+   * the ones a warm skipped for want of a value rather than because they are for
+   * another platform.
+   *
+   * Only code this kernel opens is in either list: a `dylib` layer is the Rust
+   * kernel's, and no value of any axis would make a Node warm fetch it.
+   */
+  warmPlan(target: PlatformTarget): {
+    layers: ArtifactLayer[];
+    undetermined: Array<{ layer: ArtifactLayer; axes: PlatformAxis[] }>;
+  } {
+    const warmable = (l: ArtifactLayer) =>
+      l.selector !== undefined &&
+      (l.role === "native" ||
+        ((l.role === "controller" || l.role === "library") &&
+          NODE_HOSTED_FORMATS.has(l.selector.format)));
+    const layers = [
+      ...matchCodeLayers(this.layers, target).filter(warmable),
+      ...this.layers.filter(
+        (l) => l.role === "native" && l.selector !== undefined && selectorMatches(l.selector, target),
+      ),
       singletonLayer(this.layers, "assets"),
       singletonLayer(this.layers, "common"),
     ].filter((l): l is ArtifactLayer => l !== undefined);
-    const out: MaterializedLayer[] = [];
-    for (const layer of wanted) out.push(await this.materialize(layer));
-    return out;
+    const undetermined: Array<{ layer: ArtifactLayer; axes: PlatformAxis[] }> = [];
+    for (const layer of this.layers) {
+      if (!warmable(layer)) continue;
+      const axes = undeterminedAxesBlockingMatch(layer.selector!, target);
+      if (axes) undetermined.push({ layer, axes });
+    }
+    return { layers, undetermined };
   }
 
   /** Human-facing description of what this artifact ships, for diagnostics that
@@ -364,6 +440,7 @@ export class ModuleArtifact {
           );
         }
 
+        this.assertExtractable(files, layer);
         const written = await this.extract(files, layer);
         // Marker last, so a partial extraction leaves none and re-runs.
         await fs.writeFile(marker, `${written.join("\n")}\n`, "utf-8");
@@ -378,23 +455,98 @@ export class ModuleArtifact {
     );
   }
 
-  private async extract(files: PayloadFile[], layer: ArtifactLayer): Promise<string[]> {
+  /** Every entry is checked before anything is written, so a refused layer
+   *  leaves the module directory untouched. */
+  private assertExtractable(files: PayloadFile[], layer: ArtifactLayer): void {
     const root = path.resolve(this.dir) + path.sep;
+    const escaping = files.find((entry) => !path.resolve(this.dir, entry.name).startsWith(root));
+    if (escaping) {
+      throw new RuntimeError(
+        "ERR_MODULE_LAYER_INVALID",
+        `The ${layer.role} layer of ${this.pinnedRef} contains entry '${escaping.name}', which ` +
+          `resolves outside the module's cache directory.`,
+      );
+    }
+    const violations = findLayerViolations(files);
+    if (violations.length > 0) {
+      throw new RuntimeError(
+        "ERR_MODULE_LAYER_INVALID",
+        `The ${layer.role} layer of ${this.pinnedRef} has entries that cannot be extracted ` +
+          `within the module directory:\n${describeLayerViolations(violations)}\n` +
+          `Entry paths must be unique and none may run through another entry; a link must ` +
+          `resolve, within the module directory, to a file shipped in the same layer. The ` +
+          `module has to be republished with a layer that satisfies both.`,
+      );
+    }
+  }
+
+  private async extract(files: PayloadFile[], layer: ArtifactLayer): Promise<string[]> {
+    await fs.mkdir(this.dir, { recursive: true });
+    const realRoot = await fs.realpath(this.dir);
+    const confined = new Set<string>();
     const written: string[] = [];
     for (const entry of files) {
       const dest = path.resolve(this.dir, entry.name);
-      if (!dest.startsWith(root)) {
-        throw new RuntimeError(
-          "ERR_MODULE_LAYER_INVALID",
-          `The ${layer.role} layer of ${this.pinnedRef} contains entry '${entry.name}', which ` +
-            `resolves outside the module's cache directory.`,
-        );
+      await this.confineParent(realRoot, dest, entry.name, layer, confined);
+      // Replaced rather than written over: writing through a link left by an
+      // earlier extraction would change its target, and an existing file keeps
+      // its mode.
+      await fs.rm(dest, { force: true });
+      if (isPayloadLink(entry)) {
+        await fs.symlink(entry.link, dest, "file");
+      } else {
+        await fs.writeFile(dest, entry.content);
+        if (entry.executable) await fs.chmod(dest, 0o755);
       }
-      await fs.mkdir(path.dirname(dest), { recursive: true });
-      await fs.writeFile(dest, entry.content);
       written.push(entry.name);
     }
     return written.sort();
+  }
+
+  /**
+   * Create `dest`'s parent directories one at a time and require each to be a
+   * real directory under the real module directory, so a symbolic link already
+   * on disk — an earlier layer's, or a manual edit — cannot redirect a write or a
+   * removal out of it.
+   */
+  private async confineParent(
+    realRoot: string,
+    dest: string,
+    name: string,
+    layer: ArtifactLayer,
+    confined: Set<string>,
+  ): Promise<void> {
+    const parent = path.dirname(dest);
+    if (confined.has(parent)) return;
+    const relative = path.relative(path.resolve(this.dir), parent);
+    let current = path.resolve(this.dir);
+    for (const segment of relative === "" ? [] : relative.split(path.sep)) {
+      current = path.join(current, segment);
+      const stat = await fs.lstat(current).catch((err: NodeJS.ErrnoException) => {
+        if (err.code === "ENOENT") return undefined;
+        throw err;
+      });
+      if (!stat) {
+        await fs.mkdir(current);
+      } else if (!stat.isDirectory()) {
+        throw this.unconfined(name, layer, current);
+      }
+    }
+    const realParent = await fs.realpath(parent);
+    if (realParent !== realRoot && !realParent.startsWith(realRoot + path.sep)) {
+      throw this.unconfined(name, layer, parent);
+    }
+    confined.add(parent);
+  }
+
+  private unconfined(name: string, layer: ArtifactLayer, blocker: string): RuntimeError {
+    return new RuntimeError(
+      "ERR_MODULE_LAYER_INVALID",
+      `Cannot extract entry '${name}' of the ${layer.role} layer of ${this.pinnedRef}: ` +
+        `'${blocker}' is not a directory inside the module's cache directory (${this.dir}). ` +
+        `Something other than this layer changed that directory — remove it and run again ` +
+        `to re-materialize the module.`,
+    );
   }
 }
 

@@ -13,7 +13,7 @@ import type { PayloadFile } from "../bundle/files-integrity.js";
  *  published `layers:` index. */
 export interface PayloadLayer {
   role: LayerRole;
-  /** Present on `controller` layers only. */
+  /** Present on the selector-keyed roles (`controller`, `library`, `native`) only. */
   selector?: ArtifactSelector;
   files: PayloadFile[];
 }

@@ -91,7 +91,9 @@ a compromised or unavailable registry cannot affect a running deployment, and
 what you audited in CI is byte-for-byte what starts in production.
 
 Add `--platform os/arch[/libc]` when the build machine differs from the target,
-so the right controller layers are baked in.
+so the right controller layers are baked in. A layer built for one runtime ABI is
+baked in only when you name that ABI with `--abi <family>-<version>` (`--abi
+node-137` for Node 24); without it, install skips such layers and lists each one.
 
 ## Egress control
 

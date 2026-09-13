@@ -84,6 +84,30 @@ export function destinationsByManifest() {
   return new Map(ordered.map((entry) => [manifestPathFor(entry.key), entry.destination]));
 }
 
+/**
+ * The workspace-relative keys of the modules at `paths` and of every in-repo
+ * module they import, transitively — what a publish of `paths` reads off disk.
+ */
+export function importClosure(paths) {
+  const ordered = JSON.parse(
+    execFileSync("node", ["./cli/nodejs/bin/telo.mjs", "release", "order", "-o", "json"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+    }),
+  ).order;
+  const importsOf = new Map(ordered.map((entry) => [entry.key, entry.imports ?? []]));
+  const closure = new Set();
+  const pending = paths.map(moduleKeyOf);
+  while (pending.length > 0) {
+    const key = pending.pop();
+    if (closure.has(key)) continue;
+    closure.add(key);
+    pending.push(...(importsOf.get(key) ?? []));
+  }
+  return [...closure];
+}
+
 /** Absolute manifest path for a workspace-relative module key. */
 export function manifestPathFor(key) {
   return join(ROOT, key, "telo.yaml");

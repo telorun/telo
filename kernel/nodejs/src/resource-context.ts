@@ -32,7 +32,7 @@ import {
   type EffectChain,
 } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
-import { registerTeloKeywords } from "@telorun/analyzer";
+import { registerTeloKeywords, type ModuleSources } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
 import * as path from "path";
@@ -810,6 +810,12 @@ export class ResourceContextImpl implements ResourceContext {
     return this.kernel.getSiblingLibraries(source);
   }
 
+  /** The `sources:` block of the module whose file resolved from `source`.
+   *  Kernel-only, on the same seam as {@link getModuleArtifact}. */
+  getModuleSources(source: string | undefined): ModuleSources | undefined {
+    return this.kernel.getModuleSources(source);
+  }
+
   /**
    * Resolve a module-relative reference against the declaring module's own
    * directory, materializing the layers that could carry it on first use.
@@ -822,6 +828,12 @@ export class ResourceContextImpl implements ResourceContext {
    */
   async resolveModuleFile(relative: string): Promise<string> {
     return resolveModuleFileUri(relative, this.moduleContext.source, this.kernel);
+  }
+
+  /** Resolve a native file by name against the module that declared this
+   *  resource's kind — never the module that declared the resource. */
+  resolveNativeFile(name: string): Promise<string> {
+    return this.kernel.resolveNativeFile(this.#resolvedKind, name);
   }
 
   on(event: string, handler: (payload?: any) => void | Promise<void>): void {

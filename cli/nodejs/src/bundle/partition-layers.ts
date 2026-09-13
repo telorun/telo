@@ -1,8 +1,11 @@
 import {
+  describeClaim,
   describeSelector,
+  nativeClaimConflicts,
   selectorKey,
   type ArtifactSelector,
   type ModuleFileClaim,
+  type NativeEntry,
 } from "@telorun/analyzer";
 import { selectByPatterns } from "@telorun/glob";
 import type { PayloadLayer } from "@telorun/kernel";
@@ -33,9 +36,12 @@ export interface Partition {
  * Partition the selected payload into the layers a module artifact ships.
  *
  * A **controller layer** per distinct selector, holding its entry points plus
- * whatever their sibling qualifiers claim. The **assets** layer holds what
- * `assets:` claims — it is fetched lazily, on first module-relative access. The
- * **common** layer holds everything left over.
+ * whatever their sibling qualifiers claim. A **native layer** per distinct
+ * selector of the module's `native:` entries, holding their files — a claim that
+ * outranks `files:`, `assets:` and a sibling pattern selecting the same file, so
+ * a platform's binary never ships to another platform. The **assets** layer
+ * holds what `assets:` claims — it is fetched lazily, on first module-relative
+ * access. The **common** layer holds everything left over.
  *
  * The sink runs toward correctness: an unclaimed file joins `common`, which is
  * materialized alongside *any* controller layer, so a sidecar nobody declared is
@@ -49,13 +55,21 @@ export interface Partition {
  * `assetPatterns` is the author's `assets:` list. A claimed file joins the
  * payload whether or not `files:` selected it — the manifest already names it,
  * so restating it would be pure duplication. Layers with no files are dropped,
- * so a controller-only module publishes exactly one payload layer.
+ * so a controller-only module publishes exactly one payload layer. `native` is
+ * what `readNativeEntries` read off the module doc.
+ *
+ * Throws when a `native:` entry names a file the manifest also names as code or
+ * as an embed: a file extracts from exactly one layer.
  */
 export function partitionLayers(
   claims: readonly ModuleFileClaim[],
   files: string[],
   assetPatterns: string[],
+  native: readonly NativeEntry[] = [],
 ): Partition {
+  const nativeFiles = new Set(native.map((entry) => entry.path));
+  assertNativeFilesUnclaimed(native, claims);
+
   // Narrowing predicates, so the controller branch reaches `selector` and
   // `siblings` as declared fields rather than through a non-null assertion —
   // the claim type is a discriminated union precisely so this is checked.
@@ -82,7 +96,11 @@ export function partitionLayers(
   // Sibling patterns are still matched against `files:` alone: a sibling is a
   // glob over the payload, so a pattern that selects nothing there means the
   // author forgot to include the file, which `unmatchedSiblings` reports.
-  const selected = new Set([...files, ...claims.map((claim) => claim.path)]);
+  const selected = new Set([
+    ...files,
+    ...claims.map((claim) => claim.path),
+    ...nativeFiles,
+  ]);
   const unclaimed = new Set([...files, ...claimedAssets.map((claim) => claim.path)]);
 
   // Controller layers first: a file an entry point or sibling claims belongs to
@@ -122,6 +140,9 @@ export function partitionLayers(
       }
     }
     for (const file of [claim.path, ...siblings]) {
+      // A native file a sibling pattern also matches belongs to its platform's
+      // native layer; copying it here would ship it to every host of this format.
+      if (nativeFiles.has(file)) continue;
       unclaimed.delete(file);
       // A controller entry point that is also this module's library entry point
       // ships once, in the library layer; the controller layer would be a second
@@ -129,6 +150,19 @@ export function partitionLayers(
       if (libraryFiles.has(file)) continue;
       if (!plan.files.includes(file)) plan.files.push(file);
     }
+  }
+
+  // Names sharing a selector share its layer; one path declared under several
+  // names is one file.
+  for (const entry of native) {
+    const key = `native\0${selectorKey(entry.selector)}`;
+    let plan = bySelector.get(key);
+    if (!plan) {
+      plan = { role: "native", selector: entry.selector, files: [] };
+      bySelector.set(key, plan);
+    }
+    unclaimed.delete(entry.path);
+    if (!plan.files.includes(entry.path)) plan.files.push(entry.path);
   }
 
   // A file a tag embeds is an asset by declaration, so it needs no `assets:`
@@ -158,6 +192,29 @@ export function partitionLayers(
     unmatchedAssets,
     unmatchedSiblings,
   };
+}
+
+/** Refuse a file both a `native:` entry and another manifest declaration name —
+ *  the rule `telo check` reports as `NATIVE_PATH_CLAIMED`. */
+function assertNativeFilesUnclaimed(
+  native: readonly NativeEntry[],
+  claims: readonly ModuleFileClaim[],
+): void {
+  const conflicts = nativeClaimConflicts(
+    native,
+    claims.map((claim) => ({ claim })),
+  ).map(
+    ({ entry, claim }) =>
+      `  '${entry.path}': ${entry.origin} for ${describeSelector(entry.selector)}, and ` +
+      describeClaim(claim),
+  );
+  if (conflicts.length === 0) return;
+  throw new Error(
+    `The manifest names ${conflicts.length === 1 ? "a file" : "files"} both as a native file ` +
+      `and through another declaration:\n${conflicts.join("\n")}\n` +
+      `A native file ships only in its platform's native layer, and a file extracts from ` +
+      `exactly one layer. Give the native entry its own file, or drop the other declaration.`,
+  );
 }
 
 /**

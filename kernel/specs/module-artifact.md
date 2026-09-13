@@ -37,14 +37,16 @@ Every layer has exactly one **role**:
 | `manifest` | exactly one | `telo.yaml`, and nothing else |
 | `controller` | zero or more | the entry-point files of the controller candidates sharing one selector, plus whatever their sibling declarations claim |
 | `library` | zero or more | the entry point this module's `exports.code:` entry of one selector names — what a *dependent module's* code resolves this module's declared specifier to |
+| `native` | zero or more | the files of every `native:` entry sharing one selector — platform-specific files the runtime does not import as code |
 | `assets` | zero or one | the files the author claimed via `assets:` |
 | `common` | zero or one | every remaining file `files:` selected |
 
 `telo.yaml` MUST be its own layer. Without that, reading a manifest would pull
 the whole artifact and selective fetch would be defeated at the first step.
 
-A `controller` or `library` layer MUST carry a selector (§2). `assets` and
-`common` are singletons and MUST NOT carry one.
+A `controller`, `library` or `native` layer MUST carry a selector (§2), and there
+is at most one layer of each such role per selector. `assets` and `common` are
+singletons and MUST NOT carry one.
 
 ### 1.1 Why `library` is its own role
 
@@ -72,8 +74,33 @@ selects it — the manifest already declares it, and requiring both would mean
 every module restates in `files:` what `controllers:` says. `files:` governs
 what the manifest cannot otherwise name: assets, static files, sidecars.
 
+A `native:` entry's file is part of the payload for the same reason, and a
+publisher MUST place it in the `native` layer of that entry's selector — never in
+`common`, `assets` or a code layer, even when `files:`, `assets:` or a sibling
+declaration also selects it. Entries of several names sharing one selector share
+that layer. A publisher MUST refuse a file a `native:` entry names that a
+controller candidate, an `exports.code:` entry or an embed also names, since a
+file extracts from exactly one layer, and MUST refuse a `native:` entry whose file
+does not exist, naming the entry. The `native:` block is published unchanged.
+
+The `sources:` block — where each staged file is fetched from — is authoring
+input, and a publisher MUST remove it from the published `telo.yaml`, before any
+digest of that text is taken: an importer's pin hashes the published text, so a
+block no consumer reads would otherwise turn a moved upstream URL with unchanged
+bytes into a new version of the module and of everything importing it. The
+notice files each source names are part of the payload and belong in the
+`common` layer. A publisher MUST refuse a staged file whose bytes or execute bit
+do not match its pin.
+
+A `native:` entry names a logical `name`, the selector axes `format`, `os`,
+`arch` and optionally `libc` and `abi`, and a module-relative `path`, which is
+the in-layer path. Because every layer extracts into one module directory (§5),
+two entries of different selectors MUST NOT share a path, and no entry's path may
+run through another entry's path as a directory.
+
 A file that `files:` selected and that no controller candidate, no `exports.code:`
-entry and no `assets:` pattern claimed MUST be placed in the `common` layer.
+entry, no `native:` entry and no `assets:` pattern claimed MUST be placed in the
+`common` layer.
 
 A runtime MUST materialize the `common` layer whenever it materializes any of that
 module's `controller` or `library` layers, **and** whenever it resolves a module-relative file
@@ -96,14 +123,14 @@ the platform that needs it.
 ## 2. Selectors
 
 A **selector** is the tuple a code entry — a `controllers:` candidate or an
-`exports.code:` entry — is chosen by:
+`exports.code:` entry — or a `native:` entry is chosen by:
 
 ```
-selector := format , [ os ] , [ arch ] , [ libc ]
+selector := format , [ os ] , [ arch ] , [ libc ] , [ abi ]
 ```
 
 `format` is REQUIRED and names the artifact format the layer's files are in
-(`js`, `napi`, `wasm`, …). The platform axes `os`, `arch` and `libc` are
+(`js`, `napi`, `wasm`, …). The platform axes `os`, `arch`, `libc` and `abi` are
 OPTIONAL.
 
 ### 2.1 Vocabulary and normalization
@@ -118,11 +145,26 @@ host API reports different names (Node's `win32` / `x64`) MUST map them at its o
 boundary.
 
 `libc` distinguishes C-library ABIs where `os`/`arch` cannot (`gnu` vs `musl`). It
-is the only axis beyond the os/arch pair and exists because a glibc-linked binary
-will not run on a musl host.
+exists because a glibc-linked binary will not run on a musl host.
+
+`abi` names the runtime binary interface a native file is built against. Its value
+MUST have the form `<family>-<version>` — `node-137` for Node's
+`NODE_MODULE_VERSION` 137, `telo-2` for version 2 of the Rust controller ABI — and
+an implementation MUST reject a value that does not, wherever it reads a selector.
+The family is part of the identity because a bare number is not one: Bun reports
+`process.versions.modules` as `137`, exactly as Node 24 does, and loads none of the
+addons built against it, and the Rust controller ABI is numbered on a scale of its
+own. A value published into an artifact cannot be requalified later. A runtime
+reports the `abi` it loads (a Node runtime `node-<process.versions.modules>`, a
+Rust runtime `telo-<controller ABI version>`) and MUST leave it undetermined when
+it cannot name its family with certainty, as a Node-compatible runtime that is not
+Node cannot. A file whose interface is stable across runtime releases, such as an
+N-API addon, states no `abi` and so matches every host.
 
 The set of **axis names** is closed; the set of **values** is deliberately open, so
-a new architecture needs no specification change.
+a new architecture needs no specification change. The axis names and any value form
+an axis requires are published as data at `analyzer/artifact-axes/axes.json`, which
+every implementation reads.
 
 ### 2.2 Canonical key
 
@@ -131,6 +173,7 @@ lexicographically and joined with `;`:
 
 ```
 arch=amd64;format=napi;libc=gnu;os=linux
+abi=node-137;arch=arm64;format=node;libc=musl;os=linux
 ```
 
 Two selectors are the same selector if and only if their canonical keys are equal.
@@ -158,6 +201,40 @@ When several controller candidates match a target, precedence is **declaration
 order in the manifest**, so the author controls it. An implementation MUST NOT
 reorder candidates by specificity or any other derived score.
 
+The same rule selects a native file. Controller code asks for one by its logical
+`name`, and a runtime MUST resolve that name against the `native:` block of the
+module declaring the controller the resource runs — the module declaring the
+resource's kind, or, for a kind inheriting its controller through a concrete
+`extends`, the ancestor declaring that controller — and MUST NOT resolve it
+against the module that declared the resource. Of the entries carrying that
+name, the first in declaration order whose selector matches the host wins.
+
+When no entry of that name matches, or the module declares no entry of that
+name, a runtime MUST fail the request with `ERR_NATIVE_FILE_UNAVAILABLE`, naming
+the name, the host tuple with each axis the host leaves undetermined marked as
+such, and the tuple of every entry the module declares for that name. It MUST
+NOT fall back to another module's entries or to an entry of another name: a
+native file is not a candidate list, so there is nothing to fall through to.
+
+A module loaded from a source checkout has no layers. A runtime reads the file at
+the winning entry's path. When a `sources:` entry stages that path, the runtime
+MUST verify what is on disk against the entry — a file's bytes against its
+`sha256` and its execute bit against `executable`, a link's stored target against
+`target`, following a link to the entry it names — before handing it out, and
+MUST fail with `ERR_NATIVE_FILE_UNAVAILABLE` when the file is missing, unpinned
+or does not match. When the module's `sources:` block does not read, a runtime
+MUST NOT read any native file of the module, since the unreadable block may be
+the one staging it. When no `sources:` entry stages the path, the file is checked
+in and is read as it is — a symbolic link only when it leads to a file inside the
+module. A runtime MUST NOT fetch a staged file: staging is a publisher's step, and
+fetching at load would put an upstream's availability on the boot path.
+
+A bundled controller candidate a runtime opens from a source checkout is subject
+to the same rules when a `sources:` entry stages its `path=`: a file that is
+unpinned or does not match, or a module whose `sources:` block does not read,
+fails with `ERR_STAGED_FILE_INVALID` rather than falling through to the next
+candidate; a staged file that is absent falls through.
+
 ## 3. The layer index
 
 A published `telo.yaml` MUST carry a `layers:` block on its owner document
@@ -168,12 +245,12 @@ Each entry has:
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `role` | yes | one of `controller`, `library`, `assets`, `common` |
-| `selector` | on `controller` and `library` only | §2 |
+| `role` | yes | one of `controller`, `library`, `native`, `assets`, `common` |
+| `selector` | on `controller`, `library` and `native` only | §2 |
 | `blob` | yes | the layer's transport blob digest, `sha256:` + 64 lowercase hex |
 | `integrity` | yes | the layer's content digest, `sha256-` + 43 base64url characters |
 
-### 3.1 Unknown roles are skipped, not rejected
+### 3.1 Unknown roles and axes are skipped, not rejected
 
 An implementation MUST ignore an index entry whose `role` it does not recognize,
 and MUST NOT fail the parse over one. Roles are added over time, and a runtime
@@ -183,10 +260,26 @@ would stop loading on an older one entirely rather than merely lacking that laye
 Reading a manifest is the first step of every resolution, so this is the
 difference between a degraded load and no load at all.
 
-This applies to the role vocabulary only. A structurally invalid entry — a missing
-or non-string `role`, a malformed digest, a selector that violates §2.1, a second
-layer claiming one `(role, selector)` — remains an error: that is a malformed
-index rather than a newer one.
+An implementation MUST likewise ignore an index entry whose `selector` carries an
+axis it does not recognize, and MUST NOT fail the parse over one. It MUST skip the
+entry whole: it MUST NOT read the entry with the unknown axis dropped. The
+rationale differs from the role rule, since a runtime can genuinely need a layer
+whose axis it cannot name. It rests instead on direction. Skipping can never
+mis-match: at worst the runtime lacks a layer and reports that where the layer is
+needed. Dropping the axis turns the entry into a less constrained selector, which
+matches hosts the layer was never built for, and collides two layers that differ
+only in that axis onto one address.
+
+These rules cover the role and axis vocabularies only. A structurally invalid
+entry — a missing or non-string `role`, a malformed digest, a value of a
+recognized axis that violates §2.1, a `controller`, `library` or `native` entry
+with no selector, a singleton role with one, a second layer claiming one `(role, selector)`
+— remains an error: that is a malformed index rather than a newer one. A skipped
+entry is still checked where its structure does not depend on the vocabulary: its
+digests MUST be valid, and so MUST the recognized axes of an entry skipped for an
+unknown axis. The `selector` of an entry skipped for an unknown role is not
+examined, since what a selector means is defined by its role: an implementation
+MUST NOT reject such an entry over its selector.
 
 ### 3.2 Why the index lives in `telo.yaml`
 
@@ -221,10 +314,32 @@ consult the transport's own layer list to decide which blob a layer is — which
 means a republish that reorders layers is invisible rather than fatal.
 
 `integrity` verifies the layer's **contents**. It is computed over the file set,
-independent of archive framing: the SHA-256 of the sorted `<path>\0<sha256(content)>`
-lines of every file in the layer, rendered `sha256-<base64url>`. A runtime MUST
-verify it before extraction, and MAY re-derive it from files already on disk — which
-is what lets a cache validate an extracted layer without re-archiving it.
+independent of archive framing: the SHA-256 of one line per entry of the layer,
+sorted and joined with `\n`, rendered `sha256-<base64url>`. A layer entry is a
+regular file, an executable file or a symbolic link, and its line MUST be:
+
+| Entry | Line |
+| --- | --- |
+| regular file | `<path>\0<sha256(content)>` |
+| executable file | `<path>\0<sha256(content)>\0x` |
+| symbolic link | `<path>\0l\0<target>` |
+
+`<sha256(content)>` is the base64url digest of the file's bytes, and `<target>` is
+the link's target exactly as the link stores it, unresolved. A file is executable
+when any of its execute bits is set. A publisher reads that bit from the file's
+mode, so a platform whose file system reports no execute bits publishes no
+executable entries. The three forms cannot collide: a path contains
+no `\0`, a digest is 43 base64url characters, and `l` is one character.
+
+The regular-file line is the only form that existed before executable and link
+entries, and it MUST NOT change: every `integrity` already published covers regular
+files alone, so it still verifies. The other two forms exist because a digest that
+omitted the execute bit or a link's target would let a cache revalidated from disk
+accept a file that lost its bit, or a link that was repointed or replaced by a file.
+
+A runtime MUST verify `integrity` before extraction, and MAY re-derive it from files
+already on disk — reading a link as a link and never following it — which is what
+lets a cache validate an extracted layer without re-archiving it.
 
 `telo.yaml` MUST be excluded from any `integrity` computation, so the manifest that
 carries the index does not participate in a digest it contains.
@@ -297,6 +412,10 @@ An implementation:
 
 - MUST verify before extraction, never after;
 - MUST reject an archive entry whose path escapes the module directory;
+- MUST reject a layer carrying a symbolic link that breaks the link rule below,
+  before extracting any of it, naming each such link's path and why;
+- MUST extract a symbolic link as a symbolic link with its stored target, and MUST
+  restore an executable file's execute bit;
 - MUST record completion in a way keyed to the layer's `blob` digest, so a
   republish to different bytes re-extracts rather than being read as
   already-present;
@@ -305,6 +424,28 @@ An implementation:
   across processes;
 - SHOULD memoize in-process, since many resources of one module resolve against
   one layer concurrently.
+
+**Entry paths.** Entry paths MUST be unique within a layer, and no entry's path MAY
+have another entry's path of the same layer as a proper prefix of its directory
+components (`b` and `b/x` cannot both be entries). Otherwise one entry stands where
+another needs a directory, and a link standing there redirects every write beneath
+it wherever the link points. An implementation MUST check every entry of a layer
+against these rules and the link rule before writing any of it, and MUST confirm,
+before each write or removal, that the real path of the entry's parent directory is
+inside the real module directory, so a link already on disk cannot redirect it.
+
+**The link rule.** A symbolic link MUST name a file of its own layer. Its target,
+resolved against the directory holding the link, MUST NOT be absolute, MUST NOT
+escape the module directory, and MUST be the path of another entry of the same
+layer. When that entry is itself a link the rule is applied to it in turn, and the
+chain MUST end at a regular or executable file of the layer; a chain that returns to
+a link already visited breaks the rule. The rule rejecting an escaping entry path
+says nothing about where a link points, and a target in another layer dangles
+whenever that layer is not materialized, which §5.1 allows. A publisher MUST refuse
+to publish a layer breaking the entry-path rules or the link rule, naming each
+offending entry's module-relative path and why — for a link, whether its target
+escapes the module, points at a directory, ships in another layer, or names
+nothing.
 
 ### 5.1 When each layer is materialized
 
@@ -320,6 +461,13 @@ An implementation:
   first: a library-only module has none.
 - The **common** layer is materialized with any controller or library layer of
   that module (§1.2).
+- A **native** layer is materialized when a native file resolution (§2.4) selects
+  an entry whose selector is the layer's — that layer alone, with no `common`
+  layer: a native file is opened by path rather than imported, so it has no
+  undeclared sidecar for the sink to deliver. The entry is selected before
+  anything is fetched, so a module shipping a layer per platform fetches one. A
+  cache warm for a target materializes every native layer whose selector matches
+  that target.
 - The **assets** layer and the **common** layer are materialized on the first
   module-relative file access. Assets alone is not sufficient — see §1.2.
 

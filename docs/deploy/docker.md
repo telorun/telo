@@ -33,6 +33,8 @@ The image has a smart entrypoint (like the official `node` image): a bare manife
 - `.telo/npm/<hash>/` — controller `node_modules` tree, one per runner rather than per app: keyed by where the CLI sits relative to the tree, plus the host platform. A tree warmed in the build stage is reused when the production stage copies it to another directory at the same depth, while a checkout bind-mounted from a different telo installation — a container over a host checkout — gets its own instead of inheriting one whose paths are true only on the other side.
 - `.telo/manifests/…` — every imported `telo.yaml`, registry-served or HTTP-fetched, plus the module layers (bundled controllers, assets) each one ships.
 
+Module layers are warmed for the build machine's os, arch and libc; pass `--platform os/arch[/libc]` when the image targets another. A layer built for one runtime ABI is warmed only with `--abi <family>-<version>` naming the runtime the image runs (`--abi node-137` for Node 24), because the process running `telo install` is not necessarily that runtime; without it, install lists each such layer it skipped, and a run that needs one fetches it then.
+
 Running this in the build stage means the production image is a hermetic snapshot. The kernel resolves every controller and every imported module from disk — boot does **zero** network I/O, which is what makes the image safe to run in airgapped, scale-out, and cold-start scenarios.
 
 Skip the warm-up and your container will pull controllers on every boot, suffer slow start times, and break entirely if it has no outbound network.

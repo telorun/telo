@@ -1,0 +1,51 @@
+# Staged files with no pins, a build with no recorded inputs, and a native path
+# running through another. The unpinned entries are what a kernel refuses to read.
+kind: Telo.Library
+metadata:
+  name: UnpinnedNative
+  version: 1.0.0
+exports:
+  kinds:
+    - Reader
+native:
+  - { name: greeting, format: txt, os: linux, arch: amd64, path: ./native/linux-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: linux, arch: arm64, path: ./native/linux-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: amd64, path: ./native/darwin-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: arm64, path: ./native/darwin-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: amd64, path: ./native/windows-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: arm64, path: ./native/windows-arm64/greeting.txt }
+  - { name: nested, format: txt, os: linux, arch: amd64, path: ./native/linux-amd64/greeting.txt/nested.txt }
+sources:
+  greetings:
+    version: 1.0.0
+    url: https://example.test/greetings-{version}-{upstream}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    build:
+      cargo: ./rust
+    entries:
+      ./native/linux-amd64/greeting.txt: { upstream: linux-x64, member: greeting.txt }
+      ./native/linux-arm64/greeting.txt: { upstream: linux-arm64, member: greeting.txt }
+      ./native/darwin-amd64/greeting.txt: { upstream: darwin-x64, member: greeting.txt }
+      ./native/darwin-arm64/greeting.txt: { upstream: darwin-arm64, member: greeting.txt }
+      ./native/windows-amd64/greeting.txt: { upstream: win32-x64, member: greeting.txt }
+      ./native/windows-arm64/greeting.txt: { upstream: win32-arm64, member: greeting.txt }
+---
+kind: Telo.Definition
+metadata:
+  name: Reader
+  description: Returns the text of the native file named greeting.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./reader.mjs#reader
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [text]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

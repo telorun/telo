@@ -1,3 +1,4 @@
+import type { NativeEntry } from "@telorun/analyzer";
 import { PackageURL } from "packageurl-js";
 
 /** A kernel that can host a controller candidate.
@@ -16,9 +17,18 @@ export type Runtime = "nodejs" | "rust";
 const KNOWN_RUNTIMES: readonly Runtime[] = ["nodejs", "rust"];
 
 /** The language a controller is written in, where the PURL actually determines
- *  it. A bundled `napi` / `wasm` artifact does not: a `.node` file may be Rust,
- *  C++ or Zig, so those contribute no language rather than a guess. */
+ *  it. A bundled `napi` / `dylib` / `wasm` artifact does not: a `.node` file may
+ *  be Rust, C++ or Zig, so those contribute no language rather than a guess. */
 export type Language = "javascript" | "rust";
+
+/** Which kernel opens each bundle format. `napi` is an N-API addon the Node
+ *  kernel loads; `dylib` is a library over the Rust controller ABI, which only
+ *  the Rust kernel opens. */
+const BUNDLE_FORMAT_RUNTIMES: Readonly<Record<string, { runtime: Runtime; language: Language | null }>> = {
+  js: { runtime: "nodejs", language: "javascript" },
+  napi: { runtime: "nodejs", language: null },
+  dylib: { runtime: "rust", language: null },
+};
 
 /** How one `controllers:` candidate maps onto kernels, or `null` when no kernel
  *  hosts it today (an unparseable PURL, a non-`local` `pkg:telo` namespace, or a
@@ -27,10 +37,10 @@ export type Language = "javascript" | "rust";
  *  This mirrors what the loaders actually dispatch on. Sources of truth, both of
  *  which must move together with this function:
  *    - Node: `dispatchResolveOne` in `kernel/nodejs/src/controller-loader.ts`
- *      (PURL type → loader) and the `format !== "js"` gate in
+ *      (PURL type → loader) and `NODE_HOSTED_FORMATS` in
  *      `controller-loaders/bundle-loader.ts` (hostable bundle formats).
  *    - Rust: `dispatch_one` in `kernel/rust/src/controller_loader.rs`
- *      (`pkg:cargo` only; everything else is reported unhostable).
+ *      (`pkg:cargo`, and the `dylib` bundle format).
  *  The Rust half cannot be imported from here at all, so at least one constant
  *  is unavoidable; keeping both in one function makes the pair reviewable. */
 function classifyCandidate(purl: string): { runtimes: Runtime[]; language: Language | null } | null {
@@ -50,13 +60,14 @@ function classifyCandidate(purl: string): { runtimes: Runtime[]; language: Langu
       return { runtimes: ["nodejs", "rust"], language: "rust" };
     case "npm":
       return { runtimes: ["nodejs"], language: "javascript" };
-    case "telo":
+    case "telo": {
       // Delivery sub-mode lives in the namespace; only `local` (bundled in the
-      // module artifact) exists today. The name is the artifact format, and the
-      // Node bundle loader hosts `js` alone — `napi` / `wasm` are env-missing on
-      // both kernels, so they name no runtime.
-      if (parsed.namespace !== "local" || parsed.name !== "js") return null;
-      return { runtimes: ["nodejs"], language: "javascript" };
+      // module artifact) exists today. The name is the artifact format; one no
+      // kernel opens (`wasm`) names no runtime.
+      const hosted = parsed.namespace === "local" ? BUNDLE_FORMAT_RUNTIMES[parsed.name] : undefined;
+      if (!hosted) return null;
+      return { runtimes: [hosted.runtime], language: hosted.language };
+    }
     default:
       return null;
   }
@@ -101,12 +112,50 @@ export interface KindRuntimeEntry extends KindRuntimeSupport {
  *  is absent rather than `"none"`, so the map lists only what actually runs. */
 export type RuntimeCoverage = Partial<Record<Runtime, "full" | "partial">>;
 
+/** A platform tuple a module's `native:` entries cover. */
+export interface NativePlatform {
+  os: string;
+  arch: string;
+  libc?: string;
+}
+
+/** What a module's `native:` entries cover. Per module, because no kind declares
+ *  which native file it uses — and a module that needs a native file loads
+ *  nowhere else, whatever its kinds' controllers say. */
+export interface NativeReach {
+  /** Distinct `os`/`arch`/`libc` tuples, sorted. */
+  platforms: NativePlatform[];
+  /** Distinct `abi` values, sorted; an entry stating none (an N-API addon)
+   *  contributes nothing, since it matches every ABI. */
+  abis: string[];
+}
+
 export interface ModuleRuntimeReport {
   kinds: KindRuntimeEntry[];
   languages: Language[];
   runtimes: RuntimeCoverage;
   /** Every kind is portable — the module carries no controller code at all. */
   portable: boolean;
+  /** Present only for a module declaring `native:` entries. */
+  native?: NativeReach;
+}
+
+/** The platforms and ABIs a module's `native:` entries cover, or `undefined`
+ *  for a module declaring none. */
+export function nativeReach(entries: readonly NativeEntry[]): NativeReach | undefined {
+  if (entries.length === 0) return undefined;
+  const platforms = new Map<string, NativePlatform>();
+  const abis = new Set<string>();
+  for (const { selector } of entries) {
+    const { os, arch, libc, abi } = selector;
+    if (os === undefined || arch === undefined) continue;
+    platforms.set([os, arch, libc ?? ""].join("/"), { os, arch, ...(libc ? { libc } : {}) });
+    if (abi !== undefined) abis.add(abi);
+  }
+  return {
+    platforms: [...platforms.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, p]) => p),
+    abis: [...abis].sort(),
+  };
 }
 
 /** Roll per-kind support up to the module.
@@ -116,7 +165,10 @@ export interface ModuleRuntimeReport {
  *  supported everywhere, which is what keeps a "runs on rust" filter honest for
  *  a module that mixes portable and JS-only kinds. The rollup is recomputed on
  *  every re-ingest, so it self-heals when the kernel set changes. */
-export function moduleRuntimeReport(kinds: KindRuntimeEntry[]): ModuleRuntimeReport {
+export function moduleRuntimeReport(
+  kinds: KindRuntimeEntry[],
+  native?: NativeReach,
+): ModuleRuntimeReport {
   const languages = new Set<Language>();
   for (const k of kinds) for (const l of k.languages) languages.add(l);
 
@@ -136,5 +188,6 @@ export function moduleRuntimeReport(kinds: KindRuntimeEntry[]): ModuleRuntimeRep
     // A module with no kinds at all declares no controllers either, which is
     // vacuously portable — and reads correctly for a manifest-only library.
     portable: kinds.every((k) => k.portable),
+    ...(native ? { native } : {}),
   };
 }
