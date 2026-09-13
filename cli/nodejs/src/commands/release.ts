@@ -3,7 +3,8 @@
  *
  * `add` writes a fragment; `status` explains what would bump and why; `check` is
  * the CI gate; `apply` produces the Version PR; `verify` reconciles the ledger
- * against the registry. `telo publish` still keys off version movement.
+ * against the registry; `stage` fetches the files `sources:` declares. `telo
+ * publish` still keys off version movement.
  *
  * It is the only reader of the marker's `release:` block. `telo run` reads its
  * `env:` block and the editor reads the whole file, but `check`, `publish`,
@@ -39,6 +40,7 @@ import { createLogger, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine, outProgress } from "../output.js";
 import { recordLedger, writePlannedVersions } from "../release/apply-plan.js";
 import { checkWorkspaceRequires } from "../release/check-requires.js";
+import { checkCrateInputs } from "../release/crate-inputs.js";
 import { collectEvidence, digestPayload, type ModuleTarget } from "../release/evidence.js";
 import { readImportGraph, resolveTargets } from "../release/targets.js";
 import {
@@ -49,6 +51,12 @@ import {
   writeLedger,
 } from "../release/ledger-store.js";
 import { planPayload, renderDiagnostics, renderPlan } from "../release/render.js";
+import {
+  createArchiveReader,
+  stageModule,
+  type StageFailure,
+  type StageOutcome,
+} from "../release/stage.js";
 import { loadWorkspace, requireModule, type Workspace } from "../release/workspace.js";
 
 interface CommonArgv {
@@ -259,8 +267,17 @@ async function check(argv: CommonArgv): Promise<void> {
     }
   }
 
-  const ok = errors === 0 && !requires.refuted;
-  outEmit({ ok, ...(planPayload(plan) as object), requires: requires.checks });
+  // Prebuilt files of a crate in this repository must not be older than the
+  // crate: recomputed from the manifests, with no cargo run.
+  const crateInputs = await checkCrateInputs(workspace.modules);
+  for (const failure of crateInputs) {
+    outErrLine(
+      `${log.err.error("✗")}  ${failure.module}${failure.source ? `  source '${failure.source}'` : ""}  ${failure.message}`,
+    );
+  }
+
+  const ok = errors === 0 && !requires.refuted && crateInputs.length === 0;
+  outEmit({ ok, ...(planPayload(plan) as object), requires: requires.checks, crateInputs });
   if (!ok) process.exitCode = 1;
 }
 
@@ -349,10 +366,13 @@ async function order(argv: CommonArgv): Promise<void> {
 
   // The destination travels WITH the order, because the publisher needs both and
   // deriving one of them for itself is how a multi-destination workspace plans
-  // several bases and pushes them all to one.
+  // several bases and pushes them all to one. So do the in-repo imports: a
+  // publish reads its siblings' published bytes, so the publisher stages exactly
+  // the modules it pushes and what they import.
   const ordered = orderByImports(evidence).map((module) => ({
     key: module.key,
     destination: targets.get(module.key)?.destination,
+    imports: module.imports,
   }));
   for (const entry of ordered) outLine(`${entry.key}\t${entry.destination ?? ""}`);
   outEmit({ ok: true, order: ordered });
@@ -473,6 +493,50 @@ async function verify(argv: CommonArgv & { write: boolean }): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// stage
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch, verify and (with `--pin`) pin the files every module's `sources:`
+ * block declares. Each archive is fetched once per module — the decoded archive
+ * is dropped once its module is staged — and a file already on disk matching its
+ * pin is not fetched at all.
+ */
+async function stage(argv: CommonArgv & { module?: string[]; pin: boolean }): Promise<void> {
+  const log = createLogger(false);
+  const workspace = loadWorkspace();
+  const modules =
+    argv.module && argv.module.length > 0
+      ? argv.module.map((key) => requireModule(workspace, key))
+      : workspace.modules;
+
+  const outcomes: StageOutcome[] = [];
+  const failures: StageFailure[] = [];
+  for (const module of modules) {
+    const result = await stageModule(
+      { key: module.key, dir: module.dir, manifestPath: module.manifestPath },
+      { pin: argv.pin, archives: createArchiveReader() },
+    );
+    for (const outcome of result.outcomes) {
+      const mark = outcome.action === "verified" ? log.dim("·") : log.ok("✓");
+      outLine(`${mark}  ${outcome.module}  ${outcome.source}  ${outcome.path}  ${log.dim(outcome.action)}`);
+    }
+    for (const failure of result.failures) {
+      const where = [failure.source && `source '${failure.source}'`, failure.path, failure.url]
+        .filter(Boolean)
+        .join("  ");
+      outErrLine(`${log.err.error("✗")}  ${failure.module}  ${where ? `${where}  ` : ""}${failure.message}`);
+    }
+    outcomes.push(...result.outcomes);
+    failures.push(...result.failures);
+  }
+
+  const ok = failures.length === 0;
+  outEmit({ ok, outcomes, failures });
+  if (!ok) process.exitCode = 1;
+}
+
+// ---------------------------------------------------------------------------
 // Command
 // ---------------------------------------------------------------------------
 
@@ -563,7 +627,27 @@ export function releaseCommand(yargs: Argv): Argv {
             }),
           guarded(verify as any),
         )
-        .demandCommand(1, "Specify a release subcommand (add | status | order | check | apply | verify)"),
+        .command(
+          "stage",
+          "Fetch and verify the files each module's sources: block declares",
+          (c) =>
+            c
+              .option("module", {
+                type: "string",
+                array: true,
+                describe: "Module path (modules/sqlite). Repeat to stage several; omit to stage every module.",
+              })
+              .option("pin", {
+                type: "boolean",
+                default: false,
+                describe: "Fetch every file entry and write its sha256 and executable into telo.yaml before staging",
+              }),
+          guarded(stage as any),
+        )
+        .demandCommand(
+          1,
+          "Specify a release subcommand (add | status | order | check | apply | verify | stage)",
+        ),
     () => {},
   );
 }

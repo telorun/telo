@@ -362,6 +362,26 @@ export interface ResourceContext extends ControllerContext {
    * access — a module whose files are never read never downloads them.
    */
   resolveModuleFile(relative: string): Promise<string>;
+  /**
+   * Resolve a platform-specific file by the logical `name` a `native:` entry
+   * declares, and return it as a `file://` **URI** — convert with
+   * `fileURLToPath` for an API that takes a path.
+   *
+   * Resolved against the module that declares the controller this resource runs
+   * — the module declaring its kind, or the ancestor a concrete-`extends` kind
+   * inherits its controller from — never the module that declared the resource:
+   * the file ships with the code asking for it. The first entry of that name, in
+   * declaration order, whose platform tuple matches the host wins.
+   *
+   * Rejects with `ERR_NATIVE_FILE_UNAVAILABLE` when the module declares no such
+   * name, when no entry matches the host (naming the host tuple and every tuple
+   * shipped), or when a source checkout's staged file is missing or does not
+   * match its pin. A staged file is never fetched here.
+   *
+   * Asynchronous because a published module's native layer is fetched on first
+   * use.
+   */
+  resolveNativeFile(name: string): Promise<string>;
   /** Load a single module (its own file + `include`d partials). Use this when
    *  you need just the declaring file's manifests. */
   loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]>;

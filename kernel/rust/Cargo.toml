@@ -6,13 +6,21 @@ publish = false
 description = "Rust Telo kernel — loads a manifest, resolves resources, dispatches invocations."
 
 [dependencies]
+# The pure-Rust backend, so gzip decoding links no zlib. (The build still needs
+# a C compiler, for `ring` under `ureq`'s rustls — see README.)
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 jsonschema = { version = "0.49", default-features = false }
 libloading = "0.8"
 serde_json = "1"
+sha2 = "0.10"
+tar = { version = "0.4", default-features = false }
 telo-analyzer = { path = "../../analyzer/rust" }
 telo-templating = { path = "../../templating/rust" }
 telorun-abi = { path = "../../sdk/rust/abi" }
 thiserror = "1"
+# Blocking, because this kernel is synchronous. No `gzip` feature: a registry
+# blob is digested as served, and transparent decoding would change its bytes.
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 tempfile = "3"

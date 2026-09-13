@@ -6,25 +6,30 @@
 //! in its own header.
 //!
 //! Scope is deliberately narrow — see `plans/rust-kernel-hello-world.md`. It
-//! runs `Telo.Invocable` resources reached through local-path imports, with
-//! controllers delivered as `pkg:cargo` crates. No expression engine, no
-//! `variables`/`secrets`/`ports`, no OCI transport, no streams.
+//! runs `Telo.Invocable` resources reached through local-path and anonymous
+//! `oci://` imports, with controllers delivered as `pkg:cargo` crates or `dylib`
+//! layers of a published artifact. No expression engine, no
+//! `variables`/`secrets`/`ports`, no streams.
 
+pub mod bundle;
 pub mod controller_loader;
 pub mod controller_loaders;
 pub mod controller_registry;
 pub mod controllers;
+pub mod directory_lock;
 pub mod error;
 pub mod evaluation_context;
 pub mod invocation_contract_binding;
 pub mod invoke_dispatch;
 pub mod kernel;
+pub mod lexical_path;
 pub mod manifest_sources;
 pub mod module_context;
 pub mod resolve_include_sentinels;
 pub mod resource_context;
 pub mod runtime_registry;
 pub mod schema_validator;
+pub mod transports;
 pub mod workspace_marker;
 
 pub use error::KernelError;

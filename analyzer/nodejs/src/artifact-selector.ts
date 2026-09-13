@@ -3,7 +3,8 @@
  * controller candidate is chosen by, and the key a controller layer of a module
  * artifact is stored under.
  *
- * A selector is `format` plus the optional platform axes `os` / `arch` / `libc`.
+ * A selector is `format` plus the optional platform axes, whose vocabulary is
+ * data (`analyzer/artifact-axes/axes.json`, generated into `PLATFORM_AXES`).
  * Matching is one rule, applied per axis: an axis the selector omits accepts
  * anything, an axis it states must be equal. That is what lets a `js` controller
  * be platform-neutral and a `napi` controller be pinned to one triple, with no
@@ -25,11 +26,20 @@
  * published into OCI descriptors.
  */
 
-/** The role a layer plays in a module artifact. `controller` and `library` layers
- *  carry a selector; `assets` and `common` are singletons and carry none. */
-export type LayerRole = "controller" | "library" | "assets" | "common";
+import { AXIS_VALUE_FORMS, PLATFORM_AXES, type PlatformAxis } from "./artifact-axes.js";
 
-export const LAYER_ROLES: readonly LayerRole[] = ["controller", "library", "assets", "common"];
+/** The role a layer plays in a module artifact. `controller`, `library` and
+ *  `native` layers carry a selector; `assets` and `common` are singletons and
+ *  carry none. */
+export type LayerRole = "controller" | "library" | "native" | "assets" | "common";
+
+export const LAYER_ROLES: readonly LayerRole[] = [
+  "controller",
+  "library",
+  "native",
+  "assets",
+  "common",
+];
 
 export function isLayerRole(value: unknown): value is LayerRole {
   return typeof value === "string" && (LAYER_ROLES as readonly string[]).includes(value);
@@ -42,33 +52,28 @@ export function isLayerRole(value: unknown): value is LayerRole {
  *  A singleton would be wrong the moment a second runtime ships. */
 export const CODE_LAYER_ROLES: readonly LayerRole[] = ["controller", "library"];
 
+/** Every role keyed by a selector, one layer per selector: the code roles, plus
+ *  `native` — a platform-specific file the runtime does not import as code,
+ *  declared in the module doc's `native:` block. */
+const SELECTOR_LAYER_ROLES: readonly LayerRole[] = [...CODE_LAYER_ROLES, "native"];
+
 export function roleCarriesSelector(role: LayerRole): boolean {
-  return (CODE_LAYER_ROLES as readonly string[]).includes(role);
+  return (SELECTOR_LAYER_ROLES as readonly string[]).includes(role);
 }
 
-/** The platform axes, in canonical order. Not a closed vocabulary of *values* —
- *  new architectures appear without a Telo release — only of axis names. */
-export const PLATFORM_AXES = ["os", "arch", "libc"] as const;
+export { PLATFORM_AXES, type PlatformAxis };
 
-export type PlatformAxis = (typeof PLATFORM_AXES)[number];
-
-export interface ArtifactSelector {
+export interface ArtifactSelector extends Partial<Record<PlatformAxis, string>> {
   /** Bundled controller format: the PURL name segment (`js`, `napi`, `wasm`, …). */
   format: string;
-  os?: string;
-  arch?: string;
-  libc?: string;
 }
 
 /** What a selector is matched against: the host the kernel runs on, or the
- *  target `telo install --platform` is warming a cache for. An axis left
- *  undetermined (a host whose libc cannot be detected) matches no selector that
- *  constrains it — refusing to load is the safe direction for a native binary. */
-export interface PlatformTarget {
+ *  target `telo install` is warming a cache for. An axis left undetermined (a
+ *  host whose libc cannot be detected) matches no selector that constrains it —
+ *  refusing to load is the safe direction for a native binary. */
+export interface PlatformTarget extends Partial<Record<PlatformAxis, string>> {
   format?: string;
-  os?: string;
-  arch?: string;
-  libc?: string;
 }
 
 export class ArtifactSelectorError extends Error {
@@ -84,7 +89,9 @@ export class ArtifactSelectorError extends Error {
  *  platform written two ways is one layer rather than two. */
 const TOKEN = /^[a-z0-9][a-z0-9_.-]*$/;
 
-function normalizeToken(axis: string, raw: unknown, describe: string): string {
+/** Validate and normalize one selector value: the shared token grammar, plus the
+ *  axis's own value form where the vocabulary declares one. */
+export function normalizeAxisValue(axis: string, raw: unknown, describe: string): string {
   if (typeof raw !== "string") {
     throw new ArtifactSelectorError(
       `${describe}: ${axis} must be a string, got ${raw === null ? "null" : typeof raw}.`,
@@ -95,6 +102,13 @@ function normalizeToken(axis: string, raw: unknown, describe: string): string {
     throw new ArtifactSelectorError(
       `${describe}: ${axis} value '${raw}' is not a canonical token. ` +
         `Use lowercase letters, digits, '.', '-' or '_', starting with a letter or digit.`,
+    );
+  }
+  const valueForm = AXIS_VALUE_FORMS[axis as PlatformAxis];
+  if (valueForm && !valueForm.pattern.test(value)) {
+    throw new ArtifactSelectorError(
+      `${describe}: ${axis} value '${raw}' must have the form ${valueForm.form}, ` +
+        `e.g. ${valueForm.examples.map((e) => `'${e}'`).join(" or ")}.`,
     );
   }
   return value;
@@ -111,35 +125,38 @@ export function selectorFromQualifiers(
   describe = "controller selector",
 ): ArtifactSelector {
   const selector: ArtifactSelector = {
-    format: normalizeToken("format", format, describe),
+    format: normalizeAxisValue("format", format, describe),
   };
   for (const axis of PLATFORM_AXES) {
     const raw = qualifiers?.[axis];
     if (raw === undefined || raw === "") continue;
-    selector[axis] = normalizeToken(axis, raw, describe);
+    selector[axis] = normalizeAxisValue(axis, raw, describe);
   }
   return selector;
 }
 
-/** Validate and normalize a selector read off a published layer index. */
+/**
+ * Validate and normalize a selector read off a published layer index.
+ *
+ * Returns undefined when the selector carries an axis this runtime does not
+ * know: the layer is for a newer runtime, and the caller skips it whole. The
+ * unknown axis is never dropped — two layers differing only in it would then
+ * claim one address. The known axes are still validated, since their grammar
+ * does not change with the axis set.
+ */
 export function normalizeSelector(
   value: unknown,
   describe = "layer selector",
-): ArtifactSelector {
+): ArtifactSelector | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new ArtifactSelectorError(`${describe}: expected an object of selector axes.`);
   }
   const record = value as Record<string, unknown>;
-  const unknown = Object.keys(record).filter(
+  const selector = selectorFromQualifiers(record.format, record, describe);
+  const carriesUnknownAxis = Object.keys(record).some(
     (k) => k !== "format" && !(PLATFORM_AXES as readonly string[]).includes(k),
   );
-  if (unknown.length > 0) {
-    throw new ArtifactSelectorError(
-      `${describe}: unknown selector ${unknown.length === 1 ? "axis" : "axes"} ` +
-        `${unknown.map((k) => `'${k}'`).join(", ")}. Known axes: format, ${PLATFORM_AXES.join(", ")}.`,
-    );
-  }
-  return selectorFromQualifiers(record.format, record, describe);
+  return carriesUnknownAxis ? undefined : selector;
 }
 
 /**
@@ -179,4 +196,62 @@ export function selectorMatches(selector: ArtifactSelector, target: PlatformTarg
     if (target[axis] !== constraint) return false;
   }
   return true;
+}
+
+/**
+ * The axes `selector` constrains and `target` leaves undetermined, when those
+ * alone keep the two from matching — what a warm skips for want of a value rather
+ * than because the selector is for another platform. `undefined` when the
+ * selector matches, or differs on a determined axis.
+ */
+export function undeterminedAxesBlockingMatch(
+  selector: ArtifactSelector,
+  target: PlatformTarget,
+): PlatformAxis[] | undefined {
+  if (target.format !== undefined && selector.format !== target.format) return undefined;
+  const axes: PlatformAxis[] = [];
+  for (const axis of PLATFORM_AXES) {
+    const constraint = selector[axis];
+    if (constraint === undefined) continue;
+    if (target[axis] === undefined) axes.push(axis);
+    else if (target[axis] !== constraint) return undefined;
+  }
+  return axes.length > 0 ? axes : undefined;
+}
+
+/** A selector that no host can match as its author meant it. */
+export interface SelectorContradiction {
+  /** Suffix of the diagnostic code; each surface prefixes its own. */
+  readonly rule: "NAPI_ABI_FORBIDDEN" | "LIBC_OFF_LINUX";
+  readonly axis: PlatformAxis;
+  readonly detail: string;
+}
+
+/**
+ * The combinations of axes the grammar accepts and no host can mean: an N-API
+ * addon stating a runtime ABI, and a libc on an os that has none. Shared by every
+ * surface that authors a selector — `native:` entries, controller candidates and
+ * `exports.code:` entries — so each reports the same rule under its own prefix.
+ */
+export function selectorContradictions(selector: ArtifactSelector): SelectorContradiction[] {
+  const out: SelectorContradiction[] = [];
+  if (selector.format === "napi" && selector.abi !== undefined) {
+    out.push({
+      rule: "NAPI_ABI_FORBIDDEN",
+      axis: "abi",
+      detail:
+        `an N-API addon is ABI-stable across runtime releases and states no abi — remove ` +
+        `abi ${selector.abi}, which would keep it from loading anywhere else.`,
+    });
+  }
+  if (selector.libc !== undefined && selector.os !== undefined && selector.os !== "linux") {
+    out.push({
+      rule: "LIBC_OFF_LINUX",
+      axis: "libc",
+      detail:
+        `libc is only determined on linux, so a selector for os '${selector.os}' that states ` +
+        `libc ${selector.libc} could never match a host. Remove libc.`,
+    });
+  }
+  return out;
 }

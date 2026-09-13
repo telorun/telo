@@ -39,15 +39,20 @@ import {
   DEFAULT_MANIFEST_FILENAME,
   sha256Base64Url,
   splitIntegrity,
-  type ArtifactSelector,
-  type LayerRole,
+  type ArtifactLayer,
+  type ModuleSource,
 } from "@telorun/analyzer";
 import {
   buildControllerBundle,
+  computeFilesIntegrity,
   defaultTransportRegistry,
   injectLayerIndex,
+  isPayloadLink,
+  isPinnedFile,
   readOwnerManifest,
-  type PayloadFile,
+  readPayloadFile,
+  type LayerEntry,
+  type PayloadLayer,
   type SiblingLibrary,
 } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
@@ -55,18 +60,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseAllDocuments } from "yaml";
 import { findModuleDoc, importSourceRefs } from "../commands/manifest-imports.js";
+import { assertLayerEntries, pinnedLayerBlob, type BuiltLayer } from "./built-layers.js";
 import { expandAndInlineIncludes, readAssetPatterns, readFilesPatterns } from "./manifest-text.js";
 import { partitionLayers, type Partition } from "./partition-layers.js";
 import { assertWithinModule, selectFiles } from "./select-files.js";
-
-/** A layer built from a working copy: what publish pushes and what the release
- *  ledger digests. Mutable-shaped because the transport's own `PayloadLayer` is,
- *  and the two are handed straight across. */
-export interface BuiltLayer {
-  role: LayerRole;
-  selector?: ArtifactSelector;
-  files: PayloadFile[];
-}
+import { assertNamedFiles, readNativeFiles, readSources, stagedEntriesOf } from "./staged-files.js";
 
 export interface ModulePayload {
   /** The `telo.yaml` that ships, byte for byte: canonicalized, pinned, includes
@@ -119,6 +117,19 @@ export interface ModulePayload {
 export interface PayloadBuilderOptions {
   /** Where the controller build cache lives. */
   readonly cacheRoot: string;
+  /**
+   * Where the entry of a file a `sources:` entry stages comes from.
+   *
+   * `pins` (the default, every release command): the pin, whether or not the
+   * file is staged, so every layer's `integrity` is what publish derives from
+   * the bytes and a cold tree digests exactly as a staged one. A layer holding a
+   * pinned file takes a stand-in `blob`, which only the `manifest` ledger digest
+   * sees.
+   *
+   * `disk` (publish): the staged bytes, each verified against its pin, so every
+   * `blob` is real and every sibling pin names the text the registry serves.
+   */
+  readonly stagedFiles?: "pins" | "disk";
 }
 
 /**
@@ -289,6 +300,7 @@ export class ModulePayloadBuilder {
     text: string;
     relativeImports: { manifestPath: string; ref: string }[];
     authoredPins: { alias: string; ref: string; integrity: string }[];
+    sources: ModuleSource[];
   }> {
     const manifestDir = path.dirname(manifestPath);
     const original = fs.readFileSync(manifestPath, "utf8");
@@ -296,6 +308,7 @@ export class ModulePayloadBuilder {
     const moduleDoc = findModuleDoc(docs);
     const relativeImports: { manifestPath: string; ref: string }[] = [];
     const authoredPins: { alias: string; ref: string; integrity: string }[] = [];
+    const sources = readSources(moduleDoc?.toJSON(), manifestDir);
 
     if (moduleDoc) {
       const destination = this.destinationOf(manifestPath);
@@ -340,6 +353,11 @@ export class ModulePayloadBuilder {
       }
     }
 
+    // `sources:` is authoring input no consumer reads. Removed here, in the text
+    // every dependent's pin hashes, so an upstream URL that moved with unchanged
+    // bytes changes no published manifest.
+    moduleDoc?.delete("sources");
+
     // Unconditional. Whether a manifest was rewritten is a property of its own
     // content, and letting it decide the serializer meant one commit produced two
     // different byte sequences for the same document.
@@ -348,6 +366,7 @@ export class ModulePayloadBuilder {
       text: expandAndInlineIncludes(canonical, manifestDir),
       relativeImports,
       authoredPins,
+      sources,
     };
   }
 
@@ -358,14 +377,26 @@ export class ModulePayloadBuilder {
 
   private async buildPayload(manifestPath: string): Promise<ModulePayload> {
     const manifestDir = path.dirname(manifestPath);
-    const { text: manifest, relativeImports, authoredPins } =
+    const { text: manifest, relativeImports, authoredPins, sources } =
       await this.transformManifest(manifestPath);
+    const fromPins = (this.options.stagedFiles ?? "pins") === "pins";
 
     const claims = collectModuleFileClaims(manifest);
+    const native = readNativeFiles(manifest, manifestDir);
+    const staged = stagedEntriesOf(sources);
+    await assertNamedFiles(manifestDir, native, claims, sources, staged, fromPins);
+    // A notice ships because its source names it, as if `files:` selected it.
+    const notices = sources.flatMap((source) => source.notices);
     const partition = partitionLayers(
       claims,
-      selectFiles(manifestDir, readFilesPatterns(manifest)),
+      [
+        ...new Set([
+          ...selectFiles(manifestDir, readFilesPatterns(manifest), { links: true }),
+          ...notices,
+        ]),
+      ].sort(),
       readAssetPatterns(manifest),
+      native,
     );
 
     // Every code entry point is BUILT, not read: `path=` names a gitignored
@@ -404,20 +435,43 @@ export class ModulePayloadBuilder {
       for (const input of bundle.inputs) buildInputs.add(input);
     }
 
+    // Built entry points exist once built; staged files, when read from their
+    // pins, need not be on disk at all.
     assertWithinModule(
       manifestDir,
       partition.layers.flatMap((layer) => layer.files),
-      new Set(built.keys()),
+      new Set([...built.keys(), ...(fromPins ? staged.keys() : [])]),
     );
 
-    const layers: BuiltLayer[] = partition.layers.map((layer) => ({
-      role: layer.role,
-      ...(layer.selector ? { selector: layer.selector } : {}),
-      files: layer.files.map((rel) => ({
-        name: rel,
-        content: built.get(rel) ?? fs.readFileSync(path.resolve(manifestDir, rel)),
-      })),
-    }));
+    // Read as the kind each file is on disk: a link ships as a link, a file with
+    // an execute bit as executable, and both are in the layer's integrity. A
+    // staged file read from its pin contributes exactly that line.
+    const layers: BuiltLayer[] = [];
+    for (const layer of partition.layers) {
+      const files: LayerEntry[] = [];
+      for (const rel of layer.files) {
+        const content = built.get(rel);
+        const stagedEntry = staged.get(rel)?.entry;
+        if (content) {
+          files.push({ name: rel, content });
+        } else if (fromPins && stagedEntry?.kind === "link") {
+          files.push({ name: rel, link: stagedEntry.target });
+        } else if (fromPins && stagedEntry?.kind === "file") {
+          // `assertNamedFiles` refused an unpinned one.
+          files.push({ name: rel, sha256: stagedEntry.pin!.sha256, executable: stagedEntry.pin!.executable });
+        } else if (stagedEntry?.kind === "file") {
+          // `assertNamedFiles` verified the bytes against the pin, and the pin is
+          // what declares the execute bit — a Windows checkout has none to read.
+          const file = await readPayloadFile(manifestDir, rel);
+          if (isPayloadLink(file)) throw new Error(`'${rel}' is staged as a file, but is a link on disk.`);
+          files.push(stagedEntry.pin!.executable ? { name: rel, content: file.content, executable: true } : { name: rel, content: file.content });
+        } else {
+          files.push(await readPayloadFile(manifestDir, rel));
+        }
+      }
+      layers.push({ role: layer.role, ...(layer.selector ? { selector: layer.selector } : {}), files });
+    }
+    assertLayerEntries(manifestDir, layers);
 
     // The `layers:` index is part of the published manifest, so it is written
     // HERE and not by the transport at push time.
@@ -433,8 +487,23 @@ export class ModulePayloadBuilder {
     //
     // The transport still owns the framing a `blob` digest covers, so the index
     // comes from it; publish re-frames the same layers and hard-fails if a
-    // digest moved.
-    const index = await this.transportFor(manifestPath).layerIndex(layers);
+    // digest moved. A layer holding a pinned entry has no bytes to frame and
+    // takes the stand-in `blob`; publish reads the staged bytes instead, so a
+    // stand-in never reaches a registry.
+    const transport = this.transportFor(manifestPath);
+    const index: ArtifactLayer[] = [];
+    for (const layer of layers) {
+      if (!layer.files.some(isPinnedFile)) {
+        index.push(...(await transport.layerIndex([layer as PayloadLayer])));
+        continue;
+      }
+      index.push({
+        role: layer.role,
+        ...(layer.selector ? { selector: layer.selector } : {}),
+        blob: await pinnedLayerBlob(layer.files),
+        integrity: await computeFilesIntegrity(layer.files),
+      });
+    }
 
     return {
       manifest: index.length > 0 ? injectLayerIndex(manifest, index) : manifest,

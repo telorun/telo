@@ -1,0 +1,54 @@
+# The repaired twin: every staged file pinned and present, so it checks clean and
+# the kernel reads the host's file after verifying it against its pin.
+kind: Telo.Library
+metadata:
+  name: PinnedNative
+  version: 1.0.0
+exports:
+  kinds:
+    - Reader
+native:
+  - { name: greeting, format: txt, os: linux, arch: amd64, path: ./native/linux-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: linux, arch: arm64, path: ./native/linux-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: amd64, path: ./native/darwin-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: arm64, path: ./native/darwin-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: amd64, path: ./native/windows-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: arm64, path: ./native/windows-arm64/greeting.txt }
+sources:
+  greetings:
+    version: 1.0.0
+    url: https://example.test/greetings-{version}-{upstream}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    entries:
+      ./native/linux-amd64/greeting.txt:
+        { upstream: linux-x64, member: greeting.txt, sha256: 9ac007af3de930baf647288da0c843b26a5f046a3fe1351f1bb039b242d22cdf, executable: false }
+      ./native/linux-arm64/greeting.txt:
+        { upstream: linux-arm64, member: greeting.txt, sha256: 9ac007af3de930baf647288da0c843b26a5f046a3fe1351f1bb039b242d22cdf, executable: false }
+      ./native/darwin-amd64/greeting.txt:
+        { upstream: darwin-x64, member: greeting.txt, sha256: 9ac007af3de930baf647288da0c843b26a5f046a3fe1351f1bb039b242d22cdf, executable: false }
+      ./native/darwin-arm64/greeting.txt:
+        { upstream: darwin-arm64, member: greeting.txt, sha256: 9ac007af3de930baf647288da0c843b26a5f046a3fe1351f1bb039b242d22cdf, executable: false }
+      ./native/windows-amd64/greeting.txt:
+        { upstream: win32-x64, member: greeting.txt, sha256: 9ac007af3de930baf647288da0c843b26a5f046a3fe1351f1bb039b242d22cdf, executable: false }
+      ./native/windows-arm64/greeting.txt:
+        { upstream: win32-arm64, member: greeting.txt, sha256: 9ac007af3de930baf647288da0c843b26a5f046a3fe1351f1bb039b242d22cdf, executable: false }
+---
+kind: Telo.Definition
+metadata:
+  name: Reader
+  description: Returns the text of the native file named greeting.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./reader.mjs#reader
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [text]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

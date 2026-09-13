@@ -1,0 +1,13 @@
+# Consumes the pinned library: the kernel verifies the host's staged file and reads it.
+kind: Telo.Application
+metadata:
+  name: PinnedNativeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib/pinned.yaml
+targets:
+  - invoke: !ref read
+---
+kind: Lib.Reader
+metadata:
+  name: read

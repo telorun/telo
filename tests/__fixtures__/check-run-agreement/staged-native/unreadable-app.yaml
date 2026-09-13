@@ -1,0 +1,13 @@
+# Consumes the library whose sources: block does not read.
+kind: Telo.Application
+metadata:
+  name: UnreadableNativeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib/unreadable.yaml
+targets:
+  - invoke: !ref read
+---
+kind: Lib.Reader
+metadata:
+  name: read

@@ -1,0 +1,23 @@
+[
+  {
+    "name": "os",
+    "description": "Operating system, in the OCI/GOOS vocabulary (linux, darwin, windows)."
+  },
+  {
+    "name": "arch",
+    "description": "CPU architecture, in the OCI/GOOS vocabulary (amd64, arm64)."
+  },
+  {
+    "name": "libc",
+    "description": "C library ABI on hosts where os and arch cannot tell them apart (gnu, musl)."
+  },
+  {
+    "name": "abi",
+    "description": "The runtime binary interface a native file is built against, named with its family because a bare number cannot tell one runtime's ABI from another's (node-137 for NODE_MODULE_VERSION 137, telo-2 for the Rust controller ABI).",
+    "valueForm": {
+      "pattern": "^[a-z][a-z0-9_]*-[0-9]+(\\.[0-9]+)*$",
+      "form": "<family>-<version>",
+      "examples": ["node-137", "telo-2"]
+    }
+  }
+]

@@ -85,14 +85,18 @@ type Segment = string | number;
  *  the extraction was written at, until none is left. */
 function unfoldScopedOrigins(root: ResourceManifest, path: string): string {
   let segments = parseSegments(path);
+  let unfoldedAny = false;
   // Each unfolding replaces one extraction with its parent, which is strictly
   // closer to what the author wrote, so the chain is as long as the nesting.
   for (let hops = 0; hops <= segments.length + 16; hops++) {
     const next = unfoldOnce(root, segments);
     if (!next) break;
     segments = next;
+    unfoldedAny = true;
   }
-  return formatSegments(segments);
+  // Re-formatting is lossy (an empty segment in `entries../x` is dropped), so a
+  // path nothing unfolded is returned as written.
+  return unfoldedAny ? formatSegments(segments) : path;
 }
 
 function unfoldOnce(root: ResourceManifest, segments: Segment[]): Segment[] | undefined {

@@ -1,0 +1,15 @@
+# Consumes the unpinned library. Its analysis is entry-scoped, so the library's
+# block is invisible here — the kernel's refusal to read an unverifiable staged
+# file is what fails it.
+kind: Telo.Application
+metadata:
+  name: UnpinnedNativeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib/unpinned.yaml
+targets:
+  - invoke: !ref read
+---
+kind: Lib.Reader
+metadata:
+  name: read

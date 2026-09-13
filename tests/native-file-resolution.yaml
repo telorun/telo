@@ -1,0 +1,48 @@
+kind: Telo.Application
+metadata:
+  name: NativeFileResolution
+  version: 1.0.0
+  description: |
+    ctx.resolveNativeFile resolves against the module that declares the controller
+    a resource runs. An application instantiating a library's kind reads the
+    library's file, not its own of the same name; a kind inheriting its controller
+    from that library through a concrete `extends` reads the library's file, not
+    its own module's. All three modules are source checkouts whose files are
+    checked in, which no `sources:` entry stages, so each is read as it is.
+imports:
+  Lib: ./__fixtures__/native-resolve/lib
+  Child: ./__fixtures__/native-resolve/child
+  Assert: ../modules/assert
+  Run: ../modules/run
+native:
+  - { name: greeting, format: txt, os: linux, arch: amd64, path: ./__fixtures__/native-resolve/app/native/linux-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: linux, arch: arm64, path: ./__fixtures__/native-resolve/app/native/linux-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: amd64, path: ./__fixtures__/native-resolve/app/native/darwin-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: arm64, path: ./__fixtures__/native-resolve/app/native/darwin-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: amd64, path: ./__fixtures__/native-resolve/app/native/windows-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: arm64, path: ./__fixtures__/native-resolve/app/native/windows-arm64/greeting.txt }
+targets:
+  - !ref verify
+---
+kind: Run.Sequence
+metadata:
+  name: verify
+steps:
+  - name: fromLibraryKind
+    invoke:
+      kind: Lib.Reader
+  - name: assertLibraryKind
+    inputs:
+      actual: !cel "steps.fromLibraryKind.result"
+      expected: { text: from lib }
+    invoke:
+      kind: Assert.Equals
+  - name: fromInheritingKind
+    invoke:
+      kind: Child.Greeter
+  - name: assertInheritingKind
+    inputs:
+      actual: !cel "steps.fromInheritingKind.result"
+      expected: { text: from lib }
+    invoke:
+      kind: Assert.Equals

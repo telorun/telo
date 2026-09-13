@@ -1,0 +1,49 @@
+# A sources: block that does not read — a plain-http url, a link chain that never
+# reaches a file, and an entry running through another. A kernel refuses every
+# native read of the module, since the block could be the one staging the file.
+kind: Telo.Library
+metadata:
+  name: UnreadableNative
+  version: 1.0.0
+exports:
+  kinds:
+    - Reader
+native:
+  - { name: greeting, format: txt, os: linux, arch: amd64, path: ./native/linux-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: linux, arch: arm64, path: ./native/linux-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: amd64, path: ./native/darwin-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: arm64, path: ./native/darwin-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: amd64, path: ./native/windows-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: arm64, path: ./native/windows-arm64/greeting.txt }
+sources:
+  greetings:
+    version: 1.0.0
+    url: http://example.test/greetings-{version}-{upstream}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    entries:
+      ./native/linux-amd64/greeting.txt/inner.txt:
+        { upstream: linux-x64, member: inner.txt, sha256: 9ac007af3de930baf647288da0c843b26a5f046a3fe1351f1bb039b242d22cdf, executable: false }
+      ./native/linux-amd64/greeting.txt:
+        { upstream: linux-x64, member: greeting.txt, sha256: 9ac007af3de930baf647288da0c843b26a5f046a3fe1351f1bb039b242d22cdf, executable: false }
+      ./native/linux-amd64/loop-a: { target: loop-b }
+      ./native/linux-amd64/loop-b: { target: loop-a }
+---
+kind: Telo.Definition
+metadata:
+  name: Reader
+  description: Returns the text of the native file named greeting.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./reader.mjs#reader
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [text]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

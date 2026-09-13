@@ -1,0 +1,5 @@
+---
+"@telorun/analyzer": minor
+---
+
+A published layer index (`layers:` in a published `telo.yaml`) carrying a layer role or a selector axis this runtime does not recognize now stays readable, so a later release can add both without making every module that uses them unreadable to this one. An entry with an unknown `role` was already skipped by the parser but rejected by the index schema, so `telo check` reported a `SCHEMA_VIOLATION`; the schema now accepts any non-empty `role` and no longer constrains `selector` (the parser still validates a known role's selector, and `telo check` runs the parser), so the selector of an unknown-role entry is not examined at all. An entry whose `selector` carries an unknown axis used to throw `INVALID_ARTIFACT_SELECTOR` during load; it is now skipped whole — never read with the axis dropped, which would collide two layers onto one address — and `normalizeSelector` returns `undefined` for it. Structurally malformed entries still fail, and every entry's `blob` and `integrity` digests are now checked by the parser before a role or axis decides to skip it, matching what the schema already required.

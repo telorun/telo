@@ -95,6 +95,12 @@ async function pullManifestLayer(ref: string, client: OciClient): Promise<string
       `OCI artifact ${ref} manifest layer does not contain ${DEFAULT_MANIFEST_FILENAME}`,
     );
   }
+  if ("link" in teloEntry) {
+    throw new Error(
+      `OCI artifact ${ref} manifest layer carries ${DEFAULT_MANIFEST_FILENAME} as a symbolic link; ` +
+        `it must be a regular file.`,
+    );
+  }
   const manifestText =
     typeof teloEntry.content === "string" ? teloEntry.content : teloEntry.content.toString("utf-8");
 
@@ -109,7 +115,7 @@ async function pullManifestLayer(ref: string, client: OciClient): Promise<string
  * OCI transport: `oci://host/repo@reference` modules on any OCI distribution
  * registry (GHCR / ECR / Docker Hub / Harbor), over a hand-rolled minimal
  * client. A module is one OCI artifact whose layers are the module's layers —
- * `telo.yaml` in its own blob, then one blob per controller selector, plus the
+ * `telo.yaml` in its own blob, then one blob per controller, library and native selector, plus the
  * `assets` and `common` blobs — so a client fetches only what it needs. A flat
  * layer list, not an image index: the manifest and asset layers are
  * platform-neutral, so a manifest list would duplicate them per platform entry
@@ -281,9 +287,7 @@ export class OciTransport implements Transport {
     const index: ArtifactLayer[] = [];
     for (const layer of layers) {
       if (layer.files.length === 0) continue;
-      const tar = await makeTarGz(
-        layer.files.map((f) => ({ name: f.name, content: Buffer.from(f.content) })),
-      );
+      const tar = await makeTarGz(layer.files);
       index.push({
         role: layer.role,
         ...(layer.selector ? { selector: layer.selector } : {}),
@@ -337,9 +341,7 @@ export class OciTransport implements Transport {
     for (const layer of bundle.layers) {
       if (layer.files.length === 0) continue;
       const key = layerKey(layer.role, layer.selector);
-      const tar = await makeTarGz(
-        layer.files.map((f) => ({ name: f.name, content: Buffer.from(f.content) })),
-      );
+      const tar = await makeTarGz(layer.files);
       const blob = await client.pushBlob(tar);
       const claim = declared.get(key);
       if (!claim) {

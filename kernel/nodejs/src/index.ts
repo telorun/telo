@@ -25,13 +25,27 @@ export { makeTarGz, readTarGz, type BundleEntry } from "./bundle/tar.js";
 export {
   computeFilesIntegrity,
   injectLayerIndex,
+  isPayloadLink,
+  isPinnedFile,
+  readPayloadFile,
+  type LayerEntry,
   type PayloadFile,
+  type PayloadLink,
+  type PayloadPinnedFile,
+  type PayloadRegularFile,
 } from "./bundle/files-integrity.js";
+export {
+  describeLayerViolations,
+  findLayerViolations,
+  type LayerViolation,
+} from "./bundle/layer-entry-rules.js";
+export { checkStagedEntry, type StagedEntryState } from "./bundle/staged-entry.js";
 export {
   ModuleArtifact,
   moduleArtifactFor,
   moduleDirectoryFor,
   hostPlatformTarget,
+  NODE_HOSTED_FORMATS,
   type MaterializedLayer,
   type ResolvedControllerLayer,
 } from "./bundle/module-artifact.js";

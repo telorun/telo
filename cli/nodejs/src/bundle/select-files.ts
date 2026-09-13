@@ -1,4 +1,4 @@
-import { selectByPatterns } from "@telorun/glob";
+import { HARD_IGNORE, lastMatchIndex, selectByPatterns } from "@telorun/glob";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -13,12 +13,18 @@ import * as path from "path";
  * `include:` resolution, which may reach any co-located partial); the hard tier
  * (`node_modules`/`.git`/`.telo`) is always denied regardless.
  *
- * Throws if a selected file resolves (via a symlink) outside `manifestDir`.
+ * `links: true` selects symbolic links as entries of their own, never followed —
+ * the payload ships a link as a link, and where it points is the layer link
+ * rule's to judge. Without it a link is skipped, since `include:` resolution
+ * reads contents and must not reach through one.
+ *
+ * Throws if a selected path resolves (via a symlinked directory, or via the file
+ * itself when links are not selected) outside `manifestDir`.
  */
 export function selectFiles(
   manifestDir: string,
   patterns: string[],
-  opts: { applyDefaultIgnore?: boolean } = {},
+  opts: { applyDefaultIgnore?: boolean; links?: boolean } = {},
 ): string[] {
   if (patterns.length === 0) return [];
 
@@ -27,10 +33,13 @@ export function selectFiles(
   const entries = fs.readdirSync(manifestDir, { recursive: true, withFileTypes: true });
   const rels: string[] = [];
   for (const entry of entries) {
-    // Non-files (incl. symlinks) are skipped here, so a symlink never enters
-    // the bundle regardless of what a pattern matches.
-    if (!entry.isFile()) continue;
-    rels.push(path.relative(manifestDir, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"));
+    const isLink = opts.links === true && entry.isSymbolicLink();
+    if (!entry.isFile() && !isLink) continue;
+    const rel = path.relative(manifestDir, path.join(entry.parentPath, entry.name)).split(path.sep).join("/");
+    // The always-deny tier names directories (`.telo/`), so a link standing in
+    // for one is tested as the directory it replaces.
+    if (isLink && lastMatchIndex(`${rel}/`, HARD_IGNORE) !== -1) continue;
+    rels.push(rel);
   }
 
   const selected = selectByPatterns(rels, patterns, {
@@ -43,7 +52,9 @@ export function selectFiles(
 
 /**
  * Reject any payload path that does not exist, or that resolves — via a symlink
- * — outside `manifestDir`.
+ * — outside `manifestDir`. A path that is itself a symbolic link ships as a
+ * link, so only the directory holding it is confined here; its target is
+ * judged by the layer link rule.
  *
  * Separate from {@link selectFiles} because a `files:` pattern is no longer the
  * only route into the payload: a bundled controller's `path=` entry joins it
@@ -76,7 +87,10 @@ export function assertWithinModule(
     if (supplied.has(rel)) continue;
     let real: string;
     try {
-      real = fs.realpathSync(path.resolve(manifestDir, rel));
+      const abs = path.resolve(manifestDir, rel);
+      real = fs.lstatSync(abs).isSymbolicLink()
+        ? path.join(fs.realpathSync(path.dirname(abs)), path.basename(abs))
+        : fs.realpathSync(abs);
     } catch {
       missing.push(rel);
       continue;

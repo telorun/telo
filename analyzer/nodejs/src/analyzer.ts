@@ -168,6 +168,8 @@ import { validateIdentifierNames } from "./validate-identifier-names.js";
 import { validateExtends } from "./validate-extends.js";
 import { validateLogging } from "./validate-logging.js";
 import { validateModuleArtifact } from "./validate-module-artifact.js";
+import { validateNativeEntries } from "./validate-native-entries.js";
+import { validateSourceEntries } from "./validate-source-entries.js";
 import { validateIncludePlacement } from "./validate-include-placement.js";
 import { validateModuleMetadata } from "./validate-module-metadata.js";
 import { validateRequires } from "./validate-requires.js";
@@ -1537,6 +1539,11 @@ export class StaticAnalyzer {
       // would otherwise fail on a consumer's machine — or, for a mistyped platform
       // axis, silently offer one platform's binary to every host.
       diagnostics.push(...validateModuleArtifact(allManifests));
+      // The module doc's `native:` block: each rule decides whether a platform's
+      // file can ever match a host, or whether two layers would write one path.
+      diagnostics.push(...validateNativeEntries(allManifests, rootModules));
+      // The module doc's `sources:` block: where each staged file comes from.
+      diagnostics.push(...validateSourceEntries(allManifests, rootModules));
       // The descriptive `metadata:` surface. Nothing in the kernel branches on
       // these fields, which is precisely why they need a check: a mistyped one
       // has no runtime failure mode that would ever surface it.

@@ -787,7 +787,8 @@ system: |
 
   You do NOT declare which language or kernel a module runs on. That is derived
   from each kind's `controllers:` PURLs (`pkg:cargo` runs on both the Node and
-  Rust kernels, `pkg:npm` / `pkg:telo/local/js` on Node) and reported by the
+  Rust kernels, `pkg:npm` / `pkg:telo/local/js` / `pkg:telo/local/napi` on Node,
+  `pkg:telo/local/dylib` on Rust) and reported by the
   hub. A kind with no controllers is "portable" — no kernel constraint.
 
   Other built-in kinds you may author: `Telo.Definition` (register a new
@@ -1837,12 +1838,52 @@ system: |
     artifact's `common` layer) and is still on disk when a controller runs, so
     omitting `assets:` costs bandwidth, never correctness. NEVER hand-write a
     `layers:` block — `telo publish` generates it.
+  - `native:` — OPTIONAL list of platform-specific files (a prebuilt addon, a
+    shared library), one entry per file per platform tuple:
+    `- { name: better-sqlite3, format: node, os: linux, arch: amd64, libc: gnu,
+    abi: node-137, path: ./native/linux-amd64-gnu-node-137/better_sqlite3.node }`.
+    `name`, `format`, `os`, `arch`, `path` are required; the entry is closed.
+    `format: node` MUST state `abi` (`<family>-<version>`); `format: napi` MUST
+    NOT; `libc` only when `os: linux`; one entry per name per tuple; every tuple
+    gets its own `path` inside the module (put the tuple in the path), and no
+    `path` may run through another as a directory. Publish
+    ships each file in its tuple's `native` layer, so it needs no `files:` entry,
+    and must not be the same file as a controller `path=`, an `exports.code:` path or an `!include-*` embed.
+    Controller code reaches a file by `name` through `ctx.resolveNativeFile(name)`,
+    which resolves against the module declaring the kind (never the consumer's)
+    and picks the first entry matching the host.
+    A module using it declares a `requires: telo:` floor.
+  - `sources:` — OPTIONAL map beside `native:` saying where each prebuilt
+    file is fetched from, keyed by source name (a lowercase token). A source is
+    `{ version, url, archive, notices, entries }`, all required, plus an
+    optional `build`, and closed: `url` is an `https://` template (plain `http://`
+    only for a loopback host) whose ONLY placeholders are `{version}` and
+    `{upstream}`, `archive: tar.gz` (the one format; e.g. an npm registry
+    tarball), `notices` a non-empty list of module-relative license files, and
+    `entries` a map keyed by the module-relative path each entry produces. A file
+    entry is `{ upstream, member }` (`member` is the path inside the archive,
+    `package/…` for an npm tarball) plus `sha256` and `executable`, which you
+    NEVER write by hand — `telo release stage --pin` fetches and writes them, and
+    plain `telo release stage` fetches and verifies; an unpinned entry is a
+    `telo check` error and a kernel will not read its file. A link entry is
+    `{ target }` alone, resolving relative to the link's directory to another
+    entry of the same source, and a chain of links must end at a file. Every
+    entry path must be a `native:` path, a platform-qualified controller
+    candidate's `path=`, or one of the source's own notices; two sources never
+    produce one path, and no entry path runs through another. Staged paths are
+    gitignored by the module. A source whose files are prebuilt from a crate in
+    the same repository also names it, `build: { cargo: ./rust }`
+    (module-relative); its `build.inputs` digest is written by
+    `telo release stage --pin`, never by hand, and `telo release check` fails when
+    the crate or a crate it reaches changed without a re-pin. Publish ships no
+    `sources:` block.
   - `exports.code:` (Library only) — OPTIONAL, and needed only when ANOTHER
     module's controller code imports this one's code. A list of entries, each
     naming the bare specifier dependents import and the file it resolves to:
     `- { specifier: "@telorun/kv-store", format: js, path: ./nodejs/kv-store.mjs,
     source: ./nodejs/src/index.ts }` (`source:` is the TypeScript the kernel
-    builds in a working copy; `os` / `arch` / `libc` narrow a native entry). The
+    builds in a working copy; `os` / `arch` / `libc` / `abi` narrow a native entry,
+    and `abi` is always `<family>-<version>`, e.g. `node-137`). The
     kernel then resolves that import to THIS module's entry point instead of
     copying its source into each dependent's bundle, so the library runs as one
     module scope everywhere. One specifier and one entry point per format —

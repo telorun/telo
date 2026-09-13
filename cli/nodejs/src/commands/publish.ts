@@ -15,6 +15,7 @@ import {
   ownedNpmPackages,
   publishPackage,
 } from "../release/npm-controller-package.js";
+import { pushableLayers } from "../bundle/built-layers.js";
 import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
 import { describePartition } from "../bundle/partition-layers.js";
 import { describeDrift, findPayloadDrift } from "../bundle/payload-drift.js";
@@ -510,6 +511,9 @@ async function publishOne(
   try {
     payload = await new ModulePayloadBuilder({
       cacheRoot: resolveCacheRoot(filePath) ?? path.join(manifestDir, ".telo"),
+      // The bytes that ship: every staged file verified against its pin and
+      // framed, so each `blob` and every sibling pin is the registry's.
+      stagedFiles: "disk",
     }).payload(filePath, destination);
   } catch (err) {
     outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
@@ -622,7 +626,7 @@ async function publishOne(
   try {
     result = await defaultTransportRegistry().publish(
       destination,
-      { manifest: content, layers },
+      { manifest: content, layers: pushableLayers(layers) },
       {
         onRetry: ({ reason, attempt, maxAttempts, delayMs }) =>
           outErrLine(

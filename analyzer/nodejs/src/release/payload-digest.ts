@@ -54,7 +54,8 @@ export const LOCALLY_DERIVED_LAYERS: ReadonlySet<string> = new Set([MANIFEST_LAY
  * `axis=value;…` form, because this string is read by a human in a ledger diff
  * and written into a plain YAML key; the axis order is `PLATFORM_AXES`, so the
  * rendering is deterministic rather than dependent on how the selector was
- * built.
+ * built. An axis a selector omits renders nothing, so a new axis appended to the
+ * vocabulary leaves every existing key unchanged — reordering it would not.
  */
 export function layerDigestKey(role: LayerRole | string, selector?: ArtifactSelector): string {
   if (!selector) return role;

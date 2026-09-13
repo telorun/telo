@@ -106,6 +106,32 @@ describe("buildManifestJsonPayload", () => {
     ]);
   });
 
+  it("reports the platforms and ABIs a module's native: entries cover, beside its kinds", async () => {
+    const manifest = [
+      "kind: Telo.Library",
+      "metadata:",
+      "  name: SQLite",
+      "  version: 1.0.0",
+      "native:",
+      "  - { name: addon, format: node, os: linux, arch: amd64, libc: musl, abi: node-141, path: ./n/a.node }",
+      "  - { name: addon, format: node, os: linux, arch: amd64, libc: gnu, abi: node-137, path: ./n/b.node }",
+      "  - { name: addon, format: node, os: linux, arch: amd64, libc: gnu, abi: node-141, path: ./n/c.node }",
+      "  - { name: addon, format: node, os: darwin, arch: arm64, abi: node-137, path: ./n/d.node }",
+      "",
+    ].join("\n");
+
+    const payload = await buildManifestJsonPayload("./sqlite", manifest, log);
+
+    expect(payload.runtime.native).toEqual({
+      platforms: [
+        { os: "darwin", arch: "arm64" },
+        { os: "linux", arch: "amd64", libc: "gnu" },
+        { os: "linux", arch: "amd64", libc: "musl" },
+      ],
+      abis: ["node-137", "node-141"],
+    });
+  });
+
   it("has neither a pin nor a cache key for a local module", async () => {
     stubFetch(() => {
       throw new Error("a local ref must not reach the network");

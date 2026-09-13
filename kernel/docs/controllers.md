@@ -57,14 +57,14 @@ taken; `pkg:npm` remains supported for third-party modules and for modules whose
 dependencies cannot be inlined.
 
 ```
-pkg:telo/local/<format>?path=<file>[&local_path=<source>][&siblings=<globs>][&os=…&arch=…&libc=…][#<export>]
+pkg:telo/local/<format>?path=<file>[&local_path=<source>][&siblings=<globs>][&os=…&arch=…&libc=…&abi=…][#<export>]
 ```
 
 | Segment            | Meaning                                                                                   |
 | ------------------ | ----------------------------------------------------------------------------------------- |
 | `type=telo`        | Telo-delivered, not fetched from an ecosystem registry                                      |
 | `namespace=local`  | Bundled in the module artifact (the namespace leaves room for a fetched controller)         |
-| `name=<format>`    | The artifact format the loader dispatches on: `js`, `napi`, `wasm`                          |
+| `name=<format>`    | The artifact format the loader dispatches on: `js`, `napi`, `dylib`, `wasm`                 |
 | `path`             | The file in the module's payload, relative to `telo.yaml`                                   |
 | `#export`          | Named export within it; omit to use the whole module as the controller                      |
 
@@ -73,10 +73,37 @@ ecosystem's runtime (npm ⇒ JS, cargo ⇒ Rust; a bundle is just files). A form
 this runtime cannot host is env-missing, so a candidate list falls through to one
 it — or another runtime's kernel — can load.
 
+| Format  | Hosted by   | What `path=` names                                                          |
+| ------- | ----------- | --------------------------------------------------------------------------- |
+| `js`    | Node kernel | an ES module bundle, imported                                               |
+| `napi`  | Node kernel | an N-API addon (`.node`), opened with `require`; ABI-stable, so no `abi`    |
+| `dylib` | Rust kernel | a shared library over the Rust controller ABI, stating `abi=telo-<version>` — without it `telo check` reports `CONTROLLER_DYLIB_ABI_MISSING` |
+| `wasm`  | none yet    | —                                                                           |
+
+**Delivering a native controller prebuilt.** A Rust (or C++, or Zig) controller
+reaches a host with no toolchain as one prebuilt candidate per platform tuple,
+ahead of the source-built fallbacks. Each kernel takes the first candidate it can
+host whose platform matches, so the Node kernel loads the `napi` addon and the Rust
+kernel the `dylib`:
+
+```yaml
+controllers:
+  - pkg:telo/local/napi?path=./native/linux-amd64-gnu/starlark.node&os=linux&arch=amd64&libc=gnu#script
+  - pkg:telo/local/napi?path=./native/darwin-arm64/starlark.node&os=darwin&arch=arm64#script
+  - pkg:telo/local/dylib?path=./native/linux-amd64-gnu/libtelorun_starlark.so&os=linux&arch=amd64&libc=gnu&abi=telo-2
+  - pkg:cargo/telorun-starlark?local_path=./rust#script
+```
+
+The prebuilt files are staged, not committed: a `sources:` block names the release
+archive each comes from, `telo release stage` fetches them, and publish ships each in
+the controller layer of its selector (see [Native Files](/extend/native-files)).
+Reported reach follows the formats — `telo module manifest --json` lists `napi` under
+`nodejs` and `dylib` under `rust`, with no language for either.
+
 The `path=` entry point is part of the module's payload **because `controllers:`
 names it**; it does not have to be restated in `files:`. See the
 [module artifact spec](../specs/module-artifact.md) for how candidates partition
-into layers, and for the `os`/`arch`/`libc` selector axes.
+into layers, and for the `os`/`arch`/`libc`/`abi` selector axes.
 
 ### 1.2 One bundle per module
 
@@ -121,7 +148,7 @@ module boundary, gated the same way. Data rather than a PURL because this entry
 never fetches: `controllers:` needs a package URL to be able to name `pkg:npm` or
 `pkg:cargo`, while this always names a file the module already ships, so
 `pkg:telo/local/` would be constant segments before the first real datum. `format`
-plus the optional `os` / `arch` / `libc` build the same selector a controller
+plus the optional `os` / `arch` / `libc` / `abi` build the same selector a controller
 candidate does.
 
 `specifier` is the bare specifier a dependent's sources import — `import
@@ -213,6 +240,10 @@ selects differs by delivery mode, because the two artifacts are different things
   from "./sql-query-controller.js"`). With no fragment, the whole bundle is the
   controller, which only makes sense for a module with exactly one.
 
+- **`pkg:telo/local/napi`** — a **property of the addon's exports object**, since a
+  `.node` file has no ES module shape. A controller built with the Rust SDK's
+  `#[controller(entry = "script")]` exports `script.create`, selected by `#script`.
+
 ---
 
 ## 4. Resolution
@@ -223,7 +254,9 @@ Nothing is fetched. The loader picks the candidate this host can run — rejecti
 format it cannot host, and a platform selector it does not match, **before** any
 transfer, so a candidate list never downloads every platform on the way to the right
 one — and then asks the declaring module's artifact for that selector's layer
-directory. A module already on disk resolves `path=` beside its own manifest.
+directory. A module already on disk resolves `path=` beside its own manifest. A
+`napi` addon is loaded from there as it is: it is never built from `local_path`, and
+it imports nothing by bare specifier, so none of the preparation below applies.
 
 The bundle imports `@telorun/sdk` as a plain bare specifier, but it lives in an
 extract directory with no `node_modules` path to it. The loader symlinks the

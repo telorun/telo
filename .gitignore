@@ -51,6 +51,10 @@ sdk/nodejs/src/zone-attributes/entries/
 # root `prepare`. Committing it would be a second place the version lives.
 analyzer/nodejs/src/telo-version.ts
 
+# Selector axis vocabulary, generated from analyzer/artifact-axes/axes.json by
+# the root `prepare`. Committing it would be a second place the axes live.
+analyzer/nodejs/src/artifact-axes.ts
+
 # Python
 python/__pycache__/
 python/*.py[cod]

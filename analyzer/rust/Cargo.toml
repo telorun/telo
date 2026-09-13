@@ -9,5 +9,6 @@ description = "Telo manifest loading and reference resolution, shared between th
 serde = "1"
 serde_json = "1"
 serde_yaml = "0.9"
+sha2 = "0.10"
 telo-templating = { path = "../../templating/rust" }
 thiserror = "1"

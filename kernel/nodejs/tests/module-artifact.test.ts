@@ -5,7 +5,11 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { computeFilesIntegrity, type PayloadFile } from "../src/bundle/files-integrity.js";
+import {
+  computeFilesIntegrity,
+  readPayloadFile,
+  type PayloadFile,
+} from "../src/bundle/files-integrity.js";
 import {
   ModuleArtifact,
   moduleArtifactFor,
@@ -263,6 +267,158 @@ describe("ModuleArtifact", () => {
     expect(fs.existsSync(path.join(path.dirname(dir), "escape.txt"))).toBe(false);
   });
 
+  describe("executable and link entries", () => {
+    const nativeFiles: PayloadFile[] = [
+      { name: "native/tool", content: Buffer.from("#!/bin/sh\n"), executable: true },
+      file("native/libx.so.1.2", "elf"),
+      { name: "native/libx.so.1", link: "libx.so.1.2" },
+      { name: "native/libx.so", link: "./libx.so.1" },
+    ];
+
+    async function materialized() {
+      const common = await layer("common", "1", nativeFiles);
+      const { transports } = fakeTransports({ [common.blob]: nativeFiles });
+      const artifact = new ModuleArtifact({ pinnedRef: REF, layers: [common], dir, transports });
+      const result = await artifact.materializeCommon();
+      return { common, names: result!.files };
+    }
+
+    const onDisk = async (names: string[]) =>
+      computeFilesIntegrity(await Promise.all(names.map((name) => readPayloadFile(dir, name))));
+
+    it("restores the executable bit and creates the links, so the layer revalidates from disk", async () => {
+      const { common, names } = await materialized();
+
+      expect(fs.readlinkSync(path.join(dir, "native/libx.so.1"))).toBe("libx.so.1.2");
+      expect(fs.readFileSync(path.join(dir, "native/libx.so"), "utf-8")).toBe("elf");
+      // Windows keeps no execute bit, so neither the bit nor a digest over it
+      // reads back there.
+      if (process.platform !== "win32") {
+        expect(fs.statSync(path.join(dir, "native/tool")).mode & 0o111).not.toBe(0);
+        expect(fs.statSync(path.join(dir, "native/libx.so.1.2")).mode & 0o111).toBe(0);
+        expect(await onDisk(names)).toBe(common.integrity);
+      }
+    });
+
+    // Every assertion compares against a digest over the execute bit, which
+    // Windows does not keep, so there each would pass whatever the disk held.
+    it.skipIf(process.platform === "win32")("fails revalidation when a file lost its bit, or a link was repointed or replaced", async () => {
+      const { common, names } = await materialized();
+      const tool = path.join(dir, "native/tool");
+      const link = path.join(dir, "native/libx.so.1");
+
+      fs.chmodSync(tool, 0o644);
+      expect(await onDisk(names)).not.toBe(common.integrity);
+      fs.chmodSync(tool, 0o755);
+
+      fs.rmSync(link);
+      fs.symlinkSync("./libx.so.1.2", link);
+      expect(await onDisk(names)).not.toBe(common.integrity);
+
+      fs.rmSync(link);
+      fs.writeFileSync(link, "elf");
+      expect(await onDisk(names)).not.toBe(common.integrity);
+    });
+
+    it("refuses a link that escapes, names a file outside its layer, or dangles", async () => {
+      const files: PayloadFile[] = [
+        file("lib/real.so", "elf"),
+        { name: "lib/escape.so", link: "../../outside.so" },
+        { name: "lib/absolute.so", link: "/usr/lib/libc.so" },
+        { name: "lib/elsewhere.so", link: "../public/index.html" },
+        { name: "lib/loop.so", link: "loop2.so" },
+        { name: "lib/loop2.so", link: "loop.so" },
+      ];
+      const bad = await layer("common", "1", files);
+      const { transports } = fakeTransports({ [bad.blob]: files });
+
+      const artifact = new ModuleArtifact({ pinnedRef: REF, layers: [bad], dir, transports });
+      const error = await artifact.materializeCommon().then(
+        () => undefined,
+        (err: unknown) => err as { code?: string; message: string },
+      );
+      expect(error?.code).toBe("ERR_MODULE_LAYER_INVALID");
+      const message = error!.message;
+      expect(message).toContain("'lib/escape.so' → '../../outside.so': escapes the module directory");
+      expect(message).toContain("'lib/absolute.so' → '/usr/lib/libc.so': is absolute");
+      expect(message).toContain(
+        "'lib/elsewhere.so' → '../public/index.html': names 'public/index.html', which no file of the layer has",
+      );
+      expect(message).toContain("'lib/loop.so' → 'loop2.so': forms a cycle through 'lib/loop2.so'");
+      expect(message).not.toContain("lib/real.so");
+      // Refused before extraction, so nothing reached the disk.
+      expect(fs.existsSync(path.join(dir, "lib"))).toBe(false);
+    });
+
+    // A link standing where a later entry needs a directory redirected that
+    // entry's removal and write out of the module directory.
+    it("refuses a layer whose entries run through a link, writing nothing outside", async () => {
+      const moduleDir = path.join(dir, "a", "b", "module");
+      fs.mkdirSync(moduleDir, { recursive: true });
+      const files: PayloadFile[] = [
+        file("b/x", "x"),
+        { name: "p/q/c", link: "../../b" },
+        { name: "p/q/c/e", link: "../../../victim" },
+        file("p/q/c/e/pwned", "pwned"),
+        file("b", "b"),
+        file("victim", "v"),
+      ];
+      const crafted = await layer("common", "1", files);
+      const { transports } = fakeTransports({ [crafted.blob]: files });
+
+      const artifact = new ModuleArtifact({
+        pinnedRef: REF,
+        layers: [crafted],
+        dir: moduleDir,
+        transports,
+      });
+      const error = await artifact.materializeCommon().then(
+        () => undefined,
+        (err: unknown) => err as { code?: string; message: string },
+      );
+      expect(error?.code).toBe("ERR_MODULE_LAYER_INVALID");
+      expect(error?.message).toContain(
+        "'b/x': runs through 'b', another entry of the layer, as a directory",
+      );
+      expect(error?.message).toContain(
+        "'p/q/c/e': runs through 'p/q/c', another entry of the layer, as a directory",
+      );
+      // Unguarded, the write lands at `a/victim/pwned`, two levels above the module.
+      const outside = fs
+        .readdirSync(dir, { recursive: true })
+        .map(String)
+        .filter((entry) => !path.join(dir, entry).startsWith(moduleDir + path.sep));
+      expect(outside.sort()).toEqual(["a", path.join("a", "b"), path.join("a", "b", "module")]);
+      expect(fs.readdirSync(moduleDir)).toEqual([]);
+    });
+  });
+
+  // A native layer is reached by name alone (`resolveNativeFile`) or by a warm;
+  // resolving a controller, a library or a module file never fetches one.
+  it("loads an index carrying native layers and fetches none for code or module files", async () => {
+    const jsFiles = [file("nodejs/c.mjs", "x")];
+    const nativeFiles = [file("native/linux/addon.node", "elf")];
+    const commonFiles = [file("README.md", "hi")];
+    const js = await layer("controller", "1", jsFiles, { format: "js" });
+    const linux = { format: "node", os: "linux", arch: "amd64", abi: "node-137" };
+    const native = await layer("native", "2", nativeFiles, linux);
+    const common = await layer("common", "3", commonFiles);
+
+    const { transports, fetched } = fakeTransports({
+      [js.blob]: jsFiles,
+      [native.blob]: nativeFiles,
+      [common.blob]: commonFiles,
+    });
+    const artifact = new ModuleArtifact({ pinnedRef: REF, layers: [js, native, common], dir, transports });
+    await artifact.materializeController({ format: "js" });
+    await artifact.materializeController(linux);
+    await artifact.materializeLibrary(linux);
+    await artifact.materializeModuleFiles();
+
+    expect(fetched.sort()).toEqual([common.blob, js.blob].sort());
+    expect(fs.existsSync(path.join(dir, "native"))).toBe(false);
+  });
+
   it("retries after a transient fetch failure rather than caching the rejection", async () => {
     const files = [file("nodejs/c.mjs", "x")];
     const js = await layer("controller", "1", files, { format: "js" });
@@ -350,5 +506,27 @@ describe("moduleDirectoryFor", () => {
 
   it("returns null when neither route places the module", () => {
     expect(moduleDirectoryFor("memory://x", "memory://x", "", undefined, undefined)).toBeNull();
+  });
+});
+
+// The host target is memoized per module instance, so each case imports a fresh one.
+describe("hostPlatformTarget abi", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("is node-<process.versions.modules> on Node", async () => {
+    vi.resetModules();
+    const { hostPlatformTarget } = await import("../src/bundle/module-artifact.js");
+    expect(hostPlatformTarget().abi).toBe(`node-${process.versions.modules}`);
+  });
+
+  // Bun reports Node's `process.versions.modules` and loads none of its addons.
+  it("is undetermined under Bun", async () => {
+    vi.resetModules();
+    vi.stubGlobal("Bun", {});
+    const { hostPlatformTarget } = await import("../src/bundle/module-artifact.js");
+    expect(hostPlatformTarget().abi).toBeUndefined();
   });
 });

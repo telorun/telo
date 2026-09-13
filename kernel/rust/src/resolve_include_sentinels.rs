@@ -1,12 +1,13 @@
 //! Replace `!include-text` / `!include-bytes` markers with the file's contents,
 //! mirroring `../../nodejs/src/resolve-include-sentinels.ts`.
 //!
-//! Two things differ from the Node half, both forced by what this kernel is.
-//! There are no artifact layers here — imports are local paths — so resolving a
-//! path is joining it to the module directory rather than materializing a layer.
-//! And the manifest tree is `serde_json::Value`, which has no bytes variant, so
-//! `!include-bytes` is refused with an explicit message rather than silently
-//! producing an array of numbers that no `x-telo-binary` slot would accept.
+//! A path resolves as the Node kernel's `resolveModuleFileUri` resolves it: beside
+//! the manifest for a module on disk, and inside the module directory of a
+//! published artifact once its `assets` and `common` layers are materialized.
+//! One thing differs, forced by what this kernel is: the manifest tree is
+//! `serde_json::Value`, which has no bytes variant, so `!include-bytes` is refused
+//! with an explicit message rather than silently producing an array of numbers
+//! that no `x-telo-binary` slot would accept.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -17,6 +18,7 @@ use telo_templating::{
     INCLUDE_TEXT_ENGINE,
 };
 
+use crate::bundle::module_artifact::ModuleFiles;
 use crate::error::KernelError;
 
 /// Ceiling on one embedded file. A resolved embed is retained for as long as the
@@ -28,19 +30,60 @@ pub type IncludeCache = HashMap<PathBuf, String>;
 
 /// Resolve every file embed in one resource document, in place.
 ///
-/// `module_source` is the module's `telo.yaml` location; paths are relative to
-/// the directory holding it — never to the file the tag was written in, which
-/// is what keeps a path meaning the same thing after publish inlines partials.
+/// `module_source` is the module's `telo.yaml` location and `files` where its
+/// files are; paths are relative to the module root — never to the file the tag
+/// was written in, which is what keeps a path meaning the same thing after
+/// publish inlines partials.
 pub fn resolve_include_sentinels(
     document: &mut Value,
     module_source: &str,
+    files: &ModuleFiles,
     cache: &mut IncludeCache,
 ) -> Result<(), KernelError> {
-    let module_dir = module_root(module_source);
+    let mut root = ModuleRoot {
+        source: module_source,
+        files,
+        dir: None,
+    };
     // The document being created is itself a `{ kind, … }` declaration, so the
     // walk starts inside it — a nested declaration resolves when that resource
     // is created, the same line Phase-5 injection draws for references.
-    walk(document, &module_dir, cache)
+    walk(document, &mut root, cache)
+}
+
+/// The directory embeds resolve against, located on the first embed: a module
+/// that embeds nothing materializes nothing.
+struct ModuleRoot<'a> {
+    source: &'a str,
+    files: &'a ModuleFiles,
+    dir: Option<PathBuf>,
+}
+
+impl ModuleRoot<'_> {
+    fn dir(&mut self, relative: &str) -> Result<&Path, KernelError> {
+        if self.dir.is_none() {
+            self.dir = Some(match self.files {
+                ModuleFiles::OnDisk => module_root(self.source),
+                ModuleFiles::Artifact(artifact) => {
+                    artifact.materialize_module_files()?;
+                    artifact.directory().to_path_buf()
+                }
+                ModuleFiles::Unlocatable => {
+                    return Err(KernelError::new(
+                        "ERR_MODULE_FILES_UNAVAILABLE",
+                        format!(
+                            "Cannot resolve '{relative}' against module '{}': the module's artifact carries \
+                             no layer index, so its files cannot be located. It was published by an older \
+                             Telo that wrote a single-blob artifact — republish the module, or import it \
+                             from a local path during development.",
+                            self.source
+                        ),
+                    ))
+                }
+            });
+        }
+        Ok(self.dir.as_deref().unwrap_or(Path::new(".")))
+    }
 }
 
 fn module_root(module_source: &str) -> PathBuf {
@@ -51,17 +94,17 @@ fn module_root(module_source: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-fn walk(value: &mut Value, module_dir: &Path, cache: &mut IncludeCache) -> Result<(), KernelError> {
+fn walk(value: &mut Value, root: &mut ModuleRoot, cache: &mut IncludeCache) -> Result<(), KernelError> {
     match value {
         Value::Array(items) => {
             for item in items.iter_mut() {
-                visit(item, module_dir, cache)?;
+                visit(item, root, cache)?;
             }
             Ok(())
         }
         Value::Object(entries) => {
             for (_, item) in entries.iter_mut() {
-                visit(item, module_dir, cache)?;
+                visit(item, root, cache)?;
             }
             Ok(())
         }
@@ -69,10 +112,10 @@ fn walk(value: &mut Value, module_dir: &Path, cache: &mut IncludeCache) -> Resul
     }
 }
 
-fn visit(item: &mut Value, module_dir: &Path, cache: &mut IncludeCache) -> Result<(), KernelError> {
+fn visit(item: &mut Value, root: &mut ModuleRoot, cache: &mut IncludeCache) -> Result<(), KernelError> {
     if let Some((engine, source)) = tagged_sentinel_parts(item) {
         if engine == INCLUDE_TEXT_ENGINE || engine == INCLUDE_BYTES_ENGINE {
-            *item = Value::String(read_embed(engine, source, module_dir, cache)?);
+            *item = Value::String(read_embed(engine, source, root, cache)?);
             return Ok(());
         }
         // Another engine's marker is opaque.
@@ -81,7 +124,7 @@ fn visit(item: &mut Value, module_dir: &Path, cache: &mut IncludeCache) -> Resul
     if is_tagged_sentinel(item) || is_nested_declaration(item) {
         return Ok(());
     }
-    walk(item, module_dir, cache)
+    walk(item, root, cache)
 }
 
 /// A nested resource declaration — an inline `{ kind, … }`. Its embeds are its
@@ -95,7 +138,7 @@ fn is_nested_declaration(value: &Value) -> bool {
 fn read_embed(
     engine: &str,
     source: &str,
-    module_dir: &Path,
+    root: &mut ModuleRoot,
     cache: &mut IncludeCache,
 ) -> Result<String, KernelError> {
     if engine == INCLUDE_BYTES_ENGINE {
@@ -118,7 +161,7 @@ fn read_embed(
             format!("Invalid `!{engine}` path: {}", err.message),
         )
     })?;
-    let path = module_dir.join(&relative);
+    let path = root.dir(&relative)?.join(&relative);
 
     if let Some(cached) = cache.get(&path) {
         return Ok(cached.clone());
@@ -182,7 +225,7 @@ mod tests {
     fn embeds_text() {
         let (_dir, manifest) = fixture();
         let mut doc = json!({ "kind": "X", "theme": sentinel(INCLUDE_TEXT_ENGINE, "theme.txt") });
-        resolve_include_sentinels(&mut doc, &manifest, &mut IncludeCache::new()).unwrap();
+        resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new()).unwrap();
         assert_eq!(doc["theme"], json!("brand: blue\n"));
     }
 
@@ -190,7 +233,7 @@ mod tests {
     fn refuses_bytes_rather_than_producing_a_number_array() {
         let (_dir, manifest) = fixture();
         let mut doc = json!({ "kind": "X", "logo": sentinel(INCLUDE_BYTES_ENGINE, "theme.txt") });
-        let err = resolve_include_sentinels(&mut doc, &manifest, &mut IncludeCache::new())
+        let err = resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new())
             .expect_err("bytes are unrepresentable here");
         assert_eq!(err.code, "ERR_INCLUDE_BYTES_UNSUPPORTED");
     }
@@ -199,7 +242,7 @@ mod tests {
     fn re_checks_confinement() {
         let (_dir, manifest) = fixture();
         let mut doc = json!({ "kind": "X", "a": sentinel(INCLUDE_TEXT_ENGINE, "../escape.txt") });
-        let err = resolve_include_sentinels(&mut doc, &manifest, &mut IncludeCache::new())
+        let err = resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new())
             .expect_err("escape is refused");
         assert_eq!(err.code, "ERR_INCLUDE_PATH_INVALID");
     }
@@ -208,7 +251,7 @@ mod tests {
     fn reports_a_missing_file() {
         let (_dir, manifest) = fixture();
         let mut doc = json!({ "kind": "X", "a": sentinel(INCLUDE_TEXT_ENGINE, "nope.txt") });
-        let err = resolve_include_sentinels(&mut doc, &manifest, &mut IncludeCache::new())
+        let err = resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new())
             .expect_err("missing file is refused");
         assert_eq!(err.code, "ERR_INCLUDE_FILE_NOT_FOUND");
     }
@@ -221,16 +264,29 @@ mod tests {
             "with": [{ "kind": "Run.Value", "value": sentinel(INCLUDE_TEXT_ENGINE, "nope.txt") }],
             "own": sentinel(INCLUDE_TEXT_ENGINE, "theme.txt"),
         });
-        resolve_include_sentinels(&mut doc, &manifest, &mut IncludeCache::new()).unwrap();
+        resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new()).unwrap();
         assert_eq!(doc["own"], json!("brand: blue\n"));
         assert!(is_tagged_sentinel(&doc["with"][0]["value"]));
+    }
+
+    /// A module fetched from a registry with no layer index has no files to
+    /// embed from; that is said, rather than reported as a missing file at a
+    /// cache path the author never wrote.
+    #[test]
+    fn refuses_an_embed_in_a_module_whose_files_cannot_be_located() {
+        let (_dir, manifest) = fixture();
+        let mut doc = json!({ "kind": "X", "theme": sentinel(INCLUDE_TEXT_ENGINE, "theme.txt") });
+        let err = resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::Unlocatable, &mut IncludeCache::new())
+            .expect_err("an unlocatable module's files are refused");
+        assert_eq!(err.code, "ERR_MODULE_FILES_UNAVAILABLE");
+        assert!(err.message.contains("republish the module"), "{err}");
     }
 
     #[test]
     fn leaves_another_engines_marker_alone() {
         let (_dir, manifest) = fixture();
         let mut doc = json!({ "kind": "X", "r": sentinel("ref", "Other") });
-        resolve_include_sentinels(&mut doc, &manifest, &mut IncludeCache::new()).unwrap();
+        resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new()).unwrap();
         assert!(is_tagged_sentinel(&doc["r"]));
     }
 }

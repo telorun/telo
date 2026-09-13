@@ -23,10 +23,7 @@ pub struct ReadManifest {
     pub source: String,
 }
 
-/// A transport a manifest can be read through. The Rust kernel registers only
-/// the local-file source; OCI and HTTP transports have no Rust implementation
-/// yet, so an `oci://` import fails at resolution with a precise message rather
-/// than being silently skipped.
+/// A transport a manifest can be read through. The Rust kernel registers the local-file source, the workspace manifest cache and the OCI registry source; an HTTP(S) import has no Rust source, so it fails at resolution with a precise message rather than being silently skipped.
 pub trait ManifestSource {
     fn supports(&self, path_or_url: &str) -> bool;
     fn read(&self, path_or_url: &str) -> Result<ReadManifest, LoadError>;
@@ -34,7 +31,7 @@ pub trait ManifestSource {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
-    #[error("no manifest source supports `{0}`. This kernel reads local paths only")]
+    #[error("no manifest source supports `{0}`. This kernel reads local paths and oci:// refs only")]
     UnsupportedSource(String),
     #[error("failed to read `{path}`: {message}")]
     Io { path: String, message: String },

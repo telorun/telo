@@ -39,6 +39,12 @@ targets:
   - !ref inlineSequenceTarget
   - !ref readsForwardedNames
   - !ref readsGeneratedNameAtRuntime
+  - !ref unpinnedStagedFile
+  - !ref unpinnedStagedFileAtRuntime
+  - !ref unreadableSources
+  - !ref unreadableSourcesAtRuntime
+  - !ref pinnedStagedFile
+  - !ref pinnedStagedFileRuns
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -273,3 +279,67 @@ metadata:
 source: ./__fixtures__/check-run-agreement/forwarded-inline-step/reads-generated-name.yaml
 expect:
   runFails: "SequenceProbeSteps0Command"
+---
+# A staged file with no pin, which a kernel will not read because nothing can
+# verify it — reported where the block is written, with the publish-time rules
+# beside it (a build with no recorded inputs, a native path running through
+# another)…
+kind: Assert.Manifest
+metadata:
+  name: unpinnedStagedFile
+source: ./__fixtures__/check-run-agreement/staged-native/lib/unpinned.yaml
+expect:
+  errors:
+    - code: SOURCE_ENTRY_UNPINNED
+      message: "carries no pin"
+    - code: SOURCE_BUILD_UNPINNED
+      message: "records no build inputs"
+    - code: NATIVE_PATH_NESTED
+      message: "runs through 'native/linux-amd64/greeting.txt' as a directory"
+---
+# …and refused by the kernel when a consumer reads it.
+kind: Assert.Manifest
+metadata:
+  name: unpinnedStagedFileAtRuntime
+source: ./__fixtures__/check-run-agreement/staged-native/unpinned-app.yaml
+expect:
+  runFails: "carries no pin to verify it against"
+---
+# A sources: block that does not read, reported rule by rule…
+kind: Assert.Manifest
+metadata:
+  name: unreadableSources
+source: ./__fixtures__/check-run-agreement/staged-native/lib/unreadable.yaml
+expect:
+  errors:
+    - code: SOURCE_URL_INSECURE
+      message: "fetched over http"
+    - code: SOURCE_LINK_CYCLE
+      message: "never reaches a file"
+    - code: SOURCE_ENTRY_NESTED
+      message: "cannot be both a file and a directory"
+---
+# …and a kernel reads no native file of the module, since the unreadable block
+# may be the one staging it.
+kind: Assert.Manifest
+metadata:
+  name: unreadableSourcesAtRuntime
+source: ./__fixtures__/check-run-agreement/staged-native/unreadable-app.yaml
+expect:
+  runFails: "sources: block cannot be read"
+---
+# The repaired twin checks clean…
+kind: Assert.Manifest
+metadata:
+  name: pinnedStagedFile
+source: ./__fixtures__/check-run-agreement/staged-native/lib/pinned.yaml
+expect:
+  errors: []
+---
+# …and runs: the staged file matches its pin, so the kernel reads it.
+kind: Assert.Manifest
+metadata:
+  name: pinnedStagedFileRuns
+source: ./__fixtures__/check-run-agreement/staged-native/pinned-app.yaml
+expect:
+  runs: true

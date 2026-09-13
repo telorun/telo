@@ -180,6 +180,7 @@ $ telo release check      # the same computation, with an exit code
 $ telo release order      # modules in publish order (a dependency first)
 $ telo release apply      # write versions, changelogs and the ledger
 $ telo release verify     # reconcile the ledger against the registry
+$ telo release stage      # fetch and verify the files `sources:` declares
 ```
 
 `status` prints the plan with its attribution:
@@ -198,7 +199,13 @@ a tax on nobody's behalf. It fails when no consistent plan can be formed:
 - a fragment naming a module that does not exist,
 - a major-inducing kind,
 - a manifest version that disagrees with its ledger entry,
-- digests taken against a different registry base.
+- digests taken against a different registry base,
+- a source built from a crate (`build: { cargo: <dir> }`) whose recorded
+  `build.inputs` no longer match the crate's tracked files, the files of the path
+  crates it reaches, the lock packages they reach and the cargo configuration that
+  applies to the build — or that records none. Rebuild the files and run
+  `telo release stage --pin`. See
+  [Native Files](./native-files.md#prebuilds-of-your-own-crates).
 
 It *warns* — `CHANGELOG_ENTRY_REQUESTED` — when a module's own files changed and
 no fragment names it.
@@ -209,6 +216,15 @@ changelog, re-records the ledger with the digests of what will actually be
 published, and deletes the fragments it consumed. Version rewriting is a
 byte-splice over the author's own text, so a bump lands as a one-line diff
 rather than a re-serialized file.
+
+`stage` fetches the prebuilt files a module's `sources:` block declares from
+their pinned upstream archives and verifies each against its `sha256` and
+executable bit; a file already on disk and matching its pin is not fetched.
+`stage --pin` fetches every file entry and writes those pins into `telo.yaml`
+first, as a byte splice, together with the build-input digest of each source
+built from a crate, and writes nothing unless the edited manifest reads back with
+exactly those pins. `--module <path>` narrows either to named modules. See
+[Native Files](./native-files.md#where-the-files-come-from-sources).
 
 ## Reading your own version
 
@@ -241,6 +257,41 @@ Two of the release system's invariants are enforced at publish:
   working copy is a gitignored build artifact; reading it would digest and ship
   bytes other than the source the manifest names. On this path a host without
   esbuild is a hard failure, not a fallthrough.
+
+## Staged files
+
+A file a `sources:` entry stages is digested from its **pin**, not from disk, by
+every command that computes a payload digest — `status`, `check`, `apply`,
+`order`. A layer's `integrity` is one line per entry, and a pinned file
+contributes exactly the line its bytes would, so a tree where nothing is staged —
+a fork's PR checkout, a fresh clone — computes the same `integrity` publish
+derives from the staged bytes and the registry serves.
+
+A layer's `blob` addresses framed bytes and cannot be computed from a pin, so a
+layer holding a staged file takes a stand-in: `sha256:` plus the hex form of its
+integrity digest, deterministic on every tree. Only the `manifest` ledger digest —
+the one entry `verify` never reconciles — sees it.
+
+`telo publish` does not fetch. It reads every staged file off disk, verifies it
+against its pin, and frames the real bytes, so every `blob` and every sibling pin
+it ships names bytes the registry holds. The module publish job runs
+`telo release stage` over the modules it pushes and every in-repo module they
+import — a dependent's pin is derived from its sibling's published bytes —
+before pushing anything. Publish refuses:
+
+- a staged file that is missing or whose bytes or executable bit do not match its
+  pin (run `telo release stage`), or that carries no pin (run `--pin`);
+- a `native:` path, or a platform-qualified controller candidate's `path=`, that
+  no source stages and git does not track — a binary nobody committed and nothing
+  fetches is one the next checkout cannot reproduce;
+- a `sources:` block that does not read, including a source naming no notices,
+  and a source entry nothing in the manifest names.
+
+The published `telo.yaml` carries no `sources:` block. It is removed, as
+`include:` is, before any dependent derives its pin from the text, so editing only
+a source's `url` — a moved mirror, the same bytes — moves no digest and bumps
+nothing. Each source's notice files ship in the `common` layer with no `files:`
+entry.
 
 ## npm packages
 

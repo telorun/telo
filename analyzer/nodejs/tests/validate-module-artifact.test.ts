@@ -1,6 +1,8 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
+import { StaticAnalyzer } from "../src/analyzer.js";
 import { validateModuleArtifact } from "../src/validate-module-artifact.js";
+import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 const definition = (name: string, controllers: string[]): ResourceManifest =>
   ({
@@ -48,6 +50,37 @@ describe("controller selector qualifiers", () => {
     ]);
   });
 
+  it("requires a dylib candidate to state a telo-family abi, at the candidate", () => {
+    const diagnostics = validateModuleArtifact([
+      definition("K", [
+        "pkg:telo/local/dylib?path=./rust/a.so&os=linux&arch=amd64",
+        "pkg:telo/local/dylib?path=./rust/b.so&os=linux&arch=amd64&abi=node-137",
+        "pkg:telo/local/dylib?path=./rust/c.so&os=linux&arch=amd64&abi=telo-2",
+      ]),
+    ]);
+    expect(diagnostics.map((d) => [d.code, d.data?.path])).toEqual([
+      ["CONTROLLER_DYLIB_ABI_MISSING", "controllers[0]"],
+      ["CONTROLLER_DYLIB_ABI_MISSING", "controllers[1]"],
+    ]);
+  });
+
+  it("reports an N-API abi and a libc off linux at a controller candidate and an exports.code entry", () => {
+    const diagnostics = validateModuleArtifact([
+      {
+        kind: "Telo.Library",
+        metadata: { name: "demo", source: "file:///demo/telo.yaml" },
+        exports: {
+          code: [{ specifier: "demo", format: "napi", path: "./demo.node", os: "darwin", libc: "gnu" }],
+        },
+      } as unknown as ResourceManifest,
+      definition("K", ["pkg:telo/local/napi?path=./c.node&os=linux&abi=node-137"]),
+    ]);
+    expect(diagnostics.map((d) => [d.code, d.data?.path])).toEqual([
+      ["LIBRARY_LIBC_OFF_LINUX", "exports/code"],
+      ["CONTROLLER_NAPI_ABI_FORBIDDEN", "controllers[0]?abi"],
+    ]);
+  });
+
   it("normalizes case rather than rejecting it", () => {
     expect(codes([definition("K", ["pkg:telo/local/napi?path=./c.node&os=Linux"])])).toEqual([]);
   });
@@ -79,6 +112,64 @@ describe("controller selector qualifiers", () => {
     expect(
       codes([definition("K", ["pkg:npm/@telorun/run@1.0.0?local_path=./nodejs&weird=1#run"])]),
     ).toEqual([]);
+  });
+});
+
+describe("the abi axis", () => {
+  it("is accepted on a controller candidate, an exports.code entry and a layer selector", () => {
+    const diagnostics = new StaticAnalyzer().analyze(
+      withSyntheticPositions([
+        {
+          kind: "Telo.Library",
+          metadata: { name: "Demo", module: "Demo", source: "file:///demo/telo.yaml" },
+          exports: {
+            code: [{ specifier: "demo", format: "node", path: "./demo.node", abi: "node-137" }],
+          },
+          layers: [
+            {
+              role: "controller",
+              selector: { format: "node", abi: "node-137" },
+              blob: VALID_BLOB,
+              integrity: VALID_INTEGRITY,
+            },
+          ],
+        },
+        {
+          kind: "Telo.Definition",
+          metadata: { name: "Thing", module: "Demo", source: "file:///demo/telo.yaml" },
+          capability: "Telo.Invocable",
+          controllers: ["pkg:telo/local/node?path=./demo.node&os=linux&abi=node-137"],
+        },
+      ] as unknown as ResourceManifest[]),
+    );
+    expect(diagnostics.map((d) => d.code)).toEqual([]);
+  });
+
+  // A bare number cannot say whose ABI it is, and a published value cannot be
+  // requalified later.
+  it("refuses a value outside <family>-<version> wherever a selector is read", () => {
+    const diagnostics = validateModuleArtifact([
+      {
+        kind: "Telo.Library",
+        metadata: { name: "demo", source: "file:///demo/telo.yaml" },
+        exports: { code: [{ specifier: "demo", format: "node", path: "./demo.node", abi: "137" }] },
+        layers: [
+          {
+            role: "controller",
+            selector: { format: "node", abi: "137" },
+            blob: VALID_BLOB,
+            integrity: VALID_INTEGRITY,
+          },
+        ],
+      } as unknown as ResourceManifest,
+      definition("K", ["pkg:telo/local/node?path=./demo.node&abi=137"]),
+    ]);
+    expect(diagnostics.map((d) => d.code)).toEqual([
+      "INVALID_LAYER_INDEX",
+      "LIBRARY_CANDIDATE_INVALID",
+      "CONTROLLER_INVALID_SELECTOR",
+    ]);
+    for (const d of diagnostics) expect(d.message).toContain("<family>-<version>");
   });
 });
 
@@ -141,6 +232,56 @@ describe("published layer index", () => {
   it("reports a malformed digest", () => {
     expect(
       codes([owner([{ role: "assets", blob: "sha256:nope", integrity: VALID_INTEGRITY }])]),
+    ).toEqual(["INVALID_LAYER_INDEX"]);
+  });
+
+  // The owner doc's schema is the other half of `telo check`: an entry the parser
+  // skips must not be rejected by the schema instead.
+  it("reports nothing for an entry with an unknown role or an unknown selector axis", () => {
+    const diagnostics = new StaticAnalyzer().analyze(
+      withSyntheticPositions([
+        {
+          kind: "Telo.Library",
+          metadata: { name: "Demo", module: "Demo", source: "file:///demo/telo.yaml" },
+          layers: [
+            { role: "controller", selector: { format: "js" }, blob: VALID_BLOB, integrity: VALID_INTEGRITY },
+            { role: "firmware", selector: { format: "node" }, blob: VALID_BLOB, integrity: VALID_INTEGRITY },
+            {
+              role: "controller",
+              selector: { format: "js", gpu: "cuda" },
+              blob: VALID_BLOB,
+              integrity: VALID_INTEGRITY,
+            },
+          ],
+        },
+      ] as unknown as ResourceManifest[]),
+    );
+    expect(diagnostics.map((d) => d.code)).toEqual([]);
+  });
+
+  // A runtime that cannot name a role reads only its role and digests (spec §3.1).
+  it("reports nothing for the selector of an entry with an unknown role", () => {
+    const diagnostics = new StaticAnalyzer().analyze(
+      withSyntheticPositions([
+        {
+          kind: "Telo.Library",
+          metadata: { name: "Demo", module: "Demo", source: "file:///demo/telo.yaml" },
+          layers: [
+            { role: "firmware", selector: { gpu: "cuda" }, blob: VALID_BLOB, integrity: VALID_INTEGRITY },
+          ],
+        },
+      ] as unknown as ResourceManifest[]),
+    );
+    expect(diagnostics.map((d) => d.code)).toEqual([]);
+  });
+
+  it("reports a known-role selector with no format", () => {
+    expect(
+      codes([
+        owner([
+          { role: "controller", selector: { os: "linux" }, blob: VALID_BLOB, integrity: VALID_INTEGRITY },
+        ]),
+      ]),
     ).toEqual(["INVALID_LAYER_INDEX"]);
   });
 

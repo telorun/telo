@@ -41,7 +41,7 @@ export interface LayerDrift {
 // The shape of a layer built from a working copy is the payload builder's, not
 // this gate's: both this and `telo release` digest exactly what `telo publish`
 // pushes, and two declarations of it would be two chances to disagree.
-import type { BuiltLayer } from "./module-payload.js";
+import type { BuiltLayer } from "./built-layers.js";
 export type { BuiltLayer };
 
 /** Identity of a layer within an artifact: its role, plus its selector for the

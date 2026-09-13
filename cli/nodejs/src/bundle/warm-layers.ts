@@ -1,5 +1,7 @@
 import {
   IntegrityError,
+  describeSelector,
+  normalizeAxisValue,
   type LoadedGraph,
   type LoadedModule,
   type PlatformTarget,
@@ -99,6 +101,14 @@ export async function warmModuleLayers(
     if (!artifact) continue;
     artifacts.set(file.source, artifact);
 
+    for (const { layer, axes } of artifact.warmPlan(target).undetermined) {
+      onWarn(
+        `skipped the ${layer.role} layer ${describeSelector(layer.selector!)} of ` +
+          `${file.requestedUrl}: it constrains ${axes.join(", ")}, which the install target ` +
+          `leaves undetermined. Name the target with --platform os/arch[/libc] and --abi to warm it.`,
+      );
+    }
+
     try {
       materialized += (await artifact.materializeAll(target)).length;
     } catch (err) {
@@ -122,13 +132,27 @@ export async function warmModuleLayers(
 }
 
 /**
- * Parse a `--platform` value into a target. Accepts the familiar
- * `os/arch[/libc]` shorthand (`linux/amd64`, `linux/arm64/musl`) in the same
- * OCI/GOOS vocabulary the published selectors use. Omitted entirely, the host is
- * the target.
+ * The target a warm runs for. `--platform` takes the familiar `os/arch[/libc]`
+ * shorthand (`linux/amd64`, `linux/arm64/musl`) in the same OCI/GOOS vocabulary
+ * the published selectors use; omitted, the host's os, arch and libc are the
+ * target.
+ *
+ * `abi` comes from `--abi` alone, never from the host: the process running the
+ * install is not the one that will run the app, which may be another Node
+ * release or Bun. Omitted, it is undetermined, so no abi-constrained layer is
+ * warmed.
  */
-export function parsePlatformTarget(value: string | undefined): PlatformTarget {
-  if (!value) return hostPlatformTarget();
+export function parsePlatformTarget(
+  platform: string | undefined,
+  abi: string | undefined,
+): PlatformTarget {
+  const target = platform ? parsePlatformTriple(platform) : { ...hostPlatformTarget() };
+  delete target.abi;
+  if (abi !== undefined) target.abi = normalizeAxisValue("abi", abi, "--abi");
+  return target;
+}
+
+function parsePlatformTriple(value: string): PlatformTarget {
   const parts = value
     .split("/")
     .map((p) => p.trim().toLowerCase())
@@ -142,9 +166,10 @@ export function parsePlatformTarget(value: string | undefined): PlatformTarget {
 }
 
 /** Label for the install output — `linux/amd64/gnu`, or what the host resolved
- *  to, with an unknown axis shown rather than hidden. */
+ *  to, with an unknown axis shown rather than hidden, plus the abi when set. */
 export function describePlatformTarget(target: PlatformTarget): string {
-  return [target.os ?? "unknown", target.arch ?? "unknown", target.libc]
+  const triple = [target.os ?? "unknown", target.arch ?? "unknown", target.libc]
     .filter((p): p is string => p !== undefined)
     .join("/");
+  return target.abi === undefined ? triple : `${triple} (abi ${target.abi})`;
 }

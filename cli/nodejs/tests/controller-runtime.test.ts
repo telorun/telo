@@ -46,11 +46,13 @@ describe("kindRuntimeSupport", () => {
     });
   });
 
-  it("claims no language for a bundle format whose source language is unknowable", () => {
-    // A `.node` addon may be Rust, C++ or Zig — and no kernel hosts the format
-    // today, so it names no runtime either. A blank beats a guess.
-    expect(kindRuntimeSupport(["pkg:telo/local/napi?path=./rust/x.node"])).toEqual({
-      runtimes: [],
+  it.each([
+    ["napi", "pkg:telo/local/napi?path=./native/x.node&os=linux&arch=amd64", "nodejs"],
+    ["dylib", "pkg:telo/local/dylib?path=./native/libx.so&os=linux&arch=amd64&abi=telo-2", "rust"],
+  ])("hosts a %s bundle on one kernel and claims no language for it", (_format, purl, runtime) => {
+    // A native library may be Rust, C++ or Zig. A blank beats a guess.
+    expect(kindRuntimeSupport([purl])).toEqual({
+      runtimes: [runtime],
       languages: [],
       portable: false,
     });

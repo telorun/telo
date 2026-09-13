@@ -1,0 +1,36 @@
+# Declares a kind whose controller reads the native file `greeting`, and ships
+# that file for the common host tuples. Every module in this fixture ships its
+# own `greeting`, so which text comes back names the module it resolved against.
+kind: Telo.Library
+metadata:
+  name: NativeLib
+  version: 1.0.0
+exports:
+  kinds:
+    - Reader
+native:
+  - { name: greeting, format: txt, os: linux, arch: amd64, path: ./native/linux-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: linux, arch: arm64, path: ./native/linux-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: amd64, path: ./native/darwin-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: darwin, arch: arm64, path: ./native/darwin-arm64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: amd64, path: ./native/windows-amd64/greeting.txt }
+  - { name: greeting, format: txt, os: windows, arch: arm64, path: ./native/windows-arm64/greeting.txt }
+---
+kind: Telo.Definition
+metadata:
+  name: Reader
+  description: Returns the text of the native file named greeting.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./reader.mjs#reader
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [text]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

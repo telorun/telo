@@ -29,7 +29,6 @@
  */
 
 import {
-  LAYER_ROLES,
   isLayerRole,
   normalizeSelector,
   roleCarriesSelector,
@@ -48,7 +47,7 @@ const CONTENT_DIGEST = /^sha256-[A-Za-z0-9_-]{43}$/;
 
 export interface ArtifactLayer {
   role: LayerRole;
-  /** Present on the code-bearing roles (`controller`, `library`) only. */
+  /** Present on the selector-keyed roles (`controller`, `library`, `native`) only. */
   selector?: ArtifactSelector;
   /** OCI blob digest — addresses the layer and verifies the transfer. */
   blob: string;
@@ -101,10 +100,12 @@ export function parseLayerIndex(value: unknown, describe = "layers"): ArtifactLa
     const entry = raw as Record<string, unknown>;
     if (typeof entry.role !== "string" || entry.role === "") {
       throw new LayerIndexError(
-        `${where}: role is required and must be one of ${LAYER_ROLES.map((r) => `'${r}'`).join(", ")}; ` +
+        `${where}: role is required and must be a non-empty string; ` +
           `got ${entry.role === undefined ? "nothing" : `'${String(entry.role)}'`}.`,
       );
     }
+    const blob = digest("blob", entry.blob, where);
+    const integrity = digest("integrity", entry.integrity, where);
     // A role this runtime does not know is SKIPPED, never rejected. Roles are
     // added over time, and a runtime that cannot name one cannot need it — while
     // throwing would make the whole manifest unreadable, so a module gaining a
@@ -120,6 +121,8 @@ export function parseLayerIndex(value: unknown, describe = "layers"): ArtifactLa
         throw new LayerIndexError(`${where}: a ${role} layer must declare a selector.`);
       }
       selector = normalizeSelector(entry.selector, where);
+      // An unknown axis skips the entry as an unknown role does (spec §3.1).
+      if (selector === undefined) return;
       // Scoped by role: a module's `js` controller layer and its `js` library
       // layer are different layers with the same selector, and only a collision
       // *within* one role means two layers claim one address.
@@ -146,8 +149,8 @@ export function parseLayerIndex(value: unknown, describe = "layers"): ArtifactLa
     layers.push({
       role,
       ...(selector ? { selector } : {}),
-      blob: digest("blob", entry.blob, where),
-      integrity: digest("integrity", entry.integrity, where),
+      blob,
+      integrity,
     });
   });
 
@@ -157,7 +160,7 @@ export function parseLayerIndex(value: unknown, describe = "layers"): ArtifactLa
 /** The singleton layer for a role, or undefined when the artifact has none. */
 export function singletonLayer(
   layers: readonly ArtifactLayer[],
-  role: Exclude<LayerRole, "controller" | "library">,
+  role: Exclude<LayerRole, "controller" | "library" | "native">,
 ): ArtifactLayer | undefined {
   return layers.find((l) => l.role === role);
 }

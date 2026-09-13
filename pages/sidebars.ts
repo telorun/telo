@@ -77,6 +77,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/extend/resource-rules", label: "Resource Rules" },
         { type: "doc", id: "docs/extend/referrer-rules", label: "Referrer Rules" },
         { type: "doc", id: "docs/extend/manifest-migrations", label: "Manifest Migrations" },
+        { type: "doc", id: "docs/extend/native-files", label: "Native Files" },
         {
           type: "doc",
           id: "docs/extend/declaring-runtime-requirements",

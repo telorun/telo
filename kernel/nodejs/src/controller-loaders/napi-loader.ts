@@ -325,17 +325,23 @@ export class NapiControllerLoader {
  * Pick the controller out of the raw napi module. With no fragment, the
  * whole module *is* the controller (legacy single-export shape). With a
  * fragment, look up `module[entry]` — convention: one source file per
- * controller, top-level export name matches the file.
+ * controller, top-level export name matches the file. `label` names the
+ * candidate in errors, since a `pkg:telo/local/napi` addon comes here too.
  */
-function project(module: any, entry: string | undefined, where: string): ControllerInstance {
+function project(
+  module: any,
+  entry: string | undefined,
+  where: string,
+  label = "pkg:cargo controller",
+): ControllerInstance {
   if (!module) {
-    throw new RuntimeError("ERR_CONTROLLER_INVALID", `napi module from ${where} is empty`);
+    throw new RuntimeError("ERR_CONTROLLER_INVALID", `${label}: napi module from ${where} is empty`);
   }
   if (!entry) {
     if (!module.create && !module.register) {
       throw new RuntimeError(
         "ERR_CONTROLLER_INVALID",
-        `pkg:cargo controller at ${where} exports neither create nor register`,
+        `${label} at ${where} exports neither create nor register`,
       );
     }
     return structuredNapiController(module);
@@ -344,17 +350,19 @@ function project(module: any, entry: string | undefined, where: string): Control
   if (!sub) {
     throw new RuntimeError(
       "ERR_CONTROLLER_INVALID",
-      `pkg:cargo controller at ${where}#${entry}: module has no export named "${entry}"`,
+      `${label} at ${where}#${entry}: module has no export named "${entry}"`,
     );
   }
   if (!sub.create && !sub.register) {
     throw new RuntimeError(
       "ERR_CONTROLLER_INVALID",
-      `pkg:cargo controller at ${where}#${entry} exports neither create nor register`,
+      `${label} at ${where}#${entry} exports neither create nor register`,
     );
   }
   return structuredNapiController(sub);
 }
+
+export { project as projectNapiController };
 
 /**
  * The property the Rust SDK's napi backend sets on the error it throws for a

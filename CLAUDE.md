@@ -102,7 +102,7 @@ Package-specific architecture and rationale live in nested `CLAUDE.md` files, lo
 - `modules/` — standard library: `http-server`, `http-client`, `sql`, `javascript`, `config`, `run`, `assert`, `test`, `console`, etc.
 - `analyzer/nodejs/` — static manifest validator (schema checks, reference validation, CEL type-checking); also owns manifest loading and manifest migrations.
 - `templating/nodejs/` — the CEL and `!include-*` engines.
-- **Rust half of the polyglot runtime** — `kernel/rust/` (a second kernel), `cli/rust/` (the `telo-rs` binary), `analyzer/rust/` and `templating/rust/` (the loading/tag halves of their Node counterparts), `sdk/rust/` (controller authoring surface) and `sdk/rust/abi/` (the `telorun-abi` C ABI). **File layout mirrors the Node packages one-for-one**, kebab-case becoming snake_case: a Rust file with no Node twin means one of the two layouts is wrong, and the header of every such file says why it is the exception. `kernel/rust` is deliberately narrow: `Telo.Invocable` only, local-path imports, `pkg:cargo` controllers, no CEL. `telorun-abi` exists because the kernel must **not** depend on `telorun-sdk` — that crate selects a controller backend by Cargo feature, and unification would compile the napi backend into the kernel binary.
+- **Rust half of the polyglot runtime** — `kernel/rust/` (a second kernel), `cli/rust/` (the `telo-rs` binary), `analyzer/rust/` and `templating/rust/` (the loading/tag halves of their Node counterparts), `sdk/rust/` (controller authoring surface) and `sdk/rust/abi/` (the `telorun-abi` C ABI). **File layout mirrors the Node packages one-for-one**, kebab-case becoming snake_case: a Rust file with no Node twin means one of the two layouts is wrong, and the header of every such file says why it is the exception. `kernel/rust` is deliberately narrow: `Telo.Invocable` only, local-path and anonymous `oci://` imports, `pkg:cargo` controllers built from a source checkout and `pkg:telo/local/dylib` controllers from a published artifact's layers, no CEL. `telorun-abi` exists because the kernel must **not** depend on `telorun-sdk` — that crate selects a controller backend by Cargo feature, and unification would compile the napi backend into the kernel binary.
 - `apps/studio/` — desktop editor (React + Vite + Tauri)
 - **Runners** — `packages/runner-core` (the backend-neutral `/v1` session contract) plus `apps/docker-runner` and `apps/k8s-runner` behind the `RunnerBackend` seam; a session is a one-shot `run` or a continuously running `watch` workspace.
 - `apps/hub/` — federated discovery hub (declarative Telo app) serving module search and the `search_resources` MCP tool
@@ -326,6 +326,7 @@ A `Telo.Definition` names its controller with PURL candidates:
 - `pkg:telo/local/js?path=./nodejs/<module>.mjs&local_path=./nodejs/src/index.ts#<Export>` — **bundled**: the controller ships inside the module's own artifact. **This is how the standard library delivers.** A module is ONE bundle: `nodejs/src/index.ts` re-exports one namespace per kind, and each kind selects its export by `#fragment`.
 - `pkg:npm/@telorun/<pkg>@<ver>?local_path=./nodejs#<export>` — a published npm package; in this repo only the deferred modules (`http-server`, `sqlite`, `image`, `pdf`, `starlark`) use it. Don't add new ones.
 - `pkg:cargo/<crate>?local_path=./rust#<entry>` — a Rust controller crate, built on load from a source checkout.
+- `pkg:telo/local/napi?path=…&os=…&arch=…[&libc=…]` / `pkg:telo/local/dylib?path=…&os=…&arch=…&abi=telo-<n>` — a prebuilt native controller in a per-platform controller layer: the Node kernel opens `napi`, the Rust kernel `dylib`. In a checkout its file is staged by `sources:` (below) and verified against its pin before it is opened.
 
 - **The kernel builds the bundle** — from source on load in development (no build step), and through the same builder on publish. A module's own `build` script only type-checks (`tsc -p tsconfig.lib.json`). Never commit `nodejs/*.mjs`, and never re-add an esbuild step.
 - `modules/<name>/nodejs/package.json` is private (`@telorun/<name>-build`) and never published.
@@ -337,7 +338,11 @@ Full mechanics: `modules/CLAUDE.md`.
 
 ## Layered module artifacts
 
-A published module is one OCI artifact of several layers — `manifest`, per-selector `controller` and `library`, `assets`, `common` — addressed by the `layers:` index in the published `telo.yaml`, which the import pin covers. A host materializes only the layers its selector (`format` + `os`/`arch`/`libc`) needs. Spec: `kernel/specs/module-artifact.md`; details: `kernel/nodejs/CLAUDE.md`.
+A published module is one OCI artifact of several layers — `manifest`, per-selector `controller`, `library` and `native`, `assets`, `common` — addressed by the `layers:` index in the published `telo.yaml`, which the import pin covers. A host materializes only the layers its selector (`format` + `os`/`arch`/`libc`/`abi`) needs. Spec: `kernel/specs/module-artifact.md`; details: `kernel/nodejs/CLAUDE.md`.
+
+- **`native:`** on a module doc names each platform-specific file a controller opens by name (`{ name, format, os, arch, libc?, abi?, path }`), shipped in the `native` layer of its selector and reached through `ctx.resolveNativeFile(name)`.
+- **`sources:`** says where every staged file comes from — `{ version, url, archive: tar.gz, notices, entries, build? }`, each entry a file (`upstream`, `member`, pinned `sha256` + `executable`) or a link (`target`), and for files built in this repo `build: { cargo: <crate dir>, inputs: <digest> }`. `telo release stage [--pin]` fetches and pins it; no kernel ever fetches, and a kernel reads no native file of a module whose block does not read. It is removed from the published `telo.yaml`.
+- Guide: `docs/extend/native-files.md`; `telo check` codes `NATIVE_*` / `SOURCE_*`.
 
 ## Versioning & releases — MANDATORY
 
