@@ -15,6 +15,7 @@ interface ManifestAssertManifest {
     loadError?: string;
     runFails?: string;
     runs?: boolean;
+    stdout?: string;
   };
 }
 
@@ -25,8 +26,9 @@ const RUN_TIMEOUT_MS = 30_000;
 
 /**
  * Run the manifest to completion and report how it ended. Both streams are
- * drained — a stream left unread stalls the child once its channel fills — and
- * only stderr is kept, since that is where a load or init failure is written.
+ * drained — a stream left unread stalls the child once its channel fills. stderr
+ * is kept, since that is where a load or init failure is written; stdout only
+ * when it is asserted.
  *
  * BOUNDED AND ALWAYS CANCELLED. `exitCode` is raced against a timer and
  * `cancel()` runs in a `finally`, because a child nobody stops is a child that
@@ -40,7 +42,8 @@ const RUN_TIMEOUT_MS = 30_000;
 async function runToExit(
   runtime: ResourceContext["runtime"],
   source: string,
-): Promise<{ exitCode: number; stderr: string; timedOut: boolean }> {
+  keepStdout = false,
+): Promise<{ exitCode: number; stdout: string; stderr: string; timedOut: boolean }> {
   const run = await runtime.run(source, { env: {} });
   const drain = async (stream: AsyncIterable<string>, keep: boolean): Promise<string> => {
     let text = "";
@@ -53,12 +56,12 @@ async function runToExit(
       timer = setTimeout(() => resolve("timeout"), RUN_TIMEOUT_MS);
     });
     const settled = await Promise.race([
-      Promise.all([drain(run.stdout, false), drain(run.stderr, true), run.exitCode]),
+      Promise.all([drain(run.stdout, keepStdout), drain(run.stderr, true), run.exitCode]),
       timeout,
     ]);
-    if (settled === "timeout") return { exitCode: -1, stderr: "", timedOut: true };
-    const [, stderr, exitCode] = settled;
-    return { exitCode, stderr, timedOut: false };
+    if (settled === "timeout") return { exitCode: -1, stdout: "", stderr: "", timedOut: true };
+    const [stdout, stderr, exitCode] = settled;
+    return { exitCode, stdout, stderr, timedOut: false };
   } finally {
     if (timer) clearTimeout(timer);
     await run.cancel("assert.manifest finished").catch(() => {});
@@ -231,8 +234,16 @@ export async function create(
         }
       }
 
-      if (manifest.expect.runs) {
-        const { exitCode, stderr, timedOut } = await runToExit(ctx.runtime, resolvedUrl);
+      // `stdout` is what a successful run printed, so asserting it implies `runs`.
+      // The child writes through its own channel rather than the process's, which
+      // is what makes the comparison exact wherever the suite runs.
+      const expectedStdout = manifest.expect.stdout;
+      if (manifest.expect.runs || expectedStdout !== undefined) {
+        const { exitCode, stdout, stderr, timedOut } = await runToExit(
+          ctx.runtime,
+          resolvedUrl,
+          expectedStdout !== undefined,
+        );
         if (timedOut) {
           failures.push(
             `expected the run to succeed — it was still running after ` +
@@ -245,6 +256,15 @@ export async function create(
           );
         } else {
           matched.push("runs");
+          if (expectedStdout !== undefined) {
+            if (stdout === expectedStdout) {
+              matched.push("stdout matches");
+            } else {
+              failures.push(
+                `expected stdout ${JSON.stringify(expectedStdout)} — got ${JSON.stringify(stdout)}`,
+              );
+            }
+          }
         }
       }
 

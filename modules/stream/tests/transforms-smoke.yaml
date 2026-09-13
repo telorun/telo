@@ -133,12 +133,17 @@ steps:
     invoke: !ref Assert.equals
 
   # A stage handed something that is not a stream says so, rather than yielding
-  # an empty result that reads as "the source was empty".
+  # an empty result that reads as "the source was empty". A literal is refused by
+  # `telo check`, so the value comes from a step.
   - name: notAStream
     try:
+      - name: notAStreamValue
+        invoke:
+          kind: Run.Value
+          value: { text: not a stream }
       - name: call
         inputs:
-          input: "not a stream"
+          input: !cel "steps.notAStreamValue.result.text"
         invoke:
           kind: Stream.Map
           value: !cel "item"

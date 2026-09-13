@@ -25,8 +25,12 @@ steps:
       who: !cel "item"
     invoke:
       kind: Run.Value
-      inputs:
-        who: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            who: {}
       value:
         notified: !cel "inputs.who"
 ---

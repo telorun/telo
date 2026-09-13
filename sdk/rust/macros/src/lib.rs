@@ -64,19 +64,27 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
     // and napi-derive's generated paths resolve through `::telorun_sdk::__napi`,
     // so the downstream controller crate does NOT need a direct napi/napi-derive
     // dependency. Only `telorun-sdk` needs to live in its `[dependencies]`.
+    //
+    // Every bridged return type is spelled `Result<…>` — the last path segment
+    // literally `Result`. napi-derive decides whether a function returns a
+    // Result by that segment's NAME, and only then generates the `Err` → throw
+    // path; under any alias it converts the whole `Result` as a value, so an
+    // `Err` reaches JavaScript as a RETURNED `Error` and the call "succeeds".
+    //
+    // Only the controller's own `Err` goes through `controller_error`, which
+    // marks it as the controller's; a conversion failure is napi's own error,
+    // thrown unmarked, so the Node kernel reports it as a plain failure.
     let invoke_fn = has_invoke.then(|| {
         quote! {
             #[napi]
-            pub fn invoke(&self, env: Env, input: JsUnknown, ctx: Option<JsObject>) -> NapiResult<JsUnknown> {
-                let value = ::telorun_sdk::backend::napi::js_to_value(&env, input)
-                    .map_err(::telorun_sdk::backend::napi::to_napi_error)?;
+            pub fn invoke(&self, env: Env, input: JsUnknown, ctx: Option<JsObject>) -> Result<JsUnknown> {
+                let value = ::telorun_sdk::backend::napi::js_to_value(&env, input)?;
                 // Poll-only cancellation: the token reads `ctx.cancellation.isCancelled`
                 // from the JS InvokeContext on each `is_cancelled()` call.
                 let invoke_ctx = ::telorun_sdk::backend::napi::invoke_context_from_js(ctx);
                 let result = <super::#self_ty as ::telorun_sdk::Controller>::invoke(&self.inner, value, &invoke_ctx)
-                    .map_err(::telorun_sdk::backend::napi::to_napi_error)?;
+                    .map_err(|err| ::telorun_sdk::backend::napi::controller_error(&env, err))?;
                 ::telorun_sdk::backend::napi::value_to_js(&env, &result)
-                    .map_err(::telorun_sdk::backend::napi::to_napi_error)
             }
         }
     });
@@ -84,10 +92,9 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
     let snapshot_fn = has_snapshot.then(|| {
         quote! {
             #[napi]
-            pub fn snapshot(&self, env: Env) -> NapiResult<JsUnknown> {
+            pub fn snapshot(&self, env: Env) -> Result<JsUnknown> {
                 let value = <super::#self_ty as ::telorun_sdk::Controller>::snapshot(&self.inner);
                 ::telorun_sdk::backend::napi::value_to_js(&env, &value)
-                    .map_err(::telorun_sdk::backend::napi::to_napi_error)
             }
         }
     });
@@ -150,7 +157,7 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
             // from items, so importing both as `napi` is unambiguous.
             use ::telorun_sdk::__napi as napi;
             use ::telorun_sdk::__napi_derive::napi;
-            use ::telorun_sdk::__napi::{Env, JsObject, JsUnknown, Result as NapiResult};
+            use ::telorun_sdk::__napi::{Env, JsObject, JsUnknown, Result};
 
             #napi_attr
             pub struct #bridge_struct {
@@ -164,20 +171,18 @@ pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
 
             #napi_attr
-            pub fn register(_env: Env, _ctx: JsObject) -> NapiResult<()> {
+            pub fn register(env: Env, _ctx: JsObject) -> Result<()> {
                 let ctx = ::telorun_sdk::backend::napi::NapiControllerContext;
                 <super::#self_ty as ::telorun_sdk::Controller>::register(&ctx)
-                    .map_err(::telorun_sdk::backend::napi::to_napi_error)
+                    .map_err(|err| ::telorun_sdk::backend::napi::controller_error(&env, err))
             }
 
             #napi_attr
-            pub fn create(env: Env, resource: JsUnknown, ctx: JsObject) -> NapiResult<#bridge_struct> {
-                let manifest = ::telorun_sdk::backend::napi::js_to_value(&env, resource)
-                    .map_err(::telorun_sdk::backend::napi::to_napi_error)?;
-                let ctx_impl = ::telorun_sdk::backend::napi::NapiResourceContext::new(env, ctx)
-                    .map_err(::telorun_sdk::backend::napi::to_napi_error)?;
+            pub fn create(env: Env, resource: JsUnknown, ctx: JsObject) -> Result<#bridge_struct> {
+                let manifest = ::telorun_sdk::backend::napi::js_to_value(&env, resource)?;
+                let ctx_impl = ::telorun_sdk::backend::napi::NapiResourceContext::new(env, ctx)?;
                 let inner = <super::#self_ty as ::telorun_sdk::Controller>::create(manifest, &ctx_impl)
-                    .map_err(::telorun_sdk::backend::napi::to_napi_error)?;
+                    .map_err(|err| ::telorun_sdk::backend::napi::controller_error(&env, err))?;
                 Ok(#bridge_struct { inner })
             }
         }

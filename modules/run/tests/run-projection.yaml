@@ -19,8 +19,12 @@ steps:
       n: !cel "item"
     invoke:
       kind: Run.Value
-      inputs:
-        n: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            n: {}
       value:
         doubled: !cel "double(inputs.n) * 2.0"
 outputs:
@@ -62,8 +66,12 @@ steps:
       ordinal: !cel "index + 1"
     invoke:
       kind: Run.Value
-      inputs:
-        ordinal: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            ordinal: {}
       value:
         ordinal: !cel "inputs.ordinal"
 outputs:

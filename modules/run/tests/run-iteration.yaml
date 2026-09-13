@@ -23,9 +23,13 @@ steps:
       idx: !cel "index + 1"
     invoke:
       kind: Run.Value
-      inputs:
-        who: {}
-        idx: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            who: {}
+            idx: {}
       value:
         notified: !cel "inputs.who"
         at: !cel "inputs.idx"

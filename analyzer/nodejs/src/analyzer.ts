@@ -49,6 +49,7 @@ import {
   buildObservedStateIndex,
   buildObservedStateResourcesSchema,
   collectRunReachableNames,
+  forwardedResourceKey,
   observedStateRead,
   validateObservedStateDeclarations,
 } from "./validate-observed-state.js";
@@ -182,6 +183,8 @@ import { validateResourceInputs } from "./validate-resource-inputs.js";
 import { validateExports } from "./validate-exports.js";
 import { validateTemplateBody } from "./validate-template-body.js";
 import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
+import { validateScopedNameReach } from "./validate-scope-reach.js";
+import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 import { readStepSlot } from "./step-slot.js";
 
@@ -406,9 +409,9 @@ function validateStepInvokeReferences(
       if (typeof m === "string") loadedModules.add(m);
       continue;
     }
-    const meta = r.metadata as { name?: unknown; module?: unknown; forwardedExport?: unknown };
+    const meta = r.metadata as { name?: unknown; module?: unknown };
     if (typeof meta?.name !== "string" || REF_VALIDATION_SKIP_KINDS.has(r.kind)) continue;
-    if (meta.forwardedExport === true) {
+    if (isForwardedDeclaration(r)) {
       if (typeof meta.module === "string") loadedModules.add(meta.module);
       continue;
     }
@@ -476,11 +479,11 @@ function validateStepInvokeReferences(
   };
 
   for (const m of allManifests) {
-    const meta = m.metadata as { name?: unknown; source?: unknown; forwardedExport?: unknown };
+    const meta = m.metadata as { name?: unknown; source?: unknown };
     if (
       typeof meta?.name !== "string" ||
       REF_VALIDATION_SKIP_KINDS.has(m.kind) ||
-      meta.forwardedExport === true
+      isForwardedDeclaration(m)
     )
       continue;
     const def = defs.resolve(aliases.resolveKind(m.kind) ?? m.kind);
@@ -1815,9 +1818,7 @@ export class StaticAnalyzer {
       // `kind`/CEL are authored in that module's scope (e.g. `Self.X` → that module, not the
       // consumer). Re-validating against the consumer's scope yields false UNDEFINED_KIND /
       // scope-mismatch errors, so skip — they participate here only as resolution targets.
-      if ((m.metadata as { forwardedExport?: boolean } | undefined)?.forwardedExport === true) {
-        continue;
-      }
+      if (isForwardedDeclaration(m)) continue;
 
       // A kind-only stand-in for a `resources:` entry is a DECLARATION, not an
       // instantiation: its kind is routinely an abstract and its configuration
@@ -2586,9 +2587,17 @@ export class StaticAnalyzer {
               if (!read) continue;
               // An import's exported instance is indexed under `<Alias>.<name>`,
               // the two-level shape it publishes under, so a cross-module read
-              // is checked exactly like a local one.
+              // is checked exactly like a local one. A bare name read inside a
+              // dependency's own manifest names that dependency's resource.
+              const readerModule = isForwardedDeclaration(m)
+                ? (m.metadata?.module as string | undefined)
+                : undefined;
               const reported = observedState.get(
-                read.alias ? `${read.alias}.${read.name}` : read.name,
+                read.alias
+                  ? `${read.alias}.${read.name}`
+                  : readerModule !== undefined
+                    ? forwardedResourceKey(readerModule, read.name)
+                    : read.name,
               );
 
               if (celRuleApplies && celEvalModeAt(celSites, path) === "compile") {
@@ -2868,6 +2877,14 @@ export class StaticAnalyzer {
         rootModules,
         (supplied, required, isDeclaration) =>
           kindSatisfies(supplied, required, defs, isDeclaration),
+      ),
+    );
+
+    // An inline declaration referencing a name declared by a scope it was
+    // written inside but is created outside of.
+    diagnostics.push(
+      ...validateScopedNameReach(allManifests, defs, aliases, aliasesByModule, rootModules, (expr) =>
+        celAccessChains(this.celEnv, expr),
       ),
     );
 

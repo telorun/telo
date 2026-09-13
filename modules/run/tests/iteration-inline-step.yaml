@@ -38,7 +38,8 @@ steps:
       steps:
         - name: keep
           value: !cel "item"
-      outputs: !cel "item.user + ' ' + formatDuration(item.minutes, 480)"
+      outputs:
+        line: !cel "item.user + ' ' + formatDuration(item.minutes, 480)"
     inputs:
       rows: !cel "steps.rows.result"
 
@@ -46,8 +47,8 @@ steps:
     inputs:
       actual: !cel "steps.lines.result"
       expected:
-        - "ada 1d 30m"
-        - "linus 7h 30m"
+        - { line: "ada 1d 30m" }
+        - { line: "linus 7h 30m" }
     invoke:
       kind: Assert.Equals
 

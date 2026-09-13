@@ -13,13 +13,13 @@ matter on a real protocol: one wire frame routinely carries several logical reco
 a keep-alive or a terminator carries none.
 
 ```yaml
-- name: Parts
+- name: parts
   invoke:
     kind: Stream.FlatMap
     # A `[DONE]` sentinel expands to nothing; anything else to its parts.
     values: !cel "item.data == '[DONE]' ? [] : partsOf(item.data)"
   inputs:
-    input: !cel "steps.Frames.result.records"
+    input: !cel "steps.frames.result.records"
 ```
 
 ## Fields
@@ -31,7 +31,8 @@ a keep-alive or a terminator carries none.
 
 ## What the expression sees
 
-`item`, `index` and `inputs`.
+`item` and `index`. `index` is the element's zero-based position, an integer:
+`index % 2` and `index + 1` work as written.
 
 ## Emitting nothing
 
@@ -40,7 +41,7 @@ separate filter stage, and for a sentinel value meaning nothing.
 
 ## A non-array is refused
 
-`values` must evaluate to an array; anything else raises `INVALID_VALUE` naming the
+`values` must evaluate to an array; anything else raises `ERR_INVALID_VALUE` naming the
 element's index. It is not wrapped as a single value, because that would make `values`
 mean two things — a list to flatten, and a value to pass — kept apart only by what an
 expression happened to return. A list-valued element would then flatten on one call and

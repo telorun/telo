@@ -1,0 +1,25 @@
+# An inline step target written next to a `with:` block, referencing a name that
+# block declares. Written there, the name reads as reachable; but the target is
+# created where the sequence is — outside the scope — so it resolves to nothing.
+kind: Telo.Library
+metadata:
+  name: ScopedNameOutOfReach
+  version: 1.0.0
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [probe]
+---
+kind: Run.Sequence
+metadata: { name: probe }
+with:
+  - kind: Run.Value
+    metadata: { name: scopedValue }
+    value: 42
+steps:
+  - name: call
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - name: inner
+          invoke: !ref scopedValue

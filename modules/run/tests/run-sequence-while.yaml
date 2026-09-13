@@ -19,8 +19,12 @@ steps:
       n: 0
     invoke:
       kind: Run.Value
-      inputs:
-        n: { type: number }
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            n: { type: number }
       value:
         n: !cel "inputs.n"
 
@@ -32,8 +36,12 @@ steps:
           n: "${{ steps.counter.result.n }}"
         invoke:
           kind: Run.Value
-          inputs:
-            n: { type: number }
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              properties:
+                n: { type: number }
           value:
             n: !cel "inputs.n + 1.0"
 
@@ -61,8 +69,12 @@ steps:
       total: 0
     invoke:
       kind: Run.Value
-      inputs:
-        total: { type: number }
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            total: { type: number }
       value:
         total: !cel "inputs.total"
 
@@ -75,9 +87,13 @@ steps:
           factor: "${{ steps.multiplier.result.factor }}"
         invoke:
           kind: Run.Value
-          inputs:
-            total: { type: number }
-            factor: { type: number }
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              properties:
+                total: { type: number }
+                factor: { type: number }
           value:
             total: !cel "inputs.total + inputs.factor"
 

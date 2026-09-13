@@ -20,8 +20,12 @@ steps:
       n: !cel "iteration"
     invoke:
       kind: Run.Value
-      inputs:
-        n: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            n: {}
       value:
         seen: !cel "inputs.n"
 outputs:
@@ -97,8 +101,12 @@ steps:
       label: !cel "'#' + string(iteration + 1)"
     invoke:
       kind: Run.Value
-      inputs:
-        label: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            label: {}
       value:
         label: !cel "inputs.label"
 outputs:

@@ -32,6 +32,7 @@ import type { ModuleDocuments } from "./module-documents.js";
 import { readProvidesZone, readRequiresZone } from "./zone-slot.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { isForwardedDeclaration } from "./forwarded-declaration.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -616,7 +617,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     // (with the internal graph in hand) and seeded below — deriving them here
     // against the flattened view would resolve correlation against a graph
     // that no longer holds the library's internals.
-    if (meta?.forwardedExport) continue;
+    if (isForwardedDeclaration(node.manifest)) continue;
     const def = resolveDef(node.kind, meta?.module);
     const schema = def?.schema as Record<string, any> | undefined;
     if (!def || !schema) continue;

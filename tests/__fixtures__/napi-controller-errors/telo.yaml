@@ -1,0 +1,40 @@
+kind: Telo.Library
+metadata:
+  name: NapiErrors
+  version: 0.0.0
+  description: Wraps the napi-controller-errors fixture crate, an SDK-built Rust controller, so kernel tests can import it.
+exports:
+  kinds:
+    - Probe
+---
+kind: Telo.Definition
+metadata:
+  name: Probe
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/napi-controller-errors?local_path=../../../kernel/nodejs/tests/napi-controller-errors
+throws:
+  codes:
+    ERR_FIXTURE:
+      description: The input set `fail` to true.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      fail: { type: boolean }
+    additionalProperties: false
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      fail: { type: boolean }
+    additionalProperties: false
+schema:
+  type: object
+  properties:
+    failCreate:
+      type: boolean
+      description: Makes the controller's create return an error.
+  additionalProperties: false

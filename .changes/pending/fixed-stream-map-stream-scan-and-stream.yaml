@@ -1,0 +1,6 @@
+modules:
+  modules/stream: Fixed
+body: Stream.Map, Stream.Scan and Stream.FlatMap no longer bind `inputs` in their
+  expressions. The only input is the stream being drained, so an expression reading
+  `inputs.input` pulled values out from under the stage and silently lost them. Reading
+  `inputs` there is now `CEL_UNKNOWN_IDENTIFIER` at `telo check`.

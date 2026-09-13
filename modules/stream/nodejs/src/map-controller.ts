@@ -1,5 +1,6 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError, Stream } from "@telorun/sdk";
+import { elementBindings } from "./element-bindings.js";
 import { requireStream } from "./stream-input.js";
 
 interface MapResource {
@@ -44,7 +45,7 @@ class StreamMap implements ResourceInstance<MapInputs, MapOutputs> {
           `to null, which the schema cannot tell from a CEL node.`,
       );
     }
-    return { output: new Stream(map(input, this.resource.value, this.ctx, inputs)) };
+    return { output: new Stream(map(input, this.resource.value, this.ctx)) };
   }
 
   snapshot(): Record<string, unknown> {
@@ -56,12 +57,9 @@ async function* map(
   input: AsyncIterable<unknown>,
   value: unknown,
   ctx: ResourceContext,
-  call: MapInputs,
 ): AsyncIterable<unknown> {
-  let index = 0;
-  for await (const item of input) {
-    yield ctx.expandValue(value, { inputs: call, item, index });
-    index++;
+  for await (const scope of elementBindings(input)) {
+    yield ctx.expandValue(value, scope);
   }
 }
 

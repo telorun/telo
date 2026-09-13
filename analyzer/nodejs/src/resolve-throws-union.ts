@@ -1,12 +1,18 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
 import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js";
-import { resolveScopedName } from "./call-graph.js";
+import { resolveScopedName, resolveSlotUseAt } from "./call-graph.js";
 import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { possibleUses, readRefSlot, transfersControl, type RefSlot } from "./ref-slot.js";
-import { readStepSlot } from "./step-slot.js";
+import {
+  hasDeclaredUse,
+  possibleUses,
+  transfersControl,
+  type RefSlot,
+  type RefUse,
+} from "./ref-slot.js";
 import { forEachDrivenSlot } from "./schema-walk.js";
+import type { StepSlot } from "./step-slot.js";
 
 export interface ThrowsCodeMeta {
   data?: Record<string, any>;
@@ -207,10 +213,10 @@ function codesFromDefinition(definition: ResourceDefinition): Map<string, Throws
 }
 
 /** Resolve the effective throw union for a named manifest. The result combines
- *  explicit `throws.codes`, `throws.inherit: true` dataflow (step-context
- *  traversal with try/catch subtraction), and unbounded markers for
- *  unresolvable passthrough call sites. Cycles short-circuit to an empty
- *  result so resolution always terminates. */
+ *  explicit `throws.codes`, `throws.inherit: true` dataflow (step bodies with
+ *  try/catch subtraction, plus reference slots that hand a failure back), and
+ *  unbounded markers for unresolvable passthrough call sites. Cycles
+ *  short-circuit to an empty result so resolution always terminates. */
 export function resolveThrowsUnion(
   manifest: ResourceManifest,
   ctx: ResolveCtx,
@@ -266,14 +272,42 @@ export function resolveThrowsUnion(
 }
 
 /**
- * `throws.inherit: true` — the union a composer's own STEP BODIES reach.
+ * True for a use through which a target's failure reaches the declaring
+ * resource's CALLER: `call` returns into my invocation, and `trigger.consumer`
+ * rejects the value my caller drains. `detached` and `trigger.inbound` run where
+ * no caller of mine awaits them; `dependency` and `schema` dispatch nothing.
  *
- * Deliberately steps only, and not every slot the resource drives: `inherit` is
- * a DECLARATION that a kind's union is the union of what it dispatches, and a
- * kind that does not make that claim must not have it inferred — a kind holding
- * a `call` ref it catches internally would silently gain codes it never lets
- * escape. What a CATCH SCOPE needs is a different question with a different
- * answer, and it has its own resolver below.
+ * The reduction `inherit` is read through — by the resolver and by the check
+ * that a definition declaring it has something to inherit from.
+ */
+export function handsFailureBack(use: RefUse): boolean {
+  return use === "call" || use === "trigger.consumer";
+}
+
+/**
+ * The uses a throws consumer reads off a slot. A slot that declares no use —
+ * the legacy bare-string form — reads as `call`: the throws union must assume
+ * `call` to keep an error path, the direction the call graph takes for the same
+ * slot. The zone projection reads it the opposite way, deliberately.
+ *
+ * `uses` defaults to every use the slot can take; a consumer that resolved the
+ * slot's case map for one instance passes that answer instead.
+ */
+export function throwsUses(
+  slot: RefSlot,
+  uses: readonly RefUse[] = possibleUses(slot),
+): readonly RefUse[] {
+  return hasDeclaredUse(slot) ? uses : ["call"];
+}
+
+/**
+ * `throws.inherit: true` — the union of what the resource dispatches: its step
+ * bodies (try/catch subtraction included) and every reference slot whose use,
+ * resolved for THIS instance, hands a failure back ({@link handsFailureBack}).
+ *
+ * Only on a kind that DECLARES `inherit`: it is a claim that the kind lets what
+ * it dispatches escape, and a kind catching a slot internally does not make it.
+ * What a CATCH SCOPE encloses is a different question, answered below.
  */
 function resolveInherited(
   manifest: ResourceManifest,
@@ -282,16 +316,23 @@ function resolveInherited(
   ownerModule: string | undefined,
 ): ThrowsUnion {
   const result: ThrowsUnion = { codes: new Map(), unbounded: false };
-  const props = definition.schema?.properties as Record<string, any> | undefined;
-  if (!props) return result;
+  const schema = definition.schema as Record<string, any> | undefined;
 
-  for (const [fieldName, fieldSchema] of Object.entries(props)) {
-    const stepCtx = readStepSlot(fieldSchema);
-    if (!stepCtx) continue;
-    const steps = (manifest as Record<string, any>)[fieldName];
-    if (!Array.isArray(steps)) continue;
-    unionInto(result, collectStepArrayThrows(steps, stepCtx.invoke, undefined, ctx, ownerModule));
-  }
+  forEachDrivenSlot(schema, manifest, (driven) => {
+    if (driven.kind === "step") {
+      unionInto(result, stepSiteThrows(driven.data, driven.slots, ctx, ownerModule));
+      return;
+    }
+    // Several slots at one site are the branches declaring it; any one that
+    // hands a failure back counts, since a branch not applying can only add codes.
+    const handsBack = driven.slots.some(({ slot, fieldPath }) =>
+      throwsUses(
+        slot,
+        resolveSlotUseAt(slot, manifest, schema, driven.path, fieldPath).use,
+      ).some(handsFailureBack),
+    );
+    if (handsBack) unionInto(result, resolveRefTargetThrows(driven.data, ctx, ownerModule));
+  });
 
   return result;
 }
@@ -327,13 +368,15 @@ export function resolveScopeUnion(
 
   forEachDrivenSlot(definition.schema, manifest, (driven) => {
     if (driven.kind === "step") {
-      unionInto(
-        result,
-        collectStepArrayThrows(driven.data, driven.slot.invoke, undefined, ctx, ownerModule),
-      );
+      unionInto(result, stepSiteThrows(driven.data, driven.slots, ctx, ownerModule));
       return;
     }
-    if (driven.slot.throwsThrough) {
+    if (
+      driven.slots.some(({ slot }) => !slot.throwsThrough && throwsUses(slot).some(transfersControl))
+    ) {
+      unionInto(result, resolveRefTargetThrows(driven.data, ctx, ownerModule));
+    }
+    if (driven.slots.some(({ slot }) => slot.throwsThrough)) {
       const target = resolveRefManifest(driven.data, ctx, ownerModule);
       const targetDef = target
         ? definitionFor(
@@ -347,12 +390,24 @@ export function resolveScopeUnion(
       // A target that cannot be resolved says nothing about what it throws, so
       // the scope's union is no longer enumerable.
       else result.unbounded = true;
-      return;
     }
-    if (!possibleUses(driven.slot).some(transfersControl)) return;
-    unionInto(result, resolveRefTargetThrows(driven.data, ctx, ownerModule));
   });
 
+  return result;
+}
+
+/** The union a step-body site reaches — once per distinct invoke field, since
+ *  several branches may declare a body at one site. */
+function stepSiteThrows(
+  steps: unknown[],
+  slots: StepSlot[],
+  ctx: ResolveCtx,
+  ownerModule: string | undefined,
+): ThrowsUnion {
+  const result = emptyUnion();
+  for (const invoke of new Set(slots.map((slot) => slot.invoke))) {
+    unionInto(result, collectStepArrayThrows(steps, invoke, undefined, ctx, ownerModule));
+  }
   return result;
 }
 

@@ -31,6 +31,14 @@ targets:
   - !ref ownNamePrefix
   - !ref bodyOutwardRef
   - !ref inheritedRequiredHint
+  - !ref inlineStepNestedInline
+  - !ref inlineStepExactUnion
+  - !ref scopedNameOutOfReach
+  - !ref scopedNameOutOfReachAtRuntime
+  - !ref forwardedInlineStep
+  - !ref inlineSequenceTarget
+  - !ref readsForwardedNames
+  - !ref readsGeneratedNameAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -178,3 +186,90 @@ expect:
   errors:
     - code: SCHEMA_VIOLATION
       message: "extends without a 'base:' mapping"
+---
+# Inline declarations nested INSIDE a step's inline target — a stream handler, a
+# command host — and the same inside a `with:`-scoped sequence. Each checked clean
+# and failed at run: the composer registered its step's own target at init(),
+# and nothing ever registered what that target declared inline.
+kind: Assert.Manifest
+metadata:
+  name: inlineStepNestedInline
+source: ./__fixtures__/check-run-agreement/inline-step-nested-inline.yaml
+expect:
+  runs: true
+---
+# An `inherit` kind written inline in a step has an exact union once its
+# declaration can be found by name, so a route names the code its handler
+# documents without a catch-all. `errors: []` is the assertion: a non-empty list
+# would still pass on a manifest that also reported the union unbounded.
+kind: Assert.Manifest
+metadata:
+  name: inlineStepExactUnion
+source: ./__fixtures__/check-run-agreement/inline-step-exact-union.yaml
+expect:
+  errors: []
+---
+# The shape that stays unsupported: an inline declaration referencing a name the
+# `with:` beside it declares. It is created where its sequence is, outside that
+# scope, so the name never reaches it — reported at the library that writes it…
+kind: Assert.Manifest
+metadata:
+  name: scopedNameOutOfReach
+source: ./__fixtures__/check-run-agreement/scoped-name-out-of-reach/lib/telo.yaml
+expect:
+  errors:
+    - code: SCOPED_NAME_OUT_OF_REACH
+      message: "'scopedValue' is declared in 'with:'"
+---
+# …and, from a consumer whose entry-scoped check is silent about a dependency's
+# internals, refused by the kernel.
+kind: Assert.Manifest
+metadata:
+  name: scopedNameOutOfReachAtRuntime
+source: ./__fixtures__/check-run-agreement/scoped-name-out-of-reach/telo.yaml
+expect:
+  runFails: "scopedValue"
+---
+# A CLEAN library whose exported sequence has inline step targets naming the
+# library's own resources. What extraction pulls out of an export is the
+# library's code, so a consumer checks and boots exactly as before — the
+# out-of-reach consumer above expects a failure and could not catch this.
+kind: Assert.Manifest
+metadata:
+  name: forwardedInlineStep
+source: ./__fixtures__/check-run-agreement/forwarded-inline-step/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# An inline entry in a sequence's `targets:` is created in the scope that runs it.
+kind: Assert.Manifest
+metadata:
+  name: inlineSequenceTarget
+source: ./__fixtures__/check-run-agreement/inline-sequence-target.yaml
+expect:
+  runs: true
+---
+# A consumer's CEL `resources` holds its own resources and its import aliases.
+# A name extraction generated inside a library's export is the library's code
+# and reachable under no name at all, and an export is read as
+# `resources.<Alias>.<name>` — so both reads are unknown fields where written…
+kind: Assert.Manifest
+metadata:
+  name: readsForwardedNames
+source: ./__fixtures__/check-run-agreement/forwarded-inline-step/reader/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'resources.SequenceProbeSteps0Command' is not defined"
+    - code: CEL_UNKNOWN_FIELD
+      message: "'resources.probe' is not defined"
+---
+# …and a key the kernel does not have, from a consumer whose entry-scoped check is
+# silent about the reader's internals.
+kind: Assert.Manifest
+metadata:
+  name: readsGeneratedNameAtRuntime
+source: ./__fixtures__/check-run-agreement/forwarded-inline-step/reads-generated-name.yaml
+expect:
+  runFails: "SequenceProbeSteps0Command"

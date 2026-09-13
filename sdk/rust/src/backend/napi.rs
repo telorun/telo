@@ -1,8 +1,7 @@
 //! N-API backend: bridges the Rust [`Controller`] contract to JS-callable
-//! exports via napi-rs. Active when the `napi` feature is enabled (the SDK's
-//! default).
+//! exports via napi-rs. Active when the `napi` feature is enabled.
 
-use napi::{Env, JsFunction, JsObject, JsUnknown, Ref};
+use napi::{Env, JsError, JsFunction, JsObject, JsUnknown, Property, PropertyAttributes, Ref};
 use serde_json::Value;
 
 use crate::error::ControllerError;
@@ -15,20 +14,42 @@ impl From<napi::Error> for ControllerError {
     }
 }
 
-/// Convert a Rust [`ControllerError`] into a napi::Error so the JS side sees
-/// a thrown Error with the original code+message preserved.
-///
-/// Limitation: napi sets the JS error's `.code` from its own `Status` name, so
-/// the controller code is carried in the *message* (`[CODE] msg`), not as a JS
-/// `.code` property. The Node kernel recognizes structured errors (e.g.
-/// `ERR_INVOKE_CANCELLED`) by `.code`, so a code thrown from Rust is not yet
-/// reclassified there. Carrying controller codes as JS `.code` (via a raw JS
-/// error object with the code set) is a separate structured-error-bridge change.
-pub fn to_napi_error(err: ControllerError) -> napi::Error {
-    napi::Error::new(
-        napi::Status::GenericFailure,
-        format!("[{}] {}", err.code, err.message),
-    )
+/// Property the thrown JS error carries when it is a controller's OWN error,
+/// which is what the Node loader keys on to re-raise it as an `InvokeError`.
+/// Everything else the bridge can throw — a value napi cannot convert, a
+/// napi-derive argument check — lacks it and stays a plain failure.
+pub const CONTROLLER_ERROR_MARKER: &str = "teloControllerError";
+
+/// The error thrown for a [`ControllerError`] a controller returned: a JS
+/// `Error` whose `.code` is the controller's code and whose `.message` is its
+/// plain message — the two fields the native ABI carries — marked with
+/// [`CONTROLLER_ERROR_MARKER`]. Built here and thrown as that object, so napi
+/// never derives anything from a status.
+pub fn controller_error(env: &Env, err: ControllerError) -> napi::Error {
+    match marked_error(env, &err) {
+        Ok(raised) => napi::Error::from(raised),
+        // A call back into JavaScript that threw leaves its exception pending,
+        // which fails these calls, and napi then throws that exception instead
+        // of this one. Otherwise nothing is dropped: the fallback still says
+        // what was returned and why it could not be raised as such.
+        Err(build) => napi::Error::new(
+            napi::Status::GenericFailure,
+            format!(
+                "[{}] {} (not raised as a controller error: {})",
+                err.code, err.message, build.reason
+            ),
+        ),
+    }
+}
+
+fn marked_error(env: &Env, err: &ControllerError) -> napi::Result<JsUnknown> {
+    let error = JsError::from(napi::Error::new(err.code.clone(), err.message.clone()))
+        .into_unknown(*env);
+    let mut object = error.coerce_to_object()?;
+    object.define_properties(&[Property::new(CONTROLLER_ERROR_MARKER)?
+        .with_value(&env.get_boolean(true)?)
+        .with_property_attributes(PropertyAttributes::Default)])?;
+    Ok(object.into_unknown())
 }
 
 /// Concrete `ControllerContext` for the napi backend. Reserved for future
@@ -51,7 +72,7 @@ pub struct NapiResourceContext {
 }
 
 impl NapiResourceContext {
-    pub fn new(env: Env, ctx_obj: JsObject) -> Result<Self> {
+    pub fn new(env: Env, ctx_obj: JsObject) -> napi::Result<Self> {
         let ctx_ref = env.create_reference(ctx_obj)?;
         Ok(Self { env, ctx_ref })
     }
@@ -94,16 +115,18 @@ impl DataValidator for NapiDataValidator {
 
 /// Convert a JS value into `serde_json::Value` via napi-rs's serde-json
 /// feature. The macro uses this on the input/output of every napi-bound
-/// method so the user's controller code only ever sees `Value`.
-pub fn js_to_value(env: &Env, val: JsUnknown) -> Result<Value> {
-    let v: Value = env.from_js_value(val)?;
-    Ok(v)
+/// method so the user's controller code only ever sees `Value`. A failure is
+/// napi's own error, thrown unmarked: the bridge refusing a value it cannot
+/// represent (bytes, a stream, a function) is not an error the controller
+/// returned.
+pub fn js_to_value(env: &Env, val: JsUnknown) -> napi::Result<Value> {
+    env.from_js_value(val)
 }
 
-/// Convert `serde_json::Value` to a JS value.
-pub fn value_to_js(env: &Env, val: &Value) -> Result<JsUnknown> {
-    let js = env.to_js_value(val)?;
-    Ok(js)
+/// Convert `serde_json::Value` to a JS value. Fails unmarked, like
+/// [`js_to_value`].
+pub fn value_to_js(env: &Env, val: &Value) -> napi::Result<JsUnknown> {
+    env.to_js_value(val)
 }
 
 /// Build an [`InvokeContext`] whose token polls the JS `InvokeContext` object

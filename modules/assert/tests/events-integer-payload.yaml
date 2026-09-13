@@ -27,9 +27,13 @@ steps:
     invoke:
       kind: Run.Value
       metadata: { name: Counter }
-      inputs:
-        total: {}
-        next: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            total: {}
+            next: {}
       value:
         total: !cel "inputs.total"
         next: !cel "inputs.next"

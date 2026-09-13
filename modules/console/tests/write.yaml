@@ -1,0 +1,22 @@
+kind: Telo.Application
+metadata:
+  name: ConsoleWrite
+  version: 1.0.0
+  description: |
+    `Console.Write` puts its input on stdout exactly as given: no trailing
+    newline, and no markup interpretation — a style tag survives verbatim and
+    markup escapes (`\\`, `\{`) are not unescaped. Bytes pass through unchanged.
+
+    The fixture's stdout is captured whole. It is not a TTY, which is exactly
+    where the markup renderer would strip `{green x}` to `x` — so the comparison
+    proves the renderer is never called.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref writesExactBytes
+---
+kind: Assert.Manifest
+metadata: { name: writesExactBytes }
+source: ./__fixtures__/write-raw.yaml
+expect:
+  stdout: '{green x}a\\b \{y\}bytes-é'

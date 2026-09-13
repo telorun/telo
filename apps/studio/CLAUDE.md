@@ -1,0 +1,18 @@
+# Studio — package guide
+
+Loaded when working under `apps/studio/`. Repo-wide rules live in the root `CLAUDE.md` (Radix primitives, `lucide-react` icons). The runner contract the editor talks to is in `packages/runner-core/CLAUDE.md`; the agent's question protocol in `apps/authoring-agent/CLAUDE.md`; the module-graph projection the topology view draws in `analyzer/nodejs/CLAUDE.md` § Module graph.
+
+## Run
+
+**The editor offers ONE Run**, and the mode is not a user choice: it asks for a watch session when the runner advertises one and degrades to a plain run when it does not, read from a capabilities fetch on the run path rather than from asynchronously-filled state — where a Run clicked early would silently start the other kind. `mode` stays on the wire, so a one-shot run is still expressible by any client.
+
+## Agent
+
+**The editor prefers a co-resident agent over launching one of its own**, and the two differ in where the shared workspace is: a standalone agent owns a directory and serves its own `/workspace` routes, a co-resident one writes the session volume, which the editor reads and writes through `/v1/sessions/:id/workspace` — the same path its saves take. The runner-seeded `telo-workspace.yaml` is excluded from that sync in BOTH directions: filtering one side only would either re-push it every turn (a reload each time) or delete it on the first (scattering one module cache into one per app).
+
+## Where to look
+
+- "where does the editor's agent live, and whose workspace does it write?" → `apps/studio/src/agent/agent-workspace.ts` (the two surfaces behind one interface, and the runner-seeded path excluded from both directions), `agent/sync.ts` (the convergence), the `ensureAgent` precedence in `agent/context.tsx` (override > co-resident > launch), `coResidentAgent` in `apps/studio/src/run/context.tsx` (which session, resolved from its own `running` status)
+- "a turn failed — what can be picked back up?" → `apps/studio/src/agent/transcript.ts` (`resumePoint` / `formatResumeRequest`, the pure half), the `retry` / `dispatchTurn` split in `agent/context.tsx`. **Re-attach first, resend second**: a turn whose STREAM was lost is usually still running on a reachable agent, so `retry()` re-attaches from the last event id and pays for nothing twice; only when there is no turn to re-attach to (the session ended — what the editor calls *Interrupted*) is the request sent again. What makes that decidable is `ChatMessage.completed`, set ONLY by the `finish` record: `pending` is cleared by every ending including a failure, so half a streamed reply is indistinguishable from a whole one without it — and reading half a reply as an answer is what would offer a Resume button with nothing behind it. **A resend RESUMES rather than restarts.** The failed turn stays in the transcript, tool cards and all — it is the record of work that really happened — and the resend carries a report of what those tools did (target and outcome per tool, deduped to the latest per target, never a `write_file`'s contents), because the workspace cannot say it: a file on disk does not say who wrote it or whether it validated, and the agent persists a turn's own message only at end-of-stream, in the container that died. `ChatMessage.resumedRequest` holds the ORIGINAL request so a chain of resumes collapses instead of quoting the previous resume's report back at the agent, and so the work accumulates across attempts rather than dropping the first one's.
+- Questions the agent asks → `apps/studio/src/agent/questions.ts` (the block's single reader), `components/agent/QuestionCard.tsx`
+- Module graph view → `apps/studio/src/components/views/topology/module-graph-view/` (the view: bands, ELK layout and routing, per-property collapse)

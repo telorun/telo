@@ -1,0 +1,30 @@
+# An inline entry in a sequence's `targets:`. A target is run by the sequence's
+# scope, so its declaration has to be created there; created where the sequence
+# is, it checked clean and failed at run with ERR_RESOURCE_NOT_RUNNABLE.
+kind: Telo.Application
+metadata:
+  name: InlineSequenceTarget
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref seq
+---
+kind: Run.Sequence
+metadata: { name: seq }
+with:
+  - kind: Run.Value
+    metadata: { name: expected }
+    value: 1
+targets:
+  - kind: Run.Sequence
+    steps:
+      - name: ran
+        inputs:
+          actual: 1
+          expected: 1
+        invoke: { kind: Assert.Equals }
+steps:
+  - name: done
+    invoke: { kind: Run.Value, value: true }

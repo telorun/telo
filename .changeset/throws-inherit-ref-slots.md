@@ -1,0 +1,14 @@
+---
+"@telorun/analyzer": minor
+"@telorun/cli": minor
+---
+
+`throws: { inherit: true }` now counts dispatch through reference slots, not only step bodies. A kind declaring it gains the effective union of every `x-telo-ref` slot target whose `use`, resolved for that resource, can hand a failure back to its caller: `call` (the failure returns into the invocation) and `trigger.consumer` (the failure rejects the value the caller drains). `detached`, `trigger.inbound`, `dependency` and `schema` slots contribute nothing. A `use` case map is decided by the resource's own selector or the schema default; when neither decides (a `!cel` selector, a literal matching no case, or no selector and no default) the slot counts when any case would. Previously such a kind's escaping errors were missing from its union: a route using it was reported covered while the error escaped, and a `catches:` entry naming the target's code was `UNDECLARED_THROW_CODE`.
+
+`Run.Sequence`'s union now includes what its `targets:` entries throw, so a route whose handler is a sequence can be asked to cover those codes (`UNCOVERED_THROW_CODE`).
+
+A reference slot on the legacy bare-string form, which declares no `use`, now reads as `call` for every throws question — a kind's `inherit` union, and the denominator of a scope-level `catches:` list (`x-telo-catches-for: ""`), which previously skipped such a slot. A scope list may therefore name a code only such a slot's target throws without `UNDECLARED_THROW_CODE`, and a scope's union can grow, which a route relying on that scope for coverage sees. No standard-library kind carries a legacy slot these questions reach.
+
+Every throws question now reads one set of slots: the reference field map's reach (nested objects, array items, `additionalProperties` map values, `oneOf` / `anyOf` / `allOf` branches) plus local `$ref`s, the root's own union branches, and a recursive shape followed as deep as the data goes. A slot a kind declares only behind a `$ref`, in a root-level union branch or under `additionalProperties` now contributes to its `inherit` union, its scope list's denominator and catch-scope enclosure, where before it was invisible to all three. Where several branches declare a slot at one place, every one counts — a branch that does not apply to the resource can only add codes — and an `additionalProperties` slot applies only to keys its schema does not declare, never to a resource's `kind` / `metadata`.
+
+`INHERIT_WITHOUT_STEP_CONTEXT` keeps its code and is now raised only when a definition declaring `inherit: true` has, anywhere that walk reaches, neither a step body nor a reference slot whose use (for a case map, in any case; a slot declaring none counts as `call`) includes `call` or `trigger.consumer`. The check and the union read the same slots, so a slot the check accepts is one the union counts.

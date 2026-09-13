@@ -1,0 +1,25 @@
+kind: Telo.Library
+metadata:
+  name: ObservedStateNeverRunLibrary
+  version: 1.0.0
+imports:
+  Observed: ../observed-state/telo.yaml
+  Assert: ../../../../../modules/assert
+  Run: ../../../../../modules/run
+exports:
+  resources: [reads, bound]
+---
+# Exported, but nothing in the library or its consumer starts it.
+kind: Observed.Listener
+metadata:
+  name: bound
+---
+kind: Run.Sequence
+metadata:
+  name: reads
+steps:
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "resources.bound.status.port"
+      expected: 51000

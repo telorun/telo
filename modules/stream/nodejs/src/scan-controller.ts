@@ -1,5 +1,6 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError, Stream } from "@telorun/sdk";
+import { elementBindings } from "./element-bindings.js";
 import { requireStream } from "./stream-input.js";
 
 interface ScanResource {
@@ -47,7 +48,7 @@ class StreamScan implements ResourceInstance<ScanInputs, ScanOutputs> {
           `parses to null, which the schema cannot tell from a CEL node.`,
       );
     }
-    return { output: new Stream(scan(input, this.resource, this.ctx, inputs)) };
+    return { output: new Stream(scan(input, this.resource, this.ctx)) };
   }
 
   snapshot(): Record<string, unknown> {
@@ -59,20 +60,16 @@ async function* scan(
   input: AsyncIterable<unknown>,
   resource: ScanResource,
   ctx: ResourceContext,
-  call: ScanInputs,
 ): AsyncIterable<unknown> {
-  let acc = ctx.expandValue(resource.initial, { inputs: call });
-  let index = 0;
-  for await (const item of input) {
-    const scope = { inputs: call, acc, item, index };
-    acc = ctx.expandValue(resource.accumulate, scope);
+  let acc = ctx.expandValue(resource.initial, {});
+  for await (const scope of elementBindings(input)) {
+    acc = ctx.expandValue(resource.accumulate, { ...scope, acc });
     // Evaluated against the NEW accumulator, which is what makes `emit` a
     // statement about the state this element produced rather than the one it
     // replaced.
     yield resource.emit === undefined
       ? acc
-      : ctx.expandValue(resource.emit, { inputs: call, acc, item, index });
-    index++;
+      : ctx.expandValue(resource.emit, { ...scope, acc });
   }
 }
 

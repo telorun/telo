@@ -24,9 +24,13 @@ steps:
       b: !cel "10.0 * 4.0"
     invoke:
       kind: Run.Value
-      inputs:
-        a: { type: number }
-        b: { type: number }
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            a: { type: number }
+            b: { type: number }
       value:
         value: !cel "inputs.a + inputs.b"
   - name: assertCelSum
@@ -49,8 +53,12 @@ steps:
       raw: !literal "Hello ${{ this is not interpolated }}"
     invoke:
       kind: Run.Value
-      inputs:
-        raw: { type: string }
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            raw: { type: string }
       value:
         passthrough: !cel "inputs.raw"
   - name: assertLiteralPassthrough
@@ -74,9 +82,13 @@ steps:
       celField: !cel "100.0 - 58.0"
     invoke:
       kind: Run.Value
-      inputs:
-        interpolated: { type: string }
-        celField: { type: number }
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            interpolated: { type: string }
+            celField: { type: number }
       value:
         interpolated: !cel "inputs.interpolated"
         celField: !cel "inputs.celField"

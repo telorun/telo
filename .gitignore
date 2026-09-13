@@ -23,6 +23,7 @@ Thumbs.db
 # AI Agents
 .codex
 .claude/*.lock
+.claude/loops
 
 # NodeJS
 node_modules/

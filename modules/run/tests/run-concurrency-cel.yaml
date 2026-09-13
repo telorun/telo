@@ -24,8 +24,12 @@ steps:
       x: !cel "item"
     invoke:
       kind: Run.Value
-      inputs:
-        x: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            x: {}
       value:
         text: !cel "inputs.x"
 outputs:

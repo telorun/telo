@@ -1,0 +1,35 @@
+# An exported sequence whose inline step targets name resources this library
+# keeps to itself. Extracted, those targets are the library's code — not exports —
+# and a consumer's analysis must treat them exactly as it treats `probe`.
+kind: Telo.Library
+metadata:
+  name: ForwardedInlineStep
+  version: 1.0.0
+imports:
+  Run: ../../../../../modules/run
+  Shell: ../../../../../modules/shell
+exports:
+  resources: [probe]
+---
+kind: Shell.LocalHost
+metadata: { name: host }
+---
+kind: Run.Value
+metadata: { name: base }
+value: 41
+---
+kind: Run.Sequence
+metadata: { name: probe }
+steps:
+  - name: command
+    inputs:
+      command: "exit 0"
+    invoke:
+      kind: Shell.Command
+      host: !ref host
+  - name: nested
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - name: deep
+          invoke: !ref base

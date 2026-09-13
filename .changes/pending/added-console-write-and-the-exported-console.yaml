@@ -1,0 +1,7 @@
+modules:
+  modules/console: Added
+body: "Console.Write and the exported Console.write instance: write one string or byte
+  chunk to standard output exactly as given — no trailing newline and no markup
+  interpretation, so command output, file contents and escaped JSON are not altered.
+  It ships a Rust controller too, which writes text only and refuses bytes and any
+  other non-string value."

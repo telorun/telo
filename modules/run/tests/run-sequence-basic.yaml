@@ -18,9 +18,13 @@ steps:
       b: 3
     invoke:
       kind: Run.Value
-      inputs:
-        a: { type: number }
-        b: { type: number }
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            a: { type: number }
+            b: { type: number }
       value:
         sum: !cel "inputs.a + inputs.b"
   - name: verifySum

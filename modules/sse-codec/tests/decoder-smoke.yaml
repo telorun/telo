@@ -92,11 +92,16 @@ steps:
         - { event: finish, data: '{"reason":"stop"}' }
     invoke: !ref Assert.equals
 
+  # A literal is refused by `telo check`, so the value comes from a step.
   - name: notAStream
     try:
+      - name: notAStreamValue
+        invoke:
+          kind: Run.Value
+          value: { text: not a stream }
       - name: call
         inputs:
-          input: "not a stream"
+          input: !cel "steps.notAStreamValue.result.text"
         invoke:
           kind: Sse.Decoder
     catch:

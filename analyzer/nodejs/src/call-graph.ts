@@ -53,6 +53,7 @@ import {
   possibleUses,
   readRefSlot,
   transfersControl,
+  type RefSlot,
   type RefUse,
   type RefUseCases,
 } from "./ref-slot.js";
@@ -397,6 +398,35 @@ function resolveUseAtSite(
       ? "absent"
       : "unmatched";
   return { use: possibleUses(slot), unresolved: entry.useCases, unresolvedReason };
+}
+
+/**
+ * A slot's use at one concrete site of one resource, for a consumer that walks
+ * the kind's schema itself rather than reading the graph's edges.
+ *
+ * The same rule the graph applies to a resource-level edge — the same enclosing
+ * object, the same schema default — so a consumer and an edge cannot disagree
+ * about which case of a case map holds. `concretePath` is the site
+ * (`routes[0].handler`); `fieldPath` is the declaration it resolved from
+ * (`routes[].handler`), which is what the schema default is read against.
+ */
+export function resolveSlotUseAt(
+  slot: RefSlot,
+  resource: unknown,
+  rootSchema: Record<string, any> | undefined,
+  concretePath: string,
+  fieldPath: string,
+): Pick<CallGraphEdge, "use" | "unresolved" | "unresolvedReason"> {
+  const entry: RefFieldEntry = {
+    refs: slot.kinds,
+    uses: slot.uses,
+    isArray: false,
+    ...(slot.useCases ? { useCases: slot.useCases } : {}),
+  };
+  const schemaDefault = rootSchema
+    ? schemaDefaultOf(enclosingSchemaOf(rootSchema, fieldPath))
+    : NO_DEFAULT;
+  return resolveUseAtSite(entry, resource, concretePath, schemaDefault);
 }
 
 /** A resolved plain reference value (`{kind, name}`, optionally `alias`) — the

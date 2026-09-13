@@ -4,7 +4,7 @@ Direct access to the process's standard streams. Useful for CLI-style manifests,
 
 ## Why use this
 
-- **Stdout and stdin primitives** — `WriteLine` and `ReadLine` for line-oriented I/O; no logger between you and the terminal.
+- **Stdout and stdin primitives** — `WriteLine` and `ReadLine` for line-oriented I/O, `Write` for text or bytes exactly as given; no logger between you and the terminal.
 - **Stream sink** — `WriteStream` drains any `Stream<string | Uint8Array>` straight to stdout; producers own framing.
 - **Loading animations** — `StreamWait` animates a single-cell spinner while the next stream blocks, then forwards every byte unchanged.
 - **TTY-aware markup** — a small `{style content}` syntax renders to ANSI on a TTY and strips to plain text otherwise; one source string, right thing happens at the sink.
@@ -14,17 +14,19 @@ Direct access to the process's standard streams. Useful for CLI-style manifests,
 | Kind | Purpose |
 | --- | --- |
 | `Console.WriteLine` | Write a templated string to stdout, followed by a newline. |
+| `Console.Write` | Write one string or byte chunk to stdout exactly as given — no newline, no markup. |
 | `Console.ReadLine` | Write a prompt and read a single line from stdin. |
 | `Console.WriteStream` | Drain a `Stream<string \| Uint8Array>` to stdout. |
 | `Console.StreamWait` | Animate a one-cell spinner while waiting for the first item of an input stream, then forward the stream verbatim. |
 
 ## Exported instances
 
-`WriteLine` and `ReadLine` are config-free, so the library also ships ready-made singletons via `exports.resources`. Reference them directly with `!ref Console.<name>` instead of declaring your own instance — no boilerplate, one shared console per import:
+`WriteLine`, `Write` and `ReadLine` are config-free, so the library also ships ready-made singletons via `exports.resources`. Reference them directly with `!ref Console.<name>` instead of declaring your own instance — no boilerplate, one shared console per import:
 
 | Export | Kind | Use |
 | --- | --- | --- |
 | `Console.writeLine` | `Console.WriteLine` | shared stdout line writer |
+| `Console.write` | `Console.Write` | shared raw stdout writer (text or bytes, as given) |
 | `Console.readLine` | `Console.ReadLine` | shared stdin line reader |
 
 ```yaml
@@ -38,7 +40,7 @@ targets:
       output: "Hello!"
 ```
 
-Reach for the `Console.WriteLine` / `Console.ReadLine` **kinds** directly only when you want a distinctly-named instance of your own; for the common case the exported singleton is all you need.
+Reach for the `Console.WriteLine` / `Console.Write` / `Console.ReadLine` **kinds** directly only when you want a distinctly-named instance of your own; for the common case the exported singleton is all you need.
 
 ## Example
 
@@ -67,6 +69,19 @@ Writes `inputs.output` to stdout followed by a newline. Pass `output` via the st
   inputs:
     output: "Hello, ${{ steps.Ask.result.value }}!"
 ```
+
+## Console.Write
+
+Writes `inputs.output` — a string or a `Telo.Bytes` value — to stdout exactly as given. A string is encoded as UTF-8; bytes are written unchanged. No newline is added, and **no markup is interpreted**: `{green x}` prints as `{green x}` and `a\\b` keeps both backslashes. Returns the value it wrote. Bytes need the JavaScript controller — the default on the Node.js kernel; the Rust controller writes text only (see [Runtimes](#runtimes)).
+
+```yaml
+- name: Show
+  invoke: !ref Console.write
+  inputs:
+    output: !cel "steps.Run.result.stdout"
+```
+
+Use it instead of `WriteLine` whenever the text is not markup you wrote yourself: command output, file contents, JSON, anything that may legitimately contain `{`, `}` or `\`. `WriteLine` and `WriteStream` run every string through the markup renderer, which unescapes `\\` and `\{` and, when the output is piped, strips anything that parses as a known style tag — so that text would reach stdout silently altered. Use it instead of `WriteStream` when you hold one value rather than a stream, or when you are writing a stream's items one at a time from a per-item handler.
 
 ## Console.ReadLine
 
@@ -155,7 +170,7 @@ items...     -> every input item forwarded verbatim, starting at the cleared col
 
 ## Markup
 
-Every `Console.*` text path runs strings through a tiny chalk-template-style markup parser before writing. On a TTY (`process.stdout.isTTY === true`) tags become ANSI SGR codes; otherwise the markup is stripped to plain text. The manifest author writes one source string; the right thing happens at the sink.
+Every `Console.*` text path except `Console.Write` runs strings through a tiny chalk-template-style markup parser before writing. On a TTY (`process.stdout.isTTY === true`) tags become ANSI SGR codes; otherwise the markup is stripped to plain text. The manifest author writes one source string; the right thing happens at the sink.
 
 ### Syntax
 
@@ -195,10 +210,10 @@ Detection happens once per controller invocation, against whichever stream that 
 
 ## Runtimes
 
-`WriteLine` and `ReadLine` ship a native Rust controller alongside the JavaScript one, so the Rust kernel can print. Which one runs is decided by the kernel and the import's `runtime:` field — see [docs/runtime-rust.md](./docs/runtime-rust.md).
+`WriteLine`, `Write` and `ReadLine` ship a native Rust controller alongside the JavaScript one, so the Rust kernel can print. The Rust `Write` accepts text only: on the Node.js kernel the napi bridge refuses bytes before the controller runs, failing the dispatch with `ERR_EXECUTION_FAILED`, and the controller refuses any other non-string value with `ERR_OUTPUT_NOT_TEXT`. Which controller runs is decided by the kernel and the import's `runtime:` field — see [docs/runtime-rust.md](./docs/runtime-rust.md).
 
 ## Notes
 
 - Intended for the root Application process. When a kernel runs inside a non-interactive environment (a detached container, a Temporal worker), `Console.ReadLine` will block indefinitely — wrap it with an outer sequence that only runs in interactive contexts.
-- Output is unbuffered line-by-line. Each `Console.WriteLine` call is a single `stdout.write` of the rendered string + `\n`. `Console.WriteStream` writes one chunk per iteration — chunk boundaries are upstream-defined.
-- If a manifest needs literal `{` / `}` characters in console output, escape them with `\{` and `\}`.
+- Output is unbuffered line-by-line. Each `Console.WriteLine` call is a single `stdout.write` of the rendered string + `\n`. Each `Console.Write` call is a single `stdout.write` of the value as given. `Console.WriteStream` writes one chunk per iteration — chunk boundaries are upstream-defined.
+- If a manifest needs literal `{` / `}` characters in markup-rendered output, escape them with `\{` and `\}` — or write the text with `Console.Write`, which renders no markup.

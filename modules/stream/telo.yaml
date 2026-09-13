@@ -7,10 +7,14 @@ metadata:
   categories: [Streaming]
   description: |
     The ends and the middle of a stream pipeline: turn a list of values into a stream,
-    in order, drain a stream back into a list once it finishes, and re-frame a byte
-    stream into fixed-size chunks carrying their own offset. Values may be anything the
-    downstream consumer expects — text, records, numbers — so the same set serves any
-    streaming pipeline.
+    drain a stream back into a list, re-frame bytes into fixed-size chunks, transform,
+    accumulate or expand values as they are pulled, and observe each value as it
+    passes without holding it. Values may be anything — text, records, numbers — so
+    the same set serves any streaming pipeline.
+requires:
+  # `throws: { inherit: true }` over a reference slot rather than a step body is
+  # read from this release on; an older analyzer refuses the Tap definition.
+  telo: ">=0.90.0"
 exports:
   kinds:
     - Of
@@ -19,6 +23,7 @@ exports:
     - Map
     - Scan
     - FlatMap
+    - Tap
 ---
 # Emit a list of items as a stream, in order — declared statically or supplied
 # at invoke time.
@@ -265,11 +270,10 @@ schema:
       title: Value
       description: >-
         Each output value, evaluated once per element — a CEL expression, a structure
-        with `!cel` leaves, or a literal. Sees item, index and inputs.
+        with `!cel` leaves, or a literal. Sees item and index.
       x-telo-context:
         type: object
         properties:
-          inputs: {}
           item: {}
           index: { type: integer }
       x-telo-value-schema-from: elementType
@@ -327,21 +331,19 @@ schema:
         use: schema
     initial:
       title: Initial
-      description: The starting accumulator, evaluated once before the first value. Sees inputs.
+      description: The starting accumulator, evaluated once before the first value.
       x-telo-context:
         type: object
-        properties:
-          inputs: {}
+        properties: {}
       x-telo-value-schema-from: accType
     accumulate:
       title: Accumulate
       description: >-
-        The accumulator's next value, evaluated once per element. Sees acc, item, index
-        and inputs. It REPLACES the accumulator rather than merging into it.
+        The accumulator's next value, evaluated once per element. Sees acc, item and
+        index. It REPLACES the accumulator rather than merging into it.
       x-telo-context:
         type: object
         properties:
-          inputs: {}
           acc: { x-telo-context-from-root: "accType" }
           item: {}
           index: { type: integer }
@@ -356,7 +358,6 @@ schema:
       x-telo-context:
         type: object
         properties:
-          inputs: {}
           acc: { x-telo-context-from-root: "accType" }
           item: {}
           index: { type: integer }
@@ -419,11 +420,102 @@ schema:
       title: Values
       description: >-
         The values this element expands to, evaluated once per element. Must be an
-        array; emit [] to drop the element. Sees item, index and inputs.
+        array; emit [] to drop the element. Sees item and index.
       type: array
       x-telo-context:
         type: object
         properties:
-          inputs: {}
+          item: {}
+          index: { type: integer }
+---
+# Stream.Tap — observes a stream without holding it.
+#
+# Per value: evaluate `when`, dispatch the handler and await it, THEN deliver the
+# value. Dispatching first is what makes the observed values exactly the delivered
+# ones even when the consumer stops early, and keeps a value whose handler failed
+# from reaching the consumer.
+#
+# The handler runs under the tap's OWN invocation context, captured at invoke() and
+# passed explicitly to every dispatch — never whatever is ambient when the consumer
+# drains, which is one runtime's mechanism and not part of the SDK surface.
+kind: Telo.Definition
+metadata:
+  name: Tap
+  description: >-
+    Passes every value of a stream through unchanged and in order, handing each one to
+    a handler just before delivering it, optionally only when a condition holds. Prints
+    or records values live while a later stage consumes the same stream, without the
+    stage holding any value. A handler failure stops the stream with the handler's own
+    error.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#TapController
+throws:
+  inherit: true
+  codes:
+    ERR_INVALID_INPUT:
+      description: "`input` did not resolve to an async iterable."
+    ERR_INVALID_VALUE:
+      description: >-
+        `when` evaluated to something other than a boolean for a value. Raised as the
+        stream is drained, attributed to the value's position.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input]
+    properties:
+      input:
+        x-telo-type: Telo.Stream
+        description: Stream whose values are observed.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output]
+    properties:
+      output:
+        x-telo-type: Telo.Stream
+        description: Every value of `input`, unchanged and in order.
+schema:
+  type: object
+  additionalProperties: false
+  required: [invoke]
+  properties:
+    invoke:
+      title: Invoke
+      description: >-
+        The handler each value is handed to, awaited before the value is delivered.
+        Its result is discarded — a returned stream is never drained — and its
+        failure rejects the drain of this stage's output.
+      type: object
+      x-telo-ref:
+        kind: Telo.Executable
+        use: trigger.consumer
+        inputs: /inputs
+    inputs:
+      title: Inputs
+      description: >-
+        Arguments passed to the handler, evaluated once per dispatched value. Sees item
+        and index. Omitted, the handler is called with no arguments.
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        properties:
+          item: {}
+          index: { type: integer }
+    when:
+      title: When
+      description: >-
+        Whether to dispatch the handler for this value, evaluated once per value. False
+        skips the dispatch and never the delivery. Omitted, every value is dispatched.
+        Sees item and index.
+      type: boolean
+      x-telo-context:
+        type: object
+        properties:
           item: {}
           index: { type: integer }

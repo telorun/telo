@@ -23,8 +23,12 @@ steps:
         inputs: { name: "${{ inputs.name }}" }
         invoke:
           kind: Run.Value
-          inputs:
-            name: { type: string }
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              properties:
+                name: { type: string }
           value:
             text: !cel "'HELLO ' + inputs.name"
     else:
@@ -32,8 +36,12 @@ steps:
         inputs: { name: "${{ inputs.name }}" }
         invoke:
           kind: Run.Value
-          inputs:
-            name: { type: string }
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              properties:
+                name: { type: string }
           value:
             text: !cel "'hello ' + inputs.name"
 outputs:

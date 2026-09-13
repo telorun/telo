@@ -4,9 +4,10 @@ metadata:
   version: 1.0.0
   description: |
     Verifies that the fragment-qualified `pkg:cargo` candidates resolve on the
-    Node.js kernel: `WriteLine` and `ReadLine` each name a distinct controller
-    inside one crate (`#writeline_controller`, `#readline_controller`), which
-    only works if the napi bridge namespaces its exports by entry.
+    Node.js kernel: `WriteLine`, `Write` and `ReadLine` each name a distinct
+    controller inside one crate (`#writeline_controller`, `#write_controller`,
+    `#readline_controller`), which only works if the napi bridge namespaces its
+    exports by entry.
 
     The policy is `[rust, any]` rather than strict `rust` because coverage is
     partial: `WriteStream` and `StreamWait` are JavaScript-only, and a strict
@@ -31,3 +32,12 @@ targets:
     inputs:
       actual: !cel "steps.print.result"
       expected: "printed by the {green rust} controller"
+  - name: write
+    invoke: !ref Console.write
+    inputs:
+      output: "written by the {green rust} controller\n"
+  - name: checkWrite
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.write.result"
+      expected: "written by the {green rust} controller\n"

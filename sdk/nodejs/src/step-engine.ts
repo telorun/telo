@@ -151,7 +151,10 @@ function isValueStep(step: Step): step is ValueStep {
  * casing subtly wrong, or collide with the fourth.
  */
 export interface StepBodyOwner {
-  /** The owning kind's suffix (`Sequence`, `Iteration`, `Transaction`). */
+  /** The owning kind's `metadata.name`, exactly (`Sequence`, `Iteration`,
+   *  `Workflow`). The load pass derives the same value from the definition, so
+   *  any other string gives a loaded body's targets different names — and a
+   *  target's name is its durable identity. */
   kind: string;
   /** The owning resource's `metadata.name`. */
   resourceName: string;
@@ -162,17 +165,20 @@ export interface StepBodyOwner {
  *  kind injects its own scope variables (`item`, `index`, `iteration`,
  *  `previous`, …) through `extraCtx`; the engine knows none of them. */
 export class StepEngine {
-  /** Prefix for generated inline-invoke resource names; unique per host resource
-   *  (`SequenceMySeq`, `LoopPollUntilReady`). */
-  private readonly namePrefix: string;
-
   constructor(
     private readonly ctx: StepEngineContext,
-    owner: StepBodyOwner,
-  ) {
-    this.namePrefix = `${pascalCase(owner.kind)}${pascalCase(owner.resourceName)}`;
-  }
+    private readonly owner: StepBodyOwner,
+  ) {}
 
+  /**
+   * Turn every inline `invoke:` in a step list into a registered, named resource.
+   *
+   * A manifest reaches a controller with every inline step target already
+   * extracted at load under {@link inlineStepTargetName}, so there each target is
+   * a `{kind, name}` reference and `ensureKindRef` returns it unchanged. What this
+   * still names is a body assembled at runtime — a template body's children and
+   * steps built in code — which never passes through load.
+   */
   resolveInvokes(stepList: Step[], path: string[] = ["steps"]): void {
     for (const [index, step] of stepList.entries()) {
       const stepPath = [...path, String(index)];
@@ -210,9 +216,7 @@ export class StepEngine {
   }
 
   private inlineInvokeResourceName(stepName: string, stepPath: string[]): string {
-    const path = stepPath.map(pascalCase).join("");
-    const step = pascalCase(stepName);
-    return `${this.namePrefix}${path}${step}`;
+    return inlineStepTargetName(this.owner, stepPath, stepName);
   }
 
   /**
@@ -583,9 +587,33 @@ export class StepEngine {
 }
 
 
-/** The naming recipe for a generated inline-invoke resource. Module-private: it
- *  is the engine's own, and a bare `pascalCase` on the SDK's flat surface is a
- *  utility nobody should be reimplementing a name from. */
+/**
+ * The name an inline step target is registered under: the owner's kind and name,
+ * the step's path through the body (`["steps", "1", "then", "0"]`), then the
+ * step's own name, each PascalCased and concatenated.
+ *
+ * ONE rule, because the name is durable identity — a journal records a step's
+ * target by kind, name and module, and a replay that reaches a different name
+ * refuses the run. The load pass extracts inline targets under it and
+ * {@link StepEngine.resolveInvokes} names runtime-assembled ones under it; two
+ * spellings would eventually disagree.
+ *
+ * Only the alphanumeric runs of each segment survive, so the result does not
+ * depend on how a caller split the path at punctuation (a case key `v1.0` and
+ * the two segments `v1`, `0` name the same step).
+ */
+export function inlineStepTargetName(
+  owner: StepBodyOwner,
+  stepPath: readonly string[],
+  stepName: string,
+): string {
+  const path = stepPath.map(pascalCase).join("");
+  return `${pascalCase(owner.kind)}${pascalCase(owner.resourceName)}${path}${pascalCase(stepName)}`;
+}
+
+/** The casing half of {@link inlineStepTargetName}. Module-private: a bare
+ *  `pascalCase` on the SDK's flat surface is a utility nobody should be
+ *  reimplementing a name from. */
 function pascalCase(s: string): string {
   return s
     .split(/[^a-zA-Z0-9]+/)

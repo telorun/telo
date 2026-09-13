@@ -60,6 +60,23 @@ export function moduleAliasScope<A extends KindResolver, M extends KindResolver>
   return aliasesByModule?.get(declaringModule) ?? aliases;
 }
 
+/**
+ * A manifest's kind, resolved to its definition in the alias table of the
+ * module that wrote it — the canonical spelling first, as every other lookup in
+ * the analyzer does (`resolve(resolveKind(k) ?? k)`), so an alias that happens to
+ * spell another module's canonical kind cannot win over the one it names.
+ */
+export function definitionInScope<D>(
+  registry: { resolve(kind: string): D | undefined },
+  kind: string,
+  metadata: { module?: unknown } | undefined,
+  aliases: KindResolver | undefined,
+  aliasesByModule: ReadonlyMap<string, KindResolver> | undefined,
+): D | undefined {
+  const canonical = moduleAliasScope(metadata, aliases, aliasesByModule)?.resolveKind(kind);
+  return (canonical ? registry.resolve(canonical) : undefined) ?? registry.resolve(kind);
+}
+
 /** All this rule needs of a resolver, and deliberately all it asks for:
  *  `ModuleScopes` already types its map this way so a caller can hand over a
  *  lighter table, and requiring the full `AliasResolver` here would have made

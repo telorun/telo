@@ -7,6 +7,7 @@ import {
   type ReferenceFieldMap,
 } from "./reference-field-map.js";
 import { REF_RESOLUTION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
+import { isForwardedDeclaration, isForwardedExport } from "./forwarded-declaration.js";
 
 /** The slice of the definition registry this pass needs: a kind's field map, from
  *  which the `x-telo-scope` slots are read. */
@@ -73,10 +74,10 @@ export function resolveRefSentinels(
 ): void {
   const moduleOf = (r: ResourceManifest): string | undefined =>
     (r.metadata as { module?: string } | undefined)?.module;
-  // Forwarded exports are flagged by flattenForAnalyzer (`metadata.forwardedExport`); they're
-  // cross-module resolution targets only — never walked as local ref sources here.
-  const isForeign = (r: ResourceManifest): boolean =>
-    (r.metadata as { forwardedExport?: boolean } | undefined)?.forwardedExport === true;
+  // A dependency's code — a forwarded export, or what extraction pulled out of one — is
+  // never walked as a local ref source here and never a local name; only an EXPORT is a
+  // cross-module resolution target.
+  const isForeign = isForwardedDeclaration;
 
   // Local resources resolve a bare / `Self.`-qualified name; forwarded foreign exports
   // resolve an `Alias.`-qualified name keyed by (module, name).
@@ -86,13 +87,13 @@ export function resolveRefSentinels(
     if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind)) continue;
     const name = r.metadata.name as string;
     if (isForeign(r)) {
-      byModuleName.set(`${moduleOf(r)}\0${name}`, r);
+      if (isForwardedExport(r)) byModuleName.set(`${moduleOf(r)}\0${name}`, r);
     } else {
       byName.set(name, r);
     }
   }
   for (const r of crossModuleTargets) {
-    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || !isForeign(r)) continue;
+    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || !isForwardedExport(r)) continue;
     byModuleName.set(`${moduleOf(r)}\0${r.metadata.name as string}`, r);
   }
 

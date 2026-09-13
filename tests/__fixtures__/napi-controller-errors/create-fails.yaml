@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: NapiCreateFails
+  version: 1.0.0
+  description: |
+    Child application for tests/napi-controller-errors.yaml: declares a probe
+    whose Rust `create` returns an error, so the boot must fail naming it.
+    Not a runnable test on its own.
+imports:
+  NapiErrors: ./telo.yaml
+---
+kind: NapiErrors.Probe
+metadata: { name: brokenProbe }
+failCreate: true

@@ -1,0 +1,53 @@
+# A `throws: { inherit: true }` kind written INLINE in a step. Its union is what
+# its own slots reach, which the throws resolver can only enumerate when it can
+# find the declaration by name — so an inline one used to be UNBOUNDED, and a
+# route could not name the code its handler documents without a catch-all.
+kind: Telo.Library
+metadata:
+  name: InlineStepExactUnion
+  version: 1.0.0
+imports:
+  Http: ../../../modules/http-server
+  Run: ../../../modules/run
+  Stream: ../../../modules/stream
+---
+kind: Http.Api
+metadata:
+  name: api
+routes:
+  - request:
+      path: /tap
+      method: GET
+    handler:
+      kind: Run.Sequence
+      steps:
+        - name: source
+          invoke: { kind: Stream.Of, items: [a] }
+        - name: tapped
+          inputs:
+            input: !cel "steps.source.result.output"
+          invoke:
+            kind: Stream.Tap
+            invoke:
+              kind: Run.Sequence
+              steps:
+                - name: refuse
+                  throw:
+                    code: TAP_REFUSED
+                    message: the handler refused the value
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+    catches:
+      - when: !cel "error.code == 'TAP_REFUSED'"
+        status: 409
+        content:
+          application/json:
+            body: { error: !cel "error.message" }
+      - when: !cel "error.code == 'ERR_INVALID_INPUT' || error.code == 'ERR_INVALID_VALUE'"
+        status: 500
+        content:
+          application/json:
+            body: { error: !cel "error.message" }

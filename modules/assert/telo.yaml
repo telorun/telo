@@ -227,6 +227,12 @@ schema:
             `runFails`, and the only thing that catches a repair which is really
             a refusal — a suite whose fixtures are all rejected passes without it.
             `expect: {}` asserts a clean check and nothing about running.
+        stdout:
+          type: string
+          description: >-
+            Runs the manifest, asserts it exits 0, and asserts everything it wrote to
+            stdout equals this string exactly. The run's own stdout is captured, so the
+            comparison holds wherever the test runs. Implies `runs: true`.
   required: [source, expect]
 ---
 # Deep-equality assertion. Compare via step inputs:

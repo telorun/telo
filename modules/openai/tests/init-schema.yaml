@@ -56,8 +56,12 @@ steps:
       probe: !cel resources.model
     invoke:
       kind: Run.Value
-      inputs:
-        probe: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            probe: {}
       value:
         model: !cel "'model' in inputs.probe ? inputs.probe.model : null"
         dimensions: !cel "'dimensions' in inputs.probe ? inputs.probe.dimensions : null"
