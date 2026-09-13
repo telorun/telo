@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: ForwardedInlineStepApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.probe

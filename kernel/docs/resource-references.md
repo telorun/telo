@@ -610,18 +610,16 @@ The `[]` suffix means the field is an array — the kernel iterates each element
 
 ### Phase 2 — Inline resource normalization
 
-After all manifests are loaded and all field maps are built, the kernel normalizes inline resources using a work queue. The queue is initialized with all top-level resources and all resources declared inside `x-telo-scope` fields. Resources are processed in order; newly extracted resources are appended to the queue and processed in the same pass. The queue is drained to empty — nested inline resources (an inline resource whose own ref slots contain further inline values) are handled automatically because each extracted resource is enqueued immediately.
+After all manifests are loaded and all field maps are built, the kernel normalizes inline resources using a work queue. The queue is initialized with all top-level resources and all resources declared inside `x-telo-scope` fields. Resources are processed in order; newly extracted resources are appended to the queue and processed in the same pass. The queue is drained to empty — nested inline resources (an inline resource whose own slots contain further inline values) are handled automatically because each extracted resource is enqueued immediately.
 
-For each resource dequeued, the kernel walks its ref slots in two passes based on the scope visibility path declared in the same field map:
+Two kinds of slot hold an inline declaration (a value with a `kind` and no `name`), and each is extracted as a new manifest that inherits `metadata.module` from its parent and replaces the inline value with `{kind, name}`:
 
-**Pass A — slots outside all scope visibility paths:** For each ref slot value that has keys beyond `kind`/`name`/`metadata`, the kernel:
+- **A reference slot** of the kind's field map. The name is built from the parent resource name and field path (underscores as separators; array items use the item's `name` field or index).
+- **A step's dispatch target**, found through the kind's step-body slot at any nesting depth (`walkStepArray`), never through the field map — the field map is the Phase-5 injection surface, and a step target resolves at dispatch. The name is `inlineStepTargetName` (`@telorun/sdk`): the owner kind — the kind whose controller runs the body — the owner's name, the step's path and the step's name, which is the name the step engine has always registered it under and so its durable identity. It is stamped `xTeloOrigin.stepTarget`, and carries no declaration pointer.
 
-1. Assigns a deterministic name using the parent resource name and field path (underscores as separators; array items use the item's `name` field or index).
-2. Extracts the value as a new manifest, stamping `metadata.name` and inheriting `metadata.module` from the parent.
-3. Replaces the inline value in the parent config with `{kind, name}`.
-4. Adds the extracted manifest to the global manifest set and enqueues it.
+Where an extraction is created: a reference slot lying in a region of a scope its owner declares (a sequence's `targets:`) resolves against that scope, so the extraction joins the scope's declaration array and is created per scope run. Everything else — step targets included — is created where its owner is: the global set, or the scope array holding a scope member; never in a scope the owner itself declares, which would make every step target of a sequence with a `with:` block a scoped resource and move its identity. A declaration written inside a scope's region but created outside it records the scope as `xTeloOrigin.outsideScopes`, and a reference from it to a name the scope declares — by `!ref` or as `resources.<name>` in CEL — is reported as `SCOPED_NAME_OUT_OF_REACH`.
 
-**Pass B — slots within a scope visibility path (prefix match):** Same extraction steps, but the extracted manifest is added to the parent resource's scope manifest array (the `x-telo-scope` field value) rather than the global set, and inherits `metadata.module` from the parent.
+An extraction out of an imported library's forwarded export is that library's code: it is stamped `forwardedInternal` and treated by every entry-scoped pass exactly as the export it came from, but it is never counted as an export.
 
 After Phase 2 completes, all reference slot values are `{kind, name}` pairs. Inline resources are indistinguishable from explicitly declared named resources in all subsequent phases.
 
@@ -723,6 +721,6 @@ The kernel maintains two parallel definition stores: `ControllerRegistry.definit
 
 ### `ensureKindRef` and `withManifests`
 
-`ctx.ensureKindRef()` handles inline resource registration at controller `init()` time — it inspects a config value, registers it as a manifest if it has fields beyond `kind`/`name`, and returns a normalized `{kind, name}` reference. (It was called `resolveChildren`; that name is deprecated and now delegates here.) `ctx.withManifests()` handles scoped execution at controller `run()` time — it creates a child `EvaluationContext`, initializes the provided manifests in it, runs a callback, then tears the child context down. Controllers like `Run.Sequence` call both manually.
+`ctx.ensureKindRef()` inspects a config value, registers it as a manifest if it has fields beyond `kind`/`name`, and returns a normalized `{kind, name}` reference; it also rescues a raw `!ref` sentinel into that shape. (It was called `resolveChildren`; that name is deprecated and now delegates here.) `ctx.withManifests()` handles scoped execution at controller `run()` time — it creates a child `EvaluationContext`, initializes the provided manifests in it, runs a callback, then tears the child context down.
 
-Once Phase 2 normalization and `x-telo-scope` injection are in place, both are superseded by the kernel: inline resources are registered before `init()` is called, and scoped fields are injected as `ScopeHandle` objects. Both methods can be removed from the `ResourceContext` API.
+For a LOADED manifest, Phase 2 has already extracted every inline declaration — step targets included — so a composer's `StepEngine.resolveInvokes` hands `ensureKindRef` a `{kind, name}` it returns unchanged. What it still registers is a body assembled at runtime, which never passes through load: a template body's children and steps built in code. It cannot be removed while those exist.

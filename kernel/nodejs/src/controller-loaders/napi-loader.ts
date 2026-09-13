@@ -1,4 +1,4 @@
-import { ControllerInstance, RuntimeError } from "@telorun/sdk";
+import { ControllerInstance, InvokeError, RuntimeError } from "@telorun/sdk";
 import { execFile } from "child_process";
 import * as fs from "fs/promises";
 import { createRequire } from "module";
@@ -338,7 +338,7 @@ function project(module: any, entry: string | undefined, where: string): Control
         `pkg:cargo controller at ${where} exports neither create nor register`,
       );
     }
-    return module;
+    return structuredNapiController(module);
   }
   const sub = module[entry];
   if (!sub) {
@@ -353,7 +353,123 @@ function project(module: any, entry: string | undefined, where: string): Control
       `pkg:cargo controller at ${where}#${entry} exports neither create nor register`,
     );
   }
-  return sub;
+  return structuredNapiController(sub);
+}
+
+/**
+ * The property the Rust SDK's napi backend sets on the error it throws for a
+ * controller's OWN `Err` (`CONTROLLER_ERROR_MARKER`, `sdk/rust/src/backend/napi.rs`).
+ * An explicit signal, because a `.code` alone cannot tell that error from the
+ * bridge's: napi gives every error it raises a `.code` (`InvalidArg`,
+ * `GenericFailure`, …) — for a value it cannot convert, a failed argument check,
+ * or a hand-written crate's `Error::from_reason`.
+ */
+const NAPI_CONTROLLER_ERROR_MARKER = "teloControllerError";
+
+/**
+ * A controller's own error is re-raised as an `InvokeError` carrying its code,
+ * since `try:` / `catches:` recognize a structured failure by `isInvokeError`.
+ * Everything else is rethrown unchanged, so the dispatch chokepoint reports it
+ * as a plain failure (`ERR_EXECUTION_FAILED`) — exactly as it reports a
+ * JavaScript controller's plain `Error`.
+ */
+function restructure(err: unknown): unknown {
+  if (!(err instanceof Error)) return err;
+  const marked = err as Error & { code?: unknown; [NAPI_CONTROLLER_ERROR_MARKER]?: unknown };
+  if (marked[NAPI_CONTROLLER_ERROR_MARKER] !== true) return err;
+  if (typeof marked.code !== "string" || marked.code === "") return err;
+  return new InvokeError(marked.code, err.message, undefined, { cause: err });
+}
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === "object" || typeof value === "function") &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
+/** Call an addon entry point, restructuring what it throws or rejects with. */
+function callStructured(call: () => unknown): unknown {
+  let result: unknown;
+  try {
+    result = call();
+  } catch (err) {
+    throw restructure(err);
+  }
+  if (isPromiseLike(result)) {
+    return Promise.resolve(result).then(undefined, (err) => {
+      throw restructure(err);
+    });
+  }
+  return result;
+}
+
+/**
+ * Wrap every method a created instance exposes, since which of them the kernel
+ * dispatches (`invoke`, `run`, `snapshot`, …) depends on the kind. Own
+ * properties shadow the class's, so the instance keeps its identity and every
+ * other member; the original is always called on the instance itself, because a
+ * napi method unwraps its native receiver from `this`.
+ */
+function structuredInstance(instance: unknown): unknown {
+  if (typeof instance !== "object" || instance === null) return instance;
+  const target = instance as Record<string, unknown>;
+  const names = new Set<string>();
+  for (
+    let layer: object | null = target;
+    layer && layer !== Object.prototype;
+    layer = Object.getPrototypeOf(layer)
+  ) {
+    for (const name of Object.getOwnPropertyNames(layer)) {
+      if (name === "constructor") continue;
+      const descriptor = Object.getOwnPropertyDescriptor(layer, name);
+      if (descriptor && typeof descriptor.value === "function") names.add(name);
+    }
+  }
+  for (const name of names) {
+    const method = target[name] as (...args: unknown[]) => unknown;
+    Object.defineProperty(target, name, {
+      value: (...args: unknown[]) => callStructured(() => method.apply(target, args)),
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
+  }
+  return instance;
+}
+
+const _structuredControllers = new WeakMap<object, ControllerInstance>();
+
+/**
+ * The controller the kernel holds for a napi export: `register` and `create`
+ * — the two hooks it calls on a controller — re-raise a controller's own error
+ * as an `InvokeError`, and `create` wraps the instance it returns. Built from the
+ * export's own enumerable members, the shape the controller registry copies,
+ * so every other member (`args`, `inputType`, …) is kept. Memoized per export,
+ * so every load of one crate entry yields one controller object.
+ */
+export function structuredNapiController(raw: object): ControllerInstance {
+  const existing = _structuredControllers.get(raw);
+  if (existing) return existing;
+  const { register, create } = raw as {
+    register?: (...args: unknown[]) => unknown;
+    create?: (...args: unknown[]) => unknown;
+  };
+  const controller: Record<string, unknown> = { ...raw };
+  if (typeof register === "function") {
+    controller.register = (...args: unknown[]) => callStructured(() => register.apply(raw, args));
+  }
+  if (typeof create === "function") {
+    controller.create = (...args: unknown[]) => {
+      const created = callStructured(() => create.apply(raw, args));
+      return isPromiseLike(created)
+        ? Promise.resolve(created).then(structuredInstance)
+        : structuredInstance(created);
+    };
+  }
+  _structuredControllers.set(raw, controller as ControllerInstance);
+  return controller as ControllerInstance;
 }
 
 /** The SDK crate whose backend feature selects the FFI bridge, when the

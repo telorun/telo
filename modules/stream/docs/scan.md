@@ -17,13 +17,13 @@ same question with a single value when the collection is exhausted — which, fo
 stream, means never.
 
 ```yaml
-- name: Assembled
+- name: assembled
   invoke:
     kind: Stream.Scan
     initial: ""
     accumulate: !cel "acc + item.delta"
   inputs:
-    input: !cel "steps.Deltas.result.output"
+    input: !cel "steps.deltas.result.output"
 ```
 
 ## Fields
@@ -39,9 +39,12 @@ stream, means never.
 
 ## What the expressions see
 
-`acc` (the running state — typed from `accType` when you declare one), `item`, `index`
-and `inputs`. `emit` is evaluated **after** `accumulate`, against the new accumulator,
+`acc` (the running state — typed from `accType` when you declare one), `item` and
+`index`; `initial` sees none of them. `emit` is evaluated **after** `accumulate`, against the new accumulator,
 so it describes the state this element produced rather than the one it replaced.
+
+`index` is the element's zero-based position, an integer: `index % 2` and `index + 1`
+work as written.
 
 ## Why `emit` is separate
 

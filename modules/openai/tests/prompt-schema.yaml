@@ -57,8 +57,12 @@ steps:
       probe: !cel resources.model
     invoke:
       kind: Run.Value
-      inputs:
-        probe: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            probe: {}
       value:
         queryPrompt: !cel "'queryPrompt' in inputs.probe ? inputs.probe.queryPrompt : null"
         passagePrompt: !cel "'passagePrompt' in inputs.probe ? inputs.probe.passagePrompt : null"

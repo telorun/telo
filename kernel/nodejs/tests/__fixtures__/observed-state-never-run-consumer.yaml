@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: ObservedStateNeverRunConsumer
+  version: 1.0.0
+imports:
+  Lib: ./observed-state-never-run-library/telo.yaml
+targets:
+  - !ref Lib.reads

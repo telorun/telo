@@ -1,6 +1,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { OBSERVED_STATE_KEY } from "@telorun/sdk";
 import { effectiveStatusSchema } from "./extends-resolution.js";
+import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { parseExportEntry } from "./flatten-for-analyzer.js";
 import {
   moduleScopedDefResolver,
@@ -129,11 +130,20 @@ export function collectRunReachableNames(graph: CallGraph): Set<string> {
 
 /** What a resource name resolves to for CEL purposes. `status` is present only
  *  when the kind declares one; `scoped` marks a resource declared inside an
- *  `x-telo-scope` slot, which resolves only within that scope's regions. */
+ *  `x-telo-scope` slot, which resolves only within that scope's regions.
+ *  `forwardedFrom` marks a dependency's declaration, keyed by
+ *  `forwardedResourceKey`: it is in no consumer's `resources`, but a read inside
+ *  that dependency's own manifests still resolves to it. */
 export interface AnalyzedResource {
   kind: string;
   status?: Record<string, any>;
   scoped?: boolean;
+  forwardedFrom?: string;
+}
+
+/** The index key of a name a dependency declares, as read from inside it. */
+export function forwardedResourceKey(module: string, name: string): string {
+  return `${module}\0${name}`;
 }
 
 /**
@@ -157,16 +167,35 @@ export function buildObservedStateIndex(
   /** `module` is the resource's DECLARING module: an exported instance is
    *  written with that library's aliases (`kind: Self.Listener`), which the
    *  consumer's table cannot resolve. */
-  const record = (kind: string, key: string, scoped: boolean, module?: string): void => {
+  const record = (
+    kind: string,
+    key: string,
+    scoped: boolean,
+    module?: string,
+    forwardedFrom?: string,
+  ): void => {
     const status = effectiveStatusSchema(resolve.in(kind, module), resolve);
-    out.set(key, { kind, ...(status ? { status } : {}), ...(scoped ? { scoped } : {}) });
+    out.set(key, {
+      kind,
+      ...(status ? { status } : {}),
+      ...(scoped ? { scoped } : {}),
+      ...(forwardedFrom !== undefined ? { forwardedFrom } : {}),
+    });
   };
 
   for (const manifest of manifests) {
     const kind = manifest.kind as string | undefined;
     const name = manifest.metadata?.name as string | undefined;
     if (!kind || SYSTEM_KINDS.has(kind)) continue;
-    if (name) record(kind, name, false, manifest.metadata?.module as string | undefined);
+    const module = manifest.metadata?.module as string | undefined;
+    // A dependency's declarations publish into ITS module's `resources`, not this
+    // one's: they are keyed by that module, and an export is also indexed under
+    // `<Alias>.<name>` below.
+    const forwardedFrom = isForwardedDeclaration(manifest) ? module : undefined;
+    if (forwardedFrom === undefined && isForwardedDeclaration(manifest)) continue;
+    const keyOf = (n: string) =>
+      forwardedFrom === undefined ? n : forwardedResourceKey(forwardedFrom, n);
+    if (name) record(kind, keyOf(name), false, module, forwardedFrom);
 
     const schema = resolve(kind)?.schema as Record<string, any> | undefined;
     if (!schema) continue;
@@ -177,7 +206,7 @@ export function buildObservedStateIndex(
           const scopedKind = (scopedEntry as ResourceManifest)?.kind;
           const scopedName = (scopedEntry as ResourceManifest)?.metadata?.name;
           if (typeof scopedKind === "string" && typeof scopedName === "string") {
-            record(scopedKind, scopedName, true);
+            record(scopedKind, keyOf(scopedName), true, forwardedFrom, forwardedFrom);
           }
         }
       }
@@ -254,8 +283,8 @@ export function buildObservedStateResourcesSchema(
   open: boolean,
 ): Record<string, any> {
   const properties: Record<string, any> = {};
-  for (const [key, { status }] of index) {
-    if (!status) continue;
+  for (const [key, { status, forwardedFrom }] of index) {
+    if (!status || forwardedFrom !== undefined) continue;
     applyObservedStateNode(properties, key, status);
   }
   return open

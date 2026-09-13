@@ -1,0 +1,9 @@
+modules:
+  modules/stream: Added
+body: Stream.Tap passes every value of a stream through unchanged and in order, handing
+  each to a handler — any invocable or run-only resource, optionally gated by a `when`
+  condition — before delivering it, so a command's output can be printed live while a
+  later stage still consumes the same stream, with nothing buffered. The handler runs
+  under the tap's own invocation; its failure rejects the drain with the handler's own
+  error and the failing value is not delivered, and `telo check` counts the handler's
+  codes in the tap's throw union.

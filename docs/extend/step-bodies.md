@@ -71,11 +71,17 @@ const steps: Record<string, unknown> = {};
 await engine.executeSteps(manifest.steps, steps, undefined, { inputs }, invokeCtx);
 ```
 
-`resolveInvokes` turns an inline `invoke: { kind: … }` into a named resource in
-your module's scope, so it must run while the resource is being created. The
-`{ kind, resourceName }` pair is what the generated name is built from — the
-engine owns that recipe, because the name it mints is manifest-visible topology
-(it is what a trace span and an `ERR_RESOURCE_NOT_FOUND` print).
+A loaded manifest reaches your controller with every inline step target already
+extracted and named, so `resolveInvokes` leaves each `{ kind, name }` alone.
+Keep the call in `init()` all the same: it is what names the inline targets of a
+body assembled at runtime (a template body's children, steps built in code). The
+name is `inlineStepTargetName(owner, stepPath, stepName)` from `@telorun/sdk`,
+the one rule the load pass and the engine share. `owner.kind` must be exactly
+your kind's `metadata.name` and `owner.resourceName` the resource's
+`metadata.name` — the load pass derives both from the manifest, so any other
+string gives a loaded body's targets different names. The name is durable
+identity: it is what a trace span and an `ERR_RESOURCE_NOT_FOUND` print, and what
+a durable journal records a step's target by.
 `executeSteps` takes the accumulator it fills (`steps.<name>.result`), an
 optional `ScopeContext`, the extra CEL variables your kind binds, and the
 `InvokeContext` you were invoked with — forwarding the last one is what makes a

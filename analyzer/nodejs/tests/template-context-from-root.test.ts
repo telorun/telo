@@ -71,10 +71,7 @@ describe("x-telo-context-from-root", () => {
     };
 
     const resolved = resolveContextAnnotations(contextSchema, manifestRoot, { manifestRoot });
-    expect(resolved.properties.inputs).toEqual({
-      type: "object",
-      additionalProperties: true,
-    });
+    expect(resolved.properties.inputs).toEqual({});
   });
 
   it("preserves existing `x-telo-context-from` semantics (back-compat)", () => {
@@ -212,9 +209,6 @@ describe("x-telo-context-from-ref-kind", () => {
       defs: fakeDefs,
       aliases: fakeAliases,
     });
-    expect(resolved.properties.result).toEqual({
-      type: "object",
-      additionalProperties: true,
-    });
+    expect(resolved.properties.result).toEqual({});
   });
 });

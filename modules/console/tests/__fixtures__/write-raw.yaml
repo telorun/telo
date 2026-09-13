@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: ConsoleWriteRawFixture
+  version: 1.0.0
+  description: |
+    Child application for tests/write.yaml: writes a style tag, markup escapes
+    and a byte chunk through `!ref Console.write`. Its stdout is compared
+    byte for byte by the parent, so nothing else here may print. Not a
+    runnable test on its own.
+imports:
+  Console: ../../
+  Run: ../../../run
+targets:
+  - !ref writeAll
+---
+kind: Run.Sequence
+metadata: { name: writeAll }
+steps:
+  - name: styleTag
+    invoke: !ref Console.write
+    inputs:
+      output: '{green x}'
+  - name: escapes
+    invoke: !ref Console.write
+    inputs:
+      output: 'a\\b \{y\}'
+  - name: chunk
+    invoke: !ref Console.write
+    inputs:
+      output: !include-bytes ./write-chunk.txt

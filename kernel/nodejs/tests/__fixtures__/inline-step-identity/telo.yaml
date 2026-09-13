@@ -1,0 +1,68 @@
+# Every standard-library composer that runs a step body, each with an INLINE
+# step target, and one inline composer nested inside another's step. No targets:
+# booting initializes every resource and runs nothing, which is all the identity
+# test needs.
+kind: Telo.Application
+metadata:
+  name: InlineStepIdentity
+  version: 1.0.0
+imports:
+  Run: ../../../../../modules/run
+  Durable: ../../../../../modules/durable
+  Local: ../../../../../modules/durable-local
+  Journal: ../../../../../modules/durable-journal-file
+variables:
+  journalDir:
+    env: INLINE_STEP_IDENTITY_JOURNAL
+    type: string
+---
+kind: Run.Sequence
+metadata: { name: seq }
+steps:
+  - name: first
+    invoke: { kind: Run.Value, value: 1 }
+  - name: nested
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - name: deep
+          invoke: { kind: Run.Value, value: 11 }
+---
+kind: Run.Loop
+metadata: { name: poll }
+maxIterations: 1
+steps:
+  - name: tick
+    invoke: { kind: Run.Value, value: 1 }
+---
+kind: Run.Iteration
+metadata: { name: iter }
+collection: [1]
+steps:
+  - name: each
+    invoke: { kind: Run.Value, value: 1 }
+---
+kind: Run.Projection
+metadata: { name: proj }
+collection: [1]
+steps:
+  - name: each
+    invoke: { kind: Run.Value, value: 1 }
+---
+kind: Durable.Idempotent
+metadata: { name: region }
+reason: the body only computes a constant, so running it again changes nothing
+steps:
+  - name: write
+    invoke: { kind: Run.Value, value: 1 }
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+kind: Local.Workflow
+metadata: { name: flow }
+journal: !ref journal
+steps:
+  - name: prepare
+    invoke: { kind: Run.Value, value: 1 }

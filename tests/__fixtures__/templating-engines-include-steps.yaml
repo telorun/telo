@@ -11,9 +11,13 @@ steps:
       raw: !literal "literal-${{ untouched }}"
     invoke:
       kind: Run.Value
-      inputs:
-        computed: { type: number }
-        raw: { type: string }
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            computed: { type: number }
+            raw: { type: string }
       value:
         computed: !cel "inputs.computed"
         raw: !cel "inputs.raw"

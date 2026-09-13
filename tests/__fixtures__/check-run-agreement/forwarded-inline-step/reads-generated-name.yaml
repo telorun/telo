@@ -1,0 +1,10 @@
+# Runs the reader's generated-name read. Its entry-scoped check does not reach
+# the reader's internals, so the kernel's own guard is what refuses it.
+kind: Telo.Application
+metadata:
+  name: ReadsGeneratedName
+  version: 1.0.0
+imports:
+  Reader: ./reader
+targets:
+  - !ref Reader.readGenerated

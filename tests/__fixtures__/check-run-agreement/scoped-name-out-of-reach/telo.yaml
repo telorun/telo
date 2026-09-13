@@ -1,0 +1,10 @@
+# A consumer of the library beside it. Its entry-scoped check does not reach the
+# library's internals, so the kernel's own failure is what remains here.
+kind: Telo.Application
+metadata:
+  name: ScopedNameOutOfReachApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.probe

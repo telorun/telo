@@ -12,6 +12,7 @@ imports:
 targets:
   - !ref startupRead
   - !ref neverRun
+  - !ref neverRunThroughLibrary
   - !ref typo
   - !ref requiredForbidden
   - !ref crossModuleTypo
@@ -33,6 +34,17 @@ expect:
   errors:
     - code: OBSERVED_STATE_NEVER_RUN
       message: "nothing starts it"
+---
+# The same, with the read and its producer in a library: only the consumer knows
+# its targets, so only the consumer's analysis can report it.
+kind: Assert.Manifest
+metadata:
+  name: neverRunThroughLibrary
+source: ./__fixtures__/observed-state-never-run-consumer.yaml
+expect:
+  errors:
+    - code: OBSERVED_STATE_NEVER_RUN
+      message: "'bound' reports 'port' only while it is running"
 ---
 kind: Assert.Manifest
 metadata:

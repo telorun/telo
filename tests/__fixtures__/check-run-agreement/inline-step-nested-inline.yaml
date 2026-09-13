@@ -1,0 +1,52 @@
+# Inline declarations INSIDE an inline step target. A step's own inline target
+# used to be registered by the composer at init(), with its nested inline slots
+# left as bare `{kind}` values nothing registered — so each of these checked clean
+# and failed at run.
+kind: Telo.Application
+metadata:
+  name: InlineStepNestedInline
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Shell: ../../../modules/shell
+  Assert: ../../../modules/assert
+targets:
+  - !ref shelled
+  - !ref scopedShell
+---
+# A step's inline Shell.Command whose `host:` is inline. It died with "'host'
+# must be a `!ref`".
+kind: Run.Sequence
+metadata: { name: shelled }
+steps:
+  - name: command
+    inputs:
+      command: "exit 0"
+    invoke:
+      kind: Shell.Command
+      host: { kind: Shell.LocalHost }
+  - name: assertExited
+    inputs:
+      actual: !cel "steps.command.result.exitCode == 0"
+      expected: true
+    invoke: { kind: Assert.Equals }
+---
+# The same, with the step-bearing sequence declared inside a `with:` scope: its
+# target and that target's host are created in the scope, per scope run.
+kind: Run.Sequence
+metadata: { name: scopedShell }
+with:
+  - kind: Run.Sequence
+    metadata: { name: inner }
+    steps:
+      - name: command
+        inputs:
+          command: "exit 0"
+        invoke:
+          kind: Shell.Command
+          host: { kind: Shell.LocalHost }
+targets:
+  - !ref inner
+steps:
+  - name: done
+    invoke: { kind: Run.Value, value: true }

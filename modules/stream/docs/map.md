@@ -11,18 +11,18 @@ Transforms every value of a stream with a CEL expression: one value in, one valu
 The usual reshaping stage — a wire record becomes whatever the next stage expects.
 
 ```yaml
-- name: Frames
+- name: frames
   invoke: { kind: Sse.Decoder }
   inputs:
-    input: !cel "steps.Response.result.body"
-- name: Parsed
+    input: !cel "steps.response.result.body"
+- name: parsed
   invoke:
     kind: Stream.Map
     value:
       kind: !cel "item.event"
       payload: !cel "item.data"
   inputs:
-    input: !cel "steps.Frames.result.records"
+    input: !cel "steps.frames.result.records"
 ```
 
 ## Fields
@@ -38,8 +38,12 @@ The usual reshaping stage — a wire record becomes whatever the next stage expe
 
 ## What the expression sees
 
-`item` (the current value), `index` (its zero-based position) and `inputs` (the call's
-own inputs).
+`item` (the current value) and `index` (its zero-based position). The call's own inputs
+are not in scope: the only one is the stream being mapped, and reading it would pull
+values out from under the stage.
+
+`index` is an integer, so integer arithmetic on it works as written — `index % 2 == 0`,
+`index + 1` — and a value built from it is an integer too.
 
 ## Lazy, and abandonable
 

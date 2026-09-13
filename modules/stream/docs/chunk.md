@@ -43,25 +43,25 @@ One piece is held in memory at a time, so chunking a source larger than memory i
 Each piece becomes one request, with a `Content-Range` built from the record:
 
 ```yaml
-- name: Chunks
+- name: chunks
   inputs:
-    input: !cel "steps.Read.result.output"
+    input: !cel "steps.read.result.output"
     size: 786432          # 768 KiB — a multiple of 256 KiB, as Drive requires
   invoke:
     kind: Stream.Chunk
 
-- name: Upload
+- name: upload
   inputs:
-    chunks: !cel "steps.Chunks.result.output"
-    total: !cel "steps.Stat.result.size"
-  invoke: !ref PutChunks
+    chunks: !cel "steps.chunks.result.output"
+    total: !cel "steps.stat.result.size"
+  invoke: !ref putChunks
 ```
 
-where `PutChunks` is a `Run.Iteration` over the chunk stream:
+where `putChunks` is a `Run.Iteration` over the chunk stream:
 
 ```yaml
 kind: Run.Iteration
-metadata: { name: PutChunks }
+metadata: { name: putChunks }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -82,14 +82,14 @@ inputType:
 collection: !cel "inputs.chunks"
 concurrency: 1
 steps:
-  - name: Put
+  - name: put
     inputs:
       url: !cel "inputs.uploadUrl"
       method: PUT
       headers:
         Content-Range: !cel "'bytes ' + string(item.offset) + '-' + string(item.offset + item.length - 1) + '/' + string(inputs.total)"
       body: !cel "item.bytes"
-    invoke: !ref ChunkPut
+    invoke: !ref chunkPut
 ```
 
 Declaring the `of` argument is what keeps `item.offset` and `item.bytes` **type-checked** inside the body — without it the element is `dyn` and a typo goes unreported.

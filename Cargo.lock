@@ -476,6 +476,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d376940fd5b723c6893cd1ee3f33abbfd86acb1cd1ec079f3ab04a2a3bc4d3b1"
 
 [[package]]
+name = "napi-controller-errors"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "telorun-sdk",
+]
+
+[[package]]
 name = "napi-derive"
 version = "2.16.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"

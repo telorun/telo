@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { moduleMetadataSchema } from "./module-metadata-scope.js";
 import { residualEntrySchemaMap } from "./residual-schema.js";
 import { applyObservedStateNode } from "./validate-observed-state.js";
@@ -73,7 +74,10 @@ export function buildKernelGlobalsIndex(
       | Record<string, any>
       | undefined);
 
-  const entrySchema = globalsSchema(entryDoc, buildResourcesSchema(manifests, resources));
+  const entrySchema = globalsSchema(
+    entryDoc,
+    buildResourcesSchema(manifests, resources, entryDoc?.metadata?.name as string | undefined),
+  );
   const openResources = { type: "object", additionalProperties: true };
   const byModule = new Map<string, Record<string, any>>();
 
@@ -129,15 +133,34 @@ function buildModuleSchema(doc: ModuleGlobals | Record<string, any> | undefined)
   );
 }
 
-/** Every non-system resource name in the set, plus the scope-declared ones. */
+/** Every non-system resource name the entry module declares, plus the
+ *  scope-declared ones. */
 function buildResourcesSchema(
   manifests: ResourceManifest[],
-  resources?: ReadonlyMap<string, { kind: string; status?: Record<string, any> }>,
+  resources:
+    | ReadonlyMap<string, { kind: string; status?: Record<string, any>; forwardedFrom?: string }>
+    | undefined,
+  entryModule: string | undefined,
 ): Record<string, any> {
   const resourceProps: Record<string, any> = {};
   for (const m of manifests) {
     const name = m.metadata?.name as string | undefined;
     if (!name || !m.kind) continue;
+    // A dependency's code is not in the consumer's `resources`: an export is read
+    // as `resources.<Alias>.<name>`, and what extraction pulled out of one is
+    // reachable under no name at all.
+    if (isForwardedDeclaration(m)) continue;
+    // Nor are the imports a dependency declares for itself: its aliases publish
+    // into its own module's `resources`.
+    const module = m.metadata?.module;
+    if (
+      m.kind === "Telo.Import" &&
+      entryModule !== undefined &&
+      typeof module === "string" &&
+      module !== entryModule
+    ) {
+      continue;
+    }
     // Telo.Import snapshots are stored under resources.<alias> at runtime,
     // so they appear here alongside regular resources.
     if (!SYSTEM_KINDS.has(m.kind)) {
@@ -148,14 +171,14 @@ function buildResourcesSchema(
   // now, so their names resolve too — inside the scope's regions, which is where
   // the only expressions that can name them live.
   for (const [key, entry] of resources ?? []) {
-    if (key.includes(".")) continue;
+    if (key.includes(".") || entry.forwardedFrom !== undefined) continue;
     resourceProps[key] ??= { type: "object", additionalProperties: true };
     if (entry.status) applyObservedStateNode(resourceProps, key, entry.status);
   }
   // Imports' exported instances publish two levels deep (`resources.<Alias>.<name>`);
   // the alias node stays open so its other keys keep resolving.
   for (const [key, entry] of resources ?? []) {
-    if (!key.includes(".") || !entry.status) continue;
+    if (!key.includes(".") || !entry.status || entry.forwardedFrom !== undefined) continue;
     applyObservedStateNode(resourceProps, key, entry.status);
   }
 

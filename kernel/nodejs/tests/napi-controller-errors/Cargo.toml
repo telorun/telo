@@ -1,0 +1,15 @@
+[package]
+name = "napi-controller-errors"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Kernel test fixture: an SDK-built controller whose own errors the Node kernel must raise by code. Not a real controller."
+
+# Built on `telorun-sdk`, unlike `napi-echo`: what it tests is the SDK's napi
+# bridge — which errors it marks as the controller's — as much as the loader.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+telorun-sdk = { path = "../../../../sdk/rust" }
+serde_json = "1"

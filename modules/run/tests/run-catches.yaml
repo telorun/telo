@@ -27,8 +27,12 @@ steps:
       n: !cel "item"
     invoke:
       kind: Run.Value
-      inputs:
-        n: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            n: {}
       value:
         ok: !cel "double(inputs.n)"
 outputs:

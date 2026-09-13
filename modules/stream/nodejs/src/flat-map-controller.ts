@@ -1,5 +1,6 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError, Stream } from "@telorun/sdk";
+import { elementBindings } from "./element-bindings.js";
 import { requireStream } from "./stream-input.js";
 
 interface FlatMapResource {
@@ -40,7 +41,7 @@ class StreamFlatMap implements ResourceInstance<FlatMapInputs, FlatMapOutputs> {
           `parses to null, which the schema cannot tell from a CEL node.`,
       );
     }
-    return { output: new Stream(flatMap(input, this.resource.values, this.ctx, inputs, name)) };
+    return { output: new Stream(flatMap(input, this.resource.values, this.ctx, name)) };
   }
 
   snapshot(): Record<string, unknown> {
@@ -52,12 +53,10 @@ async function* flatMap(
   input: AsyncIterable<unknown>,
   values: unknown,
   ctx: ResourceContext,
-  call: FlatMapInputs,
   name: string,
 ): AsyncIterable<unknown> {
-  let index = 0;
-  for await (const item of input) {
-    const produced = ctx.expandValue(values, { inputs: call, item, index });
+  for await (const scope of elementBindings(input)) {
+    const produced = ctx.expandValue(values, scope);
     if (!Array.isArray(produced)) {
       // Refused rather than wrapped. Emitting a non-array as a single element
       // would make `values` mean two things — a list to flatten, and a value to
@@ -66,12 +65,11 @@ async function* flatMap(
       throw new InvokeError(
         "ERR_INVALID_VALUE",
         `Stream.FlatMap "${name}": 'values' must evaluate to an array; ` +
-          `element ${index} produced ${produced === null ? "null" : typeof produced}. ` +
+          `element ${scope.index} produced ${produced === null ? "null" : typeof produced}. ` +
           `Emit [] to drop an element.`,
       );
     }
     for (const value of produced) yield value;
-    index++;
   }
 }
 

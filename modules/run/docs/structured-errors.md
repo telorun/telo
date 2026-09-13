@@ -75,7 +75,11 @@ Any other CEL expression is an analyzer error — the throw union would be unbou
 
 ## `throws: { inherit: true }`
 
-A definition with `inherit: true` declares that its effective throw union is the union of everything it calls. `Run.Sequence` uses this: its declared throws is empty at the definition level; the actual union is computed per-manifest from the steps it runs.
+A definition with `inherit: true` declares that its effective throw union is the union of everything it dispatches. `Run.Sequence` uses this: its declared throws is empty at the definition level; the actual union is computed per-manifest from the steps it runs and the `targets:` it runs before them.
+
+It is a declaration, never an inference: a kind that catches what it dispatches does not declare `inherit`, and a kind that does not declare it gains nothing from what it dispatches. Two kinds of site contribute.
+
+### Step bodies
 
 The analyzer's dataflow pass walks every field on the definition that holds a step body — a field whose items point at the shared grammar (`$ref: "telo://manifest#/$defs/Step"`), or, for a module published before that fragment existed, one annotated `x-telo-step-context`. Either way a future composer opts in without an analyzer change. For each step:
 
@@ -87,7 +91,20 @@ The analyzer's dataflow pass walks every field on the definition that holds a st
 
 Inside a `try` / `catch`, the catch block's throws *replace* the try block's (a `catch` that runs to completion has absorbed the try error; a `catch` that ends in a `throw:` re-raises whatever it decides).
 
-`inherit: true` is only legal on definitions whose schema declares at least one step body — the analyzer rejects it otherwise.
+### Reference slots
+
+Every `x-telo-ref` slot the definition's schema declares — at any depth: nested objects, array items, map values (`additionalProperties`), union branches (`oneOf` / `anyOf` / `allOf`, the root's included) and local `$ref`s, following a recursive shape as deep as the resource's data goes — contributes when its `use`, resolved for this resource, can hand a failure back to the caller. A slot inside an `x-telo-scope` region belongs to the scoped declaration rather than this resource, and a shape transplanted through `x-telo-schema-from` is not descended. Where several branches declare a slot at the same place — two `oneOf` branches keyed on a sibling, or a slot whose union also admits an inline node of its own recursive shape — every one of them counts: a branch that does not apply to this resource can only add codes, so more coverage is demanded, never less. A map-value (`additionalProperties`) slot applies only to keys its own schema does not declare, and never to a resource's `kind` / `metadata`. The slots that count:
+
+- `call` — the target runs inside this resource's invocation, so its failure returns into it.
+- `trigger.consumer` — the target runs when the caller drains a value this resource returned, so its failure rejects that value.
+
+A `detached` or `trigger.inbound` target runs where no caller of this resource awaits it, and `dependency` / `schema` dispatch nothing, so none of those contribute. A slot declaring several uses counts when any of them is `call` or `trigger.consumer`. A slot whose use is a case map (`use: { by, cases }`) is decided by this resource's selector — the value written at `by`, else the schema default. When neither decides — the selector is a `!cel` value, a literal that matches no case, or absent with no schema default — the slot counts when any case would. A slot on the legacy bare-string form declares no use and counts as `call`: a throw union must keep the error path, so an undeclared relation is read as the one that returns a failure.
+
+The slot's target contributes its own effective union — recursing into another `inherit: true` kind, memoised and cycle-safe, exactly as a step's `invoke:` target does. An inline declaration at the slot resolves like a named one. A target that cannot be resolved makes the union unbounded, so a `catches:` rendering it needs a catch-all. `Run.Sequence.targets` is such a slot (`use: call`), which is why a failing target shows up in the sequence's union.
+
+### Where `inherit` is legal
+
+`inherit: true` is only legal on a definition whose schema declares — anywhere the walk above reaches — a step body, or a reference slot whose use (for a case map, any case; a slot declaring none counts as `call`) includes `call` or `trigger.consumer`. Anything else has nothing a failure can come back through, and the analyzer reports `INHERIT_WITHOUT_STEP_CONTEXT`. The check and the union read the same slots, so a kind the check accepts is one whose union is computed from them.
 
 ## Rules the analyzer enforces
 

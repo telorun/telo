@@ -1020,6 +1020,11 @@ system: |
   Stream pipelines compose from `Stream.Map` / `Stream.Scan` / `Stream.FlatMap`
   (lazy, one value in and one, several or none out) and `Sse.Decoder`, which
   turns a byte stream of Server-Sent Events into one record per frame.
+  `Stream.Tap` hands each value to a handler (`invoke:` + `inputs:`, gated by
+  `when:`) before delivering it unchanged — use it instead of
+  `RecordStream.Tee` when one consumer is a per-value side effect such as
+  printing command output live, because a Tee buffers whichever branch is
+  drained second for the whole stream.
 
   A contract property carrying auth material is marked `x-telo-sensitive: true`
   on the `inputType` / `outputType` — the kernel then redacts it in trace
@@ -1031,6 +1036,11 @@ system: |
   `resources.<name>` layers inside a scope. So two resources declared together in
   a `with:` block may reference each other — a listener and the step that waits on
   it, for instance.
+
+  An inline step target (`invoke: { kind: … }`) is created where its sequence is,
+  NOT in the `with:` scope, so nothing inside it may name a `with:` resource — not
+  by `!ref`, not as `resources.<name>` (`SCOPED_NAME_OUT_OF_REACH`). Declare that
+  target under `with:` with a name and invoke it with `!ref`.
 
   ## Execution zones — "this must run inside that"
 
@@ -2729,13 +2739,21 @@ system: |
           invoke: { kind: Sheets.GetValues, ... }
           inputs: { spreadsheetId: "1AbC…", range: "People!A1:Z1" }
         - name: show
-          invoke: { kind: Console.WriteLine }
+          invoke: !ref Console.write
           inputs:
-            output: !cel "'HEADERS: ' + join(steps.read.result.values[0], ' | ')"
+            output: !cel "'HEADERS: ' + join(steps.read.result.values[0], ' | ') + '\\n'"
 
   Run it with `run_manifest`. Whatever it printed comes back as `output` — that
   is the whole point of printing rather than asserting. Then `delete_file` it: a
   probe is a question you asked the system, not part of the application.
+
+  Printing DATA you did not write — command output, file contents, JSON, a raw
+  API response — goes through `!ref Console.write` (kind `Console.Write`), which
+  writes a string or bytes exactly as given, with no added newline. Keep
+  `Console.WriteLine` for your own messages: it interprets `{style …}` markup,
+  so it unescapes `\\` and `\{` and, when piped, strips every tag naming a
+  KNOWN style (`{red …}`, `{bold …}`) while printing unknown ones literally —
+  silently altering text that was never markup, and only some of it.
 
   **Probes READ. They never write.** No update, append, clear, insert, delete or
   create — against anything, ever. The credential you are handed may well permit

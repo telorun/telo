@@ -1,0 +1,60 @@
+kind: Telo.Application
+metadata:
+  name: NapiControllerErrors
+  version: 1.0.0
+  description: |
+    An error a Rust controller returns raises on the Node.js kernel as a
+    structured error carrying its code. `invoke`'s is caught by name inside a
+    `try:`, with its message unprefixed; `create`'s fails the boot naming the
+    resource, rather than leaving an Error object standing in as the instance.
+    The controller is built on the Rust SDK, so this is the SDK's napi bridge
+    under test as well as the loader.
+imports:
+  NapiErrors: ./__fixtures__/napi-controller-errors/telo.yaml
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref testInvokeError
+  - !ref testCreateError
+---
+kind: NapiErrors.Probe
+metadata: { name: probe }
+---
+kind: Run.Sequence
+metadata: { name: testInvokeError }
+steps:
+  - name: succeeds
+    invoke: !ref probe
+    inputs:
+      fail: false
+  - name: assertSucceeded
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.succeeds.result"
+      expected: { fail: false }
+  - name: attempt
+    try:
+      - name: fails
+        invoke: !ref probe
+        inputs:
+          fail: true
+      - name: unreachable
+        throw:
+          code: ERR_PROBE_SUCCEEDED
+          message: The probe's invoke returned an error and the step still succeeded.
+    catch:
+      - name: assertCaught
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            code: !cel "error.code"
+            message: !cel "error.message"
+          expected:
+            code: ERR_FIXTURE
+            message: the probe was asked to fail
+---
+kind: Assert.Manifest
+metadata: { name: testCreateError }
+source: ./__fixtures__/napi-controller-errors/create-fails.yaml
+expect:
+  runFails: "NapiErrors.Probe brokenProbe: InvokeError: the probe was configured to fail at create"

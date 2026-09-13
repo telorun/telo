@@ -1,0 +1,268 @@
+kind: Telo.Application
+metadata:
+  name: StreamTapTest
+  version: 1.0.0
+  description: |
+    Stream.Tap forwards every value unchanged and in order, and dispatches each one
+    to its handler BEFORE delivering it. What a handler observed is read off the
+    kernel's own dispatch record (`<name>.Invoked`, whose payload carries the call's
+    inputs), never off state kept inside the work.
+imports:
+  Stream: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref passesThrough
+  - !ref gated
+  - !ref handlerFails
+  - !ref downstreamFails
+  - !ref whenNotBoolean
+  - !ref gatedDispatches
+  - !ref handlerFailureDispatches
+  - !ref downstreamFailureDispatches
+---
+# The output is the source, in order — every kind of value, untouched.
+kind: Run.Sequence
+metadata: { name: passesThrough }
+steps:
+  - name: source
+    invoke:
+      kind: Stream.Of
+      items: [a, { k: 1 }, 3, [x, y]]
+  - name: tapped
+    inputs:
+      input: !cel "steps.source.result.output"
+    invoke:
+      kind: Stream.Tap
+      invoke: { kind: Run.Value, value: true }
+  - name: collected
+    inputs:
+      input: !cel "steps.tapped.result.output"
+    invoke: { kind: Stream.Collect }
+  - name: assertUnchanged
+    inputs:
+      actual: !cel "steps.collected.result.items"
+      expected: [a, { k: 1 }, 3, [x, y]]
+    invoke: { kind: Assert.Equals }
+---
+# A closed gate skips the dispatch and never the delivery; `index` counts every
+# value, dispatched or not.
+kind: Run.Value
+metadata: { name: observeGated }
+value: true
+---
+kind: Run.Sequence
+metadata: { name: gated }
+steps:
+  - name: source
+    invoke:
+      kind: Stream.Of
+      items: [a, b, c, d]
+  - name: tapped
+    inputs:
+      input: !cel "steps.source.result.output"
+    invoke:
+      kind: Stream.Tap
+      invoke: !ref observeGated
+      when: !cel "index % 2 == 0"
+      inputs:
+        item: !cel "item"
+        index: !cel "index"
+  - name: collected
+    inputs:
+      input: !cel "steps.tapped.result.output"
+    invoke: { kind: Stream.Collect }
+  - name: assertAllDelivered
+    inputs:
+      actual: !cel "steps.collected.result.items"
+      expected: [a, b, c, d]
+    invoke: { kind: Assert.Equals }
+---
+kind: Assert.Events
+metadata: { name: gatedDispatches }
+filter:
+  - type: observeGated.Invoked
+expect:
+  - event: observeGated.Invoked
+    payload: { inputs: { item: a, index: 0 } }
+  - event: observeGated.Invoked
+    payload: { inputs: { item: c, index: 2 } }
+  - event: observeGated.Invoked
+    times: 2
+---
+# The handler refuses `c`. The drain rejects with the handler's own code, the tap
+# downstream saw `a` and `b` and never `c`, and nothing after `c` was dispatched.
+# The two taps' dispatches interleave, so neither holds a value.
+kind: Run.Sequence
+metadata: { name: refuseC }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [item]
+    properties:
+      item: { type: string }
+steps:
+  - name: refuse
+    when: !cel "inputs.item == 'c'"
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - name: refuse
+          throw:
+            code: TAP_HANDLER_FAILED
+            message: the handler refused this value
+---
+kind: Run.Value
+metadata: { name: observeAfterFailure }
+value: true
+---
+kind: Run.Sequence
+metadata: { name: handlerFails }
+steps:
+  - name: attempt
+    try:
+      - name: source
+        invoke:
+          kind: Stream.Of
+          items: [a, b, c, d, e]
+      - name: refusing
+        inputs:
+          input: !cel "steps.source.result.output"
+        invoke:
+          kind: Stream.Tap
+          invoke: !ref refuseC
+          inputs:
+            item: !cel "item"
+      - name: downstream
+        inputs:
+          input: !cel "steps.refusing.result.output"
+        invoke:
+          kind: Stream.Tap
+          invoke: !ref observeAfterFailure
+          inputs:
+            item: !cel "item"
+      - name: drain
+        inputs:
+          input: !cel "steps.downstream.result.output"
+        invoke: { kind: Stream.Collect }
+      - name: unreachable
+        throw:
+          code: DRAIN_DID_NOT_REJECT
+          message: the handler's failure did not reject the drain
+    catch:
+      - name: assertHandlerCode
+        inputs:
+          actual: !cel "error.code"
+          expected: TAP_HANDLER_FAILED
+        invoke: { kind: Assert.Equals }
+---
+kind: Assert.Events
+metadata: { name: handlerFailureDispatches }
+filter:
+  - type: refuseC.Invoked
+  - type: refuseC.InvokeRejected
+  - type: observeAfterFailure.Invoked
+expect:
+  - event: refuseC.Invoked
+    payload: { inputs: { item: a } }
+  - event: observeAfterFailure.Invoked
+    payload: { inputs: { item: a } }
+  - event: refuseC.Invoked
+    payload: { inputs: { item: b } }
+  - event: observeAfterFailure.Invoked
+    payload: { inputs: { item: b } }
+  - event: refuseC.InvokeRejected
+    payload: { inputs: { item: c } }
+  - event: refuseC.Invoked
+    times: 2
+  - event: observeAfterFailure.Invoked
+    times: 2
+---
+# A failure BELOW the tap stops its dispatching: the value the downstream stage
+# refused (the third) had already been dispatched, and nothing after it was.
+kind: Run.Value
+metadata: { name: observeBeforeFlatMap }
+value: true
+---
+kind: Run.Sequence
+metadata: { name: downstreamFails }
+steps:
+  - name: attempt
+    try:
+      - name: source
+        invoke:
+          kind: Stream.Of
+          items:
+            - { values: [1] }
+            - { values: [2] }
+            - { values: not-an-array }
+            - { values: [4] }
+      - name: tapped
+        inputs:
+          input: !cel "steps.source.result.output"
+        invoke:
+          kind: Stream.Tap
+          invoke: !ref observeBeforeFlatMap
+      - name: expanded
+        inputs:
+          input: !cel "steps.tapped.result.output"
+        invoke:
+          kind: Stream.FlatMap
+          values: !cel "item.values"
+      - name: drain
+        inputs:
+          input: !cel "steps.expanded.result.output"
+        invoke: { kind: Stream.Collect }
+      - name: unreachable
+        throw:
+          code: DRAIN_DID_NOT_REJECT
+          message: the downstream failure did not reject the drain
+    catch:
+      - name: assertDownstreamCode
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_VALUE
+        invoke: { kind: Assert.Equals }
+---
+# `when` must be a boolean for every value. `item` is untyped, so this passes
+# `telo check` and the drain rejects at the first value.
+kind: Run.Sequence
+metadata: { name: whenNotBoolean }
+steps:
+  - name: attempt
+    try:
+      - name: source
+        invoke:
+          kind: Stream.Of
+          items: [a]
+      - name: tapped
+        inputs:
+          input: !cel "steps.source.result.output"
+        invoke:
+          kind: Stream.Tap
+          invoke: { kind: Run.Value, value: true }
+          when: !cel "item"
+      - name: drain
+        inputs:
+          input: !cel "steps.tapped.result.output"
+        invoke: { kind: Stream.Collect }
+      - name: unreachable
+        throw:
+          code: DRAIN_DID_NOT_REJECT
+          message: a non-boolean when did not reject the drain
+    catch:
+      - name: assertWhenCode
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_VALUE
+        invoke: { kind: Assert.Equals }
+---
+kind: Assert.Events
+metadata: { name: downstreamFailureDispatches }
+filter:
+  - type: observeBeforeFlatMap.Invoked
+expect:
+  - event: observeBeforeFlatMap.Invoked
+    times: 3

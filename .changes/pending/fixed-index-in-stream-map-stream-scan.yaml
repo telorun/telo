@@ -1,0 +1,8 @@
+modules:
+  modules/stream: Fixed
+body: '`index` in Stream.Map, Stream.Scan and Stream.FlatMap is now an integer, as each
+  kind declares, instead of a floating-point number. Integer arithmetic on it — `index %
+  2`, `index + 1` — passed `telo check` and then failed as the stream was drained with
+  "no such overload". A value computed from `index` is now an int64 wherever it flows:
+  equal as before in CEL, in JSON and in assertions, while a controller reading one
+  should accept both integer representations.'

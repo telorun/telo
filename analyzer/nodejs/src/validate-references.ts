@@ -17,6 +17,8 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
 import { isInjectedDeclaration } from "./resource-input.js";
+import { outsideScopesOf } from "./scope-declarations.js";
+import { isForwardedDeclaration, isForwardedExport } from "./forwarded-declaration.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -308,11 +310,10 @@ export function validateReferences(
   // duplicate detection and local name resolution, and never walked as ref sources.
   const moduleOf = (r: ResourceManifest): string | undefined =>
     (r.metadata as { module?: string } | undefined)?.module;
-  // Forwarded exports are flagged by flattenForAnalyzer (`metadata.forwardedExport`); they're
-  // cross-module resolution targets only — excluded from duplicate detection and local name
-  // resolution, and never walked as ref sources.
-  const isForeign = (r: ResourceManifest): boolean =>
-    (r.metadata as { forwardedExport?: boolean } | undefined)?.forwardedExport === true;
+  // A dependency's code — a forwarded export, or what extraction pulled out of one — is
+  // excluded from duplicate detection and local name resolution, and never walked as a
+  // ref source. Only an EXPORT is a cross-module resolution target.
+  const isForeign = isForwardedDeclaration;
   // Forwarded exported instances keyed `${module}\0${name}` — the lookup that resolves
   // whether a cross-module `!ref Alias.name` names a real exported instance.
   const byModuleName = new Map<string, ResourceManifest>();
@@ -329,7 +330,7 @@ export function validateReferences(
       if (typeof m === "string") loadedModules.add(m);
       continue;
     }
-    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || !isForeign(r)) continue;
+    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || !isForwardedExport(r)) continue;
     const m = moduleOf(r);
     if (!m) continue;
     byModuleName.set(`${m}\0${r.metadata.name as string}`, r);
@@ -422,6 +423,9 @@ export function validateReferences(
             visibleScopeManifests.find((m) => m.metadata?.name === localName) ??
             byName.get(localName);
           if (!target) {
+            // A scoped name out of this declaration's reach has its own
+            // diagnostic, which says why; this one would say only "not found".
+            if (outsideScopesOf(r).some((scope) => scope.names.includes(localName))) return;
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               code: "UNRESOLVED_REFERENCE",

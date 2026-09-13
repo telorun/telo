@@ -8,9 +8,13 @@ steps:
       y: 6
     invoke:
       kind: Run.Value
-      inputs:
-        x: { type: number }
-        y: { type: number }
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            x: { type: number }
+            y: { type: number }
       value:
         product: !cel "inputs.x * inputs.y"
   - name: verifyProduct

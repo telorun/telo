@@ -496,8 +496,9 @@ export function resolveContextAnnotations(
         }
       }
     }
-    // Open fallback so unresolved types never produce false-positive CEL diagnostics.
-    return { type: "object", additionalProperties: true };
+    // Untyped (`dyn`) so an unresolved type never produces a false-positive CEL
+    // diagnostic; an open object would still type as `map` and refuse `acc + x`.
+    return {};
   }
 
   const refFrom = schema["x-telo-context-ref-from"] as string | undefined;

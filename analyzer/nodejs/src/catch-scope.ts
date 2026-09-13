@@ -86,7 +86,7 @@ export function buildEnclosers(
     const definition = definitionOf(manifest);
     if (!definition?.schema) continue;
     forEachDrivenSlot(definition.schema, manifest, (driven) => {
-      if (driven.kind !== "ref" || !driven.slot.throwsThrough) return;
+      if (driven.kind !== "ref" || !driven.slots.some(({ slot }) => slot.throwsThrough)) return;
       const target = resolveRefManifest(driven.data, ctx, moduleOf(manifest));
       if (!target || target === manifest) return;
       const list = enclosers.get(target);

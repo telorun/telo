@@ -76,6 +76,21 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-widget",
 ] as const;
 
+/** How an AJV instance treats a `live` value type. */
+export interface TeloKeywordOptions {
+  /**
+   * Assert a `live` type as an instance too, so a literal at such a slot is
+   * refused — a value written in a manifest can never be a live instance.
+   *
+   * STATIC analysis only, where a CEL leaf's stand-in is an instance
+   * (`celPlaceholderForSchema`). The kernel's instances leave it off: at
+   * dispatch a live value is exempt from validation, and the stage that pulls
+   * from it refuses a non-stream itself — so the static half refuses a strict
+   * subset of what the runtime refuses, and the two cannot disagree.
+   */
+  readonly assertLive?: boolean;
+}
+
 /**
  * The `x-telo-type` keyword.
  *
@@ -84,8 +99,10 @@ export const ANNOTATION_KEYWORDS = [
  *  - a `json` representation validates through its own declared schema, so the
  *    keyword emits nothing — the name carries nominal identity for static wiring
  *    and has no runtime existence at all;
- *  - a `live` instance is EXEMPT: its value is never traversed, because iterating
- *    a stream to check it is precisely what the exemption is for;
+ *  - a `live` instance is EXEMPT at dispatch: its value is never traversed,
+ *    because iterating a stream to check it is precisely what the exemption is
+ *    for. Statically ({@link TeloKeywordOptions.assertLive}) it is asserted like
+ *    any other instance, which checks what the value IS and never iterates it;
  *  - every other instance is ASSERTED against the constructor its binding names.
  *
  * An unknown name emits nothing here. It is a hard diagnostic in the analyzer
@@ -93,7 +110,7 @@ export const ANNOTATION_KEYWORDS = [
  * manifest that wrote it; failing compilation instead would take out every
  * validator in a module for one typo in one slot.
  */
-export function valueTypeKeyword(): KeywordDefinition {
+export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefinition {
   return {
     keyword: X_TELO_TYPE,
     // Both spellings: a bare name, or the object form carrying type arguments.
@@ -102,7 +119,8 @@ export function valueTypeKeyword(): KeywordDefinition {
       const entry: ValueTypeEntry | undefined = readValueTypeSlot({
         [X_TELO_TYPE]: cxt.schema,
       })?.entry;
-      if (!entry || entry.representation !== "instance" || entry.live) return;
+      if (!entry || entry.representation !== "instance") return;
+      if (entry.live && !options.assertLive) return;
       const binding = VALUE_TYPE_BINDINGS[entry.binding!];
       if (!binding) return;
       // The constructor reaches generated code through AJV's value scope, which
@@ -118,6 +136,12 @@ export function valueTypeKeyword(): KeywordDefinition {
     error: {
       message: (cxt: any) => {
         const entry = readValueTypeSlot({ [X_TELO_TYPE]: cxt.schema })?.entry;
+        if (entry?.live) {
+          return (
+            `must be a live ${entry.name} — a value written in the manifest can never be one; ` +
+            "pass the result of a step that produces it, with a !cel expression"
+          );
+        }
         return entry?.binding === "bytes"
           ? "must be raw bytes (a Uint8Array) — bytes cannot be written inline in a manifest"
           : `must be a ${entry?.name ?? "declared value type"} — this value is not writable inline in a manifest`;
@@ -131,11 +155,13 @@ export function valueTypeKeyword(): KeywordDefinition {
  * `x-telo-type` as the one that checks.
  *
  * Every AJV instance in the runtime and the analyzer goes through this, so a
- * schema means the same thing wherever it is validated.
+ * schema means the same thing wherever it is validated — apart from the one
+ * posture {@link TeloKeywordOptions} names, which only static analysis takes.
  */
-export function registerTeloKeywords(ajv: {
-  addKeyword: (keyword: any, definition?: any) => unknown;
-}): void {
+export function registerTeloKeywords(
+  ajv: { addKeyword: (keyword: any, definition?: any) => unknown },
+  options: TeloKeywordOptions = {},
+): void {
   for (const keyword of ANNOTATION_KEYWORDS) ajv.addKeyword(keyword);
-  ajv.addKeyword(valueTypeKeyword());
+  ajv.addKeyword(valueTypeKeyword(options));
 }

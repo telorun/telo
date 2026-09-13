@@ -7,6 +7,7 @@ argument-hint: Feature idea or description (optional)
 Collaboratively plan a new feature with the user. Do NOT write the plan file until the user explicitly approves.
 When planning architecture is literally all that matters - effort is not a driver, backwards compatibility is not a driver.
 Plan must deliver complete, production ready feature. Delivering "v1" or "MVP" is not acceptable. The plan must be complete and production ready.
+Complete means the feature asked for — its whole surface, its static analysis, docs and release bookkeeping — not every adjacent gap planning uncovers. A pre-existing defect found along the way is raised with the user as its own item; it enters the plan only if the feature cannot be complete without it and the user agrees.
 
 ## Phase 0 — Make sure you know what feature to plan
 

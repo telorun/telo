@@ -301,7 +301,24 @@ runtime:
   determined path, so the tuple is deterministic;
 - an **inline-declared** target — `(module ref, declaring resource name, JSON
   pointer to the declaration)`. Anonymous in the manifest, not anonymous in the
-  graph.
+  graph. A step's inline dispatch target is the exception: it carries no pointer
+  and is identified by its name, the concatenation of `P(ownerKind)`,
+  `P(ownerName)`, `P(s)` for each step-path segment `s` in order, and
+  `P(stepName)`, where `P` splits its argument on runs of characters outside
+  `[A-Za-z0-9]`, drops empty pieces, upper-cases each piece's first character
+  and joins them.
+  - `ownerKind` is the `metadata.name` of the definition whose controller runs
+    the body: the kind itself, or its nearest `extends` ancestor carrying a
+    controller. `ownerName` is the name of the resource holding the body.
+  - The step path is the body field — for a `base:` child, the ancestor field
+    it is mapped onto — and the step's index in it, then for each enclosing
+    branch its key and the index within it: `then`, `elseif` + index + `then`,
+    `else`, `do`, `cases` + case key, `default`, `try`, `catch`, `finally`.
+  - An inline target declaring its own `metadata.name` keeps that name.
+
+  The name is not injective (`a` with a step `steps0B` and `aSteps0` with a
+  step `b` both yield `SequenceASteps0Steps0B`), so it identifies a target only
+  as far as it is distinct among the module's resource names.
 
 #### The encoding
 

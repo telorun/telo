@@ -99,6 +99,10 @@ fn verify(token: &str) -> Result<Value> {
 }
 ```
 
+A `ControllerError` your controller returns crosses to either kernel as two fields, never as text. The Rust kernel reads `code` and `message` from the C ABI's error payload. On the Node.js kernel, the napi bridge throws a JavaScript error whose `.code` is the controller's code and marks it as the controller's own, and the loader re-raises it as an `InvokeError`. So `try:` / `catches:` match a Rust controller's code the same way they match a JavaScript controller's, from `register`, `create` and `invoke` alike. Except where a call back into JavaScript threw: that exception is still pending and is what reaches the kernel, whatever code the controller returns in its place.
+
+A value the napi bridge cannot hand to the controller — a byte chunk, a stream, anything JSON cannot represent — is refused before `invoke` runs. That refusal is the bridge's, not the controller's error, so it fails the dispatch with `ERR_EXECUTION_FAILED` and napi's message, as a JavaScript controller's plain `Error` does — a `catch:` sees it as `INTERNAL_ERROR`.
+
 Controllers that return domain errors **must** declare their codes in their `Telo.Definition`:
 
 ```yaml

@@ -1,0 +1,37 @@
+kind: Telo.Library
+metadata:
+  name: SequenceTargetsThrowsFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+# The handler's only throw comes from a `targets:` entry (a `use: call` slot),
+# run before its steps. The route renders nothing → UNCOVERED_THROW_CODE.
+kind: Http.Api
+metadata:
+  name: api
+routes:
+  - request:
+      path: /x
+      method: GET
+    handler:
+      kind: Run.Sequence
+      with:
+        - kind: Run.Sequence
+          metadata:
+            name: prepare
+          steps:
+            - name: refuse
+              throw:
+                code: TARGET_FAILED
+                message: preparation refused
+      targets:
+        - !ref prepare
+      steps: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+    catches: []

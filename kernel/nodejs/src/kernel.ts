@@ -2011,11 +2011,15 @@ export class Kernel implements IKernel {
  */
 function originPointerOf(resource: ResourceManifest): string | undefined {
   const origin = resource.metadata?.xTeloOrigin as
-    | { parentName?: unknown; pathFromParent?: unknown }
+    | { parentName?: unknown; pathFromParent?: unknown; stepTarget?: unknown }
     | undefined;
   if (typeof origin?.parentName !== "string" || typeof origin.pathFromParent !== "string") {
     return undefined;
   }
+  // A step target is identified by its name alone, which already encodes the
+  // step's path: that is the identity the step engine minted before extraction
+  // moved to load, and a journal compares it without a pointer.
+  if (origin.stepTarget === true) return undefined;
   const pointer = origin.pathFromParent
     .replace(/\[(\d+)\]/g, ".$1")
     .split(".")

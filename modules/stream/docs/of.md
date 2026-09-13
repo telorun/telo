@@ -15,7 +15,7 @@ Emits an `items` array as a `Stream`, in order — the telo-native way to seed a
 
 ```yaml
 kind: Stream.Of
-metadata: { name: Source }
+metadata: { name: source }
 items:
   - "hello telo"
 ```
@@ -24,7 +24,7 @@ Object items work the same way (e.g. seeding an AI-shape record stream):
 
 ```yaml
 kind: Stream.Of
-metadata: { name: Deltas }
+metadata: { name: deltas }
 items:
   - { type: text-delta, delta: "he" }
   - { type: text-delta, delta: "llo" }
@@ -40,17 +40,17 @@ default); when neither is present the stream is empty.
 
 ```yaml
 kind: Run.Sequence
-metadata: { name: ServeCached }
+metadata: { name: serveCached }
 steps:
-  - name: Emit
-    invoke: !ref Cached
+  - name: emit
+    invoke: !ref cached
     inputs:
       items: !cel "[cachedValue]"
 ```
 
 ```yaml
 kind: Stream.Of
-metadata: { name: Cached }
+metadata: { name: cached }
 # no static `items` — supplied at invoke time
 ```
 

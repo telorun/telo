@@ -35,9 +35,13 @@ steps:
       reached: !cel "steps.total.result"
     invoke:
       kind: Run.Value
-      inputs:
-        limit: {}
-        reached: {}
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            limit: {}
+            reached: {}
       value:
         limit: !cel "inputs.limit"
         reached: !cel "inputs.reached"

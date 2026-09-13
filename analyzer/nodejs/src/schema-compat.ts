@@ -10,6 +10,7 @@ import {
   celTypeOfValueType,
   isCompiledValue,
   readValueTypeSlot,
+  VALUE_TYPE_BINDINGS,
   valueBrandBases,
   valueTypeOf,
   valueTypePlaceholder,
@@ -36,8 +37,9 @@ export function createAjv(): InstanceType<typeof Ajv> {
   // One registration site for every Telo keyword — the annotations as no-ops and
   // `x-telo-type` as the one that checks. Registered here and in the kernel's
   // validators from one definition, so a literal at an instance-typed slot is
-  // rejected statically and at dispatch by the identical rule.
-  registerTeloKeywords(instance);
+  // rejected statically and at dispatch by the identical rule. This instance is
+  // static analysis alone, so it also asserts a `live` type: no literal can be one.
+  registerTeloKeywords(instance, { assertLive: true });
   instance.addSchema(ManifestRootSchema);
   return instance;
 }
@@ -508,6 +510,18 @@ function foldedConstraints(schema: Record<string, any>): Record<string, any> {
   return out;
 }
 
+/** The stand-in for a CEL leaf at a `live` slot. Static analysis asserts a live
+ *  type like any instance type (a literal can never be one), so the leaf's
+ *  stand-in has to BE one. A live binding declares no factory, and building an
+ *  instance would mean knowing its constructor's signature; an object on the
+ *  constructor's prototype satisfies `instanceof` and is never used as one. */
+function liveValuePlaceholder(schema: Record<string, any>): unknown | undefined {
+  const entry = readValueTypeSlot(schema)?.entry;
+  if (!entry?.live || entry.representation !== "instance") return undefined;
+  const binding = VALUE_TYPE_BINDINGS[entry.binding!];
+  return binding ? Object.create(binding.constructor.prototype) : undefined;
+}
+
 export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown {
   const schema = foldedConstraints(rawSchema);
   // An instance-typed slot's placeholder must BE an instance: the same keyword
@@ -516,8 +530,8 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
   // rejected because no YAML literal is a byte buffer, while a value arriving by
   // reference passes. The stand-in comes from the binding table, so a new
   // instance type brings its own rather than adding a branch here; a `live` type
-  // declares none, because nothing validates it.
-  const placeholder = valueTypePlaceholder(schema);
+  // declares none, because nothing validates it at dispatch.
+  const placeholder = valueTypePlaceholder(schema) ?? liveValuePlaceholder(schema);
   if (placeholder !== undefined) return placeholder;
   if (schema.default !== undefined) return schema.default;
   // An enum-constrained field needs a placeholder drawn from the enum: the

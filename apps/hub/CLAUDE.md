@@ -1,0 +1,25 @@
+# Hub — package guide
+
+Loaded when working under `apps/hub/`. Repo-wide rules live in the root `CLAUDE.md` (including how authors write `metadata.description` and `metadata.categories`).
+
+`apps/hub/` — federated discovery hub (declarative Telo app): tracks registered module refs across transports via the `telo module versions|digest|manifest` CLI verbs, caches each version's `telo.yaml` to the static manifest bucket (`manifests.telo.sh`, the editor's browser-safe OCI read path, keys from the analyzer's `manifestCacheKey` helper), indexes one row per `(module-version, resource-kind)`, and serves `/search/*`, `/refs`, `/module/versions` + the `search_resources` MCP tool.
+
+## Categories
+
+`metadata.categories` is the **declared grouping facet**: an unordered list of domain **display labels** (`[AI, Storage]`) on a `Telo.Library` (and optionally on a kind doc, where it *replaces* the module's for that kind). It is a facet, not search text — it never belongs in `description`, which is embedded as a vector.
+
+**Authors write labels; the hub derives slugs.** `metadata.categories: [AI]` is indexed as slug `ai` + label `AI` (`category_slug()`, defined once in the hub migration). Filtering and URLs use the slug (`?category=ai`, accepted as either form since the parameter is slugified too); UIs print the label. That normalization is what makes `AI` and `ai` one group, and what keeps `Data Codecs` out of a URL as anything but `data-codecs` — an open vocabulary can't be validated into agreement, but spelling variance can be normalized out of it. It only sees variance the rule covers: `A. I.` slugifies to `a-i`, a group of its own. Because `ai` → `AI` isn't recoverable, both are stored, aligned by position (`categories` / `category_labels`); when several labels share a slug the facet shows the most-declared one, ties lexicographic.
+
+**The vocabulary is open and nothing validates it.** A category is a plain string; whatever labels modules declare are the groups that exist. There is deliberately no list in the kernel, the analyzer, or the hub — a closed enum would block a third-party module in a domain the standard library never anticipated, and would make the analyzer's release cadence the bottleneck on naming. Reuse an existing label when one fits (a near-synonym like `caching` vs `Cache` still splits a group — normalization only fixes spelling variance); the standard library uses `AI`, `Compute`, `Configuration`, `Coordination`, `Data`, `Observability`, `Performance`, `Reliability`, `Scheduling`, `Storage`, `Streaming`, `Testing`, `Transport`, `Visualization`.
+
+**Only the hub slugifies.** The editor compares labels directly (case-insensitively) because a category never crosses an authorship boundary there — it groups kinds already resolved in one workspace, and a workspace library may be unpublished or unsaved, so there is no hub row to consult. Keeping the rule in one place is deliberate: two implementations would have to agree forever.
+
+The **derived** grouping axis needs no declaration: a kind's `extends` target is the contract it implements. The hub resolves the alias prefix through the declaring manifest's own `imports:` map into `(owning module ref, kind suffix)` at ingest (`resource_kinds.extends_ref` / `extends_kind`); the editor does the same against the declaring library's imports (`resolveContract`). That is what groups every backend of one abstract together across module boundaries, and what nests `CacheRedis.Store` under `cache.Store` in the resource picker.
+
+## Publisher, runtime reach
+
+**No `authors` / `maintainers` field, deliberately.** Registration is open and unauthenticated, so a declared author verifies nothing; the hub derives a **publisher** from the ref's host + org (`module_publisher(ref, transport)`), because ownership is a property of the host. A `url` module is attributed to its host alone — its path segments are a directory, not an organisation.
+
+Runtime reach is derived by the CLI, not the hub — see `cli/nodejs/CLAUDE.md` § Runtime reach. **The kernel labels are `nodejs` / `rust`** — the ones `LABEL_TO_PURL_TYPE` (`runtime-registry.ts`) already gives an `imports:` entry's `runtime:` field, and the implementation directory names. A third spelling for the same two kernels would mean an author who wrote `runtime: nodejs` had to learn a different word for the hub's filter. The hub's `runtime` param is an **enum** on both HTTP routes and the MCP tool: an unrecognized value would otherwise match only portable kinds, a near-empty result that reads as "no such module" rather than "bad filter".
+
+**The hub records that it ASKED for the runtime block separately from the answer** (`module_versions.runtimes_asked`). Inferring it from `runtimes IS NULL` cannot work: that is also what a CLI too old to report the block leaves behind, so the tracker would re-enter the whole ingest branch — origin pull, R2 put, kinds/resources rewrite, vector purge and re-embed — on every pass forever. Same distinction the `integrity` column draws between NULL and `''`, made observable instead of inferred.

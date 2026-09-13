@@ -49,6 +49,8 @@ expect:
 | `expect.warnings` | array | no | Expected analysis warnings, matched the same way. Checked only when declared; extra warnings are not failures. |
 | `expect.loadError` | string | no | Substring to match in a manifest load error. Asserts that loading fails. |
 | `expect.runFails` | string | no | Runs the manifest as well, and asserts it exits non-zero with this substring on stderr. |
+| `expect.runs` | boolean | no | Runs the manifest as well, and asserts it exits 0. |
+| `expect.stdout` | string | no | Runs the manifest, asserts it exits 0 and that everything it wrote to stdout equals this string exactly. Implies `runs: true`. |
 
 ## Behaviour
 
@@ -125,6 +127,26 @@ cannot tell a working fixture from one the kernel would refuse. `runs: true` run
 the manifest and requires exit 0; `runFails` is its negative counterpart. Both are
 bounded — a fixture still going after 30s is cancelled and reported as a failure,
 so a regression into "runs forever" is a failing test rather than a hung suite.
+
+## Asserting what it prints
+
+`stdout:` runs the manifest and compares everything it wrote to stdout with the
+given string — exactly, with no trimming and no newline added. For a kind whose
+behaviour IS its output, such as a console writer that must not render markup:
+
+```yaml
+kind: Assert.Manifest
+metadata:
+  name: writesExactBytes
+source: ./__fixtures__/write-raw.yaml
+expect:
+  stdout: '{green x}a\\b \{y\}bytes-é'
+```
+
+The run gets its own stdout rather than the process's, so the comparison is the
+same on a developer machine, in CI and inside a container, and a test never has to
+start `telo` as a shell command. Kernel logs go to stderr, so they are not part of
+what is compared.
 
 ## Test file conventions
 

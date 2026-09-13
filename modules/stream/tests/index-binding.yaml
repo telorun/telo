@@ -1,0 +1,96 @@
+kind: Telo.Application
+metadata:
+  name: StreamIndexBindingTest
+  version: 1.0.0
+  description: |
+    Every stream stage binds `index` as an integer, which is what its context
+    declares. `index % 2` and `index + 1` are integer arithmetic: they type-check
+    statically, so they must also evaluate as the stream is drained. Bound as a
+    floating-point number, each passed `telo check` and failed at dispatch with
+    "no such overload".
+imports:
+  Stream: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref mapIndex
+  - !ref scanIndex
+  - !ref flatMapIndex
+---
+kind: Run.Sequence
+metadata: { name: mapIndex }
+steps:
+  - name: source
+    invoke:
+      kind: Stream.Of
+      items: [a, b, c, d]
+  - name: mapped
+    inputs:
+      input: !cel "steps.source.result.output"
+    invoke:
+      kind: Stream.Map
+      value:
+        even: !cel "index % 2 == 0"
+        position: !cel "index + 1"
+  - name: collected
+    inputs:
+      input: !cel "steps.mapped.result.output"
+    invoke: { kind: Stream.Collect }
+  - name: assertIntegerIndex
+    inputs:
+      actual: !cel "steps.collected.result.items"
+      expected:
+        - { even: true, position: 1 }
+        - { even: false, position: 2 }
+        - { even: true, position: 3 }
+        - { even: false, position: 4 }
+    invoke: { kind: Assert.Equals }
+---
+kind: Run.Sequence
+metadata: { name: scanIndex }
+steps:
+  - name: source
+    invoke:
+      kind: Stream.Of
+      items: [a, b, c, d]
+  - name: scanned
+    inputs:
+      input: !cel "steps.source.result.output"
+    invoke:
+      kind: Stream.Scan
+      accType: { kind: Telo.JsonSchema, schema: { type: string } }
+      initial: ""
+      accumulate: !cel "acc + (index % 2 == 0 ? 'e' : 'o')"
+      emit: !cel "acc + string(index + 1)"
+  - name: collected
+    inputs:
+      input: !cel "steps.scanned.result.output"
+    invoke: { kind: Stream.Collect }
+  - name: assertIntegerIndex
+    inputs:
+      actual: !cel "steps.collected.result.items"
+      expected: [e1, eo2, eoe3, eoeo4]
+    invoke: { kind: Assert.Equals }
+---
+kind: Run.Sequence
+metadata: { name: flatMapIndex }
+steps:
+  - name: source
+    invoke:
+      kind: Stream.Of
+      items: [a, b, c, d]
+  - name: expanded
+    inputs:
+      input: !cel "steps.source.result.output"
+    invoke:
+      kind: Stream.FlatMap
+      values: !cel "index % 2 == 0 ? [item, index + 1] : []"
+  - name: collected
+    inputs:
+      input: !cel "steps.expanded.result.output"
+    invoke: { kind: Stream.Collect }
+  - name: assertIntegerIndex
+    inputs:
+      actual: !cel "steps.collected.result.items"
+      expected: [a, 1, c, 3]
+    invoke: { kind: Assert.Equals }

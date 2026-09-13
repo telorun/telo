@@ -3,5 +3,6 @@
 // state is one module scope.
 export * as ReadlineController from "./readline-controller.js";
 export * as StreamwaitController from "./streamwait-controller.js";
+export * as WriteController from "./write-controller.js";
 export * as WritelineController from "./writeline-controller.js";
 export * as WritestreamController from "./writestream-controller.js";

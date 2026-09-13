@@ -9,8 +9,9 @@
  * scope rule is consumed by the IDE, which must not pull the pass in behind it.
  */
 import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
-import { readRefSlot, type RefSlot } from "./ref-slot.js";
-import { readStepSlot, type StepSlot } from "./step-slot.js";
+import type { RefSlot } from "./ref-slot.js";
+import type { StepSlot } from "./step-slot.js";
+import { buildDrivenSlotMap, refSlotOfEntry, type DrivenSlots } from "./reference-field-map.js";
 
 /** Resolve a local `$ref` (only `#/$defs/<name>` form) against the root schema.
  *  Non-refs and unresolved refs pass through unchanged. */
@@ -144,57 +145,184 @@ export function walkStepArray(
     }
   });
 }
-/** A slot through which a resource drives another. */
+/** A slot a kind's schema declares through which its resources drive another.
+ *  `path` is the field-map form (`routes[].handler`, `content.{}.encoder`);
+ *  `slots` holds every slot any branch declares there. */
+export type DeclaredSlot =
+  | { kind: "step"; slots: StepSlot[]; path: string }
+  | { kind: "ref"; slots: RefSlot[]; path: string };
+
+/** A reference slot at a site, with the declaration it came from — which is
+ *  what a case-map selector's schema default is read against. */
+export interface DrivenRef {
+  slot: RefSlot;
+  fieldPath: string;
+}
+
+/** The slots at one concrete site of one resource (`routes[0].handler`): every
+ *  slot any branch or recursion route declares there. A consumer reads them as
+ *  a union — a branch that does not apply to this resource can only add what
+ *  counts, never remove it. */
 export type DrivenSlot =
-  | { kind: "step"; slot: StepSlot; data: unknown[]; path: string }
-  | { kind: "ref"; slot: RefSlot; data: unknown; path: string };
+  | { kind: "step"; slots: StepSlot[]; data: unknown[]; path: string }
+  | { kind: "ref"; slots: DrivenRef[]; data: unknown; path: string };
+
+/**
+ * Every slot a kind's schema declares through which its resources drive
+ * another — the schema-only mode of {@link forEachDrivenSlot}, read off the
+ * same {@link buildDrivenSlotMap}.
+ */
+export function forEachDeclaredSlot(schema: unknown, visit: (slot: DeclaredSlot) => void): void {
+  if (!schema || typeof schema !== "object") return;
+  for (const [path, at] of buildDrivenSlotMap(schema as Record<string, any>).paths) {
+    if (at.steps.length > 0) visit({ kind: "step", slots: at.steps, path });
+    if (at.refs.length > 0) visit({ kind: "ref", slots: at.refs.map(refSlotOfEntry), path });
+  }
+}
 
 /**
  * Every slot of one resource through which it drives another, schema and data in
  * tandem.
  *
- * One traversal with two consumers — the inherited union here, and the catch
- * scope enclosure in `validate-throws-coverage.ts` — because both ask the same
- * structural question and two copies would eventually disagree about where the
- * walk stops. It terminates on the manifest's own depth, and it stops AT a step
- * slot (that traversal owns everything below it, `try`/`catch` subtraction
- * included) and AT a reference slot (a resolved ref is a leaf, `{kind, name}`,
- * with nothing beneath it to visit).
+ * One traversal for every throws question — a kind's `inherit` union, a scope
+ * list's denominator, catch-scope enclosure, and whether `inherit` is legal —
+ * because they ask the same structural question and two copies would eventually
+ * disagree about where the walk stops. The slots are the driven-slot map's, so
+ * the reach is the reference field map's plus local `$ref`; a step slot is a
+ * stop (that traversal owns everything below it, `try`/`catch` subtraction
+ * included) and so is a reference slot (a resolved ref is a leaf).
+ *
+ * Each concrete site is visited once, with every slot that reaches it. A
+ * map-value (`additionalProperties`) slot applies only to keys its schema does
+ * not declare, and never to the resource envelope at the root, as JSON Schema
+ * applies it. A recursive schema's back-edge is followed as deep as the data
+ * goes, guarded against data that aliases one of its own ancestors. A schema
+ * whose map holds no step or reference slot is not walked at all.
  */
 export function forEachDrivenSlot(
   schema: unknown,
   data: unknown,
   visit: (slot: DrivenSlot) => void,
-  path = "",
 ): void {
   if (!schema || typeof schema !== "object" || data === undefined || data === null) return;
-  const node = schema as Record<string, any>;
+  const driven = buildDrivenSlotMap(schema as Record<string, any>);
+  if (!driven.drives) return;
+  const sites = new Map<
+    string,
+    { data: unknown; steps: StepSlot[]; refs: DrivenRef[]; from: Set<object> }
+  >();
+  const onData = new Set<unknown>([data]);
 
-  const stepSlot = readStepSlot(node);
-  if (stepSlot) {
-    if (Array.isArray(data)) visit({ kind: "step", slot: stepSlot, data, path });
-    return;
-  }
+  const walk = (prefix: string, value: unknown, base: string): void => {
+    for (const [fieldPath, at] of driven.paths) {
+      const rel = relativeFieldPath(fieldPath, prefix);
+      if (rel === undefined) continue;
+      for (const found of resolveSites(value, rel, prefix, driven)) {
+        const path = joinConcrete(base, found.path);
+        if (at.steps.length > 0 || at.refs.length > 0) {
+          let site = sites.get(path);
+          if (!site) {
+            site = { data: found.value, steps: [], refs: [], from: new Set() };
+            sites.set(path, site);
+          }
+          for (const step of at.steps) {
+            if (site.from.has(step)) continue;
+            site.from.add(step);
+            site.steps.push(step);
+          }
+          for (const entry of at.refs) {
+            if (site.from.has(entry)) continue;
+            site.from.add(entry);
+            site.refs.push({ slot: refSlotOfEntry(entry), fieldPath });
+          }
+        }
+        if (at.recurse.length === 0) continue;
+        if (!found.value || typeof found.value !== "object" || onData.has(found.value)) continue;
+        onData.add(found.value);
+        for (const to of at.recurse) walk(to, found.value, path);
+        onData.delete(found.value);
+      }
+    }
+  };
+  walk("", data, "");
 
-  const refSlot = readRefSlot(node);
-  if (refSlot) {
-    visit({ kind: "ref", slot: refSlot, data, path });
-    return;
-  }
-
-  const props = node.properties as Record<string, any> | undefined;
-  if (props && typeof data === "object" && !Array.isArray(data)) {
-    const obj = data as Record<string, unknown>;
-    for (const [key, propSchema] of Object.entries(props)) {
-      if (obj[key] === undefined) continue;
-      forEachDrivenSlot(propSchema, obj[key], visit, path ? `${path}.${key}` : key);
+  for (const [path, site] of sites) {
+    if (site.steps.length > 0 && Array.isArray(site.data)) {
+      visit({ kind: "step", slots: site.steps, data: site.data, path });
+    } else if (site.refs.length > 0) {
+      visit({ kind: "ref", slots: site.refs, data: site.data, path });
     }
   }
+}
 
-  if (node.items && Array.isArray(data)) {
-    for (const [i, item] of data.entries()) {
-      forEachDrivenSlot(node.items, item, visit, `${path}[${i}]`);
+interface Site {
+  value: unknown;
+  path: string;
+}
+
+/** The values at `rel` below `value`, where `rel` is relative to the field path
+ *  `prefix`. A `{}` segment skips the keys the driven map records as declared
+ *  for that map path; each `[]` iterates one array level. */
+function resolveSites(value: unknown, rel: string, prefix: string, driven: DrivenSlots): Site[] {
+  let sites: Site[] = [{ value, path: "" }];
+  let field = prefix;
+  for (const part of rel.split(".")) {
+    const next: Site[] = [];
+    if (part === "{}") {
+      field = joinKey(field, "{}");
+      const declared = driven.declaredKeys.get(field);
+      for (const site of sites) {
+        if (!site.value || typeof site.value !== "object" || Array.isArray(site.value)) continue;
+        for (const [key, entry] of Object.entries(site.value as Record<string, unknown>)) {
+          if (entry == null || declared?.has(key)) continue;
+          next.push({ value: entry, path: joinKey(site.path, key) });
+        }
+      }
+    } else {
+      const key = part.replace(/(\[\])+$/, "");
+      const depth = (part.length - key.length) / 2;
+      field = key ? joinKey(field, part) : `${field}${part}`;
+      for (const site of sites) {
+        let level: Site[];
+        if (key) {
+          if (!site.value || typeof site.value !== "object") continue;
+          const entry = (site.value as Record<string, unknown>)[key];
+          if (entry == null) continue;
+          level = [{ value: entry, path: joinKey(site.path, key) }];
+        } else {
+          level = [site];
+        }
+        for (let d = 0; d < depth; d++) {
+          const items: Site[] = [];
+          for (const holder of level) {
+            if (!Array.isArray(holder.value)) continue;
+            holder.value.forEach((item, i) => {
+              if (item != null) items.push({ value: item, path: `${holder.path}[${i}]` });
+            });
+          }
+          level = items;
+        }
+        next.push(...level);
+      }
     }
+    sites = next;
   }
+  return sites;
+}
+
+const joinKey = (path: string, key: string): string => (path ? `${path}.${key}` : key);
+
+/** `fieldPath` relative to `prefix`, or undefined when it is not strictly
+ *  below it. A result starting `[]` iterates the value at `prefix` itself. */
+function relativeFieldPath(fieldPath: string, prefix: string): string | undefined {
+  if (prefix === "") return fieldPath;
+  if (fieldPath.startsWith(`${prefix}.`)) return fieldPath.slice(prefix.length + 1);
+  if (fieldPath.startsWith(`${prefix}[]`)) return fieldPath.slice(prefix.length);
+  return undefined;
+}
+
+function joinConcrete(base: string, rel: string): string {
+  if (!base) return rel;
+  return rel.startsWith("[") ? `${base}${rel}` : `${base}.${rel}`;
 }
 

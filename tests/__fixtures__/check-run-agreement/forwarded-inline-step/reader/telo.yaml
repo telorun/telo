@@ -1,0 +1,29 @@
+# A consumer of the library beside it, reading through CEL two names that are
+# not in its `resources`: a name extraction generated inside the library's
+# exported sequence (the library's code, reachable under no name at all), and the
+# export itself by its bare name (an export is read as `resources.<Alias>.<name>`).
+kind: Telo.Library
+metadata:
+  name: ForwardedNameReader
+  version: 1.0.0
+imports:
+  Lib: ../lib
+  Run: ../../../../../modules/run
+exports:
+  resources: [readGenerated, readBare]
+---
+kind: Run.Sequence
+metadata: { name: readGenerated }
+steps:
+  - name: read
+    invoke:
+      kind: Run.Value
+      value: !cel "resources.SequenceProbeSteps0Command"
+---
+kind: Run.Sequence
+metadata: { name: readBare }
+steps:
+  - name: read
+    invoke:
+      kind: Run.Value
+      value: !cel "resources.probe"

@@ -10,11 +10,14 @@ import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js"
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   createResolveCtx,
+  handsFailureBack,
   resolveScopeUnion,
   resolveThrowsUnion,
+  throwsUses,
   type ThrowsCodeMeta,
   type ThrowsUnion,
 } from "./resolve-throws-union.js";
+import { forEachDeclaredSlot } from "./schema-walk.js";
 import {
   buildEnclosers,
   collectScopedManifests,
@@ -24,7 +27,6 @@ import {
 } from "./catch-scope.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
-import { isStepSlot } from "./step-slot.js";
 
 const SOURCE = "telo-analyzer";
 const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
@@ -507,12 +509,6 @@ function checkCelChainAgainstDataSchema(
   return diagnostics;
 }
 
-/** Rule 8 extension: `inherit: true` only makes sense on a definition whose
- *  schema declares at least one STEP BODY — an array whose items point at the
- *  shared grammar, or, for a module published before that fragment existed, one
- *  carrying the legacy `x-telo-step-context` annotation. That is what drives the
- *  resolver's generic step traversal; a definition with `inherit: true` and no
- *  such array has no invocables to inherit from. */
 /** The capabilities whose lifecycle includes a dispatch a caller can catch. On
  *  every other one a thrown error is a boot-time failure, not a structured
  *  runtime error for a downstream caller — a provider resolves configuration, a
@@ -574,10 +570,14 @@ function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiag
           code: "INHERIT_WITHOUT_STEP_CONTEXT",
           source: SOURCE,
           message:
-            `Telo.Definition '${name}' declares throws.inherit: true but its schema declares no step ` +
-            `body. inherit is only meaningful on a definition that drives invocables through steps — ` +
-            `give an array field 'items: { $ref: "telo://manifest#/$defs/Step" }' (the legacy ` +
-            `x-telo-step-context annotation is also recognised).`,
+            `Telo.Definition '${name}' declares throws.inherit: true but its schema dispatches nothing ` +
+            `a failure can come back through. inherit makes the kind's union the union of what it ` +
+            `dispatches, so the schema needs a step body (an array field with ` +
+            `'items: { $ref: "telo://manifest#/$defs/Step" }', or the legacy x-telo-step-context ` +
+            `annotation) or a reference slot whose use includes 'call' or 'trigger.consumer' ` +
+            `(for a use case map, in any case; a slot declaring no use counts as 'call'). ` +
+            `'detached' and 'trigger.inbound' run where no caller awaits them, and ` +
+            `'dependency' / 'schema' dispatch nothing.`,
           data: { resource: { kind: m.kind, name }, filePath, path: "throws.inherit" },
         });
       }
@@ -586,28 +586,21 @@ function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiag
   return diagnostics;
 }
 
+/** Rule 8 extension: `inherit: true` needs something to inherit from — a step
+ *  body, or a reference slot whose use (any case of a case map) hands a failure
+ *  back. The schema-only mode of the walk the resolver runs per instance, so the
+ *  check and the union reach the same slots. */
 function schemaDrivesInvocables(schema: Record<string, any> | undefined): boolean {
-  if (!schema || typeof schema !== "object") return false;
-  if (isStepSlot(schema)) return true;
-  const props = schema.properties;
-  if (props && typeof props === "object") {
-    for (const v of Object.values(props as Record<string, any>)) {
-      if (schemaDrivesInvocables(v)) return true;
+  let drives = false;
+  forEachDeclaredSlot(schema, (declared) => {
+    if (
+      declared.kind === "step" ||
+      declared.slots.some((slot) => throwsUses(slot).some(handsFailureBack))
+    ) {
+      drives = true;
     }
-  }
-  if (schema.items && schemaDrivesInvocables(schema.items)) return true;
-  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
-    const arr = schema[key];
-    if (Array.isArray(arr)) {
-      for (const sub of arr) if (schemaDrivesInvocables(sub)) return true;
-    }
-  }
-  if (schema.$defs && typeof schema.$defs === "object") {
-    for (const v of Object.values(schema.$defs as Record<string, any>)) {
-      if (schemaDrivesInvocables(v)) return true;
-    }
-  }
-  return false;
+  });
+  return drives;
 }
 
 /** Entry point — invoked once per analyze() run. */

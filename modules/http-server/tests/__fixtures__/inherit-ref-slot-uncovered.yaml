@@ -1,0 +1,92 @@
+kind: Telo.Library
+metadata:
+  name: InheritRefSlotUncoveredFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+---
+# Dispatches `target` and lets its failure escape to the caller.
+kind: Telo.Definition
+metadata:
+  name: Relay
+capability: Telo.Invocable
+throws:
+  inherit: true
+schema:
+  type: object
+  properties:
+    target:
+      x-telo-ref:
+        kind: Telo.Executable
+        use: call
+---
+# Registers `source`; its failure rejects the value the caller drains.
+kind: Telo.Definition
+metadata:
+  name: Tap
+capability: Telo.Invocable
+throws:
+  inherit: true
+schema:
+  type: object
+  properties:
+    source:
+      x-telo-ref:
+        kind: Telo.Executable
+        use: trigger.consumer
+---
+kind: Telo.Definition
+metadata:
+  name: Refuse
+capability: Telo.Invocable
+throws:
+  codes:
+    TARGET_FAILED:
+      description: The dispatched target refused.
+schema:
+  type: object
+  properties: {}
+---
+kind: Telo.Definition
+metadata:
+  name: Leak
+capability: Telo.Invocable
+throws:
+  codes:
+    CONSUMER_FAILED:
+      description: The drained source failed.
+schema:
+  type: object
+  properties: {}
+---
+# Neither route renders anything, so each handler's inherited code is uncovered.
+kind: Http.Api
+metadata:
+  name: api
+routes:
+  - request:
+      path: /call
+      method: GET
+    handler:
+      kind: Self.Relay
+      target:
+        kind: Self.Refuse
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+    catches: []
+  - request:
+      path: /consumer
+      method: GET
+    handler:
+      kind: Self.Tap
+      source:
+        kind: Self.Leak
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+    catches: []

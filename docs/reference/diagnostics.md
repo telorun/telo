@@ -44,6 +44,7 @@ how to read a failure, and the debugging flags — see
 | `CAPABILITY_SHADOWS_EXTENDS` ⚠️ | `capability:` names a user-declared abstract. Capability names a kernel lifecycle role; use `extends:` for a contract. |
 | `PROVIDER_MISSING_IMPLEMENTATION` | A `Telo.Provider` definition needs either `controllers:` or a `provide:` body. |
 | `SCOPE_ENTRY_NOT_INLINE` | Entries in an `x-telo-scope` block must be inline declarations (`kind:` + `metadata.name`), not references. |
+| `SCOPED_NAME_OUT_OF_REACH` | An inline declaration written beside a `with:` block — a step's `invoke: { kind: … }` — names a resource that block declares, by `!ref` or as `resources.<name>` in CEL. The declaration is created where its sequence is, outside the scope, so the name does not reach it. Declare it under `with:` with a name of its own and invoke it with `!ref`. |
 | `EXTENDS_CLOSED_PARENT_ADDS_FIELD` | A child without `base:` declares a field its parent does not have, but the parent closes its schema (`additionalProperties: false`). Without `base:` the child's whole config is forwarded as the parent's, so the field is rejected at creation. Add a `base:` mapping, or drop the field. |
 | `TEMPLATE_DISPATCH_UNKNOWN` | A templated definition's `invoke:` / `run:` / `provide:` / `mount:` is a `!ref` naming no entry in its own `resources:`. The message lists the entries that exist. |
 | `DEPRECATED_TEMPLATE_ENTRY_NAME` ⚠️ | A `resources:` entry is named by an expression. Every instance of a template owns its children, so a per-instance suffix is not needed — and a `!ref` is looked up verbatim, so nothing can name such an entry. Write a literal. Still runs: published artifacts carry this spelling, so the kernel reads it. While one is present the dispatch-target checks are switched off for that kind. |
@@ -112,7 +113,7 @@ how to read a failure, and the debugging flags — see
 | `UNCOVERED_THROW_CODE` | The handler declares an error code that no `catches:` entry covers. |
 | `UNDECLARED_THROW_CODE` | A `catches:` entry names a code the handler never throws — usually a typo. |
 | `UNBOUNDED_UNION_NEEDS_CATCHALL` / `CATCHALL_NOT_LAST` | The throw union could not be enumerated, so `catches:` needs a catch-all; and a catch-all must come last. |
-| `INHERIT_WITHOUT_STEP_CONTEXT` | An inherit/passthrough resolution was used where no step context exists to inherit from. |
+| `INHERIT_WITHOUT_STEP_CONTEXT` | A definition declares `throws: { inherit: true }` but dispatches nothing a failure can come back through: its schema has no step body and no reference slot whose `use` includes `call` or `trigger.consumer` (for a use case map, in any case; a slot declaring no use counts as `call`). `detached` and `trigger.inbound` targets run where no caller awaits them, and `dependency` / `schema` slots dispatch nothing. Add such a slot, or drop `inherit` and declare `throws.codes`. |
 | `LIVE_VALUE_RETRIED` | A step passes a live value (a `Telo.Stream`) into a target, and either the step or the target declares a retry. A stream is consumed once; a re-attempt would pass an exhausted one. Drop the retry, or collect the stream into a plain value first. |
 
 ### Execution zones and durable regions

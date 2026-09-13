@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: ThrowsInheritRefSlotsTests
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref testUncovered
+  - !ref testSequenceTargets
+---
+# `throws: { inherit: true }` counts a target reached through a `call` slot and
+# through a `trigger.consumer` slot; a route rendering neither code leaves both
+# uncovered.
+kind: Assert.Manifest
+metadata:
+  name: testUncovered
+source: ./__fixtures__/inherit-ref-slot-uncovered.yaml
+expect:
+  errors:
+    - code: UNCOVERED_THROW_CODE
+      message: "'TARGET_FAILED'"
+    - code: UNCOVERED_THROW_CODE
+      message: "'CONSUMER_FAILED'"
+---
+# Run.Sequence's union includes what its `targets:` entries throw.
+kind: Assert.Manifest
+metadata:
+  name: testSequenceTargets
+source: ./__fixtures__/sequence-targets-throws.yaml
+expect:
+  errors:
+    - code: UNCOVERED_THROW_CODE
+      message: "'TARGET_FAILED'"

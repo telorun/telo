@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { visitManifest } from "./manifest-visitor.js";
 import { satisfiesValueBranch } from "./reference-field-map.js";
 import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
@@ -50,9 +51,7 @@ export function validateReferenceForms(
   if (!aliases) return [];
   const diagnostics: AnalysisDiagnostic[] = [];
 
-  const isForeign = (r: ResourceManifest): boolean =>
-    (r.metadata as { forwardedExport?: boolean } | undefined)?.forwardedExport === true;
-  const localResources = resources.filter((r) => !isForeign(r));
+  const localResources = resources.filter((r) => !isForwardedDeclaration(r));
 
   visitManifest(
     localResources,
