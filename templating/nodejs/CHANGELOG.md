@@ -1,5 +1,11 @@
 # @telorun/templating
 
+## 0.20.1
+
+### Patch Changes
+
+- 40a5d50: Adds per-package `CLAUDE.md` guides. No published file changes.
+
 ## 0.20.0
 
 ### Minor Changes

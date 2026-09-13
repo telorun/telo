@@ -1,5 +1,21 @@
 # @telorun/ide-support
 
+## 0.20.1
+
+### Patch Changes
+
+- 40a5d50: Adds per-package `CLAUDE.md` guides. No published file changes.
+- Updated dependencies [d47a229]
+- Updated dependencies [d47a229]
+- Updated dependencies [40a5d50]
+- Updated dependencies [d47a229]
+- Updated dependencies [40a5d50]
+- Updated dependencies [d47a229]
+- Updated dependencies [d47a229]
+- Updated dependencies [d47a229]
+- Updated dependencies [40a5d50]
+  - @telorun/analyzer@0.74.0
+
 ## 0.20.0
 
 ### Minor Changes

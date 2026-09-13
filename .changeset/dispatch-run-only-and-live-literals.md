@@ -1,8 +1,0 @@
----
-"@telorun/sdk": minor
-"@telorun/analyzer": minor
----
-
-The shared decorator dispatcher (`resolveInvocableDispatcher`) now dispatches a run-only target — one with `run()` and no `invoke()` — exactly as a step's `invoke:` does: through `invokeResolved`, which starts it with `run()` and drops the arguments it cannot take. A kind whose slot accepts `Telo.Executable` (`Schedule.Interval`, `Schedule.Cron`, `Lease.Critical`, `Idempotency.Once`, `Stream.Tap`) therefore runs a run-only target that `telo check` already accepted, where it used to fail at dispatch with `Resource must have 'kind' property`. `Cache.View` and `Run.Detach` constrain their slot to `Telo.Invocable`, so a run-only target stays refused there statically. An injected instance that can be neither invoked nor run is refused with a message naming the owning resource, the slot and the target.
-
-`telo check` now refuses a value written literally at a slot whose value type is live (`Telo.Stream`) — at a call's arguments (`CONTRACT_INPUTS_MISMATCH`) and in a resource's own configuration (`SCHEMA_VIOLATION`) — because a literal can never be a live instance: `must be a live Telo.Stream — a value written in the manifest can never be one; pass the result of a step that produces it, with a !cel expression`. A `!cel` value at such a slot is unaffected, and a literal another union branch accepts still passes. The rule is static only: at dispatch a live value stays exempt from validation, and the stage that pulls from it keeps its own refusal. A manifest carrying such a literal passed `telo check` and could only fail at run time; it now reports an error.

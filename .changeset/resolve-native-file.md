@@ -1,7 +1,0 @@
----
-"@telorun/sdk": minor
-"@telorun/kernel": minor
-"@telorun/cli": minor
----
-
-Controller code can reach a module's platform-specific file by its logical name with `ctx.resolveNativeFile(name)`, which returns a `file://` URI. The name resolves against the module declaring the controller the resource runs — the kind's declaring module, or the ancestor a concrete-`extends` kind inherits its controller from — and the first `native:` entry of that name, in declaration order, matching the host wins. From a published artifact only that entry's `native` layer is fetched, verified and extracted; from a source checkout a file a `sources:` entry stages is verified against its pin, no native file is read while the module's `sources:` block does not read, a checked-in file no source names is read as it is, and a checked-in link only when it leads to a file inside the module; nothing is ever fetched. Every failure rejects with `ERR_NATIVE_FILE_UNAVAILABLE`, naming the host tuple (undetermined axes marked) and every tuple shipped for that name, or the cause — an undeclared name, a staged file unpinned, missing or not matching its pin (naming `telo release stage`), an unreadable `sources:` block, a link leading outside the module. `telo install --platform … --abi …` now warms the `native` layers matching its target, and reports the abi-constrained ones it skips without `--abi`. The kernel exports `checkStagedEntry`, the staged-file check `telo release stage` now shares with it.
