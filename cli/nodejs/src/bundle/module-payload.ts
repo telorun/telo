@@ -383,9 +383,11 @@ export class ModulePayloadBuilder {
 
     const claims = collectModuleFileClaims(manifest);
     const native = readNativeFiles(manifest, manifestDir);
+    const assetPatterns = readAssetPatterns(manifest);
     const staged = stagedEntriesOf(sources);
-    await assertNamedFiles(manifestDir, native, claims, sources, staged, fromPins);
-    // A notice ships because its source names it, as if `files:` selected it.
+    await assertNamedFiles(manifestDir, native, claims, assetPatterns, sources, staged, fromPins);
+    // A notice and a staged file ship because their source names them, as if
+    // `files:` selected them; each is claimed, so the partition places it.
     const notices = sources.flatMap((source) => source.notices);
     const partition = partitionLayers(
       claims,
@@ -393,9 +395,10 @@ export class ModulePayloadBuilder {
         ...new Set([
           ...selectFiles(manifestDir, readFilesPatterns(manifest), { links: true }),
           ...notices,
+          ...staged.keys(),
         ]),
       ].sort(),
-      readAssetPatterns(manifest),
+      assetPatterns,
       native,
     );
 

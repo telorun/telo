@@ -1,0 +1,38 @@
+# A claimed staged asset with no pin, which a kernel will not hand to a controller
+# because nothing can verify it.
+kind: Telo.Library
+metadata:
+  name: UnpinnedAsset
+  version: 1.0.0
+exports:
+  kinds:
+    - Reader
+assets:
+  - ./assets/
+sources:
+  greetings:
+    version: 1.0.0
+    url: https://example.test/greetings-{version}.tar.gz
+    archive: tar.gz
+    notices: [./LICENSE]
+    entries:
+      ./assets/greeting.txt: { upstream: any, member: greeting.txt }
+---
+kind: Telo.Definition
+metadata:
+  name: Reader
+  description: Returns the text of the library's own staged greeting asset.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./reader.mjs#reader
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+    required: [text]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false

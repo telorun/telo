@@ -8,6 +8,7 @@
  * know what a module ships.
  */
 
+import { readAssetPatterns as readOwnerAssetPatterns } from "@telorun/analyzer";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { defaultCustomTags } from "@telorun/templating";
@@ -79,13 +80,18 @@ export function expandAndInlineIncludes(content: string, manifestDir: string): s
 /** The owner doc's `files:` globs — the payload set the manifest cannot
  *  otherwise name. Empty when none are declared. */
 export function readFilesPatterns(content: string): string[] {
-  return readPatternField(content, "files");
+  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
+  const value = docs[0]?.toJSON()?.files;
+  if (!Array.isArray(value)) return [];
+  return value.filter((p: unknown): p is string => typeof p === "string");
 }
 
 /** The owner doc's `assets:` globs — the author-claimed subset of `files:` that
- *  ships in the lazily materialized asset layer. */
+ *  ships in the lazily materialized asset layer — read by the analyzer's reader,
+ *  the one `telo check` uses. */
 export function readAssetPatterns(content: string): string[] {
-  return readPatternField(content, "assets");
+  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
+  return readOwnerAssetPatterns(docs[0]?.toJSON());
 }
 
 /** The owner doc's `metadata.version` — the tag this artifact publishes under,
@@ -95,12 +101,4 @@ export function readOwnerVersion(content: string): string | undefined {
   const first = docs[0]?.toJSON() as { metadata?: { version?: unknown } } | undefined;
   const version = first?.metadata?.version;
   return typeof version === "string" ? version : undefined;
-}
-
-function readPatternField(content: string, field: "files" | "assets"): string[] {
-  const docs = parseAllDocuments(content, { customTags: defaultCustomTags() });
-  const first = docs[0]?.toJSON();
-  const value = first?.[field];
-  if (!Array.isArray(value)) return [];
-  return value.filter((p: unknown): p is string => typeof p === "string");
 }

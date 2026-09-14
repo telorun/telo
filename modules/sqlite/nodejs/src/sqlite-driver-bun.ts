@@ -1,7 +1,11 @@
-import { Database } from "bun:sqlite";
 import type { SqliteDb } from "./sqlite-driver-interface.js";
 
-export function openDatabase(file: string): SqliteDb {
+// Computed, so the bundler leaves the import to the runtime: only Bun resolves
+// `bun:sqlite`, and Node never reaches this call.
+const BUN_SQLITE: string = "bun:sqlite";
+
+export async function openDatabase(file: string): Promise<SqliteDb> {
+  const { Database } = (await import(BUN_SQLITE)) as typeof import("bun:sqlite");
   const db = new Database(file);
 
   return {

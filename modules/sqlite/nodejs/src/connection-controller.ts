@@ -1,7 +1,12 @@
 import type { ResourceContext } from "@telorun/sdk";
 import { quoteAnsiIdentifier, SqlConnectionBase, type SqlDialect } from "@telorun/sql";
 import { Kysely, SqliteAdapter, SqliteDialect } from "kysely";
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { openDatabase as openBunDatabase } from "./sqlite-driver-bun.js";
 import type { SqliteDb } from "./sqlite-driver-interface.js";
+import { openDatabase as openNodeDatabase } from "./sqlite-driver-node.js";
 
 interface SqliteConnectionManifest {
   metadata: { name: string; module: string };
@@ -51,28 +56,26 @@ class TransactionalSqliteDialect extends SqliteDialect {
   }
 }
 
-async function openSqliteDatabase(file = ":memory:"): Promise<SqliteDb> {
+async function openSqliteDatabase(file: string, ctx: ResourceContext): Promise<SqliteDb> {
   // Auto-create the parent directory for file-backed databases. SQLite
   // drivers fail-fast when the directory doesn't exist; mirroring `mkdir
   // -p` here lets manifests use paths like `./tmp/foo.sqlite` without a
   // separate filesystem-prep step. `:memory:` skips filesystem entirely.
   if (file !== ":memory:") {
-    const { mkdir } = await import("node:fs/promises");
-    const { dirname } = await import("node:path");
     const dir = dirname(file);
     if (dir && dir !== "." && dir !== "/") {
       await mkdir(dir, { recursive: true });
     }
   }
 
-  // Route through this package's own `./sqlite-driver` subpath export so the
-  // resolver selects the driver per runtime (Bun → bun:sqlite, Node →
-  // better-sqlite3). A manual `typeof Bun` check with relative imports gets
-  // flattened by the controller bundler into an unconditional top-level
-  // `import "bun:sqlite"`, which Node's ESM loader rejects before the guard
-  // runs; an external `@telorun/*` specifier stays a deferred dynamic import.
-  const { openDatabase } = await import("@telorun/sqlite/sqlite-driver");
-  return openDatabase(file);
+  if (process.versions.bun) {
+    return openBunDatabase(file);
+  }
+  // The addon is the module's own `native:` file for this host, never one
+  // better-sqlite3 would search for beside itself — a bundle has no package
+  // directory to search.
+  const addon = fileURLToPath(await ctx.resolveNativeFile("better-sqlite3"));
+  return openNodeDatabase(file, addon);
 }
 
 export function register(): void {}
@@ -81,7 +84,7 @@ export async function create(
   resource: SqliteConnectionManifest,
   ctx: ResourceContext,
 ): Promise<SqliteConnection> {
-  const sqlite = await openSqliteDatabase(resource.file ?? ":memory:");
+  const sqlite = await openSqliteDatabase(resource.file ?? ":memory:", ctx);
   const db = new Kysely<any>({
     dialect: new TransactionalSqliteDialect({ database: sqlite }),
   });

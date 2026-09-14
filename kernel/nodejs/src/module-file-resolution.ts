@@ -5,19 +5,44 @@ import {
   PLATFORM_AXES,
   describeSelector,
   selectorMatches,
+  stageableFiles,
+  type ModuleSource,
   type ModuleSources,
   type NativeEntries,
   type NativeEntry,
   type PlatformTarget,
+  type SourceEntry,
 } from "@telorun/analyzer";
 import { RuntimeError } from "@telorun/sdk";
-import { checkStagedEntry } from "./bundle/staged-entry.js";
+import {
+  createArchiveReader,
+  describeStagingFailure,
+  type ArchiveReader,
+  type EnsuredEntryState,
+} from "./bundle/source-staging.js";
 import { hostPlatformTarget, type ModuleArtifact } from "./bundle/module-artifact.js";
 
 /** The slice of the kernel this module needs: a module's artifact, when it has
  *  one. A module already on disk has none — that is normal, not an error. */
 export interface ModuleArtifactLookup {
   getModuleArtifact(source: string | undefined): ModuleArtifact | undefined;
+}
+
+/** Module-file resolution also needs the module a file belongs to, for the
+ *  `sources:` block that may stage it. */
+export interface ModuleFileLookup extends ModuleArtifactLookup {
+  /** The module one of whose files resolved from `source`, or `undefined` for a
+   *  module this load did not read. */
+  getDeclaringModule(source: string | undefined): NativeFileModule | undefined;
+  /** Bring a staged entry to its pin, fetching it when it is missing or stale —
+   *  memoized by the kernel, so a file already matching is not hashed again on
+   *  every resolution. Throws when staging fails. */
+  ensureStagedEntry(
+    dir: string,
+    source: ModuleSource,
+    entry: SourceEntry,
+    archives?: ArchiveReader,
+  ): Promise<EnsuredEntryState>;
 }
 
 /**
@@ -30,14 +55,22 @@ export interface ModuleArtifactLookup {
  * absolute filesystem path is returned as a `file://` URI rather than being
  * rebased onto the module directory.
  *
- * Shared by `ctx.resolveModuleFile` and by `!include-*` resolution, so a file
- * reached by a controller and a file embedded by a tag are located by one rule
- * — including which layers get materialized on the way.
+ * In a source checkout, every module file a `sources:` entry stages at or beneath
+ * the reference — one an `assets:` pattern selects, or a notice — is staged when
+ * missing or stale and verified against its pin before the URI is returned: the
+ * rule native files follow, applied to a path that may name a directory. A
+ * native file or a prebuilt controller is staged by its own resolution, for this
+ * host alone, so a directory reference never fetches every platform's archive.
+ *
+ * Shared by `ctx.resolveModuleFile`, `ctx.resolveControllerFile` and
+ * `!include-*` resolution, so a file reached by a controller and a file embedded
+ * by a tag are located by one rule — including which layers get materialized on
+ * the way.
  */
 export async function resolveModuleFileUri(
   relative: string,
   source: string,
-  lookup: ModuleArtifactLookup,
+  lookup: ModuleFileLookup,
 ): Promise<string> {
   // An absolute URI names its own location; a bare absolute path is already
   // resolved and must not be rebased onto the module directory.
@@ -71,15 +104,89 @@ export async function resolveModuleFileUri(
   // Local module: resolve against the manifest URL, the same rule `include:`
   // and sibling imports follow.
   const base = source.startsWith("file://") ? source : pathToFileURL(source).href;
-  return new URL(relative, base).href;
+  const uri = new URL(relative, base).href;
+  const module = lookup.getDeclaringModule(source);
+  if (module) await assertStagedFilesAt(uri, module, lookup);
+  return uri;
 }
 
-/** The two module-doc blocks a native file is resolved from. */
+/**
+ * Stage an entry and say why it still cannot be handed over, or `undefined` when
+ * it matches its pin. A failure to stage is part of the answer, not a separate
+ * throw, so every caller reports it under its own error code.
+ */
+async function stagedEntryProblem(
+  by: string,
+  stage: () => Promise<EnsuredEntryState>,
+): Promise<string | undefined> {
+  let verdict: EnsuredEntryState;
+  try {
+    verdict = await stage();
+  } catch (err) {
+    return `${by}, ${describeStagingFailure(err)}`;
+  }
+  return verdict.state === "unpinned"
+    ? `${by}, which carries no pin to verify it against — run \`telo release stage --pin\`.`
+    : undefined;
+}
+
+/**
+ * Refuse a checkout reference under which a `sources:` entry stages a module file
+ * that is unpinned or cannot be staged. An entry is covered when its path is the
+ * reference or runs through it as a directory.
+ */
+async function assertStagedFilesAt(
+  uri: string,
+  module: NativeFileModule,
+  lookup: ModuleFileLookup,
+): Promise<void> {
+  const dir = path.dirname(
+    module.source.startsWith("file://") ? fileURLToPath(module.source) : module.source,
+  );
+  const relative = path.relative(dir, fileURLToPath(uri)).split(path.sep).join("/");
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return;
+  const unavailable = (cause: string) =>
+    new RuntimeError(
+      "ERR_MODULE_FILES_UNAVAILABLE",
+      `Cannot resolve '${relative === "" ? "./" : relative}' against module '${module.source}': ${cause}`,
+    );
+  if (module.sources.problems.length > 0) {
+    throw unavailable(
+      `the module's sources: block cannot be read, so which of its files are staged — and what ` +
+        `they must hash to — is unknown:\n` +
+        module.sources.problems.map((problem) => `  ${problem.message}`).join("\n") +
+        `\nRun \`telo check\` on the module.`,
+    );
+  }
+  const assets = stageableFiles(module.native.entries, [], {
+    patterns: module.assetPatterns,
+    sources: module.sources.sources,
+  });
+  let archives: ArchiveReader | undefined;
+  for (const source of module.sources.sources) {
+    for (const entry of source.entries) {
+      const covered = relative === "" || entry.path === relative || entry.path.startsWith(`${relative}/`);
+      if (!covered) continue;
+      const moduleFile = assets.get(entry.path)?.layer === "assets" || source.notices.includes(entry.path);
+      if (!moduleFile) continue;
+      archives ??= createArchiveReader();
+      const reader = archives;
+      const problem = await stagedEntryProblem(`'${entry.path}' is staged by source '${source.name}'`, () =>
+        lookup.ensureStagedEntry(dir, source, entry, reader),
+      );
+      if (problem) throw unavailable(problem);
+    }
+  }
+}
+
+/** The module-doc blocks a native or module file is resolved from. */
 export interface NativeFileModule {
   /** Canonical source of the module's `telo.yaml` — what its artifact is keyed by. */
   readonly source: string;
   readonly native: NativeEntries;
   readonly sources: ModuleSources;
+  /** The `assets:` patterns, which say which staged entries are module files. */
+  readonly assetPatterns: readonly string[];
 }
 
 /**
@@ -89,15 +196,14 @@ export interface NativeFileModule {
  * The first `native:` entry of that name, in declaration order, whose selector
  * matches `host` wins (spec §2.4). From a published artifact, that entry's
  * `native` layer alone is materialized, verified before extraction. From a
- * source checkout the file is read where the entry names it: verified against its
- * pin when a `sources:` entry stages it, as it is when none does. Nothing here
- * fetches a staged file — that is `telo release stage`'s, so a developer run
- * never depends on an upstream being reachable.
+ * source checkout the file is read where the entry names it: staged on first use
+ * and verified against its pin when a `sources:` entry stages it, read as it is
+ * when none does.
  */
 export async function resolveNativeFileUri(
   name: string,
   module: NativeFileModule,
-  lookup: ModuleArtifactLookup,
+  lookup: ModuleFileLookup,
   host: PlatformTarget = hostPlatformTarget(),
 ): Promise<string> {
   const unavailable = (cause: string) =>
@@ -150,7 +256,7 @@ export async function resolveNativeFileUri(
   const dir = path.dirname(
     module.source.startsWith("file://") ? fileURLToPath(module.source) : module.source,
   );
-  await assertSourceCheckoutFile(dir, entry, module.sources, unavailable);
+  await assertSourceCheckoutFile(dir, entry, module.sources, lookup, unavailable);
   return pathToFileURL(path.join(dir, entry.path)).href;
 }
 
@@ -158,30 +264,18 @@ async function assertSourceCheckoutFile(
   dir: string,
   entry: NativeEntry,
   sources: ModuleSources,
+  lookup: ModuleFileLookup,
   unavailable: (cause: string) => RuntimeError,
 ): Promise<void> {
   for (const source of sources.sources) {
     const staged = source.entries.find((candidate) => candidate.path === entry.path);
     if (!staged) continue;
-    const verdict = await checkStagedEntry(dir, source, staged);
-    const by = `'${entry.path}' (${entry.origin}) is staged by source '${source.name}'`;
-    switch (verdict.state) {
-      case "match":
-        return;
-      case "unpinned":
-        throw unavailable(
-          `${by}, which carries no pin to verify it against — run \`telo release stage --pin\`.`,
-        );
-      case "missing":
-        throw unavailable(
-          `${by}, but ${verdict.detail} — run \`telo release stage\` to fetch it. A staged file ` +
-            `is never fetched at run time.`,
-        );
-      case "mismatch":
-        throw unavailable(
-          `${by}, but ${verdict.detail} — run \`telo release stage\` to restage it.`,
-        );
-    }
+    const problem = await stagedEntryProblem(
+      `'${entry.path}' (${entry.origin}) is staged by source '${source.name}'`,
+      () => lookup.ensureStagedEntry(dir, source, staged),
+    );
+    if (problem) throw unavailable(problem);
+    return;
   }
   // No readable source stages it. A block that could not be read might be the
   // one that does, so the file is not read unverified.
@@ -220,8 +314,8 @@ async function assertSourceCheckoutFile(
   if (!stat?.isFile()) {
     throw unavailable(
       `'${entry.path}' (${entry.origin}) is not a file on disk, and no sources: entry stages ` +
-        `it. Check the file in, or declare the archive it comes from under sources: and run ` +
-        `\`telo release stage\`.`,
+        `it. Check the file in, or declare the archive it comes from under sources: and pin it ` +
+        `with \`telo release stage --pin\`.`,
     );
   }
 }

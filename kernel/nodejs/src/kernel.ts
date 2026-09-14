@@ -16,8 +16,14 @@ import {
   type DiffEntry,
   type LoadedGraph,
   type ManifestSource,
-  type ModuleSources,
+  type ModuleSource,
+  type SourceEntry,
 } from "@telorun/analyzer";
+import {
+  ensureStagedEntry,
+  type ArchiveReader,
+  type EnsuredEntryState,
+} from "./bundle/source-staging.js";
 import {
   bindContract,
   type ContractValidatorFactory,
@@ -83,7 +89,11 @@ import {
   resolveEntryDir,
 } from "./manifest-sources/local-manifest-cache-source.js";
 import { readOwnerManifest, type OwnerManifest } from "./bundle/module-manifest.js";
-import { resolveNativeFileUri, type NativeFileModule } from "./module-file-resolution.js";
+import {
+  resolveModuleFileUri,
+  resolveNativeFileUri,
+  type NativeFileModule,
+} from "./module-file-resolution.js";
 import {
   moduleArtifactFor,
   moduleDirectoryFor,
@@ -196,6 +206,7 @@ export class Kernel implements IKernel {
   /** Resolved native file URIs per module and name; a rejection is dropped so a
    *  file staged after a failed lookup resolves on the next ask. */
   private readonly nativeFileUris = new Map<string, Promise<string>>();
+  private readonly stagedEntryMatches = new Map<string, Promise<EnsuredEntryState>>();
   private _loadedGraph?: LoadedGraph;
   /** Declaration signatures of the installed set, taken at load time — see
    *  `ManifestDiffOptions.previousSignatures` for why they cannot be taken
@@ -1399,6 +1410,7 @@ export class Kernel implements IKernel {
     this.siblingLibraries.clear();
     this.nativeFileModules.clear();
     this.nativeFileUris.clear();
+    this.stagedEntryMatches.clear();
     const transports = defaultTransportRegistry();
     const entryDir = this._entryUrl ? resolveEntryDir(this._entryUrl) ?? "" : "";
     // The same pre-anchor root `LocalManifestCacheSource` falls back to. Layers
@@ -1437,6 +1449,7 @@ export class Kernel implements IKernel {
         source: file.source,
         native: owner.native,
         sources: owner.sources,
+        assetPatterns: owner.assetPatterns,
       };
       for (const declaring of [file, ...module.partials]) {
         this.nativeFileModules.set(declaring.source, native);
@@ -1470,10 +1483,7 @@ export class Kernel implements IKernel {
    * answers there without a special case.
    */
   resolveNativeFile(resolvedKind: string | undefined, name: string): Promise<string> {
-    const definition = resolvedKind ? this.controllers.getDefinition(resolvedKind) : undefined;
-    // Stamped by the loader on every manifest, and not on the SDK's narrower type.
-    const source = (definition?.metadata as { source?: unknown } | undefined)?.source;
-    const module = typeof source === "string" ? this.nativeFileModules.get(source) : undefined;
+    const module = this.moduleDeclaringKind(resolvedKind);
     if (!module) {
       return Promise.reject(
         new RuntimeError(
@@ -1496,10 +1506,67 @@ export class Kernel implements IKernel {
     return pending;
   }
 
-  /** The `sources:` block of the module one of whose files resolved from
-   *  `source`, or `undefined` for a module this load did not read. */
-  getModuleSources(source: string | undefined): ModuleSources | undefined {
-    return source ? this.nativeFileModules.get(source)?.sources : undefined;
+  /**
+   * Resolve a module-relative reference for a resource of `resolvedKind` against
+   * the module that declared that kind — the module whose controller is asking,
+   * found as {@link resolveNativeFile} finds it.
+   */
+  resolveControllerFile(resolvedKind: string | undefined, relative: string): Promise<string> {
+    const module = this.moduleDeclaringKind(resolvedKind);
+    if (!module) {
+      return Promise.reject(
+        new RuntimeError(
+          "ERR_MODULE_FILES_UNAVAILABLE",
+          `Cannot resolve '${relative}' against the controller's module: the kind ` +
+            `${resolvedKind ? `'${resolvedKind}'` : "of this resource"} has no declaring module ` +
+            `loaded from a manifest.`,
+        ),
+      );
+    }
+    return resolveModuleFileUri(relative, module.source, this);
+  }
+
+  /** The module one of whose files resolved from `source`: its owner manifest's
+   *  source and its `native:` and `sources:` blocks. */
+  getDeclaringModule(source: string | undefined): NativeFileModule | undefined {
+    return source ? this.nativeFileModules.get(source) : undefined;
+  }
+
+  /** The module that declared `resolvedKind`, whose files its controller reaches. */
+  private moduleDeclaringKind(resolvedKind: string | undefined): NativeFileModule | undefined {
+    const definition = resolvedKind ? this.controllers.getDefinition(resolvedKind) : undefined;
+    // Stamped by the loader on every manifest, and not on the SDK's narrower type.
+    const source = (definition?.metadata as { source?: unknown } | undefined)?.source;
+    return typeof source === "string" ? this.nativeFileModules.get(source) : undefined;
+  }
+
+  /**
+   * Bring a staged entry to its pin, fetching it when missing or stale. Memoized
+   * per file for the life of this load once it matches; anything short of a match
+   * is re-attempted on the next resolution.
+   */
+  ensureStagedEntry(
+    dir: string,
+    source: ModuleSource,
+    entry: SourceEntry,
+    archives?: ArchiveReader,
+  ): Promise<EnsuredEntryState> {
+    const key = `${dir}\0${entry.path}`;
+    let pending = this.stagedEntryMatches.get(key);
+    if (!pending) {
+      pending = ensureStagedEntry(dir, source, entry, { archives, log: this.logging.kernelLogger() }).then(
+        (verdict) => {
+          if (verdict.state !== "match") this.stagedEntryMatches.delete(key);
+          return verdict;
+        },
+        (err) => {
+          this.stagedEntryMatches.delete(key);
+          throw err;
+        },
+      );
+      this.stagedEntryMatches.set(key, pending);
+    }
+    return pending;
   }
 
   /** The module-owned libraries the module at `source` imports by bare

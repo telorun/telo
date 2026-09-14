@@ -463,6 +463,7 @@ export {
   crossLayerSourceLinks,
   describeClaim,
   nativeClaimConflicts,
+  readAssetPatterns,
   stageableFiles,
   unclaimedSourceEntries,
 } from "./module-named-files.js";
@@ -471,6 +472,7 @@ export type {
   LocatedSourceEntry,
   NativeClaimConflict,
   StageableFile,
+  StagedAssets,
 } from "./module-named-files.js";
 export { readLibraryCandidates } from "./module-library.js";
 export type {

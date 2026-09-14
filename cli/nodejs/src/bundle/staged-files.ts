@@ -1,6 +1,7 @@
 /**
  * The files a payload names by declaration rather than by `files:` — `native:`
- * paths, platform-qualified controller `path=`s and `sources:` notices — and
+ * paths, platform-qualified controller `path=`s, staged entries an `assets:`
+ * pattern selects and `sources:` notices — and
  * whether each can ship as the manifest describes it. The rules are the
  * analyzer's (`stageableFiles`, `unclaimedSourceEntries`), so publish and
  * `telo check` refuse the same modules; what is here is the filesystem half.
@@ -92,6 +93,7 @@ export async function assertNamedFiles(
   manifestDir: string,
   native: readonly NativeEntry[],
   claims: readonly ModuleFileClaim[],
+  assetPatterns: readonly string[],
   sources: readonly ModuleSource[],
   staged: ReadonlyMap<string, StagedFile>,
   fromPins: boolean,
@@ -99,6 +101,7 @@ export async function assertNamedFiles(
   const stageable = stageableFiles(
     native,
     claims.map((claim) => ({ claim })),
+    { patterns: assetPatterns, sources },
   );
   const notices: Array<[string, string]> = sources.flatMap((source) =>
     source.notices.map((notice): [string, string] => [notice, `notice of source '${source.name}'`]),

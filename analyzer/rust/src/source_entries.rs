@@ -5,9 +5,8 @@
 //! rule one reader applies and the other does not is a file one kernel reads and
 //! the other refuses.
 //!
-//! Two parts of the Node reader have no counterpart: `ignorePins` serves the one
-//! writer of pins, `telo release stage --pin`, and `resolveSourceUrl` serves
-//! fetching — this kernel does neither.
+//! One part of the Node reader has no counterpart: `ignorePins` serves the one
+//! writer of pins, `telo release stage --pin`, which this runtime does not carry.
 
 use std::collections::HashMap;
 
@@ -128,6 +127,11 @@ fn is_loopback_host(host: &str) -> bool {
         && octets
             .iter()
             .all(|o| !o.is_empty() && o.len() <= 3 && o.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// The URL an entry is fetched from: substitution only.
+pub fn resolve_source_url(source: &ModuleSource, upstream: &str) -> String {
+    source.url.replace("{version}", &source.version).replace("{upstream}", upstream)
 }
 
 /// Why a url may not be fetched from, or `None` when it may: https, or plain

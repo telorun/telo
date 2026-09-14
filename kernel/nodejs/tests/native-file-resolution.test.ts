@@ -13,7 +13,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { computeFilesIntegrity, type PayloadFile } from "../src/bundle/files-integrity.js";
 import { ModuleArtifact } from "../src/bundle/module-artifact.js";
-import { resolveNativeFileUri, type NativeFileModule } from "../src/module-file-resolution.js";
+import { ensureStagedEntry } from "../src/bundle/source-staging.js";
+import {
+  resolveNativeFileUri,
+  type ModuleFileLookup,
+  type NativeFileModule,
+} from "../src/module-file-resolution.js";
 import type { TransportRegistry } from "../src/transports/transport-registry.js";
 
 const GNU_137: PlatformTarget = { os: "linux", arch: "amd64", libc: "gnu", abi: "node-137" };
@@ -35,7 +40,12 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-const noArtifact = { getModuleArtifact: () => undefined };
+const noArtifact: ModuleFileLookup = {
+  getModuleArtifact: () => undefined,
+  getDeclaringModule: () => undefined,
+  ensureStagedEntry: (moduleDir, source, entry, archives) =>
+    ensureStagedEntry(moduleDir, source, entry, { archives }),
+};
 
 function checkout(native: unknown[], sources?: unknown): NativeFileModule {
   const owner = { native, ...(sources ? { sources } : {}) };
@@ -43,6 +53,7 @@ function checkout(native: unknown[], sources?: unknown): NativeFileModule {
     source: pathToFileURL(path.join(dir, "telo.yaml")).href,
     native: readNativeEntries(owner),
     sources: readModuleSources(owner),
+    assetPatterns: [],
   };
 }
 
@@ -121,8 +132,15 @@ describe("resolveNativeFileUri", () => {
         source: "oci://reg.test/acme/demo@1.0.0",
         native: readNativeEntries({ native: NATIVE }),
         sources: readModuleSources({}),
+        assetPatterns: [],
       };
-      return { artifact, module, layers, fetched, lookup: { getModuleArtifact: () => artifact } };
+      return {
+        artifact,
+        module,
+        layers,
+        fetched,
+        lookup: { ...noArtifact, getModuleArtifact: () => artifact },
+      };
     }
 
     it("materializes the matched native layer alone", async () => {
@@ -179,12 +197,13 @@ describe("resolveNativeFileUri", () => {
 
   describe("from a source checkout with a staged file", () => {
     const entry = NATIVE[0]!;
+    // Loopback with nothing listening on port 1, so a fetch fails at once.
     const staged = (content: string) => {
       const sha256 = createHash("sha256").update(content).digest("hex");
       return {
         addon: {
           version: "1.0.0",
-          url: "https://example.test/{version}/{upstream}.tar.gz",
+          url: "http://127.0.0.1:1/{version}/{upstream}.tar.gz",
           archive: "tar.gz",
           notices: ["./LICENSE"],
           entries: { [entry.path]: { upstream: "x", member: "addon.node", sha256, executable: false } },
@@ -192,21 +211,22 @@ describe("resolveNativeFileUri", () => {
       };
     };
 
-    it("reads the file when it matches its pin", async () => {
+    it("reads the file when it matches its pin, fetching nothing", async () => {
       writeFile(entry.path, "bytes");
       const uri = await resolveNativeFileUri("addon", checkout([entry], staged("bytes")), noArtifact, GNU_137);
       expect(relativeOf(uri)).toBe("native/gnu-137/addon.node");
     });
 
     it.each([
-      ["missing", undefined, "is not on disk — run `telo release stage` to fetch it"],
-      ["altered", "tampered", "hashes to sha256"],
-    ])("refuses a %s file and names `telo release stage`", async (_label, content, expected) => {
+      ["missing", undefined],
+      ["altered", "tampered"],
+    ])("stages a %s file, and names the upstream when it cannot be reached", async (_label, content) => {
       if (content !== undefined) writeFile(entry.path, content);
       const rejection = resolveNativeFileUri("addon", checkout([entry], staged("bytes")), noArtifact, GNU_137);
       await expect(rejection).rejects.toMatchObject({ code: "ERR_NATIVE_FILE_UNAVAILABLE" });
-      await expect(rejection).rejects.toThrow(expected);
-      await expect(rejection).rejects.toThrow("telo release stage");
+      await expect(rejection).rejects.toThrow(
+        "its archive could not be fetched: could not fetch the archive http://127.0.0.1:1/1.0.0/x.tar.gz",
+      );
     });
   });
 });

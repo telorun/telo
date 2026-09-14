@@ -20,7 +20,11 @@ requires:
   # annotation forms degrade to silence there (`x-telo-catches-for: ""` is falsy,
   # so the list is skipped; `throwsThrough` is an unknown key inside an
   # x-telo-ref). A floor nothing can refute is a claim nothing checks.
-  telo: ">=0.82.0"
+  #
+  # 0.91.0: a `sources:` entry claimed by an `assets:` pattern, which an older
+  # analyzer rejects as SOURCE_ENTRY_UNCLAIMED, and `ctx.resolveControllerFile`,
+  # which the Reference controller calls.
+  telo: ">=0.91.0"
 imports:
   # Single source of truth for the returns:/catches: schema. EVERY slot anchors at
   # HttpDispatch.Outcomes/$defs/{Returns,Catches} — Server.notFoundHandler, the
@@ -36,6 +40,25 @@ exports:
     - Api
     - Reference
     - Static
+# Scalar's browser bundle, served by Reference. Lazily fetched: an app that
+# declares no Reference never downloads it. `sources.scalar.version` must be the
+# @scalar/fastify-api-reference release whose @scalar/core and
+# @scalar/openapi-parser versions nodejs/package.json pins — the page HTML and the
+# script reading it come from one release; nodejs/tests/scalar-release.test.ts
+# checks it.
+assets:
+  - ./assets/
+sources:
+  scalar:
+    version: 1.44.6
+    url: https://registry.npmjs.org/@scalar/{upstream}/-/{upstream}-{version}.tgz
+    archive: tar.gz
+    notices: [./notices/scalar.LICENSE]
+    entries:
+      ./assets/scalar/standalone.js:
+        { upstream: fastify-api-reference, member: package/dist/js/standalone.js, sha256: 06257160bce05df2dd25eeced830c5e3de2ac82e59bd2861db74fc068a4e429d, executable: false }
+      ./notices/scalar.LICENSE:
+        { upstream: fastify-api-reference, member: package/LICENSE, sha256: 380cd0a6ad700e1f821f2a509f0dd9ff835041cee2d43daf5dedc1adb2bcc620, executable: false }
 ---
 kind: "Telo.Definition"
 metadata:
@@ -43,7 +66,7 @@ metadata:
   description: Listens on a TCP port and serves mounted routers, with CORS, OpenAPI docs, and custom content-type parsers.
 capability: Telo.Service
 controllers:
-  - pkg:npm/@telorun/http-server@0.30.0?local_path=./nodejs#http-server
+  - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpServerController
 schema:
   type: "object"
   properties:
@@ -441,7 +464,7 @@ metadata:
 capability: Telo.Mount
 topology: Router
 controllers:
-  - pkg:npm/@telorun/http-server@0.30.0?local_path=./nodejs#http-server-api
+  - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpApiController
 schema:
   type: "object"
   properties:
@@ -710,7 +733,7 @@ metadata:
     page, and serves the document itself as JSON and YAML under the same prefix.
 capability: Telo.Mount
 controllers:
-  - pkg:npm/@telorun/http-server@0.30.0?local_path=./nodejs#http-reference
+  - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpReferenceController
 schema:
   type: "object"
   additionalProperties: false
@@ -774,7 +797,7 @@ metadata:
   description: Serves a directory of static files as a mountable router, with SPA fallback and Cache-Control options.
 capability: Telo.Mount
 controllers:
-  - pkg:npm/@telorun/http-server@0.30.0?local_path=./nodejs#http-static
+  - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpStaticController
 schema:
   type: "object"
   description: >-

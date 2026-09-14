@@ -8,7 +8,7 @@ import {
   normalizeIncludePath,
   type TaggedSentinel,
 } from "@telorun/templating";
-import { resolveModuleFileUri, type ModuleArtifactLookup } from "./module-file-resolution.js";
+import { resolveModuleFileUri, type ModuleFileLookup } from "./module-file-resolution.js";
 
 /**
  * Ceiling on one embedded file.
@@ -87,7 +87,7 @@ async function readIncluded(
 async function resolveSentinel(
   sentinel: TaggedSentinel,
   moduleSource: string,
-  lookup: ModuleArtifactLookup,
+  lookup: ModuleFileLookup,
   cache: IncludeCache,
 ): Promise<string | Uint8Array> {
   // Re-checked here rather than trusted from `telo check`: the kernel does not
@@ -130,7 +130,7 @@ async function resolveSentinel(
 export async function resolveIncludeSentinels(
   resource: ResourceManifest,
   moduleSource: string,
-  lookup: ModuleArtifactLookup,
+  lookup: ModuleFileLookup,
   cache: IncludeCache,
 ): Promise<void> {
   // A resource that defers across init passes reaches `create()` more than once,

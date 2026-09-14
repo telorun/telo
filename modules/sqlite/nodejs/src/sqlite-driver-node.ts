@@ -1,8 +1,8 @@
 import Database from "better-sqlite3";
 import type { SqliteDb } from "./sqlite-driver-interface.js";
 
-export function openDatabase(file: string): SqliteDb {
-  const db = new Database(file);
+export function openDatabase(file: string, addon: string): SqliteDb {
+  const db = new Database(file, { nativeBinding: addon });
 
   return {
     prepare(sql: string) {

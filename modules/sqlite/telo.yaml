@@ -18,8 +18,9 @@ requires:
   # declared enum. An older analyzer reads a scalar at any slot carrying an
   # `x-telo-ref` as the removed string-reference form, so it rejects every
   # consumer's `type: integer` and tells its author to write `!ref integer`.
-  # Verified by execution against 0.82.0.
-  telo: ">=0.82.1"
+  # 0.90.0: the `native:` and `sources:` blocks, which an older analyzer rejects
+  # as unknown keys on the module doc. Verified by execution against 0.89.0.
+  telo: ">=0.90.0"
 imports:
   Sql: ../sql
 exports:
@@ -28,6 +29,84 @@ exports:
     - Table
     - Enum
     - Schema
+# better-sqlite3's addon for every tuple its upstream release publishes, at the
+# Node ABIs the CLI supports. Bun runs `bun:sqlite` and reads none of them.
+# better-sqlite3 rather than `node:sqlite`, which Node 24 marks experimental and
+# warns about on every run. No `requires.host.node` range: it would restate
+# these ABIs with nothing checking the two agree, and refuse the whole module
+# where only the addon is missing — ERR_NATIVE_FILE_UNAVAILABLE fires only
+# where it is needed and names what the module ships. The controller bundles
+# better-sqlite3's JavaScript, pinned in nodejs/package.json to
+# `sources.better-sqlite3.version` so wrapper and addon are one release;
+# nodejs/tests/addon-release.test.ts checks it.
+native:
+  - { name: better-sqlite3, format: node, os: linux, arch: amd64, libc: gnu, abi: node-137, path: ./native/linux-amd64-gnu-node-137/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: arm64, libc: gnu, abi: node-137, path: ./native/linux-arm64-gnu-node-137/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: arm, libc: gnu, abi: node-137, path: ./native/linux-arm-gnu-node-137/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: amd64, libc: musl, abi: node-137, path: ./native/linux-amd64-musl-node-137/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: arm64, libc: musl, abi: node-137, path: ./native/linux-arm64-musl-node-137/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: arm, libc: musl, abi: node-137, path: ./native/linux-arm-musl-node-137/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: darwin, arch: amd64, abi: node-137, path: ./native/darwin-amd64-node-137/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: darwin, arch: arm64, abi: node-137, path: ./native/darwin-arm64-node-137/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: windows, arch: amd64, abi: node-137, path: ./native/windows-amd64-node-137/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: windows, arch: arm64, abi: node-137, path: ./native/windows-arm64-node-137/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: amd64, libc: gnu, abi: node-141, path: ./native/linux-amd64-gnu-node-141/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: arm64, libc: gnu, abi: node-141, path: ./native/linux-arm64-gnu-node-141/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: arm, libc: gnu, abi: node-141, path: ./native/linux-arm-gnu-node-141/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: amd64, libc: musl, abi: node-141, path: ./native/linux-amd64-musl-node-141/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: arm64, libc: musl, abi: node-141, path: ./native/linux-arm64-musl-node-141/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: linux, arch: arm, libc: musl, abi: node-141, path: ./native/linux-arm-musl-node-141/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: darwin, arch: amd64, abi: node-141, path: ./native/darwin-amd64-node-141/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: darwin, arch: arm64, abi: node-141, path: ./native/darwin-arm64-node-141/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: windows, arch: amd64, abi: node-141, path: ./native/windows-amd64-node-141/better_sqlite3.node }
+  - { name: better-sqlite3, format: node, os: windows, arch: arm64, abi: node-141, path: ./native/windows-arm64-node-141/better_sqlite3.node }
+sources:
+  better-sqlite3:
+    version: 12.8.0
+    url: https://github.com/WiseLibs/better-sqlite3/releases/download/v{version}/better-sqlite3-v{version}-{upstream}.tar.gz
+    archive: tar.gz
+    notices: [./notices/better-sqlite3.LICENSE]
+    entries:
+      ./native/linux-amd64-gnu-node-137/better_sqlite3.node:
+        { upstream: node-v137-linux-x64, member: build/Release/better_sqlite3.node, sha256: dbd4e853e912261d8e7e50da6d25f5fa31d429ab2b250a8c6cf9da91c9a20e64, executable: true }
+      ./native/linux-arm64-gnu-node-137/better_sqlite3.node:
+        { upstream: node-v137-linux-arm64, member: build/Release/better_sqlite3.node, sha256: 59076f58524ca20436960cbbcc2e6ba76bb574653e21334079ca85e37da6c19d, executable: true }
+      ./native/linux-arm-gnu-node-137/better_sqlite3.node:
+        { upstream: node-v137-linux-arm, member: build/Release/better_sqlite3.node, sha256: de88a0732430c4a53132196c86fda38488715940b7088403a71b6907671120d5, executable: true }
+      ./native/linux-amd64-musl-node-137/better_sqlite3.node:
+        { upstream: node-v137-linuxmusl-x64, member: build/Release/better_sqlite3.node, sha256: b86cccee39f20ebf631a11944e3283af569cb348054398d1918d4fccd71b620c, executable: true }
+      ./native/linux-arm64-musl-node-137/better_sqlite3.node:
+        { upstream: node-v137-linuxmusl-arm64, member: build/Release/better_sqlite3.node, sha256: 8d371bd46053a46c623f33d029da37d63ebbe51d34dcab1c4b07e16b49b58731, executable: true }
+      ./native/linux-arm-musl-node-137/better_sqlite3.node:
+        { upstream: node-v137-linuxmusl-arm, member: build/Release/better_sqlite3.node, sha256: d39aa112b943152173e4f4663239213699afc21fa93e3f29bcf67f4c983704ae, executable: true }
+      ./native/darwin-amd64-node-137/better_sqlite3.node:
+        { upstream: node-v137-darwin-x64, member: build/Release/better_sqlite3.node, sha256: 4f4782e3b6f75fecc796f7a5eca8da73f15e5fc6905c54b553cd53c288f8a86e, executable: true }
+      ./native/darwin-arm64-node-137/better_sqlite3.node:
+        { upstream: node-v137-darwin-arm64, member: build/Release/better_sqlite3.node, sha256: 7fd5c877dee29bd0cad8850eff93e82589d55f118934d9b333095fe64bb6faca, executable: true }
+      ./native/windows-amd64-node-137/better_sqlite3.node:
+        { upstream: node-v137-win32-x64, member: build/Release/better_sqlite3.node, sha256: 194c049b8781c3ca39f7e12b4f4a47c79027502b366151404ae8847fe6e2a9a1, executable: false }
+      ./native/windows-arm64-node-137/better_sqlite3.node:
+        { upstream: node-v137-win32-arm64, member: build/Release/better_sqlite3.node, sha256: 92ba29b61eebddc744e760a8235ea9e11474322b2150b96f143cd5745ad03d6d, executable: false }
+      ./native/linux-amd64-gnu-node-141/better_sqlite3.node:
+        { upstream: node-v141-linux-x64, member: build/Release/better_sqlite3.node, sha256: e969291a637c20c5c03cbfbc3f6e47fedc7bc2ddc51e9a9631e938414d3e3d8b, executable: true }
+      ./native/linux-arm64-gnu-node-141/better_sqlite3.node:
+        { upstream: node-v141-linux-arm64, member: build/Release/better_sqlite3.node, sha256: eb13c62721b3120e356982a0c222c4b02b7984a8e07cc45dd1296a365b55e35a, executable: true }
+      ./native/linux-arm-gnu-node-141/better_sqlite3.node:
+        { upstream: node-v141-linux-arm, member: build/Release/better_sqlite3.node, sha256: 32abc73ad8958094c0c878a8ef49cefb8dcbba137ee7375519c620e5fa6eae5b, executable: true }
+      ./native/linux-amd64-musl-node-141/better_sqlite3.node:
+        { upstream: node-v141-linuxmusl-x64, member: build/Release/better_sqlite3.node, sha256: faf3307db1bae13ecfd50536f15652e42eddcd899da9181045437b0346d9e73e, executable: true }
+      ./native/linux-arm64-musl-node-141/better_sqlite3.node:
+        { upstream: node-v141-linuxmusl-arm64, member: build/Release/better_sqlite3.node, sha256: 24276097a84efac24e42b30e2eb78add06312fcc830df51982ba481c36a9826f, executable: true }
+      ./native/linux-arm-musl-node-141/better_sqlite3.node:
+        { upstream: node-v141-linuxmusl-arm, member: build/Release/better_sqlite3.node, sha256: d0ae1ce7f675c6fc32a3238f60471ef43d63db2a361547a7d2207eee791041f3, executable: true }
+      ./native/darwin-amd64-node-141/better_sqlite3.node:
+        { upstream: node-v141-darwin-x64, member: build/Release/better_sqlite3.node, sha256: a1fb779f89d6cebd6a6293d14ec741e85d1cb676a9c2c682a96a07b08ceb7676, executable: true }
+      ./native/darwin-arm64-node-141/better_sqlite3.node:
+        { upstream: node-v141-darwin-arm64, member: build/Release/better_sqlite3.node, sha256: beaae109810a34bb2d4e9c924bd23e268ac64b6b3db4a5b5f668042a0fa77e9e, executable: true }
+      ./native/windows-amd64-node-141/better_sqlite3.node:
+        { upstream: node-v141-win32-x64, member: build/Release/better_sqlite3.node, sha256: ee775ccb734ad55bfff09d88f7dcfbe2f8b73de23d720a76f2a439f0eb137c87, executable: false }
+      ./native/windows-arm64-node-141/better_sqlite3.node:
+        { upstream: node-v141-win32-arm64, member: build/Release/better_sqlite3.node, sha256: f91e6dc34ed52f976053bfceb533ff261cf99ab3f38d62de656d4c44d1a784e2, executable: false }
 ---
 kind: Telo.Definition
 metadata:
@@ -38,7 +117,7 @@ metadata:
 capability: Telo.Provider
 extends: Sql.Connection
 controllers:
-  - pkg:npm/@telorun/sqlite@0.4.0?local_path=./nodejs#connection
+  - pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#ConnectionController
 schema:
   type: object
   examples:
@@ -69,7 +148,7 @@ metadata:
 capability: Telo.Provider
 extends: Sql.Table
 controllers:
-  - pkg:npm/@telorun/sqlite@0.4.0?local_path=./nodejs#table
+  - pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#TableController
 x-telo-schema-projection:
   entries: /columns
   key: type
@@ -376,7 +455,7 @@ metadata:
 capability: Telo.Provider
 extends: Sql.Enum
 controllers:
-  - pkg:npm/@telorun/sqlite@0.4.0?local_path=./nodejs#enum
+  - pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#EnumController
 schema:
   type: object
   additionalProperties: false
@@ -432,7 +511,7 @@ metadata:
 capability: Telo.Runnable
 extends: Sql.Schema
 controllers:
-  - pkg:npm/@telorun/sqlite@0.4.0?local_path=./nodejs#schema
+  - pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#SchemaController
 schema:
   type: object
   additionalProperties: false

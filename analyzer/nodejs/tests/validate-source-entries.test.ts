@@ -220,6 +220,36 @@ describe("sources: block", () => {
     ]);
   });
 
+  describe("an entry an assets: pattern selects", () => {
+    const withAssets = (patterns: string[], entries: Record<string, unknown>) => {
+      const owner = manifests("Telo.Library", withEntries(entries)) as unknown as Array<Record<string, unknown>>;
+      owner[0]!.assets = patterns;
+      return validateSourceEntries(owner as unknown as ResourceManifest[], new Set(["Demo"])).map((d) => [
+        d.code,
+        d.data?.path,
+      ]);
+    };
+
+    it("is claimed, and ships in the assets layer", () => {
+      expect(withAssets(["./assets/"], { "./assets/ui/app.js": pinned("package/app.js") })).toEqual([]);
+    });
+
+    it.each([
+      ["no pattern selects it", ["./public/"]],
+      ["a later pattern carves it out", ["./assets/", "!./assets/ui/app.js"]],
+    ])("is unclaimed when %s", (_label, patterns) => {
+      expect(withAssets(patterns, { "./assets/ui/app.js": pinned("package/app.js") })).toEqual([
+        ["SOURCE_ENTRY_UNCLAIMED", "sources.addon.entries../assets/ui/app.js"],
+      ]);
+    });
+
+    it("reports a link from the assets layer to a native file", () => {
+      expect(
+        withAssets(["./assets/"], { "./assets/addon.node": { target: "../native/linux-amd64/addon.node" } }),
+      ).toEqual([["SOURCE_LINK_TARGET_UNRESOLVED", "sources.addon.entries../assets/addon.node.target"]]);
+    });
+  });
+
   it("says nothing about a dependency's block", () => {
     const sources = withEntries({}, { url: "http://example.test/{os}.tgz" });
     expect(validateSourceEntries(manifests("Telo.Library", sources), new Set(["App"]))).toEqual([]);

@@ -5,8 +5,8 @@
 //! hosts the `js` and `napi` formats of the same `pkg:telo/local/<format>`
 //! delivery; this loader applies that loader's `napi` path to a cdylib — parse,
 //! platform gate, materialize the layer carrying the candidate's selector, or on a
-//! source checkout verify a staged file against its `sources:` pin, then resolve
-//! `path=`. Building from `local_path` source, realm symlinks and sibling-library
+//! source checkout stage a file its `sources:` block stages and verify it against
+//! its pin, then resolve `path=`. Building from `local_path` source, realm symlinks and sibling-library
 //! shims are JavaScript-bundle concerns with no cdylib equivalent.
 //!
 //! The platform gate — `abi` included — runs BEFORE materialization, so a
@@ -26,7 +26,7 @@ use telo_analyzer::native_entries::{normalize_native_path, PathVerdict};
 use telo_analyzer::source_entries::ModuleSources;
 
 use crate::bundle::module_artifact::{host_platform_target, ModuleFiles};
-use crate::bundle::staged_entry::{check_staged_entry, StagedEntryState};
+use crate::bundle::source_staging::{ensure_staged_entry, EnsuredEntryState, StagingError};
 use crate::controller_loaders::cargo_loader::{manifest_dir, EnvMissing, ResolveError};
 use crate::controller_loaders::native_abi::LoadedController;
 use crate::controller_loaders::purl::Purl;
@@ -106,7 +106,6 @@ impl DylibControllerLoader {
             )));
         }
 
-        let mut staged_by = None;
         let dir: PathBuf = match files {
             ModuleFiles::Artifact(artifact) => match artifact.materialize_controller(&selector)? {
                 Some(layer) => layer.dir,
@@ -127,10 +126,15 @@ impl DylibControllerLoader {
                 )))
             }
             // A module already on disk: its files sit next to the manifest, and a
-            // staged one is read only once it matches its pin.
+            // staged one is staged on first use and read only once it matches its
+            // pin. A stale one may still be on disk, and it is never the one opened.
             ModuleFiles::OnDisk => {
                 let dir = manifest_dir(base_uri);
-                staged_by = assert_staged_library(purl, &dir, relative, sources)?;
+                if let Some(reason) = assert_staged_library(purl, &dir, relative, sources)? {
+                    return Err(env_missing(format!(
+                        "pkg:telo controller \"{purl}\": the library '{relative}' is not available — {reason}"
+                    )));
+                }
                 dir
             }
         };
@@ -138,11 +142,8 @@ impl DylibControllerLoader {
         let library = lexical_path::normalize(&dir.join(relative));
         if !library.is_file() {
             return Err(env_missing(format!(
-                "pkg:telo controller library not found at \"{}\" (from \"{purl}\"){}",
-                library.display(),
-                staged_by.map_or_else(String::new, |source| format!(
-                    " — it is staged by source '{source}': run `telo release stage` to fetch it"
-                ))
+                "pkg:telo controller library not found at \"{}\" (from \"{purl}\")",
+                library.display()
             )));
         }
         let entry = parsed
@@ -162,10 +163,12 @@ fn staged_invalid(message: String) -> ResolveError {
     ResolveError::Fatal(KernelError::new("ERR_STAGED_FILE_INVALID", message))
 }
 
-/// Refuse a staged library that does not match its `sources:` pin, or whose
-/// staging cannot be known because the block does not read — the rule the Node
-/// kernel applies to a staged `napi` addon. Returns the staging source's name
-/// when the library is absent, which the missing-file fall-through reports.
+/// Stage a library its `sources:` block stages, and refuse one that is unpinned or
+/// does not match its pin, or whose staging cannot be known because the block does
+/// not read — the rule the Node kernel applies to a staged `napi` addon. Returns
+/// why the library could not be fetched, which the caller reports as env-missing
+/// so the next candidate still gets its turn. Any other staging failure (a lock, a
+/// write) is `ERR_STAGING_FAILED`.
 fn assert_staged_library(
     purl: &str,
     module_dir: &Path,
@@ -183,28 +186,32 @@ fn assert_staged_library(
         let Some(entry) = source.entries.iter().find(|candidate| candidate.path() == path) else {
             continue;
         };
-        let state = check_staged_entry(module_dir, source, entry).map_err(|err| {
-            staged_invalid(format!(
-                "pkg:telo controller \"{purl}\": the library '{path}' is staged by source '{}', and \
-                 reading it to verify its pin failed: {err}",
-                source.name
-            ))
-        })?;
         let by = format!(
-            "pkg:telo controller \"{purl}\": the library '{path}' is staged by source '{}', but ",
+            "pkg:telo controller \"{purl}\": the library '{path}' is staged by source '{}'",
             source.name
         );
+        let state = match ensure_staged_entry(module_dir, source, entry) {
+            Ok(state) => state,
+            Err(StagingError::Fetch(detail)) => {
+                return Ok(Some(format!("it is staged by source '{}': {detail}", source.name)))
+            }
+            Err(err @ StagingError::Content(_)) => {
+                return Err(staged_invalid(format!("{by}, {}", err.describe())))
+            }
+            Err(err @ StagingError::Failed(_)) => {
+                return Err(ResolveError::Fatal(KernelError::new(
+                    "ERR_STAGING_FAILED",
+                    format!("{by}, {}", err.describe()),
+                )))
+            }
+        };
         return match state {
-            StagedEntryState::Match => {
+            EnsuredEntryState::Match => {
                 VERIFIED.with(|verified| verified.borrow_mut().insert(key));
                 Ok(None)
             }
-            StagedEntryState::Missing(_) => Ok(Some(source.name.clone())),
-            StagedEntryState::Unpinned => Err(staged_invalid(format!(
-                "{by}the source carries no pin to verify it against — run `telo release stage --pin`."
-            ))),
-            StagedEntryState::Mismatch(detail) => Err(staged_invalid(format!(
-                "{by}{detail} — run `telo release stage` to restage it."
+            EnsuredEntryState::Unpinned => Err(staged_invalid(format!(
+                "{by}, which carries no pin to verify it against — run `telo release stage --pin`."
             ))),
         };
     }
@@ -234,25 +241,27 @@ mod tests {
     }
 
     #[test]
-    fn verifies_a_staged_library_against_its_pin_before_it_is_opened() {
+    fn stages_a_library_before_it_is_opened_and_never_opens_a_stale_one() {
         use sha2::{Digest, Sha256};
         let bar: String = Sha256::digest(b"bar").iter().map(|b| format!("{b:02x}")).collect();
         let dir = tempfile::tempdir().unwrap();
         let purl = "pkg:telo/local/dylib?path=./rust/libconsole.so";
-        let pinned = sources("https://e.test/x.tgz", &bar);
+        // Loopback with nothing listening on port 1, so a fetch fails at once.
+        let pinned = sources("https://127.0.0.1:1/x.tgz", &bar);
 
         let missing = assert_staged_library(purl, dir.path(), "./rust/libconsole.so", Some(&pinned));
-        assert_eq!(missing.ok().flatten().as_deref(), Some("console"));
+        let reason = missing.ok().flatten().expect("an unfetchable library is reported, not opened");
+        assert!(reason.contains("staged by source 'console'"), "{reason}");
 
         std::fs::create_dir_all(dir.path().join("rust")).unwrap();
         std::fs::write(dir.path().join("rust/libconsole.so"), "tampered").unwrap();
-        match assert_staged_library(purl, dir.path(), "./rust/libconsole.so", Some(&pinned)) {
-            Err(ResolveError::Fatal(err)) => {
-                assert_eq!(err.code, "ERR_STAGED_FILE_INVALID");
-                assert!(err.message.contains("run `telo release stage`"), "{err}");
-            }
-            _ => panic!("a library that does not match its pin must not be opened"),
-        }
+        assert!(
+            matches!(
+                assert_staged_library(purl, dir.path(), "./rust/libconsole.so", Some(&pinned)),
+                Ok(Some(_))
+            ),
+            "a stale library that cannot be restaged is reported, not opened"
+        );
 
         std::fs::write(dir.path().join("rust/libconsole.so"), "bar").unwrap();
         assert!(matches!(

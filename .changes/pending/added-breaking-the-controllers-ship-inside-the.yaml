@@ -1,0 +1,8 @@
+modules:
+  modules/sqlite: Added
+body: "Breaking: the controllers ship inside the module artifact and better-sqlite3's
+  addon in per-platform native layers, instead of being installed from npm at load. On
+  Node, a host needs linux (amd64, arm64, arm; gnu or musl), darwin (amd64, arm64) or
+  windows (amd64, arm64) at Node 24 or 25; any other host fails with
+  ERR_NATIVE_FILE_UNAVAILABLE naming the platforms the module ships. Bun keeps using
+  bun:sqlite. Requires telo >=0.90.0."

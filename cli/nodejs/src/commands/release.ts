@@ -51,12 +51,8 @@ import {
   writeLedger,
 } from "../release/ledger-store.js";
 import { planPayload, renderDiagnostics, renderPlan } from "../release/render.js";
-import {
-  createArchiveReader,
-  stageModule,
-  type StageFailure,
-  type StageOutcome,
-} from "../release/stage.js";
+import { createArchiveReader } from "@telorun/kernel";
+import { stageModule, type StageFailure, type StageOutcome } from "../release/stage.js";
 import { loadWorkspace, requireModule, type Workspace } from "../release/workspace.js";
 
 interface CommonArgv {

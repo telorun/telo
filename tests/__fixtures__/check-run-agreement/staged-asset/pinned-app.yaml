@@ -1,0 +1,24 @@
+# Consumes the pinned library. This directory holds no assets/greeting.txt, so the
+# text arrives only if the file resolves against the library that declares the kind.
+kind: Telo.Application
+metadata:
+  name: PinnedAssetApp
+  version: 1.0.0
+imports:
+  Lib: ./lib/pinned.yaml
+  Assert: ../../../../modules/assert
+targets:
+  - name: greet
+    invoke: !ref read
+  - invoke: !ref expectLibraryText
+    inputs:
+      actual: !cel "steps.greet.result"
+      expected: { text: from the library assets }
+---
+kind: Lib.Reader
+metadata:
+  name: read
+---
+kind: Assert.Equals
+metadata:
+  name: expectLibraryText

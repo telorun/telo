@@ -133,18 +133,22 @@ const db = new Database(filename, { nativeBinding: fileURLToPath(uri) });
 - **From a published artifact** only that entry's `native` layer is fetched,
   verified against the layer index, and extracted.
 - **From a source checkout** the file is read at the entry's path. When a
-  `sources:` entry stages it, the file must match its pin — an unpinned, missing
-  or altered file fails, naming `telo release stage`, and is never fetched. When
-  the module's `sources:` block does not read, no native file of the module is
-  read, since the unreadable block may be the one staging it. A file no source
-  names is checked in and read as it is; a checked-in symbolic link is read only
-  when it leads to a file inside the module.
+  `sources:` entry stages it, the file must match its pin: a missing or stale
+  file is staged on first use — fetched from its source, written only once its
+  bytes and execute bit match the pin — and an unpinned one fails, naming
+  `telo release stage --pin`. Only the entry this host needs is fetched. When the
+  module's `sources:` block does not read, no native file of the module is read,
+  since the unreadable block may be the one staging it. A file no source names is
+  checked in and read as it is; a checked-in symbolic link is read only when it
+  leads to a file inside the module.
 
-A prebuilt controller staged by `sources:` gets the same check before it is
+A prebuilt controller staged by `sources:` gets the same treatment before it is
 opened: a `pkg:telo/local/napi` addon on the Node kernel and a
-`pkg:telo/local/dylib` library on the Rust kernel. A stale, altered or unpinned
-one is `ERR_STAGED_FILE_INVALID`; an absent one falls through to the next
-candidate, and the message names `telo release stage`.
+`pkg:telo/local/dylib` library on the Rust kernel. One whose archive cannot be
+fetched falls through to the next candidate — a stale copy on disk is never
+opened. One that carries no pin, or whose archive does not hold the pinned file,
+is `ERR_STAGED_FILE_INVALID`; any other staging failure — a lock that could not
+be taken, a write that failed — is `ERR_STAGING_FAILED`.
 
 Every failure is `ERR_NATIVE_FILE_UNAVAILABLE`. When no entry matches, the
 message names the host tuple and every tuple the module ships for that name:
@@ -164,8 +168,9 @@ skipped.
 ## Where the files come from: `sources:`
 
 A prebuilt file is rarely checked in. A `sources:` block beside `native:` says
-which pinned upstream archive each file is extracted from, and
-`telo release stage` fetches it:
+which pinned upstream archive each file is extracted from. A kernel reading a
+source checkout fetches a file the first time it is needed, and
+`telo release stage` fetches every one:
 
 ```yaml
 sources:
@@ -213,10 +218,10 @@ One `version` and one `url` serve every entry, so an upstream bump edits
 | --- | --- |
 | `SOURCE_URL_PLACEHOLDER_UNKNOWN` | the `url` uses a placeholder other than `{version}` or `{upstream}` |
 | `SOURCE_URL_INSECURE` | the `url` is not `https://`, and not plain `http://` to a loopback host (`localhost`, `127.0.0.0/8`, `[::1]`) |
-| `SOURCE_ENTRY_UNCLAIMED` | an entry's path is not a `native:` entry's path, not the `path=` of a controller candidate carrying a platform qualifier, and not one of the source's own `notices` |
+| `SOURCE_ENTRY_UNCLAIMED` | an entry's path is not a `native:` entry's path, not the `path=` of a controller candidate carrying a platform qualifier, not selected by an `assets:` pattern, and not one of the source's own `notices` |
 | `SOURCE_ENTRY_UNPINNED` | a file entry carries no `sha256` / `executable` — a kernel refuses to read it and publish to ship it |
 | `SOURCE_BUILD_UNPINNED` | a `build` records no `inputs` — `telo release check` and publish refuse it |
-| `SOURCE_LINK_TARGET_UNRESOLVED` | a link's `target` does not resolve to another entry of the same source, or resolves to one that ships in a different layer (another tuple's `native:` or candidate path, or a notice in `common`) |
+| `SOURCE_LINK_TARGET_UNRESOLVED` | a link's `target` does not resolve to another entry of the same source, or resolves to one that ships in a different layer (another tuple's `native:` or candidate path, an asset, or a notice in `common`) |
 | `SOURCE_LINK_CYCLE` | a link resolves to itself, or a chain of links never reaches a file entry |
 | `SOURCE_ENTRY_INVALID` | an entry mixes the two shapes, a `sha256` is not 64 lowercase hex, `sha256` and `executable` are not written together, a required value is empty, or the path is not a single module-relative file |
 | `SOURCE_ENTRY_DUPLICATE` | two entries — in one source or in two — produce the same path |
@@ -248,13 +253,22 @@ Plain `stage` walks the workspace's modules and, for each entry:
   fails when it is missing, when its bytes do not hash to `sha256`, or when its
   executable bit differs from `executable`;
 - writes the file with mode `0755` when executable and `0644` otherwise,
-  creating directories, then creates the link entries;
-- fails when a declared file is absent after staging.
+  creating directories, then creates the link entries, each once the file it
+  leads to is staged.
 
-A fetch follows at most ten redirects, each vetted before it is requested by the
-rule `SOURCE_URL_INSECURE` applies to the `url`, and is bounded: five minutes, a
+A fetch — by `stage` or by a kernel staging on first use — follows at most ten
+redirects, each vetted before it is requested by the rule `SOURCE_URL_INSECURE`
+applies to the `url` and by `TELO_EGRESS`, and is bounded: five minutes, a
 512 MiB response and 2 GiB decompressed. Every failure names the module and,
-where one applies, the source, the entry path and the URL.
+where one applies, the source, the entry path and the URL. Concurrent kernels —
+and `stage` — serialize per archive URL, on a lock under the module's
+`.telo/staging/`, and re-check before fetching, so an archive is fetched once
+while entries from different archives stage side by side. A kernel prints one
+line naming the entry, the module and the URL when a fetch starts.
+
+`stage` stages every tuple, which is what publish reads; a kernel stages only
+what its resolutions reach. A fresh clone therefore runs a manifest with no
+staging step.
 
 `--pin` fetches every file entry, writes `sha256` and `executable` — and each
 `build`'s `inputs` — into `telo.yaml` as a byte splice, in block and flow
@@ -266,6 +280,51 @@ manifest is left untouched. A following plain `stage` verifies.
 
 Staged files are build output: a module adopting `sources:` adds its staged
 paths to its own `.gitignore`.
+
+### Staging a platform-neutral asset
+
+A file every platform shares — a browser bundle a controller serves, a font
+directory a library reads — is staged the same way and claimed by an `assets:`
+pattern instead of a `native:` entry. It ships in the lazily fetched `assets`
+layer, and its notice can be staged from the same archive:
+
+```yaml
+assets:
+  - ./assets/
+sources:
+  scalar:
+    version: 1.44.6
+    url: https://registry.npmjs.org/@scalar/{upstream}/-/{upstream}-{version}.tgz
+    archive: tar.gz
+    notices: [./notices/scalar.LICENSE]
+    entries:
+      ./assets/scalar/standalone.js:
+        { upstream: fastify-api-reference, member: package/dist/js/standalone.js, sha256: 0625…, executable: false }
+      ./notices/scalar.LICENSE:
+        { upstream: fastify-api-reference, member: package/LICENSE, sha256: 380c…, executable: false }
+```
+
+A controller reaches its own module's asset with `ctx.resolveControllerFile`,
+which resolves against the module declaring the kind — not the application
+that declared the resource, which is what `ctx.resolveModuleFile` resolves
+against:
+
+```ts
+const uri = await ctx.resolveControllerFile("./assets/scalar/standalone.js");
+```
+
+From a source checkout, both calls and `!include-*` bring every module file a
+`sources:` entry stages at or beneath the reference — one an `assets:` pattern
+selects, or a notice — to its pin, staging a missing or stale one first, and fail
+with `ERR_MODULE_FILES_UNAVAILABLE` when one is unpinned or cannot be staged. A
+directory reference covers the module files inside it; a native file or a
+prebuilt controller beneath it is left to its own resolution, which stages it for
+this host alone. No module file resolves while the module's `sources:` block
+does not read. From a published artifact the `assets` layer is verified against
+the layer index instead.
+
+A module adopting this declares `requires: telo: ">=0.91.0"`: an older
+analyzer reports the entry as `SOURCE_ENTRY_UNCLAIMED`.
 
 ### Prebuilds of your own crates
 

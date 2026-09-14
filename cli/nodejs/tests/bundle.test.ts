@@ -340,6 +340,53 @@ describe("ModulePayloadBuilder — staged files", () => {
     );
   });
 
+  describe("a staged file an assets: pattern selects", () => {
+    const APP_SHA256 = createHash("sha256").update("app").digest("hex");
+    const assetManifest = (assets: string) =>
+      [
+        "kind: Telo.Library",
+        "metadata:",
+        "  name: assetlib",
+        "  version: 1.0.0",
+        `assets: [${assets}]`,
+        "sources:",
+        "  ui:",
+        "    version: 1.0.0",
+        "    url: https://example.test/{version}/{upstream}.tgz",
+        "    archive: tar.gz",
+        "    notices: [./LICENSE]",
+        "    entries:",
+        "      ./assets/ui/app.js:",
+        "        upstream: ui",
+        "        member: package/app.js",
+        `        sha256: ${APP_SHA256}`,
+        "        executable: false",
+        "",
+      ].join("\n");
+
+    it("ships in the assets layer, digested from its pin exactly as publish digests its bytes", async () => {
+      write("telo.yaml", assetManifest("./assets/"));
+      write("LICENSE", "MIT");
+      const cold = await build("pins");
+      write("assets/ui/app.js", "app");
+      const published = await build("disk");
+
+      const assetsOf = (payload: ModulePayload) => indexOf(payload).find((layer) => layer.role === "assets")!;
+      expect(published.layers.find((layer) => layer.role === "assets")?.files).toEqual([
+        { name: "assets/ui/app.js", content: Buffer.from("app") },
+      ]);
+      expect(assetsOf(cold).integrity).toBe(assetsOf(published).integrity);
+    });
+
+    it("is refused when no assets: pattern selects it", async () => {
+      write("telo.yaml", assetManifest("./public/"));
+      write("LICENSE", "MIT");
+      await expect(build("pins")).rejects.toThrow(
+        "source 'ui' entry './assets/ui/app.js': nothing in the manifest names 'assets/ui/app.js'",
+      );
+    });
+  });
+
   it("refuses at publish a native file no source stages that git does not track", async () => {
     write(
       "telo.yaml",

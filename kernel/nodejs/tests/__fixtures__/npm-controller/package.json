@@ -1,0 +1,13 @@
+{
+  "name": "@telorun/npm-loader-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A controller delivered as an npm package, for the npm loader's install-root tests.",
+  "type": "module",
+  "exports": {
+    "./echo": "./echo.js"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
+  }
+}

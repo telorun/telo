@@ -108,7 +108,7 @@ fn parse_bearer_challenge(header: &str) -> HashMap<String, String> {
 }
 
 /// A redirect's `Location`, absolute, relative to the URL that answered it.
-fn resolve_location(base: &str, location: &str) -> String {
+pub(crate) fn resolve_location(base: &str, location: &str) -> String {
     if location.contains("://") {
         return location.to_string();
     }

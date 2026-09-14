@@ -1,10 +1,11 @@
 /**
- * `telo release stage` — fetch, extract, verify and pin the files a module's
+ * `telo release stage` — fetch, extract, verify and pin every file a module's
  * `sources:` block declares.
  *
- * Fetching is the CLI's alone: the kernel reads what this put on disk and never
- * reaches an upstream. Plain staging only verifies against the pins in the
- * manifest; `--pin` is the one writer of those pins, through the analyzer's
+ * Fetching, verifying and writing are the kernel's, which stages the one entry a
+ * resolution needs on first use; this command runs the same sequence, under the
+ * same lock, over every entry of every tuple, which is what publish reads. Plain staging only verifies against the pins in
+ * the manifest; `--pin` is the one writer of those pins, through the analyzer's
  * byte-splice editor, so nothing else in `telo.yaml` moves — and nothing is
  * written until the edited text reads back with exactly the pins computed.
  */
@@ -16,14 +17,12 @@ import {
   readModuleSources,
   renderFixReplacement,
   resolveSourceUrl,
-  sourceUrlProblem,
   type ModuleSource,
-  type SourceArchiveFormat,
   type SourceEntry,
   type SourcePin,
   type TextEdit,
 } from "@telorun/analyzer";
-import { checkStagedEntry, readTarGz, type BundleEntry } from "@telorun/kernel";
+import { checkStagedEntry, ensureStagedEntry, extractMember, type ArchiveReader } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
@@ -57,124 +56,6 @@ export interface StageFailure {
 export interface StageResult {
   readonly outcomes: StageOutcome[];
   readonly failures: StageFailure[];
-}
-
-/** Reads the archive at a URL, in the format its source declares, into its entries. */
-export type ArchiveReader = (url: string, format: SourceArchiveFormat) => Promise<BundleEntry[]>;
-
-const FETCH_TIMEOUT_MS = 5 * 60_000;
-const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024;
-const MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024;
-const MAX_REDIRECTS = 10;
-
-function fetchFailure(url: string, err: unknown, timeoutMs: number): Error {
-  if ((err as { name?: unknown }).name === "TimeoutError") {
-    return new Error(`could not fetch the archive ${url}: no complete response within ${timeoutMs / 1000}s`);
-  }
-  const cause = (err as { cause?: unknown }).cause;
-  const detail = cause instanceof Error ? cause.message : err instanceof Error ? err.message : String(err);
-  return new Error(`could not fetch the archive ${url}: ${detail}`);
-}
-
-/**
- * One fetch per URL for the life of the reader; the caller decides that life
- * (the command takes one reader per module, so decoded archives do not pile up
- * across a workspace). A request is bounded in time, in response size and in
- * decompressed size, and may not end at a URL a source could not name.
- */
-export function createArchiveReader(
-  options: {
-    fetchImpl?: typeof fetch;
-    timeoutMs?: number;
-    maxBytes?: number;
-    maxExtractedBytes?: number;
-  } = {},
-): ArchiveReader {
-  const fetchImpl = options.fetchImpl ?? fetch;
-  const timeoutMs = options.timeoutMs ?? FETCH_TIMEOUT_MS;
-  const maxBytes = options.maxBytes ?? MAX_ARCHIVE_BYTES;
-  const maxExtractedBytes = options.maxExtractedBytes ?? MAX_EXTRACTED_BYTES;
-  const cache = new Map<string, Promise<BundleEntry[]>>();
-  return (url, format) => {
-    const key = `${format}\0${url}`;
-    let entries = cache.get(key);
-    if (!entries) {
-      entries = (async () => {
-        const bytes = await fetchArchive(url, fetchImpl, timeoutMs, maxBytes);
-        try {
-          return await readTarGz(bytes, { maxBytes: maxExtractedBytes });
-        } catch (err) {
-          throw new Error(
-            `the archive ${url} does not read as ${format}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      })();
-      cache.set(key, entries);
-    }
-    return entries;
-  };
-}
-
-async function fetchArchive(
-  url: string,
-  fetchImpl: typeof fetch,
-  timeoutMs: number,
-  maxBytes: number,
-): Promise<Buffer> {
-  const tooLarge = () => new Error(`the archive ${url} is larger than the ${maxBytes}-byte limit`);
-  const signal = AbortSignal.timeout(timeoutMs);
-  // Redirects are followed here rather than by fetch, so each location is vetted
-  // before any request goes to it: a redirect may not take the request somewhere
-  // the manifest could not have named — a plain-http location above all.
-  let response: Response;
-  let current = url;
-  for (let hops = 0; ; hops++) {
-    try {
-      response = await fetchImpl(current, { signal, redirect: "manual" });
-    } catch (err) {
-      throw fetchFailure(url, err, timeoutMs);
-    }
-    const location = response.headers.get("location");
-    if (response.status < 300 || response.status >= 400 || location === null) break;
-    await response.body?.cancel();
-    if (hops === MAX_REDIRECTS) {
-      throw new Error(`the archive request ${url} was redirected more than ${MAX_REDIRECTS} times`);
-    }
-    const next = new URL(location, current).href;
-    const refusal = sourceUrlProblem(next);
-    if (refusal) {
-      throw new Error(`the archive request ${url} was redirected to ${next}: ${refusal.detail}`);
-    }
-    current = next;
-  }
-  if (!response.ok) {
-    await response.body?.cancel();
-    throw new Error(`the archive request ${url} answered ${response.status} ${response.statusText}`);
-  }
-  if (Number(response.headers.get("content-length") ?? 0) > maxBytes) {
-    await response.body?.cancel();
-    throw tooLarge();
-  }
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error(`the archive request ${url} answered with no body`);
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for (;;) {
-    let chunk: ReadableStreamReadResult<Uint8Array>;
-    try {
-      chunk = await reader.read();
-    } catch (err) {
-      throw fetchFailure(url, err, timeoutMs);
-    }
-    if (chunk.done) break;
-    total += chunk.value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw tooLarge();
-    }
-    chunks.push(Buffer.from(chunk.value));
-  }
-  return Buffer.concat(chunks);
 }
 
 interface ModuleDoc {
@@ -211,59 +92,6 @@ function readModuleDoc(
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
-const memberName = (name: string): string => name.replace(/^(\.\/)+/, "");
-
-async function extractMember(
-  archives: ArchiveReader,
-  source: ModuleSource,
-  url: string,
-  member: string,
-): Promise<{ content: Buffer; executable: boolean }> {
-  const entries = await archives(url, source.archive);
-  const matches = entries.filter((entry) => memberName(entry.name) === memberName(member));
-  if (matches.length > 1) {
-    throw new Error(`member '${member}' occurs ${matches.length} times in the archive, so which file it names is ambiguous`);
-  }
-  const found = matches[0];
-  if (!found) throw new Error(`member '${member}' is not in the archive`);
-  if ("link" in found) {
-    throw new Error(`member '${member}' is a symbolic link in the archive, not a file`);
-  }
-  const content = typeof found.content === "string" ? Buffer.from(found.content) : Buffer.from(found.content);
-  return { content, executable: found.executable === true };
-}
-
-/**
- * Refuse an entry whose parent path crosses a symbolic link or a non-directory
- * on disk: the path is confined as text, but a checked-out link would carry
- * every rm, mkdir, write and symlink below it outside the module.
- */
-function assertConfined(dir: string, entryPath: string): void {
-  const segments = entryPath.split("/").slice(0, -1);
-  let current = dir;
-  for (const segment of segments) {
-    current = path.join(current, segment);
-    const stat = fs.lstatSync(current, { throwIfNoEntry: false });
-    if (!stat) return;
-    if (stat.isSymbolicLink()) {
-      throw new Error(
-        `'${path.relative(dir, current)}' is a symbolic link on disk; staging below it would write outside the module. Replace it with a directory.`,
-      );
-    }
-    if (!stat.isDirectory()) {
-      throw new Error(`'${path.relative(dir, current)}' exists on disk and is not a directory.`);
-    }
-  }
-}
-
-function writeStaged(abs: string, content: Buffer, executable: boolean): void {
-  fs.mkdirSync(path.dirname(abs), { recursive: true });
-  // Removed first, so a link left at the path is replaced rather than written through.
-  fs.rmSync(abs, { force: true });
-  fs.writeFileSync(abs, content);
-  fs.chmodSync(abs, executable ? 0o755 : 0o644);
-}
-
 async function stageSources(
   target: StageTarget,
   sources: readonly ModuleSource[],
@@ -271,93 +99,31 @@ async function stageSources(
 ): Promise<StageResult> {
   const outcomes: StageOutcome[] = [];
   const failures: StageFailure[] = [];
-  const failed = new Set<string>();
   const fail = (source: ModuleSource, entry: SourceEntry, message: string, url?: string) => {
-    failed.add(`${source.name}\0${entry.path}`);
     failures.push({ module: target.key, source: source.name, path: entry.path, url, message });
   };
 
   for (const source of sources) {
-    const record = (entry: SourceEntry, action: StageOutcome["action"]) =>
-      outcomes.push({ module: target.key, source: source.name, path: entry.path, action });
-
-    for (const entry of source.entries) {
-      if (entry.kind !== "file") continue;
-      const url = resolveSourceUrl(source, entry.upstream);
-      if (!entry.pin) {
-        fail(source, entry, "the entry is not pinned — run `telo release stage --pin` to write its sha256 and executable", url);
-        continue;
-      }
-      const abs = path.join(target.dir, entry.path);
+    // Files first, so a link's own staging finds its file already verified.
+    const ordered = [
+      ...source.entries.filter((entry) => entry.kind === "file"),
+      ...source.entries.filter((entry) => entry.kind === "link"),
+    ];
+    for (const entry of ordered) {
+      const url = entry.kind === "file" ? resolveSourceUrl(source, entry.upstream) : undefined;
       try {
-        assertConfined(target.dir, entry.path);
-        // The same check the kernel applies before reading a staged file.
-        if ((await checkStagedEntry(target.dir, source, entry)).state === "match") {
-          record(entry, "verified");
+        // The sequence a kernel runs on first use, under the same lock.
+        const before = await checkStagedEntry(target.dir, source, entry);
+        const after =
+          before.state === "match" ? before : await ensureStagedEntry(target.dir, source, entry, { archives });
+        if (after.state === "unpinned") {
+          fail(source, entry, "the entry is not pinned — run `telo release stage --pin` to write its sha256 and executable", url);
           continue;
         }
-        const { content, executable } = await extractMember(archives, source, url, entry.member);
-        const digest = sha256Hex(content);
-        if (digest !== entry.pin.sha256) {
-          fail(source, entry, `member '${entry.member}' hashes to sha256 ${digest}, but the pin is ${entry.pin.sha256}`, url);
-          continue;
-        }
-        if (executable !== entry.pin.executable) {
-          fail(
-            source,
-            entry,
-            `member '${entry.member}' is ${executable ? "" : "not "}executable, but the pin says executable: ${entry.pin.executable}`,
-            url,
-          );
-          continue;
-        }
-        writeStaged(abs, content, executable);
-        record(entry, "staged");
+        const action = before.state === "match" ? "verified" : entry.kind === "file" ? "staged" : "linked";
+        outcomes.push({ module: target.key, source: source.name, path: entry.path, action });
       } catch (err) {
         fail(source, entry, err instanceof Error ? err.message : String(err), url);
-      }
-    }
-
-    for (const entry of source.entries) {
-      if (entry.kind !== "link") continue;
-      const abs = path.join(target.dir, entry.path);
-      try {
-        assertConfined(target.dir, entry.path);
-        const existing = fs.lstatSync(abs, { throwIfNoEntry: false });
-        if (existing?.isSymbolicLink() && fs.readlinkSync(abs) === entry.target) {
-          record(entry, "verified");
-          continue;
-        }
-        fs.mkdirSync(path.dirname(abs), { recursive: true });
-        if (existing) fs.rmSync(abs, { force: true });
-        fs.symlinkSync(entry.target, abs);
-        record(entry, "linked");
-      } catch (err) {
-        fail(source, entry, err instanceof Error ? err.message : String(err));
-      }
-    }
-
-    for (const entry of source.entries) {
-      if (failed.has(`${source.name}\0${entry.path}`)) continue;
-      const abs = path.join(target.dir, entry.path);
-      let present: boolean;
-      try {
-        present =
-          entry.kind === "file"
-            ? fs.lstatSync(abs, { throwIfNoEntry: false })?.isFile() === true
-            : fs.existsSync(abs);
-      } catch (err) {
-        fail(source, entry, err instanceof Error ? err.message : String(err));
-        continue;
-      }
-      if (!present) {
-        fail(
-          source,
-          entry,
-          entry.kind === "file"
-            ? "the file is absent after staging"
-            : `the link's target '${entry.target}' is absent after staging`,
-        );
       }
     }
   }

@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@marcbachmann/cel-js": "^7.6.1",
+    "@telorun/glob": "workspace:*",
     "@telorun/templating": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
@@ -54,7 +55,6 @@
     "yaml": "^2.8.3"
   },
   "devDependencies": {
-    "@telorun/glob": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0",

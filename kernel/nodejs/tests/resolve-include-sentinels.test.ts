@@ -13,7 +13,11 @@ import {
 /** No artifact: a module already on disk, which is the development case and the
  *  one every test here exercises. `resolveModuleFileUri` then resolves against
  *  the manifest URL. */
-const localModule = { getModuleArtifact: () => undefined };
+const localModule = {
+  getModuleArtifact: () => undefined,
+  getDeclaringModule: () => undefined,
+  checkStagedEntry: () => Promise.reject(new Error("no module declares staged files here")),
+};
 
 const text = (p: string) => makeTaggedSentinel("include-text", p);
 const bytes = (p: string) => makeTaggedSentinel("include-bytes", p);

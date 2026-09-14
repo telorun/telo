@@ -185,7 +185,7 @@ Registers a new resource kind (`<module-name>.<Name>`).
 - A controller's `ctx` is scoped to the context that OWNS its resource; `ctx.moduleContext` is only for imports, the controller policy and the logging scope.
 - Controllers resolve a `!ref` slot with `ctx.resolveRef(value, guard, describe, expects)`, not the standalone `resolveRefInstance`.
 - Controllers read configuration through `ctx.env` or the declared `variables` / `secrets`; a key the Application binds reads `undefined` from `process.env`.
-- Module files are reached with `ctx.resolveModuleFile(relative)`, never by deriving a directory from `ctx.moduleContext.source`.
+- Module files are reached with `ctx.resolveModuleFile(relative)` (a path the resource's author wrote, resolved against the author's module) or `ctx.resolveControllerFile(relative)` (the controller's own module file, resolved against the module declaring the kind), never by deriving a directory from `ctx.moduleContext.source`.
 - **Every inbound source takes a kernel hold while armed** (a listening server, an MCP endpoint, a schedule), taken in `run()`; the app exits at zero holds.
 - `Run.Sequence`'s `with:` declares resources whose lifetime is the sequence; its `targets:` runs them before the steps.
 - **`inputs`/`outputs` are always VALUES; `inputType`/`outputType` are always SCHEMAS.** A contract resolves instance → nearest along `extends` and replaces rather than merges; the kernel binds it at `create()` and fails with `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID`. `Telo.JsonSchema` is a kernel built-in (`modules/type` is deprecated). Spec: `kernel/specs/invocation-contract.md`.
@@ -324,9 +324,9 @@ The `metadata:` block on a module doc carries `name` (the only field anything re
 A `Telo.Definition` names its controller with PURL candidates:
 
 - `pkg:telo/local/js?path=./nodejs/<module>.mjs&local_path=./nodejs/src/index.ts#<Export>` — **bundled**: the controller ships inside the module's own artifact. **This is how the standard library delivers.** A module is ONE bundle: `nodejs/src/index.ts` re-exports one namespace per kind, and each kind selects its export by `#fragment`.
-- `pkg:npm/@telorun/<pkg>@<ver>?local_path=./nodejs#<export>` — a published npm package; in this repo only the deferred modules (`http-server`, `sqlite`, `image`, `pdf`, `starlark`) use it. Don't add new ones.
+- `pkg:npm/@telorun/<pkg>@<ver>?local_path=./nodejs#<export>` — a published npm package; in this repo only the deferred modules (`image`, `pdf`, `starlark`) use it. Don't add new ones.
 - `pkg:cargo/<crate>?local_path=./rust#<entry>` — a Rust controller crate, built on load from a source checkout.
-- `pkg:telo/local/napi?path=…&os=…&arch=…[&libc=…]` / `pkg:telo/local/dylib?path=…&os=…&arch=…&abi=telo-<n>` — a prebuilt native controller in a per-platform controller layer: the Node kernel opens `napi`, the Rust kernel `dylib`. In a checkout its file is staged by `sources:` (below) and verified against its pin before it is opened.
+- `pkg:telo/local/napi?path=…&os=…&arch=…[&libc=…]` / `pkg:telo/local/dylib?path=…&os=…&arch=…&abi=telo-<n>` — a prebuilt native controller in a per-platform controller layer: the Node kernel opens `napi`, the Rust kernel `dylib`. In a checkout its file is staged by `sources:` (below), fetched on first use when missing or stale, and verified against its pin before it is opened.
 
 - **The kernel builds the bundle** — from source on load in development (no build step), and through the same builder on publish. A module's own `build` script only type-checks (`tsc -p tsconfig.lib.json`). Never commit `nodejs/*.mjs`, and never re-add an esbuild step.
 - `modules/<name>/nodejs/package.json` is private (`@telorun/<name>-build`) and never published.
@@ -341,7 +341,7 @@ Full mechanics: `modules/CLAUDE.md`.
 A published module is one OCI artifact of several layers — `manifest`, per-selector `controller`, `library` and `native`, `assets`, `common` — addressed by the `layers:` index in the published `telo.yaml`, which the import pin covers. A host materializes only the layers its selector (`format` + `os`/`arch`/`libc`/`abi`) needs. Spec: `kernel/specs/module-artifact.md`; details: `kernel/nodejs/CLAUDE.md`.
 
 - **`native:`** on a module doc names each platform-specific file a controller opens by name (`{ name, format, os, arch, libc?, abi?, path }`), shipped in the `native` layer of its selector and reached through `ctx.resolveNativeFile(name)`.
-- **`sources:`** says where every staged file comes from — `{ version, url, archive: tar.gz, notices, entries, build? }`, each entry a file (`upstream`, `member`, pinned `sha256` + `executable`) or a link (`target`), and for files built in this repo `build: { cargo: <crate dir>, inputs: <digest> }`. `telo release stage [--pin]` fetches and pins it; no kernel ever fetches, and a kernel reads no native file of a module whose block does not read. It is removed from the published `telo.yaml`.
+- **`sources:`** says where every staged file comes from — `{ version, url, archive: tar.gz, notices, entries, build? }`, each entry a file (`upstream`, `member`, pinned `sha256` + `executable`) or a link (`target`), and for files built in this repo `build: { cargo: <crate dir>, inputs: <digest> }`. An entry stages a `native:` path, a platform-qualified controller `path=`, a file an `assets:` pattern selects, or a notice. `telo release stage [--pin]` fetches every entry and pins it; a kernel reading a source checkout fetches a missing or stale file on first use (verified against its pin, never read unpinned), and reads no native or module file of a module whose block does not read. It is removed from the published `telo.yaml`.
 - Guide: `docs/extend/native-files.md`; `telo check` codes `NATIVE_*` / `SOURCE_*`.
 
 ## Versioning & releases — MANDATORY

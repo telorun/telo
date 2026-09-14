@@ -3,6 +3,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { moduleDocumentClaims } from "./module-file-claims.js";
 import {
   crossLayerSourceLinks,
+  readAssetPatterns,
   stageableFiles,
   unclaimedSourceEntries,
 } from "./module-named-files.js";
@@ -87,6 +88,7 @@ export function validateSourceEntries(
     const stageable = stageableFiles(
       readNativeEntries(manifest).entries,
       moduleDocumentClaims(manifests, moduleName),
+      { patterns: readAssetPatterns(manifest), sources },
     );
     for (const { source, entry, layer, targetLayer } of crossLayerSourceLinks(sources, stageable)) {
       report(
@@ -111,8 +113,9 @@ export function validateSourceEntries(
         "SOURCE_ENTRY_UNCLAIMED",
         `sources.${source.name}.entries.${entry.key}`,
         `source '${source.name}' entry '${entry.key}': nothing in the module names '${entry.path}' ` +
-          `— no native: entry's path, no platform-qualified controller candidate's path=, and ` +
-          `none of the source's notices. Name the file where it is used, or remove the entry.`,
+          `— no native: entry's path, no platform-qualified controller candidate's path=, no ` +
+          `assets: pattern, and none of the source's notices. Name the file where it is used, ` +
+          `or remove the entry.`,
       );
     }
   }

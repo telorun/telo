@@ -1,6 +1,9 @@
 import { readModuleSources, type ArtifactLayer } from "@telorun/analyzer";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
+import * as http from "node:http";
+import type { AddressInfo } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -8,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { computeFilesIntegrity, type PayloadFile } from "../src/bundle/files-integrity.js";
 import { hostPlatformTarget, ModuleArtifact } from "../src/bundle/module-artifact.js";
+import { makeTarGz } from "../src/bundle/tar.js";
 import { BundleControllerLoader } from "../src/controller-loaders/bundle-loader.js";
 import { ControllerEnvMissingError } from "../src/controller-loaders/napi-loader.js";
 import type { TransportRegistry } from "../src/transports/transport-registry.js";
@@ -15,6 +19,7 @@ import type { TransportRegistry } from "../src/transports/transport-registry.js"
 const here = path.dirname(fileURLToPath(import.meta.url));
 const host = hostPlatformTarget();
 const ADDON = "native/echo.node";
+const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const PURL = `pkg:telo/local/napi?path=./${ADDON}&os=${host.os}&arch=${host.arch}#echo`;
 
 /** The `napi-echo` fixture crate's cdylib, built the way a prebuild is. */
@@ -74,23 +79,21 @@ describe("BundleControllerLoader napi candidates", () => {
     );
   });
 
-  it("refuses a staged addon that does not match its pin, naming telo release stage", async () => {
-    const moduleDir = path.join(dir, "stale");
-    fs.mkdirSync(path.join(moduleDir, "native"), { recursive: true });
-    fs.writeFileSync(path.join(moduleDir, ADDON), addon);
-    const sources = readModuleSources({
+  const stagedBlock = (url: string, sha256: string) =>
+    readModuleSources({
       sources: {
         echo: {
           version: "1.0.0",
-          url: "https://example.test/{version}/{upstream}.tar.gz",
+          url,
           archive: "tar.gz",
           notices: ["./LICENSE"],
-          entries: { [`./${ADDON}`]: { upstream: "x", member: "echo.node", sha256: "0".repeat(64), executable: false } },
+          entries: { [`./${ADDON}`]: { upstream: "x", member: "echo.node", sha256, executable: false } },
         },
       },
     });
 
-    const rejection = new BundleControllerLoader().resolve(
+  const resolveIn = (moduleDir: string, sources: ReturnType<typeof stagedBlock>) =>
+    new BundleControllerLoader().resolve(
       PURL,
       pathToFileURL(path.join(moduleDir, "telo.yaml")).href,
       undefined,
@@ -98,39 +101,51 @@ describe("BundleControllerLoader napi candidates", () => {
       undefined,
       sources,
     );
-    await expect(rejection).rejects.toMatchObject({ code: "ERR_STAGED_FILE_INVALID" });
-    await expect(rejection).rejects.toThrow("run `telo release stage`");
+
+  it("stages an absent addon from its source, and refuses bytes that do not match the pin", async () => {
+    const archive = await makeTarGz([{ name: "echo.node", content: addon }]);
+    const server = http.createServer((_req, res) => res.writeHead(200).end(archive));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/{version}/{upstream}.tar.gz`;
+    try {
+      const staged = await resolveIn(path.join(dir, "fetched"), stagedBlock(url, sha256(addon)));
+      expect(await echoes(await staged.importInstance())).toEqual({ text: "hi" });
+
+      const mismatch = resolveIn(path.join(dir, "mismatch"), stagedBlock(url, "0".repeat(64)));
+      await expect(mismatch).rejects.toMatchObject({ code: "ERR_STAGED_FILE_INVALID" });
+      await expect(mismatch).rejects.toThrow("its archive does not hold the pinned file");
+      await expect(mismatch).rejects.toThrow("hashes to sha256");
+      expect(fs.existsSync(path.join(dir, "mismatch", ADDON))).toBe(false);
+
+      // A failure that is not the pin's — here a checked-out link below which a
+      // write would leave the module — is not reported as a bad pin.
+      const confined = path.join(dir, "confined");
+      fs.mkdirSync(confined, { recursive: true });
+      fs.symlinkSync(os.tmpdir(), path.join(confined, "native"));
+      const refused = resolveIn(confined, stagedBlock(url, sha256(addon)));
+      await expect(refused).rejects.toMatchObject({ code: "ERR_STAGING_FAILED" });
+      await expect(refused).rejects.toThrow("and staging it failed: 'native' is a symbolic link on disk");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 
-  it("names telo release stage for a staged addon that is absent, and refuses one a broken sources: block may stage", async () => {
-    const moduleDir = path.join(dir, "unstaged");
-    const block = (url: string) =>
-      readModuleSources({
-        sources: {
-          echo: {
-            version: "1.0.0",
-            url,
-            archive: "tar.gz",
-            notices: ["./LICENSE"],
-            entries: { [`./${ADDON}`]: { upstream: "x", member: "echo.node", sha256: "0".repeat(64), executable: false } },
-          },
-        },
-      });
-    const resolve = (sources: ReturnType<typeof block>) =>
-      new BundleControllerLoader().resolve(
-        PURL,
-        pathToFileURL(path.join(moduleDir, "telo.yaml")).href,
-        undefined,
-        undefined,
-        undefined,
-        sources,
-      );
+  it("falls through when an addon cannot be fetched, never loading a stale one, and refuses one a broken sources: block may stage", async () => {
+    // Loopback with nothing listening on port 1, so a fetch fails at once.
+    const unreachable = "http://127.0.0.1:1/{version}/{upstream}.tar.gz";
 
-    const absent = resolve(block("https://example.test/{version}/{upstream}.tar.gz"));
+    const absent = resolveIn(path.join(dir, "unstaged"), stagedBlock(unreachable, "0".repeat(64)));
     await expect(absent).rejects.toBeInstanceOf(ControllerEnvMissingError);
-    await expect(absent).rejects.toThrow("staged by source 'echo': run `telo release stage` to fetch it");
+    await expect(absent).rejects.toThrow("staged by source 'echo': could not fetch the archive");
 
-    const broken = resolve(block("http://example.test/{version}/{upstream}.tar.gz"));
+    const staleDir = path.join(dir, "stale");
+    fs.mkdirSync(path.join(staleDir, "native"), { recursive: true });
+    fs.writeFileSync(path.join(staleDir, ADDON), addon);
+    await expect(resolveIn(staleDir, stagedBlock(unreachable, "0".repeat(64)))).rejects.toBeInstanceOf(
+      ControllerEnvMissingError,
+    );
+
+    const broken = resolveIn(path.join(dir, "unstaged"), stagedBlock("http://example.test/{version}/{upstream}.tar.gz", "0".repeat(64)));
     await expect(broken).rejects.toMatchObject({ code: "ERR_STAGED_FILE_INVALID" });
     await expect(broken).rejects.toThrow("sources: block cannot be read");
   });
