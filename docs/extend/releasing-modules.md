@@ -223,7 +223,9 @@ executable bit; a file already on disk and matching its pin is not fetched.
 `stage --pin` fetches every file entry and writes those pins into `telo.yaml`
 first, as a byte splice, together with the build-input digest of each source
 built from a crate, and writes nothing unless the edited manifest reads back with
-exactly those pins. `--module <path>` narrows either to named modules. See
+exactly those pins. `--module <path>` narrows either to named modules. A kernel
+running from a source checkout stages the one file it needs on first use, so
+running a manifest needs no `stage`; publish, which reads every tuple, does. See
 [Native Files](./native-files.md#where-the-files-come-from-sources).
 
 ## Reading your own version
@@ -290,8 +292,8 @@ before pushing anything. Publish refuses:
 The published `telo.yaml` carries no `sources:` block. It is removed, as
 `include:` is, before any dependent derives its pin from the text, so editing only
 a source's `url` — a moved mirror, the same bytes — moves no digest and bumps
-nothing. Each source's notice files ship in the `common` layer with no `files:`
-entry.
+nothing. Each source's notice files ship in the `common` layer, and a staged
+file an `assets:` pattern selects in the `assets` layer, with no `files:` entry.
 
 ## npm packages
 

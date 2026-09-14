@@ -14,9 +14,9 @@ import {
   hasOwnControllerOrTemplate,
   inheritedCapability,
   type DefResolver,
-  type ModuleSources,
 } from "@telorun/analyzer";
 import type { ModuleArtifact } from "../../bundle/module-artifact.js";
+import type { NativeFileModule } from "../../module-file-resolution.js";
 import type { SiblingLibraryMap } from "../../controller-loaders/sibling-libraries.js";
 import { ControllerLoader } from "../../controller-loader.js";
 import { formatAjvErrors, validateResourceDefinition } from "../../manifest-schemas.js";
@@ -214,7 +214,7 @@ class ResourceDefinition implements ResourceInstance {
     const libraries = host.getSiblingLibraries?.(this.resource.metadata.source);
     // Its `sources:` block, so a staged prebuilt candidate is checked against
     // its pin before it loads from a source checkout.
-    const sources = host.getModuleSources?.(this.resource.metadata.source);
+    const sources = host.getDeclaringModule?.(this.resource.metadata.source)?.sources;
     ctx.registerDefinition(this.resource);
 
     const moduleName = this.resource.metadata.module;
@@ -278,7 +278,7 @@ class ResourceDefinition implements ResourceInstance {
 interface KernelResourceContext {
   getModuleArtifact?(source: string | undefined): ModuleArtifact | undefined;
   getSiblingLibraries?(source: string | undefined): SiblingLibraryMap | undefined;
-  getModuleSources?(source: string | undefined): ModuleSources | undefined;
+  getDeclaringModule?(source: string | undefined): NativeFileModule | undefined;
   getCacheRoot?(): string | undefined;
   registerLazyController(
     moduleName: string,

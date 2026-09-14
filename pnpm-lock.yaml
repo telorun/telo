@@ -35,6 +35,9 @@ importers:
       '@marcbachmann/cel-js':
         specifier: ^7.6.1
         version: 7.6.1
+      '@telorun/glob':
+        specifier: workspace:*
+        version: link:../../packages/glob/nodejs
       '@telorun/templating':
         specifier: workspace:*
         version: link:../../templating/nodejs
@@ -54,9 +57,6 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
     devDependencies:
-      '@telorun/glob':
-        specifier: workspace:*
-        version: link:../../packages/glob/nodejs
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../sdk/nodejs
@@ -943,9 +943,12 @@ importers:
       '@fastify/swagger':
         specifier: ^9.6.1
         version: 9.6.1
-      '@scalar/fastify-api-reference':
-        specifier: ^1.44.6
-        version: 1.44.6
+      '@scalar/core':
+        specifier: 0.3.36
+        version: 0.3.36
+      '@scalar/openapi-parser':
+        specifier: 0.24.6
+        version: 0.24.6
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.48
@@ -962,18 +965,27 @@ importers:
         specifier: ^5.12.1
         version: 5.12.1
     devDependencies:
+      '@scalar/fastify-api-reference':
+        specifier: 1.44.6
+        version: 1.44.6
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   modules/idempotency/nodejs:
     devDependencies:
@@ -1458,7 +1470,7 @@ importers:
         specifier: workspace:*
         version: link:../../sql/nodejs
       better-sqlite3:
-        specifier: ^12.8.0
+        specifier: 12.8.0
         version: 12.8.0
       kysely:
         specifier: ^0.28.15
@@ -1476,9 +1488,18 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   modules/sse-codec/nodejs:
     devDependencies:

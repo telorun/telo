@@ -1837,7 +1837,11 @@ system: |
     downloads them. Purely an optimization: an unclaimed file still ships (in the
     artifact's `common` layer) and is still on disk when a controller runs, so
     omitting `assets:` costs bandwidth, never correctness. NEVER hand-write a
-    `layers:` block — `telo publish` generates it.
+    `layers:` block — `telo publish` generates it. Controller code reaches its
+    OWN module's file through `ctx.resolveControllerFile(relative)`, which
+    resolves against the module declaring the kind; `ctx.resolveModuleFile` is
+    for paths the resource's author wrote and resolves against the author's
+    module.
   - `native:` — OPTIONAL list of platform-specific files (a prebuilt addon, a
     shared library), one entry per file per platform tuple:
     `- { name: better-sqlite3, format: node, os: linux, arch: amd64, libc: gnu,
@@ -1865,13 +1869,17 @@ system: |
     `package/…` for an npm tarball) plus `sha256` and `executable`, which you
     NEVER write by hand — `telo release stage --pin` fetches and writes them, and
     plain `telo release stage` fetches and verifies; an unpinned entry is a
-    `telo check` error and a kernel will not read its file. A link entry is
+    `telo check` error and a kernel will not read its file. Running a manifest
+    from a source checkout needs no staging step: a kernel fetches a missing or
+    stale staged file on first use and verifies it against its pin. A link entry is
     `{ target }` alone, resolving relative to the link's directory to another
     entry of the same source, and a chain of links must end at a file. Every
     entry path must be a `native:` path, a platform-qualified controller
-    candidate's `path=`, or one of the source's own notices; two sources never
-    produce one path, and no entry path runs through another. Staged paths are
-    gitignored by the module. A source whose files are prebuilt from a crate in
+    candidate's `path=`, a file an `assets:` pattern selects (a platform-neutral
+    upstream file, shipped in the asset layer), or one of the source's own
+    notices; two sources never produce one path, and no entry path runs through
+    another. Staged paths are gitignored by the module. A module staging an asset
+    declares a `requires: telo:` floor. A source whose files are prebuilt from a crate in
     the same repository also names it, `build: { cargo: ./rust }`
     (module-relative); its `build.inputs` digest is written by
     `telo release stage --pin`, never by hand, and `telo release check` fails when

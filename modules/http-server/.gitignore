@@ -1,0 +1,3 @@
+# Scalar's browser bundle and notice, staged by `telo release stage` from the `sources:` block.
+/assets/scalar/
+/notices/scalar.LICENSE

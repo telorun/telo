@@ -1,62 +1,20 @@
 {
-  "name": "@telorun/http-server",
+  "name": "@telorun/http-server-build",
   "version": "0.30.0",
-  "description": "Telo HTTP Server module - HTTP server and API resource kinds for Telo manifests.",
-  "keywords": [
-    "telo",
-    "http",
-    "server",
-    "api",
-    "fastify"
-  ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/telorun/telo.git",
-    "directory": "modules/http-server/nodejs"
-  },
-  "homepage": "https://github.com/telorun/telo#readme",
-  "bugs": {
-    "url": "https://github.com/telorun/telo/issues"
-  },
+  "private": true,
+  "description": "Build-only package for the std/http-server module's bundled controller. Never published — the controller ships inside the module artifact and Scalar's browser bundle in its assets layer. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "exports": {
-    "./http-server": {
-      "types": "./dist/http-server-controller.d.ts",
-      "bun": "./src/http-server-controller.ts",
-      "import": "./dist/http-server-controller.js"
-    },
-    "./http-server-api": {
-      "types": "./dist/http-api-controller.d.ts",
-      "bun": "./src/http-api-controller.ts",
-      "import": "./dist/http-api-controller.js"
-    },
-    "./http-reference": {
-      "types": "./dist/http-reference-controller.d.ts",
-      "bun": "./src/http-reference-controller.ts",
-      "import": "./dist/http-reference-controller.js"
-    },
-    "./http-static": {
-      "types": "./dist/http-static-controller.d.ts",
-      "bun": "./src/http-static-controller.ts",
-      "import": "./dist/http-static-controller.js"
-    }
-  },
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "prepack": "cp ../../../LICENSE . && cp ../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/static": "^8.0.0",
     "@fastify/swagger": "^9.6.1",
-    "@scalar/fastify-api-reference": "^1.44.6",
+    "@scalar/core": "0.3.36",
+    "@scalar/openapi-parser": "0.24.6",
     "@sinclair/typebox": "^0.34.48",
     "@telorun/http-dispatch": "workspace:*",
     "ajv": "^8.17.1",
@@ -64,12 +22,12 @@
     "fastify": "^5.12.1"
   },
   "devDependencies": {
+    "@scalar/fastify-api-reference": "1.44.6",
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
     "typescript": "^5.0.0",
-    "vitest": "^2.1.8"
-  },
-  "peerDependencies": {
-    "@telorun/sdk": "*"
+    "vitest": "^2.1.8",
+    "yaml": "^2.8.3"
   }
 }

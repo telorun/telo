@@ -300,14 +300,14 @@ jobs:
       # dist/, so the build must run before vitest.
       #
       # This includes modules, and the module half is NOT a no-op even though the
-      # kernel builds bundled controllers from source at load. 14 of the 56
-      # modules emit dist/: the five `pkg:npm` ones (http-server, sqlite,
-      # image, pdf, starlark), whose controller is resolved as a package EXPORT
-      # SUBPATH (`#./script`) inside the installed node_modules and so must be
-      # staged, plus nine contract packages a third-party implementation compiles
-      # against. The other 42 are `tsc --noEmit` and contribute a type-check only.
-      # Filtering modules out here breaks every manifest test touching one of the
-      # five, with "Controller entry could not be resolved".
+      # kernel builds bundled controllers from source at load. 13 of the 61
+      # modules emit dist/: the three `pkg:npm` ones (image, pdf, starlark),
+      # whose controller is resolved as a package EXPORT SUBPATH (`#./script`)
+      # inside the installed node_modules and so must be staged, plus ten
+      # libraries other packages compile against. The other 48 are
+      # `tsc --noEmit` and contribute a type-check only. Filtering modules out
+      # here breaks every manifest test touching one of the three, with
+      # "Controller entry could not be resolved".
       - name: Build for Node.js
         run: pnpm -r run build
 
@@ -565,7 +565,7 @@ jobs:
 
       # Everything below reads from dist/, so a failure here makes the rest of
       # the run meaningless rather than merely red. Modules are included: the
-      # five `pkg:npm` ones stage a dist/ their controller entry is resolved
+      # three `pkg:npm` ones stage a dist/ their controller entry is resolved
       # from — see the note in the Linux unit job.
       - name: Build for Node.js
         run: pnpm -r run build
@@ -605,8 +605,8 @@ jobs:
 
   # macOS is POSIX, so unlike the Windows job this is not covering a separate
   # code path — it covers the platform axes that differ underneath one: an
-  # arm64 runner (native prebuilds for esbuild, better-sqlite3 and the cargo
-  # fixture crates), a case-INSENSITIVE default filesystem, and BSD rather than
+  # arm64 runner (native prebuilds for esbuild, sqlite's staged better-sqlite3
+  # addon and the cargo fixture crates), a case-INSENSITIVE default filesystem, and BSD rather than
   # GNU userland. An import whose casing disagrees with the file on disk passes
   # here and on Windows, and fails only on Linux; the reverse never happens. So
   # this job is not redundant with the ubuntu ones, but it is the cheapest of
@@ -664,7 +664,7 @@ jobs:
 
       # Everything below reads from dist/, so a failure here makes the rest of
       # the run meaningless rather than merely red. Modules are included: the
-      # five `pkg:npm` ones stage a dist/ their controller entry is resolved
+      # three `pkg:npm` ones stage a dist/ their controller entry is resolved
       # from — see the note in the Linux unit job.
       - name: Build for Node.js
         run: pnpm -r run build

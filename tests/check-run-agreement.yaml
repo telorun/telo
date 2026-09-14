@@ -45,6 +45,8 @@ targets:
   - !ref unreadableSourcesAtRuntime
   - !ref pinnedStagedFile
   - !ref pinnedStagedFileRuns
+  - !ref unpinnedStagedAssetAtRuntime
+  - !ref pinnedStagedAssetRuns
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -341,5 +343,23 @@ kind: Assert.Manifest
 metadata:
   name: pinnedStagedFileRuns
 source: ./__fixtures__/check-run-agreement/staged-native/pinned-app.yaml
+expect:
+  runs: true
+---
+# A staged asset with no pin is refused by the kernel when the library's
+# controller resolves it; `telo check` reports the library's block as it does a
+# native file's (unpinnedStagedFile).
+kind: Assert.Manifest
+metadata:
+  name: unpinnedStagedAssetAtRuntime
+source: ./__fixtures__/check-run-agreement/staged-asset/unpinned-app.yaml
+expect:
+  runFails: "carries no pin to verify it against"
+---
+# A pinned staged asset runs, read from the library that declares the kind.
+kind: Assert.Manifest
+metadata:
+  name: pinnedStagedAssetRuns
+source: ./__fixtures__/check-run-agreement/staged-asset/pinned-app.yaml
 expect:
   runs: true

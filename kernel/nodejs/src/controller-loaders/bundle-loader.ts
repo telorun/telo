@@ -6,7 +6,13 @@ import {
   type ArtifactSelector,
   type ModuleSources,
 } from "@telorun/analyzer";
-import { checkStagedEntry } from "../bundle/staged-entry.js";
+import {
+  ArchiveContentError,
+  ArchiveFetchError,
+  describeStagingFailure,
+  ensureStagedEntry,
+  type EnsuredEntryState,
+} from "../bundle/source-staging.js";
 import { ControllerInstance, RuntimeError, type Logger } from "@telorun/sdk";
 import { existsSync, readFileSync } from "fs";
 import * as fs from "fs/promises";
@@ -344,8 +350,8 @@ function findPackageRoot(entryFile: string, name: string): string | null {
  */
 export class BundleControllerLoader {
   /** The pin check of each staged addon, by absolute path: every kind a module
-   *  selects out of one addon resolves it, and the file is hashed once. A failed
-   *  check is dropped, so a restage is seen by the next resolution. */
+   *  selects out of one addon resolves it, and the file is hashed once. A check
+   *  that failed or could not fetch is dropped, so the next resolution tries again. */
   private readonly stagedAddons = new Map<string, Promise<string | undefined>>();
 
   /** Where a dev build from `local_path` is cached (`<cache-root>/controller-src`).
@@ -690,10 +696,11 @@ export class BundleControllerLoader {
    * addon has no ESM shape, so it is opened through `createRequire` and the
    * fragment names a property of its exports object.
    *
-   * In a source checkout an addon a `sources:` entry stages is checked against
-   * its pin first — the rule `ctx.resolveNativeFile` applies — and a stale or
-   * altered one is a hard `ERR_STAGED_FILE_INVALID`, never a fallthrough that
-   * would quietly load the next candidate instead.
+   * In a source checkout an addon a `sources:` entry stages is staged when missing
+   * or stale and checked against its pin first — the rule `ctx.resolveNativeFile`
+   * applies. An archive that could not be fetched is env-missing, like any addon
+   * not on disk, so the next candidate (a source build) still gets its turn; bytes
+   * that do not match the pin are a hard `ERR_STAGED_FILE_INVALID`.
    */
   private async resolveNapi(
     purl: string,
@@ -707,7 +714,6 @@ export class BundleControllerLoader {
   ): Promise<{ source: ControllerResolveSource; importInstance: () => Promise<ControllerInstance> }> {
     let dir: string;
     let source: ControllerResolveSource = "local";
-    let stagedBy: string | undefined;
     if (artifact) {
       const resolved = await artifact.materializeController(selector, report);
       if (!resolved) {
@@ -723,11 +729,20 @@ export class BundleControllerLoader {
       const key = path.resolve(dir, relPath);
       let check = this.stagedAddons.get(key);
       if (!check) {
-        check = assertStagedAddon(purl, dir, relPath, sources);
+        check = assertStagedAddon(purl, dir, relPath, sources, this.log);
         this.stagedAddons.set(key, check);
-        check.catch(() => this.stagedAddons.delete(key));
+        check.then(
+          (reason) => reason !== undefined && this.stagedAddons.delete(key),
+          () => this.stagedAddons.delete(key),
+        );
       }
-      stagedBy = await check;
+      const unstaged = await check;
+      // A stale addon may still be on disk, and it is never the one loaded.
+      if (unstaged !== undefined) {
+        throw new ControllerEnvMissingError(
+          `pkg:telo controller "${purl}": the addon '${relPath}' is not available — ${unstaged}`,
+        );
+      }
     } else {
       throw new ControllerEnvMissingError(
         `pkg:telo controller "${purl}" cannot be located: the declaring module resolved from ` +
@@ -736,12 +751,7 @@ export class BundleControllerLoader {
     }
     const absFile = path.resolve(dir, relPath);
     if (!(await pathExists(absFile))) {
-      throw new ControllerEnvMissingError(
-        `pkg:telo controller addon not found at "${absFile}" (from "${purl}")` +
-          (stagedBy === undefined
-            ? ""
-            : ` — it is staged by source '${stagedBy}': run \`telo release stage\` to fetch it`),
-      );
+      throw new ControllerEnvMissingError(`pkg:telo controller addon not found at "${absFile}" (from "${purl}")`);
     }
     return {
       source,
@@ -778,32 +788,39 @@ export class BundleControllerLoader {
 }
 
 /**
- * Refuse a staged addon that does not match its `sources:` pin, or whose staging
- * cannot be known because the block does not read. Resolves to the staging
- * source's name when the addon is absent — left to the missing-file fallthrough,
- * which says how to fetch it.
+ * Stage an addon a `sources:` entry stages, and refuse one that is unpinned or
+ * does not match its pin, or whose staging cannot be known because the block does
+ * not read. Resolves to why the addon could not be fetched — left to the
+ * missing-file fallthrough — or `undefined` when it is on disk and verified. Any
+ * other staging failure (a lock, a write) is `ERR_STAGING_FAILED`.
  */
 async function assertStagedAddon(
   purl: string,
   moduleDir: string,
   relPath: string,
   sources: ModuleSources | undefined,
+  log: Logger | undefined,
 ): Promise<string | undefined> {
   const verdict = normalizeNativePath(relPath.trim());
   if (!("path" in verdict) || !sources) return undefined;
   for (const source of sources.sources) {
     const entry = source.entries.find((candidate) => candidate.path === verdict.path);
     if (!entry) continue;
-    const state = await checkStagedEntry(moduleDir, source, entry);
+    const by = `pkg:telo controller "${purl}": the addon '${verdict.path}' is staged by source '${source.name}'`;
+    let state: EnsuredEntryState;
+    try {
+      state = await ensureStagedEntry(moduleDir, source, entry, { log });
+    } catch (err) {
+      if (err instanceof ArchiveFetchError) return `it is staged by source '${source.name}': ${err.message}`;
+      throw new RuntimeError(
+        err instanceof ArchiveContentError ? "ERR_STAGED_FILE_INVALID" : "ERR_STAGING_FAILED",
+        `${by}, ${describeStagingFailure(err)}`,
+      );
+    }
     if (state.state === "match") return undefined;
-    if (state.state === "missing") return source.name;
     throw new RuntimeError(
       "ERR_STAGED_FILE_INVALID",
-      `pkg:telo controller "${purl}": the addon '${verdict.path}' is staged by source ` +
-        `'${source.name}', but ` +
-        (state.state === "unpinned"
-          ? `the source carries no pin to verify it against — run \`telo release stage --pin\`.`
-          : `${state.detail} — run \`telo release stage\` to restage it.`),
+      `${by}, which carries no pin to verify it against — run \`telo release stage --pin\`.`,
     );
   }
   // No readable source stages it; one that could not be read might, so the addon

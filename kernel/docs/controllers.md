@@ -95,7 +95,8 @@ controllers:
 ```
 
 The prebuilt files are staged, not committed: a `sources:` block names the release
-archive each comes from, `telo release stage` fetches them, and publish ships each in
+archive each comes from, a kernel reading a source checkout fetches the one it
+opens on first use, `telo release stage` fetches them all, and publish ships each in
 the controller layer of its selector (see [Native Files](/extend/native-files)).
 Reported reach follows the formats — `telo module manifest --json` lists `napi` under
 `nodejs` and `dylib` under `rust`, with no language for either.

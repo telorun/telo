@@ -91,6 +91,10 @@ steps:
   - name: hitPage
     inputs: { url: "http://127.0.0.1:8967/docs/" }
     invoke: !ref fetchStatus
+  # The browser bundle the page loads, served from the module's own asset.
+  - name: hitBundle
+    inputs: { url: "http://127.0.0.1:8967/docs/js/scalar.js" }
+    invoke: !ref fetchStatus
   - name: hitExcluded
     inputs: { url: "http://127.0.0.1:8967/internal-docs/" }
     invoke: !ref fetchStatus
@@ -101,12 +105,16 @@ steps:
         documentIsJson: !cel "steps.hitDocument.result.contentType.startsWith('application/json')"
         page: !cel "steps.hitPage.result.status"
         pageIsHtml: !cel "steps.hitPage.result.contentType.startsWith('text/html')"
+        bundle: !cel "steps.hitBundle.result.status"
+        bundleIsJavaScript: !cel "steps.hitBundle.result.contentType.startsWith('application/javascript')"
         excluded: !cel "steps.hitExcluded.result.status"
       expected:
         document: 200
         documentIsJson: true
         page: 200
         pageIsHtml: true
+        bundle: 200
+        bundleIsJavaScript: true
         excluded: 404
     invoke: { kind: Assert.Equals }
 ---

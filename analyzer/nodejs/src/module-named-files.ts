@@ -1,7 +1,7 @@
 /**
- * The rules that relate a module's `native:` entries, its file claims and its
- * `sources:` block — which files a source may stage, which declarations collide
- * on one path, and which staged entries nothing names.
+ * The rules that relate a module's `native:` entries, its file claims, its
+ * `assets:` patterns and its `sources:` block — which files a source may stage,
+ * which declarations collide on one path, and which staged entries nothing names.
  *
  * One home, because `telo check` (`validate-native-entries.ts`,
  * `validate-source-entries.ts`) and `telo publish` apply the same rules to the
@@ -10,6 +10,7 @@
  * Browser-safe: no filesystem.
  */
 
+import { lastMatchIndex, selectByPatterns } from "@telorun/glob";
 import { PLATFORM_AXES, describeSelector } from "./artifact-selector.js";
 import type { LocatedClaim, ModuleFileClaim } from "./module-file-claims.js";
 import type { NativeEntry } from "./native-entries.js";
@@ -62,15 +63,29 @@ export interface StageableFile {
   readonly built: boolean;
 }
 
+/** The module doc's `assets:` patterns. `telo check` and publish both read the
+ *  field here, so they cannot disagree about which files it selects. */
+export function readAssetPatterns(owner: unknown): string[] {
+  const assets = (owner as { assets?: unknown } | null)?.assets;
+  return Array.isArray(assets) ? assets.filter((p): p is string => typeof p === "string") : [];
+}
+
+/** The module's `assets:` patterns and its `sources:` entries they may select. */
+export interface StagedAssets {
+  readonly patterns: readonly string[];
+  readonly sources: readonly ModuleSource[];
+}
+
 /**
  * The files the module names that a `sources:` entry may stage: every `native:`
- * entry's path, and every bundled controller candidate's `path=` that carries a
- * platform qualifier. A platform-neutral candidate is one bundle for every host,
- * which nothing stages.
+ * entry's path, every bundled controller candidate's `path=` that carries a
+ * platform qualifier, and every entry an `assets:` pattern selects. A
+ * platform-neutral candidate is one bundle for every host, which nothing stages.
  */
 export function stageableFiles(
   native: readonly NativeEntry[],
   claims: readonly LocatedClaim[],
+  assets?: StagedAssets,
 ): Map<string, StageableFile> {
   const out = new Map<string, StageableFile>();
   for (const entry of native) {
@@ -96,6 +111,19 @@ export function stageableFiles(
       layer: `controller ${describeSelector(claim.selector)}`,
       built: claim.localPath !== undefined,
     });
+  }
+  const patterns = [...(assets?.patterns ?? [])];
+  for (const source of assets?.sources ?? []) {
+    for (const entry of source.entries) {
+      if (out.has(entry.path)) continue;
+      if (selectByPatterns([entry.path], patterns, { applyDefaultIgnore: false }).length === 0) continue;
+      out.set(entry.path, {
+        path: entry.path,
+        label: `assets: pattern '${patterns[lastMatchIndex(entry.path, patterns)]}'`,
+        layer: "assets",
+        built: false,
+      });
+    }
   }
   return out;
 }

@@ -6,5 +6,6 @@ pub mod files_integrity;
 pub mod layer_entry_rules;
 pub mod module_artifact;
 pub mod module_manifest;
+pub mod source_staging;
 pub mod staged_entry;
 pub mod tar;

@@ -32,7 +32,7 @@ import {
   type EffectChain,
 } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
-import { registerTeloKeywords, type ModuleSources } from "@telorun/analyzer";
+import { registerTeloKeywords } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
 import * as path from "path";
@@ -40,7 +40,7 @@ import { pathToFileURL } from "url";
 import { withBigIntsAsNumbers } from "./bigint-schema-view.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
 import type { SiblingLibraryMap } from "./controller-loaders/sibling-libraries.js";
-import { resolveModuleFileUri } from "./module-file-resolution.js";
+import { resolveModuleFileUri, type NativeFileModule } from "./module-file-resolution.js";
 import { hostEnv } from "./host-env.js";
 import type { LoggingHost } from "./logging/logging-host.js";
 import type { ScopeConfig } from "./logging/scope-config.js";
@@ -810,10 +810,10 @@ export class ResourceContextImpl implements ResourceContext {
     return this.kernel.getSiblingLibraries(source);
   }
 
-  /** The `sources:` block of the module whose file resolved from `source`.
-   *  Kernel-only, on the same seam as {@link getModuleArtifact}. */
-  getModuleSources(source: string | undefined): ModuleSources | undefined {
-    return this.kernel.getModuleSources(source);
+  /** The module whose file resolved from `source`, with its `native:` and
+   *  `sources:` blocks. Kernel-only, on the same seam as {@link getModuleArtifact}. */
+  getDeclaringModule(source: string | undefined): NativeFileModule | undefined {
+    return this.kernel.getDeclaringModule(source);
   }
 
   /**
@@ -828,6 +828,12 @@ export class ResourceContextImpl implements ResourceContext {
    */
   async resolveModuleFile(relative: string): Promise<string> {
     return resolveModuleFileUri(relative, this.moduleContext.source, this.kernel);
+  }
+
+  /** Resolve a module-relative reference against the module that declared this
+   *  resource's kind — never the module that declared the resource. */
+  resolveControllerFile(relative: string): Promise<string> {
+    return this.kernel.resolveControllerFile(this.#resolvedKind, relative);
   }
 
   /** Resolve a native file by name against the module that declared this

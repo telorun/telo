@@ -20,13 +20,28 @@ mounts:
     mount: { kind: Http.Reference }
 ```
 
-Three routes appear under the mount's prefix:
+Four routes appear under the mount's prefix:
 
 | Path | Serves |
 | --- | --- |
 | `/docs/` | the browsable reference page |
+| `/docs/js/scalar.js` | the page's script — Scalar's browser bundle |
 | `/docs/openapi.json` | the OpenAPI document, JSON |
 | `/docs/openapi.yaml` | the OpenAPI document, YAML |
+
+## Where the page's script comes from
+
+The page is rendered by [Scalar](https://github.com/scalar/scalar), and its
+browser bundle ships inside this module rather than being fetched from a CDN, so
+the page works offline. It is a 3.4 MB file in the module's `assets` layer, which
+an application that declares no `Http.Reference` never downloads. Each declared
+reference reads it once at startup, whether or not its mount is gated in.
+
+In a source checkout the bundle is not committed: the first reference to start
+fetches it from the npm release of `@scalar/fastify-api-reference`, verified
+against the `sha256` pinned in the module's `sources:` block, and later runs read
+the staged copy. When it cannot be fetched or does not match its pin, the
+reference fails at startup with `ERR_MODULE_FILES_UNAVAILABLE` naming the URL.
 
 ## Why the document and the page are separate
 
@@ -80,8 +95,8 @@ mounts:
 router or a debug endpoint is gated the same way.
 
 The gate is about reachability, not about what ships: the resource is still
-created and initialized, and the module's code is still in the artifact. What
-changes is that nothing is routed to it.
+created and initialized — reading the page's script — and the module's code is
+still in the artifact. What changes is that nothing is routed to it.
 
 ## Options
 

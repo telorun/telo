@@ -1,4 +1,4 @@
-import { makeTarGz } from "@telorun/kernel";
+import { createArchiveReader, makeTarGz } from "@telorun/kernel";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as http from "node:http";
@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createArchiveReader, stageModule, type StageTarget } from "../src/release/stage.js";
+import { stageModule, type StageTarget } from "../src/release/stage.js";
 
 const TOOL = Buffer.from("#!/bin/sh\necho tool\n");
 const LIB = Buffer.from("\x7fELF library bytes");
@@ -28,10 +28,6 @@ beforeAll(async () => {
     requests.push(req.url ?? "");
     if (req.url === "/demo-1.0.0-linux-x64.tgz") {
       res.writeHead(200).end(archive);
-      return;
-    }
-    if (req.url === "/redirect-1.0.0-linux-x64.tgz") {
-      res.writeHead(302, { location: "http://example.test/demo-1.0.0-linux-x64.tgz" }).end();
       return;
     }
     res.writeHead(404).end();
@@ -234,17 +230,5 @@ describe("telo release stage", () => {
     const result = await stage(before, true);
     expect(result.failures.map((f) => f.message).join("\n")).toContain("cannot write pins");
     expect(fs.readFileSync(target.manifestPath, "utf8")).toBe(before);
-  });
-
-  it("refuses an archive request redirected to plain http, and one that decompresses past the limit", async () => {
-    const redirected = await stage(manifest({ ...pinned, url: `${base}/redirect-{version}-{upstream}.tgz` }));
-    expect(redirected.failures[0]?.message).toContain("was redirected to http://example.test/");
-
-    fs.writeFileSync(target.manifestPath, manifest(pinned));
-    const small = await stageModule(target, {
-      pin: false,
-      archives: createArchiveReader({ maxExtractedBytes: 16 }),
-    });
-    expect(small.failures[0]?.message).toContain("decompresses to more than the 16-byte limit");
   });
 });

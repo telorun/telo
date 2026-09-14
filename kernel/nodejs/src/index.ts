@@ -41,6 +41,16 @@ export {
 } from "./bundle/layer-entry-rules.js";
 export { checkStagedEntry, type StagedEntryState } from "./bundle/staged-entry.js";
 export {
+  ArchiveContentError,
+  ArchiveFetchError,
+  createArchiveReader,
+  ensureStagedEntry,
+  extractMember,
+  type ArchiveReader,
+  type EnsuredEntryState,
+  type StagingOptions,
+} from "./bundle/source-staging.js";
+export {
   ModuleArtifact,
   moduleArtifactFor,
   moduleDirectoryFor,

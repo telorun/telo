@@ -2,9 +2,10 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { createArchiveReader } from "@telorun/kernel";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { checkCrateInputs } from "../src/release/crate-inputs.js";
-import { createArchiveReader, stageModule } from "../src/release/stage.js";
+import { stageModule } from "../src/release/stage.js";
 import type { DiscoveredModule } from "../src/release/workspace.js";
 
 let root: string;

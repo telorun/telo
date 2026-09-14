@@ -1,0 +1,6 @@
+modules:
+  modules/http-server: Added
+body: "Breaking: the controllers ship inside the module artifact instead of being
+  installed from npm at load, and Scalar's browser bundle ships in the assets layer,
+  fetched only by an application that declares an Http.Reference. Requires telo
+  >=0.91.0."

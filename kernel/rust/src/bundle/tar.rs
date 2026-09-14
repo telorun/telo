@@ -14,7 +14,25 @@ use crate::bundle::files_integrity::PayloadFile;
 /// Decompress and untar `bytes` into their regular-file and symbolic-link
 /// entries; any other entry type is skipped, as the Node reader skips it.
 pub fn read_tar_gz(bytes: &[u8]) -> std::io::Result<Vec<PayloadFile>> {
-    let mut archive = Archive::new(GzDecoder::new(bytes));
+    read_entries(GzDecoder::new(bytes))
+}
+
+/// [`read_tar_gz`], refusing an archive that decompresses to more than
+/// `max_bytes` — for an archive whose origin is not trusted to be small.
+pub fn read_tar_gz_bounded(bytes: &[u8], max_bytes: u64) -> std::io::Result<Vec<PayloadFile>> {
+    let mut tar = Vec::new();
+    GzDecoder::new(bytes).take(max_bytes + 1).read_to_end(&mut tar)?;
+    if tar.len() as u64 > max_bytes {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("it decompresses to more than the {max_bytes}-byte limit"),
+        ));
+    }
+    read_entries(tar.as_slice())
+}
+
+fn read_entries(reader: impl Read) -> std::io::Result<Vec<PayloadFile>> {
+    let mut archive = Archive::new(reader);
     let mut files = Vec::new();
     for entry in archive.entries()? {
         let mut entry = entry?;

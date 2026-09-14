@@ -343,7 +343,8 @@ export interface ResourceContext extends ControllerContext {
   /**
    * Resolve a module-relative reference — an `Http.Static` root, a template
    * directory, a seed-data file — against the directory of the module that
-   * declared this resource, and return it as a **URI**.
+   * declared this resource, and return it as a **URI**. A file a `sources:` entry
+   * stages is verified as {@link resolveControllerFile} describes.
    *
    * This is the sanctioned way to reach a file that ships with a module. Never
    * derive one from `moduleContext.source` by hand: for a published module the
@@ -363,6 +364,27 @@ export interface ResourceContext extends ControllerContext {
    */
   resolveModuleFile(relative: string): Promise<string>;
   /**
+   * Resolve a module-relative reference against the module that declares the
+   * controller this resource runs, and return it as a **URI** — the file ships
+   * with the code asking for it, never with the module that declared the
+   * resource. The module is found as {@link resolveNativeFile} finds it.
+   *
+   * This is how a controller reaches its own module's assets (a browser bundle
+   * it serves, a font directory a library reads). {@link resolveModuleFile} is
+   * for references the resource's author wrote, which resolve against the
+   * author's module.
+   *
+   * In a source checkout, every module file (one an `assets:` pattern selects,
+   * or a notice) a `sources:` entry stages at or beneath the reference is
+   * brought to its pin first: a missing or stale one is fetched from its source. Rejects with `ERR_MODULE_FILES_UNAVAILABLE` when one is
+   * unpinned or cannot be staged, or when the module's `sources:` block does
+   * not read.
+   *
+   * Asynchronous because a published module's assets are fetched on first
+   * access.
+   */
+  resolveControllerFile(relative: string): Promise<string>;
+  /**
    * Resolve a platform-specific file by the logical `name` a `native:` entry
    * declares, and return it as a `file://` **URI** — convert with
    * `fileURLToPath` for an API that takes a path.
@@ -375,8 +397,8 @@ export interface ResourceContext extends ControllerContext {
    *
    * Rejects with `ERR_NATIVE_FILE_UNAVAILABLE` when the module declares no such
    * name, when no entry matches the host (naming the host tuple and every tuple
-   * shipped), or when a source checkout's staged file is missing or does not
-   * match its pin. A staged file is never fetched here.
+   * shipped), or when a source checkout's staged file is unpinned or cannot be
+   * staged. A missing or stale staged file is fetched from its source first.
    *
    * Asynchronous because a published module's native layer is fetched on first
    * use.
