@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.0 - 2026-09-15
+### Added
+* Breaking: the controllers ship inside the module artifact instead of being installed from npm at load, and Scalar's browser bundle ships in the assets layer, fetched only by an application that declares an Http.Reference. Requires telo >=0.91.0.
+
 ## 0.30.0 - 2026-09-09
 ### Added
 * `Http.Api` and `Http.Server` each accept a `catches:` list of their own, so error rendering is declared once per scope instead of restated on every route. A route's own entries are tried first, then its router's, then the server's; a throw no entry claims renders the same `{error: {code, message, data}}` envelope with status 500 that an unmatched throw produced before, so a manifest declaring no scope-level list is unchanged on the wire. Scope entries see `error` and the request's `path` / `method` / `ip`; `query` / `body` / `params` stay with a route's own list, because there is no single route to type them from. A route entry with no `when:` deliberately overrides both outer lists for that route alone.
