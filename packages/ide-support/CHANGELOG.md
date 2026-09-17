@@ -1,5 +1,33 @@
 # @telorun/ide-support
 
+## 0.21.0
+
+### Minor Changes
+
+- 8f12158: `telo cel functions <manifest>` lists, ahead of the catalog, the module functions that manifest can call — its own through `Self` and each import's exported ones through the alias — with their signature, description and derived determinism, naming the chain to a non-deterministic or host-backed leaf. Under `--json` each is an entry of category `module` carrying `deterministic`, `hostBacked`, `nondeterministicVia` and `hostBackedVia` wherever the analysis derived them, and none of the four where it did not. The manifest is loaded exactly as `telo check` loads it — through the `.telo/manifests` cache, with mutable `oci://` tags revalidated — and one that does not load, or that analysis reports errors in, is refused on stderr, each error located, with a non-zero exit. `@telorun/ide-support` exports `functionSignature`, the one rendering of a function's signature every surface shares.
+- 8f12158: Module calls are first-class in the editor. Completion after `Self.`, a module's own name or an import alias offers the functions that call can name, each with its signature; hover on a call shows the function's signature, description and derived determinism, naming the chain to a non-deterministic or host-backed leaf; the new `buildSignatureHelp` highlights the argument being written; go-to-declaration jumps from a call to the function resource (and from its alias to the import); and a call's receiver is coloured as a namespace. Renaming a function renames its calls, and renaming a named shape proposes a type-level name — `buildRename` takes the analysis, and `ManifestAnalysis.nameLevel` answers whether a resource's name denotes a type or a value.
+
+  `CelScope` gains `moduleFunction` and `moduleFunctionsOf`. The module graph draws each module call as a `holds` edge from the calling resource to the function (`slot: cel`, the function named in `call`), and a shape a contract or signature names (`params[0].schema: !ref Money`) is a `schema` reference in the call graph, so it is a `shape` edge rather than an untyped one.
+
+- 8f12158: A diagnostic's repair can be a tagged scalar. `DiagnosticFix` gains an optional `tag` (`ref` | `cel`), carried by `telo check -o json` (`fix.tag`), by `CheckDiagnostic` on the SDK's runtime seam, and by ide-support's `replace` suggestion; `renderFixReplacement` takes it as a third argument and writes `!ref <replacement>` or `!cel "<replacement>"`, so the VS Code quick fix now writes the tag instead of quoting it into the value.
+
+  `FUNCTION_TYPE_NAME_FORM` now repairs `schema: Money` as `{ replacement: "Money", tag: "ref" }` rather than the untaggable value `!ref Money`. `INVALID_REFERENCE_FORM` gains a repair for a bare-name string reference (`handler: onMessage` → `!ref onMessage`) — not for a dotted FQN or the `{ kind, name }` object, whose target would be a guess — and an untagged rule `condition:` (`RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID`) is repaired by tagging the same expression `!cel`.
+
+### Patch Changes
+
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+  - @telorun/analyzer@0.76.0
+
 ## 0.20.2
 
 ### Patch Changes

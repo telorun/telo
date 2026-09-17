@@ -1,5 +1,41 @@
 # @telorun/cli
 
+## 0.92.0
+
+### Minor Changes
+
+- 8f12158: `telo cel functions <manifest>` lists, ahead of the catalog, the module functions that manifest can call — its own through `Self` and each import's exported ones through the alias — with their signature, description and derived determinism, naming the chain to a non-deterministic or host-backed leaf. Under `--json` each is an entry of category `module` carrying `deterministic`, `hostBacked`, `nondeterministicVia` and `hostBackedVia` wherever the analysis derived them, and none of the four where it did not. The manifest is loaded exactly as `telo check` loads it — through the `.telo/manifests` cache, with mutable `oci://` tags revalidated — and one that does not load, or that analysis reports errors in, is refused on stderr, each error located, with a non-zero exit. `@telorun/ide-support` exports `functionSignature`, the one rendering of a function's signature every surface shares.
+- 8f12158: Every boundary read outside Telo writes a CEL value in its plain encoding, never type-tagged. `@telorun/sdk` exports the writer — `toPlainJson`, `writePlainJson`, `plainScalar`, `plainMapKey` — and `plainSchemaOf`, the schema of the text an instance-typed slot is written as; each plain encoding now carries that `schema`. A timestamp is RFC 3339 text in UTC, a duration is seconds (`"5400s"`), bytes are base64url, a `uint` is its digits, NaN and ±Infinity are `"NaN"` / `"Infinity"` / `"-Infinity"`, a negative zero is `0`, and a map with int or bool keys is an object keyed by their text; a map two of whose keys share one text is refused with `ERR_PLAIN_JSON_UNWRITABLE`.
+
+  Log attributes (`json`, `pretty` and `otlp`), debug-wire payloads and CLI JSON documents (`-o json`, `telo cel eval --json`) now write a duration, a `uint` and an int-keyed map in that form, where they used to write an empty object or a `[Duration]` marker; a debug-wire payload holding a map whose keys share a text or are not CEL map keys writes it as its `[key, value]` pairs rather than failing the call it observes. `ResourceContext.readPlainEncoded(value, schema)` decodes a value that arrived from outside — a transport body — at every slot declaring a plain-encoded value type, through the walk a YAML literal is read with, and refuses text the encoding does not read with `ERR_INPUT_INVALID`, whose `data.issues` lists each refusal as `{ path, message }`.
+
+### Patch Changes
+
+- 8f12158: A diagnostic's repair can be a tagged scalar. `DiagnosticFix` gains an optional `tag` (`ref` | `cel`), carried by `telo check -o json` (`fix.tag`), by `CheckDiagnostic` on the SDK's runtime seam, and by ide-support's `replace` suggestion; `renderFixReplacement` takes it as a third argument and writes `!ref <replacement>` or `!cel "<replacement>"`, so the VS Code quick fix now writes the tag instead of quoting it into the value.
+
+  `FUNCTION_TYPE_NAME_FORM` now repairs `schema: Money` as `{ replacement: "Money", tag: "ref" }` rather than the untaggable value `!ref Money`. `INVALID_REFERENCE_FORM` gains a repair for a bare-name string reference (`handler: onMessage` → `!ref onMessage`) — not for a dotted FQN or the `{ kind, name }` object, whose target would be a guess — and an untagged rule `condition:` (`RESOURCE_RULE_INVALID` / `REFERRER_RULE_INVALID`) is repaired by tagging the same expression `!cel`.
+
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+  - @telorun/analyzer@0.76.0
+  - @telorun/kernel@0.92.0
+  - @telorun/ide-support@0.21.0
+  - @telorun/sdk@0.92.0
+  - @telorun/templating@0.21.0
+
 ## 0.91.0
 
 ### Minor Changes

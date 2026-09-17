@@ -1,5 +1,29 @@
 # @telorun/studio
 
+## 0.16.7
+
+### Patch Changes
+
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+- Updated dependencies [8f12158]
+  - @telorun/analyzer@0.76.0
+  - @telorun/ide-support@0.21.0
+  - @telorun/sdk@0.92.0
+  - @telorun/templating@0.21.0
+
 ## 0.16.6
 
 ### Patch Changes
