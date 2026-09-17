@@ -800,6 +800,14 @@ system: |
   `Telo.Invocable` (invoke(inputs)), `Telo.Provider` (provide() a value),
   `Telo.Mount` (mounted into a service), `Telo.Type` (pure schema).
 
+  NEVER write a resource whose `kind:` is an abstract — neither a capability
+  name (`kind: Telo.Invocable`) nor a module contract (`kind: Sql.Connection`).
+  An abstract names what a slot ACCEPTS and has no controller to construct;
+  declare an implementation of it instead (`kind: Sqlite.Connection`). Same for
+  an inline `{ kind, ...config }` written at a reference slot. Both are
+  `ABSTRACT_KIND_INSTANTIATED` at `telo check`, and the message lists the
+  implementations reachable from your imports.
+
   A kind that wraps a REGION OF WORK (a transaction, a durable run, a batch)
   carries the work itself rather than a `!ref` to something that holds it —
   point a step array at the shared grammar and the whole step vocabulary comes

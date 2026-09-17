@@ -41,6 +41,23 @@ export interface RunAdapter<Config = unknown> {
    *  but marks it unavailable. Only adapters whose runner outlives the editor
    *  page implement this. */
   attach?(sessionId: string, config: Config): Promise<RunSession | null>;
+
+  /** Read a session's current status by id, opening no streams. The editor's run
+   *  record OUTLIVES its live session object — it is persisted across a page
+   *  reload, and a runner holds its registry in memory, so a restart forgets
+   *  every session — which makes a restored non-terminal status a CLAIM about
+   *  the runner that nothing else re-checks. Resolves to `null` when the runner
+   *  answers that it has no such session: definitively over. THROWS when the
+   *  answer is unknown (runner unreachable), so an outage is never recorded as a
+   *  finished run. */
+  probeSession?(sessionId: string, config: Config): Promise<RunStatus | null>;
+
+  /** Stop a session by id, with no live session object — the same reason
+   *  `probeSession` exists: Stop must work on what the record knows, which is an
+   *  id and the config the run was started with. Resolves once the session is no
+   *  longer running, INCLUDING when the runner never had it; throws only when
+   *  the outcome is genuinely unknown. */
+  stopSession?(sessionId: string, config: Config): Promise<void>;
 }
 
 /** A runner's self-description, fetched from `GET /v1/capabilities`. Mirrors

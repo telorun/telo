@@ -248,7 +248,48 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
         isWatch: mode === "watch",
       });
     },
+
+    async probeSession(sessionId, config): Promise<RunStatus | null> {
+      const base = trimTrailingSlash(config.baseUrl);
+
+      let res: Response;
+      try {
+        res = await fetchWithTimeout(
+          `${base}/v1/sessions/${sessionId}`,
+          { method: "GET" },
+          HEALTH_TIMEOUT_MS * 3,
+        );
+      } catch {
+        throw new Error(`Couldn't reach the runner at ${config.baseUrl}.`);
+      }
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        throw new Error(`Runner returned HTTP ${res.status} on /v1/sessions/${sessionId}.`);
+      }
+      const { status } = (await res.json()) as { status: RunStatus };
+      return fillEndpointHost(status, base);
+    },
+
+    async stopSession(sessionId, config): Promise<void> {
+      await deleteSession(trimTrailingSlash(config.baseUrl), sessionId);
+    },
   };
+}
+
+/**
+ * DELETE a session, resolving once it is no longer running. A runner that never
+ * had the id answers 204, one that models it as absent answers 404 — both are
+ * the outcome the caller asked for, so neither is an error. Only an answer that
+ * leaves the session's fate unknown throws.
+ */
+async function deleteSession(base: string, sessionId: string): Promise<void> {
+  const res = await fetchWithTimeout(
+    `${base}/v1/sessions/${sessionId}`,
+    { method: "DELETE" },
+    HEALTH_TIMEOUT_MS * 3,
+  );
+  if (res.ok || res.status === 404) return;
+  throw new Error(await describeFailure(res, "stop the session"));
 }
 
 interface BuildSessionArgs {

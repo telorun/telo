@@ -6,6 +6,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 
+import { openExternalReported } from "../../external-link";
 import type { TerminalBuffer } from "../terminal-buffer";
 
 interface TerminalViewProps {
@@ -45,7 +46,10 @@ export function TerminalView({ terminal, inputDisabled }: TerminalViewProps) {
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    term.loadAddon(new WebLinksAddon());
+    // xterm calls `window.open` for a linkified URL rather than clicking an
+    // anchor, so the delegated document handler never sees it — a URL an app
+    // printed to its own log needs this handler to be openable at all.
+    term.loadAddon(new WebLinksAddon((event, uri) => openExternalReported(uri)));
 
     term.open(host);
     // Canvas renderer is a meaningful perf win for large scrollback writes

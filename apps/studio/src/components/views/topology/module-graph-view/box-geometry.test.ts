@@ -178,3 +178,61 @@ describe("the room a nested body takes", () => {
     expect(contentHeight(loop, shut)).toBe(contentHeight(loop, allOpen) - ROW_HEIGHT * 2);
   });
 });
+
+/**
+ * A library root draws its exports.
+ *
+ * The geometry gates a branch's rows on whether it is a LIST, not on whether it
+ * is appendable. Gating on `ordered` gave an export list no summary line, no row
+ * lines and therefore no handle — so the rows were invisible and the edges that
+ * leave them had nothing to dock on, which is two symptoms of one missing line.
+ */
+describe("a library root's export lists", () => {
+  const exportRow = (array: string, index: number): GraphRow => ({
+    id: `${array}[${index}]`,
+    kind: "export",
+    path: `${array}[${index}]`,
+    array,
+    index,
+    depth: 0,
+  });
+
+  const library = node({
+    root: true,
+    rowArrays: [
+      { field: "exports.kinds", kind: "export" },
+      { field: "exports.resources", kind: "export" },
+    ],
+    rows: [exportRow("exports.kinds", 0), exportRow("exports.resources", 0)],
+  });
+
+  it("gives an exported instance a handle for its edge to leave from", () => {
+    const offsets = handleOffsets(library, allOpen);
+    expect(offsets.get("exports.resources[0]")).toBeDefined();
+    expect(offsets.get("exports.kinds[0]")).toBeDefined();
+  });
+
+  it("keeps the two lists on their own lines, in order", () => {
+    const offsets = handleOffsets(library, allOpen);
+    // kinds summary + its one row, then resources summary + its one row.
+    const kindsTop = HEADER_HEIGHT + ROW_SUMMARY_HEIGHT;
+    expect(offsets.get("exports.kinds[0]")).toBe(kindsTop + ROW_HEIGHT / 2);
+    const resourcesTop = kindsTop + ROW_HEIGHT + ROW_SUMMARY_HEIGHT;
+    expect(offsets.get("exports.resources[0]")).toBe(resourcesTop + ROW_HEIGHT / 2);
+  });
+
+  it("reserves no trailing add line for a list nothing appends to", () => {
+    // An export list is a set — `ordered` is false, so the row after the last
+    // entry, which is where an appendable array draws its "add", is not there.
+    const withAdd = node({
+      rowArrays: [{ field: "steps", kind: "step" }],
+      rows: [row("steps[0]", 0)],
+    });
+    expect(contentHeight(library, allOpen)).toBe(
+      HEADER_HEIGHT + 2 * (ROW_SUMMARY_HEIGHT + ROW_HEIGHT) + (contentHeight(node(), allOpen) - HEADER_HEIGHT),
+    );
+    expect(contentHeight(withAdd, allOpen)).toBe(
+      HEADER_HEIGHT + ROW_SUMMARY_HEIGHT + 2 * ROW_HEIGHT + (contentHeight(node(), allOpen) - HEADER_HEIGHT),
+    );
+  });
+});

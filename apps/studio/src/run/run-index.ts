@@ -35,6 +35,11 @@ function isStatus(value: unknown): value is RunStatus {
     kind === "starting" ||
     kind === "running" ||
     kind === "exited" ||
+    // Not terminal: the pod was reaped for idleness and the session resumes
+    // under the same id. Dropping the entry — which is what omitting this kind
+    // did — left a session running on the runner that the editor could no
+    // longer name, and so could no longer stop.
+    kind === "suspended" ||
     kind === "failed" ||
     kind === "stopped"
   );

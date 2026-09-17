@@ -1,5 +1,6 @@
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { isInstantiableDefinition } from "./instantiable-kind.js";
 import { distance } from "./levenshtein.js";
 
 /** User-facing root kinds that are always legal regardless of imports. */
@@ -9,10 +10,6 @@ const ROOT_KINDS = [
   "Telo.Import",
   "Telo.Definition",
 ] as const;
-
-/** Definition kinds that are not user-instantiable and should be excluded
- *  from completion / suggestion lists. */
-const ABSTRACT_DEF_KINDS = new Set(["Telo.Abstract", "Telo.Template"]);
 
 /** Computes the set of user-facing kind strings available in the given
  *  (aliases, defs) context:
@@ -29,7 +26,7 @@ export function computeValidUserFacingKinds(
 
   for (const kind of defs.kinds()) {
     const def = defs.resolve(kind);
-    if (!def || ABSTRACT_DEF_KINDS.has(def.kind)) continue;
+    if (!isInstantiableDefinition(def)) continue;
 
     const dot = kind.indexOf(".");
     if (dot === -1) continue;

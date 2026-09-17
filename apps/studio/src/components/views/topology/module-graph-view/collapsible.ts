@@ -32,6 +32,31 @@ export function propertyOf(slot: string): string {
   return marker === -1 ? slot : slot.slice(0, marker);
 }
 
+/**
+ * The branch a path belongs to on one node: its declared row array when one
+ * covers it, else its top-level property.
+ *
+ * A declared array IS the grouping unit, and the top-level field is only the
+ * fallback for a path that belongs to no array. The two agree everywhere they
+ * both apply — `mounts`, `routes`, `steps`, `targets` are all top-level — and
+ * differ for a library root, whose lists are `exports.kinds` and
+ * `exports.resources`. Truncating those at the first dot merged a library's
+ * kinds and its instances into one nameless `exports` list, which is two
+ * different things to export drawn as one.
+ */
+export function branchOf(node: GraphNode, path: string): string {
+  for (const array of node.rowArrays) {
+    if (
+      path === array.field ||
+      path.startsWith(`${array.field}[`) ||
+      path.startsWith(`${array.field}.`)
+    ) {
+      return array.field;
+    }
+  }
+  return propertyOf(path);
+}
+
 /** One collapsible branch of a box. */
 export interface CollapsibleProp {
   /** The top-level property name — its identity on this node. */
@@ -62,13 +87,32 @@ export function collapsibleProps(node: GraphNode): CollapsibleProp[] {
     return created;
   };
 
-  for (const port of railPorts(node)) ensure(propertyOf(port.slot)).ports.push(port);
-  for (const array of node.rowArrays) ensure(array.field).ordered = true;
+  for (const port of railPorts(node)) ensure(branchOf(node, port.slot)).ports.push(port);
+  // An export list is a SET, so it is not `ordered` — there is nothing to
+  // reorder, and its entries are edited where a module's declarations already
+  // are rather than spliced on the canvas.
+  for (const array of node.rowArrays) {
+    const prop = ensure(array.field);
+    if (array.kind !== "export") prop.ordered = true;
+  }
   // A nested row belongs to the branch its BODY hangs off, not to its own
   // array: `steps[1].do` is part of `steps`, and grouping by the concrete array
   // gave a `while`'s contents a branch of their own that no control reached.
-  for (const row of node.rows) ensure(propertyOf(row.array)).rows.push(row);
+  for (const row of node.rows) ensure(branchOf(node, row.array)).rows.push(row);
   return [...byKey.values()];
+}
+
+/**
+ * Is this branch drawn as a LIST of rows?
+ *
+ * An ordered array is, even when empty — its header is where the first entry is
+ * added. So is any branch that HAS rows, which `ordered` alone does not cover:
+ * a library's export list has rows and no add affordance, and gating the header
+ * on `ordered` drew such a branch nothing at all — no label, no rows, and so no
+ * handle for its edges to leave from.
+ */
+export function isList(prop: CollapsibleProp): boolean {
+  return prop.ordered || prop.rows.length > 0;
 }
 
 /**
@@ -130,9 +174,11 @@ export function resolveVisibility({ graph, drawn, isCollapsed }: VisibilityInput
   // property is — or when any row above it is. Without the second clause,
   // putting away a loop left everything its body called still on the canvas.
   const fromOpenBranch = (edge: GraphEdge): boolean => {
-    if (isCollapsed(edge.from, propertyOf(edge.slot))) return false;
+    const from = graph.nodeById(edge.from);
+    const branch = from ? branchOf(from, edge.slot) : propertyOf(edge.slot);
+    if (isCollapsed(edge.from, branch)) return false;
     if (!edge.row) return true;
-    const rows = graph.nodeById(edge.from)?.rows ?? [];
+    const rows = from?.rows ?? [];
     return isRowDrawn(rows, edge.row, (rowId) => !isCollapsed(edge.from, rowId));
   };
 

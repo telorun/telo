@@ -25,7 +25,7 @@ import type { TopologyViewProps } from "../topology-view";
 import { isEntryPoint } from "./placement";
 import { isImportedInstance, nodesReaching, offCanvasNodes } from "./off-canvas";
 import { resolveMirrors } from "./mirrors";
-import { propertyOf, propKey, resolveVisibility } from "./collapsible";
+import { branchOf, propKey, resolveVisibility } from "./collapsible";
 import type { IsOpen } from "./box-geometry";
 import { ownershipIndex } from "./ownership";
 import { isRowDrawn } from "./row-tree";
@@ -1113,7 +1113,7 @@ function sourceHandlePath(
     // A row inside a collapsed branch is not drawn, so its handle is not there
     // to leave from; the edge docks on the box. A body NESTS, so the branch is
     // shut when the property is or when any row above this one is.
-    if (!row || !isOpen(edge.from, propertyOf(row.array))) return undefined;
+    if (!row || !node || !isOpen(edge.from, branchOf(node, row.array))) return undefined;
     if (!isRowDrawn(node!.rows, row.id, (rowId) => isOpen(edge.from, rowId))) return undefined;
     return row.path;
   }
@@ -1122,7 +1122,9 @@ function sourceHandlePath(
     (p) => p.slots.some((slot) => slot.path === edge.path) || p.addPath === edge.path,
   );
   // A picked slot draws a select and no socket, so nothing docks on it.
-  if (!port || port.rowOwned || port.class === "shape" || isPickerPort(port)) return undefined;
-  if (!isOpen(edge.from, propertyOf(port.slot))) return undefined;
+  if (!node || !port || port.rowOwned || port.class === "shape" || isPickerPort(port)) {
+    return undefined;
+  }
+  if (!isOpen(edge.from, branchOf(node, port.slot))) return undefined;
   return edge.path;
 }

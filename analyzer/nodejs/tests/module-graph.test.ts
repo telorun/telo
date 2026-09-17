@@ -82,6 +82,26 @@ const serverDef = {
         type: "object",
         properties: {
           invoke: { "x-telo-ref": { kind: "telo.Executable", use: "trigger.inbound" } },
+          // A SECOND ref slot under the same top-level property, nested past an
+          // array and a map — the shape `x-telo-schema-from` gives the real
+          // `Http.Server`, whose `returns:` pulls in an encoder per media type.
+          returns: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                content: {
+                  type: "object",
+                  additionalProperties: {
+                    type: "object",
+                    properties: {
+                      encoder: { "x-telo-ref": { kind: "codec.Encoder", use: "call" } },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -269,6 +289,68 @@ describe("ports", () => {
       .nodeById(resourceId("http.Server", "server"))!
       .ports.find((p) => p.slot === "mounts[].mount")!;
     expect(port.slots[0]).toMatchObject({ path: "mounts[0].mount", target: "api" });
+  });
+
+  // A port is a place a value is or could be written. A slot nested past an
+  // array or a map has no write site until the item or key exists, so an
+  // unwritten one is neither — and drawing it offers a socket that refuses.
+  //
+  // It is also how `Http.Server` came to render `notFoundHandler` TWICE: rail
+  // ports are grouped under their top-level property and drawn one line per
+  // port, so the dead `returns[].content.{}.encoder` produced a second,
+  // identical, unfillable `notFoundHandler` beside the real one.
+  it("declares no port for a slot that is neither occupied nor fillable", () => {
+    const graph = fixture([
+      {
+        kind: "http.Server",
+        metadata: { name: "server" },
+        mounts: [],
+        notFoundHandler: { invoke: ref("fallback", "run.Sequence") },
+      } as never,
+      { kind: "run.Sequence", metadata: { name: "fallback" }, steps: [] } as never,
+    ]);
+    const server = graph.nodeById(resourceId("http.Server", "server"))!;
+
+    const underHandler = server.ports.filter((p) => p.slot.startsWith("notFoundHandler"));
+    expect(underHandler.map((p) => p.slot)).toEqual(["notFoundHandler.invoke"]);
+  });
+
+  it("still declares that port once something occupies it", () => {
+    // Dropping it turns on emptiness, never on the shape of the path: a written
+    // encoder is a real edge and must keep its port.
+    const graph = fixture([
+      {
+        kind: "http.Server",
+        metadata: { name: "server" },
+        mounts: [],
+        notFoundHandler: {
+          returns: [{ content: { "application/json": { encoder: ref("json", "codec.Encoder") } } }],
+        },
+      } as never,
+      { kind: "codec.Encoder", metadata: { name: "json" } } as never,
+    ]);
+    const server = graph.nodeById(resourceId("http.Server", "server"))!;
+
+    const encoder = server.ports.find((p) => p.slot.endsWith("encoder"));
+    expect(encoder).toBeDefined();
+    expect(encoder!.slots[0]).toMatchObject({
+      path: 'notFoundHandler.returns[0].content.application/json.encoder',
+      target: "json",
+    });
+  });
+
+  // The neighbouring case, and the reason the rule is "neither occupied nor
+  // fillable" rather than "nested in an array": one array deep, the append path
+  // is determined, so an empty slot is genuinely offerable.
+  it("keeps an empty slot that an append path can still reach", () => {
+    const graph = fixture([
+      { kind: "http.Server", metadata: { name: "server" }, mounts: [] } as never,
+    ]);
+    const port = graph
+      .nodeById(resourceId("http.Server", "server"))!
+      .ports.find((p) => p.slot === "mounts[].mount")!;
+    expect(port.slots).toHaveLength(0);
+    expect(port.addPath).toBe("mounts[0].mount");
   });
 });
 
@@ -1108,6 +1190,99 @@ describe("the kind plane", () => {
     expect(kinds.find((k) => k.id === "notify.Webhook")!.exported).toBe(true);
     expect(kinds.find((k) => k.id === "notify.Slack")!.exported).toBe(false);
     expect(kinds.find((k) => k.id === "ai.Model")!.exported).toBeUndefined();
+  });
+});
+
+/**
+ * A library root lists what it EXPORTS, where an application lists what it
+ * boots. `targets:` is forbidden on a `Telo.Library`, so a root that stamps the
+ * boot list unconditionally draws a library an affordance for a field it may
+ * not have.
+ */
+describe("the library root's public surface", () => {
+  const libraryRoot = (exports: Record<string, unknown>) =>
+    ({ kind: "Telo.Library", metadata: { name: "notify" }, exports }) as never;
+
+  const withInstances = (exports: Record<string, unknown>) =>
+    fixtureWith(
+      [],
+      [
+        { kind: "sql.Connection", metadata: { name: "db" } } as never,
+        { kind: "http.Api", metadata: { name: "routes" }, routes: [] } as never,
+      ],
+      libraryRoot(exports),
+    );
+
+  it("lists exports instead of boot targets", () => {
+    const graph = withInstances({ kinds: ["Webhook"], resources: ["db"] });
+    expect(graph.root!.rowArrays).toEqual([
+      { field: "exports.kinds", kind: "export" },
+      { field: "exports.resources", kind: "export" },
+    ]);
+  });
+
+  it("still gives an APPLICATION root its boot list", () => {
+    // The two roots differ; neither borrows the other's lists.
+    const graph = fixture(
+      [],
+      { kind: "Telo.Application", metadata: { name: "app" }, targets: [] } as never,
+    );
+    expect(graph.root!.rowArrays).toEqual([{ field: "targets", kind: "target" }]);
+  });
+
+  it("keeps the two export lists apart, each row named as written", () => {
+    const graph = withInstances({ kinds: ["Webhook", "Slack"], resources: ["db"] });
+    expect(graph.root!.rows.map((r) => [r.array, r.name, r.path])).toEqual([
+      ["exports.kinds", "Webhook", "exports.kinds[0]"],
+      ["exports.kinds", "Slack", "exports.kinds[1]"],
+      ["exports.resources", "db", "exports.resources[0]"],
+    ]);
+  });
+
+  it("draws an edge to each exported instance, and none to an exported kind", () => {
+    // A kind is a TYPE and lives on the kind plane, which has no box to point
+    // at — selecting it there rings its instances instead.
+    const graph = withInstances({ kinds: ["Webhook"], resources: ["db", "routes"] });
+    const out = graph.edgesFrom(graph.root!.id);
+    expect(out.map((e) => e.toName)).toEqual(["db", "routes"]);
+    expect(out.map((e) => e.to)).toEqual([
+      named(graph, "db").id,
+      named(graph, "routes").id,
+    ]);
+    expect(out.every((e) => e.class === "holds")).toBe(true);
+  });
+
+  it("does not report an export as a boot target", () => {
+    // Every edge leaving the root used to be flagged `boot` on the premise that
+    // the root had no other slots. A library boots nothing.
+    const graph = withInstances({ resources: ["db"] });
+    expect(graph.edgesFrom(graph.root!.id).some((e) => e.boot)).toBe(false);
+  });
+
+  it("docks each export edge on the row that declares it", () => {
+    const graph = withInstances({ resources: ["db"] });
+    const edge = graph.edgesFrom(graph.root!.id)[0]!;
+    const row = graph.root!.rows.find((r) => r.path === "exports.resources[0]")!;
+    expect(edge.row).toBe(row.id);
+  });
+
+  it("keeps the row of an export that resolves to nothing", () => {
+    // A name the library lists but nothing provides is a fact about the
+    // manifest; dropping the row would hide the one export that is broken.
+    const graph = withInstances({ resources: ["db", "missing"] });
+    expect(graph.root!.rows.map((r) => r.name)).toEqual(["db", "missing"]);
+    expect(graph.edgesFrom(graph.root!.id).map((e) => e.toName)).toEqual(["db"]);
+  });
+
+  it("draws no export rows for a library that declares none", () => {
+    const graph = fixtureWith([], [], libraryRoot({}));
+    expect(graph.root!.rows).toEqual([]);
+    // The arrays are still declared, so the branches are named and empty rather
+    // than absent — an ungated library is not the same as one exporting nothing.
+    expect(graph.root!.rowArrays.map((a) => a.field)).toEqual([
+      "exports.kinds",
+      "exports.resources",
+    ]);
   });
 });
 

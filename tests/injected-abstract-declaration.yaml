@@ -40,6 +40,11 @@ expect:
 ---
 # Reported at the DECLARATION, with the same hint the kernel's own refusal
 # carries — the concrete implementations this analysis holds.
+#
+# Named in ALIAS form, which is the spelling this fixture's author could write:
+# it imports the module as `Sqlite`, while the module calls itself `SQLite`. The
+# canonical name is what the registry is keyed on and resolves nowhere here, so
+# listing it would send the reader to a kind their own file cannot name.
 kind: Assert.Manifest
 metadata:
   name: instantiatingAnAbstractIsReported
@@ -49,4 +54,4 @@ expect:
     - code: ABSTRACT_KIND_INSTANTIATED
       message: "is abstract and cannot be instantiated directly"
     - code: ABSTRACT_KIND_INSTANTIATED
-      message: "instantiate a concrete implementation: SQLite.Connection"
+      message: "instantiate a concrete implementation: Sqlite.Connection"

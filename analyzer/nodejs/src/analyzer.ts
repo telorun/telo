@@ -55,6 +55,10 @@ import {
   validateObservedStateDeclarations,
 } from "./validate-observed-state.js";
 import { computeSuggestKind } from "./kind-suggest.js";
+import {
+  isInstantiableDefinition,
+  userFacingImplementationsOf,
+} from "./instantiable-kind.js";
 import { visitManifest } from "./manifest-visitor.js";
 import { declaringModuleScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
@@ -2007,12 +2011,14 @@ export class StaticAnalyzer {
       // Injected declarations never reach this loop (skipped above), which is
       // what keeps a `resources:` entry — kind-only and routinely abstract by
       // design — out of it.
-      if (definition.kind === "Telo.Abstract") {
+      if (!isInstantiableDefinition(definition)) {
         const canonical = resolvedKind ?? m.kind;
-        const impls = defs
-          .getByExtends(canonical)
-          .filter((d) => d.kind !== "Telo.Abstract")
-          .map((d) => `${d.metadata.module}.${d.metadata.name}`);
+        // Named as the AUTHOR would spell them, through the aliases this scope
+        // has — `sqlite.Connection` is what the registry is keyed on and is not
+        // something anyone can type, so a message listing it sends the reader to
+        // a spelling that resolves nowhere. One reader, shared with the inline
+        // form and with what the editor offers to create.
+        const impls = userFacingImplementationsOf(canonical, scopeResolver ?? aliases, defs);
         const kindInfo =
           canonical !== m.kind ? `'${m.kind}' (resolved to '${canonical}')` : `'${m.kind}'`;
         const hint = impls.length
@@ -2306,6 +2312,7 @@ export class StaticAnalyzer {
             },
             allManifests as Record<string, any>[],
             shapeAwareValidator,
+            (canonical) => userFacingImplementationsOf(canonical, scopeResolver ?? aliases, defs),
           ),
         );
       }

@@ -34,7 +34,13 @@ import {
 import { DiagnosticBadge } from "../../../diagnostics/DiagnosticBadge";
 import { useActiveFilePaths, useDiagnosticsState } from "../../../diagnostics/DiagnosticsContext";
 import { severityBorderClass } from "../../../diagnostics/severity";
-import { collapsibleProps, isCollapsible, propertyOf, type CollapsibleProp } from "./collapsible";
+import {
+  branchOf,
+  collapsibleProps,
+  isCollapsible,
+  isList,
+  type CollapsibleProp,
+} from "./collapsible";
 import { drawnRows } from "./box-geometry";
 import { isPickerPort, pickerRows } from "./picker-port";
 import { branchingRows } from "./row-tree";
@@ -379,7 +385,7 @@ function PropertyGroup({
 }) {
   const collapsible = isCollapsible(prop);
   const open = !collapsible || data.isOpen(prop.key);
-  const rows = open ? drawn.filter((row) => propertyOf(row.array) === prop.key) : [];
+  const rows = open ? drawn.filter((row) => branchOf(data.node, row.array) === prop.key) : [];
   // The count a reader recognises is the array's own length — a `while` is one
   // step, however many statements are inside it.
   const count = prop.rows.filter((row) => !row.parent).length;
@@ -402,7 +408,10 @@ function PropertyGroup({
           />
         ),
       )}
-      {prop.ordered && (
+      {/* The branch header. Drawn for any branch that is a LIST, not only an
+          appendable one: a library's exports have rows and no add affordance,
+          and gating this on `ordered` left them with no label and no rows. */}
+      {isList(prop) && (
         <button
           type="button"
           data-no-open

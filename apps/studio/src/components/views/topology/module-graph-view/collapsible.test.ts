@@ -1,6 +1,12 @@
 import type { GraphEdge, GraphNode, GraphPort, ModuleGraph } from "@telorun/analyzer";
 import { describe, expect, it } from "vitest";
-import { collapsibleProps, isCollapsible, propertyOf, resolveVisibility } from "./collapsible";
+import {
+  branchOf,
+  collapsibleProps,
+  isCollapsible,
+  propertyOf,
+  resolveVisibility,
+} from "./collapsible";
 
 const port = (slot: string, over: Partial<GraphPort> = {}): GraphPort => ({
   slot,
@@ -52,6 +58,83 @@ describe("which property a slot belongs to", () => {
     expect(propertyOf("notFoundHandler.invoke")).toBe("notFoundHandler");
     expect(propertyOf("connection")).toBe("connection");
     expect(propertyOf("returns[].content.{}.encoder")).toBe("returns");
+  });
+});
+
+describe("which branch a path belongs to", () => {
+  const library = node("lib", {
+    root: true,
+    rowArrays: [
+      { field: "exports.kinds", kind: "export" },
+      { field: "exports.resources", kind: "export" },
+    ],
+  });
+
+  it("prefers a declared row array over the top-level field", () => {
+    // Truncating at the first dot merged a library's exported kinds and its
+    // exported instances into one nameless `exports` list.
+    expect(branchOf(library, "exports.kinds[0]")).toBe("exports.kinds");
+    expect(branchOf(library, "exports.resources[1]")).toBe("exports.resources");
+  });
+
+  it("falls back to the top-level field where no array covers the path", () => {
+    const server = node("server", { rowArrays: [{ field: "mounts", kind: "entry" }] });
+    expect(branchOf(server, "mounts[].mount")).toBe("mounts");
+    expect(branchOf(server, "notFoundHandler.invoke")).toBe("notFoundHandler");
+    // A nested step row still groups under the array its body hangs off.
+    const seq = node("seq", { rowArrays: [{ field: "steps", kind: "step" }] });
+    expect(branchOf(seq, "steps[1].do")).toBe("steps");
+  });
+});
+
+describe("what a library root draws", () => {
+  it("keeps the two export lists as separate branches", () => {
+    const library = node("lib", {
+      root: true,
+      rowArrays: [
+        { field: "exports.kinds", kind: "export" },
+        { field: "exports.resources", kind: "export" },
+      ],
+      rows: [
+        {
+          id: "k0",
+          kind: "export",
+          name: "Webhook",
+          path: "exports.kinds[0]",
+          array: "exports.kinds",
+          index: 0,
+          depth: 0,
+        },
+        {
+          id: "r0",
+          kind: "export",
+          name: "db",
+          path: "exports.resources[0]",
+          array: "exports.resources",
+          index: 0,
+          depth: 0,
+          target: "db",
+        },
+      ],
+    });
+    const props = collapsibleProps(library);
+    expect(props.map((p) => p.key)).toEqual(["exports.kinds", "exports.resources"]);
+    expect(props.map((p) => p.rows.map((r) => r.name))).toEqual([["Webhook"], ["db"]]);
+  });
+
+  it("offers no add affordance on an export list", () => {
+    // An export list is a SET — nothing to reorder, and its entries are edited
+    // where a module's declarations already are.
+    const library = node("lib", {
+      root: true,
+      rowArrays: [{ field: "exports.kinds", kind: "export" }],
+    });
+    expect(collapsibleProps(library)[0]!.ordered).toBe(false);
+  });
+
+  it("still marks an application's boot list ordered", () => {
+    const app = node("app", { root: true, rowArrays: [{ field: "targets", kind: "target" }] });
+    expect(collapsibleProps(app)[0]!.ordered).toBe(true);
   });
 });
 

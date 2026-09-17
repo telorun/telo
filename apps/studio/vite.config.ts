@@ -21,6 +21,14 @@ export default defineConfig({
         "../../packages/debug-ui/src/components/index.ts",
       ),
       "@telorun/debug-ui": path.resolve(__dirname, "../../packages/debug-ui/src/index.ts"),
+      // Likewise the analyzer, whose `exports` would otherwise resolve to its
+      // tsc `dist`. Nothing rebuilds that — there is no watcher and no root dev
+      // script — so an edit to the manifest projection was invisible here until
+      // someone remembered `pnpm --filter @telorun/analyzer build`, and the
+      // failure mode is a stale picture with no error anywhere. Safe from
+      // source for the reason debug-ui is: the analyzer is browser-safe by
+      // contract, importing no Node built-ins.
+      "@telorun/analyzer": path.resolve(__dirname, "../../analyzer/nodejs/src/index.ts"),
       "fs/promises": path.resolve(__dirname, "./src/empty.ts"),
       fs: path.resolve(__dirname, "./src/empty.ts"),
       path: path.resolve(__dirname, "./src/empty.ts"),
