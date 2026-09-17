@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.2 - 2026-09-17
+### Fixed
+* A JSON or URL-encoded request body writes a CEL value in its plain encoding - a timestamp as RFC 3339 text in UTC, a duration as seconds such as 5400s, bytes inside a JSON object as base64url, a uint as its digits - where a duration and a uint used to leave as an empty object and a timestamp in a form body as locale text.
+
 ## 0.22.1 - 2026-09-10
 ### Fixed
 * A template body now has ONE reference spelling: every `resources:` entry is named by a literal and every dispatch slot is a `!ref` to one. The `{ kind, name }` object form and the CEL-computed entry name it existed to reach are removed — each template instance owns its children in a child context of its own, so a per-instance suffix bought nothing, while a `!ref` is looked up verbatim and so could never name such an entry. `crud` and `sql-repository` are rewritten to it. `http-client` drops the raw-manifest fallback in `Http.Request`: a client is resolved through `ctx.resolveRef` like every other slot, so a reference that does not resolve says so instead of being explained as a rule about scopes. `assert` gains `Assert.Manifest.expect.runFails`, which runs the manifest as well and asserts it fails — pinning a static verdict to the runtime one in a single test.

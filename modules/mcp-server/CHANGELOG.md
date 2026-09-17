@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.1 - 2026-09-17
+### Fixed
+* A tool result, and the data of an error a catches entry renders, write a CEL value in its plain encoding - a timestamp as RFC 3339 text in UTC, a duration as seconds such as 5400s, bytes as base64url - where a duration in structuredContent or in error data used to reach the client as an empty object.
+
 ## 0.16.0 - 2026-08-23
 ### Added
 * Controllers return their effects from `init()` / `run()` instead of implementing `teardown()`: each allocation is written beside the inverse that undoes it, and the runtime unwinds them last-in-first-out. A failure part-way through startup now recovers what it already allocated — a bound port releases the kernel hold and unregisters the routes, a connection that fails its health check destroys its pool — and the retry starts from a freshly constructed resource. Declares `requires: telo: '>=0.82.0'`, since an older runtime discards what a controller returns and would allocate nothing.

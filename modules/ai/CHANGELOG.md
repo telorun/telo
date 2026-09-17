@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.1 - 2026-09-17
+### Fixed
+* A CEL value JSON has no form for is written in its plain encoding where it leaves for a reader outside Telo - an SSE data payload, an NDJSON line, an MCP tool call's arguments and a structured tool result fed back to a model - a timestamp as RFC 3339 text in UTC, a duration as seconds such as 5400s, bytes as base64url, a uint as its digits, where a duration used to be written as an empty object.
+
 ## 0.18.0 - 2026-08-29
 ### Added
 * A content vocabulary, so modality lives in the parts rather than in kind names: `Ai.ContentPart` covers text, image, audio, video and file plus the output-only tool-call, reasoning, citation and refusal, each media part carrying bytes or a URI with a media type. A model returning a picture is an image part in an ordinary completion, not a different kind of model. `Ai.StreamPart`, `Ai.Message`, `Ai.ToolCall`, `Ai.TokenUsage` and `Ai.Usage` are declared once and referenced, replacing a message shape that was restated verbatim in four consumers' inputTypes. `providerState` is opaque state replayed verbatim on the next request, which is what lets reasoning survive a tool loop.

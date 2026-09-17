@@ -1,6 +1,0 @@
-modules:
-  modules/http-client: Fixed
-body: A JSON or URL-encoded request body writes a CEL value in its plain encoding - a
-  timestamp as RFC 3339 text in UTC, a duration as seconds such as 5400s, bytes inside a
-  JSON object as base64url, a uint as its digits - where a duration and a uint used to
-  leave as an empty object and a timestamp in a form body as locale text.

@@ -1,6 +1,6 @@
 {
   "name": "@telorun/http-server-build",
-  "version": "0.31.0",
+  "version": "0.31.1",
   "private": true,
   "description": "Build-only package for the std/http-server module's bundled controller. Never published — the controller ships inside the module artifact and Scalar's browser bundle in its assets layer. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",

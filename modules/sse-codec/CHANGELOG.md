@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 - 2026-09-17
+### Fixed
+* A CEL value JSON has no form for is written in its plain encoding where it leaves for a reader outside Telo - an SSE data payload, an NDJSON line, an MCP tool call's arguments and a structured tool result fed back to a model - a timestamp as RFC 3339 text in UTC, a duration as seconds such as 5400s, bytes as base64url, a uint as its digits, where a duration used to be written as an empty object.
+
 ## 0.11.0 - 2026-08-29
 ### Added
 * `Sse.Decoder` — byte chunks in, one record per frame out, emitted as each frame arrives rather than collected at the end. `data` is handed over as text and never parsed: the format says nothing about what a payload is, and a stream of JSON frames routinely ends with a sentinel that is not JSON. Comments and keep-alives are skipped, multi-line payloads are joined, an id persists across frames as the format specifies, and a trailing frame that never got its blank line is dispatched rather than discarded — a one-shot HTTP response has no second delivery.
