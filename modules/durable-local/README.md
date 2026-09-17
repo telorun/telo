@@ -53,7 +53,9 @@ The obvious answer — "record what each step returned" — is **not enough**, a
 
 A step's inputs, a branch's predicate and a loop's condition are read from a scope that also carries live readings: a resource's observed state is republished on every dispatch by design. Re-deriving any of them in a fresh process can produce a different answer. The sharpest case has no error at all: a loop whose collection comes from a resource read returns a different order after a restart, index N now names a different element, and the recorded result for that position is handed to work it never described. Wrong results, no failure — the precise thing durability exists to prevent.
 
-So **every decision is recorded too**: resolved inputs, each predicate, each loop condition, each switch key, each pure `value:` step. A resume feeds them back rather than recomputing them, which makes a replay a function of the record alone.
+So **every decision is recorded too**: resolved inputs, each predicate and `when:` guard, each loop condition, each switch key, each pure `value:` step, and the collection a composer iterates. A resume feeds them back rather than recomputing them, which makes a replay a function of the record alone.
+
+And it feeds them back **as the values they were**, CEL type included — a timestamp as a timestamp, an `int` as an int64, bytes as bytes — so an expression that worked on the first pass computes the same thing on a resume rather than failing for want of an overload, or quietly computing something else. The same holds for the inputs a scheduled run starts with and for the result `Local.Result` hands back. A value outside the CEL value domain is refused when it is recorded, naming where it was recorded.
 
 Recording the value rather than a checksum is deliberate. Checksum-and-detect is cheaper and equally good at *noticing*, and it is the wrong tool: observed state is defined as a live reading, so a run would fail on every resume where the world had moved — which it usually has. That is fragility with good error messages. Recording the value removes the failure instead of reporting it.
 

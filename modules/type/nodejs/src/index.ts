@@ -1,6 +1,5 @@
-import { evaluate } from "@marcbachmann/cel-js";
 import type { ResourceContext, ResourceManifest, TypeRule } from "@telorun/sdk";
-import { canonicalTypeSchemaId, mergeTypeSchemas, RuntimeError } from "@telorun/sdk";
+import { canonicalTypeSchemaId, mergeTypeSchemas } from "@telorun/sdk";
 
 class TypeResource {
   constructor(
@@ -12,31 +11,6 @@ class TypeResource {
      *  schema. */
     readonly schema: Record<string, unknown>,
   ) {}
-
-  /**
-   * Validate data against this type's rules (CEL conditions).
-   * Schema validation is handled by AJV via the schema registry;
-   * this method evaluates the business-rule layer on top.
-   */
-  validateRules(data: unknown): void {
-    for (const rule of this.rules) {
-      let result: unknown;
-      try {
-        result = evaluate(rule.condition, { this: data });
-      } catch (err) {
-        throw new RuntimeError(
-          "ERR_TYPE_VALIDATION_FAILED",
-          `Type "${this.qualifiedName}" rule evaluation failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-      if (result !== true) {
-        throw new RuntimeError(
-          rule.code,
-          rule.message ?? `Type "${this.qualifiedName}" validation failed: rule "${rule.code}" not satisfied`,
-        );
-      }
-    }
-  }
 }
 
 export async function create(

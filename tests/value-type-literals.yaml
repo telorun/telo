@@ -1,0 +1,445 @@
+kind: Telo.Application
+metadata:
+  name: ValueTypeLiterals
+  version: 1.0.0
+  description: |
+    A YAML literal at a slot that holds an instance is read from the type's plain
+    encoding: RFC 3339 text becomes a timestamp, a CEL duration string a
+    duration, base64url text bytes. That holds at a resource's own config AND at
+    every slot typed from somewhere else — a step's `inputs:`, a route's
+    `inputs:`, a boot target's `inputs:`, a template definition's own `inputs:`,
+    an `x-telo-schema-from` slot and an `x-telo-value-schema-from` row — because
+    one reader enumerates them for `telo check` and for the kernel alike. Each
+    row below proves the TARGET received the instance: `string(...)` of a
+    timestamp and `+ 1u` of a uint are overloads no text and no plain integer
+    satisfies.
+
+    A computed value and an embedded file are never decoded — the embed row
+    keeps a file whose text IS base64url at its own four bytes. Text the
+    encoding does not read is refused by `telo check` at every one of those
+    slots, and at creation or dispatch wherever a consumer reaches it without
+    reading the file that holds it.
+imports:
+  Run: ../modules/run
+  Http: ../modules/http-server
+  HttpClient: ../modules/http-client
+  Assert: ../modules/assert
+targets:
+  # A boot target's inline step: its `inputs:` are the boot runner's, decoded
+  # before it expands them.
+  - name: bootStamp
+    invoke: !ref stamp
+    inputs:
+      at: "2026-01-15T09:30:00Z"
+  - name: assertBootStamp
+    invoke: !ref assertEquals
+    inputs:
+      actual: !cel "steps.bootStamp.result"
+      expected: "2026-01-15T09:30:00.000Z"
+  - !ref verifyLiterals
+---
+# Renders whatever instant it is handed. `string(timestamp)` has no string
+# overload, so a row that reached it as text fails at dispatch.
+kind: Run.Value
+metadata:
+  name: stamp
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [at]
+    properties:
+      at: { x-telo-type: Telo.Timestamp }
+value: !cel "string(inputs.at)"
+---
+kind: Assert.Equals
+metadata:
+  name: assertEquals
+---
+# A window read back as its closing instant and key length: the config slots of
+# a resource's own kind.
+kind: Telo.Definition
+metadata:
+  name: Window
+  description: A time window with a key, read back as its closing instant and key length.
+extends: Run.Value
+schema:
+  type: object
+  required: [opens, lasts, key]
+  properties:
+    opens: { x-telo-type: Telo.Timestamp }
+    lasts: { x-telo-type: Telo.Duration }
+    key: { x-telo-type: Telo.Bytes }
+base:
+  value:
+    closes: !cel "string(self.opens + self.lasts)"
+    lastsSeconds: !cel "self.lasts.getSeconds()"
+    keyLength: !cel "size(self.key)"
+---
+# The shape a schema-from slot is typed by.
+kind: Telo.Definition
+metadata:
+  name: Carrier
+  description: Declares the payload shape a holder's `payload:` is typed against.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object
+  $defs:
+    Payload:
+      type: object
+      required: [at]
+      properties:
+        at: { x-telo-type: Telo.Timestamp }
+---
+# `payload:` is typed by another kind's schema, so the literal in it is decoded
+# against that schema and nothing else.
+kind: Telo.Definition
+metadata:
+  name: Holder
+  description: Renders the instant its schema-from payload carries.
+extends: Run.Value
+schema:
+  type: object
+  required: [payload]
+  properties:
+    payload:
+      type: object
+      x-telo-schema-from: "Self.Carrier/$defs/Payload"
+base:
+  value: !cel "string(self.payload.at)"
+---
+# A kind extending another without `base:` is authored against both schemas, so
+# the slots its parent declares — a value row, a step body — are typed, and
+# decoded, exactly as they are on the parent.
+kind: Telo.Definition
+metadata:
+  name: Row
+  description: A value row whose shape is fixed by its declared output type.
+extends: Run.Value
+---
+kind: Telo.Definition
+metadata:
+  name: Steps
+  description: A sequence of steps run in order.
+extends: Run.Sequence
+---
+# A route's `inputs:` — a call site that is not a step, named by the handler
+# slot's own `x-telo-ref` pointer.
+kind: Http.Api
+metadata:
+  name: stampApi
+routes:
+  - request:
+      path: /stamp
+      method: GET
+    inputs:
+      at: "2026-01-15T09:30:00Z"
+    handler: !ref stamp
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema: { type: object, properties: { at: { type: string } } }
+            body:
+              at: !cel "result"
+---
+# A template definition's own top-level `inputs:` — the argument map of the call
+# its body makes, written with the sanctioned `!ref` dispatch and decoded when
+# an instance of the kind is created.
+kind: Telo.Definition
+metadata:
+  name: FixedStamp
+  description: Renders one fixed instant, written as the argument of its body's call.
+capability: Telo.Invocable
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: inner
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [at]
+        properties:
+          at: { x-telo-type: Telo.Timestamp }
+    value: !cel "string(inputs.at)"
+invoke: !ref inner
+inputs:
+  at: "2026-01-15T09:30:00Z"
+---
+kind: Run.Sequence
+metadata:
+  name: verifyLiterals
+with:
+  - kind: Http.Server
+    metadata:
+      name: stampServer
+    port: 8849
+    mounts:
+      - path: /
+        mount: !ref stampApi
+targets:
+  - !ref stampServer
+steps:
+  - name: readWindow
+    invoke:
+      kind: Self.Window
+      opens: "2026-01-15T09:30:00+02:00"
+      lasts: 1h30m
+      key: AQID
+  - name: checkWindow
+    invoke: !ref assertEquals
+    inputs:
+      actual: !cel "steps.readWindow.result"
+      expected:
+        closes: "2026-01-15T09:00:00.000Z"
+        lastsSeconds: 5400
+        keyLength: 3
+  # A CEL expression at the same slots: it is never decoded, and the value it
+  # produces IS the instance.
+  - name: readComputedWindow
+    invoke:
+      kind: Self.Window
+      opens: !cel "timestamp('2026-01-15T07:30:00Z')"
+      lasts: !cel "duration('90m')"
+      key: !cel "bytes('abc')"
+  - name: checkComputedWindow
+    invoke: !ref assertEquals
+    inputs:
+      actual: !cel "steps.readComputedWindow.result"
+      expected:
+        closes: "2026-01-15T09:00:00.000Z"
+        lastsSeconds: 5400
+        keyLength: 3
+  # An embedded file is never decoded either: the slot receives the file's own
+  # bytes, so a file whose text IS base64url stays its four characters rather
+  # than becoming the three bytes they encode.
+  - name: readEmbeddedWindow
+    invoke:
+      kind: Self.Window
+      opens: "2026-01-15T09:30:00+02:00"
+      lasts: 1h30m
+      key: !include-bytes __fixtures__/value-type-literals/key.b64
+  - name: checkEmbeddedWindow
+    invoke: !ref assertEquals
+    inputs:
+      actual: !cel "steps.readEmbeddedWindow.result"
+      expected:
+        closes: "2026-01-15T09:00:00.000Z"
+        lastsSeconds: 5400
+        keyLength: 4
+  # A step's `inputs:`, against the target's declared inputType.
+  - name: fromStep
+    invoke: !ref stamp
+    inputs:
+      at: "2026-01-15T11:30:00+02:00"
+  - name: checkStep
+    invoke: !ref assertEquals
+    inputs:
+      actual: !cel "steps.fromStep.result"
+      expected: "2026-01-15T09:30:00.000Z"
+  # An `x-telo-schema-from` slot.
+  - name: fromSchemaFrom
+    invoke:
+      kind: Self.Holder
+      payload:
+        at: "2026-01-15T09:30:00Z"
+  - name: checkSchemaFrom
+    invoke: !ref assertEquals
+    inputs:
+      actual: !cel "steps.fromSchemaFrom.result"
+      expected: "2026-01-15T09:30:00.000Z"
+  # An `x-telo-value-schema-from` row, including the uint a JSON Schema cannot
+  # state: `+ 1u` has no overload for an int or for text.
+  - name: fromValueRow
+    invoke:
+      kind: Run.Value
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [opens, quota]
+          properties:
+            opens: { x-telo-type: Telo.Timestamp }
+            quota: { type: integer, x-telo-type: Telo.Uint64 }
+      value:
+        opens: "2026-01-15T09:30:00Z"
+        quota: 7
+  - name: checkValueRow
+    invoke: !ref assertEquals
+    inputs:
+      actual:
+        opens: !cel "string(steps.fromValueRow.result.opens)"
+        quotaPlusOne: !cel "steps.fromValueRow.result.quota + 1u == 8u"
+      expected:
+        opens: "2026-01-15T09:30:00.000Z"
+        quotaPlusOne: true
+  # The largest uint, written the one way it stays exact — as a CEL uint — passes
+  # the same declared output and arrives as itself.
+  - name: widestQuota
+    invoke:
+      kind: Run.Value
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [quota]
+          properties:
+            quota: { type: integer, x-telo-type: Telo.Uint64 }
+      value:
+        quota: !cel "18446744073709551615u"
+  - name: checkWidestQuota
+    invoke: !ref assertEquals
+    inputs:
+      actual: !cel "steps.widestQuota.result.quota == 18446744073709551615u"
+      expected: true
+  # A step's `inputs:` and a value row on kinds that inherit those slots.
+  - name: fromInheritedSlots
+    invoke:
+      kind: Self.Steps
+      steps:
+        - name: stamped
+          invoke: !ref stamp
+          inputs:
+            at: "2026-01-15T11:30:00+02:00"
+        - name: row
+          invoke:
+            kind: Self.Row
+            outputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                required: [opens]
+                properties:
+                  opens: { x-telo-type: Telo.Timestamp }
+            value:
+              opens: "2026-01-15T09:30:00Z"
+        - name: check
+          invoke: !ref assertEquals
+          inputs:
+            actual:
+              stamped: !cel "steps.stamped.result"
+              opens: !cel "string(steps.row.result.opens)"
+            expected:
+              stamped: "2026-01-15T09:30:00.000Z"
+              opens: "2026-01-15T09:30:00.000Z"
+  # A template definition's top-level `inputs:`, dispatched to the entry its own
+  # body names.
+  - name: fromTemplate
+    invoke:
+      kind: Self.FixedStamp
+  - name: checkTemplate
+    invoke: !ref assertEquals
+    inputs:
+      actual: !cel "steps.fromTemplate.result"
+      expected: "2026-01-15T09:30:00.000Z"
+  # A route's `inputs:`, decoded when the API is created rather than per request.
+  - name: fetch
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8849/stamp
+      method: GET
+  - name: checkRoute
+    invoke: !ref assertEquals
+    inputs:
+      actual: !cel "steps.fetch.result.body.at"
+      expected: "2026-01-15T09:30:00.000Z"
+  # The refusal, at the library that writes the text...
+  - name: refusedByCheck
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/value-type-literals/refused-lib/telo.yaml
+      expect:
+        errors:
+          - code: SCHEMA_VIOLATION
+            message: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)"
+  # ...and at creation, from a consumer whose own check does not reach it.
+  - name: refusedAtCreation
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/value-type-literals/refused-app.yaml
+      expect:
+        runFails: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)"
+  # The same two halves at a slot typed from elsewhere: a step's `inputs:`
+  # against the target's inputType, and a uint outside the range JSON Schema
+  # cannot state. `telo check` reports both at the library, on the leaf.
+  - name: refusedDerivedByCheck
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/value-type-literals/refused-inputs-lib/telo.yaml
+      expect:
+        errors:
+          - code: CONTRACT_INPUTS_MISMATCH
+            message: "Run.Sequence/callWithBadLiteral: inputs at 'steps[0].inputs.at' do not satisfy stampInput's declared inputType"
+          - code: CONTRACT_INPUTS_MISMATCH
+            message: "Self.Steps/inheritedCallWithBadLiteral: inputs at 'steps[0].inputs.at' do not satisfy stampInput's declared inputType"
+          - code: SCHEMA_VIOLATION
+            message: "Run.Value/badQuota: `value` does not satisfy the type declared at `outputType`: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615"
+          - code: SCHEMA_VIOLATION
+            message: "Run.Value/wideQuota: `value` does not satisfy the type declared at `outputType`: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615; a plain number beyond 9007199254740991 is not exact, so write a wider one as a CEL uint"
+          - code: SCHEMA_VIOLATION
+            message: "Run.Value/badWindow: `value` does not satisfy the type declared at `outputType`: /window/at must be a Telo.Timestamp"
+  - name: refusedInputsAtDispatch
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/value-type-literals/refused-inputs-app.yaml
+      expect:
+        runFails: "Run.Value/stampInput: inputs do not satisfy the declared inputType: Invalid value passed: {\"at\":\"15/01/2026 09:30\"}. Error: /at must be a Telo.Timestamp"
+  - name: refusedQuotaAtDispatch
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/value-type-literals/refused-quota-app.yaml
+      expect:
+        runFails: "Run.Value/badQuota: result do not satisfy the declared outputType: Invalid value passed: {\"quota\":-5}. Error: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615"
+  - name: refusedWideQuotaAtDispatch
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/value-type-literals/refused-wide-quota-app.yaml
+      expect:
+        runFails: "Run.Value/wideQuota: result do not satisfy the declared outputType: Invalid value passed: {\"quota\":18446744073709552000}. Error: /quota must be a Telo.Uint64, an integer from 0 to 18446744073709551615; a plain number beyond 9007199254740991 is not exact"
+  # The derived slots a step's `inputs:` does not cover, each refused on the leaf
+  # holding the text: a route's `inputs:` pointer and an `x-telo-schema-from`
+  # slot.
+  - name: refusedDerivedSlotsByCheck
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/value-type-literals/refused-derived-lib/telo.yaml
+      expect:
+        errors:
+          - code: CONTRACT_INPUTS_MISMATCH
+            message: "inputs at 'routes[0].inputs.at' do not satisfy stampInput's declared inputType"
+          - code: DEPENDENT_SCHEMA_MISMATCH
+            message: "'payload' does not match schema from 'Self.Carrier/$defs/Payload'"
+  # ...and the route again at the dispatch a request makes, from a consumer that
+  # mounts that API without reading the file declaring it.
+  - name: refusedRouteAtDispatch
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/value-type-literals/refused-route-app.yaml
+      expect:
+        runFails: "is read only as RFC 3339 text (2026-01-15T09:30:00Z)"
+  # A boot target's inline step and a template definition's own `inputs:`. No
+  # consumer can run either past the refusal: an inline boot step lives in the
+  # entry file, and a definition's body is checked wherever its kind is read —
+  # so the kernel is never reached, and the check is the whole agreement.
+  - name: refusedBootTargetByCheck
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/value-type-literals/refused-boot-app.yaml
+      expect:
+        errors:
+          - code: CONTRACT_INPUTS_MISMATCH
+            message: "inputs at 'targets[0].inputs.at' do not satisfy stampInput's declared inputType"
+  - name: refusedTemplateByCheck
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/value-type-literals/refused-template-app.yaml
+      expect:
+        errors:
+          - code: TEMPLATE_TARGET_MISMATCH
+            message: "inputs does not satisfy Run.Value's contract"

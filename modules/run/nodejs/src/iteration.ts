@@ -1,6 +1,9 @@
 import {
   InvokeError,
   StepEngine,
+  baseStepPath,
+  decideValue,
+  stepPath,
   turnStepPath,
   type InvokeContext,
   type ResourceContext,
@@ -74,7 +77,24 @@ class RunIteration {
       inputs,
       String(this.resource.metadata.name),
       async () => {
-        const collection = this.ctx.expandValue(this.resource.collection, { inputs });
+        // THE COLLECTION IS A DECISION, and the sharpest one the spec names: it
+        // decides how many turns run and what each index points at. Re-deriving
+        // it on a resume reads a CEL scope carrying live readings — a resource
+        // snapshot, an observed-state field republished on every dispatch — so a
+        // collection that came back in a different order would leave index N
+        // naming a different element, and the journal would hand that turn the
+        // recorded result for the element that used to be there. Same target, no
+        // mismatch to detect: wrong results, no error.
+        //
+        // Recorded under this dispatch's own path, so it is one record per
+        // iteration rather than one per turn.
+        const collection = await decideValue(
+          this.ctx,
+          invokeCtx,
+          stepPath(baseStepPath(invokeCtx), "collection"),
+          "collection",
+          () => this.ctx.expandValue(this.resource.collection, { inputs }),
+        );
         const concurrency = resolveConcurrency(
           this.ctx,
           this.resource.concurrency,

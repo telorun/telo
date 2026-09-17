@@ -14,6 +14,8 @@
 import {
   InvokeError,
   decodeDurableTarget,
+  decodeTypedFrame,
+  encodeTypedFrame,
   getRefIdentity,
   type ResourceContext,
   type ResourceInstance,
@@ -62,7 +64,7 @@ export class DispatchController {
         { target },
       );
     }
-    const inputs = JSON.parse(this.resource.encodedInputs) as Record<string, unknown>;
+    const inputs = decodeTypedFrame(this.resource.encodedInputs) as Record<string, unknown>;
     // Through the kernel's own chokepoint, never `instance.invoke()`: wherever a
     // step ends up running, the executing side dispatches through its kernel so
     // the invocation contract, tracing, zones and observed state hold
@@ -75,13 +77,16 @@ export class DispatchController {
       inputs,
     );
     // Serialized HERE rather than by the manifest, because the protocol between
-    // the two processes is one JSON line on stdout and the shape of that line is
-    // this controller's contract, not the printer's.
+    // the two processes is one line on stdout and the shape of that line is this
+    // controller's contract, not the printer's. A TYPED FRAME, the same codec
+    // the inputs arrived in: the parent turns this back into the step's result,
+    // which later steps read as CEL values, so a `google.protobuf.Timestamp`
+    // that came back as text would change what those expressions compute.
     //
     // `via` is stamped so the parent can tell a shipped step from one that
     // quietly ran at home: without it a fixture that silently executed locally
     // would produce an identical, passing result.
-    return JSON.stringify({ ...(result as Record<string, unknown>), via: "child-kernel" });
+    return encodeTypedFrame({ ...(result as Record<string, unknown>), via: "child-kernel" });
   }
 
   snapshot(): Record<string, unknown> {

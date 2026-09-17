@@ -12,6 +12,7 @@ export type {
 
 import type {
   AnalysisRegistry,
+  DiagnosticFixTag,
   DiagnosticSeverity,
   DiagnosticTag,
   Position,
@@ -51,6 +52,19 @@ export interface CompletionResult {
 export interface HoverResult {
   contents: string;
   range?: ReplaceRange;
+}
+
+/** Signature help for the call the cursor is inside. Each parameter's `label` is
+ *  its `[start, end]` span inside the signature's own `label`, the form both
+ *  VS Code and Monaco highlight the active parameter by. */
+export interface SignatureHelpResult {
+  signatures: Array<{
+    label: string;
+    documentation?: string;
+    parameters: Array<{ label: [number, number]; documentation?: string }>;
+  }>;
+  activeSignature: number;
+  activeParameter: number;
 }
 
 /** Semantic token type names emitted by `buildSemanticTokens`. Kept to the
@@ -167,8 +181,9 @@ export interface NormalizedDiagnostic {
   source: string;
   message: string;
   /** Mechanically applicable repairs. `replacement` is the whole corrected
-   *  value at the diagnostic's range — apply it by replacing that range. */
-  suggestions?: Array<{ kind: "replace"; replacement: string }>;
+   *  value at the diagnostic's range — apply it by replacing that range,
+   *  rendered through `renderFixReplacement` with `tag` when one is present. */
+  suggestions?: Array<{ kind: "replace"; replacement: string; tag?: DiagnosticFixTag }>;
   /** LSP diagnostic tags, carried through verbatim. Orthogonal to `severity`:
    *  they say what KIND of thing the range is (deprecated, unnecessary), which
    *  is what a host renders as strikethrough or fading rather than as a colour. */

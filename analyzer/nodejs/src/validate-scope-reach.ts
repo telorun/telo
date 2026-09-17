@@ -55,8 +55,11 @@ export function validateScopedNameReach(
   aliases: AliasResolver,
   aliasesByModule: Map<string, AliasResolver>,
   rootModules: ReadonlySet<string>,
-  /** Member-access chains of a CEL expression — the analyzer's own parse. */
-  accessChains: (expression: string) => string[][],
+  /** Member-access chains of a CEL expression — the analyzer's own parse.
+   *  Takes the declaring manifest because the chains depend on it: a call whose
+   *  receiver is one of that module's names is a module call, and its receiver
+   *  is not a chain at all. */
+  accessChains: (expression: string, declaringManifest: ResourceManifest) => string[][],
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
 
@@ -142,7 +145,7 @@ export function validateScopedNameReach(
         if (engine === "ref") {
           test(localName(source), path);
         } else if (engine === "cel") {
-          for (const chain of accessChains(source)) {
+          for (const chain of accessChains(source, root)) {
             if (chain[0] === "resources" && chain.length > 1) test(chain[1], path);
           }
         }

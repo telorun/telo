@@ -22,6 +22,7 @@ import {
   type ResourceContext,
   type ResourceManifest,
 } from "@telorun/sdk";
+import { recordedRunInputs } from "./journal-codec.js";
 import type { WorkflowController } from "./workflow.js";
 
 interface ResumerManifest extends ResourceManifest {
@@ -38,6 +39,11 @@ const CLAIM_TTL_MS = 60_000;
  *  racing for the same runs inside one process. */
 const BATCH = 10;
 
+/** A run this process cannot READ: written by a newer codec, or holding a frame
+ *  that does not decode. Retrying it changes nothing until the runtime or the
+ *  journal does. */
+const UNREADABLE_RUN_CODES = new Set(["ERR_DURABLE_ENTRY_UNDECODABLE", "ERR_DURABLE_JOURNAL_CORRUPT"]);
+
 /** What a journal offers when its store can push. Structural, and OPTIONAL by
  *  design: a wake makes recovery prompt, the interval is what makes it certain,
  *  so a journal without one is slower and never wrong. */
@@ -52,6 +58,10 @@ function canWake(journal: unknown): journal is WakingJournal {
 export class ResumerController {
   #sweeping = false;
   readonly #holder = crypto.randomUUID();
+  /** Runs this resumer found it cannot read. Skipped rather than claimed again,
+   *  so a newer worker sharing the journal can take one once the first claim
+   *  lapses, and reported once rather than on every sweep. */
+  readonly #unreadable = new Set<string>();
 
   constructor(
     private readonly resource: ResumerManifest,
@@ -103,7 +113,10 @@ export class ResumerController {
     try {
       const workflow = this.workflow();
       const journal = workflow.journal();
-      for (const run of await journal.dueRuns(Date.now(), BATCH)) {
+      // Asked for as many more as it skips, so unreadable runs cannot fill a batch
+      // and starve the runs behind them.
+      for (const run of await journal.dueRuns(Date.now(), BATCH + this.#unreadable.size)) {
+        if (this.#unreadable.has(run)) continue;
         // Claim before continuing, so several pollers against one store do not
         // both resume the same run and duplicate every unrecorded effect in it.
         if (!(await journal.claimRun(run, this.#holder, CLAIM_TTL_MS))) continue;
@@ -113,13 +126,14 @@ export class ResumerController {
           // scheduled with is the only source. A resumed run ignores this: its
           // inputs were recorded on the first pass and `decide` hands them back.
           const record = await journal.readRun(run);
+          const scheduled = record ? recordedRunInputs(record) : {};
           // Renewed under THIS poller's holder, which is the one that took the
           // claim — renewing as the workflow would fail and the run would be
           // taken out from under a body still executing it.
           await workflow.execute(
             run,
             journal,
-            { inputs: record?.inputs ?? {} },
+            { inputs: scheduled.value ?? {} },
             undefined,
             this.#holder,
           );
@@ -129,9 +143,23 @@ export class ResumerController {
           // forward and is now waiting on the next thing. Reporting it as a
           // failure would fill an operator's log with successful waits.
           if (isSuspension(err)) continue;
-          // A resumed run that fails again is the run's own failure, already
-          // settled in the journal by `execute`. It is reported and the sweep
-          // continues — one bad run must not stop recovery of the others.
+          const code = (err as { code?: unknown }).code;
+          if (typeof code === "string" && UNREADABLE_RUN_CODES.has(code)) {
+            // Nothing settled it: the record could not be read, so the body never
+            // ran. It stays `running` for a runtime that can read it; this
+            // process's claim lapses at its TTL.
+            this.#unreadable.add(run);
+            this.ctx.log.error("Cannot read an interrupted run; this resumer skips it from now on", {
+              "durable.run": run,
+              "error.code": code,
+              "error.message": (err as Error).message,
+            });
+            continue;
+          }
+          // A failure the body raised is settled `failed` by `execute`, and a
+          // cancellation leaves the run `running` for the next resume. Either way
+          // it is reported and the sweep continues — one bad run must not stop
+          // recovery of the others.
           this.ctx.log.warn("A resumed run failed", {
             "durable.run": run,
             "error.message": (err as Error).message,

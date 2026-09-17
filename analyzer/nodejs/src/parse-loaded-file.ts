@@ -8,6 +8,7 @@ import { migrateManifests, NO_MIGRATIONS } from "./migrations/driver.js";
 import type { MigrationEntry } from "./migrations/types.js";
 import { buildDocumentPositions } from "./position-metadata.js";
 import { expandManifestFragments } from "./manifest-schemas.js";
+import { moduleCallNamesOfFile } from "./module-call-names.js";
 import { precompileDoc } from "./precompile.js";
 import { documentToAst } from "./yaml-ast.js";
 
@@ -24,6 +25,13 @@ export interface ParseOptions {
   migrate?: boolean;
   /** Migration set. Defaults to the analyzer's own `CORE_MIGRATIONS`. */
   migrations?: readonly MigrationEntry[];
+  /** The INCLUDING module's CEL call names, for a partial.
+   *
+   *  A file that carries its own module doc derives its names from it (they are
+   *  known from the file itself, before any import resolves); a partial carries
+   *  none, and its expressions belong to the module that included it — so the
+   *  owner's set is passed down by whoever resolved the `include:` list. */
+  moduleNames?: ReadonlySet<string>;
 }
 
 /** Append an actionable hint to raw yaml-parser messages that are otherwise
@@ -107,12 +115,16 @@ export function parseLoadedFile(
 
   let env: Environment | undefined;
   if (options?.compile) {
+    // Resolution needs the declaring module's names, and they are read from the
+    // documents as they stand here — after migration and fragment expansion,
+    // before desugaring, which is where the author's `imports:` map still is.
+    const moduleNames = moduleCallNamesOfFile(manifests, options.moduleNames);
     for (let i = 0; i < manifests.length; i++) {
       const raw = manifests[i];
       if (raw === null) continue;
       env ??= options.celEnv ?? buildCelEnvironment();
       try {
-        manifests[i] = precompileDoc(raw, env) as ResourceManifest;
+        manifests[i] = precompileDoc(raw, env, moduleNames) as ResourceManifest;
       } catch (error) {
         throw new Error(
           `Failed to compile manifest in ${source}: ${error instanceof Error ? error.message : String(error)}`,

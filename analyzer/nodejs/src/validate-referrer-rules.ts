@@ -23,6 +23,8 @@
  * Browser-safe: no Node built-ins.
  */
 import type { ResourceManifest } from "@telorun/sdk";
+import { MODULE_CALL_DISPATCH_KEY, type ModuleCallDispatch } from "@telorun/templating";
+import type { CallableFlags } from "./callable-flags.js";
 import {
   REFERRER_RULES_ANNOTATION,
   readRawReferrerRules,
@@ -43,14 +45,18 @@ import {
   RULE_BUDGET_MS,
   UNTAGGED_CONDITION,
   compileRuleCondition,
+  conditionCallRefusals,
   conditionRefusals,
+  untaggedConditionFix,
 } from "./rule-condition.js";
+import type { DiagnosticFix } from "./types.js";
 
 export interface ReferrerRuleIssue {
   code: "REFERRER_RULE_INVALID";
   manifest: ResourceManifest;
   path: string;
   message: string;
+  fix?: DiagnosticFix;
 }
 
 /** One resource that reaches the resource under test, and where it does so. */
@@ -80,6 +86,12 @@ export type ReferrerRuleFinding =
  *  collection and both the evaluation and the exercised check ask for it. */
 export interface ReferrerRuleContext {
   readonly peerBinder?: PeerBinder;
+  /** The DECLARING kind's module names, so a call the condition makes resolves
+   *  in the scope its author wrote it in. */
+  readonly moduleNames?: ReadonlySet<string>;
+  /** The functions the condition may call, evaluated by the analyzer
+   *  (`function-body-evaluator.ts`). */
+  readonly functions?: ModuleCallDispatch;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -97,6 +109,8 @@ export interface ReferrerRuleDeclarationContext {
   /** Resolves a rule's `peers:` against its `referrer:` kind. Omit to skip the
    *  check — the safe direction for a host with no registry. */
   readonly peersTarget?: (referrerKind: string, pointer: string) => PeersTarget;
+  /** The declaring kind's module names — see {@link ReferrerRuleContext}. */
+  readonly moduleNames?: ReadonlySet<string>;
 }
 
 /**
@@ -118,8 +132,8 @@ export function validateReferrerRuleDeclarations(
 
   const base = `schema.${REFERRER_RULES_ANNOTATION}`;
   const issues: ReferrerRuleIssue[] = [];
-  const issue = (path: string, message: string): void => {
-    issues.push({ code: "REFERRER_RULE_INVALID", manifest, path, message });
+  const issue = (path: string, message: string, fix?: DiagnosticFix): void => {
+    issues.push({ code: "REFERRER_RULE_INVALID", manifest, path, message, ...(fix ? { fix } : {}) });
   };
 
   if (!Array.isArray(raw)) {
@@ -181,16 +195,43 @@ export function validateReferrerRuleDeclarations(
     }
 
     if (condition !== undefined && condition.length > 0 && !isTaggedCondition(entry.condition)) {
-      issue(`${at}.condition`, UNTAGGED_CONDITION);
+      issue(`${at}.condition`, UNTAGGED_CONDITION, untaggedConditionFix(condition));
     }
 
     validatePeersDeclaration(entry, at, issue, context);
 
     if (condition) {
-      for (const refusal of conditionRefusals(condition)) issue(`${at}.condition`, refusal);
+      for (const refusal of conditionRefusals(condition, context.moduleNames)) {
+        issue(`${at}.condition`, refusal);
+      }
     }
   });
 
+  return issues;
+}
+
+/** The refusals a kind's referrer-rule conditions earn through the module calls
+ *  they make — the resource-rule twin, see `resourceRuleCallIssues`. */
+export function referrerRuleCallIssues(
+  manifest: ResourceManifest,
+  moduleNames: ReadonlySet<string>,
+  flagsOf: (qualified: string) => CallableFlags | undefined,
+): ReferrerRuleIssue[] {
+  const raw = readRawReferrerRules((manifest as unknown as Record<string, unknown>).schema);
+  if (!Array.isArray(raw)) return [];
+  const issues: ReferrerRuleIssue[] = [];
+  raw.forEach((entry, index) => {
+    const condition = isObject(entry) ? celSourceOf(entry.condition) : undefined;
+    if (!condition) return;
+    for (const message of conditionCallRefusals(condition, moduleNames, flagsOf)) {
+      issues.push({
+        code: "REFERRER_RULE_INVALID",
+        manifest,
+        path: `schema.${REFERRER_RULES_ANNOTATION}[${index}].condition`,
+        message,
+      });
+    }
+  });
   return issues;
 }
 
@@ -283,6 +324,7 @@ export function evaluateReferrerRules(
     const compiled = compileRuleCondition(
       rule.condition,
       perEntry ? ["self", "referrer", "entry", "peers"] : ["self", "referrer"],
+      context.moduleNames,
     );
     if ("reason" in compiled) {
       findings.push({ kind: "failed", rule, reason: compiled.reason });
@@ -306,6 +348,7 @@ export function evaluateReferrerRules(
       const scope: Record<string, unknown> = {
         self,
         referrer: referrer.manifest as unknown as Record<string, unknown>,
+        ...(context.functions ? { [MODULE_CALL_DISPATCH_KEY]: context.functions } : {}),
       };
       if (perEntry) {
         const bound = context.peerBinder

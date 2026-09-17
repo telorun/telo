@@ -82,6 +82,14 @@ Referring to `items` where the collection resolves to a stream is a static error
 
 Where the collection's type cannot be resolved statically (a comprehension, a `filter(...)`), the analyzer stays quiet and the binding is decided at runtime: `items` is bound only when the expanded collection really is an array. A stream there simply leaves the name unbound, and a body referring to it fails when the expression is evaluated — the enforcement is that a live cursor is never bound on any path, not that the failure is well-labelled.
 
+## Inside a durable run
+
+`collection` is a decision, so it is recorded on the first pass and returned verbatim on a replay. It is the sharpest case the durable specification names: the collection is read from a scope carrying observed state, so one that came back in a different order on a resume would leave index N naming a different element — and the journal would hand that turn the result recorded for the element that used to be there, against the same target, with nothing to detect.
+
+Each element's body records under its own prefix, so a resume re-enters the element it stopped in rather than re-running the batch.
+
+**A stream collection cannot be iterated inside a durable body.** A live handle is produced by consuming it, so a recording of one is a recording of nothing — and the run fails where the stream is first recorded, which is the step that produced it, with `ERR_DURABLE_UNJOURNALABLE_VALUE`. Read what you need out of the stream into a plain value first, or move the streaming work outside the durable body.
+
 ## Concurrency
 
 `concurrency: 1` (the default) runs elements strictly in order. A higher value runs that many elements concurrently. The value may be an integer literal or a `!cel` expression over `inputs` (e.g. `!cel "inputs.workers"`); it must resolve to an integer ≥ 1 or the iteration fails with `INVALID_CONCURRENCY`. Execution is **fail-fast**: when an element throws and is not caught inside its own body, no further elements are scheduled and the error propagates.

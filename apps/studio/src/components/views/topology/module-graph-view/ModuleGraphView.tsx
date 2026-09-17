@@ -932,9 +932,9 @@ export function ModuleGraphView({
         const edge = moduleGraph.edges.find((e) => e.id === flowEdge.id);
         if (!edge) continue;
         const from = moduleGraph.nodeById(edge.from);
-        // A data read is not a slot — there is nothing to clear, and the CEL it
-        // came from is edited where it was written.
-        if (!from || edge.class === "data") continue;
+        // A data read or a function call is not a slot — there is nothing to
+        // clear, and the CEL it came from is edited where it was written.
+        if (!from || edge.class === "data" || edge.call !== undefined) continue;
         if (from.module && !isEditableModule(from.module)) continue;
         writes.push({
           source: { kind: from.kind, name: from.name },

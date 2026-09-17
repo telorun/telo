@@ -10,6 +10,7 @@
 import type { CelScopeQuery, CelSegment } from "@telorun/analyzer";
 import type { CompletionResult, ReplaceRange } from "../types.js";
 import { celCursorChain } from "../cel/cursor-chain.js";
+import { describeFunction, functionSignature } from "../cel/module-calls.js";
 import { celFunctions, celMemberSymbols, celRootSymbols, type CelSymbol } from "../cel/symbols.js";
 
 /** The resource a cursor's document addresses. */
@@ -62,6 +63,20 @@ export function celCompletions(
   const prefix = chain?.prefix ?? [];
 
   if (chain?.member) {
+    // `<Module>.` offers the functions that module makes callable here — its own
+    // through `Self` or its name, an import's exported ones through the alias.
+    if (prefix.length === 1 && scope.moduleNames.has(prefix[0]!)) {
+      return scope.moduleFunctionsOf(prefix[0]!).map(({ name, function: fn }) => {
+        const qualified = `${prefix[0]}.${name}`;
+        const about = describeFunction(fn, scope.moduleCallFlags(qualified));
+        return {
+          label: name,
+          kind: "value" as const,
+          detail: functionSignature(qualified, fn).label,
+          ...(about ? { documentation: about } : {}),
+        };
+      });
+    }
     return celMemberSymbols(scope, prefix).map((s) => toResult(s));
   }
 

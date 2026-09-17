@@ -1,0 +1,40 @@
+# Imported twice with the default isolated lifecycle: each import is its own
+# module scope, so each binds `Self.ordinal` to its own instance.
+kind: Telo.Library
+metadata:
+  name: CounterLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose function reports which instance of it answered a
+    call.
+imports:
+  Run: ../../../../modules/run
+exports:
+  resources: [read]
+---
+kind: Telo.Definition
+metadata:
+  name: Ordinal
+  description: Returns the creation ordinal of the instance answering the call.
+capability: Telo.Callable
+params: []
+returns:
+  schema: { type: integer }
+schema:
+  type: object
+  additionalProperties: false
+controllers:
+  - pkg:telo/local/js?path=./ordinal.mjs#Ordinal
+---
+kind: Self.Ordinal
+metadata:
+  name: ordinal
+---
+kind: Run.Sequence
+metadata:
+  name: read
+steps:
+  - name: which
+    value: !cel "Self.ordinal()"
+outputs:
+  ordinal: !cel "steps.which.result"

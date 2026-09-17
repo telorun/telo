@@ -1,0 +1,18 @@
+# Declares and exports the function the library next door re-exports.
+kind: Telo.Library
+metadata:
+  name: InnerFunctionsLib
+  version: 1.0.0
+  description: Fixture library exporting a function another library re-exports.
+exports:
+  resources: [twice]
+---
+kind: Telo.Function
+metadata:
+  name: twice
+params:
+  - name: n
+    schema: { type: integer }
+returns:
+  schema: { type: integer }
+body: !cel "n * 2"

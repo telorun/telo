@@ -33,6 +33,8 @@ import {
   type ResourceContext,
   type ResourceManifest,
 } from "@telorun/sdk";
+import { writeRecordedValue } from "@telorun/sdk";
+import { recordEntry } from "./journal-codec.js";
 import { journalOf } from "./journal-ref.js";
 
 interface DeliverManifest extends ResourceManifest {
@@ -86,11 +88,18 @@ class DeliverController {
 
     // First writer wins at a path, so two deliveries racing on one token settle
     // on one payload rather than the run seeing whichever landed last.
-    await journal.append(parked.run, {
-      path: parked.park.path,
-      kind: "step",
-      value: payload,
-    });
+    //
+    // Recorded through the same codec every other entry is, and it has to be:
+    // the payload IS the wait's step result, so a delivery writing plain JSON
+    // would hand the resumed body a value of a different type from the one this
+    // caller sent — a timestamp as text, an int as a double.
+    await journal.append(
+      parked.run,
+      recordEntry(
+        { path: parked.park.path, kind: "step" },
+        writeRecordedValue(payload, { run: parked.run, path: parked.park.path }),
+      ),
+    );
     await journal.unparkRun(parked.run);
     return { delivered: true, run: parked.run };
   }

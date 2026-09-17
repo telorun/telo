@@ -1,0 +1,257 @@
+kind: Telo.Application
+metadata:
+  name: DurableJournalPostgresValueTypesTest
+  version: 1.0.0
+  description: |
+    A resumed run computes what the first pass did, down to the CEL TYPE of every value —
+    over two `TEXT` columns rather than a file.
+
+    The codec is the engine's and is the same one the file journal's tests cover; what is
+    under test HERE is the store's half of it, which is where a database can quietly
+    intervene: the frame is text carrying quotes and backslashes, it travels as a bound
+    parameter and comes back through `RETURNING` on the write that stored it, and a step
+    that produced nothing is a `NULL` column that must read back as an absent value rather
+    than as `null`.
+
+    THE ASSERTIONS RUN ON THE RESUME, against values the journal handed back, and each is
+    an OVERLOAD nothing of the wrong type satisfies — `string()` has none for a string,
+    `+ 1u` none for an int, and an int one past 2^53 is equal to itself only if it never
+    became a double.
+
+    `noop` covers the empty case from the other side: it returns nothing, so its entry
+    carries no value at all, and the dispatch record says it was REPLAYED rather than run
+    again — which a row whose absent value had been lost could not manage.
+
+    NEEDS A LIVE POSTGRES. Kept out of `tests/` proper for exactly that reason.
+imports:
+  Durable: ../../../durable
+  Local: ../../../durable-local
+  Journal: ../../
+  Postgres: ../../../postgres
+  Values: ../../../durable-local/tests/__fixtures__/durable-values
+  Run: ../../../run
+  Timer: ../../../timer
+  Assert: ../../../assert
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref test
+  - !ref dispatches
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# Its OWN prefix, for the reason the sibling tests state: two journals over one
+# prefix are two applications sharing a store.
+kind: Journal.Journal
+metadata: { name: journal }
+connection: !ref db
+table: !cel "'telo_durable_values_test'"
+---
+# The one value a manifest has no literal for: cel-js reads `{1: 'a'}` as a
+# string-keyed map, so a map with integer keys exists only where a controller
+# built one.
+kind: Values.Tally
+metadata: { name: tally }
+---
+# Returns nothing, and dispatches nothing: an empty collection runs no body.
+kind: Run.Iteration
+metadata: { name: noop }
+collection: []
+steps:
+  - name: never
+    value: unreachable
+---
+kind: Durable.Await
+metadata: { name: approval }
+token: !cel "'pgvalues:' + inputs.ticket"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ok]
+    additionalProperties: false
+    properties:
+      ok: { type: boolean }
+---
+kind: Local.Workflow
+metadata: { name: record }
+journal: !ref journal
+runId: !cel "'pgvalues:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - name: d
+    value: !cel "duration('90m')"
+  - name: t
+    value: !cel "timestamp('2026-01-15T09:30:00.250Z')"
+  # Beyond 2^53: as a double it reads back one less, so equality with itself is
+  # what says it stayed an int64.
+  - name: i
+    value: !cel "9007199254740993"
+  - name: u
+    value: !cel "7u"
+  - name: b
+    value: !cel "bytes('abc')"
+  - name: m
+    invoke: !ref tally
+  # A map carrying the tag key, which the codec has to keep a map: an object
+  # member named `$telo` is otherwise always a tag.
+  - name: tagged
+    value: !cel "{'$telo': 'not a tag', 'a': 1}"
+  # A string that a `TEXT` column and a JSON encoding each have their own opinion
+  # about, so a store that re-escaped the frame would come back with a different
+  # one.
+  - name: awkward
+    value: !cel "'quote\" backslash\\\\ newline\\n tab\\t'"
+  - name: nothing
+    invoke: !ref noop
+
+  - name: wait
+    invoke: !ref approval
+    inputs:
+      ticket: !cel "inputs.ticket"
+
+  # Everything below here runs for the first time on the RESUME.
+  - name: check
+    value:
+      durationSeconds: !cel "steps.d.result.getSeconds()"
+      instant: !cel "string(steps.t.result)"
+      intExact: !cel "steps.i.result == 9007199254740993"
+      uintPlusOne: !cel "steps.u.result + 1u == 8u"
+      bytesSame: !cel "steps.b.result == bytes('abc')"
+      intKeyed: !cel "steps.m.result[2]"
+      tagKeyed: !cel "steps.tagged.result['$telo']"
+      awkward: !cel "steps.awkward.result"
+      delivered: !cel "steps.wait.result.ok"
+      compares: !cel "now() - steps.t.result > steps.d.result"
+---
+kind: Local.Status
+metadata: { name: status }
+journal: !ref journal
+---
+kind: Local.Deliver
+metadata: { name: approve }
+journal: !ref journal
+await: !ref approval
+token: !cel "'pgvalues:' + inputs.ticket"
+payload:
+  ok: true
+---
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 20s
+---
+kind: Assert.Events
+metadata: { name: dispatches }
+filter:
+  - type: "noop.Invoked"
+expect:
+  # ONCE across both executions. The step recorded no value — it produced none —
+  # and the entry is still what says it completed, so the resume replays it.
+  - event: noop.Invoked
+    times: 1
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: ticket
+    value: !cel "'v' + string(nowMillis())"
+
+  - name: start
+    invoke: !ref record
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  # The start is detached, so the body is still on its way to the wait. Read once
+  # before the loop — `while:` is a pre-test.
+  - name: parked
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParked
+    while: !cel "steps.parked.result.status != 'parked'"
+    maxIterations: 200
+    do:
+      - name: parked
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+
+  - name: gap
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 200ms
+  - name: deliver
+    invoke: !ref approve
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: resume
+    invoke: !ref record
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  - name: finished
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: assertCompleted
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        replayed: !cel "steps.finished.result.replayed"
+      expected:
+        status: completed
+        replayed: true
+    invoke: { kind: Assert.Equals }
+
+  - name: assertValues
+    inputs:
+      actual: !cel "steps.finished.result.result.steps.check.result"
+      expected:
+        durationSeconds: 5400
+        instant: "2026-01-15T09:30:00.250Z"
+        intExact: true
+        uintPlusOne: true
+        bytesSame: true
+        intKeyed: two
+        tagKeyed: not a tag
+        awkward: "quote\" backslash\\ newline\n tab\t"
+        delivered: true
+        compares: true
+    invoke: { kind: Assert.Equals }
+
+  # The run's RESULT column is a recorded value too, read straight off
+  # `Local.Result`: still a timestamp, still an int64.
+  - name: assertResult
+    inputs:
+      actual:
+        instant: !cel "steps.finished.result.result.steps.t.result == timestamp('2026-01-15T09:30:00.250Z')"
+        intExact: !cel "steps.finished.result.result.steps.i.result == 9007199254740993"
+      expected:
+        instant: true
+        intExact: true
+    invoke: { kind: Assert.Equals }

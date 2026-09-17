@@ -123,6 +123,34 @@ describe("buildDependencyGraph — parity with the pre-graph walker", () => {
     expect(formatCycle(cycle!)).toContain("Circular dependency detected");
   });
 
+  it("reports each disjoint loop once, the kernel's cycle among them", () => {
+    const loopDef = {
+      kind: "Telo.Definition",
+      metadata: { name: "Loop", module: "test" },
+      capability: "Telo.Invocable",
+      schema: {
+        type: "object",
+        properties: { dep: { "x-telo-ref": { kind: "test.Loop", use: "dependency" } } },
+      },
+    };
+    const resources = [
+      { kind: "test.Loop", metadata: { name: "Head" }, dep: ref("A") },
+      { kind: "test.Loop", metadata: { name: "A" }, dep: ref("B") },
+      { kind: "test.Loop", metadata: { name: "B" }, dep: ref("A") },
+      { kind: "test.Loop", metadata: { name: "C" }, dep: ref("D") },
+      { kind: "test.Loop", metadata: { name: "D" }, dep: ref("E") },
+      { kind: "test.Loop", metadata: { name: "E" }, dep: ref("C") },
+      { kind: "test.Loop", metadata: { name: "Self" }, dep: ref("Self") },
+    ] as unknown as ResourceManifest[];
+    const { cycle, cycles } = buildDependencyGraph(resources, registryOf(loopDef));
+    expect(cycles!.map((c) => c.map((n) => n.name))).toEqual([
+      ["A", "B", "A"],
+      ["C", "D", "E", "C"],
+      ["Self", "Self"],
+    ]);
+    expect(cycles![0]).toEqual(cycle);
+  });
+
   it("keeps a scope-declared target out of boot order", () => {
     const scopedDef = {
       kind: "Telo.Definition",
@@ -182,5 +210,27 @@ describe("buildDependencyGraph — boot targets stay ordered (regression)", () =
         names.indexOf("Main"),
       );
     }
+  });
+});
+
+describe("buildDependencyGraph — module calls", () => {
+  const cel = (source: string) => makeTaggedSentinel("cel", source);
+
+  it("orders a callee before the resource whose expression calls it", () => {
+    const resources = [
+      { kind: "test.Echo", metadata: { name: "caller" }, value: cel("Self.callee(1)") },
+      { kind: "test.Echo", metadata: { name: "callee" } },
+    ] as unknown as ResourceManifest[];
+    const names = buildDependencyGraph(resources, registryOf(echoDef)).order!.map((n) => n.name);
+    expect(names).toEqual(["callee", "caller"]);
+  });
+
+  it("reports a body calling itself as a cycle", () => {
+    const resources = [
+      { kind: "test.Echo", metadata: { name: "loop" }, value: cel("Self.loop(1)") },
+    ] as unknown as ResourceManifest[];
+    const { order, cycle } = buildDependencyGraph(resources, registryOf(echoDef));
+    expect(order).toBeUndefined();
+    expect(cycle!.map((n) => n.name)).toEqual(["loop", "loop"]);
   });
 });

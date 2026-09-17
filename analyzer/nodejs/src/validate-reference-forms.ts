@@ -4,6 +4,7 @@ import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { visitManifest } from "./manifest-visitor.js";
+import { isRefSourceSpelling } from "./ref-sentinel-target.js";
 import { satisfiesValueBranch } from "./reference-field-map.js";
 import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -83,12 +84,22 @@ export function validateReferenceForms(
           // A `${{ }}` reference flowed through CEL is fine; any other bare
           // string at a ref slot is the removed string / dotted-FQN form.
           if (value.includes("${{")) return;
+          const hint = refHint(value);
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
             code: "INVALID_REFERENCE_FORM",
             source: SOURCE,
-            message: `${resourceLabel}: string reference at '${path}' → '${value}' is not supported; write it as '!ref ${refHint(value)}'`,
-            data: { resource: resourceData, filePath, path },
+            message: `${resourceLabel}: string reference at '${path}' → '${value}' is not supported; write it as '!ref ${hint}'`,
+            data: {
+              resource: resourceData,
+              filePath,
+              path,
+              // Only where the hint IS the value: a dotted FQN's last segment is
+              // a guess, and a repair must be applicable without review.
+              ...(hint === value && isRefSourceSpelling(value)
+                ? { fix: { replacement: value, tag: "ref" } }
+                : {}),
+            },
           });
           return;
         }

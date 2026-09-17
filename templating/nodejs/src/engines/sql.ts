@@ -21,10 +21,14 @@ export const sqlEngine: TemplatingEngine = {
   language: "sql",
 
   compile(source, env) {
-    const inner = compileString(source, env.celEnv);
+    const inner = compileString(source, env.celEnv, env.moduleNames);
     return {
       __compiled: true,
       source,
+      // The qualified module calls of every interpolation, for the reason
+      // `refs` are carried: a consumer asking what an expression CALLS cannot
+      // re-derive it from the text without the declaring module's names.
+      calls: typeof inner === "string" ? [] : ((inner as CompiledValue).calls ?? []),
       // The AST-derived root identifiers of every interpolation, carried through
       // rather than dropped. `compileString` has already computed them one line
       // above, and a consumer that asks a compiled value what it READS —

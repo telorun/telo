@@ -1,17 +1,48 @@
 import type { ASTNode } from "@marcbachmann/cel-js";
 import { isLiveSlot } from "@telorun/sdk";
+import { moduleCallOf } from "./module-call.js";
 
 /**
  * Extract all member-access chains from a CEL AST.
  * Returns arrays like ["request", "query", "name"] for `request.query.name`.
  * Chains that start with a call or non-identifier root are ignored.
  * Bound variables in comprehension macros (filter, map, exists, all, exists_one) are excluded.
+ *
+ * A RESOLVED module call contributes no chain for its receiver: `Billing` in
+ * `Billing.format(x)` names a module, not a value, so reading it as a root
+ * would invent a dependency, an undeclared identifier and a `resources` read
+ * that the expression never states. Resolution is `resolveModuleCalls`, on the
+ * tree, before this walk — an unresolved tree still reports the receiver, which
+ * is the right answer for a caller that supplied no module names.
  */
 export function extractAccessChains(node: ASTNode): string[][] {
   const chains: string[][] = [];
   visitNode(node, chains, new Set());
   return chains;
 }
+
+/**
+ * Each resolved module call's arguments as plain member chains, keyed by the
+ * call's node — `null` for an argument that is not one, or that is rooted at a
+ * name the expression itself binds (`xs.map(item, Billing.total(item))`), which
+ * no context schema describes.
+ */
+export function moduleCallArgumentChains(node: ASTNode): Map<ASTNode, Array<string[] | null>> {
+  const out = new Map<ASTNode, Array<string[] | null>>();
+  visitNode(node, [], new Set(), (call, callNode, boundVars) => {
+    out.set(
+      callNode,
+      call.args.map((arg) => extractChain(arg, boundVars)),
+    );
+  });
+  return out;
+}
+
+type ModuleCallVisitor = (
+  call: NonNullable<ReturnType<typeof moduleCallOf>>,
+  node: ASTNode,
+  boundVars: ReadonlySet<string>,
+) => void;
 
 const COMPREHENSION_METHODS = new Set(["filter", "map", "exists", "all", "exists_one"]);
 
@@ -34,10 +65,22 @@ function bindCall(node: ASTNode): { name: string; init: ASTNode; body: ASTNode }
   return { name: nameNode.args as string, init, body };
 }
 
-function visitNode(node: ASTNode, chains: string[][], boundVars: Set<string>): void {
+function visitNode(
+  node: ASTNode,
+  chains: string[][],
+  boundVars: Set<string>,
+  onModuleCall?: ModuleCallVisitor,
+): void {
   const chain = extractChain(node, boundVars);
   if (chain !== null) {
     chains.push(chain);
+    return;
+  }
+
+  const moduleCall = moduleCallOf(node);
+  if (moduleCall) {
+    onModuleCall?.(moduleCall, node, boundVars);
+    for (const arg of moduleCall.args) visitNode(arg, chains, boundVars, onModuleCall);
     return;
   }
 
@@ -45,8 +88,8 @@ function visitNode(node: ASTNode, chains: string[][], boundVars: Set<string>): v
   // enclosing scope, so a name used there still has to resolve there.
   const bind = bindCall(node);
   if (bind) {
-    visitNode(bind.init, chains, boundVars);
-    visitNode(bind.body, chains, new Set(boundVars).add(bind.name));
+    visitNode(bind.init, chains, boundVars, onModuleCall);
+    visitNode(bind.body, chains, new Set(boundVars).add(bind.name), onModuleCall);
     return;
   }
 
@@ -58,7 +101,7 @@ function visitNode(node: ASTNode, chains: string[][], boundVars: Set<string>): v
   ) {
     const receiver = node.args[1];
     const comprehensionArgs = node.args[2];
-    if (isASTNode(receiver)) visitNode(receiver, chains, boundVars);
+    if (isASTNode(receiver)) visitNode(receiver, chains, boundVars, onModuleCall);
     if (
       Array.isArray(comprehensionArgs) &&
       comprehensionArgs.length >= 2 &&
@@ -69,7 +112,7 @@ function visitNode(node: ASTNode, chains: string[][], boundVars: Set<string>): v
       newBoundVars.add((comprehensionArgs[0] as ASTNode).args as string);
       for (let i = 1; i < comprehensionArgs.length; i++) {
         const arg = comprehensionArgs[i];
-        if (isASTNode(arg)) visitNode(arg as ASTNode, chains, newBoundVars);
+        if (isASTNode(arg)) visitNode(arg as ASTNode, chains, newBoundVars, onModuleCall);
       }
     }
     return;
@@ -79,17 +122,17 @@ function visitNode(node: ASTNode, chains: string[][], boundVars: Set<string>): v
   if (Array.isArray(args)) {
     for (const arg of args) {
       if (isASTNode(arg)) {
-        visitNode(arg, chains, boundVars);
+        visitNode(arg, chains, boundVars, onModuleCall);
       } else if (Array.isArray(arg)) {
         for (const item of arg) {
-          if (isASTNode(item)) visitNode(item, chains, boundVars);
+          if (isASTNode(item)) visitNode(item, chains, boundVars, onModuleCall);
         }
       }
     }
   } else if (isASTNode(args)) {
     // Unary operators (`!_`, `-_`) carry their operand as a single node
     // rather than a one-element array, so descend into it directly.
-    visitNode(args, chains, boundVars);
+    visitNode(args, chains, boundVars, onModuleCall);
   }
 }
 
@@ -102,7 +145,7 @@ function isASTNode(v: unknown): v is ASTNode {
  *  chains to declared names treat this as "unknown member". */
 export const INDEX_SEGMENT = "[*]";
 
-function extractChain(node: ASTNode, boundVars: Set<string>): string[] | null {
+function extractChain(node: ASTNode, boundVars: ReadonlySet<string>): string[] | null {
   if (node.op === "id") {
     const name = node.args as string;
     if (boundVars.has(name)) return null;
@@ -119,6 +162,59 @@ function extractChain(node: ASTNode, boundVars: Set<string>): string[] | null {
     if (parent !== null) return [...parent, INDEX_SEGMENT];
   }
   return null;
+}
+
+/** A member access on a module call's result: the call, and the members read
+ *  off it in order (`Billing.total(xs).amount` → `amount`). */
+export interface CallResultAccess {
+  readonly qualified: string;
+  readonly members: readonly string[];
+}
+
+/**
+ * Every member access whose base is a module call, longest first — the chains
+ * {@link extractAccessChains} deliberately skips, since their root is a value
+ * no context schema describes. The caller supplies the call's result schema.
+ */
+export function extractCallResultAccesses(node: ASTNode): CallResultAccess[] {
+  const out: CallResultAccess[] = [];
+  visitAccess(node, out);
+  return out;
+}
+
+function visitAccess(node: ASTNode, out: CallResultAccess[]): void {
+  if (node.op === "." || node.op === "[]") {
+    const members: string[] = [];
+    let base: ASTNode = node;
+    while (base.op === "." || base.op === "[]") {
+      const [obj, field] = base.args as [ASTNode, unknown];
+      members.unshift(base.op === "." ? String(field) : INDEX_SEGMENT);
+      if (base.op === "[]" && isASTNode(field)) visitAccess(field, out);
+      base = obj;
+    }
+    const call = moduleCallOf(base);
+    if (call) {
+      out.push({ qualified: call.qualified, members });
+      for (const arg of call.args) visitAccess(arg, out);
+      return;
+    }
+    visitAccess(base, out);
+    return;
+  }
+  const moduleCall = moduleCallOf(node);
+  if (moduleCall) {
+    for (const arg of moduleCall.args) visitAccess(arg, out);
+    return;
+  }
+  const args = node.args;
+  if (Array.isArray(args)) {
+    for (const arg of args) {
+      if (isASTNode(arg)) visitAccess(arg, out);
+      else if (Array.isArray(arg)) for (const item of arg) if (isASTNode(item)) visitAccess(item, out);
+    }
+  } else if (isASTNode(args)) {
+    visitAccess(args, out);
+  }
 }
 
 interface NullableIssue {
@@ -274,6 +370,14 @@ function walkNullable(
     return;
   }
 
+  // A module call's receiver is a module name, not a value; mirror
+  // extractAccessChains so it is never read as a nullable context field.
+  const moduleCall = moduleCallOf(node);
+  if (moduleCall) {
+    for (const arg of moduleCall.args) walkNullable(arg, nonNull, boundVars, issues, schema);
+    return;
+  }
+
   // `cel.bind` binds a name for its body; mirror extractAccessChains so a bound
   // name is never read as a nullable context field.
   const bind = bindCall(node);
@@ -341,6 +445,24 @@ export function validateChainAgainstSchema(
   for (let i = 0; i < chain.length; i++) {
     const key = chain[i]!;
     if (!current || typeof current !== "object") return null;
+    // An index reads an ELEMENT: an array's `items`, or a map's value schema. What
+    // is below it is checked like any member access, which is what reaches a
+    // typo inside a list of records (`items[0].amont`). An object that also
+    // declares `properties` may be indexed by one of those names, which the
+    // chain does not record, so nothing below it is judged.
+    if (key === INDEX_SEGMENT) {
+      const element =
+        current.items && typeof current.items === "object" && !Array.isArray(current.items)
+          ? current.items
+          : !current.properties &&
+              current.additionalProperties &&
+              typeof current.additionalProperties === "object"
+            ? current.additionalProperties
+            : undefined;
+      if (!element) return null;
+      current = element;
+      continue;
+    }
     const props: Record<string, any> | undefined = current.properties;
     if (!props) return null;
     if (key in props) {

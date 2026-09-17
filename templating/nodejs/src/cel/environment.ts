@@ -1,8 +1,11 @@
 import { Environment } from "@marcbachmann/cel-js";
 import { Stream } from "@telorun/sdk";
 import { CEL_FUNCTIONS, type CelHandlers } from "./catalog.js";
+import { assertCelValueIdentity, SDK_CEL_VALUE_CLASSES } from "./value-identity.js";
 
 export type { CelHandlers } from "./catalog.js";
+
+assertCelValueIdentity(SDK_CEL_VALUE_CLASSES);
 
 const stub = (name: string) => () => {
   throw new Error(

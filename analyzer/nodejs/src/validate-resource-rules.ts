@@ -22,12 +22,17 @@
  * Browser-safe: no Node built-ins.
  */
 import type { ResourceManifest } from "@telorun/sdk";
+import { MODULE_CALL_DISPATCH_KEY, type ModuleCallDispatch } from "@telorun/templating";
+import type { CallableFlags } from "./callable-flags.js";
 import {
   RULE_BUDGET_MS,
   UNTAGGED_CONDITION,
   compileRuleCondition,
+  conditionCallRefusals,
   conditionRefusals,
+  untaggedConditionFix,
 } from "./rule-condition.js";
+import type { DiagnosticFix } from "./types.js";
 import {
   RESOURCE_RULES_ANNOTATION,
   celSourceOf,
@@ -50,6 +55,7 @@ export interface ResourceRuleIssue {
   manifest: ResourceManifest;
   path: string;
   message: string;
+  fix?: DiagnosticFix;
 }
 
 /** One rule's verdict on one resource. */
@@ -119,6 +125,10 @@ export function validateResourceRuleDeclarations(
    * every backend belongs.
    */
   effectiveSchema?: unknown,
+  /** The declaring kind's module names — a condition may call another module's
+   *  function, and classifying such a call against the catalog would refuse it
+   *  as a missing method. */
+  moduleNames?: ReadonlySet<string>,
 ): ResourceRuleIssue[] {
   const own = (manifest as unknown as Record<string, unknown>).schema;
   const schema = effectiveSchema ?? own;
@@ -127,8 +137,8 @@ export function validateResourceRuleDeclarations(
 
   const base = `schema.${RESOURCE_RULES_ANNOTATION}`;
   const issues: ResourceRuleIssue[] = [];
-  const issue = (path: string, message: string): void => {
-    issues.push({ code: "RESOURCE_RULE_INVALID", manifest, path, message });
+  const issue = (path: string, message: string, fix?: DiagnosticFix): void => {
+    issues.push({ code: "RESOURCE_RULE_INVALID", manifest, path, message, ...(fix ? { fix } : {}) });
   };
 
   if (!Array.isArray(raw)) {
@@ -209,14 +219,44 @@ export function validateResourceRuleDeclarations(
     }
 
     if (condition !== undefined && condition.length > 0 && !isTaggedCondition(entry.condition)) {
-      issue(`${at}.condition`, UNTAGGED_CONDITION);
+      issue(`${at}.condition`, UNTAGGED_CONDITION, untaggedConditionFix(condition));
     }
 
     if (condition) {
-      for (const refusal of conditionRefusals(condition)) issue(`${at}.condition`, refusal);
+      for (const refusal of conditionRefusals(condition, moduleNames)) {
+        issue(`${at}.condition`, refusal);
+      }
     }
   });
 
+  return issues;
+}
+
+/**
+ * Every refusal a kind's rule conditions earn through the module calls they make
+ * — asked once the analysis knows every function, since whether a call may run
+ * in a rule is derived from the function it reaches (`conditionCallRefusals`).
+ */
+export function resourceRuleCallIssues(
+  manifest: ResourceManifest,
+  moduleNames: ReadonlySet<string>,
+  flagsOf: (qualified: string) => CallableFlags | undefined,
+): ResourceRuleIssue[] {
+  const raw = readRawResourceRules((manifest as unknown as Record<string, unknown>).schema);
+  if (!Array.isArray(raw)) return [];
+  const issues: ResourceRuleIssue[] = [];
+  raw.forEach((entry, index) => {
+    const condition = isObject(entry) ? celSourceOf(entry.condition) : undefined;
+    if (!condition) return;
+    for (const message of conditionCallRefusals(condition, moduleNames, flagsOf)) {
+      issues.push({
+        code: "RESOURCE_RULE_INVALID",
+        manifest,
+        path: `schema.${RESOURCE_RULES_ANNOTATION}[${index}].condition`,
+        message,
+      });
+    }
+  });
   return issues;
 }
 
@@ -230,6 +270,12 @@ export function validateResourceRuleDeclarations(
 export function evaluateResourceRules(
   manifest: ResourceManifest,
   definitionSchema: unknown,
+  /** The DECLARING kind's module names, not the subject resource's: the
+   *  condition is the kind author's expression. */
+  moduleNames?: ReadonlySet<string>,
+  /** The functions the condition may call, evaluated by the analyzer
+   *  (`function-body-evaluator.ts`). */
+  functions?: ModuleCallDispatch,
 ): ResourceRuleFinding[] {
   const rules = readResourceRules(definitionSchema);
   if (rules.length === 0) return [];
@@ -245,7 +291,7 @@ export function evaluateResourceRules(
     // against the consumer instead.
     if (subjects === undefined) continue;
 
-    const compiled = compileRuleCondition(rule.condition, ["self", "this"]);
+    const compiled = compileRuleCondition(rule.condition, ["self", "this"], moduleNames);
     if ("reason" in compiled) {
       findings.push({ kind: "failed", rule, path: "", reason: compiled.reason });
       continue;
@@ -268,7 +314,12 @@ export function evaluateResourceRules(
       }
       let held: unknown;
       try {
-        held = parsed({ self, this: subject.value, key: subject.key ?? null });
+        held = parsed({
+          self,
+          this: subject.value,
+          key: subject.key ?? null,
+          ...(functions ? { [MODULE_CALL_DISPATCH_KEY]: functions } : {}),
+        });
       } catch (err) {
         findings.push({
           kind: "failed",

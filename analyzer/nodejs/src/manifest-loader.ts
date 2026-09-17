@@ -10,6 +10,7 @@ import type {
 } from "./loaded-types.js";
 import { desugarLoadedFile } from "./inline-imports.js";
 import type { MigrationEntry } from "./migrations/types.js";
+import { moduleCallNamesOfFile } from "./module-call-names.js";
 import { isModuleKind } from "./module-kinds.js";
 import { parseLoadedFile } from "./parse-loaded-file.js";
 import { reconcileModuleVersions } from "./reconcile-module-versions.js";
@@ -121,18 +122,36 @@ const SYSTEM_KINDS = new Set([
 ]);
 
 /** File cache variant tags: compile (c/r) × desugarImports (d/n) × migrate
- *  (m/x). A desugared and a raw load of the same file are distinct entries so
- *  neither sees the wrong manifest tree, and the migration axis is there for
- *  the same reason — the editor's round-trip view and `telo migrate` must see
- *  the author's spelling, everything else the current one. */
-const CACHE_VARIANTS = [
-  "rnx", "rdx", "cnx", "cdx",
-  "rnm", "rdm", "cnm", "cdm",
-] as const;
-function variantKey(options?: LoadOptions): string {
+ *  (m/x), plus the inherited CEL call names a partial compiles with. A desugared
+ *  and a raw load of the same file are distinct entries so neither sees the
+ *  wrong manifest tree, and the migration axis is there for the same reason —
+ *  the editor's round-trip view and `telo migrate` must see the author's
+ *  spelling, everything else the current one.
+ *
+ *  The name axis is OPEN, so the variants are no longer an enumerable set:
+ *  `forget` and `findCachedText` locate a source's entries by the LoadedFile
+ *  they hold rather than by rebuilding every key. */
+function variantKey(options?: LoadOptions, moduleNames?: ReadonlySet<string>): string {
   return `${options?.compile ? "c" : "r"}${options?.desugarImports ? "d" : "n"}${
     options?.migrate ? "m" : "x"
-  }`;
+  }${inheritedNamesKey(moduleNames)}`;
+}
+
+/** The inherited-name half of a cache key.
+ *
+ *  A partial compiles with the names of the module that INCLUDED it, so the same
+ *  file included by two modules with different `imports:` compiles to two
+ *  different programs — one where `Billing.f(x)` is a module call and one where
+ *  it is a method call on an unknown receiver. Keying only on the URL would
+ *  serve the first module's compilation to the second. Sorted, so a declaration
+ *  order change is not a second entry.
+ *
+ *  Empty for every file that derives its own names (an owner), which is what
+ *  keeps the existing eight variants exactly as they were. */
+function inheritedNamesKey(moduleNames?: ReadonlySet<string>): string {
+  return moduleNames === undefined || moduleNames.size === 0
+    ? ""
+    : `|${[...moduleNames].sort().join(",")}`;
 }
 
 export class Loader {
@@ -209,8 +228,8 @@ export class Loader {
     for (const [requestUrl, canonical] of this.urlToSource) {
       if (canonical === source) this.urlToSource.delete(requestUrl);
     }
-    for (const variant of CACHE_VARIANTS) {
-      this.fileCache.delete(`${variant}:${source}`);
+    for (const [key, file] of this.fileCache) {
+      if (file.source === source) this.fileCache.delete(key);
     }
   }
 
@@ -219,9 +238,18 @@ export class Loader {
   /** Read one file via the source chain and parse it into a LoadedFile.
    *  The result is shared with `Loader.fileCache`. Callers that want a
    *  private mutable copy must call `parseLoadedFile` directly with the
-   *  LoadedFile's `text`. */
-  async loadFile(url: string, options?: LoadOptions): Promise<LoadedFile> {
-    const variant = variantKey(options);
+   *  LoadedFile's `text`.
+   *
+   *  `moduleNames` is the INCLUDING module's CEL call names and belongs to
+   *  `loadModule`'s walk over an `include:` list — a partial has no module doc
+   *  of its own to derive them from. A file loaded on its own derives its own,
+   *  so every other caller omits it. */
+  async loadFile(
+    url: string,
+    options?: LoadOptions,
+    moduleNames?: ReadonlySet<string>,
+  ): Promise<LoadedFile> {
+    const variant = variantKey(options, moduleNames);
     const knownSource = this.urlToSource.get(url);
     if (knownSource) {
       const cached = this.fileCache.get(`${variant}:${knownSource}`);
@@ -238,7 +266,7 @@ export class Loader {
       // the file again.
       const altText = this.findCachedText(knownSource);
       if (altText !== undefined) {
-        const reparsed = this.parseAndMaybeDesugar(knownSource, url, altText, options);
+        const reparsed = this.parseAndMaybeDesugar(knownSource, url, altText, options, moduleNames);
         this.fileCache.set(`${variant}:${knownSource}`, reparsed);
         return reparsed;
       }
@@ -256,7 +284,7 @@ export class Loader {
     const cached = this.fileCache.get(cacheKey);
     if (cached && cached.text === text) return cached;
 
-    const loaded = this.parseAndMaybeDesugar(source, url, text, options);
+    const loaded = this.parseAndMaybeDesugar(source, url, text, options, moduleNames);
     this.fileCache.set(cacheKey, loaded);
     return loaded;
   }
@@ -277,22 +305,24 @@ export class Loader {
     requestedUrl: string,
     text: string,
     options?: LoadOptions,
+    moduleNames?: ReadonlySet<string>,
   ): LoadedFile {
     const loaded = parseLoadedFile(source, requestedUrl, text, {
       compile: options?.compile,
       celEnv: this.celEnv,
       migrate: options?.migrate,
       migrations: this.migrations,
+      moduleNames,
     });
     return options?.desugarImports ? desugarLoadedFile(loaded) : loaded;
   }
 
   /** Raw text of any already-cached variant for `source`, so a cache miss on
-   *  one (compile, desugar) variant reparses without a second source read. */
+   *  one (compile, desugar, inherited names) variant reparses without a second
+   *  source read. */
   private findCachedText(source: string): string | undefined {
-    for (const v of CACHE_VARIANTS) {
-      const cached = this.fileCache.get(`${v}:${source}`);
-      if (cached) return cached.text;
+    for (const file of this.fileCache.values()) {
+      if (file.source === source) return file.text;
     }
     return undefined;
   }
@@ -312,9 +342,14 @@ export class Loader {
 
     const picked = this.pick(owner.source);
     const includedFiles = await this.resolveIncludes(owner.source, includePatterns, picked);
+    // A partial's CEL is written in the INCLUDING module's scope, so it compiles
+    // with that module's call names — the owner's `imports:` keys, `Self`, its
+    // `metadata.name` and `Telo`. Derived from the owner alone: a partial may
+    // declare no module doc, no import and no definition.
+    const moduleNames = moduleCallNamesOfFile(owner.manifests);
     const partials: LoadedFile[] = [];
     for (const includedUrl of includedFiles) {
-      const partial = await this.loadFile(includedUrl, options);
+      const partial = await this.loadFile(includedUrl, options, moduleNames);
       this.assertNoSystemKindsInPartialContext(partial, /*isPartial*/ true);
       partials.push(partial);
     }

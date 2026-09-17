@@ -1,0 +1,27 @@
+kind: Telo.Library
+metadata:
+  name: RefusedStamp
+  version: 0.1.0
+  description: A timestamp slot written in a form RFC 3339 does not have.
+imports:
+  Run: ../../../../modules/run
+exports:
+  resources: [stamp]
+---
+kind: Telo.Definition
+metadata:
+  name: Stamp
+  description: Returns the instant it was configured with.
+extends: Run.Value
+schema:
+  type: object
+  required: [at]
+  properties:
+    at: { x-telo-type: Telo.Timestamp }
+base:
+  value: !cel "string(self.at)"
+---
+kind: Self.Stamp
+metadata:
+  name: stamp
+at: "15/01/2026 09:30"

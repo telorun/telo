@@ -1,0 +1,10 @@
+# Runs the library's sequence. The step invoking a callable is invisible to this
+# entry-scoped check, so the kernel's dispatch is what refuses it here.
+kind: Telo.Application
+metadata:
+  name: CallableStepInvokeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.flow

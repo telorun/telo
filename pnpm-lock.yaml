@@ -33,7 +33,7 @@ importers:
   analyzer/nodejs:
     dependencies:
       '@marcbachmann/cel-js':
-        specifier: ^7.6.1
+        specifier: 7.6.1
         version: 7.6.1
       '@telorun/glob':
         specifier: workspace:*
@@ -510,7 +510,7 @@ importers:
   kernel/nodejs:
     dependencies:
       '@marcbachmann/cel-js':
-        specifier: ^7.6.1
+        specifier: 7.6.1
         version: 7.6.1
       '@sinclair/typebox':
         specifier: ^0.34.48
@@ -816,6 +816,21 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
+  modules/durable-local/tests/__fixtures__/durable-values/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/durable/nodejs:
     devDependencies:
       '@telorun/sdk':
@@ -845,6 +860,8 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+
+  modules/embedding/tests/__fixtures__/fake-embedding/nodejs: {}
 
   modules/font/nodejs:
     dependencies:
@@ -1660,9 +1677,6 @@ importers:
 
   modules/type/nodejs:
     dependencies:
-      '@marcbachmann/cel-js':
-        specifier: ^7.6.1
-        version: 7.6.1
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.48
@@ -1925,6 +1939,10 @@ importers:
         version: 5.9.3
 
   sdk/nodejs:
+    dependencies:
+      '@marcbachmann/cel-js':
+        specifier: 7.6.1
+        version: 7.6.1
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1939,7 +1957,7 @@ importers:
   templating/nodejs:
     dependencies:
       '@marcbachmann/cel-js':
-        specifier: ^7.6.1
+        specifier: 7.6.1
         version: 7.6.1
       d3-format:
         specifier: 'catalog:'

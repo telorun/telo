@@ -1,0 +1,15 @@
+# A module call in the Application's `logging:` block, which is resolved while
+# the application loads — before any resource, and so any function, exists.
+kind: Telo.Application
+metadata:
+  name: UnboundLoggingApp
+  version: 1.0.0
+logging:
+  level: !cel "Self.level()"
+---
+kind: Telo.Function
+metadata:
+  name: level
+returns:
+  schema: { type: string }
+body: !cel "'info'"

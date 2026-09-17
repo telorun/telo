@@ -117,6 +117,22 @@ const CEL_IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
  */
 export type NameLevel = "type" | "value";
 
+/**
+ * Whether a name is SPELLED as a type-level one.
+ *
+ * The case tier read off the name alone, with no declaration in hand — which is
+ * what a consumer asking "could this bare identifier denote a module?" has. A
+ * module name and an import alias are type-level and `INVALID_TYPE_NAME` is an
+ * error for a lowercase one, so a receiver that fails this could never be a
+ * module however the manifest is edited, and advice about `imports:` would be
+ * the wrong repair. Only the first character, for the reason
+ * {@link checkName} checks only that one.
+ */
+export function isTypeLevelName(name: string): boolean {
+  const first = name[0];
+  return first !== undefined && first >= "A" && first <= "Z";
+}
+
 /** Document kinds whose `metadata.name` is type-level. Everything else
  *  declaring a name is a resource instance, whose level is decided by its
  *  kind's capability (see {@link NameLevel}). */
@@ -175,8 +191,7 @@ export function checkName(
     };
   }
 
-  const first = name[0]!;
-  if (level === "type" && !(first >= "A" && first <= "Z")) {
+  if (level === "type" && !isTypeLevelName(name)) {
     return {
       tier: "case",
       code: "INVALID_TYPE_NAME",
@@ -187,6 +202,7 @@ export function checkName(
     };
   }
 
+  const first = name[0]!;
   if (level === "value" && !(first >= "a" && first <= "z")) {
     return {
       tier: "case",

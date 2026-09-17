@@ -1,0 +1,42 @@
+# Two resources holding each other, which no boot order can construct: the
+# kernel refuses it with `ERR_CIRCULAR_DEPENDENCY` before initializing either,
+# and this library's own `telo check` reports `DEPENDENCY_CYCLE`. It lives in a
+# LIBRARY so a consumer's entry-scoped check stays silent and the kernel's guard
+# is what refuses it there.
+kind: Telo.Library
+metadata:
+  name: DependencyCycleLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose two resources depend on each other, which the kernel
+    refuses at boot and this library's own `telo check` reports.
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Link
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    next:
+      x-telo-ref:
+        kind: Self.Link
+        use: dependency
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: ok
+invoke: !ref body
+---
+kind: Self.Link
+metadata:
+  name: first
+next: !ref second
+---
+kind: Self.Link
+metadata:
+  name: second
+next: !ref first

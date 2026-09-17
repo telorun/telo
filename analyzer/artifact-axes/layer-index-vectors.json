@@ -9,32 +9,32 @@
     {
       "axis": "abi",
       "value": "137",
-      "error": "selector: abi value '137' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+      "error": "selector: abi value '137' must have the form <family>-<version>, e.g. 'node-137' or 'telo-3'."
     },
     {
       "axis": "abi",
       "value": "node",
-      "error": "selector: abi value 'node' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+      "error": "selector: abi value 'node' must have the form <family>-<version>, e.g. 'node-137' or 'telo-3'."
     },
     {
       "axis": "abi",
       "value": "node-",
-      "error": "selector: abi value 'node-' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+      "error": "selector: abi value 'node-' must have the form <family>-<version>, e.g. 'node-137' or 'telo-3'."
     },
     {
       "axis": "abi",
       "value": "node-1.",
-      "error": "selector: abi value 'node-1.' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+      "error": "selector: abi value 'node-1.' must have the form <family>-<version>, e.g. 'node-137' or 'telo-3'."
     },
     {
       "axis": "abi",
       "value": "node-v137",
-      "error": "selector: abi value 'node-v137' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+      "error": "selector: abi value 'node-v137' must have the form <family>-<version>, e.g. 'node-137' or 'telo-3'."
     },
     {
       "axis": "abi",
       "value": "9node-1",
-      "error": "selector: abi value '9node-1' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'."
+      "error": "selector: abi value '9node-1' must have the form <family>-<version>, e.g. 'node-137' or 'telo-3'."
     },
     {
       "axis": "abi",
@@ -279,7 +279,7 @@
       "layers": [
         { "role": "native", "selector": { "format": "node", "abi": "137" }, "blob": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "integrity": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
       ],
-      "error": { "code": "INVALID_ARTIFACT_SELECTOR", "message": "layers[0]: abi value '137' must have the form <family>-<version>, e.g. 'node-137' or 'telo-2'." }
+      "error": { "code": "INVALID_ARTIFACT_SELECTOR", "message": "layers[0]: abi value '137' must have the form <family>-<version>, e.g. 'node-137' or 'telo-3'." }
     }
   ],
   "filesIntegrity": [

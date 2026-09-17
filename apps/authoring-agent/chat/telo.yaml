@@ -1277,7 +1277,21 @@ system: |
   What is recorded is MORE than the results: a step's resolved inputs, every
   branch predicate, every loop condition and every switch key are recorded too,
   because they are read from a scope carrying live readings and re-deriving one
-  in a fresh process could send a replay down a branch the run never took.
+  in a fresh process could send a replay down a branch the run never took. So is
+  a step's `when:` guard. A composer inside a durable body records its own:
+  `Run.Iteration`'s and `Run.Projection`'s `collection`, and `Run.Loop`'s
+  `condition`, per turn.
+
+  A REPLAYED VALUE KEEPS ITS CEL TYPE — a `timestamp()` comes back a timestamp,
+  an `int` an int64, `bytes` bytes, a map with int keys still keyed by ints — so
+  an expression that worked on the first pass computes the same thing on a
+  resume. The same holds for a `Local.Schedule`'s stored inputs and for the
+  `result` `Local.Result` reads back. The two consequences to write for: a value that is not a CEL value at
+  all fails the step that produced it (`ERR_DURABLE_UNJOURNALABLE_VALUE`), which
+  includes a STREAM, so streaming work — `Run.Iteration` over a stream included —
+  belongs outside the durable body; and a `Run.Loop`'s `maxIterations` is not a
+  decision and is not recorded, so write it over the run's own inputs rather than
+  over a clock.
 
   A START DOES NOT BLOCK. `Local.Workflow` records the run and returns
   `{ runId, status }` — plus `started` or `attached` — and nothing else; the body
@@ -1402,6 +1416,12 @@ system: |
       the element: `x-telo-type: { name: Telo.Stream, of: Telo.Bytes }`.
     - `Telo.TcpPort` / `Telo.UdpPort` — nominal identity over an integer, so
       wiring a UDP port into a TCP slot is a static error.
+    - `Telo.Timestamp` / `Telo.Duration` — CEL's own timestamp and duration, held
+      as the value in CEL (`at + duration('1h')`, `now() - at > ttl`). Written as
+      text: RFC 3339 for a timestamp (any offset read, UTC written), a CEL
+      duration string for a duration (`1h30m` read, `5400s` written).
+    - `Telo.Uint64` — an unsigned 64-bit integer (CEL `uint`), declared over
+      `type: integer`.
 
   A type ARGUMENT is an ordinary schema node, so it nests with no new grammar: a
   built-in name, an inline shape, another parameterized type, or a `!ref` to a
@@ -1416,12 +1436,18 @@ system: |
 
   Three rules follow, all yours to obey when authoring:
 
-    - NEVER write a byte literal. Bytes always arrive by REFERENCE — a `!cel`
-      reading another step's result, a `!ref`, or an `!include-bytes` embed. A
-      literal at such a slot is a hard `telo check` error, because no manifest
-      literal is ever a byte buffer. To author binary by hand, use the string
-      form the kind offers instead (`Fs.FileWrite` takes `content` plus
+    - A literal at a `Telo.Bytes`, `Telo.Timestamp` or `Telo.Duration` slot is
+      TEXT in that type's encoding — base64url without padding for bytes, RFC
+      3339 for a timestamp, a CEL duration string for a duration — and is read
+      into the value where it is written; text the encoding does not read is a
+      `telo check` error. A computed value (`!cel`) must already BE the value.
+      A file's bytes come from an `!include-bytes` embed. Where a kind's slot is
+      `anyOf: [string, bytes]`, a string is always the TEXT branch — use the
+      form the kind offers (`Fs.FileWrite` takes `content` plus
       `encoding: base64`).
+    - An HTTP JSON body writes these as their text (RFC 3339 `Z`, `"5400s"`,
+      base64url) with no response schema needed; a request body field declared
+      `x-telo-type: Telo.Timestamp` arrives in CEL as a timestamp.
     - A union with a byte branch uses `anyOf`, NEVER `oneOf`. Tooling that does
       not know the keyword reads that branch as matching anything, so under
       `oneOf` a plain string would match BOTH branches and fail.
@@ -1434,6 +1460,51 @@ system: |
     - `x-telo-binary: true` and `x-telo-stream: true` are the OLD spellings. A
       published module may still carry them and the runtime rewrites them on
       load, but never WRITE them — write `x-telo-type` instead.
+
+  ## Functions — a computation CEL calls by name
+
+  A calculation repeated across expressions is a FUNCTION: a resource of
+  capability `Telo.Callable`, called from CEL through a module name. Write one in
+  CEL as a `Telo.Function`:
+
+  ```yaml
+  kind: Telo.Function
+  metadata:
+    name: withVat
+    description: Adds VAT to a net price at the given rate.
+  params:
+    - name: net
+      schema: { type: number }
+    - name: rate
+      schema: { type: number, default: 0.24 }
+      optional: true
+  returns:
+    schema: { type: number }
+  body: !cel "net * (1.0 + rate)"
+  ```
+
+    - CALL it as `Self.withVat(item.net)` (or `<ModuleName>.withVat(…)`) for
+      the module's own function, and `<Alias>.withVat(…)` for an imported
+      library's — which works only if that library lists it in
+      `exports.resources`. Arguments are POSITIONAL, in `params` order;
+      optional parameters come last and take their `default` (or `null`).
+    - A signature `schema:` is JSON Schema; name a shape with `!ref Money`,
+      never a bare string.
+    - A body sees ONLY its parameters, the CEL catalog and other functions — no
+      `variables`, `resources`, `steps` or `request`. Pass what it needs.
+    - NEVER write `deterministic:` on a `Telo.Function` — its determinism is
+      DERIVED from what it calls (a body reaching `now()` is
+      non-deterministic, and messages name the chain `Billing.isStale → now()`).
+      Only a native callable kind (`Telo.Definition` with `capability:
+      Telo.Callable` and `controllers:`) may claim `deterministic: true`.
+    - NO recursion: a function calling itself, directly or through another, is
+      a `DEPENDENCY_CYCLE`. NO calls in an Application's `logging:` block or a
+      `Telo.JsonSchema` rule `condition` (`FUNCTION_CALL_UNBOUND`).
+    - A function is not a value: `resources.withVat` does not exist.
+    - To hold a function in a kind's slot, constrain the slot to a callable
+      `Telo.Abstract` that declares `params` / `returns`, never to bare
+      `Telo.Callable`.
+    - `telo cel functions <manifest>` lists what a manifest can call.
 
   ## Bytes and streams over HTTP
 
@@ -2043,15 +2114,13 @@ system: |
     incompletely gets a system that works until the omitted entry matters. Write
     `merge({'access_type': 'offline'}, self.?params.orValue({}))` so the default
     survives whatever the caller passes.
-  - There is NO `now()` and NO `uuid()`. Current time is `nowIso()` (RFC 3339
-    string), `nowMillis()` or `nowSeconds()` (epoch integers), and `today()`;
-    UUIDs are `uuidv4()`, `uuidv7()`, `uuidv1()`, `uuidv5(name, ns)`. For date
-    ARITHMETIC use the timestamp type: `timestamp(nowSeconds())` takes epoch
-    SECONDS, `+ duration('24h')` shifts it, and `string(...)` / `int(...)`
-    convert back out — e.g. an expiry is
-    `!cel "string(timestamp(nowSeconds()) + duration('24h'))"`. Never pass
-    `nowMillis()` to `timestamp()`: both are integers so it type-checks, then
-    fails at runtime on the unit.
+  - `now()` is the current time as a TIMESTAMP — use it for date arithmetic:
+    `now() + duration('24h')`, `now() - at > duration('1h')`. `nowIso()` (RFC
+    3339 string), `nowMillis()` / `nowSeconds()` (epoch integers) and `today()`
+    remain for text and numbers. There is NO `uuid()`: UUIDs are `uuidv4()`,
+    `uuidv7()`, `uuidv1()`, `uuidv5(name, ns)`. `timestamp(n)` takes epoch
+    SECONDS — never pass `nowMillis()` to it: both are integers so it
+    type-checks, then fails at runtime on the unit.
   - A non-deterministic function in a field annotated `x-telo-eval: compile` is
     evaluated ONCE at load and frozen for the process's life. Put `nowIso()` /
     `uuidv4()` where the call happens (a step's `inputs:`, a handler) unless
@@ -2254,7 +2323,11 @@ system: |
   memoised per call, so a binding several decision rows share is computed once
   and one nothing reads is never computed. A binding may not shadow a name
   already in scope (`inputs`, `steps`, `error`, `variables`, `secrets`,
-  `resources`, `ports`) — that is a `BINDING_NAME_RESERVED` error, and a cycle is
+  `resources`, `ports`), and may not be one of the module's own names — an
+  `imports:` alias, `Self`, or the module's `metadata.name` — since a call
+  written `<name>.f(…)` resolves to that module's function and the binding could
+  never be read; either is a `BINDING_NAME_RESERVED` error, and the same holds
+  for a comprehension variable and a `cel.bind` name. A cycle is
   `BINDING_CYCLE`. Bindings run BEFORE any step, so they never see `steps.*`: for
   an intermediate derived from a step's result, write a step carrying `value:`
   instead of `invoke:`. That pure step publishes `steps.<name>.result` like any

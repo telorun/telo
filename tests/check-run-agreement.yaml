@@ -47,6 +47,64 @@ targets:
   - !ref pinnedStagedFileRuns
   - !ref unpinnedStagedAssetAtRuntime
   - !ref pinnedStagedAssetRuns
+  - !ref dependencyCycle
+  - !ref dependencyCycleAtRuntime
+  - !ref moduleCallNotCallable
+  - !ref moduleCallNotCallableAtRuntime
+  - !ref moduleCallMissing
+  - !ref moduleCallMissingAtRuntime
+  - !ref moduleCallNotExported
+  - !ref moduleCallNotExportedAtRuntime
+  - !ref moduleCallReExport
+  - !ref moduleCallReExportRuns
+  - !ref callableSlotStructural
+  - !ref callableSlotStructuralRuns
+  - !ref callableSlotMismatch
+  - !ref callableSlotMismatchAtRuntime
+  - !ref callableSlotOptionalRequiredAtRuntime
+  - !ref callableNativeExtends
+  - !ref callableNativeExtendsRuns
+  - !ref callableCrossModuleChain
+  - !ref callableCrossModuleChainRuns
+  - !ref moduleCallCycle
+  - !ref moduleCallCycleAtRuntime
+  - !ref moduleCallUnboundRule
+  - !ref moduleCallUnboundRuleAtRuntime
+  - !ref moduleCallUnboundLogging
+  - !ref callableInstances
+  - !ref callableInstanceSignatureAtRuntime
+  - !ref callableInstanceTypeNameAtRuntime
+  - !ref callableInstanceClaimAtRuntime
+  - !ref callableInstanceMacroNameAtRuntime
+  - !ref functionDeterministicAtRuntime
+  - !ref callableKinds
+  - !ref callableDefinitionsAtRuntime
+  - !ref callableChildDeterministicAtRuntime
+  - !ref callableChildReturnsAtRuntime
+  - !ref callableClaimerAtRuntime
+  - !ref callableFromFunctionAtRuntime
+  - !ref callableTemplatedAtRuntime
+  - !ref callableNotCallableSignatureAtRuntime
+  - !ref callableNotCallableDeterministicAtRuntime
+  - !ref callableAbstractsAtRuntime
+  - !ref callableSignaturelessSlotAtRuntime
+  - !ref callableUnresolvedShapeAtRuntime
+  - !ref callableStepInvoke
+  - !ref callableStepInvokeAtRuntime
+  - !ref abstractExtendsUnresolved
+  - !ref abstractExtendsWithCapabilityAtRuntime
+  - !ref abstractExtendsInheritingCapabilityAtRuntime
+  - !ref kindContractRefUnresolved
+  - !ref kindContractRefUnresolvedAtRuntime
+  - !ref kindContractRefRuns
+  - !ref contractShapeScopeKindRuns
+  - !ref contractShapeScopeInstanceRuns
+  - !ref exportedInstanceShape
+  - !ref exportedInstanceShapeAtRuntime
+  - !ref exportedInstanceScope
+  - !ref exportedInstanceScopeRuns
+  - !ref templateInputsShapeRootRuns
+  - !ref templateInputsShapeNestedRuns
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -361,5 +419,588 @@ kind: Assert.Manifest
 metadata:
   name: pinnedStagedAssetRuns
 source: ./__fixtures__/check-run-agreement/staged-asset/pinned-app.yaml
+expect:
+  runs: true
+---
+# Resources that depend on each other in a loop, which no boot order can
+# construct — reported where the loop is written, in the kernel's wording…
+kind: Assert.Manifest
+metadata:
+  name: dependencyCycle
+source: ./__fixtures__/check-run-agreement/dependency-cycle/lib/telo.yaml
+expect:
+  errors:
+    - code: DEPENDENCY_CYCLE
+      message: "Circular dependency detected:\n  Self.Link \"first\"\n    → Self.Link \"second\"\n    → Self.Link \"first\""
+---
+# …and refused by the kernel from a consumer whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: dependencyCycleAtRuntime
+source: ./__fixtures__/check-run-agreement/dependency-cycle/telo.yaml
+expect:
+  runFails: "ERR_CIRCULAR_DEPENDENCY"
+---
+# A CEL call through an import alias to an exported resource that is not a
+# function. Reported where the expression is written…
+kind: Assert.Manifest
+metadata:
+  name: moduleCallNotCallable
+source: ./__fixtures__/check-run-agreement/module-call-unresolved/lib/telo.yaml
+expect:
+  errors:
+    - code: FUNCTION_NOT_CALLABLE
+      message: "calls 'Console.writeLine', which names the Console.WriteLine resource 'writeLine'"
+---
+# …and refused by the kernel when it binds the calls of the resource making it,
+# from a consumer whose entry-scoped check is silent. Without the static half
+# this pair is the shape the suite exists for: a clean `telo check` and a
+# manifest that cannot run.
+kind: Assert.Manifest
+metadata:
+  name: moduleCallNotCallableAtRuntime
+source: ./__fixtures__/check-run-agreement/module-call-unresolved/telo.yaml
+expect:
+  runFails: "CEL calls 'Console.writeLine', which names the Console.WriteLine resource 'writeLine'"
+---
+# A call to a function the calling module does not declare…
+kind: Assert.Manifest
+metadata:
+  name: moduleCallMissing
+source: ./__fixtures__/check-run-agreement/module-call-missing/lib/telo.yaml
+expect:
+  errors:
+    - code: FUNCTION_UNRESOLVED
+      message: "calls 'Self.missing', which names no function this module can reach"
+---
+# …refused when the resource making it is created, before any step runs.
+kind: Assert.Manifest
+metadata:
+  name: moduleCallMissingAtRuntime
+source: ./__fixtures__/check-run-agreement/module-call-missing/telo.yaml
+expect:
+  runFails: "this module declares no resource named 'missing'"
+---
+# A call to a function the imported library declares and keeps private…
+kind: Assert.Manifest
+metadata:
+  name: moduleCallNotExported
+source: ./__fixtures__/check-run-agreement/module-call-not-exported/lib/telo.yaml
+expect:
+  errors:
+    - code: FUNCTION_NOT_EXPORTED
+      message: "does not list 'hidden' in its 'exports.resources'"
+---
+# …refused by the kernel through the import's export gate.
+kind: Assert.Manifest
+metadata:
+  name: moduleCallNotExportedAtRuntime
+source: ./__fixtures__/check-run-agreement/module-call-not-exported/telo.yaml
+expect:
+  runFails: "does not list 'hidden' in its 'exports.resources'"
+---
+# A call to a function an import RE-EXPORTS reaches it through the export table,
+# as `!ref Outer.twice` does — checked clean where the call is written…
+kind: Assert.Manifest
+metadata:
+  name: moduleCallReExport
+source: ./__fixtures__/check-run-agreement/module-call-re-export/lib/telo.yaml
+expect: {}
+---
+# …and run by the kernel, from a consumer.
+kind: Assert.Manifest
+metadata:
+  name: moduleCallReExportRuns
+source: ./__fixtures__/check-run-agreement/module-call-re-export/telo.yaml
+expect:
+  runs: true
+---
+# A CEL function held through a slot typed by a callable abstract it does not
+# extend, whose signature stands in for the abstract's — accepted where it is
+# wired…
+kind: Assert.Manifest
+metadata:
+  name: callableSlotStructural
+source: ./__fixtures__/check-run-agreement/callable-slot/lib/telo.yaml
+expect: {}
+---
+# …and called by the kernel with the abstract's parameter names.
+kind: Assert.Manifest
+metadata:
+  name: callableSlotStructuralRuns
+source: ./__fixtures__/check-run-agreement/callable-slot/telo.yaml
+expect:
+  runs: true
+---
+# Functions that cannot stand in for their slot's abstract: one names a parameter
+# differently from the abstract its holder calls it through, one reaches `now()`
+# where the abstract requires determinism, one requires an argument the abstract
+# leaves optional. Refused where they are wired…
+kind: Assert.Manifest
+metadata:
+  name: callableSlotMismatch
+source: ./__fixtures__/check-run-agreement/callable-slot-mismatch/lib/telo.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "parameter 'text' is named 'message' by 'CallableSlotLib.Signer'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "'CallableSlotLib.StableSigner' requires a deterministic function, and 'clocked' is not (clocked → now())"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "`params` requires 3 argument(s) while 'CallableSlotLib.NoncedSigner' requires only 2"
+---
+# …and the renamed parameter fails the first call from a consumer, whose
+# entry-scoped check is silent: the function's call is bound to its signature,
+# so the argument it never received is refused before its body runs.
+# Determinism has no runtime twin: a function that reads the clock runs, and only
+# its verdicts differ.
+kind: Assert.Manifest
+metadata:
+  name: callableSlotMismatchAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-slot-mismatch/telo.yaml
+expect:
+  runFails: "Function 'Telo.Function/renamed': the arguments do not satisfy its declared params: Invalid value passed: {\"key\":\"k\",\"message\":\"m\"}. Error: / is missing required property 'text'"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableSlotOptionalRequiredAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-slot-mismatch/nonce.yaml
+expect:
+  runFails: "Function 'Telo.Function/nonceRequired': the arguments do not satisfy its declared params: Invalid value passed: {\"key\":\"k\",\"message\":\"m\"}. Error: / is missing required property 'nonce'"
+---
+# Native callable kinds inheriting a native controller, by `base:` and by merge —
+# clean where they are written…
+kind: Assert.Manifest
+metadata:
+  name: callableNativeExtends
+source: ./__fixtures__/check-run-agreement/callable-native-extends/telo.yaml
+expect: {}
+---
+# …and called by the kernel through the ancestor's controller.
+kind: Assert.Manifest
+metadata:
+  name: callableNativeExtendsRuns
+source: ./__fixtures__/check-run-agreement/callable-native-extends/telo.yaml
+expect:
+  runs: true
+---
+# A callable kind whose capability is two libraries away, each hop written
+# through an alias only its own file declares — clean where it is written…
+kind: Assert.Manifest
+metadata:
+  name: callableCrossModuleChain
+source: ./__fixtures__/check-run-agreement/callable-cross-module/hmac/telo.yaml
+expect: {}
+---
+# …and registered and called by the kernel, which resolves each hop in the
+# library that declared it.
+kind: Assert.Manifest
+metadata:
+  name: callableCrossModuleChainRuns
+source: ./__fixtures__/check-run-agreement/callable-cross-module/telo.yaml
+expect:
+  runs: true
+---
+# Functions whose bodies call each other. A call is bound when its caller is
+# created, so recursion is a dependency cycle — reported where it is written…
+kind: Assert.Manifest
+metadata:
+  name: moduleCallCycle
+source: ./__fixtures__/check-run-agreement/module-call-cycle/lib/telo.yaml
+expect:
+  errors:
+    - code: DEPENDENCY_CYCLE
+      message: "Circular dependency detected:\n  Telo.Function \"ping\"\n    → Telo.Function \"pong\"\n    → Telo.Function \"ping\""
+---
+# …and refused by the kernel before either function is created.
+kind: Assert.Manifest
+metadata:
+  name: moduleCallCycleAtRuntime
+source: ./__fixtures__/check-run-agreement/module-call-cycle/telo.yaml
+expect:
+  runFails: "ERR_CIRCULAR_DEPENDENCY"
+---
+# A module call in a type rule's condition, which is evaluated against the value
+# alone wherever the shape is checked — no module's functions are bound there…
+kind: Assert.Manifest
+metadata:
+  name: moduleCallUnboundRule
+source: ./__fixtures__/check-run-agreement/module-call-unbound/lib/telo.yaml
+expect:
+  errors:
+    - code: FUNCTION_CALL_UNBOUND
+      message: "calls 'Self.positive', but a type rule's condition is evaluated against the value alone"
+---
+# …so the first value checked against the shape fails, from a consumer whose
+# entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: moduleCallUnboundRuleAtRuntime
+source: ./__fixtures__/check-run-agreement/module-call-unbound/telo.yaml
+expect:
+  runFails: "Type \"telo:UnboundRuleLib/Money\" rule evaluation failed: unbound function 'Self.positive'"
+---
+# A module call in the Application's `logging:` block, resolved while the
+# application loads, before any function exists. A `logging:` block belongs to
+# the entry Application alone, so no consumer can hide it from the entry-scoped
+# check: the run is refused by the kernel's load-time analysis before the block is
+# expanded, and the kernel's own `unbound function` guard stands behind that.
+kind: Assert.Manifest
+metadata:
+  name: moduleCallUnboundLogging
+source: ./__fixtures__/check-run-agreement/module-call-unbound/logging.yaml
+expect:
+  errors:
+    - code: FUNCTION_CALL_UNBOUND
+      message: "calls 'Self.level', but the Application's logging: block is resolved when the application is loaded"
+  runFails: "Manifest validation failed"
+---
+# Function RESOURCES declaring what an instance cannot: a signature no call can
+# be bound against, and a determinism claim. Reported where they are written…
+kind: Assert.Manifest
+metadata:
+  name: callableInstances
+source: ./__fixtures__/check-run-agreement/callable-instances/lib/telo.yaml
+expect:
+  errors:
+    - code: FUNCTION_OPTIONAL_NOT_TRAILING
+      message: "Parameter 'head' is required but follows the optional parameter 'tail'"
+    - code: FUNCTION_TYPE_NAME_FORM
+      message: "names the shape 'Money' as a bare string"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "declares `deterministic` on an instance of a function kind"
+    - code: SCHEMA_VIOLATION
+      message: "'deterministic' is not allowed"
+    - code: FUNCTION_NAME_RESERVED
+      message: "Telo.Function/filter: a function cannot be named 'filter'"
+---
+# …and refused by the kernel as it creates each one, from a consumer whose
+# entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: callableInstanceSignatureAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-instances/telo.yaml
+expect:
+  runFails: "FUNCTION_OPTIONAL_NOT_TRAILING at params[1]"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableInstanceTypeNameAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-instances/telo.yaml
+expect:
+  runFails: "FUNCTION_TYPE_NAME_FORM at params[0].schema"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableInstanceClaimAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-instances/telo.yaml
+expect:
+  runFails: "CALLABLE_DEFINITION_INVALID at deterministic"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableInstanceMacroNameAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-instances/telo.yaml
+expect:
+  runFails: "FUNCTION_NAME_RESERVED at metadata.name: Telo.Function/filter: a function cannot be named 'filter'"
+---
+kind: Assert.Manifest
+metadata:
+  name: functionDeterministicAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-instances/telo.yaml
+expect:
+  runFails: "Resource does not match schema for kind Telo.Function"
+---
+# Callable kinds carrying what a function cannot honour, one clause each —
+# reported where the kinds are written…
+kind: Assert.Manifest
+metadata:
+  name: callableKinds
+source: ./__fixtures__/check-run-agreement/callable-kinds/lib/telo.yaml
+expect:
+  errors:
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "holds 'Telo.LogSink' at 'schema.properties.sink'"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "declares `x-telo-eval: runtime`"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "declares `status:`"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "declares `x-telo-provides-zone`"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "declares `x-telo-scope`"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "declares a step body"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "declares a template body (`resources:`)"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "extends 'Telo.Function', which cannot be specialized"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "`deterministic: \"yes\"` is not a boolean"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "Child: declares `deterministic` but supplies no implementation of its own"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "claims `deterministic: true` while holding a function at 'schema.properties.signer'"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "declares `returns:` but inherits the controller of 'CallableKindsLib.Parent'"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "NotCallable: declares a signature"
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "NotCallable: declares `deterministic` but its capability resolves to 'Telo.Invocable'"
+    - code: X_TELO_REF_CALLABLE_UNTYPED
+      message: "x-telo-ref at 'schema.properties.anyFn' constrains to bare 'Telo.Callable'"
+    - code: X_TELO_REF_CALLABLE_UNTYPED
+      message: "x-telo-ref at 'schema.properties.fn' constrains to bare 'Telo.Callable'"
+    - code: X_TELO_REF_CALLABLE_UNTYPED
+      message: "x-telo-ref at 'schema.properties.function' constrains to 'Telo.Function', a function kind that declares no signature of its own"
+    - code: CONTRACT_TYPE_NOT_FOUND
+      message: "'params[0].schema' names the shape 'NoSuchShape' with `!ref`"
+    - code: CONTRACT_TYPE_NOT_FOUND
+      message: "'returns.schema.items' names the shape 'AlsoMissing' with `!ref`"
+    - code: FUNCTION_OPTIONAL_NOT_TRAILING
+      message: "Parameter 'amount' is required but follows the optional parameter 'tail'"
+    - code: FUNCTION_TYPE_NAME_FORM
+      message: "names the shape 'Money' as a bare string"
+      fix: "Money"
+---
+# …and refused by the kernel as it registers them, from a consumer whose
+# entry-scoped check is silent. The definition controller and the abstract
+# controller are two registration paths, so each is pinned.
+kind: Assert.Manifest
+metadata:
+  name: callableDefinitionsAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "Telo.Definition 'Everything' declares or holds a function in a way the kernel refuses"
+---
+# Every other refused kind, one row per clause, so each kernel guard is pinned
+# by its own reason rather than by the headline alone.
+kind: Assert.Manifest
+metadata:
+  name: callableChildDeterministicAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "Telo.Definition/Child: declares `deterministic` but supplies no implementation of its own"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableChildReturnsAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "Telo.Definition/Child: declares `returns:` but inherits the controller of 'CallableKindsLib.Parent'"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableClaimerAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "Telo.Definition/Claimer: claims `deterministic: true` while holding a function at 'schema.properties.signer'"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableFromFunctionAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "Telo.Definition/FromFunction: extends 'Telo.Function', which cannot be specialized"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableTemplatedAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "Telo.Definition/Templated: declares a template body (`resources:`)"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableNotCallableSignatureAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "Telo.Definition/NotCallable: declares a signature (`params` / `returns`) but its capability resolves to 'Telo.Invocable'"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableNotCallableDeterministicAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "Telo.Definition/NotCallable: declares `deterministic` but its capability resolves to 'Telo.Invocable'"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableAbstractsAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "X_TELO_REF_CALLABLE_UNTYPED at schema.properties.fn"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableSignaturelessSlotAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "X_TELO_REF_CALLABLE_UNTYPED at schema.properties.function"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableUnresolvedShapeAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
+expect:
+  runFails: "CONTRACT_TYPE_NOT_FOUND at returns.schema.items"
+---
+# A step whose `invoke:` names a function. A callable is outside
+# `Telo.Executable`, so the step is refused where it is written…
+kind: Assert.Manifest
+metadata:
+  name: callableStepInvoke
+source: ./__fixtures__/check-run-agreement/callable-step-invoke/lib/telo.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "'Self.Sign' is a Telo.Callable and cannot be invoked in a step"
+---
+# …and by the kernel's dispatch, which finds neither `invoke` nor `run` on the
+# callable's instance. The kind itself registers and its instance is created —
+# a signature and a determinism claim are legal on a callable definition.
+kind: Assert.Manifest
+metadata:
+  name: callableStepInvokeAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-step-invoke/telo.yaml
+expect:
+  runFails: "Resource Self.Sign.sign does not have an invoke or run method"
+---
+# Abstracts whose `extends` names no kind — reported where they are written…
+kind: Assert.Manifest
+metadata:
+  name: abstractExtendsUnresolved
+source: ./__fixtures__/check-run-agreement/abstract-extends-unresolved/lib/telo.yaml
+expect:
+  errors:
+    - code: EXTENDS_UNKNOWN_TARGET
+      message: "Telo.Abstract/Pricer: 'extends' target 'Self.MissingBase'"
+    - code: EXTENDS_UNKNOWN_TARGET
+      message: "Telo.Abstract/Formatter: 'extends' target 'Self.AbsentBase'"
+---
+# …and never registered by the kernel, which defers each until an ancestor that
+# never loads — whether the abstract states its capability or inherits it.
+kind: Assert.Manifest
+metadata:
+  name: abstractExtendsWithCapabilityAtRuntime
+source: ./__fixtures__/check-run-agreement/abstract-extends-unresolved/telo.yaml
+expect:
+  runFails: "Telo.Abstract 'Pricer': 'extends' target 'Self.MissingBase' is not loaded yet"
+---
+kind: Assert.Manifest
+metadata:
+  name: abstractExtendsInheritingCapabilityAtRuntime
+source: ./__fixtures__/check-run-agreement/abstract-extends-unresolved/telo.yaml
+expect:
+  runFails: "Telo.Abstract 'Formatter': 'extends' target 'Self.AbsentBase' is not loaded yet"
+---
+# A kind whose contract names a shape with `!ref` that nothing declares —
+# reported where the kind is written…
+kind: Assert.Manifest
+metadata:
+  name: kindContractRefUnresolved
+source: ./__fixtures__/check-run-agreement/kind-contract-ref/lib/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_TYPE_NOT_FOUND
+      message: "Telo.Definition/Broken: 'outputType' names the type 'Nope' with `!ref`"
+---
+# …and refused by the kernel when its instance is dispatched…
+kind: Assert.Manifest
+metadata:
+  name: kindContractRefUnresolvedAtRuntime
+source: ./__fixtures__/check-run-agreement/kind-contract-ref/broken.yaml
+expect:
+  runFails: "declared `outputType` could not be resolved to a schema"
+---
+# …while the sibling kind naming a declared shape binds its contract through the
+# reference and runs.
+kind: Assert.Manifest
+metadata:
+  name: kindContractRefRuns
+source: ./__fixtures__/check-run-agreement/kind-contract-ref/priced.yaml
+expect:
+  runs: true
+---
+# A library declaring `Money` and importing another library that exports its own
+# `Money`: `telo check` binds a contract's `!ref Money` to the library's own
+# shape, and the kernel used to bind the import's, refusing a value the checker
+# accepted. At kind level, beside a kind naming the import's shape as
+# `!ref Types.Money`, which must keep binding the import's…
+kind: Assert.Manifest
+metadata:
+  name: contractShapeScopeKindRuns
+source: ./__fixtures__/check-run-agreement/contract-shape-scope/kind-level.yaml
+expect:
+  runs: true
+---
+# …and at instance level, where the contract is written on the resource itself.
+kind: Assert.Manifest
+metadata:
+  name: contractShapeScopeInstanceRuns
+source: ./__fixtures__/check-run-agreement/contract-shape-scope/instance-level.yaml
+expect:
+  runs: true
+---
+# An exported instance's input contract naming a shape its library does not
+# export: the consumer's call is checked against that shape…
+kind: Assert.Manifest
+metadata:
+  name: exportedInstanceShape
+source: ./__fixtures__/check-run-agreement/exported-instance-shape/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[0].inputs.amount' do not satisfy priced's declared inputType: /amount must be integer"
+---
+# …as the kernel checks it at dispatch, from a consumer whose entry-scoped check
+# does not read the call.
+kind: Assert.Manifest
+metadata:
+  name: exportedInstanceShapeAtRuntime
+source: ./__fixtures__/check-run-agreement/exported-instance-shape/runtime.yaml
+expect:
+  runFails: "Run.Sequence/priced: inputs do not satisfy the declared inputType: Invalid value passed: {\"amount\":\"not a number\"}. Error: /amount must be integer"
+---
+# A local resource sharing the exported instance's name: each call is checked
+# against the resource it names — clean where it is written, and run by the kernel.
+kind: Assert.Manifest
+metadata:
+  name: exportedInstanceScope
+source: ./__fixtures__/check-run-agreement/exported-instance-shape/scope.yaml
+expect: {}
+---
+kind: Assert.Manifest
+metadata:
+  name: exportedInstanceScopeRuns
+source: ./__fixtures__/check-run-agreement/exported-instance-shape/scope.yaml
+expect:
+  runs: true
+---
+# A template kind's top-level `inputs:` against a body entry whose contract is a
+# named shape: `telo check` reads the literal against the shape, and the kernel
+# decodes it through the same contract, so the entry is handed a timestamp.
+kind: Assert.Manifest
+metadata:
+  name: templateInputsShapeRootRuns
+source: ./__fixtures__/check-run-agreement/template-inputs-shape/root.yaml
+expect:
+  runs: true
+---
+# …and with the named shape nested under a property of an inline contract.
+kind: Assert.Manifest
+metadata:
+  name: templateInputsShapeNestedRuns
+source: ./__fixtures__/check-run-agreement/template-inputs-shape/nested.yaml
+expect:
+  runs: true
+---
+# A CEL value under a map described only by `additionalProperties` — a header
+# map, or a kind's `schema.properties` whose description quotes `${{ … }}` —
+# takes the map's value schema for its stand-in in both halves.
+kind: Assert.Manifest
+metadata:
+  name: celUnderAdditionalPropertiesRuns
+source: ./__fixtures__/check-run-agreement/cel-under-additional-properties.yaml
 expect:
   runs: true

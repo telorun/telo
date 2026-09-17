@@ -109,11 +109,18 @@ inputType:
   type: object
   properties:
     text: { type: string }
+    # The two types a JSON hop changes underfoot. Declared so both halves of the
+    # round trip are typed, and asserted by the controller so a fixture that lost
+    # the encoding fails loudly rather than echoing text that still matches.
+    at: { x-telo-type: Telo.Timestamp }
+    key: { x-telo-type: Telo.Bytes }
 outputType:
   type: object
   required: [echoed]
   properties:
     echoed: { type: string }
+    at: { x-telo-type: Telo.Timestamp }
+    key: { x-telo-type: Telo.Bytes }
     via: { type: string }
 schema:
   type: object

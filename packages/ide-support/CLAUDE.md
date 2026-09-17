@@ -17,3 +17,4 @@ Loaded when working under `packages/ide-support/`. Repo-wide rules live in the r
 - Which cascade of a broken import is held back → `src/diagnostics/graph-diagnostics.ts`
 - CEL symbols, completion, hover, go-to-declaration → `src/cel/symbols.ts`, `src/completions/cel-completions.ts`, the CEL branch of `src/hover/build-hover.ts`, `src/definition/locate-step.ts`, `src/definition/locate-context-binding.ts`
 - Which schema vocabulary completion offers where → `src/completions/prop-keys.ts`
+- Module calls → `src/cel/module-calls.ts` (completion after `<Module>.`, hover with signature and determinism, `buildSignatureHelp`, go-to-declaration, renaming a function with its call sites); every answer comes from `CelScope.moduleFunction` / `moduleFunctionsOf`

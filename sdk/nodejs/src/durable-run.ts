@@ -31,7 +31,8 @@
  */
 
 import type { InvokeContext, ZoneEntry } from "./cancellation.js";
-import { InvokeError } from "./invoke-error.js";
+import { InvokeError, isInvokeError } from "./invoke-error.js";
+import { encodeTypedFrame } from "./typed-frame.js";
 import { VALUE_TYPES, VALUE_TYPE_BINDINGS } from "./value-type.js";
 import type { OpenZoneAttributes, ZoneAttributes } from "./zone-attribute.js";
 
@@ -240,6 +241,18 @@ export interface ZoneJournalingMode {
 }
 
 /**
+ * The segment an invoke step's `when:` guard is recorded under, beside the step's
+ * own path.
+ *
+ * A body the step dispatches hangs its steps DIRECTLY under that path, so a
+ * record keyed by a word — `when` — shares a namespace with a nested step of the
+ * same name, and on the first pass that step was handed the guard's value
+ * instead of running. `@` is outside the step-name grammar, so no step can spell
+ * this segment.
+ */
+export const GUARD_DECISION_SEGMENT = "@when";
+
+/**
  * Compose a step path — the journal's key, and the reason journaling lives in
  * the step engine at all.
  *
@@ -368,28 +381,82 @@ export function journalingSuppressed(
 }
 
 /**
- * Reject a value that cannot survive being recorded and read back.
+ * Evaluate a control-flow decision, recording it when a run is durable.
  *
- * **`JSON.stringify` is not the test, and believing it was left the gate open.**
- * A live handle has no enumerable state, so `JSON.stringify(stream)` returns
- * `{}` and throws nothing — the one case the spec names first would have been
- * recorded as an empty object and replayed as one, which is silent corruption
- * rather than the loud failure §6 requires. The static half is deliberately only
- * a warning ("the runtime is the gate"), so a gate that cannot see the case
- * leaves it unenforced end to end.
+ * ONE function, because the set of decision points is closed by the grammar and
+ * a composer that spells the lookup itself is a member of that set nobody can
+ * see. The step engine's own `if` / `while` / `switch` / `value` go through here,
+ * and so does a composer that DRIVES its own body — `Run.Iteration`'s collection,
+ * `Run.Loop`'s per-turn condition — which the engine never sees: the composer
+ * evaluates them before it hands a step list over, so they are decision points
+ * the engine cannot reach on its behalf.
  *
- * So a live value is detected STRUCTURALLY, by the value-type vocabulary's own
- * binding table: an entry declaring `live: true` names a binding, and the host's
- * table maps that binding to the constructor an assertion tests against. No type
- * name is written here, so a live type added later is covered by its entry
- * alone — the same reason the static rule reads the `live` field rather than
- * naming `Telo.Stream`.
+ * Outside a durable run it is `compute()` and nothing else, so a composer pays
+ * nothing for being journalable. Inside a COLLAPSED region it is also
+ * `compute()`: the region re-runs whole on resume, which is exactly what its
+ * author's attribute claims is safe.
+ */
+export async function decideValue<T>(
+  ctx: ZoneReadingContext,
+  invokeCtx: InvokeContext | undefined,
+  path: string,
+  kind: DurableDecisionKind,
+  compute: () => T,
+): Promise<T> {
+  const handle = durableHandleOf(invokeCtx);
+  if (!handle || journalingSuppressed(ctx, invokeCtx, handle)) return compute();
+  return handle.decide(path, kind, compute);
+}
+
+/**
+ * Reject a value that cannot survive being recorded and read back **as the value
+ * it was**, CEL type included.
+ *
+ * **`JSON.stringify` is not the test, and believing it was left the gate open
+ * twice.** A live handle has no enumerable state, so `JSON.stringify(stream)`
+ * returns `{}` and throws nothing — the one case the spec names first would have
+ * been recorded as an empty object and replayed as one. And every value carrying
+ * a `toJSON` stringifies happily while reading back as something else: a class
+ * instance returns as a plain object, so a run that recorded one replays against
+ * a value of a different type with nothing reported anywhere. The static half is
+ * deliberately only a warning ("the runtime is the gate"), so a gate that cannot
+ * see a case leaves it unenforced end to end.
+ *
+ * So the test is the TYPED FRAME (spec §6.1), the one codec every internal
+ * durable boundary writes through: encodable means the value is in the CEL value
+ * domain and reads back one-to-one. The frame's own refusal carries the JSON
+ * Pointer of the offending node INSIDE the value, which is re-raised here beside
+ * the step path — the two answer different questions ("which step" and "which
+ * field of what it produced") and a reader needs both.
+ *
+ * A live value is still detected first, and structurally, by the value-type
+ * vocabulary's own binding table: an entry declaring `live: true` names a
+ * binding, and the host's table maps that binding to the constructor an
+ * assertion tests against. No type name is written here, so a live type added
+ * later is covered by its entry alone — the same reason the static rule reads
+ * the `live` field rather than naming `Telo.Stream`. The frame would refuse a
+ * stream too, as an instance of a class that is not a CEL value; what the
+ * dedicated check adds is the one message that says *why* a handle cannot be
+ * recorded and what to do instead.
  *
  * Lives in the SDK rather than in a backend because it is a property of the
  * CONTRACT (spec §6), not of one journal: a backend that skipped it would be
  * non-conforming in a way nothing else could catch.
+ *
+ * Returns the frame text it had to produce to decide, so a backend writing the
+ * value down records THAT rather than encoding the same value a second time;
+ * `undefined` when there is no value to record.
  */
-export function assertJournalable(value: unknown, where: { run: string; path: string }): void {
+export function assertJournalable(
+  value: unknown,
+  where: { run: string; path: string },
+): string | undefined {
+  // A step whose target returned nothing has NO value to record, and that is a
+  // property of the entry rather than of a value: the frame refuses a bare
+  // `undefined` by design, because `undefined` is not a CEL value and a codec
+  // that invented a form for it would no longer be one-to-one. The entry simply
+  // carries no value, and replays as `undefined`.
+  if (value === undefined) return undefined;
   const live = findLiveValue(value, new Set());
   if (live) {
     throw new InvokeError(
@@ -403,14 +470,17 @@ export function assertJournalable(value: unknown, where: { run: string; path: st
     );
   }
   try {
-    JSON.stringify(value);
+    return encodeTypedFrame(value);
   } catch (err) {
+    const valuePath = isInvokeError(err)
+      ? ((err.data as { path?: unknown } | undefined)?.path as string | undefined)
+      : undefined;
     throw new InvokeError(
       "ERR_DURABLE_UNJOURNALABLE_VALUE",
-      `Run '${where.run}': the value produced at '${where.path}' cannot be serialized ` +
+      `Run '${where.run}': the value produced at '${where.path}' cannot be recorded ` +
         `(${(err as Error).message}). A durable step's result and every decision it reaches ` +
-        `must survive being written and read back.`,
-      { run: where.run, path: where.path },
+        `must survive being written and read back as the same value, CEL type included.`,
+      { run: where.run, path: where.path, ...(valuePath === undefined ? {} : { valuePath }) },
       { cause: err },
     );
   }

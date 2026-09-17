@@ -1,0 +1,8 @@
+# Imports the library next door. Its entry-scoped check is silent about the
+# library's abstracts by design, so what refuses them here is the kernel.
+kind: Telo.Application
+metadata:
+  name: AbstractExtendsApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

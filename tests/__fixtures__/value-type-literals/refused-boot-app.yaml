@@ -1,0 +1,26 @@
+# A boot target's inline step: `telo check` reads its `inputs:` against the
+# target's contract, and the boot runner dispatches the same map, so text RFC
+# 3339 does not read is refused by both.
+kind: Telo.Application
+metadata:
+  name: RefusedBootApp
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+targets:
+  - name: bootStamp
+    invoke: !ref stampInput
+    inputs:
+      at: "15/01/2026 09:30"
+---
+kind: Run.Value
+metadata:
+  name: stampInput
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [at]
+    properties:
+      at: { x-telo-type: Telo.Timestamp }
+value: !cel "string(inputs.at)"

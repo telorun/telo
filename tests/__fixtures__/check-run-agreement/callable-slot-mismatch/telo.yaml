@@ -1,0 +1,21 @@
+# Invokes the library's verifier, whose held function is called by the names its
+# slot's abstract declares.
+kind: Telo.Application
+metadata:
+  name: CallableSlotMismatchApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Run: ../../../../modules/run
+targets:
+  - !ref verify
+---
+kind: Run.Sequence
+metadata:
+  name: verify
+steps:
+  - name: signed
+    invoke: !ref Lib.verifier
+    inputs:
+      key: k
+      message: m

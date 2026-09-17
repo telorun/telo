@@ -686,7 +686,7 @@ schema:
               Optional CEL expression shaping the invocable's `result` into what is
               fed back to the model: a string, or a content part / list of content
               parts (`{type: image, data, mediaType}`) for a multimodal result.
-              Omit to JSON-stringify the output.
+              Omit to write the output as plain JSON.
             # Not `type: string`: the runtime has always accepted content parts
             # (see `agent-tools.ts`), so constraining the evaluated CEL to a
             # string rejected a shipped feature — visible only once the value is

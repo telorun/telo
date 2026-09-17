@@ -9,7 +9,6 @@
 import {
   DurableSuspension,
   InvokeError,
-  assertJournalable,
   type DurableDecisionKind,
   type DurableRunHandle,
   type DurableTarget,
@@ -17,7 +16,16 @@ import {
   type ZoneEntry,
   type ZoneJournalingMode,
 } from "@telorun/sdk";
+import { writeRecordedValue } from "@telorun/sdk";
+import { recordEntry, recordedValue } from "./journal-codec.js";
 import type { DurableJournal, JournalEntry, RecordedTarget } from "./journal.js";
+
+/** One recorded fact, with its value already read back out of the record — so a
+ *  replay and the execution that WROTE the entry hand out the same value. */
+interface ReplayedEntry {
+  target?: RecordedTarget;
+  value?: unknown;
+}
 
 /** What a run learns about itself while executing — reported as observed state
  *  by the workflow, because whether a deployment got exactly-once or
@@ -34,8 +42,9 @@ export interface RunObservations {
 export class LocalRunHandle implements DurableRunHandle {
   /** Entries already on disk when this execution started, by path. A resume
    *  reads them ONCE rather than per step: the journal is append-only within a
-   *  run, and re-reading per lookup would turn an N-step replay into N reads. */
-  readonly #recorded = new Map<string, JournalEntry>();
+   *  run, and re-reading per lookup would turn an N-step replay into N reads.
+   *  Decoded once here too, for the same reason. */
+  readonly #recorded = new Map<string, ReplayedEntry>();
   readonly observations: RunObservations = {
     replayedSteps: 0,
     collapsedRegions: 0,
@@ -61,7 +70,14 @@ export class LocalRunHandle implements DurableRunHandle {
       // First write wins here too, mirroring the store's own rule — so a journal
       // that somehow holds two entries at one path replays the same one the
       // store would return.
-      if (!handle.#recorded.has(entry.path)) handle.#recorded.set(entry.path, entry);
+      if (handle.#recorded.has(entry.path)) continue;
+      // Decoded HERE, which is where a journal this runtime cannot read is
+      // refused: opening the handle is what a resume does first, so an entry in
+      // an unknown codec version stops the run before any step is answered for.
+      handle.#recorded.set(entry.path, {
+        ...(entry.target === undefined ? {} : { target: entry.target }),
+        ...recordedValue(runId, entry),
+      });
     }
     return handle;
   }
@@ -97,29 +113,31 @@ export class LocalRunHandle implements DurableRunHandle {
     // ship `target` instead. Recorded on COMPLETION, so a step interrupted
     // mid-flight has no entry and re-executes rather than being skipped.
     const result = await execute();
-    return this.#write({
-      path,
-      kind: "step",
-      value: result,
-      // The whole identity is recorded, `module` included: it is what
-      // distinguishes two libraries that each declare a resource of the same
-      // name, and a mismatch check that never had it could not see the case.
-      ...(target
-        ? {
-            target: {
-              kind: target.kind,
-              name: target.name,
-              ...(target.module === undefined ? {} : { module: target.module }),
-            },
-          }
-        : {}),
-    });
+    return this.#write(
+      {
+        path,
+        kind: "step",
+        // The whole identity is recorded, `module` included: it is what
+        // distinguishes two libraries that each declare a resource of the same
+        // name, and a mismatch check that never had it could not see the case.
+        ...(target
+          ? {
+              target: {
+                kind: target.kind,
+                name: target.name,
+                ...(target.module === undefined ? {} : { module: target.module }),
+              },
+            }
+          : {}),
+      },
+      result,
+    );
   }
 
   async decide<T>(path: string, kind: DurableDecisionKind, compute: () => T): Promise<T> {
     const recorded = this.#recorded.get(path);
     if (recorded) return recorded.value as T;
-    return (await this.#write({ path, kind: "decision", decision: kind, value: compute() })) as T;
+    return (await this.#write({ path, kind: "decision", decision: kind }, compute())) as T;
   }
 
   /**
@@ -188,19 +206,34 @@ export class LocalRunHandle implements DurableRunHandle {
     return this.journal.writesInside?.(zone) ?? false;
   }
 
-  /** Record an entry and return the value that WON. First-writer-wins is the
-   *  store's rule, so the caller must use what came back rather than assume its
-   *  own was kept — two processes racing on one step converge on one result
-   *  instead of each continuing with its own. */
-  async #write(entry: JournalEntry): Promise<unknown> {
+  /**
+   * Record an entry and return the value that WON.
+   *
+   * First-writer-wins is the store's rule, so the caller must use what came back
+   * rather than assume its own was kept — two processes racing on one step
+   * converge on one result instead of each continuing with its own.
+   *
+   * The value handed back is the DECODE of what was stored, never the value that
+   * went in, and that is what keeps a first pass and a replay agreeing about
+   * what a step produced: both read the record. Returning the live value here
+   * would let a `Map` become a plain object one execution later, at a step whose
+   * result nothing else had changed.
+   */
+  async #write(entry: Omit<JournalEntry, "v" | "value">, value: unknown): Promise<unknown> {
     // The shared assertion, not a local `JSON.stringify` — a live handle has no
-    // enumerable state, so stringifying one succeeds and returns `{}`. Every
-    // backend needs the same check, and it is a property of the contract rather
-    // than of this journal.
-    assertJournalable(entry.value, { run: this.runId, path: entry.path });
-    const stored = await this.journal.append(this.runId, entry);
-    this.#recorded.set(entry.path, stored);
-    return stored.value;
+    // enumerable state, so stringifying one succeeds and returns `{}`, and every
+    // value with a `toJSON` stringifies happily while reading back as something
+    // else. The frame it produced to decide is the one recorded.
+    const frame = writeRecordedValue(value, { run: this.runId, path: entry.path });
+    // Read off what was STORED rather than off what was offered, target
+    // included: the entry that won may be another execution's.
+    const stored = await this.journal.append(this.runId, recordEntry(entry, frame));
+    const recorded = {
+      ...(stored.target === undefined ? {} : { target: stored.target }),
+      ...recordedValue(this.runId, stored),
+    };
+    this.#recorded.set(entry.path, recorded);
+    return recorded.value;
   }
 }
 

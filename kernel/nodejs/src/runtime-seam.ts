@@ -136,7 +136,9 @@ function toCheckDiagnostic(diagnostic: AnalysisDiagnostic): CheckDiagnostic {
     column: diagnostic.range?.start?.character,
     ...(stamp?.resource ? { resource: `${stamp.resource.kind}/${stamp.resource.name}` } : {}),
     ...(stamp?.path ? { path: stamp.path } : {}),
-    ...(fix ? { fix: { replacement: fix.replacement } } : {}),
+    ...(fix
+      ? { fix: { replacement: fix.replacement, ...(fix.tag ? { tag: fix.tag } : {}) } }
+      : {}),
   };
 }
 

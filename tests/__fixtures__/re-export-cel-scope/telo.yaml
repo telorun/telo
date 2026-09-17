@@ -1,0 +1,12 @@
+# Reaches the inner library's sequence through the re-exporting one. Its check
+# must be clean: the expression belongs to `Inner`, whose own file declares the
+# alias its receiver names, and a dependency's expression is reported by that
+# dependency's own `telo check`.
+kind: Telo.Application
+metadata:
+  name: ReExportCelScopeApp
+  version: 1.0.0
+imports:
+  Outer: ./outer
+targets:
+  - !ref Outer.innerGreet

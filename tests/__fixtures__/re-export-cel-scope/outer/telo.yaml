@@ -1,0 +1,12 @@
+# Passes the inner library's instance on. It declares NO `Text` alias, which
+# is what makes the regression visible: read in this module's scope, the inner
+# expression's receiver is an identifier nothing declares.
+kind: Telo.Library
+metadata:
+  name: Outer
+  version: 1.0.0
+  description: Fixture library that re-exports the inner library's exported sequence.
+imports:
+  Inner: ../inner
+exports:
+  resources: [Inner.innerGreet]

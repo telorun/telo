@@ -355,10 +355,13 @@ export const VALUE_BRAND_BASE: Record<string, string> = valueBrandBases();
 
 /** Read a `json`-represented value type's brand off a schema, or undefined.
  *  An `instance` type is not a brand — it replaces the JSON layer rather than
- *  refining it, so it carries its binding's CEL type instead. */
+ *  refining it, so it carries its binding's CEL type instead — and neither is a
+ *  `json` type declaring its own `celType`. */
 export function brandOfSchema(schema: Record<string, any> | undefined): string | undefined {
   const entry = valueTypeOf(schema);
-  return entry && entry.representation === "json" ? entry.name : undefined;
+  return entry && entry.representation === "json" && entry.celType === undefined
+    ? entry.name
+    : undefined;
 }
 
 /** Map a JSON Schema type annotation to a CEL type string. */
@@ -386,12 +389,17 @@ export function jsonSchemaToCelType(schema: Record<string, any> | undefined): st
     case "object":
       return "map";
     case "null":
-      return "null_type";
+      return "null";
   }
   if (schema.properties) return "map";
   if (schema.items) return "list";
   return "dyn";
 }
+
+/** The CEL types an `instance` value carries, one per binding. */
+const INSTANCE_CEL_TYPES: ReadonlySet<string> = new Set(
+  Object.values(VALUE_TYPE_BINDINGS).map((binding) => binding.celType),
+);
 
 /** Check whether a CEL return type is compatible with a JSON Schema type constraint. */
 export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<string, any>): boolean {
@@ -408,15 +416,24 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
     if (fieldBrand) return fieldBrand === celType;
     celType = sourceBase;
   }
-  // An `instance` representation has no JSON Schema type to compare against, so
-  // an expression carrying its binding's CEL type is accepted on that ground
-  // alone. This ADDS a case and never removes one: a mismatch falls through to
-  // the rules below rather than being rejected here, so nothing that checks
-  // today stops checking, and the `bytes` row still accepts a byte expression at
-  // a plain `type: string` slot.
+  // An `instance` slot holds exactly its binding's value, so at a non-live one an
+  // expression of any other concrete CEL type is a mismatch — the assertion would
+  // refuse it at dispatch. A live slot is exempt from validation there, so it
+  // keeps the permissive reading, whatever the expression's type.
   const slotEntry = valueTypeOf(schema);
-  if (slotEntry?.representation === "instance" && celTypeOfValueType(slotEntry) === celType) {
-    return true;
+  const liveSlot = slotEntry?.representation === "instance" && slotEntry.live === true;
+  if (slotEntry?.representation === "instance") {
+    if (celTypeOfValueType(slotEntry) === celType) return true;
+    if (!liveSlot) return false;
+  }
+  // And the reverse: an instance's CEL type is no JSON type, so it satisfies no
+  // slot that declares one. Derived from the binding table, so a new instance
+  // type needs no row here.
+  if (
+    INSTANCE_CEL_TYPES.has(celType) &&
+    (schema.type !== undefined || (slotEntry !== undefined && !liveSlot))
+  ) {
+    return false;
   }
   if (!schema.type && !schema.anyOf && !schema.oneOf && !schema.allOf) return true;
   // `allOf` is a conjunction and says too little to judge from a single CEL
@@ -436,10 +453,7 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
     bool: ["boolean"],
     list: ["array"],
     map: ["object"],
-    null_type: ["null"],
-    timestamp: ["string"],
-    duration: ["string"],
-    bytes: ["string"],
+    null: ["null"],
   };
   const compatibleWith = accepted[celType];
   if (!compatibleWith) return true; // unknown CEL type — don't flag
@@ -533,6 +547,12 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
   // declares none, because nothing validates it at dispatch.
   const placeholder = valueTypePlaceholder(schema) ?? liveValuePlaceholder(schema);
   if (placeholder !== undefined) return placeholder;
+  // A `json` value type written without a `type:` stands in as its base, so the
+  // keyword's range check sees a number rather than nothing.
+  const jsonEntry = valueTypeOf(schema);
+  if (jsonEntry?.base !== undefined && schema.type === undefined) {
+    return celPlaceholderForSchema({ ...rawSchema, type: jsonEntry.base });
+  }
   if (schema.default !== undefined) return schema.default;
   // An enum-constrained field needs a placeholder drawn from the enum: the
   // type-based fallbacks below ("" for a string, 0 for a number) satisfy `type`
@@ -655,6 +675,48 @@ export function resolveRefIn(
 /** Looks a registered schema up by its `$id`. */
 export type ExternalSchemaResolver = (ref: string) => Record<string, any> | undefined;
 
+/**
+ * A copy of `schema` with every named shape it references — at the root and at
+ * any depth — replaced by the shape itself.
+ *
+ * For the walks that only read `properties` / `items` and follow no reference:
+ * CEL member-access checking and null-guard analysis see a `$ref` as a node that
+ * says nothing, so a typo below `items: !ref Money` went unreported. A reference
+ * already being expanded higher up is left as it is, which is what keeps a
+ * recursive shape finite; document-local `#/…` references belong to the document
+ * they sit in and are left too.
+ */
+const REFERENCE_KEYS: ReadonlySet<string> = new Set(["$ref", "kind", "name", "alias"]);
+
+export function inlineNamedShapes(
+  schema: Record<string, any>,
+  resolve: ExternalSchemaResolver,
+): Record<string, any> {
+  const expand = (node: unknown, open: ReadonlySet<string>): unknown => {
+    if (Array.isArray(node)) return node.map((item) => expand(item, open));
+    if (!node || typeof node !== "object") return node;
+    const record = node as Record<string, any>;
+    const ref = record.$ref;
+    if (typeof ref === "string" && !ref.startsWith("#") && !open.has(ref)) {
+      const target = resolve(ref);
+      if (target) {
+        // The reference's own keys go; a `title` or `description` beside it stays.
+        const siblings: Record<string, any> = {};
+        for (const [key, value] of Object.entries(record)) {
+          if (!REFERENCE_KEYS.has(key)) siblings[key] = value;
+        }
+        return expand({ ...target, ...siblings }, new Set(open).add(ref));
+      }
+    }
+    const out: Record<string, any> = {};
+    for (const [key, value] of Object.entries(record)) {
+      out[key] = key.startsWith("x-telo-") ? value : expand(value, open);
+    }
+    return out;
+  };
+  return expand(schema, new Set()) as Record<string, any>;
+}
+
 /** Collect property schemas from top-level `properties` and all `oneOf`/`anyOf` sub-schemas. */
 /**
  * The `oneOf` / `anyOf` branch a value is written against, when exactly one fits.
@@ -735,6 +797,26 @@ export function collectProperties(schema: Record<string, any>): Record<string, a
     }
   }
   return props;
+}
+
+/** The schema of a key `properties` does not declare: the first matching
+ *  `patternProperties` entry (a TypeBox record compiles to one), else an object
+ *  `additionalProperties`. Shared with the kernel's placeholder walk so both
+ *  halves describe a map value the same way. */
+export function undeclaredKeySchema(
+  schema: Record<string, any>,
+  key: string,
+): Record<string, any> | undefined {
+  const patterns = schema.patternProperties;
+  if (patterns && typeof patterns === "object") {
+    for (const [pattern, sub] of Object.entries(patterns as Record<string, unknown>)) {
+      if (sub && typeof sub === "object" && new RegExp(pattern, "u").test(key)) {
+        return sub as Record<string, any>;
+      }
+    }
+  }
+  const addl = schema.additionalProperties;
+  return addl && typeof addl === "object" ? (addl as Record<string, any>) : undefined;
 }
 
 /** Deep-clone `data`, replacing every pure CEL template string (`${{ expr }}`) with a
@@ -837,14 +919,13 @@ export function substituteCelFields(
     );
   }
   if (data !== null && typeof data === "object") {
+    // An instance — a decoded timestamp, bytes — is a value, not a container.
+    const proto = Object.getPrototypeOf(data);
+    if (proto !== Object.prototype && proto !== null) return data;
     const props = collectProperties(resolved);
-    const addlProps =
-      resolved.additionalProperties && typeof resolved.additionalProperties === "object"
-        ? (resolved.additionalProperties as Record<string, any>)
-        : undefined;
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      result[k] = substituteCelFields(v, (props[k] ?? addlProps ?? {}) as Record<string, any>, root, {
+      result[k] = substituteCelFields(v, (props[k] ?? undeclaredKeySchema(resolved, k) ?? {}) as Record<string, any>, root, {
         onSubstitute,
         path: path ? `${path}.${k}` : k,
         external,

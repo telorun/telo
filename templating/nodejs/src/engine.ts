@@ -1,11 +1,25 @@
 import type { Environment } from "@marcbachmann/cel-js";
 import type { CompiledValue } from "@telorun/sdk";
+import type { ModuleCallFlags } from "./cel/diagnose.js";
+import type { ModuleCallTypeResolver } from "./cel/module-call.js";
 
 /** Compile-time environment passed to `engine.compile`. Engines that need to
  *  parse against a CEL environment (the `cel` engine) read it from `celEnv`;
  *  engines that resolve fully at compile time (`literal`) ignore it. */
 export interface CompileEnv {
   readonly celEnv: Environment;
+  /**
+   * The names a call's receiver may be for the call to resolve as a MODULE
+   * call — the declaring module's `imports:` keys, `Self`, its `metadata.name`
+   * and `Telo`.
+   *
+   * An INPUT, not something an engine derives: they are known from the module's
+   * own file before any import resolves, and a partial compiles with the names
+   * of the module that includes it. Absent means "no module names here", which
+   * leaves every call an ordinary catalog call — the reading every caller had
+   * before module functions existed.
+   */
+  readonly moduleNames?: ReadonlySet<string>;
 }
 
 /** Analyze-time environment passed to `engine.analyze`. The walker resolves
@@ -33,6 +47,38 @@ export interface AnalyzeEnv {
    * did before it existed.
    */
   readonly rootsDeclared?: boolean;
+
+  /** The declaring module's names — see {@link CompileEnv.moduleNames}. An
+   *  analysis that does not supply them reads a module call as an ordinary
+   *  method call, so the compile and analyze halves must be given the same set
+   *  or they disagree about what the expression says. */
+  readonly moduleNames?: ReadonlySet<string>;
+
+  /** The type a module call yields, when the caller can resolve one. Absent
+   *  leaves every module call `dyn` — its arguments are still checked where
+   *  they are written, and nothing is claimed about its result. */
+  readonly moduleCallType?: ModuleCallTypeResolver;
+
+  /** The JSON Schema a module call's RESULT carries, when the caller can resolve
+   *  one — what member access on the result (`Billing.total(xs).amont`) is
+   *  checked against. Absent leaves such access unchecked. */
+  readonly moduleCallResult?: (qualified: string) => Record<string, unknown> | undefined;
+
+  /** The derived flags of the module function a qualified call reaches, carried
+   *  onto its {@link CallSite} — boolean wherever the call resolves, so a
+   *  consumer reading `deterministic === false` sees every impure one. */
+  readonly moduleCallFlags?: ModuleCallFlags;
+
+  /**
+   * Whether a bare identifier could denote a MODULE at all.
+   *
+   * The host's naming rule, which this package does not own: an unknown call
+   * receiver is repaired by an `imports:` alias only where the name could be
+   * one, and telling the author of `dbb.query(1)` to add an import is advice
+   * for a different mistake. Absent leaves the unknown-identifier message
+   * unqualified, which is what it says with no host rule to consult.
+   */
+  readonly couldNameModule?: (name: string) => boolean;
 }
 
 /** A mechanically applicable repair for a diagnostic. `replacement` is the
@@ -68,11 +114,26 @@ export interface EngineDiagnostic {
  *  call), and policy that depends on manifest context does not belong in a
  *  templating engine. */
 export interface CallSite {
+  /** The name called. For a module call this is the QUALIFIED name as written
+   *  (`Billing.format`), which is what keeps a module function and a catalog
+   *  function of the same bare name apart in every consumer that keys on it. */
   readonly name: string;
   /** How it was written — `f(x)` vs `x.f()`. */
   readonly form: "global" | "receiver";
+  /** Set when the receiver is one of the declaring module's names, so the call
+   *  resolved to a module function rather than to the catalog. Its determinism
+   *  and host-backedness are not this engine's to know — they follow from the
+   *  callable the name resolves to — so they are carried only as the host's
+   *  {@link AnalyzeEnv.moduleCallFlags} reports them. */
+  readonly moduleCall?: true;
   /** Argument count as written; excludes the receiver. */
   readonly arity: number;
+  /** For a module call, each argument as the analysis saw it: the type the
+   *  checker gave it (absent when the expression did not type-check) and, when
+   *  the argument is a plain member chain (`variables.price`), that chain — so a
+   *  caller holding the callee's signature can compare a declared shape rather
+   *  than a CEL type alone. */
+  readonly arguments?: readonly CallArgument[];
   /** Offsets of the whole call within the analyzed source. */
   readonly start: number;
   readonly end: number;
@@ -80,6 +141,17 @@ export interface CallSite {
    *  name resolves to nothing, or to a function carrying no determinism
    *  metadata — absent is not "deterministic". */
   readonly deterministic?: boolean;
+  /** Whether the resolved function is supplied by the host rather than written
+   *  in CEL — a catalog function the kernel implements natively, or a module
+   *  function reaching native code — so nothing without that host can run it.
+   *  `undefined` under the same rule as {@link CallSite.deterministic}. */
+  readonly hostBacked?: boolean;
+}
+
+/** One argument of a module call. */
+export interface CallArgument {
+  readonly type?: string;
+  readonly chain?: readonly string[];
 }
 
 /** What one `analyze` call establishes about one source. Everything derivable

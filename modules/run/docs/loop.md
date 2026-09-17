@@ -46,6 +46,12 @@ steps:
       id: !cel "inputs.jobId"
 ```
 
+## Inside a durable run
+
+`condition` is a decision, so it is recorded once per turn and returned verbatim on a replay. That matters because the condition is the one expression the loop turns on: it reads a scope carrying observed state and clock readings, so a resume that re-evaluated it could stop a turn early or run one more, against a journal recorded for the turns the run actually took. Each turn's decision is keyed separately, so a resume re-enters the turn it stopped in.
+
+`maxIterations` is not recorded, so write it as a value that does not move — a literal, or an expression over the run's own inputs.
+
 ## Result
 
 When invoked (e.g. as a `Run.Sequence` step), a `Run.Loop` returns its `outputs` evaluated over the final state — `steps.*` (the last iteration), `iteration` (final count), `previous`, and `inputs`. With no `outputs`, it returns the last iteration's step map.

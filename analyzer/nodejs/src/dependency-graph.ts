@@ -1,12 +1,19 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
-import { buildCallGraph, projectToPairs, type ResourceGraphNode } from "./call-graph.js";
+import {
+  buildCallGraph,
+  projectToPairs,
+  type CallGraph,
+  type ResourceGraphNode,
+} from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { readSuppliedResources } from "./resource-input.js";
 
 export interface ResourceNode {
   kind: string;
   name: string;
+  /** The declaration this node was built from. */
+  manifest: ResourceManifest;
 }
 
 export interface DependencyGraph {
@@ -16,6 +23,9 @@ export interface DependencyGraph {
   /** The cycle path when a circular dependency is detected.
    *  The first and last elements are the same resource, tracing the full loop. */
   cycle?: ReadonlyArray<ResourceNode>;
+  /** One cycle path per strongly connected component that loops, `cycle` among
+   *  them — so disjoint loops are each reported. Present iff `cycle` is. */
+  cycles?: ReadonlyArray<ReadonlyArray<ResourceNode>>;
 }
 
 const nodeKey = (kind: string, name: string) => `${kind}\0${name}`;
@@ -47,8 +57,9 @@ export function buildDependencyGraph(
   registry: DefinitionRegistry,
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
+  callGraph?: CallGraph,
 ): DependencyGraph {
-  const graph = buildCallGraph(resources, registry, { aliases, aliasesByModule });
+  const graph = callGraph ?? buildCallGraph(resources, registry, { aliases, aliasesByModule });
 
   const nodes = new Map<string, ResourceNode>();
   for (const node of graph.nodes.values()) {
@@ -56,7 +67,11 @@ export function buildDependencyGraph(
     const resource = node as ResourceGraphNode;
     // A scope-declared resource is created when its scope opens, never at boot.
     if (resource.scoped) continue;
-    nodes.set(resource.id, { kind: resource.kind, name: resource.name });
+    nodes.set(resource.id, {
+      kind: resource.kind,
+      name: resource.name,
+      manifest: resource.manifest,
+    });
   }
 
   const deps = projectToPairs(graph, {
@@ -105,7 +120,14 @@ export function buildDependencyGraph(
     return { order: sorted };
   }
 
-  return { cycle: findCycle(nodes, deps) };
+  const cycleKeys = findCycle(nodes.keys(), deps);
+  const toNodes = (keys: string[]) => keys.map((k) => nodes.get(k)!);
+  const cycles = stronglyConnectedLoops(nodes, deps).map((component) =>
+    component.has(cycleKeys[0]!)
+      ? cycleKeys
+      : findCycle(component, deps, component),
+  );
+  return { cycle: toNodes(cycleKeys), cycles: cycles.map(toNodes) };
 }
 
 /**
@@ -127,14 +149,16 @@ export function formatCycle(cycle: ReadonlyArray<ResourceNode>): string {
 
 // --- Internals ---
 
-/** DFS cycle detection — returns the cycle path with the repeated start node appended. */
+/** DFS cycle detection — returns the cycle path with the repeated start node
+ *  appended, following only edges into `within` when given. */
 function findCycle(
-  nodes: Map<string, ResourceNode>,
+  keys: Iterable<string>,
   deps: Map<string, Set<string>>,
-): ResourceNode[] {
+  within?: ReadonlySet<string>,
+): string[] {
   type State = "unvisited" | "visiting" | "visited";
   const state = new Map<string, State>();
-  for (const key of nodes.keys()) state.set(key, "unvisited");
+  for (const key of keys) state.set(key, "unvisited");
 
   const stack: string[] = [];
 
@@ -143,6 +167,7 @@ function findCycle(
     stack.push(key);
 
     for (const dep of deps.get(key) ?? []) {
+      if (within && !within.has(dep)) continue;
       if (state.get(dep) === "visiting") {
         const start = stack.indexOf(dep);
         return [...stack.slice(start), dep];
@@ -158,14 +183,79 @@ function findCycle(
     return null;
   }
 
-  for (const key of nodes.keys()) {
-    if (state.get(key) === "unvisited") {
+  for (const [key, s] of state) {
+    if (s === "unvisited") {
       const result = dfs(key);
-      if (result) return result.map((k) => nodes.get(k)!);
+      if (result) return result;
     }
   }
 
   return [];
+}
+
+/**
+ * Every strongly connected component that contains a loop (more than one node,
+ * or one node depending on itself), each and all of them in node insertion
+ * order. Tarjan's algorithm, iterative so a long dependency chain cannot
+ * exhaust the call stack.
+ */
+function stronglyConnectedLoops(
+  nodes: Map<string, ResourceNode>,
+  deps: Map<string, Set<string>>,
+): Array<Set<string>> {
+  const index = new Map<string, number>();
+  const low = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const found: Array<{ first: number; members: Set<string> }> = [];
+  const position = new Map<string, number>();
+  let i = 0;
+  for (const key of nodes.keys()) position.set(key, i++);
+  let counter = 0;
+
+  for (const root of nodes.keys()) {
+    if (index.has(root)) continue;
+    const work: Array<{ key: string; next: Iterator<string> }> = [];
+    const open = (key: string) => {
+      index.set(key, counter);
+      low.set(key, counter);
+      counter++;
+      stack.push(key);
+      onStack.add(key);
+      work.push({ key, next: (deps.get(key) ?? new Set<string>()).values() });
+    };
+    open(root);
+    while (work.length > 0) {
+      const frame = work[work.length - 1]!;
+      const step = frame.next.next();
+      if (!step.done) {
+        const dep = step.value;
+        if (!nodes.has(dep)) continue;
+        if (!index.has(dep)) open(dep);
+        else if (onStack.has(dep)) {
+          low.set(frame.key, Math.min(low.get(frame.key)!, index.get(dep)!));
+        }
+        continue;
+      }
+      work.pop();
+      const parent = work[work.length - 1];
+      if (parent) low.set(parent.key, Math.min(low.get(parent.key)!, low.get(frame.key)!));
+      if (low.get(frame.key) !== index.get(frame.key)) continue;
+      const members = new Set<string>();
+      let member: string;
+      do {
+        member = stack.pop()!;
+        onStack.delete(member);
+        members.add(member);
+      } while (member !== frame.key);
+      if (members.size > 1 || deps.get(frame.key)?.has(frame.key)) {
+        const ordered = [...members].sort((a, b) => position.get(a)! - position.get(b)!);
+        found.push({ first: position.get(ordered[0]!)!, members: new Set(ordered) });
+      }
+    }
+  }
+
+  return found.sort((a, b) => a.first - b.first).map((c) => c.members);
 }
 
 /**
@@ -195,7 +285,7 @@ function addResourceInputEdges(
     const supplied = readSuppliedResources(m);
     if (!alias || Object.keys(supplied).length === 0) continue;
     const key = nodeKey(m.kind, alias);
-    nodes.set(key, { kind: m.kind, name: alias });
+    nodes.set(key, { kind: m.kind, name: alias, manifest: m });
     if (!deps.has(key)) deps.set(key, new Set<string>());
     imports.push({ key, supplied });
   }

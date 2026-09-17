@@ -88,12 +88,50 @@ export {
   publishedOwnFields,
   resolveParent,
 } from "./extends-resolution.js";
-export type { ContractDirection, DefResolver } from "./extends-resolution.js";
+export type {
+  ContractDirection,
+  DefResolver,
+  ReplacingDeclaration,
+  SignatureDirection,
+} from "./extends-resolution.js";
+// The callable signature, and the rules a callable kind is subject to. Shared
+// with the kernel so its definition-registration refusal and `telo check` cannot
+// drift — the `buildEvalPaths` / `evalPathCovers` precedent.
+export {
+  CALLABLE_CAPABILITY,
+  callableBodyField,
+  claimsDeterministic,
+  parameterSchemaOf,
+  FUNCTION_KIND,
+  isCallableKind,
+  parameterContextProperties,
+  readDeterministic,
+  readParams,
+  readReturns,
+  resolveSignature,
+  signatureDeclarer,
+  signatureSchemaOf,
+} from "./callable-signature.js";
+export type {
+  CallableSignature,
+  SignatureParam,
+  SignatureResult,
+} from "./callable-signature.js";
+export { callArgumentBinding } from "./callable-binding.js";
+export type { ArityRefusal, CallArgumentBinding } from "./callable-binding.js";
+export {
+  callableInstanceIssues,
+  callableKindIssues,
+  declaredSignatureIssues,
+  validateCallableDeclarations,
+} from "./validate-callable-kinds.js";
+export type { CallableKindIssue } from "./validate-callable-kinds.js";
 export { validateSensitiveSlots } from "./validate-sensitive-slots.js";
 export type { SensitiveSlotIssue } from "./validate-sensitive-slots.js";
 export {
   defaultBearingPaths,
   declaredScalarPaths,
+  normalizeDeclaredScalars,
   PERMISSIVE_CONTRACT,
   resolveContract,
   resolveContractSchema,
@@ -129,6 +167,11 @@ export type {
   StepGraphNode,
 } from "./call-graph.js";
 export { celResourceReads } from "./cel-access-chains.js";
+// The pair a host outside this package needs to read an expression the way the
+// checker does: build the table once, then ask it per manifest. The file's own
+// derivations (`accessChains`, `moduleCallNamesOfFile`, `ROOT_MODULE_KEY`) are
+// load-time internals with no reader beyond the analyzer.
+export { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
 export { declarationSignature, diffManifests } from "./manifest-diff.js";
 export type {
   DiffEntry,
@@ -192,6 +235,7 @@ export {
   ANNOTATION_KEYWORDS,
   registerTeloKeywords,
   valueTypeKeyword,
+  VALUE_TYPE_KEYWORD_VERSION,
 } from "./value-type-keyword.js";
 export {
   applyTextEdits,
@@ -347,10 +391,12 @@ export type { RefSlotIssue } from "./validate-ref-slots.js";
 export { validateValueTypeSlots } from "./validate-value-type-slots.js";
 export type { ValueTypeSlotIssue } from "./validate-value-type-slots.js";
 export {
+  celPlaceholderForSchema,
   checkSchemaCompatibility,
   collectProperties,
   resolveRefIn,
   selectUnionBranch,
+  undeclaredKeySchema,
 } from "./schema-compat.js";
 export type { CompatibilityResult, ExternalSchemaResolver } from "./schema-compat.js";
 export {
@@ -400,6 +446,8 @@ export type { ParsedModuleVersion } from "./module-version-order.js";
 export { reconcileModuleVersions } from "./reconcile-module-versions.js";
 export type { VersionReconciliation } from "./reconcile-module-versions.js";
 export { residualEntrySchema, residualEntrySchemaMap } from "./residual-schema.js";
+export { decodePlainLiterals } from "./plain-literal-decoding.js";
+export type { DerivedSlot, DerivedSlotContext } from "./derived-slots.js";
 export {
     buildDocumentPositions,
     buildLineOffsets,
@@ -522,6 +570,8 @@ export type { CelNode, CelSegment } from "./cel-ast.js";
 // one function.
 export { CelScopeResolver } from "./cel-scope.js";
 export type { CelScope, CelScopeInputs, CelSiteRef } from "./cel-scope.js";
+export type { FunctionParameter, ResolvedFunction } from "./module-function-index.js";
+export { renderChain, type CallableFlags } from "./callable-flags.js";
 export { CelScopeQuery } from "./cel-scope-query.js";
 export type { CelScopeQueryContext, ContextDeclarationSite } from "./cel-scope-query.js";
 // The pairing of a registry and the manifests it analyzed — the one seam a host
@@ -540,6 +590,7 @@ export type {
     AnalysisOptions,
     DiagnosticData,
     DiagnosticFix,
+    DiagnosticFixTag,
     LoaderInitOptions,
     LoadOptions,
     ManifestSource,

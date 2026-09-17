@@ -1,6 +1,9 @@
 import {
   InvokeError,
   StepEngine,
+  baseStepPath,
+  decideValue,
+  stepPath,
   turnStepPath,
   type InvokeContext,
   type ResourceContext,
@@ -74,7 +77,16 @@ class RunProjection {
       inputs,
       String(this.resource.metadata.name),
       async () => {
-        const items = this.ctx.expandValue(this.resource.collection, { inputs });
+        // Journaled for the reason `Run.Iteration`'s collection is: re-derived on
+        // a resume, element N can name a different item while the journal hands
+        // its turn the result recorded for the old one.
+        const items = await decideValue(
+          this.ctx,
+          invokeCtx,
+          stepPath(baseStepPath(invokeCtx), "collection"),
+          "collection",
+          () => this.ctx.expandValue(this.resource.collection, { inputs }),
+        );
         if (!Array.isArray(items)) {
           throw new InvokeError(
             "INVALID_COLLECTION",

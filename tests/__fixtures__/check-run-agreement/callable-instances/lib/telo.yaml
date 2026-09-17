@@ -1,0 +1,71 @@
+# Function RESOURCES declaring what a function instance cannot: a signature no
+# call could be bound against, a determinism claim, which belongs to the kind
+# supplying the code, and a name CEL expands as a macro. Each is refused by this library's `telo check` and,
+# through the same rules, by the kernel when it creates the resource.
+kind: Telo.Library
+metadata:
+  name: CallableInstancesLib
+  version: 1.0.0
+  description: >-
+    Fixture library declaring function resources whose signatures or claims
+    no caller could rely on.
+---
+kind: Telo.Function
+metadata:
+  name: trailing
+  description: Declares a required parameter after an optional one.
+params:
+  - name: tail
+    schema: { type: string }
+    optional: true
+  - name: head
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "head"
+---
+kind: Telo.Function
+metadata:
+  name: bareShape
+  description: Names a parameter's shape as a bare string.
+params:
+  - name: amount
+    schema: Money
+returns:
+  schema: { type: string }
+body: !cel "'x'"
+---
+kind: Telo.Function
+metadata:
+  name: claimed
+  description: Claims determinism, which a body function derives instead.
+deterministic: true
+returns:
+  schema: { type: string }
+body: !cel "'x'"
+---
+kind: Telo.Function
+metadata:
+  name: filter
+  description: Takes the name of a CEL macro.
+returns:
+  schema: { type: string }
+body: !cel "'x'"
+---
+kind: Telo.Definition
+metadata:
+  name: Native
+  description: A native callable kind whose schema leaves room for configuration.
+capability: Telo.Callable
+returns:
+  schema: { type: string }
+schema:
+  type: object
+  additionalProperties: true
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+---
+kind: Self.Native
+metadata:
+  name: nativeClaim
+deterministic: true

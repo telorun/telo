@@ -19,8 +19,8 @@ use std::ffi::c_void;
 
 /// Bumped on any layout or semantic change to the structs below. The host
 /// refuses a controller reporting a different version rather than reading a
-/// mismatched vtable.
-pub const TELO_ABI_VERSION: u32 = 2;
+/// mismatched vtable. Version 3 added the function vtable ([`TeloFunction`]).
+pub const TELO_ABI_VERSION: u32 = 3;
 
 /// Status returned by fallible ABI calls: `0` on success, non-zero on failure
 /// with the out-parameter holding a JSON `{"code","message"}` object.
@@ -158,3 +158,49 @@ pub fn entry_symbol(entry: &str) -> String {
 
 /// The entry a `pkg:cargo` PURL with no `#fragment` resolves to.
 pub const DEFAULT_ENTRY: &str = "default";
+
+/// What a native function reaches through its host during `create`. `ctx` is
+/// opaque to the function and passed back verbatim.
+///
+/// Deliberately smaller than [`TeloHost`]: a function reaches no environment,
+/// resource or I/O through Telo, and what `create` allocates is released by
+/// `destroy`, so the one capability is logging.
+#[repr(C)]
+pub struct TeloFunctionHost {
+    pub ctx: *mut c_void,
+    /// Emit a log record at `severity` (the OpenTelemetry severity number) with
+    /// `message` as UTF-8 text.
+    pub log: unsafe extern "C" fn(ctx: *mut c_void, severity: i32, message: *const u8, message_len: usize),
+}
+
+/// The vtable a native function `cdylib` exports, one symbol per function entry
+/// named by [`function_symbol`].
+///
+/// Configuration arrives as the plain JSON of the resource; arguments and
+/// results cross as typed frames (`kernel/specs/durable-execution.md` §6), so a
+/// timestamp, an int64, a uint64 or bytes keeps its CEL type both ways.
+#[repr(C)]
+pub struct TeloFunction {
+    pub abi_version: u32,
+    /// Build one function instance from its resource's plain JSON. Returns an
+    /// opaque handle, or null with `out_err` populated.
+    pub create: unsafe extern "C" fn(
+        config: *const u8,
+        config_len: usize,
+        host: *const TeloFunctionHost,
+        out_err: *mut TeloBuf,
+    ) -> *mut c_void,
+    /// Call the instance with the typed frame of its arguments, an object keyed
+    /// by parameter name. Writes the typed frame of the result into `out` on
+    /// [`TELO_OK`], an error object otherwise.
+    pub call: unsafe extern "C" fn(handle: *mut c_void, args: *const u8, args_len: usize, out: *mut TeloBuf) -> i32,
+    /// Release an instance produced by `create` — the inverse of `create`.
+    pub destroy: unsafe extern "C" fn(handle: *mut c_void, out_err: *mut TeloBuf) -> i32,
+    /// Release a buffer the function allocated.
+    pub free: unsafe extern "C" fn(buf: TeloBuf),
+}
+
+/// Exported symbol name for a function entry — the `#fragment` of its PURL.
+pub fn function_symbol(entry: &str) -> String {
+    format!("telo_function__{entry}")
+}

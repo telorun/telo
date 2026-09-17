@@ -85,6 +85,22 @@ describe("validateChainAgainstSchema", () => {
     expect(validateChainAgainstSchema(["anything"], open)).toBeNull();
   });
 
+  it("judges nothing below an index into an object that declares properties", () => {
+    // `settings["theme"].mode` may name the declared `theme`, not a value of the
+    // map's open half.
+    const settings = {
+      type: "object",
+      properties: {
+        settings: {
+          type: "object",
+          properties: { theme: { type: "object", properties: { mode: { type: "string" } } } },
+          additionalProperties: { type: "object", properties: { enabled: { type: "boolean" } } },
+        },
+      },
+    };
+    expect(validateChainAgainstSchema(["settings", "[*]", "mode"], settings)).toBeNull();
+  });
+
   it("flags member access past a live-typed property", () => {
     const streamSchema = {
       type: "object",

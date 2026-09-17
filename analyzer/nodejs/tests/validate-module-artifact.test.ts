@@ -55,7 +55,7 @@ describe("controller selector qualifiers", () => {
       definition("K", [
         "pkg:telo/local/dylib?path=./rust/a.so&os=linux&arch=amd64",
         "pkg:telo/local/dylib?path=./rust/b.so&os=linux&arch=amd64&abi=node-137",
-        "pkg:telo/local/dylib?path=./rust/c.so&os=linux&arch=amd64&abi=telo-2",
+        "pkg:telo/local/dylib?path=./rust/c.so&os=linux&arch=amd64&abi=telo-3",
       ]),
     ]);
     expect(diagnostics.map((d) => [d.code, d.data?.path])).toEqual([

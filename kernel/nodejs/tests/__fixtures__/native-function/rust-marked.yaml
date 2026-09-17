@@ -1,0 +1,27 @@
+kind: Telo.Application
+metadata:
+  name: NativeFunctionRustApp
+  version: 1.0.0
+variables:
+  marker:
+    env: MARKER
+    type: string
+---
+kind: Telo.Definition
+metadata:
+  name: Marked
+capability: Telo.Callable
+schema:
+  type: object
+  properties:
+    marker: { type: string, x-telo-eval: compile }
+  required: [marker]
+returns:
+  schema: { type: string }
+controllers:
+  - pkg:cargo/rust-functions?local_path=../../../../../tests/__fixtures__/rust-functions/rust#marked
+---
+kind: Self.Marked
+metadata:
+  name: marked
+marker: !cel "variables.marker"

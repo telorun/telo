@@ -24,11 +24,16 @@
 import * as AjvNS from "ajv";
 import type { KeywordDefinition } from "ajv";
 import {
+  CEL_SCALAR_FORMS,
+  celScalarTypeOf,
+  PLAIN_ENCODINGS,
   VALUE_TYPE_BINDINGS,
   X_TELO_TYPE,
   readValueTypeSlot,
+  valueTypeOf,
   type ValueTypeEntry,
 } from "@telorun/sdk";
+import { builtinEngines } from "@telorun/templating";
 
 // AJV's codegen template tag. The package is consumed in both ESM and CJS interop
 // shapes, so the named export may sit on the namespace or behind `.default` —
@@ -55,6 +60,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-context-from",
   "x-telo-context-from-ref-kind",
   "x-telo-context-from-root",
+  "x-telo-context-parameters-from",
   "x-telo-context-ref-from",
   "x-telo-error-context",
   "x-telo-eval",
@@ -64,6 +70,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-ref",
   "x-telo-requires-zone",
   "x-telo-resource-rules",
+  "x-telo-returns-from",
   "x-telo-schema-from",
   "x-telo-schema-map",
   "x-telo-schema-projection",
@@ -72,9 +79,15 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-sensitive",
   "x-telo-step-context",
   "x-telo-topology-role",
+  "x-telo-unbound-calls",
   "x-telo-value-schema-from",
   "x-telo-widget",
 ] as const;
+
+/** Folded into the kernel's validator cache key. Bump it with any change to the
+ *  code or messages {@link valueTypeKeyword} emits: a validator compiled before
+ *  the change is otherwise served from disk unchanged. */
+export const VALUE_TYPE_KEYWORD_VERSION = 3;
 
 /** How an AJV instance treats a `live` value type. */
 export interface TeloKeywordOptions {
@@ -98,7 +111,8 @@ export interface TeloKeywordOptions {
  *
  *  - a `json` representation validates through its own declared schema, so the
  *    keyword emits nothing — the name carries nominal identity for static wiring
- *    and has no runtime existence at all;
+ *    — unless the CEL type it carries has a range JSON Schema cannot state
+ *    (`CEL_SCALAR_FORMS`), which is checked;
  *  - a `live` instance is EXEMPT at dispatch: its value is never traversed,
  *    because iterating a stream to check it is precisely what the exemption is
  *    for. Statically ({@link TeloKeywordOptions.assertLive}) it is asserted like
@@ -119,7 +133,22 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
       const entry: ValueTypeEntry | undefined = readValueTypeSlot({
         [X_TELO_TYPE]: cxt.schema,
       })?.entry;
-      if (!entry || entry.representation !== "instance") return;
+      if (!entry) return;
+      if (entry.representation === "json") {
+        // A CEL type whose range JSON Schema cannot state (a uint) carries its
+        // own check, reached through the value scope like a constructor.
+        const celType = celScalarTypeOf(entry);
+        const range = celType === undefined ? undefined : CEL_SCALAR_FORMS[celType]?.range;
+        if (!range) return;
+        const accepts = cxt.gen.scopeValue("func", {
+          ref: range.accepts,
+          code: codegen`require("@telorun/sdk").CEL_SCALAR_FORMS[${celType!}].range.accepts`,
+        });
+        // The container and key let the check tell a host view's exact rendering
+        // of a wide integer from a number that was written that wide.
+        cxt.pass(codegen`${accepts}(${cxt.data}, ${cxt.it.parentData}, ${cxt.it.parentDataProperty})`);
+        return;
+      }
       if (entry.live && !options.assertLive) return;
       const binding = VALUE_TYPE_BINDINGS[entry.binding!];
       if (!binding) return;
@@ -142,12 +171,29 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
             "pass the result of a step that produces it, with a !cel expression"
           );
         }
-        return entry?.binding === "bytes"
-          ? "must be raw bytes (a Uint8Array) — bytes cannot be written inline in a manifest"
-          : `must be a ${entry?.name ?? "declared value type"} — this value is not writable inline in a manifest`;
+        if (!entry) return "must be a declared value type";
+        const celType = celScalarTypeOf(entry);
+        const range = celType === undefined ? undefined : CEL_SCALAR_FORMS[celType]?.range;
+        if (range) return `must be a ${entry.name}, ${range.describe}`;
+        const encoding = entry.encoding === undefined ? undefined : PLAIN_ENCODINGS[entry.encoding];
+        if (!encoding) return `must be a ${entry.name}`;
+        return (
+          `must be a ${entry.name} — text written in the manifest or an environment variable ` +
+          `is read only as ${encoding.form}, and a computed value must already be one` +
+          producingTags(entry)
+        );
       },
     },
   } as KeywordDefinition;
+}
+
+/** The tags whose produced type is this value type, as a closing hint — an
+ *  embed's contents are never decoded, so a file is written with its own tag. */
+function producingTags(entry: ValueTypeEntry): string {
+  const tags = builtinEngines
+    .filter((engine) => valueTypeOf(engine.producedType?.())?.name === entry.name)
+    .map((engine) => `!${engine.name}`);
+  return tags.length === 0 ? "" : `; embed a file with ${tags.join(" or ")}`;
 }
 
 /**

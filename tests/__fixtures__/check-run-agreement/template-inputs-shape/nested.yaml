@@ -1,0 +1,51 @@
+# The same as `root.yaml`, with the named shape nested under the contract's own
+# property: the literal inside it is decoded too.
+kind: Telo.Application
+metadata:
+  name: TemplateInputsShapeNested
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+targets:
+  - name: stamped
+    invoke: !ref stamp
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Window
+schema:
+  type: object
+  required: [opens]
+  properties:
+    opens: { x-telo-type: Telo.Timestamp }
+---
+kind: Telo.Definition
+metadata:
+  name: Stamp
+  description: Checks the fixed instant nested in what its body is handed is an instant.
+capability: Telo.Invocable
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [window]
+        properties:
+          window: !ref Window
+    outputType:
+      kind: Telo.JsonSchema
+      schema: { type: boolean, const: true }
+    value: !cel "inputs.window.opens + duration('1h') == timestamp('2026-01-15T10:30:00Z')"
+invoke: !ref body
+inputs:
+  window:
+    opens: "2026-01-15T11:30:00+02:00"
+---
+kind: Self.Stamp
+metadata:
+  name: stamp

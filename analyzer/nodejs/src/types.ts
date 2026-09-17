@@ -60,10 +60,23 @@ export type PositionIndex = Map<string, Range>;
  *
  *  One shape rather than one per producer: a `fix` field beside a
  *  `suggestedKind` field beside a CEL-specific one would leave every host
- *  wiring a separate action path for what is the same gesture. */
+ *  wiring a separate action path for what is the same gesture.
+ *
+ *  `tag` makes the repair a TAGGED scalar — `!ref <replacement>` or
+ *  `!cel "<replacement>"` — for a value that is wrong because it is untagged (a
+ *  bare shape name, a bare reference, an untagged condition). A tagged repair
+ *  is only ever stamped over an UNTAGGED value: a node's tag sits outside the
+ *  span a repair replaces, so writing one over a tagged node would tag it
+ *  twice. */
 export interface DiagnosticFix {
   readonly replacement: string;
+  readonly tag?: DiagnosticFixTag;
 }
+
+/** The YAML tags a repair may write. */
+export type DiagnosticFixTag = "ref" | "cel";
+
+const FIX_TAGS: ReadonlySet<string> = new Set<DiagnosticFixTag>(["ref", "cel"]);
 
 /** The `data` stamp diagnostics carry. Loose by design — passes bolt their own
  *  keys on — but the fields every consumer reads are declared. */
@@ -96,7 +109,10 @@ export interface AnalysisDiagnostic {
  *  by hand-casting `data`. */
 export function diagnosticFix(d: AnalysisDiagnostic): DiagnosticFix | undefined {
   const fix = (d.data as DiagnosticData | undefined)?.fix;
-  return fix && typeof fix.replacement === "string" ? fix : undefined;
+  if (!fix || typeof fix.replacement !== "string") return undefined;
+  // A tag no writer knows cannot be applied as written, so it is no repair.
+  if (fix.tag !== undefined && !FIX_TAGS.has(fix.tag)) return undefined;
+  return fix;
 }
 
 export interface ManifestSource {

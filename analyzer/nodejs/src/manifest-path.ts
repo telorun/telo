@@ -32,3 +32,25 @@ export function navigateConcretePath(root: Record<string, any>, path: string): u
   }
   return current;
 }
+
+/**
+ * Write `value` at a concrete `a.b[0].c` path the caller read from `root`. A path
+ * addressing nothing is a defect in whatever produced it, not in a manifest, so
+ * it throws.
+ */
+export function assignConcretePath(root: Record<string, any>, path: string, value: unknown): void {
+  const keys: Array<string | number> = [];
+  for (const segment of path.split(".")) {
+    const match = segment.match(/^([^[]*)((?:\[\d+\])*)$/);
+    if (!match) throw new Error(`manifest path '${path}' is not a concrete path`);
+    if (match[1]) keys.push(match[1]);
+    for (const index of match[2]!.matchAll(/\[(\d+)\]/g)) keys.push(Number(index[1]));
+  }
+  const last = keys.pop();
+  let container: any = root;
+  for (const key of keys) container = container?.[key];
+  if (last === undefined || container === null || typeof container !== "object") {
+    throw new Error(`manifest path '${path}' addresses no value in the resource`);
+  }
+  container[last] = value;
+}

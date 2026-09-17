@@ -359,6 +359,55 @@ steps:
             - !cel "steps.matches.result"
             - ""
             - !cel "inputs.runtime"
+  # Exported INSTANCES whose name or description matches — a ready-made function
+  # (`hmacSha256`) an importer calls as `<Alias>.<name>`, which no kind hit can
+  # stand for: its kind may be unexported (the singleton pattern) or a built-in
+  # (`Telo.Function`) the hub indexes no row for. Lexical only, because instance
+  # descriptions are not embedded, and only for a query: a browse lists kinds.
+  #
+  # Filtered like the kind hits: by the category the kind search ended up using
+  # (the instance's kind's categories, else its module's), and by runtime through
+  # its kind's row — an instance of a kind with no row (a built-in) is portable.
+  # A re-export carries no kind or description of its own, so it is not a hit.
+  #
+  # $1 = query text, $2 = category slug or '', $3 = kernel name or ''.
+  - name: instances
+    if: !cel "inputs.q != ''"
+    then:
+      - name: instanceQuery
+        invoke: !ref query
+        inputs:
+          sql: >-
+            WITH q AS (
+              SELECT plainto_tsquery('english', $1) AS andq,
+                     CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
+                          ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
+            )
+            SELECT mr.name, mr.kind, mr.description, m.ref, mr.version,
+                   COALESCE(mv.module_name, '') AS module_name,
+                   (COALESCE(ts_rank(v.vec, q.orq), 0.0)
+                    + CASE WHEN v.vec @@ q.andq THEN 0.5 ELSE 0.0 END
+                    + CASE WHEN mr.name ILIKE '%' || $1 || '%' THEN 1.0 ELSE 0.0 END)::float8 AS score
+            FROM module_resources mr
+            JOIN modules m ON m.id = mr.module_id AND m.latest_version = mr.version
+            LEFT JOIN module_versions mv ON mv.module_id = mr.module_id AND mv.version = mr.version
+            LEFT JOIN resource_kinds rk
+              ON mr.kind_is_own AND rk.module_id = mr.module_id AND rk.version = mr.version
+                 AND rk.name = mr.kind
+            CROSS JOIN q
+            CROSS JOIN LATERAL (
+              SELECT to_tsvector('english', mr.name || ' ' || mr.description) AS vec
+            ) v
+            WHERE mr.kind <> ''
+              AND ($2 = '' OR COALESCE(rk.categories, mv.categories) @> ARRAY[category_slug($2)]::text[])
+              AND ($3 = '' OR rk.id IS NULL OR rk.portable OR rk.runtimes @> ARRAY[$3]::text[])
+              AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR mr.name ILIKE '%' || $1 || '%')
+            ORDER BY score DESC, m.ref, mr.name
+            LIMIT 20
+          bindings:
+            - !cel "inputs.q"
+            - !cel "'retry' in steps ? '' : inputs.category"
+            - !cel "inputs.runtime"
 outputs:
   # The facet travels with EVERY response, not only a browse: it is the only
   # thing that makes an open vocabulary learnable from inside a search, and a
@@ -371,6 +420,17 @@ outputs:
   # rather than omitted: a fixed response shape is what lets an MCP client and a
   # typed frontend consume this without probing for optional keys.
   hits: !cel "('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).map(r, {'kind': r.kind, 'capability': r.capability, 'description': r.description, 'categories': r.categories, 'extends': {'kind': r.extends_kind, 'ref': r.extends_ref}, 'runtime': {'runtimes': r.runtimes, 'languages': r.languages, 'portable': r.portable}, 'deprecated': {'reason': r.deprecated_reason, 'replacedBy': {'kind': r.replaced_by_kind, 'ref': r.replaced_by_ref}}, 'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name, 'description': r.module_description, 'repository': r.module_repository, 'license': r.module_license, 'publisher': r.module_publisher, 'deprecated': {'reason': r.module_deprecated_reason}, 'categories': r.module_categories}, 'score': r.score})"
+  # Instance hits beside the kind hits, never merged into them: a kind hit is
+  # something to declare, an instance hit something to reference, and `hits`
+  # keeps its shape for every existing consumer. Always present, empty for a
+  # browse.
+  instances: !cel >-
+    'instanceQuery' in steps
+      ? steps.instanceQuery.result.rows.map(r, {'name': r.name, 'kind': r.kind,
+          'description': r.description,
+          'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name},
+          'score': r.score})
+      : []
 ---
 # Module-first projection: the same fused hits grouped by owning module, with
 # every exported kind included so a module card needs no second manifest fetch.

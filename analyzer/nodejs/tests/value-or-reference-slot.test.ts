@@ -143,21 +143,26 @@ describe("a slot unioning a closed value branch with a reference branch", () => 
 });
 
 describe("what the reference-form rule still guards", () => {
-  it("rejects a bare string at a slot whose reference constraint is the node's own", () => {
-    const dispatcherDef: ResourceManifest = {
-      kind: "Telo.Definition",
-      metadata: { name: "Dispatcher", module: "pg" },
-      capability: "Telo.Runnable",
-      schema: { type: "object", properties: { handler: { "x-telo-ref": "pg.Enum" } } },
-    } as unknown as ResourceManifest;
-    const dispatcher: ResourceManifest = {
-      kind: "pg.Dispatcher",
-      metadata: { name: "main" },
-      handler: "messageRole",
-    } as unknown as ResourceManifest;
+  const dispatcherDef: ResourceManifest = {
+    kind: "Telo.Definition",
+    metadata: { name: "Dispatcher", module: "pg" },
+    capability: "Telo.Runnable",
+    schema: { type: "object", properties: { handler: { "x-telo-ref": "pg.Enum" } } },
+  } as unknown as ResourceManifest;
+  const dispatcher = (handler: string): ResourceManifest =>
+    ({ kind: "pg.Dispatcher", metadata: { name: "main" }, handler }) as unknown as ResourceManifest;
 
-    const diags = analyze(dispatcherDef, dispatcher);
+  it("rejects a bare string at a slot whose reference constraint is the node's own", () => {
+    const diags = analyze(dispatcherDef, dispatcher("messageRole"));
     expect(diags.find((d) => d.code === "INVALID_REFERENCE_FORM")).toBeDefined();
+  });
+
+  it("repairs a bare name with a tagged `!ref`, and a dotted FQN with none, since its alias is a guess", () => {
+    const fixOf = (handler: string) =>
+      analyze(dispatcherDef, dispatcher(handler)).find((d) => d.code === "INVALID_REFERENCE_FORM")
+        ?.data as { fix?: unknown } | undefined;
+    expect(fixOf("messageRole")?.fix).toEqual({ replacement: "messageRole", tag: "ref" });
+    expect(fixOf("Pg.Enum.messageRole")?.fix).toBeUndefined();
   });
 
   it("rejects the removed `{kind, name}` object at a union slot", () => {

@@ -43,6 +43,11 @@ steps:
     invoke: !ref Remote.greet
     inputs:
       text: !cel "inputs.name"
+      # Written as the plain encoding each type declares, so the authoring path
+      # and the wire are both under test: RFC 3339 text at a timestamp slot,
+      # base64url at a bytes one.
+      at: "2026-01-15T09:30:00.250Z"
+      key: YWJj
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -61,9 +66,18 @@ steps:
         echoed: !cel "steps.run.result.steps.hello.result.echoed"
         via: !cel "steps.run.result.steps.hello.result.via"
         shipped: !cel "steps.run.result.shipped"
+        # The two types a JSON hop changes underfoot, asserted through overloads
+        # nothing else satisfies: `string()` has no string overload, so a
+        # timestamp that came back as text fails here rather than comparing
+        # equal, and bytes that came back as an object keyed by index are not
+        # equal to any `bytes(...)`.
+        at: !cel "string(steps.run.result.steps.hello.result.at)"
+        key: !cel "steps.run.result.steps.hello.result.key == bytes('abc')"
       expected:
         echoed: "hello, ada"
         via: child-kernel
         shipped: ["steps/hello"]
+        at: "2026-01-15T09:30:00.250Z"
+        key: true
     invoke: { kind: Assert.Equals }
 

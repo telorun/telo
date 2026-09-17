@@ -26,11 +26,13 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import type { ResourceManifest } from "@telorun/sdk";
+import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { buildCallGraph, type CallGraph } from "./call-graph.js";
+import { CALLABLE_CAPABILITY, isCallableKind, resolveSignature } from "./callable-signature.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { isRefUse, REF_USES, type RefUse } from "./ref-slot.js";
+import type { DefResolver } from "./extends-resolution.js";
+import { isRefUse, readRefSlot, REF_USES, type RefUse } from "./ref-slot.js";
 
 export interface RefSlotIssue {
   code:
@@ -280,6 +282,51 @@ export function validateRefSlotDeclarations(definition: ResourceManifest): RefSl
   });
 
   return issues;
+}
+
+/**
+ * Every reference slot in a schema that holds a function without naming its
+ * signature: one constrained to bare `Telo.Callable`, or to a callable kind that
+ * declares no signature of its own — `Telo.Function` above all, whose signature
+ * is each instance's. Either accepts any function, whatever its parameters.
+ *
+ * Checked on every kind, because the slot is declared by whoever HOLDS a
+ * function, which is usually not a callable; the kernel refuses the same slots
+ * at registration through `callableKindIssues`.
+ */
+export function untypedCallableSlotIssues(
+  schema: Record<string, unknown>,
+  path: string,
+  from: ResourceDefinition,
+  resolve: DefResolver,
+): Array<{ code: "X_TELO_REF_CALLABLE_UNTYPED"; path: string; message: string }> {
+  const out: Array<{ code: "X_TELO_REF_CALLABLE_UNTYPED"; path: string; message: string }> = [];
+  walkSchema(schema, path, new Set(), new Set(), (node, at) => {
+    const slot = readRefSlot(node);
+    if (!slot) return;
+    for (const kind of slot.kinds) {
+      if (kind !== CALLABLE_CAPABILITY) {
+        const target = resolve(kind, from);
+        if (!target || !isCallableKind(target, resolve)) continue;
+        const signature = resolveSignature(undefined, target, resolve);
+        if (signature.params !== undefined || signature.returns !== undefined) continue;
+      }
+      const what =
+        kind === CALLABLE_CAPABILITY
+          ? `bare '${CALLABLE_CAPABILITY}'`
+          : `'${kind}', a function kind that declares no signature of its own`;
+      out.push({
+        code: "X_TELO_REF_CALLABLE_UNTYPED",
+        path: at,
+        message:
+          `x-telo-ref at '${at}' constrains to ${what}, which accepts any function whatever its ` +
+          `signature. Nothing would then check the arguments the holder passes, so a wrongly typed ` +
+          `function passes \`telo check\` and fails at the first call with ERR_INPUT_INVALID. Name a ` +
+          `callable abstract that declares the signature this slot needs.`,
+      });
+    }
+  });
+  return out;
 }
 
 /** Manifest-level check: a `use` case map whose selector is written in CEL.

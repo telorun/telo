@@ -1,0 +1,26 @@
+modules:
+  modules/durable-local: Fixed
+  modules/durable-journal-file: Fixed
+  modules/durable-journal-postgres: Fixed
+body: "A recorded value now replays with its CEL type: a timestamp came back as text, an
+  int64 as a double, bytes as an object keyed by index and a map with int keys as one
+  keyed by text, so an expression that worked on the first pass failed or computed
+  something else on a resume. Every entry is written as a typed frame under codec
+  version 1; an entry with no version is read the way its store read one before, so a
+  run parked earlier still resumes, and an entry in a version this runtime does not know
+  is refused with ERR_DURABLE_ENTRY_UNDECODABLE, and a value that does not decode with
+  ERR_DURABLE_JOURNAL_CORRUPT naming the run and the entry; a resumer reports such a
+  run once and skips it rather than claiming and failing it on every sweep. A step that produced nothing is
+  journaled as an entry with no value and replays as nothing, a delivered payload
+  crosses the same codec, and a value outside the CEL value domain - a class instance
+  with a toJSON among them - is refused with ERR_DURABLE_UNJOURNALABLE_VALUE naming the
+  step and the field inside its result; an object member holding no value is left
+  out, as plain JSON left it out. A run record's inputs and result cross the same
+  codec, each beside its own version, so a scheduled run starts from a timestamp rather
+  than its text and Local.Result hands back an int64 rather than a double one digit
+  short; a run whose result holds a value outside that domain settles failed. The
+  Postgres journal gains nullable codec_version on its entries table and
+  inputs_codec_version / result_codec_version on its runs table, added to an existing
+  deployment on boot. Stop every older worker before an upgraded one writes to a
+  shared journal: a runtime released before the codec version reads a typed frame as
+  plain JSON text and replays it as that text, with no error."

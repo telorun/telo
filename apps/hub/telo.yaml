@@ -144,7 +144,7 @@ variables:
   ingestRev:
     env: INGEST_REV
     type: integer
-    default: 1
+    default: 2
   # Path of the telo CLI the origin reads shell out to (`telo` on PATH by default).
   teloBin:
     env: TELO_BIN
@@ -469,6 +469,7 @@ routes:
               categories: !cel "result.categories"
               categoryFilterDropped: !cel "result.categoryFilterDropped"
               hits: !cel "result.hits"
+              instances: !cel "result.instances"
     catches:
       # A category outside the declared vocabulary is the caller's mistake, so
       # it is a 400 carrying the vocabulary — not a 200 with an empty list.
@@ -808,8 +809,12 @@ entries:
       Search resource kinds across every registered Telo module, on any host or
       transport. Each hit carries the kind suffix (e.g. `Bucket` — the prefix
       is YOUR import alias), its capability and description, the kernels that
-      can load it, and the owning module's exact location ref + version. Follow
-      up with `get_module_manifest(ref)` to read the full schemas.
+      can load it, and the owning module's exact location ref + version.
+      `instances` lists ready-made exported resources whose name or description
+      matches — a function such as `hmacSha256` you call as
+      `<YourAlias>.hmacSha256(…)` or reference as `!ref <YourAlias>.hmacSha256` —
+      each with its name, kind suffix, description and module ref + version.
+      Follow up with `get_module_manifest(ref)` to read the full schemas.
     argumentsSchema:
       type: object
       properties:
@@ -854,7 +859,8 @@ entries:
           # a widened search rather than from the requested category.
           text: !cel >-
             json({'query': request.arguments.query, 'categories': result.categories,
-                  'categoryFilterDropped': result.categoryFilterDropped, 'hits': result.hits})
+                  'categoryFilterDropped': result.categoryFilterDropped, 'hits': result.hits,
+                  'instances': result.instances})
     catches:
       # -32602 (invalid params), not an empty hit list: a guessed category that
       # answered "no such kind" is what sent an agent hunting for a capability
@@ -929,6 +935,9 @@ instructions: !literal |
     `category` is an open, author-declared vocabulary, a guessed slug is
     rejected outright, and a wrong-but-real one hides the answer. Every response
     lists the real slugs under `categories`, so one call teaches you the set.
+    `instances` lists exported resources — ready-made functions and singletons —
+    whose name or description matches, each with its module ref: import that
+    module and call `<YourAlias>.<name>(…)` or `!ref <YourAlias>.<name>`.
   - `get_module_manifest(ref, version?)` — read a tracked module's `telo.yaml`
     by location ref. Its `Telo.Definition` docs are JSON Schemas: the EXACT
     field shapes you must produce. `version` defaults to `latest`.

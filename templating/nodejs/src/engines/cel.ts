@@ -1,11 +1,28 @@
+import type { ASTNode } from "@marcbachmann/cel-js";
 import {
   extractAccessChains,
+  extractCallResultAccesses,
   findNullableAccessIssues,
+  INDEX_SEGMENT,
+  moduleCallArgumentChains,
   validateChainAgainstSchema,
 } from "../cel/analyze.js";
 import { compileExpression } from "../cel/compile.js";
 import { auditCalls, explainUnresolved } from "../cel/diagnose.js";
-import type { AnalyzeEnv, AnalyzeResult, EngineDiagnostic, TemplatingEngine } from "../engine.js";
+import {
+  moduleCallNodes,
+  moduleNameBindings,
+  resolveModuleCalls,
+  unresolvedCallReceivers,
+  type ModuleCall,
+} from "../cel/module-call.js";
+import type {
+  AnalyzeEnv,
+  AnalyzeResult,
+  CallSite,
+  EngineDiagnostic,
+  TemplatingEngine,
+} from "../engine.js";
 
 /** Statically analyze one CEL expression against the effective context schema:
  *  parse → classify every call → type-check → validate member-access chains →
@@ -31,7 +48,27 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeRe
     };
   }
 
-  const audit = auditCalls(source, parsed.ast, env.celEnv);
+  // Resolution, before anything reads the tree — the audit, the type check and
+  // every chain walk below all see the resolved shape, so none of them has to
+  // know a module name from a variable.
+  // The walks that read resolved calls below are skipped when there are none.
+  const resolvedCalls = resolveModuleCalls(parsed.ast, env.moduleNames, env.moduleCallType).length > 0;
+
+  // A name bound inside the expression can never be read once a module owns it:
+  // `Billing.f(x)` under a comprehension variable named `Billing` resolves to
+  // the module. Reported rather than silently shadowed, the rule every other
+  // name in CEL scope follows.
+  for (const name of moduleNameBindings(parsed.ast, env.moduleNames)) {
+    out.push({
+      code: "BINDING_NAME_RESERVED",
+      message:
+        `'${name}' names a module here (an imports: alias, Self, or this module's own name), ` +
+        `so a call written '${name}.f(…)' resolves to that module and this binding could never ` +
+        `be read. Rename the bound variable.`,
+    });
+  }
+
+  const audit = auditCalls(source, parsed.ast, env.celEnv, env.moduleCallFlags);
 
   // Reported whatever the type-checker concludes. A literal argument a guard
   // will refuse is a defect the manifest states outright, and leaving it to the
@@ -42,7 +79,10 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeRe
   let type: string | undefined;
   let checkError: string | undefined;
   try {
-    const result = env.celEnv.check(source);
+    // `parsed.check()`, never `celEnv.check(source)`: the latter RE-PARSES, so
+    // it would type a tree in which no module call was ever resolved — every
+    // one of them reported as a missing method on an unknown receiver.
+    const result = parsed.check();
     if (result.valid) type = result.type;
     else if (result.error) {
       checkError = String((result.error as { message?: string }).message ?? result.error)
@@ -94,15 +134,43 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeRe
   // Comprehension variables are not roots: `extractAccessChains` drops the
   // names a `.all(x, …)` binds, so the check never sees them.
   if (env.rootsDeclared) {
+    // A receiver that resolved to no module name AND could be one — the host
+    // decides the second half, since a name's level is its naming rule, not
+    // this engine's. `Foo.bar()` is an unknown identifier like any other, but
+    // its repair is an `imports:` alias rather than a different spelling, so it
+    // says so; `dbb.query(1)` is a misspelled value and gets no such advice.
+    // Walked only once a root is unknown, which a correct expression never has.
+    let callReceivers: Set<string> | undefined;
     const reported = new Set<string>();
     for (const chain of extractAccessChains(parsed.ast)) {
       const root = chain[0];
       if (!root || reported.has(root) || env.celEnv.hasVariable(root)) continue;
       reported.add(root);
+      callReceivers ??= unresolvedCallReceivers(parsed.ast, env.moduleNames);
       out.push({
         code: "CEL_UNKNOWN_IDENTIFIER",
-        message: `unknown identifier '${root}' — nothing by that name is in scope here.`,
+        message:
+          `unknown identifier '${root}' — nothing by that name is in scope here.` +
+          (callReceivers.has(root) && env.couldNameModule?.(root) === true
+            ? ` To call a function another module declares, '${root}' must be one of this module's names — an 'imports:' alias, 'Self', or the module's own metadata.name.`
+            : ""),
       });
+    }
+  }
+
+  // A module call's result is typed by the callee's declared `returns`, which the
+  // caller resolves: member access on it is checked exactly as a read off the
+  // context would be, under the call as written.
+  if (resolvedCalls && env.moduleCallResult) {
+    for (const access of extractCallResultAccesses(parsed.ast)) {
+      const schema = env.moduleCallResult(access.qualified);
+      if (!schema) continue;
+      const label = `${access.qualified}(…)`;
+      const err = validateChainAgainstSchema([label, ...access.members], {
+        type: "object",
+        properties: { [label]: schema },
+      });
+      if (err) out.push({ code: "CEL_UNKNOWN_FIELD", message: err });
     }
   }
 
@@ -124,7 +192,37 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeRe
     }
   }
 
-  return { diagnostics: out, calls: audit.calls, ...(type === undefined ? {} : { type }) };
+  return {
+    diagnostics: out,
+    calls: resolvedCalls ? withCallArguments(audit.calls, parsed.ast) : audit.calls,
+    ...(type === undefined ? {} : { type }),
+  };
+}
+
+/** The audited call sites, each module call carrying its arguments as the type
+ *  check saw them. Matched by position, which is what identifies one call among
+ *  several of the same name. */
+function withCallArguments(calls: readonly CallSite[], ast: ASTNode): CallSite[] {
+  const byStart = new Map<number, ModuleCall>();
+  for (const { node, call } of moduleCallNodes(ast)) byStart.set(node.start, call);
+  const chainsByStart = new Map<number, Array<string[] | null>>();
+  for (const [node, chains] of moduleCallArgumentChains(ast)) chainsByStart.set(node.start, chains);
+  return calls.map((site) => {
+    const call = site.moduleCall ? byStart.get(site.start) : undefined;
+    if (!call) return site;
+    const chains = chainsByStart.get(site.start);
+    return {
+      ...site,
+      arguments: call.args.map((arg, index) => {
+        const type = call.argumentTypes?.[index];
+        const chain = chains?.[index] ?? null;
+        return {
+          ...(type !== undefined ? { type } : {}),
+          ...(chain && !chain.includes(INDEX_SEGMENT) ? { chain } : {}),
+        };
+      }),
+    };
+  });
 }
 
 /** `dyn` in a checker message means an operand whose type is unknown here —
@@ -144,7 +242,7 @@ export const celEngine: TemplatingEngine = {
   language: "cel",
 
   compile(source, env) {
-    return compileExpression(source, env.celEnv);
+    return compileExpression(source, env.celEnv, env.moduleNames);
   },
 
   analyze(source, env) {

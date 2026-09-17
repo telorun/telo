@@ -1,0 +1,11 @@
+# Dispatches the kind whose contract names nothing. This consumer's entry-scoped
+# check is silent about the library's kind, so the kernel's refusal is what
+# reports it.
+kind: Telo.Application
+metadata:
+  name: KindContractRefBroken
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.broken

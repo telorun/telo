@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: RefusedInputsApp
+  version: 1.0.0
+imports:
+  Refused: ./refused-inputs-lib
+targets:
+  - !ref Refused.callWithBadLiteral

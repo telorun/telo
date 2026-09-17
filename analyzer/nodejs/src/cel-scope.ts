@@ -28,7 +28,11 @@ import {
   BINDINGS_ANNOTATION,
   schemaAtChain,
 } from "./cel-bindings.js";
-import { buildImportInputCelEnvironment, buildTypedCelEnvironment } from "./cel-environment.js";
+import {
+  buildImportInputCelEnvironment,
+  buildParameterCelEnvironment,
+  buildTypedCelEnvironment,
+} from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { type ContractDirection, effectiveAuthorSchema } from "./extends-resolution.js";
 import {
@@ -40,11 +44,15 @@ import {
   mergeKernelGlobalsIntoContext,
   type KernelGlobalsIndex,
 } from "./kernel-globals.js";
+import { moduleCallNamesOf } from "./module-call-names.js";
+import type { ModuleFunctionIndex, ResolvedFunction } from "./module-function-index.js";
+import type { CallableFlags, CallableFlagsIndex } from "./callable-flags.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
 import { bodyForPath, templateBodies } from "./template-body.js";
 import {
   getManifestItem,
+  isParameterScope,
   resolveContextAnnotations,
   resolveTypeFieldToSchema,
 } from "./validate-cel-context.js";
@@ -372,6 +380,29 @@ export interface CelScope {
   /** The resolved `x-telo-context` schema merged with the kernel globals, or
    *  null when no context applied (the environment alone types the site). */
   contextSchema: Record<string, any> | null;
+  /** The names a call's receiver may be for the call to resolve as a MODULE
+   *  call, in the scope of the module that DECLARED this expression.
+   *
+   *  Part of the scope rather than of the environment because it is not a name
+   *  a value can be read under: a module name types nothing, is in no context
+   *  schema, and answers only "is this call the catalog's or another module's".
+   *  It belongs here for the reason everything else does — the editor and the
+   *  checker must read one expression the same way. */
+  moduleNames: ReadonlySet<string>;
+  /** The CEL type a module call at this site yields — its callee's declared
+   *  `returns` — or undefined where the callee is not known. */
+  moduleCallType: (qualified: string) => string | undefined;
+  /** The schema a module call's result carries, for member access on it. */
+  moduleCallResult: (qualified: string) => Record<string, any> | undefined;
+  /** The derived flags of the function a module call reaches. */
+  moduleCallFlags: (qualified: string) => CallableFlags | undefined;
+  /** What a module call at this site resolves to — the callable resource, its
+   *  parameters and result — or undefined where it resolves to no callable. */
+  moduleFunction: (qualified: string) => ResolvedFunction | undefined;
+  /** The functions a call through `receiver` (`Self`, the module's own name, an
+   *  import alias) may name here, in declaration order: what `<receiver>.` offers
+   *  and every one of them resolves. */
+  moduleFunctionsOf: (receiver: string) => ReadonlyArray<{ name: string; function: ResolvedFunction }>;
 }
 
 /** The analyzer state a scope is resolved against — everything a manifest set
@@ -386,6 +417,18 @@ export interface CelScopeInputs {
   kernelGlobals: KernelGlobalsIndex;
   /** The module doc carrying the Application-only `ports` namespace. */
   moduleManifest?: ResourceManifest;
+  /** CEL call names per declaring module (`moduleCallNamesByModule`). Optional
+   *  so a caller that never analyzes a module call (a scope query over a single
+   *  detached manifest) need not build one; absent leaves every call the
+   *  catalog's. */
+  moduleCallNames?: ReadonlyMap<string, ReadonlySet<string>>;
+  /** What a module call resolves to (`module-function-index.ts`). Optional for
+   *  the same reason; absent leaves every module call `dyn`. */
+  moduleFunctions?: ModuleFunctionIndex;
+  /** Each function's derived determinism and host-backedness
+   *  (`callable-flags.ts`). Optional for the same reason; absent leaves a module
+   *  call carrying no flag. */
+  callableFlags?: CallableFlagsIndex;
   /** The observed-state-only context, used where no `x-telo-context` matched. */
   observedStateContext: Record<string, any> | null;
 }
@@ -409,6 +452,8 @@ export interface CelSiteRef {
  * schema once and read by every expression in that resource. `enterResource`
  * establishes it; `scopeFor` answers for one path.
  */
+const NO_MODULE_CALL_NAMES: ReadonlyMap<string, ReadonlySet<string>> = new Map();
+
 export class CelScopeResolver {
   private readonly typedEnvByManifest = new Map<ResourceManifest, Environment>();
 
@@ -512,7 +557,8 @@ export class CelScopeResolver {
    */
   scopeFor(site: CelSiteRef): CelScope {
     const m = site.source;
-    const contextSchema = this.resolveContextFor(site);
+    const parameterScope = isParameterScope(site.contextSchema ?? this.invocationContext);
+    const contextSchema = this.resolveContextFor(site, parameterScope);
     const {
       celEnv,
       allManifests,
@@ -520,36 +566,54 @@ export class CelScopeResolver {
     } = this.inputs;
 
     const cached = contextSchema === null ? this.typedEnvByManifest.get(m) : undefined;
-    const env =
-      cached ??
+    let env: Environment;
+    if (cached) {
+      env = cached;
+    } else if (parameterScope) {
+      env = buildParameterCelEnvironment(celEnv, contextSchema);
+    } else if (m.kind === "Telo.Import") {
       // A `Telo.Import`'s variables/secrets are a config-only contract evaluated
       // in the IMPORTING module's scope, so they type from the owning module doc
       // and drop `resources`/`env`, making a reference to either an error.
-      (m.kind === "Telo.Import"
-        ? buildImportInputCelEnvironment(
-            celEnv,
-            allManifests.find(
-              (mm) =>
-                (mm.kind === "Telo.Application" || mm.kind === "Telo.Library") &&
-                (mm.metadata as { name?: string } | undefined)?.name ===
-                  (m.metadata as { module?: string } | undefined)?.module,
-            ),
-          )
-        : buildTypedCelEnvironment(
-            celEnv,
-            m,
-            contextSchema ?? undefined,
-            moduleManifest,
-          ));
+      env = buildImportInputCelEnvironment(
+        celEnv,
+        allManifests.find(
+          (mm) =>
+            (mm.kind === "Telo.Application" || mm.kind === "Telo.Library") &&
+            (mm.metadata as { name?: string } | undefined)?.name ===
+              (m.metadata as { module?: string } | undefined)?.module,
+        ),
+      );
+    } else {
+      env = buildTypedCelEnvironment(celEnv, m, contextSchema ?? undefined, moduleManifest);
+    }
     if (contextSchema === null && !cached) this.typedEnvByManifest.set(m, env);
 
-    return { env, contextSchema };
+    const functions = this.inputs.moduleFunctions;
+    const resolved = (qualified: string) => {
+      const resolution = functions?.resolve(m, qualified);
+      return resolution?.status === "resolved" ? resolution : undefined;
+    };
+    return {
+      env,
+      contextSchema,
+      moduleNames: moduleCallNamesOf(this.inputs.moduleCallNames ?? NO_MODULE_CALL_NAMES, m),
+      moduleCallType: (qualified) => resolved(qualified)?.celType,
+      moduleCallResult: (qualified) => resolved(qualified)?.returns,
+      moduleCallFlags: (qualified) => this.inputs.callableFlags?.ofCall(m, qualified),
+      moduleFunction: resolved,
+      moduleFunctionsOf: (receiver) => functions?.callablesThrough(m, receiver) ?? [],
+    };
   }
 
   /** The context schema in force at `site`: the matched `x-telo-context` (or the
    *  resource-wide invocation context), plus the step and error regions this
-   *  path falls in, resolved and merged with the kernel globals. */
-  private resolveContextFor(site: CelSiteRef): Record<string, any> | null {
+   *  path falls in, resolved and merged with the kernel globals. A parameter
+   *  scope is resolved alone: it replaces all of those. */
+  private resolveContextFor(
+    site: CelSiteRef,
+    parameterScope: boolean,
+  ): Record<string, any> | null {
     const { path } = site;
     const m = site.source;
     let matched: Record<string, any> | undefined = site.contextSchema ?? this.invocationContext;
@@ -558,8 +622,12 @@ export class CelScopeResolver {
     // Its `steps` accumulator and its `catch:` branches are declared there, and
     // the enclosing definition's (there are none) would say nothing about them.
     const inBody = this.bodyScopes.length > 0 ? bodyForPath(this.bodyScopes, path) : undefined;
-    const stepContext = inBody ? inBody.stepContext : this.stepContext;
-    const errorScopes = inBody ? inBody.errorScopes : this.errorScopes;
+    const stepContext = parameterScope ? undefined : inBody ? inBody.stepContext : this.stepContext;
+    const errorScopes = parameterScope
+      ? new Map<string, Record<string, any>>()
+      : inBody
+        ? inBody.errorScopes
+        : this.errorScopes;
 
     if (stepContext) {
       const base = matched ?? { type: "object", properties: {}, additionalProperties: true };
@@ -654,6 +722,7 @@ export class CelScopeResolver {
       aliasesByModule: scopes?.aliasesByModule,
       allManifests: allManifests as Record<string, any>[],
     });
+    if (parameterScope) return withBindingNames(resolved, rootManifest);
     return mergeKernelGlobalsIntoContext(
       withBindingNames(resolved, rootManifest),
       // Typed in the module that DECLARED this resource — for a manifest

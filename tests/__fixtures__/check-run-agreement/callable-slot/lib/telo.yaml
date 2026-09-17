@@ -1,0 +1,91 @@
+# A function wired into a slot constrained to a callable abstract it does not
+# extend. A `Telo.Function` cannot extend anything, so it satisfies the slot by
+# its signature: this library checks clean, and the application next door runs.
+# Its kinds are also what `callable-slot-mismatch` wires functions into.
+kind: Telo.Library
+metadata:
+  name: CallableSlotLib
+  version: 1.0.0
+  description: >-
+    Fixture library holding a CEL function through a slot typed by a callable
+    abstract whose signature the function matches.
+exports:
+  resources: [verifier]
+---
+kind: Telo.Abstract
+metadata:
+  name: Signer
+  description: Signs a message under a key and returns the signature as text.
+capability: Telo.Callable
+params:
+  - name: key
+    schema: { type: string }
+  - name: message
+    schema: { type: string }
+returns:
+  schema: { type: string }
+---
+kind: Telo.Abstract
+metadata:
+  name: StableSigner
+  description: Signs a message the same way every time it is asked.
+capability: Telo.Callable
+extends: Self.Signer
+deterministic: true
+---
+kind: Telo.Abstract
+metadata:
+  name: NoncedSigner
+  description: Signs a message under a key, optionally mixing in a nonce.
+capability: Telo.Callable
+params:
+  - name: key
+    schema: { type: string }
+  - name: message
+    schema: { type: string }
+  - name: nonce
+    schema: { type: string }
+    optional: true
+returns:
+  schema: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Verify
+  description: Returns what the function it holds makes of a key and a message.
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    signer:
+      x-telo-ref: { kind: Self.Signer, use: dependency }
+    stable:
+      x-telo-ref: { kind: Self.StableSigner, use: dependency }
+    nonced:
+      x-telo-ref: { kind: Self.NoncedSigner, use: dependency }
+  required: [signer]
+inputType:
+  type: object
+  properties:
+    key: { type: string }
+    message: { type: string }
+  required: [key, message]
+controllers:
+  - pkg:telo/local/js?path=./verify.mjs#Verify
+---
+kind: Telo.Function
+metadata:
+  name: concat
+params:
+  - name: key
+    schema: { type: string }
+  - name: message
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "key + ':' + message"
+---
+kind: Self.Verify
+metadata:
+  name: verifier
+signer: !ref concat

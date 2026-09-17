@@ -49,6 +49,10 @@ outputs:
 # result -> [ { id, name }, ... ]  (input order preserved)
 ```
 
+## Inside a durable run
+
+`collection` is a decision, recorded on the first pass and returned verbatim on a replay — for the reason [`Run.Iteration`](./iteration.md#inside-a-durable-run)'s is: re-derived on a resume, element N could name a different item while the journal hands its turn the result recorded for the old one. Each element's body records under its own prefix, so a resume re-enters the element it stopped in.
+
 ## Concurrency
 
 `concurrency: 1` (the default) processes elements in order. A higher value runs that many concurrently; the result array still follows input order. The value may be an integer literal or a `!cel` expression over `inputs` (e.g. `!cel "inputs.workers"`); it must resolve to an integer ≥ 1 or the projection fails with `INVALID_CONCURRENCY`. Execution is **fail-fast** — an uncaught element throw stops scheduling and propagates.

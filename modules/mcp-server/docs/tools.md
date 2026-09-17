@@ -66,6 +66,8 @@ minted at process start (stdio has no transport-level session).
 | `structuredContent`| no       | Optional structured object alongside `content`.         |
 | `_meta`            | no       | MCP metadata passthrough.                               |
 
+The client reading a result is not Telo, so a CEL value anywhere in the rendered envelope — or in a `catches:` entry's `error.data` — is written in its **plain encoding**, never type-tagged: a timestamp as RFC 3339 text in UTC (`"2026-01-15T07:30:00.000Z"`), a duration as seconds (`"5400s"`), bytes as base64url, a `uint` as its digits, NaN and ±Infinity as `"NaN"` / `"Infinity"` / `"-Infinity"`, and a map with int or bool keys as an object keyed by their text.
+
 `isError: true` and `catches:` are **distinct**:
 
 - `isError` — handler ran successfully but the *result* describes an upstream failure (e.g. a third-party 404). The LLM reads natural-language failure text.

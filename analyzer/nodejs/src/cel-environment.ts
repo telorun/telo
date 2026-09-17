@@ -146,6 +146,27 @@ export function buildTypedCelEnvironment(
   }
 }
 
+/** CEL environment for a parameter scope (`x-telo-context-parameters-from`): the
+ *  catalog plus the scope's own bindings, and none of the kernel globals — so a
+ *  read of `variables` / `resources` / … is an unknown identifier rather than a
+ *  read of state the expression's arguments do not carry. Module calls stay
+ *  reachable: they resolve on the parsed tree, not through a variable. */
+export function buildParameterCelEnvironment(
+  baseEnv: Environment,
+  contextSchema: Record<string, any> | null,
+): Environment {
+  const env = baseEnv.clone();
+  for (const brand of Object.keys(VALUE_BRAND_BASE)) {
+    (env as any).registerType(brand, { fields: {} });
+  }
+  for (const [name, propSchema] of Object.entries(
+    (contextSchema?.properties ?? {}) as Record<string, any>,
+  )) {
+    env.registerVariable(name, jsonSchemaToCelType(propSchema as Record<string, any>));
+  }
+  return env;
+}
+
 /**
  * A kind document — whose CEL is written for whoever instantiates the kind, not
  * evaluated in the declaring module's own scope.

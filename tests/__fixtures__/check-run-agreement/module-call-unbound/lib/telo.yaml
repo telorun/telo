@@ -1,0 +1,45 @@
+# A module call in a type rule's condition. The condition is evaluated against
+# the value alone, wherever the shape is checked, where no module's functions are
+# bound — so this library's `telo check` refuses it, and a consumer whose
+# entry-scoped check is silent fails the first time a value is checked.
+kind: Telo.Library
+metadata:
+  name: UnboundRuleLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose shape rule calls one of its own functions, which no
+    validation can reach.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [priced]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Money
+schema:
+  type: object
+  required: [amount]
+  properties:
+    amount: { type: integer }
+rules:
+  - condition: "Self.positive(this.amount)"
+    code: ERR_NOT_POSITIVE
+---
+kind: Telo.Function
+metadata:
+  name: positive
+params:
+  - name: amount
+    schema: { type: integer }
+returns:
+  schema: { type: boolean }
+body: !cel "amount > 0"
+---
+kind: Run.Sequence
+metadata:
+  name: priced
+inputType: !ref Money
+steps:
+  - name: echo
+    value: !cel "inputs.amount"

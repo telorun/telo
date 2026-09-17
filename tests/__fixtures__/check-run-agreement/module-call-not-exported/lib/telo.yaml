@@ -1,0 +1,22 @@
+# A CEL call through an import alias to a function the imported library declares
+# but does not list in `exports.resources`. Reported by this library's
+# `telo check`; refused by the kernel from a consumer, whose check is silent.
+kind: Telo.Library
+metadata:
+  name: UnexportedCallerLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose step expression calls a function another library
+    keeps private.
+imports:
+  Run: ../../../../../modules/run
+  Provider: ./provider
+exports:
+  resources: [flow]
+---
+kind: Run.Sequence
+metadata:
+  name: flow
+steps:
+  - name: hidden
+    value: !cel "Provider.hidden(1)"

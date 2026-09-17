@@ -28,11 +28,12 @@
  * multigraph down to unique pairs itself, since that is the only consumer for
  * which the distinction genuinely does not matter.
  *
- * **Three discovery mechanics, one graph.** Field-map sites (Phase-5 injection
+ * **Four discovery mechanics, one graph.** Field-map sites (Phase-5 injection
  * sites — `edge.injected`), schema-driven step slots behind the local `$ref`s
- * the field map deliberately does not descend, and a value-tree scan for `!ref`
+ * the field map deliberately does not descend, a value-tree scan for `!ref`
  * anywhere else — so a ref in a structure no annotation anticipated is still an
- * edge (with no declared `use`, read conservatively). Inline declarations
+ * edge (with no declared `use`, read conservatively) — and the module calls a
+ * resource's expressions make (`edge.moduleCall`). Inline declarations
  * inside `x-telo-scope` arrays become nodes of their own and their slots are
  * walked, so a `with:`-scoped resource's references are part of the one model.
  *
@@ -66,6 +67,16 @@ import {
 } from "./reference-field-map.js";
 import { DEPENDENCY_GRAPH_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { moduleCallSites } from "./cel-access-chains.js";
+import { shapeFieldsOf } from "./contract-shapes.js";
+import {
+  declaringModuleKey,
+  moduleCallNamesByModule,
+  moduleCallNamesOf,
+  ROOT_MODULE_KEY,
+  SELF_ALIAS,
+} from "./module-call-names.js";
+import { isModuleKind } from "./module-kinds.js";
 
 export interface ResourceGraphNode {
   type: "resource";
@@ -188,6 +199,17 @@ export interface CallGraphEdge {
    *  than dropped: it is a real edge, and only the init-order consumer wants it
    *  gone. */
   scoped?: boolean;
+  /**
+   * A CEL module call (`Self.format(x)`) rather than a reference slot. `slot`
+   * and `path` are the value holding the expression, `use` is `dependency`, and
+   * `toName` is the called name as a reference to it would be written — the
+   * bare name through `Self` or the module's own name, `<Alias>.<name>` across
+   * an import, which this graph carries unresolved like a `!ref`. The kernel
+   * binds every call a resource makes when it creates the resource, so the
+   * callee must exist first: init order keeps these edges as it keeps injection
+   * sites, and a body calling itself, directly or through another, is a cycle.
+   */
+  moduleCall?: boolean;
 }
 
 export interface CallGraph {
@@ -263,6 +285,30 @@ export function resolveScopedName<T>(
   if (!candidates || candidates.length === 0) return undefined;
   if (candidates.length === 1) return candidates[0];
   return candidates.find((candidate) => moduleOf(candidate) === fromModule);
+}
+
+/**
+ * What a `{ name, alias? }` reference written in `fromModule` names among
+ * `candidatesByName` — the declarations a dispatch resolves against.
+ *
+ * A bare name, or one through `Self`, follows {@link resolveScopedName}. A name
+ * through an import alias is the one declared by the module that alias reaches
+ * in `fromModule`'s own alias table, as the kernel resolves it — never another
+ * module's resource that happens to share the name.
+ */
+export function resolveReferenceTarget<T extends ResourceManifest>(
+  candidatesByName: ReadonlyMap<string, readonly T[]>,
+  ref: { readonly name: string; readonly alias?: string },
+  fromModule: string | undefined,
+  moduleForAlias: (alias: string) => string | undefined,
+): T | undefined {
+  const candidates = candidatesByName.get(ref.name);
+  if (ref.alias === undefined || ref.alias === "Self") {
+    return resolveScopedName(candidates, declaringModule, fromModule);
+  }
+  const target = moduleForAlias(ref.alias);
+  if (target === undefined) return undefined;
+  return candidates?.find((candidate) => declaringModule(candidate) === target);
 }
 
 /**
@@ -371,6 +417,13 @@ function enclosingSchemaOf(
  * `validate-ref-slots.ts` turns the `dynamic` reason into a diagnostic, because
  * a call graph known only at runtime is not statically analyzable.
  */
+/** Whether `concretePath` sits in one of the fields a contract or signature
+ *  names a shape through (`contract-shapes.ts`, the one reader of which those are). */
+function isShapeField(manifest: ResourceManifest, concretePath: string): boolean {
+  const head = concretePath.split(/[.[]/, 1)[0]!;
+  return shapeFieldsOf(manifest).includes(head);
+}
+
 function resolveUseAtSite(
   entry: RefFieldEntry,
   root: unknown,
@@ -922,12 +975,16 @@ export function buildCallGraph(
           !event.nested && rootSchema
             ? schemaDefaultOf(enclosingSchemaOf(rootSchema, event.fieldPath))
             : NO_DEFAULT;
-        const { use, unresolved, unresolvedReason } = resolveUseAtSite(
-          event.entry,
-          event.source,
-          event.concretePath,
-          schemaDefault,
-        );
+        // A shape a contract or signature names (`params[0].schema: !ref Money`)
+        // sits in no declared slot, but what it states is known: it names a
+        // shape, so it is a `schema` reference rather than an unknown one.
+        const { use, unresolved, unresolvedReason }: Pick<
+          CallGraphEdge,
+          "use" | "unresolved" | "unresolvedReason"
+        > =
+          event.nested && isShapeField(event.source, event.concretePath)
+            ? { use: ["schema"] }
+            : resolveUseAtSite(event.entry, event.source, event.concretePath, schemaDefault);
         const edge: CallGraphEdge = {
           from: sourceId,
           toName: targetName,
@@ -957,6 +1014,48 @@ export function buildCallGraph(
       discoverNestedRefs: true,
     },
   );
+
+  // --- module calls ---
+  // Resolved as the kernel binds them: through `Self` or the module's own name
+  // among the declaring module's own resources, never a `with:` scope's;
+  // through an alias to the import, whose export this graph does not follow.
+  const callNames = moduleCallNamesByModule(resources);
+  const rootModules = new Set<string>();
+  for (const manifest of resources) {
+    const name = manifest.metadata?.name;
+    if (isModuleKind(manifest.kind as string) && typeof name === "string") rootModules.add(name);
+  }
+  const moduleKeyOf = (manifest: ResourceManifest): string => {
+    const key = declaringModuleKey(manifest);
+    return rootModules.has(key) ? ROOT_MODULE_KEY : key;
+  };
+  for (const node of [...nodes.values()]) {
+    if (node.type !== "resource" || node.scoped) continue;
+    const module = moduleKeyOf(node.manifest);
+    const ownNames = module === ROOT_MODULE_KEY ? rootModules : new Set([module]);
+    for (const { path, call } of moduleCallSites(
+      node.manifest,
+      moduleCallNamesOf(callNames, node.manifest),
+    )) {
+      const dot = call.indexOf(".");
+      const receiver = call.slice(0, dot);
+      const own = receiver === SELF_ALIAS || ownNames.has(receiver);
+      const toName = own ? call.slice(dot + 1) : call;
+      const edge: CallGraphEdge = {
+        from: node.id,
+        toName,
+        slot: path,
+        path,
+        use: ["dependency"],
+        moduleCall: true,
+      };
+      const target = own
+        ? byName.get(toName)?.find((candidate) => moduleKeyOf(candidate.manifest) === module)
+        : undefined;
+      if (target) edge.to = target.id;
+      edges.push(edge);
+    }
+  }
 
   const fromIndex = new Map<string, CallGraphEdge[]>();
   const toIndex = new Map<string, CallGraphEdge[]>();
@@ -1027,6 +1126,8 @@ export interface ProjectToPairsOptions {
  * so their targets need only exist by the time the step runs. An earlier
  * revision keyed this on node kind and silently dropped boot targets' inline
  * invoke edges from init order — the regression this comment exists to prevent.
+ * A module call orders boot for the injection site's reason: the kernel binds
+ * it when the caller is created, so the callee is constructed first.
  *
  * Scoped nodes take no part at all: a `with:`-scoped resource is created when
  * the scope opens, and an edge into a scope is the owner's runtime business.
@@ -1041,7 +1142,7 @@ export function projectToPairs(
   }
   for (const edge of graph.edges) {
     if (!edge.to) continue;
-    if (!edge.injected && !options.includeNonInjected) continue;
+    if (!edge.injected && !edge.moduleCall && !options.includeNonInjected) continue;
     if (options.keepUse && !options.keepUse(edge.use)) continue;
     const from = graph.nodes.get(edge.from);
     const to = graph.nodes.get(edge.to);

@@ -1,6 +1,12 @@
 import type { Environment } from "@marcbachmann/cel-js";
 import type { ResourceManifest } from "@telorun/sdk";
-import { extractAccessChains, INDEX_SEGMENT, walkCelExpressions } from "@telorun/templating";
+import {
+  extractAccessChains,
+  INDEX_SEGMENT,
+  resolveModuleCalls,
+  walkCelExpressions,
+} from "@telorun/templating";
+import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
 import { type AnalysisDiagnostic, DiagnosticSeverity } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -51,17 +57,22 @@ export function validateUnusedDeclarations(
 
   const used = new Map<string, Set<string>>(NAMESPACES.map((ns) => [ns, new Set<string>()]));
   const suppressed = new Set<string>();
+  const moduleCallNames = moduleCallNamesByModule(manifests);
 
   for (const m of manifests) {
+    const moduleNames = moduleCallNamesOf(moduleCallNames, m);
     walkCelExpressions(m, "", (expr, _path, engineName) => {
       if (engineName !== "cel") return;
-      let ast: unknown;
+      let ast: Parameters<typeof extractAccessChains>[0];
       try {
         ast = celEnv.parse(expr).ast;
       } catch {
         return; // syntax errors are reported by the CEL engine pass
       }
-      for (const chain of extractAccessChains(ast as Parameters<typeof extractAccessChains>[0])) {
+      // The resolved tree, like every other chain walk: a module call's
+      // receiver is a module name, not a namespace root.
+      resolveModuleCalls(ast, moduleNames);
+      for (const chain of extractAccessChains(ast)) {
         const ns = chain[0];
         if (!used.has(ns)) continue;
         const member = chain[1];

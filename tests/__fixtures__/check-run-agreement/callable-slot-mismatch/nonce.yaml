@@ -1,0 +1,21 @@
+# Invokes the library's nonce verifier, whose held function requires an argument
+# its slot's abstract leaves optional.
+kind: Telo.Application
+metadata:
+  name: CallableSlotNonceApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Run: ../../../../modules/run
+targets:
+  - !ref verify
+---
+kind: Run.Sequence
+metadata:
+  name: verify
+steps:
+  - name: signed
+    invoke: !ref Lib.nonceVerifier
+    inputs:
+      key: k
+      message: m

@@ -23,13 +23,7 @@
 
 import type { Invocable } from "./capabilities/invokable.js";
 import type { InvokeContext } from "./cancellation.js";
-import {
-  durableHandleOf,
-  journalingSuppressed,
-  stepPath,
-  type DurableDecisionKind,
-  type DurableRunHandle,
-} from "./durable-run.js";
+import { decideValue, stepPath, type DurableDecisionKind } from "./durable-run.js";
 import { isSuspension } from "./durable-suspension.js";
 import { InvokeError, isInvokeError } from "./invoke-error.js";
 import { executeInvokeStep, type InvokeStep, type InvokeStepContext } from "./invoke-step.js";
@@ -268,13 +262,6 @@ export class StepEngine {
     return stepPath(path, step.name);
   }
 
-  /** The run handle to journal through, or undefined when this body is not
-   *  inside a durable run — in which case the engine behaves exactly as it did
-   *  before durability existed, and pays nothing for it. */
-  private handle(invokeCtx?: InvokeContext): DurableRunHandle | undefined {
-    return durableHandleOf(invokeCtx);
-  }
-
   /**
    * Evaluate a control-flow decision, journaling it when a run is durable.
    *
@@ -284,16 +271,18 @@ export class StepEngine {
    * process can send the replay down a different branch than the run took —
    * silently, because the journal would then hand back a recorded result under a
    * key the run reached for a different reason.
+   *
+   * Delegated to the shared {@link decideValue}, which a composer driving its own
+   * body reaches for the decisions the engine never sees — an iteration's
+   * collection, a loop's per-turn condition.
    */
-  private async decide<T>(
+  private decide<T>(
     invokeCtx: InvokeContext | undefined,
     path: string,
     kind: DurableDecisionKind,
     compute: () => T,
   ): Promise<T> {
-    const handle = this.handle(invokeCtx);
-    if (!handle || journalingSuppressed(this.ctx, invokeCtx, handle)) return compute();
-    return handle.decide(path, kind, compute);
+    return decideValue(this.ctx, invokeCtx, path, kind, compute);
   }
 
   private async executeStep(

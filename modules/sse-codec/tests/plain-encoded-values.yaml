@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: SsePlainEncodedValues
+  version: 1.0.0
+  description: |
+    An SSE data payload is read by something that is not Telo, so a CEL value with
+    no JSON form of its own leaves in its plain encoding — a duration as seconds —
+    never as an empty object.
+imports:
+  Sse: ../
+  PlainText: ../../plain-text-codec
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testPlainFrame
+---
+kind: Run.Sequence
+metadata: { name: testPlainFrame }
+steps:
+  - name: source
+    inputs:
+      items: !cel "[{'type': 'progress', 'took': duration('1h30m')}]"
+    invoke: { kind: Stream.Of }
+  - name: encode
+    inputs:
+      input: !cel "steps.source.result.output"
+    invoke: { kind: Sse.Encoder }
+  - name: decode
+    inputs:
+      input: !cel "steps.encode.result.output"
+    invoke: { kind: PlainText.Decoder }
+  - name: assertFrame
+    inputs:
+      actual: !cel "steps.decode.result.text"
+      expected: "event: progress\ndata: {\"took\":\"5400s\"}\n\n"
+    invoke: { kind: Assert.Equals }

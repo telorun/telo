@@ -1,4 +1,12 @@
-import { ControllerInstance, InvokeError, RuntimeError } from "@telorun/sdk";
+import {
+  ControllerInstance,
+  decodeTypedFrame,
+  encodeTypedFrame,
+  InvokeError,
+  RuntimeError,
+  writePlainJson,
+  type FunctionContext,
+} from "@telorun/sdk";
 import { execFile } from "child_process";
 import * as fs from "fs/promises";
 import { createRequire } from "module";
@@ -338,7 +346,7 @@ function project(
     throw new RuntimeError("ERR_CONTROLLER_INVALID", `${label}: napi module from ${where} is empty`);
   }
   if (!entry) {
-    if (!module.create && !module.register) {
+    if (!module.create && !module.register && !module.createFunction) {
       throw new RuntimeError(
         "ERR_CONTROLLER_INVALID",
         `${label} at ${where} exports neither create nor register`,
@@ -353,7 +361,7 @@ function project(
       `${label} at ${where}#${entry}: module has no export named "${entry}"`,
     );
   }
-  if (!sub.create && !sub.register) {
+  if (!sub.create && !sub.register && !sub.createFunction) {
     throw new RuntimeError(
       "ERR_CONTROLLER_INVALID",
       `${label} at ${where}#${entry} exports neither create nor register`,
@@ -460,11 +468,16 @@ const _structuredControllers = new WeakMap<object, ControllerInstance>();
 export function structuredNapiController(raw: object): ControllerInstance {
   const existing = _structuredControllers.get(raw);
   if (existing) return existing;
-  const { register, create } = raw as {
+  const { register, create, createFunction } = raw as {
     register?: (...args: unknown[]) => unknown;
     create?: (...args: unknown[]) => unknown;
+    createFunction?: (config: string, ctx: FunctionContext) => unknown;
   };
   const controller: Record<string, unknown> = { ...raw };
+  if (typeof createFunction === "function") {
+    controller.create = (resource: unknown, ctx: FunctionContext) =>
+      createNativeFunction(raw, createFunction, resource, ctx);
+  }
   if (typeof register === "function") {
     controller.register = (...args: unknown[]) => callStructured(() => register.apply(raw, args));
   }
@@ -478,6 +491,39 @@ export function structuredNapiController(raw: object): ControllerInstance {
   }
   _structuredControllers.set(raw, controller as ControllerInstance);
   return controller as ControllerInstance;
+}
+
+/** What a `#[function]` bridge's `createFunction` returns. */
+interface NapiFunctionInstance {
+  callFrame(args: string): string;
+  destroy(): void;
+}
+
+/**
+ * A Rust function exported by `#[function]`: its configuration crosses as plain
+ * JSON, its arguments and result as typed frames — the text the C ABI carries —
+ * so a timestamp, an int64, a uint64 or bytes keeps its CEL type both ways. The
+ * instance is created as an effect of `create`, so teardown and reload destroy
+ * it (its `Drop` runs then, not whenever the garbage collector gets to it).
+ */
+async function createNativeFunction(
+  raw: object,
+  createFunction: (config: string, ctx: FunctionContext) => unknown,
+  resource: unknown,
+  ctx: FunctionContext,
+): Promise<{ call(args: Record<string, unknown>): unknown }> {
+  const { result: native } = await ctx
+    .effect("native function instance", async () => {
+      const created = callStructured(() =>
+        createFunction.call(raw, writePlainJson(resource), ctx),
+      ) as NapiFunctionInstance;
+      return { result: created, inverse: () => callStructured(() => created.destroy()) };
+    })
+    .perform();
+  return {
+    call: (args) =>
+      decodeTypedFrame(callStructured(() => native.callFrame(encodeTypedFrame(args))) as string),
+  };
 }
 
 /** The SDK crate whose backend feature selects the FFI bridge, when the

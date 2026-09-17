@@ -1,0 +1,326 @@
+kind: Telo.Application
+metadata:
+  name: DurableComposerDecisions
+  version: 1.0.0
+  description: |
+    The decision points a composer makes on its own, before the step engine sees
+    anything: the collection `Run.Iteration` and `Run.Projection` walk, and the
+    condition `Run.Loop` tests per turn. All are journaled, so a resume takes the
+    decisions the RUN took — as is an invoke step's `when:` guard, the one decision the
+    step leaf makes rather than the engine.
+
+    Neither reaches the engine. A composer that drives its own body evaluates these and
+    only then hands a step list over, so the engine's own `if` / `while` / `switch`
+    journaling covers neither — which left the closure property with two holes in exactly
+    the places the specification names as decision points.
+
+    A collection re-derived on a resume is the failure the specification calls the
+    sharpest, because it is silent: index N now names a different element, the journal
+    hands that turn the result recorded for the element that used to be there, and the
+    target matches so nothing is detectable. A condition re-derived is the loud version
+    of the same thing — the loop simply stops at a different turn — which is what makes
+    it assertable.
+
+    THE ASSERTION IS THE KERNEL'S OWN DISPATCH RECORD, for both. `matched` is dispatched
+    only when the element the resumed turn is handed equals the one the FIRST pass
+    recorded, so a re-derived collection — a fresh `nowMillis()` reading, taken after the
+    delay below — skips it. `done` is dispatched only if the loop re-enters turn 0 on the
+    resume, which it does only by replaying the condition that was true when the run
+    parked: re-evaluated, the cutoff has long passed and the loop would exit having run
+    nothing.
+
+    `projected` is the projection's `matched`, for the same reason. `guarded` is dispatched
+    on the first pass under a guard that is true only for its first 300ms; the resumes come
+    long after, so a re-derived guard would skip the step and leave it out of the run's
+    result — which is what the last assertion reads.
+
+    The run parks THREE times, once inside each composer, because a composer that completes
+    is replayed as one recorded step and its own decisions are never re-reached.
+
+    `matched`, `projected` and `done` are named because the dispatch record is keyed by
+    the name.
+imports:
+  Durable: ../../durable
+  Local: ../../durable-local
+  Journal: ../../durable-journal-file
+  Run: ../
+  Timer: ../../timer
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: DURABLE_COMPOSER_TEST_DIR
+    type: string
+    default: .telo/durable-composer-test
+targets:
+  - !ref test
+  - !ref dispatches
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+kind: Run.Value
+metadata: { name: matched }
+value: { matched: true }
+---
+kind: Run.Value
+metadata: { name: done }
+value: { done: true }
+---
+kind: Run.Value
+metadata: { name: projected }
+value: { projected: true }
+---
+kind: Durable.Await
+metadata: { name: firstApproval }
+token: !cel "'composer-1:' + inputs.ticket"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ok]
+    additionalProperties: false
+    properties:
+      ok: { type: boolean }
+---
+kind: Durable.Await
+metadata: { name: projectionApproval }
+token: !cel "'composer-3:' + inputs.ticket"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ok]
+    additionalProperties: false
+    properties:
+      ok: { type: boolean }
+---
+kind: Durable.Await
+metadata: { name: secondApproval }
+token: !cel "'composer-2:' + inputs.ticket"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ok]
+    additionalProperties: false
+    properties:
+      ok: { type: boolean }
+---
+kind: Local.Workflow
+metadata: { name: process }
+journal: !ref journal
+runId: !cel "'composer:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+  guardUntil: !cel "nowMillis() + 300"
+steps:
+  - name: guarded
+    when: !cel "nowMillis() < inputs.guardUntil"
+    invoke: { kind: Run.Value, value: { guarded: true } }
+  # The collection is a clock reading, so the element the body sees is different
+  # on every evaluation. `before` completes on the first pass and is replayed;
+  # `item` on the resume comes from the collection the journal handed back.
+  - name: eachStamp
+    invoke:
+      kind: Run.Iteration
+      collection: !cel "[string(nowMillis())]"
+      steps:
+        - name: before
+          value: !cel "item"
+        - name: wait
+          invoke: !ref firstApproval
+          inputs:
+            ticket: !cel "inputs.ticket"
+        - name: matched
+          when: !cel "item == steps.before.result"
+          invoke: !ref matched
+    inputs:
+      ticket: !cel "inputs.ticket"
+  # The same clock reading as `eachStamp`'s, walked by a projection.
+  - name: projectStamp
+    invoke:
+      kind: Run.Projection
+      collection: !cel "[string(nowMillis())]"
+      steps:
+        - name: before
+          value: !cel "item"
+        - name: wait
+          invoke: !ref projectionApproval
+          inputs:
+            ticket: !cel "inputs.ticket"
+        - name: projected
+          when: !cel "item == steps.before.result"
+          invoke: !ref projected
+    inputs:
+      ticket: !cel "inputs.ticket"
+  # `cutoff` is fixed when this loop's step inputs are recorded, and the resume is
+  # well past it — so the condition is true exactly once, on the pass that
+  # recorded it.
+  - name: untilCutoff
+    invoke:
+      kind: Run.Loop
+      maxIterations: 3
+      condition: !cel "nowMillis() < inputs.cutoff"
+      steps:
+        - name: wait
+          invoke: !ref secondApproval
+          inputs:
+            ticket: !cel "inputs.ticket"
+        - name: done
+          invoke: !ref done
+    inputs:
+      ticket: !cel "inputs.ticket"
+      cutoff: !cel "nowMillis() + 300"
+---
+kind: Local.Status
+metadata: { name: status }
+journal: !ref journal
+---
+kind: Assert.Events
+metadata: { name: dispatches }
+filter:
+  - type: "matched.Invoked"
+  - type: "projected.Invoked"
+  - type: "done.Invoked"
+expect:
+  # ONCE each, and zero is the failure they are written to catch: `matched` and
+  # `projected` are skipped when the resumed turn is handed a different element,
+  # and `done` is never reached when the loop re-evaluates its condition and exits.
+  - event: matched.Invoked
+    times: 1
+  - event: projected.Invoked
+    times: 1
+  - event: done.Invoked
+    times: 1
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: ticket
+    value: !cel "'c' + string(nowMillis())"
+
+  - name: start
+    invoke: !ref process
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  # Parked inside the iteration. The start is detached, so the body is still on
+  # its way — read once before the loop, since `while:` is a pre-test.
+  - name: parked
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParked
+    while: !cel "steps.parked.result.status != 'parked'"
+    maxIterations: 200
+    do:
+      - name: parked
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+
+  # A real gap, which is what gives the assertions teeth: a re-derived clock
+  # reading would differ from the recorded one by more than a scheduling jitter,
+  # and the guard's 300ms window has closed.
+  - name: firstGap
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 1500ms
+  - name: deliverFirst
+    invoke:
+      kind: Local.Deliver
+      journal: !ref journal
+      await: !ref firstApproval
+      token: !cel "'composer-1:' + inputs.ticket"
+      payload:
+        ok: true
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: firstResume
+    invoke: !ref process
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  # Parked again, inside the projection.
+  - name: parkedInProjection
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParkedInProjection
+    while: !cel "steps.parkedInProjection.result.status != 'parked'"
+    maxIterations: 200
+    do:
+      - name: parkedInProjection
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+
+  - name: projectionGap
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 400ms
+  - name: deliverProjection
+    invoke:
+      kind: Local.Deliver
+      journal: !ref journal
+      await: !ref projectionApproval
+      token: !cel "'composer-3:' + inputs.ticket"
+      payload:
+        ok: true
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: projectionResume
+    invoke: !ref process
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  # Parked again, this time inside the loop's first turn.
+  - name: parkedAgain
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParkedAgain
+    while: !cel "steps.parkedAgain.result.status != 'parked'"
+    maxIterations: 200
+    do:
+      - name: parkedAgain
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+
+  - name: secondGap
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 1500ms
+  - name: deliverSecond
+    invoke:
+      kind: Local.Deliver
+      journal: !ref journal
+      await: !ref secondApproval
+      token: !cel "'composer-2:' + inputs.ticket"
+      payload:
+        ok: true
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: secondResume
+    invoke: !ref process
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  - name: finished
+    invoke:
+      kind: Local.Result
+      journal: !ref journal
+      wait: 15s
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: assertCompleted
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        guarded: !cel "'guarded' in steps.finished.result.result.steps"
+      expected:
+        status: completed
+        guarded: true
+    invoke: { kind: Assert.Equals }

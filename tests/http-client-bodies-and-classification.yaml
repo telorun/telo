@@ -138,8 +138,9 @@ with:
 targets:
   - !ref TestServer
 steps:
-  # A byte body, produced by CEL rather than written as a literal — a byte slot is
-  # never authorable inline, which is the point of the value type.
+  # A byte body produced by CEL. A byte slot also takes base64url text, decoded
+  # where it is written; this row is about the computed form, which must already
+  # be bytes.
   - name: postBytes
     inputs:
       url: http://localhost:8871/api/echo

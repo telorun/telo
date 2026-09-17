@@ -297,6 +297,17 @@ export interface ResourceContext extends ControllerContext {
    */
   resolveDeclaredManifest?(name: string, alias?: string): ResourceManifest | undefined;
   validateSchema(value: any, schema: any): void;
+  /**
+   * A value that arrived from outside Telo — a transport body, query or header
+   * map — as the schema it was promised says it holds: every slot declaring an
+   * instance value type with a plain encoding (`Telo.Timestamp`, `Telo.Duration`,
+   * `Telo.Bytes`) has its text decoded into the instance, through the same walk
+   * the runtime reads a YAML literal with. Text such a slot's encoding does not
+   * read is refused with `ERR_INPUT_INVALID`, naming the slot and the form, its
+   * `data.issues` listing each refusal as `{ path, message }` with a dotted path
+   * inside the value. The value is decoded in place and returned.
+   */
+  readPlainEncoded(value: unknown, schema: Record<string, any>): unknown;
   /** Compile an author-written JSON Schema from a resource field into a
    *  reusable validator, through the runtime's own engine — so its formats and
    *  `x-telo-*` keywords apply and one process never holds two disagreeing

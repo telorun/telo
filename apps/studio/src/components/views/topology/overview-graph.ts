@@ -38,6 +38,7 @@ export const NODE_CAPABILITIES: ReadonlySet<string> = new Set([
   "Telo.Invocable",
   "Telo.Runnable",
   "Telo.Mount",
+  "Telo.Callable",
 ]);
 
 /** Capabilities whose resources are ambient value / schema sources — the canvas

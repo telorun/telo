@@ -201,7 +201,7 @@ function validateControllerSelectors(
               ? `states no abi. `
               : `states abi=${selector.abi}, which is not a Rust controller ABI. `) +
             `A dylib is built against one version of the Rust controller ABI and must say which — ` +
-            `add abi=telo-<version>, e.g. abi=telo-2. Without it the Rust kernel downloads the ` +
+            `add abi=telo-<version>, e.g. abi=telo-3. Without it the Rust kernel downloads the ` +
             `library on every host and refuses it only when it opens it.`,
           data: { resource, filePath, path: at },
         });

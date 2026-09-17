@@ -1,5 +1,5 @@
 import { effectiveAuthorSchema } from "@telorun/analyzer";
-import { RuntimeError } from "@telorun/sdk";
+import { Duration, RuntimeError } from "@telorun/sdk";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
@@ -359,6 +359,40 @@ describe("resolveApplicationEnv", () => {
       buildValidator(),
     );
     expect(result.variables).toEqual({ port: 3000 });
+  });
+
+  it("decodes an instance-typed value from its plain encoding, whole, nested and as a default", () => {
+    const result = resolveApplicationEnv(
+      {
+        variables: {
+          opens: { env: "OPENS", type: "string", "x-telo-type": "Telo.Timestamp" },
+          price: {
+            env: "PRICE",
+            type: "object",
+            properties: { pricedAt: { "x-telo-type": "Telo.Timestamp" } },
+          },
+          lasts: { env: "LASTS", type: "string", "x-telo-type": "Telo.Duration", default: "1h30m" },
+        },
+      },
+      { OPENS: "2026-01-15T09:30:00+02:00", PRICE: '{"pricedAt":"2026-01-15T07:30:00Z"}' },
+      buildValidator(),
+    );
+    expect(result.variables.opens).toEqual(new Date("2026-01-15T07:30:00Z"));
+    expect((result.variables.price as { pricedAt: unknown }).pricedAt).toEqual(
+      new Date("2026-01-15T07:30:00Z"),
+    );
+    expect(result.variables.lasts).toBeInstanceOf(Duration);
+    expect(String(result.variables.lasts)).toBe("5400s");
+  });
+
+  it("refuses env text the plain encoding does not read, naming the form", () => {
+    expect(() =>
+      resolveApplicationEnv(
+        { variables: { opens: { env: "OPENS", type: "string", "x-telo-type": "Telo.Timestamp" } } },
+        { OPENS: "tomorrow" },
+        buildValidator(),
+      ),
+    ).toThrow(/opens: .*must be a Telo\.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text/);
   });
 
   it("aggregates errors for missing required env vars", () => {

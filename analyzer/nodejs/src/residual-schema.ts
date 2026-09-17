@@ -1,3 +1,5 @@
+import { isInstanceSlot } from "@telorun/sdk";
+
 /**
  * Build the residual JSON Schema for a `variables` / `secrets` entry.
  *
@@ -20,9 +22,14 @@ export function residualEntrySchema(
     return { type: "object", additionalProperties: true };
   }
   const isAppEnvBinding = "env" in entry;
+  // On a binding whose value is an instance (a timestamp, bytes), `type:` names
+  // how the env text is read — the plain encoding's JSON type — not the value,
+  // so it would refuse every decoded one.
+  const coercionOnly = isAppEnvBinding && isInstanceSlot(entry);
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(entry)) {
     if (isAppEnvBinding && (key === "env" || key === "default")) continue;
+    if (coercionOnly && key === "type") continue;
     out[key] = value;
   }
   return out;

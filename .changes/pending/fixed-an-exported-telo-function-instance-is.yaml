@@ -1,0 +1,6 @@
+modules:
+  apps/hub: Fixed
+body: An exported Telo.Function instance is indexed with its kind and
+  metadata.description like an exported instance of a module-defined kind; it used to be
+  recorded with both empty because every built-in document kind was skipped. Existing
+  versions pick it up on their next ingest (raise INGEST_REV to re-ingest them all).

@@ -1,0 +1,21 @@
+# The root of a callable chain spanning three libraries.
+kind: Telo.Library
+metadata:
+  name: SignerLib
+  version: 1.0.0
+  description: Fixture library declaring a callable abstract for signing a message under a key.
+exports:
+  kinds: [Signer]
+---
+kind: Telo.Abstract
+metadata:
+  name: Signer
+  description: Signs a message under a key and returns the signature as text.
+capability: Telo.Callable
+params:
+  - name: key
+    schema: { type: string }
+  - name: message
+    schema: { type: string }
+returns:
+  schema: { type: string }

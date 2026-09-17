@@ -309,6 +309,18 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
       "Replace this node with the projection of the entry collection declared by the kind referenced at the named field.",
     type: "string",
   },
+  "x-telo-returns-from": {
+    title: "Returns from",
+    description:
+      "The CEL value here is a function's result: it must satisfy the `returns:` declaration at the named root field.",
+    type: "string",
+  },
+  "x-telo-unbound-calls": {
+    title: "Unbound calls",
+    description:
+      "Expressions here are evaluated where no module function is bound, so a module call in them is refused. On a string field, the field's plain text is itself such an expression. The value is the reason the diagnostic quotes.",
+    type: "string",
+  },
   "x-telo-value-schema-from": {
     title: "Value schema from",
     description:
@@ -338,6 +350,12 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-context-ref-from": {
     title: "Context ref from",
     description: "Type this node from the named manifest's field, falling back to its kind's.",
+    type: "string",
+  },
+  "x-telo-context-parameters-from": {
+    title: "Context parameters from",
+    description:
+      "Merge the named ordered parameter list (`[{ name, schema, nullable?, optional? }]`) into this context node — one binding per parameter, typed from its schema, and the node closed so a typo below one is reported.",
     type: "string",
   },
   "x-telo-context-element-from": {

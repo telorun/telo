@@ -1,0 +1,18 @@
+# The function the inner library calls through its own import alias.
+kind: Telo.Library
+metadata:
+  name: ReExportCelScopeText
+  version: 1.0.0
+  description: Fixture library exporting a string function.
+exports:
+  resources: [shout]
+---
+kind: Telo.Function
+metadata:
+  name: shout
+params:
+  - name: text
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "text + '!'"

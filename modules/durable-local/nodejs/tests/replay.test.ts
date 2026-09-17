@@ -14,12 +14,13 @@
  * invent a manifest-level crash that would be a different thing wearing the same
  * name.
  */
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Stream, UNCANCELLABLE_CONTEXT, deriveContext, type ZoneEntry } from "@telorun/sdk";
 import { assertNotSwallowed, parkRun } from "@telorun/sdk";
+import { recordedRunInputs, recordedRunResult } from "../src/journal-codec.js";
 import { LocalRunHandle } from "../src/run-handle.js";
 import { create as createJournal } from "../../../durable-journal-file/nodejs/src/journal.js";
 import type { DurableJournal } from "../src/journal.js";
@@ -108,6 +109,140 @@ describe("LocalRunHandle — replaying an interrupted run", () => {
     await expect(
       handle.step("steps/leak", TARGET, {}, async () => cyclic),
     ).rejects.toMatchObject({ code: "ERR_DURABLE_UNJOURNALABLE_VALUE" });
+  });
+
+  it("refuses a class instance offering a JSON conversion, which would replay as a different value", async () => {
+    // `JSON.stringify` succeeds here and returns `{"amount":"41"}`, so a gate
+    // built on it let this through — and the step replayed as a plain object
+    // where the first pass had a Money, with nothing reported. The frame refuses
+    // it and says WHERE inside the value the offending node is.
+    class Money {
+      constructor(readonly amount: bigint) {}
+      toJSON() {
+        return { amount: String(this.amount) };
+      }
+    }
+    expect(JSON.stringify({ total: new Money(41n) })).toBe('{"total":{"amount":"41"}}');
+
+    await journal.admitRun("run-tojson");
+    const handle = await LocalRunHandle.open("run-tojson", journal);
+    await expect(
+      handle.step("steps/price", TARGET, {}, async () => ({ total: new Money(41n) })),
+    ).rejects.toMatchObject({
+      code: "ERR_DURABLE_UNJOURNALABLE_VALUE",
+      data: { path: "steps/price", valuePath: "/total" },
+    });
+  });
+
+  it("journals a step that produced NOTHING, and replays it as nothing", async () => {
+    // The entry is what says the step COMPLETED, so a step returning nothing is
+    // journaled like any other — and absence belongs to the entry rather than to
+    // a value, since `undefined` is not a CEL value and a codec that gave it a
+    // form would stop being one-to-one.
+    await journal.admitRun("run-void");
+    const first = await LocalRunHandle.open("run-void", journal);
+    let calls = 0;
+    const effect = async () => {
+      calls++;
+      return undefined;
+    };
+    expect(await first.step("steps/notify", TARGET, {}, effect)).toBeUndefined();
+
+    const second = await LocalRunHandle.open("run-void", journal);
+    const replayed = await second.step("steps/notify", TARGET, {}, effect);
+    // Not `null`, which is a CEL value and is recorded as one.
+    expect(replayed).toBeUndefined();
+    expect(calls).toBe(1);
+    expect(second.observations.replayedSteps).toBe(1);
+  });
+
+  it("records an object member holding no value as absent, on the first pass and the replay alike", async () => {
+    // `{a: undefined, b: 1}` is an ordinary result; `undefined` is not a CEL
+    // value, so the member is left out rather than failing the run.
+    await journal.admitRun("run-absent");
+    const first = await LocalRunHandle.open("run-absent", journal);
+    const effect = async () => ({ a: undefined, b: 1, nested: { c: undefined, d: [1] } });
+    expect(await first.step("steps/produce", TARGET, {}, effect)).toStrictEqual({
+      b: 1,
+      nested: { d: [1] },
+    });
+
+    const second = await LocalRunHandle.open("run-absent", journal);
+    expect(await second.step("steps/produce", TARGET, {}, effect)).toStrictEqual({
+      b: 1,
+      nested: { d: [1] },
+    });
+    expect(second.observations.replayedSteps).toBe(1);
+  });
+
+  it("reads an entry written before the codec existed", async () => {
+    // The file a run parked before this change left behind: plain JSON values
+    // and no codec version anywhere. Refusing one would strand exactly the runs
+    // a journal exists to protect, so a versionless entry is read the way this
+    // store read it then.
+    await writeFile(
+      join(dir, "run-pre-codec.ndjson"),
+      [
+        JSON.stringify({ type: "run", run: "run-pre-codec", status: "running" }),
+        JSON.stringify({
+          type: "entry",
+          entry: { path: "steps/a", kind: "step", value: { ok: 1 } },
+        }),
+        "",
+      ].join("\n"),
+    );
+
+    const handle = await LocalRunHandle.open("run-pre-codec", journal);
+    expect(await handle.step("steps/a", TARGET, {}, async () => ({ ok: 2 }))).toEqual({ ok: 1 });
+  });
+
+  it("refuses an entry written by a codec version it does not know, naming the version", async () => {
+    // The step-target rule applied to the record: a later codec may mean
+    // something else by the same bytes, so reading the parts that look familiar
+    // would replay the run against a value nobody wrote.
+    await journal.admitRun("run-future");
+    await journal.append("run-future", {
+      path: "steps/a",
+      kind: "step",
+      v: 99,
+      value: '{"$telo":"something-new","value":"?"}',
+    });
+
+    await expect(LocalRunHandle.open("run-future", journal)).rejects.toMatchObject({
+      code: "ERR_DURABLE_ENTRY_UNDECODABLE",
+      data: { version: 99, reads: 1 },
+    });
+  });
+
+  it("reads a run record's inputs and result under the same version rules as an entry", async () => {
+    // A record from before the codec is plain JSON and read as it is; one in a
+    // version this runtime does not know is refused rather than half-read.
+    await writeFile(
+      join(dir, "run-pre-codec-record.ndjson"),
+      `${JSON.stringify({
+        type: "run",
+        run: "run-pre-codec-record",
+        status: "completed",
+        inputs: { at: "2026-01-15T09:30:00Z" },
+        result: { steps: { a: { result: 1 } } },
+      })}\n`,
+    );
+    const legacy = (await journal.readRun("run-pre-codec-record"))!;
+    expect(recordedRunInputs(legacy)).toEqual({ value: { at: "2026-01-15T09:30:00Z" } });
+    expect(recordedRunResult(legacy)).toEqual({ value: { steps: { a: { result: 1 } } } });
+
+    await journal.admitRun("run-record-future", {
+      status: "scheduled",
+      inputs: '{"$telo":"something-new","value":"?"}',
+      inputsCodecVersion: 99,
+    });
+    const future = (await journal.readRun("run-record-future"))!;
+    expect(() => recordedRunInputs(future)).toThrow(
+      expect.objectContaining({
+        code: "ERR_DURABLE_ENTRY_UNDECODABLE",
+        data: expect.objectContaining({ path: "inputs", version: 99, reads: 1 }),
+      }),
+    );
   });
 
   it("refuses a LIVE value, which serializing cannot detect", async () => {

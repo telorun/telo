@@ -1,5 +1,5 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { InvokeError, Stream } from "@telorun/sdk";
+import { InvokeError, Stream, writePlainJson } from "@telorun/sdk";
 
 interface EncoderResource {
   metadata: { name: string; module?: string };
@@ -20,7 +20,8 @@ interface EncoderOutputs {
  * Item shape: an object whose optional `type` becomes the SSE event (default
  * `message` when absent) and whose optional `id` (string / number) becomes the
  * SSE `id:` line — the reconnection cursor a client echoes as `Last-Event-ID`.
- * All remaining fields become the JSON-encoded data payload. A typeless object
+ * All remaining fields become the data payload, written as plain JSON (a CEL
+ * value in its plain encoding, `writePlainJson`). A typeless object
  * (e.g. a `{ id, data }` replay-journal envelope) frames as a `message` event
  * carrying an `id:` line, so a resumable stream needs no bespoke shaping. Bare
  * strings frame as a `message` event whose data is the JSON-encoded string.
@@ -84,7 +85,7 @@ async function* encode(
 
 function formatFrame(item: unknown, name: string): string {
   if (typeof item === "string") {
-    return `event: message\ndata: ${JSON.stringify(item)}\n\n`;
+    return `event: message\ndata: ${writePlainJson(item)}\n\n`;
   }
   if (!item || typeof item !== "object") {
     throw new InvokeError(
@@ -115,7 +116,7 @@ function formatFrame(item: unknown, name: string): string {
   // silently dropping it would break Last-Event-ID resumption without a signal.
   const idLine =
     typeof id === "string" || typeof id === "number" || typeof id === "bigint" ? `id: ${id}\n` : "";
-  return `${idLine}event: ${event}\ndata: ${JSON.stringify(rest)}\n\n`;
+  return `${idLine}event: ${event}\ndata: ${writePlainJson(rest)}\n\n`;
 }
 
 export function register(_ctx: ControllerContext): void {}

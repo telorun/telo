@@ -1,0 +1,69 @@
+# Contracts naming a shape by `!ref`, in a library that declares a shape of the
+# same name as one its import exports. A bare `!ref Money` is THIS library's; an
+# alias-qualified `!ref Types.Money` is the import's. Both halves must bind the
+# one the reference names — at the kind level and at the instance level.
+kind: Telo.Library
+metadata:
+  name: RtLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose contracts name its own shape and an imported shape of
+    the same name.
+imports:
+  Run: ../../../../../modules/run
+  Types: ../types
+exports:
+  resources: [ownKind, importedKind, ownInstance]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Money
+schema:
+  type: object
+  required: [amount]
+  properties:
+    amount: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: OwnMoney
+capability: Telo.Invocable
+outputType: !ref Money
+schema: { type: object }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { amount: 1 }
+invoke: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: ImportedMoney
+capability: Telo.Invocable
+outputType: !ref Types.Money
+schema: { type: object }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { cents: 1 }
+invoke: !ref body
+---
+kind: Self.OwnMoney
+metadata:
+  name: ownKind
+---
+kind: Self.ImportedMoney
+metadata:
+  name: importedKind
+---
+kind: Run.Sequence
+metadata:
+  name: ownInstance
+outputType: !ref Money
+steps:
+  - name: noop
+    value: 1
+outputs:
+  amount: 1

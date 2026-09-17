@@ -1,0 +1,143 @@
+# Callable kinds carrying what a function cannot have. A callable's `call(args)`
+# is synchronous and receives no context, so every declaration below is one
+# nothing could honour — each is refused by this library's own `telo check` and,
+# through the same rules, by the kernel when it registers the kind.
+#
+# Every clause sits on a kind that is otherwise registrable, so the kernel
+# reports them all in one boot rather than stopping at the first.
+kind: Telo.Library
+metadata:
+  name: CallableKindsLib
+  version: 1.0.0
+  description: >-
+    Fixture library declaring callable kinds that carry declarations a function
+    cannot honour.
+---
+kind: Telo.Definition
+metadata:
+  name: Everything
+capability: Telo.Callable
+deterministic: "yes"
+params:
+  - name: tail
+    schema: { type: string }
+    optional: true
+  - name: amount
+    schema: Money
+schema:
+  type: object
+  properties:
+    sink:
+      x-telo-ref: { kind: Telo.LogSink, use: dependency }
+    anyFn:
+      x-telo-ref: { kind: Telo.Callable, use: dependency }
+    late:
+      type: string
+      x-telo-eval: runtime
+    zone:
+      type: string
+      x-telo-provides-zone: true
+    scoped:
+      type: array
+      x-telo-scope: /scoped
+    steps:
+      type: array
+      items:
+        $ref: "telo://manifest#/$defs/Step"
+status:
+  type: object
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+---
+kind: Telo.Definition
+metadata:
+  name: Parent
+capability: Telo.Callable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+---
+kind: Telo.Definition
+metadata:
+  name: Child
+extends: Self.Parent
+deterministic: true
+returns:
+  schema: { type: string }
+---
+kind: Telo.Abstract
+metadata:
+  name: LooseSigner
+capability: Telo.Callable
+params:
+  - name: key
+    schema: { type: string }
+returns:
+  schema: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Claimer
+capability: Telo.Callable
+deterministic: true
+schema:
+  type: object
+  properties:
+    signer:
+      x-telo-ref: { kind: Self.LooseSigner, use: dependency }
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+---
+kind: Telo.Definition
+metadata:
+  name: FromFunction
+extends: Telo.Function
+---
+kind: Telo.Definition
+metadata:
+  name: Templated
+capability: Telo.Callable
+resources:
+  - kind: Telo.JsonSchema
+    metadata:
+      name: shape
+    schema: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: NotCallable
+capability: Telo.Invocable
+params: []
+deterministic: true
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+---
+kind: Telo.Abstract
+metadata:
+  name: UntypedHolder
+schema:
+  type: object
+  properties:
+    fn:
+      x-telo-ref: { kind: Telo.Callable, use: dependency }
+---
+# A function kind with no signature of its own accepts any function, exactly as
+# bare `Telo.Callable` does — `Telo.Function`'s signature is each instance's.
+kind: Telo.Abstract
+metadata:
+  name: FunctionHolder
+schema:
+  type: object
+  properties:
+    function:
+      x-telo-ref: { kind: Telo.Function, use: dependency }
+---
+# Signature shapes that name nothing, at the root and nested.
+kind: Telo.Abstract
+metadata:
+  name: UnresolvedSigner
+capability: Telo.Callable
+params:
+  - name: value
+    schema: !ref NoSuchShape
+returns:
+  schema: { type: array, items: !ref AlsoMissing }

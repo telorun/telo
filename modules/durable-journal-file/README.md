@@ -20,6 +20,8 @@ One newline-delimited JSON file per run, appended and flushed as each record is 
 
 A run's file is read back with **first writer wins** per step: a record already present is the one that counts, so two writers converge rather than each continuing with its own value.
 
+A recorded value arrives already written down, under the codec version beside it, and this store keeps the two together and looks inside neither. That is the whole of its obligation: what [`durable-local`](../durable-local/docs/what-is-recorded.md) wrote is what it reads back, so a timestamp replays as a timestamp and a 64-bit integer keeps its last digit. A line from a file written before that codec existed carries no version and is read as the plain JSON it is, so a run parked then still resumes. A run line's `inputs` and `result` are kept the same way, beside `inputsCodecVersion` and `resultCodecVersion`.
+
 ## A record torn mid-write
 
 An abrupt exit during an append leaves a partial final line. Both halves of the store have to agree about what that means, and they do:

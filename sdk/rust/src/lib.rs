@@ -32,15 +32,22 @@
 //! rather than to this dependency.
 
 pub use serde_json::Value;
-pub use telorun_sdk_macros::controller;
+pub use telorun_sdk_macros::{controller, function};
 
 pub mod backend;
 
+mod cel_value_identity;
 mod error;
+pub mod function_controller;
 mod invoke_context;
 pub mod logging;
+pub mod plain_encoding;
 mod traits;
+pub mod typed_frame;
 pub mod value_type;
+
+pub use cel_value_identity::{Bytes, Duration, Timestamp, Uint64};
+pub use function_controller::{Function, FunctionContext};
 
 pub use error::ControllerError;
 pub use logging::{

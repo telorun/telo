@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata:
+  name: NativeFunctionAsyncCallApp
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: AsyncCall
+capability: Telo.Callable
+schema: { type: object }
+returns:
+  schema: { type: string }
+controllers:
+  - pkg:telo/local/js?path=./functions.mjs#AsyncCall
+---
+kind: Self.AsyncCall
+metadata:
+  name: broken

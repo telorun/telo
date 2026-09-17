@@ -1,6 +1,7 @@
 /**
  * The ambient kernel error union: codes any dispatch can raise because the
- * kernel — not the kind's controller — enforces the invocation contract.
+ * kernel — not the kind's controller — enforces the invocation contract, or
+ * evaluates a module function an expression calls.
  *
  * They are **catchable**: a `catches:` entry may name one and its `when:` is
  * validated against this set, so a typo is caught statically like any declared
@@ -34,11 +35,20 @@ export const ERR_CONTRACT_UNRESOLVABLE = "ERR_CONTRACT_UNRESOLVABLE";
  *  different — fix the reference, not the type registration. */
 export const ERR_SCHEMA_PROJECTION_UNRESOLVED = "ERR_SCHEMA_PROJECTION_UNRESOLVED";
 
+/** A module function called from CEL threw. Ambient for the same reason the
+ *  contract codes are: the RUNTIME raises it around whatever the callable threw,
+ *  for every expression alike, so no kind declares it. Re-evaluating a
+ *  synchronous call with the same arguments does not recover, so it is never
+ *  retried. `data` carries `function` (the qualified name as written), the
+ *  thrown `message`, and its `code` when it had one. */
+export const ERR_FUNCTION_FAILED = "ERR_FUNCTION_FAILED";
+
 export const AMBIENT_CONTRACT_ERROR_CODES = [
   ERR_INPUT_INVALID,
   ERR_OUTPUT_INVALID,
   ERR_CONTRACT_UNRESOLVABLE,
   ERR_SCHEMA_PROJECTION_UNRESOLVED,
+  ERR_FUNCTION_FAILED,
 ] as const;
 
 export type AmbientContractErrorCode = (typeof AMBIENT_CONTRACT_ERROR_CODES)[number];

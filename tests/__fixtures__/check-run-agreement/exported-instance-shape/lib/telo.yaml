@@ -1,0 +1,28 @@
+# Exports a sequence whose input contract names a shape the library does not
+# export: the shape is part of the contract a consumer is checked against.
+kind: Telo.Library
+metadata:
+  name: ExportedInstanceShapeLib
+  version: 1.0.0
+  description: Fixture library exporting a sequence whose input contract is a named shape.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [priced]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Money
+schema:
+  type: object
+  required: [amount]
+  properties:
+    amount: { type: integer }
+---
+kind: Run.Sequence
+metadata:
+  name: priced
+inputType: !ref Money
+steps:
+  - name: echo
+    value: !cel "inputs.amount"

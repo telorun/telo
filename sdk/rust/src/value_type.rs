@@ -25,6 +25,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use crate::plain_encoding::PLAIN_ENCODINGS;
+
 /// The annotation's key, so no caller spells it inline.
 pub const X_TELO_TYPE: &str = "x-telo-type";
 
@@ -61,8 +63,14 @@ pub struct ValueType {
     pub representation: Representation,
     /// `json` only — the JSON Schema type this name refines.
     pub base: Option<String>,
+    /// `json` only — the CEL type a value carries when JSON Schema cannot name
+    /// it (`uint` over `integer`). Absent means a nominal brand over `base`.
+    pub cel_type: Option<String>,
     /// `instance` only — the symbolic key [`BINDINGS`] maps.
     pub binding: Option<String>,
+    /// Non-live `instance` only — the symbolic name of the one canonical plain
+    /// JSON form.
+    pub encoding: Option<String>,
     /// An instance whose consumption has effects, so it is exempt from
     /// validation rather than asserted. Exemption is from VALIDATION, never from
     /// TYPING.
@@ -90,10 +98,20 @@ fn bindings() -> &'static HashMap<&'static str, Binding> {
     static BINDINGS: OnceLock<HashMap<&'static str, Binding>> = OnceLock::new();
     BINDINGS.get_or_init(|| {
         HashMap::from([
-            ("bytes", Binding { rust_type: "Vec<u8>" }),
+            ("bytes", Binding { rust_type: "Bytes" }),
+            ("duration", Binding { rust_type: "Duration" }),
             ("stream", Binding { rust_type: "Stream" }),
+            ("timestamp", Binding { rust_type: "Timestamp" }),
         ])
     })
+}
+
+/// The CEL types a `json` base carries beyond its own, which only `celType` states.
+fn cel_types_beyond_base(base: &str) -> &'static [&'static str] {
+    match base {
+        "integer" => &["uint"],
+        _ => &[],
+    }
 }
 
 // The entries, embedded. Listed explicitly because Rust has no glob include —
@@ -101,15 +119,41 @@ fn bindings() -> &'static HashMap<&'static str, Binding> {
 // missing from either is a type that is simply not in the vocabulary.
 const ENTRY_FILES: &[(&str, &str)] = &[
     ("telo-bytes.json", include_str!("../../value-types/telo-bytes.json")),
+    ("telo-duration.json", include_str!("../../value-types/telo-duration.json")),
     ("telo-stream.json", include_str!("../../value-types/telo-stream.json")),
     ("telo-tcp-port.json", include_str!("../../value-types/telo-tcp-port.json")),
+    ("telo-timestamp.json", include_str!("../../value-types/telo-timestamp.json")),
     ("telo-udp-port.json", include_str!("../../value-types/telo-udp-port.json")),
+    ("telo-uint64.json", include_str!("../../value-types/telo-uint64.json")),
+];
+
+/// The closed key vocabulary an entry is written in. Mirrors the Node reader's
+/// `ENTRY_KEYS`: an unrecognized key is an authoring mistake whose only other
+/// outcome is a datum that quietly means nothing, and an entry refused on one
+/// runtime must be refused on the other.
+const ENTRY_KEYS: &[&str] = &[
+    "name",
+    "representation",
+    "base",
+    "celType",
+    "binding",
+    "encoding",
+    "live",
+    "parameters",
+    "description",
+    "$comment",
 ];
 
 fn read_entry(file: &str, raw: &Value) -> ValueType {
     let obj = raw
         .as_object()
         .unwrap_or_else(|| panic!("Invalid value-type entry '{file}': an entry must be a mapping"));
+    for key in obj.keys() {
+        assert!(
+            ENTRY_KEYS.contains(&key.as_str()),
+            "Invalid value-type entry '{file}': an entry has no key '{key}'. Known keys: {ENTRY_KEYS:?}."
+        );
+    }
     let string = |key: &str| -> Option<String> {
         obj.get(key).and_then(Value::as_str).map(str::to_owned)
     };
@@ -123,6 +167,48 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
         ),
     };
     let binding = string("binding");
+    let base = string("base");
+    let cel_type = string("celType");
+    let encoding = string("encoding");
+    let live = obj.get("live").and_then(Value::as_bool).unwrap_or(false);
+    // The same representation rules the Node reader enforces, so an entry never
+    // loads on one runtime and fails on the other.
+    match representation {
+        Representation::Json => {
+            assert!(
+                binding.is_none() && encoding.is_none(),
+                "Invalid value-type entry '{file}': a 'json' representation takes no 'binding' or 'encoding'"
+            );
+            if let Some(cel) = cel_type.as_deref() {
+                let beyond = cel_types_beyond_base(base.as_deref().unwrap_or_default());
+                assert!(
+                    beyond.contains(&cel),
+                    "Invalid value-type entry '{file}': 'celType' '{cel}' is not a CEL type its base carries beyond its own"
+                );
+            }
+        }
+        Representation::Instance => {
+            assert!(
+                base.is_none() && cel_type.is_none(),
+                "Invalid value-type entry '{file}': an 'instance' representation takes no 'base' or 'celType'"
+            );
+            if live {
+                assert!(
+                    encoding.is_none(),
+                    "Invalid value-type entry '{file}': a 'live' representation takes no 'encoding'"
+                );
+            } else {
+                let name = encoding.as_deref().unwrap_or_else(|| {
+                    panic!("Invalid value-type entry '{file}': a non-live 'instance' representation needs an 'encoding'")
+                });
+                let known: Vec<&str> = PLAIN_ENCODINGS.iter().map(|encoding| encoding.name).collect();
+                assert!(
+                    known.contains(&name),
+                    "Invalid value-type entry '{file}': encoding '{name}' has no codec in this runtime ({known:?})"
+                );
+            }
+        }
+    }
     // A binding with no row in THIS host's table is a hard error, never a
     // skipped assertion — see the module header.
     if let Some(key) = binding.as_deref() {
@@ -186,9 +272,11 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
     ValueType {
         name,
         representation,
-        base: string("base"),
+        base,
+        cel_type,
         binding,
-        live: obj.get("live").and_then(Value::as_bool).unwrap_or(false),
+        encoding,
+        live,
         parameters,
         description: string("description").unwrap_or_default(),
     }
@@ -260,9 +348,20 @@ mod tests {
     #[test]
     fn reads_the_same_vocabulary_the_node_half_does() {
         let types = value_types();
-        for name in ["Telo.Bytes", "Telo.Stream", "Telo.TcpPort", "Telo.UdpPort"] {
+        for name in [
+            "Telo.Bytes",
+            "Telo.Duration",
+            "Telo.Stream",
+            "Telo.TcpPort",
+            "Telo.Timestamp",
+            "Telo.UdpPort",
+            "Telo.Uint64",
+        ] {
             assert!(types.contains_key(name), "{name} missing from the vocabulary");
         }
+        assert_eq!(types["Telo.Timestamp"].encoding.as_deref(), Some("rfc3339"));
+        assert_eq!(types["Telo.Uint64"].cel_type.as_deref(), Some("uint"));
+        assert!(types["Telo.Stream"].encoding.is_none());
     }
 
     #[test]
@@ -290,6 +389,52 @@ mod tests {
         let typo = json!({ "x-telo-type": "Telo.Strem" });
         assert_eq!(declared_name(&typo), Some("Telo.Strem"));
         assert!(value_type_of(&typo).is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "has no key 'celTyp'")]
+    fn an_unknown_top_level_key_is_refused() {
+        read_entry(
+            "typo.json",
+            &json!({
+                "name": "Telo.Typo",
+                "representation": "json",
+                "base": "integer",
+                "celTyp": "uint",
+                "description": "x"
+            }),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "is not a CEL type its base carries beyond its own")]
+    fn a_cel_type_its_base_cannot_carry_is_refused() {
+        read_entry(
+            "wrong-base.json",
+            &json!({
+                "name": "Telo.Wrong",
+                "representation": "json",
+                "base": "number",
+                "celType": "uint",
+                "description": "x"
+            }),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "takes no 'base' or 'celType'")]
+    fn a_cel_type_on_an_instance_is_refused() {
+        read_entry(
+            "instance-cel.json",
+            &json!({
+                "name": "Telo.WrongInstance",
+                "representation": "instance",
+                "binding": "bytes",
+                "encoding": "base64url",
+                "celType": "uint",
+                "description": "x"
+            }),
+        );
     }
 
     #[test]

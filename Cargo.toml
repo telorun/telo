@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "kernel/nodejs/tests/napi-echo",
     "kernel/nodejs/tests/napi-controller-errors",
+    "tests/__fixtures__/rust-functions/rust",
     "sdk/rust",
     "sdk/rust/abi",
     "sdk/rust/macros",

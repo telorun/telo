@@ -1,4 +1,5 @@
 import {
+  ERR_INPUT_INVALID,
   InvokeError,
   NoopValidator,
   ResourceContext,
@@ -32,12 +33,12 @@ import {
   type EffectChain,
 } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
-import { registerTeloKeywords } from "@telorun/analyzer";
+import { decodePlainLiterals, registerTeloKeywords } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
-import { withBigIntsAsNumbers } from "./bigint-schema-view.js";
+import { bigIntView } from "./bigint-schema-view.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
 import type { SiblingLibraryMap } from "./controller-loaders/sibling-libraries.js";
 import { resolveModuleFileUri, type NativeFileModule } from "./module-file-resolution.js";
@@ -49,16 +50,18 @@ import type { ScopeConfig } from "./logging/scope-config.js";
  *  structurally rather than imported to avoid a module cycle. */
 interface KernelModuleContext {
   getLoggingConfig?(): ScopeConfig | undefined;
+  callNames(): ReadonlySet<string>;
 }
 import { stripCompiledValues } from "./schema-compiled-values.js";
-import { resolveTypeFieldSchema } from "./type-field-schema.js";
+import { resolveTypeFieldSchema, typeReferenceKey } from "./type-field-schema.js";
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
 import { Kernel } from "./kernel.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
+import { stampRuleCallNames } from "./type-rule-condition.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { KernelRuntimeSeam } from "./runtime-seam.js";
-import { SchemaValidator } from "./schema-validator.js";
+import { SchemaValidationError, SchemaValidator } from "./schema-validator.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
 
@@ -212,6 +215,26 @@ export class ResourceContextImpl implements ResourceContext {
     return this.validator.compile(schema, { persist: false });
   }
 
+  readPlainEncoded(value: unknown, schema: Record<string, any>): unknown {
+    const schemaForRef = (ref: string) =>
+      (this.validator.getSchema(ref) as Record<string, any> | undefined) ??
+      this.kernel.getAnalysisRegistry().schemaForId(ref);
+    const decoded = decodePlainLiterals(value, schema, schemaForRef);
+    try {
+      this.validator.compile(schema, { persist: false }).validate(decoded);
+    } catch (error) {
+      if (!(error instanceof RuntimeError)) throw error;
+      // Where in the value each refusal is, as a dotted path, so a transport can
+      // point its caller at the field rather than at the whole payload.
+      const issues =
+        error instanceof SchemaValidationError
+          ? { issues: error.issues.map(({ path, message }) => ({ path, message })) }
+          : undefined;
+      throw new InvokeError(ERR_INPUT_INVALID, error.message, issues, { cause: error });
+    }
+    return decoded;
+  }
+
   registerSchema(name: string, schema: object): void {
     this.validator.addSchema(name, schema);
   }
@@ -221,7 +244,11 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   registerTypeRules(name: string, rules: TypeRule[]): void {
-    this.validator.addTypeRules(name, rules);
+    this.validator.addTypeRules(
+      name,
+      rules,
+      (this.moduleContext as unknown as KernelModuleContext).callNames(),
+    );
   }
 
   lookupTypeRules(name: string): TypeRule[] | undefined {
@@ -273,15 +300,12 @@ export class ResourceContextImpl implements ResourceContext {
 
     // String ref, or {kind, name} ref object produced by inline-resource
     // normalization (before Phase 5 injection substitutes the live instance).
-    // Both resolve by looking up the registered schema by name.
+    // Both resolve by looking up the registered schema — under the canonical id
+    // stamped beside a resolved reference where there is one, so the shape is
+    // the declaring module's rather than any module's of that name.
     const hasInlineSchema =
       typeof typeRef !== "string" && typeRef.schema && typeof typeRef.schema === "object";
-    const refName =
-      typeof typeRef === "string"
-        ? typeRef
-        : typeof typeRef.name === "string" && !hasInlineSchema
-          ? typeRef.name
-          : undefined;
+    const refName = typeReferenceKey(typeRef);
 
     if (refName !== undefined) {
       const schema = this.validator.getSchema(refName);
@@ -308,6 +332,7 @@ export class ResourceContextImpl implements ResourceContext {
       const base = this.validator.compile(typeRef.schema);
       const rules = Array.isArray(typeRef.rules) ? typeRef.rules : [];
       if (rules.length > 0) {
+        stampRuleCallNames(rules, (this.moduleContext as unknown as KernelModuleContext).callNames());
         return this.validator.composeWithRules(base, "inline", rules);
       }
       return base;
@@ -323,7 +348,7 @@ export class ResourceContextImpl implements ResourceContext {
     });
     addFormats.default(ajv);
     registerTeloKeywords(ajv);
-    const validate = ajv.compile(
+    const effective =
       "type" in schema && typeof schema.type === "string"
         ? schema
         : {
@@ -331,13 +356,14 @@ export class ResourceContextImpl implements ResourceContext {
             properties: schema,
             required: Object.keys(schema),
             additionalProperties: false,
-          },
-    );
+          };
+    const validate = ajv.compile(effective);
     // A BigInt-normalized view: AJV reads `integer` as `typeof == "number"`, so a
     // CEL integer (int64) would be rejected at a slot it satisfies. This validator
     // runs without `useDefaults` and already checks a derived value, so there is
     // nothing to merge back. See `bigint-schema-view.ts`.
-    const isValid = validate(withBigIntsAsNumbers(stripCompiledValues(value)));
+    const { view, context } = bigIntView(stripCompiledValues(value, effective));
+    const isValid = validate(view, context);
     if (!isValid) {
       throw new RuntimeError(
         "ERR_INVALID_VALUE",
@@ -770,6 +796,16 @@ export class ResourceContextImpl implements ResourceContext {
     resource: Record<string, unknown>,
   ): Promise<ResourceInstance | null> {
     return this.kernel.createInheritedInstance(evalContext, resource as ResourceManifest);
+  }
+
+  /**
+   * A kind resolved in the module that declared the definition it was read off —
+   * `extends` aliases are lexical, so a chain crossing modules re-scopes at every
+   * hop. A typed internal seam for the definition meta-controllers, off the
+   * public SDK surface.
+   */
+  resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinition | undefined {
+    return this.kernel.getAnalysisRegistry().resolveDefinitionIn(kind, module);
   }
 
   registerDefinition(def: any) {

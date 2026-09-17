@@ -34,8 +34,27 @@ export interface JournalEntry {
    *  optional because an entry written before it was recorded must still
    *  replay. */
   target?: RecordedTarget;
-  /** The recorded value — a step's result, or the decision itself. */
-  value: unknown;
+  /**
+   * Which codec wrote {@link value}. `1` on everything this runtime records;
+   * absent on an entry written before the typed frame, which is read as its
+   * store read it then.
+   *
+   * A store never looks at it — see {@link DurableJournal} — it only keeps it
+   * with the value it describes, so the two can never be separated.
+   */
+  v?: number;
+  /**
+   * The recorded value — a step's result, or the decision itself — AS WRITTEN
+   * under {@link v}. Opaque to the store; `journal-codec.ts` is what turns it
+   * back into the value the run produced.
+   *
+   * **Absent when the step produced nothing.** A step whose target returns
+   * nothing is journaled all the same — the entry is what says it completed —
+   * and absence belongs to the ENTRY rather than to the value: `undefined` is
+   * not a CEL value, so a codec that gave it a form would stop being one-to-one.
+   * Such an entry replays as `undefined`, which is what the target returned.
+   */
+  value?: unknown;
 }
 
 /** A step target as the journal stores it — the declaration site, never the
@@ -74,11 +93,19 @@ export interface RunRecord {
   dueAt?: number;
   parked?: ParkRecord;
   /** The inputs a scheduled run starts with. A scheduled start has no caller at
-   *  the moment it runs, so what it was scheduled WITH has to be stored. */
+   *  the moment it runs, so what it was scheduled WITH has to be stored. Written
+   *  down like an entry's value, under {@link inputsCodecVersion}. */
   inputs?: unknown;
+  /** Which codec wrote {@link inputs}; absent on a record from before the typed
+   *  frame, which is read as its store read it then. */
+  inputsCodecVersion?: number;
   /** Present once the run has finished, so a later caller with the same id gets
-   *  the answer rather than re-running the work. */
+   *  the answer rather than re-running the work. Written down under
+   *  {@link resultCodecVersion}. */
   result?: unknown;
+  /** Which codec wrote {@link result}. A version per value rather than one per
+   *  record, because a run admitted by one runtime may be settled by another. */
+  resultCodecVersion?: number;
   error?: { code: string; message: string };
   /**
    * How many regions of this run were collapsed to one entry, and the author's
@@ -116,6 +143,25 @@ export interface RunRecord {
   replayedSteps?: number;
 }
 
+/**
+ * **An entry's `v` and `value` are DATA a store keeps, never data it reads.**
+ *
+ * The recorded value arrives already written down — a typed frame under a codec
+ * version (`journal-codec.ts`, `kernel/specs/durable-execution.md` §6.1) — and
+ * what a store owes is that the two fields come back exactly as they went in,
+ * together — as are a run record's `inputs` and `result` with their codec
+ * versions. That is a far smaller obligation than "preserve the CEL type", and
+ * deliberately so: the type-preserving property then holds for a journal nobody
+ * in this repo wrote, because a store cannot break a codec it does not
+ * implement, and two stores cannot disagree about one.
+ *
+ * It is also what makes the FIRST PASS and a replay agree. The run handle hands
+ * back the DECODE of whatever {@link append} returned, so a store that returns
+ * its own in-memory entry and one that returns the row it just wrote produce the
+ * same value — where a store decoding on its own would have handed the two
+ * passes different shapes (a `Map` on one, a plain object on the other) while
+ * behaving exactly as documented.
+ */
 export interface DurableJournal {
   /**
    * Record the run BEFORE anything executes, returning whether this caller
@@ -128,7 +174,12 @@ export interface DurableJournal {
    */
   admitRun(
     run: string,
-    init?: { status?: "running" | "scheduled"; dueAt?: number; inputs?: unknown },
+    init?: {
+      status?: "running" | "scheduled";
+      dueAt?: number;
+      inputs?: unknown;
+      inputsCodecVersion?: number;
+    },
   ): Promise<{ admitted: boolean; existing?: RunRecord }>;
   /** This run's current record, or undefined if it was never admitted. */
   readRun(run: string): Promise<RunRecord | undefined>;

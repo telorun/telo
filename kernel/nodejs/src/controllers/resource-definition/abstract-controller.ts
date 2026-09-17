@@ -1,10 +1,14 @@
+import type { DefResolver } from "@telorun/analyzer";
 import type {
   ControllerContext,
   ResourceContext,
+  ResourceDefinition,
   ResourceInstance,
   RuntimeResource,
 } from "@telorun/sdk";
+import { RuntimeError } from "@telorun/sdk";
 import { formatAjvErrors, validateResourceAbstract } from "../../manifest-schemas.js";
+import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 
 type ResourceAbstractResource = RuntimeResource & {
   kind: "Telo.Abstract";
@@ -15,6 +19,7 @@ type ResourceAbstractResource = RuntimeResource & {
   };
   schema?: Record<string, any>;
   capability?: string;
+  extends?: string;
 };
 
 /**
@@ -33,6 +38,34 @@ class ResourceAbstract implements ResourceInstance {
   constructor(readonly resource: ResourceAbstractResource) {}
 
   async init(ctx: ResourceContext) {
+    const definingCtx = ctx.moduleContext;
+    const resolveDef: DefResolver = (kind) => {
+      let canonical = kind;
+      try {
+        canonical = definingCtx.resolveKind(kind);
+      } catch {
+        // ungated / unqualified — fall back to the raw kind below
+      }
+      return definingCtx.getDefinition?.(canonical) ?? definingCtx.getDefinition?.(kind);
+    };
+
+    // Deferred until the ancestor is loaded, the rule the definition controller
+    // follows: an abstract stating no capability takes its ancestor's, and the
+    // callable guard's verdict turns on it. An `extends` that never resolves
+    // therefore fails at boot — `validateExtends` is the static twin.
+    if (this.resource.extends && !resolveDef(this.resource.extends)) {
+      throw new RuntimeError(
+        "ERR_LOCAL_REF_PENDING",
+        `Telo.Abstract '${this.resource.metadata.name}': 'extends' target '${this.resource.extends}' is not loaded yet.`,
+      );
+    }
+    // A callable abstract is a signature with no implementation — refused for
+    // the same declarations a callable definition is. See `callable-guard.ts`.
+    refuseInvalidCallable(
+      this.resource as unknown as ResourceDefinition,
+      ctx as unknown as DefinitionScopeHost,
+    );
+
     ctx.registerDefinition(this.resource);
   }
 }

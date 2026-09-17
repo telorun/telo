@@ -1,0 +1,22 @@
+# Abstracts whose `extends` names no kind. The kernel defers an abstract until
+# its ancestor is loaded, so neither ever registers and the boot fails; this
+# library's own `telo check` reports both. One states its capability and one
+# inherits it, because the deferral does not depend on which.
+kind: Telo.Library
+metadata:
+  name: AbstractExtendsLib
+  version: 1.0.0
+  description: >-
+    Fixture library declaring abstracts whose extends target is not declared
+    anywhere, which the kernel refuses at boot.
+---
+kind: Telo.Abstract
+metadata:
+  name: Pricer
+capability: Telo.Invocable
+extends: Self.MissingBase
+---
+kind: Telo.Abstract
+metadata:
+  name: Formatter
+extends: Self.AbsentBase

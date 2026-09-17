@@ -1,0 +1,39 @@
+# Declares its own `priced` with a different contract, and calls the library's
+# through its alias: each call is checked against the contract of the resource it
+# names, as the kernel dispatches it.
+kind: Telo.Application
+metadata:
+  name: ExportedInstanceScopeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Run: ../../../../modules/run
+targets:
+  - !ref go
+---
+kind: Run.Sequence
+metadata:
+  name: priced
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [text]
+    properties:
+      text: { type: string }
+steps:
+  - name: echo
+    value: !cel "inputs.text"
+---
+kind: Run.Sequence
+metadata:
+  name: go
+steps:
+  - name: library
+    invoke: !ref Lib.priced
+    inputs:
+      amount: 1
+  - name: local
+    invoke: !ref priced
+    inputs:
+      text: one

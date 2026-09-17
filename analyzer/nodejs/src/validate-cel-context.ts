@@ -6,8 +6,10 @@ import {
   parseCanonicalTypeSchemaId,
 } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { parameterContextProperties, readParams } from "./callable-signature.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { withRefSlotsAsReadings } from "./ref-slot-reading.js";
+import { inlineNamedShapes } from "./schema-compat.js";
 import { dispatchTargetOf } from "./template-body.js";
 // Where CEL is evaluated is one reader (`eval-paths.ts`), and the region half of
 // it moved there so the scope walk and the `x-telo-eval` walk answer the same
@@ -40,6 +42,21 @@ function openDynamicProperties(
   return out ?? props;
 }
 
+/** Turns an ordered parameter list into a CEL scope. */
+export const PARAMETERS_FROM_ANNOTATION = "x-telo-context-parameters-from";
+
+/**
+ * True when a context node is a PARAMETER SCOPE — the annotation sits on the
+ * node itself. Such a scope REPLACES the kernel globals (`variables`, `secrets`,
+ * `resources`, `ports`, `module`) and every per-site binding (`steps`, `inputs`,
+ * `error`) rather than extending them: what it evaluates depends on its
+ * arguments alone, which is what lets it be typed from its signature and
+ * evaluated with nothing else bound.
+ */
+export function isParameterScope(context: Record<string, any> | undefined): boolean {
+  return typeof context?.[PARAMETERS_FROM_ANNOTATION] === "string";
+}
+
 export interface ContextResolveOpts {
   /** When provided, used to resolve `x-telo-context-from-root` annotations against the
    *  root manifest. When omitted, defaults to `manifestItem`. */
@@ -49,6 +66,10 @@ export interface ContextResolveOpts {
    *  declared definition's `<field>` schema. */
   defs?: {
     resolve(kind: string): Record<string, any> | undefined;
+    /** A registered named shape by its canonical id — how a signature's nested
+     *  `!ref` is seen through. Optional so a caller holding no registry can still
+     *  resolve the other annotations. */
+    schemaForId?(id: string): Record<string, any> | undefined;
   };
   aliases?: {
     resolveKind(kind: string): string | undefined;
@@ -407,6 +428,29 @@ export function resolveContextAnnotations(
       ...schema,
       properties: { ...(schema.properties ?? {}), ...(resolved ?? {}) },
       ...(required ? { required } : {}),
+      additionalProperties: false,
+    };
+  }
+
+  // A PARAMETER LIST as a scope: one binding per entry, named by the entry and
+  // typed from its schema. Read from the resource ROOT rather than the per-scope
+  // item, for the reason `x-telo-bindings-from` is — a parameter list is a
+  // property of the declaration, not of whichever array item an expression sits
+  // in. The node is CLOSED, so a typo below a parameter is `CEL_UNKNOWN_FIELD`
+  // rather than an untyped read.
+  const parametersFrom = schema[PARAMETERS_FROM_ANNOTATION] as string | undefined;
+  if (parametersFrom) {
+    const declared = navigatePath(manifestRoot, parametersFrom.split("/"));
+    return {
+      ...schema,
+      properties: {
+        ...(schema.properties ?? {}),
+        ...parameterContextProperties(readParams({ params: declared }), (node) => {
+          const root = resolveTypeFieldToSchema(node, allManifests ?? []) ?? node;
+          const schemaForId = defs?.schemaForId?.bind(defs);
+          return schemaForId ? inlineNamedShapes(root, schemaForId) : root;
+        }),
+      },
       additionalProperties: false,
     };
   }

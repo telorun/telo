@@ -11,9 +11,12 @@ pub const INVOCABLE: &str = "Telo.Invocable";
 pub const PROVIDER: &str = "Telo.Provider";
 pub const MOUNT: &str = "Telo.Mount";
 pub const SINK: &str = "Telo.Sink";
+pub const CALLABLE: &str = "Telo.Callable";
 pub const TYPE: &str = "Telo.Type";
 
-pub const CAPABILITIES: &[&str] = &[SERVICE, RUNNABLE, INVOCABLE, PROVIDER, MOUNT, SINK, TYPE];
+pub const CAPABILITIES: &[&str] = &[
+    SERVICE, RUNNABLE, INVOCABLE, PROVIDER, MOUNT, SINK, CALLABLE, TYPE,
+];
 
 pub fn is_capability(name: &str) -> bool {
     CAPABILITIES.contains(&name)

@@ -1,0 +1,43 @@
+# A step whose `invoke:` names a function. A callable is reached from inside a
+# CEL expression, through its module name — never dispatched as a step, since
+# `call(args)` is synchronous and takes no context. This library's own
+# `telo check` refuses the step; the kernel refuses it when the step dispatches.
+kind: Telo.Library
+metadata:
+  name: CallableStepInvokeLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose sequence step invokes a callable resource, which is
+    not an executable.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [flow]
+---
+kind: Telo.Definition
+metadata:
+  name: Sign
+  description: Signs a message and returns the signature as text.
+capability: Telo.Callable
+deterministic: true
+params:
+  - name: message
+    schema: { type: string }
+returns:
+  schema: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+controllers:
+  - pkg:telo/local/js?path=./sign.mjs#sign
+---
+kind: Self.Sign
+metadata:
+  name: sign
+---
+kind: Run.Sequence
+metadata:
+  name: flow
+steps:
+  - name: signed
+    invoke: !ref sign

@@ -4,6 +4,7 @@ import { registerYamlCompletions } from "./register-completion";
 import { registerYamlDefinition } from "./register-definition";
 import { registerYamlHover } from "./register-hover";
 import { registerYamlSemanticTokens } from "./register-semantic-tokens";
+import { registerYamlSignatureHelp } from "./register-signature-help";
 
 type Monaco = Parameters<OnMount>[1];
 
@@ -26,4 +27,5 @@ export function registerTeloLanguageFeatures(monaco: Monaco): void {
   registerYamlHover(monaco);
   registerYamlSemanticTokens(monaco);
   registerYamlDefinition(monaco);
+  registerYamlSignatureHelp(monaco);
 }

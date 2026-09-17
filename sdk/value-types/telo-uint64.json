@@ -1,0 +1,8 @@
+{
+  "$comment": "`uint` is the one CEL type JSON Schema cannot state: its JSON form is an ordinary integer, so `base` is `integer`, and `celType` carries what the brand mechanism cannot — a value of this type IS a CEL uint, not a nominal integer. A declared output normalizes to one exactly as an `integer` slot normalizes to int64.",
+  "name": "Telo.Uint64",
+  "representation": "json",
+  "base": "integer",
+  "celType": "uint",
+  "description": "An unsigned 64-bit integer. Its JSON form is an ordinary integer, and a CEL expression reads it as `uint`, so it composes with `1u` literals and unsigned arithmetic. A plain number is exact only up to 9007199254740991; write a wider value as a CEL uint (`!cel \"18446744073709551615u\"`)."
+}

@@ -37,6 +37,10 @@ Each item is an object: an optional `type` becomes the SSE `event:` (default
 JSON-encoded `data:` payload. A bare string frames as a `message` event whose
 data is the JSON-encoded string.
 
+The payload is written for a reader that is not Telo, so a CEL value JSON has no
+form for is written in its plain encoding: a timestamp as RFC 3339 text in UTC, a
+duration as seconds (`"5400s"`), bytes as base64url, a `uint` as its digits.
+
 Because a typeless object frames as a `message` event with an `id:` line, a
 `{ id, data }` replay-journal envelope (from `RecordStream.JournalSource`) can be
 piped straight to the encoder for a **resumable** stream — the client checkpoints

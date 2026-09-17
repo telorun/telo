@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: ReExportCelScopeTest
+  version: 1.0.0
+  description: |
+    A re-exported instance's CEL is read in the scope of the module that WROTE
+    it, not of the one that passes it on.
+
+    A library's exported instance is forwarded into a consumer's flat set once
+    per re-exporting module, with `metadata.module` overwritten each time — so a
+    reader keying on that stamp judges the inner library's expression against
+    the outer library's aliases. What a call's receiver means depends on exactly
+    that set: read in the re-exporter's scope, `Text.shout(…)` stopped
+    being a module call and became an unknown identifier plus a missing method,
+    reported on a file the consuming author cannot edit — and silenced by the
+    re-exporter declaring an unrelated alias of the same name, which is the
+    shape of a check that is measuring the wrong thing.
+
+    Zero errors is the whole assertion: the app reaches the inner sequence
+    through the re-exporting library, the outer library declares no `Text`
+    alias, and the expression must still be read in the inner library's scope.
+    The inner library checks clean on its own too.
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref reExportedCelReadsInItsOwnScope
+---
+kind: Assert.Manifest
+metadata:
+  name: reExportedCelReadsInItsOwnScope
+source: ./__fixtures__/re-export-cel-scope/telo.yaml
+expect:
+  errors: []

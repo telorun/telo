@@ -24,7 +24,25 @@ export {
   INDEX_SEGMENT,
   validateChainAgainstSchema,
 } from "./cel/analyze.js";
-export { auditCalls, explainUnresolved, functionIndex, type CallAudit } from "./cel/diagnose.js";
+export {
+  auditCalls,
+  explainUnresolved,
+  functionIndex,
+  type CallAudit,
+  type ModuleCallFlags,
+} from "./cel/diagnose.js";
+// The rewrite, its reader, and the activation key the kernel binds a scope's
+// dispatch table under. The unbound message and the receiver and bound-name
+// walks are read inside this package only.
+// `ModuleCallTypeResolver` is here because `AnalyzeEnv` names it: an exported
+// interface whose field type cannot be named is not usable from outside.
+export {
+  MODULE_CALL_DISPATCH_KEY,
+  moduleCallOf,
+  resolveModuleCalls,
+  type ModuleCallDispatch,
+  type ModuleCallTypeResolver,
+} from "./cel/module-call.js";
 export { walkCelExpressions, type CelSurface } from "./cel/walk.js";
 
 export { celEngine } from "./engines/cel.js";
@@ -48,6 +66,7 @@ export {
 export type {
   AnalyzeEnv,
   AnalyzeResult,
+  CallArgument,
   CallSite,
   CompileEnv,
   DiagnosticFix,

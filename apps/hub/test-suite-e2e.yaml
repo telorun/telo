@@ -3,12 +3,16 @@ metadata:
   name: HubE2ESuite
   version: 1.0.0
   description: |
-    End-to-end suite for the discovery hub. Hits a live hub at
-    http://localhost:8040 (the docker-compose `hub` service), which must be up
+    End-to-end suite for the discovery hub. The `tests/e2e/` tests hit a live hub
+    at http://localhost:8040 (the docker-compose `hub` service), which must be up
     and have finished its first tracking pass over the seeded refs
-    (`oci://ghcr.io/telorun/*`) before running. Kept separate from the in-process
-    suite (`test-suite.yaml` at the repo root), which has no Postgres or S3
-    backend and therefore can't exercise these routes.
+    (`oci://ghcr.io/telorun/*`) before running. The `tests/integration/` tests run
+    the hub's own libraries in process against the docker-compose `db` service —
+    a PostgreSQL with pgvector, which the repo's integration suite does not have —
+    reached through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME, in a
+    database of their own rather than the live hub's. Kept separate from the
+    in-process suite (`test-suite.yaml` at the repo root), which has no Postgres
+    or S3 backend and therefore can't exercise these routes.
 imports:
   Test: ../../modules/test
 targets:
@@ -19,3 +23,4 @@ metadata:
   name: runAll
 include:
   - "tests/e2e/*.yaml"
+  - "tests/integration/*.yaml"

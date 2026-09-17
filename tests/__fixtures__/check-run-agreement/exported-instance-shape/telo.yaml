@@ -1,0 +1,20 @@
+# Calls the library's exported sequence with an argument its named input shape
+# refuses.
+kind: Telo.Application
+metadata:
+  name: ExportedInstanceShapeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Run: ../../../../modules/run
+targets:
+  - !ref go
+---
+kind: Run.Sequence
+metadata:
+  name: go
+steps:
+  - name: call
+    invoke: !ref Lib.priced
+    inputs:
+      amount: "not a number"

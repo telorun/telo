@@ -3,10 +3,15 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { refSentinelTarget } from "./ref-sentinel-target.js";
+import { isRefSourceSpelling, refSentinelTarget } from "./ref-sentinel-target.js";
 import { isRefEntry, resolveFieldEntries, satisfiesValueBranch } from "./reference-field-map.js";
 import { templateBodies } from "./template-body.js";
-import { DiagnosticSeverity, DiagnosticTag, type AnalysisDiagnostic } from "./types.js";
+import {
+  DiagnosticSeverity,
+  DiagnosticTag,
+  type AnalysisDiagnostic,
+  type DiagnosticFix,
+} from "./types.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -96,7 +101,7 @@ export function validateTemplateBody(
     const resourceRef = { kind: m.kind, name };
     const filePath = meta?.source;
     const label = `${m.kind}/${name}`;
-    const report = (code: string, path: string, message: string, fix?: string) =>
+    const report = (code: string, path: string, message: string, fix?: DiagnosticFix) =>
       out.push({
         severity: DiagnosticSeverity.Error,
         code,
@@ -106,7 +111,7 @@ export function validateTemplateBody(
           resource: resourceRef,
           filePath,
           path,
-          ...(fix ? { fix: { replacement: fix } } : {}),
+          ...(fix ? { fix } : {}),
         },
       });
 
@@ -185,7 +190,7 @@ export function validateTemplateBody(
         `'${slot}: !ref ${source}' names no entry in 'resources:'. ` +
           `Available: ${siblings.join(", ") || "(none)"}.` +
           (suggestion ? ` Did you mean '${suggestion}'?` : ""),
-        suggestion,
+        suggestion ? { replacement: suggestion } : undefined,
       );
     }
 
@@ -218,7 +223,7 @@ export function validateTemplateBody(
                 `'resources:' entry and no resource of this module. ` +
                 `Siblings: ${siblings.filter((s) => s !== body.manifest.metadata?.name).join(", ") || "(none)"}.` +
                 (suggestion ? ` Did you mean '${suggestion}'?` : ""),
-              suggestion,
+              suggestion ? { replacement: suggestion } : undefined,
             );
             continue;
           }
@@ -232,6 +237,7 @@ export function validateTemplateBody(
               path,
               `string reference at '${site.path}' on the ${kind} entry → '${value}' is not ` +
                 `supported; write it as '!ref ${value}'`,
+              isRefSourceSpelling(value) ? { replacement: value, tag: "ref" } : undefined,
             );
             continue;
           }

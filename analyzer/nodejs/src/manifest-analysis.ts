@@ -22,7 +22,9 @@
  * a second implementation of any of these could not be held to it.
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { AliasResolver, type ModuleScopes } from "./alias-resolver.js";
+import { AliasResolver, moduleScopedDefResolver, type ModuleScopes } from "./alias-resolver.js";
+import type { NameLevel } from "./identifier-name.js";
+import { levelFor } from "./validate-identifier-names.js";
 import { CelScopeQuery, type CelScopeQueryContext } from "./cel-scope-query.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import type { ContractDirection } from "./extends-resolution.js";
@@ -99,6 +101,13 @@ export class ManifestAnalysis {
       deps,
       options,
     ));
+  }
+
+  /** Whether a resource's name denotes a type or a value — the rule the naming
+   *  check applies to it, so a rename proposes only a name `telo check` accepts. */
+  nameLevel(manifest: ResourceManifest): NameLevel {
+    const resolveDef = moduleScopedDefResolver<ResourceDefinition>(this.ctx.defs, this.ctx.aliases, this.scopes);
+    return levelFor(manifest, resolveDef, manifest.metadata?.module as string | undefined);
   }
 
   /** The manifest a `(kind, name)` pair addresses. */

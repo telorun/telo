@@ -1,4 +1,4 @@
-import { networkCauseCode } from "@telorun/sdk";
+import { networkCauseCode, writePlainJson } from "@telorun/sdk";
 
 import {
   jsonRpcError,
@@ -171,7 +171,7 @@ export async function postJsonRpc(
   const { status, contentType, body, responseSessionId } = await rawPost(
     url,
     headers,
-    JSON.stringify(request),
+    writePlainJson(request),
   );
 
   if (status === 404 || status === 410) {

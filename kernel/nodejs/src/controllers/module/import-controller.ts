@@ -459,6 +459,9 @@ export async function create(
         alias,
         exportedResourceNames,
         (name) => childCtx.getTerminalExport(name),
+        // A CEL call through this alias to a name the library declares but does
+        // not export is refused as unexported, not as naming nothing.
+        (name) => childCtx.declaredManifestFor(name) !== undefined,
       );
       // Same for kinds: `kind: Alias.Kind` resolves through the child's exported-kind table,
       // covering both locally-defined and transitively re-exported kinds in O(1).
@@ -589,6 +592,7 @@ function borrowSharedLibrary(
             alias,
             exportedResourceNames,
             (name) => childCtx.getTerminalExport(name),
+            (name) => childCtx.declaredManifestFor(name) !== undefined,
           );
           (ctx.moduleContext as ModuleContext).registerImportedKindScope(alias, (suffix) =>
             childCtx.getExportedKind(suffix),

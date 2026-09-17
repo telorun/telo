@@ -1,0 +1,31 @@
+# Two functions whose bodies call each other. A call is bound when the resource
+# making it is created, so each needs the other to exist first — recursion is a
+# dependency cycle, refused by the kernel before either is created and reported
+# by this library's own `telo check` as `DEPENDENCY_CYCLE`.
+kind: Telo.Library
+metadata:
+  name: CallCycleLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose two functions call each other, which the kernel refuses
+    at boot and this library's own `telo check` reports.
+---
+kind: Telo.Function
+metadata:
+  name: ping
+params:
+  - name: n
+    schema: { type: integer }
+returns:
+  schema: { type: integer }
+body: !cel "n <= 0 ? 0 : Self.pong(n - 1)"
+---
+kind: Telo.Function
+metadata:
+  name: pong
+params:
+  - name: n
+    schema: { type: integer }
+returns:
+  schema: { type: integer }
+body: !cel "n <= 0 ? 1 : Self.ping(n - 1)"

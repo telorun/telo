@@ -1,4 +1,11 @@
-import { isLogValuer, type AnyValue, type LogAttributes, type LogAttributesInput } from "@telorun/sdk";
+import {
+  isLogValuer,
+  plainMapKey,
+  plainScalar,
+  type AnyValue,
+  type LogAttributes,
+  type LogAttributesInput,
+} from "@telorun/sdk";
 
 /**
  * Attribute normalization — `kernel/specs/logging.md` §6.3.
@@ -145,6 +152,14 @@ export function normalizeAttributes(
       continue;
     }
 
+    // A timestamp, duration or uint is written as its plain form, which is an
+    // AnyValue variant; bytes stay the `bytes` variant above (§6.1 renders them).
+    const plain = plainScalar(value);
+    if (plain !== undefined) {
+      write(task, typeof plain === "string" ? scrubString(plain, secrets, censor, limits.valueLength) : plain);
+      continue;
+    }
+
     if (type !== "object") {
       // Functions and symbols have no AnyValue variant.
       write(task, `[${type}]`);
@@ -182,7 +197,8 @@ export function normalizeAttributes(
       continue;
     }
 
-    const record = value as Record<string, unknown>;
+    const record =
+      value instanceof Map ? plainMapEntries(value) : (value as Record<string, unknown>);
     const entryKeys = Object.keys(record);
     const keepKeys =
       entryKeys.length > limits.collectionElements ? limits.collectionElements : entryKeys.length;
@@ -204,6 +220,28 @@ export function normalizeAttributes(
   }
 
   return { attributes: root, droppedCount };
+}
+
+/** A map's entries keyed by each key's plain text. A key that is not a CEL map
+ *  key, or two keys sharing one text, render as a diagnostic entry rather than
+ *  throwing: a logging call never throws (§8.4). */
+function plainMapEntries(map: Map<unknown, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of map) {
+    let text: string;
+    try {
+      text = plainMapKey(key);
+    } catch (err) {
+      out[`[unwritable key: ${describeThrown(err)}]`] = entry;
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(out, text)) {
+      out[`[duplicate key: ${text}]`] = entry;
+      continue;
+    }
+    out[text] = entry;
+  }
+  return out;
 }
 
 function write(task: Task, value: AnyValue): void {

@@ -1,0 +1,93 @@
+kind: Telo.Application
+metadata:
+  name: RustFunctionsTest
+  version: 1.0.0
+  description: >-
+    Native functions written on the Rust SDK, loaded over napi: arguments and
+    results keep their CEL type across the boundary, and a panic fails the
+    evaluation as ERR_FUNCTION_FAILED carrying ERR_CONTROLLER_PANIC.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verify
+---
+kind: Telo.Definition
+metadata:
+  name: IsBefore
+  description: Whether the first instant is earlier than the second.
+capability: Telo.Callable
+schema: { type: object }
+params:
+  - name: a
+    schema: { x-telo-type: Telo.Timestamp }
+  - name: b
+    schema: { x-telo-type: Telo.Timestamp }
+returns:
+  schema: { type: boolean }
+controllers:
+  - pkg:cargo/rust-functions?local_path=./__fixtures__/rust-functions/rust#is_before
+---
+kind: Telo.Definition
+metadata:
+  name: EchoBytes
+  description: Returns the bytes it is given.
+capability: Telo.Callable
+schema: { type: object }
+params:
+  - name: data
+    schema: { x-telo-type: Telo.Bytes }
+returns:
+  schema: { x-telo-type: Telo.Bytes }
+controllers:
+  - pkg:cargo/rust-functions?local_path=./__fixtures__/rust-functions/rust#echo_bytes
+---
+kind: Telo.Definition
+metadata:
+  name: Explode
+  description: Panics whenever it is called.
+capability: Telo.Callable
+schema: { type: object }
+returns:
+  schema: { type: boolean }
+controllers:
+  - pkg:cargo/rust-functions?local_path=./__fixtures__/rust-functions/rust#explode
+---
+kind: Self.IsBefore
+metadata: { name: isBefore }
+---
+kind: Self.EchoBytes
+metadata: { name: echoBytes }
+---
+kind: Self.Explode
+metadata: { name: explode }
+---
+kind: Run.Sequence
+metadata: { name: verify }
+steps:
+  - name: earlier
+    value: !cel "Self.isBefore(timestamp('2026-01-15T09:30:00+02:00'), timestamp('2026-01-15T08:00:00Z'))"
+  - name: later
+    value: !cel "Self.isBefore(timestamp('2026-01-15T08:00:00Z'), timestamp('2026-01-15T09:30:00+02:00'))"
+  - name: echoed
+    value: !cel "Self.echoBytes(b'\\x01\\x02\\xff') == b'\\x01\\x02\\xff'"
+  - name: attempt
+    try:
+      - name: exploded
+        value: !cel "Self.explode()"
+    catch:
+      - name: failure
+        value: !cel "[error.code, error.data.data.code]"
+  - name: assertResults
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        earlier: !cel "steps.earlier.result"
+        later: !cel "steps.later.result"
+        echoed: !cel "steps.echoed.result"
+        failure: !cel "steps.failure.result"
+      expected:
+        earlier: true
+        later: false
+        echoed: true
+        failure: [ERR_FUNCTION_FAILED, ERR_CONTROLLER_PANIC]

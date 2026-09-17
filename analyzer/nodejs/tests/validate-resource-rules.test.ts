@@ -53,8 +53,10 @@ const definition = (schema: unknown): ResourceManifest =>
 const resource = (config: Record<string, unknown>): ResourceManifest =>
   ({ kind: "SQL.Table", metadata: { name: "orders" }, ...config }) as unknown as ResourceManifest;
 
-const declarationMessages = (schema: unknown): string[] =>
-  validateResourceRuleDeclarations(definition(schema)).map((i) => i.message);
+const declarationMessages = (schema: unknown, moduleNames?: ReadonlySet<string>): string[] =>
+  validateResourceRuleDeclarations(definition(schema), undefined, moduleNames).map(
+    (i) => i.message,
+  );
 
 describe("resource rules — evaluation", () => {
   it("reports the offending element, not the resource", () => {

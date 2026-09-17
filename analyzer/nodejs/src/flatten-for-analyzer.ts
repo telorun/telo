@@ -9,6 +9,10 @@ import {
   type ResourceInput,
 } from "./resource-input.js";
 import type { ModuleDocuments } from "./module-documents.js";
+import { forwardedShapeFieldsOf, refSentinelsIn } from "./contract-shapes.js";
+import { refSentinelTarget } from "./ref-sentinel-target.js";
+import { moduleCallSites } from "./cel-access-chains.js";
+import { moduleCallNamesOfFile, SELF_ALIAS } from "./module-call-names.js";
 
 /** One parsed `exports.resources` / `exports.kinds` entry. `name` is the exported
  *  instance name or kind suffix (the part after the dot, or the whole entry); `alias`
@@ -93,6 +97,140 @@ export function selectModuleManifestsForAnalysis(
           ...(moduleGlobals ? { moduleGlobals } : {}),
         } as ResourceManifest["metadata"],
       });
+    }
+  }
+  out.push(...forwardedInternalCalls(moduleManifests, out, libDoc, moduleGlobals));
+  out.push(...forwardedContractShapes(moduleManifests, out, libDoc));
+  return out;
+}
+
+/** The names a library spells its own resources with: `Self` and its own
+ *  `metadata.name`. */
+function ownModuleNames(libDoc: ResourceManifest | undefined): ReadonlySet<string> {
+  const libName = libDoc?.metadata?.name;
+  return new Set(typeof libName === "string" ? [SELF_ALIAS, libName] : [SELF_ALIAS]);
+}
+
+/**
+ * The library's own resources a forwarded declaration's expressions call through
+ * `Self` or the library's name, closed over the calls those make in turn.
+ *
+ * A consumer's analysis holds a library's exports and kinds, not its internals —
+ * yet what an exported function IS depends on what it calls: whether it is
+ * deterministic, whether it needs its host, and what a rule condition calling it
+ * evaluates to. Left behind, a call reaching an internal helper reached nothing
+ * the consumer could see, and every one of those answers would be a guess.
+ * Stamped `forwardedInternal`: the library's code, written in its names, never
+ * something the consumer can reach.
+ */
+function forwardedInternalCalls(
+  moduleManifests: readonly ResourceManifest[],
+  forwarded: readonly ResourceManifest[],
+  libDoc: ResourceManifest | undefined,
+  moduleGlobals: ModuleGlobals | undefined,
+): ResourceManifest[] {
+  const ownNames = ownModuleNames(libDoc);
+  const byName = new Map<string, ResourceManifest>();
+  for (const m of moduleManifests) {
+    const name = m.metadata?.name;
+    if (typeof name !== "string" || isModuleKind(m.kind)) continue;
+    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" || m.kind === "Telo.Import") {
+      continue;
+    }
+    byName.set(name, m);
+  }
+  const present = new Set(
+    forwarded
+      .filter((m) => !isModuleKind(m.kind) && m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract")
+      .map((m) => m.metadata?.name as string),
+  );
+  const names = moduleCallNamesOfFile(moduleManifests);
+  const out: ResourceManifest[] = [];
+  const queue = [...forwarded];
+  while (queue.length > 0) {
+    const manifest = queue.shift()!;
+    for (const { call } of moduleCallSites(manifest, names)) {
+      const dot = call.indexOf(".");
+      if (!ownNames.has(call.slice(0, dot))) continue;
+      const name = call.slice(dot + 1);
+      if (present.has(name)) continue;
+      const target = byName.get(name);
+      if (!target) continue;
+      present.add(name);
+      const internal = {
+        ...target,
+        metadata: {
+          ...target.metadata,
+          forwardedInternal: true,
+          ...(moduleGlobals ? { moduleGlobals } : {}),
+        } as ResourceManifest["metadata"],
+      };
+      out.push(internal);
+      queue.push(internal);
+    }
+  }
+  return out;
+}
+
+/**
+ * The library's own named shapes that a forwarded declaration's contract or
+ * signature names, closed over the shapes those name in turn.
+ *
+ * A kind's `outputType: !ref Money` resolves in the module that wrote it, and
+ * `Money` is usually not exported — a shape a contract names is part of the
+ * contract, not an instance a consumer reaches. Left behind, the reference
+ * resolved to nothing in a consumer's analysis, and every comparison through it
+ * (a child's contract against the abstract it replaces, a call's result type)
+ * silently compared nothing.
+ */
+function forwardedContractShapes(
+  moduleManifests: readonly ResourceManifest[],
+  forwarded: readonly ResourceManifest[],
+  libDoc: ResourceManifest | undefined,
+): ResourceManifest[] {
+  const ownNames = ownModuleNames(libDoc);
+  const byName = new Map<string, ResourceManifest>();
+  for (const m of moduleManifests) {
+    const name = m.metadata?.name;
+    if (typeof name !== "string" || isModuleKind(m.kind)) continue;
+    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" || m.kind === "Telo.Import") {
+      continue;
+    }
+    byName.set(name, m);
+  }
+  const present = new Set(
+    forwarded.filter((m) => !isModuleKind(m.kind)).map((m) => m.metadata?.name as string),
+  );
+  const out: ResourceManifest[] = [];
+  const queue: Array<{ manifest: ResourceManifest; fields: readonly string[] }> = forwarded.map(
+    (manifest) => ({ manifest, fields: forwardedShapeFieldsOf(manifest) }),
+  );
+  while (queue.length > 0) {
+    const { manifest, fields } = queue.shift()!;
+    const record = manifest as unknown as Record<string, unknown>;
+    const names: string[] = [];
+    // A shape extending another by name folds the parent in when it resolves.
+    for (const parent of [record.extends].flat()) {
+      if (typeof parent === "string") names.push(parent);
+    }
+    for (const field of fields) {
+      for (const { sentinel } of refSentinelsIn(record[field], field)) {
+        const target = refSentinelTarget(sentinel);
+        if (target && (target.alias === undefined || ownNames.has(target.alias))) {
+          names.push(target.name);
+        }
+      }
+    }
+    for (const name of names) {
+      if (present.has(name)) continue;
+      const shape = byName.get(name);
+      if (!shape) continue;
+      present.add(name);
+      out.push({
+        ...shape,
+        metadata: { ...shape.metadata, forwardedShape: true } as ResourceManifest["metadata"],
+      });
+      queue.push({ manifest: shape, fields: ["schema"] });
     }
   }
   return out;
@@ -426,6 +564,8 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
   /** Libraries declaring `lifecycle: shared` — a singleton every import
    *  resolves to, so a per-import override of it is a contradiction. */
   const sharedModules = new Set<string>();
+  /** Every resource name each library declares, exported or not. */
+  const declaredResources = new Map<string, readonly string[]>();
   for (const [source, mod] of graph.modules) {
     if (source === graph.rootSource) continue; // root is an Application — no exports
     const libDoc = mod.owner.manifests.find((m) => m && isModuleKind(m.kind)) as
@@ -439,6 +579,13 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
     const inputs = readResourceInputs(libDoc);
     if (inputs.length > 0) requiredResources.set(moduleName, inputs);
     if (readLibraryLifecycle(libDoc) === "shared") sharedModules.add(moduleName);
+    declaredResources.set(
+      moduleName,
+      collectModuleManifests(mod)
+        .filter((m) => !isModuleKind(m.kind))
+        .map((m) => m.metadata?.name)
+        .filter((name): name is string => typeof name === "string"),
+    );
     if (libDoc.exports?.kinds !== undefined) {
       declaredKinds.set(moduleName, libDoc.exports.kinds.map((e) => parseExportEntry(e).name));
     }
@@ -469,6 +616,24 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
   stampExportedKinds(imports, declaredKinds);
   stampRequiredResources(imports, requiredResources, aliasToModule);
   stampSharedLifecycle(imports, sharedModules);
+  stampDeclaredResources(imports, declaredResources);
+}
+
+/** Stamp `metadata.declaredResources` — every resource name the target library
+ *  declares, exported or not — onto every `Telo.Import`. The flattened set keeps
+ *  only a library's exports, so without it a consumer's CEL call to a private
+ *  function reads the same as a call to nothing; the kernel tells the two apart
+ *  (`ERR_FUNCTION_NOT_EXPORTED`), and so must `telo check`. On `metadata` for
+ *  the reason `exportedKinds` is. */
+export function stampDeclaredResources(
+  imports: ReadonlyArray<{ manifest: ResourceManifest; targetModule: string }>,
+  declared: ReadonlyMap<string, readonly string[]>,
+): void {
+  for (const { manifest, targetModule } of imports) {
+    const names = declared.get(targetModule);
+    if (!names) continue;
+    (manifest.metadata as Record<string, unknown>).declaredResources = [...names];
+  }
 }
 
 /** Stamp `metadata.resolvedSource` — the canonical resolved URL of an import's

@@ -1,0 +1,8 @@
+# Imports the library next door without running anything of it: the call is
+# refused when the library's sequence is created, not when a step evaluates it.
+kind: Telo.Application
+metadata:
+  name: MissingFunctionApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

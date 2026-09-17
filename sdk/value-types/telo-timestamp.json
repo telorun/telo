@@ -1,0 +1,8 @@
+{
+  "$comment": "JSON Schema has no time type, so an instant inside a record used to be a string: comparing two compares text, which is wrong once offsets differ, and every controller parsed it itself. Declared as an instance, the value in memory is CEL's native timestamp in every runtime, and the text form exists only where a value enters or leaves as JSON.",
+  "name": "Telo.Timestamp",
+  "representation": "instance",
+  "binding": "timestamp",
+  "encoding": "rfc3339",
+  "description": "An instant in time, held as a native timestamp so comparison and duration arithmetic are exact. Written inline as RFC 3339 text; any offset is read, and it is written in UTC with a trailing Z."
+}

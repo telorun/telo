@@ -1,0 +1,10 @@
+# Dispatches the kind whose contract names a declared shape, so the contract is
+# bound through the reference rather than refused.
+kind: Telo.Application
+metadata:
+  name: KindContractRefPriced
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.priced

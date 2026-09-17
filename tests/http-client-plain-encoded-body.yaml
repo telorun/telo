@@ -1,0 +1,63 @@
+kind: Telo.Application
+metadata:
+  name: HttpClientPlainEncodedBody
+  version: 1.0.0
+  description: |
+    An outbound JSON body's reader is not Telo, so a CEL value in it leaves in its
+    plain encoding — a timestamp as RFC 3339 `Z` text, a duration as seconds —
+    never type-tagged. A local server echoes the body back exactly as it arrived.
+imports:
+  Server: ../modules/http-server
+  Http: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref test
+---
+kind: Server.Api
+metadata: { name: echoApi }
+routes:
+  - request:
+      path: /echo
+      method: POST
+      schema:
+        body: { type: object, additionalProperties: true }
+    handler:
+      kind: Run.Value
+      value: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "request.body"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Server
+    metadata: { name: EchoServer }
+    host: 127.0.0.1
+    port: 8984
+    mounts:
+      - path: /
+        mount: !ref echoApi
+targets:
+  - !ref EchoServer
+steps:
+  - name: sent
+    inputs:
+      url: http://127.0.0.1:8984/echo
+      method: POST
+      body:
+        at: !cel "timestamp('2026-01-15T09:30:00+02:00')"
+        took: !cel "duration('1h30m')"
+    invoke:
+      kind: Http.Request
+  - name: assertPlainBody
+    inputs:
+      actual: !cel "steps.sent.result.body"
+      expected:
+        at: "2026-01-15T07:30:00.000Z"
+        took: "5400s"
+    invoke:
+      kind: Assert.Equals

@@ -110,7 +110,7 @@ describe("warmModuleLayers", () => {
       { role: "controller", selector: "{ format: js, os: linux, abi: node-141 }", blob: "d", file: "linux-141.mjs" },
       { role: "native", selector: "{ format: node, os: darwin, abi: node-137 }", blob: "e", file: "darwin-137.node" },
       // A Rust kernel's controller: a Node install neither reports nor warms it.
-      { role: "controller", selector: "{ format: dylib, os: linux, abi: telo-2 }", blob: "f", file: "libx.so" },
+      { role: "controller", selector: "{ format: dylib, os: linux, abi: telo-3 }", blob: "f", file: "libx.so" },
     ].map((l) => ({ ...l, blob: `sha256:${l.blob.repeat(64)}` }));
     const payload = (name: string): PayloadFile[] => [{ name, content: Buffer.from(name) }];
 
@@ -176,7 +176,7 @@ describe("warmModuleLayers", () => {
       expect(warnings).toEqual([]);
 
       fetched.length = 0;
-      await warm({ os: "linux", arch: "amd64", abi: "telo-2" });
+      await warm({ os: "linux", arch: "amd64", abi: "telo-3" });
       expect(fetched).toEqual([]);
     });
   });

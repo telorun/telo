@@ -1,0 +1,116 @@
+kind: Telo.Application
+metadata:
+  name: DurableJournalPostgresScheduledInputsTest
+  version: 1.0.0
+  description: |
+    A SCHEDULED run starts with the inputs it was scheduled with, as the values they were
+    — over the runs table's `inputs` column and its codec version.
+
+    The resumer starts a scheduled body from the stored inputs, since no caller exists at
+    that moment. Stored as plain JSON, a timestamp came back as text and a 64-bit int as a
+    double, so the body failed only once resumed. Each value is asserted through an
+    operation nothing of the wrong type satisfies.
+
+    The resumer is `with:`-scoped, so the kernel hold it takes ends with the sequence.
+
+    NEEDS A LIVE POSTGRES. Kept out of `tests/` proper for exactly that reason.
+imports:
+  Local: ../../../durable-local
+  Journal: ../../
+  Postgres: ../../../postgres
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# Its OWN prefix: this test runs a resumer, which would claim and continue any
+# other test's due runs against a workflow that is not theirs.
+kind: Journal.Journal
+metadata: { name: journal }
+connection: !ref db
+table: !cel "'telo_durable_scheduled_test'"
+---
+kind: Local.Workflow
+metadata: { name: later }
+journal: !ref journal
+inputs:
+  at: !cel "inputs.at"
+  big: !cel "inputs.big"
+steps:
+  - name: check
+    value:
+      shifted: !cel "inputs.at + duration('1h') == timestamp('2026-01-15T10:30:00Z')"
+      intExact: !cel "inputs.big == 9007199254740993"
+---
+kind: Local.Schedule
+metadata: { name: scheduleLater }
+workflow: !ref later
+runId: !cel "'pgscheduled:' + inputs.ticket"
+after: 1ms
+inputs:
+  at: !cel "timestamp('2026-01-15T09:30:00Z')"
+  big: !cel "9007199254740993"
+---
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 20s
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Local.Resumer
+    metadata: { name: resumer }
+    workflow: !ref later
+    interval: 100ms
+targets:
+  - !ref resumer
+steps:
+  - name: ticket
+    value: !cel "'s' + string(nowMillis())"
+  - name: scheduled
+    invoke: !ref scheduleLater
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: finished
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.scheduled.result.runId"
+  - name: assertStarted
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        check: !cel "steps.finished.result.result.steps.check.result"
+      expected:
+        status: completed
+        check:
+          shifted: true
+          intExact: true

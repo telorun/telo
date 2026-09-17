@@ -20,6 +20,11 @@ const EXTENDS_ALIAS_RE = /^[A-Z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9_]*$/;
  * Phase 3b — Validate `extends` fields on Telo.Definition docs, and flag the legacy
  * `capability: <UserAbstract>` overload with CAPABILITY_SHADOWS_EXTENDS so users migrate.
  *
+ * A Telo.Abstract's `extends` is checked for resolution only (EXTENDS_MALFORMED /
+ * EXTENDS_UNKNOWN_TARGET): the kernel defers an abstract until its ancestor is
+ * loaded, so one naming nothing never registers and fails at boot. The other
+ * checks below are about a definition's controller and stay definition-only.
+ *
  * `extends` uses alias form ("<Alias>.<Name>") resolved against the declaring file's
  * Telo.Import declarations — same pattern as `kind:` prefixes. The analyzer pre-resolves
  * via AliasResolver before register() is called, so by the time this validator runs,
@@ -66,7 +71,8 @@ export function validateExtends(
   }
 
   for (const m of manifests) {
-    if (m.kind !== "Telo.Definition") continue;
+    if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
+    const isDefinition = m.kind === "Telo.Definition";
     const name = m.metadata?.name as string | undefined;
     if (!name) continue;
     const ownModule = (m.metadata as { module?: string } | undefined)?.module;
@@ -90,7 +96,7 @@ export function validateExtends(
     // it passed `telo check` and threw `ERR_BASE_WITH_TEMPLATE_BODY` at boot —
     // a brand-new guard shipping with the very gap it was written to close. The
     // scan survives for one job only: naming the offending key in the message.
-    if ((m as { base?: unknown }).base != null) {
+    if (isDefinition && (m as { base?: unknown }).base != null) {
       const hasBody = hasOwnControllerOrTemplate(m as ResourceDefinition);
       const bodyKey =
         (["resources", "controllers", "invoke", "run", "provide", "mount"] as const).find(
@@ -175,7 +181,7 @@ export function validateExtends(
                 message: `${label}: 'extends' target '${extendsValue}' (resolved: '${canonical}') is not a registered definition.`,
                 data: { resource, filePath, path: "extends" },
               });
-            } else {
+            } else if (isDefinition) {
               // General single inheritance: any concrete or abstract kind may be
               // extended. What inheritance must NOT do is change the lifecycle
               // role — a child that restates `capability` differently from an
@@ -251,7 +257,7 @@ export function validateExtends(
     // retains the alias-prefixed form (e.g. "AbstractLib.Greeter"); the registered key
     // is the canonical form after alias resolution (e.g. "abstract-lib.Greeter").
     const capability = (m as { capability?: unknown }).capability;
-    if (typeof capability === "string") {
+    if (isDefinition && typeof capability === "string") {
       const resolvedCap = aliases.resolveKind(capability) ?? capability;
       const capDef = registry.resolve(resolvedCap);
       if (

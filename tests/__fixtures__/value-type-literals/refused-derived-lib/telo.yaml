@@ -1,0 +1,84 @@
+kind: Telo.Library
+metadata:
+  name: RefusedDerived
+  version: 0.1.0
+  description: |
+    The same unreadable RFC 3339 text at two derived slots a step's `inputs:`
+    does not cover: a route's `inputs:` pointer and an `x-telo-schema-from`
+    slot. `telo check` refuses both here, on the leaf that holds the text; a
+    consumer that only runs them meets the library as it is.
+imports:
+  Run: ../../../../modules/run
+  Http: ../../../../modules/http-server
+exports:
+  resources: [stampApi, badHolder]
+---
+kind: Run.Value
+metadata:
+  name: stampInput
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [at]
+    properties:
+      at: { x-telo-type: Telo.Timestamp }
+value: !cel "string(inputs.at)"
+---
+# A route's `inputs:` — the argument map the handler slot names through its own
+# `x-telo-ref` pointer.
+kind: Http.Api
+metadata:
+  name: stampApi
+routes:
+  - request:
+      path: /stamp
+      method: GET
+    inputs:
+      at: "15/01/2026 09:30"
+    handler: !ref stampInput
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema: { type: object, properties: { at: { type: string } } }
+            body:
+              at: !cel "result"
+---
+kind: Telo.Definition
+metadata:
+  name: Carrier
+  description: Declares the payload shape a holder's `payload:` is typed against.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object
+  $defs:
+    Payload:
+      type: object
+      required: [at]
+      properties:
+        at: { x-telo-type: Telo.Timestamp }
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+  description: Renders the instant its schema-from payload carries.
+extends: Run.Value
+schema:
+  type: object
+  required: [payload]
+  properties:
+    payload:
+      type: object
+      x-telo-schema-from: "Self.Carrier/$defs/Payload"
+base:
+  value: !cel "string(self.payload.at)"
+---
+# An `x-telo-schema-from` slot: its schema is another kind's `$defs` entry.
+kind: Self.Holder
+metadata:
+  name: badHolder
+payload:
+  at: "15/01/2026 09:30"

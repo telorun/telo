@@ -6,6 +6,7 @@ import {
   isRefSentinel,
   isTaggedSentinel,
   plainChainOf,
+  resolveModuleCalls,
   type CelSurface,
 } from "@telorun/templating";
 import type { DiagnosticData, DiagnosticFix } from "./types.js";
@@ -57,9 +58,15 @@ import { computeSuggestKind } from "./kind-suggest.js";
 import { visitManifest } from "./manifest-visitor.js";
 import { declaringModuleScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
+import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
+import { ModuleFunctionIndex } from "./module-function-index.js";
+import { CallableFlagsIndex, renderChain } from "./callable-flags.js";
+import { FunctionBodyEvaluators } from "./function-body-evaluator.js";
+import { moduleCallDiagnostics, unboundSourceDiagnostics } from "./validate-module-calls.js";
+import { unboundCallReason, unboundCallSources } from "./unbound-call-site.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
 import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
-import { resolveRefSentinels } from "./resolve-ref-sentinels.js";
+import { resolveRefSentinels, resolveShapeRefs } from "./resolve-ref-sentinels.js";
 import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
 import { runZoneAnalysis, type ZoneExportCache } from "./resolve-zone-requirements.js";
 import { validateDurableRegions } from "./validate-durable-regions.js";
@@ -81,6 +88,7 @@ import {
 } from "./validate-schema-projection.js";
 import {
   evaluateResourceRules,
+  resourceRuleCallIssues,
   reportResourceRules,
   reportUnexercisedRule,
   ruleExercised,
@@ -92,6 +100,7 @@ import { pointerToPath, readResourceRules, type ResourceRule } from "./resource-
 import { readReferrerRules, type ReferrerRule } from "./referrer-rule.js";
 import {
   evaluateReferrerRules,
+  referrerRuleCallIssues,
   referrerRuleExercised,
   reportReferrerRules,
   reportUnexercisedReferrerRule,
@@ -127,12 +136,16 @@ import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
 import {
   celTypeSatisfiesJsonSchema,
   checkSchemaCompatibility,
+  inlineNamedShapes,
   navigateSchemaToExprPath,
   substituteCelFields,
   validateAgainstSchema,
   type SchemaIssue,
 } from "./schema-compat.js";
-import { collectValueSchemaIssues } from "./validate-value-schema.js";
+import { declaredResultSchemaAt, RETURNS_FROM_ANNOTATION } from "./callable-signature.js";
+import { collectValueSchemaIssues, type ShapeAwareValidator } from "./validate-value-schema.js";
+import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
+import { templateCallSite } from "./derived-slots.js";
 import {
   DiagnosticSeverity,
   DiagnosticTag,
@@ -163,7 +176,7 @@ import {
   schemaAtChain,
   type BindingSites,
 } from "./cel-bindings.js";
-import { CEL_RESERVED_WORDS, checkName } from "./identifier-name.js";
+import { CEL_RESERVED_WORDS, checkName, isTypeLevelName } from "./identifier-name.js";
 import { validateIdentifierNames } from "./validate-identifier-names.js";
 import { validateExtends } from "./validate-extends.js";
 import { validateLogging } from "./validate-logging.js";
@@ -185,6 +198,8 @@ import { validateResourceInputs } from "./validate-resource-inputs.js";
 import { validateExports } from "./validate-exports.js";
 import { validateTemplateBody } from "./validate-template-body.js";
 import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
+import { validateModuleCallNames } from "./validate-module-call-names.js";
+import { validateCallableDeclarations } from "./validate-callable-kinds.js";
 import { validateScopedNameReach } from "./validate-scope-reach.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
@@ -242,18 +257,6 @@ function resolveSelfOrAlias(
 
 const SOURCE = "telo-analyzer";
 
-/** True when an issue reports a property that is absent — its path points at a
- *  node the manifest does not contain. */
-export const missingRequired = (issue: { message: string }): boolean =>
-  /is missing required property/.test(issue.message);
-
-/** The path minus its last segment: the node that should have contained the
- *  missing property. Empty for a top-level miss, which anchors on the map. */
-export function containerOf(path: string): string {
-  const dot = path.lastIndexOf(".");
-  return dot === -1 ? "" : path.slice(0, dot);
-}
-
 /** How to name the owner of a resolved contract in a diagnostic. When the
  *  contract came from the definition's direct parent, echo the author's own
  *  spelling (`extends: Mcp.SessionProvider`) — that is the text they can find in
@@ -290,6 +293,24 @@ function refSlotIssueDiagnostic(issue: RefSlotIssue): AnalysisDiagnostic {
       resource: { kind: issue.manifest.kind, name: issue.manifest.metadata?.name as string },
       filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
       path: issue.path,
+    },
+  };
+}
+
+/** One mapping from a rule declaration issue to a diagnostic — shared by the
+ *  declaration check and the later check of the functions a condition calls, so
+ *  a repair is carried by both. */
+function ruleIssueDiagnostic(issue: ResourceRuleIssue | ReferrerRuleIssue): AnalysisDiagnostic {
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: issue.code,
+    source: SOURCE,
+    message: issue.message,
+    data: {
+      resource: { kind: issue.manifest.kind, name: issue.manifest.metadata?.name as string },
+      filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
+      path: issue.path,
+      ...(issue.fix ? { fix: issue.fix } : {}),
     },
   };
 }
@@ -346,6 +367,12 @@ const NO_ENTRY_POINT_CAPABILITIES = new Set([
   "Telo.Type",
   "Telo.Template",
   "Telo.Sink",
+  // A callable's `call(args)` is synchronous and receives no context, so it is
+  // deliberately outside `Telo.Executable`: a step's `invoke:` must refuse it,
+  // and the kernel's own dispatch finds neither `invoke` nor `run` on the
+  // instance (ERR_RESOURCE_NOT_INVOKABLE). A function is reached from inside a
+  // CEL expression through its module name, never as a step.
+  "Telo.Callable",
 ]);
 
 /**
@@ -554,9 +581,17 @@ function pathCrossesNestedResource(root: unknown, path: string): boolean {
 
 /** Member-access chains in a CEL expression, or none when it doesn't parse.
  *  Best-effort: a syntax error is reported by the engine pass, not here. */
-function celAccessChains(env: Environment, expr: string): string[][] {
+function celAccessChains(
+  env: Environment,
+  expr: string,
+  moduleNames?: ReadonlySet<string>,
+): string[][] {
   try {
-    return extractAccessChains(env.parse(expr).ast);
+    const ast = env.parse(expr).ast;
+    // Resolve first: a module call's receiver names a module, so reading it as
+    // a chain root would invent a read of a resource nothing references.
+    resolveModuleCalls(ast, moduleNames);
+    return extractAccessChains(ast);
   } catch {
     return [];
   }
@@ -575,6 +610,19 @@ function rewrapFix(
 ): DiagnosticFix | undefined {
   if (!fix || !wrapper) return fix;
   return { replacement: wrapper.prefix + fix.replacement + wrapper.suffix };
+}
+
+/** How the zone walks resolve a kind read off a node of a given module. */
+function regionDefResolver(
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  aliasesByModule: Map<string, AliasResolver>,
+): (kind: string, module?: string) => ResourceDefinition | undefined {
+  return (kind, module) => {
+    const scope = moduleAliasScope({ module }, aliases, aliasesByModule);
+    const canonical = scope.resolveKind(kind);
+    return defs.resolve(kind) ?? (canonical ? defs.resolve(canonical) : undefined);
+  };
 }
 
 /** A pure-CEL leaf and the schema of the field it sits in. */
@@ -769,6 +817,13 @@ export class StaticAnalyzer {
     // static and runtime halves agreeing.
     aliases.registerUngatedAlias(TELO_BUILTIN_MODULE, TELO_BUILTIN_MODULE);
     const defs = ctx?.definitions ?? new DefinitionRegistry();
+    // The one validator for a value checked against a schema that may name a
+    // registered shape: a module-level AJV holds none, so it compiles such a
+    // schema nowhere and the value goes unchecked.
+    const shapeAwareValidator: ShapeAwareValidator = {
+      validate: (data, target) => defs.validateResourceConfig(data, target),
+      external: (ref) => defs.schemaForId(ref),
+    };
 
     // Register module identities and aliases.
     // The root module doc (Telo.Application or Telo.Library) provides its own
@@ -811,8 +866,15 @@ export class StaticAnalyzer {
           // its own kinds regardless of `exports.kinds`, which gates importers, not
           // internal use. This is what lets a library declare an instance of a kind it
           // does not export (e.g. console's `writeLine`) to enforce a singleton.
+          // A module's OWN NAME resolves its kinds too, beside `Self` and for
+          // the same reason: `<module>.<Kind>` IS the canonical identity the
+          // registry keys on and every diagnostic prints, and `<module>.fn(…)`
+          // is one of the names a CEL call resolves through. The kernel
+          // registers both in every context; registering only `Self` here is
+          // what let a spelling pass `telo check` and fail at boot.
           if (rootModules.has(moduleName)) {
             aliases.registerUngatedAlias("Self", moduleName);
+            aliases.registerUngatedAlias(moduleName, moduleName);
           } else {
             let libResolver = aliasesByModule.get(moduleName);
             if (!libResolver) {
@@ -821,6 +883,7 @@ export class StaticAnalyzer {
               aliasesByModule.set(moduleName, libResolver);
             }
             libResolver.registerUngatedAlias("Self", moduleName);
+            libResolver.registerUngatedAlias(moduleName, moduleName);
           }
         }
       }
@@ -922,7 +985,20 @@ export class StaticAnalyzer {
       if (!libResolver.hasAlias("Self")) {
         libResolver.registerUngatedAlias("Self", ownModule);
       }
+      if (!libResolver.hasAlias(ownModule)) {
+        libResolver.registerUngatedAlias(ownModule, ownModule);
+      }
     }
+
+    // The names a CEL call's receiver may be, per declaring module: the module's
+    // `imports:` keys, `Self`, its own `metadata.name` and `Telo`. Derived from
+    // the manifests rather than from the alias tables so it is the SAME rule the
+    // compile half applied over one file's documents — the two halves must agree
+    // about what an expression says, and an alias table is built from RESOLVED
+    // imports while compilation runs before any import resolves. Inline
+    // extraction adds resources, never modules, so the raw set answers exactly
+    // as the normalized one would.
+    const moduleCallNames = moduleCallNamesByModule(manifests);
 
     // Register definitions from Telo.Definition AND Telo.Abstract resources.
     // Abstracts declare contracts that implementations target via `extends` (canonical)
@@ -1043,6 +1119,7 @@ export class StaticAnalyzer {
           ...validateResourceRuleDeclarations(
             m as unknown as ResourceManifest,
             effectiveAuthorSchema(m as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
+            moduleCallNamesOf(moduleCallNames, m as unknown as ResourceManifest),
           ),
         );
         // Deferred to after the registration loop: the `peers:` half is checked
@@ -1119,7 +1196,12 @@ export class StaticAnalyzer {
 
     if (!options?.skipValidation) {
       for (const declarer of ownRuleDeclarers) {
-        referrerRuleIssues.push(...validateReferrerRuleDeclarations(declarer, { peersTarget }));
+        referrerRuleIssues.push(
+          ...validateReferrerRuleDeclarations(declarer, {
+            peersTarget,
+            moduleNames: moduleCallNamesOf(moduleCallNames, declarer),
+          }),
+        );
       }
     }
 
@@ -1265,37 +1347,8 @@ export class StaticAnalyzer {
       // A projection nothing can read does not fail — it stops typing the
       // consumers counting on it, which puts a misspelled field back where the
       // projection exists to catch it earlier.
-      for (const issue of resourceRuleIssues) {
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: issue.code,
-          source: SOURCE,
-          message: issue.message,
-          data: {
-            resource: {
-              kind: issue.manifest.kind,
-              name: issue.manifest.metadata?.name as string,
-            },
-            filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
-            path: issue.path,
-          },
-        });
-      }
-      for (const issue of referrerRuleIssues) {
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: issue.code,
-          source: SOURCE,
-          message: issue.message,
-          data: {
-            resource: {
-              kind: issue.manifest.kind,
-              name: issue.manifest.metadata?.name as string,
-            },
-            filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
-            path: issue.path,
-          },
-        });
+      for (const issue of [...resourceRuleIssues, ...referrerRuleIssues]) {
+        diagnostics.push(ruleIssueDiagnostic(issue));
       }
       for (const issue of projectionIssues) {
         diagnostics.push({
@@ -1439,25 +1492,12 @@ export class StaticAnalyzer {
         }),
       );
 
-      // Durable regions — the SAME graph again, walked DOWNWARD this time.
-      // Every rule here keys off a zone attribute rather than off any kind, so
-      // a backend that ships its own workflow kind is covered without the
-      // analyzer knowing it exists: going native costs a module, not a change
-      // here.
-      const resolveRegionDef = (kind: string, module?: string) => {
-        const scope = moduleAliasScope({ module }, aliases, aliasesByModule);
-        const canonical = scope.resolveKind(kind);
-        return defs.resolve(kind) ?? (canonical ? defs.resolve(canonical) : undefined);
-      };
+      // A region must not contain a resource that declares it cannot honour what
+      // the region promises — the downward walk over every zone attribute. The
+      // durable rules walk the same regions once each function's flags are
+      // derived, below.
+      const resolveRegionDef = regionDefResolver(defs, aliases, aliasesByModule);
       diagnostics.push(
-        ...validateDurableRegions({
-          graph: getCallGraph(),
-          resolveDef: resolveRegionDef,
-          reportModules: rootModules,
-        }),
-        // The same walk once more, over EVERY attribute rather than the two
-        // durability names — a region must not contain a resource that declares
-        // it cannot honour what the region promises.
         ...validateZoneViolations({
           graph: getCallGraph(),
           resolveDef: resolveRegionDef,
@@ -1576,7 +1616,9 @@ export class StaticAnalyzer {
     // to compile, the failure was swallowed, and `telo check` reported nothing
     // about a resource the kernel then rejected at boot. The pass is idempotent
     // — a canonical id parses as no authority and is left alone — so running it
-    // over both is the whole repair.
+    // over both is the whole repair. The shapes a kind's contract or signature
+    // names are resolved there first, for the same reason.
+    resolveShapeRefs(manifests, aliases, aliasesByModule);
     resolveSchemaTypeRefs(manifests, aliases, aliasesByModule);
 
     // Trusted-input fast path: when the caller has already attested that
@@ -1695,9 +1737,58 @@ export class StaticAnalyzer {
       if (isInjectedDeclaration(m)) runReachable.add(m.metadata?.name as string);
     }
 
+    // What every module call names — resolved once per declaring module and
+    // qualified name, and read by the call typing, the call diagnostics and the
+    // `resources` scope (a function publishes no reading).
+    const moduleFunctions = new ModuleFunctionIndex(
+      allManifests as unknown as ResourceManifest[],
+      defs,
+      aliases,
+      aliasesByModule,
+      rootModules,
+    );
+    // Each function's determinism and host-backedness, derived over everything
+    // it reaches — read by the durable rules, the compile-eval warning, rule
+    // conditions and the slots holding a function.
+    const callableFlags = new CallableFlagsIndex(moduleFunctions, moduleCallNames);
+    // What a rule condition's module calls run as when `telo check` evaluates it.
+    const bodyEvaluators = new FunctionBodyEvaluators(
+      moduleFunctions,
+      callableFlags,
+      moduleCallNames,
+      (ref) => defs.schemaForId(ref),
+    );
+
+    // A rule condition may call a function only where the analyzer can run it:
+    // judged through the derived flags, now that every function is known.
+    for (const declarer of ownRuleDeclarers) {
+      const names = moduleCallNamesOf(moduleCallNames, declarer);
+      const flagsOf = (qualified: string) => callableFlags.ofCall(declarer, qualified);
+      for (const issue of [
+        ...resourceRuleCallIssues(declarer, names, flagsOf),
+        ...referrerRuleCallIssues(declarer, names, flagsOf),
+      ]) {
+        diagnostics.push(ruleIssueDiagnostic(issue));
+      }
+    }
+
+    // Durable regions — the call graph walked DOWNWARD. Every rule here keys off
+    // a zone attribute rather than off any kind, so a backend that ships its own
+    // workflow kind is covered without the analyzer knowing it exists: going
+    // native costs a module, not a change here.
+    diagnostics.push(
+      ...validateDurableRegions({
+        graph: getCallGraph(),
+        resolveDef: regionDefResolver(defs, aliases, aliasesByModule),
+        reportModules: rootModules,
+        moduleCallNames,
+        moduleCallFlags: (caller, qualified) => callableFlags.ofCall(caller, qualified),
+      }),
+    );
+
     // Build typed kernel globals schema so x-telo-context chain validation
     // recognises variables, secrets, resources, env automatically
-    const kernelGlobals = buildKernelGlobalsIndex(allManifests, observedState);
+    const kernelGlobals = buildKernelGlobalsIndex(allManifests, observedState, moduleFunctions);
 
     // Fallback context for CEL in a slot with no `x-telo-context` annotation:
     // everything stays open except the typed `.status` nodes, so unknown-field
@@ -1749,6 +1840,9 @@ export class StaticAnalyzer {
       kernelGlobals,
       moduleManifest,
       observedStateContext,
+      moduleCallNames,
+      moduleFunctions,
+      callableFlags,
     });
 
     /**
@@ -2030,7 +2124,9 @@ export class StaticAnalyzer {
         // placeholders. Through the REGISTRY, so a kind whose schema references
         // a shape declared elsewhere is checked on the instance that holds it.
         const ajvIssues = defs.validateResourceConfig(
-          substituteCelFields(m, projected, undefined, {
+          // A resource's own config: the kernel decodes its plain-encoded
+          // literals when it creates it.
+          substituteDecodedCelFields(m, projected, undefined, {
             external: (ref) => defs.schemaForId(ref),
           }),
           projected,
@@ -2043,6 +2139,7 @@ export class StaticAnalyzer {
           m as Record<string, any>,
           schema,
           allManifests as Record<string, any>[],
+          shapeAwareValidator,
         );
         const issues = [...ajvIssues, ...valueSchemaIssues];
         // WHY A FIELD THIS KIND EXISTS TO SUPPLY IS STILL REQUIRED OF ITS
@@ -2097,7 +2194,15 @@ export class StaticAnalyzer {
       for (const report of reportResourceRules(
         m as unknown as ResourceManifest,
         definition as unknown as ResourceManifest,
-        evaluateResourceRules(m as unknown as ResourceManifest, schema),
+        evaluateResourceRules(
+          m as unknown as ResourceManifest,
+          schema,
+          // The DECLARING kind's names: the condition is that author's
+          // expression, evaluated against someone else's resource — and its
+          // module calls reach that module's functions.
+          moduleCallNamesOf(moduleCallNames, definition as unknown as ResourceManifest),
+          bodyEvaluators.dispatchFor(definition as unknown as ResourceManifest),
+        ),
         !ruleDeclarer || rootModules.has(ruleDeclarer),
       )) {
         diagnostics.push(resourceRuleDiagnostic(report));
@@ -2119,6 +2224,17 @@ export class StaticAnalyzer {
       const referrerRules = readReferrerRules(schema);
       if (referrerRules.length > 0) {
         const referrers = referrersOf(m as unknown as ResourceManifest, getCallGraph());
+        // The shared binder, plus the DECLARING kind's call names — the binder
+        // is one per run because it caches, the names are per declaration
+        // because a condition is its author's expression.
+        const declaringRuleContext: ReferrerRuleContext = {
+          ...referrerRuleContext,
+          moduleNames: moduleCallNamesOf(
+            moduleCallNames,
+            definition as unknown as ResourceManifest,
+          ),
+          functions: bodyEvaluators.dispatchFor(definition as unknown as ResourceManifest),
+        };
         for (const report of reportReferrerRules(
           m as unknown as ResourceManifest,
           definition as unknown as ResourceManifest,
@@ -2127,7 +2243,7 @@ export class StaticAnalyzer {
             schema,
             referrers,
             kindMatches,
-            referrerRuleContext,
+            declaringRuleContext,
           ),
           !ruleDeclarer || rootModules.has(ruleDeclarer),
         )) {
@@ -2155,7 +2271,7 @@ export class StaticAnalyzer {
           const tracked = referrerRuleExercise.get(key);
           if (!tracked) continue;
           tracked.seen = true;
-          if (referrerRuleExercised(rule, referrers, kindMatches, referrerRuleContext)) {
+          if (referrerRuleExercised(rule, referrers, kindMatches, declaringRuleContext)) {
             tracked.exercised = true;
           }
         }
@@ -2189,10 +2305,7 @@ export class StaticAnalyzer {
               return viaRoot ? defs.resolve(viaRoot) : undefined;
             },
             allManifests as Record<string, any>[],
-            {
-              validate: (data, target) => defs.validateResourceConfig(data, target),
-              external: (ref) => defs.schemaForId(ref),
-            },
+            shapeAwareValidator,
           ),
         );
       }
@@ -2243,9 +2356,18 @@ export class StaticAnalyzer {
         valueSchema: Record<string, any>,
         value: unknown,
         path: string,
+        /** Only the enumerated call site (`inputs:`) is decoded — the kernel
+         *  decodes a definition's argument map at creation and never its
+         *  `result:` mapping, which is produced at dispatch. */
+        decode = false,
       ) => {
-        const substituted = substituteCelFields(value, valueSchema);
-        const issues = validateAgainstSchema(substituted, valueSchema);
+        const substituted = (decode ? substituteDecodedCelFields : substituteCelFields)(
+          value,
+          valueSchema,
+          undefined,
+          { external: shapeAwareValidator.external },
+        );
+        const issues = shapeAwareValidator.validate(substituted, valueSchema);
         for (const issue of issues) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -2257,37 +2379,29 @@ export class StaticAnalyzer {
         }
       };
 
-      // Resolve the dispatch target's kind, if statically known. Object-form
-      // `invoke: { kind, name }` and `provide: { kind, name }` carry it; the
-      // string-form `invoke: "name"` does not (the matching resource entry would
-      // need to be located by expanded name — out of scope here).
       const invoke = md.invoke;
       const provide = md.provide;
-      let dispatchKind: string | undefined;
-      if (invoke && typeof invoke === "object" && !Array.isArray(invoke) && typeof invoke.kind === "string") {
-        dispatchKind = invoke.kind;
-      } else if (
-        provide &&
-        typeof provide === "object" &&
-        !Array.isArray(provide) &&
-        typeof provide.kind === "string"
-      ) {
-        dispatchKind = provide.kind;
-      }
 
       // Top-level `inputs:` (sibling of `invoke:` / `provide:`) carries the
-      // values passed to the dispatch target's invoke(). Validate against the
-      // target's declared `inputType` when both sides have one.
-      if (dispatchKind && md.inputs && typeof md.inputs === "object") {
-        const targetSchema = resolveContract(
-          "inputType",
-          undefined,
-          contractScope.resolveIn(dispatchKind, (md.metadata as any)?.module),
-          contractScope,
-        )?.schema;
-        if (targetSchema) {
-          emitTargetMismatch(dispatchKind, targetSchema, md.inputs, "inputs");
-        }
+      // values passed to the dispatch target's invoke(). Validated against the
+      // target's declared `inputType` when both sides have one — the site the
+      // shared reader names, which the kernel decodes literals through too.
+      const templateInputs = templateCallSite(md, {
+        defs,
+        aliases,
+        aliasesByModule,
+        rootModules,
+        typeManifests: allManifests as Record<string, any>[],
+        resolveTarget: () => undefined,
+      });
+      if (templateInputs?.contract) {
+        emitTargetMismatch(
+          templateInputs.invoke.kind as string,
+          templateInputs.contract.schema,
+          templateInputs.values,
+          templateInputs.path,
+          true,
+        );
       }
 
       // Top-level `result:` is a post-call mapping that must satisfy THIS
@@ -2369,6 +2483,9 @@ export class StaticAnalyzer {
     // see the names it introduces.
     let celBindingSites: BindingSites | undefined;
     let celRuleApplies = false;
+    // The author-facing schema of the resource being visited, which says where
+    // its expressions are evaluated with no module function bound.
+    let celUnboundSchema: Record<string, any> | undefined;
 
     visitManifest(
       allManifests,
@@ -2382,7 +2499,22 @@ export class StaticAnalyzer {
           // against, and a second computation is how the two come to disagree.
           celStepContextSchema = celScope.stepContextSchema;
           celErrorScopes = celScope.errorContextScopes;
-          if (e.definition?.schema) {
+          celUnboundSchema = e.definition
+            ? validationSchemaFor(e.definition as unknown as ResourceDefinition)
+            : undefined;
+          diagnostics.push(
+            ...unboundSourceDiagnostics(
+              m as unknown as ResourceManifest,
+              (m.metadata as { source?: string } | undefined)?.source,
+              unboundCallSources(m, celUnboundSchema),
+              moduleCallNamesOf(moduleCallNames, m as unknown as ResourceManifest),
+              moduleFunctions,
+            ),
+          );
+          const effectiveSchema = defs.effectiveSchemaOf(e.definition) as
+            | Record<string, any>
+            | undefined;
+          if (effectiveSchema) {
             const stepName = (m.metadata as any)?.name as string | undefined;
             const stepFile = (m.metadata as { source?: string } | undefined)?.source;
             // Both drivers of the SAME check: a step's `inputs:` found through
@@ -2400,7 +2532,8 @@ export class StaticAnalyzer {
               ),
               ...collectStepInputIssues(
               m as Record<string, any>,
-              e.definition.schema as Record<string, any>,
+              // Inheritance resolved: a step body a parent declares is its child's.
+              effectiveSchema,
               allManifests as Record<string, any>[],
               defs,
               aliases,
@@ -2448,7 +2581,10 @@ export class StaticAnalyzer {
 
             if (declared !== null && typeof declared === "object" && !Array.isArray(declared)) {
 
-              for (const cycle of resolveBindingOrder(declared).cycles) {
+              for (const cycle of resolveBindingOrder(
+                declared,
+                moduleCallNamesOf(moduleCallNames, m),
+              ).cycles) {
                 diagnostics.push({
                   severity: DiagnosticSeverity.Error,
                   code: "BINDING_CYCLE",
@@ -2475,17 +2611,26 @@ export class StaticAnalyzer {
               if (celStepContextSchema) inScope.add("steps");
               if (celErrorScopes.size > 0) inScope.add("error");
               const keywords = new Set<string>(CEL_RESERVED_WORDS);
+              // A module's own names are the third way a binding can be
+              // unreadable: `Billing.f(x)` under a binding named `Billing`
+              // resolves to the module's function, never to the binding. Not a
+              // SHADOWED variable — there is no variable — so it says what it
+              // actually collides with.
+              const bindingModuleNames = moduleCallNamesOf(moduleCallNames, m);
 
               for (const name of Object.keys(declared)) {
                 const shadows = inScope.has(name);
-                if (shadows || keywords.has(name)) {
+                const namesModule = !shadows && bindingModuleNames.has(name);
+                if (shadows || namesModule || keywords.has(name)) {
                   diagnostics.push({
                     severity: DiagnosticSeverity.Error,
                     code: "BINDING_NAME_RESERVED",
                     source: SOURCE,
                     message: shadows
                       ? `${m.kind}/${bindingsName}: binding '${name}' shadows a variable already in scope here (${[...inScope].sort().join(", ")}). Rename the binding — a scope variable always wins, so this one would never be read.`
-                      : `${m.kind}/${bindingsName}: binding '${name}' is a CEL keyword, so no expression can read it as a reference. Rename the binding.`,
+                      : namesModule
+                        ? `${m.kind}/${bindingsName}: binding '${name}' names a module here (an imports: alias, Self, or this module's own name), so a call written '${name}.f(…)' resolves to that module's function. Rename the binding.`
+                        : `${m.kind}/${bindingsName}: binding '${name}' is a CEL keyword, so no expression can read it as a reference. Rename the binding.`,
                     data: {
                       resource: resourceRef,
                       filePath: bindingsFile,
@@ -2589,7 +2734,11 @@ export class StaticAnalyzer {
           // and a resource nothing can start reports nothing, ever. Both are
           // decided from the expression and the manifest alone.
           if (reportsObservedState && engineName === "cel" && expr.includes(OBSERVED_STATE_KEY)) {
-            for (const chain of celAccessChains(this.celEnv, expr)) {
+            for (const chain of celAccessChains(
+              this.celEnv,
+              expr,
+              moduleCallNamesOf(moduleCallNames, m),
+            )) {
               const read = observedStateRead(chain);
               if (!read) continue;
               // An import's exported instance is indexed under `<Alias>.<name>`,
@@ -2647,7 +2796,14 @@ export class StaticAnalyzer {
           // path — not the bare base one. Both halves come from the one scope
           // rule, which is what makes the IDE's answer and this check the same
           // answer rather than two that agree today.
-          const { env: typedEnv, contextSchema: effectiveContext } = celScope.scopeFor({
+          const {
+            env: typedEnv,
+            contextSchema: effectiveContext,
+            moduleNames: siteModuleNames,
+            moduleCallType,
+            moduleCallResult,
+            moduleCallFlags,
+          } = celScope.scopeFor({
             source: m,
             path,
             contextSchema: e.contextSchema,
@@ -2657,8 +2813,21 @@ export class StaticAnalyzer {
           const result = engine.analyze(expr, {
             celEnv: typedEnv,
             contextSchema: effectiveContext,
-            // `scopeFor` registers every kernel global and every name the site's
-            // context declares, so a root this environment does not know is one
+            // A call whose receiver is one of these resolves to a module
+            // function: it is not classified against the catalog, its
+            // determinism is not the catalog's, and its receiver is not a root
+            // identifier. It types as its callee's declared result, and member
+            // access on it is checked against that result's schema.
+            moduleNames: siteModuleNames,
+            moduleCallType,
+            moduleCallResult,
+            // Each module call carries its callee's derived flags, so the
+            // policies below read `deterministic === false` for a module call as
+            // they do for a catalog one.
+            moduleCallFlags,
+            // `scopeFor` registers every kernel global (none in a parameter scope,
+            // which replaces them) and every name the site's context declares,
+            // so a root this environment does not know is one
             // nothing puts in scope. Two places where the CEL belongs to another
             // scope, both already recognised by the non-eval-field check: a kind
             // document, whose CEL is written for whoever instantiates the kind,
@@ -2666,6 +2835,11 @@ export class StaticAnalyzer {
             // nested kind evaluates — and which is analyzed again, in its own
             // scope, as the resource it was extracted into.
             rootsDeclared: !isKindDocument(m) && !pathCrossesNestedResource(m, path),
+            // Which bare names could be a module: the naming rule, which the
+            // engine does not own. A module name and an import alias are
+            // type-level, so a lowercase receiver is a misspelled value and the
+            // `imports:` repair would be advice for a different mistake.
+            couldNameModule: isTypeLevelName,
           });
 
           if (result.type !== undefined) {
@@ -2698,21 +2872,59 @@ export class StaticAnalyzer {
             }
           }
 
+          // What each module call reaches, and whether the call fits it — the
+          // kernel's binding refusals and the signature checks. A module doc's
+          // inline `imports:` map is the same expression its desugared
+          // `Telo.Import` carries — the resource the kernel creates — so it is
+          // judged there, once. An expression below a nested declaration is
+          // that declaration's, evaluated where IT is created, so the enclosing
+          // field's unbound-calls annotation does not reach it.
+          if (!(isModuleKind(m.kind as string) && path.startsWith("imports."))) {
+            const unboundReason = pathCrossesNestedResource(m, path)
+              ? undefined
+              : unboundCallReason(celUnboundSchema, path);
+            diagnostics.push(
+              ...moduleCallDiagnostics(
+                {
+                  manifest: m as unknown as ResourceManifest,
+                  resource,
+                  filePath,
+                  path,
+                  calls: result.calls,
+                  contextSchema: effectiveContext,
+                  resolveRef: (ref) => defs.schemaForId(ref),
+                  ...(unboundReason !== undefined ? { unboundReason } : {}),
+                },
+                moduleFunctions,
+              ),
+            );
+          }
+
           // A non-deterministic call in a compile-eval field is baked once at
           // load: `nowIso()` there freezes at boot. Sometimes that is the
           // intent (a boot timestamp, a run id), so it warns rather than
           // blocking. The engine reports which calls re-evaluate; the eval mode
           // is manifest policy and stays here.
           if (celRuleApplies && celEvalModeAt(celSites, path) === "compile") {
+            // A module call is named by the chain to the leaf that makes it
+            // volatile (`Self.stamp → now()`), so the author sees which call did.
             const volatile = [
-              ...new Set(result.calls.filter((c) => c.deterministic === false).map((c) => c.name)),
+              ...new Set(
+                result.calls
+                  .filter((c) => c.deterministic === false)
+                  .map((c) =>
+                    c.moduleCall
+                      ? renderChain(moduleCallFlags(c.name)?.nondeterministicVia ?? [c.name])
+                      : `${c.name}()`,
+                  ),
+              ),
             ].sort();
             if (volatile.length > 0) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Warning,
                 code: "CEL_NONDETERMINISTIC_IN_COMPILE_FIELD",
                 source: SOURCE,
-                message: `${m.kind}/${resource.name}: '${path}' is evaluated once at startup, so ${volatile.map((n) => `\`${n}()\``).join(", ")} ${volatile.length === 1 ? "is" : "are"} baked in at load and never re-evaluated. Move the expression to a field evaluated per call (x-telo-eval: runtime) if it should change over time.`,
+                message: `${m.kind}/${resource.name}: '${path}' is evaluated once at startup, so ${volatile.map((n) => `\`${n}\``).join(", ")} ${volatile.length === 1 ? "is" : "are"} baked in at load and never re-evaluated. Move the expression to a field evaluated per call (x-telo-eval: runtime) if it should change over time.`,
                 data: { resource, filePath, path },
               });
             }
@@ -2769,15 +2981,32 @@ export class StaticAnalyzer {
     for (const slot of celReturnSlots) {
       const type = celTypeByPath.get(slot.manifest)?.get(slot.path);
       if (type === undefined) continue;
-      if (!celTypeSatisfiesJsonSchema(type.split("<")[0]!, slot.schema)) {
-        const expected = slot.schema["x-telo-type"] ?? slot.schema.type ?? "unknown";
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: "CEL_TYPE_ERROR",
-          source: SOURCE,
-          message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but the field expects '${expected}'.`,
-          data: { resource: slot.resource, filePath: slot.filePath, path: slot.path },
-        });
+      // A field whose value IS a callable's result is held to the declared
+      // result rather than to its own schema, which cannot know it.
+      const result = declaredResultSchemaAt(slot.schema, slot.manifest, (schema) =>
+        inlineNamedShapes(schema, (id) => defs.schemaForId(id)),
+      );
+      const target = result ?? slot.schema;
+      const data = { resource: slot.resource, filePath: slot.filePath, path: slot.path };
+      if (!celTypeSatisfiesJsonSchema(type.split("<")[0]!, target)) {
+        const expected = target["x-telo-type"] ?? target.type ?? "unknown";
+        diagnostics.push(
+          result
+            ? {
+                severity: DiagnosticSeverity.Error,
+                code: "FUNCTION_RETURN_MISMATCH",
+                source: SOURCE,
+                message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but '${slot.schema[RETURNS_FROM_ANNOTATION]}' declares '${expected}'.`,
+                data,
+              }
+            : {
+                severity: DiagnosticSeverity.Error,
+                code: "CEL_TYPE_ERROR",
+                source: SOURCE,
+                message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but the field expects '${expected}'.`,
+                data,
+              },
+        );
         continue;
       }
       // The type fits; do its ARGUMENTS agree? Covariant and gradual — an
@@ -2787,25 +3016,70 @@ export class StaticAnalyzer {
       if (!produced) continue;
       const { compatible, issues } = checkSchemaCompatibility(
         produced,
-        slot.schema,
+        target,
         (ref: string) => defs.schemaForId(ref),
       );
       if (compatible) continue;
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        code: "CEL_TYPE_ARGUMENT_MISMATCH",
-        source: SOURCE,
-        message:
-          `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
-          `whose type arguments disagree with the field's: ${issues.join("; ")}.`,
-        data: { resource: slot.resource, filePath: slot.filePath, path: slot.path },
-      });
+      diagnostics.push(
+        result
+          ? {
+              severity: DiagnosticSeverity.Error,
+              code: "FUNCTION_RETURN_MISMATCH",
+              source: SOURCE,
+              message:
+                `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
+                `whose declared shape disagrees with '${slot.schema[RETURNS_FROM_ANNOTATION]}': ${issues.join("; ")}.`,
+              data,
+            }
+          : {
+              severity: DiagnosticSeverity.Error,
+              code: "CEL_TYPE_ARGUMENT_MISMATCH",
+              source: SOURCE,
+              message:
+                `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
+                `whose type arguments disagree with the field's: ${issues.join("; ")}.`,
+              data,
+            },
+      );
     }
 
     // Validate resource references (Phase 3)
     diagnostics.push(
-      ...validateReferences(allManifests, { aliases, definitions: defs, aliasesByModule }),
+      ...validateReferences(
+        allManifests,
+        { aliases, definitions: defs, aliasesByModule },
+        { functions: moduleFunctions, flags: callableFlags },
+      ),
     );
+
+    // The static half of `ERR_CIRCULAR_DEPENDENCY`, over the graph `prepare()`
+    // orders boot by and in its wording. A loop with no participant in the
+    // entry's own modules is a dependency's, reported by its own check.
+    const dependencyGraph = buildDependencyGraph(
+      allManifests as unknown as ResourceManifest[],
+      defs,
+      aliases,
+      aliasesByModule,
+      getCallGraph(),
+    );
+    for (const cycle of dependencyGraph.cycles ?? []) {
+      const anchor = cycle.find((node) => {
+        const module = (node.manifest.metadata as { module?: string } | undefined)?.module;
+        return !module || rootModules.has(module);
+      });
+      if (!anchor) continue;
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "DEPENDENCY_CYCLE",
+        source: SOURCE,
+        message: formatCycle(cycle),
+        data: {
+          resource: { kind: anchor.kind, name: anchor.name },
+          filePath: (anchor.manifest.metadata as { source?: string } | undefined)?.source,
+          path: "metadata.name",
+        },
+      });
+    }
 
     // Validate step `invoke` references — the slots the reference field map
     // deliberately skips (behind the step `$ref`), so a missing instance or a
@@ -2887,11 +3161,36 @@ export class StaticAnalyzer {
       ),
     );
 
+    // An import alias a kind has already put in CEL scope, where a call through
+    // that name would reach the module instead of the variable.
+    diagnostics.push(
+      ...validateModuleCallNames(allManifests, defs, aliases, aliasesByModule, rootModules),
+    );
+
+    // What a callable kind may declare, and what a signature may say. The
+    // kernel refuses the same definitions at registration, reading the same
+    // rules — see `validate-callable-kinds.ts`.
+    diagnostics.push(
+      ...validateCallableDeclarations(
+        allManifests as unknown as ResourceManifest[],
+        defs,
+        aliases,
+        aliasesByModule,
+        rootModules,
+      ),
+    );
+
     // An inline declaration referencing a name declared by a scope it was
     // written inside but is created outside of.
     diagnostics.push(
-      ...validateScopedNameReach(allManifests, defs, aliases, aliasesByModule, rootModules, (expr) =>
-        celAccessChains(this.celEnv, expr),
+      ...validateScopedNameReach(
+        allManifests,
+        defs,
+        aliases,
+        aliasesByModule,
+        rootModules,
+        (expr, declaringManifest) =>
+          celAccessChains(this.celEnv, expr, moduleCallNamesOf(moduleCallNames, declaringManifest)),
       ),
     );
 

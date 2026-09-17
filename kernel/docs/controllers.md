@@ -90,7 +90,7 @@ kernel the `dylib`:
 controllers:
   - pkg:telo/local/napi?path=./native/linux-amd64-gnu/starlark.node&os=linux&arch=amd64&libc=gnu#script
   - pkg:telo/local/napi?path=./native/darwin-arm64/starlark.node&os=darwin&arch=arm64#script
-  - pkg:telo/local/dylib?path=./native/linux-amd64-gnu/libtelorun_starlark.so&os=linux&arch=amd64&libc=gnu&abi=telo-2
+  - pkg:telo/local/dylib?path=./native/linux-amd64-gnu/libtelorun_starlark.so&os=linux&arch=amd64&libc=gnu&abi=telo-3
   - pkg:cargo/telorun-starlark?local_path=./rust#script
 ```
 
@@ -396,6 +396,16 @@ create(resource, ctx) → instance | null   — called once per resource; requir
 
 The loader validates the loaded module against this contract and throws if neither
 `create` nor `register` is exported.
+
+A controller for a **callable kind** (`capability: Telo.Callable`) receives a function
+context — `resolveControllerFile`, `resolveNativeFile`, `log`, `effect` — and its instance
+carries a synchronous `call(args)`, which the kernel binds to the kind's signature
+(`kernel/specs/invocation-contract.md` §7.4). A Rust function built with the SDK's
+`#[function(entry = "…")]` exports, under napi, a namespace `<entry>` carrying
+`createFunction(configJson, ctx)`; the loader creates its instance as an effect of
+`create`, so teardown and reload destroy it, and crosses each call as typed frames
+(`kernel/specs/durable-execution.md` §6). Natively the same function is the
+`telo_function__<entry>` symbol of ABI version 3 (`abi=telo-3`).
 
 ---
 

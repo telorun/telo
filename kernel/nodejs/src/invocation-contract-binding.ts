@@ -2,9 +2,9 @@ import {
   type ContractDirection,
   type ProjectionScope,
   declaredScalarPaths,
-  type DeclaredScalarForm,
   type DeclaredScalarPath,
   defaultBearingPaths,
+  normalizeDeclaredScalars,
   sensitivePaths,
   effectiveContractField,
   describeProjectionFailure,
@@ -21,6 +21,7 @@ import {
   ERR_SCHEMA_PROJECTION_UNRESOLVED,
   InvokeError,
 } from "@telorun/sdk";
+import { typeReferenceKey } from "./type-field-schema.js";
 
 /**
  * Binds a resource's resolved invocation contract to its dispatch entry points,
@@ -235,10 +236,9 @@ export function resolveBoundContract(
   };
 }
 
-const nameOf = (declared: unknown): string | undefined =>
-  typeof declared === "string"
-    ? declared
-    : ((declared as Record<string, unknown> | null)?.name as string | undefined);
+/** The key a named contract's rules were registered under — the same key its
+ *  schema resolves through. */
+const nameOf = (declared: unknown): string | undefined => typeReferenceKey(declared);
 
 const describeDeclaration = (declared: unknown): string =>
   typeof declared === "string" ? `'${declared}'` : JSON.stringify(declared);
@@ -285,91 +285,6 @@ function copyAlong(node: unknown, segments: readonly string[]): unknown {
   if (!child || typeof child !== "object") return node;
   container[head!] = copyAlong(shallowCopy(child), rest);
   return node;
-}
-
-/**
- * `value` with every leaf normalized to the representation its declaration
- * names, copied along the containers above each one so the producer's own object
- * is not rewritten under it.
- *
- * A declared shape says what the value IS, not only what it must pass — the same
- * service a JSON Schema gives an HTTP response serializer. Telo's CEL layer
- * takes the declaration literally: `integer` types as CEL `int` and a CEL int is
- * a BigInt, so a controller handing back a plain JS number at an `integer` slot
- * makes the contract a lie that surfaces nowhere until an expression composes it
- * — `result.n + 1` type-checking statically and then dying at dispatch with
- * `no such overload: dyn<double> + int`. Normalizing at the boundary that
- * already knows the declared shape closes it for every kind at once, instead of
- * once per module after each report.
- *
- * BOTH DIRECTIONS, deliberately. A controller cannot be written correctly
- * against a slot that hands it a JS number when the manifest wrote a literal and
- * a BigInt when CEL computed the same value — it would have to accept either at
- * every declared-integer field, which is what `typeof x === "number"` guards
- * around the standard library were quietly relying on. One representation per
- * declaration is what makes the declared type something a controller can read.
- *
- * Only an EXACT conversion is performed: an integral number becomes an int64,
- * and a BigInt becomes a double only when the round-trip is lossless. A
- * fractional number at an integer slot, a string, a null, a magnitude no double
- * can hold — all are left exactly as they arrived, so a value that genuinely
- * violates the contract is still rejected rather than quietly repaired into
- * something that passes, and a 64-bit integer is never truncated to reach a
- * `number` slot (which is the `double(...)` defect this whole line of work
- * exists to retire).
- */
-export function normalizeDeclaredScalars(
-  value: unknown,
-  paths: readonly DeclaredScalarPath[],
-): unknown {
-  if (paths.length === 0 || !value || typeof value !== "object") return value;
-  let out: unknown = value;
-  for (const { path, form } of paths) out = normalizeAlong(out, path, form);
-  return out;
-}
-
-function normalizeAlong(
-  node: unknown,
-  segments: readonly string[],
-  form: DeclaredScalarForm,
-): unknown {
-  if (!node || typeof node !== "object") return node;
-  const [head, ...rest] = segments;
-
-  if (head === "[]") {
-    if (!Array.isArray(node)) return node;
-    let changed = false;
-    const next = node.map((item) => {
-      const value = rest.length === 0 ? asForm(item, form) : normalizeAlong(item, rest, form);
-      if (value !== item) changed = true;
-      return value;
-    });
-    return changed ? next : node;
-  }
-
-  const container = node as Record<string, unknown>;
-  if (!(head! in container)) return node;
-  const child = container[head!];
-  const next = rest.length === 0 ? asForm(child, form) : normalizeAlong(child, rest, form);
-  if (next === child) return node;
-  // Copy-on-write, and only once a leaf actually moved: a producer may hand back
-  // an object it retains (a cached record, a live config), and rewriting it in
-  // place would change what it holds.
-  const copy = shallowCopy(container);
-  copy[head!] = next;
-  return copy;
-}
-
-function asForm(value: unknown, form: DeclaredScalarForm): unknown {
-  if (form === "int64") {
-    return typeof value === "number" && Number.isInteger(value) ? BigInt(value) : value;
-  }
-  if (typeof value !== "bigint") return value;
-  const asNumber = Number(value);
-  // Lossless only. Past the safe range a double cannot hold the integer, and
-  // handing back a silently-rounded one is the precision loss the int64 work
-  // exists to remove.
-  return BigInt(asNumber) === value ? asNumber : value;
 }
 
 /**

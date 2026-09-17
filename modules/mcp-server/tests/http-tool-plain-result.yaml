@@ -1,0 +1,112 @@
+kind: Telo.Application
+metadata:
+  name: McpHttpToolPlainResultTest
+  version: 1.0.0
+  description: |
+    A tool result's reader is an MCP client, not Telo, so a CEL value in it leaves
+    in its plain encoding — a timestamp as RFC 3339 `Z` text, a duration as
+    seconds — never type-tagged. A caught error's `data` is written the same way.
+imports:
+  Mcp: ../
+  McpClient: ../../mcp-client
+  Http: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets: [ !ref testRun ]
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpHttp }
+serverInfo: { name: telo-test-mcp, version: 1.0.0 }
+tools:
+  - kind: Mcp.Tools
+    entries:
+      - name: next_slot
+        description: The next free slot and its length.
+        argumentsSchema:
+          type: object
+        handler:
+          kind: Run.Value
+          value:
+            at: !cel "timestamp('2026-01-15T09:30:00+02:00')"
+            took: !cel "duration('1h30m')"
+        inputs: {}
+        result:
+          content:
+            - type: text
+              text: next slot
+          structuredContent:
+            at: !cel "result.at"
+            took: !cel "result.took"
+      - name: busy_slot
+        description: Always busy; says when to retry.
+        argumentsSchema:
+          type: object
+        handler:
+          kind: Run.Sequence
+          throws:
+            - code: busy
+          steps:
+            - name: bail
+              throw:
+                code: busy
+                message: every slot is taken
+        inputs: {}
+        result:
+          content:
+            - type: text
+              text: unreachable
+        catches:
+          - code: busy
+            error:
+              code: -32050
+              message: !cel "error.message"
+              data:
+                retryIn: !cel "duration('30s')"
+---
+kind: McpClient.ToolsCall
+metadata: { name: callTool }
+client:
+  kind: McpClient.HttpClient
+  url: http://127.0.0.1:8985/mcp
+  clientInfo: { name: telo-test, version: 1.0.0 }
+---
+kind: Run.Sequence
+metadata: { name: testRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8985
+    baseUrl: http://127.0.0.1:8985
+    mounts:
+      - { path: /mcp, mount: !ref mcpHttp }
+targets: [ !ref Server ]
+steps:
+  - name: busy
+    try:
+      - name: calledBusy
+        inputs:
+          name: busy_slot
+          arguments: {}
+        invoke: !ref callTool
+    catch:
+      - name: assertPlainErrorData
+        inputs:
+          actual: !cel "error.data.data"
+          expected:
+            retryIn: "30s"
+        invoke:
+          kind: Assert.Equals
+  - name: called
+    inputs:
+      name: next_slot
+      arguments: {}
+    invoke: !ref callTool
+  - name: assertPlainResult
+    inputs:
+      actual: !cel "steps.called.result.structuredContent"
+      expected:
+        at: "2026-01-15T07:30:00.000Z"
+        took: "5400s"
+    invoke:
+      kind: Assert.Equals

@@ -49,6 +49,12 @@ describe("renderFixReplacement", () => {
   it("refuses a multi-line replacement — its later lines would land at column 0", () => {
     expect(renderFixReplacement(`"x"`, "first\nsecond")).toBeUndefined();
   });
+
+  it("writes a tagged repair behind its tag, whatever the original's quoting", () => {
+    expect(renderFixReplacement("Money", "Money", "ref")).toBe("!ref Money");
+    // `!cel` is always double-quoted, the form the formatter writes.
+    expect(renderFixReplacement(`'self.a'`, `self.a == "x"`, "cel")).toBe(`!cel "self.a == \\"x\\""`);
+  });
 });
 
 describe("isPlainSafe", () => {

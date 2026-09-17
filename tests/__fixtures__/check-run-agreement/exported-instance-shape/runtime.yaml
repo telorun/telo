@@ -1,0 +1,10 @@
+# Runs the caller library's sequence. Its entry-scoped check does not read the
+# call, so the refusal is the kernel's, at dispatch.
+kind: Telo.Application
+metadata:
+  name: ExportedInstanceShapeRuntimeApp
+  version: 1.0.0
+imports:
+  Caller: ./caller
+targets:
+  - !ref Caller.go

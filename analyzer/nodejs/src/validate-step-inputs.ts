@@ -1,31 +1,22 @@
+import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
+import { resolveReferenceTarget } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import type { ContractDirection } from "./extends-resolution.js";
-import { resolveContract } from "./invocation-contract.js";
-import {
-  checkSchemaCompatibility,
-  navigateSchemaToExprPath,
-  substituteCelFields,
-  validateAgainstSchema,
-} from "./schema-compat.js";
+import { analyzerContractScope, resolveContract } from "./invocation-contract.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
+import { gatherPropertySchemas } from "./schema-walk.js";
+import { checkSchemaCompatibility, navigateSchemaToExprPath } from "./schema-compat.js";
+import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import { plainChainOf } from "@telorun/templating";
-import { isLiveSlot, valueTypeOf, type ResourceDefinition } from "@telorun/sdk";
+import { isLiveSlot, valueTypeOf } from "@telorun/sdk";
 import { manifestFragmentOf } from "./manifest-schemas.js";
 import {
-  analyzerContractScope,
-  containerOf,
-  gatherPropertySchemas,
-  missingRequired,
-  resolveLocalRef,
-  walkStepArray,
-} from "./analyzer.js";
-import { readStepSlot } from "./step-slot.js";
-import { navigateConcretePath } from "./manifest-path.js";
-import {
-  isRefEntry,
-  resolveFieldEntries,
-  type ReferenceFieldMap,
-} from "./reference-field-map.js";
+  slotCallSites,
+  stepCallSites,
+  type CallSite,
+  type DerivedSlotContext,
+} from "./derived-slots.js";
+import type { ReferenceFieldMap } from "./reference-field-map.js";
 
 export interface StepInputIssue {
   path: string;
@@ -36,6 +27,69 @@ export interface StepInputIssue {
   code?: "CEL_TYPE_ARGUMENT_MISMATCH" | "LIVE_VALUE_RETRIED";
 }
 
+/** The per-declaring-module alias tables and the entry's own modules. */
+type CallScopes = ModuleScopes & { aliasesByModule: Map<string, AliasResolver> };
+
+/** True when an issue reports a property that is absent — its path points at a
+ *  node the manifest does not contain. */
+const missingRequired = (issue: { message: string }): boolean =>
+  /is missing required property/.test(issue.message);
+
+/** The path minus its last segment: the node that should have contained the
+ *  missing property. Empty for a top-level miss, which anchors on the map. */
+function containerOf(path: string): string {
+  const dot = path.lastIndexOf(".");
+  return dot === -1 ? "" : path.slice(0, dot);
+}
+
+const declarationsByName = new WeakMap<object, Map<string, ResourceManifest[]>>();
+
+/** The analyzed set's declarations by name, built once per set. */
+function byNameOf(allManifests: Record<string, any>[]): Map<string, ResourceManifest[]> {
+  let byName = declarationsByName.get(allManifests);
+  if (!byName) {
+    byName = new Map();
+    for (const m of allManifests as ResourceManifest[]) {
+      const name = m.metadata?.name;
+      if (typeof name !== "string" || m.kind === "Telo.Import") continue;
+      const list = byName.get(name);
+      if (list) list.push(m);
+      else byName.set(name, [m]);
+    }
+    declarationsByName.set(allManifests, byName);
+  }
+  return byName;
+}
+
+/** The reader's context for these checks: a call target resolves in the scope of
+ *  the module `manifest` belongs to — a bare name same module first, an alias
+ *  through that module's import — as the kernel resolves it at dispatch. */
+function callSiteContext(
+  manifest: Record<string, any>,
+  allManifests: Record<string, any>[],
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  scopes: CallScopes,
+): DerivedSlotContext {
+  const fromModule = (manifest.metadata as { module?: string } | undefined)?.module;
+  const scope = moduleAliasScope({ module: fromModule }, aliases, scopes.aliasesByModule);
+  return {
+    defs,
+    aliases,
+    aliasesByModule: scopes.aliasesByModule,
+    rootModules: scopes.rootModules,
+    typeManifests: allManifests,
+    resolveTarget: (ref) =>
+      typeof ref.name === "string"
+        ? (resolveReferenceTarget(
+            byNameOf(allManifests),
+            { name: ref.name, ...(typeof ref.alias === "string" ? { alias: ref.alias } : {}) },
+            fromModule,
+            (alias) => scope.moduleForAlias(alias),
+          ) as Record<string, any> | undefined)
+        : undefined,
+  };
+}
 
 /**
  * Validate every step's `inputs:` against the invoked target's declared input
@@ -46,12 +100,9 @@ export interface StepInputIssue {
  * would otherwise surface at runtime inside the callee, several steps from its
  * cause, naming a resource the author may not have written.
  *
- * CEL leaves are replaced by schema-shaped placeholders first (`substituteCelFields`),
- * so an expression is never a false positive — only structural disagreement is
- * reported. Nothing is hardcoded about `Run.Sequence`: the invoke field comes
- * from the step slot (the shared grammar, or the legacy `x-telo-step-context`),
- * and the paired inputs field from whichever sibling
- * property carries `x-telo-topology-role: inputs`.
+ * The sites come from the shared reader (`derived-slots.ts`), which the kernel
+ * decodes literals through at creation, so both read the same map against the
+ * same contract.
  */
 export function collectStepInputIssues(
   manifest: Record<string, any>,
@@ -59,71 +110,16 @@ export function collectStepInputIssues(
   allManifests: Record<string, any>[],
   defs: DefinitionRegistry,
   aliases: AliasResolver,
-  scopes: ModuleScopes,
+  scopes: CallScopes,
   /** The typed `steps.<name>.result` context for this resource. Supplied by the
    *  caller because building it is analyzer state; without it the contract check
    *  still runs and only the type-argument comparison is skipped. */
   stepContext?: Record<string, any>,
 ): StepInputIssue[] {
-  const out: StepInputIssue[] = [];
-  const props = defSchema.properties as Record<string, any> | undefined;
-  if (!props) return out;
-
-  const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
-  const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
-
-  const ctx: CallCheckContext = {
-    manifest,
-    allManifests,
-    defs,
-    contractScope,
-    readingModule,
-    stepContext,
-  };
-
-  for (const [fieldName, fieldSchema] of Object.entries(props)) {
-    const stepCtx = readStepSlot(fieldSchema);
-    if (!stepCtx) continue;
-    const steps = manifest[fieldName];
-    if (!Array.isArray(steps)) continue;
-
-    const stepItemSchema = resolveLocalRef(
-      fieldSchema.items as Record<string, any> | undefined,
-      defSchema,
-    );
-    if (!stepItemSchema) continue;
-
-    // The inputs field is whichever sibling declares the role — never the literal
-    // name, so a composer that spells it differently still gets checked.
-    let inputsField: string | undefined;
-    for (const [key, sub] of gatherPropertySchemas(stepItemSchema)) {
-      if (sub?.["x-telo-topology-role"] === "inputs") inputsField = key;
-    }
-    if (!inputsField) continue;
-
-    walkStepArray(steps, stepItemSchema, defSchema, fieldName, (step, stepPath) => {
-      const invoke = step[stepCtx.invoke] as Record<string, any> | undefined;
-      const values = step[inputsField!];
-      if (!invoke || typeof invoke !== "object") return;
-      if (!values || typeof values !== "object" || Array.isArray(values)) return;
-
-      out.push(
-        ...checkCallSite(
-          {
-            inputsPath: `${stepPath}.${inputsField}`,
-            values: values as Record<string, any>,
-            invoke,
-            // Only a step declares a re-attempt policy, so only a step can carry
-            // the live-value-retried finding.
-            declaredRetryFor: (invokedManifest, invokedDef) =>
-              declaredRetry(step, stepItemSchema, invokedManifest, invokedDef),
-          },
-          ctx,
-        ),
-      );
-    });
-  }
-  return out;
+  const ctx = callSiteContext(manifest, allManifests, defs, aliases, scopes);
+  return stepCallSites(manifest, defSchema, ctx).flatMap((site) =>
+    checkCallSite(site, manifest, allManifests, defs, aliases, scopes, stepContext),
+  );
 }
 
 /**
@@ -135,11 +131,6 @@ export function collectStepInputIssues(
  * annotation is the only thing tying an otherwise-open `inputs:` map to the
  * resource it holds arguments for — an HTTP route's `handler:` + `inputs:` pair
  * is exactly this shape, and nothing about it is a step.
- *
- * Discovery is driven by the annotation rather than by any kind's topology, so
- * a composer that names its argument slot gets its call sites checked without
- * the analyzer learning what a route is. It is the same check the step driver
- * runs, because it is the same question.
  */
 export function collectRefInputIssues(
   manifest: Record<string, any>,
@@ -147,207 +138,121 @@ export function collectRefInputIssues(
   allManifests: Record<string, any>[],
   defs: DefinitionRegistry,
   aliases: AliasResolver,
-  scopes: ModuleScopes,
+  scopes: CallScopes,
 ): StepInputIssue[] {
-  const out: StepInputIssue[] = [];
-  if (!fieldMap) return out;
-
-  const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
-  const ctx: CallCheckContext = {
-    manifest,
-    allManifests,
-    defs,
-    contractScope,
-    readingModule: (manifest.metadata as { module?: string } | undefined)?.module,
-  };
-
-  for (const [fieldPath, entry] of fieldMap) {
-    if (!isRefEntry(entry) || !entry.inputs) continue;
-    const pointer = pointerSegments(entry.inputs);
-    if (!pointer) continue;
-
-    for (const { value: invoke, path: slotPath } of resolveFieldEntries(manifest, fieldPath)) {
-      if (!invoke || typeof invoke !== "object" || Array.isArray(invoke)) continue;
-      // Relative to the object ENCLOSING the slot, which is the annotation's
-      // documented anchor.
-      const enclosing = slotPath.slice(0, Math.max(0, slotPath.lastIndexOf(".")));
-      const inputsPath = [enclosing, ...pointer].filter(Boolean).join(".");
-      const values = navigateConcretePath(manifest, inputsPath);
-      if (!values || typeof values !== "object" || Array.isArray(values)) continue;
-
-      out.push(
-        ...checkCallSite(
-          { inputsPath, values: values as Record<string, any>, invoke: invoke as Record<string, any> },
-          ctx,
-        ),
-      );
-    }
-  }
-  return out;
-}
-
-/** A JSON Pointer naming a sibling FIELD path. An array index is not a field,
- *  so a pointer carrying one names nothing this can resolve. */
-function pointerSegments(pointer: string): string[] | undefined {
-  if (!pointer.startsWith("/")) return undefined;
-  const segments = pointer
-    .slice(1)
-    .split("/")
-    .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
-  return segments.every((s) => s.length > 0 && !/^\d+$/.test(s)) ? segments : undefined;
-}
-
-/** One call site: the arguments written, and the reference they are for. */
-interface CallSite {
-  /** Concrete path of the argument map, for anchoring a diagnostic. */
-  inputsPath: string;
-  values: Record<string, any>;
-  invoke: Record<string, any>;
-  declaredRetryFor?(
-    invokedManifest: Record<string, any> | undefined,
-    invokedDef: ResourceDefinition | undefined,
-  ): string | undefined;
-}
-
-interface CallCheckContext {
-  manifest: Record<string, any>;
-  allManifests: Record<string, any>[];
-  defs: DefinitionRegistry;
-  contractScope: ReturnType<typeof analyzerContractScope>;
-  readingModule: string | undefined;
-  stepContext?: Record<string, any>;
+  const ctx = callSiteContext(manifest, allManifests, defs, aliases, scopes);
+  return slotCallSites(manifest, fieldMap, ctx).flatMap((site) =>
+    checkCallSite(site, manifest, allManifests, defs, aliases, scopes),
+  );
 }
 
 /**
  * The check itself, shared by both drivers: the arguments written at a call site
  * against the contract the target declares.
  */
-function checkCallSite(site: CallSite, ctx: CallCheckContext): StepInputIssue[] {
+function checkCallSite(
+  site: CallSite,
+  manifest: Record<string, any>,
+  allManifests: Record<string, any>[],
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  scopes: CallScopes,
+  stepContext?: Record<string, any>,
+): StepInputIssue[] {
   const out: StepInputIssue[] = [];
-  const { manifest, allManifests, defs, contractScope, readingModule, stepContext } = ctx;
-  const { invoke, values } = site;
-  {
-    {
-      const invokedKind = invoke.kind as string | undefined;
-      const invokedName = invoke.name as string | undefined;
-      const invokedManifest = invokedName
-        ? (allManifests.find(
-            (m) =>
-              (m.metadata as any)?.name === invokedName && (!invokedKind || m.kind === invokedKind),
-          ) as Record<string, any> | undefined)
-        : (invoke as Record<string, any>);
-      const invokedDef = invokedKind
-        ? contractScope.resolveIn(invokedKind, readingModule)
-        : undefined;
-      const contract = resolveContract("inputType", invokedManifest, invokedDef, contractScope);
-      if (!contract) return out;
+  const { contract, values, invoke, invokedManifest, invokedDefinition } = site;
+  if (!contract) return out;
+  const targetLabel =
+    (invoke.name as string | undefined) ?? (invoke.kind as string | undefined) ?? "the invoked resource";
+  const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
+  const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
 
-      // Findings AT a substituted path are about a placeholder, not about
-      // anything the author wrote — a `pattern`-constrained string or a `oneOf`
-      // of unrelated shapes cannot be satisfied by any stand-in. Structural
-      // findings (missing required, unknown property) are located at the
-      // container and survive the filter.
-      const celPaths = new Set<string>();
-      const substituted = substituteCelFields(values, contract.schema, undefined, {
-        onSubstitute: (p) => celPaths.add(p),
-        // A contract may name a shape declared elsewhere. Both halves need the
-        // resolver or they disagree about the same slot: the stand-in walk hands
-        // its expressions a typeless value, and the check below compiles nothing
-        // at all — so a step's arguments went unchecked against exactly the
-        // contracts that describe them most precisely.
-        external: (ref) => defs.schemaForId(ref),
-      });
-      // The type-argument check, at the one site where a produced value's schema
-      // meets a consuming slot's. A CEL leaf's placeholder says nothing about
-      // what the expression yields, so AJV above is silent here by design — and
-      // that silence is exactly where a stream of the wrong element used to
-      // flow. The comparison is covariant and gradual: an omitted argument is
-      // *any* in both directions, so only a definite conflict is reported.
-      // The roots a plain chain may name here, each paired with the schema it is
-      // navigated against. `steps.` is the step map (analyzer state, supplied by
-      // the caller). `inputs.` is the ENCLOSING kind's own declared inputType,
-      // which is how a value produced OUTSIDE this resource reaches a step at
-      // all: an HTTP route maps `request.body` into its handler's inputs, and the
-      // handler forwards `inputs.body` onward — the shape a live value most often
-      // arrives in, and the one covering only `steps.` missed entirely. A root
-      // this cannot resolve contributes nothing rather than guessing at a schema.
-      const roots: Array<[string, Record<string, any>]> = [];
-      if (stepContext) roots.push(["steps.", stepContext]);
-      const ownContract = resolveContract(
-        "inputType",
-        manifest,
-        contractScope.resolveIn(manifest.kind as string, readingModule),
-        contractScope,
-      );
-      if (ownContract) roots.push(["inputs.", ownContract.schema]);
+  // Findings AT a substituted path are about a placeholder, not about anything
+  // the author wrote — a `pattern`-constrained string or a `oneOf` of unrelated
+  // shapes cannot be satisfied by any stand-in. Structural findings (missing
+  // required, unknown property) are located at the container and survive the
+  // filter. A literal written in a value type's plain encoding is decoded by the
+  // substitution, as the kernel decodes it when it creates this resource.
+  const celPaths = new Set<string>();
+  // An enumerated call site: the kernel decodes this map when it creates the
+  // resource that holds it.
+  const substituted = substituteDecodedCelFields(values, contract.schema, undefined, {
+    onSubstitute: (p) => celPaths.add(p),
+    // A contract may name a shape declared elsewhere. Both halves need the
+    // resolver or they disagree about the same slot.
+    external: (ref) => defs.schemaForId(ref),
+  });
+  // The type-argument check, at the one site where a produced value's schema
+  // meets a consuming slot's. The roots a plain chain may name here, each paired
+  // with the schema it is navigated against: `steps.` is the step map (analyzer
+  // state, supplied by the caller), `inputs.` the ENCLOSING kind's own declared
+  // inputType — how a value produced outside this resource reaches a step at all.
+  const roots: Array<[string, Record<string, any>]> = [];
+  if (stepContext) roots.push(["steps.", stepContext]);
+  const ownContract = resolveContract(
+    "inputType",
+    manifest,
+    contractScope.resolveIn(manifest.kind as string, readingModule),
+    contractScope,
+  );
+  if (ownContract) roots.push(["inputs.", ownContract.schema]);
 
-      if (roots.length > 0) {
-        for (const [inputName, inputValue] of Object.entries(values)) {
-          const chain = plainChainOf(inputValue);
-          const root = chain ? roots.find(([prefix]) => chain.startsWith(prefix)) : undefined;
-          if (!chain || !root) continue;
-          const produced = navigateSchemaToExprPath(root[1], chain.slice(root[0].length));
-          const slotSchema = (contract.schema.properties as Record<string, any> | undefined)?.[
-            inputName
-          ];
-          if (!produced || !slotSchema) continue;
-          // ONLY a type-argument disagreement, which is what the code says. The
-          // comparator is a general structural comparison, so running it on any
-          // pair would report a missing required property as "disagreeing type
-          // arguments" — and would turn every plain-chain wiring site into a
-          // broad new Error-severity check hidden behind an argument-specific
-          // name. Both sides must declare a value type for the question to be
-          // about arguments at all.
-          // A LIVE value is consumed by reading, so it exists exactly once —
-          // that is what `live` says in the vocabulary, and re-attempting a
-          // dispatch that already read it re-sends nothing. Reported here rather
-          // than through a slot-specific annotation because both facts are
-          // already declared: the value's liveness by its value type, and the
-          // re-attempt by the retry policy. No kind is named.
-          if (isLiveSlot(produced)) {
-            const retry = site.declaredRetryFor?.(invokedManifest, invokedDef);
-            if (retry !== undefined) {
-              out.push({
-                path: `${site.inputsPath}.${inputName}`,
-                targetLabel: invokedName ?? invokedKind ?? "the invoked resource",
-                message:
-                  `'${inputName}' is a live value, which is consumed by reading and so exists ` +
-                  `once — but ${retry} re-attempts the dispatch, and a re-attempt would pass ` +
-                  `nothing. Collect it to a value first, or chunk the work so each attempt ` +
-                  `carries its own replayable piece.`,
-                code: "LIVE_VALUE_RETRIED",
-              });
-              continue;
-            }
-          }
-          if (!valueTypeOf(produced) || !valueTypeOf(slotSchema)) continue;
-          const { compatible, issues } = checkSchemaCompatibility(produced, slotSchema, (ref) =>
-            defs.schemaForId(ref),
-          );
-          if (compatible) continue;
+  if (roots.length > 0) {
+    for (const [inputName, inputValue] of Object.entries(values)) {
+      const chain = plainChainOf(inputValue);
+      const root = chain ? roots.find(([prefix]) => chain.startsWith(prefix)) : undefined;
+      if (!chain || !root) continue;
+      const produced = navigateSchemaToExprPath(root[1], chain.slice(root[0].length));
+      const slotSchema = (contract.schema.properties as Record<string, any> | undefined)?.[inputName];
+      if (!produced || !slotSchema) continue;
+      // A LIVE value is consumed by reading, so it exists exactly once — and
+      // re-attempting a dispatch that already read it re-sends nothing. Both
+      // facts are already declared: the value's liveness by its value type, and
+      // the re-attempt by the retry policy. No kind is named.
+      if (isLiveSlot(produced)) {
+        const retry = site.step
+          ? declaredRetry(site.step.value, site.step.schema, invokedManifest, invokedDefinition)
+          : undefined;
+        if (retry !== undefined) {
           out.push({
-            path: `${site.inputsPath}.${inputName}`,
-            targetLabel: invokedName ?? invokedKind ?? "the invoked resource",
-            message: issues.join("; "),
-            code: "CEL_TYPE_ARGUMENT_MISMATCH",
+            path: `${site.path}.${inputName}`,
+            targetLabel,
+            message:
+              `'${inputName}' is a live value, which is consumed by reading and so exists ` +
+              `once — but ${retry} re-attempts the dispatch, and a re-attempt would pass ` +
+              `nothing. Collect it to a value first, or chunk the work so each attempt ` +
+              `carries its own replayable piece.`,
+            code: "LIVE_VALUE_RETRIED",
           });
+          continue;
         }
       }
-
-      for (const issue of defs.validateResourceConfig(substituted, contract.schema)) {
-        if (celPaths.has(issue.path)) continue;
-        // A missing-required issue names the property that ISN'T there, so
-        // anchoring on it finds no node and the diagnostic degrades to 1:1 —
-        // losing the location of the most common contract mistake. Anchor on the
-        // container that should have held it, which does exist.
-        const anchor = missingRequired(issue) ? containerOf(issue.path) : issue.path;
-        out.push({
-          path: anchor ? `${site.inputsPath}.${anchor}` : site.inputsPath,
-          targetLabel: invokedName ?? invokedKind ?? "the invoked resource",
-          message: issue.message,
-        });
-      }
+      // ONLY a type-argument disagreement, which is what the code says: both
+      // sides must declare a value type for the question to be about arguments.
+      if (!valueTypeOf(produced) || !valueTypeOf(slotSchema)) continue;
+      const { compatible, issues } = checkSchemaCompatibility(produced, slotSchema, (ref) =>
+        defs.schemaForId(ref),
+      );
+      if (compatible) continue;
+      out.push({
+        path: `${site.path}.${inputName}`,
+        targetLabel,
+        message: issues.join("; "),
+        code: "CEL_TYPE_ARGUMENT_MISMATCH",
+      });
     }
+  }
+
+  for (const issue of defs.validateResourceConfig(substituted, contract.schema)) {
+    if (celPaths.has(issue.path)) continue;
+    // A missing-required issue names the property that ISN'T there, so anchoring
+    // on it finds no node. Anchor on the container that should have held it.
+    const anchor = missingRequired(issue) ? containerOf(issue.path) : issue.path;
+    out.push({
+      path: anchor ? `${site.path}.${anchor}` : site.path,
+      targetLabel,
+      message: issue.message,
+    });
   }
   return out;
 }

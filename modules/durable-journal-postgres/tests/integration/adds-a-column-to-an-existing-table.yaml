@@ -11,8 +11,9 @@ metadata:
     `CREATE` already carries every column — which means the one statement that can fail
     on a real deployment is the one nothing runs.
 
-    So this test writes out the PRE-MIGRATION table by hand and then has the journal
-    reconcile it. The journal is `with:`-scoped inside the inner sequence rather than
+    So this test writes out the PRE-MIGRATION tables by hand — both of them, since the
+    runs table and the entries table have each gained a column — and then has the journal
+    reconcile them. The journal is `with:`-scoped inside the inner sequence rather than
     declared at module level, and that is the whole mechanism: a journal reconciles its
     tables in `init()`, so a module-level one would have run before any step could set
     the old table up. A scope is created when it is ENTERED, which puts its `init()`
@@ -141,6 +142,16 @@ steps:
           claim_holder TEXT, claim_until BIGINT
         )
       bindings: []
+  - name: createOldEntries
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        CREATE TABLE telo_durable_migration_test_entries (
+          run TEXT NOT NULL, path TEXT NOT NULL, seq BIGSERIAL,
+          entry_kind TEXT NOT NULL, decision TEXT, target TEXT, value TEXT,
+          PRIMARY KEY (run, path)
+        )
+      bindings: []
 
   # Entering the scope is what boots the journal against that table.
   - name: ran
@@ -165,17 +176,23 @@ steps:
 
   # And the column is on the PRE-EXISTING table, not on one the journal quietly
   # recreated — which is the difference between an `ALTER` that ran and a `CREATE`
-  # that never had to.
+  # that never had to. Both tables, because both have gained columns: the runs
+  # table reports how much of a run was replayed and which codec wrote its inputs
+  # and its result, and the entries table says which codec wrote each recorded
+  # value.
   - name: columns
     invoke: !ref query
     inputs:
       sql: >-
-        SELECT column_name FROM information_schema.columns
-         WHERE table_name = 'telo_durable_migration_test_runs'
-           AND column_name = 'replayed_steps'
+        SELECT table_name, column_name FROM information_schema.columns
+         WHERE (table_name = 'telo_durable_migration_test_runs'
+                AND column_name IN ('replayed_steps', 'inputs_codec_version',
+                                    'result_codec_version'))
+            OR (table_name = 'telo_durable_migration_test_entries'
+                AND column_name = 'codec_version')
       bindings: []
   - name: assertColumn
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "size(steps.columns.result.rows)"
-      expected: 1
+      expected: 4

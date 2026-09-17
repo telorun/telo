@@ -20,6 +20,7 @@ import type { NativeFileModule } from "../../module-file-resolution.js";
 import type { SiblingLibraryMap } from "../../controller-loaders/sibling-libraries.js";
 import { ControllerLoader } from "../../controller-loader.js";
 import { formatAjvErrors, validateResourceDefinition } from "../../manifest-schemas.js";
+import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { createTemplateController } from "./resource-template-controller.js";
 import { createInheritedController } from "./resource-inherited-controller.js";
 
@@ -66,6 +67,34 @@ class ResourceDefinition implements ResourceInstance {
       return definingCtx.getDefinition?.(canonical) ?? definingCtx.getDefinition?.(kind);
     };
 
+    // Parent not loaded yet — defer rather than silently merging nothing, which
+    // would cache a schema missing every inherited field. Answered BEFORE the
+    // callable guard: a capability reached through `extends` reads as absent
+    // until the ancestor is loaded, and a guard that ran then would report a
+    // correct callable as having declared a signature on a non-callable kind.
+    if (this.resource.extends && !resolveDef(this.resource.extends)) {
+      throw new RuntimeError(
+        "ERR_LOCAL_REF_PENDING",
+        `Telo.Definition '${this.resource.metadata.name}': 'extends' target '${this.resource.extends}' is not loaded yet.`,
+      );
+    }
+
+    // What a callable kind may declare — refused BEFORE the schema stamp, so the
+    // walk sees the kind's OWN schema rather than merge(parent, own) and each
+    // kind answers for what it wrote. The rules are the analyzer's
+    // (`validate-callable-kinds.ts`), read rather than restated: a guard here
+    // with no static twin is a manifest that passes `telo check` and fails at
+    // boot, and two copies of the guard is the same defect with a way to drift.
+    //
+    // Enforced here for a DEPENDENCY's kind too, which is the point: the
+    // analyzer's pass is entry-module-scoped, so a library's own `telo check`
+    // is what catches this for its author and this is what catches it for
+    // everyone who imports the library.
+    refuseInvalidCallable(
+      this.resource as ResourceDefinitionManifest,
+      ctx as unknown as DefinitionScopeHost,
+    );
+
     // Stamp the inheritance-resolved author schema, mirroring the capability
     // stamping below: without `base:`, an `extends` child is authored against
     // merge(parent, own), so a field the parent declares is legal on the child.
@@ -74,14 +103,6 @@ class ResourceDefinition implements ResourceInstance {
     // the kernel rejects it at create(). Shares `effectiveAuthorSchema` with the
     // analyzer so `telo check` and the runtime cannot drift.
     if (this.resource.extends) {
-      if (!resolveDef(this.resource.extends)) {
-        // Parent not loaded yet — defer rather than silently merging nothing,
-        // which would cache a schema missing every inherited field.
-        throw new RuntimeError(
-          "ERR_LOCAL_REF_PENDING",
-          `Telo.Definition '${this.resource.metadata.name}': 'extends' target '${this.resource.extends}' is not loaded yet.`,
-        );
-      }
       // Which of the child's fields publish over the parent's reading. Stamped
       // here for the reason `status:` is: an `extends` alias belongs to the file
       // that declared it, so the set must be derived in the DEFINING scope — a

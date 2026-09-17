@@ -95,13 +95,13 @@ mod tests {
         assert_eq!(cargo.subpath.as_deref(), Some("writeline_controller"));
 
         let dylib = Purl::parse(
-            "pkg:telo/local/dylib?path=./rust/lib%20x.so&os=linux&abi=telo-2#writeline_controller",
+            "pkg:telo/local/dylib?path=./rust/lib%20x.so&os=linux&abi=telo-3#writeline_controller",
         )
         .unwrap();
         assert_eq!((dylib.purl_type.as_str(), dylib.namespace.as_deref()), ("telo", Some("local")));
         assert_eq!(dylib.name, "dylib");
         assert_eq!(dylib.qualifiers["path"], "./rust/lib x.so");
-        assert_eq!(dylib.qualifiers["abi"], "telo-2");
+        assert_eq!(dylib.qualifiers["abi"], "telo-3");
 
         let npm = Purl::parse("pkg:npm/@telorun/sdk@1.2.0?local_path=./nodejs#x").unwrap();
         assert_eq!(npm.namespace.as_deref(), Some("@telorun"));

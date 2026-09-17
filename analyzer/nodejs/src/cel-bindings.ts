@@ -1,5 +1,6 @@
+import { ParseError } from "@marcbachmann/cel-js";
 import { isCompiledValue } from "@telorun/sdk";
-import { buildCelEnvironment, extractAccessChains } from "@telorun/templating";
+import { buildCelEnvironment, extractAccessChains, resolveModuleCalls } from "@telorun/templating";
 import { extractContextsFromSchema } from "./validate-cel-context.js";
 
 /** Annotation on an `x-telo-context` node naming the resource field that holds
@@ -58,14 +59,28 @@ let parseEnv: ReturnType<typeof buildCelEnvironment> | undefined;
  * manifest — the worst outcome a static check has. An expression that does not
  * parse contributes no edges; its syntax error is the engine pass's to report.
  */
-function addRootIdentifiers(source: string, out: Set<string>): void {
+function addRootIdentifiers(
+  source: string,
+  out: Set<string>,
+  moduleNames?: ReadonlySet<string>,
+): void {
+  parseEnv ??= buildCelEnvironment();
+  let ast;
   try {
-    parseEnv ??= buildCelEnvironment();
-    for (const chain of extractAccessChains(parseEnv.parse(source).ast)) {
-      if (chain.length > 0) out.add(chain[0]!);
-    }
-  } catch {
-    // Unparseable — see above.
+    ast = parseEnv.parse(source).ast;
+  } catch (error) {
+    // Unparseable — see above. Only the parser's own refusal; anything else is a
+    // defect and propagates.
+    if (error instanceof ParseError) return;
+    throw error;
+  }
+  // A module call states no dependency on a SIBLING BINDING: `Billing.f(x)`
+  // reaches another module's function, and reading `Billing` as a root would
+  // make a binding of that name look like this one's dependency — a cycle
+  // reported against a manifest that has none.
+  resolveModuleCalls(ast, moduleNames);
+  for (const chain of extractAccessChains(ast)) {
+    if (chain.length > 0) out.add(chain[0]!);
   }
 }
 
@@ -74,23 +89,29 @@ function addRootIdentifiers(source: string, out: Set<string>): void {
  *  compiled expression and a still-raw `${{ }}` string — the editor's
  *  round-trip view never compiles. An untagged plain string is a literal, not
  *  an expression, and contributes nothing. */
-function collectRefs(value: unknown, out: Set<string>): void {
+function collectRefs(
+  value: unknown,
+  out: Set<string>,
+  moduleNames?: ReadonlySet<string>,
+): void {
   if (isCompiledValue(value)) {
     const refs = (value as { refs?: readonly string[] }).refs;
     if (refs) for (const ref of refs) out.add(ref);
-    else addRootIdentifiers((value as { source?: string }).source ?? "", out);
+    else addRootIdentifiers((value as { source?: string }).source ?? "", out, moduleNames);
     return;
   }
   if (typeof value === "string") {
-    for (const match of value.matchAll(TEMPLATE_RE)) addRootIdentifiers(match[1]!, out);
+    for (const match of value.matchAll(TEMPLATE_RE)) {
+      addRootIdentifiers(match[1]!, out, moduleNames);
+    }
     return;
   }
   if (Array.isArray(value)) {
-    for (const entry of value) collectRefs(entry, out);
+    for (const entry of value) collectRefs(entry, out, moduleNames);
     return;
   }
   if (value !== null && typeof value === "object") {
-    for (const entry of Object.values(value)) collectRefs(entry, out);
+    for (const entry of Object.values(value)) collectRefs(entry, out, moduleNames);
   }
 }
 
@@ -98,12 +119,13 @@ function collectRefs(value: unknown, out: Set<string>): void {
  *  names something else in scope (`inputs`, `item`) is not an edge. */
 export function bindingDependencies(
   bindings: Record<string, unknown>,
+  moduleNames?: ReadonlySet<string>,
 ): Map<string, Set<string>> {
   const names = new Set(Object.keys(bindings));
   const deps = new Map<string, Set<string>>();
   for (const [name, value] of Object.entries(bindings)) {
     const refs = new Set<string>();
-    collectRefs(value, refs);
+    collectRefs(value, refs, moduleNames);
     const own = new Set<string>();
     for (const ref of refs) if (names.has(ref)) own.add(ref);
     deps.set(name, own);
@@ -167,11 +189,14 @@ export function schemaAtChain(
  * since lazy evaluation reaches a binding's dependencies by construction. A
  * cycle is reported as the path that closes it (`a → b → a`).
  */
-export function resolveBindingOrder(bindings: Record<string, unknown>): {
+export function resolveBindingOrder(
+  bindings: Record<string, unknown>,
+  moduleNames?: ReadonlySet<string>,
+): {
   order: string[];
   cycles: string[][];
 } {
-  const deps = bindingDependencies(bindings);
+  const deps = bindingDependencies(bindings, moduleNames);
   const order: string[] = [];
   const cycles: string[][] = [];
   const state = new Map<string, "visiting" | "done">();

@@ -1,0 +1,18 @@
+# The middle of the chain: its capability and signature come from another
+# library, through an alias only this file declares.
+kind: Telo.Library
+metadata:
+  name: StableLib
+  version: 1.0.0
+  description: Fixture library narrowing a signing abstract to one that signs the same way every time.
+imports:
+  Signing: ../signer
+exports:
+  kinds: [StableSigner]
+---
+kind: Telo.Abstract
+metadata:
+  name: StableSigner
+  description: Signs a message the same way every time it is asked.
+extends: Signing.Signer
+deterministic: true

@@ -1,18 +1,23 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { claimsDeterministic, isCallableKind, signatureDeclarer } from "./callable-signature.js";
 import {
   ancestorChain,
   type ContractDirection,
   type DefResolver,
   effectiveContractField,
+  hasOwnControllerOrTemplate,
   mappingFieldFor,
   needsContractMapping,
+  resolveParent,
 } from "./extends-resolution.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { refSentinelsIn } from "./contract-shapes.js";
 import { buildReferenceFieldMap, isRefEntry } from "./reference-field-map.js";
 import { checkSchemaCompatibility } from "./schema-compat.js";
+import { signatureMismatches, type SignatureMismatch } from "./signature-substitution.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -57,6 +62,11 @@ export function validateInvocationContract(
     const scope = moduleAliasScope(from?.metadata, aliases, aliasesByModule);
     return registry.resolve(kind) ?? registry.resolve(scope.resolveKind(kind) ?? kind);
   };
+  /** A named shape (`telo:<module>/<Type>`) → its schema. Without it a signature
+   *  written as `!ref Money` presents as an opaque `$ref` node carrying no
+   *  information, so two signatures naming different shapes would compare
+   *  equal — the check would pass by knowing nothing. */
+  const resolveRef = (ref: string): Record<string, any> | undefined => registry.schemaForId(ref);
 
   // A published dependency's declarations are not the consumer's to fix.
   const importedModules = new Set<string>();
@@ -82,6 +92,16 @@ export function validateInvocationContract(
       checkMappingRequired(m, resource, filePath, resolveDef, diagnostics);
       checkContractResolves(m, md, manifests, resource, filePath, diagnostics);
       checkAncestorSubstitutability(m, md, manifests, resource, filePath, resolveDef, diagnostics);
+      checkSignatureSubstitutability(
+        m,
+        md,
+        manifests,
+        resource,
+        filePath,
+        resolveDef,
+        resolveRef,
+        diagnostics,
+      );
       continue;
     }
 
@@ -343,6 +363,25 @@ function checkContractResolves(
 ): void {
   const declaringModule = (m.metadata as { module?: string } | undefined)?.module;
   for (const direction of ["inputType", "outputType"] as ContractDirection[]) {
+    // A kind document's contract is outside reference validation, so a `!ref` in
+    // it that resolved to nothing — at the root or at any depth — is reported
+    // here. An instance's contract is a declared reference slot, reported with
+    // every other slot.
+    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") {
+      for (const { sentinel, path } of refSentinelsIn(md[direction], direction)) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "CONTRACT_TYPE_NOT_FOUND",
+          source: SOURCE,
+          message:
+            `${m.kind}/${resource.name}: '${path}' names the type '${sentinel.source}' with \`!ref\`, ` +
+            `and nothing by that name is declared in scope. The contract cannot be enforced, so ` +
+            `every call through it would fail at dispatch. Declare a \`Telo.JsonSchema\` with that ` +
+            `name, or correct the reference.`,
+          data: { resource, filePath, path },
+        });
+      }
+    }
     const named = namedTypeReference(md[direction]);
     if (!named) continue;
     if (findInModule(manifests, named, declaringModule)) continue;
@@ -484,6 +523,174 @@ function checkAncestorSubstitutability(
       data: { resource, filePath, path: direction },
     });
   }
+}
+
+/**
+ * A REPLACING SIGNATURE MUST STILL STAND IN FOR THE ONE IT REPLACES.
+ *
+ * The same rule as {@link checkAncestorSubstitutability}, applied to the other
+ * declaration that resolves to the nearest along `extends` and replaces rather
+ * than merges — which is why it is checked here rather than in a second pass of
+ * its own. Only an ABSTRACT ancestor's signature is a contract, for the reason
+ * one function up: extending a concrete callable reuses its controller, and the
+ * child is then the same function under a narrower configuration.
+ *
+ * Three dimensions:
+ *
+ *  - `returns` is COVARIANT — a caller holding this through the abstract reads
+ *    the shape the abstract declares.
+ *  - `params` is CONTRAVARIANT, positional and NAMED — a CEL call site passes
+ *    arguments by position, but a controller holding the implementation through
+ *    a slot typed by the abstract calls it by the abstract's parameter names, so
+ *    a rename is as much a break as a retyping. Arity is judged the same way,
+ *    and only definitely: a child that requires more parameters than the
+ *    ancestor declares at all, or accepts fewer than the ancestor requires, can
+ *    never answer an ancestor-shaped call.
+ *  - DETERMINISM is the third, because without it a deterministic abstract would
+ *    accept a non-deterministic implementation with nothing reported. It never
+ *    flows down — a native kind extending such an abstract writes
+ *    `deterministic: true` itself, since the claim is about ITS code.
+ */
+function checkSignatureSubstitutability(
+  m: ResourceManifest,
+  md: Record<string, unknown>,
+  manifests: readonly ResourceManifest[],
+  resource: { kind: string; name: string },
+  filePath: string | undefined,
+  resolveDef: DefResolver,
+  resolveRef: (ref: string) => Record<string, any> | undefined,
+  diagnostics: AnalysisDiagnostic[],
+): void {
+  const def = m as unknown as ResourceDefinition;
+  if (!isCallableKind(def, resolveDef)) return;
+
+  const report = (path: string, message: string): void => {
+    diagnostics.push({
+      severity: DiagnosticSeverity.Error,
+      code: "CONTRACT_NOT_SUBSTITUTABLE",
+      source: SOURCE,
+      message: `${m.kind}/${resource.name}: ${message}`,
+      data: { resource, filePath, path },
+    });
+  };
+  const replaced = (ancestorName: string): string =>
+    ` Signatures replace rather than merge, so nothing re-checks this at a call site: every ` +
+    `caller that reaches this function through '${ancestorName}' is checked against the ` +
+    `signature THAT kind declares.`;
+
+  for (const half of ["params", "returns"] as const) {
+    const own = md[half];
+    if (own === undefined || own === null) continue;
+    // The signature this one replaces: the nearest declaration ABOVE this kind,
+    // by the same resolver every consumer of a signature reads.
+    const ancestor = signatureDeclarer(resolveParent(def, resolveDef), resolveDef, half);
+    if (!ancestor || ancestor.kind !== "Telo.Abstract") continue;
+    const ancestorName = kindLabel(ancestor);
+    // The ancestor as the REGISTRY holds it was registered before the analyzer's
+    // clone boundary and before `!ref` resolution, so its signature still
+    // carries the reference tags — a shape it names would compare as an opaque
+    // node and every mismatch through it would pass. Its twin in the analyzed
+    // set is the same declaration with the references resolved.
+    const inheritedDoc = analyzedTwin(manifests, ancestor) as unknown as Record<string, unknown>;
+
+    for (const mismatch of signatureMismatches(
+      md,
+      inheritedDoc,
+      { params: half === "params", returns: half === "returns" },
+      resolveRef,
+    )) {
+      const { path, text } = describeSignatureMismatch(mismatch, ancestorName);
+      report(path, text + replaced(ancestorName));
+    }
+  }
+
+  // Determinism. Only a kind that supplies its own implementation can answer a
+  // requirement; a controller-inheriting child inherits the claim with the
+  // controller and is forbidden from restating it.
+  if (m.kind === "Telo.Abstract" || !hasOwnControllerOrTemplate(def)) return;
+  if (claimsDeterministic(md)) return;
+  const requiring = ancestorChain(def, resolveDef).find(
+    (a) => a.kind === "Telo.Abstract" && claimsDeterministic(a),
+  );
+  if (!requiring) return;
+  report(
+    "deterministic",
+    `'${kindLabel(requiring)}' requires \`deterministic: true\` of every implementation, and this ` +
+      `kind declares none — so it reads as non-deterministic. Determinism is a promise about ` +
+      `native code and never flows down: an implementation makes the claim itself, or the ` +
+      `abstract must stop requiring it.`,
+  );
+}
+
+/** A signature mismatch as the sentence a diagnostic carries, and the path it
+ *  anchors at, against the kind whose signature it fails to stand in for. */
+export function describeSignatureMismatch(
+  mismatch: SignatureMismatch,
+  requiredName: string,
+): { path: string; text: string } {
+  switch (mismatch.kind) {
+    case "returns":
+      return {
+        path: "returns.schema",
+        text:
+          `\`returns\` replaces the result declared by '${requiredName}' with a shape that cannot ` +
+          `stand in for it — ${mismatch.issues.join("; ")}.`,
+      };
+    case "requires-more":
+      return {
+        path: "params",
+        text:
+          `\`params\` requires ${mismatch.required} argument(s) while '${requiredName}' requires only ` +
+          `${mismatch.requires}, so a call written against that kind need not supply them.`,
+      };
+    case "accepts-fewer":
+      return {
+        path: "params",
+        text:
+          `\`params\` accepts ${mismatch.accepts} argument(s) while '${requiredName}' requires ` +
+          `${mismatch.required}, so a call written against that kind passes more than this ` +
+          `signature admits.`,
+      };
+    case "parameter":
+      return {
+        path: `params[${mismatch.index}].schema`,
+        text:
+          `parameter '${mismatch.name}' does not accept the argument '${requiredName}' declares at the ` +
+          `same position — ${mismatch.issues.join("; ")}.`,
+      };
+    case "parameter-name":
+      return {
+        path: `params[${mismatch.index}].name`,
+        text:
+          `parameter '${mismatch.name}' is named '${mismatch.expected}' by '${requiredName}', and a ` +
+          `holder calls the function with the names '${requiredName}' declares.`,
+      };
+  }
+}
+
+/** The analyzed manifest declaring the same kind as `def` — matched on kind,
+ *  module and name, since a kind name is unique only within its module. Falls
+ *  back to `def` itself for a definition with no twin in the set (a built-in). */
+function analyzedTwin(
+  manifests: readonly ResourceManifest[],
+  def: ResourceDefinition,
+): ResourceManifest | ResourceDefinition {
+  const module = (def.metadata as { module?: string } | undefined)?.module;
+  return (
+    manifests.find(
+      (m) =>
+        m.kind === def.kind &&
+        m.metadata?.name === def.metadata?.name &&
+        (m.metadata as { module?: string } | undefined)?.module === module,
+    ) ?? def
+  );
+}
+
+/** A definition's canonical `<module>.<Kind>` label. */
+function kindLabel(def: ResourceDefinition): string {
+  return `${(def.metadata as { module?: string } | undefined)?.module ?? ""}.${
+    def.metadata?.name ?? "?"
+  }`.replace(/^\./, "");
 }
 
 /** A child that inherits its controller and REPLACES a contract must bridge it:

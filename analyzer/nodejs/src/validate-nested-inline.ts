@@ -1,7 +1,8 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { collectRefs, isInlineResource } from "./reference-field-map.js";
 import type { ExternalSchemaResolver } from "./schema-compat.js";
-import { collectProperties, resolveRef, substituteCelFields } from "./schema-compat.js";
+import { collectProperties, resolveRef } from "./schema-compat.js";
+import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { SchemaIssue } from "./schema-error-report.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { collectValueSchemaIssues } from "./validate-value-schema.js";
@@ -106,7 +107,9 @@ export function validateNestedInlineResources(
         ? (inline.metadata as Record<string, unknown>)
         : {};
     const data = { ...inline, metadata: { name: "__inline__", ...existingMeta } };
-    const substituted = substituteCelFields(data, effectiveSchema, effectiveSchema, {
+    // A resource's own config, inline or standalone: the kernel decodes its
+    // plain-encoded literals when it creates it.
+    const substituted = substituteDecodedCelFields(data, effectiveSchema, effectiveSchema, {
       external: validator.external,
     });
     // The same two passes the top-level resource loop runs, on the same
@@ -118,7 +121,7 @@ export function validateNestedInlineResources(
     // resource, which are present either way.
     const inlineIssues = [
       ...validator.validate(substituted, effectiveSchema),
-      ...collectValueSchemaIssues(data, schema, allManifests),
+      ...collectValueSchemaIssues(data, schema, allManifests, validator),
     ];
     for (const issue of inlineIssues) {
       diagnostics.push({

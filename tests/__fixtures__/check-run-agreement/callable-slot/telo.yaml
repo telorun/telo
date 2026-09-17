@@ -1,0 +1,26 @@
+# Invokes the library's verifier, whose held function the kernel calls.
+kind: Telo.Application
+metadata:
+  name: CallableSlotApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref verify
+---
+kind: Run.Sequence
+metadata:
+  name: verify
+steps:
+  - name: signed
+    invoke: !ref Lib.verifier
+    inputs:
+      key: k
+      message: m
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.signed.result"
+      expected: "k:m"

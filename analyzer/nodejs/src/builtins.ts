@@ -15,6 +15,72 @@ const kindSchemaSlot = {
   $ref: manifestFragmentRef("KindSchema"),
 };
 
+/** A type inside a callable's signature: a JSON Schema node in which a `!ref` to
+ *  a `Telo.JsonSchema` may appear at the root or at any depth. The same grammar
+ *  `inputType:` / `outputType:` already use, so every contract walk, CEL field
+ *  check and structural comparison reads it unchanged. */
+const signatureTypeSlot = {
+  title: "Type",
+  description:
+    "The value's shape, as JSON Schema. `!ref <Shape>` names a `Telo.JsonSchema`, at the root or nested.",
+  // The string branch is admitted so a bare name reaches the ONE diagnostic that
+  // knows what it is — `FUNCTION_TYPE_NAME_FORM`, which carries the `!ref`
+  // repair — rather than also producing a schema violation that says only
+  // "must be object" about the same node.
+  anyOf: [{ $ref: manifestFragmentRef("JsonSchema7") }, { type: "string" }],
+};
+
+/** `params:` — a callable's ORDERED parameter list. Ordered because a call site
+ *  is positional (`Alias.fn(a, b)`); named because `call(args)` hands the
+ *  controller one object keyed by these names. Optional parameters are trailing
+ *  (`FUNCTION_OPTIONAL_NOT_TRAILING`). */
+const SIGNATURE_PARAMS_SCHEMA = {
+  title: "Parameters",
+  description: "Ordered parameters this callable accepts. Optional parameters come last.",
+  type: "array",
+  items: {
+    type: "object",
+    required: ["name", "schema"],
+    properties: {
+      name: { type: "string" },
+      description: { type: "string" },
+      schema: signatureTypeSlot,
+      // Shorthand for a union with `{type: "null"}` — for an argument that
+      // genuinely IS null, as opposed to one that may be omitted.
+      nullable: { type: "boolean" },
+      optional: { type: "boolean" },
+    },
+    additionalProperties: false,
+  },
+};
+
+/** `returns:` — what a call evaluates to. */
+const SIGNATURE_RETURNS_SCHEMA = {
+  title: "Result",
+  description: "What a call to this callable evaluates to.",
+  type: "object",
+  required: ["schema"],
+  properties: {
+    description: { type: "string" },
+    schema: signatureTypeSlot,
+    nullable: { type: "boolean" },
+  },
+  additionalProperties: false,
+};
+
+/** `deterministic:` — the promise a NATIVE callable makes about code the runtime
+ *  cannot inspect: the result depends only on the arguments and the instance's
+ *  configuration. Absent means false. A body function never declares it; its
+ *  determinism is derived from everything it calls. */
+const DETERMINISTIC_SCHEMA = {
+  title: "Deterministic",
+  // No `type: boolean`: a non-boolean is `CALLABLE_DEFINITION_INVALID`, which
+  // says what the value reads as and why, and the kernel refuses it under the
+  // same rule. A schema type here would report the one mistake twice.
+  description:
+    "`true` when the result depends only on the arguments and this instance's configuration. Legal on a callable kind that declares its own `controllers:` (a claim) or on a callable abstract (a requirement every implementation must meet).",
+};
+
 /** Observed state a kind reports while running, as a data schema. `required:` is
  *  rejected separately by `validateObservedStateDeclarations`, which can say why
  *  and what to write instead. */
@@ -323,6 +389,10 @@ const IMPORT_LOGGING_SCHEMA = {
 const ROOT_LOGGING_SCHEMA = {
   type: "object",
   "x-telo-eval": "compile",
+  // Resolved while the application is loaded, before any resource — and so any
+  // function — exists.
+  "x-telo-unbound-calls":
+    "the Application's logging: block is resolved when the application is loaded, before any resource — any function among them — has been created",
   properties: {
     ...LOGGING_SCOPE_PROPERTIES,
     // A list rather than a keyed map because sinks are root-only and therefore
@@ -392,6 +462,12 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
   { kind: "Telo.Abstract", metadata: { name: "Invocable", module: "Telo" }, extends: "Telo.Executable" },
   { kind: "Telo.Abstract", metadata: { name: "Mount", module: "Telo" } },
   { kind: "Telo.Abstract", metadata: { name: "Type", module: "Telo" } },
+  // A function: `call(args)`, synchronous, reached from CEL through a module
+  // name. Deliberately NOT under `Telo.Executable` — `call()` receives no
+  // context, so no zone, cancellation or trace reaches it, and a step's
+  // `invoke:` must refuse it. A callable publishes no reading either, so
+  // `resources.<fn>` reads as absent.
+  { kind: "Telo.Abstract", metadata: { name: "Callable", module: "Telo" } },
   {
     kind: "Telo.Abstract",
     metadata: { name: "Provider", module: "Telo" },
@@ -492,6 +568,10 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                 type: "string",
                 description:
                   "CEL expression evaluated with 'this' bound to the data. Must return true for valid data.",
+                // Plain text evaluated as CEL against the value alone, wherever
+                // the shape is validated — not in the module that declared it.
+                "x-telo-unbound-calls":
+                  "a type rule's condition is evaluated against the value alone, wherever the shape is checked, where no module's functions are bound",
               },
               code: {
                 type: "string",
@@ -507,6 +587,53 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         },
       },
       required: ["schema"],
+      additionalProperties: false,
+    }),
+  },
+  {
+    // Telo.Function — the built-in callable kind for a function written in CEL,
+    // in the kernel rather than an installable module for the reason
+    // `Telo.JsonSchema` is: a module must be able to declare a function without
+    // importing one to do it. It carries a signature and a body and nothing
+    // else — native code is written as a callable `Telo.Definition` plus
+    // instances, so there is one way to write a native function and no document
+    // that is half kind, half instance.
+    //
+    // The schema is CLOSED, which is what makes `deterministic:` here a
+    // SCHEMA_VIOLATION: a body's determinism is DERIVED from everything it
+    // calls, so an author-written flag would be a second source of truth for a
+    // fact the analyzer can already compute.
+    kind: "Telo.Definition",
+    metadata: { name: "Function", module: "Telo" },
+    capability: "Telo.Callable",
+    schema: withSchemaFragments({
+      type: "object",
+      properties: {
+        params: SIGNATURE_PARAMS_SCHEMA,
+        returns: SIGNATURE_RETURNS_SCHEMA,
+        body: {
+          title: "Body",
+          // No `type:` — a CEL field's schema states what the expression
+          // PRODUCES, and a body produces whatever `returns:` declares, which
+          // differs per function. Checking the result against it is the
+          // signature's job, not this field's.
+          description: "The expression this function evaluates, over its parameters.",
+          // The value it produces is the function's result, so it must satisfy
+          // the signature's `returns:` — read through the one annotation that
+          // names a result declaration, so nothing here knows what a function is.
+          "x-telo-returns-from": "returns",
+          // A body sees its PARAMETERS. The names come from `params:` through the
+          // one annotation that reads an ordered parameter list, so nothing here
+          // knows what a function is — a kind declaring a parameter list of the
+          // same shape gets the same scope.
+          "x-telo-context": {
+            type: "object",
+            additionalProperties: false,
+            "x-telo-context-parameters-from": "params",
+          },
+        },
+      },
+      required: ["body"],
       additionalProperties: false,
     }),
   },
@@ -527,6 +654,12 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         capability: { type: "string" },
         schema: kindSchemaSlot,
         status: observedStateSlot,
+        // The callable signature, declared on a contract with no implementation.
+        // `deterministic: true` here is a REQUIREMENT every implementation must
+        // meet, checked like a covariant result.
+        params: SIGNATURE_PARAMS_SCHEMA,
+        returns: SIGNATURE_RETURNS_SCHEMA,
+        deterministic: DETERMINISTIC_SCHEMA,
       },
       required: ["metadata"],
       // Telo.Abstract is an extension point by design — it must accept forward-compatible
@@ -562,6 +695,13 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         // failure that named a different field.
         schema: kindSchemaSlot,
         status: observedStateSlot,
+        // The callable signature and the native determinism claim. Declared here
+        // so the editor offers them and so `x-telo-*` inside a signature is
+        // walked; what a callable kind may actually carry is enforced by
+        // `callableKindIssues` in both halves.
+        params: SIGNATURE_PARAMS_SCHEMA,
+        returns: SIGNATURE_RETURNS_SCHEMA,
+        deterministic: DETERMINISTIC_SCHEMA,
         resources: {
           type: "array",
           items: {

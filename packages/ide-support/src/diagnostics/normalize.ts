@@ -19,7 +19,15 @@ export function normalizeDiagnostic(
   ctx: DiagnosticContext,
 ): NormalizedDiagnostic {
   const fix = diagnosticFix(d);
-  const suggestions = fix ? [{ kind: "replace" as const, replacement: fix.replacement }] : undefined;
+  const suggestions = fix
+    ? [
+        {
+          kind: "replace" as const,
+          replacement: fix.replacement,
+          ...(fix.tag ? { tag: fix.tag } : {}),
+        },
+      ]
+    : undefined;
 
   return {
     range: resolveRange(d, ctx),

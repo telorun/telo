@@ -75,9 +75,10 @@ base64 `content` to bytes before writing.
 `Fs.FileWrite` and `Fs.TreeSync` also accept **raw bytes** as `content` — what a
 byte-producing resource hands over (`Ai.Image`, `Image.Blank`, `Image.Overlay`, a
 decoder). They are written as they are, so `encoding` does not apply to them, and no
-base64 round trip sits between producing bytes and saving them. The slot is declared
-`x-telo-binary`, so bytes must arrive by reference: an inline literal there is a
-static error, and `encoding: base64` remains the way to author binary by hand.
+base64 round trip sits between producing bytes and saving them. The byte branch is
+declared `x-telo-type: Telo.Bytes`: bytes arrive from a producing resource or from a
+file embedded with `!include-bytes`. A string at `content` is always text, so
+`encoding: base64` remains the way to spell binary out by hand.
 
 ```yaml
   - name: Save

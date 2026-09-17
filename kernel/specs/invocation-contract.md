@@ -41,6 +41,11 @@ Both are `telo#Type` fields: a bare type name, a `!ref` to a type resource, an
 inline `{ kind, schema }`, or a raw JSON Schema. A runtime MUST accept all four
 forms wherever a contract is declared.
 
+A `!ref` names a type in the scope of the module that WROTE it — `!ref Money` is
+that module's own `Money`, `!ref Types.Money` the one its `Types` import exports —
+at kind level and instance level alike. A runtime MUST resolve it to that
+declaration, never to whichever loaded module registered a type of the same name.
+
 A contract may be declared on a **kind** (a `Telo.Definition` / `Telo.Abstract`
 field) or on an **instance** (a resource that writes the property, which the kind
 opts into by declaring it in its own schema). Declaring the property IS the
@@ -262,6 +267,75 @@ check that reads them.
 
 Validation MUST NOT descend into reference-typed properties for the same reason.
 
+### 4.6 Declared scalars and plain-encoded text
+
+A produced value MUST be normalized, along exactly the paths the resolved
+`outputType` declares a scalar at, to the representation that declaration names:
+a declared `integer` (and every `json` value type carrying the CEL type `int`) to
+the runtime's wide integer, a `number` to its JSON number, and a value type
+carrying the CEL type `uint` to its unsigned integer. Only an EXACT conversion is
+performed — a fractional number at an integer slot, or a magnitude the target
+representation cannot hold, MUST arrive unchanged so the value is rejected rather
+than quietly repaired. Normalization is on RESULTS only: on the way out the next
+reader is the expression language, which already types the declaration; on the
+way in it is a controller in the host language.
+
+A value type whose representation is an INSTANCE holds that instance in both
+directions. Text is read into one only where the value arrives from outside the
+runtime, and a conforming runtime MUST decode it at exactly these sites, each
+against the schema the site resolves to:
+
+- a resource's own configuration, against its kind's schema;
+- an Application `variables:` / `secrets:` env value, and the `default:` standing
+  in for an unset one, against that entry's residual schema;
+- every slot a resource writes whose schema comes from ELSEWHERE — a call's
+  argument map (a step's `inputs:`, the map a reference slot names through its
+  `inputs:` pointer, a template definition's top-level `inputs:`, a boot target's
+  inline step), an `x-telo-schema-from` slot and an `x-telo-value-schema-from`
+  slot — decoded when the resource holding them is CREATED, not per dispatch;
+- a value a transport receives — an HTTP request's body, query, path parameters
+  and headers — against the schema its route declares, before the handler sees
+  it. The runtime offers controllers this decoding as a context service
+  (`ResourceContext.readPlainEncoded` in Node), which also refuses text the
+  encoding does not read with `ERR_INPUT_INVALID`; a transport documents and
+  validates such a slot as the TEXT a client sends (`type: string, format:
+  date-time` for a timestamp).
+
+The decoding MUST use the type's declared plain encoding and nothing else, and
+text the encoding does not read MUST be left as written so the slot's own
+assertion refuses it — with the same message the static checker produces —
+wherever the runtime validates that slot: a configuration at creation, an
+argument map at its dispatch. A slot whose schema is DERIVED from another kind's
+(`x-telo-schema-from`, `x-telo-value-schema-from`) is decoded at creation and
+asserted statically only, since no runtime reader validates a slot against a
+schema borrowed from another kind. A COMPUTED value is never decoded (it must
+already be the instance), and neither is text an embedding tag produced: a
+runtime MUST decode before it resolves embeds, so a file's contents are never
+read as an encoding.
+
+### 4.7 Writing for a reader outside the runtime
+
+A value written where the reader is not a Telo runtime — a transport body and its
+OpenAPI document, a log line (`json`, `pretty`, `otlp`), a debug-wire trace
+payload, a runner session event, a CLI JSON document — MUST be written in the
+PLAIN encoding, keyed on the value, and MUST NOT carry the typed frame's `$telo`
+tag (`durable-execution.md` §6), whose readers are Telo runtimes alone:
+
+- a timestamp as RFC 3339 text in UTC, a duration as seconds (`"5400s"`), bytes
+  as base64url without padding — each value type's declared `encoding`;
+- a `uint` as its exact decimal digits, as §4.4 writes an int;
+- NaN, +Infinity and -Infinity as the strings `"NaN"`, `"Infinity"` and
+  `"-Infinity"` (the protobuf JSON mapping, which OTLP/JSON also follows), and a
+  negative zero as `0` (RFC 8785);
+- a map whose keys are not all strings as an object keyed by each key's text
+  (`1`, `true`). Two keys whose text is one — `1` and `"1"` — MUST be refused
+  rather than one of them dropped.
+
+A reader recovers the type from the schema it was promised. Two destinations keep
+their own rendering of bytes, because their formats define one: a log record's
+`bytes` attribute (base64, or a blob pointer on the debug wire — `logging.md`
+§6.1), and a debug-wire payload's byte buffer, offloaded to its blob store.
+
 ## 5. Errors
 
 ### 5.1 Codes
@@ -289,8 +363,8 @@ or which side supplied it.
 
 ### 5.2 Status against declared unions
 
-These codes form an **ambient** union: they are raised by the runtime for every
-kind alike, not declared by any kind.
+These codes, and `ERR_FUNCTION_FAILED` (§7.3), form an **ambient** union: they are
+raised by the runtime for every kind alike, not declared by any kind.
 
 - A `catches:` entry MAY name one, and a checker MUST accept it and MUST
   type-check it against this set exactly as it does a declared code.
@@ -299,6 +373,8 @@ kind alike, not declared by any kind.
 - A kind MUST NOT declare either code in its own `throws:`. The contract is
   enforced in one place, so declaring it in a second would describe the same
   failure twice and diverge.
+- A retry policy MUST NOT re-attempt one: each is a verdict on the shape of the
+  call, or on a synchronous call that fails the same way again.
 
 ## 6. Conformance
 
@@ -316,4 +392,115 @@ A conforming runtime:
 9. raises the ambient codes structurally, and excludes them from declared-union
    counting (§5);
 10. raises rather than silently skipping when a declared contract resolves to no
-    schema (§5.1).
+    schema (§5.1);
+11. binds module calls per module scope at creation, refusing and deferring as
+    §7.1 states, and evaluates them as §7.2 and §7.3 state;
+12. binds every function's `call` and hands a native function's controller the
+    function context, as §7.4 states.
+
+## 7. Module functions
+
+A callable resource (capability `Telo.Callable`) is reached from a CEL expression
+through a module name — `Self.fn(…)`, `<ModuleName>.fn(…)` or `<Alias>.fn(…)` —
+and never dispatched. This section is what a runtime does with such a call. A
+runtime that evaluates no CEL hosts no functions and is exempt.
+
+### 7.1 Binding
+
+A runtime MUST bind every module call a resource's manifest makes when it creates
+that resource, before any of the resource's expressions evaluate — including a
+call in a branch that never runs. The call resolves in the module whose names it
+was written with: for a template body, the module that DEFINED the template.
+
+- `Self.<name>` / `<ModuleName>.<name>` names a resource that module declares;
+  `<Alias>.<name>` one the import's library lists in `exports.resources`.
+- A name no resource answers to is refused with `ERR_FUNCTION_UNRESOLVED`, a
+  declared but unexported one with `ERR_FUNCTION_NOT_EXPORTED`, and a resource
+  whose capability does not resolve to `Telo.Callable` along `extends` with
+  `ERR_FUNCTION_NOT_CALLABLE`.
+- A callee that exists but has not initialized MUST defer the caller as a pending
+  reference does (`ERR_LOCAL_REF_PENDING`, or `ERR_CROSS_MODULE_REF_PENDING`
+  through an import), and the call is a dependency of the caller for ordering,
+  failure attribution, teardown and reconciliation. A body that calls itself,
+  directly or through another function, is therefore a dependency cycle, and MUST
+  be refused with `ERR_CIRCULAR_DEPENDENCY` before any resource in it is created.
+
+Only a created resource's manifest binds. An expression evaluated outside one — an
+Application's `logging:` block, resolved while the application loads, and a type
+rule's `condition`, evaluated against the value alone — has no function in scope,
+and a call there fails.
+
+A binding is made once per module scope per qualified name — two isolated imports
+of one library bind twice, a shared one once — and evaluating a call MUST NOT
+resolve it again. When the callee is withdrawn its binding MUST be dropped, and an
+evaluation that still reaches it fails as a cancellation.
+
+### 7.2 Arguments
+
+A call site is positional and a callable receives one object keyed by parameter
+name, mapped through the signature in force for the callee. An omitted optional
+parameter takes its schema's `default`, normalized to the representation the
+schema declares (§4.6), and `null` when it declares none. An argument count the
+parameter list does not accept MUST be refused with
+`ERR_FUNCTION_ARITY_MISMATCH`, never truncated or padded — a structured error a
+`try:` step can catch, outside the ambient union.
+
+A `Telo.Function` body MUST be evaluated with its parameters and the module's
+function bindings in scope and nothing else: no module inputs, resources, ports,
+module metadata, steps or request.
+
+### 7.3 Errors
+
+Whatever a callable throws MUST fail the evaluation as `ERR_FUNCTION_FAILED`, a
+structured error whose data carries `function` (the qualified name as written),
+the thrown `message`, and its `code` when it had one — except an error that already
+is `ERR_FUNCTION_FAILED`, which names the function that actually failed, a
+cancellation or a durable suspension, and a function's binding refusals (§7.4),
+which all pass unchanged. A holder calling a function it holds through a slot
+gets the same classification, with `function` naming the instance as
+`<kind>/<name>`.
+
+A failed expression MUST keep a coded error's code and data: a runtime that
+rewrapped them into an uncoded failure would make `ERR_FUNCTION_FAILED`
+unreachable to a `try:` or a `catches:` list.
+
+### 7.4 Binding a function's call
+
+A runtime MUST bind every callable instance's `call` to the signature in force for
+it when it creates the instance — a `Telo.Function` as well as a native function —
+so no holder reaches it unbound. An instance a kind inherits its controller for IS
+its ancestor's instance, bound when that was created, and is not bound again.
+
+- Before each call it fills defaults (a fresh copy per call) and normalizes
+  declared scalars as §7.2 states, and refuses arguments the parameters do not
+  admit with `ERR_INPUT_INVALID`. A promise-like result is `ERR_FUNCTION_ASYNC`;
+  any other result is normalized and validated against `returns`, refused with
+  `ERR_OUTPUT_INVALID`. These three carry `function` in their data and pass
+  unwrapped (§7.3). A refused promise that later rejects is reported, never left
+  unobserved.
+- A CEL call binds its positional arguments to parameter names and hands them to
+  the bound call, so a call is bound and validated once.
+- An instance with no synchronous `call(args)` MUST be refused with
+  `ERR_CONTROLLER_INVALID` naming the function as `<kind>/<name>`.
+
+A callable kind whose definition declares no body field (no property annotated
+`x-telo-returns-from`) and does not inherit its controller is NATIVE: its result
+comes from its controller's code.
+
+- Its controller's `create(resource, ctx)` MUST receive a function context
+  offering exactly `resolveControllerFile`, `resolveNativeFile`, `log` and
+  `effect` — no environment, no resource, no I/O. Allocations `create` makes are
+  registered through `effect` and join the resource's create frame, so teardown
+  and reload release them. A kind inheriting a native controller creates its
+  ancestor's instance through the ordinary context, and the ancestor's controller
+  receives the function context.
+- A controller exporting no `create` MUST be refused with `ERR_CONTROLLER_INVALID`
+  naming the function as `<kind>/<name>`.
+- Arguments arrive as CEL values: an integer as a 64-bit integer, a timestamp or
+  duration as the runtime's native value, bytes as the runtime's byte type.
+- A function whose code runs in another language's runtime receives its
+  configuration as the resource's plain JSON and its arguments, and returns its
+  result, as typed frames (`durable-execution.md` §6), so no value changes type
+  crossing that boundary. A panic there fails the evaluation as
+  `ERR_FUNCTION_FAILED` carrying the code `ERR_CONTROLLER_PANIC`. Its instance is
+  destroyed as the inverse of its creation, at teardown and on reload.

@@ -92,6 +92,8 @@ describe("CEL function catalog", () => {
 
   it("marks non-deterministic and host-backed functions correctly", () => {
     const byName = Object.fromEntries(celFunctionCatalog().map((f) => [f.name, f]));
+    expect(byName.now.deterministic).toBe(false);
+    expect(byName.now.hostBacked).toBe(false);
     expect(byName.nowIso.deterministic).toBe(false);
     expect(byName.uuidv4.deterministic).toBe(false);
     expect(byName.nowMillis.deterministic).toBe(false);

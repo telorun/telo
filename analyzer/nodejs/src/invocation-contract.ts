@@ -1,4 +1,13 @@
-import { isLiveSlot, type ResourceDefinition, valueTypeOf } from "@telorun/sdk";
+import {
+  CEL_SCALAR_FORMS,
+  celScalarTypeOf,
+  isLiveSlot,
+  type ResourceDefinition,
+  scalarFormOfJsonType,
+  type ScalarForm,
+  UnsignedInt,
+  valueTypeOf,
+} from "@telorun/sdk";
 import { AliasResolver, moduleScopedDefResolver, type ModuleScopes } from "./alias-resolver.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import {
@@ -405,14 +414,14 @@ export function sensitivePaths(
   return out;
 }
 
-/** The scalar form a declared node's value takes at runtime. `int64` and
- *  `double` are the two JSON scalars whose runtime representation is NOT decided
- *  by the value that arrives: a CEL integer is a BigInt and a CEL double a JS
- *  number, and both are `typeof "number" | "bigint"` away from what a declaration
- *  says they are. Everything else — string, boolean, object, array, and every
- *  `instance` value type — is already its own representation, so it is not
- *  listed and never rewritten. */
-export type DeclaredScalarForm = "int64" | "double";
+/** The scalar form a declared node's value takes at runtime. `int64`, `uint64`
+ *  and `double` are the JSON scalars whose runtime representation is NOT decided
+ *  by the value that arrives: a CEL integer is a BigInt, a CEL uint an
+ *  `UnsignedInt` and a CEL double a JS number, and each is `typeof "number" |
+ *  "bigint"` away from what a declaration says it is. Everything else — string,
+ *  boolean, object, array, and every `instance` value type — is already its own
+ *  representation, so it is not listed and never rewritten. */
+export type DeclaredScalarForm = ScalarForm;
 
 export interface DeclaredScalarPath {
   readonly path: string[];
@@ -436,7 +445,9 @@ export interface DeclaredScalarPath {
  *  `Telo.TcpPort` is an `int64` slot), while an `instance` representation
  *  REPLACES the JSON layer — a byte buffer and a stream handle are already their
  *  own representation, nothing converts to them, and the walk stops there rather
- *  than descending into a value that is not a plain container.
+ *  than descending into a value that is not a plain container. A `json` type
+ *  declaring a `celType` contributes that instead (`Telo.Uint64` is a `uint64`
+ *  slot).
  *
  *  Bounded by the schema's declarations rather than by the size of the payload,
  *  exactly as {@link defaultBearingPaths} is: a contract declaring no such
@@ -466,7 +477,11 @@ export function declaredScalarPaths(
     // that is a plain container to walk.
     if (entry && entry.representation === "instance") return;
 
-    const form = scalarFormOf(entry && entry.base !== undefined ? entry.base : s.type);
+    // A `json` value type is read through the CEL type it carries — its
+    // `celType`, else its base's — so `Telo.Uint64` is a uint slot.
+    const celType = entry ? celScalarTypeOf(entry) : undefined;
+    const form =
+      celType !== undefined ? CEL_SCALAR_FORMS[celType]?.form : scalarFormOf(s.type);
     if (form && path.length > 0) out.push({ path, form });
 
     const properties = s.properties as Record<string, any> | undefined;
@@ -484,14 +499,106 @@ export function declaredScalarPaths(
   return out;
 }
 
+/**
+ * `value` with every leaf normalized to the representation its declaration
+ * names, copied along the containers above each one so the producer's own object
+ * is not rewritten under it.
+ *
+ * A declared shape says what the value IS, not only what it must pass — the same
+ * service a JSON Schema gives an HTTP response serializer. Telo's CEL layer
+ * takes the declaration literally: `integer` types as CEL `int` and a CEL int is
+ * a BigInt, so a controller handing back a plain JS number at an `integer` slot
+ * makes the contract a lie that surfaces nowhere until an expression composes it
+ * — `result.n + 1` type-checking statically and then dying at dispatch with
+ * `no such overload: dyn<double> + int`. Normalizing at the boundary that
+ * already knows the declared shape closes it for every kind at once, instead of
+ * once per module after each report.
+ *
+ * Only an EXACT conversion is performed: an integral number becomes an int64,
+ * and a BigInt becomes a double only when the round-trip is lossless. A
+ * fractional number at an integer slot, a string, a null, a magnitude no double
+ * can hold — all are left exactly as they arrived, so a value that genuinely
+ * violates the contract is still rejected rather than quietly repaired into
+ * something that passes, and a 64-bit integer is never truncated to reach a
+ * `number` slot.
+ *
+ * Here rather than in the kernel because the analyzer evaluates a function body
+ * a rule condition calls, and must hand it arguments exactly as the kernel does.
+ */
+export function normalizeDeclaredScalars(
+  value: unknown,
+  paths: readonly DeclaredScalarPath[],
+): unknown {
+  if (paths.length === 0 || !value || typeof value !== "object") return value;
+  let out: unknown = value;
+  for (const { path, form } of paths) out = normalizeAlong(out, path, form);
+  return out;
+}
+
+function normalizeAlong(
+  node: unknown,
+  segments: readonly string[],
+  form: DeclaredScalarForm,
+): unknown {
+  if (!node || typeof node !== "object") return node;
+  const [head, ...rest] = segments;
+
+  if (head === "[]") {
+    if (!Array.isArray(node)) return node;
+    let changed = false;
+    const next = node.map((item) => {
+      const value = rest.length === 0 ? asForm(item, form) : normalizeAlong(item, rest, form);
+      if (value !== item) changed = true;
+      return value;
+    });
+    return changed ? next : node;
+  }
+
+  const container = node as Record<string, unknown>;
+  if (!(head! in container)) return node;
+  const child = container[head!];
+  const next = rest.length === 0 ? asForm(child, form) : normalizeAlong(child, rest, form);
+  if (next === child) return node;
+  // Copy-on-write, and only once a leaf actually moved: a producer may hand back
+  // an object it retains (a cached record, a live config), and rewriting it in
+  // place would change what it holds.
+  const copy: Record<string, unknown> = Array.isArray(container)
+    ? ([...container] as unknown as Record<string, unknown>)
+    : { ...container };
+  copy[head!] = next;
+  return copy;
+}
+
+function asForm(value: unknown, form: DeclaredScalarForm): unknown {
+  if (form === "int64") {
+    return typeof value === "number" && Number.isInteger(value) ? BigInt(value) : value;
+  }
+  if (form === "uint64") {
+    // Exact only, as for int64: a fractional number, and anything outside the
+    // unsigned range, arrives unchanged.
+    const integral =
+      typeof value === "bigint"
+        ? value
+        : typeof value === "number" && Number.isSafeInteger(value)
+          ? BigInt(value)
+          : undefined;
+    return integral !== undefined && CEL_SCALAR_FORMS.uint!.range!.accepts(integral)
+      ? new UnsignedInt(integral)
+      : value;
+  }
+  if (typeof value !== "bigint") return value;
+  const asNumber = Number(value);
+  // Lossless only. Past the safe range a double cannot hold the integer.
+  return BigInt(asNumber) === value ? asNumber : value;
+}
+
 function scalarFormOf(declared: unknown): DeclaredScalarForm | undefined {
-  if (declared === "integer") return "int64";
-  if (declared === "number") return "double";
+  if (typeof declared === "string") return scalarFormOfJsonType(declared)?.form;
   if (!Array.isArray(declared)) return undefined;
   const integer = declared.includes("integer");
   const number = declared.includes("number");
   // A union naming both fixes nothing — either representation satisfies it, so
   // rewriting one into the other would be a choice the declaration never made.
   if (integer === number) return undefined;
-  return integer ? "int64" : "double";
+  return scalarFormOfJsonType(integer ? "integer" : "number")?.form;
 }

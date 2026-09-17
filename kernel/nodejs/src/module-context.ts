@@ -18,7 +18,22 @@ import type {
   ResourceManifest,
 } from "@telorun/sdk";
 import type { EmitEvent, InstanceFactory } from "@telorun/sdk";
+import { isCompiledValue } from "@telorun/sdk";
+import { MODULE_CALL_DISPATCH_KEY } from "@telorun/templating";
 import { EvaluationContext } from "./evaluation-context.js";
+import { ModuleFunctionTable, splitQualifiedCall } from "./module-functions.js";
+
+/** Where a call through an import alias stands. */
+export type ImportedFunctionTarget =
+  | { readonly status: "no-import" }
+  | { readonly status: "not-exported"; readonly declared: boolean }
+  | { readonly status: "pending" }
+  | {
+      readonly status: "ready";
+      readonly kind: string;
+      readonly instance: ResourceInstance;
+      readonly manifest?: ResourceManifest;
+    };
 
 function collectSecretValues(secrets: Record<string, unknown>): Set<string> {
   const values = new Set<string>();
@@ -105,6 +120,9 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     string,
     {
       names: Set<string>;
+      /** Whether the library declares `name` at all, exported or not — what
+       *  tells a call to an unexported function from one to nothing. */
+      declares: (name: string) => boolean;
       terminal: (
         name: string,
       ) =>
@@ -335,8 +353,9 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
           | { kind: string; instance: ResourceInstance; manifest?: ResourceManifest }
           | undefined)
       | undefined,
+    declares: (name: string) => boolean,
   ): void {
-    this.importedScopes.set(alias, { names: new Set(names), terminal });
+    this.importedScopes.set(alias, { names: new Set(names), declares, terminal });
   }
 
   /** This module's terminal getter for an exported `name`, or undefined. Read by a parent
@@ -471,8 +490,61 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return entry ? { kind: entry.kind, name } : undefined;
   }
 
+  /** Where a call through import `alias` to `name` stands — the module-call half
+   *  of `resolveImportedInstance`, which answers only for a name it can serve. */
+  importedFunctionTarget(alias: string, name: string): ImportedFunctionTarget {
+    const scope = this.importedScopes.get(alias);
+    if (!scope) return { status: this.hasManifest(alias) ? "pending" : "no-import" };
+    if (!scope.names.has(name)) return { status: "not-exported", declared: scope.declares(name) };
+    const entry = scope.terminal(name)?.();
+    return entry
+      ? { status: "ready", kind: entry.kind, instance: entry.instance, manifest: entry.manifest }
+      : { status: "pending" };
+  }
+
   hasImport(alias: string): boolean {
     return this.importAliases.has(alias);
+  }
+
+  /** The module's own name, which a call spells beside `Self`. */
+  ownModuleName(): string | undefined {
+    return this.importAliases.get("Self");
+  }
+
+  /** The names this module's CEL calls resolve through — `Self`, its own name, its
+   *  import aliases and `Telo` — the set its expressions were compiled with. */
+  callNames(): ReadonlySet<string> {
+    return new Set([...this.importAliases.keys(), "Telo"]);
+  }
+
+  /** The dispatch table every CEL expression of this module calls through. */
+  readonly functions = new ModuleFunctionTable();
+
+  /** A call through `Self` or the module's own name depends on the callee; one
+   *  through an import alias on the import; one through `Telo` on nothing, since
+   *  no built-in module declares a function resource. */
+  override moduleCallHolder(qualified: string): string | undefined {
+    const { receiver, name } = splitQualifiedCall(qualified);
+    if (receiver === "Self" || receiver === this.ownModuleName()) return name;
+    if (receiver === "Telo") return undefined;
+    return receiver;
+  }
+
+  protected override onResourceWithdrawn(name: string, reason: string): void {
+    this.functions.withdraw(name, reason);
+  }
+
+  /**
+   * Evaluate a function body with its parameters and nothing else in scope — no
+   * `variables`, `secrets`, `resources`, `ports`, `module`, `steps` or
+   * `request` — plus this module's dispatch table, which is how the body reaches
+   * the functions its module can call. A body depending on its arguments alone
+   * is what lets it be typed from its signature and rebuilt precisely by its call
+   * edges.
+   */
+  evaluateFunctionBody(body: unknown, args: Record<string, unknown>): unknown {
+    if (!isCompiledValue(body)) return body;
+    return body.call({ ...args, [MODULE_CALL_DISPATCH_KEY]: this.functions.dispatch });
   }
 
   /**
@@ -629,6 +701,8 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       resources: this._resources,
       ports: this._ports,
       module: this._module,
+      // Unspellable in CEL, so reachable only through a module call's dispatch.
+      [MODULE_CALL_DISPATCH_KEY]: this.functions.dispatch,
     };
     this._secretValues = collectSecretValues(this._secrets);
   }

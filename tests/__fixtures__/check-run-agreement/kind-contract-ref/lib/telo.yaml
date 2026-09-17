@@ -1,0 +1,58 @@
+# Kinds whose contract names a shape with `!ref`. `Priced` names one this library
+# declares, and its instance dispatches with the contract bound. `Broken` names
+# one nothing declares: this library's own `telo check` reports it, and the
+# kernel refuses the contract when the instance is first dispatched.
+kind: Telo.Library
+metadata:
+  name: KindContractRefLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kinds name their output shape by reference, once
+    resolvably and once not.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [priced, broken]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Money
+schema:
+  type: object
+  required: [amount]
+  properties:
+    amount: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: Priced
+capability: Telo.Invocable
+outputType: !ref Money
+schema: { type: object }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { amount: 1 }
+invoke: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: Broken
+capability: Telo.Invocable
+outputType: !ref Nope
+schema: { type: object }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { amount: 1 }
+invoke: !ref body
+---
+kind: Self.Priced
+metadata:
+  name: priced
+---
+kind: Self.Broken
+metadata:
+  name: broken

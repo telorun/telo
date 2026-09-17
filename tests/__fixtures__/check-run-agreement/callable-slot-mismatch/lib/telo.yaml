@@ -1,0 +1,80 @@
+# Functions wired into slots typed by callable abstracts they cannot stand in
+# for, through the verifier kind `callable-slot` declares. `renamed` names its
+# second parameter `text` where the abstract names it `message`, and the holding
+# controller calls it by the abstract's names; `clocked` reaches `now()` in a
+# slot whose abstract requires determinism; `nonceRequired` requires the nonce the
+# abstract leaves optional, and the holder calls it without one. This library's
+# `telo check` refuses all three where they are wired.
+kind: Telo.Library
+metadata:
+  name: CallableSlotMismatchLib
+  version: 1.0.0
+  description: >-
+    Fixture library wiring CEL functions into callable-abstract slots whose
+    signature or determinism they do not meet.
+imports:
+  Slot: ../../callable-slot/lib
+exports:
+  resources: [verifier, nonceVerifier]
+---
+kind: Telo.Function
+metadata:
+  name: renamed
+params:
+  - name: key
+    schema: { type: string }
+  - name: text
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "key + ':' + text"
+---
+kind: Telo.Function
+metadata:
+  name: clocked
+params:
+  - name: key
+    schema: { type: string }
+  - name: message
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "key + ':' + message + ':' + string(now())"
+---
+kind: Telo.Function
+metadata:
+  name: concat
+params:
+  - name: key
+    schema: { type: string }
+  - name: message
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "key + ':' + message"
+---
+kind: Telo.Function
+metadata:
+  name: nonceRequired
+params:
+  - name: key
+    schema: { type: string }
+  - name: message
+    schema: { type: string }
+  - name: nonce
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "key + ':' + message + ':' + nonce"
+---
+kind: Slot.Verify
+metadata:
+  name: verifier
+signer: !ref renamed
+stable: !ref clocked
+---
+kind: Slot.Verify
+metadata:
+  name: nonceVerifier
+signer: !ref concat
+nonced: !ref nonceRequired

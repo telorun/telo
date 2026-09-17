@@ -149,7 +149,7 @@ exists because a glibc-linked binary will not run on a musl host.
 
 `abi` names the runtime binary interface a native file is built against. Its value
 MUST have the form `<family>-<version>` — `node-137` for Node's
-`NODE_MODULE_VERSION` 137, `telo-2` for version 2 of the Rust controller ABI — and
+`NODE_MODULE_VERSION` 137, `telo-3` for version 3 of the Rust controller ABI — and
 an implementation MUST reject a value that does not, wherever it reads a selector.
 The family is part of the identity because a bare number is not one: Bun reports
 `process.versions.modules` as `137`, exactly as Node 24 does, and loads none of the

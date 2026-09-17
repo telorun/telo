@@ -7,6 +7,11 @@
  * own typed error (e.g. an `InvokeError` for invoke-time input); `parseDurationMs`
  * throws a coded `RuntimeError` and treats `undefined` as a default (for optional
  * fields), so a bad duration in a manifest surfaces as a structured config error.
+ *
+ * This grammar is NOT `Telo.Duration`'s: it reads one number and one unit and
+ * accepts days (`30d`), while a `Telo.Duration` slot reads CEL's grammar
+ * (`1h30m`, no `d`). A field moved from a string read here to `Telo.Duration`
+ * changes which literals are valid, and is a breaking change for its kind.
  */
 import { RuntimeError } from "./types.js";
 

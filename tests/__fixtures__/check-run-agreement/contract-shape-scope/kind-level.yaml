@@ -1,0 +1,11 @@
+# Dispatches the library kinds whose contracts name `Money` — the library's own,
+# and the imported one by alias.
+kind: Telo.Application
+metadata:
+  name: ContractShapeScopeKind
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.ownKind
+  - invoke: !ref Lib.importedKind

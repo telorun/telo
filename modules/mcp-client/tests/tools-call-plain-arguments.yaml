@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: McpClientPlainArguments
+  version: 1.0.0
+  description: |
+    An MCP server is not Telo, so a CEL value in a tool call's arguments leaves in
+    its plain encoding — a duration as seconds — never as an empty object.
+imports:
+  Mcp: ../../mcp-server
+  McpClient: ../
+  Http: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets: [ !ref testRun ]
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpHttp }
+serverInfo: { name: telo-test-echo, version: 1.0.0 }
+tools:
+  - kind: Mcp.Tools
+    entries:
+      - name: echo_arguments
+        description: Returns the arguments it received.
+        argumentsSchema:
+          type: object
+        handler:
+          kind: Run.Value
+          value: {}
+        inputs: {}
+        result:
+          content:
+            - type: text
+              text: echoed
+          structuredContent: !cel "request.arguments"
+---
+kind: Run.Sequence
+metadata: { name: testRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8964
+    baseUrl: http://127.0.0.1:8964
+    mounts:
+      - { path: /mcp, mount: !ref mcpHttp }
+targets: [ !ref Server ]
+steps:
+  - name: called
+    inputs:
+      name: echo_arguments
+      arguments:
+        wait: !cel "duration('1h30m')"
+    invoke:
+      kind: McpClient.ToolsCall
+      client:
+        kind: McpClient.HttpClient
+        url: http://127.0.0.1:8964/mcp
+        clientInfo: { name: telo-test, version: 1.0.0 }
+  - name: assertPlainArguments
+    inputs:
+      actual: !cel "steps.called.result.structuredContent"
+      expected:
+        wait: "5400s"
+    invoke:
+      kind: Assert.Equals

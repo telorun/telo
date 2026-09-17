@@ -1,0 +1,9 @@
+# Dispatches the library resource whose own `outputType` names the library's `Money`.
+kind: Telo.Application
+metadata:
+  name: ContractShapeScopeInstance
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.ownInstance

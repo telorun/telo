@@ -1,4 +1,5 @@
 import { decideColor } from "@telorun/kernel";
+import { writePlainJson } from "@telorun/sdk";
 
 /** Output encodings the CLI can produce. `yaml` is deliberately absent: the flag
  *  is an enum precisely so it can gain a value later without a second flag. */
@@ -233,8 +234,10 @@ function truncate(text: string, columns: number | undefined): string {
   return text;
 }
 
+/** Plain JSON: a CEL value in a payload is written as its plain form, never
+ *  type-tagged, since stdout's reader is not a Telo runtime. */
 function serialize(payload: unknown): string {
-  return `${JSON.stringify(payload, null, 2)}\n`;
+  return `${writePlainJson(payload, 2)}\n`;
 }
 
 /** Configured once from argv by a yargs middleware, before any handler runs, so

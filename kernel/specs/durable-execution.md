@@ -142,6 +142,15 @@ for v1.1 it is exactly:
 | a park's wake time, token, or retry attempt | `value` |
 | a collection a composer iterates | `collection` |
 
+**The last two rows are the composer's own, not the step engine's.** A kind that
+DRIVES a body — an iteration, a projection, a loop of its own — evaluates the
+collection it will walk and the condition it tests per turn *before* it hands a
+step list over, so the engine never sees either and cannot journal them on the
+composer's behalf. Each such kind records them itself, through the same `decide`,
+under a path qualified by the dispatch it belongs to and by the turn. A composer
+that skips this leaves two holes in the closure property at exactly the points
+this table names.
+
 **The tempting claim — "a run's entire mutable state is the `steps` map" — is
 FALSE, and this is the load-bearing paragraph of the whole specification.** The
 CEL scope those expressions evaluate against also carries `resources.<name>`
@@ -164,6 +173,16 @@ Replay is then a pure function of `(journal, manifest)` — a **closure property
 and closure is what makes this survive: an ambient value source added years from
 now (a new scope variable, a new binding form, a new provider kind) is covered
 without anyone re-auditing a list.
+
+**A module function is covered by the same property, with no journaling of its
+own.** A call inside an expression has no step path, and needs none: the
+expression it sits in is a decision point, so its whole value — calls included —
+is recorded once and replayed. `value: !cel "Billing.total(items)"` that reads the
+clock on the first pass yields the recorded result on resume, however the clock
+has moved. What a function's determinism still decides is whether a region
+declared `idempotent` may call it, since such a region RE-RUNS its body rather
+than replaying a recorded value (`DURABLE_NONDETERMINISM`, which names the chain
+to the non-deterministic leaf).
 
 ## 5. The key scheme and entry format
 
@@ -213,6 +232,22 @@ It is also what makes a nested body independently resumable: an interruption
 inside one resumes at the step of it that had not finished, rather than re-running
 the whole body.
 
+**A record the runtime keeps beside a step's nested body uses a reserved
+segment.** A decision recorded under a step's own path — its `when:` guard — shares
+that path with every step of the body the step dispatches, so a segment spelled
+like a step name is a key a nested step can collide with: the first record wins,
+and the nested step is handed the decision's value instead of running, on the
+first pass. Such a segment MUST therefore start with a character outside the
+step-name grammar (`^[A-Za-z_][A-Za-z0-9_]*$`); the guard is `@when`:
+
+```
+steps/charge/@when               ← the guard of the step `charge`
+steps/charge/when                ← a step named `when` in the body it dispatched
+```
+
+Older records keyed by a plain word (`inputs`, `retry[<n>]`) predate this rule
+and keep their spelling, because journals written with them must still replay.
+
 **How the enclosing path reaches the nested engine is the runtime's choice**, and
 the requirement is only that it does. The Node kernel carries it on
 `InvokeContext` beside the run handle, so a composer that knows nothing about
@@ -245,6 +280,7 @@ is that these fields exist and mean this.
 path: steps/createAccount
 kind: step
 target: { kind: Sql.Transaction, name: accountTx }   # §5.3
+v: 1
 result: { id: 41 }
 ```
 
@@ -254,8 +290,34 @@ result: { id: 41 }
 path: steps/checkStock/if
 kind: decision
 decision: predicate
+v: 1
 value: true
 ```
+
+**A recorded value is a TYPED FRAME (§6.1), under a codec version.** A journal is
+a boundary whose reader turns the value back into a live value inside a Telo
+runtime, and it is the boundary where getting that wrong is least visible: plain
+JSON replays a timestamp as text, an `int` as a `double` and `bytes` as an object
+keyed by index, so an expression that worked on the first pass computes something
+else on resume with nothing reported. `v` is `1`, and it is bumped only for a
+change an older reader would MISREAD.
+
+- An entry carrying **no `v`** is read with whatever codec its store used before
+  this rule existed. Legacy entries are read rather than refused: refusing one
+  would strand every run parked before the change, which is the opposite of what
+  a journal is for.
+- An entry carrying a **`v` the reader does not know** MUST be refused, never
+  read for the fields it recognizes — the same rule §5.3 states for a step
+  target's encoding, applied to the record. A later codec may mean something else
+  by the same bytes, and a run replayed against a misread value is the corruption
+  durability exists to prevent. `ERR_DURABLE_ENTRY_UNDECODABLE`.
+
+**A step that produced NOTHING is journaled all the same, as an entry with no
+value.** The entry is what says the step completed, so omitting it would re-run
+the step on every resume; and absence belongs to the ENTRY rather than to a
+value, because `undefined` is not a CEL value and a frame that gave it a form
+would stop being one-to-one (§6.1 refuses a bare `undefined` by design). Such an
+entry replays as the absent value, which is what the target returned.
 
 **A run record**:
 
@@ -269,7 +331,19 @@ parked:                       # present while `status: parked`
   resource: approval          # what it is waiting on, for an operator
   token: 0f3c…                # the address a delivery must carry
   at: 1787159304535           # when it becomes due with no delivery
+inputs: "…"                   # a scheduled run's inputs, as a typed frame
+inputsCodecVersion: 1
+result: "…"                   # present once completed, as a typed frame
+resultCodecVersion: 1
 ```
+
+**A run record's `inputs` and `result` are recorded values too**, under the same
+codec and the same version rules as an entry's value, each beside its own version
+— one per value, because a run admitted by one runtime may be settled by another.
+A scheduled run's body starts from `inputs`, and a caller reads `result`, so
+either written as plain JSON would hand a later reader a value of a different
+type. A member of `result` holding no value — a step that produced nothing — is
+left out, the reading an entry with no value already has.
 
 `cancelled` is deliberately distinct from `failed`: a failed run earned a
 verdict, a cancelled one was called off, and collapsing them makes every
@@ -392,6 +466,270 @@ A journaled value MUST be serializable. Two consequences:
   back to the same permissive shape. So the runtime is the gate and the static
   half is a warning. This is the *enforced at runtime, warned early* division
   applied to the same kind of problem as containment.
+
+### 6.1 The typed frame
+
+A boundary whose reader turns a value back into a live value inside a Telo
+runtime writes it as a **typed frame**: one JSON form, independent of any schema,
+covering the whole CEL value domain. It is one-to-one — reading a frame gives back
+the value that was written, CEL type included, and two different values never
+share a frame. A schema cannot give that: an open contract declares no type to
+read against, and replay must be a pure function of journal and manifest down to
+the CEL type.
+
+- `null`, `bool`, `string` and `list` are JSON null, boolean, string and array.
+- A `double` is a JSON number, and an untagged number always reads back as a
+  `double`, whatever its digits. The four doubles a JSON number cannot carry
+  faithfully are tagged `double`: NaN, `+Infinity` and `-Infinity` have no JSON
+  number, and negative zero does not survive common stores (a PostgreSQL `jsonb`
+  number has no negative zero).
+- An `int`, `uint`, `bytes`, `google.protobuf.Timestamp` or
+  `google.protobuf.Duration` is always tagged:
+  `{"$telo":"<CEL type name>","value":"<payload>"}`.
+- A `map` whose keys are all strings, none of them `$telo`, is a JSON object. Any
+  other map — one with an `int`, `uint` or `bool` key, or with the key `$telo` —
+  is tagged `map`, its value a list of `[key, value]` pairs. That is what keeps
+  the frame one-to-one: an object member named `$telo` is always a tag.
+
+A tagged value carries exactly the two members `$telo` and `value`.
+
+**The domain.** Each runtime maps each CEL type to its own representation; in
+Node `int` is a `bigint`, `uint` the SDK's `UnsignedInt`, `bytes` a `Uint8Array`,
+a timestamp a `Date`, a duration the SDK's `Duration`, a list an array and a map a
+plain object or a `Map`. A writer MUST refuse, with
+`ERR_TYPED_FRAME_UNENCODABLE` and the JSON Pointer of the offending node inside
+the value, anything else a host value can be:
+
+- a value of no CEL type — an instance of any other class, **including one that
+  offers a JSON conversion** (`toJSON`), which would read back as a different
+  value; a function; a symbol; an absent or undefined value, at the root or inside
+  a container; a hole in a list;
+- a map key that is not an `int`, `uint`, `bool` or `string`, or two keys with the
+  same value — **including an `int` and a `uint` of the same number**, which CEL
+  equality makes one key, so a map carrying both is not a map and is refused in
+  both directions;
+- an `int` outside int64, a timestamp outside `0001-01-01T00:00:00.000Z` to
+  `9999-12-31T23:59:59.999Z`, a duration of more than 315,576,000,000 whole
+  seconds either side of zero;
+- a string that is not Unicode text (an unpaired UTF-16 surrogate);
+- a value that contains itself.
+
+A runtime that must record such a value re-raises the refusal in its own terms —
+at a step path, `ERR_DURABLE_UNJOURNALABLE_VALUE` (§6).
+
+### 6.2 Canonical text
+
+A writer MUST produce one text per value, so two runtimes writing one value write
+the same bytes and a frame can be compared or keyed on without parsing it. The
+text is the RFC 8785 canonical form of the frame:
+
+- no whitespace;
+- a string escapes `"` and `\`, writes U+0008, U+0009, U+000A, U+000C and U+000D
+  as `\b`, `\t`, `\n`, `\f` and `\r`, writes every other code point below U+0020 as
+  `\u00xx` in lowercase hex, and writes everything else literally, including `/`,
+  U+007F and U+2028;
+- a number is written in ECMAScript `Number::toString` form: the shortest digits
+  that read back as the same double — of two such candidates, the one closer to
+  the double, and of two equally close, the one ending in an even digit — in
+  exponent form (`1e+21`, `1e-7`) outside the range 1e-6 ≤ |x| < 1e21;
+- object members are ordered by key, compared as UTF-16 code units.
+
+A tagged map's pairs are ordered by the canonical text of each key's frame,
+compared as UTF-16 code units, so keys of different types share one order.
+Nothing about a host's representation reaches the text: insertion order, a
+string-keyed `Map` against a plain object, or a duration held as `-2s + 0.5s`
+against `-1s - 0.5s`.
+
+A reader MUST accept any JSON syntax for the frame's structure — whitespace and
+member order included — because a store may rewrite it (`jsonb` reorders
+members). A reader reads a JSON number as the double nearest its decimal value,
+rounding half to even, whatever form it is written in, so a store that rewrote
+`1e-7` as `0.0000001` yields the same value. It MUST refuse, with `ERR_TYPED_FRAME_UNDECODABLE` and the JSON Pointer
+of the offending node inside the frame: a tag outside §6.3, a tagged object with
+any other member, a payload not in its canonical form, a tagged map whose keys
+are all strings other than `$telo`, a map key that is not an `int`, `uint`,
+`bool` or `string`, a repeated key, a string that is not Unicode text, a member
+name an earlier member of the same object already carries (no writer produces
+one, and a store that rewrites a frame keeps one), and a number whose nearest
+double is not finite (`1e400`; an infinity is tagged). Text that is not JSON is
+refused before anything else, at the empty pointer; a repeated member name is
+refused before any value is read, at the first repeat in text order. A key in a
+pointer is written with each unpaired surrogate replaced by U+FFFD.
+Payloads are read only in their canonical form because a lenient reader silently
+changes what another writer meant: a timestamp carrying nanoseconds would be read
+at millisecond precision, and a duration written `1.500s` would read back equal
+to one written `1.5s` while its frame differs.
+
+### 6.3 Tag vocabulary
+
+The vocabulary is closed. A new tag is a change to this specification, and a
+reader refuses a tag it does not know rather than reading the object as a map.
+
+| Tag | CEL type | Payload |
+| --- | --- | --- |
+| `int` | `int` | Decimal text of an int64: `0`, or an optional `-` and digits with no leading zero |
+| `uint` | `uint` | Decimal text of a uint64: `0`, or digits with no leading zero |
+| `double` | `double` | One of `NaN`, `Infinity`, `-Infinity`, `-0` |
+| `bytes` | `bytes` | Base64url (RFC 4648 §5) without padding, unused trailing bits zero |
+| `google.protobuf.Timestamp` | `google.protobuf.Timestamp` | `YYYY-MM-DDTHH:MM:SS.sssZ`: UTC, exactly three fractional digits |
+| `google.protobuf.Duration` | `google.protobuf.Duration` | Seconds with an `s` suffix: an optional `-`, whole seconds with no leading zero, and, when not whole, `.` and up to nine digits with no trailing zero (`5400s`, `-1.5s`, `0.000000001s`) |
+| `map` | `map` | A list of `[key, value]` pairs, each a frame |
+
+**A timestamp's precision is one millisecond**, the finest instant every Telo
+runtime holds (Node's timestamp is the host `Date`). A runtime whose own timestamp
+type is finer MUST hold only whole milliseconds in a value that reaches a frame,
+and its writer MUST refuse one that is not rather than round it. A duration keeps
+nanoseconds.
+
+### 6.4 Plain encoding
+
+The **plain encoding** is the one canonical JSON form of each value at an
+external boundary — a transport body, a log line, a CLI's JSON output — whose
+reader is not a Telo runtime. A write there is keyed on the value and a read on
+the slot's declared schema, and `$telo` never appears.
+
+| CEL type | Written | Read |
+| --- | --- | --- |
+| `google.protobuf.Timestamp` | RFC 3339 in UTC, as the payload in §6.3 | RFC 3339 with any offset |
+| `google.protobuf.Duration` | Seconds, as the payload in §6.3 | Any CEL duration string (`1h30m`) |
+| `bytes` | Base64url without padding | The same form |
+| `int`, `uint` | Its exact decimal digits, as a JSON number | A JSON number |
+
+An `int` or `uint` follows `kernel/specs/invocation-contract.md` §4.4: exact
+digits, never a double and never a quoted string, with the `otlp` and `json` log
+encodings as that section's named exceptions (the `json` encoding writes a number
+within ±(2^53−1) and a decimal string beyond it). A typed frame carries the same
+digits as its payload text. Every tagged scalar payload in §6.3 is the type's plain
+encoding, so each type still has exactly one written form.
+
+### 6.5 Error codes
+
+`ERR_TYPED_FRAME_UNENCODABLE` (§6.1) and `ERR_TYPED_FRAME_UNDECODABLE` (§6.2) each
+carry `path`, a JSON Pointer: inside the value for the first, inside the frame for
+the second.
+
+### 6.6 Conformance vectors
+
+These tables are normative. `kernel/specs/durable-execution-typed-frame-vectors.json`
+carries the same rows for tests to read, and a runtime's codec tests MUST assert
+both directions of every row: the value writes exactly the frame and the frame
+reads back as the value, and every undecodable frame is refused with the path
+shown. The same file's `doubles` corpus pairs the IEEE 754 bits of a double, in
+hex, with the text a writer produces for it — random doubles and equally close
+ties — and a runtime's tests MUST write every one of them exactly.
+
+A value is written in a notation independent of every frame form, one member per
+node:
+
+- `{"null":null}`, `{"bool":<boolean>}`, `{"string":<string>}`;
+- `{"double":<number>}`, or `{"double":"NaN" | "Infinity" | "-Infinity" | "-0"}`;
+- `{"int":"<decimal>"}`, `{"uint":"<decimal>"}`;
+- `{"bytes":[<byte>, …]}`;
+- `{"timestamp":{"seconds":"<decimal>","nanos":<0..999999999>}}`, seconds since
+  the Unix epoch;
+- `{"duration":{"seconds":"<decimal>","nanos":<number>}}`, `nanos` carrying the
+  sign of `seconds`;
+- `{"list":[<value>, …]}`;
+- `{"map":[[<key>, <value>], …]}`, in the order given — the writer orders them.
+
+Values a runtime writes and reads:
+
+| Name | Value | Frame |
+| --- | --- | --- |
+| null | `{"null":null}` | `null` |
+| bool | `{"bool":true}` | `true` |
+| empty string | `{"string":""}` | `""` |
+| string escapes | `{"string":"quote\" backslash\\ tab\t nl\n cr\r bs\b ff\f ctl\u0001\u001f del ls  slash/ é 😀"}` | `"quote\" backslash\\ tab\t nl\n cr\r bs\b ff\f ctl\u0001\u001f del ls  slash/ é 😀"` |
+| double zero | `{"double":0}` | `0` |
+| double fraction | `{"double":1.5}` | `1.5` |
+| double integral | `{"double":5}` | `5` |
+| double large exponent | `{"double":1e+21}` | `1e+21` |
+| double small exponent | `{"double":1e-7}` | `1e-7` |
+| double above exponent threshold | `{"double":0.000001}` | `0.000001` |
+| double above exponent threshold with digits | `{"double":0.000001234}` | `0.000001234` |
+| double below exponent threshold | `{"double":123456789012345680000}` | `123456789012345680000` |
+| double subnormal | `{"double":5e-324}` | `5e-324` |
+| double most negative | `{"double":-1.7976931348623157e+308}` | `-1.7976931348623157e+308` |
+| double tie to even | `{"double":1887591991632234.2}` | `1887591991632234.2` |
+| double NaN | `{"double":"NaN"}` | `{"$telo":"double","value":"NaN"}` |
+| double infinity | `{"double":"Infinity"}` | `{"$telo":"double","value":"Infinity"}` |
+| double negative infinity | `{"double":"-Infinity"}` | `{"$telo":"double","value":"-Infinity"}` |
+| double negative zero | `{"double":"-0"}` | `{"$telo":"double","value":"-0"}` |
+| int zero | `{"int":"0"}` | `{"$telo":"int","value":"0"}` |
+| int min | `{"int":"-9223372036854775808"}` | `{"$telo":"int","value":"-9223372036854775808"}` |
+| int max | `{"int":"9223372036854775807"}` | `{"$telo":"int","value":"9223372036854775807"}` |
+| uint zero | `{"uint":"0"}` | `{"$telo":"uint","value":"0"}` |
+| uint max | `{"uint":"18446744073709551615"}` | `{"$telo":"uint","value":"18446744073709551615"}` |
+| bytes empty | `{"bytes":[]}` | `{"$telo":"bytes","value":""}` |
+| bytes url-safe alphabet | `{"bytes":[251,255,0]}` | `{"$telo":"bytes","value":"-_8A"}` |
+| timestamp epoch | `{"timestamp":{"seconds":"0","nanos":0}}` | `{"$telo":"google.protobuf.Timestamp","value":"1970-01-01T00:00:00.000Z"}` |
+| timestamp before epoch | `{"timestamp":{"seconds":"-1","nanos":500000000}}` | `{"$telo":"google.protobuf.Timestamp","value":"1969-12-31T23:59:59.500Z"}` |
+| timestamp min | `{"timestamp":{"seconds":"-62135596800","nanos":0}}` | `{"$telo":"google.protobuf.Timestamp","value":"0001-01-01T00:00:00.000Z"}` |
+| timestamp max | `{"timestamp":{"seconds":"253402300799","nanos":999000000}}` | `{"$telo":"google.protobuf.Timestamp","value":"9999-12-31T23:59:59.999Z"}` |
+| duration zero | `{"duration":{"seconds":"0","nanos":0}}` | `{"$telo":"google.protobuf.Duration","value":"0s"}` |
+| duration whole seconds | `{"duration":{"seconds":"5400","nanos":0}}` | `{"$telo":"google.protobuf.Duration","value":"5400s"}` |
+| duration negative fraction | `{"duration":{"seconds":"-1","nanos":-500000000}}` | `{"$telo":"google.protobuf.Duration","value":"-1.5s"}` |
+| duration one nanosecond | `{"duration":{"seconds":"0","nanos":1}}` | `{"$telo":"google.protobuf.Duration","value":"0.000000001s"}` |
+| duration max | `{"duration":{"seconds":"315576000000","nanos":999999999}}` | `{"$telo":"google.protobuf.Duration","value":"315576000000.999999999s"}` |
+| duration min | `{"duration":{"seconds":"-315576000000","nanos":-999999999}}` | `{"$telo":"google.protobuf.Duration","value":"-315576000000.999999999s"}` |
+| list empty | `{"list":[]}` | `[]` |
+| list mixed | `{"list":[{"int":"1"},{"string":"a"},{"null":null},{"list":[{"bool":false}]}]}` | `[{"$telo":"int","value":"1"},"a",null,[false]]` |
+| map empty | `{"map":[]}` | `{}` |
+| map string keys in code unit order | `{"map":[[{"string":"b"},{"double":1}],[{"string":"ｚ"},{"double":2}],[{"string":"a"},{"double":3}],[{"string":"😀"},{"double":4}],[{"string":"B"},{"double":5}],[{"string":"ä"},{"double":6}]]}` | `{"B":5,"a":3,"b":1,"ä":6,"😀":4,"ｚ":2}` |
+| map key naming the prototype | `{"map":[[{"string":"__proto__"},{"string":"own key"}]]}` | `{"__proto__":"own key"}` |
+| map with the tag key | `{"map":[[{"string":"a"},{"int":"1"}],[{"string":"$telo"},{"string":"x"}]]}` | `{"$telo":"map","value":[["$telo","x"],["a",{"$telo":"int","value":"1"}]]}` |
+| map int keys | `{"map":[[{"int":"10"},{"string":"ten"}],[{"int":"2"},{"string":"two"}],[{"int":"-1"},{"string":"minus one"}]]}` | `{"$telo":"map","value":[[{"$telo":"int","value":"-1"},"minus one"],[{"$telo":"int","value":"10"},"ten"],[{"$telo":"int","value":"2"},"two"]]}` |
+| map mixed key types | `{"map":[[{"uint":"3"},{"string":"y"}],[{"int":"2"},{"string":"x"}],[{"bool":true},{"null":null}],[{"string":"a"},{"double":1.5}]]}` | `{"$telo":"map","value":[["a",1.5],[true,null],[{"$telo":"int","value":"2"},"x"],[{"$telo":"uint","value":"3"},"y"]]}` |
+| nested | `{"map":[[{"string":"meta"},{"map":[[{"string":"$telo"},{"string":"not a tag"}]]}],[{"string":"events"},{"list":[{"map":[[{"string":"size"},{"int":"3"}],[{"string":"at"},{"timestamp":{"seconds":"1768469400","nanos":250000000}}]]}]}]]}` | `{"events":[{"at":{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T09:30:00.250Z"},"size":{"$telo":"int","value":"3"}}],"meta":{"$telo":"map","value":[["$telo","not a tag"]]}}` |
+
+Frames a runtime refuses to read:
+
+| Name | Frame | Path |
+| --- | --- | --- |
+| not JSON | `{` | `""` |
+| unknown tag | `{"$telo":"float","value":"1"}` | `"/$telo"` |
+| tag not a string | `{"$telo":1,"value":"1"}` | `""` |
+| tag without value | `{"$telo":"int"}` | `""` |
+| tag with an extra key | `{"$telo":"int","value":"1","x":1}` | `""` |
+| int payload not text | `{"$telo":"int","value":1}` | `"/value"` |
+| int leading zero | `{"$telo":"int","value":"01"}` | `"/value"` |
+| int negative zero | `{"$telo":"int","value":"-0"}` | `"/value"` |
+| int overflow | `{"$telo":"int","value":"9223372036854775808"}` | `"/value"` |
+| uint negative | `{"$telo":"uint","value":"-1"}` | `"/value"` |
+| uint overflow | `{"$telo":"uint","value":"18446744073709551616"}` | `"/value"` |
+| double finite | `{"$telo":"double","value":"1.5"}` | `"/value"` |
+| bytes padded | `{"$telo":"bytes","value":"-_8A="}` | `"/value"` |
+| bytes standard alphabet | `{"$telo":"bytes","value":"+/8A"}` | `"/value"` |
+| bytes nonzero trailing bits | `{"$telo":"bytes","value":"AB"}` | `"/value"` |
+| timestamp with offset | `{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T09:30:00.000+02:00"}` | `"/value"` |
+| timestamp without milliseconds | `{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T07:30:00Z"}` | `"/value"` |
+| timestamp with nanoseconds | `{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T07:30:00.000000001Z"}` | `"/value"` |
+| timestamp year zero | `{"$telo":"google.protobuf.Timestamp","value":"0000-12-31T23:59:59.000Z"}` | `"/value"` |
+| duration units | `{"$telo":"google.protobuf.Duration","value":"1h30m"}` | `"/value"` |
+| duration trailing zero | `{"$telo":"google.protobuf.Duration","value":"1.500s"}` | `"/value"` |
+| duration out of range | `{"$telo":"google.protobuf.Duration","value":"315576000001s"}` | `"/value"` |
+| map payload not a list | `{"$telo":"map","value":{}}` | `"/value"` |
+| map entry not a pair | `{"$telo":"map","value":[[1]]}` | `"/value/0"` |
+| map key a double | `{"$telo":"map","value":[[1.5,"x"]]}` | `"/value/0/0"` |
+| map key repeated | `{"$telo":"map","value":[[true,1],[true,2]]}` | `"/value/1/0"` |
+| map int and uint keys of one number | `{"$telo":"map","value":[[{"$telo":"int","value":"2"},1],[{"$telo":"uint","value":"2"},2]]}` | `"/value/1/0"` |
+| map tagged with plain string keys | `{"$telo":"map","value":[["a",1]]}` | `"/value"` |
+| nested payload | `[{"a":{"$telo":"uint","value":"x"}}]` | `"/0/a/value"` |
+| unpaired surrogate | `"\ud800"` | `""` |
+| unpaired surrogate in a key | `{"\ud800":1}` | `"/�"` |
+| repeated member | `{"a":1,"b":2,"a":3}` | `"/a"` |
+| repeated tag member | `[{"$telo":"int","$telo":"uint","value":"1"}]` | `"/0/$telo"` |
+| number beyond a double | `{"a":1e400}` | `"/a"` |
+
+Frames a runtime reads but does not write — a store's rewriting is legible, and
+the value it yields is written back in one form only:
+
+| Name | Frame | Value | Canonical |
+| --- | --- | --- | --- |
+| tag after value | `{"value":"1","$telo":"int"}` | `{"int":"1"}` | `{"$telo":"int","value":"1"}` |
+| members out of order, with whitespace | `{ "b" : 1, "a" : 2 }` | `{"map":[[{"string":"b"},{"double":1}],[{"string":"a"},{"double":2}]]}` | `{"a":2,"b":1}` |
+| number in another form | `0.0000001` | `{"double":1e-7}` | `1e-7` |
+| number written out in full | `1000000000000000000000` | `{"double":1e+21}` | `1e+21` |
 
 ## 7. Conformance requirements
 
@@ -545,6 +883,9 @@ of this run re-run whole, and a hot loop inside one transaction is one region.
 | `ERR_DURABLE_SUSPEND_FORBIDDEN` | a park was attempted inside a zone declaring `noSuspend`, quoting that zone's own reason |
 | `ERR_DURABLE_TARGET_UNENCODABLE` | a step target could not be written down completely enough to cross a process boundary (§5.3) |
 | `ERR_DURABLE_TARGET_UNDECODABLE` | a step target arrived malformed, or in an encoding version this runtime does not read (§5.3) |
+| `ERR_DURABLE_ENTRY_UNDECODABLE` | a journal entry records its value under a codec version this runtime does not read (§5.2) |
+| `ERR_TYPED_FRAME_UNENCODABLE` | a value outside the CEL value domain was given to a typed frame writer, at its path inside the value (§6.1) |
+| `ERR_TYPED_FRAME_UNDECODABLE` | a typed frame is malformed, carries an unknown tag or a non-canonical payload, at its path inside the frame (§6.2) |
 
 ## 10. What v1.1 deliberately leaves out
 

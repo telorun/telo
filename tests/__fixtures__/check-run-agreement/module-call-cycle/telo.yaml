@@ -1,0 +1,8 @@
+# Imports the library next door. Its analysis is entry-scoped, so the library's
+# call cycle is invisible here by design — the kernel's own guard refuses it.
+kind: Telo.Application
+metadata:
+  name: CallCycleApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
