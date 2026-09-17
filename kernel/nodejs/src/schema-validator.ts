@@ -1,4 +1,3 @@
-import { evaluate } from "@marcbachmann/cel-js";
 import { DataValidator, isCompiledValue, NOOP_LOGGER, RuntimeError, TypeRule, type Logger } from "@telorun/sdk";
 import AjvModule, { type ValidateFunction } from "ajv";
 import standaloneCodeMod from "ajv/dist/standalone/index.js";
@@ -7,10 +6,17 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
-import { ManifestRootSchema, registerTeloKeywords } from "@telorun/analyzer";
-import { X_TELO_TYPE } from "@telorun/sdk";
-import { mergeFilledDefaults, withBigIntsAsNumbers } from "./bigint-schema-view.js";
+import {
+  ManifestRootSchema,
+  registerTeloKeywords,
+  schemaIssues,
+  VALUE_TYPE_KEYWORD_VERSION,
+  type SchemaIssue,
+} from "@telorun/analyzer";
+import { CEL_SCALAR_FORMS, PLAIN_ENCODINGS, VALUE_TYPES, X_TELO_TYPE } from "@telorun/sdk";
+import { bigIntView, mergeFilledDefaults } from "./bigint-schema-view.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
+import { ruleCondition, stampRuleCallNames } from "./type-rule-condition.js";
 
 /** Render a value for an error message without ever throwing — the offending
  *  data may be cyclic, and a throw here would REPLACE the validation failure
@@ -20,6 +26,18 @@ function describeValue(data: unknown): string {
     return JSON.stringify(data) ?? String(data);
   } catch {
     return String(data);
+  }
+}
+
+/** A value its schema refuses, carrying the reduced, path-anchored issues the
+ *  message was rendered from — so a caller answering someone outside Telo (an
+ *  HTTP 400) can say where, not only what. */
+export class SchemaValidationError extends RuntimeError {
+  constructor(
+    message: string,
+    readonly issues: SchemaIssue[],
+  ) {
+    super("ERR_RESOURCE_SCHEMA_VALIDATION_FAILED", message);
   }
 }
 import {
@@ -79,7 +97,21 @@ function readDepVersion(spec: string): string {
 }
 const AJV_VERSION = readDepVersion("ajv");
 const AJV_FORMATS_VERSION = readDepVersion("ajv-formats");
-const VALIDATOR_RUNTIME_TAG = `ajv@${AJV_VERSION}+ajv-formats@${AJV_FORMATS_VERSION}`;
+/** The `x-telo-type` keyword emits code and messages from the value-type
+ *  vocabulary, its codecs and its scalar ranges, so a cached validator built
+ *  against another vocabulary would assert the wrong thing — or nothing. */
+const VALUE_TYPE_DIGEST = createHash("sha256")
+  .update(
+    JSON.stringify({
+      keyword: VALUE_TYPE_KEYWORD_VERSION,
+      entries: [...VALUE_TYPES.values()],
+      encodings: Object.entries(PLAIN_ENCODINGS).map(([name, codec]) => [name, codec.form]),
+      scalars: Object.entries(CEL_SCALAR_FORMS).map(([name, row]) => [name, row.form, row.range?.describe]),
+    }),
+  )
+  .digest("hex")
+  .slice(0, 16);
+const VALIDATOR_RUNTIME_TAG = `ajv@${AJV_VERSION}+ajv-formats@${AJV_FORMATS_VERSION}+value-types@${VALUE_TYPE_DIGEST}`;
 
 const SHA256_HEADER_PATTERN = /^\/\/ sha256:([0-9a-f]{64})\n/;
 
@@ -284,7 +316,10 @@ export class SchemaValidator {
     return this.rawSchemas.get(name);
   }
 
-  addTypeRules(name: string, rules: TypeRule[]): void {
+  /** `callNames` are the names the module declaring the rules resolves CEL calls
+   *  through (see `type-rule-condition.ts`). */
+  addTypeRules(name: string, rules: TypeRule[], callNames: ReadonlySet<string>): void {
+    stampRuleCallNames(rules, callNames);
     this.typeRules.set(name, rules);
   }
 
@@ -323,12 +358,15 @@ export class SchemaValidator {
       if (cached) return cached;
     }
 
+    // A value type is a whole schema too: an instance has no JSON `type`, and no
+    // property map can name a property `x-telo-type`.
     const isFullSchema =
       ("type" in schema && typeof schema.type === "string") ||
       "allOf" in schema ||
       "anyOf" in schema ||
       "oneOf" in schema ||
-      "$ref" in schema;
+      "$ref" in schema ||
+      X_TELO_TYPE in schema;
     const normalized = isFullSchema
       ? schema
       : {
@@ -383,12 +421,13 @@ export class SchemaValidator {
     // AJV's type check is `typeof data == "number"`, so a CEL integer — a BigInt —
     // is rejected at an `integer` slot no matter what the author writes. Check a
     // normalized VIEW instead and merge the `useDefaults` fills back, so the value
-    // that reaches the controller keeps its 64-bit range. `withBigIntsAsNumbers`
-    // returns the same reference when there was nothing to normalize, which is what
-    // keeps the BigInt-free path byte-identical to a plain `validate(data)`.
+    // that reaches the controller keeps its 64-bit range. The view is the same
+    // reference when there was nothing to normalize, which is what keeps the
+    // BigInt-free path identical to a plain `validate(data)`; its context locates
+    // the root, so a range check can tell a rendered wide integer from a written one.
     const check = (data: any): boolean => {
-      const view = withBigIntsAsNumbers(data);
-      const ok = validate(view);
+      const { view, context } = bigIntView(data);
+      const ok = validate(view, context);
       if (ok && view !== data) mergeFilledDefaults(data, view);
       return ok;
     };
@@ -399,9 +438,9 @@ export class SchemaValidator {
           // Reports `data`, not the normalized view: the view renders a wide
           // integer through a double, so the digits it prints for the offending
           // value would not be the ones the author wrote.
-          throw new RuntimeError(
-            "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
+          throw new SchemaValidationError(
             `Invalid value passed: ${describeValue(data)}. Error: ${formatAjvErrors(validate.errors)}`,
+            schemaIssues(validate.errors),
           );
         }
       },
@@ -494,7 +533,7 @@ export class SchemaValidator {
         for (const rule of rules) {
           let result: unknown;
           try {
-            result = evaluate(rule.condition, { this: data });
+            result = ruleCondition(rule)(data);
           } catch (err) {
             throw new RuntimeError(
               "ERR_TYPE_VALIDATION_FAILED",
@@ -513,7 +552,7 @@ export class SchemaValidator {
         if (!base.isValid(data)) return false;
         for (const rule of rules) {
           try {
-            if (evaluate(rule.condition, { this: data }) !== true) return false;
+            if (ruleCondition(rule)(data) !== true) return false;
           } catch {
             return false;
           }

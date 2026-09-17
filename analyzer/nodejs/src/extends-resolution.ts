@@ -33,6 +33,9 @@ interface DefinitionBody {
   outputType?: unknown;
   inputs?: unknown;
   result?: unknown;
+  params?: unknown;
+  returns?: unknown;
+  deterministic?: unknown;
 }
 
 const body = (def: ResourceDefinition | undefined): DefinitionBody =>
@@ -199,6 +202,24 @@ export function publishedOwnFields(
  *  returns. */
 export type ContractDirection = "inputType" | "outputType";
 
+/** The two halves of a callable's signature. `params` is the ordered argument
+ *  list a call site fills; `returns` is what the call evaluates to. */
+export type SignatureDirection = "params" | "returns";
+
+/**
+ * Every declaration that resolves to the NEAREST along `extends` and REPLACES
+ * rather than merges: the invocation contract's two directions and the callable
+ * signature's two halves.
+ *
+ * One union, because the layering rule is one rule. A signature is a call
+ * signature exactly as `inputType` / `outputType` are, and the argument for not
+ * merging is the same: folding a child's parameters into its parent's yields a
+ * list no caller can satisfy. Keeping {@link ContractDirection} narrow is what
+ * stops the widening rippling into the kernel's per-direction error table, which
+ * genuinely has only the two entries.
+ */
+export type ReplacingDeclaration = ContractDirection | SignatureDirection;
+
 /**
  * The **nearest declaration** of an invocation contract along the `extends`
  * chain, self first — the raw type-field value, still to be resolved to a schema
@@ -222,7 +243,7 @@ export type ContractDirection = "inputType" | "outputType";
 export function effectiveContractField(
   def: ResourceDefinition | undefined,
   resolve: DefResolver,
-  direction: ContractDirection,
+  direction: ReplacingDeclaration,
 ): unknown {
   const own = body(def)[direction];
   if (own !== undefined && own !== null) return own;
@@ -240,7 +261,7 @@ export function effectiveContractField(
 export function contractDeclarer(
   def: ResourceDefinition | undefined,
   resolve: DefResolver,
-  direction: ContractDirection,
+  direction: ReplacingDeclaration,
 ): ResourceDefinition | undefined {
   if (!def) return undefined;
   const own = body(def)[direction];

@@ -11,6 +11,7 @@ import {
 import { isAmbientContractErrorCode } from "./contract-errors.js";
 import {
   durableHandleOf,
+  GUARD_DECISION_SEGMENT,
   journalingSuppressed,
   stepPath,
   type DurableRunHandle,
@@ -225,7 +226,6 @@ export async function executeInvokeStep(
   state: InvokeStepState,
 ): Promise<void> {
   const cel = { steps: state.steps, ...state.cel };
-  if (step.when !== undefined && !ctx.expandValue(step.when, cel)) return;
 
   const rawHandle = durableHandleOf(state.invokeCtx);
   // Inside a collapsed region the engine records NOTHING of its own: the region
@@ -236,6 +236,20 @@ export async function executeInvokeStep(
   const handle =
     rawHandle && journalingSuppressed(ctx, state.invokeCtx, rawHandle) ? undefined : rawHandle;
   const path = state.journalPath ?? step.name;
+
+  // The guard is a decision point like `inputs`: re-derived on a resume, a guard
+  // reading a clock or observed state can turn false for a step whose effect
+  // already happened, skipping it and leaving `steps.<name>` unset. Keyed in a
+  // reserved segment, since the body this step dispatches hangs its own steps
+  // directly under `path` and one of them may be named `when`.
+  if (step.when !== undefined) {
+    const proceed = handle
+      ? await handle.decide(stepPath(path, GUARD_DECISION_SEGMENT), "predicate", () =>
+          ctx.expandValue(step.when, cel),
+        )
+      : ctx.expandValue(step.when, cel);
+    if (!proceed) return;
+  }
 
   // The RESOLVED inputs are journaled, not re-derived. They are read from a CEL
   // scope carrying live readings — `resources.<name>.status` is republished on

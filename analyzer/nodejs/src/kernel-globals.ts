@@ -65,6 +65,9 @@ export function buildKernelGlobalsIndex(
    *  closed `status` node; every other resource node stays open, so no flat read
    *  that passes today can start failing. */
   resources?: ReadonlyMap<string, { kind: string; status?: Record<string, any> }>,
+  /** Which resources are functions. A function publishes no reading, so its
+   *  name is absent from `resources` and a read of it is an unknown field. */
+  functions?: { isFunction(manifest: ResourceManifest): boolean },
 ): KernelGlobalsIndex {
   const entryDoc =
     (manifests.find((m) => m.kind === "Telo.Application") as
@@ -76,7 +79,12 @@ export function buildKernelGlobalsIndex(
 
   const entrySchema = globalsSchema(
     entryDoc,
-    buildResourcesSchema(manifests, resources, entryDoc?.metadata?.name as string | undefined),
+    buildResourcesSchema(
+      manifests,
+      resources,
+      entryDoc?.metadata?.name as string | undefined,
+      functions,
+    ),
   );
   const openResources = { type: "object", additionalProperties: true };
   const byModule = new Map<string, Record<string, any>>();
@@ -141,8 +149,10 @@ function buildResourcesSchema(
     | ReadonlyMap<string, { kind: string; status?: Record<string, any>; forwardedFrom?: string }>
     | undefined,
   entryModule: string | undefined,
+  functions: { isFunction(manifest: ResourceManifest): boolean } | undefined,
 ): Record<string, any> {
   const resourceProps: Record<string, any> = {};
+  const withheld = new Set<string>();
   for (const m of manifests) {
     const name = m.metadata?.name as string | undefined;
     if (!name || !m.kind) continue;
@@ -163,15 +173,18 @@ function buildResourcesSchema(
     }
     // Telo.Import snapshots are stored under resources.<alias> at runtime,
     // so they appear here alongside regular resources.
-    if (!SYSTEM_KINDS.has(m.kind)) {
-      resourceProps[name] = { type: "object", additionalProperties: true };
+    if (SYSTEM_KINDS.has(m.kind)) continue;
+    if (functions?.isFunction(m)) {
+      withheld.add(name);
+      continue;
     }
+    resourceProps[name] = { type: "object", additionalProperties: true };
   }
   // Scope-declared resources (a `Run.Sequence`'s `with:`) publish like any other
   // now, so their names resolve too — inside the scope's regions, which is where
   // the only expressions that can name them live.
   for (const [key, entry] of resources ?? []) {
-    if (key.includes(".") || entry.forwardedFrom !== undefined) continue;
+    if (key.includes(".") || entry.forwardedFrom !== undefined || withheld.has(key)) continue;
     resourceProps[key] ??= { type: "object", additionalProperties: true };
     if (entry.status) applyObservedStateNode(resourceProps, key, entry.status);
   }

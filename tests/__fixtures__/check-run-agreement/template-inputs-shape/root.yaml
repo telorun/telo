@@ -1,0 +1,45 @@
+# A template kind's top-level `inputs:` against a body entry whose input contract
+# is a named shape: the RFC 3339 literal reaches the entry as a timestamp, and
+# the entry's declared output refuses any other answer.
+kind: Telo.Application
+metadata:
+  name: TemplateInputsShapeRoot
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+targets:
+  - name: stamped
+    invoke: !ref stamp
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Window
+schema:
+  type: object
+  required: [opens]
+  properties:
+    opens: { x-telo-type: Telo.Timestamp }
+---
+kind: Telo.Definition
+metadata:
+  name: Stamp
+  description: Checks the fixed instant its body is handed is an instant.
+capability: Telo.Invocable
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    inputType: !ref Window
+    outputType:
+      kind: Telo.JsonSchema
+      schema: { type: boolean, const: true }
+    value: !cel "inputs.opens + duration('1h') == timestamp('2026-01-15T10:30:00Z')"
+invoke: !ref body
+inputs:
+  opens: "2026-01-15T11:30:00+02:00"
+---
+kind: Self.Stamp
+metadata:
+  name: stamp

@@ -1,24 +1,27 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { visitManifest } from "./manifest-visitor.js";
+import { isSchemaFromSite, schemaFromSites } from "./schema-from-sites.js";
 import {
   isInlineResource,
-  resolveFieldEntries,
-  resolveFieldValues,
   satisfiesValueBranch,
   type RefFieldEntry,
 } from "./reference-field-map.js";
-import { navigateJsonPointer, substituteCelFields } from "./schema-compat.js";
+import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
-import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } from "./types.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
+import { resolveScopedName } from "./call-graph.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import { outsideScopesOf } from "./scope-declarations.js";
 import { isForwardedDeclaration, isForwardedExport } from "./forwarded-declaration.js";
+import { CallableFlagsIndex } from "./callable-flags.js";
+import { callableSlotVerdict, type CallableSlotContext } from "./callable-slot.js";
+import { moduleCallNamesByModule } from "./module-call-names.js";
+import { ModuleFunctionIndex } from "./module-function-index.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -288,6 +291,9 @@ function checkKind(
 export function validateReferences(
   resources: ResourceManifest[],
   context: AnalysisContext,
+  /** The analysis's own function index and flags, when the caller built them —
+   *  one per analysis rather than one per pass. */
+  shared?: { readonly functions: ModuleFunctionIndex; readonly flags: CallableFlagsIndex },
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const aliases = context.aliases;
@@ -369,6 +375,54 @@ export function validateReferences(
   const byName = new Map<string, ResourceManifest>();
   for (const [name, list] of byNameAll) byName.set(name, list[0]);
 
+  // A function in a slot constrained to a callable abstract satisfies it by
+  // structure as well as by `extends` (`callable-slot.ts`). Built on first use:
+  // most analyses hold no such slot.
+  let callableSlots: CallableSlotContext | undefined;
+  const callableSlotContext = (): CallableSlotContext => {
+    if (!callableSlots) {
+      let functions = shared?.functions;
+      let flags = shared?.flags;
+      if (!functions || !flags) {
+        const rootModules = new Set<string>();
+        for (const r of resources) {
+          if (isModuleKind(r.kind) && typeof r.metadata?.name === "string") {
+            rootModules.add(r.metadata.name);
+          }
+        }
+        functions = new ModuleFunctionIndex(
+          resources,
+          registry,
+          aliases,
+          aliasesByModule ?? new Map(),
+          rootModules,
+        );
+        flags = new CallableFlagsIndex(functions, moduleCallNamesByModule(resources));
+      }
+      callableSlots = {
+        resources,
+        registry,
+        resolveDef: (kind) => registry.resolve(kind) ?? registry.resolve(aliases.resolveKind(kind) ?? kind),
+        functions,
+        flags,
+      };
+    }
+    return callableSlots;
+  };
+  /** The nominal verdict at a slot, overruled where a function stands in for a
+   *  callable abstract by structure — and explained by it where it does not. */
+  const kindVerdict = (
+    kindErrors: string[],
+    referent: ResourceManifest | undefined,
+    label: string,
+    entry: RefFieldEntry,
+  ): string[] => {
+    if (kindErrors.length === 0 || !referent) return kindErrors;
+    const verdict = callableSlotVerdict(referent, label, entry.refs, callableSlotContext());
+    if (!verdict) return kindErrors;
+    return verdict.satisfied ? [] : [...verdict.reasons];
+  };
+
   // Phase 3 — per-ref validation. The walker supplies each ref site already
   // resolved against the schema-from-expanded field map, with its source
   // enclosure (`inScope`) and the scope manifests visible to it — so this
@@ -435,12 +489,11 @@ export function validateReferences(
             });
             return;
           }
-          const kindErrors = checkKind(
-            target.kind as string,
+          const kindErrors = kindVerdict(
+            checkKind(target.kind as string, entry, registry, aliases, isInjectedDeclaration(target)),
+            target,
+            refName,
             entry,
-            registry,
-            aliases,
-            isInjectedDeclaration(target),
           );
           if (kindErrors.length > 0) {
             diagnostics.push({
@@ -496,12 +549,19 @@ export function validateReferences(
             ? (visibleScopeManifests.find((m) => m.metadata?.name === refVal.name) ??
               byName.get(refVal.name))
             : undefined;
-        const kindErrors = checkKind(
-          refVal.kind,
+        const crossModule = typeof refVal.alias === "string" && refVal.alias !== "Self";
+        const referentModule = crossModule
+          ? aliases.moduleForAlias(refVal.alias as string)
+          : undefined;
+        const kindErrors = kindVerdict(
+          checkKind(refVal.kind, entry, registry, aliases, isInjectedDeclaration(objectTarget)),
+          crossModule
+            ? referentModule
+              ? byModuleName.get(`${referentModule}\0${refVal.name}`)
+              : undefined
+            : objectTarget,
+          crossModule ? `${refVal.alias}.${refVal.name}` : refVal.name,
           entry,
-          registry,
-          aliases,
-          isInjectedDeclaration(objectTarget),
         );
         if (kindErrors.length > 0) {
           diagnostics.push({
@@ -567,238 +627,85 @@ export function validateReferences(
     {
       onSchemaFrom: (e) => {
         const r = e.source;
-        const fieldPath = e.fieldPath;
         const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
         const resourceData = { kind: r.kind, name: r.metadata!.name as string };
         const filePath = (r.metadata as { source?: string } | undefined)?.source;
 
-        const { schemaFrom } = e.entry;
-        const isAbsolute = schemaFrom.startsWith("/");
-        const expr = isAbsolute ? schemaFrom.slice(1) : schemaFrom;
-        const slashIdx = expr.indexOf("/");
-        if (slashIdx === -1) {
-          diagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            code: "INVALID_SCHEMA_FROM",
-            source: SOURCE,
-            message: `${resourceLabel}: x-telo-schema-from "${schemaFrom}" must contain at least one "/" to separate anchor from JSON Pointer`,
-            data: { resource: resourceData, filePath, path: fieldPath },
+        // The slot's schema comes from the shared reader, which the kernel
+        // decodes literals through at creation. CEL leaves become schema-shaped
+        // placeholders and plain-encoded literals are decoded before AJV runs:
+        // a slot anchored at a shared value-shape is overwhelmingly written as
+        // expressions, so validating it raw reports every one of them.
+        const sites = schemaFromSites(r as Record<string, any>, e.fieldPath, e.entry.schemaFrom, {
+          defs: registry,
+          aliases,
+          aliasesByModule: aliasesByModule ?? new Map(),
+          rootModules: new Set(),
+          typeManifests: resources as Record<string, any>[],
+          // In the reading resource's scope, as the kernel resolves it: a bare
+          // name same module first, an alias through that module's import.
+          resolveTarget: (ref) => {
+            if (typeof ref.name !== "string") return undefined;
+            if (typeof ref.alias === "string" && ref.alias !== "Self") {
+              const target = moduleAliasScope(r.metadata, aliases, aliasesByModule).moduleForAlias(
+                ref.alias,
+              );
+              return target === undefined
+                ? undefined
+                : (byModuleName.get(`${target}\0${ref.name}`) as Record<string, any> | undefined);
+            }
+            return resolveScopedName(byNameAll.get(ref.name), moduleOf, moduleOf(r)) as
+              | Record<string, any>
+              | undefined;
+          },
+        });
+        for (const site of sites) {
+          if (!isSchemaFromSite(site)) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: site.code,
+              source: SOURCE,
+              message: site.message,
+              data: { resource: resourceData, filePath, path: site.path },
+            });
+            continue;
+          }
+          // An enumerated derived slot: the kernel decodes it at creation.
+          const substituted = substituteDecodedCelFields(site.value, site.schema, undefined, {
+            external: (ref) => registry.schemaForId(ref),
           });
-          return;
-        }
-
-        const anchorName = expr.slice(0, slashIdx);
-        const jsonPointer = "/" + expr.slice(slashIdx + 1);
-
-        // Aliased absolute kind path — first segment carries a dot, e.g.
-        // "HttpDispatch.Outcomes/$defs/Returns". Resolves the alias through the
-        // *kind owner's* scope (not the consumer's), navigates the JSON Pointer
-        // into the resolved definition's schema, and validates each field value.
-        //
-        // Relative anchors are property names that cannot contain a dot
-        // (CEL-style identifiers), so a dot in anchorName is unambiguous.
-        if (!isAbsolute && anchorName.includes(".")) {
-          const resolvedResourceKind = aliases.resolveKind(r.kind) ?? r.kind;
-          const resourceDef =
-            registry.resolve(r.kind) ?? registry.resolve(resolvedResourceKind);
-          const ownerScope = moduleAliasScope(resourceDef?.metadata, aliases, aliasesByModule);
-
-          const targetKind = ownerScope.resolveKind(anchorName);
-          if (!targetKind) {
-            // Names the ALIAS, not the whole kind path: the alias is what an
-            // author declares, and the usual cause is the import that binds it
-            // having failed — which is reported on its own line.
-            const aliasName = anchorName.slice(0, anchorName.indexOf("."));
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "SCHEMA_FROM_MISSING_PATH",
-              source: SOURCE,
-              message:
-                `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → cannot resolve alias ` +
-                `'${aliasName}' (in '${anchorName}'). Check the import that declares it.`,
-              data: { resource: resourceData, filePath, path: fieldPath },
-            });
-            return;
-          }
-
-          const targetDef = registry.resolve(targetKind);
-          if (!targetDef?.schema) {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "SCHEMA_FROM_MISSING_PATH",
-              source: SOURCE,
-              message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${targetKind}' has no schema`,
-              data: { resource: resourceData, filePath, path: fieldPath },
-            });
-            return;
-          }
-
-          const subSchema = navigateJsonPointer(targetDef.schema, jsonPointer);
-          if (subSchema === undefined) {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "SCHEMA_FROM_MISSING_PATH",
-              source: SOURCE,
-              message: `${resourceLabel}: x-telo-schema-from at '${fieldPath}' → kind '${targetKind}' has no schema path '${jsonPointer}'`,
-              data: { resource: resourceData, filePath, path: fieldPath },
-            });
-            return;
-          }
-
-          for (const { value: fieldValue, path: concretePath } of resolveFieldEntries(r, fieldPath)) {
-            if (fieldValue == null) continue;
-            // CEL leaves become schema-shaped placeholders first, exactly as the
-            // sibling-ref branch below does and for the same reason: a slot
-            // anchored at a shared value-shape is overwhelmingly written as
-            // expressions, so validating it raw reports every one of them as a
-            // type error and the check fires only on the literal case nobody
-            // writes. Omitting it here made one annotation mean two different
-            // things depending on which branch resolved it — a `when:` typed
-            // `boolean` accepted a `!cel` at a route's inline slot and rejected
-            // the identical expression at a slot anchored on the carrier that
-            // declares that very shape.
-            const substituted = substituteCelFields(
-              fieldValue,
-              subSchema as Record<string, any>,
-            );
-            // Anchored at the offending node INSIDE the value, not at the slot:
-            // a `returns:` list is an array of entries, and reporting every one
-            // of its issues on the `returns:` line puts three diagnostics on one
-            // line and none on the entry that is wrong.
-            const issues = registry.validateResourceConfig(
-              substituted,
-              subSchema as Record<string, any>,
-            );
-            for (const issue of issues) {
+          if (site.form !== "anchored") {
+            const against = site.form === "instance" ? site.source : `schema from '${site.source}'`;
+            for (const issue of registry.validateWithRefs(substituted, site.schema)) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 code: "DEPENDENT_SCHEMA_MISMATCH",
                 source: SOURCE,
-                message: `${resourceLabel}: '${concretePath}' does not match schema from '${anchorName}${jsonPointer}': ${issue.message}`,
-                data: {
-                  resource: resourceData,
-                  filePath,
-                  // An index-first sub-path (`[0].content`) joins with no dot.
-                  path: !issue.path
-                    ? concretePath
-                    : issue.path.startsWith("[")
-                      ? `${concretePath}${issue.path}`
-                      : `${concretePath}.${issue.path}`,
-                },
+                message: `${resourceLabel}: '${site.path}' does not match ${against}: ${issue}`,
+                data: { resource: resourceData, filePath, path: site.path },
               });
             }
-          }
-          return;
-        }
-
-        // Derive the anchor path in the resource config.
-        let anchorPath: string;
-        if (isAbsolute) {
-          anchorPath = anchorName;
-        } else {
-          // Relative: replace the last dot-segment of fieldPath with anchorName.
-          // e.g. "nodes[].options" → "nodes[].backend"
-          const lastDot = fieldPath.lastIndexOf(".");
-          anchorPath = lastDot === -1 ? anchorName : fieldPath.slice(0, lastDot + 1) + anchorName;
-        }
-
-        const anchorValues = resolveFieldValues(r, anchorPath);
-        if (anchorValues.length === 0) return; // anchor field not set — nothing to validate
-
-        const fieldEntries = resolveFieldEntries(r, fieldPath);
-
-        for (let i = 0; i < fieldEntries.length; i++) {
-          const { value: fieldValue, path: concretePath } = fieldEntries[i];
-          if (fieldValue == null) continue;
-
-          // For absolute paths, the single anchor applies to all field values.
-          const anchorVal = isAbsolute ? anchorValues[0] : anchorValues[i];
-          if (!anchorVal || typeof anchorVal !== "object") continue;
-
-          const refVal = anchorVal as Record<string, unknown>;
-          if (typeof refVal.kind !== "string") continue;
-
-          // THE INSTANCE FIRST, then the kind — the layering
-          // `x-telo-context-ref-from` already uses, and for the same reason. A
-          // kind that declares one fixed shape declares it on its definition; a
-          // kind whose shape is per instance declares it as a FIELD, and reading
-          // only the definition would type every instance against nothing. A
-          // `Durable.Await`'s `outputType:` is exactly the second: what a
-          // delivery carries is a property of that await and of no other, so a
-          // delivery naming it must be checked against the instance's own.
-          const target =
-            typeof refVal.name === "string" ? byName.get(refVal.name) : undefined;
-          const perInstance =
-            target === undefined
-              ? undefined
-              : navigateJsonPointer(target as Record<string, unknown>, jsonPointer);
-          if (perInstance !== undefined) {
-            const instanceSchema = resolveTypeFieldToSchema(
-              perInstance,
-              resources as Record<string, any>[],
-            );
-            if (instanceSchema) {
-              // CEL leaves become schema-shaped placeholders first. A payload is
-              // overwhelmingly written as expressions over the call's inputs, so
-              // validating it raw would report every one of them as a type
-              // error — the check would fire only on the literal case, which is
-              // the case nobody writes. What survives substitution is exactly
-              // what is worth reporting: a missing required field, an unknown
-              // property, a literal of the wrong type. The same treatment
-              // `x-telo-value-schema-from` documents.
-              const substituted = substituteCelFields(
-                fieldValue,
-                instanceSchema as Record<string, any>,
-              );
-              for (const issue of registry.validateWithRefs(
-                substituted,
-                instanceSchema as Record<string, any>,
-              )) {
-                diagnostics.push({
-                  severity: DiagnosticSeverity.Error,
-                  code: "DEPENDENT_SCHEMA_MISMATCH",
-                  source: SOURCE,
-                  message: `${resourceLabel}: '${concretePath}' does not match the schema '${refVal.name}' declares at '${jsonPointer}': ${issue}`,
-                  data: { resource: resourceData, filePath, path: concretePath },
-                });
-              }
-              continue;
-            }
-          }
-
-          const refResolvedKind = aliases.resolveKind(refVal.kind) ?? refVal.kind;
-          const refDef = registry.resolve(refVal.kind) ?? registry.resolve(refResolvedKind);
-          if (!refDef?.schema) {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "SCHEMA_FROM_MISSING_PATH",
-              source: SOURCE,
-              message: `${resourceLabel}: x-telo-schema-from at '${concretePath}' → kind '${refVal.kind}' has no schema`,
-              data: { resource: resourceData, filePath, path: concretePath },
-            });
             continue;
           }
-
-          const subSchema = navigateJsonPointer(refDef.schema, jsonPointer);
-          if (subSchema === undefined) {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "SCHEMA_FROM_MISSING_PATH",
-              source: SOURCE,
-              message: `${resourceLabel}: x-telo-schema-from at '${concretePath}' → kind '${refVal.kind}' has no schema path '${jsonPointer}'`,
-              data: { resource: resourceData, filePath, path: concretePath },
-            });
-            continue;
-          }
-
-          const issues = registry.validateWithRefs(fieldValue, subSchema as Record<string, any>);
-          for (const issue of issues) {
+          // Anchored at the offending node INSIDE the value, not at the slot: a
+          // `returns:` list is an array of entries, and reporting every issue on
+          // the `returns:` line puts them all on one line and none on the entry.
+          for (const issue of registry.validateResourceConfig(substituted, site.schema)) {
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               code: "DEPENDENT_SCHEMA_MISMATCH",
               source: SOURCE,
-              message: `${resourceLabel}: '${concretePath}' does not match schema from '${refVal.kind}${jsonPointer}': ${issue}`,
-              data: { resource: resourceData, filePath, path: concretePath },
+              message: `${resourceLabel}: '${site.path}' does not match schema from '${site.source}': ${issue.message}`,
+              data: {
+                resource: resourceData,
+                filePath,
+                // An index-first sub-path (`[0].content`) joins with no dot.
+                path: !issue.path
+                  ? site.path
+                  : issue.path.startsWith("[")
+                    ? `${site.path}${issue.path}`
+                    : `${site.path}.${issue.path}`,
+              },
             });
           }
         }

@@ -1,6 +1,9 @@
 import {
   InvokeError,
   StepEngine,
+  baseStepPath,
+  decideValue,
+  stepPath,
   turnStepPath,
   type InvokeContext,
   type ResourceContext,
@@ -98,13 +101,27 @@ class RunLoop {
         let previous: Record<string, unknown> | null = null;
 
         while (iteration < max) {
+          // PER TURN, journaled under its own key — the rule the engine's own
+          // `while` follows, for the same reason: the condition is read from a
+          // CEL scope carrying live readings, so a resume that re-evaluated it
+          // could stop the loop a turn early or run one more, against a journal
+          // recorded for the turns the run actually took. The key is qualified
+          // with the turn and is distinct from the body's prefix, so each turn
+          // stays an independently resumable subtree.
           if (
             this.resource.condition !== undefined &&
-            !this.ctx.expandValue(this.resource.condition, {
-              iteration: BigInt(iteration),
-              previous,
-              inputs,
-            })
+            !(await decideValue(
+              this.ctx,
+              invokeCtx,
+              stepPath(baseStepPath(invokeCtx), "while", iteration),
+              "condition",
+              () =>
+                this.ctx.expandValue(this.resource.condition, {
+                  iteration: BigInt(iteration),
+                  previous,
+                  inputs,
+                }),
+            ))
           ) {
             break;
           }

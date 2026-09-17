@@ -1,4 +1,3 @@
-import { evaluate } from "@marcbachmann/cel-js";
 import type {
   ResourceContext,
   ResourceInstance,
@@ -6,6 +5,7 @@ import type {
   TypeRule,
 } from "@telorun/sdk";
 import { canonicalTypeSchemaId, mergeTypeSchemas, RuntimeError } from "@telorun/sdk";
+import { ruleCondition } from "../../type-rule-condition.js";
 
 /**
  * `Telo.JsonSchema` — a named data shape.
@@ -38,7 +38,7 @@ class JsonSchemaType {
     for (const rule of this.rules) {
       let result: unknown;
       try {
-        result = evaluate(rule.condition, { this: data });
+        result = ruleCondition(rule)(data);
       } catch (err) {
         throw new RuntimeError(
           "ERR_TYPE_VALIDATION_FAILED",
@@ -107,7 +107,11 @@ export async function create(
   // resolve the reference; see `canonicalTypeSchemaId`.
   const moduleName = resource.metadata.module as string | undefined;
   if (moduleName) {
-    ctx.registerSchema(canonicalTypeSchemaId(moduleName, shortName), schema);
+    // Rules too: a contract that names this type through a resolved `!ref`
+    // resolves under this id, and its invariants must come with it.
+    const canonicalId = canonicalTypeSchemaId(moduleName, shortName);
+    ctx.registerSchema(canonicalId, schema);
+    ctx.registerTypeRules(canonicalId, rules);
   }
 
   return new JsonSchemaType(qualifiedName, rules, schema) as unknown as ResourceInstance;

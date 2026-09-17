@@ -9,6 +9,7 @@ import {
 } from "@telorun/http-dispatch";
 import {
   isInvokeError,
+  toPlainJson,
   SEVERITY,
   severityForLevel,
   type Invocable,
@@ -28,6 +29,11 @@ import Fastify, {
 import { fastifyReplySink } from "./fastify-reply-sink.js";
 import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
 import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
+import {
+  requestValidationEnvelope,
+  type RequestLocation,
+  type RequestValidationDetail,
+} from "./request-validation-envelope.js";
 
 /** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
  *  live instance into a mount's `mount` slot (x-telo-ref `Telo.Mount`) — cross-module refs
@@ -347,6 +353,10 @@ class HttpServer implements ResourceInstance {
   }
 
   private async setupPlugins() {
+    // A JSON body's reader is not Telo, so a CEL value in it is written as its
+    // plain form — RFC 3339 text for a timestamp, `"5400s"` for a duration,
+    // base64url for bytes — whether or not the route declares a response schema.
+    this.app.addHook("preSerialization", async (_request, _reply, payload) => toPlainJson(payload));
     this.installRequestLogging();
     this.installDefaultMultipartParser();
     for (const { contentType, parser, stream } of this.resource.contentTypeParsers ?? []) {
@@ -712,7 +722,7 @@ function convertFastifyValidationError(error: any): Record<string, any> | null {
   }
 
   const message = error.message || "";
-  const details = [];
+  const details: RequestValidationDetail[] = [];
 
   // Parse Fastify validation error message to extract location and field
   // Format examples:
@@ -720,7 +730,7 @@ function convertFastifyValidationError(error: any): Record<string, any> | null {
   // "body must be object"
   // "params.userId must be string"
 
-  let location = "body"; // default
+  let location: RequestLocation = "body"; // default
   let fieldPath = "";
   let validationMessage = "Validation failed";
 
@@ -759,10 +769,5 @@ function convertFastifyValidationError(error: any): Record<string, any> | null {
     });
   }
 
-  return {
-    error: "ValidationError",
-    message: "Request validation failed",
-    status: 400,
-    details,
-  };
+  return requestValidationEnvelope(details);
 }

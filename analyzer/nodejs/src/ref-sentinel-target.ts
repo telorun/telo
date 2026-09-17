@@ -34,6 +34,14 @@ export interface RefSentinelTarget {
   name: string;
 }
 
+const REF_SOURCE_RE = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/;
+
+/** True when `text` is what a `!ref` may carry — `<name>` or `<Alias>.<name>` —
+ *  so a repair can write it behind the tag verbatim. */
+export function isRefSourceSpelling(text: string): boolean {
+  return REF_SOURCE_RE.test(text);
+}
+
 /** Parse a `!ref` sentinel. Returns `undefined` for anything that is not one —
  *  including the `{kind, name}` object `resolveRefSentinels` rewrites it into,
  *  which is a different shape with a different reader. */

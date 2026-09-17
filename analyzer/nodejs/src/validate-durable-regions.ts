@@ -19,8 +19,16 @@
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue, VALUE_TYPES } from "@telorun/sdk";
-import { auditCalls, buildCelEnvironment, isTaggedSentinel, CEL_ENGINE } from "@telorun/templating";
+import {
+  auditCalls,
+  buildCelEnvironment,
+  isTaggedSentinel,
+  resolveModuleCalls,
+  CEL_ENGINE,
+} from "@telorun/templating";
 import type { CallGraph, CallGraphNode, StepGraphNode } from "./call-graph.js";
+import { renderChain, type CallableFlags } from "./callable-flags.js";
+import { moduleCallNamesOf } from "./module-call-names.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import {
   findZoneRegions,
@@ -46,7 +54,11 @@ const SOURCE = "telo";
  * "impure" any more than it is "pure" — a name the registry cannot account for
  * is `CEL_UNKNOWN_FUNCTION`'s to report, not this rule's to guess at.
  */
-function impureCalls(source: string): string[] {
+function impureCalls(
+  source: string,
+  moduleNames: ReadonlySet<string>,
+  moduleCallFlags: (qualified: string) => CallableFlags | undefined,
+): string[] {
   let ast;
   try {
     ast = CEL_ENV.parse(source).ast;
@@ -57,11 +69,20 @@ function impureCalls(source: string): string[] {
     // text-matching this replaced.
     return [];
   }
-  const names: string[] = [];
-  for (const call of auditCalls(source, ast, CEL_ENV).calls) {
-    if (call.deterministic === false && !names.includes(call.name)) names.push(call.name);
+  // Resolution first: a module call carries no catalog flag, so a call written
+  // `Billing.now(x)` must not inherit the catalog `now()`'s. What a module
+  // function's determinism IS is derived from the callable it resolves to, and
+  // named by the chain to the leaf that decided it.
+  resolveModuleCalls(ast, moduleNames);
+  const labels: string[] = [];
+  for (const call of auditCalls(source, ast, CEL_ENV, moduleCallFlags).calls) {
+    if (call.deterministic !== false) continue;
+    const label = call.moduleCall
+      ? renderChain(moduleCallFlags(call.name)?.nondeterministicVia ?? [call.name])
+      : `${call.name}()`;
+    if (!labels.includes(label)) labels.push(label);
   }
-  return names;
+  return labels;
 }
 
 /** One environment for the whole pass: it carries the function registry, which
@@ -168,6 +189,8 @@ function checkNondeterminism(
   region: ZoneRegion,
   graph: CallGraph,
   reportModules: ReadonlySet<string>,
+  moduleCallNames: ReadonlyMap<string, ReadonlySet<string>>,
+  moduleCallFlags: DurableRegionArgs["moduleCallFlags"],
   diagnostics: AnalysisDiagnostic[],
 ): void {
   for (const { node } of region.contents.values()) {
@@ -176,18 +199,23 @@ function checkNondeterminism(
     const found: Array<[string, string]> = [];
     celSources(base, prefix, found);
     for (const [path, source] of found) {
-      for (const fn of impureCalls(source)) {
+      for (const fn of impureCalls(
+        source,
+        moduleCallNamesOf(moduleCallNames, manifest),
+        (qualified) => moduleCallFlags(manifest, qualified),
+      )) {
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
           code: "DURABLE_NONDETERMINISM",
           source: SOURCE,
           message:
-            `'${fn}()' is evaluated inside a region declared idempotent by ` +
+            `'${fn}' is evaluated inside a region declared idempotent by ` +
             `${region.provider.kind} '${region.provider.name}' — "${region.reason}". A ` +
             `region with that claim re-runs on a resume with its earlier effects intact, ` +
             `so an expression that produces a different value each time makes the ` +
             `re-run something other than a no-op and the claim false. Pin the value ` +
-            `once for the region instead of computing it per pass.`,
+            `once for the region instead of computing it per pass. A native function ` +
+            `counts as deterministic only where its kind declares \`deterministic: true\`.`,
           data: {
             resource: { kind: manifest.kind, name: manifest.metadata?.name as string },
             filePath: (manifest.metadata as { source?: string } | undefined)?.source,
@@ -374,6 +402,12 @@ export interface DurableRegionArgs {
   /** Only report against modules the entry owns — a published dependency's body
    *  is not the consumer's to fix, the `X_TELO_REF_UNRESOLVED` precedent. */
   reportModules: ReadonlySet<string>;
+  /** CEL call names per declaring module, so a module call in a replayed region
+   *  is not read as the catalog function of the same bare name. */
+  moduleCallNames: ReadonlyMap<string, ReadonlySet<string>>;
+  /** The derived flags of the function a module call, written in `caller`'s
+   *  module, reaches (`callable-flags.ts`). */
+  moduleCallFlags: (caller: ResourceManifest, qualified: string) => CallableFlags | undefined;
 }
 
 /** Every durable-region diagnostic, over one graph. */
@@ -391,7 +425,14 @@ export function validateDurableRegions(args: DurableRegionArgs): AnalysisDiagnos
     );
   }
   for (const region of findZoneRegions(args.graph, args.resolveDef, "idempotent")) {
-    checkNondeterminism(region, args.graph, args.reportModules, diagnostics);
+    checkNondeterminism(
+      region,
+      args.graph,
+      args.reportModules,
+      args.moduleCallNames,
+      args.moduleCallFlags,
+      diagnostics,
+    );
   }
 
   return diagnostics;

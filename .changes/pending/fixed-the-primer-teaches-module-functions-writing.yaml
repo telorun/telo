@@ -1,0 +1,7 @@
+modules:
+  apps/authoring-agent: Fixed
+body: The primer teaches module functions - writing a Telo.Function, calling it through
+  Self or an import alias, positional arguments, never declaring deterministic on it, no
+  recursion - and the Telo.Timestamp, Telo.Duration and Telo.Uint64 value types with
+  their text forms. It no longer says there is no now(), and no longer forbids a literal
+  at a byte slot, which reads base64url text.

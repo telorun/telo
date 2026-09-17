@@ -74,6 +74,7 @@ export class TeloRenameProvider implements vscode.RenameProvider {
       graph,
       document.uri.fsPath,
       docs,
+      this.cache.analysisFor(document.uri.fsPath),
     );
     if (!result.ok) throw new Error(result.reason);
 

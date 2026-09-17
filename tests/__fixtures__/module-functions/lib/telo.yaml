@@ -1,0 +1,128 @@
+# Functions called from every place an expression is evaluated: a compile-time
+# field (declared before the function it calls), a step guard, a pure step, a
+# `try:` whose function fails, and a template body — the last one called from an
+# application declaring a function of the same name, which it must not reach.
+kind: Telo.Library
+metadata:
+  name: FunctionsLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose resources call functions it declares, from a
+    compile-time field, a step guard, a pure step, a failing call and a
+    template body.
+imports:
+  Run: ../../../../modules/run
+exports:
+  kinds: [Greeter]
+  resources: [flow]
+---
+kind: Telo.Definition
+metadata:
+  name: Echo
+  description: Returns the value it was configured with.
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    value:
+      x-telo-eval: compile
+  required: [value]
+  additionalProperties: false
+controllers:
+  - pkg:telo/local/js?path=./echo.mjs#Echo
+---
+# Declared BEFORE the function its compile-time field calls.
+kind: Self.Echo
+metadata:
+  name: early
+value: !cel "Self.double(21)"
+---
+kind: Telo.Function
+metadata:
+  name: double
+  description: Doubles an integer.
+params:
+  - name: n
+    schema: { type: integer }
+returns:
+  schema: { type: integer }
+body: !cel "n * 2"
+---
+kind: Telo.Function
+metadata:
+  name: greet
+  description: Greets a name, ending with a mark that defaults to an exclamation point.
+params:
+  - name: who
+    schema: { type: string }
+  - name: mark
+    schema: { type: string, default: "!" }
+    optional: true
+returns:
+  schema: { type: string }
+body: !cel "'hello ' + who + mark"
+---
+kind: Telo.Function
+metadata:
+  name: divide
+  description: Divides ten by an integer.
+params:
+  - name: n
+    schema: { type: integer }
+returns:
+  schema: { type: integer }
+body: !cel "10 / n"
+---
+# A template whose body calls this library's `greet` — never the consumer's,
+# whatever the consumer declares under that name.
+kind: Telo.Definition
+metadata:
+  name: Greeter
+  description: Greets the name it was configured with, through the library's own greeting.
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    who: { type: string }
+  required: [who]
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: !cel "Self.greet(self.who)"
+invoke: !ref body
+---
+kind: Run.Sequence
+metadata:
+  name: flow
+steps:
+  - name: compiled
+    invoke: !ref early
+  - name: guarded
+    when: !cel "Self.double(2) == 4"
+    invoke:
+      kind: Run.Value
+      value: guard passed
+  - name: skipped
+    when: !cel "Self.double(2) == 5"
+    invoke:
+      kind: Run.Value
+      value: guard failed
+  - name: greeting
+    value: !cel "Self.greet('telo', '?')"
+  - name: attempt
+    try:
+      - name: divided
+        value: !cel "Self.divide(0)"
+    catch:
+      - name: failure
+        value: !cel "error.code"
+  - name: resourceScope
+    value: !cel "'double' in resources"
+outputs:
+  compiled: !cel "steps.compiled.result"
+  guarded: !cel "steps.guarded.result"
+  skipped: !cel "'skipped' in steps"
+  greeting: !cel "steps.greeting.result"
+  failure: !cel "steps.failure.result"
+  functionInResources: !cel "steps.resourceScope.result"

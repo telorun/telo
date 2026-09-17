@@ -4,7 +4,6 @@ metadata:
   version: 1.0.0
 imports:
   Run: ../../../modules/run
-  JavaScript: ../../../modules/javascript
 targets:
   - !ref badCalls
 ---
@@ -13,7 +12,7 @@ targets:
 # and the manifest re-checked. Both must be reported in a single pass.
 #
 # `startsWith` is registered only as `string.startsWith(string)`, so calling it
-# globally is a CALL FORM error, not a type error — no cast repairs it. `now`
+# globally is a CALL FORM error, not a type error — no cast repairs it. `no`
 # is registered under no form at all.
 kind: Run.Sequence
 metadata:
@@ -21,8 +20,13 @@ metadata:
 steps:
   - name: both
     inputs:
-      flag: !cel "startsWith(inputs.key, 'uploads/') && now() > 5"
+      flag: !cel "startsWith(inputs.key, 'uploads/') && no() > 5"
     invoke:
-      kind: JavaScript.Script
-      code: |
-        function main(input) { return input }
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            flag: { type: boolean }
+      value: !cel "inputs.flag"

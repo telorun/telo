@@ -126,6 +126,7 @@ When the Telo kernel executes an `Http.Request`, the underlying module must cons
 - **Payload serialization (body):**
   - If the `headers` include `content-type: application/json` (the default when `body` is an object), the module MUST serialize the `body` to a JSON string.
   - If the `content-type` is `application/x-www-form-urlencoded`, the module MUST serialize the object into a URL-encoded string.
+  - A CEL value in either form is written in its **plain encoding**, never type-tagged, because the receiving server is not Telo: a timestamp as RFC 3339 text in UTC (`"2026-01-15T07:30:00.000Z"`), a duration as seconds (`"5400s"`), bytes inside a JSON object as base64url, a `uint` as its digits, NaN and ±Infinity as `"NaN"` / `"Infinity"` / `"-Infinity"`, and a map with int or bool keys as an object keyed by their text.
   - **Raw bytes** (`Telo.Bytes`) and a **byte stream** (`Telo.Stream of Telo.Bytes`) MUST be sent verbatim, never serialized. They default the content type to `application/octet-stream` where the request declares none.
   - A **string** body is sent as-is unless `bodyEncoding: base64`, which decodes it to bytes first — the escape hatch for a payload that reaches the manifest as text.
 

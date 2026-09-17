@@ -1,5 +1,5 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { InvokeError, Stream } from "@telorun/sdk";
+import { InvokeError, Stream, writePlainJson } from "@telorun/sdk";
 
 interface EncoderResource {
   metadata: { name: string; module?: string };
@@ -14,7 +14,8 @@ interface EncoderOutputs {
 }
 
 /**
- * NDJSON encoder. Each item becomes one line: `JSON.stringify(item) + "\n"`.
+ * NDJSON encoder. Each item becomes one line of plain JSON — a CEL value in its
+ * plain encoding (`writePlainJson`) — followed by `"\n"`.
  *
  * Mid-stream error: if the upstream iterable throws, emit a final error frame
  * `{"type":"error","error":{"message":"..."}}\n` then end. The consumer sees
@@ -50,7 +51,7 @@ async function* encode(
 ): AsyncIterable<Uint8Array> {
   try {
     for await (const item of input) {
-      yield Buffer.from(JSON.stringify(item) + "\n", "utf8");
+      yield Buffer.from(writePlainJson(item) + "\n", "utf8");
     }
   } catch (err) {
     // The frame tells the client, and nothing else does: the stream has already

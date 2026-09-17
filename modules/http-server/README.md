@@ -129,6 +129,7 @@ When an incoming HTTP request is received, the underlying framework must normali
 
 - All `headers` keys MUST be normalized to lowercase.
 - If the `content-type` is `application/json`, the `body` MUST be parsed into a native object/dictionary before evaluation.
+- A slot of `request.schema` declaring a value type with a plain encoding (`x-telo-type: Telo.Timestamp`, `Telo.Duration`, `Telo.Bytes`) is validated — and documented in the OpenAPI document — as the text a client sends (`type: string, format: date-time` for a timestamp), and arrives in CEL as the value itself: `request.body.at + duration('1h')` is timestamp arithmetic. Text the type's encoding does not read is a 400 with the envelope below, one detail per refused field, its `path` naming the field inside the location (`at`, `items[0].at`).
 
 #### 2.2 Standardized Telo Response Object (output)
 
@@ -147,6 +148,8 @@ After the handler executes and the `response.mapping` evaluates, the engine retu
   }
 }
 ```
+
+A JSON body's reader is not Telo, so a CEL value in it is written in its plain encoding and never type-tagged, whether or not the route declares a response schema: a timestamp as RFC 3339 text in UTC (`"2026-01-15T07:30:00.000Z"`), a duration as seconds (`"5400s"`), bytes as base64url without padding, a `uint` as its digits, NaN and ±Infinity as `"NaN"` / `"Infinity"` / `"-Infinity"`, and a map with int or bool keys as an object keyed by their text. A response schema slot declaring such a type is documented as that text.
 
 ### 3. Validation and error handling
 

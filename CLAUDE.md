@@ -98,7 +98,7 @@ Package-specific architecture and rationale live in nested `CLAUDE.md` files, lo
 
 - `kernel/nodejs/src/` — core runtime: orchestration, multi-pass init loop, controllers, event bus. Manifest loading is the analyzer's; the kernel consumes it.
 - `cli/nodejs/` — CLI wrapper (`bin/telo.mjs`). **Every CLI-owned write goes through the `Output` seam** (`src/output.ts`), never `console.*` and never a bare `process.stdout.write`: stdout is the machine surface, stderr the human one in both formats.
-- `sdk/nodejs/src/` — public API for module authors (re-exports kernel contexts + capability interfaces); owns step-grammar execution, the durable replay seam and `ctx.runtime`. It has no runtime dependencies and never imports the kernel.
+- `sdk/nodejs/src/` — public API for module authors (re-exports kernel contexts + capability interfaces); owns step-grammar execution, the durable replay seam and `ctx.runtime`. It never imports the kernel and has one runtime dependency — `@marcbachmann/cel-js`, pinned exactly, the CEL value domain's identity (`Duration`, `UnsignedInt`).
 - `modules/` — standard library: `http-server`, `http-client`, `sql`, `javascript`, `config`, `run`, `assert`, `test`, `console`, etc.
 - `analyzer/nodejs/` — static manifest validator (schema checks, reference validation, CEL type-checking); also owns manifest loading and manifest migrations.
 - `templating/nodejs/` — the CEL and `!include-*` engines.
@@ -173,6 +173,7 @@ Registers a new resource kind (`<module-name>.<Name>`).
 - `Telo.Mount` — mounted into a Service (HTTP APIs, middleware)
 - `Telo.Sink` — `write(record)` + `flush()` / `flushSync()` / `close()`; a record stream the runtime writes to directly, never through `ctx.invoke`
 - `Telo.Type` — pure schema definition, no runtime instance
+- `Telo.Callable` — synchronous `call(args)`; a function reached from CEL through a module name (`Self.fn(x)`, `<Alias>.fn(x)` for an exported one), declaring `params` / `returns`; outside `Telo.Executable`. `Telo.Function` is the built-in CEL-bodied callable, whose determinism is derived and never declared. Guide: `docs/extend/cel-functions.md`.
 
 `Telo.Executable` is a slot constraint — the parent of `Telo.Invocable` and `Telo.Runnable` — not a capability; `capability: Telo.Executable` is rejected, and `Telo.Service` is deliberately outside it. A `Telo.Abstract` is a non-instantiable base kind: a contract with no default implementation. To reuse an existing controller under a friendlier schema, `extends` the concrete kind with `base:` instead.
 
@@ -213,7 +214,8 @@ Inside `Telo.Definition` schema blocks. Each annotation has ONE reader in the an
 - `x-telo-sensitive: true` — on a contract property: the value is redacted in trace payloads.
 - `x-telo-widget: "code"` — studio renders a code editor (language from `contentMediaType`).
 - `x-telo-provides-zone` / `x-telo-requires-zone` / `x-telo-violates-zone` — execution zones, with the closed zone attributes `atomic`, `idempotent`, `noSuspend`, `replayed` (each value is the author's reason). Spec: `kernel/specs/execution-zones.md`.
-- `x-telo-type` — what a value IS: `Telo.TcpPort`, `Telo.UdpPort`, `Telo.Bytes`, `Telo.Stream` (`{ name: Telo.Stream, of: … }`); a named shape is a `!ref` to a `Telo.JsonSchema`. A union with an instance branch must use `anyOf`, never `oneOf`.
+- `x-telo-context-parameters-from` / `x-telo-returns-from` / `x-telo-unbound-calls` — a function body's CEL context is its parameters alone (it replaces the kernel globals), its result is checked against `returns`, and a site nothing binds refuses module calls (`FUNCTION_CALL_UNBOUND`).
+- `x-telo-type` — what a value IS: `Telo.TcpPort`, `Telo.UdpPort`, `Telo.Uint64`, `Telo.Bytes`, `Telo.Timestamp`, `Telo.Duration`, `Telo.Stream` (`{ name: Telo.Stream, of: … }`); an instance type is written in YAML in its plain encoding (RFC 3339, `"5400s"`, base64url); a named shape is a `!ref` to a `Telo.JsonSchema`. A union with an instance branch must use `anyOf`, never `oneOf`.
 
 ## Embedded files (`!include-text` / `!include-bytes`)
 
@@ -232,6 +234,7 @@ In scope:
 - `self.<ref>.<field>` — member access on a referenced instance reads its published state
 - `steps.<step>.result` — inside step bodies, typed from the invoked resource's `outputType`, then its kind's, then open
 - `request` — inside handler CEL (HTTP: query, body, params, headers, path, method)
+- `<Alias>.fn(…)`, `Self.fn(…)`, `<ModuleName>.fn(…)` — a module function (`Telo.Callable`), resolved on the parsed tree at compile and bound per module scope at `create()`; a bare name is always the core catalog
 
 A CEL integer is int64 and **needs no cast anywhere** — never `double(...)` to get an integer out of a manifest. A controller reading another resource's declared-integer output must accept both representations (`integerInput` from `@telorun/sdk`). Dereferencing a nullable value without a guard (`error != null && error.code`) is `CEL_NULLABLE_ACCESS`.
 
@@ -286,9 +289,11 @@ Bare filenames are in `analyzer/nodejs/src/`. Each package guide carries its own
 - Release planning → `analyzer/nodejs/src/release/`, `cli/nodejs/src/release/`, `cli/nodejs/src/bundle/module-payload.ts`
 - Rename → `packages/ide-support/src/rename/`
 - Runner sessions → `packages/runner-core/src/`; k8s routing → `apps/k8s-runner/src/k8s/routing/`
-- Test a manifest → add to `tests/` (or `modules/<name>/tests/`), run `pnpm run test`. A test needing infrastructure the root suite deliberately lacks (a live PostgreSQL) goes under `<module>/tests/integration/` — the root glob is `**/tests/*.yaml`, so a subdirectory is excluded by construction — and runs through `test-suite-integration.yaml` (`pnpm run test:integration`), whose connection comes from `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`. The root suite must pass on a clean checkout with nothing running, so that a red module suite means the code is wrong rather than that something was not up.
+- Test a manifest → add to `tests/` (or `modules/<name>/tests/`), run `pnpm run test`. A test needing infrastructure the root suite deliberately lacks (a live PostgreSQL) goes under `<module>/tests/integration/` — the root glob is `**/tests/*.yaml`, so a subdirectory is excluded by construction — and runs through `test-suite-integration.yaml` (`pnpm run test:integration`; the hub's own integration tests run through `apps/hub/test-suite-e2e.yaml`), whose connection comes from `DB_HOST`/`DB_PORT`/`DB_USER`/`DB_PASSWORD`/`DB_NAME`. The root suite must pass on a clean checkout with nothing running, so that a red module suite means the code is wrong rather than that something was not up.
 - Controller CLI args → `kernel.ts` (`parseArgsForController`), `resource-context.ts`
 - Test runner → `modules/test/nodejs/src/suite.ts`
+- Module functions → `templating/nodejs/src/cel/module-call.ts`, `module-function-index.ts`, `callable-signature.ts`, `callable-flags.ts`, `callable-binding.ts`, `callable-slot.ts`, `kernel/nodejs/src/module-functions.ts`, `kernel/nodejs/src/native-function.ts`
+- Plain vs typed JSON → `sdk/nodejs/src/plain-encoding.ts`, `sdk/nodejs/src/plain-json.ts` (outside readers), `sdk/nodejs/src/typed-frame.ts` (internal boundaries), `sdk/rust/src/typed_frame.rs`, `kernel/specs/durable-execution.md` §6
 
 ## Module Documentation — MANDATORY
 

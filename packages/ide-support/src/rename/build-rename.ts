@@ -9,14 +9,18 @@ import {
   type LoadedFile,
   type LoadedGraph,
   type LoadedModule,
+  type ManifestAnalysis,
+  type NameLevel,
   type Range,
 } from "@telorun/analyzer";
 
 import { chainAt } from "../cel-chain.js";
 import { resolveNodeAtPosition, scalarString } from "../completions/resolve-node.js";
 import { moduleDoc, moduleForFile, moduleFiles } from "../definition/manifest-navigation.js";
+import { moduleCallSites } from "../cel/module-calls.js";
 import {
   declarationSites,
+  functionCallSites,
   resourceDeclarations,
   resourceSites,
   stepDeclarations,
@@ -87,7 +91,7 @@ export function prepareRename(
     end: offsetToPosition(span[1], lineOffsets),
   });
 
-  const symbol = symbolAt(resolved, astDocs, toRange);
+  const symbol = symbolAt(resolved, astDocs, toRange, text, ownReceivers(mod));
   if (!symbol) return { ok: false, reason: "Nothing renameable here." };
   if ("reason" in symbol) return { ok: false, reason: symbol.reason };
 
@@ -104,6 +108,9 @@ export function buildRename(
   graph: LoadedGraph,
   currentFilePath: string,
   docs?: AstDocument[],
+  /** Decides whether a resource's name denotes a type (a named shape) or a
+   *  value. Without it every resource name is checked as a value. */
+  analysis?: ManifestAnalysis,
 ): RenameResult {
   const prepared = prepareRename(text, line, character, graph, currentFilePath, docs);
   if (!prepared.ok) return prepared;
@@ -111,19 +118,20 @@ export function buildRename(
 
   if (newName === symbol.name) return { ok: true, symbol, files: [] };
 
-  // Every renameable surface is value-level, so the new name is checked against
-  // that half of the convention — the same rule `telo check` enforces. Renaming
-  // *into* a name the analyzer would reject is a mistake worth catching in the
-  // rename box rather than as a squiggle afterwards.
-  const violation = checkName(newName, "value", surfaceLabel(symbol));
+  const mod = moduleForFile(graph, currentFilePath)!;
+
+  // The new name is checked against the half of the convention its declaration
+  // belongs to — the same rule `telo check` enforces. Renaming *into* a name the
+  // analyzer would reject is a mistake worth catching in the rename box rather
+  // than as a squiggle afterwards.
+  const violation = checkName(newName, nameLevelOf(symbol, mod, analysis), surfaceLabel(symbol));
   if (violation) return { ok: false, reason: violation.message };
 
-  const mod = moduleForFile(graph, currentFilePath)!;
   const files = filesForRename(symbol, mod, currentFilePath, text, docs);
 
   const out: RenameFileEdits[] = [];
   for (const file of files) {
-    const edits = editsIn(file, symbol, newName);
+    const edits = editsIn(file, symbol, newName, ownReceivers(mod));
     if (edits.length > 0) out.push({ uri: file.uri, edits });
   }
   if (out.length === 0) {
@@ -138,6 +146,26 @@ export function buildRename(
 
 type SymbolOrRefusal = RenameSymbol | { reason: string };
 
+/** Steps and config keys are values; a resource is whatever its capability makes
+ *  it — a named shape's name is a type. */
+function nameLevelOf(symbol: RenameSymbol, mod: LoadedModule, analysis: ManifestAnalysis | undefined): NameLevel {
+  if (symbol.kind !== "resource" || !analysis) return "value";
+  const sources = new Set(moduleFiles(mod).map((file) => file.source));
+  const declaration = analysis.manifests.find(
+    (m) =>
+      m.metadata?.name === symbol.name &&
+      sources.has((m.metadata as { source?: string } | undefined)?.source ?? ""),
+  );
+  return declaration ? analysis.nameLevel(declaration) : "value";
+}
+
+/** The receivers a module call names a function of THIS module through: `Self`
+ *  and the module's own name. */
+function ownReceivers(mod: LoadedModule): ReadonlySet<string> {
+  const name = (moduleDoc(mod) as { metadata?: { name?: unknown } } | undefined)?.metadata?.name;
+  return new Set(typeof name === "string" && name ? ["Self", name] : ["Self"]);
+}
+
 const DECLARATION_BLOCKS = new Set(["variables", "secrets", "ports"]);
 const MODULE_DOC_KINDS = new Set(["Telo.Application", "Telo.Library"]);
 const KIND_DOC_KINDS = new Set(["Telo.Definition", "Telo.Abstract"]);
@@ -150,8 +178,10 @@ function symbolAt(
   resolved: ReturnType<typeof resolveNodeAtPosition> & object,
   astDocs: AstDocument[],
   toRange: (span: [number, number]) => Range,
+  text: string,
+  receivers: ReadonlySet<string>,
 ): SymbolOrRefusal | undefined {
-  if (resolved.cel) return celSymbol(resolved.cel, toRange);
+  if (resolved.cel) return celSymbol(resolved.cel, toRange, text, receivers);
 
   const path = resolved.path;
   const node = resolved.node;
@@ -247,6 +277,8 @@ function symbolAt(
 function celSymbol(
   cel: { segment: { ast(): unknown; source: string }; offset: number },
   toRange: (span: [number, number]) => Range,
+  text: string,
+  receivers: ReadonlySet<string>,
 ): SymbolOrRefusal | undefined {
   let ast;
   try {
@@ -255,6 +287,11 @@ function celSymbol(
     if (!(error instanceof CelParseError)) throw error;
     return undefined;
   }
+  // A call of one of this module's functions renames the function resource.
+  const call = moduleCallSites(text, ast, (receiver) => receivers.has(receiver)).find(
+    (site) => cel.offset >= site.nameRange[0] && cel.offset <= site.nameRange[1],
+  );
+  if (call) return { kind: "resource", name: call.name, range: toRange(call.nameRange) };
   const hit = chainAt(ast, cel.offset);
   if (!hit || hit.index !== 1) return undefined;
   const root = hit.parts[0].name;
@@ -426,7 +463,12 @@ function filesForRename(
   return [];
 }
 
-function editsIn(file: RenameFile, symbol: RenameSymbol, newName: string): RenameEdit[] {
+function editsIn(
+  file: RenameFile,
+  symbol: RenameSymbol,
+  newName: string,
+  receivers: ReadonlySet<string>,
+): RenameEdit[] {
   const lineOffsets = buildLineOffsets(file.text);
   const spans: Array<[number, number]> = [];
 
@@ -434,6 +476,9 @@ function editsIn(file: RenameFile, symbol: RenameSymbol, newName: string): Renam
     if (symbol.kind === "resource") {
       for (const span of resourceDeclarations(doc, symbol.name)) spans.push(span);
       for (const site of resourceSites(doc, symbol.name)) spans.push(site.range);
+      for (const site of functionCallSites(doc, file.text, receivers, symbol.name)) {
+        spans.push(site.range);
+      }
       for (const span of exportEntrySpans(doc, symbol.name)) spans.push(span);
     } else if (symbol.kind === "step") {
       for (const span of stepDeclarations(doc, symbol.name)) spans.push(span);

@@ -1,0 +1,221 @@
+kind: Telo.Application
+metadata:
+  name: HubSearchInstancesTest
+  version: 1.0.0
+  description: |
+    `searchResources` finds an EXPORTED INSTANCE by its description — a function a
+    library exports as a ready-made resource, whose kind is unexported (the
+    singleton pattern) or a built-in the hub keeps no kind row for, so no kind hit
+    could ever stand for it. The kind hits keep their shape and are unaffected.
+
+    NEEDS A LIVE POSTGRES WITH PGVECTOR (the search library's vector arm runs for
+    every query) — the docker-compose `db` service, reached through DB_HOST,
+    DB_PORT, DB_USER, DB_PASSWORD and DB_NAME. Run by the hub's own suite
+    (`pnpm run test:e2e:hub`). The embedder is a local stand-in returning a fixed
+    three-dimension vector, since this test is about the lexical instance arm.
+imports:
+  Http: ../../../../modules/http-server
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  Postgres: oci://ghcr.io/telorun/postgres@0.4.0#sha256-urAQgZtDIlbm4PFi0OlBgYPTU0fSdFbw3l3sHVdh-MQ
+  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
+  OpenAI: oci://ghcr.io/telorun/openai@0.3.1#sha256-FVg-jmRPGB43Or9_LU8XhDhG_G2Mio56iiSDwi_ofLk
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.12.0#sha256-2PYbXSCmI2WlRtVQoQJO6ebJzmVHBOe1kJk8c3-wjfg
+  Assert: ../../../../modules/assert
+  Schema:
+    source: ../../hub-schema.yaml
+    resources:
+      connection: !ref db
+  Search:
+    source: ../../hub-search.yaml
+    resources:
+      connection: !ref db
+      embedQuery: !ref embedQuery
+      vectorMatch: !ref vectorMatch
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref Schema.migrations
+  - !ref test
+---
+kind: Postgres.Connection
+metadata:
+  name: db
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Embedding.Query
+metadata:
+  name: embedQuery
+model:
+  kind: OpenAI.EmbeddingModel
+  model: stand-in
+  request:
+    kind: HttpClient.Request
+    client:
+      kind: HttpClient.Client
+      baseUrl: http://127.0.0.1:8986
+---
+kind: VectorStore.Match
+metadata:
+  name: vectorMatch
+store:
+  kind: VectorStorePgvector.Store
+  connection: !ref db
+  dimensions: 3
+  metric: cosine
+  table: resource_vectors
+topK: 5
+---
+kind: Http.Api
+metadata:
+  name: embedderApi
+routes:
+  - request: { path: /embeddings, method: POST }
+    handler:
+      kind: Run.Value
+      value:
+        data:
+          - embedding: [1.0, 0.0, 0.0]
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref db
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: Http.Server
+    metadata: { name: Embedder }
+    host: 127.0.0.1
+    port: 8986
+    mounts:
+      - path: /
+        mount: !ref embedderApi
+targets:
+  - !ref Embedder
+steps:
+  - name: seedModules
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport, latest_version)
+        VALUES (9001, 'oci://example.test/crypto', 'oci', '1.0.0'),
+               (9002, 'oci://example.test/archive', 'oci', '1.0.0')
+        ON CONFLICT DO NOTHING
+  - name: seedVersions
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_versions
+          (module_id, version, digest, module_name, description, manifest_key, categories, category_labels)
+        VALUES (9001, '1.0.0', 'sha256:test', 'Crypto', 'Message authentication.', 'test',
+                ARRAY['security'], ARRAY['Security']),
+               (9002, '1.0.0', 'sha256:test', 'Archive', 'Keeps files.', 'test',
+                ARRAY['storage'], ARRAY['Storage'])
+        ON CONFLICT DO NOTHING
+  # `Api` is a kind Crypto declares under the name its exported routes'
+  # imported kind also ends in, filed under a category Crypto itself is not.
+  - name: seedKinds
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO resource_kinds (module_id, version, name, capability, exported, description, portable, categories)
+        VALUES (9001, '1.0.0', 'Hmac', 'Telo.Callable', FALSE, 'Signs a message under a key.', FALSE,
+                ARRAY['security']),
+               (9001, '1.0.0', 'Api', 'Telo.Mount', TRUE, 'Receives parcel deliveries.', FALSE,
+                ARRAY['storage'])
+        ON CONFLICT DO NOTHING
+  - name: seedInstances
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_resources (module_id, version, name, declared, kind, kind_is_own, description)
+        VALUES (9001, '1.0.0', 'hmacSha256', 'hmacSha256', 'Hmac', TRUE,
+                'Signs a webhook payload with HMAC-SHA256.'),
+               (9001, '1.0.0', 'isStale', 'isStale', 'Function', FALSE,
+                'Whether an instant lies more than a day in the past.'),
+               (9001, '1.0.0', 'parcelRoutes', 'parcelRoutes', 'Api', FALSE,
+                'Routes receiving parcel deliveries.')
+        ON CONFLICT DO NOTHING
+  - name: byDescription
+    invoke: !ref Search.searchResources
+    inputs:
+      q: sign a webhook payload
+      category: ""
+      runtime: ""
+  - name: builtInKind
+    invoke: !ref Search.searchResources
+    inputs:
+      q: instant in the past
+      category: ""
+      runtime: ""
+  - name: browse
+    invoke: !ref Search.searchResources
+    inputs:
+      q: ""
+      category: ""
+      runtime: ""
+  # An instance of an imported kind is filed under its own module's categories,
+  # never under those of a local kind that shares the suffix.
+  - name: importedKindCategory
+    invoke: !ref Search.searchResources
+    inputs:
+      q: parcel deliveries
+      category: storage
+      runtime: ""
+  - name: assertInstanceHits
+    inputs:
+      actual:
+        byDescription: !cel >-
+          steps.byDescription.result.instances.map(i,
+            [i.name, i.kind, i.description, i.module.ref, i.module.version, i.module.name])
+        unexportedKindIsNoHit: !cel "steps.byDescription.result.hits.size()"
+        builtInKind: !cel "steps.builtInKind.result.instances.map(i, [i.name, i.kind])"
+        browseInstances: !cel "steps.browse.result.instances.size()"
+        importedKindCategory:
+          kindHits: !cel "steps.importedKindCategory.result.hits.map(h, h.kind)"
+          filterKept: !cel "!steps.importedKindCategory.result.categoryFilterDropped"
+          instances: !cel "steps.importedKindCategory.result.instances.map(i, i.name)"
+      expected:
+        byDescription:
+          - [hmacSha256, Hmac, Signs a webhook payload with HMAC-SHA256., "oci://example.test/crypto", 1.0.0, Crypto]
+        unexportedKindIsNoHit: 0
+        builtInKind:
+          - [isStale, Function]
+        browseInstances: 0
+        importedKindCategory:
+          kindHits: [Api]
+          filterKept: true
+          instances: []
+    invoke:
+      kind: Assert.Equals

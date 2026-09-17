@@ -1,0 +1,12 @@
+# Invokes the library's sequence, whose inputs are checked against the shape
+# carrying the unbound rule.
+kind: Telo.Application
+metadata:
+  name: UnboundRuleApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.priced
+    inputs:
+      amount: 5

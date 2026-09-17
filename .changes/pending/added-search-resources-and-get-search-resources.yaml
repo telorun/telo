@@ -1,0 +1,11 @@
+modules:
+  apps/hub: Added
+body: "search_resources and GET /search/resources return an instances list beside the
+  kind hits: exported resources whose name or description matches the query, each as {
+  name, kind, description, module: { ref, version, name }, score }, so a ready-made
+  function such as hmacSha256 is found by what it does even when its kind is unexported
+  or a built-in Telo.Function. The kind hits keep their shape; instance matching is
+  lexical, runs only for a non-empty query, and follows the category and runtime filters
+  through the instance's kind where its own module declares that kind, and through the
+  module's categories otherwise. The ingest revision moves to 2, so every tracked
+  version is re-ingested once to record which instances are of the module's own kinds."

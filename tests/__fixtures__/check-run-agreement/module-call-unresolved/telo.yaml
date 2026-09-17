@@ -1,0 +1,12 @@
+# Consumes the library next door and runs its sequence. The library's call is
+# invisible to this analysis — a dependency's expression is its own author's to
+# fix — so the kernel is what refuses it here, when it binds the calls of the
+# sequence that carries it.
+kind: Telo.Application
+metadata:
+  name: ModuleCallApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.greet

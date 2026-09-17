@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata:
+  name: NativeFunctionNoCreateApp
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: NoCreate
+capability: Telo.Callable
+schema: { type: object }
+returns:
+  schema: { type: string }
+controllers:
+  - pkg:telo/local/js?path=./functions.mjs#NoCreate
+---
+kind: Self.NoCreate
+metadata:
+  name: broken

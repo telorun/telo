@@ -2,9 +2,16 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { refSentinelTarget } from "./ref-sentinel-target.js";
 
 /** Schema-bearing fields on a Telo.Definition / Telo.Type resource. */
 const SCHEMA_FIELDS = ["schema", "inputType", "outputType"];
+
+/** A callable's signature. Walked separately because neither is itself a
+ *  reference SLOT — the shapes sit one level in, at `params[].schema` and
+ *  `returns.schema` — so a reference there is rewritten outright rather than
+ *  kept with the canonical id stamped beside it. */
+const SIGNATURE_FIELDS = ["params", "returns"];
 
 /**
  * Rewrites schema references to their canonical, module-scoped form, in place.
@@ -103,7 +110,47 @@ export function resolveSchemaTypeRefs(
     for (const field of SCHEMA_FIELDS) {
       walk((r as Record<string, unknown>)[field], resolveAuthority, ownModule, true);
     }
+    for (const field of SIGNATURE_FIELDS) {
+      walk((r as Record<string, unknown>)[field], resolveAuthority, ownModule, false);
+    }
   }
+}
+
+/**
+ * A copy of a type field written inside a template body, with every `!ref` it
+ * holds — at its root, inside `properties`, inside `$defs`, at any depth —
+ * replaced by the canonical `{ $ref: "telo:<module>/<type>" }`.
+ *
+ * A body entry is still authoring data when the definition is read: the loader
+ * resolves no `!ref` inside a `Telo.Definition`, and the pass above walks only a
+ * manifest's own type fields. A reader resolving the contract of the call a body
+ * makes gets the same canonical form a registered resource carries, so a named
+ * shape there is resolved rather than read as a schema that constrains nothing.
+ * `resolveModule` answers an alias in the declaring module's scope; an alias it
+ * cannot answer is left as written.
+ */
+export function withCanonicalRefSentinels(
+  value: unknown,
+  ownModule: string | undefined,
+  resolveModule: (alias: string) => string | undefined,
+): unknown {
+  const target = refSentinelTarget(value);
+  if (target) {
+    const module =
+      target.alias === undefined || target.alias === "Self" ? ownModule : resolveModule(target.alias);
+    return module ? { $ref: canonicalTypeSchemaId(module, target.name) } : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => withCanonicalRefSentinels(item, ownModule, resolveModule));
+  }
+  if (value === null || typeof value !== "object") return value;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    out[key] = withCanonicalRefSentinels(child, ownModule, resolveModule);
+  }
+  return out;
 }
 
 /**

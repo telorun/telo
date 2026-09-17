@@ -1,6 +1,6 @@
 # NDJSON Codec
 
-NDJSON codec — JSON-record stream ↔ byte iterables. The encoder produces one JSON-encoded record per line (`JSON.stringify(item) + "\n"`).
+NDJSON codec — JSON-record stream ↔ byte iterables. The encoder produces one JSON-encoded record per line. A line is read by something that is not Telo, so a CEL value JSON has no form for is written in its plain encoding: a timestamp as RFC 3339 text in UTC, a duration as seconds (`"5400s"`), bytes as base64url, a `uint` as its digits.
 
 ## Why use this
 

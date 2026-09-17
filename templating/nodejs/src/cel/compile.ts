@@ -1,6 +1,7 @@
 import { isCompiledValue, type CompiledValue } from "@telorun/sdk";
-import type { Environment } from "@marcbachmann/cel-js";
+import type { ASTNode, Environment } from "@marcbachmann/cel-js";
 import { extractAccessChains } from "./analyze.js";
+import { resolveModuleCalls } from "./module-call.js";
 
 export const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 export const EXACT_TEMPLATE_REGEX = /^\s*\$\{\{\s*([^}]+?)\s*\}\}\s*$/;
@@ -9,11 +10,9 @@ export const EXACT_TEMPLATE_REGEX = /^\s*\$\{\{\s*([^}]+?)\s*\}\}\s*$/;
  *  first element of every member-access chain (`self.table` → `self`). Returns
  *  undefined when the parse result carries no AST so consumers can tell "no
  *  refs" from "unknown". */
-function rootRefs(parsed: unknown): readonly string[] | undefined {
-  const ast = (parsed as { ast?: unknown }).ast;
-  if (!ast) return undefined;
+function rootRefs(ast: ASTNode): readonly string[] {
   const roots = new Set<string>();
-  for (const chain of extractAccessChains(ast as never)) {
+  for (const chain of extractAccessChains(ast)) {
     if (chain.length > 0) roots.add(chain[0]!);
   }
   return [...roots];
@@ -21,13 +20,26 @@ function rootRefs(parsed: unknown): readonly string[] | undefined {
 
 /** Compile a single CEL expression (no `${{ }}` wrapping) into a CompiledValue.
  *  Throws on syntax errors. Used by the `!cel` engine where the entire tagged
- *  scalar is treated as one expression. */
-export function compileExpression(expr: string, env: Environment): CompiledValue {
+ *  scalar is treated as one expression.
+ *
+ *  `moduleNames` are the declaring module's own names; a call whose receiver is
+ *  one of them resolves to a late-bound module call HERE, on the parsed tree, so
+ *  every later reader — the root references below, the analyzer's passes, the
+ *  kernel's dependency walk — sees the resolved shape rather than re-deriving
+ *  it from the source text. */
+export function compileExpression(
+  expr: string,
+  env: Environment,
+  moduleNames?: ReadonlySet<string>,
+): CompiledValue {
   const fn = env.parse(expr);
+  const ast: ASTNode = fn.ast;
+  const calls = resolveModuleCalls(ast, moduleNames);
   return {
     __compiled: true,
     source: expr,
-    refs: rootRefs(fn),
+    refs: rootRefs(ast),
+    calls,
     call: (ctx: Record<string, unknown>) => fn(ctx),
   };
 }
@@ -37,26 +49,33 @@ export function compileExpression(expr: string, env: Environment): CompiledValue
  *  contains interpolations, returns a CompiledValue that joins literal parts
  *  with stringified expression results. If no expressions are present, returns
  *  the input string unchanged. Throws on CEL syntax errors. */
-export function compileString(s: string, env: Environment): unknown {
+export function compileString(
+  s: string,
+  env: Environment,
+  moduleNames?: ReadonlySet<string>,
+): unknown {
   if (!s.includes("${{")) return s;
 
   const exact = s.match(EXACT_TEMPLATE_REGEX);
   if (exact) {
-    return compileExpression(exact[1].trim(), env);
+    return compileExpression(exact[1].trim(), env, moduleNames);
   }
 
   const parts: Array<string | CompiledValue> = [];
   let last = 0;
   for (const m of s.matchAll(TEMPLATE_REGEX)) {
     if (m.index! > last) parts.push(s.slice(last, m.index));
-    parts.push(compileExpression(m[1].trim(), env));
+    parts.push(compileExpression(m[1].trim(), env, moduleNames));
     last = m.index! + m[0].length;
   }
   if (last < s.length) parts.push(s.slice(last));
 
   const refs = new Set<string>();
+  const calls = new Set<string>();
   for (const p of parts) {
-    if (typeof p !== "string" && p.refs) for (const r of p.refs) refs.add(r);
+    if (typeof p === "string") continue;
+    if (p.refs) for (const r of p.refs) refs.add(r);
+    if (p.calls) for (const c of p.calls) calls.add(c);
   }
 
   return {
@@ -64,6 +83,7 @@ export function compileString(s: string, env: Environment): unknown {
     source: s,
     parts,
     refs: [...refs],
+    calls: [...calls],
     call: (ctx: Record<string, unknown>) =>
       parts.map((p) => (typeof p === "string" ? p : String(p.call(ctx) ?? ""))).join(""),
   } satisfies CompiledValue;

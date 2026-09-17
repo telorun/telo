@@ -8,9 +8,13 @@ import {
   flattenForAnalyzer,
   flattenLoadedModule,
   implicitEvalSites,
+  callableBodyField,
+  isCallableKind,
+  isInheritedDelegation,
   isModuleKind,
   nodeIdFor,
   Loader,
+  resolveSignature,
   StaticAnalyzer,
   type DefResolver,
   type DiffEntry,
@@ -66,6 +70,10 @@ import {
 } from "./reconcile.js";
 import { ambientInvokeContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
+import { bindModuleFunctions, type FunctionResolutionHost } from "./module-functions.js";
+import { refuseInvalidCallableInstance } from "./controllers/resource-definition/callable-guard.js";
+import { decodeResourceLiterals, type LiteralDecodingHost } from "./resource-literal-decoding.js";
+import { bindFunction, functionContextOf } from "./function-binding.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { mintResourceHandle } from "./resource-handle.js";
 import { bindEffectOwner } from "./effect-scope.js";
@@ -442,6 +450,12 @@ export class Kernel implements IKernel {
       "Telo.JsonSchema",
       await import("./controllers/type/json-schema-controller.js"),
     );
+    // A function written in CEL, built in for the same reason: declaring one must
+    // not require importing a module that provides the kind.
+    this.controllers.registerController(
+      "Telo.Function",
+      await import("./controllers/function/function-controller.js"),
+    );
   }
 
   /**
@@ -656,6 +670,18 @@ export class Kernel implements IKernel {
       return kind !== undefined && isModuleKind(kind);
     });
     if (impactedDoc) return halted("the application document is in the impact set");
+
+    // A kind whose body HOLDS something that moved — a template calling a
+    // changed function — would be unwound and registered a second time, and a
+    // kind registration is once per kernel (see `movedKind` above): its existing
+    // instances would keep the controller built from the previous declaration.
+    const impactedKind = [...impacted].find((name) => {
+      const kind = this.rootContext.declaredManifestFor(name)?.kind as string | undefined;
+      return kind !== undefined && DEFINITION_KINDS.has(kind);
+    });
+    if (impactedKind) {
+      return halted(`a resource kind definition is in the impact set: ${impactedKind}`);
+    }
 
     if (opaque.length > 0) {
       // Someone resolved these by name during initialization, so the set of
@@ -1761,6 +1787,37 @@ export class Kernel implements IKernel {
     // modules stay isolated because they're not in the chain.
     const resolvedKind = (findEnclosingModule(evalContext) ?? this.rootContext).resolveKind(kind);
 
+    // A callable instance answers for the signature and determinism claim it
+    // declares — the rules `telo check` reports, read rather than restated.
+    refuseInvalidCallableInstance(resource, this.scopedDefResolver());
+
+    // Every module call the manifest makes is bound NOW, before any of its
+    // expressions can evaluate: compile-eval fields expand below, and a call in a
+    // branch that never runs must still fail at boot rather than never.
+    bindModuleFunctions(
+      findEnclosingModule(evalContext) ?? this.rootContext,
+      resource,
+      this.functionResolutionHost,
+    );
+
+    // The DEFINITION is the sole resource-config contract — a controller module
+    // cannot supply or override one. Keeping the schema on the manifest is what
+    // lets `telo check` see it, the validator warm bake it, and the editor render
+    // it; a code-side schema was invisible to all three and free to drift.
+    const definition = this.controllers.getDefinition(resolvedKind);
+    // A callable's instance is bound to its signature below. A kind inheriting its
+    // controller is not bound again: the instance IS its ancestor's, bound when
+    // that was created — and its controller needs the full context to create it.
+    // A native function — its result comes from its controller's code rather than
+    // an expression in the manifest — gets a function's context.
+    const callable =
+      !!definition &&
+      isCallableKind(definition, this.scopedDefResolver()) &&
+      !isInheritedDelegation(definition, this.scopedDefResolver());
+    const nativeFunction =
+      callable && callableBodyField(definition!, this.scopedDefResolver()) === undefined;
+    const resourceLabel = `${resolvedKind}/${(resource.metadata?.name as string | undefined) ?? "<unnamed>"}`;
+
     const fingerprint = policyFingerprint(findEnclosingPolicy(evalContext));
     let controller = this.controllers.getControllerOrUndefined(resolvedKind, fingerprint);
     if (!controller) {
@@ -1768,7 +1825,18 @@ export class Kernel implements IKernel {
       // controller (resolved but not imported). Import + register it now, on this
       // first instantiation, then re-resolve. A kind with no lazy entry (abstract,
       // or genuinely unknown) falls through to the error below unchanged.
-      if (await this.controllers.takeLazyController(resolvedKind, fingerprint)) {
+      const loaded = await this.controllers
+        .takeLazyController(resolvedKind, fingerprint)
+        .catch((error) => {
+          if (nativeFunction && error instanceof RuntimeError && error.code === "ERR_CONTROLLER_INVALID") {
+            throw Object.assign(
+              new RuntimeError(error.code, `Function '${resourceLabel}': ${error.message}`, error.diagnostics),
+              { cause: error },
+            );
+          }
+          throw error;
+        });
+      if (loaded) {
         controller = this.controllers.getControllerOrUndefined(resolvedKind, fingerprint);
       }
     }
@@ -1795,14 +1863,11 @@ export class Kernel implements IKernel {
     if (!controller.create) {
       throw new RuntimeError(
         "ERR_CONTROLLER_INVALID",
-        `Controller for ${kind} does not implement create method`,
+        nativeFunction
+          ? `Function '${resourceLabel}': its controller exports no create(resource, ctx), so no instance can be made.`
+          : `Controller for ${kind} does not implement create method`,
       );
     }
-    // The DEFINITION is the sole resource-config contract — a controller module
-    // cannot supply or override one. Keeping the schema on the manifest is what
-    // lets `telo check` see it, the validator warm bake it, and the editor render
-    // it; a code-side schema was invisible to all three and free to drift.
-    const definition = this.controllers.getDefinition(resolvedKind);
     const configSchema = definition?.schema as Record<string, unknown> | undefined;
     if (!configSchema?.type) {
       throw new Error(`No schema defined for kind ${kind}`);
@@ -1825,6 +1890,23 @@ export class Kernel implements IKernel {
     const compile = [...parentEval.compile, ...ownEval.compile, ...implicitEval.compile];
     const runtime = [...parentEval.runtime, ...ownEval.runtime];
 
+    // A kind may describe a slot with a shape declared elsewhere, so the walks
+    // below see THROUGH that reference; otherwise the value under it reads as
+    // undescribed.
+    const schemaForRef = (ref: string) =>
+      (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
+      this.registry.schemaForId(ref);
+
+    // Plain-encoded literals become instances before validation, and before
+    // embeds resolve, so a file's contents are never decoded.
+    decodeResourceLiterals(
+      resource,
+      configSchema as Record<string, any>,
+      evalContext,
+      this.literalDecodingHost,
+      schemaForRef,
+    );
+
     // Embedded files are read here, at the single instance-production site, and
     // not at manifest load: `telo.yaml` is its own artifact layer so that reading
     // a manifest cannot pull the payload, and an app loads every imported
@@ -1844,17 +1926,7 @@ export class Kernel implements IKernel {
     try {
       this.sharedSchemaValidator
         .compile(configSchema)
-        .validate(
-          stripCompiledValues(resource, configSchema, undefined, (ref) =>
-            // A kind may describe a slot with a shape declared elsewhere. The
-            // strip walk has to see THROUGH that reference or the value under it
-            // reads as undescribed, and every CEL leaf beneath it collapses to
-            // `""` — which the shape then rejects, reporting a violation of a
-            // value the author never wrote. AJV resolves it either way; this is
-            // what lets the placeholder walk agree with it.
-            this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined,
-          ),
-        );
+        .validate(stripCompiledValues(resource, configSchema, undefined, schemaForRef));
     } catch (error) {
       throw new RuntimeError(
         "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
@@ -1883,8 +1955,21 @@ export class Kernel implements IKernel {
       evalContext,
       resolvedKind,
     );
-    const instance = await controller.create(processedResource, ctx);
+    const instance = await controller.create(
+      processedResource,
+      nativeFunction ? (functionContextOf(ctx) as unknown as ResourceContext) : ctx,
+    );
     if (!instance) return null;
+    if (callable) {
+      bindFunction(
+        instance,
+        resourceLabel,
+        resolveSignature(processedResource, definition, this.scopedDefResolver()),
+        (schema) => this.sharedSchemaValidator.compile(schema),
+        schemaForRef,
+        ctx.log,
+      );
+    }
 
     // Mint the instance's identity here, at the single instance-production site,
     // so an instance is never observable without a handle — the same argument
@@ -1969,6 +2054,49 @@ export class Kernel implements IKernel {
     return { instance, ctx, resource: processedResource };
   }
 
+  /** What resolving a module call reads from the kernel. */
+  private readonly functionResolutionHost: FunctionResolutionHost = {
+    getDefinition: (kind) => this.controllers.getDefinition(kind),
+    resolveDef: (kind, from) => this.scopedDefResolver()(kind, from),
+    shapes: (ref) =>
+      (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
+      this.registry.schemaForId(ref),
+  };
+
+  /** What decoding a resource's plain-encoded literals reads from the kernel. */
+  private readonly literalDecodingHost: LiteralDecodingHost = {
+    registry: () => this.registry,
+    rootModules: () => new Set(this._appName ? [this._appName] : []),
+    typeDeclarations: () => this.typeDeclarations(),
+  };
+
+  /** Every declaration a named type resolves against: the analyzed set plus each
+   *  module's own documents, since a library's internal shapes are not forwarded. */
+  private typeDeclarations(): Record<string, any>[] {
+    const graph = this._loadedGraph;
+    const memo = this.typeDeclarationsMemo;
+    if (memo && memo.graph === graph && memo.manifests === this.staticManifests) {
+      return memo.declarations;
+    }
+    const graphDocs = graph ? [...graph.modules.values()].flatMap((mod) => flattenLoadedModule(mod)) : [];
+    const declarations = [...this.staticManifests, ...graphDocs] as Record<string, any>[];
+    this.typeDeclarationsMemo = { graph, manifests: this.staticManifests, declarations };
+    return declarations;
+  }
+
+  private typeDeclarationsMemo?: {
+    graph: LoadedGraph | undefined;
+    manifests: ResourceManifest[];
+    declarations: Record<string, any>[];
+  };
+
+  /** Resolves a kind in the module that declared the document it is read off —
+   *  `extends` aliases are lexical, so a chain crossing modules re-scopes at
+   *  every hop. */
+  private scopedDefResolver(): DefResolver {
+    return (kind, from) => this.registry.resolveDefinitionIn(kind, from?.metadata?.module);
+  }
+
   /**
    * Resolve and bind both directions of a resource's invocation contract.
    *
@@ -1996,8 +2124,7 @@ export class Kernel implements IKernel {
         impl.createTypeValidatorWithRules(name, schema),
     }) as ContractValidatorFactory;
 
-    const resolveDef: DefResolver = (kind, from) =>
-      this.registry.resolveDefinitionIn(kind, from?.metadata?.module);
+    const resolveDef = this.scopedDefResolver();
 
     // A DECLARATION-derived slot is resolved against the context that OWNS this
     // resource, so a bare name means the same thing here as it does to `!ref`

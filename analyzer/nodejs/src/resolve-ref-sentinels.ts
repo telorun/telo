@@ -7,7 +7,13 @@ import {
   type ReferenceFieldMap,
 } from "./reference-field-map.js";
 import { REF_RESOLUTION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
-import { isForwardedDeclaration, isForwardedExport } from "./forwarded-declaration.js";
+import {
+  isForwardedDeclaration,
+  isForwardedExport,
+  isForwardedShape,
+} from "./forwarded-declaration.js";
+import { forwardedShapeFieldsOf, KIND_SHAPE_FIELDS } from "./contract-shapes.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 
 /** The slice of the definition registry this pass needs: a kind's field map, from
  *  which the `x-telo-scope` slots are read. */
@@ -57,6 +63,8 @@ type ResolvedRef = { kind: string; name: string; alias?: string };
  * Forwarded foreign resources (an imported library's exported instances, carrying a
  * `metadata.module` that isn't a root module) are resolution TARGETS only — they are not
  * re-walked as sources here, since their own ref slots belong to their own module scope.
+ * The shapes a forwarded contract or signature names are the exception, resolved in the
+ * DECLARING module's scope (see `contract-shapes.ts`).
  */
 export function resolveRefSentinels(
   resources: ResourceManifest[],
@@ -71,6 +79,32 @@ export function resolveRefSentinels(
    *  told from a module-level one, and a shadowed `!ref` resolves to the resource
    *  it shadows — so both call sites pass it. */
   defs?: ScopeFieldMapSource,
+): void {
+  resolveReferences(resources, aliases, aliasesByModule, crossModuleTargets, defs, "all");
+}
+
+/**
+ * {@link resolveRefSentinels}, restricted to the shapes a contract or a signature
+ * names — for a manifest set whose ordinary reference slots must keep their
+ * authored form. The analyzer runs it over the documents its definition registry
+ * holds, which were registered before the clone every other pass reads, so a
+ * kind's contract read through the registry names the same shapes.
+ */
+export function resolveShapeRefs(
+  resources: ResourceManifest[],
+  aliases?: AliasResolver,
+  aliasesByModule?: Map<string, AliasResolver>,
+): void {
+  resolveReferences(resources, aliases, aliasesByModule, [], undefined, "shapes");
+}
+
+function resolveReferences(
+  resources: ResourceManifest[],
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+  crossModuleTargets: ResourceManifest[],
+  defs: ScopeFieldMapSource | undefined,
+  extent: "all" | "shapes",
 ): void {
   const moduleOf = (r: ResourceManifest): string | undefined =>
     (r.metadata as { module?: string } | undefined)?.module;
@@ -109,7 +143,17 @@ export function resolveRefSentinels(
       const t = byName.get(name);
       return t ? { kind: t.kind as string, name } : undefined;
     }
-    const module = aliases?.moduleForAlias(alias);
+    return resolveExported(alias, name, aliases);
+  };
+
+  /** `Alias.name` → the instance the import aliased `Alias` exports, read through
+   *  the alias table of whichever module wrote the reference. */
+  const resolveExported = (
+    alias: string,
+    name: string,
+    scope: Pick<AliasResolver, "moduleForAlias"> | undefined,
+  ): ResolvedRef | undefined => {
+    const module = scope?.moduleForAlias(alias);
     if (module) {
       const t = byModuleName.get(`${module}\0${name}`);
       if (t) {
@@ -126,6 +170,38 @@ export function resolveRefSentinels(
       }
     }
     return undefined;
+  };
+
+  // Every resource by the module that declared it, for a shape reference written
+  // in a DEPENDENCY's contract: flatten carries the shape across the boundary, and
+  // it resolves in the module whose names the reference was written in.
+  const byDeclaringModule = new Map<string, ResourceManifest>();
+  for (const r of resources) {
+    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind)) continue;
+    byDeclaringModule.set(`${moduleOf(r) ?? ""}\0${r.metadata.name as string}`, r);
+  }
+
+  /** How a shape reference in `doc` resolves: in the scope of the module that
+   *  declared `doc`. A forwarded kind document carries no forwarding stamp — only
+   *  its module says it is a dependency's — so the declaring module is what
+   *  decides, and the ordinary rule applies only to a document of the entry's own
+   *  module (a root module is never a key in `aliasesByModule`). */
+  const shapeResolverFor = (doc: ResourceManifest): ((source: string) => ResolvedRef | undefined) => {
+    const module = moduleOf(doc);
+    const ownedByEntry =
+      !isForeign(doc) && (module === undefined || !aliasesByModule?.has(module));
+    if (ownedByEntry) return resolveTarget;
+    const scope = moduleAliasScope(doc.metadata, aliases, aliasesByModule);
+    return (source) => {
+      const dot = source.indexOf(".");
+      const alias = dot === -1 ? undefined : source.slice(0, dot);
+      const name = dot === -1 ? source : source.slice(dot + 1);
+      if (alias === undefined || alias === "Self") {
+        const t = byDeclaringModule.get(`${module ?? ""}\0${name}`);
+        return t ? { kind: t.kind as string, name } : undefined;
+      }
+      return resolveExported(alias, name, scope);
+    };
   };
 
   /** Names a resource declares in its own execution scopes, read from the kind's
@@ -164,19 +240,23 @@ export function resolveRefSentinels(
   // slots, and they SHADOW the module-level ones — the order the runtime resolves
   // in. Baking the module-level kind into a shadowed reference would label traces
   // and `getRefIdentity` with a resource that never runs.
-  const walk = (value: unknown, scoped?: Map<string, ResourceManifest>): unknown => {
+  const walk = (
+    value: unknown,
+    scoped?: Map<string, ResourceManifest>,
+    resolve: (source: string) => ResolvedRef | undefined = resolveTarget,
+  ): unknown => {
     if (isRefSentinel(value)) {
       const source = value.source;
       const bare = source.indexOf(".") === -1;
       const shadow = bare ? scoped?.get(source) : undefined;
       if (shadow) return { kind: shadow.kind as string, name: source };
-      return resolveTarget(source) ?? value;
+      return resolve(source) ?? value;
     }
     if (value === null || typeof value !== "object") return value;
     if (isTaggedSentinel(value)) return value;
     if ((value as { __compiled?: unknown }).__compiled) return value;
     if (Array.isArray(value)) {
-      for (let i = 0; i < value.length; i++) value[i] = walk(value[i], scoped);
+      for (let i = 0; i < value.length; i++) value[i] = walk(value[i], scoped, resolve);
       return value;
     }
     const obj = value as Record<string, unknown>;
@@ -188,13 +268,33 @@ export function resolveRefSentinels(
     const declared =
       typeof obj.kind === "string" ? declaredInScopes(obj as ResourceManifest) : undefined;
     const inner = declared ? new Map([...(scoped ?? new Map()), ...declared]) : scoped;
-    for (const key of Object.keys(obj)) obj[key] = walk(obj[key], inner);
+    for (const key of Object.keys(obj)) obj[key] = walk(obj[key], inner, resolve);
     return value;
   };
 
+  const walkShapeFields = (r: ResourceManifest, fields: readonly string[]): void => {
+    const resolve = shapeResolverFor(r);
+    const record = r as Record<string, unknown>;
+    for (const field of fields) {
+      if (record[field] !== undefined) record[field] = walk(record[field], undefined, resolve);
+    }
+  };
+
   for (const r of resources) {
-    if (isForeign(r)) continue;
     if (!r.metadata?.name || !r.kind) continue;
+    // A dependency's code is not walked as a source — its references belong to
+    // its own module — with one exception: the shapes its contract and signature
+    // name, resolved in the module that wrote them.
+    if (isForeign(r)) {
+      walkShapeFields(r, isForwardedShape(r) ? ["schema"] : forwardedShapeFieldsOf(r));
+      continue;
+    }
+    if (extent === "shapes") {
+      if (r.kind === "Telo.Definition" || r.kind === "Telo.Abstract") {
+        walkShapeFields(r, KIND_SHAPE_FIELDS);
+      }
+      continue;
+    }
     // A `Telo.Import` is import-time metadata, not a resource instance — except
     // for its `resources:` block, which supplies the instances the target
     // library declared it needs. Those are `!ref`s to the importer's OWN
@@ -205,7 +305,20 @@ export function resolveRefSentinels(
       if (supplied) (r as Record<string, unknown>).resources = walk(supplied);
       continue;
     }
-    if (SYSTEM_KINDS.has(r.kind)) continue;
+    // A kind document's own ref slots belong to definition-schema validation
+    // rather than to a resource's value tree, which is why it is in the skip
+    // set. Its CONTRACT and SIGNATURE are the exception, for the reason
+    // `Telo.Import`'s `resources:` block is: `inputType` / `outputType` and
+    // `params[].schema` / `returns.schema` hold a `!ref` to a `Telo.JsonSchema`,
+    // and it resolves there exactly as it does on an instance. Only those
+    // subtrees are walked — the rest of the document keeps its unresolved
+    // references.
+    if (SYSTEM_KINDS.has(r.kind)) {
+      if (r.kind === "Telo.Definition" || r.kind === "Telo.Abstract") {
+        walkShapeFields(r, KIND_SHAPE_FIELDS);
+      }
+      continue;
+    }
     walk(r as Record<string, unknown>);
   }
 }

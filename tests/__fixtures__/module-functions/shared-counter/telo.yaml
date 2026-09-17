@@ -1,0 +1,29 @@
+# Imported twice as a shared library: one instantiation for the application, so
+# both imports bind `Self.ordinal` to the same instance. Its function is the
+# counter library's kind, so the two libraries differ only in their lifecycle.
+kind: Telo.Library
+metadata:
+  name: SharedCounterLib
+  version: 1.0.0
+  description: >-
+    Fixture library, instantiated once per application, whose function reports
+    which instance of it answered a call.
+lifecycle: shared
+imports:
+  Run: ../../../../modules/run
+  Counter: ../counter
+exports:
+  resources: [read]
+---
+kind: Counter.Ordinal
+metadata:
+  name: ordinal
+---
+kind: Run.Sequence
+metadata:
+  name: read
+steps:
+  - name: which
+    value: !cel "Self.ordinal()"
+outputs:
+  ordinal: !cel "steps.which.result"

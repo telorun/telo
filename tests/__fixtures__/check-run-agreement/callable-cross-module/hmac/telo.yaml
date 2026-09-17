@@ -1,0 +1,26 @@
+# The leaf: a native function kind whose callable capability is two libraries
+# away, exporting one instance.
+kind: Telo.Library
+metadata:
+  name: HmacLib
+  version: 1.0.0
+  description: Fixture library implementing a deterministic signing function natively.
+imports:
+  Stable: ../stable
+exports:
+  resources: [sign]
+---
+kind: Telo.Definition
+metadata:
+  name: Hmac
+  description: Joins a key and a message into a signature.
+extends: Stable.StableSigner
+deterministic: true
+schema:
+  type: object
+controllers:
+  - pkg:telo/local/js?path=./hmac.mjs#Hmac
+---
+kind: Self.Hmac
+metadata:
+  name: sign

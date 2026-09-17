@@ -143,3 +143,66 @@ describe("applying a quick fix repairs the manifest", () => {
     expect(analyze(after).diagnostics.filter((d) => String(d.code).startsWith("CEL_"))).toEqual([]);
   });
 });
+
+/**
+ * A TAGGED repair: the value is wrong because it is untagged, so the span holds
+ * no tag and the rendered repair has to write one. Carrying the tag through
+ * normalization is what this proves — without it the host writes the bare name
+ * back and the same diagnostic returns.
+ */
+describe("applying a tagged quick fix repairs the manifest", () => {
+  const definition = {
+    kind: "Telo.Definition",
+    metadata: { name: "Dispatcher", module: "mod" },
+    capability: "Telo.Runnable",
+    schema: {
+      type: "object",
+      properties: { handler: { "x-telo-ref": { kind: "mod.Target", use: "dependency" } } },
+    },
+  };
+  const targetDefinition = {
+    kind: "Telo.Definition",
+    metadata: { name: "Target", module: "mod" },
+    capability: "Telo.Provider",
+    schema: { type: "object" },
+  };
+  const target = { kind: "mod.Target", metadata: { name: "onMessage", source: "telo.yaml" } };
+
+  function analyzeHandler(yamlText: string) {
+    const written = /handler: (.*)$/m.exec(yamlText)![1]!;
+    const tagged = /^!ref\s+(\S+)$/.exec(written);
+    const dispatcher = {
+      kind: "mod.Dispatcher",
+      metadata: { name: "main", source: "telo.yaml" },
+      handler: tagged ? { __tagged: true, engine: "ref", source: tagged[1] } : written,
+    };
+    return new StaticAnalyzer().analyze(
+      withSyntheticPositions([
+        definition,
+        targetDefinition,
+        target,
+        dispatcher,
+      ] as unknown as ResourceManifest[]),
+    );
+  }
+
+  it("writes `!ref` over a bare-name reference", () => {
+    const before = `kind: mod.Dispatcher\nmetadata:\n  name: main\nhandler: onMessage\n`;
+    const doc = parseToAst(before)[0]!;
+    const lineOffsets = [0];
+    for (let i = 0; i < before.length; i++) if (before[i] === "\n") lineOffsets.push(i + 1);
+    const diagnostic = analyzeHandler(before).find((d) => d.code === "INVALID_REFERENCE_FORM");
+    const normalized = normalizeDiagnostic(diagnostic!, {
+      registry: undefined as never,
+      positionIndex: buildPositionIndex(doc, lineOffsets),
+    });
+    const replace = normalized.suggestions?.find((s) => s.kind === "replace");
+    const start = lineOffsets[normalized.range.start.line]! + normalized.range.start.character;
+    const end = lineOffsets[normalized.range.end.line]! + normalized.range.end.character;
+    const rendered = renderFixReplacement(before.slice(start, end), replace!.replacement, replace!.tag);
+    const after = before.slice(0, start) + rendered + before.slice(end);
+
+    expect(after).toBe(`kind: mod.Dispatcher\nmetadata:\n  name: main\nhandler: !ref onMessage\n`);
+    expect(analyzeHandler(after).filter((d) => d.code === "INVALID_REFERENCE_FORM")).toEqual([]);
+  });
+});

@@ -28,6 +28,8 @@ inputs:
   arguments: { ... }                # optional, validated server-side
 ```
 
+The server is not Telo, so a CEL value in `arguments` is sent in its plain encoding: a timestamp as RFC 3339 text in UTC, a duration as seconds (`"5400s"`), bytes as base64url, a `uint` as its digits.
+
 ## Output
 
 ```yaml

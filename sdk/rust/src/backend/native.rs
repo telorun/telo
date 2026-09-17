@@ -10,12 +10,15 @@
 //! itself crashed" from "user code returned an error".
 
 use std::ffi::c_void;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use serde_json::Value;
-use telorun_abi::{TeloBuf, TeloController, TeloHost, TELO_ABI_VERSION, TELO_ERR, TELO_OK};
+use telorun_abi::{
+    TeloBuf, TeloController, TeloFunction, TeloFunctionHost, TeloHost, TELO_ABI_VERSION, TELO_ERR, TELO_OK,
+};
 
-use crate::error::ControllerError;
+use crate::error::{guard, ControllerError};
+use crate::function_controller::{wire as function_wire, Function, FunctionContext};
+use crate::logging::SeverityNumber;
 use crate::invoke_context::{CancellationToken, InvokeContext};
 use crate::traits::{Controller, ControllerContext, DataValidator, ResourceContext, Result};
 
@@ -228,6 +231,108 @@ pub unsafe extern "C" fn destroy<C: Controller>(handle: *mut c_void, out_err: *m
     }
 }
 
+// ---------------------------------------------------------------------------
+// Function shims. Referenced from the vtable `#[function]` emits.
+// ---------------------------------------------------------------------------
+
+/// The function context backed by the host's table, valid for one `create`.
+pub struct NativeFunctionContext {
+    host: *const TeloFunctionHost,
+}
+
+impl FunctionContext for NativeFunctionContext {
+    fn log(&self, severity: SeverityNumber, message: &str) -> Result<()> {
+        if self.host.is_null() {
+            return Err(ControllerError::new("ERR_NO_HOST", "the function was created with no host to log through"));
+        }
+        let host = unsafe { &*self.host };
+        unsafe { (host.log)(host.ctx, severity as i32, message.as_ptr(), message.len()) };
+        Ok(())
+    }
+}
+
+/// Build the function vtable for `F`.
+pub const fn function_vtable<F: Function>() -> TeloFunction {
+    TeloFunction {
+        abi_version: TELO_ABI_VERSION,
+        create: function_create::<F>,
+        call: function_call::<F>,
+        destroy: function_destroy::<F>,
+        free: free_buf,
+    }
+}
+
+/// # Safety
+/// `config` must point at `config_len` valid bytes, `host` at a live
+/// [`TeloFunctionHost`] or be null, and `out_err` at a writable [`TeloBuf`].
+pub unsafe extern "C" fn function_create<F: Function>(
+    config: *const u8,
+    config_len: usize,
+    host: *const TeloFunctionHost,
+    out_err: *mut TeloBuf,
+) -> *mut c_void {
+    let result = guard(|| {
+        let bytes = unsafe { std::slice::from_raw_parts(config, config_len) };
+        let config = function_wire::config::<F>(bytes)?;
+        F::create(config, &NativeFunctionContext { host })
+    });
+    match result {
+        Ok(instance) => Box::into_raw(Box::new(instance)) as *mut c_void,
+        Err(err) => {
+            unsafe { write_error(out_err, &err) };
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// # Safety
+/// `handle` must be a live instance produced by [`function_create`] for the
+/// same `F`, `args` must point at `args_len` valid bytes, and `out` must be
+/// writable.
+pub unsafe extern "C" fn function_call<F: Function>(
+    handle: *mut c_void,
+    args: *const u8,
+    args_len: usize,
+    out: *mut TeloBuf,
+) -> i32 {
+    let result = guard(|| {
+        let instance = unsafe { &*(handle as *const F) };
+        let bytes = unsafe { std::slice::from_raw_parts(args, args_len) };
+        function_wire::call(instance, bytes)
+    });
+    match result {
+        Ok(frame) => {
+            if !out.is_null() {
+                *out = TeloBuf::from_vec(frame.into_bytes());
+            }
+            TELO_OK
+        }
+        Err(err) => {
+            write_error(out, &err);
+            TELO_ERR
+        }
+    }
+}
+
+/// # Safety
+/// `handle` must be a live instance produced by [`function_create`] for the
+/// same `F`, and must not be used afterwards.
+pub unsafe extern "C" fn function_destroy<F: Function>(handle: *mut c_void, out_err: *mut TeloBuf) -> i32 {
+    if handle.is_null() {
+        return TELO_OK;
+    }
+    match guard(|| {
+        drop(unsafe { Box::from_raw(handle as *mut F) });
+        Ok(())
+    }) {
+        Ok(()) => TELO_OK,
+        Err(err) => {
+            unsafe { write_error(out_err, &err) };
+            TELO_ERR
+        }
+    }
+}
+
 /// Wire the host's cancellation poll into an [`InvokeContext`]. A null host
 /// yields a token that never cancels rather than a dangling call.
 unsafe fn invoke_context(host: *const TeloHost) -> InvokeContext {
@@ -245,27 +350,6 @@ unsafe fn invoke_context(host: *const TeloHost) -> InvokeContext {
     }
 }
 
-/// Run a fallible body, converting a panic into a structured error rather than
-/// letting it unwind into the host's frame.
-fn guard<T>(body: impl FnOnce() -> Result<T>) -> Result<T> {
-    match catch_unwind(AssertUnwindSafe(body)) {
-        Ok(result) => result,
-        Err(payload) => Err(ControllerError::new(
-            "ERR_CONTROLLER_PANIC",
-            panic_message(&payload),
-        )),
-    }
-}
-
-fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
-    if let Some(message) = payload.downcast_ref::<&str>() {
-        return (*message).to_string();
-    }
-    if let Some(message) = payload.downcast_ref::<String>() {
-        return message.clone();
-    }
-    "controller panicked".to_string()
-}
 
 unsafe fn write_result(out: *mut TeloBuf, result: Result<Value>) -> i32 {
     match result {

@@ -1,4 +1,4 @@
-import type { LoadedFile, LoadedGraph } from "@telorun/analyzer";
+import type { DiagnosticFixTag, LoadedFile, LoadedGraph } from "@telorun/analyzer";
 import {
   AnalysisRegistry,
   Loader,
@@ -24,6 +24,7 @@ import { TeloCompletionProvider } from "./completion.js";
 import { TeloDefinitionProvider } from "./definition.js";
 import { TeloHoverProvider } from "./hover.js";
 import { TeloRenameProvider } from "./rename.js";
+import { TeloSignatureHelpProvider } from "./signature-help.js";
 import {
   REFRESH_IMPORT_UPGRADES_COMMAND,
   TeloImportUpgradeLensProvider,
@@ -72,7 +73,7 @@ const TAG: Record<number, vscode.DiagnosticTag> = {
  *  has to stay in sync with re-analysis: when the diagnostic is replaced, its
  *  fix goes with it. */
 interface DiagnosticWithFix extends vscode.Diagnostic {
-  teloFix?: { replacement: string };
+  teloFix?: { replacement: string; tag?: DiagnosticFixTag };
 }
 
 function toVscodeDiagnostic(n: NormalizedDiagnostic): DiagnosticWithFix {
@@ -91,7 +92,12 @@ function toVscodeDiagnostic(n: NormalizedDiagnostic): DiagnosticWithFix {
   const tags = n.tags?.map((t) => TAG[t]).filter((t): t is vscode.DiagnosticTag => t !== undefined);
   if (tags?.length) diag.tags = tags;
   const replace = n.suggestions?.find((s) => s.kind === "replace");
-  if (replace) diag.teloFix = { replacement: replace.replacement };
+  if (replace) {
+    diag.teloFix = {
+      replacement: replace.replacement,
+      ...(replace.tag ? { tag: replace.tag } : {}),
+    };
+  }
   return diag;
 }
 
@@ -122,6 +128,7 @@ class TeloQuickFixProvider implements vscode.CodeActionProvider {
       const replacement = renderFixReplacement(
         document.getText(diagnostic.range),
         fix.replacement,
+        fix.tag,
       );
       if (replacement === undefined) continue;
       const action = new vscode.CodeAction(
@@ -211,6 +218,12 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.languages.registerDefinitionProvider(teloSelector, definitionProvider),
     vscode.languages.registerRenameProvider(teloSelector, renameProvider),
+    vscode.languages.registerSignatureHelpProvider(
+      teloSelector,
+      new TeloSignatureHelpProvider(cache),
+      "(",
+      ",",
+    ),
     vscode.languages.registerCodeActionsProvider(teloSelector, new TeloQuickFixProvider(), {
       providedCodeActionKinds: TeloQuickFixProvider.providedCodeActionKinds,
     }),

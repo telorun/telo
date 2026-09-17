@@ -1,0 +1,26 @@
+# Calls a re-exported function through the re-exporting library's alias. A call
+# reaches a function through the export table, re-exports included — the same
+# resolution `!ref Outer.twice` takes — so this checks clean and runs.
+kind: Telo.Library
+metadata:
+  name: ReExportCallerLib
+  version: 1.0.0
+  description: Fixture library calling a function its import re-exports.
+imports:
+  Run: ../../../../../modules/run
+  Assert: ../../../../../modules/assert
+  Outer: ../outer
+exports:
+  resources: [flow]
+---
+kind: Run.Sequence
+metadata:
+  name: flow
+steps:
+  - name: doubled
+    value: !cel "Outer.twice(3)"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.doubled.result"
+      expected: 6

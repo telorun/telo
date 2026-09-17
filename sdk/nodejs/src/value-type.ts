@@ -19,12 +19,14 @@
  * an entry declares a symbolic `binding`, never a constructor name, and each
  * runtime carries its own table mapping that key to its own identity.
  *
- * THE REGISTRY IS IN THE SDK because it is dependency-free and Node-built-in-free
- * (so a browser-side analyzer can read it), because `Stream` already lives here,
+ * THE REGISTRY IS IN THE SDK because it is Node-built-in-free (so a browser-side
+ * analyzer can read it), because `Stream` and the CEL value classes live here,
  * and because it is the only placement a module controller can reach: a module
  * may import `@telorun/sdk` and nothing else.
  */
 
+import { Duration, UnsignedInt } from "./cel-value-identity.js";
+import { PLAIN_ENCODINGS, type PlainEncoding } from "./plain-encoding.js";
 import { Stream } from "./stream.js";
 import { VALUE_TYPE_ENTRY_FILES } from "./value-types/entries/index.js";
 
@@ -34,8 +36,8 @@ export const X_TELO_TYPE = "x-telo-type";
  *
  *  - `json`     — an ordinary value its declared schema already validates. The
  *                 name adds nominal identity for static wiring, nothing else.
- *  - `instance` — not JSON at all. This is what makes a value unauthorable: no
- *                 YAML literal is ever a byte buffer or a stream handle. */
+ *  - `instance` — not JSON at all. A YAML literal reaches such a slot only
+ *                 through the entry's plain `encoding`, and a live one never. */
 export type ValueTypeRepresentation = "json" | "instance";
 
 /** A named type parameter. Every parameter is optional and defaults to *any*,
@@ -60,8 +62,15 @@ export interface ValueTypeEntry {
   readonly representation: ValueTypeRepresentation;
   /** `json` only — the JSON Schema type this name refines. */
   readonly base?: string;
+  /** `json` only — the CEL type a value carries when it is one JSON Schema
+   *  cannot name (`uint` over `integer`). Absent means the name is a nominal
+   *  brand over `base`. */
+  readonly celType?: string;
   /** `instance` only — the symbolic key a runtime's binding table maps. */
   readonly binding?: string;
+  /** Non-live `instance` only — the symbolic name of the one canonical plain JSON
+   *  form, which each runtime maps to its own codec ({@link PLAIN_ENCODINGS}). */
+  readonly encoding?: string;
   /** An instance whose consumption has effects, so it is exempt from validation
    *  rather than asserted. Exemption is from VALIDATION, never from TYPING. */
   readonly live: boolean;
@@ -94,7 +103,17 @@ export interface ValueTypeBinding {
  */
 export const VALUE_TYPE_BINDINGS: Readonly<Record<string, ValueTypeBinding>> = {
   bytes: { constructor: Uint8Array, celType: "bytes", placeholder: () => new Uint8Array() },
+  duration: {
+    constructor: Duration,
+    celType: "google.protobuf.Duration",
+    placeholder: () => new Duration(0),
+  },
   stream: { constructor: Stream, celType: "Stream" },
+  timestamp: {
+    constructor: Date,
+    celType: "google.protobuf.Timestamp",
+    placeholder: () => new Date(0),
+  },
 };
 
 /** The CEL type a `json` representation's declared base carries. A brand's own
@@ -109,6 +128,102 @@ const CEL_TYPE_FOR_BASE: Readonly<Record<string, string>> = {
   object: "map",
 };
 
+/** The CEL types a `json` base can carry beyond its own, which only `celType`
+ *  can state. */
+const CEL_TYPES_BEYOND_BASE: Readonly<Record<string, readonly string[]>> = {
+  integer: ["uint"],
+};
+
+/** The runtime form a declared scalar output is normalized to. */
+export type ScalarForm = "int64" | "uint64" | "double";
+
+/** How a scalar CEL type is held at runtime, and — where JSON Schema cannot state
+ *  it — the range a value must fall in. */
+export interface CelScalarForm {
+  readonly form: ScalarForm;
+  readonly range?: {
+    /** What an accepted value is, for a refusal message. */
+    readonly describe: string;
+    /** `container` and `key` locate the value inside the data being validated,
+     *  for a check that must tell a view's exact rendering from a written one. */
+    readonly accepts: (value: unknown, container?: unknown, key?: string | number) => boolean;
+  };
+}
+
+const MAX_UINT64 = 2n ** 64n - 1n;
+
+/** Where a validator's view rendered an exact wide integer as a double: the
+ *  view's container, and the keys inside it. */
+const exactRenderings = new WeakMap<object, Set<string | number>>();
+
+/**
+ * Record that `container[key]` holds a double a validator's view rendered from an
+ * exact integer (an int64 or a CEL uint) — the one way a number beyond 2^53 can
+ * still stand for the value that was written. A host that validates such a view
+ * marks each rendering; everything else holding a wide number never was exact.
+ */
+export function markExactRendering(container: object, key: string | number): void {
+  let keys = exactRenderings.get(container);
+  if (!keys) exactRenderings.set(container, (keys = new Set()));
+  keys.add(key);
+}
+
+/**
+ * An unsigned 64-bit integer in any of its representations: a JSON number, an
+ * int64, or a CEL uint.
+ *
+ * A number is accepted only while it is exact — `Number.isSafeInteger` — because
+ * a wider one is already some other integer: the literal `18446744073709551615`
+ * reads as 2^64, and would reach CEL a different uint with nothing reported. The
+ * exception is a double a validator's view rendered from an exact value, which
+ * the view marks ({@link markExactRendering}); `container` and `key` locate it,
+ * and it is judged against the bound as a double, which is what the largest
+ * legal uints round to.
+ */
+function isUint64(value: unknown, container?: unknown, key?: string | number): boolean {
+  const exact =
+    value instanceof UnsignedInt ? value.value : typeof value === "bigint" ? value : undefined;
+  if (exact !== undefined) return exact >= 0n && exact <= MAX_UINT64;
+  if (typeof value !== "number" || value < 0) return false;
+  if (Number.isSafeInteger(value)) return true;
+  const rendered =
+    container !== null &&
+    typeof container === "object" &&
+    key !== undefined &&
+    exactRenderings.get(container)?.has(key) === true;
+  return rendered && Number.isInteger(value) && value <= Number(MAX_UINT64);
+}
+
+/** The one table every scalar a declaration names goes through — a plain JSON
+ *  type through its CEL type, a `json` value type through its `celType` or base.
+ *  Keyed by CEL type, so no consumer compares one by name. */
+export const CEL_SCALAR_FORMS: Readonly<Record<string, CelScalarForm>> = {
+  int: { form: "int64" },
+  uint: {
+    form: "uint64",
+    range: {
+      describe:
+        `an integer from 0 to ${MAX_UINT64}; a plain number beyond ${Number.MAX_SAFE_INTEGER} ` +
+        `is not exact, so write a wider one as a CEL uint (!cel "${MAX_UINT64}u")`,
+      accepts: isUint64,
+    },
+  },
+  double: { form: "double" },
+};
+
+/** The CEL scalar type a `json` value type carries — its `celType`, else its
+ *  base's — or undefined for an instance. */
+export function celScalarTypeOf(entry: ValueTypeEntry): string | undefined {
+  if (entry.representation !== "json") return undefined;
+  return entry.celType ?? CEL_TYPE_FOR_BASE[entry.base!];
+}
+
+/** The scalar form a plain JSON Schema `type` names, or undefined. */
+export function scalarFormOfJsonType(type: string): CelScalarForm | undefined {
+  const celType = CEL_TYPE_FOR_BASE[type];
+  return celType === undefined ? undefined : CEL_SCALAR_FORMS[celType];
+}
+
 class ValueTypeEntryError extends Error {
   constructor(file: string, detail: string) {
     super(`Invalid value-type entry '${file}': ${detail}`);
@@ -120,7 +235,9 @@ const ENTRY_KEYS = [
   "name",
   "representation",
   "base",
+  "celType",
   "binding",
+  "encoding",
   "live",
   "parameters",
   "description",
@@ -210,8 +327,11 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
   // statement with no meaning: a `json` value has no constructor to assert, and
   // an `instance` has no JSON base to refine.
   if (representation === "json") {
-    if (data.binding !== undefined) {
-      throw new ValueTypeEntryError(file, "a 'json' representation takes no 'binding'");
+    if (data.binding !== undefined || data.encoding !== undefined) {
+      throw new ValueTypeEntryError(
+        file,
+        "a 'json' representation takes no 'binding' or 'encoding' — it is its own JSON form",
+      );
     }
     const base = requireString(file, data, "base");
     if (!(base in CEL_TYPE_FOR_BASE)) {
@@ -220,20 +340,54 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
         `'base' '${base}' is not a JSON Schema type (${Object.keys(CEL_TYPE_FOR_BASE).join(", ")})`,
       );
     }
+    if (data.celType !== undefined) {
+      const celType = requireString(file, data, "celType");
+      const beyond = CEL_TYPES_BEYOND_BASE[base] ?? [];
+      if (!beyond.includes(celType)) {
+        throw new ValueTypeEntryError(
+          file,
+          `'celType' '${celType}' is not a CEL type a '${base}' base carries beyond its own` +
+            (beyond.length > 0 ? ` (${beyond.join(", ")})` : " — this base has none"),
+        );
+      }
+    }
     if (data.live === true) {
       throw new ValueTypeEntryError(file, "a 'json' representation cannot be 'live' — it is data");
     }
   } else {
-    if (data.base !== undefined) {
-      throw new ValueTypeEntryError(file, "an 'instance' representation takes no 'base'");
+    if (data.base !== undefined || data.celType !== undefined) {
+      throw new ValueTypeEntryError(
+        file,
+        "an 'instance' representation takes no 'base' or 'celType' — its binding carries both",
+      );
     }
     requireString(file, data, "binding");
+    // A live value is never serialized, so it has no plain form; every other
+    // instance has exactly one, or a boundary reading it would have to guess.
+    if (data.live === true) {
+      if (data.encoding !== undefined) {
+        throw new ValueTypeEntryError(file, "a 'live' representation takes no 'encoding' — it is never serialized");
+      }
+    } else {
+      const encoding = requireString(file, data, "encoding");
+      if (!(encoding in PLAIN_ENCODINGS)) {
+        throw new ValueTypeEntryError(
+          file,
+          `encoding '${encoding}' has no codec in this runtime (${Object.keys(PLAIN_ENCODINGS).join(", ")})`,
+        );
+      }
+    }
   }
 
   const entry: ValueTypeEntry = {
     name,
     representation,
-    ...(representation === "json" ? { base: data.base as string } : { binding: data.binding as string }),
+    ...(representation === "json"
+      ? { base: data.base as string, ...(data.celType === undefined ? {} : { celType: data.celType as string }) }
+      : {
+          binding: data.binding as string,
+          ...(data.encoding === undefined ? {} : { encoding: data.encoding as string }),
+        }),
     live: data.live === true,
     parameters: readParameters(file, data.parameters),
     description: requireString(file, data, "description"),
@@ -349,7 +503,7 @@ export function isLiveSlot(schema: unknown): boolean {
 }
 
 /** True when the node declares a type represented as a runtime instance —
- *  the values no manifest literal can ever be. */
+ *  the values a manifest literal is only ever decoded into, never is. */
 export function isInstanceSlot(schema: unknown): boolean {
   return valueTypeOf(schema)?.representation === "instance";
 }
@@ -393,9 +547,25 @@ export function valueTypePlaceholder(schema: unknown): unknown | undefined {
  * identical. An `instance` carries whatever its binding says.
  */
 export function celTypeOfValueType(entry: ValueTypeEntry): string {
-  if (entry.representation === "json") return entry.name;
+  if (entry.representation === "json") return entry.celType ?? entry.name;
   const binding = VALUE_TYPE_BINDINGS[entry.binding!];
   return binding!.celType;
+}
+
+/** The plain encoding of the value type a schema node declares, or undefined
+ *  when it declares none, a `json` one, or a `live` one. */
+export function plainEncodingOf(schema: unknown): PlainEncoding | undefined {
+  const encoding = valueTypeOf(schema)?.encoding;
+  return encoding === undefined ? undefined : PLAIN_ENCODINGS[encoding];
+}
+
+/** What text arriving from outside at this slot holds: the instance it decodes
+ *  to, or the text unchanged when the slot declares no plain encoding or the text
+ *  is not in it — which the slot's assertion then refuses. The one leaf rule
+ *  every decoding walk applies. */
+export function decodePlainText(schema: unknown, text: string): unknown {
+  const decoded = plainEncodingOf(schema)?.decode(text);
+  return decoded === undefined ? text : decoded;
 }
 
 /** The CEL type a brand degrades to where the consuming slot declares none —
@@ -406,10 +576,12 @@ export function celBaseOfValueType(entry: ValueTypeEntry): string | undefined {
 }
 
 /** Every `json` representation's CEL brand → the base type it refines. The
- *  gradual-typing table, derived rather than hand-written. */
+ *  gradual-typing table, derived rather than hand-written. An entry declaring a
+ *  `celType` is not a brand: its values carry that CEL type itself. */
 export function valueBrandBases(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const entry of VALUE_TYPES.values()) {
+    if (entry.celType !== undefined) continue;
     const base = celBaseOfValueType(entry);
     if (base !== undefined) out[entry.name] = base;
   }

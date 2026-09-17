@@ -21,6 +21,7 @@ packages:
   # the surface it exercises moves, which for a fixture guarding a seam is the
   # one failure it must not have.
   - tests/__fixtures__/*/nodejs
+  - modules/*/tests/__fixtures__/*/nodejs
 
 onlyBuiltDependencies:
   - better-sqlite3

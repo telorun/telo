@@ -6,7 +6,11 @@ import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 
 const SOURCE = "telo-analyzer";
-const SCHEMA_FIELDS = ["schema", "inputType", "outputType"] as const;
+// A callable's signature is schema-bearing too: `params[].schema` and
+// `returns.schema` hold the same `JsonSchema7` node an `inputType:` does, so a
+// `telo://<Alias>/<Type>` written inside one resolves — or fails to — by exactly
+// the same rule.
+const SCHEMA_FIELDS = ["schema", "inputType", "outputType", "params", "returns"] as const;
 
 /**
  * Validates module-scoped schema `$ref`s of the form `telo://<authority>/<type>`.

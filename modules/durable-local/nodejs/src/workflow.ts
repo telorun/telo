@@ -17,6 +17,8 @@ import {
   type ResourceManifest,
   type Step,
 } from "@telorun/sdk";
+import { RECORDED_VALUE_CODEC_VERSION, writeRecordedValue } from "@telorun/sdk";
+import { recordedRunResult } from "./journal-codec.js";
 import { isDurableJournal, type DurableJournal } from "./journal.js";
 import { LocalRunHandle } from "./run-handle.js";
 
@@ -85,7 +87,13 @@ export class WorkflowController {
       // doing the work again — which is what makes a caller-chosen run id an
       // idempotent start.
       if (existing?.status === "completed") {
-        return { runId, attached: true, status: "completed", result: existing.result };
+        const recorded = recordedRunResult(existing);
+        return {
+          runId,
+          attached: true,
+          status: "completed",
+          ...("value" in recorded ? { result: recorded.value } : {}),
+        };
       }
       if (existing?.status === "failed") {
         throw new InvokeError(
@@ -267,15 +275,7 @@ export class WorkflowController {
       //
       // Left `running`, it is exactly what the resumer looks for, and what a
       // later submission of the same id attaches to and continues.
-      if (!isCancellationError(err)) {
-        await journal.completeRun(runId, {
-          status: "failed",
-          error: {
-            code: (err as { code?: string }).code ?? "INTERNAL_ERROR",
-            message: (err as Error).message,
-          },
-        });
-      }
+      if (!isCancellationError(err)) await this.settleFailed(runId, journal, err);
       throw err;
     }
 
@@ -286,10 +286,25 @@ export class WorkflowController {
     // settlement, so the false record is never written.
     assertNotSwallowed(handle);
 
+    // The result is written down like a recorded value, so `DurableLocal.Result`
+    // hands back a timestamp as a timestamp and an int as an int64. A step inside
+    // a collapsed region is not journaled, so its result can still be a value no
+    // record can hold — that settles the run failed rather than storing it as
+    // something else.
     const result = { steps };
+    let resultFrame: string | undefined;
+    try {
+      resultFrame = writeRecordedValue(result, { run: runId, path: "result" });
+    } catch (err) {
+      await this.settleFailed(runId, journal, err);
+      throw err;
+    }
+
     await journal.completeRun(runId, {
       status: "completed",
-      result,
+      ...(resultFrame === undefined
+        ? {}
+        : { result: resultFrame, resultCodecVersion: RECORDED_VALUE_CODEC_VERSION }),
       collapsedRegions: handle.observations.collapsedRegions,
       collapseReasons: handle.observations.collapseReasons,
       // Recorded rather than only returned, because the caller that STARTED the
@@ -309,6 +324,16 @@ export class WorkflowController {
       collapseReasons: handle.observations.collapseReasons,
       result,
     };
+  }
+
+  private async settleFailed(runId: string, journal: DurableJournal, err: unknown): Promise<void> {
+    await journal.completeRun(runId, {
+      status: "failed",
+      error: {
+        code: (err as { code?: string }).code ?? "INTERNAL_ERROR",
+        message: (err as Error).message,
+      },
+    });
   }
 
   journal(): DurableJournal {

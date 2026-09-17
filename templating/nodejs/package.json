@@ -42,7 +42,7 @@
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "dependencies": {
-    "@marcbachmann/cel-js": "^7.6.1",
+    "@marcbachmann/cel-js": "7.6.1",
     "d3-format": "catalog:",
     "re2js": "^2.8.3",
     "uuid": "^14.0.1",

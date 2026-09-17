@@ -17,6 +17,17 @@ export interface CompiledValue {
    *  needs without re-parsing or string-matching the source. Absent for engines
    *  that don't surface an AST. */
   readonly refs?: readonly string[];
+  /** Qualified module calls the expression makes (`["Billing.format",
+   *  "Self.y"]`), as written, extracted from the CEL AST at compile time.
+   *
+   *  A call whose receiver is one of the declaring module's names is a call on
+   *  another resource, so it is a dependency the expression states — the same
+   *  standing `refs` has, one namespace out. Carried on the value because
+   *  re-deriving it needs the module's name set, which a consumer holding an
+   *  expression does not have: a re-parse cannot tell `Billing.format(x)` from a
+   *  method call on a variable named `Billing`. Absent for an engine that
+   *  surfaces no AST; empty for an expression that calls nothing qualified. */
+  readonly calls?: readonly string[];
   call(ctx: Record<string, unknown>): unknown;
 }
 

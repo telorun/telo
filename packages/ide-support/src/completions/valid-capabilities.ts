@@ -4,6 +4,8 @@ export const CAPABILITY_VALUES = [
   "Telo.Invocable",
   "Telo.Provider",
   "Telo.Mount",
+  "Telo.Sink",
+  "Telo.Callable",
   "Telo.Type",
 ] as const;
 
@@ -15,5 +17,9 @@ export const CAPABILITY_DOCS: Record<string, string> = {
   "Telo.Invocable": "Request handler: `invoke(inputs)` (scripts, endpoints).",
   "Telo.Provider": "Value-flow source: `init()` + optional `provide()` (config, secrets).",
   "Telo.Mount": "Mounted into a Service (HTTP APIs, middleware).",
+  "Telo.Sink":
+    "Record-stream destination: `write(record)` + `flush()` / `flushSync()` / `close()`, written to directly rather than dispatched.",
+  "Telo.Callable":
+    "Function: synchronous `call(args)` against a declared `params` / `returns` signature, called from CEL through a module name.",
   "Telo.Type": "Pure schema definition — no runtime instance.",
 };

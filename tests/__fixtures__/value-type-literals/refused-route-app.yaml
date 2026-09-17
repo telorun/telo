@@ -1,0 +1,44 @@
+# A consumer that mounts the library's API and calls the route: the route's
+# `inputs:` are decoded when the API is created, so text the encoding does not
+# read reaches the handler's contract at the dispatch the request makes. The app
+# asks for the instant it expects, and fails with the kernel's own refusal.
+kind: Telo.Application
+metadata:
+  name: RefusedRouteApp
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Http: ../../../modules/http-server
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+  Derived: ./refused-derived-lib
+targets:
+  - !ref callRoute
+---
+kind: Run.Sequence
+metadata:
+  name: callRoute
+with:
+  - kind: Http.Server
+    metadata:
+      name: stampServer
+    port: 8851
+    mounts:
+      - path: /
+        mount: !ref Derived.stampApi
+targets:
+  - !ref stampServer
+steps:
+  - name: fetch
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8851/stamp
+      method: GET
+  - name: expectStamp
+    invoke:
+      kind: Assert.Equals
+    inputs:
+      actual: !cel "steps.fetch.result.body"
+      expected:
+        at: "2026-01-15T09:30:00.000Z"

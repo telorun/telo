@@ -1,3 +1,4 @@
+import { plainMapKey, plainScalar, UnsignedInt } from "@telorun/sdk";
 import type { LruBlobStore } from "./blob-store.js";
 
 /**
@@ -17,7 +18,12 @@ import type { LruBlobStore } from "./blob-store.js";
  *    object key it sits under is preserved; only the bytes leave the log). Without
  *    a store, a `"[Bytes <n>]"` marker.
  *  - a resolved `!ref` (a controller instance) → the `{ kind, name }` it stands for.
- *  - a value with `toJSON` (e.g. `Date`) → its `toJSON()` result.
+ *  - a CEL timestamp, duration or uint → its plain form (`plainScalar`); NaN and
+ *    ±Infinity → `"NaN"` / `"Infinity"` / `"-Infinity"`; a `Map` → an object keyed
+ *    by each key's text, or — when a key is not a CEL map key or two keys share a
+ *    text — an array of `[key, value]` pairs, since observing a run never fails
+ *    it. No value is type-tagged: the wire's readers are not Telo.
+ *  - a value with `toJSON` → its `toJSON()` result.
  *  - a bigint → a plain number when it fits a JS safe integer (CEL models small
  *    integers as bigint, so `${{ size(x) }}` reads as `3`, not `[BigInt 3]`),
  *    otherwise its decimal digits as a string so no precision is lost.
@@ -36,6 +42,7 @@ function toWire(value: unknown, store: LruBlobStore | undefined, seen: WeakSet<o
   if (typeof value === "function") {
     return `[Function ${(value as { name?: string }).name || "anonymous"}]`;
   }
+  if (typeof value === "number") return plainScalar(value) ?? value;
   if (value === null || typeof value !== "object") return value;
 
   // Binary first — before the cycle check and before any toJSON. Buffer is a
@@ -49,6 +56,10 @@ function toWire(value: unknown, store: LruBlobStore | undefined, seen: WeakSet<o
     return `[Bytes ${value.byteLength}]`;
   }
 
+  // A timestamp, duration or uint is written as its plain form, never tagged.
+  const plain = plainScalar(value);
+  if (plain !== undefined) return toWire(plain, store, seen);
+
   // Path-scoped cycle detection: a value is "circular" only while it is an
   // ancestor on the current descent. Removing it on the way back up means a value
   // reachable by two sibling paths (a shared reference / DAG, not a cycle) still
@@ -58,6 +69,19 @@ function toWire(value: unknown, store: LruBlobStore | undefined, seen: WeakSet<o
   try {
     if (Array.isArray(value)) {
       return value.map((v) => toWire(v, store, seen));
+    }
+
+    if (value instanceof Map) {
+      // Observing a run must never fail it: a map whose keys cannot all be
+      // written as distinct object keys is written as its [key, value] pairs.
+      const texts = [...value.keys()].map((k) => (isPlainMapKey(k) ? plainMapKey(k) : undefined));
+      if (texts.some((text) => text === undefined) || new Set(texts).size !== texts.length) {
+        return [...value].map(([k, v]) => [toWire(k, store, seen), toWire(v, store, seen)]);
+      }
+      const out: Record<string, unknown> = {};
+      let index = 0;
+      for (const v of value.values()) out[texts[index++]!] = toWire(v, store, seen);
+      return out;
     }
 
     const toJSON = (value as { toJSON?: unknown }).toJSON;
@@ -88,6 +112,16 @@ function toWire(value: unknown, store: LruBlobStore | undefined, seen: WeakSet<o
  * own field holding a manifest-shaped value (`{ kind: string, metadata.name:
  * string }`). Returns null when no field qualifies.
  */
+/** A key CEL can hold in a map: a string, an int, a uint or a bool. */
+function isPlainMapKey(key: unknown): boolean {
+  return (
+    typeof key === "string" ||
+    typeof key === "bigint" ||
+    typeof key === "boolean" ||
+    key instanceof UnsignedInt
+  );
+}
+
 function resourceRefOf(instance: object): { kind: string; name: string } | null {
   for (const v of Object.values(instance)) {
     const m = v as { kind?: unknown; metadata?: { name?: unknown } } | null;

@@ -1,0 +1,186 @@
+kind: Telo.Application
+metadata:
+  name: DurableJournalPostgresLegacyCodecTest
+  version: 1.0.0
+  description: |
+    A RUN LEFT UNSETTLED BEFORE THE TYPED FRAME EXISTED STILL RESUMES.
+
+    Every value this journal records now carries a codec version, and a version it does
+    not know is refused. A row written before the column existed carries NONE — and
+    refusing that would strand exactly the runs a journal exists to protect, which is why
+    a versionless row is read the way this store read one then: plain JSON, plus the
+    `{"$bigint": …}` tag it has always written for a wide integer.
+
+    So the legacy rows are written out BY HAND rather than produced, because the point is
+    that this is what a deployment made before the change still holds; producing them
+    through today's writer would record today's codec and test nothing. The run is left
+    `running` with no settlement, which is the state a process that disappeared leaves —
+    the one the resumer looks for.
+
+    THE ASSERTION IS THE VALUE'S TYPE, through an equality an int64 satisfies and nothing
+    else does: `9007199254740993` is one past what a double can represent, so a value that
+    came back as a number is not equal to it, and one that came back as the tag object is
+    not equal to anything. A step that RE-EXECUTED would produce its own value and fail
+    the same assertion, so one comparison covers both halves.
+
+    NEEDS A LIVE POSTGRES. Kept out of `tests/` proper for exactly that reason.
+imports:
+  Durable: ../../../durable
+  Local: ../../../durable-local
+  Journal: ../../
+  Postgres: ../../../postgres
+  Sql: ../../../sql
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref test
+  - !ref dispatches
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+# Its OWN prefix, for the reason the sibling tests state: two journals over one
+# prefix are two applications sharing a store.
+kind: Journal.Journal
+metadata: { name: journal }
+connection: !ref db
+table: !cel "'telo_durable_legacy_test'"
+---
+# What the recorded step would produce if it ran again — a value that is plainly
+# not the one in the journal, so a re-execution cannot pass the assertion by
+# coincidence.
+kind: Run.Value
+metadata: { name: charge }
+value: 1
+---
+kind: Local.Workflow
+metadata: { name: onboard }
+journal: !ref journal
+runId: !cel "'pglegacy:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - name: charged
+    invoke: !ref charge
+  # Never recorded, so this is the first step the resumed execution runs — and it
+  # reads the replayed value as a CEL value rather than as whatever JSON held it.
+  - name: check
+    value:
+      exact: !cel "steps.charged.result == 9007199254740993"
+---
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 20s
+---
+kind: Assert.Events
+metadata: { name: dispatches }
+filter:
+  - type: "charge.Invoked"
+expect:
+  # NEVER. The step's entry was in the journal before this process started, so a
+  # single dispatch would mean the resume re-executed what was already recorded.
+  - event: charge.Invoked
+    times: 0
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # A fresh run id per process, so a previous run of this test leaves nothing
+  # this one could attach to.
+  - name: ticket
+    value: !cel "'l' + string(nowMillis())"
+
+  # THE LEGACY ROWS, written as a deployment made before the codec would hold
+  # them: no `codec_version` anywhere, and the wide integer under the `$bigint`
+  # tag this store has always written.
+  - name: seedRun
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO telo_durable_legacy_test_runs (run, status)
+        VALUES ('pglegacy:' || $1, 'running')
+      bindings: [!cel "steps.ticket.result"]
+  - name: seedEntry
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO telo_durable_legacy_test_entries (run, path, entry_kind, value)
+        VALUES ('pglegacy:' || $1, 'steps/charged', 'step', $2)
+      bindings:
+        - !cel "steps.ticket.result"
+        - '{"$bigint":"9007199254740993"}'
+
+  # Submitting the id attaches to the unsettled run, takes its lapsed claim and
+  # continues it — the same `execute` the resumer calls.
+  - name: resume
+    invoke: !ref onboard
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: finished
+    invoke: !ref outcome
+    inputs:
+      run: !cel "'pglegacy:' + steps.ticket.result"
+  - name: assertResumed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        exact: !cel "steps.finished.result.result.steps.check.result.exact"
+      expected:
+        status: completed
+        exact: true
+
+  # A run SETTLED before the codec: its result column is plain JSON with no codec
+  # version, `$bigint` included, and `Local.Result` reads it the way this store read
+  # one then.
+  - name: seedSettledRun
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO telo_durable_legacy_test_runs (run, status, result)
+        VALUES ('pglegacy-settled:' || $1, 'completed', $2)
+      bindings:
+        - !cel "steps.ticket.result"
+        - '{"steps":{"charged":{"result":{"$bigint":"9007199254740993"}}}}'
+  - name: settled
+    invoke: !ref outcome
+    inputs:
+      run: !cel "'pglegacy-settled:' + steps.ticket.result"
+  - name: assertSettledRead
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.settled.result.status"
+        exact: !cel "steps.settled.result.result.steps.charged.result == 9007199254740993"
+      expected:
+        status: completed
+        exact: true

@@ -59,9 +59,10 @@ how to read a failure, and the debugging flags — see
 | Code | What it means and what to do |
 | --- | --- |
 | `UNRESOLVED_REFERENCE` | A `!ref` names a resource that does not exist in scope. Check spelling, and that a scoped name is used inside its scope. |
-| `REFERENCE_KIND_MISMATCH` | The referenced resource's kind is not accepted by that slot. The slot's `x-telo-ref` constraint names what it takes; a child of that kind is also accepted. |
+| `REFERENCE_KIND_MISMATCH` | The referenced resource's kind is not accepted by that slot. The slot's `x-telo-ref` constraint names what it takes; a child of that kind is also accepted. A slot constrained to a callable abstract also accepts a function whose signature stands in for it — results covariant, parameters contravariant by position and by name, and deterministic where the abstract requires it — so for a function the message names the parameter that differs, or the chain of calls to the non-deterministic leaf. |
 | `INVALID_REFERENCE_FORM` | A reference was written as a bare string or `{ kind, name }`. Write `!ref Name` or `!ref Alias.Name`. |
 | `INVALID_REFERENCE` | A reference object is missing string `kind` / `name` fields. |
+| `DEPENDENCY_CYCLE` | Resources depend on each other in a loop, so no boot order can construct them. The message traces the loop; one diagnostic per loop, anchored on a resource in it. Remove one of the references in the loop. A module call is a dependency too, so a function whose body calls itself — directly or through another function — is a cycle: recursion is refused, not deferred. Fails at runtime as `ERR_CIRCULAR_DEPENDENCY`. |
 | `X_TELO_REF_UNRESOLVED` | A kind's own `x-telo-ref` constraint names nothing resolvable — a module-authoring bug, in the module that declares the slot. |
 | `X_TELO_REF_LEGACY_IDENTITY` ⚠️ | The module uses the deprecated `"<namespace>/<module>#<Kind>"` ref form. Still resolves; the module should migrate to the alias form. |
 | `X_TELO_REF_INVALID_USE` | A structured `x-telo-ref` carries an unrecognized `use` token (a typo would otherwise silently degrade to the legacy no-use reading), or a `use` case map whose `by` is not a JSON Pointer. Valid uses: `schema`, `dependency`, `call`, `detached`, `trigger.inbound`, `trigger.consumer`. |
@@ -85,13 +86,33 @@ how to read a failure, and the debugging flags — see
 | `CEL_TYPE_ARGUMENT_MISMATCH` | The expression yields a parameterised value type (`Telo.Stream` of `Telo.Bytes`) whose arguments disagree with the field's declared ones. |
 | `CEL_NULLABLE_ACCESS` | Dereferencing a value whose schema admits `null` without a guard. |
 | `CEL_IN_NON_EVAL_FIELD` | The field is never evaluated, so the expression would be read as a literal. |
-| `CEL_NONDETERMINISTIC_IN_COMPILE_FIELD` ⚠️ | `now()`, `uuidv4()` or another volatile call sits in a field evaluated once at startup, so the value is baked in at load and never changes. Move it to a per-call field if it should vary. |
+| `CEL_NONDETERMINISTIC_IN_COMPILE_FIELD` ⚠️ | `now()`, `uuidv4()` or another volatile call — or a module function that reaches one, named by its chain (`Billing.isStale → now()`) — sits in a field evaluated once at startup, so the value is baked in at load and never changes. Move it to a per-call field if it should vary. |
 | `ENGINE_DIAGNOSTIC` | A templating tag other than `!cel` (for example `!sql`) reported a problem with its body. The message carries the engine's own text. |
 | `UNKNOWN_ENGINE` | A `!<tag>` names a templating engine that is not registered. |
 | `UNUSED_DECLARATION` ⚠️ | A declared `variables.*` / `secrets.*` entry is referenced by no CEL expression. Usually a typo at the use site. |
 | `BINDING_CYCLE` | A named binding (`bindings:` on `Run.Value` / `Run.Choice`) references itself, directly or through other bindings. |
-| `BINDING_NAME_RESERVED` | A binding's name is a CEL keyword, or shadows a name already in scope at that site (`inputs`, `steps`, …). A scope variable always wins, so the binding would never be read. Rename it. |
+| `BINDING_NAME_RESERVED` | A name that could never be read where it is written: a CEL keyword; a name already in scope at that site (`inputs`, `steps`, …), which always wins; or one of the module's own names — an `imports:` alias, `Self`, or its `metadata.name` — through which a call `<name>.f(…)` reaches that module's function instead. Covers a `bindings:` key, a comprehension variable and a `cel.bind` name. |
+| `IMPORT_ALIAS_SHADOWS_CONTEXT` | An `imports:` alias is also the name of a CEL variable a kind this module uses puts in scope (`x-telo-context`), so a call `<alias>.f(…)` reaches the imported module and the variable cannot be reached through one. Reported at the `imports:` key; rename the alias. |
 | `BINDING_FIELD_AMBIGUOUS` | A kind's schema points `x-telo-bindings-from` at more than one field — a module-authoring bug. |
+
+### Functions
+
+A function is a resource whose capability resolves to `Telo.Callable` — a `Telo.Function` with a CEL `body`, or an instance of a callable kind with a controller — called from CEL through a module name: `Self.fn(x)` or `<ModuleName>.fn(x)` for one the module declares, `<Alias>.fn(x)` for one an import lists in `exports.resources`. Every code here is reported for the entry's own modules; a dependency's is refused by the kernel when its caller is created. See [CEL functions](/extend/cel-functions).
+
+| Code | What it means and what to do |
+| --- | --- |
+| `FUNCTION_UNRESOLVED` | A call through a module name reaches no resource: the module declares no resource of that name, or the receiver is not one of its imports. The message ends with the reason. Fails at runtime as `ERR_FUNCTION_UNRESOLVED`. |
+| `FUNCTION_NOT_EXPORTED` | The imported library declares the resource but does not list it in `exports.resources`. Export it, or call something it does export. Fails at runtime as `ERR_FUNCTION_NOT_EXPORTED`. |
+| `FUNCTION_NOT_CALLABLE` | The name reaches a resource whose capability does not resolve to `Telo.Callable`; the message names its kind. Only a function can be called. Fails at runtime as `ERR_FUNCTION_NOT_CALLABLE`. |
+| `FUNCTION_ARITY_MISMATCH` | The call passes a number of arguments no parameter list of the function accepts — more than it declares, or fewer than its required parameters. Fails at runtime as `ERR_FUNCTION_ARITY_MISMATCH`. |
+| `FUNCTION_ARGUMENT_MISMATCH` | An argument's CEL type — or, for an argument written as a plain chain, its declared shape — does not satisfy the parameter's schema. |
+| `FUNCTION_RETURN_MISMATCH` | A `Telo.Function`'s `body` yields a type its `returns:` does not admit. |
+| `FUNCTION_CALL_UNBOUND` | A module call sits where the runtime binds no function: an Application's `logging:` block, resolved while the application loads, or a `Telo.JsonSchema` rule `condition`, evaluated against the value alone. Compute the value elsewhere. |
+| `CALLABLE_DEFINITION_INVALID` | A callable kind or function breaks a rule of what a function is: a signature or `deterministic:` on a kind whose capability is not `Telo.Callable`; `deterministic:` on an instance (the claim belongs to the kind supplying the code — and a `Telo.Function`'s determinism is derived, never declared); a kind extending `Telo.Function`; a `status:` block or a template body on a callable; a replaced signature on a kind that inherits its controller, which has no bridge to make it true. The message says which and what to do. Fails at registration as `ERR_CALLABLE_DEFINITION_INVALID`. |
+| `FUNCTION_OPTIONAL_NOT_TRAILING` | A required parameter follows an optional one. A call is positional, so an optional parameter can only be omitted from the end — move it last. |
+| `FUNCTION_TYPE_NAME_FORM` | A signature `schema:` names a shape as a bare string (`schema: Money`). Reference it: `schema: !ref Money` — the diagnostic carries that repair. |
+| `FUNCTION_NAME_RESERVED` | A function is named after a CEL macro — `all`, `exists`, `exists_one`, `map`, `filter` or `bind`. CEL expands `<Module>.map(…)` as its own macro before a module call resolves, so most calls to it do not parse. Rename the function. |
+| `X_TELO_REF_CALLABLE_UNTYPED` | A kind's slot holds a function through a bare `Telo.Callable` constraint, which says nothing about the signature — a wrongly typed function would pass `telo check` and fail with `ERR_INPUT_INVALID` when called. Constrain the slot to a callable abstract that declares `params` / `returns`. |
 
 ### Embedded files
 
@@ -108,10 +129,12 @@ how to read a failure, and the debugging flags — see
 | `CONTRACT_INPUTS_MISMATCH` | The `inputs:` at a call site do not satisfy the target's declared `inputType`. |
 | `CONTRACT_MISSING_MAPPING` | A child that inherits a controller declared its own `inputType`/`outputType` but no `inputs:`/`result:` bridge, so the inherited controller would never see the mapped shape. |
 | `CONTRACT_INPUTS_SCHEMA_FORM` | `inputs:` was written as a JSON-Schema property map. `inputs`/`outputs` are always **values**; `inputType`/`outputType` are always **schemas**. |
-| `CONTRACT_TYPE_NOT_FOUND` | An `inputType`/`outputType` names a type that does not resolve. |
+| `CONTRACT_TYPE_NOT_FOUND` | A `!ref` names a type that does not resolve — in a kind's or resource's `inputType` / `outputType`, or in a signature's `params[].schema` / `returns.schema`, at the root or nested. |
+| `CONTRACT_NOT_SUBSTITUTABLE` | A contract or signature that replaces an abstract ancestor's cannot stand in for it: an `outputType` or `returns` the ancestor's readers cannot read (covariant), an `inputType` or parameter its callers cannot send (contravariant), a parameter renamed (a holder calls with the ancestor's names), a different number of parameters, or a non-deterministic implementation of an abstract that requires determinism. |
 | `TEMPLATE_TARGET_MISMATCH` | A templated definition's body does not satisfy the target kind's contract. |
 | `UNCOVERED_THROW_CODE` | The handler declares an error code that no `catches:` entry covers. |
 | `UNDECLARED_THROW_CODE` | A `catches:` entry names a code the handler never throws — usually a typo. |
+| `THROWS_ON_NON_DISPATCH_CAPABILITY` | A `Telo.Definition` declares `throws:` with a capability other than `Telo.Invocable` or `Telo.Runnable`. A throw union describes what a caller can catch, and no caller awaits any other capability's entry point, so a thrown error there is a boot failure with nothing to render it. The kernel refuses the definition, so it is reported for a dependency's definition too. Drop `throws:`, or declare it on the kind that is dispatched. |
 | `UNBOUNDED_UNION_NEEDS_CATCHALL` / `CATCHALL_NOT_LAST` | The throw union could not be enumerated, so `catches:` needs a catch-all; and a catch-all must come last. |
 | `INHERIT_WITHOUT_STEP_CONTEXT` | A definition declares `throws: { inherit: true }` but dispatches nothing a failure can come back through: its schema has no step body and no reference slot whose `use` includes `call` or `trigger.consumer` (for a use case map, in any case; a slot declaring no use counts as `call`). `detached` and `trigger.inbound` targets run where no caller awaits them, and `dependency` / `schema` slots dispatch nothing. Add such a slot, or drop `inherit` and declare `throws.codes`. |
 | `LIVE_VALUE_RETRIED` | A step passes a live value (a `Telo.Stream`) into a target, and either the step or the target declares a retry. A stream is consumed once; a re-attempt would pass an exhausted one. Drop the retry, or collect the stream into a plain value first. |
@@ -128,7 +151,7 @@ how to read a failure, and the debugging flags — see
 | `ZONE_ATTRIBUTE_UNKNOWN` | A providing slot declares an attribute outside the closed vocabulary (`atomic`, `idempotent`, `noSuspend`, `replayed`). The message suggests the nearest name. |
 | `ZONE_ATTRIBUTE_INCOMPLETE` | A zone attribute is declared without its dependency (`atomic` requires `noSuspend`), or without the prose reason that is its value. |
 | `ZONE_ATTRIBUTE_VIOLATED` | Something inside a region cannot honour what the region promises — a `Durable.Sleep` inside a `noSuspend` transaction, a retry whose backoff is long enough to park. The message prints both the region's reason and the rebuttal. Move it outside the region, or use a region that does not make that promise. |
-| `DURABLE_NONDETERMINISM` | A volatile call (`uuidv4()`, `now()`) sits inside a region declared idempotent. That region re-runs on a resume with its earlier effects intact, so a value that differs per pass makes the re-run something other than a no-op. Pin it once with `Durable.Value`. |
+| `DURABLE_NONDETERMINISM` | A volatile call (`uuidv4()`, `now()`) — or a module function reaching one, named by its chain, or a native function whose kind does not declare `deterministic: true` — sits inside a region declared idempotent. That region re-runs on a resume with its earlier effects intact, so a value that differs per pass makes the re-run something other than a no-op. Pin it once with `Durable.Value`. |
 | `DURABLE_DETACH_FORBIDDEN` | A detached dispatch inside a durable region. Progress is recorded when a step completes, so detached work would be recorded as done while still running. Start a nested durable run instead. |
 | `DURABLE_UNJOURNALABLE_RESULT` | A step inside a durable region invokes a target whose declared output is a live value. A stream cannot be recorded and replayed; collect what you need into a plain value inside the step. Fails at runtime as `ERR_DURABLE_UNJOURNALABLE_VALUE`. |
 
@@ -139,7 +162,7 @@ how to read a failure, and the debugging flags — see
 | `RESOURCE_RULE_VIOLATED` | A rule the kind declares (`x-telo-resource-rules`) does not hold for this resource — an index naming a column its table does not declare, for instance. The author's own `code` is in `data.rule`; the message is theirs. |
 | `RESOURCE_RULE_SKIPPED` ℹ️ | A rule could not be evaluated because a value it reads is a `!cel` expression only known at runtime. Reported, never silently dropped. |
 | `RESOURCE_RULE_UNEXERCISED` ℹ️ | A rule's `in:` collection was empty on every resource of the kind, so the rule never ran. Usually fine; worth a look if you expected it to fire. |
-| `RESOURCE_RULE_INVALID` | The rule itself is defective — it calls a host-backed or non-deterministic function, names a collection the kind does not declare, does not parse, or threw while evaluating. Anchored on the declaring definition; a warning when that definition belongs to a dependency. |
+| `RESOURCE_RULE_INVALID` | The rule itself is defective — it calls a host-backed or non-deterministic function, names a collection the kind does not declare, does not parse, or threw while evaluating. A module function is judged by what it reaches: a `Telo.Function` whose body calls only deterministic, host-free functions is admitted and evaluated, one reaching `now()` is refused naming the chain, and a native function is always host-backed. Anchored on the declaring definition; a warning when that definition belongs to a dependency. |
 | `REFERRER_RULE_VIOLATED` | A kind's requirement on *whoever references it* (`x-telo-referrer-rules`) does not hold — a server mounting `Http.Reference` with no `openapi:` block. Reported on the referrer, at the slot, naming the kind that declared the rule. |
 | `REFERRER_RULE_SKIPPED` ℹ️ / `REFERRER_RULE_UNEXERCISED` ℹ️ / `REFERRER_RULE_INVALID` | As for resource rules. `UNEXERCISED` matters more here: nothing matching the `referrer:` filter ever referencing the kind is what a typo in the filter looks like from outside. |
 
@@ -183,11 +206,11 @@ how to read a failure, and the debugging flags — see
 | `INVALID_SCHEMA_FROM` / `SCHEMA_FROM_MISSING_PATH` | An `x-telo-schema-from` annotation is malformed or points at an unresolvable anchor. |
 | `DEPENDENT_SCHEMA_MISMATCH` | A value does not match the schema derived from a sibling reference. |
 | `BASE_UNKNOWN_FIELD` / `BASE_MISSING_REQUIRED` / `BASE_SCHEMA_MISMATCH` | A `base:` construction mapping sets a field the parent kind does not have, omits one it requires, or supplies the wrong shape. |
-| `X_TELO_TYPE_UNKNOWN` | `x-telo-type` names something that is not a built-in value type (`Telo.Bytes`, `Telo.Stream`, `Telo.TcpPort`, `Telo.UdpPort`). A named *shape* is written as `!ref` to a `Telo.JsonSchema`, not here. Suggests the nearest name. |
+| `X_TELO_TYPE_UNKNOWN` | `x-telo-type` names something that is not a built-in value type (`Telo.Bytes`, `Telo.Duration`, `Telo.Stream`, `Telo.TcpPort`, `Telo.Timestamp`, `Telo.UdpPort`, `Telo.Uint64`). A named *shape* is written as `!ref` to a `Telo.JsonSchema`, not here. Suggests the nearest name. |
 | `X_TELO_TYPE_ARGUMENT_UNKNOWN` | The object form supplies a type argument the value type does not declare (`Telo.Stream` takes only `of`). |
 | `SCHEMA_PROJECTION_INVALID` | A kind's `x-telo-schema-projection` / `x-telo-schema-map` is malformed, or written under `schema:` instead of beside it — a module-authoring bug. |
 | `SCHEMA_PROJECTION_FROM_UNRESOLVED` | A slot declares `x-telo-schema-projection-from`, but the referenced declaration cannot be projected — the reference does not resolve, matches several resources, or its target declares no projection. Fails at runtime as `ERR_SCHEMA_PROJECTION_UNRESOLVED`. |
-| `SENSITIVE_ANNOTATION_MISPLACED` | `x-telo-sensitive` was written somewhere other than a declared contract (`inputType` / `outputType`), where nothing reads it — so the value would ride the debug wire in clear. See [Marking a contract field sensitive](/extend/sensitive-contract-fields). |
+| `SENSITIVE_ANNOTATION_MISPLACED` | `x-telo-sensitive` was written somewhere other than a declared contract (`inputType` / `outputType`) — a function's signature included, whose arguments ride no trace payload — where nothing reads it — so the value would ride the debug wire in clear. See [Marking a contract field sensitive](/extend/sensitive-contract-fields). |
 | `SENSITIVE_ANNOTATION_INVALID` | `x-telo-sensitive` must be exactly `true`. It is a marker, not a level. |
 
 ### Observed state
@@ -203,7 +226,7 @@ how to read a failure, and the debugging flags — see
 | Code | What it means and what to do |
 | --- | --- |
 | `CONTROLLER_INVALID_SELECTOR` / `CONTROLLER_UNKNOWN_QUALIFIER` | A controller PURL's platform selector or qualifier is malformed. |
-| `CONTROLLER_DYLIB_ABI_MISSING` | A `pkg:telo/local/dylib` candidate states no `abi`, or one outside the `telo` family. A dylib is built against one version of the Rust controller ABI; add `abi=telo-<version>` (e.g. `abi=telo-2`), or the Rust kernel downloads it on every host and refuses it only when opening it. |
+| `CONTROLLER_DYLIB_ABI_MISSING` | A `pkg:telo/local/dylib` candidate states no `abi`, or one outside the `telo` family. A dylib is built against one version of the Rust controller ABI; add `abi=telo-<version>` (e.g. `abi=telo-3`), or the Rust kernel downloads it on every host and refuses it only when opening it. |
 | `CONTROLLER_NAPI_ABI_FORBIDDEN` / `LIBRARY_NAPI_ABI_FORBIDDEN` | A `napi` controller candidate or `exports.code:` entry states an `abi`. An N-API addon is ABI-stable across runtime releases; remove `abi`, which would keep it from loading anywhere else. |
 | `CONTROLLER_LIBC_OFF_LINUX` / `LIBRARY_LIBC_OFF_LINUX` | A controller candidate or `exports.code:` entry states `libc` for an `os` other than `linux`, where libc is never determined, so it could never match a host. Remove `libc`. |
 | `NATIVE_*` | A module doc's `native:` block: `NATIVE_NODE_ABI_MISSING`, `NATIVE_NAPI_ABI_FORBIDDEN`, `NATIVE_LIBC_OFF_LINUX`, `NATIVE_ENTRY_DUPLICATE`, `NATIVE_PATH_SHARED`, `NATIVE_PATH_NESTED`, `NATIVE_PATH_CLAIMED`, `NATIVE_PATH_ESCAPES_MODULE`, `NATIVE_ENTRY_INVALID`. Each is described in [Native files](/extend/native-files#what-telo-check-reports). |
@@ -252,7 +275,8 @@ Reported by `telo release`, and by the editor as you type. See
 | --- | --- |
 | `ERR_MANIFEST_VALIDATION_FAILED` | A declared `variables:` / `secrets:` / `ports:` entry is missing from the environment or failed coercion. All failures are aggregated before any controller initializes. |
 | `ERR_RUNTIME_INVALID` | An import's `runtime:` is neither a string nor an array of strings. |
-| `ERR_CIRCULAR_DEPENDENCY` | An imported library's resource graph contains a cycle. |
+| `ERR_CIRCULAR_DEPENDENCY` | A resource graph — the application's, or an imported library's — contains a cycle, a function calling itself included. The static form is `DEPENDENCY_CYCLE`. |
+| `ERR_CALLABLE_DEFINITION_INVALID` | A callable kind, a function resource, or a kind holding a function through an untyped slot is refused at registration. The message lists each clause as `<CODE> at <path>: <message>`; the static forms are `CALLABLE_DEFINITION_INVALID`, `X_TELO_REF_CALLABLE_UNTYPED`, `FUNCTION_OPTIONAL_NOT_TRAILING`, `FUNCTION_TYPE_NAME_FORM`, `FUNCTION_NAME_RESERVED` and `CONTRACT_TYPE_NOT_FOUND`. |
 | `ERR_INVALID_EXPORT` / `ERR_INVALID_REEXPORT` | A library's `exports.resources` entry is malformed, or re-exports through an alias it never imported. |
 | `ERR_RUNTIME_EVAL_WITHOUT_INVOKE` | A kind declares `x-telo-eval: runtime` but its resources have no `invoke()`. Runtime evaluation expands a call's inputs, and `run()` / `provide()` take none, so nothing would ever expand the field. Use `x-telo-eval: compile` for a value resolved once at creation, or give the kind an invocable controller. |
 | `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED` | A resource's config does not match its kind's schema at creation. Normally caught earlier by `telo check` as `SCHEMA_VIOLATION`; at runtime it means the kernel was run without a check, or a value only known at creation (an embedded file, a CEL result) is the wrong shape. |
@@ -285,7 +309,7 @@ Reported by `telo release`, and by the editor as you type. See
 | --- | --- |
 | `ERR_RESOURCE_NOT_FOUND` | Dispatch target does not exist. The message lists what is available — a scoped resource registered into the wrong context is the usual cause. |
 | `ERR_RESOURCE_NOT_INVOKABLE` / `ERR_RESOURCE_NOT_RUNNABLE` | The target exists but has no `invoke`/`run`. Check the kind's capability against the slot. |
-| `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` | The values passed to, or produced by, a call do not satisfy the declared `inputType`/`outputType`. Raised as structured errors, so they can be caught — but never declared by a kind. |
+| `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` | The values passed to, or produced by, a call do not satisfy the declared `inputType`/`outputType` — or a native function's `params` / `returns`, or an HTTP request's text at a slot whose value type's encoding does not read it. Raised as structured errors, so they can be caught — but never declared by a kind. |
 | `ERR_CONTRACT_UNRESOLVABLE` | A declared contract could not be resolved to a schema. |
 | `ERR_INVOKE_CANCELLED` | The invoke was cancelled — a shutdown signal, a disconnected client, or an elapsed deadline. |
 | `ERR_EXECUTION_FAILED` | A dispatch failed; the underlying error is attached as its cause. |
@@ -298,6 +322,17 @@ Reported by `telo release`, and by the editor as you type. See
 | `ERR_ZONE_REQUIRED` | A resource that must be reached through another's body (a statement outside its transaction) was dispatched with no such zone on the ambient context. The message names the required zone and, where correlated, the instance it must be on. The static form is `ZONE_REQUIREMENT_UNSATISFIED`. |
 | `ERR_ZONE_ANNOTATION_MISSING` / `ERR_ZONE_UNRESOLVED` | A controller opened or required a zone its schema does not declare, or the annotation's kind could not be resolved — the controller and its schema disagree, a module-authoring bug. |
 | `ERR_CAUSE_CYCLE` / `ERR_CAUSE_CHAIN_TRUNCATED` | Not errors you can raise: markers the log encoder writes into a serialized error whose `cause` chain refers to itself, or exceeds the depth limit. |
+| `ERR_PLAIN_JSON_UNWRITABLE` | A value cannot be written as plain JSON for a reader outside Telo (an HTTP body, a CLI document): a map two of whose keys share one text (`1` and `"1"`), a map key that is no CEL map key, or a value containing itself. |
+
+### Functions
+
+| Code | What it means and what to do |
+| --- | --- |
+| `ERR_FUNCTION_UNRESOLVED` / `ERR_FUNCTION_NOT_EXPORTED` / `ERR_FUNCTION_NOT_CALLABLE` | A module call a resource makes does not bind — raised when that resource is created, before any of its expressions evaluate, including a call in a branch that never runs. The static forms are `FUNCTION_UNRESOLVED`, `FUNCTION_NOT_EXPORTED` and `FUNCTION_NOT_CALLABLE`. |
+| `ERR_FUNCTION_ARITY_MISMATCH` | A call passed a number of arguments the function's parameter list does not accept. A structured error a `try:` can catch; outside the ambient union. |
+| `ERR_FUNCTION_CONFIG_INVALID` | A Rust function's resource configuration, already accepted by its kind's schema, does not deserialize into the function's `Config` type, so the instance is not created. The kind's schema and the Rust type disagree; the message carries serde's reason. |
+| `ERR_FUNCTION_FAILED` | A function failed while its expression evaluated. `data` carries `function` (the call as written), `message` and the thrown `code` when there was one — `ERR_CONTROLLER_PANIC` for a Rust function that panicked. Ambient: `try:` and `catches:` catch it and no kind declares it; a retry policy does not re-attempt it, since re-evaluating a synchronous call with the same arguments does not recover. |
+| `ERR_FUNCTION_ASYNC` | A native function's `call` returned a promise. A function is evaluated inside a CEL expression, which cannot wait: make `call` synchronous and do asynchronous setup in `create`. A `call` declared `async` is refused when the instance is created, as `ERR_CONTROLLER_INVALID`. |
 
 ### Durable execution
 
@@ -306,8 +341,12 @@ Reported by `telo release`, and by the editor as you type. See
 | `ERR_DURABLE_SUSPENDED` | **A signal, not a failure.** A durable body parked (`Durable.Sleep`, `Durable.Await`, a long retry backoff) and unwinds to the workflow that owns the run. It passes through `try:` / `catches:` / retry untouched; if you see it as a caught error, something in the path swallowed it. |
 | `ERR_DURABLE_SUSPENSION_SWALLOWED` | A body parked but the signal never reached the workflow — a script's `catch`, a custom composer. The run cannot be resumed correctly. Let the signal propagate. |
 | `ERR_DURABLE_SUSPEND_FORBIDDEN` | A wait was reached inside a region that promises nothing inside it waits (`noSuspend`) — the runtime half of `ZONE_ATTRIBUTE_VIOLATED`, for paths the static check could not trace. |
-| `ERR_DURABLE_UNJOURNALABLE_VALUE` | A step produced a live value (a stream) that cannot be recorded. Collect it into a plain value inside the step. Static form: `DURABLE_UNJOURNALABLE_RESULT`. |
+| `ERR_DURABLE_UNJOURNALABLE_VALUE` | A value a durable run records — a step's result, a decision, a delivered payload, a scheduled run's inputs, the run's result — is outside the CEL value domain: a live stream, a class instance (including one offering `toJSON`, which would come back as a plain object), or a function. `data.path` names where it was recorded and `data.valuePath` the offending node inside it. Collect what you need into plain values inside the step. Static form, for streams only: `DURABLE_UNJOURNALABLE_RESULT`. |
+| `ERR_DURABLE_ENTRY_UNDECODABLE` | A recorded value was written by a codec version this runtime does not read (`data.version`, beside `data.reads`). It is refused rather than read for the parts that look familiar. Continue the run on a runtime new enough to read its journal. |
+| `ERR_DURABLE_JOURNAL_CORRUPT` | A recorded value declares the current codec version but is not a frame that codec reads — its text is not a string, or its frame does not decode (the decode failure is the `cause`). `data.run` and `data.path` name the record. Something outside the journal rewrote it. |
 | `ERR_DURABLE_TARGET_UNENCODABLE` / `ERR_DURABLE_TARGET_UNDECODABLE` | A step target could not be written into, or read back from, the journal's wire form — a `with:`-scoped target whose scope cannot be identified, or a record from an incompatible version. |
+| `ERR_TYPED_FRAME_UNENCODABLE` | A value handed to a typed frame — the form a journal entry and a native function's arguments and result cross in — is outside the CEL value domain: a class instance (including one offering `toJSON`), a function, `undefined`, a map with a key CEL cannot hold or two keys CEL reads as one, a list carrying a property beside its items, or a cycle. `data.path` is the JSON Pointer of the offending node. |
+| `ERR_TYPED_FRAME_UNDECODABLE` | A typed frame is not valid JSON, names a tag outside the closed vocabulary, carries a payload not in its canonical form, a map key CEL cannot hold, a repeated key, or text that is not Unicode. `data.path` is the JSON Pointer inside the frame. A journal reports it for a corrupted entry. |
 
 ### Observed state
 
@@ -325,7 +364,7 @@ Reported by `telo release`, and by the editor as you type. See
 | --- | --- |
 | `ERR_CONTROLLER_NOT_FOUND` | No controller candidate could be loaded for the kind, on this host. |
 | `ERR_CONTROLLER_NOT_LOADED` | A kind resolved but its controller was never registered. |
-| `ERR_CONTROLLER_INVALID` | The controller bundle loaded but has no such export — a module packaging bug. |
+| `ERR_CONTROLLER_INVALID` | The controller bundle loaded but has no such export — a module packaging bug. For a callable kind the message names the function (`Function '<kind>/<name>': …`): its controller has no `create`, or `create` returned an instance with no synchronous `call(args)`. |
 | `ERR_CONTROLLER_BUILD_FAILED` | Building a controller from source failed (the build's own error follows). |
 | `ERR_MODULE_LAYER_INTEGRITY` | A layer's contents do not hash to the digest the pinned manifest records. Treat as tampering or corruption; see [Security](/deploy/security). |
 | `ERR_MODULE_LAYER_INVALID` / `ERR_MODULE_FILES_UNAVAILABLE` | A layer contains an illegal entry, or a module-relative file — a `ctx.resolveModuleFile` or `ctx.resolveControllerFile` path or an `!include-*` embed — could not be handed over: the module was fetched from a registry with no layer index (usually published before layered artifacts — republish it), or, in a source checkout, a module file (one an `assets:` pattern selects, or a notice) a `sources:` entry stages at or beneath the path is unpinned or could not be staged — the message says whether its archive could not be fetched, does not hold the pinned file, or staging failed otherwise (a lock, a write), and names the URL — or the module's `sources:` block does not read. Run `telo release stage --pin` for an unpinned entry and `telo check` for an unreadable block. |

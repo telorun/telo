@@ -43,13 +43,13 @@ describe("call form classification", () => {
 
 describe("unknown functions", () => {
   it("says the name does not exist rather than blaming the arguments", () => {
-    const d = first("now()");
+    const d = first("no()");
     expect(d.code).toBe("CEL_UNKNOWN_FUNCTION");
-    expect(d.message).toContain("there is no function `now`");
+    expect(d.message).toContain("there is no function `no`");
   });
 
-  it("reaches nowIso/nowMillis/nowSeconds from `now` — edit distance never would", () => {
-    const message = first("now()").message;
+  it("reaches nowIso/nowMillis/nowSeconds from `no` — edit distance never would", () => {
+    const message = first("no()").message;
     for (const name of ["nowIso", "nowMillis", "nowSeconds"]) {
       expect(message).toContain(name);
     }
@@ -72,7 +72,7 @@ describe("unknown functions", () => {
 
 describe("arbitration with the type checker", () => {
   it("reports every bad call in one pass, where check() stops at the first", () => {
-    expect(codes("startsWith(key, 'u') && now() > 5")).toEqual([
+    expect(codes("startsWith(key, 'u') && nosuchfn() > 5")).toEqual([
       "CEL_WRONG_CALL_FORM",
       "CEL_UNKNOWN_FUNCTION",
     ]);
@@ -121,7 +121,7 @@ describe("call inventory", () => {
   });
 
   it("leaves determinism undefined for an unregistered name — absent is not 'deterministic'", () => {
-    expect(analyze("now()").calls[0]!.deterministic).toBeUndefined();
+    expect(analyze("nosuchfn()").calls[0]!.deterministic).toBeUndefined();
   });
 });
 

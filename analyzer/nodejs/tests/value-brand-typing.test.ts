@@ -47,6 +47,10 @@ describe("value brands (x-telo-type)", () => {
     it("still rejects a base-type mismatch on a branded field", () => {
       expect(celTypeSatisfiesJsonSchema("string", tcpField)).toBe(false);
     });
+
+    it("judges no expression at a live slot, which dispatch does not validate", () => {
+      expect(celTypeSatisfiesJsonSchema("bytes", { "x-telo-type": "Telo.Stream" })).toBe(true);
+    });
   });
 });
 

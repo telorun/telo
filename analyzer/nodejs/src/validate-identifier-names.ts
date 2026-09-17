@@ -6,6 +6,12 @@ import {
   type ModuleScopes,
 } from "./alias-resolver.js";
 import type { CallGraph } from "./call-graph.js";
+import {
+  instanceDeclaresSignature,
+  isCallableKind,
+  readParams,
+  type SignatureParam,
+} from "./callable-signature.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import {
@@ -103,6 +109,18 @@ export function validateIdentifierNames(
         }
       }
     }
+
+    // A function's parameters: each one is a CEL binding inside its body, read
+    // by bare name, so it breaks the way any other binding name does.
+    for (const [index, param] of (signatureParamsOf(manifest, resolveDef, ownModule) ?? []).entries()) {
+      if (typeof param.name !== "string") continue;
+      push(out, checkName(param.name, "value", "parameter name"), {
+        kind: manifest.kind,
+        name,
+        filePath: metadata?.source as string | undefined,
+        path: `params[${index}].name`,
+      });
+    }
   }
 
   for (const node of graph.nodes.values()) {
@@ -148,7 +166,7 @@ export function validateIdentifierNames(
  * `UNDEFINED_KIND` already reports the real problem and guessing type level
  * would stack a case error on top of it.
  */
-function levelFor(
+export function levelFor(
   manifest: ResourceManifest,
   resolveDef: DefResolver & { in(kind: string, module?: string): ResourceDefinition | undefined },
   ownModule: string | undefined,
@@ -159,6 +177,26 @@ function levelFor(
   // every hop, since an `extends` alias belongs to the file declaring it.
   const def = resolveDef.in(manifest.kind as string, ownModule);
   return inheritedCapability(def, resolveDef) === "Telo.Type" ? "type" : "value";
+}
+
+/** The parameter list `manifest` declares as a signature: on a callable kind
+ *  document, or on an instance whose callable kind lists `params` in its schema.
+ *  Anywhere else a `params:` field is configuration, named by its kind. */
+function signatureParamsOf(
+  manifest: ResourceManifest,
+  resolveDef: DefResolver & { in(kind: string, module?: string): ResourceDefinition | undefined },
+  ownModule: string | undefined,
+): readonly SignatureParam[] | undefined {
+  if (manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract") {
+    return isCallableKind(manifest as unknown as ResourceDefinition, resolveDef)
+      ? readParams(manifest)
+      : undefined;
+  }
+  const def = resolveDef.in(manifest.kind as string, ownModule);
+  if (!isCallableKind(def, resolveDef) || !instanceDeclaresSignature(def, resolveDef, "params")) {
+    return undefined;
+  }
+  return readParams(manifest);
 }
 
 /** The noun phrase a diagnostic uses as its subject. */

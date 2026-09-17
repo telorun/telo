@@ -14,6 +14,8 @@
  * `typeof`.
  */
 
+import { UnsignedInt } from "./cel-value-identity.js";
+
 const INSTALLED_KEY = Symbol.for("@telorun/sdk:bigint-json:installed");
 
 /** The process-global flag {@link isBigIntJsonEnabled} reads and the kernel's
@@ -64,15 +66,19 @@ export function bigIntAt(holder: unknown, key: string): bigint | undefined {
  * module rather than repair a false declaration), so this is how a controller
  * reads one.
  *
- * Returns `undefined` for anything that is not an integer in either
- * representation — including a BigInt too large for a double, since silently
+ * A CEL `uint` (a `Telo.Uint64` output normalizes to one) is read the same way.
+ *
+ * Returns `undefined` for anything that is not an integer in any of these
+ * representations — including one too large for a double, since silently
  * rounding it would be the precision loss int64 support exists to remove — so a
  * caller's own "must be a non-negative integer" check still rejects what it
  * should.
  */
 export function integerInput(value: unknown): number | undefined {
   if (typeof value === "number") return Number.isInteger(value) ? value : undefined;
-  if (typeof value !== "bigint") return undefined;
-  const asNumber = Number(value);
+  const integral =
+    typeof value === "bigint" ? value : value instanceof UnsignedInt ? value.value : undefined;
+  if (integral === undefined) return undefined;
+  const asNumber = Number(integral);
   return Number.isSafeInteger(asNumber) ? asNumber : undefined;
 }

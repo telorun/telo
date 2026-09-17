@@ -20,8 +20,10 @@
 import {
   StepEngine,
   decodeDurableTarget,
+  decodeTypedFrame,
   deriveContext,
   encodeDurableTarget,
+  encodeTypedFrame,
   type DurableDecisionKind,
   type DurableRunHandle,
   type DurableTarget,
@@ -96,7 +98,13 @@ class RemoteRunHandle implements DurableRunHandle {
       env: {
         ...this.ctx.env,
         TELO_STEP_TARGET: encodeDurableTarget(target),
-        TELO_STEP_INPUTS: JSON.stringify(inputs ?? {}),
+        // A TYPED FRAME, not `JSON.stringify`: the far end of this hop is
+        // another Telo kernel, which turns the text back into live values and
+        // dispatches with them. Plain JSON would deliver a timestamp as a
+        // string and an int64 as a double, so a step shipped elsewhere would
+        // receive arguments of different types from one executed at home —
+        // silently, since the contract on the far side accepts what it is given.
+        TELO_STEP_INPUTS: encodeTypedFrame(inputs ?? {}),
       },
     });
     // Both streams are drained: a child nobody reads accumulates in this
@@ -121,7 +129,7 @@ class RemoteRunHandle implements DurableRunHandle {
       throw new Error(`Remote step '${path}' produced no result line. Output was: ${out}`);
     }
     this.shipped.push(path);
-    return JSON.parse(line);
+    return decodeTypedFrame(line);
   }
 
   async decide<T>(path: string, _kind: DurableDecisionKind, compute: () => T): Promise<T> {
@@ -207,7 +215,8 @@ export async function create(
   return new RemoteWorkflowController(resource, ctx);
 }
 
-/** Re-exported so the dispatcher's own controller reads targets through the same
- *  function that wrote them — a fixture that decoded with its own parser would
- *  be testing two implementations agreeing rather than one round-tripping. */
-export { decodeDurableTarget };
+/** Re-exported so the dispatcher's own controller reads targets and step frames
+ *  through the same functions that wrote them — a fixture that decoded with its
+ *  own parser would be testing two implementations agreeing rather than one
+ *  round-tripping. */
+export { decodeDurableTarget, decodeTypedFrame };

@@ -1,0 +1,28 @@
+# A CEL call written through an import alias — `Console.writeLine('hi')` — to a
+# resource that is not a function: `writeLine` is an exported `Console.WriteLine`
+# instance, an invocable dispatched from a step, not a callable reached from CEL.
+#
+# This library's own `telo check` reports the call at the expression as
+# `FUNCTION_NOT_CALLABLE`. A consumer's analysis is entry-scoped, so it is silent
+# there by design — which is
+# why the kernel's refusal, raised when the calling resource is created, is
+# pinned next door.
+kind: Telo.Library
+metadata:
+  name: ModuleCallLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose step expression calls, through an import alias, a
+    resource that is not a function.
+imports:
+  Run: ../../../../../modules/run
+  Console: ../../../../../modules/console
+exports:
+  resources: [greet]
+---
+kind: Run.Sequence
+metadata:
+  name: greet
+steps:
+  - name: label
+    value: !cel "Console.writeLine('hi')"

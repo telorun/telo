@@ -48,7 +48,7 @@ describe("kindRuntimeSupport", () => {
 
   it.each([
     ["napi", "pkg:telo/local/napi?path=./native/x.node&os=linux&arch=amd64", "nodejs"],
-    ["dylib", "pkg:telo/local/dylib?path=./native/libx.so&os=linux&arch=amd64&abi=telo-2", "rust"],
+    ["dylib", "pkg:telo/local/dylib?path=./native/libx.so&os=linux&arch=amd64&abi=telo-3", "rust"],
   ])("hosts a %s bundle on one kernel and claims no language for it", (_format, purl, runtime) => {
     // A native library may be Rust, C++ or Zig. A blank beats a guess.
     expect(kindRuntimeSupport([purl])).toEqual({

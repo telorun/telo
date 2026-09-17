@@ -11,6 +11,9 @@ The Rust SDK provides the authoring surface for Telo controllers written in Rust
 - **Schema validation** (`DataValidator`) — `validate(data)` returns `Ok(())` when the value conforms, otherwise a structured error.
 - **Shared error type** (`ControllerError`) — carries `code` + `message`; the kernel surfaces `code` as the structured error code.
 - **Data exchange** — `serde_json::Value` is the universal payload type, re-exported as `telorun_sdk::Value`.
+- **CEL value types** (`Timestamp`, `Duration`, `Bytes`, `Uint64`) — the CEL types JSON has no number or string for. Each implements serde's `Serialize` / `Deserialize`: it writes its plain encoding (RFC 3339 text in UTC with milliseconds, seconds such as `"5400s"`, base64url, digits) and reads either that or the typed frame's tagged form. A `Timestamp` holds an instant to the millisecond and compares as an instant, whatever offset it was written with. A plain `i64` is a CEL `int`; a CEL `uint` is `Uint64`.
+- **Typed frame** (`typed_frame`) — `to_frame` / `from_frame` carry any serde value through the frame internal boundaries use (`kernel/specs/durable-execution.md` §6), byte-identical to the Node SDK on the shared conformance vectors; `CelValue` is the value domain it is defined over.
+- **No plain JSON writer.** The Node SDK's `plain-json.ts`, the writer for readers outside Telo, has no Rust twin: nothing in the Rust half writes to such a reader. A Rust controller that serializes a value for one itself goes through `serde_json`, which differs from the Node writer on doubles — NaN and ±Infinity become `null` (Node writes `"NaN"`, `"Infinity"`, `"-Infinity"`) and a negative zero stays `-0.0` (Node writes `0`).
 
 Author principle: Rust developers write Rust, nothing else. A controller crate is `Cargo.toml` + `src/*.rs` — no `build.rs`, no `package.json`, no JS tooling, no awareness of which kernel will load it.
 
@@ -45,6 +48,39 @@ controllers:
   - pkg:cargo/<your-cargo-name>?local_path=./rust
 ```
 
+## Functions
+
+A callable kind (`capability: Telo.Callable` with `controllers:`) is implemented by the `Function` trait: `Config`, `Args` and `Output` are your own serde types, `create(config, ctx)` builds one instance per resource, and `call(&self, args)` answers one CEL call — synchronously, since a CEL expression has nowhere to wait. `#[function(entry = "…")]` exports it under the entry a PURL's `#fragment` names; the entry defaults to the snake_case of the type.
+
+```rust
+use serde::Deserialize;
+use telorun_sdk::{function, Function, FunctionContext, Result, Timestamp, Value};
+
+pub struct IsBefore;
+
+#[derive(Deserialize)]
+pub struct Instants { a: Timestamp, b: Timestamp }
+
+#[function(entry = "is_before")]
+impl Function for IsBefore {
+    type Config = Value;
+    type Args = Instants;
+    type Output = bool;
+
+    fn create(_config: Value, _ctx: &dyn FunctionContext) -> Result<Self> { Ok(IsBefore) }
+    fn call(&self, args: Instants) -> Result<bool> { Ok(args.a < args.b) }
+}
+```
+
+```yaml
+controllers:
+  - pkg:cargo/<your-cargo-name>?local_path=./rust#is_before
+```
+
+`FunctionContext` offers logging and nothing else. What `create` allocates is released by `Drop`: the kernel destroys the instance at teardown and on reload. The configuration crosses as the resource's plain JSON, and arguments and results as typed frames, so a timestamp, an int64, a `Uint64` or `Bytes` keeps its CEL type both ways; the Node kernel has already filled defaults and validated the arguments against the declared `params`, and validates the result against `returns`. An `Err` or a panic fails the calling expression as `ERR_FUNCTION_FAILED`, carrying your code — `ERR_CONTROLLER_PANIC` for a panic. A configuration the kind's schema accepted but your `Config` type cannot read fails creation with `ERR_FUNCTION_CONFIG_INVALID`: the schema and the type disagree. An `entry` must be ASCII letters, digits and underscores, or the attribute is a compile error. An instance the garbage collector releases before the kernel destroyed it still runs `Drop`; a panic there is written to stderr, since there is no caller left to report it to.
+
+Natively a function is the `telo_function__<entry>` symbol returning `telorun-abi`'s `TeloFunction` vtable (`create`, `call`, `destroy`, `free`, with a `TeloFunctionHost` whose one slot is `log`), part of ABI version 3 (`abi=telo-3`). The Rust kernel evaluates no CEL, so it hosts no functions; under napi the entry is a namespace exporting `createFunction`.
+
 ## When to Use It
 
 Use the SDK when building or extending Telo controllers in Rust. It is not the kernel itself; it is the contract layer that keeps controller behavior consistent across the polyglot runtime.
@@ -64,6 +100,8 @@ The SDK ships two backends, gated by Cargo features:
 A bare `cargo check` / `cargo clippy` / rust-analyzer run compiles the traits and your `impl` with no bridge at all, which is what keeps the inner loop working on a fresh clone.
 
 **Your controller's source and `Cargo.toml` do not change between kernels.** The `Controller` trait and `serde_json::Value` are backend-independent; only the generated bridge differs.
+
+Under napi, an integer in a `Value` your controller returns reaches the Node.js kernel as a JavaScript number when it lies within ±(2^53−1), and as a `BigInt` — a CEL `int` — beyond it, whatever its sign, so no integer arrives rounded.
 
 `#[controller]` takes an optional `entry` naming the exported controller, which is what a `pkg:cargo` PURL's `#fragment` selects:
 

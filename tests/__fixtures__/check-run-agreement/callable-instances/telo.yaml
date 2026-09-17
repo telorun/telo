@@ -1,0 +1,9 @@
+# Imports the library next door and does nothing else. Its entry-scoped check is
+# silent about the library's resources, so what refuses them here is the kernel
+# creating each one.
+kind: Telo.Application
+metadata:
+  name: CallableInstancesApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

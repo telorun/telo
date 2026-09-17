@@ -1,0 +1,63 @@
+# Native callable kinds inheriting a native controller: `Dash` maps its own
+# schema onto `Pad`'s with `base:`, and `Dot` merges into `Pad`'s schema. Both
+# are functions whose `call` is `Pad`'s controller's.
+kind: Telo.Application
+metadata:
+  name: CallableNativeExtends
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref padded
+---
+kind: Telo.Definition
+metadata:
+  name: Pad
+capability: Telo.Callable
+schema:
+  type: object
+  properties:
+    fill: { type: string }
+  required: [fill]
+params:
+  - name: text
+    schema: { type: string }
+returns:
+  schema: { type: string }
+controllers:
+  - pkg:telo/local/js?path=./pad.mjs#Pad
+---
+kind: Telo.Definition
+metadata:
+  name: Dash
+extends: Self.Pad
+schema:
+  type: object
+  properties: {}
+base:
+  fill: "-"
+---
+kind: Telo.Definition
+metadata:
+  name: Dot
+extends: Self.Pad
+---
+kind: Self.Dash
+metadata:
+  name: dash
+---
+kind: Self.Dot
+metadata:
+  name: dot
+fill: "."
+---
+kind: Run.Sequence
+metadata:
+  name: padded
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[Self.dash('x'), Self.dot('y')]"
+      expected: ["-x-", ".y."]

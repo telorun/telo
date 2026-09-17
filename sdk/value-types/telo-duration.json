@@ -1,0 +1,7 @@
+{
+  "name": "Telo.Duration",
+  "representation": "instance",
+  "binding": "duration",
+  "encoding": "cel-duration",
+  "description": "A span of time, held as a native duration so it adds to and subtracts from timestamps exactly. Written inline as any CEL duration string (`1h30m`, `250ms`); it is written as seconds (`5400s`)."
+}

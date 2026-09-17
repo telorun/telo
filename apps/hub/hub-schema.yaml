@@ -315,6 +315,16 @@ migrations:
                CASE WHEN mv.integrity IS NOT NULL AND mv.runtimes_asked THEN 1 ELSE 0 END,
                0, mv.tracked_at, mv.tracked_at
         FROM module_versions mv
+  # Whether an exported instance's kind is one its OWN module declares
+  # (`Self.<Kind>` or `<ModuleName>.<Kind>`), resolved at ingest through the
+  # declaring manifest. `kind` keeps only the suffix, and a suffix alone cannot
+  # tell a local kind from an imported or built-in one of the same name — an
+  # exported `Http.Api` instance beside a local kind named `Api` would take the
+  # local kind's categories and runtimes. Existing rows read as not own until
+  # the ingest revision that writes the column re-ingests them.
+  "20260917090000_AddResourceKindIsOwn":
+    statements:
+      - ALTER TABLE module_resources ADD COLUMN kind_is_own BOOLEAN NOT NULL DEFAULT FALSE
 ---
 # CLAIM — the single statement that decides a version is due and mints the
 # identity of the attempt that will ingest it.

@@ -14,7 +14,30 @@
  * sites. At warm time named types are not registered yet, so a bare-name
  * declaration resolves to `undefined` and the caller simply skips it.
  */
+import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
+
 export type SchemaLookup = (name: string) => object | undefined;
+
+/**
+ * The registry key a NAMED type declaration resolves through, or `undefined` for
+ * an inline or raw schema.
+ *
+ * A resolved `!ref` carries the canonical module-scoped id beside its name
+ * (`{kind, name, $ref: "telo:<module>/<Type>"}`, stamped by the loader in the
+ * module that wrote the reference), and that id is the key — the short name is
+ * registered by every module declaring a shape of that name, so looking it up
+ * binds whichever registered last. A library declaring `Money` and importing a
+ * library that exports another `Money` was validated against the import's. A
+ * bare string, or a reference no id was stamped on, keeps the name.
+ */
+export function typeReferenceKey(typeRef: unknown): string | undefined {
+  if (typeof typeRef === "string") return typeRef;
+  if (!typeRef || typeof typeRef !== "object") return undefined;
+  const ref = typeRef as Record<string, unknown>;
+  if (ref.schema && typeof ref.schema === "object") return undefined;
+  if (typeof ref.name !== "string") return undefined;
+  return typeof ref.$ref === "string" && parseCanonicalTypeSchemaId(ref.$ref) ? ref.$ref : ref.name;
+}
 
 /** The four declaration forms: a registered type's name, a `{kind, name}` ref
  *  object, an inline `{kind, schema}` type resource, and a raw JSON Schema. */
@@ -23,11 +46,11 @@ function readTypeSchema(
   getSchema: SchemaLookup,
 ): Record<string, any> | undefined {
   if (!typeRef) return undefined;
-  if (typeof typeRef === "string") return getSchema(typeRef) as Record<string, any> | undefined;
+  const key = typeReferenceKey(typeRef);
+  if (key !== undefined) return getSchema(key) as Record<string, any> | undefined;
   if (typeof typeRef !== "object") return undefined;
   const ref = typeRef as Record<string, any>;
   if (ref.schema && typeof ref.schema === "object") return ref.schema;
-  if (typeof ref.name === "string") return getSchema(ref.name) as Record<string, any> | undefined;
   if (ref.type || ref.properties || ref.$ref) return ref;
   return undefined;
 }

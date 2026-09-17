@@ -23,12 +23,27 @@ interface JournalManifest extends ResourceManifest {
   directory: string;
 }
 
+/**
+ * One recorded fact, as this store holds it.
+ *
+ * `v` and `value` are DATA here and nothing else: the value arrives already
+ * written down, under the codec version beside it, and this store's whole
+ * obligation is that the two come back together and unchanged. That is what lets
+ * the engine guarantee a recorded value replays with its CEL type without every
+ * store implementing a codec — and it is why appending returns the caller's own
+ * entry rather than a decoded one: there is nothing here to decode, so the first
+ * pass and a replay read the identical record.
+ *
+ * `value` is absent when the step produced nothing, which is a fact about the
+ * ENTRY — the step completed — rather than a value of its own.
+ */
 interface JournalEntry {
   path: string;
   kind: "step" | "decision";
   decision?: string;
-  target?: { kind: string; name: string };
-  value: unknown;
+  target?: { kind: string; name: string; module?: string };
+  v?: number;
+  value?: unknown;
 }
 
 interface ParkRecord {
@@ -54,8 +69,13 @@ interface RunRecord {
   status: "scheduled" | "running" | "parked" | "completed" | "failed" | "cancelled";
   dueAt?: number;
   parked?: ParkRecord;
+  /** `inputs` / `result` with the codec version that wrote each — data this
+   *  store keeps together and never reads, exactly like an entry's `v` and
+   *  `value`. */
   inputs?: unknown;
+  inputsCodecVersion?: number;
   result?: unknown;
+  resultCodecVersion?: number;
   error?: { code: string; message: string };
   collapsedRegions?: number;
   collapseReasons?: string[];
@@ -159,7 +179,12 @@ class FileJournalController {
 
   async admitRun(
     run: string,
-    init?: { status?: "running" | "scheduled"; dueAt?: number; inputs?: unknown },
+    init?: {
+      status?: "running" | "scheduled";
+      dueAt?: number;
+      inputs?: unknown;
+      inputsCodecVersion?: number;
+    },
   ): Promise<{ admitted: boolean; existing?: RunRecord }> {
     const file = fileFor(this.resource.directory, run);
     const header: RunRecord = {
@@ -167,6 +192,9 @@ class FileJournalController {
       status: init?.status ?? "running",
       ...(init?.dueAt === undefined ? {} : { dueAt: init.dueAt }),
       ...(init?.inputs === undefined ? {} : { inputs: init.inputs }),
+      ...(init?.inputsCodecVersion === undefined
+        ? {}
+        : { inputsCodecVersion: init.inputsCodecVersion }),
     };
     try {
       // `wx` is the whole admission: an exclusive create either wins or reports

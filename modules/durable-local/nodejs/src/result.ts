@@ -20,6 +20,7 @@ import {
   type ResourceContext,
   type ResourceManifest,
 } from "@telorun/sdk";
+import { recordedRunResult } from "./journal-codec.js";
 import { journalOf } from "./journal-ref.js";
 import { runIdOf } from "./run-id.js";
 
@@ -54,10 +55,13 @@ class ResultController {
     for (;;) {
       const record = await journal.readRun(run);
       if (record && TERMINAL.has(record.status)) {
+        // Read back through the codec that wrote it, so a caller's CEL sees the
+        // values the run produced — a timestamp, an int64 — rather than their text.
+        const recorded = recordedRunResult(record);
         return {
           run,
           status: record.status,
-          ...(record.result === undefined ? {} : { result: record.result }),
+          ...("value" in recorded ? { result: recorded.value } : {}),
           ...(record.error === undefined ? {} : { error: record.error }),
           // Reported with the outcome rather than only logged, because §8.3
           // makes it a conformance requirement: a durability feature whose

@@ -1,6 +1,24 @@
-import { Stream } from "@telorun/sdk";
+import { Duration, Stream, UnsignedInt } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { buildCelEnvironment } from "../src/cel/environment.js";
+import { assertCelValueIdentity } from "../src/cel/value-identity.js";
+
+describe("CEL value identity", () => {
+  it("accepts a Duration and an UnsignedInt constructed through @telorun/sdk", () => {
+    const env = buildCelEnvironment();
+    const context = { d: new Duration(90), u: new UnsignedInt(5) };
+    expect(String(env.evaluate("d + duration('30s')", context))).toBe("120s");
+    expect(env.evaluate("u + 1u", context)).toEqual(new UnsignedInt(6));
+    expect(env.evaluate("type(d) == google.protobuf.Duration && type(u) == uint", context)).toBe(true);
+  });
+
+  it("refuses an engine whose values are not the SDK's classes", () => {
+    class Foreign {}
+    expect(() => assertCelValueIdentity({ Duration: Foreign, UnsignedInt: Foreign })).toThrow(
+      /two copies of @marcbachmann\/cel-js/i,
+    );
+  });
+});
 
 describe("buildCelEnvironment", () => {
   it("registers Telo's stdlib of CEL functions", () => {
@@ -67,6 +85,7 @@ describe("buildCelEnvironment", () => {
 
   it("provides current-time functions, UTC by default and zone-aware on demand", () => {
     const env = buildCelEnvironment();
+    expect(env.parse("now()")({})).toBeInstanceOf(Date);
     expect(env.parse("nowIso()")({})).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*Z$/);
     expect(env.parse("today()")({})).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(typeof env.parse("nowMillis()")({})).toBe("bigint");

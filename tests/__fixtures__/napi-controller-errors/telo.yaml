@@ -23,6 +23,7 @@ inputType:
     type: object
     properties:
       fail: { type: boolean }
+      numbers: { type: boolean }
     additionalProperties: false
 outputType:
   kind: Telo.JsonSchema
@@ -30,6 +31,9 @@ outputType:
     type: object
     properties:
       fail: { type: boolean }
+      # An echoed flag, or the integers the probe returns for it — undeclared
+      # scalars, so the contract normalizes none of them.
+      numbers: { type: [boolean, object] }
     additionalProperties: false
 schema:
   type: object

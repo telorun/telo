@@ -1,0 +1,9 @@
+# Runs the library next door, whose sequence calls the re-exported function.
+kind: Telo.Application
+metadata:
+  name: ReExportCallerApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.flow

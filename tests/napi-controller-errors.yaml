@@ -7,8 +7,10 @@ metadata:
     structured error carrying its code. `invoke`'s is caught by name inside a
     `try:`, with its message unprefixed; `create`'s fails the boot naming the
     resource, rather than leaving an Error object standing in as the instance.
-    The controller is built on the Rust SDK, so this is the SDK's napi bridge
-    under test as well as the loader.
+    An integer a Rust controller returns reaches the kernel as a number within
+    ±(2^53−1) and as a 64-bit integer beyond it, whatever its sign. The
+    controller is built on the Rust SDK, so this is the SDK's napi bridge under
+    test as well as the loader.
 imports:
   NapiErrors: ./__fixtures__/napi-controller-errors/telo.yaml
   Run: ../modules/run
@@ -16,6 +18,7 @@ imports:
 targets:
   - !ref testInvokeError
   - !ref testCreateError
+  - !ref testIntegers
 ---
 kind: NapiErrors.Probe
 metadata: { name: probe }
@@ -52,6 +55,31 @@ steps:
           expected:
             code: ERR_FIXTURE
             message: the probe was asked to fail
+---
+kind: Run.Sequence
+metadata: { name: testIntegers }
+steps:
+  - name: returned
+    invoke: !ref probe
+    inputs:
+      numbers: true
+  - name: assertRepresentations
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        small: !cel "type(steps.returned.result.numbers.small) == double"
+        negative: !cel "type(steps.returned.result.numbers.negative) == double"
+        aboveU32: !cel "type(steps.returned.result.numbers.aboveU32) == double"
+        maxSafe: !cel "type(steps.returned.result.numbers.maxSafe) == double"
+        aboveSafe: !cel "steps.returned.result.numbers.aboveSafe == 9007199254740993"
+        belowNegativeSafe: !cel "steps.returned.result.numbers.belowNegativeSafe == -9007199254740993"
+      expected:
+        small: true
+        negative: true
+        aboveU32: true
+        maxSafe: true
+        aboveSafe: true
+        belowNegativeSafe: true
 ---
 kind: Assert.Manifest
 metadata: { name: testCreateError }

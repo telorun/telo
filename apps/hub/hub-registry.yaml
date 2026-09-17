@@ -57,7 +57,7 @@ variables:
     default: telo
   ingestRev:
     type: integer
-    default: 1
+    default: 2
 exports:
   resources:
     - registerModule

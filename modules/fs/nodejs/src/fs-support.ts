@@ -57,8 +57,9 @@ export function toWritableBytes(kind: string, content: unknown, encoding?: strin
   }
   throw new Error(
     `${kind}: 'content' must be text or raw bytes, got ${describeContent(content)}. ` +
-      `Bytes come from a resource that produces them (a generated image, a decoded payload) — ` +
-      `they cannot be written inline in a manifest; use a string with 'encoding: base64' for that.`,
+      `Raw bytes come from a resource that produces them (a generated image, a decoded payload) ` +
+      `or from a file embedded with '!include-bytes'; to write binary spelled out as text, use a ` +
+      `string with 'encoding: base64'.`,
   );
 }
 

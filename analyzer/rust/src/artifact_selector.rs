@@ -96,7 +96,7 @@ fn is_family_version(value: &str) -> bool {
 static ABI_VALUE_FORM: AxisValueForm = AxisValueForm {
     pattern: "^[a-z][a-z0-9_]*-[0-9]+(\\.[0-9]+)*$",
     form: "<family>-<version>",
-    examples: &["node-137", "telo-2"],
+    examples: &["node-137", "telo-3"],
     accepts: is_family_version,
 };
 

@@ -1,0 +1,27 @@
+# The module that WRITES the expression. `Text` is its own import alias, so
+# `Text.shout(…)` is a module call here and `Text` is no identifier the
+# expression reads.
+#
+# Its instance is re-exported by the library next door, and a re-exported copy
+# carries the re-exporting module's name in `metadata.module` — so an analysis
+# that reads the expression in THAT scope judges this file against aliases its
+# author never declared, reporting an unknown identifier on a file the consumer
+# cannot edit and falling silent the moment the re-exporter happens to declare
+# an alias of the same name.
+kind: Telo.Library
+metadata:
+  name: Inner
+  version: 1.0.0
+  description: Fixture library whose exported sequence calls a function through its own import alias.
+imports:
+  Run: ../../../../modules/run
+  Text: ../text
+exports:
+  resources: [innerGreet]
+---
+kind: Run.Sequence
+metadata:
+  name: innerGreet
+steps:
+  - name: label
+    value: !cel "Text.shout('hi')"

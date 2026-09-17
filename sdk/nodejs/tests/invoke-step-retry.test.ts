@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createCancellationSource,
+  ERR_FUNCTION_FAILED,
   ERR_INPUT_INVALID,
   ERR_INVOKE_CANCELLED,
   executeInvokeStep,
@@ -86,6 +87,19 @@ describe("step retry", () => {
 
     await expect(executeInvokeStep(step, fakeContext(), state())).rejects.toThrow(
       "inputs do not satisfy inputType",
+    );
+    expect(calls()).toBe(1);
+  });
+
+  it("does not re-attempt a failed module function", async () => {
+    // A synchronous call with the same arguments fails the same way again.
+    const { step, calls } = stepCalling(
+      () => new InvokeError(ERR_FUNCTION_FAILED, "Function 'Self.divide' failed: division by zero"),
+      { attempts: 5, initialDelay: 1, jitter: "none" },
+    );
+
+    await expect(executeInvokeStep(step, fakeContext(), state())).rejects.toThrow(
+      "Function 'Self.divide' failed",
     );
     expect(calls()).toBe(1);
   });

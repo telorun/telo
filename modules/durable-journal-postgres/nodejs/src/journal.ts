@@ -41,12 +41,28 @@ interface JournalManifest extends ResourceManifest {
   notifyChannel?: string;
 }
 
+/**
+ * One recorded fact, as this store holds it.
+ *
+ * `v` and `value` are DATA here and nothing else: the value arrives already
+ * written down, under the codec version beside it, and this store's whole
+ * obligation is that the two come back together and unchanged. That is what lets
+ * the engine guarantee a recorded value replays with its CEL type without every
+ * store implementing a codec, and it is why `value` passes through the same
+ * JSON encoding as every other payload column rather than being stored raw —
+ * this store has no business knowing which codec wrote it.
+ *
+ * `value` is absent when the step produced nothing, which is a fact about the
+ * ENTRY — the step completed — rather than a value of its own, and is the one
+ * reading a NULL column has.
+ */
 interface JournalEntry {
   path: string;
   kind: "step" | "decision";
   decision?: string;
   target?: { kind: string; name: string; module?: string };
-  value: unknown;
+  v?: number;
+  value?: unknown;
 }
 
 interface ParkRecord {
@@ -63,8 +79,13 @@ interface RunRecord {
   status: RunStatus;
   dueAt?: number;
   parked?: ParkRecord;
+  /** `inputs` / `result` with the codec version that wrote each — data this
+   *  store keeps together and never reads, exactly like an entry's `v` and
+   *  `value`. */
   inputs?: unknown;
+  inputsCodecVersion?: number;
   result?: unknown;
+  resultCodecVersion?: number;
   error?: { code: string; message: string };
   collapsedRegions?: number;
   collapseReasons?: string[];
@@ -97,18 +118,26 @@ interface RunRow {
   parked_resource: string | null;
   parked_token: string | null;
   inputs: string | null;
+  inputs_codec_version: number | null;
   result: string | null;
+  result_codec_version: number | null;
   error: string | null;
   collapsed_regions: number | null;
   collapse_reasons: string | null;
   replayed_steps: number | null;
 }
 
+/** Every column a run record is read from, in the one order both reads use. */
+const RUN_COLUMNS = `run, status, due_at, parked_path, parked_resource, parked_token,
+              inputs, inputs_codec_version, result, result_codec_version, error,
+              collapsed_regions, collapse_reasons, replayed_steps`;
+
 interface EntryRow {
   path: string;
   entry_kind: "step" | "decision";
   decision: string | null;
   target: string | null;
+  codec_version: number | null;
   value: string | null;
 }
 
@@ -118,10 +147,6 @@ interface EntryRow {
 function millis(value: string | number | null): number | undefined {
   if (value === null) return undefined;
   return typeof value === "number" ? value : Number(value);
-}
-
-function decodeOptional(value: string | null): unknown {
-  return value === null ? undefined : decodeJsonValue(value);
 }
 
 function encodeOptional(value: unknown): string | null {
@@ -205,7 +230,15 @@ function rowToRecord(row: RunRow): RunRecord {
     ...(dueAt === undefined ? {} : { dueAt }),
     ...(park === undefined ? {} : { parked: park }),
     ...(row.inputs === null ? {} : { inputs: decodeJsonValue(row.inputs) }),
+    // NULL is "no codec version": a record written before these columns existed,
+    // read the way this store read it then.
+    ...(row.inputs_codec_version === null
+      ? {}
+      : { inputsCodecVersion: row.inputs_codec_version }),
     ...(row.result === null ? {} : { result: decodeJsonValue(row.result) }),
+    ...(row.result_codec_version === null
+      ? {}
+      : { resultCodecVersion: row.result_codec_version }),
     ...(row.error === null ? {} : { error: decodeJsonValue(row.error) as RunRecord["error"] }),
     ...(row.collapsed_regions === null ? {} : { collapsedRegions: row.collapsed_regions }),
     ...(row.collapse_reasons === null
@@ -223,7 +256,13 @@ function rowToEntry(row: EntryRow): JournalEntry {
     ...(row.target === null
       ? {}
       : { target: decodeJsonValue(row.target) as JournalEntry["target"] }),
-    value: decodeOptional(row.value),
+    // NULL is "no codec version", which is what a row written before this column
+    // existed carries — and the reading the engine turns into "read it the way
+    // this store read it then" rather than into a refusal.
+    ...(row.codec_version === null ? {} : { v: row.codec_version }),
+    // A NULL value is ABSENT, not null: `null` is a CEL value and is stored as
+    // one, while a step that produced nothing has no value at all.
+    ...(row.value === null ? {} : { value: decodeJsonValue(row.value) }),
   };
 }
 
@@ -322,7 +361,9 @@ class PostgresJournalController {
          parked_resource TEXT,
          parked_token TEXT,
          inputs TEXT,
+         inputs_codec_version INTEGER,
          result TEXT,
+         result_codec_version INTEGER,
          error TEXT,
          collapsed_regions INTEGER,
          collapse_reasons TEXT,
@@ -346,7 +387,11 @@ class PostgresJournalController {
     // column, all on the boot path. Reading `information_schema` first makes the
     // steady state one ACCESS SHARE query, and narrows the write (and its race)
     // to the deployment that actually migrates.
-    await this.addMissingColumns({ replayed_steps: "INTEGER" });
+    await this.addMissingColumns(this.#runs, {
+      replayed_steps: "INTEGER",
+      inputs_codec_version: "INTEGER",
+      result_codec_version: "INTEGER",
+    });
     await this.reconcileSchemaObject(
       `CREATE TABLE IF NOT EXISTS ${this.#entries} (
          run TEXT NOT NULL,
@@ -355,10 +400,16 @@ class PostgresJournalController {
          entry_kind TEXT NOT NULL,
          decision TEXT,
          target TEXT,
+         codec_version INTEGER,
          value TEXT,
          PRIMARY KEY (run, path)
        )`,
     );
+    // NULLABLE, and that is the whole of how a run parked before the codec
+    // existed still resumes: a row with no version is read the way this store
+    // read it before, and only a row that names a version this runtime does not
+    // know is refused.
+    await this.addMissingColumns(this.#entries, { codec_version: "INTEGER" });
     // Write ORDER is a column, not the primary key: entries are keyed by path
     // because that is what makes a duplicate append refusable, and `readEntries`
     // must still return them in the order they were written.
@@ -385,17 +436,17 @@ class PostgresJournalController {
    * between the read and the write is the ordinary race, and the SQLSTATE set
    * still covers it.
    */
-  private async addMissingColumns(columns: Record<string, string>): Promise<void> {
+  private async addMissingColumns(table: string, columns: Record<string, string>): Promise<void> {
     const present = await this.conn().execute<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns
         WHERE table_schema = current_schema() AND table_name = $1`,
-      [this.#runs.replaceAll('"', "")],
+      [table.replaceAll('"', "")],
     );
     const have = new Set((present.rows ?? []).map((r) => r.column_name));
     for (const [column, type] of Object.entries(columns)) {
       if (have.has(column)) continue;
       await this.reconcileSchemaObject(
-        `ALTER TABLE ${this.#runs} ADD COLUMN IF NOT EXISTS ${column} ${type}`,
+        `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${type}`,
       );
     }
   }
@@ -441,7 +492,12 @@ class PostgresJournalController {
 
   async admitRun(
     run: string,
-    init?: { status?: "running" | "scheduled"; dueAt?: number; inputs?: unknown },
+    init?: {
+      status?: "running" | "scheduled";
+      dueAt?: number;
+      inputs?: unknown;
+      inputsCodecVersion?: number;
+    },
   ): Promise<{ admitted: boolean; existing?: RunRecord }> {
     await this.ready();
     // One statement is the whole admission: an insert that conflicts reports
@@ -450,11 +506,17 @@ class PostgresJournalController {
     // duplicate start slips through — which on this store, unlike the file one,
     // there is no excuse for.
     const inserted = await this.executeOutsideTransaction<{ run: string }>(
-      `INSERT INTO ${this.#runs} (run, status, due_at, inputs)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO ${this.#runs} (run, status, due_at, inputs, inputs_codec_version)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (run) DO NOTHING
        RETURNING run`,
-      [run, init?.status ?? "running", init?.dueAt ?? null, encodeOptional(init?.inputs)],
+      [
+        run,
+        init?.status ?? "running",
+        init?.dueAt ?? null,
+        encodeOptional(init?.inputs),
+        init?.inputsCodecVersion ?? null,
+      ],
     );
     if (inserted.rows.length > 0) return { admitted: true };
     const existing = await this.readRun(run);
@@ -467,8 +529,7 @@ class PostgresJournalController {
   async readRun(run: string): Promise<RunRecord | undefined> {
     await this.ready();
     const result = await this.conn().execute<RunRow>(
-      `SELECT run, status, due_at, parked_path, parked_resource, parked_token,
-              inputs, result, error, collapsed_regions, collapse_reasons, replayed_steps
+      `SELECT ${RUN_COLUMNS}
          FROM ${this.#runs} WHERE run = $1`,
       [run],
     );
@@ -479,7 +540,7 @@ class PostgresJournalController {
   async readEntries(run: string): Promise<JournalEntry[]> {
     await this.ready();
     const result = await this.conn().execute<EntryRow>(
-      `SELECT path, entry_kind, decision, target, value
+      `SELECT path, entry_kind, decision, target, codec_version, value
          FROM ${this.#entries} WHERE run = $1 ORDER BY seq`,
       [run],
     );
@@ -503,16 +564,17 @@ class PostgresJournalController {
     await this.ready();
     const conn = this.conn();
     const inserted = await conn.execute<EntryRow>(
-      `INSERT INTO ${this.#entries} (run, path, entry_kind, decision, target, value)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO ${this.#entries} (run, path, entry_kind, decision, target, codec_version, value)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (run, path) DO NOTHING
-       RETURNING path, entry_kind, decision, target, value`,
+       RETURNING path, entry_kind, decision, target, codec_version, value`,
       [
         run,
         entry.path,
         entry.kind,
         entry.decision ?? null,
         entry.target === undefined ? null : encodeJsonValue(entry.target),
+        entry.v ?? null,
         encodeOptional(entry.value),
       ],
     );
@@ -521,7 +583,7 @@ class PostgresJournalController {
     // signalled, because the caller must REPLAY against what was recorded and
     // not against what it just computed.
     const stored = await conn.execute<EntryRow>(
-      `SELECT path, entry_kind, decision, target, value
+      `SELECT path, entry_kind, decision, target, codec_version, value
          FROM ${this.#entries} WHERE run = $1 AND path = $2`,
       [run, entry.path],
     );
@@ -546,6 +608,7 @@ class PostgresJournalController {
       `UPDATE ${this.#runs}
           SET status = $2, result = $3, error = $4,
               collapsed_regions = $5, collapse_reasons = $6, replayed_steps = $7,
+              result_codec_version = $8,
               due_at = NULL, parked_path = NULL, parked_resource = NULL, parked_token = NULL,
               claim_holder = NULL, claim_until = NULL
         WHERE run = $1`,
@@ -557,6 +620,7 @@ class PostgresJournalController {
         outcome.collapsedRegions ?? null,
         outcome.collapseReasons === undefined ? null : encodeJsonValue(outcome.collapseReasons),
         outcome.replayedSteps ?? null,
+        outcome.resultCodecVersion ?? null,
       ],
     );
   }
@@ -593,8 +657,7 @@ class PostgresJournalController {
   async runParkedOn(token: string): Promise<{ run: string; park: ParkRecord } | undefined> {
     await this.ready();
     const result = await this.conn().execute<RunRow>(
-      `SELECT run, status, due_at, parked_path, parked_resource, parked_token,
-              inputs, result, error, collapsed_regions, collapse_reasons, replayed_steps
+      `SELECT ${RUN_COLUMNS}
          FROM ${this.#runs} WHERE parked_token = $1 AND status = 'parked'`,
       [token],
     );

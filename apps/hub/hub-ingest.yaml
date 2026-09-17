@@ -74,7 +74,7 @@ variables:
   # read one at a time.
   ingestRev:
     type: integer
-    default: 1
+    default: 2
 exports:
   resources:
     - ingestVersion
@@ -343,6 +343,11 @@ steps:
   # this, and closing it means fetching partials per version, so the invariant
   # is documented rather than enforced: empty means "not declared in telo.yaml",
   # of which re-export is the usual cause.
+  #
+  # An instance is a document of a kind a module defines, or a `Telo.Function` —
+  # which is as much a public function as an instance of a callable kind the
+  # module defines. Every other built-in document (a module, an import, a kind, a
+  # named `Telo.JsonSchema` shape) is not something an importer calls or holds.
   - name: resourceRows
     value: !cel >-
       ('exports' in inputs.docs[0] && 'resources' in inputs.docs[0].exports
@@ -350,23 +355,28 @@ steps:
           'declared': string(e),
           'name': string(e).split('.')[size(string(e).split('.')) - 1],
           'kind': inputs.docs.filter(d,
-            !d.kind.startsWith('Telo.') &&
+            (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
             d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
             .map(d, d.kind.contains('.')
               ? d.kind.split('.')[size(d.kind.split('.')) - 1] : '')
             .size() > 0
             ? inputs.docs.filter(d,
-                !d.kind.startsWith('Telo.') &&
+                (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
                 d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
                 .map(d, d.kind.contains('.')
                   ? d.kind.split('.')[size(d.kind.split('.')) - 1] : '')[0]
             : '',
+          'kindIsOwn': inputs.docs.filter(d,
+            (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
+            d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1] &&
+            (d.kind.split('.')[0] == 'Self' || d.kind.split('.')[0] == inputs.docs[0].metadata.name))
+            .size() > 0,
           'description': inputs.docs.filter(d,
-            !d.kind.startsWith('Telo.') &&
+            (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
             d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
             .size() > 0
             ? inputs.docs.filter(d,
-                !d.kind.startsWith('Telo.') &&
+                (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
                 d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])[0]
                 .metadata.?description.orValue('')
             : ''
@@ -501,13 +511,14 @@ steps:
     invoke: !ref exec
     inputs:
       sql: >-
-        INSERT INTO module_resources (module_id, version, name, declared, kind, description)
-        SELECT $1, $2, r.name, r.declared, r.kind, r.description
+        INSERT INTO module_resources (module_id, version, name, declared, kind, kind_is_own, description)
+        SELECT $1, $2, r.name, r.declared, r.kind, r."kindIsOwn", r.description
         FROM jsonb_to_recordset($3::jsonb) AS r(
-          name text, declared text, kind text, description text)
+          name text, declared text, kind text, "kindIsOwn" boolean, description text)
         ON CONFLICT (module_id, version, name) DO UPDATE SET
           declared = EXCLUDED.declared,
           kind = EXCLUDED.kind,
+          kind_is_own = EXCLUDED.kind_is_own,
           description = EXCLUDED.description
       bindings:
         - !cel "inputs.moduleId"

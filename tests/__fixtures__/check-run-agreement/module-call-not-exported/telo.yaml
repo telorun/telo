@@ -1,0 +1,8 @@
+# Imports the library next door; its call to an unexported function is refused
+# when the kernel creates the sequence that makes it.
+kind: Telo.Application
+metadata:
+  name: UnexportedCallerApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

@@ -1,0 +1,21 @@
+# Calls a function whose kind's callable chain crosses three libraries.
+kind: Telo.Application
+metadata:
+  name: CallableCrossModuleApp
+  version: 1.0.0
+imports:
+  Hmac: ./hmac
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref signed
+---
+kind: Run.Sequence
+metadata:
+  name: signed
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "Hmac.sign('k', 'm')"
+      expected: "k:m"

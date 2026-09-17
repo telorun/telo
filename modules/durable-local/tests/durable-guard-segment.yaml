@@ -1,0 +1,72 @@
+kind: Telo.Application
+metadata:
+  name: DurableGuardSegment
+  version: 1.0.0
+  description: |
+    A step's `when:` guard is recorded under its own path — and so is every step of the
+    body that step dispatches. Keyed by the word `when`, the guard of `outer` and the
+    nested step named `when` shared one key: on the FIRST pass the nested step was handed
+    the guard's value (`true`) instead of running, and the run reported one replayed step
+    though nothing had been interrupted.
+
+    The guard is keyed in a segment no step name can spell, so the nested step runs and
+    the run replays nothing.
+imports:
+  Local: ../
+  Journal: ../../durable-journal-file
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: DURABLE_GUARD_SEGMENT_TEST_DIR
+    type: string
+    default: .telo/durable-guard-segment-test
+targets:
+  - !ref test
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: ticket
+    value: !cel "'g' + string(nowMillis())"
+  - name: start
+    invoke:
+      kind: Local.Workflow
+      journal: !ref journal
+      runId: !cel "'guard:' + inputs.ticket"
+      inputs:
+        ticket: !cel "inputs.ticket"
+      steps:
+        - name: outer
+          when: !cel "true"
+          invoke:
+            kind: Run.Sequence
+            steps:
+              - name: when
+                invoke: { kind: Run.Value, value: { said: hello } }
+            outputs:
+              got: !cel "steps.when.result"
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: finished
+    invoke:
+      kind: Local.Result
+      journal: !ref journal
+      wait: 15s
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: assertRan
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        got: !cel "steps.finished.result.result.steps.outer.result.got"
+        replayedSteps: !cel "steps.finished.result.replayedSteps"
+      expected:
+        status: completed
+        got: { said: hello }
+        replayedSteps: 0

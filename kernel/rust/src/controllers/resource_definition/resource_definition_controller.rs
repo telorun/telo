@@ -84,3 +84,30 @@ pub fn register_definition(
         policy.clone(),
     )))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A module shipping a function kind must stay loadable here: this kernel
+    /// hosts no functions, but refusing the capability would refuse every other
+    /// kind in the same module.
+    #[test]
+    fn registers_a_callable_kind() {
+        let document = serde_json::json!({
+            "kind": "Telo.Definition",
+            "metadata": { "name": "Hmac" },
+            "capability": "Telo.Callable",
+            "params": [{ "name": "message", "schema": { "type": "string" } }],
+            "returns": { "schema": { "type": "string" } },
+        });
+        let definition = register_definition(
+            "Crypto",
+            "telo.yaml",
+            &ControllerPolicy::default(),
+            &document,
+        )
+        .expect("a callable kind registers");
+        assert_eq!(definition.capability.as_deref(), Some("Telo.Callable"));
+    }
+}

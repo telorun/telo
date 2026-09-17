@@ -484,6 +484,30 @@ function assertNoUndeclaredSiblings(
   );
 }
 
+/** The CEL engine's package directory, as it appears in a resolved input path. */
+const CEL_ENGINE_PACKAGE = `${path.sep}node_modules${path.sep}@marcbachmann${path.sep}cel-js${path.sep}`;
+
+/**
+ * Refuse a bundle that inlined the CEL engine.
+ *
+ * CEL values are typed by constructor, so an inlined copy's `Duration` and
+ * `UnsignedInt` are foreign to the kernel's engine: a controller handing one to
+ * CEL fails the first expression that meets it, far from the import that caused
+ * it. `@telorun/sdk` stays external and exports the one copy the kernel uses.
+ */
+function assertNoInlinedCelEngine(entryFile: string, inputs: string[]): void {
+  const inlined = inputs.filter((input) => input.includes(CEL_ENGINE_PACKAGE));
+  if (inlined.length === 0) return;
+  const module = nearestModuleRoot(path.dirname(entryFile)) ?? path.dirname(entryFile);
+  throw new RuntimeError(
+    "ERR_CONTROLLER_BUILD_FAILED",
+    `Controller bundle "${entryFile}" of the module at ${module} inlines @marcbachmann/cel-js ` +
+      `(${inlined.slice(0, 3).join(", ")}). A second copy of the CEL engine has its own value ` +
+      `classes, which the kernel's engine rejects. Import Duration and UnsignedInt from ` +
+      `@telorun/sdk, which exports the kernel's copy, and do not depend on @marcbachmann/cel-js.`,
+  );
+}
+
 function isUnder(file: string, dir: string): boolean {
   const root = dir.endsWith(path.sep) ? dir : dir + path.sep;
   return file.startsWith(root);
@@ -583,6 +607,7 @@ async function build(
   // kernel happens to run from.
   const inputs = Object.keys(built.metafile.inputs).map((rel) => path.resolve(rel));
   assertNoInlinedSiblings(entryFile, inputs, libraries);
+  assertNoInlinedCelEngine(entryFile, inputs);
   const key = (await signInputs(inputs, externals)) ?? createHash("sha256")
     .update(output.text)
     .digest("hex")

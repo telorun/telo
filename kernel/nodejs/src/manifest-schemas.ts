@@ -91,6 +91,17 @@ const baseDefinition = {
     status: OBSERVED_STATE_SCHEMA,
     controllers: { type: "array", items: { type: "string" } },
     throws: throwsSchema,
+    // A callable's signature and its native determinism claim. Deliberately
+    // UNCONSTRAINED here, the `REQUIRES_SCHEMA` posture: every rule that matters
+    // — optional parameters trailing, a shape named with `!ref` rather than as a
+    // bare string, where `deterministic` may be written at all — needs the
+    // `extends` chain and the kind's capability, not a schema. Declaring a shape
+    // here would give one mistake two diagnostics, one of them phrased by a
+    // layer that does not know what the value is for. They are LISTED because
+    // `unevaluatedProperties: false` would otherwise reject every callable kind.
+    params: {},
+    returns: {},
+    deterministic: {},
   },
   unevaluatedProperties: false,
 };
@@ -107,6 +118,11 @@ const KNOWN_CAPABILITIES = [
   // path, and dispatch emits trace events, so routing logs through it would
   // generate telemetry from inside the telemetry path. See kernel/specs/logging.md §10.
   "Telo.Sink",
+  // A function: `call(args)`, synchronous, reached from inside a CEL expression
+  // through a module name. It receives no context — no zone, no cancellation, no
+  // trace, nothing to await — which is why it is outside `Telo.Executable` and
+  // why a thrown error here is not a structured error for a caller to render.
+  "Telo.Callable",
   // `Telo.Executable` is deliberately declarable NOWHERE: it is the slot-
   // constraint parent of Invocable and Runnable ("control can be transferred to
   // this"), naming no lifecycle role. Listing it here keeps the open third-party
@@ -152,6 +168,11 @@ export const ResourceDefinitionSchema = {
     // A sink is written to directly, never dispatched, so a thrown error is a
     // boot-time failure rather than a structured runtime error for a caller.
     capabilityBranch("Telo.Sink", false),
+    // A callable is evaluated inside a CEL expression, with no caller frame to
+    // return a structured error to: a throw fails the evaluation itself
+    // (ERR_FUNCTION_FAILED), so a declared throw union would describe a
+    // dispatch that never happens.
+    capabilityBranch("Telo.Callable", false),
     // Unknown/absent capability: open schema for third-party extensibility
     {
       not: {

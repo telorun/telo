@@ -69,7 +69,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@marcbachmann/cel-js": "^7.6.1",
+    "@marcbachmann/cel-js": "7.6.1",
     "@sinclair/typebox": "^0.34.48",
     "@telorun/analyzer": "workspace:*",
     "@telorun/glob": "workspace:*",

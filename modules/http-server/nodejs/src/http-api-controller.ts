@@ -10,12 +10,14 @@ import {
 } from "@telorun/http-dispatch";
 import {
   ControllerContext,
+  ERR_INPUT_INVALID,
   Invocable,
   InvokeError,
   isCancellationError,
   isInvokeError,
   isLiveSlot,
   KindRef,
+  plainSchemaOf,
   Ref,
   ResourceContext,
   ResourceInstance,
@@ -23,6 +25,7 @@ import {
 } from "@telorun/sdk";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
+import { requestValidationEnvelope, type RequestLocation } from "./request-validation-envelope.js";
 
 const HttpApiRouteManifest = Type.Object({
   request: Type.Object({
@@ -108,10 +111,20 @@ export class HttpServerApi implements ResourceInstance {
     // string-matched `x-telo-ref` before `ref-slot.ts`.
     const streamBody = isLiveSlot(route.request.schema?.body);
 
-    if (route.request.schema?.query) schema.querystring = route.request.schema.query;
-    if (route.request.schema?.params) schema.params = route.request.schema.params;
-    if (route.request.schema?.body && !streamBody) schema.body = route.request.schema.body;
-    if (route.request.schema?.headers) schema.headers = route.request.schema.headers;
+    // Fastify validates, and OpenAPI documents, the TEXT a client sends: an
+    // instance-typed slot (`Telo.Timestamp`) is registered as its plain
+    // encoding's schema, and decoded into the instance below, before the handler.
+    const plainRequest = new Map<RequestLocation, Record<string, any>>();
+    const register = (location: RequestLocation, key: string, declared: unknown) => {
+      if (!declared) return;
+      const plain = plainSchemaOf(declared as Record<string, any>);
+      schema[key] = plain;
+      if (plain !== declared) plainRequest.set(location, declared as Record<string, any>);
+    };
+    register("query", "querystring", route.request.schema?.query);
+    register("params", "params", route.request.schema?.params);
+    if (!streamBody) register("body", "body", route.request.schema?.body);
+    register("headers", "headers", route.request.schema?.headers);
 
     // OpenAPI operation metadata — @fastify/swagger reads these off the route
     // schema and renders them into the generated document.
@@ -129,7 +142,7 @@ export class HttpServerApi implements ResourceInstance {
       if (!entry.content) continue;
       for (const [, c] of Object.entries(entry.content)) {
         if (c.schema && schema.response[entry.status] === undefined) {
-          schema.response[entry.status] = c.schema;
+          schema.response[entry.status] = plainSchemaOf(c.schema);
         }
       }
     }
@@ -139,14 +152,37 @@ export class HttpServerApi implements ResourceInstance {
       url: translatedPath,
       schema,
       handler: async (request: FastifyRequest, reply: FastifyReply) => {
+        const received: Record<RequestLocation, unknown> = {
+          query: request.query,
+          params: request.params,
+          body: request.body,
+          headers: request.headers,
+        };
+        for (const [location, declared] of plainRequest) {
+          try {
+            received[location] = this.ctx.readPlainEncoded(received[location], declared);
+          } catch (err) {
+            if (!isInvokeError(err) || err.code !== ERR_INPUT_INVALID) throw err;
+            const issues = (err.data as { issues?: Array<{ path: string; message: string }> } | undefined)
+              ?.issues;
+            reply.code(400);
+            return reply.send(
+              requestValidationEnvelope(
+                issues?.length
+                  ? issues.map(({ path, message }) => ({ location, path, message }))
+                  : [{ location, path: "", message: err.message }],
+              ),
+            );
+          }
+        }
         const requestContext = {
           request: {
             method: request.method,
             path: request.url,
-            params: request.params || {},
-            query: request.query || {},
-            headers: normalizeHeaders(request.headers),
-            body: streamBody ? toByteStream(request) : request.body,
+            params: received.params || {},
+            query: received.query || {},
+            headers: normalizeHeaders(received.headers as FastifyRequest["headers"]),
+            body: streamBody ? toByteStream(request) : received.body,
             // Canonical client address — honours X-Forwarded-For per the
             // server's `trustProxy` setting (Fastify resolves it).
             ip: request.ip,

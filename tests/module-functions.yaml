@@ -1,0 +1,72 @@
+kind: Telo.Application
+metadata:
+  name: ModuleFunctionsTest
+  version: 1.0.0
+  description: >-
+    Module functions at runtime: a call binds to a callable instance of the
+    module whose names it was written with, once per module scope, and
+    evaluates wherever an expression does.
+imports:
+  Lib: ./__fixtures__/module-functions/lib
+  IsolatedA: ./__fixtures__/module-functions/counter
+  IsolatedB: ./__fixtures__/module-functions/counter
+  SharedA: ./__fixtures__/module-functions/shared-counter
+  SharedB: ./__fixtures__/module-functions/shared-counter
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verify
+---
+# The application's own function of the name the library's template calls. The
+# template must still call the library's.
+kind: Telo.Function
+metadata:
+  name: greet
+  description: A greeting the library's template must never reach.
+params:
+  - name: who
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "'wrong ' + who"
+---
+kind: Run.Sequence
+metadata:
+  name: verify
+steps:
+  - name: flow
+    invoke: !ref Lib.flow
+  - name: assertFlow
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.flow.result"
+      expected:
+        compiled: 42
+        guarded: guard passed
+        skipped: false
+        greeting: hello telo?
+        failure: ERR_FUNCTION_FAILED
+        functionInResources: false
+  - name: greeted
+    invoke:
+      kind: Lib.Greeter
+      who: template
+  - name: isolatedA
+    invoke: !ref IsolatedA.read
+  - name: isolatedB
+    invoke: !ref IsolatedB.read
+  - name: sharedA
+    invoke: !ref SharedA.read
+  - name: sharedB
+    invoke: !ref SharedB.read
+  - name: assertBinding
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        template: !cel "steps.greeted.result"
+        isolatedBindTwice: !cel "steps.isolatedA.result.ordinal != steps.isolatedB.result.ordinal"
+        sharedBindsOnce: !cel "steps.sharedA.result.ordinal == steps.sharedB.result.ordinal"
+      expected:
+        template: hello template!
+        isolatedBindTwice: true
+        sharedBindsOnce: true

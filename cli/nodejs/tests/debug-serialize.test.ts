@@ -1,3 +1,4 @@
+import { Duration, UnsignedInt } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { serializeEvent } from "../src/debug-serialize.js";
 
@@ -26,6 +27,44 @@ describe("toWire cycle detection", () => {
     const cyclic: any = { list: [] };
     cyclic.list.push(cyclic);
     expect(wireOf(cyclic)).toEqual({ list: ["[Circular]"] });
+  });
+});
+
+describe("toWire CEL values", () => {
+  it("writes a timestamp, duration, uint, non-finite double and int-keyed map in plain form", () => {
+    expect(
+      wireOf({
+        at: new Date("2026-01-15T07:30:00Z"),
+        took: new Duration(5400n, 0),
+        count: new UnsignedInt(7n),
+        ratio: Number.NaN,
+        byInt: new Map([[1n, "one"]]),
+      }),
+    ).toEqual({
+      at: "2026-01-15T07:30:00.000Z",
+      took: "5400s",
+      count: 7,
+      ratio: "NaN",
+      byInt: { "1": "one" },
+    });
+  });
+
+  it("writes a map whose keys share a text, or are not CEL map keys, as its pairs", () => {
+    expect(
+      wireOf({
+        colliding: new Map<unknown, string>([
+          [1n, "a"],
+          ["1", "b"],
+        ]),
+        numberKeyed: new Map([[1.5, "x"]]),
+      }),
+    ).toEqual({
+      colliding: [
+        [1, "a"],
+        ["1", "b"],
+      ],
+      numberKeyed: [[1.5, "x"]],
+    });
   });
 });
 

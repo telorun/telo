@@ -1,4 +1,4 @@
-import { InvokeError } from "@telorun/sdk";
+import { InvokeError, writePlainJson } from "@telorun/sdk";
 import { isContentPart, isContentParts, type MessageContent } from "./content.js";
 import type {
   AiToolProviderInstance,
@@ -101,13 +101,13 @@ export function normalizeToolCalls(calls: ToolCall[], step: number): ToolCall[] 
 
 /** Normalize a tool's return value into message content. A string passes through;
  *  content parts (a single part or an array) are carried untouched so an image tool
- *  result reaches the model intact; anything else is JSON-stringified, the historical
- *  default for structured tool output. */
+ *  result reaches the model intact; anything else is written as plain JSON, a CEL
+ *  value in its plain encoding. */
 export function toToolContent(output: unknown): MessageContent {
   if (typeof output === "string") return output;
   if (isContentParts(output)) return output;
   if (isContentPart(output)) return [output];
-  return JSON.stringify(output);
+  return writePlainJson(output);
 }
 
 /** Merge every tool provider into one advertised tool set + dispatch map: apply

@@ -10,14 +10,37 @@ const SCHEMA = {
     client: { title: "Client", "x-telo-ref": "http-client.Client" },
     url: { type: "string" },
     timeout: { type: "integer", minimum: 1 },
+    label: { type: "string", minLength: 3 },
   },
 };
 
 describe("stripCompiledValues", () => {
-  it("replaces compiled values with schema-appropriate placeholders", () => {
+  it("replaces compiled values with the placeholders telo check substitutes", () => {
     expect(
-      stripCompiledValues({ url: cel("inputs.path"), timeout: cel("self.t") }, SCHEMA),
-    ).toEqual({ url: "", timeout: 1 });
+      stripCompiledValues(
+        { url: cel("inputs.path"), timeout: cel("self.t"), label: cel("self.l") },
+        SCHEMA,
+      ),
+    ).toEqual({ url: "", timeout: 1, label: "xxx" });
+  });
+
+  it("takes a map value's schema from patternProperties or additionalProperties", () => {
+    // A TypeBox record compiles to `patternProperties` (an `Http.Api` return's
+    // `headers`); a YAML map declares `additionalProperties`. A header written
+    // `Retry-After: !cel "…"` must get a string stand-in, not `null`.
+    const schema = {
+      type: "object",
+      properties: {
+        headers: { type: "object", patternProperties: { "^(.*)$": { type: "string" } } },
+        labels: { type: "object", additionalProperties: { type: "string" } },
+      },
+    };
+    expect(
+      stripCompiledValues(
+        { headers: { "Retry-After": cel("string(r)") }, labels: { region: cel("'eu'") } },
+        schema,
+      ),
+    ).toEqual({ headers: { "Retry-After": "" }, labels: { region: "" } });
   });
 
   it("hands back a ref slot untouched instead of walking into it", () => {
@@ -106,7 +129,8 @@ describe("stripCompiledValues", () => {
     node.loop = node;
 
     const out = stripCompiledValues({ nested: node }, { type: "object" }) as any;
-    expect(out.nested.url).toBe("");
+    // An undescribed slot's stand-in, the analyzer's.
+    expect(out.nested.url).toBeNull();
     expect(out.nested.loop).toBe(node);
   });
 
@@ -114,7 +138,7 @@ describe("stripCompiledValues", () => {
     // Shared, not cyclic — the guard is ancestor-scoped, so both sites strip.
     const shared = { url: cel("x") };
     const out = stripCompiledValues({ a: shared, b: shared }, { type: "object" }) as any;
-    expect(out.a.url).toBe("");
-    expect(out.b.url).toBe("");
+    expect(out.a.url).toBeNull();
+    expect(out.b.url).toBeNull();
   });
 });

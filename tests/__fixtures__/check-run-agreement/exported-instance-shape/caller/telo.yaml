@@ -1,0 +1,22 @@
+# Calls the exported sequence with an argument its named input shape refuses.
+# A library, so an application importing it does not check the call and the
+# kernel's dispatch is what refuses it.
+kind: Telo.Library
+metadata:
+  name: ExportedInstanceShapeCaller
+  version: 1.0.0
+  description: Fixture library exporting a sequence that calls another library's instance with a refused argument.
+imports:
+  Lib: ../lib
+  Run: ../../../../../modules/run
+exports:
+  resources: [go]
+---
+kind: Run.Sequence
+metadata:
+  name: go
+steps:
+  - name: call
+    invoke: !ref Lib.priced
+    inputs:
+      amount: "not a number"

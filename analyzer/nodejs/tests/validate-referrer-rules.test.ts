@@ -613,6 +613,15 @@ describe("peer rules — declaration validation", () => {
       "x-telo-referrer-rules": [{ condition: "has(referrer.openapi)", code: "C", message: "m" }],
     })).toHaveLength(1);
   });
+
+  it("repairs an untagged condition by tagging the same expression", () => {
+    const issue = validateReferrerRuleDeclarations(
+      definition({
+        "x-telo-referrer-rules": [{ condition: "has(referrer.openapi)", code: "C", message: "m" }],
+      }),
+    ).find((i) => i.message.includes("!cel tag"));
+    expect(issue?.fix).toEqual({ replacement: "has(referrer.openapi)", tag: "cel" });
+  });
 });
 
 /** The three ways a peer binding was wrong before it consulted the field map. */

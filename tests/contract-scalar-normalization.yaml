@@ -27,11 +27,13 @@ outputType:
   schema:
     type: object
     additionalProperties: false
-    required: [port, ratio, counts, nested, label, maybe]
+    required: [port, quota, ratio, counts, nested, label, maybe]
     properties:
       # A `json` value type contributes its `base`, so the annotation is read
       # through the same rule as a bare `type:` rather than beside it.
       port: { type: integer, x-telo-type: Telo.TcpPort }
+      # ...unless it declares its own CEL type: a Uint64 is a CEL uint.
+      quota: { type: integer, x-telo-type: Telo.Uint64 }
       # The symmetric case: declared `number` is a double, whichever way round.
       ratio: { type: number }
       counts: { type: array, items: { type: integer } }
@@ -46,6 +48,7 @@ outputType:
       maybe: { type: [integer, "null"] }
 value:
   port: 8080
+  quota: 5
   ratio: 0.5
   counts: [1, 2]
   nested:
@@ -63,6 +66,8 @@ steps:
     inputs:
       actual:
         port: !cel "steps.produced.result.port + 1"
+        # `int + uint` has no overload, so only a normalized uint composes.
+        quota: !cel "steps.produced.result.quota + 1u == 6u"
         item: !cel "steps.produced.result.counts[1] + 1"
         deep: !cel "steps.produced.result.nested.deep + 1"
         maybe: !cel "steps.produced.result.maybe + 1"
@@ -71,6 +76,7 @@ steps:
         label: !cel "steps.produced.result.label + '!'"
       expected:
         port: 8081
+        quota: true
         item: 3
         deep: 8
         maybe: 42

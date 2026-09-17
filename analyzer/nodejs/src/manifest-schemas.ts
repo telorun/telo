@@ -604,6 +604,14 @@ function hoistedDefKey(name: string): string {
   return `telo:${name}`;
 }
 
+/** True for a `$defs` key {@link hoistedDefKey} reserved — the analyzer's own
+ *  copy of a fragment, which a walk over what a kind DECLARED must not read as
+ *  the kind's own schema. A function rather than a shared constant because the
+ *  fragment set is expanded at module initialization, above any `const` here. */
+export function isHoistedFragmentDefKey(key: string): boolean {
+  return key.startsWith(hoistedDefKey(""));
+}
+
 /** Recursively freeze, so the fragment set cannot be edited through any of the
  *  references handed out. `fragmentFor` clones precisely because downstream
  *  passes rewrite schemas in place — `resolveSchemaRefKinds` rewrites the very

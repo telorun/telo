@@ -1,0 +1,110 @@
+kind: Telo.Application
+metadata:
+  name: PlainEncodedValuesTest
+  version: 1.0.0
+  description: |
+    A JSON body's reader is not Telo, so a CEL value crosses the transport in its
+    plain encoding, never type-tagged: a timestamp as RFC 3339 `Z` text, a
+    duration as seconds, bytes as base64url — with no response schema to say so.
+    Inbound, a body field declared `Telo.Timestamp` arrives in CEL as a
+    timestamp, and text its encoding does not read is a 400.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /values, method: GET }
+    handler:
+      kind: Run.Value
+      value:
+        at: !cel "timestamp('2026-01-15T09:30:00+02:00')"
+        took: !cel "duration('1h30m')"
+        raw: !cel "b'\\x01\\x02\\xff'"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              at: !cel "result.at"
+              took: !cel "result.took"
+              raw: !cel "result.raw"
+  - request:
+      path: /later
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            at: { x-telo-type: Telo.Timestamp }
+          required: [at]
+    handler:
+      kind: Run.Value
+      value: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              later: !cel "request.body.at + duration('1h')"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8983
+    mounts:
+      - path: /
+        mount: !ref api
+targets:
+  - !ref Server
+steps:
+  - name: read
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8983/values
+      method: GET
+  - name: assertPlainForms
+    inputs:
+      actual: !cel "steps.read.result.body"
+      expected:
+        at: "2026-01-15T07:30:00.000Z"
+        took: "5400s"
+        raw: "AQL_"
+    invoke:
+      kind: Assert.Equals
+  - name: send
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8983/later
+      method: POST
+      body: { at: "2026-01-15T09:30:00+02:00" }
+  - name: assertDecoded
+    inputs:
+      actual: !cel "steps.send.result.body"
+      expected: { later: "2026-01-15T08:30:00.000Z" }
+    invoke:
+      kind: Assert.Equals
+  - name: sendOutOfRange
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8983/later
+      method: POST
+      body: { at: "0000-01-01T00:00:00Z" }
+  - name: assertRefused
+    inputs:
+      actual:
+        status: !cel "steps.sendOutOfRange.result.status"
+        where: !cel "steps.sendOutOfRange.result.body.details.map(d, d.location + ':' + d.path)"
+      expected:
+        status: 400
+        where: ["body:at"]
+    invoke:
+      kind: Assert.Equals

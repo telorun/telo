@@ -1,0 +1,10 @@
+# Re-exports a function it imports, declaring none of its own.
+kind: Telo.Library
+metadata:
+  name: OuterFunctionsLib
+  version: 1.0.0
+  description: Fixture library re-exporting a function an imported library declares.
+imports:
+  Inner: ../inner
+exports:
+  resources: [Inner.twice]

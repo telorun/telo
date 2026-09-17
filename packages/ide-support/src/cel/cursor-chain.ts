@@ -24,7 +24,7 @@ export interface CelCursorChain {
 /** Where `segment.source` starts in document offsets. The segment range spans
  *  the delimiters (`${{ … }}`) and any trimmed whitespace, so the body has to be
  *  located inside it rather than assumed to start at `range[0]`. */
-function bodyStart(text: string, segment: CelSegment): number {
+export function bodyStart(text: string, segment: CelSegment): number {
   const span = text.slice(segment.range[0], segment.range[1]);
   const at = span.indexOf(segment.source);
   return at < 0 ? segment.range[0] : segment.range[0] + at;

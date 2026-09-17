@@ -1,0 +1,33 @@
+# Values a manifest cannot write down, produced by a controller.
+#
+# The typed frame has to carry the WHOLE CEL value domain, and part of that
+# domain has no literal in a manifest: cel-js evaluates `{1: 'a'}` to a
+# string-keyed map, so a map whose keys are integers exists only where a
+# controller built one. Without a resource that produces one, the tagged-map half
+# of the codec is untested exactly where a journal would silently flatten it —
+# an int key coming back as text changes what `m[2]` means, with nothing
+# reported.
+#
+# A fixture rather than a module: nothing outside a test wants a resource whose
+# purpose is to be hard to serialize.
+kind: Telo.Library
+metadata:
+  name: DurableValues
+  version: 0.0.0
+  description: >-
+    Test fixture: produces CEL values a manifest has no literal for, so a codec that
+    flattened them would be caught.
+exports:
+  kinds:
+    - Tally
+---
+kind: Telo.Definition
+metadata:
+  name: Tally
+  description: Returns a map keyed by integers, which no manifest literal can express.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/durable-values.mjs&local_path=./nodejs/src/index.ts#tally
+schema:
+  type: object
+  additionalProperties: false

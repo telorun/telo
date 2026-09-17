@@ -202,6 +202,54 @@ describe("reconcile — rebuild what moved, leave the rest running", () => {
     await kernel.teardown();
   });
 
+  it("rebuilds the resources that CALL a function whose body changed", async () => {
+    // A module call is bound when its caller is created, so the caller holds
+    // the function it was bound to — an edited body is a new function, and a
+    // caller left alone would keep calling the one that was unwound.
+    const dir = await workspace();
+    const appPath = path.join(dir, "telo.yaml");
+    const withBody = (suffix: string): string =>
+      `kind: Telo.Application\nmetadata:\n  name: CallerApp\n  version: 1.0.0\nimports:\n  Fixture: ${LIB}\n---\nkind: Telo.Function\nmetadata:\n  name: tag\nparams:\n  - name: text\n    schema: { type: string }\nreturns:\n  schema: { type: string }\nbody: !cel "text + '-${suffix}'"\n---\nkind: Fixture.Node\nmetadata:\n  name: caller\nlabel: !cel "Self.tag('c')"\n---\nkind: Fixture.Node\nmetadata:\n  name: bystander\nlabel: b\n`;
+    await fs.writeFile(appPath, withBody("1"));
+
+    const kernel = new Kernel({ sources: [new LocalFileSource()], env: {} });
+    await kernel.load(appPath);
+    await kernel.boot();
+    const ctx = (kernel as unknown as { rootContext: any }).rootContext;
+    const journal = ctx.resolveImportedInstance("Fixture", "journal");
+    const entries = async (): Promise<string[]> =>
+      ((await journal.provide()) as { entries: string[] }).entries.filter((e) => e !== "provider");
+    expect([...(await entries())].sort()).toEqual(["b", "c-1"]);
+
+    await fs.writeFile(appPath, withBody("2"));
+    const outcome = await kernel.reconcile();
+
+    expect(outcome.restartRequired).toBeUndefined();
+    expect([...outcome.reinitialized].sort()).toEqual(["caller", "tag"]);
+    expect((await entries()).slice(2)).toEqual(["~c-1", "c-2"]);
+    await kernel.teardown();
+  });
+
+  it("refuses to narrow when a kind whose template calls the function is impacted", async () => {
+    // A kind's template is expanded per instance, into children bound through
+    // the definition, and nothing rebuilds a registered kind in place.
+    const dir = await workspace();
+    const appPath = path.join(dir, "telo.yaml");
+    const withBody = (suffix: string): string =>
+      `kind: Telo.Application\nmetadata:\n  name: KindCallerApp\n  version: 1.0.0\nimports:\n  Fixture: ${LIB}\n---\nkind: Telo.Function\nmetadata:\n  name: tag\nparams:\n  - name: text\n    schema: { type: string }\nreturns:\n  schema: { type: string }\nbody: !cel "text + '-${suffix}'"\n---\nkind: Telo.Definition\nmetadata:\n  name: Tagged\ncapability: Telo.Provider\nschema:\n  type: object\n  properties:\n    who: { type: string }\nresources:\n  - kind: Fixture.Node\n    metadata:\n      name: body\n    label: !cel "Self.tag(self.who)"\nprovide: !ref body\n`;
+    await fs.writeFile(appPath, withBody("1"));
+
+    const kernel = new Kernel({ sources: [new LocalFileSource()], env: {} });
+    await kernel.load(appPath);
+    await kernel.boot();
+
+    await fs.writeFile(appPath, withBody("2"));
+    const outcome = await kernel.reconcile();
+
+    expect(outcome.restartRequired).toBe("a resource kind definition is in the impact set: Tagged");
+    await kernel.teardown();
+  });
+
   it("reports nothing to do when the file did not change", async () => {
     const app = await bootApp({ alpha: "alpha1", beta: "beta1" });
     const outcome = await app.kernel.reconcile();

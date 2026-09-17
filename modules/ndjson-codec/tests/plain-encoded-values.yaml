@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: NdjsonPlainEncodedValues
+  version: 1.0.0
+  description: |
+    An NDJSON line is read by something that is not Telo, so a CEL value with no
+    JSON form of its own leaves in its plain encoding — a duration as seconds —
+    never as an empty object.
+imports:
+  Ndjson: ../
+  PlainText: ../../plain-text-codec
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testPlainLine
+---
+kind: Run.Sequence
+metadata: { name: testPlainLine }
+steps:
+  - name: source
+    inputs:
+      items: !cel "[{'took': duration('1h30m')}]"
+    invoke: { kind: Stream.Of }
+  - name: encode
+    inputs:
+      input: !cel "steps.source.result.output"
+    invoke: { kind: Ndjson.Encoder }
+  - name: decode
+    inputs:
+      input: !cel "steps.encode.result.output"
+    invoke: { kind: PlainText.Decoder }
+  - name: assertLine
+    inputs:
+      actual: !cel "steps.decode.result.text"
+      expected: "{\"took\":\"5400s\"}\n"
+    invoke: { kind: Assert.Equals }

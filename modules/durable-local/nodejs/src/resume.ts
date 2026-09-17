@@ -21,6 +21,8 @@ import {
   type ResourceContext,
   type ResourceManifest,
 } from "@telorun/sdk";
+import { writeRecordedValue } from "@telorun/sdk";
+import { recordEntry } from "./journal-codec.js";
 import { runIdOf } from "./run-id.js";
 import type { WorkflowController } from "./workflow.js";
 
@@ -63,12 +65,14 @@ class ResumeController {
     // Written at a root key of its own, outside `steps/`, because it is a fact
     // about the RUN rather than about any step of it — the same place the run's
     // inputs decision lives, and for the same reason.
-    await journal.append(run, {
-      path: `override/resume/${Date.now()}`,
-      kind: "decision",
-      decision: "value",
-      value: { reason, at: new Date().toISOString() },
-    });
+    const path = `override/resume/${Date.now()}`;
+    await journal.append(
+      run,
+      recordEntry(
+        { path, kind: "decision", decision: "value" },
+        writeRecordedValue({ reason, at: new Date().toISOString() }, { run, path }),
+      ),
+    );
     await journal.unparkRun(run);
     return { run, resumed: true };
   }

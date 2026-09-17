@@ -1,0 +1,26 @@
+kind: Telo.Application
+metadata:
+  name: Billing
+  version: 0.1.0
+---
+kind: Telo.Function
+metadata:
+  name: withVat
+  description: Adds VAT to a net price.
+params:
+  - name: net
+    schema: { type: number }
+returns:
+  schema: { type: number }
+body: !cel "net * 1.2"
+---
+kind: Telo.Function
+metadata:
+  name: isStale
+  description: Whether an instant lies more than a day in the past.
+params:
+  - name: at
+    schema: { x-telo-type: Telo.Timestamp }
+returns:
+  schema: { type: boolean }
+body: !cel "now() - at > duration('24h')"

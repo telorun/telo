@@ -1,0 +1,40 @@
+# A template definition's top-level `inputs:`, written with the sanctioned
+# `!ref` dispatch: the map is the argument list of the call its body makes, so
+# the text its type's encoding does not read is refused against the target's
+# contract. A definition's body is checked wherever it is read, importer
+# included, so this one is refused before any kernel reaches it.
+kind: Telo.Application
+metadata:
+  name: RefusedTemplateApp
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+targets:
+  - invoke: !ref fixedStamp
+---
+kind: Telo.Definition
+metadata:
+  name: FixedStamp
+  description: Dispatches one instant, written as the argument of its body's call.
+capability: Telo.Invocable
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: inner
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [at]
+        properties:
+          at: { x-telo-type: Telo.Timestamp }
+    value: !cel "string(inputs.at)"
+invoke: !ref inner
+inputs:
+  at: "15/01/2026 09:30"
+---
+kind: Self.FixedStamp
+metadata:
+  name: fixedStamp

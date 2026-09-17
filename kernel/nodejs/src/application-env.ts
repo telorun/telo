@@ -1,5 +1,6 @@
 import {
   type DefResolver,
+  decodePlainLiterals,
   effectiveAuthorSchema,
   residualEntrySchema,
   withLiveValuesSkipped,
@@ -187,7 +188,10 @@ export async function precompileTypeSchemas(
   const ctx = {
     lookupSchema: (name: string) => validator.getSchema(name),
     registerSchema: (name: string, schema: object) => validator.addSchema(name, schema),
-    registerTypeRules: (name: string, rules: TypeRule[]) => validator.addTypeRules(name, rules),
+    // This validator only bakes compiled schemas; nothing evaluates a rule
+    // through it, so the rules resolve no module call.
+    registerTypeRules: (name: string, rules: TypeRule[]) =>
+      validator.addTypeRules(name, rules, new Set()),
   } as unknown as ResourceContext;
 
   let pending = manifests.filter(
@@ -369,11 +373,13 @@ function resolveBlock(
 
     if (raw === undefined || raw === null) {
       if (entry.default !== undefined) {
-        const validation = validateResidual(entry.default, residual, validator);
+        // Decoded on a copy: the default is the manifest's own literal.
+        const fallback = decodeFromOutside(structuredClone(entry.default), residual, validator);
+        const validation = validateResidual(fallback, residual, validator);
         if (validation) {
           errors.push(`${name}: ${validation}`);
         } else {
-          out[name] = entry.default;
+          out[name] = fallback;
         }
         continue;
       }
@@ -383,7 +389,7 @@ function resolveBlock(
 
     let coerced: unknown;
     try {
-      coerced = coerce(raw, entry.type, envKey, isSecret);
+      coerced = decodeFromOutside(coerce(raw, entry.type, envKey, isSecret), residual, validator);
     } catch (e) {
       errors.push(`${name}: ${(e as Error).message}`);
       continue;
@@ -398,6 +404,22 @@ function resolveBlock(
     out[name] = coerced;
   }
   return out;
+}
+
+/** An env value arrives from outside Telo, so every instance-typed slot in it is
+ *  read from its plain encoding — the whole value (`x-telo-type: Telo.Timestamp`)
+ *  or a field of a JSON-decoded one. Text the encoding refuses is left for
+ *  validation to report. */
+function decodeFromOutside(
+  value: unknown,
+  residual: Record<string, unknown>,
+  validator: SchemaValidator,
+): unknown {
+  return decodePlainLiterals(
+    value,
+    residual as Record<string, any>,
+    (ref) => validator.getSchema(ref) as Record<string, any> | undefined,
+  );
 }
 
 /** Render a raw env value for inclusion in an error message. Secret values

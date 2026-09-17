@@ -1,0 +1,22 @@
+# A CEL call through the module's own name to a function nothing declares.
+# Reported by this library's `telo check`; refused by the kernel, from a consumer
+# whose entry-scoped check is silent, when it binds the calls of the sequence
+# that makes it — a call in a step that has not run yet still fails at boot.
+kind: Telo.Library
+metadata:
+  name: MissingFunctionLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose step expression calls a function its own module does
+    not declare.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [flow]
+---
+kind: Run.Sequence
+metadata:
+  name: flow
+steps:
+  - name: counted
+    value: !cel "Self.missing(1)"

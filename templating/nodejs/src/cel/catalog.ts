@@ -1031,6 +1031,16 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
   // Time (non-deterministic). `nowIso`/`today` take an optional IANA timezone
   // (default "UTC"); epoch values are absolute and take none.
   {
+    name: "now",
+    signature: "now(): timestamp",
+    register: ["now(): google.protobuf.Timestamp"],
+    category: "time",
+    summary: "Current instant as a native timestamp, for comparison and duration arithmetic.",
+    deterministic: false,
+    hostBacked: false,
+    build: () => () => new Date(),
+  },
+  {
     name: "nowIso",
     signature: "nowIso(string?): string",
     category: "time",

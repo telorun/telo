@@ -1,42 +1,11 @@
 import { isCompiledValue } from "@telorun/sdk";
-import { type ExternalSchemaResolver, resolveRefIn, selectUnionBranch } from "@telorun/analyzer";
-
-/** Returns a schema-appropriate placeholder value for a CompiledValue field. */
-function placeholderForSchema(schema: Record<string, unknown>): unknown {
-  if (schema.default !== undefined) return schema.default;
-  // An enum-constrained field needs a placeholder drawn from the enum: the
-  // type-based fallbacks below satisfy `type` but violate `enum`, so any CEL
-  // expression feeding an enum field would fail validation against a value the
-  // author never wrote. Mirrors `celPlaceholderForSchema` in the analyzer, which
-  // performs the same substitution for the static half.
-  if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0];
-  // A union with no `type` of its own: take the first branch that yields a
-  // placeholder, so a whole-field CEL leaf at an `anyOf` slot is not handed the
-  // `""` fallback that only a string branch would accept. Mirrors the analyzer's
-  // `celPlaceholderForSchema`, which makes the same substitution for the static
-  // half — the two must agree or one rejects what the other passes.
-  if (schema.type === undefined) {
-    const branches = (schema.anyOf ?? schema.oneOf) as Record<string, unknown>[] | undefined;
-    if (Array.isArray(branches)) {
-      for (const branch of branches) {
-        if (branch && typeof branch === "object") return placeholderForSchema(branch);
-      }
-    }
-  }
-  switch (schema.type) {
-    case "integer":
-    case "number":
-      return (schema.minimum as number | undefined) ?? 0;
-    case "boolean":
-      return false;
-    case "array":
-      return [];
-    case "object":
-      return {};
-    default:
-      return "";
-  }
-}
+import {
+  celPlaceholderForSchema,
+  type ExternalSchemaResolver,
+  resolveRefIn,
+  selectUnionBranch,
+  undeclaredKeySchema,
+} from "@telorun/analyzer";
 
 /**
  * Resolve a `$ref` — document-local against `root`, everything else through the
@@ -109,9 +78,8 @@ function isConfigAtRefSlot(value: unknown): boolean {
 
 /** Replaces CompiledValue wrappers with schema-appropriate placeholders for schema validation.
  *  Template strings were compiled from YAML at load time; this restores a shape
- *  that AJV can validate without evaluating expressions. When no schema is
- *  supplied every compiled value collapses to `""` (the `default` branch of
- *  `placeholderForSchema`), matching the schema-unaware strip.
+ *  that AJV can validate without evaluating expressions, with the stand-in
+ *  `telo check` substitutes at the same slot.
  *
  *  The walk stops short of anything that is not plain config, mirroring
  *  `buildResolvedProperties`: by the time a resource reaches validation its ref
@@ -155,7 +123,9 @@ export function stripCompiledValues(
     const resolved = here.schema;
     const nodeRoot = here.root;
 
-    if (isCompiledValue(value)) return placeholderForSchema(resolved);
+    // The analyzer's stand-in, so a value `telo check` accepts is one the kernel
+    // accepts: two builders drift (a `minLength` the other ignores).
+    if (isCompiledValue(value)) return celPlaceholderForSchema(resolved as Record<string, any>);
     // A slot the schema declares as a reference is never config when it HOLDS a
     // reference: a `{kind, name}` ref or the live instance Phase 5 replaced it
     // with, and the schema declares no shape to validate against either way. A
@@ -180,7 +150,7 @@ export function stripCompiledValues(
       return walkGuarded(value, () => {
         const out: Record<string, unknown> = {};
         for (const [k, val] of Object.entries(value as Record<string, unknown>)) {
-          out[k] = walk(val, props[k] ?? {}, nodeRoot);
+          out[k] = walk(val, props[k] ?? undeclaredKeySchema(resolved, k) ?? {}, nodeRoot);
         }
         return out;
       });

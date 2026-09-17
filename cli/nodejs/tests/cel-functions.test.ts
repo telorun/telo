@@ -1,6 +1,39 @@
+import * as path from "path";
+import { fileURLToPath } from "url";
 import { describe, expect, it } from "vitest";
 
-import { functionListing } from "../src/commands/cel.js";
+import { analyzedManifests, functionListing, moduleFunctionListing } from "../src/commands/cel.js";
+
+describe("telo cel functions <manifest>", () => {
+  it("lists the functions the manifest can call, with their derived determinism", async () => {
+    const manifest = path.join(path.dirname(fileURLToPath(import.meta.url)), "__fixtures__/cel-functions/telo.yaml");
+    const { manifests, registry } = await analyzedManifests(manifest);
+    expect(moduleFunctionListing(manifests, registry)).toEqual([
+      {
+        name: "Self.withVat",
+        signature: "Self.withVat(net: number) → number",
+        category: "module",
+        receiver: null,
+        description: "Adds VAT to a net price.",
+        deterministic: true,
+        hostBacked: false,
+        nondeterministicVia: [],
+        hostBackedVia: [],
+      },
+      {
+        name: "Self.isStale",
+        signature: "Self.isStale(at: Telo.Timestamp) → boolean",
+        category: "module",
+        receiver: null,
+        description: "Whether an instant lies more than a day in the past.",
+        deterministic: false,
+        hostBacked: false,
+        nondeterministicVia: ["Self.isStale", "now()"],
+        hostBackedVia: [],
+      },
+    ]);
+  });
+});
 
 /**
  * Every CEL diagnostic ends with "Full list: `telo cel functions`", so this

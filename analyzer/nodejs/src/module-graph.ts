@@ -66,7 +66,9 @@ import { isInlineResource, resolveFieldEntries } from "./reference-field-map.js"
 import { findZoneProviders } from "./resolve-zone-containment.js";
 import { possibleUses, readRefSlot, type RefUse } from "./ref-slot.js";
 import { canonicalJson } from "./canonical-json.js";
+import { isForwardedShape } from "./forwarded-declaration.js";
 import { accessChains } from "./cel-access-chains.js";
+import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
 
 /** How a node's declaration reached the module, which is what decides where a
  *  view may draw it — an inline child exists nowhere but its parent's YAML, so
@@ -337,6 +339,10 @@ export interface GraphEdge {
   /** Data edges only: the access chain as written (`resources.db.status.port`),
    *  so a reader is told WHAT is read rather than only that something is. */
   read?: string;
+  /** Module-call edges only: the function as the call names it — bare for one of
+   *  the module's own, `<Alias>.<name>` through an import. A call is written in
+   *  an expression, so these edges leave from no port (`slot` is `cel`). */
+  call?: string;
 }
 
 /**
@@ -804,6 +810,9 @@ export function buildModuleGraph(
     const name = manifest.metadata?.name;
     if (typeof name !== "string" || !manifest.kind || DECLARATION_KINDS.has(manifest.kind)) continue;
     if (root && manifest === options.root) continue;
+    // Carried across an import only so a contract resolves; nothing in this
+    // module declares or reaches it.
+    if (isForwardedShape(manifest)) continue;
     const id = idOf(manifest);
     if (byId.has(id)) continue;
     add(projectResource(id, manifest, deps, options));
@@ -1003,6 +1012,7 @@ export function buildModuleGraph(
   // onto the boxes a view draws: a step's edge is attributed to the resource
   // whose body declares it, with the row that declared it named, because a step
   // is a row here rather than a node of its own.
+  const seenCalls = new Set<string>();
   for (const edge of callGraph.edges) {
     const projected = projectEdge(
       edge,
@@ -1014,6 +1024,16 @@ export function buildModuleGraph(
       projectedId,
     );
     if (!projected) continue;
+    if (edge.moduleCall) {
+      // A module call sits in an expression, not at a slot: it leaves from no
+      // port, like a data edge, and the resource holds the function it calls —
+      // one edge per function per site, however often the expression calls it.
+      projected.slot = "cel";
+      projected.call = edge.toName;
+      projected.id = `${projected.from}\0call\0${edge.path}\0${edge.toName}`;
+      if (seenCalls.has(projected.id)) continue;
+      seenCalls.add(projected.id);
+    }
     // A reference leaving the module root IS a boot target — the root has no
     // other slots — so the flag is stamped here rather than by a second pass
     // over `targets`, which emitted a duplicate edge for every one of them.
@@ -1062,10 +1082,24 @@ export function buildModuleGraph(
     }
   }
 
+  // A CEL read is a chain rooted at `resources`, so the declaring module's call
+  // names decide what is a chain at all: a module call's receiver names a
+  // module and states no data edge.
+  const moduleCallNames = moduleCallNamesByModule(resources);
   for (const node of nodes) {
     const manifest = node.root ? options.root : manifestById.get(node.id);
     if (!manifest) continue;
-    edges.push(...dataEdges(node, manifest, node.module, resolveName, rowIdByPath, rowsByOwner));
+    edges.push(
+      ...dataEdges(
+        node,
+        manifest,
+        node.module,
+        resolveName,
+        rowIdByPath,
+        rowsByOwner,
+        moduleCallNamesOf(moduleCallNames, manifest),
+      ),
+    );
   }
 
   // Where each row's call is WRITTEN, and what may fill it — see
@@ -1948,11 +1982,12 @@ function dataEdges(
   resolveName: (name: string, fromModule: string | undefined) => string | undefined,
   rowIdByPath: ReadonlyMap<string, string>,
   rowsByOwner: ReadonlyMap<string, readonly { path: string; id: string }[]>,
+  moduleNames: ReadonlySet<string>,
 ): GraphEdge[] {
   const out: GraphEdge[] = [];
   const seen = new Set<string>();
   walkCelExpressions(manifest, "", (source, path) => {
-    for (const chain of accessChains(source)) {
+    for (const chain of accessChains(source, moduleNames)) {
       if (chain[0] !== "resources" || chain.length < 2) continue;
       const targetName = chain[1]!;
       // `resources.<name>` is a bare name written in THIS module's scope, so it

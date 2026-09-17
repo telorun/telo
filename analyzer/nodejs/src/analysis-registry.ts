@@ -4,6 +4,11 @@ import { KERNEL_BUILTINS } from "./builtins.js";
 import type { BuildModuleGraphOptions, ModuleGraphDeps } from "./module-graph.js";
 import { ManifestAnalysis } from "./manifest-analysis.js";
 import { DefinitionRegistry } from "./definition-registry.js";
+import {
+  derivedSlotsOf as readDerivedSlots,
+  type DerivedSlot,
+  type DerivedSlotContext,
+} from "./derived-slots.js";
 import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.js";
 import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
 import type { ContractDirection, DefResolver } from "./extends-resolution.js";
@@ -79,6 +84,31 @@ export class AnalysisRegistry {
    *  own problem. */
   resolveSchemaTypeRefs(manifests: ResourceManifest[]): void {
     resolveSchemaTypeRefsIn(manifests, this.aliases, this.aliasesByModule);
+  }
+
+  /**
+   * Every value `resource` writes at a slot typed from elsewhere — a call's
+   * argument map, an `x-telo-schema-from` or `x-telo-value-schema-from` slot —
+   * with the schema it resolves to, through the same reader `telo check`
+   * validates those sites with. The host supplies what only it can answer: the
+   * declaration a reference names and the manifests named types live in.
+   */
+  derivedSlotsOf(
+    resource: ResourceManifest,
+    host: Pick<DerivedSlotContext, "rootModules" | "typeManifests" | "resolveTarget">,
+  ): DerivedSlot[] {
+    return readDerivedSlots(resource, {
+      defs: this.defs,
+      aliases: this.aliases,
+      aliasesByModule: this.aliasesByModule,
+      ...host,
+    });
+  }
+
+  /** The named shape registered under a canonical `telo:<module>/<Type>` id by
+   *  the last analysis, or undefined. */
+  schemaForId(id: string): Record<string, any> | undefined {
+    return this.defs.schemaForId(id);
   }
 
   /**

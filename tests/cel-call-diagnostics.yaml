@@ -18,7 +18,7 @@ targets:
 #
 # The second expectation is the regression that matters most: BOTH mistakes in
 # the expression are reported in one pass. `check()` stops at its first, so a
-# type-check-only analyzer showed `now()` only after `startsWith` was fixed.
+# type-check-only analyzer showed `no()` only after `startsWith` was fixed.
 kind: Assert.Manifest
 metadata:
   name: testWrongCallForm
@@ -28,7 +28,7 @@ expect:
     - code: CEL_WRONG_CALL_FORM
       message: "inputs.key.startsWith('uploads/')"
     - code: CEL_UNKNOWN_FUNCTION
-      message: "there is no function `now`"
+      message: "there is no function `no`"
 ---
 # The repair itself, asserted end to end: the classifier builds it from the
 # registry entry and the AST offsets, the analyzer re-anchors it to the whole
@@ -37,7 +37,7 @@ expect:
 # right while the applicable repair is missing or wrong.
 #
 # Note the replacement is the WHOLE corrected expression, not just the mended
-# call: the second mistake (`now()`) is still in it, because a fix repairs one
+# call: the second mistake (`no()`) is still in it, because a fix repairs one
 # diagnostic and never silently rewrites the rest of the value.
 kind: Assert.Manifest
 metadata:
@@ -46,7 +46,7 @@ source: ./__fixtures__/cel-call-diagnostics/wrong-call-form.yaml
 expect:
   errors:
     - code: CEL_WRONG_CALL_FORM
-      fix: "inputs.key.startsWith('uploads/') && now() > 5"
+      fix: "inputs.key.startsWith('uploads/') && no() > 5"
 ---
 # The candidate LISTING, for the case where no repair is offered: `uuid` has
 # several candidates (`uuidv4`, `uuidv7`, …) and picking one would be a guess,
@@ -63,9 +63,9 @@ expect:
     - code: CEL_UNKNOWN_FUNCTION
       message: "there is no function `uuid`"
 ---
-# `now` is registered under no call form, so the reading is "no such name" —
+# `no` is registered under no call form, so the reading is "no such name" —
 # not "wrong arguments". Candidates come from the registry filtered by call
-# form and arity; edit distance alone never reaches `nowIso` from `now`.
+# form and arity; edit distance alone never reaches `nowIso` from `no`.
 kind: Assert.Manifest
 metadata:
   name: testUnknownFunction

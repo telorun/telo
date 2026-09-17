@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: AgentToolPlainResultTest
+  version: 1.0.0
+  description: |
+    A model is not Telo, so a structured tool result is written to it as plain
+    JSON — a duration as seconds — never with a CEL value as an empty object.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testPlainToolResult
+---
+kind: Run.Sequence
+metadata:
+  name: testPlainToolResult
+steps:
+  # Echo emits one tool call on the first turn, then echoes the tool result's
+  # content as its final answer.
+  - name: invoke
+    inputs:
+      prompt: "estimate the job"
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        emitToolCall:
+          name: estimate
+          arguments: {}
+      toolProviders:
+        - provider:
+            kind: Ai.Tools
+            tools:
+              - tool:
+                  kind: Run.Value
+                  value:
+                    took: !cel "duration('1h30m')"
+                name: estimate
+                description: How long the job takes.
+                parameters:
+                  type: object
+  - name: assertText
+    inputs:
+      actual: !cel "steps.invoke.result.text"
+      expected: '{"took":"5400s"}'
+    invoke:
+      kind: Assert.Equals

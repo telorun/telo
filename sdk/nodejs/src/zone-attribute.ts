@@ -29,8 +29,8 @@
  * catches.
  *
  * THE REGISTRY IS IN THE SDK for the reasons the value-type one is: it is
- * dependency-free and Node-built-in-free (so the browser-side analyzer can read
- * it), and it is the only placement a module controller can reach.
+ * Node-built-in-free (so the browser-side analyzer can read it), and it is the
+ * only placement a module controller can reach.
  */
 
 import type { ZoneEntry } from "./cancellation.js";

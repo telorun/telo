@@ -1,0 +1,57 @@
+kind: Telo.Application
+metadata:
+  name: NativeFunctionApp
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: Pad
+capability: Telo.Callable
+schema:
+  type: object
+  properties:
+    fill: { type: string }
+  required: [fill]
+params:
+  - name: text
+    schema: { type: string }
+  - name: width
+    schema: { type: integer, default: 8 }
+    optional: true
+returns:
+  schema: { type: string }
+controllers:
+  - pkg:telo/local/js?path=./functions.mjs#Pad
+---
+kind: Self.Pad
+metadata:
+  name: pad
+fill: "-"
+---
+kind: Telo.Definition
+metadata:
+  name: Wrong
+capability: Telo.Callable
+schema: { type: object }
+returns:
+  schema: { type: string }
+controllers:
+  - pkg:telo/local/js?path=./functions.mjs#Wrong
+---
+kind: Self.Wrong
+metadata:
+  name: wrong
+---
+kind: Telo.Definition
+metadata:
+  name: Eventually
+capability: Telo.Callable
+schema: { type: object }
+returns:
+  schema: { type: string }
+controllers:
+  - pkg:telo/local/js?path=./functions.mjs#Eventually
+---
+kind: Self.Eventually
+metadata:
+  name: eventually

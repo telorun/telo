@@ -1,0 +1,106 @@
+kind: Telo.Library
+metadata:
+  name: RefusedInputs
+  version: 0.1.0
+  description: |
+    Two literals a plain encoding does not read, at slots typed from elsewhere: a
+    step's `inputs:` against the target's `inputType`, and `outputType` rows
+    whose uint is out of range or written as a number too wide to be exact. `telo check` refuses both here; a consumer that
+    only runs them meets the same refusal at dispatch. The step's `inputs:` is
+    refused as well on a kind that inherits its step body, and a row's text one
+    named shape down.
+imports:
+  Run: ../../../../modules/run
+exports:
+  resources: [callWithBadLiteral, badQuota, wideQuota]
+---
+kind: Run.Value
+metadata:
+  name: stampInput
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [at]
+    properties:
+      at: { x-telo-type: Telo.Timestamp }
+value: !cel "string(inputs.at)"
+---
+kind: Run.Sequence
+metadata:
+  name: callWithBadLiteral
+steps:
+  - name: call
+    invoke: !ref stampInput
+    inputs:
+      at: "15/01/2026 09:30"
+---
+kind: Telo.Definition
+metadata:
+  name: Steps
+  description: A sequence of steps run in order.
+extends: Run.Sequence
+---
+kind: Self.Steps
+metadata:
+  name: inheritedCallWithBadLiteral
+steps:
+  - name: call
+    invoke: !ref stampInput
+    inputs:
+      at: "16/01/2026 09:30"
+---
+# A negative number is not an unsigned integer, which no JSON Schema keyword can
+# say.
+kind: Run.Value
+metadata:
+  name: badQuota
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [quota]
+    properties:
+      quota: { type: integer, x-telo-type: Telo.Uint64 }
+value:
+  quota: -5
+---
+# The largest uint written as a plain number: past 2^53 a number is already some
+# other integer (this one reads as 2^64), so it is refused and written as a CEL
+# uint instead (`!cel "18446744073709551615u"`).
+kind: Run.Value
+metadata:
+  name: wideQuota
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [quota]
+    properties:
+      quota: { type: integer, x-telo-type: Telo.Uint64 }
+value:
+  quota: 18446744073709551615
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Opening
+schema:
+  type: object
+  required: [at]
+  properties:
+    at: { x-telo-type: Telo.Timestamp }
+---
+# The same unreadable text one named shape down: the row's type is checked
+# through the shape it names.
+kind: Run.Value
+metadata:
+  name: badWindow
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      window: !ref Opening
+value:
+  window:
+    at: "17/01/2026 09:30"

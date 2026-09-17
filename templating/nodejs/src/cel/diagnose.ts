@@ -1,5 +1,6 @@
 import type { ASTNode, Environment } from "@marcbachmann/cel-js";
 import { CEL_FUNCTIONS, type CelFunctionDoc } from "./catalog.js";
+import { moduleCallOf } from "./module-call.js";
 import type { CallSite, DiagnosticFix, EngineDiagnostic } from "../engine.js";
 
 /** Classifies every function call in a CEL expression against the environment's
@@ -37,6 +38,15 @@ export interface FunctionIndex {
 const DETERMINISM: ReadonlyMap<string, boolean> = new Map(
   CEL_FUNCTIONS.map((f) => [f.name, f.deterministic]),
 );
+const HOST_BACKED: ReadonlyMap<string, boolean> = new Map(
+  CEL_FUNCTIONS.map((f) => [f.name, f.hostBacked === true]),
+);
+
+/** The flags a module function carries, as the host that resolves it derives
+ *  them — or undefined where the name reaches no function. */
+export type ModuleCallFlags = (
+  qualified: string,
+) => { readonly deterministic: boolean; readonly hostBacked: boolean } | undefined;
 
 const INDEX_CACHE = new WeakMap<Environment, FunctionIndex>();
 
@@ -84,13 +94,40 @@ function isNode(v: unknown): v is ASTNode {
 }
 
 /** Every non-macro call in the expression, in source order. */
-function collectCalls(root: ASTNode, index: FunctionIndex): RawCall[] {
+function collectCalls(
+  root: ASTNode,
+  index: FunctionIndex,
+  moduleCallFlags: ModuleCallFlags | undefined,
+): RawCall[] {
   const out: RawCall[] = [];
   visit(root);
   return out.sort((a, b) => a.start - b.start);
 
   function visit(node: ASTNode): void {
     const args = node.args as unknown;
+    // A RESOLVED module call is reported under its QUALIFIED name and is never
+    // looked up in the catalog: the two namespaces are disjoint by construction
+    // (a bare name is always the catalog), so classifying it here would report
+    // `there is no function 'format'` for a call that names a module's own, and
+    // attaching the catalog's determinism to it would be a flag about a
+    // different function entirely. What a module call's flags are is the
+    // resolving host's answer, carried when it gives one.
+    const moduleCall = moduleCallOf(node);
+    if (moduleCall) {
+      const flags = moduleCallFlags?.(moduleCall.qualified);
+      out.push({
+        name: moduleCall.qualified,
+        form: "receiver",
+        moduleCall: true,
+        arity: moduleCall.args.length,
+        start: node.start,
+        end: node.end,
+        ...(flags ? { deterministic: flags.deterministic, hostBacked: flags.hostBacked } : {}),
+        args: moduleCall.args,
+      });
+      for (const arg of moduleCall.args) visit(arg);
+      return;
+    }
     if (node.op === "call" || node.op === "rcall") {
       const tuple = args as unknown[];
       const name = tuple[0];
@@ -104,7 +141,9 @@ function collectCalls(root: ASTNode, index: FunctionIndex): RawCall[] {
           arity: callArgs.length,
           start: node.start,
           end: node.end,
-          ...(index.byName.has(name) ? { deterministic: DETERMINISM.get(name) } : {}),
+          ...(index.byName.has(name)
+            ? { deterministic: DETERMINISM.get(name), hostBacked: HOST_BACKED.get(name) }
+            : {}),
           ...(isNode(receiver) ? { receiver } : {}),
           args: callArgs,
         });
@@ -176,8 +215,8 @@ const listOf = (names: readonly string[]): string => [...new Set(names)].sort().
 
 /** Names registered in exactly the form and arity the author wrote — the only
  *  ones that could replace this call with no further edits. Ranked by shared
- *  prefix, which is what reaches `nowIso` from `now`; edit distance never
- *  would (3 characters against a 3-character name). Returns [] when nothing
+ *  prefix, which is what reaches `nowIso` from `no`; edit distance never
+ *  would (4 characters against a 2-character name). Returns [] when nothing
  *  shares a prefix, so the caller lists what is legal here instead of
  *  guessing. */
 function candidates(call: RawCall, index: FunctionIndex): string[] {
@@ -249,13 +288,24 @@ export interface CallAudit {
  *  failed type-check, because a type-check reports its first error and stops:
  *  an expression with two bad calls would otherwise fix one, re-run, and
  *  discover the next. */
-export function auditCalls(source: string, ast: ASTNode, env: Environment): CallAudit {
+export function auditCalls(
+  source: string,
+  ast: ASTNode,
+  env: Environment,
+  /** The flags of the module functions the expression calls, from whoever
+   *  resolves them. */
+  moduleCallFlags?: ModuleCallFlags,
+): CallAudit {
   const index = functionIndex(env);
   const diagnostics: EngineDiagnostic[] = [];
   const unresolved: string[] = [];
-  const calls = collectCalls(ast, index);
+  const calls = collectCalls(ast, index, moduleCallFlags);
 
   for (const call of calls) {
+    // Resolution already decided what a module call names. The catalog has
+    // nothing to say about it, and saying it anyway would be a refusal of valid
+    // CEL.
+    if (call.moduleCall) continue;
     const entries = index.byName.get(call.name);
     const noun = call.form === "receiver" ? "method" : "function";
 

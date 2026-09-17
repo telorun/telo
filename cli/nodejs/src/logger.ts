@@ -1,4 +1,4 @@
-import type { AnalysisDiagnostic, LoadedGraph } from "@telorun/analyzer";
+import type { AnalysisDiagnostic, DiagnosticFix, LoadedGraph } from "@telorun/analyzer";
 import { DiagnosticSeverity, diagnosticFix } from "@telorun/analyzer";
 import { findPositions, resolveRange } from "@telorun/ide-support";
 import {
@@ -66,7 +66,7 @@ function resolveLocationParts(
   };
 }
 
-function resolveLocation(
+export function resolveLocation(
   graph: LoadedGraph,
   d: AnalysisDiagnostic,
   fallbackSource: string,
@@ -90,10 +90,11 @@ export interface JsonDiagnostic {
   resource?: string;
   /** Dotted path of the offending value within that resource. */
   path?: string;
-  /** A mechanically applicable repair: the whole corrected value at `path`.
-   *  Present only when the repair is decidable, so a consumer can apply it
-   *  without re-deriving it from the message. */
-  fix?: { replacement: string };
+  /** A mechanically applicable repair: the whole corrected value at `path`,
+   *  written behind `tag` when one is present. Present only when the repair is
+   *  decidable, so a consumer can apply it without re-deriving it from the
+   *  message. */
+  fix?: DiagnosticFix;
 }
 
 /** The logger's colouring delegates to `Output`'s per-stream palettes.

@@ -3,6 +3,7 @@ import { formatSpanCounter } from "./logging/span-id.js";
 import {
   deriveContext,
   getRefIdentity,
+  InvokeError,
   isCompiledValue,
   isInvokeError,
   isCancellationError,
@@ -30,6 +31,7 @@ import {
 import { RuntimeError } from "@telorun/sdk";
 import { celResourceReads, evalPathCovers } from "@telorun/analyzer";
 import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
+import { moduleCallsOf } from "./module-functions.js";
 import { impactClosure, reverseTopologicalOrder } from "./resource-edges.js";
 import {
   REDACTED,
@@ -445,6 +447,24 @@ function compileWalker(value: unknown): Walker {
         if (observed) {
           throw new RuntimeError("ERR_OBSERVED_STATE_UNAVAILABLE", `${expr}: ${observed}`);
         }
+        // A CODED failure keeps its code, its data and its class: a module
+        // function's `ERR_FUNCTION_FAILED` has to reach a `try:` / `catches:` as
+        // the structured error it is, and a kernel refusal raised inside an
+        // expression has to stay one. Only the message learns which expression.
+        if (isInvokeError(error)) {
+          throw new InvokeError(error.code, `Expression ${expr} failed: ${msg}`, error.data, {
+            cause: error,
+          });
+        }
+        if (error instanceof RuntimeError) {
+          const coded = new RuntimeError(
+            error.code,
+            `Expression ${expr} failed: ${msg}`,
+            error.diagnostics,
+          );
+          (coded as { cause?: unknown }).cause = error;
+          throw coded;
+        }
         const hint = compiled.source ? describeFailedAccess(compiled.source, ctx, msg) : null;
         const suffix = hint ? `\n  ${hint}` : "";
         throw new Error(`Expression ${expr} failed: ${msg}${suffix}`);
@@ -749,6 +769,34 @@ export class EvaluationContext implements IEvaluationContext {
 
   get createInstance(): InstanceFactory {
     return this._createInstance;
+  }
+
+  /**
+   * The name, in the module that makes the call, a qualified module call depends
+   * on — or undefined when it depends on none. A module context answers; any
+   * other context asks the module it belongs to, since the call resolves through
+   * that module's names.
+   */
+  moduleCallHolder(qualified: string): string | undefined {
+    return (this.parent as EvaluationContext | undefined)?.moduleCallHolder?.(qualified);
+  }
+
+  /** The dependency edges a manifest's module calls add: a function is held like
+   *  any referenced resource, so rebuilding it rebuilds what calls it. */
+  private moduleCallDependencies(resource: ResourceManifest): string[] {
+    const names: string[] = [];
+    for (const call of moduleCallsOf(resource)) {
+      const holder = this.moduleCallHolder(call);
+      if (holder !== undefined) names.push(holder);
+    }
+    return names;
+  }
+
+  /** Called once a resource has been removed by an unwind — the single removal
+   *  site. Overridden by ModuleContext, whose function bindings hold instances. */
+  protected onResourceWithdrawn(name: string, reason: string): void {
+    void name;
+    void reason;
   }
 
   /** Called after init() when a resource snapshot is available. Overridden by
@@ -1121,7 +1169,11 @@ export class EvaluationContext implements IEvaluationContext {
             // still holds its expressions, while the created copy holds the
             // values they were expanded to.
             this.resourceDependencies.set(name, [
-              ...new Set([...localDependencyNames(refs), ...celResourceReads(resource)]),
+              ...new Set([
+                ...localDependencyNames(refs),
+                ...celResourceReads(resource),
+                ...this.moduleCallDependencies(resource),
+              ]),
             ]);
             const payload: Record<string, unknown> = {
               resource: {
@@ -1280,7 +1332,10 @@ export class EvaluationContext implements IEvaluationContext {
         // manifest still carries plain `{kind, name}` refs — walk it here rather
         // than relying on the create-time capture it never reached.
         ...this.pendingResources.map((r) =>
-          toFailure(r.metadata.name, r.kind, localDependencyNames(collectResourceRefs(r))),
+          toFailure(r.metadata.name, r.kind, [
+            ...localDependencyNames(collectResourceRefs(r)),
+            ...this.moduleCallDependencies(r),
+          ]),
         ),
         ...[...this.createdInstances].map(([name, { resource }]) =>
           toFailure(name, resource.kind, this.resourceDependencies.get(name) ?? []),
@@ -1583,6 +1638,12 @@ export class EvaluationContext implements IEvaluationContext {
       // The single removal site, so it is also where "this went away because the
       // runtime withdrew it" is recorded — the fact `invoke` reports a miss by.
       this.unwoundResources.add(key);
+      this.onResourceWithdrawn(
+        key,
+        this.state === "Draining" || this.state === "Teardown"
+          ? "the runtime is shutting down"
+          : "its resource was unwound while the runtime reconciled",
+      );
       // A torn-down resource must stop being readable: a CEL expansion that still
       // found its reading would bake a value nothing is serving any more.
       this.clearPublishedReading(resource.metadata.name as string);

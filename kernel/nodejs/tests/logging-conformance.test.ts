@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import {
+  Duration,
+  UnsignedInt,
   formatUnixNano,
   parseLevelName,
   pinoLevelForSeverity,
@@ -449,6 +451,18 @@ describe("vector 18 — encoding golden files", () => {
         '"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7",' +
         '"resource":{"kind":"Http.Server","name":"api","id":"Http.Server.api"},' +
         '"module":"http-server","scope":"Api","attributes":{"net.host.port":8080}}',
+    );
+  });
+
+  it("writes a CEL timestamp, duration, uint and int-keyed map attribute in plain form", () => {
+    const { attributes } = normalizeAttributes({
+      at: new Date("2026-01-15T07:30:00Z"),
+      took: new Duration(5400n, 0),
+      count: new UnsignedInt(7n),
+      byInt: new Map([[1n, "one"]]),
+    } as never);
+    expect(encodeJson(baseRecord({ attributes }))).toContain(
+      '"attributes":{"at":"2026-01-15T07:30:00.000Z","byInt":{"1":"one"},"count":7,"took":"5400s"}',
     );
   });
 

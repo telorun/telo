@@ -470,7 +470,7 @@ The analyzer owns all logic that both the kernel and IDE need:
 | `buildReferenceFieldMap(schema)`                | Kernel (Phase 1), IDE (Section 10 field index) |
 | `normalizeInlineResources(manifests, registry)` | Kernel (Phase 2)                               |
 | `validateReferences(resources, context)`        | Kernel (Phase 3), IDE (diagnostics)            |
-| `buildDependencyGraph(resources, registry)`     | Kernel (Phase 4), IDE (cycle warnings)         |
+| `buildDependencyGraph(resources, registry)`     | Kernel (Phase 4), `telo check` and the editor (`DEPENDENCY_CYCLE`) |
 
 `buildReferenceFieldMap` detects both `x-telo-ref` nodes (reference slots) and `x-telo-scope` nodes (scope slots), recording them separately in the field map. The scope entry captures the JSON Pointer visibility path alongside the field path, so both the kernel (Phase 5) and the IDE know which fields carry scopes and where those scopes are visible.
 
@@ -652,7 +652,7 @@ AJV ignores `x-telo-schema-from` as an unknown keyword during the standard schem
 
 ### Phase 4 — Dependency graph construction & cycle detection
 
-The kernel builds a directed acyclic graph (DAG) via `buildDependencyGraph`. Each resource is a node; each reference value becomes a directed edge from the referencing resource to the referenced resource. Scoped resources are included as nodes; edges from scoped resources to outer resources are included. Parent → scoped resource edges are not boot-time dependencies and are excluded from the DAG.
+The kernel builds a directed acyclic graph (DAG) via `buildDependencyGraph`. Each resource declared at module level is a node; each reference at an injection site, and each module call a resource's expressions make, becomes a directed edge from the referencing resource to the referenced one (a `use: schema` reference names a shape and orders nothing). A resource declared inside an `x-telo-scope` is created when its scope opens, not at boot, so it is not a node, and a reference into the source's own scope is not an edge.
 
 If a topological sort of the DAG fails, a circular dependency exists. Boot halts with the full cycle path:
 

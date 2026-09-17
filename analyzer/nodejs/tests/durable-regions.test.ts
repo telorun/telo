@@ -3,6 +3,7 @@ import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { buildCallGraph } from "../src/call-graph.js";
 import { DefinitionRegistry } from "../src/definition-registry.js";
+import { moduleCallNamesByModule } from "../src/module-call-names.js";
 import { validateDurableRegions } from "../src/validate-durable-regions.js";
 
 /** A step slot spelled the legacy way, so the fixtures need no fragment
@@ -90,6 +91,9 @@ function check(resources: unknown[], reportModules = ["App"]): string[] {
     graph,
     resolveDef: (kind) => defs.resolve(kind),
     reportModules: new Set(reportModules),
+    moduleCallNames: moduleCallNamesByModule(resources as ResourceManifest[]),
+    // No function is declared here, so no module call reaches one.
+    moduleCallFlags: () => undefined,
   }).map((d) => d.code);
 }
 

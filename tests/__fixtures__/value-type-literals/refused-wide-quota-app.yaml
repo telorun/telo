@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: RefusedWideQuotaApp
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Refused: ./refused-inputs-lib
+targets:
+  - !ref readWideQuota
+---
+kind: Run.Sequence
+metadata:
+  name: readWideQuota
+steps:
+  - name: quota
+    invoke: !ref Refused.wideQuota

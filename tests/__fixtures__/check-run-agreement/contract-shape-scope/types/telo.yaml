@@ -1,0 +1,20 @@
+# A library exporting a shape named `Money` whose fields differ from the shape of
+# the same name the importing library declares for itself.
+kind: Telo.Library
+metadata:
+  name: TypesLib
+  version: 1.0.0
+  description: >-
+    Fixture library exporting a money shape counted in cents, whose name collides
+    with its importer's own shape.
+exports:
+  resources: [Money]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Money
+schema:
+  type: object
+  required: [cents]
+  properties:
+    cents: { type: integer }

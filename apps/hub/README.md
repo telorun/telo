@@ -112,6 +112,21 @@ being linearized into a chain.
 | MCP (`search_resources`, `get_module_manifest`) | `POST /mcp` |
 | liveness | `GET /health` |
 
+**Exported instances are hits of their own.** `/search/resources` and
+`search_resources` return, beside the kind `hits`, an `instances` list: exported
+resources (`exports.resources`) whose name or `metadata.description` matches the
+query — a ready-made function such as `hmacSha256`, which an importer calls as
+`<Alias>.hmacSha256(…)`, or a singleton it references as `!ref <Alias>.<name>`.
+Each entry is `{ name, kind, description, module: { ref, version, name }, score }`,
+`kind` being the suffix (`Function` for a `Telo.Function`). They are kept apart
+from `hits`, whose shape is unchanged, because a kind is something to declare and
+an instance something to reference — and an instance's kind is often not
+searchable at all: it may be unexported (the singleton pattern) or a built-in the
+hub keeps no row for. Instance matching is lexical only (instance descriptions
+are not embedded), runs only for a non-empty `q`, and follows the same category
+and runtime filters through the instance's kind (its module's categories where the
+kind has no row, and portable where it has no runtime data).
+
 **Browsing is searching with a filter, not a separate surface.** Both
 `/search/*` verbs take an optional `category`, and an empty `q` degrades to an
 unranked listing — so `?q=&category=storage` lists a category, and a second
@@ -290,7 +305,7 @@ leak which refs are tracked.
 | `SEED_REFS` | JSON array of module refs registered idempotently on boot (the curated seed; publishers also self-register via `POST /register`) |
 | `TRACK_CRON` | When the reconcile pass runs, as a 5-field cron in UTC (default `*/15 * * * *`) |
 | `TRACK_ENABLED` | `false` disables the periodic reconcile (tests drive `Ingest.scheduleDueVersions` directly) |
-| `INGEST_REV` | Revision of the ingest pipeline (default `1`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
+| `INGEST_REV` | Revision of the ingest pipeline (default `2`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
 | `TELO_BIN` | Path of the telo CLI the origin reads shell out to (default `telo`) |
 | `REGISTER_RATE_LIMIT` | Max `POST /register` calls per client IP per window (default `5`) |
 | `REGISTER_RATE_WINDOW` | Sliding window for that limit (default `10m`) |

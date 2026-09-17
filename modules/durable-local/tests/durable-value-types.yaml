@@ -1,0 +1,229 @@
+kind: Telo.Application
+metadata:
+  name: DurableValueTypes
+  version: 1.0.0
+  description: |
+    A resumed run computes what the first pass did, down to the CEL TYPE of every value
+    it recorded.
+
+    Plain JSON is not a codec for CEL values, and the failures it produces are the quiet
+    kind: a `timestamp()` comes back as text, so `now() - steps.t.result` stops having an
+    overload; an `int` comes back as a double, so a 64-bit id loses its last digits with
+    nothing reported; `bytes` come back as an object keyed by index; a map with `int` keys
+    comes back keyed by text, so `m[2]` resolves to nothing while `m['2']` starts working.
+    Each is a value that ROUND-TRIPPED — no error anywhere — and computed something else.
+
+    So every value is asserted through an OVERLOAD nothing of the wrong type satisfies
+    rather than by comparing a rendering: `string()` has no string overload, `+ 1u` none
+    for an int or a double, and an int beyond 2^53 is only equal to itself if it never
+    became a double.
+
+    THE ASSERTIONS RUN ON THE RESUME. Every value above is produced before the run parks,
+    so the execution that reads them back was handed them by the journal rather than by
+    the steps that computed them — which is the only arrangement in which the codec is
+    under test at all. The `check` step is the first one this run has never recorded, and
+    its result is asserted from OUTSIDE the body so a mismatch reads as a diff rather than
+    as a failed run.
+
+    `stamp` covers the other half — a `value:` step whose expression is impure. It is
+    pinned by the journal, so the resume reads the instant the FIRST pass saw; the delay
+    before the resume is what gives that claim teeth, since a re-derived `nowMillis()`
+    would be the resume's own.
+imports:
+  Durable: ../../durable
+  Local: ../
+  Journal: ../../durable-journal-file
+  Values: ./__fixtures__/durable-values
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: DURABLE_VALUE_TYPES_TEST_DIR
+    type: string
+    default: .telo/durable-value-types-test
+targets:
+  - !ref test
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+kind: Durable.Await
+metadata: { name: approval }
+token: !cel "'values:' + inputs.ticket"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ok]
+    additionalProperties: false
+    properties:
+      ok: { type: boolean }
+---
+kind: Local.Workflow
+metadata: { name: record }
+journal: !ref journal
+runId: !cel "'values:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - name: d
+    value: !cel "duration('90m')"
+  - name: t
+    value: !cel "timestamp('2026-01-15T09:30:00.250Z')"
+  # Beyond 2^53: as a double it reads back one less, so equality with itself is
+  # what says it stayed an int64.
+  - name: i
+    value: !cel "9007199254740993"
+  - name: u
+    value: !cel "7u"
+  # Bytes that never passed through a literal — an embedded file, which is the
+  # other way bytes enter a manifest at all.
+  - name: b
+    value: !include-bytes __fixtures__/durable-values/key.bin
+  # The one value a manifest has no literal for: cel-js reads `{1: 'a'}` as a
+  # string-keyed map, so a map with integer keys exists only where a controller
+  # built one.
+  - name: m
+    invoke: { kind: Values.Tally }
+  # A map carrying the tag key. It is an ordinary map, and the codec has to keep
+  # it one: an object member named `$telo` is otherwise always a tag, so this is
+  # the value that decides whether the frame is one-to-one.
+  - name: tagged
+    value: !cel "{'$telo': 'not a tag', 'a': 1}"
+  - name: stamp
+    value: !cel "nowMillis()"
+
+  - name: wait
+    invoke: !ref approval
+    inputs:
+      ticket: !cel "inputs.ticket"
+
+  # Everything below here runs for the first time on the RESUME.
+  - name: fresh
+    value: !cel "nowMillis()"
+  - name: check
+    value:
+      durationSeconds: !cel "steps.d.result.getSeconds()"
+      instant: !cel "string(steps.t.result)"
+      intExact: !cel "steps.i.result == 9007199254740993"
+      uintPlusOne: !cel "steps.u.result + 1u == 8u"
+      bytesSame: !cel "steps.b.result == bytes('abc')"
+      intKeyed: !cel "steps.m.result[2]"
+      tagKeyed: !cel "steps.tagged.result['$telo']"
+      taggedInt: !cel "steps.tagged.result['a'] == 1"
+      delivered: !cel "steps.wait.result.ok"
+      # The two instances compared against each other, which is the reading an
+      # author actually writes and the one that has no meaning at all once
+      # either side has become text.
+      compares: !cel "now() - steps.t.result > steps.d.result"
+      # The impure `value:` step was pinned rather than re-derived: the delay
+      # below is longer than this bound, so a fresh evaluation could not pass.
+      stampPinned: !cel "steps.fresh.result - steps.stamp.result > 200"
+---
+kind: Local.Status
+metadata: { name: status }
+journal: !ref journal
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # One ticket per process, so a journal directory left behind by an earlier run
+  # holds nothing this run could replay from.
+  - name: ticket
+    value: !cel "'v' + string(nowMillis())"
+
+  - name: start
+    invoke: !ref record
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  # The start is detached, so the body is still on its way to the wait. Read once
+  # before the loop — `while:` is a pre-test.
+  - name: parked
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParked
+    while: !cel "steps.parked.result.status != 'parked'"
+    maxIterations: 200
+    do:
+      - name: parked
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+
+  # A REAL gap before the resume. Without it a re-derived `nowMillis()` could
+  # land within a millisecond of the recorded one and the pinning assertion would
+  # pass whether or not the value was journaled.
+  - name: gap
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 400ms
+
+  - name: deliver
+    invoke:
+      kind: Local.Deliver
+      journal: !ref journal
+      await: !ref approval
+      token: !cel "'values:' + inputs.ticket"
+      payload:
+        ok: true
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  # The same `execute` a resumer would call, reached by submitting the id again.
+  - name: resume
+    invoke: !ref record
+    inputs:
+      ticket: !cel "steps.ticket.result"
+
+  - name: finished
+    invoke:
+      kind: Local.Result
+      journal: !ref journal
+      wait: 15s
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: assertCompleted
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        replayed: !cel "steps.finished.result.replayed"
+      expected:
+        status: completed
+        replayed: true
+    invoke: { kind: Assert.Equals }
+
+  # Asserted from outside the body, against what the resumed execution computed
+  # from values it was HANDED.
+  - name: assertValues
+    inputs:
+      actual: !cel "steps.finished.result.result.steps.check.result"
+      expected:
+        durationSeconds: 5400
+        instant: "2026-01-15T09:30:00.250Z"
+        intExact: true
+        uintPlusOne: true
+        bytesSame: true
+        intKeyed: two
+        tagKeyed: not a tag
+        taggedInt: true
+        delivered: true
+        compares: true
+        stampPinned: true
+    invoke: { kind: Assert.Equals }
+
+  # The run's RESULT is a recorded value too: read straight off `Local.Result`,
+  # the timestamp is still a timestamp and the int still an int64, where a plain
+  # JSON run record handed back text and a double one digit short.
+  - name: assertResult
+    inputs:
+      actual:
+        instant: !cel "steps.finished.result.result.steps.t.result == timestamp('2026-01-15T09:30:00.250Z')"
+        intExact: !cel "steps.finished.result.result.steps.i.result == 9007199254740993"
+      expected:
+        instant: true
+        intExact: true
+    invoke: { kind: Assert.Equals }

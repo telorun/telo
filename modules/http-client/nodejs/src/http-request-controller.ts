@@ -5,6 +5,8 @@ import {
   Stream,
   networkCauseCode,
   parseDurationMs,
+  plainScalar,
+  writePlainJson,
   type InvokeContext,
   type Logger,
   type ResourceContext,
@@ -639,10 +641,18 @@ function serializeBody(
   }
   if (typeof body === "object") {
     const contentType = declaredContentType ?? "application/json";
+    // The receiving server is not Telo, so a CEL value in the body is written in
+    // its plain encoding — RFC 3339 text for a timestamp, `"5400s"` for a
+    // duration, base64url for bytes — never type-tagged.
     return {
       body: contentType.includes("application/x-www-form-urlencoded")
-        ? new URLSearchParams(body as Record<string, string>).toString()
-        : JSON.stringify(body),
+        ? new URLSearchParams(
+            Object.entries(body as Record<string, unknown>).map(([key, value]) => [
+              key,
+              String(plainScalar(value) ?? value),
+            ]),
+          ).toString()
+        : writePlainJson(body),
       contentType,
     };
   }

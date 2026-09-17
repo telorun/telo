@@ -15,7 +15,11 @@ import { compileString, defaultRegistry, isRefSentinel, isTaggedSentinel } from 
  * example string inside a schema happens to contain `${{ }}`, it will be
  * interpreted as CEL; tag it `!literal` to opt out.
  */
-export function precompileDoc(doc: unknown, env: Environment): unknown {
+export function precompileDoc(
+  doc: unknown,
+  env: Environment,
+  moduleNames?: ReadonlySet<string>,
+): unknown {
   // Tagged sentinel: dispatch to the engine. The result is decorated with
   // `__tagged` + `engine` + `source` when it's a CompiledValue so the
   // analyzer's diagnostic walk can identify it on compiled trees too;
@@ -33,7 +37,7 @@ export function precompileDoc(doc: unknown, env: Environment): unknown {
     if (!engine) {
       throw new Error(`Unknown templating engine: !${doc.engine}`);
     }
-    const compiled = engine.compile(doc.source, { celEnv: env });
+    const compiled = engine.compile(doc.source, { celEnv: env, moduleNames });
     if (isCompiledValue(compiled)) {
       return {
         __tagged: true,
@@ -48,19 +52,23 @@ export function precompileDoc(doc: unknown, env: Environment): unknown {
         // `init()`) with nothing but the source text to scan, which cannot tell
         // an identifier from a word inside a string literal.
         ...(compiled.refs ? { refs: compiled.refs } : {}),
+        // The qualified module calls the engine resolved, carried for the same
+        // reason `refs` is: re-deriving them needs the declaring module's name
+        // set, which a consumer holding one expression does not have.
+        ...(compiled.calls ? { calls: compiled.calls } : {}),
         call: compiled.call.bind(compiled),
       };
     }
     return compiled;
   }
-  if (typeof doc === "string") return compileString(doc, env);
-  if (Array.isArray(doc)) return doc.map((item) => precompileDoc(item, env));
+  if (typeof doc === "string") return compileString(doc, env, moduleNames);
+  if (Array.isArray(doc)) return doc.map((item) => precompileDoc(item, env, moduleNames));
   // Only recurse into plain objects. Class instances (ResourceInstance, ScopeHandle, etc.)
   // are returned as-is — their prototype methods must not be lost by object reconstruction.
   if (doc !== null && typeof doc === "object" && Object.getPrototypeOf(doc) === Object.prototype) {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(doc as Record<string, unknown>)) {
-      result[k] = precompileDoc(v, env);
+      result[k] = precompileDoc(v, env, moduleNames);
     }
     return result;
   }

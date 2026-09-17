@@ -18,6 +18,7 @@ import {
   type ResourceContext,
   type ResourceManifest,
 } from "@telorun/sdk";
+import { RECORDED_VALUE_CODEC_VERSION, writeRecordedValue } from "@telorun/sdk";
 import type { WorkflowController } from "./workflow.js";
 
 interface ScheduleManifest extends ResourceManifest {
@@ -49,7 +50,15 @@ class ScheduleController {
         : String(this.ctx.expandValue(this.resource.runId, cel));
     const dueAt = this.dueAt(cel);
 
-    const admission = await journal.admitRun(runId, { status: "scheduled", dueAt, inputs });
+    // Written down like a recorded value, so the body the resumer starts later
+    // reads a timestamp as a timestamp and an int as an int64 — and a value that
+    // could not come back as itself is refused here, not stored as something else.
+    const frame = writeRecordedValue(inputs, { run: runId, path: "inputs" });
+    const admission = await journal.admitRun(runId, {
+      status: "scheduled",
+      dueAt,
+      ...(frame === undefined ? {} : { inputs: frame, inputsCodecVersion: RECORDED_VALUE_CODEC_VERSION }),
+    });
     // An id already taken is not scheduled a second time. Same rule the
     // workflow's own `attach` follows, and for the same reason: a caller-chosen
     // id is how "do this once" is expressed, and it must mean that here too.

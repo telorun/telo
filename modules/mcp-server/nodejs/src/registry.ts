@@ -3,7 +3,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { isInvokeError, type ResourceContext, RuntimeError } from "@telorun/sdk";
+import { isInvokeError, type ResourceContext, RuntimeError, toPlainJson } from "@telorun/sdk";
 
 import { matchCatch, type ModuleLikeContext, type ResolvedToolEntry } from "./outcome.js";
 import type { McpToolsBundle } from "./tools-controller.js";
@@ -129,7 +129,7 @@ export function buildServer(opts: BuildOptions): Server {
       };
       const ipcError: Error & { code?: number; data?: unknown } = new Error(expanded.message);
       ipcError.code = expanded.code;
-      ipcError.data = expanded.data;
+      ipcError.data = toPlainJson(expanded.data);
       throw ipcError;
     }
 
@@ -148,7 +148,9 @@ export function buildServer(opts: BuildOptions): Server {
         `Mcp: tool '${tool.name}' result.content is not an array of content blocks`,
       );
     }
-    return rendered as { content: unknown[] };
+    // The MCP client is not Telo, so a CEL value in the result (a timestamp in
+    // `structuredContent`) is written in its plain encoding, never type-tagged.
+    return toPlainJson(rendered) as { content: unknown[] };
   });
 
   return server;

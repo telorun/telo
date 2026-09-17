@@ -18,6 +18,8 @@
  *  would catch it. Same precedent as `ref-slot.ts` / `binary-slot.ts` — a rule
  *  several surfaces must agree on gets one reader. */
 
+import type { DiagnosticFixTag } from "./types.js";
+
 /** Characters that make a plain (unquoted) YAML scalar reparse as something
  *  else. `-` and `?` are indicators only when followed by a space, so they are
  *  handled by the leading-token check rather than listed here. */
@@ -63,12 +65,21 @@ export function quoteStyleOf(source: string): QuoteStyle {
  *  has. A multi-line REPLACEMENT is refused for the mirror reason: its
  *  continuation lines would land at column 0, which is not a legal mapping
  *  value. A quick fix promises a repair that can be applied without review, so
- *  the only honest answer for these is no repair. */
+ *  the only honest answer for these is no repair.
+ *
+ *  With a `tag` the repair is a tagged scalar written over an untagged one, so
+ *  the original's quote style says nothing about it: `!ref` stays plain where
+ *  it can, and `!cel` is always double-quoted, the form the formatter writes. */
 export function renderFixReplacement(
   originalSource: string,
   replacement: string,
+  tag?: DiagnosticFixTag,
 ): string | undefined {
   if (/[\n\r]/.test(originalSource) || /[\n\r]/.test(replacement)) return undefined;
+  if (tag === "ref") {
+    return `!ref ${isPlainSafe(replacement) ? replacement : doubleQuoted(replacement)}`;
+  }
+  if (tag === "cel") return `!cel ${doubleQuoted(replacement)}`;
   const style = quoteStyleOf(originalSource);
 
   if (style === "single") {
@@ -77,10 +88,12 @@ export function renderFixReplacement(
     // for an expression written in a single-quoted scalar.
     return `'${replacement.replaceAll("'", "''")}'`;
   }
-  if (style === "double" || !isPlainSafe(replacement)) {
-    return `"${replacement.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-  }
+  if (style === "double" || !isPlainSafe(replacement)) return doubleQuoted(replacement);
   return replacement;
+}
+
+function doubleQuoted(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
 
 /** A splice over a source file: replace `[start, end)` with `newText`. An empty

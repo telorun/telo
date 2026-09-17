@@ -16,6 +16,7 @@
 import { CelParseError, type CelNode, type CelScope, type CelSegment } from "@telorun/analyzer";
 import type { SemanticTokenType } from "../types.js";
 import { flattenChain } from "../cel-chain.js";
+import { isModuleCallNode } from "./module-calls.js";
 import { celRootSymbols, celSymbolAt } from "./symbols.js";
 
 /** A token before it is placed on a line — document offsets, resolved by the
@@ -124,7 +125,13 @@ export function celSegmentTokens(
         return;
       }
       case "methodCall": {
-        visit(node.receiver);
+        // A module call's receiver is a module — a namespace a function is called
+        // through — and never a value the scope could confirm as a root name.
+        if (scope && isModuleCallNode(node, (receiver) => scope.moduleNames.has(receiver))) {
+          out.push({ range: node.receiver.range, type: "namespace" });
+        } else {
+          visit(node.receiver);
+        }
         const span = spanOf(node.name, node.receiver.range[1], node.range[1]);
         if (span) out.push({ range: span, type: "function" });
         for (const arg of node.args) visit(arg);

@@ -178,7 +178,7 @@ describe("BundleControllerLoader napi candidates", () => {
   it.each([
     ["a missing addon", `pkg:telo/local/napi?path=./native/absent.node&os=${host.os}&arch=${host.arch}#echo`],
     ["another platform's addon", `pkg:telo/local/napi?path=./${ADDON}&os=plan9&arch=${host.arch}#echo`],
-    ["a dylib, which only the Rust kernel opens", `pkg:telo/local/dylib?path=./native/libecho.so&os=${host.os}&arch=${host.arch}&abi=telo-2`],
+    ["a dylib, which only the Rust kernel opens", `pkg:telo/local/dylib?path=./native/libecho.so&os=${host.os}&arch=${host.arch}&abi=telo-3`],
   ])("falls through as env-missing for %s", async (_label, purl) => {
     const moduleDir = path.join(dir, "checkout");
     await expect(

@@ -10,6 +10,7 @@ import {
 } from "@telorun/analyzer";
 import type { HoverResult } from "../types.js";
 import { chainAt } from "../cel-chain.js";
+import { describeFunction, functionSignature, moduleCallAt } from "../cel/module-calls.js";
 import { celSymbolAt } from "../cel/symbols.js";
 import { docIdentity } from "../doc-identity.js";
 import { navigateSchema } from "../completions/detect-context.js";
@@ -118,7 +119,7 @@ export function buildHover(
   if (!resolved) return undefined;
 
   if (resolved.cel) {
-    const hover = hoverForCel(resolved, astDocs, analysis?.celScope);
+    const hover = hoverForCel(text, resolved, astDocs, analysis?.celScope);
     // A CEL body is still a field value; when the cursor is on nothing
     // nameable inside it (an operator, a literal), fall through to the field's
     // own hover rather than reporting nothing.
@@ -138,6 +139,7 @@ export function buildHover(
  * declares it.
  */
 function hoverForCel(
+  text: string,
   resolved: ResolvedCursor,
   docs: AstDocument[],
   scopeQuery: CelScopeQuery | undefined,
@@ -158,12 +160,24 @@ function hoverForCel(
     return undefined;
   }
 
+  const scope = scopeQuery.scopeAt(resource, resolved.concretePath ?? "");
+  // A module call's name hovers as the function it binds to: its signature and
+  // what it promises about determinism.
+  const call = moduleCallAt(text, ast, resolved.cel.offset, scope);
+  if (call && !call.onReceiver) {
+    const fn = scope.moduleFunction(call.qualified);
+    if (!fn) return undefined;
+    const lines = ["```\n" + functionSignature(call.qualified, fn).label + "\n```"];
+    const about = describeFunction(fn, scope.moduleCallFlags(call.qualified));
+    if (about) lines.push("", about);
+    return { contents: lines.join("\n") };
+  }
+
   const hit = chainAt(ast, resolved.cel.offset);
   if (!hit) return undefined;
   // The chain UP TO the cursor, not the whole chain: hovering `resources` in
   // `resources.db.url` describes `resources`.
   const parts = hit.parts.slice(0, hit.index + 1).map((p) => p.name);
-  const scope = scopeQuery.scopeAt(resource, resolved.concretePath ?? "");
   const symbol = celSymbolAt(scope, parts);
   if (!symbol) return undefined;
 

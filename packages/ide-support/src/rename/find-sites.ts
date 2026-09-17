@@ -7,6 +7,7 @@ import {
 } from "@telorun/analyzer";
 
 import { walkCel } from "../cel-chain.js";
+import { moduleCallSites } from "../cel/module-calls.js";
 import { scalarString } from "../completions/resolve-node.js";
 
 /**
@@ -109,6 +110,35 @@ export function resourceSites(doc: AstDocument, name: string): NameSite[] {
       const site = scopeMemberSite(node, "resources", name);
       if (site) sites.push(site);
     });
+  });
+  return sites;
+}
+
+/** A function's calls within one document: `<receiver>.<name>(…)` in CEL, for a
+ *  receiver naming the declaring module itself (`Self`, its own name). A call
+ *  through an import alias is another module's reference and is not matched.
+ *  `text` is the document text the CEL offsets are measured against. */
+export function functionCallSites(
+  doc: AstDocument,
+  text: string,
+  receivers: ReadonlySet<string>,
+  name: string,
+): NameSite[] {
+  const sites: NameSite[] = [];
+  if (!doc.root) return sites;
+  eachScalar(doc.root, (scalar) => {
+    for (const segment of scalar.celSegments()) {
+      let ast: CelNode;
+      try {
+        ast = segment.ast();
+      } catch (error) {
+        if (!(error instanceof CelParseError)) throw error;
+        continue;
+      }
+      for (const site of moduleCallSites(text, ast, (receiver) => receivers.has(receiver))) {
+        if (site.name === name) sites.push({ range: site.nameRange });
+      }
+    }
   });
   return sites;
 }

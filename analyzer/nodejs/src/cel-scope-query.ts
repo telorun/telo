@@ -15,6 +15,9 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
 import { AliasResolver, type ModuleScopes } from "./alias-resolver.js";
 import { buildCelEnvironment } from "./cel-environment.js";
+import { moduleCallNamesByModule } from "./module-call-names.js";
+import { ModuleFunctionIndex } from "./module-function-index.js";
+import { CallableFlagsIndex } from "./callable-flags.js";
 import { CelScopeResolver, type CelScope } from "./cel-scope.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { buildKernelGlobalsIndex } from "./kernel-globals.js";
@@ -110,6 +113,17 @@ export class CelScopeQuery {
     const scopes: ModuleScopes = { aliasesByModule, rootModules };
     const observedState = buildObservedStateIndex(manifests, defs, aliases, scopes);
     const reportsObservedState = [...observedState.values()].some((r) => r.status);
+    const moduleFunctions = new ModuleFunctionIndex(
+      manifests,
+      defs,
+      aliases,
+      aliasesByModule,
+      rootModules,
+    );
+    // The editor resolves a module call exactly as the checker does: an offered
+    // name is a claim that `telo check` will accept it, and a call read as the
+    // catalog's here and as a module's there is two answers.
+    const moduleCallNames = moduleCallNamesByModule(manifests);
 
     this.resolver = new CelScopeResolver({
       celEnv: celEnv ?? buildCelEnvironment(),
@@ -117,7 +131,8 @@ export class CelScopeQuery {
       aliases,
       scopes,
       allManifests: manifests,
-      kernelGlobals: buildKernelGlobalsIndex(manifests, observedState),
+      kernelGlobals: buildKernelGlobalsIndex(manifests, observedState, moduleFunctions),
+      moduleFunctions,
       moduleManifest:
         manifests.find((mm) => mm.kind === "Telo.Application") ??
         manifests.find((mm) => mm.kind === "Telo.Library"),
@@ -128,6 +143,8 @@ export class CelScopeQuery {
             properties: { resources: buildObservedStateResourcesSchema(observedState, true) },
           }
         : null,
+      moduleCallNames,
+      callableFlags: new CallableFlagsIndex(moduleFunctions, moduleCallNames),
     });
     this.ctx = ctx;
   }
