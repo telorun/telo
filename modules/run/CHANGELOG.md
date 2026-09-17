@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.27.1 - 2026-09-17
+### Fixed
+* Run.Iteration's and Run.Projection's collection and Run.Loop's per-turn condition are journaled inside a durable run, so a resume walks the elements the run walked and stops at the turn it stopped at. Both are evaluated by the composer before the step engine sees a step list, so neither was recorded: a collection re-derived on a resume left index N naming a different element while the journal answered for the element that used to be there, with nothing to detect.
+
 ## 0.27.0 - 2026-09-09
 ### Added
 * The iteration guide documents the inline form: a step's `invoke:` accepts an inline `Run.Iteration` and the kind needs no `inputType:`, so printing one line per row costs a step rather than a named resource with a hand-written schema. It also records that the collection must reach the nested kind through the step's own `inputs:` — the enclosing sequence's `steps` scope is not bound inside it, and writing it directly passes `telo check` before failing at runtime.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.6 - 2026-09-17
+### Fixed
+* The primer states that a replayed durable value keeps its CEL type, including a scheduled run's stored inputs and the result Local.Result reads, that a step's when guard, Run.Iteration's and Run.Projection's collection and Run.Loop's per-turn condition are journaled, that a stream cannot be iterated inside a durable body, and that a loop's maxIterations is not a decision and so must not be written over a clock.
+* The primer teaches module functions - writing a Telo.Function, calling it through Self or an import alias, positional arguments, never declaring deterministic on it, no recursion - and the Telo.Timestamp, Telo.Duration and Telo.Uint64 value types with their text forms. It no longer says there is no now(), and no longer forbids a literal at a byte slot, which reads base64url text.
+
 ## 0.11.0 - 2026-09-03
 ### Added
 * Every turn now opens with a CURRENT TIME message in UTC, so the agent resolves a relative period the user names — "last week", "since Friday" — against a real clock and reports the absolute range it resolved it to, rather than guessing a date or asking for one. It rides the same per-turn system message as WORKSPACE STATE and for the same reason it cannot ride the system prompt: that block is a literal resolved once at load, so a date stamped there would be the process's boot date for as long as it runs, wrong from the second day on with nothing to show it. UTC rather than an operator timezone, stated as UTC in the message: where a report's boundaries genuinely depend on the user's zone, that is a question to ask rather than an offset to bury.

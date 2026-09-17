@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1 - 2026-09-17
+### Fixed
+* Writing content that is neither text nor bytes no longer claims bytes cannot be written inline in a manifest: the refusal names the ways raw bytes arrive - a producing resource or a file embedded with !include-bytes - and encoding: base64 for binary spelled out as text.
+
 ## 0.10.0 - 2026-08-27
 ### Added
 * `DirectoryListing` takes an `exclude` list — base names omitted at any depth, an excluded directory neither listed nor descended, the semantics `TreeSnapshot` already had. A recursive listing of a real tree is unreadable without one: caches and vendor directories (`.telo`, `node_modules`, `.git`) drown the entries a caller asked for.

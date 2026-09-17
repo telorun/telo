@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: NdjsonCodec
-  version: 0.9.5
+  version: 0.9.6
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Data, Streaming]

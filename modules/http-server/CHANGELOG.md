@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.1 - 2026-09-17
+### Fixed
+* A timestamp, duration or bytes value in a JSON response body is written in its plain encoding - RFC 3339 text in UTC, seconds such as 5400s, base64url - where a duration and a uint used to arrive as an empty object and bytes as an object keyed by index; NaN and Infinity arrive as the strings NaN, Infinity and -Infinity, and a map with int or bool keys as an object keyed by their text. A request schema slot declaring Telo.Timestamp, Telo.Duration or Telo.Bytes is validated and documented in OpenAPI as the text a client sends, arrives in CEL as the value itself, and text its encoding does not read is a 400 ValidationError whose details name each refused field's path.
+
 ## 0.31.0 - 2026-09-15
 ### Added
 * Breaking: the controllers ship inside the module artifact instead of being installed from npm at load, and Scalar's browser bundle ships in the assets layer, fetched only by an application that declares an Http.Reference. Requires telo >=0.91.0.

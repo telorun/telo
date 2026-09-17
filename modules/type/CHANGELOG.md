@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.12.2 - 2026-09-17
+### Fixed
+* The leftover controller source no longer imports the CEL engine or carries its unreachable rule evaluator, and the package no longer depends on @marcbachmann/cel-js. Type.JsonSchema is unchanged: it delegates to the built-in Telo.JsonSchema.
+
 ## 0.12.0 - 2026-08-09
 ### Added
 * metadata.name is now Type, so the module contributes its kinds under the `Type.<Kind>` canonical prefix instead of `type.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.11.0 - 2026-08-03

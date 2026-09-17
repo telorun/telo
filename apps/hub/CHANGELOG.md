@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 - 2026-09-17
+### Added
+* search_resources and GET /search/resources return an instances list beside the kind hits: exported resources whose name or description matches the query, each as { name, kind, description, module: { ref, version, name }, score }, so a ready-made function such as hmacSha256 is found by what it does even when its kind is unexported or a built-in Telo.Function. The kind hits keep their shape; instance matching is lexical, runs only for a non-empty query, and follows the category and runtime filters through the instance's kind where its own module declares that kind, and through the module's categories otherwise. The ingest revision moves to 2, so every tracked version is re-ingested once to record which instances are of the module's own kinds.
+### Fixed
+* An exported Telo.Function instance is indexed with its kind and metadata.description like an exported instance of a module-defined kind; it used to be recorded with both empty because every built-in document kind was skipped. Existing versions pick it up on their next ingest (raise INGEST_REV to re-ingest them all).
+
 ## 0.8.0 - 2026-09-07
 ### Added
 * The hub is now a composition root over six libraries — schema, origin, ingest, search, catalog and registry — each handed the one connection, bucket, embedder, vector index and shell host it needs, so a change is read against one concern instead of a 2600-line file. Ingest is a durable run per module version: the manifest read, the bucket write and the relational writes are recorded step by step, the writes commit as one transaction on the connection the journal records through, and a transient origin failure parks rather than sleeps. POST /register answers 202 and schedules the work instead of ingesting inside an anonymous request; GET /register/status?ref= reports progress. A new version_ingest table decides what is due and mints each attempt's identity in one write, so two concurrent passes collapse to one run and a failed attempt never burns the id its retry needs. TRACK_INTERVAL and TRACK_LOOP are replaced by TRACK_CRON and TRACK_ENABLED, and INGEST_REV is the whole-registry re-ingest control.

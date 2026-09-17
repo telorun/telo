@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.6 - 2026-09-17
+### Fixed
+* A CEL value JSON has no form for is written in its plain encoding where it leaves for a reader outside Telo - an SSE data payload, an NDJSON line, an MCP tool call's arguments and a structured tool result fed back to a model - a timestamp as RFC 3339 text in UTC, a duration as seconds such as 5400s, bytes as base64url, a uint as its digits, where a duration used to be written as an empty object.
+
 ## 0.9.5 - 2026-08-29
 ### Fixed
 * An error frame carries the failing error's `code` when it has one. A stream now fails by rejecting, so this frame is the whole of what a client gets, and a bare message is not something it can branch on.

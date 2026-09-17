@@ -1,6 +1,0 @@
-modules:
-  modules/mcp-server: Fixed
-body: A tool result, and the data of an error a catches entry renders, write a CEL
-  value in its plain encoding - a timestamp as RFC 3339 text in UTC, a duration as
-  seconds such as 5400s, bytes as base64url - where a duration in structuredContent or
-  in error data used to reach the client as an empty object.

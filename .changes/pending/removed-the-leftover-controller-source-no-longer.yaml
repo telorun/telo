@@ -1,5 +1,0 @@
-modules:
-  modules/type: Fixed
-body: "The leftover controller source no longer imports the CEL engine or carries its
-  unreachable rule evaluator, and the package no longer depends on @marcbachmann/cel-js.
-  Type.JsonSchema is unchanged: it delegates to the built-in Telo.JsonSchema."
