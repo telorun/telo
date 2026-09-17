@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2026-09-15
+### Added
+* Breaking: the controllers ship inside the module artifact and better-sqlite3's addon in per-platform native layers, instead of being installed from npm at load. On Node, a host needs linux (amd64, arm64, arm; gnu or musl), darwin (amd64, arm64) or windows (amd64, arm64) at Node 24 or 25; any other host fails with ERR_NATIVE_FILE_UNAVAILABLE naming the platforms the module ships. Bun keeps using bun:sqlite. Requires telo >=0.90.0.
+
 ## 0.4.0 - 2026-08-26
 ### Added
 * 'beforeMigrations:' is now 'prepare:', named for what it is FOR — data preparation for a narrowing the reconciliation pass is about to attempt — which is what every refusal already tells the author to write. The old spelling still loads: a manifest migration rewrites the key, and nothing re-runs because the ledger stores the migration key alone.
