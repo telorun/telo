@@ -16,6 +16,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@/": path.resolve(__dirname, "./src") + "/",
+      // Mirrors `vite.config.ts`. It must: a test that resolved the analyzer
+      // differently from the app would pass against code the app never runs,
+      // which is how a stale `dist` went unnoticed here for two weeks.
+      "@telorun/analyzer": path.resolve(__dirname, "../../analyzer/nodejs/src/index.ts"),
       "fs/promises": path.resolve(__dirname, "./src/empty.ts"),
       fs: path.resolve(__dirname, "./src/empty.ts"),
       path: path.resolve(__dirname, "./src/empty.ts"),

@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { abstractKindMessage, isInstantiableDefinition } from "./instantiable-kind.js";
 import { collectRefs, isInlineResource } from "./reference-field-map.js";
 import type { ExternalSchemaResolver } from "./schema-compat.js";
 import { collectProperties, resolveRef } from "./schema-compat.js";
@@ -9,9 +10,14 @@ import { collectValueSchemaIssues } from "./validate-value-schema.js";
 
 const SOURCE = "telo-analyzer";
 
-/** Minimal view of a definition needed to validate an inline resource's config. */
+/** Minimal view of a definition needed to validate an inline resource's config.
+ *  `kind` is the DEFINITION DOC's kind (`Telo.Definition` / `Telo.Abstract`) —
+ *  what says whether the declaration may exist at all — and `metadata` names the
+ *  canonical kind the implementations hint is looked up under. */
 export interface InlineDefinitionLookup {
-  (kind: string): { schema?: Record<string, any> } | undefined;
+  (kind: string):
+    | { kind?: string; metadata?: { module?: string; name?: unknown }; schema?: Record<string, any> }
+    | undefined;
 }
 
 /**
@@ -60,6 +66,11 @@ export function validateNestedInlineResources(
    *  validator answering the same question, and omitting it would silently stop
    *  checking rather than fail. */
   validator: InlineConfigValidator,
+  /** The alias-form kinds an author could write in place of an abstract one, by
+   *  canonical kind. Required for the same reason `validator` is: the aliases in
+   *  scope are the caller's to know, and defaulting to "none reachable" would
+   *  turn a missing argument into a message that reads as an answer. */
+  implementationsOf: (canonicalKind: string) => string[],
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const resource = { kind: manifest.kind, name: manifest.metadata?.name as string };
@@ -76,6 +87,21 @@ export function validateNestedInlineResources(
         code: "UNDEFINED_KIND",
         source: SOURCE,
         message: `${resource.kind}/${resource.name}: inline ${kind} at '${path}': No Telo.Definition found for kind '${kind}'.`,
+        data: { resource, filePath, path: `${path}.kind` },
+      });
+      return;
+    }
+    // A contract written where an instance belongs. Checked before the schema
+    // bail-out below, because an abstract routinely declares no `schema:` —
+    // returning there would leave the declaration unreported at both ends,
+    // static and, until dispatch, runtime.
+    if (!isInstantiableDefinition(def)) {
+      const canonical = `${def.metadata?.module}.${def.metadata?.name as string}`;
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "ABSTRACT_KIND_INSTANTIATED",
+        source: SOURCE,
+        message: `${resource.kind}/${resource.name}: inline ${kind} at '${path}': ${abstractKindMessage(kind, implementationsOf(canonical))}`,
         data: { resource, filePath, path: `${path}.kind` },
       });
       return;

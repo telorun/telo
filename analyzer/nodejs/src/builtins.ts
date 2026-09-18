@@ -1162,13 +1162,18 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         exports: {
           type: "object",
           properties: {
-            kinds: { type: "array", items: { type: "string" } },
+            // Titled because these two ARE a library's public surface, and the
+            // module graph draws them as the root's lists — where an Application
+            // draws its boot targets. The view reads the title off the schema, so
+            // naming them here is what keeps resource-kind knowledge out of it.
+            kinds: { type: "array", title: "Exported kinds", items: { type: "string" } },
             // An entry is a bare name (`Db`, a locally-owned export) or a dotted `Alias.Name`
             // (re-export of the instance reached via this library's import aliased `Alias`,
             // under the name `Name`) — mirroring `exports.kinds`. `variables` / `secrets` are
             // reserved on the resources.<Alias> value-flow surface, so they may not be exported.
             resources: {
               type: "array",
+              title: "Exported resources",
               items: { type: "string", not: { enum: ["variables", "secrets"] } },
             },
             code: LIBRARY_CANDIDATES_SCHEMA,

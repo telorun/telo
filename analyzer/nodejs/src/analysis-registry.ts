@@ -9,6 +9,7 @@ import {
   type DerivedSlot,
   type DerivedSlotContext,
 } from "./derived-slots.js";
+import { isInstantiableDefinition } from "./instantiable-kind.js";
 import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.js";
 import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
 import type { ContractDirection, DefResolver } from "./extends-resolution.js";
@@ -398,6 +399,10 @@ export class AnalysisRegistry {
     const defs = this._context().definitions;
     if (!defs) return [];
     return defs.getByExtends(kind).flatMap((def) => {
+      // The subtree carries abstracts too — `Telo.Runnable` and `Telo.Invocable`
+      // both extend `Telo.Executable` — and offering one as a substitute names a
+      // kind the kernel refuses at `create()`.
+      if (!isInstantiableDefinition(def)) return [];
       const module = (def.metadata as { module?: string } | undefined)?.module;
       const name = def.metadata?.name as string | undefined;
       return module && name ? [`${module}.${name}`] : [];
@@ -463,13 +468,21 @@ export class AnalysisRegistry {
    *  Resolution mirrors `validateReferences.checkKind`: abstract targets expand to
    *  the set of definitions extending them; concrete targets yield just themselves.
    *  Returns `undefined` when the ref can't be resolved (e.g. unregistered identity),
-   *  so callers can fall back to the unfiltered kind list. */
+   *  so callers can fall back to the unfiltered kind list.
+   *
+   *  This is the CREATION question — every "create one here" affordance in the
+   *  editor reads it — so an abstract in the accepted set is dropped. The
+   *  accepted set is a substitutability answer and legitimately contains
+   *  abstracts (`Telo.Executable` is extended by `Telo.Runnable` and
+   *  `Telo.Invocable`), which is what offered `kind: Telo.Invocable` as
+   *  something to create at every step's `invoke:`. */
   userFacingKindsForRef(xTeloRef: string): string[] | undefined {
     const canonicalKinds = this.acceptedKindsForRef(xTeloRef);
     if (!canonicalKinds) return undefined;
 
     const out = new Set<string>();
     for (const kind of canonicalKinds) {
+      if (!isInstantiableDefinition(this.defs.resolve(kind))) continue;
       const dot = kind.indexOf(".");
       if (dot === -1) continue;
       const moduleName = kind.slice(0, dot);

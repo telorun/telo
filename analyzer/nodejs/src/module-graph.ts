@@ -95,8 +95,13 @@ export type EdgeClass = "flow" | "holds" | "shape" | "data";
  * site, so it has no array to sit in and no sibling to be moved past. It is a
  * line of the body because it is a thing the author wrote and has to be able to
  * reach; see {@link isOrderedRow}.
+ *
+ * `export` is not a position either, for a different reason: a library's
+ * `exports.kinds` / `exports.resources` is a SET. Nothing reads an earlier
+ * export, so no entry is before any other, and offering a "move up" on one
+ * would be an affordance over a distinction that does not exist.
  */
-export type RowKind = "step" | "entry" | "target" | "inline" | "reference";
+export type RowKind = "step" | "entry" | "target" | "inline" | "reference" | "export";
 
 /**
  * Rows that are ordered entries of their array.
@@ -781,8 +786,17 @@ export function buildModuleGraph(
       ...(module ? { module } : {}),
       ports: [],
       rows: [],
-      // Boot targets are an ordered list the root always has, empty or not.
-      rowArrays: [{ field: "targets", kind: "target" }],
+      // What the module root lists depends on what KIND of root it is. An
+      // Application's boot targets are an ordered list it always has, empty or
+      // not — but `targets:` is FORBIDDEN on a `Telo.Library`, so stamping it
+      // unconditionally drew a library an affordance for a field it may not
+      // have. A library's lists are its public surface instead.
+      rowArrays: isApplicationRoot(options.root)
+        ? [{ field: "targets", kind: "target" }]
+        : [
+            { field: "exports.kinds", kind: "export" },
+            { field: "exports.resources", kind: "export" },
+          ],
       root: true,
     });
   }
@@ -952,7 +966,9 @@ export function buildModuleGraph(
     // not a bare `!ref` — and `targetRows` already renders every shape an entry
     // takes, so collecting both listed an inline target twice.
     node.rows = node.root
-      ? targetRows(node, manifest, rowIdByPath)
+      ? isApplicationRoot(manifest)
+        ? targetRows(node, manifest, rowIdByPath)
+        : exportRows(node, manifest, rowIdByPath)
       : [
           ...stepRows(node, callGraph, callGraphIdOf(node.id), rowIdByPath),
           ...entryRows(node, manifest, schema, rowIdByPath),
@@ -1100,6 +1116,17 @@ export function buildModuleGraph(
         moduleCallNamesOf(moduleCallNames, manifest),
       ),
     );
+  }
+
+  // A library's exported INSTANCES, as edges from the root to what it hands out.
+  //
+  // Minted here rather than through `projectEdge`, which flags every edge
+  // leaving the root as a boot target on the premise that the root has no other
+  // slots. That premise held while `targets:` was the root's only reference and
+  // stops holding now — an export is not a boot target, and one reported as one
+  // would claim the library starts something.
+  if (root && !isApplicationRoot(options.root)) {
+    edges.push(...exportEdges(root, options.root!, resolveName, byQualifiedName, rowIdByPath));
   }
 
   // Where each row's call is WRITTEN, and what may fill it — see
@@ -1644,6 +1671,68 @@ function declaredRowArrays(
   return out;
 }
 
+/** Whether the module root is an Application. A `Telo.Library` is the other
+ *  root, and the two differ in what the doc may even carry: `targets:` is an
+ *  Application's, `exports:` is a Library's. */
+function isApplicationRoot(manifest: ResourceManifest | undefined): boolean {
+  return manifest?.kind === "Telo.Application";
+}
+
+/**
+ * A library's public surface: what it exports, as rows.
+ *
+ * This is the Library's answer to the Application's boot list — the one list a
+ * reader opens the module doc to see. The two export lists stay SEPARATE
+ * arrays rather than one `exports` list, because a kind and an instance are
+ * different things to export: a kind lets an importer construct its own, an
+ * instance is one the library already built and hands over.
+ *
+ * An entry is a bare name or an alias-qualified `Alias.Name` re-export, and it
+ * is carried AS WRITTEN — resolving it to a canonical spelling would report a
+ * name the author never typed, and for a re-export the alias is the fact.
+ * Only `exports.resources` names something the graph draws, so only those rows
+ * carry a `target`; an exported KIND lives on the kind plane, which is a
+ * separate surface with no box to point at, and selecting it there already
+ * rings its instances.
+ */
+function exportRows(
+  node: GraphNode,
+  manifest: ResourceManifest,
+  rowIdByPath: Map<string, string>,
+): GraphRow[] {
+  const exports = (manifest as Record<string, unknown>).exports as
+    | Record<string, unknown>
+    | undefined;
+  if (!exports || typeof exports !== "object") return [];
+
+  const minter = new IdMinter();
+  const rows: GraphRow[] = [];
+  // `code` is deliberately absent: it names a bundle a dependent's IMPORT
+  // resolves, not a resource or a kind, so it has nothing to draw.
+  for (const field of ["kinds", "resources"] as const) {
+    const listed = exports[field];
+    if (!Array.isArray(listed)) continue;
+    listed.forEach((entry, index) => {
+      if (typeof entry !== "string") return;
+      const array = `exports.${field}`;
+      const path = `${array}[${index}]`;
+      const id = minter.mint(`${node.id}#export:${field}/${entry}`);
+      rowIdByPath.set(`${node.id}\0${path}`, id);
+      rows.push({
+        id,
+        kind: "export" as const,
+        name: entry,
+        path,
+        array,
+        index,
+        depth: 0,
+        ...(field === "resources" ? { target: entry } : {}),
+      });
+    });
+  }
+  return rows;
+}
+
 /** Boot rows: the root's `targets`, which is an ordered step list — a later
  *  target reads an earlier one's result — so it is rows, not a set. */
 function targetRows(
@@ -1739,6 +1828,22 @@ function buildPorts(
     if (slots.length === 0 && !field.path.includes("[]") && !field.path.includes("{}")) {
       slots.push({ path: field.path });
     }
+    const append = appendPathFor(field.path, manifest);
+
+    // **A port is a place a value is or could be written; one that is neither is
+    // not a port.** The synthesis above deliberately invents no write site for a
+    // slot nested past an array or a map, and `appendPathFor` declines the same
+    // shapes — so such a slot, unwritten, has no site at all: nothing occupies
+    // it and there is nowhere to put anything. That is the very socket the
+    // comment above calls worse than not drawing it, reached by the other road.
+    //
+    // It is also why `Http.Server` drew `notFoundHandler` twice. That property
+    // holds two ref slots — `invoke`, and an `encoder` the `returns:` schema
+    // pulls in through `x-telo-schema-from` — and a rail port renders one line
+    // per port under its top-level property's name, so the dead one came out as
+    // a second, identical, unfillable `notFoundHandler`.
+    if (slots.length === 0 && !append) continue;
+
     const port: GraphPort = {
       slot: field.path,
       refs: field.refs,
@@ -1747,7 +1852,6 @@ function buildPorts(
       class: edgeClassOf(uses),
       slots,
     };
-    const append = appendPathFor(field.path, manifest);
     if (append) port.addPath = append;
     if (rowArrays.has(containerArrayOf(field.path))) port.rowOwned = true;
     ports.push(port);
@@ -1964,6 +2068,61 @@ function buildKindPlane(
     if (kind.own) kind.exported = exportedKinds.has(name);
     out.push(kind);
   }
+  return out;
+}
+
+/**
+ * A library's exported instances, as edges from the root to each one.
+ *
+ * Only `exports.resources` produces an edge. An exported KIND is a type, and
+ * types live on the kind plane — a separate surface, deliberately, so that
+ * things which exist at runtime and things which do not are not drawn among
+ * each other. There is no box to point at, and selecting a kind already rings
+ * its instances, which is what stands in for the line.
+ *
+ * Classed `holds`: the module owns the instance and hands it out, and control
+ * never transfers along this edge. It is not `flow` (nothing is invoked), not
+ * `shape` (which names a type, and is filtered off the rails), and not `data`
+ * (which is a CEL read).
+ *
+ * An entry resolves the way it is written — a bare name in this module's scope,
+ * or `Alias.name` for an instance re-exported from an import. An entry that
+ * resolves to nothing keeps its row and loses only its edge: a name the library
+ * lists but nothing provides is a fact about the manifest, and dropping the row
+ * would hide exactly the export that is broken.
+ */
+function exportEdges(
+  root: GraphNode,
+  manifest: ResourceManifest,
+  resolveName: (name: string, fromModule: string | undefined) => string | undefined,
+  byQualifiedName: ReadonlyMap<string, string>,
+  rowIdByPath: ReadonlyMap<string, string>,
+): GraphEdge[] {
+  const listed = (manifest as Record<string, unknown>).exports as
+    | { resources?: unknown }
+    | undefined;
+  if (!Array.isArray(listed?.resources)) return [];
+
+  const out: GraphEdge[] = [];
+  listed.resources.forEach((entry, index) => {
+    if (typeof entry !== "string") return;
+    const to = byQualifiedName.get(entry) ?? resolveName(entry, root.module);
+    if (!to) return;
+    const path = `exports.resources[${index}]`;
+    const edge: GraphEdge = {
+      id: `${root.id}\0export\0${path}`,
+      from: root.id,
+      to,
+      toName: entry,
+      class: "holds",
+      use: [],
+      slot: "exports.resources",
+      path,
+    };
+    const row = rowIdByPath.get(`${root.id}\0${path}`);
+    if (row) edge.row = row;
+    out.push(edge);
+  });
   return out;
 }
 

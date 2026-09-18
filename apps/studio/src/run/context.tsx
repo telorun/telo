@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { toast } from "sonner";
+
 import { type DebugFrame, isEventFrame } from "@telorun/debug-wire";
 
 import { registry } from "./registry";
@@ -37,6 +39,12 @@ const MAX_DEBUG_FRAMES = 5_000;
 /** Per-application run history cap. Oldest runs beyond this are evicted and
  *  their runtime (session + transcript) torn down. */
 const MAX_RUNS_PER_APP = 10;
+
+/** Why a run the editor still held ended without the editor seeing it end. The
+ *  two causes are indistinguishable from here — and call for the same thing —
+ *  so the message names both rather than picking one. */
+const SESSION_LOST_MESSAGE =
+  "The runner no longer has this session — it was restarted, or the session expired.";
 
 export interface LogLine {
   id: number;
@@ -256,12 +264,20 @@ export function RunProvider({ children }: { children: ReactNode }) {
   // in a ref so it is available to the persist effect synchronously, before any
   // state-driven effect can run and clobber the stored config.
   const attachMeta = useRef<Map<string, { adapterId: string; config: unknown }>>(new Map());
+  // Restored runs whose status still claims to be live. A status read back out
+  // of localStorage is a CLAIM about a session nobody has re-checked since the
+  // page was last open, and the runner holds its registry in memory — a restart
+  // forgets every session — so the claim is reconciled once on mount. Filled by
+  // the state initializer below, which is the only place the restored entries
+  // and their statuses are both in hand.
+  const unreconciled = useRef<string[]>([]);
 
   // Seed the run list from the persisted index so a page reload restores history.
   const [runsByApp, setRunsByApp] = useState<Map<string, RunRecord[]>>(() => {
     const byApp = new Map<string, RunRecord[]>();
     for (const entry of loadRunIndex()) {
       attachMeta.current.set(entry.id, { adapterId: entry.adapterId, config: entry.config });
+      if (!isTerminal(entry.status)) unreconciled.current.push(entry.id);
       const list = byApp.get(entry.appPath) ?? [];
       list.push(shellFromEntry(entry));
       byApp.set(entry.appPath, list);
@@ -479,6 +495,83 @@ export function RunProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /** Write a terminal status onto a record that still claims to be live. Only
+   *  ever narrows: a record its event stream already settled keeps its own
+   *  outcome, which says more than this one does. */
+  const settle = useCallback(
+    (runId: string, status: RunStatus) => {
+      updateRecord(runId, (record) =>
+        isTerminal(record.status) ? record : { ...record, status, progress: null },
+      );
+    },
+    [updateRecord],
+  );
+
+  /**
+   * Record that the runner no longer has this session.
+   *
+   * Terminal, because the run is over — we simply did not see it end. Writing it
+   * is what unpins the record: a stale `running` claim keeps the app's button
+   * showing Stop, so the user can neither stop the run (there is nothing to
+   * stop) nor start another. A record the event stream already settled keeps its
+   * own outcome, which carries more than this one does (an exit code, a failure
+   * message).
+   */
+  const markSessionLost = useCallback(
+    (runId: string) => {
+      updateRecord(runId, (record) => ({
+        ...record,
+        // Nothing left on the runner to replay, whichever way the status went.
+        historyUnavailable: true,
+        ...(isTerminal(record.status)
+          ? {}
+          : {
+              status: { kind: "failed", message: SESSION_LOST_MESSAGE } satisfies RunStatus,
+              progress: null,
+            }),
+      }));
+    },
+    [updateRecord],
+  );
+
+  // Reconcile restored runs that still claim to be live against the runner that
+  // owns them. Nothing else re-checks that claim: the status came out of
+  // localStorage and its session's event stream — the thing that would have
+  // reported the end — died with the page.
+  //
+  // Mount only. A session lost while the tab is open takes its stream with it,
+  // and the stream reports that itself.
+  useEffect(() => {
+    const ids = unreconciled.current;
+    unreconciled.current = [];
+    if (ids.length === 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      for (const runId of ids) {
+        if (cancelled) return;
+        const meta = attachMeta.current.get(runId);
+        if (!meta) continue;
+        const adapter = registry.get(meta.adapterId);
+        if (!adapter?.probeSession) continue;
+        try {
+          const status = await adapter.probeSession(runId, meta.config);
+          if (cancelled) return;
+          if (status === null) markSessionLost(runId);
+          else updateRecord(runId, (record) => ({ ...record, status }));
+        } catch {
+          // The runner could not be reached, so nothing was learned. Leaving the
+          // claim as it stands is the honest reading — a terminal status written
+          // here would report an outage as a finished run. Stop stays available
+          // and reports the outage itself.
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [markSessionLost, updateRecord]);
+
   // Re-establish a run restored from the index: reconnect to the still-live
   // session on the runner and replay its history. No-op once a runtime exists
   // (freshly started runs, or an already-attached one). Marks the record
@@ -497,7 +590,10 @@ export function RunProvider({ children }: { children: ReactNode }) {
       try {
         const session = await adapter.attach(runId, meta.config);
         if (!session) {
-          updateRecord(runId, (record) => ({ ...record, historyUnavailable: true }));
+          // The runner answered and does not have it. That is a fact about the
+          // run, not just about our ability to show its history — so the record
+          // goes terminal rather than staying pinned as live.
+          markSessionLost(runId);
           return;
         }
         const terminal = session.io ? new TerminalBuffer(session.io) : null;
@@ -526,7 +622,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
         attaching.current.delete(runId);
       }
     },
-    [updateRecord, setTerminal],
+    [updateRecord, setTerminal, markSessionLost],
   );
 
   const selectRun = useCallback(
@@ -549,18 +645,76 @@ export function RunProvider({ children }: { children: ReactNode }) {
     [runsByApp, ensureAttached, setBlocker, setSelectedRunForApp, setDockOpen],
   );
 
-  const stopRun = useCallback(async (runId: string) => {
-    const rt = runtimes.current.get(runId);
-    if (!rt) return;
-    if (isTerminal(rt.session.getStatus())) return;
-    try {
-      await rt.session.stop();
-    } catch (err) {
-      // If stop rejected, the exit task may already have emitted a terminal
-      // status via the subscription — let that drive UI state.
-      console.warn("session stop failed:", err);
-    }
-  }, []);
+  const removeRun = useCallback(
+    (runId: string) => {
+      // Clearing the selection first means the dock falls back to the app's next
+      // run for a removed one that was on screen. The runsByApp change drives the
+      // rest: the eviction effect disposes any runtime + forgets its re-attach
+      // metadata, and the persist effect rewrites the index without it.
+      forgetSelection((id) => id === runId);
+      setRunsByApp((prev) => {
+        let found = false;
+        const next = new Map(prev);
+        for (const [appPath, records] of prev) {
+          if (!records.some((r) => r.id === runId)) continue;
+          found = true;
+          next.set(
+            appPath,
+            records.filter((r) => r.id !== runId),
+          );
+        }
+        return found ? next : prev;
+      });
+    },
+    [forgetSelection],
+  );
+
+  /**
+   * Stop a run, whether or not the editor still holds a live session for it.
+   *
+   * The record outlives its runtime — a page reload drops every session object,
+   * and a runner restart drops every session — so Stop acts on what the record
+   * always knows: an id and the adapter config the run was started with. Going
+   * through the runtime alone is what made Stop a silent no-op on exactly the
+   * runs that needed stopping.
+   *
+   * It also settles the record itself rather than waiting for a `status` event.
+   * That stream is precisely what a runner restart takes away, and the runner
+   * answers a stop for a session it does not have with a success it then has no
+   * way to report.
+   */
+  const stopRun = useCallback(
+    async (runId: string) => {
+      const rt = runtimes.current.get(runId);
+      if (rt && isTerminal(rt.session.getStatus())) return;
+      try {
+        if (rt) {
+          // The live session owns its stream teardown, so prefer it.
+          await rt.session.stop();
+        } else {
+          const meta = attachMeta.current.get(runId);
+          const adapter = meta ? registry.get(meta.adapterId) : undefined;
+          if (!meta || !adapter?.stopSession) {
+            throw new Error("This run's runner is no longer available to stop it.");
+          }
+          await adapter.stopSession(runId, meta.config);
+        }
+        settle(runId, { kind: "stopped" });
+      } catch (err) {
+        // Reported, never swallowed: a Stop that silently does nothing is what
+        // pinned the run in the first place. The record keeps its status —
+        // nothing was learned about the workload — so the toast carries the way
+        // out for a runner that is not coming back.
+        const message = err instanceof Error ? err.message : String(err);
+        toast.error("Couldn't stop the run", {
+          description: message,
+          action: { label: "Forget run", onClick: () => removeRun(runId) },
+          duration: 10_000,
+        });
+      }
+    },
+    [settle, removeRun],
+  );
 
   /**
    * The app's live WATCH session, or null. This is what makes a save cheap: the
@@ -656,30 +810,6 @@ export function RunProvider({ children }: { children: ReactNode }) {
     if (!session?.resume) return false;
     return session.resume();
   }, []);
-
-  const removeRun = useCallback(
-    (runId: string) => {
-    // Clearing the selection first means the dock falls back to the app's next
-    // run for a removed one that was on screen. The runsByApp change drives the
-    // rest: the eviction effect disposes any runtime + forgets its re-attach
-    // metadata, and the persist effect rewrites the index without it.
-    forgetSelection((id) => id === runId);
-    setRunsByApp((prev) => {
-      let found = false;
-      const next = new Map(prev);
-      for (const [appPath, records] of prev) {
-        if (!records.some((r) => r.id === runId)) continue;
-        found = true;
-        next.set(
-          appPath,
-          records.filter((r) => r.id !== runId),
-        );
-      }
-      return found ? next : prev;
-      });
-    },
-    [forgetSelection],
-  );
 
   // Geometry follows content, reconciled in ONE place.
   //

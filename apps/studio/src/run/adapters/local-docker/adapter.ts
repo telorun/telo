@@ -108,6 +108,23 @@ export const localDockerAdapter: RunAdapter<LocalDockerConfig> = {
     return inner.attach!(sessionId, dial(config, status.baseUrl));
   },
 
+  async probeSession(sessionId, config) {
+    // Same reading `attach` takes: kill-on-close means a session never outlives
+    // the runner, so a runner that is not up has definitively lost this one.
+    const status = await localRunnerStatus();
+    if (status.state !== "ready" || !status.baseUrl) return null;
+    return inner.probeSession!(sessionId, dial(config, status.baseUrl));
+  },
+
+  async stopSession(sessionId, config) {
+    // Nothing left to stop — the runner that held it is gone, and with it the
+    // container. Resolving rather than throwing keeps Stop honest: the session
+    // really is not running.
+    const status = await localRunnerStatus();
+    if (status.state !== "ready" || !status.baseUrl) return;
+    await inner.stopSession!(sessionId, dial(config, status.baseUrl));
+  },
+
   async resolveBaseUrl() {
     const status = await localRunnerStatus();
     return status.state === "ready" ? (status.baseUrl ?? null) : null;

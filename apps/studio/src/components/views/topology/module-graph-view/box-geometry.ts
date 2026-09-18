@@ -1,5 +1,5 @@
 import type { GraphNode } from "@telorun/analyzer";
-import { collapsibleProps, isCollapsible, propertyOf } from "./collapsible";
+import { branchOf, collapsibleProps, isCollapsible, isList } from "./collapsible";
 import { isPickerPort, pickerRows } from "./picker-port";
 import { visibleRows } from "./row-tree";
 
@@ -111,19 +111,20 @@ export function boxLines(node: GraphNode, isOpen: IsOpen): BoxLine[] {
         lines.push(line);
       }
     }
-    if (!prop.ordered) continue;
+    if (!isList(prop)) continue;
     // Every row of the body, at every depth — a nested row's own array is
     // `steps[1].do`, and the branch it belongs to is `steps`.
-    const rows = drawn.filter((r) => propertyOf(r.array) === prop.key);
+    const rows = drawn.filter((r) => branchOf(node, r.array) === prop.key);
     lines.push({ height: ROW_SUMMARY_HEIGHT });
     if (!open) continue;
     for (const row of rows) lines.push({ path: row.path, height: ROW_HEIGHT });
-    lines.push({ height: ROW_HEIGHT });
+    // The trailing "add" line, which only an appendable list has.
+    if (prop.ordered) lines.push({ height: ROW_HEIGHT });
   }
   for (const port of railPorts(node)) {
     // A port belonging to no collapsible branch (there are none today, but a
     // kind may declare a ref slot the property walk does not group) still draws.
-    if (collapsibleProps(node).some((p) => p.key === propertyOf(port.slot))) continue;
+    if (collapsibleProps(node).some((p) => p.key === branchOf(node, port.slot))) continue;
     lines.push({ path: port.slots[0]?.path, height: PORT_HEIGHT });
   }
   lines.push({ height: BOX_TAIL });
