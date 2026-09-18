@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata:
+  name: TextPrimaryKeyApp
+  version: 1.0.0
+  description: >-
+    Declares one table whose primary key is a text column — the shape SQLite backs
+    with an implicit index — and does nothing else. Booting it twice against the
+    same file is the test: the second boot reconciles the declaration against a
+    database this same declaration created.
+imports:
+  SQLite: ../../../../sqlite
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+targets:
+  - !ref schema
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Schema
+metadata: { name: schema }
+connection: !ref db
+tables:
+  - !ref orders
+---
+kind: SQLite.Table
+metadata: { name: orders }
+table: orders
+columns:
+  order_id: { type: text, primaryKey: true }
+  amount_cents: { type: integer, nullable: false }

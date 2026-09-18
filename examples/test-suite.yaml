@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: ExamplesTestSuite
+  version: 1.0.0
+  description: |
+    Runs every example's own tests, each in its own kernel.
+
+    Separate from the module suite on purpose: an example imports PUBLISHED
+    modules, which is what makes it copyable, so a red run here can mean the
+    release sequence is behind rather than that the code is wrong. Mixing the two
+    would make a red module suite ambiguous.
+
+        telo ./examples/test-suite.yaml
+imports:
+  Test: ../modules/test
+targets:
+  - !ref runAll
+---
+kind: Test.Suite
+metadata: { name: runAll }
+include:
+  - "*/tests/*.yaml"
+exclude:
+  - "**/__fixtures__/**"
+  # The two REPL examples drive a real model, which costs money and minutes on
+  # every run. They are a suite of their own — `examples/test-suite-live.yaml` —
+  # so this one stays free to run on every change.
+  - "agent-console/**"
+  - "chat-console/**"

@@ -1,0 +1,45 @@
+kind: Telo.Application
+metadata:
+  name: RefusesAnUndeclaredInputTest
+  version: 1.0.0
+  description: >-
+    A value supplied under a name the child does not declare is refused by the
+    child, not quietly dropped: a caller that misspelled an input, or one written
+    against an older version of the child, would otherwise watch the child boot on
+    its defaults and have to work out why. The child reports the refusal and exits
+    non-zero.
+imports:
+  App: ../
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref greeter
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: greeter }
+source: ./__fixtures__/greeter/telo.yaml
+variables:
+  whom: the supervisor
+---
+kind: Run.Loop
+metadata: { name: awaitGreeterExit }
+condition: !cel "resources.greeter.status.exitCode == null"
+maxIterations: 200
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 20ms
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: awaitExit
+    invoke: !ref awaitGreeterExit
+  - name: verifyRefused
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.greeter.status.exitCode"
+      expected: 1

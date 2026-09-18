@@ -1,0 +1,8 @@
+modules:
+  modules/http-server: Fixed
+  modules/http-dispatch: Fixed
+body: A response header whose CEL yields something that is not text now fails with the
+  header name, the status entry and the type it produced. Loosening the header type so a
+  computed header could be sent left nothing checking what CEL returned, so an object or
+  an integer reached Node and failed inside the server with a message naming none of the
+  three. A number is rendered.

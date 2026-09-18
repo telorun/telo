@@ -11,8 +11,8 @@ metadata:
     Run, then:
         curl 'http://localhost:8845/v1/hello?name=World'
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
-  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Http: oci://ghcr.io/telorun/http-server@0.31.1#sha256-bHVTaRpBawOUeJcsaW38aAg2BFy9ZXM6K2m8tz0bpqc
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
 targets:
   - !ref exampleServer
 ports:

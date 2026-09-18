@@ -1,0 +1,26 @@
+kind: Telo.Application
+metadata:
+  name: Greeter
+  version: 1.0.0
+  description: >-
+    A child application for the App.Instance tests: it prints who it was told to
+    greet and exits. Its `who` has a default, so a test can also assert what a
+    child falls back to when nothing is supplied.
+imports:
+  Console: ../../../../console
+  Run: ../../../../run
+variables:
+  who:
+    env: GREET_WHO
+    type: string
+    default: nobody
+targets:
+  - !ref greet
+---
+kind: Run.Sequence
+metadata: { name: greet }
+steps:
+  - name: say
+    invoke: { kind: Console.WriteLine }
+    inputs:
+      output: !cel "'greeting ' + variables.who"

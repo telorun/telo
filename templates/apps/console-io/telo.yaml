@@ -8,7 +8,7 @@ metadata:
     `Console.writeLine` via a `!cel` expression. A good "does my setup work"
     starting point.
 imports:
-  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+  Console: oci://ghcr.io/telorun/console@0.18.0#sha256-rehHO9omxIjC-2wR3aRpXSRbtbt9jczNbkY_dLxocy4
 targets:
   - name: readName
     invoke: !ref Console.readLine

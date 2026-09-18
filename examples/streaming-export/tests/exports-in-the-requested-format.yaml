@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: StreamingExportExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/streaming-export` and asks the one export route for each format
+    it advertises. Content negotiation is the whole example: the same handler
+    streams NDJSON or SSE depending on `Accept`, and answers 406 for a type it
+    cannot produce rather than sending the wrong one.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8080
+targets:
+  - !ref app
+steps:
+  - name: ndjson
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8080/export
+      method: GET
+      headers:
+        accept: application/x-ndjson
+  - name: sse
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8080/export
+      method: GET
+      headers:
+        accept: text/event-stream
+  - name: unsupported
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8080/export
+      method: GET
+      headers:
+        accept: image/png
+
+  - name: verifyNegotiation
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        ndjsonStatus: !cel "steps.ndjson.result.status"
+        ndjsonType: !cel "steps.ndjson.result.headers['content-type']"
+        sseStatus: !cel "steps.sse.result.status"
+        sseType: !cel "steps.sse.result.headers['content-type']"
+        unsupportedStatus: !cel "steps.unsupported.result.status"
+      expected:
+        ndjsonStatus: 200
+        ndjsonType: application/x-ndjson
+        sseStatus: 200
+        sseType: text/event-stream
+        unsupportedStatus: 406

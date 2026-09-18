@@ -29,6 +29,7 @@ export * from "./log-record.js";
 export * from "./log-sink.js";
 export * from "./record-buffer.js";
 export * from "./runtime-seam.js";
+export * from "./text-channel.js";
 export * from "./log-severity.js";
 export * from "./logger.js";
 export * from "./network-fetch.js";

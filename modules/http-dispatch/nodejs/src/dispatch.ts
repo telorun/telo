@@ -1,4 +1,4 @@
-import type { ResourceInstance } from "@telorun/sdk";
+import { InvokeError, type ResourceInstance } from "@telorun/sdk";
 import type { CatchEntry, ContentEntry, ReturnEntry } from "./schema.js";
 import type { ResponseSink, StreamErrorHook } from "./sink.js";
 
@@ -113,20 +113,42 @@ function negotiateContent(
   return best?.mime;
 }
 
+/**
+ * A header value on the wire is text.
+ *
+ * A number is rendered, because an author writing `Retry-After: !cel "…"` over an
+ * integer means the integer. Anything else is refused HERE, naming the header,
+ * the status it was being sent with and what CEL actually produced — handing it
+ * to Node instead fails somewhere inside the server with a message naming none
+ * of the three.
+ */
+function headerText(name: string, value: unknown, status: number): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "bigint") return String(value);
+  throw new InvokeError(
+    "ERR_HEADER_VALUE_INVALID",
+    `Http response header '${name}' on the ${status} entry evaluated to ` +
+      `${value === null ? "null" : typeof value}, and a header value must be text. ` +
+      `Render it — \`string(…)\` — or send it in the body.`,
+    { header: name, status },
+  );
+}
+
 /** Apply entry-level + per-MIME headers, with per-MIME winning on conflict.
  *  CEL templates in either map are expanded against `celCtx`. */
 function applyHeaders(
-  entryHeaders: Record<string, string> | undefined,
-  contentHeaders: Record<string, string> | undefined,
+  entryHeaders: Record<string, unknown> | undefined,
+  contentHeaders: Record<string, unknown> | undefined,
   celCtx: Record<string, unknown>,
   moduleContext: ModuleLikeContext,
   sink: ResponseSink,
+  status: number,
 ): void {
   for (const headers of [entryHeaders, contentHeaders]) {
     if (!headers) continue;
     const expanded = moduleContext.expandWith(headers, celCtx) as Record<string, unknown>;
     for (const [key, value] of Object.entries(expanded)) {
-      sink.setHeader(key, value as string);
+      sink.setHeader(key, headerText(key, value, status));
     }
   }
 }
@@ -157,7 +179,7 @@ export async function dispatchReturns(
   // Status codes with no body (204, 304, etc.) — entry has no `content:` map.
   if (!entry.content || Object.keys(entry.content).length === 0) {
     sink.setStatus(entry.status);
-    applyHeaders(entry.headers, undefined, celCtx, moduleContext, sink);
+    applyHeaders(entry.headers, undefined, celCtx, moduleContext, sink, entry.status);
     await sink.send();
     return;
   }
@@ -183,7 +205,7 @@ export async function dispatchReturns(
 
   sink.setStatus(entry.status);
   sink.setHeader("Content-Type", matchedMime);
-  applyHeaders(entry.headers, contentEntry.headers, celCtx, moduleContext, sink);
+  applyHeaders(entry.headers, contentEntry.headers, celCtx, moduleContext, sink, entry.status);
 
   if (entry.mode === "stream") {
     await dispatchStream(entry.status, matchedMime, contentEntry, result, sink, streamError);
@@ -286,7 +308,7 @@ export async function dispatchCatches(
 
   if (!entry.content || Object.keys(entry.content).length === 0) {
     sink.setStatus(entry.status);
-    applyHeaders(entry.headers, undefined, celCtx, moduleContext, sink);
+    applyHeaders(entry.headers, undefined, celCtx, moduleContext, sink, entry.status);
     await sink.send();
     return true;
   }
@@ -310,7 +332,7 @@ export async function dispatchCatches(
   const contentEntry = entry.content[matchedMime]!;
   sink.setStatus(entry.status);
   sink.setHeader("Content-Type", matchedMime);
-  applyHeaders(entry.headers, contentEntry.headers, celCtx, moduleContext, sink);
+  applyHeaders(entry.headers, contentEntry.headers, celCtx, moduleContext, sink, entry.status);
 
   if (contentEntry.body !== undefined) {
     const mappedBody = moduleContext.expandWith(contentEntry.body, celCtx);

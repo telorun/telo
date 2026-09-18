@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: JavaScriptDemoExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/javascript-demo` to completion and checks the value it computed.
+imports:
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: test }
+source: ../telo.yaml
+expect:
+  runs: true
+  stdout: "Evaluated JavaScript code.\nResult is: 84\n\n"

@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: CustomKindExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/custom-kind` to completion. The example defines two notification
+    kinds in YAML alone and posts through both to a receiver it stands up itself,
+    so what it prints is the round trip: a kind declared, instantiated and
+    delivered.
+imports:
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: test }
+source: ../telo.yaml
+expect:
+  runs: true
+  stdout: "received on /generic: {\"event\":\"deploy.finished\",\"service\":\"checkout\",\"version\":\"2026.8.1\"}\nreceived on /slack: {\"text\":\"checkout 2026.8.1 is live\"}\n✔ webhook -> HTTP 200, slack -> HTTP 200\n"

@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: DurableOrdersExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/durable-orders` to completion. The example's subject is a
+    workflow that survives being killed mid-flight, and its journal outlives the
+    run — so what is asserted here is that a run completes, whether it is starting
+    fresh or replaying a journal an earlier run left behind.
+imports:
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: test }
+source: ../telo.yaml
+expect:
+  runs: true

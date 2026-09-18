@@ -19,8 +19,8 @@ imports:
       budgetLimit: !cel "variables.budgetLimit"
       allowManifestRuns: !cel "variables.allowManifestRuns"
       reasoningEffort: !cel "variables.reasoningEffort"
-  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
-  Sse: oci://ghcr.io/telorun/sse-codec@0.11.0#sha256-PDIUJeHsa2-brpvFDmz5PQSQ7The15hMzcxlD0FSJGw
+  Http: oci://ghcr.io/telorun/http-server@0.31.1#sha256-bHVTaRpBawOUeJcsaW38aAg2BFy9ZXM6K2m8tz0bpqc
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
 ports:
   http:
     env: PORT

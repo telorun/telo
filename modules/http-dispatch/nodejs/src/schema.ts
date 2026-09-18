@@ -1,6 +1,15 @@
 import { Static, Type } from "@sinclair/typebox";
 import { Invocable, KindRef, Ref } from "@telorun/sdk";
 
+/** A header value is a string by the time it reaches the client, but in the
+ *  manifest it is whatever the author wrote — and a header worth setting is
+ *  usually computed (`Retry-After` from a rate limiter, `Location` from a
+ *  created id), so what arrives here is a CEL `CompiledValue` the dispatcher
+ *  expands. Typing it as a string rejected exactly those at the controller's
+ *  `ctx.validateSchema` check, with a message about the header rather than
+ *  about CEL — the same trap `when:` documents one field below. */
+const HeaderValue = Type.Unknown();
+
 /** Per-MIME content-map entry. Buffer-mode responses use `body` (with optional
  *  `schema` for AJV validation); stream-mode responses use `encoder` (a ref to
  *  any `Codec.Encoder` implementation). The two are mutually exclusive per
@@ -11,7 +20,7 @@ export const ContentEntry = Type.Object({
   body: Type.Optional(Type.Any()),
   schema: Type.Optional(Type.Any()),
   encoder: Type.Optional(Type.Unsafe<KindRef<Invocable>>(Ref("Codec.Encoder"))),
-  headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+  headers: Type.Optional(Type.Record(Type.String(), HeaderValue)),
 });
 export type ContentEntry = Static<typeof ContentEntry>;
 
@@ -33,7 +42,7 @@ export const ReturnEntry = Type.Object({
   status: Type.Integer({ minimum: 100, maximum: 599 }),
   when: Type.Optional(Type.Unknown()),
   mode: Type.Optional(Type.Union([Type.Literal("buffer"), Type.Literal("stream")])),
-  headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+  headers: Type.Optional(Type.Record(Type.String(), HeaderValue)),
   content: Type.Optional(Type.Record(Type.String(), ContentEntry)),
 });
 export type ReturnEntry = Static<typeof ReturnEntry>;
@@ -41,7 +50,7 @@ export type ReturnEntry = Static<typeof ReturnEntry>;
 export const CatchEntry = Type.Object({
   status: Type.Integer({ minimum: 100, maximum: 599 }),
   when: Type.Optional(Type.Unknown()),
-  headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+  headers: Type.Optional(Type.Record(Type.String(), HeaderValue)),
   content: Type.Optional(Type.Record(Type.String(), CatchContentEntry)),
 });
 export type CatchEntry = Static<typeof CatchEntry>;

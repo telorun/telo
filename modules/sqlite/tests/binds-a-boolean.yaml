@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: SqliteBooleanBindings
+  version: 1.0.0
+  description: |
+    Regression: a bound boolean is 1 or 0, on both drivers.
+
+    SQLite has no boolean storage class, and the two drivers disagreed on the
+    convention over `integer`: bun:sqlite coerced a bound `true`, better-sqlite3
+    refused it with "SQLite3 can only bind numbers, strings, bigints, buffers,
+    and null". The same manifest wrote the row under Bun and failed under Node —
+    which is also how the todo-app example's PUT answered 500 there.
+imports:
+  Sql: ../../sql
+  SQLite: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: create
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: "CREATE TABLE flags (id INTEGER PRIMARY KEY, done INTEGER NOT NULL)"
+
+  - name: insert
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: "INSERT INTO flags (id, done) VALUES (?, ?), (?, ?)"
+      bindings: [ !cel "1", !cel "true", !cel "2", !cel "false" ]
+
+  - name: read
+    invoke: !ref query
+    inputs:
+      sql: "SELECT id, done FROM flags ORDER BY id"
+  - name: verifyStored
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result.rows"
+      expected:
+        - { id: 1, done: 1 }
+        - { id: 2, done: 0 }
+
+  # A boolean in a predicate is the same convention read back the other way.
+  - name: readDone
+    invoke: !ref query
+    inputs:
+      sql: "SELECT id FROM flags WHERE done = ?"
+      bindings: [ !cel "true" ]
+  - name: verifyMatched
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.readDone.result.rows"
+      expected:
+        - { id: 1 }

@@ -1,0 +1,105 @@
+kind: Telo.Application
+metadata:
+  name: OrderWebhookExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/order-webhook` and redelivers the same webhook twice, which is
+    what the example exists to make safe: the first delivery is fresh, the second is
+    replayed and writes nothing. An unauthorized call is asserted too, since the
+    shared-secret check is the other half of the contract.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8099
+targets:
+  - !ref app
+steps:
+  # The example keeps its claims in a database file that outlives the test, so
+  # the delivery is identified freshly on every run: a fixed id would be
+  # "replayed" the second time this test is run on the same machine, and the
+  # first assertion would fail for a reason that has nothing to do with the code.
+  - name: delivery
+    value:
+      id: !cel "'delivery-' + uuidv4()"
+      orderId: !cel "'order-' + uuidv4()"
+
+  - name: first
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8099/webhooks/orders
+      method: POST
+      headers:
+        authorization: Bearer local-dev-token
+    inputs:
+      body:
+        deliveryId: !cel "steps.delivery.result.id"
+        orderId: !cel "steps.delivery.result.orderId"
+        amountCents: 2500
+        currency: EUR
+  - name: verifyFresh
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.first.result.status"
+        body: !cel "steps.first.result.body"
+      expected:
+        status: 202
+        body:
+          orderId: !cel "steps.delivery.result.orderId"
+          state: fresh
+
+  - name: redelivery
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8099/webhooks/orders
+      method: POST
+      headers:
+        authorization: Bearer local-dev-token
+    inputs:
+      body:
+        deliveryId: !cel "steps.delivery.result.id"
+        orderId: !cel "steps.delivery.result.orderId"
+        amountCents: 2500
+        currency: EUR
+  - name: verifyReplayed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.redelivery.result.status"
+        body: !cel "steps.redelivery.result.body"
+      expected:
+        status: 202
+        body:
+          orderId: !cel "steps.delivery.result.orderId"
+          state: replayed
+
+  - name: unauthorized
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8099/webhooks/orders
+      method: POST
+      headers:
+        authorization: Bearer wrong-token
+    inputs:
+      body:
+        deliveryId: !cel "'delivery-' + uuidv4()"
+        orderId: !cel "'order-' + uuidv4()"
+        amountCents: 100
+        currency: EUR
+  - name: verifyUnauthorized
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.unauthorized.result.status"
+      expected: 401

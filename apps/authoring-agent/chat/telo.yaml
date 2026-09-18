@@ -19,17 +19,17 @@ metadata:
     its tests drive the same handler. Parameterized by the OpenAI key and the
     SQLite file; the workspace is ./workspace.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.18.1#sha256-QKVK7-JK8AOmpm_6fwO5Hta75oUg0X9FL-aEy9A19YQ
-  OpenAI: oci://ghcr.io/telorun/openai@0.3.1#sha256-FVg-jmRPGB43Or9_LU8XhDhG_G2Mio56iiSDwi_ofLk
-  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.13.1#sha256-QxuPt5VxVqUQMrtb2M9yfZmKG1HdJZkDdB6kleDigJs
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.15.0#sha256-M3frsOwjZWR_Vo2LERsRjBqcN7iXZbVg_gTjK4OGq8s
-  Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
+  Ai: oci://ghcr.io/telorun/ai@0.20.1#sha256-Ys9inTxTXKIdAIEqG8elivkWEngImXsMsmNol8rxa3w
+  OpenAI: oci://ghcr.io/telorun/openai@0.5.1#sha256-weAhBYyV-sZXjSNiIMnAqLLuDGvCFduRImF3P1KmXbU
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.2#sha256-MgBP2BIWuM3-PEv7j3IHCH0Pfrr6jW0Ao-YR7Dr7bCk
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.15.1#sha256-Z6HrB5UBztVEilByoYh6Pe_TbQl3N-uhYLA0fzeQpJw
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.15.1#sha256-qOWJKsRw1H8vQiR8L0m3hnAsJf0otEPYMZ6yYzU_CbA
+  Fs: oci://ghcr.io/telorun/fs@0.10.1#sha256-pj5pToa-5CERdxQQpeRNYEJmtNWsNYIGKqehjamHXUo
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
-  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
+  SQLite: oci://ghcr.io/telorun/sqlite@0.5.0#sha256-A8EQEU4t73P9GqvxfkAvTL0pqAm1b6aovw1a17lxvTU
   RecordStream: oci://ghcr.io/telorun/record-stream@0.15.4#sha256-L4b4EJ4vVPnHszy59Jy7WlZaldAk0kP2Z1sKYwDKhNg
-  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Lease: oci://ghcr.io/telorun/lease@0.13.0#sha256-HTQ8Fds5O9h15_gsOlVNSgVpGl7Ma3uKJRldfw-lfyI
   KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.7.0#sha256-i1Nen64mCl25XONkoBGRqiTptxBSBA8zBcW6om9autg
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.9.0#sha256-xf5Sl63MYbMSM4GzzRPVNrqbtrxQ27x9cwFKrDCjCEM
@@ -2551,6 +2551,62 @@ system: |
   Read the `assert` and `test` modules' schemas with the hub tools before
   writing against them — like every other module, take their kinds and fields
   from the manifest rather than from memory.
+
+  When the thing under test IS the application — the wiring, the ports, the
+  whole file a user runs — run it with `App.Instance` from the `app` module
+  instead of importing it. Declare it in the sequence's `with:` block and list it
+  under `targets:`: it starts before the first step and is torn down after the
+  last one, so the port is bound for exactly the length of the test and the run
+  exits on its own. Supply the child's inputs by the names IT declares —
+  `variables:` / `secrets:` / `ports:`, never environment-variable spellings —
+  and give each test a port of its own so two can run at once:
+
+      kind: Run.Sequence
+      metadata: { name: testServesGreeting }
+      with:
+        - kind: App.Instance
+          metadata: { name: app }
+          source: ../telo.yaml
+          ports: { http: 8931 }
+      targets:
+        - !ref app
+      steps:
+        - name: call
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:8931/v1/hello?name=World
+            method: GET
+
+  The first step needs no retry: starting a child means its own `targets:` have
+  been dispatched, so its server is already listening. `status.exitCode` is null
+  while it runs and the code it exited with afterwards — whether an exit is a
+  failure is an assertion you write, not something the kind decides.
+
+  For several copies of one application, declare several `App.Instance`
+  resources, each named, each with its own identity and port — there is no
+  `replicas:` count and no pool kind, because a test that stops one replica and
+  asserts another took over needs each to have a name. Put shared configuration
+  in a kind (`extends: App.Instance` with a `base:` mapping) and declare the
+  members. To stop one part-way through a test, declare it in a NESTED
+  `Run.Sequence`'s `with:`; leaving that sequence tears it down.
+
+  Still prefer a feature library where the behaviour allows it: a library test
+  needs no port and no server. `App.Instance` is for what only the assembled
+  application has.
+
+  An application that TALKS — prompts for a line, runs a REPL — is tested as a
+  conversation, with the `channel` module. `App.Instance` is a `Channel.Text`, so
+  declare a `Channel.ReadUntil` (with a `timeout:`) and a `Channel.SendLine`
+  naming it, then alternate: read up to the prompt, send the answer, read up to
+  the next one. A read returns everything up to and including its `until` marker
+  and leaves the rest, so reads continue where the last one stopped; reading a
+  line is `until: "\n"`, and `until` is a literal, never a pattern. Branch on
+  what came back with the ordinary step grammar over
+  `steps.<name>.result.text`. `Channel.End` closes the input so the application
+  reads end of input and exits on its own, which is how a clean exit after EOF is
+  asserted. There is no `stdin:` field on `App.Instance`, and no dialogue-script
+  kind: a fixed script cannot answer a question that only appears once the
+  previous one is answered.
 
   ### Mocking an outbound API
 

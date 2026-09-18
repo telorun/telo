@@ -20,11 +20,11 @@ metadata:
     To watch it tick without waiting for 03:00:
         JOB_CRON='*/10 * * * * *' telo .
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
-  Schedule: oci://ghcr.io/telorun/scheduler@0.9.0#sha256-4MpeweWGk4LedDa34TE9lELndNfl9YyBLAyOiHyap9s
-  Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
-  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
-  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+  Http: oci://ghcr.io/telorun/http-server@0.31.1#sha256-bHVTaRpBawOUeJcsaW38aAg2BFy9ZXM6K2m8tz0bpqc
+  Schedule: oci://ghcr.io/telorun/scheduler@0.9.1#sha256-GKos66CxC3CyRL9GYIsVLKRcwJZjoJYyiLoqaZDqfWM
+  Fs: oci://ghcr.io/telorun/fs@0.10.1#sha256-pj5pToa-5CERdxQQpeRNYEJmtNWsNYIGKqehjamHXUo
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Console: oci://ghcr.io/telorun/console@0.18.0#sha256-rehHO9omxIjC-2wR3aRpXSRbtbt9jczNbkY_dLxocy4
 targets:
   - !ref server
   - !ref nightly

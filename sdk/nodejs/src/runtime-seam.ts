@@ -1,4 +1,5 @@
 import type { Stream } from "./stream.js";
+import type { TextChannelInput } from "./text-channel.js";
 
 /**
  * The host's own manifest machinery, exposed to a controller as `ctx.runtime`:
@@ -23,11 +24,14 @@ export interface RuntimeSeam {
   /**
    * Load and start `source` as a child manifest, isolated from the caller's.
    *
-   * Resolves once the child has **started**, not once it has finished, so the
-   * caller can consume its output while it runs; completion is
-   * {@link RuntimeRun.exitCode}. A child that fails to load is not an exception
-   * here — it settles `exitCode` non-zero with the failure written to `stderr`,
-   * so a caller handles both failure modes in one place.
+   * Resolves once the child has **started** — its own `targets:` dispatched, so
+   * a server it declares is listening and holding — not once it has finished,
+   * so the caller can consume its output while it runs; completion is
+   * {@link RuntimeRun.exitCode}. That is what lets a supervisor order work after
+   * a child is reachable without polling it. A child that fails to load, or one
+   * that exits before it finishes starting, is not an exception here — it
+   * settles `exitCode` with the failure written to `stderr`, so a caller handles
+   * both failure modes in one place.
    *
    * **The caller owns the child's lifetime.** Drain both streams, or stop it with
    * {@link RuntimeRun.cancel}; a child nobody reads and nobody stops keeps
@@ -48,6 +52,27 @@ export interface RuntimeRunOptions {
    *  from. Omitted means the caller's own — a child never inherits more than it
    *  is handed. */
   env?: Record<string, string | undefined>;
+  /**
+   * Values for the child's declared inputs, **by the name the child declares**
+   * rather than by the environment variable it binds them to.
+   *
+   * A caller that knows what it is starting supplies this instead of guessing at
+   * env-var spellings: the child's `env:` mapping is its own business, and a raw
+   * env map lets a caller set keys the child never declared — the bypass the
+   * host-env guardrail exists to close. A supplied name that the child does not
+   * declare is refused; a declared name not supplied falls back to the
+   * environment and then to its default, exactly as it does for a root
+   * application. Values are validated against the child's own declarations, so
+   * the child remains the authority on what it accepts.
+   */
+  inputs?: RuntimeRunInputs;
+}
+
+/** Values for a child manifest's declared inputs, keyed by declaration name. */
+export interface RuntimeRunInputs {
+  variables?: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
+  ports?: Record<string, number>;
 }
 
 /**
@@ -65,6 +90,34 @@ export interface RuntimeRunOptions {
 export interface RuntimeRun {
   readonly stdout: Stream<string>;
   readonly stderr: Stream<string>;
+  /**
+   * The child's input, written to over time.
+   *
+   * A handle rather than a value handed over at the start, because the useful
+   * case is a CONVERSATION: answer the prompt the child just printed, read what
+   * it says next, answer that. A caller that knows the whole script up front
+   * writes it in one call and ends; a caller driving an interactive child writes
+   * as it reads {@link stdout}. A fixed value could only ever express the first.
+   *
+   * A child is never handed the caller's own input — two children would race for
+   * the same lines — so a child nobody writes to reads nothing, and reads
+   * end-of-input once {@link TextChannelInput.end} is called or the run is
+   * cancelled.
+   */
+  readonly stdin: TextChannelInput;
+  /**
+   * Settles once every one of the child's `targets:` has been dispatched — so a
+   * server it declares is listening — or as soon as it exits, whichever comes
+   * first. Never rejects.
+   *
+   * Separate from `run()` returning, because the two questions have different
+   * answers for different children. A caller about to reach a child over a port
+   * awaits this and needs no retry. A caller holding a CONVERSATION must not:
+   * an interactive child blocks on its first prompt, so its targets are never
+   * all dispatched, and awaiting this would wait for something that only happens
+   * when the child is finished.
+   */
+  readonly started: Promise<void>;
   /** Settles when the child has finished — including after {@link cancel}. Both
    *  streams have ended by then. */
   readonly exitCode: Promise<number>;

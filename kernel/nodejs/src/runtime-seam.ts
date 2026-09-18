@@ -21,7 +21,7 @@ import {
   type RuntimeRunOptions,
   type RuntimeSeam,
 } from "@telorun/sdk";
-import { Writable } from "stream";
+import { PassThrough, Writable } from "stream";
 import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import type { Kernel } from "./kernel.js";
@@ -109,6 +109,39 @@ class OutputChannel {
   }
 }
 
+/**
+ * The write end of a child's input: a `Readable` the child kernel reads, and the
+ * `write` / `end` the caller drives it with.
+ *
+ * A `PassThrough` rather than a pre-built `Readable.from(text)`, because the
+ * caller writes over time — answering a prompt the child has just printed — and
+ * a readable built from a value can only ever deliver what was known before the
+ * child started. `write` resolves when the stream has taken the text, so a
+ * caller that awaits it cannot outrun the child's buffer.
+ */
+class InputChannel {
+  readonly readable = new PassThrough({ encoding: "utf8" });
+  #ended = false;
+
+  async write(text: string): Promise<void> {
+    if (this.#ended) {
+      throw new Error(
+        "Cannot write to a child application's input after it has been ended — " +
+          "the child has already been told no more input is coming.",
+      );
+    }
+    await new Promise<void>((resolve, reject) => {
+      this.readable.write(text, (err) => (err ? reject(err) : resolve()));
+    });
+  }
+
+  async end(): Promise<void> {
+    if (this.#ended) return;
+    this.#ended = true;
+    await new Promise<void>((resolve) => this.readable.end(resolve));
+  }
+}
+
 const SEVERITY_NAMES: Record<number, CheckDiagnosticSeverity> = {
   1: "error",
   2: "warning",
@@ -163,12 +196,24 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     const { Kernel: ChildKernel } = await import("./kernel.js");
     const stdout = new OutputChannel();
     const stderr = new OutputChannel();
+    const stdin = new InputChannel();
 
     const child = new ChildKernel({
       env: options?.env ?? this.kernel.env,
       stdout: stdout.writable,
       stderr: stderr.writable,
       sources: [...this.kernel.injectedSources],
+      inputs: options?.inputs,
+      // A child reads what the caller writes it, never the host's own input:
+      // two children sharing one terminal would race for the same lines.
+      stdin: stdin.readable,
+    });
+
+    // Subscribed BEFORE the child is started, or a child that starts within the
+    // same turn would emit into no listener and this would wait for an event
+    // that has already happened.
+    const started = new Promise<void>((resolve) => {
+      child.on("Kernel.Started", () => resolve());
     });
 
     // A child that fails to load is not an exception on this side: the caller
@@ -207,6 +252,10 @@ export class KernelRuntimeSeam implements RuntimeSeam {
         // release `waitForIdle` so `start()`'s own `finally` performs the
         // teardown — the same path a SIGINT takes. Awaiting `exitCode` is what
         // makes "resolves when teardown has completed" true.
+        // Input first: a child parked on a read has no other reason to wake,
+        // and cancelling one that is still waiting for a line it will never be
+        // given leaves the wait as the last thing in its log.
+        await stdin.end();
         child.cancel(reason);
         child.forceIdle();
         await exitCode;
@@ -214,7 +263,21 @@ export class KernelRuntimeSeam implements RuntimeSeam {
       return cancelled;
     };
 
-    return { stdout: stdout.stream, stderr: stderr.stream, exitCode, cancel };
+    // Raced against the exit so the wait always ends: a child that fails to
+    // load, or one whose work is over before it finishes starting, settles
+    // `exitCode` and never emits `Kernel.Started`. Handed to the caller rather
+    // than awaited here — see `RuntimeRun.started` for why an interactive child
+    // must not wait for it.
+    const startedOrExited = Promise.race([started, exitCode.then(() => undefined)]);
+
+    return {
+      started: startedOrExited,
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+      stdin: { write: (text: string) => stdin.write(text), end: () => stdin.end() },
+      exitCode,
+      cancel,
+    };
   }
 
   async check(source: string, options?: RuntimeCheckOptions): Promise<RuntimeCheckResult> {

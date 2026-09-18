@@ -161,6 +161,38 @@ jobs:
         if: always()
         run: docker compose down -v
 
+  # The two interactive examples — `agent-console` and `chat-console` — driven
+  # through real conversations against a real model. They are here rather than in
+  # the per-PR suite for the same reason the authoring agent's tests are: tokens
+  # and minutes on every run. What they cover is not coverable any other way — a
+  # REPL's second turn exists only because its first was answered.
+  live-examples:
+    name: Live example conversations
+    runs-on: ubuntu-latest
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run the live example suite
+        run: pnpm run telo ./examples/test-suite-live.yaml
+
   # The authoring agent drives a real model against the live hub and authors a
   # manifest against PINNED PUBLISHED modules. No stack to bring up — what makes
   # it e2e is the live model and registry — but it is separated from the module

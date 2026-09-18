@@ -1,0 +1,62 @@
+kind: Telo.Application
+metadata:
+  name: EchoApi
+  version: 1.0.0
+  description: >-
+    A child application that serves one route and never exits on its own — the
+    shape a test cannot reach any other way, since an application cannot be
+    imported. Its port is declared, so whoever runs it decides where it listens.
+imports:
+  Http: ../../../../http-server
+  Run: ../../../../run
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8930
+targets:
+  - !ref server
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Echo
+    version: 1.0.0
+mounts:
+  - path: /v1
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /echo
+      method: GET
+      schema:
+        query:
+          type: object
+          required: [say]
+          properties:
+            say: { type: string }
+    handler: !ref echo
+    inputs:
+      say: !cel "request.query.say"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              said: !cel "result.said"
+---
+kind: Run.Value
+metadata: { name: echo }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      say: { type: string }
+value:
+  said: !cel "inputs.say"

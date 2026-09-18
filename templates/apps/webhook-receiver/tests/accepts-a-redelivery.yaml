@@ -1,0 +1,86 @@
+kind: Telo.Application
+metadata:
+  name: WebhookReceiverTemplateTest
+  version: 1.0.0
+  description: >-
+    Runs the template and delivers the same event twice. Being safe to redeliver is
+    the template's whole subject: the second delivery is recognised rather than
+    recorded again, and a call without the shared secret is refused.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8047
+targets:
+  - !ref app
+steps:
+  # The template keeps its claims in a database file that outlives the test, so
+  # the delivery is identified freshly on every run — a fixed id would read as
+  # "replayed" the second time this test runs on the same machine.
+  - name: delivery
+    value:
+      id: !cel "'delivery-' + uuidv4()"
+
+  - name: first
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8047/webhooks/events
+      method: POST
+      headers:
+        authorization: Bearer local-dev-token
+    inputs:
+      body:
+        deliveryId: !cel "steps.delivery.result.id"
+        subject: order.created
+        payload: { orderId: 1 }
+  - name: redelivery
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8047/webhooks/events
+      method: POST
+      headers:
+        authorization: Bearer local-dev-token
+    inputs:
+      body:
+        deliveryId: !cel "steps.delivery.result.id"
+        subject: order.created
+        payload: { orderId: 1 }
+  - name: unauthorized
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8047/webhooks/events
+      method: POST
+      headers:
+        authorization: Bearer wrong-token
+    inputs:
+      body:
+        deliveryId: !cel "'delivery-' + uuidv4()"
+        subject: order.created
+        payload: { orderId: 2 }
+
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: !cel "steps.first.result.body.state"
+        firstStatus: !cel "steps.first.result.status"
+        again: !cel "steps.redelivery.result.body.state"
+        againStatus: !cel "steps.redelivery.result.status"
+        unauthorized: !cel "steps.unauthorized.result.status"
+      expected:
+        first: fresh
+        firstStatus: 202
+        again: replayed
+        againStatus: 202
+        unauthorized: 401

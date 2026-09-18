@@ -8,6 +8,7 @@
 # requires one, and run falls back to reading the manifest's own directory alone,
 # exactly as it did before this file existed.
 release:
+  registry: oci://ghcr.io/telorun
   # The subtrees that may hold modules, which is not derivable — hundreds of
   # manifests elsewhere in this tree carry a `metadata.version`, and a whole-tree
   # scan would read every example and every cached `.telo/manifests` copy as a

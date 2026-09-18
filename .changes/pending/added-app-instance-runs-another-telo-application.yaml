@@ -1,0 +1,7 @@
+modules:
+  modules/app: Added
+body: "App.Instance runs another Telo application as a resource: supply its declared
+  variables, secrets and ports by name, read its exit code as observed state, and have
+  it shut down cleanly when the scope that declared it ends. An application cannot be
+  imported, so this is how a manifest supervises several applications at once, and how a
+  test reaches the file a user actually copies."

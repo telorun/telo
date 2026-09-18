@@ -1,0 +1,97 @@
+kind: Telo.Application
+metadata:
+  name: ComputedResponseHeadersTest
+  version: 1.0.0
+  description: >-
+    A response header built from CEL reaches the client. A header worth setting is
+    usually computed — `Retry-After` from a rate limiter, `Location` from a created
+    id — and the value the controller validates at that point is a compiled CEL
+    object, not a string. Typing it as a string refused the route at boot, with a
+    message about the header rather than about CEL.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 8938
+    openapi:
+      info:
+        title: Computed headers
+        version: 1.0.0
+    mounts:
+      - path: /v1
+        mount: !ref api
+targets:
+  - !ref server
+steps:
+  - name: call
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8938/v1/limited
+      method: GET
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.call.result.status"
+        retryAfter: !cel "steps.call.result.headers['retry-after']"
+      expected:
+        status: 429
+        retryAfter: "30"
+
+  # A header CEL can produce anything; a header on the wire is text. An object
+  # says so here, naming the header and the entry, rather than failing inside the
+  # server with a message naming neither.
+  - name: badHeader
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8938/v1/bad-header
+      method: GET
+  - name: verifyRefused
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.badHeader.result.status"
+      expected: 500
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /limited
+      method: GET
+    handler: !ref limit
+    inputs: {}
+    returns:
+      - status: 429
+        headers:
+          Retry-After: !cel "string(result.retryAfter)"
+        content:
+          application/json:
+            body:
+              error: rate_limited
+  - request:
+      path: /bad-header
+      method: GET
+    handler: !ref limit
+    inputs: {}
+    returns:
+      - status: 200
+        headers:
+          X-Nonsense: !cel "result"
+        content:
+          application/json:
+            body: { ok: true }
+---
+kind: Run.Value
+metadata: { name: limit }
+value:
+  retryAfter: 30

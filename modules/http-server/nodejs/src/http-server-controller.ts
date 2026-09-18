@@ -170,7 +170,18 @@ class HttpServer implements ResourceInstance {
       // the log controller carries the same switch.
       logController: new LogController({ disableRequestLogging: true }),
       trustProxy,
-      ajv: { customOptions: { useDefaults: true }, plugins: [addFormats.default as any] },
+      // `removeAdditional: false` overrides Fastify's default, which STRIPS a
+      // property the schema does not declare. A request body declaring
+      // `additionalProperties: false` then answered 201 with the undeclared
+      // field silently discarded — the author wrote a refusal, the client was
+      // told it succeeded, and the data was dropped between them. A misspelled
+      // field name is the common case, and it is indistinguishable from success
+      // until someone reads the row back. The declaration decides now: a schema
+      // that closes the object refuses, an open one accepts as before.
+      ajv: {
+        customOptions: { useDefaults: true, removeAdditional: false },
+        plugins: [addFormats.default as any],
+      },
     });
   }
 

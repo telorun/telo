@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: RebootsAgainstATextPrimaryKeyTest
+  version: 1.0.0
+  description: >-
+    An application whose table has a text primary key must boot twice against its
+    own database. SQLite backs such a key with an implicit index, which introspection
+    read back as a column-level `unique` flag the declaration never carried — so the
+    second boot diffed `unique true → false`, called it an in-place constraint change
+    and refused. The application worked once and never again.
+
+    Two boots is the whole test, and it needs a second application to express: a
+    schema is reconciled at boot, so one kernel can only ever do it once.
+imports:
+  App: ../../app
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref firstBoot
+  - !ref secondBoot
+  - !ref test
+---
+# Both boots name the same file — the second one reconciles the declaration
+# against the database the first one created, which is the case under test. The
+# file lives in the workspace's own scratch directory and is deliberately
+# reused: a run that finds one already there is reconciling twice over, which is
+# the same assertion.
+---
+kind: App.Instance
+metadata: { name: firstBoot }
+source: ./__fixtures__/text-primary-key/telo.yaml
+variables:
+  dbFile: ./.telo/sqlite-text-primary-key.db
+---
+kind: App.Instance
+metadata: { name: secondBoot }
+source: ./__fixtures__/text-primary-key/telo.yaml
+variables:
+  dbFile: ./.telo/sqlite-text-primary-key.db
+---
+kind: Run.Loop
+metadata: { name: awaitBoots }
+condition: !cel "resources.firstBoot.status.exitCode == null || resources.secondBoot.status.exitCode == null"
+maxIterations: 200
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 20ms
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: awaitExits
+    invoke: !ref awaitBoots
+  - name: verifyBothBooted
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: !cel "resources.firstBoot.status.exitCode"
+        second: !cel "resources.secondBoot.status.exitCode"
+      expected:
+        first: 0
+        second: 0

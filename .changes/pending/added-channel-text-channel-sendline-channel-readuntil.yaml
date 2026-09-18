@@ -1,0 +1,8 @@
+modules:
+  modules/channel: Added
+body: "Channel.Text, Channel.SendLine, Channel.ReadUntil and Channel.End: hold a
+  conversation with a running program over a line-oriented text channel. Read up to a
+  literal marker, answer what it asked, and close its input when the exchange is over.
+  Reads are bounded and report the text that arrived instead of the marker, so a stuck
+  exchange says why rather than hanging. Branching on what came back is the ordinary
+  step grammar."

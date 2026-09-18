@@ -1,0 +1,69 @@
+kind: Telo.Application
+metadata:
+  name: SchemaEvolutionExampleTest
+  version: 1.0.0
+  description: >-
+    Runs release 1, then release 2 against the same database, in that order — which
+    is the example: a rename applied as expand-contract, a removed column kept as a
+    tombstone, and a reclaim that only happens once the grace window has passed.
+    Release 2 is then run a second time, because a declaration that cannot be
+    re-applied to the database it just produced is the failure this whole design
+    exists to prevent.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  Timer: ../../../modules/timer
+  Assert: ../../../modules/assert
+targets:
+  - !ref releaseOne
+  - !ref releaseTwo
+  - !ref releaseTwoAgain
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: releaseOne }
+source: ../v1.yaml
+variables:
+  dbFile: ./.telo/schema-evolution-test.db
+---
+kind: App.Instance
+metadata: { name: releaseTwo }
+source: ../telo.yaml
+variables:
+  dbFile: ./.telo/schema-evolution-test.db
+---
+kind: App.Instance
+metadata: { name: releaseTwoAgain }
+source: ../telo.yaml
+variables:
+  dbFile: ./.telo/schema-evolution-test.db
+---
+kind: Run.Loop
+metadata: { name: awaitReleases }
+condition: !cel >-
+  resources.releaseOne.status.exitCode == null ||
+  resources.releaseTwo.status.exitCode == null ||
+  resources.releaseTwoAgain.status.exitCode == null
+maxIterations: 300
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 20ms
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: awaitExits
+    invoke: !ref awaitReleases
+  - name: verifyEachRelease
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        releaseOne: !cel "resources.releaseOne.status.exitCode"
+        releaseTwo: !cel "resources.releaseTwo.status.exitCode"
+        releaseTwoAgain: !cel "resources.releaseTwoAgain.status.exitCode"
+      expected:
+        releaseOne: 0
+        releaseTwo: 0
+        releaseTwoAgain: 0

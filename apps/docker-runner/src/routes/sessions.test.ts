@@ -75,11 +75,7 @@ describe("POST /v1/sessions", () => {
 
   it("returns 201 with sessionId + streamUrl on happy path", async () => {
     h = await buildHarness();
-    const res = await h.app.inject({
-      method: "POST",
-      url: "/v1/sessions",
-      payload: VALID_START_BODY,
-    });
+    const res = await startSession(h);
 
     expect(res.statusCode).toBe(201);
     const body = res.json() as { sessionId: string; streamUrl: string; createdAt: string };
@@ -133,10 +129,10 @@ describe("POST /v1/sessions", () => {
   it("returns 409 too_many_sessions when at capacity", async () => {
     h = await buildHarness({}, { maxSessions: 1 });
     // First session succeeds.
-    const first = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+    const first = await startSession(h);
     expect(first.statusCode).toBe(201);
     // Second session should be rejected.
-    const second = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+    const second = await startSession(h);
     expect(second.statusCode).toBe(409);
     expect(second.json()).toMatchObject({ error: "too_many_sessions" });
   });
@@ -231,7 +227,7 @@ describe("GET /v1/sessions/:id", () => {
 
   it("returns session state for a live session", async () => {
     h = await buildHarness();
-    const start = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+    const start = await startSession(h);
     const { sessionId } = start.json() as { sessionId: string };
 
     const res = await h.app.inject({ method: "GET", url: `/v1/sessions/${sessionId}` });
@@ -262,7 +258,7 @@ describe("DELETE /v1/sessions/:id", () => {
 
   it("marks userStopped and calls container.kill", async () => {
     h = await buildHarness();
-    const start = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: VALID_START_BODY });
+    const start = await startSession(h);
     const { sessionId } = start.json() as { sessionId: string };
 
     const res = await h.app.inject({ method: "DELETE", url: `/v1/sessions/${sessionId}` });

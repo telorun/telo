@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: RunsAChildApplicationTest
+  version: 1.0.0
+  description: >-
+    A one-shot child runs as a resource of this application, and the value supplied
+    for its declared `who` is the one it used — supplied by the child's own name for
+    it, never by the environment variable it binds. Once the child is gone its exit
+    code is what this resource reports.
+imports:
+  App: ../
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref greeter
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: greeter }
+source: ./__fixtures__/greeter/telo.yaml
+variables:
+  who: the supervisor
+---
+# Starting a child means its own targets have been dispatched, not that it has
+# finished: a one-shot child is done working but still tearing down, and a server
+# child would never finish at all. So the exit is waited for rather than assumed,
+# under a cap — a child that never exits fails the assertion instead of hanging
+# the suite.
+kind: Run.Loop
+metadata: { name: awaitGreeterExit }
+condition: !cel "resources.greeter.status.exitCode == null"
+maxIterations: 200
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 20ms
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: awaitExit
+    invoke: !ref awaitGreeterExit
+  - name: verifyExit
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.greeter.status.exitCode"
+      expected: 0

@@ -1,0 +1,55 @@
+kind: Telo.Application
+metadata:
+  name: HelloApiExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/hello-api` — the file a reader copies, unmodified — on a port of
+    this test's own, and calls the route its README documents.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8845
+targets:
+  - !ref app
+steps:
+  - name: greet
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8845/v1/hello?name=World
+      method: GET
+  - name: verifyGreeting
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.greet.result.status"
+        body: !cel "steps.greet.result.body"
+      expected:
+        status: 200
+        body:
+          greeting: "Hello World!!"
+          nice: WOW
+
+  # The route declares `name` as required, so a request without it is refused
+  # before the handler runs.
+  - name: missingName
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8845/v1/hello
+      method: GET
+  - name: verifyRejected
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.missingName.result.status"
+      expected: 400

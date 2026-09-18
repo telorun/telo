@@ -1,0 +1,96 @@
+kind: Telo.Application
+metadata:
+  name: UrlShortenerExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/url-shortener` and walks the path a link takes: created through
+    one library, resolved by another, and listed by a third, all over one server.
+    The redirect is asserted as a 302 with its `Location` — a computed response
+    header, which is the shape that used to be refused at boot.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8085
+    variables:
+      dbFile: ./.telo/url-shortener-test.db
+targets:
+  - !ref app
+steps:
+  # The database outlives the test and a code is a primary key, so each run
+  # shortens under a code of its own.
+  - name: link
+    value:
+      code: !cel "'t' + replace(uuidv4(), '-', '')"
+
+  - name: create
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8085/links
+      method: POST
+    inputs:
+      body:
+        code: !cel "steps.link.result.code"
+        url: https://telo.run/docs
+  - name: verifyCreated
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.create.result.status"
+        code: !cel "steps.create.result.body.code"
+      expected:
+        status: 201
+        code: !cel "steps.link.result.code"
+
+  # `redirect: manual` — the client must report the 302 rather than follow it,
+  # which is the thing under test.
+  - name: follow
+    invoke:
+      kind: HttpClient.Request
+      method: GET
+      redirect: manual
+    inputs:
+      url: !cel "'http://127.0.0.1:8085/' + steps.link.result.code"
+  - name: verifyRedirect
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.follow.result.status"
+        location: !cel "steps.follow.result.headers.location"
+      expected:
+        status: 302
+        location: https://telo.run/docs
+
+  - name: unknown
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8085/nothing-here
+      method: GET
+      redirect: manual
+  - name: listed
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8085/admin/links
+      method: GET
+  - name: verifyAdminView
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        unknown: !cel "steps.unknown.result.status"
+        listStatus: !cel "steps.listed.result.status"
+        listed: !cel "size(steps.listed.result.body.filter(row, row.code == steps.link.result.code))"
+      expected:
+        unknown: 404
+        listStatus: 200
+        listed: 1

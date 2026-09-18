@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: HelloWorldExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/hello-world` to completion and checks what it printed. The
+    smallest example there is, and the one most likely to be read first — so what
+    it prints is part of its contract.
+imports:
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: test }
+source: ../telo.yaml
+expect:
+  runs: true
+  stdout: "Hello from Telo!\n"

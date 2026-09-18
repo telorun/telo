@@ -1,3 +1,4 @@
+import { toSqliteBindings } from "./sqlite-bound-parameters.js";
 import type { SqliteDb } from "./sqlite-driver-interface.js";
 
 // Computed, so the bundler leaves the import to the runtime: only Bun resolves
@@ -7,6 +8,9 @@ const BUN_SQLITE: string = "bun:sqlite";
 export async function openDatabase(file: string): Promise<SqliteDb> {
   const { Database } = (await import(BUN_SQLITE)) as typeof import("bun:sqlite");
   const db = new Database(file);
+  // See the Node driver: wait for a lock instead of failing on it, and say so
+  // here because the two drivers' defaults differ.
+  db.exec("PRAGMA busy_timeout = 5000");
 
   return {
     prepare(sql: string) {
@@ -21,17 +25,17 @@ export async function openDatabase(file: string): Promise<SqliteDb> {
         // reported (rowCount always 0).
         reader: stmt.columnNames.length > 0,
         all(params: ReadonlyArray<unknown>) {
-          return stmt.all(...(params as any[]));
+          return stmt.all(...(toSqliteBindings(params) as any[]));
         },
         run(params: ReadonlyArray<unknown>) {
-          const result = stmt.run(...(params as any[]));
+          const result = stmt.run(...(toSqliteBindings(params) as any[]));
           return {
             changes: result.changes,
             lastInsertRowid: result.lastInsertRowid,
           };
         },
         iterate(params: ReadonlyArray<unknown>) {
-          return stmt.iterate(...(params as any[])) as IterableIterator<unknown>;
+          return stmt.iterate(...(toSqliteBindings(params) as any[])) as IterableIterator<unknown>;
         },
       };
     },

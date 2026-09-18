@@ -28,14 +28,14 @@ metadata:
         curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/export \
           -H 'accept: image/png'                                  # 406
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+  Http: oci://ghcr.io/telorun/http-server@0.31.1#sha256-bHVTaRpBawOUeJcsaW38aAg2BFy9ZXM6K2m8tz0bpqc
   Multipart: oci://ghcr.io/telorun/multipart@0.2.2#sha256-RCqiT4UMwrVeRq1hU1xxkysRSxX4NC5DzsdrbbEBxv8
-  Ndjson: oci://ghcr.io/telorun/ndjson-codec@0.9.5#sha256-nV4xNsXHQi-iGes9fBxhtSmuvnnGtY7lk1SM_vZSLg0
-  Sse: oci://ghcr.io/telorun/sse-codec@0.11.0#sha256-PDIUJeHsa2-brpvFDmz5PQSQ7The15hMzcxlD0FSJGw
-  Stream: oci://ghcr.io/telorun/stream@0.11.0#sha256-nODqk6Vl8bhNF7R2yYT1WN0NrHL_rSzty9O7lrmlMsQ
+  Ndjson: oci://ghcr.io/telorun/ndjson-codec@0.9.6#sha256-tvszxz4U3DygtlJnFyEZkncziR69zJgHPD3gCQMlUhs
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.12.0#sha256-9k7wI-86RokMs-fb01heH4kitM5hNQcOrFj2OesahXE
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
-  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
-  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  SQLite: ../../modules/sqlite
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
 targets:
   - !ref migrate
   - !ref server

@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: ExamplesLiveTestSuite
+  version: 1.0.0
+  description: |
+    The example tests that drive a real model, and so cost money and minutes:
+    the two interactive agents. Separate from `test-suite.yaml` for that reason
+    alone — they are ordinary tests, not a different kind of check.
+
+        OPENAI_API_KEY=… telo ./examples/test-suite-live.yaml
+imports:
+  Test: ../modules/test
+targets:
+  - !ref runLive
+---
+kind: Test.Suite
+metadata: { name: runLive }
+include:
+  - "agent-console/tests/*.yaml"
+  - "chat-console/tests/*.yaml"

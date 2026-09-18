@@ -1,0 +1,52 @@
+kind: Telo.Application
+metadata:
+  name: ConfigurableHttpServerExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/configurable-http-server` with configuration this test supplies
+    and checks that the values reached the handler. The example is about
+    configuration arriving from outside the manifest, so the assertion is that what
+    was handed in is what comes back — with the secret still hinted rather than
+    echoed.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 4444
+    variables:
+      apiBaseUrl: https://api.example.test
+    secrets:
+      stripeSecretKey: sk_test_0000000000001234
+targets:
+  - !ref app
+steps:
+  - name: charge
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:4444/v1/charge
+      method: POST
+    inputs:
+      body: {}
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.charge.result.status"
+        body: !cel "steps.charge.result.body"
+      expected:
+        status: 200
+        body:
+          ok: true
+          upstream: https://api.example.test
+          keyHint: "sk_t…1234"

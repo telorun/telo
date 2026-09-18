@@ -1,0 +1,45 @@
+kind: Telo.Application
+metadata:
+  name: ServesAChildOverHttpTest
+  version: 1.0.0
+  description: >-
+    The case an application cannot be tested any other way: a child that runs a
+    server and never exits. It is declared in the sequence's `with:` block, so it
+    is started before the steps and shut down after them, on the port this test
+    handed it. The first request needs no retry — starting a child means its own
+    targets have been dispatched, so the socket is listening by the time a step
+    runs.
+imports:
+  App: ../
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: echoApi }
+    source: ./__fixtures__/echo-api/telo.yaml
+    ports:
+      http: 8931
+targets:
+  - !ref echoApi
+steps:
+  - name: call
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8931/v1/echo?say=hello
+      method: GET
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.call.result.status"
+        body: !cel "steps.call.result.body"
+      expected:
+        status: 200
+        body:
+          said: hello

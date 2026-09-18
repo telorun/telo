@@ -17,10 +17,10 @@ imports:
   Http: ../../../../modules/http-server
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
   Postgres: oci://ghcr.io/telorun/postgres@0.4.0#sha256-urAQgZtDIlbm4PFi0OlBgYPTU0fSdFbw3l3sHVdh-MQ
-  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
-  OpenAI: oci://ghcr.io/telorun/openai@0.3.1#sha256-FVg-jmRPGB43Or9_LU8XhDhG_G2Mio56iiSDwi_ofLk
-  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
+  OpenAI: oci://ghcr.io/telorun/openai@0.5.1#sha256-weAhBYyV-sZXjSNiIMnAqLLuDGvCFduRImF3P1KmXbU
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.2#sha256-MgBP2BIWuM3-PEv7j3IHCH0Pfrr6jW0Ao-YR7Dr7bCk
   VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
   VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.12.0#sha256-2PYbXSCmI2WlRtVQoQJO6ebJzmVHBOe1kJk8c3-wjfg
   Assert: ../../../../modules/assert

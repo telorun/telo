@@ -35,7 +35,7 @@ export function validateNoContentTypeHeader(resource: ResourceLike): void {
 }
 
 function rejectContentTypeIn(
-  headers: Record<string, string> | undefined,
+  headers: Record<string, unknown> | undefined,
   where: string,
 ): void {
   if (!headers) return;

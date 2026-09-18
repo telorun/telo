@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: ReportsAMarkerThatNeverArrivesTest
+  version: 1.0.0
+  description: >-
+    A read that waits for something the program never prints fails with what the
+    program printed instead, rather than hanging. That failure is the reason reads
+    are bounded: a conversation that has gone wrong has to say so while the text it
+    did see is still in hand.
+imports:
+  App: ../../app
+  Channel: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref quiz
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: quiz }
+source: ./__fixtures__/quiz/telo.yaml
+# It blocks on its first prompt, so its targets never all finish dispatching.
+awaitStart: false
+---
+kind: Channel.ReadUntil
+metadata: { name: read }
+channel: !ref quiz
+# One channel has one reader, so one timeout serves both reads below: the doomed
+# one, which burns all of it, and the first one, which waits for a child
+# application to boot and returns the moment it does. Generous, because a slow
+# boot must never be what the doomed read reports — that failure says nothing
+# about this kind, and it is what a 500ms bound turned every slow machine into.
+timeout: "5s"
+---
+kind: Channel.SendLine
+metadata: { name: send }
+channel: !ref quiz
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # Reach the conversation first. What a read has seen is only worth asserting on
+  # once the program is known to be talking — reading for a marker that never
+  # arrives while the child is still starting reports an empty string, which says
+  # nothing about this kind.
+  - name: namePrompt
+    invoke: !ref read
+    inputs: { until: "Name: " }
+  - name: sendName
+    invoke: !ref send
+    inputs: { text: Ada }
+
+  - name: attempt
+    try:
+      - name: read
+        invoke: !ref read
+        inputs: { until: "Favourite film: " }
+    catch:
+      - name: verifyReported
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            code: !cel "error.code"
+            # What the program printed while the read waited — the prompt it is
+            # actually sitting on, which is what tells an author why their marker
+            # is never coming.
+            sawInstead: !cel "error.data.text"
+          expected:
+            code: ERR_CHANNEL_READ_TIMEOUT
+            sawInstead: "Colour: "
