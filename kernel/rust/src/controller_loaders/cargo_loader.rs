@@ -156,7 +156,7 @@ fn probe_rustc() -> Result<(), ResolveError> {
 
 fn build_cdylib(crate_path: &Path, crate_name: &str) -> Result<PathBuf, ResolveError> {
     // A dedicated target directory keeps this build off the workspace lock the
-    // caller may already hold — `telo-rs` itself is often run through cargo. It
+    // caller may already hold — `telo` itself is often run through cargo. It
     // is anchored at the workspace marker rather than inside the crate, so every
     // controller crate in one repo shares a dependency build instead of each
     // carrying its own copy; cargo already handles many packages in one target

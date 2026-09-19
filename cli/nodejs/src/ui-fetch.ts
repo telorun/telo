@@ -3,6 +3,7 @@ import * as fsp from "fs/promises";
 import { createRequire } from "module";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { debugUiVersion } from "./distribution-versions.js";
 
 const require = createRequire(import.meta.url);
 
@@ -12,38 +13,12 @@ const DEFAULT_CDN_BASE = "https://cdn.jsdelivr.net/npm";
 const UI_PACKAGE = "@telorun/debug-ui";
 const UI_ASSET = "app-single/index.html";
 
-/** Walk up from this module to the CLI's own `package.json`. Works from both the
- *  compiled `dist/**` layout and the bun-run `src/**` layout. */
-function readOwnPackageJson(): Record<string, any> | null {
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-  for (;;) {
-    const candidate = path.join(dir, "package.json");
-    if (fs.existsSync(candidate)) {
-      try {
-        return JSON.parse(fs.readFileSync(candidate, "utf8"));
-      } catch {
-        return null;
-      }
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-}
-
-/** The `@telorun/debug-ui` version to fetch. `TELO_DEBUG_UI_VERSION` wins (set by
- *  container images, where `pnpm deploy` — unlike `pnpm publish` — leaves the pin
- *  as `workspace:*`); otherwise read the CLI's own manifest, where the npm-publish
- *  flow has rewritten the devDep to an exact version. Returns null when neither
- *  yields a concrete version. */
+/** The `@telorun/debug-ui` version to fetch, or null when none is
+ *  determinable — a binary bakes it, an npm install reads it from this
+ *  package's own manifest, and a container image sets it in the environment
+ *  (`distribution-versions.ts` holds all three). */
 function pinnedUiVersion(): string | null {
-  const fromEnv = process.env.TELO_DEBUG_UI_VERSION?.trim();
-  if (fromEnv) return fromEnv;
-  const pkg = readOwnPackageJson();
-  const raw = pkg?.devDependencies?.[UI_PACKAGE] ?? pkg?.dependencies?.[UI_PACKAGE];
-  if (typeof raw !== "string") return null;
-  const version = raw.replace(/^[\^~>=<\s]+/, "").trim();
-  return /^\d/.test(version) ? version : null;
+  return debugUiVersion() ?? null;
 }
 
 /** Outcome of resolving the debug UI bundle. `ok` resolved to a file on disk;

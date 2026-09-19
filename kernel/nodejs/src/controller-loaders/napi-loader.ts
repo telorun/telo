@@ -16,6 +16,11 @@ import { fileURLToPath } from "url";
 import { promisify } from "util";
 
 import { hostEnv } from "../host-env.js";
+import {
+  CARGO_REQUIREMENT,
+  isCommandNotFound,
+  missingToolMessage,
+} from "./controller-tool-requirements.js";
 // Type-only, so the cycle with the dispatcher that imports this loader is erased.
 import type { ControllerWorkReporter } from "../controller-loader.js";
 
@@ -121,7 +126,7 @@ export class NapiControllerLoader {
    * The build is anchored here for the same reason the Rust kernel's is: one
    * shared dependency build per workspace instead of one per crate, and — the
    * load-bearing half — a directory KEYED BY SDK BACKEND. This loader builds a
-   * controller crate with `telorun-sdk/napi` while `telo-rs` builds the very same
+   * controller crate with `telorun-sdk/napi` while the Rust kernel builds the very same
    * crate with `native`, and a plain `cargo build --workspace` builds it with
    * neither. All three sharing one target directory means each alternation
    * rebuilds the crate and its dependency tree; before this they were kept apart
@@ -146,9 +151,10 @@ export class NapiControllerLoader {
    * Resolve a `pkg:cargo/...` PURL to a controller module instance by building
    * the crate and loading the resulting native addon.
    *
-   * Dev mode (local_path qualifier present): probe rustc, run `cargo build
-   * --release`, locate the dylib via `cargo metadata`, copy to
-   * `<libname>.node`, load via createRequire. Cached on success.
+   * Dev mode (local_path qualifier present): run `cargo build --release`,
+   * locate the dylib via `cargo metadata`, copy to `<libname>.node`, load via
+   * createRequire. Cached on success. A host with no cargo is reported by the
+   * build's own spawn rather than by a probe ahead of it.
    *
    * Distribution mode (no local_path): out of scope for the PoC; the hook is
    * left in place so the dispatcher reports env-missing and falls through.
@@ -261,20 +267,29 @@ export class NapiControllerLoader {
     cacheKey: string,
   ): Promise<BuildAndLoadResult> {
     _napiBuildAttempts++;
-    try {
-      await execFileAsync("rustc", ["--version"], { env: hostEnv() });
-    } catch {
-      throw new ControllerEnvMissingError("rustc not found on PATH");
-    }
 
     // Read before building: the metadata answers both "where did the dylib
     // land" and "does this crate use the SDK", and the second decides the build
-    // flags.
-    const { targetDir, libName, usesSdk } = await resolveCrateMetadata(
-      cratePath,
-      fallbackName,
-      this.targetDirEnv(),
-    );
+    // flags. This is also the first cargo spawn, so it is where a host with no
+    // toolchain is discovered — as env-missing, which falls through to the next
+    // candidate rather than failing the load.
+    let targetDir: string;
+    let libName: string;
+    let usesSdk: boolean;
+    try {
+      ({ targetDir, libName, usesSdk } = await resolveCrateMetadata(
+        cratePath,
+        fallbackName,
+        this.targetDirEnv(),
+      ));
+    } catch (err) {
+      if (isCommandNotFound(err)) {
+        throw new ControllerEnvMissingError(
+          missingToolMessage(CARGO_REQUIREMENT, `The controller crate at ${cratePath}`),
+        );
+      }
+      throw err;
+    }
 
     try {
       // The backend is selected as a *dependency* feature of the SDK. A crate
@@ -296,6 +311,16 @@ export class NapiControllerLoader {
         env: this.targetDirEnv(),
       });
     } catch (err: any) {
+      // No toolchain here is not a broken build — it is this host being unable
+      // to host this candidate, so it falls through to the next one exactly as
+      // the `rustc --version` probe that used to precede the build did. The
+      // difference is that the answer now comes from the build's own spawn,
+      // which costs nothing on a host that does have cargo.
+      if (isCommandNotFound(err)) {
+        throw new ControllerEnvMissingError(
+          missingToolMessage(CARGO_REQUIREMENT, `The controller crate at ${cratePath}`),
+        );
+      }
       const stderr = err?.stderr ? `\n${err.stderr}` : "";
       throw new RuntimeError(
         "ERR_CONTROLLER_BUILD_FAILED",

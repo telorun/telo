@@ -1,5 +1,5 @@
 import { DEFAULT_MANIFEST_FILENAME, type LibraryCandidate } from "@telorun/analyzer";
-import { RuntimeError } from "@telorun/sdk";
+import { RuntimeError, type Logger } from "@telorun/sdk";
 import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
@@ -10,6 +10,7 @@ import type { ControllerWorkReporter } from "../controller-loader.js";
 import { readOwnerManifest } from "../bundle/module-manifest.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
+import { loadEsbuild } from "./esbuild-runtime.js";
 
 /**
  * Build a **local** module's bundled controller from its TypeScript source, so a
@@ -92,8 +93,8 @@ export interface SiblingLibrary {
  * flags each module's `build` script passes, because a bundle a contributor runs
  * has to be the bundle that ships.
  *
- * The realm names stay external because the bundle loader symlinks them to the
- * kernel's own copy at load time. Inlining them would duplicate the runtime and
+ * The realm names stay external because the bundle loader resolves them to the
+ * kernel's own loaded instance at load time (`realm.ts`). Inlining them would duplicate the runtime and
  * break the constructor identity `Stream` / `InvokeError` depend on. A sibling
  * module's declared specifier is external for the same reason one step out: the
  * loader resolves it to that module's own library layer, so every consumer —
@@ -142,9 +143,27 @@ const CONTROLLER_BUNDLE_OPTIONS = {
  * module, and they decide whether a library is inlined or resolved at load, so
  * they belong in the key for exactly the same reason the banner does.
  */
+/** A digest of the plugins' own source. They are closures over nothing but
+ *  their arguments, so their text IS the rule; a change to either changes every
+ *  cache key that was built under the old one. */
+function pluginRuleDigest(): string {
+  return createHash("sha256")
+    .update(String(nativeExternals))
+    .update("\n")
+    .update(String(rejectSubpathImports))
+    .digest("hex")
+    .slice(0, 12);
+}
+
 function optionsFingerprint(externals: readonly string[]): string {
   return createHash("sha256")
     .update(JSON.stringify(CONTROLLER_BUNDLE_OPTIONS))
+    // The plugin set decides what is inlined just as the externals list does,
+    // so it is part of how the output was built — and derived from the rules
+    // themselves rather than a hand-bumped tag, which a change to the rule can
+    // forget and then serve a bundle built the old way out of a
+    // content-addressed cache.
+    .update(pluginRuleDigest())
     .update("\n")
     .update(JSON.stringify([...externals].sort()))
     .digest("hex")
@@ -164,19 +183,6 @@ interface BuildIndexEntry {
   key: string;
 }
 
-/** Memoized esbuild handle: `undefined` until first tried, `null` when absent. A
- *  failed dynamic import is not reliably cached by Node, so without this every
- *  controller load re-attempts (and re-fails) the import. */
-let esbuildModule: typeof import("esbuild") | null | undefined;
-async function loadEsbuild(): Promise<typeof import("esbuild") | null> {
-  if (esbuildModule !== undefined) return esbuildModule;
-  try {
-    esbuildModule = await import("esbuild");
-  } catch {
-    esbuildModule = null;
-  }
-  return esbuildModule;
-}
 
 /**
  * Whether this host can build a controller from source at all.
@@ -298,6 +304,7 @@ export async function buildControllerFromSource(
   cacheRoot: string,
   libraries: readonly SiblingLibrary[] = [],
   report?: ControllerWorkReporter,
+  log?: Logger,
 ): Promise<string> {
   const cacheDir = path.join(cacheRoot, CACHE_DIR);
   const externals = externalSpecifiers(libraries);
@@ -315,7 +322,7 @@ export async function buildControllerFromSource(
   // Below the content-addressed cache and the in-flight gate: from here esbuild
   // really runs, which is the only branch worth reporting as a wait.
   await report?.("source-build");
-  const work = build(entryFile, cacheDir, libraries).finally(() =>
+  const work = build(entryFile, cacheDir, libraries, log).finally(() =>
     buildsInFlight.delete(entryFile),
   );
   buildsInFlight.set(entryFile, work);
@@ -380,6 +387,81 @@ function rejectSubpathImports(libraries: readonly SiblingLibrary[]): import("esb
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/**
+ * Leave a native binary out of the bundle, so a module that depends on one can
+ * be bundled at all.
+ *
+ * A `.node` addon cannot be inlined into JavaScript — esbuild has no loader for
+ * it, and the build fails on the file rather than on the import that reached
+ * it, which reads as a defect in the bundler rather than as what it is. Two
+ * shapes arrive here: a direct `./x.node`, and a bare package whose whole
+ * content is one addon (`@napi-rs/canvas-linux-x64-gnu`), which a per-platform
+ * loader `require`s from inside a `try`. Both stay external, exactly as the
+ * npm-delivered path already treats them.
+ *
+ * **Externalizing does not make the package resolvable** — a published artifact
+ * carries no `node_modules`, so whether the externalized specifier resolves at
+ * run time depends on how the importer reaches it. A per-platform loader that
+ * `require`s its candidates inside a `try` (the `@napi-rs/*` shape) never gets
+ * there once the module has been told where its library is; a STATIC import of
+ * a native package is hoisted and fails at load. Either way the remedy is the
+ * same and the module's, not the bundler's: ship the library as a `native:`
+ * entry and open it through `ctx.resolveNativeFile`. What this removes is a
+ * build-time failure standing between the author and that remedy, and the log
+ * line below is what tells them it happened.
+ */
+function nativeExternals(entryFile: string, log?: Logger): import("esbuild").Plugin {
+  return {
+    name: "telo-native-externals",
+    setup(build) {
+      build.onResolve({ filter: /\.node$/ }, () => ({ external: true }));
+      // A bare specifier is only external when it really resolves to an addon;
+      // asking esbuild to resolve it (with this plugin disabled, or the call
+      // recurses) is the only way to know, and the answer is memoized because a
+      // per-platform loader names a dozen of them in one file.
+      //
+      // Keyed by specifier AND the directory it was imported from, because one
+      // name can resolve to different packages in one build — the first answer
+      // is only right for the tree it was asked in.
+      const decided = new Map<string, boolean>();
+      const reported = new Set<string>();
+      build.onResolve({ filter: /^[^./]/ }, async (args) => {
+        if (args.pluginData === NATIVE_PROBE) return null;
+        const key = `${args.resolveDir}\u0000${args.path}`;
+        const cached = decided.get(key);
+        if (cached === undefined) {
+          const resolved = await build.resolve(args.path, {
+            kind: args.kind,
+            resolveDir: args.resolveDir,
+            importer: args.importer,
+            pluginData: NATIVE_PROBE,
+          });
+          decided.set(key, resolved.errors.length === 0 && resolved.path.endsWith(".node"));
+        }
+        if (!decided.get(key)) return null;
+        // Named at the build that decided it. The externalized require only
+        // resolves where a `node_modules` survives, so a published artifact
+        // needs the module to ship the library itself — and an author who never
+        // hears this learns it from a module-not-found in production instead.
+        if (!reported.has(args.path)) {
+          reported.add(args.path);
+          log?.info("left a native package out of the controller bundle", {
+            "telo.bundle.entry": entryFile,
+            "telo.bundle.external": args.path,
+            "telo.bundle.remedy":
+              "a published artifact has no node_modules: ship the library as a native: entry and open it with ctx.resolveNativeFile",
+          });
+        }
+        return { external: true };
+      });
+    },
+  };
+}
+
+/** Marks this plugin's own resolution pass, so the `onResolve` hook above does
+ *  not answer the question it is asking. */
+const NATIVE_PROBE = Symbol("telo-native-probe");
 
 /**
  * Refuse a bundle that reached into a sibling module's source tree by any route
@@ -558,6 +640,7 @@ async function build(
   entryFile: string,
   cacheDir: string,
   libraries: readonly SiblingLibrary[],
+  log?: Logger,
 ): Promise<string> {
   const esbuild = await loadEsbuild();
   if (!esbuild) {
@@ -581,7 +664,7 @@ async function build(
       // so it cannot be edited in place by one caller and read by another.
       external: externals,
       conditions: [...CONTROLLER_BUNDLE_OPTIONS.conditions],
-      plugins: [rejectSubpathImports(libraries)],
+      plugins: [rejectSubpathImports(libraries), nativeExternals(entryFile, log)],
       entryPoints: [entryFile],
       write: false,
       metafile: true,

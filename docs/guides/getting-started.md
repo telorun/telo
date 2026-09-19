@@ -14,7 +14,24 @@ understanding what just happened.
 
 ## Install
 
-Currently Telo kernel is written only in NodeJS (Rust version is planned next). Install it globally with npm or pnpm:
+The quickest route needs nothing installed first — not even Node.js. The
+standalone build is a single executable that carries its own runtime:
+
+```bash
+curl -fsSL https://telo.run/install.sh | sh
+```
+
+On Windows:
+
+```powershell
+irm https://telo.run/install.ps1 | iex
+```
+
+The release page also carries `.deb`, `.rpm`, `.pkg` and `.msi` packages, and a
+plain archive per platform.
+
+If you already have Node.js and would rather manage Telo with it, install the
+same CLI from npm:
 
 ```bash
 npm install -g @telorun/cli
@@ -22,11 +39,17 @@ npm install -g @telorun/cli
 pnpm add -g @telorun/cli
 ```
 
-The CLI installs as `telo`. Verify with:
+Either way the CLI is `telo`. Verify with:
 
 ```bash
 telo --version
 ```
+
+The two builds run the same code and the same manifests. The one difference is
+that the standalone build carries no package manager, so a module whose
+controller is delivered from npm — rather than bundled in the module's own
+artifact, which is how the standard library ships — needs the npm-installed CLI.
+`telo check` warns when a manifest depends on one and the tool is missing.
 
 Prefer not to install globally? Run Telo via Docker instead — the image mounts
 the current directory and takes the same manifest path the CLI does, so every

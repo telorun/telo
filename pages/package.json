@@ -22,7 +22,9 @@
     "node": ">=18.0"
   },
   "scripts": {
+    "predev": "node scripts/copy-installers.mjs",
     "dev": "docusaurus start",
+    "prebuild": "node scripts/copy-installers.mjs",
     "build": "docusaurus build",
     "preview": "docusaurus serve"
   },

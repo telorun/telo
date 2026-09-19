@@ -8,10 +8,10 @@
 use crate::commands;
 
 pub const USAGE: &str = "\
-telo-rs — the Rust Telo kernel
+telo — the Rust Telo kernel
 
 Usage:
-  telo-rs run <manifest>    Load a manifest and run its targets
+  telo run <manifest>    Load a manifest and run its targets
 
 The manifest may be a file or a directory containing telo.yaml.";
 

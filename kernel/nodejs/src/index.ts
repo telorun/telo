@@ -143,3 +143,14 @@ export type {
 export { KernelLogging } from "./logging/kernel-logging.js";
 export type { LoggingHost } from "./logging/logging-host.js";
 export { nodeHostVersions } from "./host-versions.js";
+export { setEsbuildExecutableProvider } from "./controller-loaders/esbuild-runtime.js";
+export type { EsbuildExecutableProvider } from "./controller-loaders/esbuild-runtime.js";
+export {
+  CARGO_REQUIREMENT,
+  isCommandNotFound,
+  missingToolMessage,
+  packageManagerName,
+  packageManagerRequirement,
+  toolRequirement,
+} from "./controller-loaders/controller-tool-requirements.js";
+export type { ToolRequirement } from "./controller-loaders/controller-tool-requirements.js";

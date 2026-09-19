@@ -1,17 +1,9 @@
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-// The legacy build is pdf.js's Node target — the same one the rasterizer loads.
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
-
-const PDFJS_ROOT = dirname(createRequire(import.meta.url).resolve("pdfjs-dist/package.json"));
-const ASSET_OPTIONS = {
-  standardFontDataUrl: join(PDFJS_ROOT, "standard_fonts") + "/",
-  cMapUrl: join(PDFJS_ROOT, "cmaps") + "/",
-  cMapPacked: true,
-  wasmUrl: join(PDFJS_ROOT, "wasm") + "/",
-};
+// The legacy build is pdf.js's Node target — the same one the rasterizer loads.
+// Both reach it through `pdf-runtime`, which locates the assets pdf.js would
+// otherwise look for beside its own package.
+import { loadPdfjs, pdfAssetOptions } from "./pdf-runtime.js";
 
 interface TextResource {
   metadata: { name: string; module?: string };
@@ -43,7 +35,10 @@ interface TextOutputs {
  * the way the producer wrote it.
  */
 class PdfText implements ResourceInstance<TextInputs, TextOutputs> {
-  constructor(private readonly resource: TextResource) {}
+  constructor(
+    private readonly resource: TextResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   async invoke(inputs: TextInputs): Promise<TextOutputs> {
     const name = this.resource.metadata.name;
@@ -57,7 +52,11 @@ class PdfText implements ResourceInstance<TextInputs, TextOutputs> {
 
     // pdf.js transfers the buffer it is given — hand it a copy so the caller's
     // bytes survive a second read.
-    const task = getDocument({ data: new Uint8Array(data), ...ASSET_OPTIONS });
+    const { getDocument } = await loadPdfjs(this.ctx);
+    const task = getDocument({
+      data: new Uint8Array(data),
+      ...(await pdfAssetOptions(this.ctx)),
+    });
     try {
       const doc = await task.promise.catch((err: unknown) => {
         throw new InvokeError(
@@ -112,6 +111,6 @@ function renderTextContent(content: { items: unknown[] }): string {
 
 export function register(): void {}
 
-export async function create(resource: TextResource, _ctx: ResourceContext): Promise<PdfText> {
-  return new PdfText(resource);
+export async function create(resource: TextResource, ctx: ResourceContext): Promise<PdfText> {
+  return new PdfText(resource, ctx);
 }

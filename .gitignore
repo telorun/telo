@@ -30,6 +30,10 @@ node_modules/
 dist
 app-dist
 
+# Standalone `telo` executables and the packages built from them. A 129 MB
+# binary per target, produced by `cli/nodejs/scripts/build-standalone.mjs`.
+dist-standalone/
+
 # Bundled controllers (pkg:telo/local/js) — build artifacts emitted by
 # `pnpm run build:bundles`, packed into the module artifact at publish time.
 modules/*/nodejs/*.mjs

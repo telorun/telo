@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { hostEnv } from "../host-env.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
+import { loadEsbuild } from "./esbuild-runtime.js";
 
 /**
  * Transparent controller bundling: collapse a controller's loose `node_modules`
@@ -111,19 +112,6 @@ async function isEsmEntry(entryFile: string): Promise<boolean> {
   return isModule;
 }
 
-/** Memoized esbuild handle: `undefined` until first tried, `null` when absent.
- *  A failed dynamic import isn't reliably cached by Node, so without this every
- *  controller load would re-attempt (and re-fail) the import. */
-let esbuildModule: typeof import("esbuild") | null | undefined;
-async function loadEsbuild(): Promise<typeof import("esbuild") | null> {
-  if (esbuildModule !== undefined) return esbuildModule;
-  try {
-    esbuildModule = await import("esbuild");
-  } catch {
-    esbuildModule = null;
-  }
-  return esbuildModule;
-}
 
 /**
  * Build — or reuse a cached — single-file bundle of `entryFile`, written beside

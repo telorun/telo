@@ -1,4 +1,4 @@
-//! `telo-rs run <manifest>`.
+//! `telo run <manifest>`.
 //! Mirrors `../../../nodejs/src/commands/run.ts`.
 //!
 //! Prints nothing on success: output is the manifest's business, and a target

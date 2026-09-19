@@ -5,3 +5,7 @@
  * coordinate space: rendered-image pixels, top-left origin, at the configured
  * render scale.
  */
+
+export * as rasterizer from "./rasterizer-controller.js";
+export * as text from "./text-controller.js";
+export * as formFields from "./form-fields-controller.js";

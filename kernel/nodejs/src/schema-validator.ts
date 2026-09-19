@@ -15,6 +15,8 @@ import {
 } from "@telorun/analyzer";
 import { CEL_SCALAR_FORMS, PLAIN_ENCODINGS, VALUE_TYPES, X_TELO_TYPE } from "@telorun/sdk";
 import { bigIntView, mergeFilledDefaults } from "./bigint-schema-view.js";
+import { realmRequire } from "./controller-loaders/realm.js";
+import { readVersion, reportUndeterminableVersion } from "./runtime-versions.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
 import { ruleCondition, stampRuleCallNames } from "./type-rule-condition.js";
 
@@ -52,12 +54,18 @@ const Ajv = AjvModule.default ?? AjvModule;
 const standaloneCode: (...args: any[]) => string =
   (standaloneCodeMod as any).default ?? (standaloneCodeMod as any);
 
-/** `require` resolved from this file's URL — used to satisfy `ajv/dist/...`
- *  / `ajv-formats/...` imports embedded in standalone-compiled validators
- *  loaded back off disk. Anchored here so it always resolves through the
- *  kernel package's node_modules, regardless of where the cache file
- *  lives on disk. */
+/** How a standalone-compiled validator, read back off disk, gets the
+ *  `ajv/dist/runtime/...` and `ajv-formats/...` modules it names.
+ *
+ *  The realm answers first, handing back the instances this kernel is already
+ *  validating with — which is what makes a cached validator loadable where the
+ *  kernel has no `node_modules` beside it to resolve through, a single-file
+ *  executable above all. `createRequire` stays as the fallback for anything the
+ *  realm does not carry, anchored at this file so it resolves through the kernel
+ *  package rather than from wherever the cache file happens to live. */
 const kernelRequire = createRequire(import.meta.url);
+const cacheRequire = (specifier: string): unknown =>
+  realmRequire(specifier) ?? kernelRequire(specifier);
 
 /** Resolved AJV + ajv-formats versions, baked into every cache key so a
  *  pnpm/npm install that upgrades either package invalidates all stale
@@ -65,38 +73,15 @@ const kernelRequire = createRequire(import.meta.url);
  *  embed `require("ajv/dist/runtime/...")` — running a validator built
  *  against an older AJV against the current runtime is undefined
  *  behaviour, so the version pin must be part of the hash, not a manual
- *  bump. Falls back to walking up from the package's main entry when
- *  the dependency restricts subpath access via `exports`. */
-function readDepVersion(spec: string): string {
-  try {
-    const pkg = kernelRequire(`${spec}/package.json`);
-    if (typeof pkg.version === "string") return pkg.version;
-  } catch {
-    // restricted exports — try the filesystem walk below
-  }
-  try {
-    const entry = kernelRequire.resolve(spec);
-    let dir = path.dirname(entry);
-    while (dir !== path.dirname(dir)) {
-      const candidate = path.join(dir, "package.json");
-      try {
-        const pkg = JSON.parse(fs.readFileSync(candidate, "utf-8"));
-        const expectedName = spec.split("/").slice(0, spec.startsWith("@") ? 2 : 1).join("/");
-        if (typeof pkg.name === "string" && pkg.name === expectedName) {
-          return typeof pkg.version === "string" ? pkg.version : "unknown";
-        }
-      } catch {
-        // keep walking — not at the package root yet
-      }
-      dir = path.dirname(dir);
-    }
-  } catch {
-    // package not installed
-  }
-  return "unknown";
-}
-const AJV_VERSION = readDepVersion("ajv");
-const AJV_FORMATS_VERSION = readDepVersion("ajv-formats");
+ *  bump.
+ *
+ *  Undeterminable is NOT a version: keyed on a placeholder, a validator built
+ *  by one ajv is handed to another. So the disk cache is disabled instead
+ *  (`validatorCacheKeyable`), which costs a compile per schema per run and
+ *  cannot serve the wrong code. */
+const AJV_VERSION = readVersion("ajv");
+const AJV_FORMATS_VERSION = readVersion("ajv-formats");
+
 /** The `x-telo-type` keyword emits code and messages from the value-type
  *  vocabulary, its codecs and its scalar ranges, so a cached validator built
  *  against another vocabulary would assert the wrong thing — or nothing. */
@@ -112,6 +97,13 @@ const VALUE_TYPE_DIGEST = createHash("sha256")
   .digest("hex")
   .slice(0, 16);
 const VALIDATOR_RUNTIME_TAG = `ajv@${AJV_VERSION}+ajv-formats@${AJV_FORMATS_VERSION}+value-types@${VALUE_TYPE_DIGEST}`;
+
+/** Whether a compiled validator may be persisted or read back at all. */
+function validatorCacheKeyable(report: (message: string) => void): boolean {
+  if (AJV_VERSION && AJV_FORMATS_VERSION) return true;
+  reportUndeterminableVersion("validator", ["ajv", "ajv-formats"], report);
+  return false;
+}
 
 const SHA256_HEADER_PATTERN = /^\/\/ sha256:([0-9a-f]{64})\n/;
 
@@ -464,8 +456,15 @@ export class SchemaValidator {
    *  body is wrapped so its embedded `require("ajv/...")` /
    *  `require("ajv-formats/...")` calls resolve against the kernel
    *  package; the cache file lives outside any `node_modules` tree, so a
-   *  bare `require()` from its own path would fail. Read/write failures
-   *  surface to stderr but never abort compilation. */
+   *  bare `require()` from its own path would fail.
+   *
+   *  **A miss and a failure are different outcomes.** An absent file, or one
+   *  whose integrity header does not match, is an ordinary miss: rewriting it is
+   *  the designed recovery, so it stays silent. A file that is present and
+   *  intact and still cannot be LOADED means the cache is unusable in this
+   *  environment — every entry will fail the same way — so it is reported with
+   *  the path and the reason rather than logged per entry and lost in the noise.
+   *  Neither outcome aborts compilation. */
   private compileAjvOrLoadCached(
     schema: any,
     hash: string,
@@ -474,13 +473,25 @@ export class SchemaValidator {
     // `persist: false` drops the whole disk layer — the read too, not just the
     // write. Nothing bakes these entries, so a lookup is an ENOENT probe whose
     // only possible hit is one this process wrote on an earlier run.
-    const cacheDir = persist ? this.cacheDir : undefined;
+    const cacheDir =
+      persist && validatorCacheKeyable((message) => this.log.error(message))
+        ? this.cacheDir
+        : undefined;
     if (cacheDir) {
       const cachePath = path.join(cacheDir, `${hash}.cjs`);
+      let text: string | undefined;
       try {
-        const text = fs.readFileSync(cachePath, "utf-8");
-        const body = verifyAndExtractBody(text);
-        if (body !== null) {
+        text = fs.readFileSync(cachePath, "utf-8");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+          this.reportUnusableCache(cachePath, err);
+        }
+      }
+      const body = text === undefined ? null : verifyAndExtractBody(text);
+      // Header missing or mismatched: a truncated write or a tampered file. The
+      // write step below overwrites it with a fresh hash header.
+      if (body !== null) {
+        try {
           const factory = new Function(
             "require",
             "module",
@@ -488,21 +499,16 @@ export class SchemaValidator {
             `${body}\nreturn module.exports;`,
           );
           const mod: { exports: any } = { exports: {} };
-          const loaded = factory(kernelRequire, mod, mod.exports);
+          const loaded = factory(cacheRequire, mod, mod.exports);
           if (typeof loaded === "function") {
             return loaded as ValidateFunction;
           }
-        }
-        // Header missing / mismatched / non-function export — fall
-        // through and recompile. The write step below overwrites the
-        // stale file with a fresh hash header.
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
-          this.log.warn(
-            "validator cache load failed",
-            { "telo.validator.hash": hash },
-            { error: err },
+          this.reportUnusableCache(
+            cachePath,
+            new Error(`cached validator exported ${typeof loaded}, not a function`),
           );
+        } catch (err) {
+          this.reportUnusableCache(cachePath, err);
         }
       }
     }
@@ -524,6 +530,23 @@ export class SchemaValidator {
       }
     }
     return validate;
+  }
+
+  /** Say once that the validator cache cannot be read here, and why.
+   *
+   *  Once per process: the cause is a property of the installation — a missing
+   *  ajv runtime, an unreadable directory — so one report per compiled schema
+   *  would be the same sentence a hundred times, which is how a cache that never
+   *  hit went unnoticed. */
+  private reportedUnusableCache = false;
+  private reportUnusableCache(cachePath: string, err: unknown): void {
+    if (this.reportedUnusableCache) return;
+    this.reportedUnusableCache = true;
+    this.log.error(
+      "compiled validator cache is unusable; every schema will be recompiled on every run",
+      { "telo.validator.cache": cachePath },
+      { error: err },
+    );
   }
 
   composeWithRules(base: DataValidator, typeName: string, rules: TypeRule[]): DataValidator {

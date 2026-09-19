@@ -1,4 +1,4 @@
-//! `telo-rs run` end to end: the binary, a real manifest, real stdout.
+//! `telo run` end to end: the binary, a real manifest, real stdout.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -12,11 +12,11 @@ fn fixture(name: &str) -> PathBuf {
 
 #[test]
 fn prints_the_line_and_exits_zero() {
-    let output = Command::new(env!("CARGO_BIN_EXE_telo-rs"))
+    let output = Command::new(env!("CARGO_BIN_EXE_telo"))
         .arg("run")
         .arg(fixture("hello-world"))
         .output()
-        .expect("telo-rs runs");
+        .expect("telo runs");
 
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
@@ -29,11 +29,11 @@ fn prints_the_line_and_exits_zero() {
 
 #[test]
 fn reports_a_failing_manifest_on_stderr_and_exits_nonzero() {
-    let output = Command::new(env!("CARGO_BIN_EXE_telo-rs"))
+    let output = Command::new(env!("CARGO_BIN_EXE_telo"))
         .arg("run")
         .arg(fixture("javascript-only-kind"))
         .output()
-        .expect("telo-rs runs");
+        .expect("telo runs");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("ERR_CONTROLLER_NOT_FOUND"), "{stderr}");
@@ -43,10 +43,10 @@ fn reports_a_failing_manifest_on_stderr_and_exits_nonzero() {
 
 #[test]
 fn an_unknown_command_prints_usage() {
-    let output = Command::new(env!("CARGO_BIN_EXE_telo-rs"))
+    let output = Command::new(env!("CARGO_BIN_EXE_telo"))
         .arg("frobnicate")
         .output()
-        .expect("telo-rs runs");
+        .expect("telo runs");
 
     assert!(String::from_utf8_lossy(&output.stderr).contains("Usage:"));
     assert_eq!(output.status.code(), Some(2));

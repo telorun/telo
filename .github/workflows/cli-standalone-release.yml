@@ -1,0 +1,270 @@
+name: Release standalone CLI
+
+# Builds the single-file `telo` executable for every target that has an official
+# Node runtime, wraps each one in a native installer, and publishes the set as a
+# GitHub Release.
+#
+# The trigger is the same signal the kernel image uses — `@telorun/cli`'s version
+# moving on main, which happens when a Version PR merges — rather than the
+# changesets action's `publishedPackages`, so a later failure in that run cannot
+# strand the binaries a release behind. `workflow_dispatch` forces a (re)build of
+# the current version.
+#
+# THE BINARIES ARE ASSETS OF THE PRODUCT'S RELEASE, NOT A RELEASE OF THEIR OWN.
+# `scripts/github-releases.mjs` already creates `v<cli version>` on the same
+# signal and owns its name and body; this workflow attaches files to that tag and
+# sets neither. A second release for the same version of the same product would
+# split one changelog across two pages, and make "which one is the release?" a
+# question with two answers.
+#
+# A build runs on the runner matching its target: esbuild's executable and the
+# platform packages are resolved from the workspace install, and macOS signing
+# needs macOS. Linux arm64 is cross-built from the x64 runner, which works
+# because nothing here compiles native code — the Node runtime is downloaded
+# prebuilt and the blob injected into it is platform-independent.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cli/nodejs/package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-standalone-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Detect version bump
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check CLI version
+        id: check
+        run: |
+          set -euo pipefail
+          NEW=$(jq -r .version cli/nodejs/package.json)
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch -> releasing v$NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "No baseline commit -> releasing v$NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A path absent at the baseline is a move or a new package, never a
+          # version bump; treating one as a bump republishes whatever version
+          # happens to be in the file.
+          if ! git cat-file -e "$BEFORE:cli/nodejs/package.json" 2>/dev/null; then
+            echo "cli/nodejs/package.json did not exist at $BEFORE -> skipping."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          OLD=$(git show "$BEFORE:cli/nodejs/package.json" | jq -r .version)
+          if [ "$NEW" != "$OLD" ]; then
+            echo "CLI version changed: $OLD -> $NEW"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "CLI version unchanged ($NEW); skipping."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64-gnu
+            os: ubuntu-22.04
+          - target: linux-amd64-musl
+            os: ubuntu-22.04
+          - target: linux-arm64-gnu
+            os: ubuntu-22.04
+          - target: darwin-amd64
+            os: macos-latest
+          - target: darwin-arm64
+            os: macos-latest
+          - target: windows-amd64
+            os: windows-latest
+          - target: windows-arm64
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # esbuild's executable for a target other than the runner's comes from
+      # that target's own package, which the workspace install does not carry.
+      - name: Install esbuild for the target
+        if: matrix.target == 'linux-arm64-gnu' || matrix.target == 'windows-arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.target }}" in
+            linux-arm64-gnu) pkg="@esbuild/linux-arm64" ;;
+            windows-arm64) pkg="@esbuild/win32-arm64" ;;
+            *) echo "no cross esbuild needed for ${{ matrix.target }}"; exit 0 ;;
+          esac
+          pnpm add --filter @telorun/cli -D "$pkg"
+
+      - name: Build workspace
+        run: pnpm --filter "@telorun/cli..." build
+
+      - name: Build standalone binary
+        run: pnpm --filter @telorun/cli exec node scripts/build-standalone.mjs --target ${{ matrix.target }} --out ../../dist-standalone
+
+      # The binary is the deliverable; the installers wrap it. Each one only has
+      # to put `telo` on PATH, so they are built from the same file rather than
+      # from per-format staging trees, and a format whose tool is missing fails
+      # the build rather than leaving the release short of a package nobody
+      # notices until they cannot install it.
+      # rpmbuild is not on a stock Ubuntu runner, and the packaging script now
+      # fails rather than skipping a format — a release quietly missing its
+      # `.rpm` is what that policy exists to prevent.
+      - name: Install Linux packaging tools
+        if: startsWith(matrix.target, 'linux')
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Build Linux packages
+        if: startsWith(matrix.target, 'linux')
+        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ needs.gate.outputs.version }} --dir dist-standalone
+
+      - name: Build macOS package
+        if: startsWith(matrix.target, 'darwin')
+        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ needs.gate.outputs.version }} --dir dist-standalone
+
+      # WiX builds the `.msi`; without it the packaging step fails rather than
+      # publishing a Windows release with only a `.zip`.
+      - name: Install WiX
+        if: startsWith(matrix.target, 'windows')
+        run: dotnet tool install --global wix
+
+      - name: Build Windows package
+        if: startsWith(matrix.target, 'windows')
+        run: node .github/scripts/package-standalone.mjs --target ${{ matrix.target }} --version ${{ needs.gate.outputs.version }} --dir dist-standalone
+
+      # Proof the artifact runs at all, from a shell that cannot see the runner's
+      # Node. It is not the full verification — that is the container check below
+      # — but it catches a binary that was built wrong before anything is
+      # published.
+      - name: Smoke test
+        if: matrix.target != 'linux-arm64-gnu' && matrix.target != 'windows-arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=dist-standalone/telo
+          [ -f "$BIN.exe" ] && BIN="$BIN.exe"
+          PATH=/usr/bin:/bin "$BIN" --version
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: telo-${{ matrix.target }}
+          path: |
+            dist-standalone/telo
+            dist-standalone/telo.exe
+            dist-standalone/*.sha256
+            dist-standalone/*.tar.gz
+            dist-standalone/*.zip
+            dist-standalone/*.deb
+            dist-standalone/*.rpm
+            dist-standalone/*.pkg
+            dist-standalone/*.msi
+          if-no-files-found: error
+
+  # The only place "no Node.js installed" is a fact rather than an assumption:
+  # images that have never had it. macOS and Windows have no such image, so their
+  # equivalent is the PATH-stripped smoke test in the build job.
+  verify:
+    name: Verify install (${{ matrix.image }})
+    needs: [gate, build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:trixie-slim
+            target: linux-amd64-gnu
+            install: dpkg -i /artifacts/*.deb
+          - image: rockylinux:9
+            target: linux-amd64-gnu
+            install: rpm -i --nodeps /artifacts/*.rpm
+          - image: alpine:3.20
+            target: linux-amd64-musl
+            install: tar xzf /artifacts/*.tar.gz -C /usr/local/bin --strip-components=1
+    steps:
+      - name: Download ${{ matrix.target }}
+        uses: actions/download-artifact@v4
+        with:
+          name: telo-${{ matrix.target }}
+          path: artifacts
+
+      - name: Install and run with no Node.js present
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/artifacts:/artifacts" ${{ matrix.image }} sh -c '
+            set -eu
+            ! command -v node >/dev/null || { echo "image unexpectedly carries node"; exit 1; }
+            ${{ matrix.install }}
+            telo --version
+          '
+
+  release:
+    name: Attach binaries to the release
+    needs: [gate, build, verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f | sort
+
+      # Attach only. `name` and `body` are deliberately unset: the npm release job
+      # writes them, and passing either here would overwrite the changelog with a
+      # sentence about binaries. `softprops` creates the tag's release when this
+      # job wins the race, leaving the body empty for that job to fill.
+      - name: Attach binaries to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.gate.outputs.version }}
+          files: artifacts/**/*
+          fail_on_unmatched_files: true

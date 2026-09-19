@@ -14,7 +14,6 @@ import {
   type EnsuredEntryState,
 } from "../bundle/source-staging.js";
 import { ControllerInstance, RuntimeError, type Logger } from "@telorun/sdk";
-import { existsSync, readFileSync } from "fs";
 import * as fs from "fs/promises";
 import { createRequire } from "module";
 import { PackageURL } from "packageurl-js";
@@ -27,7 +26,8 @@ import {
 } from "../bundle/module-artifact.js";
 import type { ControllerResolveSource, ControllerWorkReporter } from "../controller-loader.js";
 import { ControllerEnvMissingError, projectNapiController } from "./napi-loader.js";
-import { REALM_COLLAPSE_NAMES } from "./realm.js";
+import { ensureRealmShims } from "./realm.js";
+import { isWritableShimSlot, shimPackageJson, writeIfChanged } from "./shim-package.js";
 
 const requireFromHere = createRequire(import.meta.url);
 import {
@@ -58,69 +58,6 @@ async function pathExists(filePath: string): Promise<boolean> {
 }
 
 /**
- * A bundled controller imports `@telorun/sdk` (and any realm-collapse sibling) as
- * a normal bare specifier, but it lives in a cache/extract dir with no
- * node_modules path to the SDK. Make those names resolve to the kernel's own copy
- * by symlinking them into a `node_modules/` next to the bundle — standard module
- * resolution then finds them on every runtime. (Node ESM resolve hooks aren't
- * honoured by Bun, and Bun's own plugins don't intercept runtime imports, so a
- * symlink is the one portable mechanism — verified on Node + Bun.) Authors write
- * a plain `import { Stream } from "@telorun/sdk"`; nothing special.
- *
- * Idempotent, cached per directory. On a read-only mount (k8s run) the link must
- * already exist from the extract phase; a failed create just leaves the import to
- * surface a normal module-not-found.
- */
-const realmLinkedDirs = new Set<string>();
-async function ensureRealmSymlinks(bundleDir: string): Promise<void> {
-  if (realmLinkedDirs.has(bundleDir)) return;
-  await linkRealmNames(bundleDir);
-  realmLinkedDirs.add(bundleDir);
-}
-
-async function linkRealmNames(bundleDir: string): Promise<void> {
-  const req = createRequire(import.meta.url);
-  for (const name of REALM_COLLAPSE_NAMES) {
-    let pkgRoot: string | null = null;
-    try {
-      pkgRoot = findPackageRoot(req.resolve(name), name);
-    } catch {
-      // Kernel can't resolve this realm name — skip; the bundle's import then
-      // fails normally rather than being silently misdirected.
-    }
-    if (!pkgRoot) continue;
-    const linkPath = path.join(bundleDir, "node_modules", ...name.split("/"));
-    // Reuse an existing link only when it already points at this kernel's copy. A
-    // link a run in another environment left behind — e.g. the host symlink a
-    // local run writes, then bind-mounts into a container where its target path is
-    // absent — is dangling/wrong here; replace it rather than leaving the bundle's
-    // import broken (`existsSync` follows the link, so it can't tell the two
-    // apart). A real file/dir in the slot is left untouched.
-    let stale = false;
-    try {
-      const stat = await fs.lstat(linkPath);
-      if (stat.isSymbolicLink()) {
-        const target = await fs.readlink(linkPath);
-        if (path.resolve(path.dirname(linkPath), target) === path.resolve(pkgRoot)) continue;
-        stale = true;
-      } else {
-        continue;
-      }
-    } catch {
-      // Nothing at linkPath — fall through to create it.
-    }
-    try {
-      if (stale) await fs.rm(linkPath, { force: true });
-      await fs.mkdir(path.dirname(linkPath), { recursive: true });
-      await fs.symlink(pkgRoot, linkPath, process.platform === "win32" ? "junction" : "dir");
-    } catch {
-      // EEXIST race or read-only FS — fine if it now resolves; otherwise the
-      // import surfaces the resolution failure.
-    }
-  }
-}
-
-/**
  * Make each sibling module's declared specifier resolve, from this bundle, to
  * that module's own library entry point.
  *
@@ -137,7 +74,8 @@ async function linkRealmNames(bundleDir: string): Promise<void> {
  * link to that standard resolution would accept. The generated shim re-exports
  * the materialized entry by absolute URL, and every consumer's shim re-exports
  * the *same* file — Node keys its module registry by resolved URL, so the scope
- * stays single however many shims point at it.
+ * stays single however many shims point at it. The realm collapse writes its own
+ * packages into the same `node_modules/` (`realm.ts`), under the same slot rule.
  *
  * Written into `node_modules/` beside the bundle, which is per module for a
  * published artifact and per content-addressed build for a working copy, so two
@@ -149,13 +87,11 @@ async function linkRealmNames(bundleDir: string): Promise<void> {
  * where `node_modules/@telorun/sql` is a package manager's symlink INTO the
  * library's own source tree — writing through it would replace that package's
  * real `package.json`. So a slot is written only when it is absent or carries the
- * marker this loader stamps, which is the posture `linkRealmNames` already takes
- * ("a real file/dir in the slot is left untouched"). A foreign package in the slot
- * already resolves the specifier to real code; what it costs is the single-scope
- * property, so it is reported rather than passed over in silence.
+ * marker this loader stamps (`shim-package.ts`, shared with the realm). A foreign
+ * package in the slot already resolves the specifier to real code; what it costs
+ * is the single-scope property, so it is reported rather than passed over in
+ * silence.
  */
-const SHIM_MARKER = "x-telo-generated";
-
 async function ensureLibraryShims(
   bundleDir: string,
   entries: ReadonlyArray<{ specifier: string; entryFile: string }>,
@@ -175,61 +111,12 @@ async function ensureLibraryShims(
     const target = pathToFileURL(entryFile).href;
     await writeIfChanged(
       path.join(dir, "package.json"),
-      `${JSON.stringify(
-        {
-          name: specifier,
-          version: "0.0.0",
-          type: "module",
-          exports: { ".": "./index.mjs" },
-          [SHIM_MARKER]: "sibling-library-shim",
-        },
-        null,
-        2,
-      )}\n`,
+      shimPackageJson(specifier, "sibling-library-shim", "./index.mjs"),
     );
     // `export *` and nothing else: these entry points export named bindings, and
     // a re-exported `default` that does not exist is a hard syntax-level error at
     // import rather than an absent binding.
     await writeIfChanged(path.join(dir, "index.mjs"), `export * from ${JSON.stringify(target)};\n`);
-  }
-}
-
-/**
- * Whether this loader may write the shim slot at `dir`.
- *
- * **Location first.** Every legitimate write site is inside the loader's own
- * cache root — a bundle built from source lives under `<cache>/controller-src/`,
- * and a published module's layers extract under `<cache>/manifests/` — so a slot
- * there is ours whatever it currently holds. That is what keeps a shim written by
- * an earlier kernel version (before the marker existed, or with different
- * contents) updatable rather than mistaken for someone else's package.
- *
- * **Marker second**, for a slot outside the cache: the prebuilt-`path=` branch
- * imports out of a working copy, where `node_modules/@telorun/sql` is a package
- * manager's symlink straight into the sibling's own source tree. Reading the
- * `package.json` **through** whatever is there settles it — a symlink resolves to
- * the target's, which carries no marker — so one read covers both a link and a
- * real installed package without caring which it was.
- */
-async function isWritableShimSlot(dir: string, cacheRoot: string | undefined): Promise<boolean> {
-  if (cacheRoot) {
-    const root = path.resolve(cacheRoot) + path.sep;
-    if (path.resolve(dir).startsWith(root)) return true;
-  }
-  try {
-    const parsed = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8")) as Record<
-      string,
-      unknown
-    >;
-    return parsed[SHIM_MARKER] !== undefined;
-  } catch {
-    // Nothing readable there. A symlink with no package.json behind it is still
-    // someone else's, so refuse that too rather than writing through it.
-    try {
-      return !(await fs.lstat(dir)).isSymbolicLink();
-    } catch {
-      return true;
-    }
   }
 }
 
@@ -241,7 +128,7 @@ async function prepareBundleDir(
   cacheRoot: string | undefined,
   log?: Logger,
 ): Promise<void> {
-  await ensureRealmSymlinks(bundleDir);
+  await ensureRealmShims(bundleDir, cacheRoot, log);
   await ensureLibraryShims(bundleDir, shims, cacheRoot, log);
 }
 
@@ -261,46 +148,6 @@ function buildExternals(libraries: SiblingLibraryMap, format: string): SiblingLi
     out.push({ specifier: library.specifier, ...(sourceDir ? { sourceDir } : {}) });
   }
   return out;
-}
-
-/** Write a generated file only when its content would change, through a private
- *  temp file and an atomic rename — several kernels may populate one cache
- *  directory at once, and a reader must see a whole file or none. */
-async function writeIfChanged(file: string, content: string): Promise<void> {
-  try {
-    if ((await fs.readFile(file, "utf8")) === content) return;
-  } catch {
-    // Absent or unreadable — write it.
-  }
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${shimCounter++}.tmp`;
-  await fs.writeFile(tmp, content);
-  await fs.rename(tmp, file);
-}
-
-let shimCounter = 0;
-
-/**
- * Walk up from a resolved entry file to the directory whose package.json `name`
- * matches — the package root to symlink (so the symlinked package.json `exports`
- * drive per-runtime entry selection, e.g. Bun `src` vs Node `dist`).
- */
-function findPackageRoot(entryFile: string, name: string): string | null {
-  let dir = path.dirname(entryFile);
-  for (let i = 0; i < 24; i++) {
-    const pj = path.join(dir, "package.json");
-    if (existsSync(pj)) {
-      try {
-        if ((JSON.parse(readFileSync(pj, "utf8")) as { name?: string }).name === name) return dir;
-      } catch {
-        // unreadable / invalid package.json — keep walking
-      }
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-  return null;
 }
 
 /**
@@ -336,14 +183,17 @@ function findPackageRoot(entryFile: string, name: string): string | null {
 
  * Two separate concerns for `js` bundles importing `@telorun/sdk`:
  *  - *Resolution* — the bare specifier must point at a real file. The bundle has
- *    no node_modules, so `ensureRealmSymlinks()` symlinks the realm-collapse
- *    names into a `node_modules/` next to the bundle, pointing at the kernel's
- *    own copy; standard resolution then finds them on both Node and Bun. Authors
- *    write a normal `import { Stream } from "@telorun/sdk"`; nothing special.
- *  - *Identity* — once resolved to the kernel's copy it's the same module, so
- *    `Stream`/`InvokeError` are trivially identical. (The SDK's globalThis/Symbol
- *    singletons also keep identity correct even when a publish step inlines the
- *    SDK into the bundle instead of leaving it external.)
+ *    no node_modules, so `ensureRealmShims()` writes a generated package for each
+ *    realm name into a `node_modules/` next to the bundle; standard resolution
+ *    then finds it on every runtime. Authors write a normal
+ *    `import { Stream } from "@telorun/sdk"`; nothing special.
+ *  - *Identity* — the generated package re-exports the instance the running
+ *    kernel published into the process, so `Stream`/`InvokeError` are the
+ *    kernel's own however the kernel itself was delivered — including from
+ *    inside a single-file executable, where there is no SDK on disk to point at.
+ *    (The SDK's globalThis/Symbol singletons also keep identity correct even when
+ *    a publish step inlines the SDK into the bundle instead of leaving it
+ *    external.)
  *
  * A missing/remote/unparseable bundle is `ControllerEnvMissingError` (fall
  * through); a bundle that loads but is malformed is a hard `ERR_CONTROLLER_INVALID`.
@@ -427,7 +277,7 @@ export class BundleControllerLoader {
       await ensureLibraryShims(dir, nested, this.cacheRoot, this.log);
     }
     // A library entry imports `@telorun/sdk` like any controller does.
-    await ensureRealmSymlinks(dir);
+    await ensureRealmShims(dir, this.cacheRoot, this.log);
     return entryFile;
   }
 
@@ -487,6 +337,8 @@ export class BundleControllerLoader {
         source,
         this.cacheRoot,
         buildExternals(library.libraries, format),
+        undefined,
+        this.log,
       );
     }
 
@@ -624,6 +476,7 @@ export class BundleControllerLoader {
               cacheRoot!,
               buildExternals(libraries, format),
               report,
+              this.log,
             );
           } catch (err) {
             if (!(err instanceof ControllerEnvMissingError)) throw err;

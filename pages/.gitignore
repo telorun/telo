@@ -9,3 +9,8 @@ static/llms.txt
 static/llms-full.txt
 static/.llms-txt-generated.json
 static/**/*.md
+
+# Copied from the repository root by `scripts/copy-installers.mjs` so the site
+# serves them; the scripts themselves live at the root.
+static/install.sh
+static/install.ps1

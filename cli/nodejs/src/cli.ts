@@ -6,6 +6,7 @@ import "./color-bridge.js";
 
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { cliVersion } from "./distribution-versions.js";
 import { OUTPUT_FORMATS, configureOutput, parseOutputFormat } from "./output.js";
 import { celCommand } from "./commands/cel.js";
 import { checkCommand } from "./commands/check.js";
@@ -70,5 +71,8 @@ cli
   .demandCommand(1, "Please specify a command or path to run")
   .strict()
   .help()
-  .version()
+  // The version is this package's own answer rather than yargs' lookup, which
+  // walks up from the main module to a `package.json` — a file a single-file
+  // executable does not have, where it printed "unknown".
+  .version(cliVersion() ?? "unversioned build")
   .parse();
