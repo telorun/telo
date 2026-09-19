@@ -25,14 +25,14 @@ requires:
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
   Postgres: oci://ghcr.io/telorun/postgres@0.4.0#sha256-urAQgZtDIlbm4PFi0OlBgYPTU0fSdFbw3l3sHVdh-MQ
-  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
-  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Console: oci://ghcr.io/telorun/console@0.18.0#sha256-rehHO9omxIjC-2wR3aRpXSRbtbt9jczNbkY_dLxocy4
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
   Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
   VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
-  Durable: oci://ghcr.io/telorun/durable-local@0.3.0#sha256-zMx3J2RRD_eb5c8BRWE9CaWZ1_XsiiB_6SaF5o7csNg
-  Journal: oci://ghcr.io/telorun/durable-journal-postgres@0.4.0#sha256-HtLlbcZpqo6dsm0mLyQyteXgW8t4lqk_Jjddeosvq-E
+  Durable: oci://ghcr.io/telorun/durable-local@0.4.1#sha256-dVL3E0nVgdq_t37WQi0qGox7tsr0OB8GLlW-QIeF0vM
+  Journal: oci://ghcr.io/telorun/durable-journal-postgres@0.5.1#sha256-PcxDDzFyqpv5AugsTEYB8whnKmuv4tG9TQZRrXMSeuo
   Schema:
     source: ./hub-schema.yaml
     resources:

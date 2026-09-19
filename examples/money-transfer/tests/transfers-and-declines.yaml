@@ -1,0 +1,79 @@
+kind: Telo.Application
+metadata:
+  name: MoneyTransferExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/money-transfer` and walks the sequence its README documents: a
+    transfer that fits, and one that does not. The decline is the assertion that
+    matters — it is what shows the balance check ran inside the transaction, so a
+    refused transfer wrote nothing.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8055
+targets:
+  - !ref app
+steps:
+  - name: transfer
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8055/transfers
+      method: POST
+    inputs:
+      body: { from: 1, to: 2, amountCents: 2500 }
+  - name: verifyTransferred
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.transfer.result.status"
+        body: !cel "steps.transfer.result.body"
+      expected:
+        status: 200
+        body:
+          ok: true
+          movedCents: 2500
+
+  - name: overdraw
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8055/transfers
+      method: POST
+    inputs:
+      body: { from: 1, to: 2, amountCents: 999999 }
+  - name: verifyDeclined
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.overdraw.result.status"
+        body: !cel "steps.overdraw.result.body"
+      expected:
+        status: 409
+        body:
+          ok: false
+          error: insufficient_funds
+
+  # The ledger is in-memory, so this is the balance after the two transfers
+  # above and nothing else — a listing that starts reporting something different
+  # means one of them wrote when it should not have.
+  - name: accounts
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8055/accounts
+      method: GET
+  - name: verifyAccounts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.accounts.result.status"
+      expected: 200

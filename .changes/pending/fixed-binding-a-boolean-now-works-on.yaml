@@ -1,0 +1,7 @@
+modules:
+  modules/sqlite: Fixed
+body: 'Binding a boolean now works on both drivers: SQLite has no boolean storage class,
+  so `true`/`false` are bound as 1 and 0 — the same convention a declared column DEFAULT
+  already renders. Previously bun:sqlite coerced the value while better-sqlite3 refused
+  it ("SQLite3 can only bind numbers, strings, bigints, buffers, and null"), so the same
+  manifest wrote the row under Bun and failed under Node.'

@@ -1,0 +1,63 @@
+kind: Telo.Application
+metadata:
+  name: ChatConsoleExampleTest
+  version: 1.0.0
+  description: >-
+    Talks to `examples/chat-console` the way a person does: wait for its prompt, ask
+    something with an answer nobody can get wrong, read the reply, then `/exit`. A
+    REPL cannot be tested any other way — every turn exists only because the
+    previous one was answered.
+imports:
+  App: ../../../modules/app
+  Channel: ../../../modules/channel
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref app
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: app }
+source: ../telo.yaml
+# It blocks on its first prompt, so its targets never all finish dispatching.
+awaitStart: false
+variables:
+  # A conversation the example persists outlives the test, and a run that resumes
+  # one left half-finished behaves differently from a fresh one — so each run gets
+  # its own history.
+  historyFile: !cel "'./.telo/chat-console-test-' + uuidv4() + '.sqlite'"
+---
+kind: Channel.ReadUntil
+metadata: { name: read }
+channel: !ref app
+timeout: "60s"
+---
+kind: Channel.SendLine
+metadata: { name: send }
+channel: !ref app
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: firstPrompt
+    invoke: !ref read
+    inputs: { until: "you › " }
+  - name: ask
+    invoke: !ref send
+    inputs: { text: "Reply with exactly the word BANANA and nothing else." }
+
+  # The answer streams in between the `ai ›` marker and the next `you ›` prompt,
+  # so reading up to that prompt reads the whole reply however long it takes to
+  # arrive — no sleep, no polling.
+  - name: reply
+    invoke: !ref read
+    inputs: { until: "you › " }
+  - name: verifyAnswered
+    invoke: { kind: Assert.Contains }
+    inputs:
+      actual: !cel "steps.reply.result.text"
+      value: BANANA
+
+  - name: exit
+    invoke: !ref send
+    inputs: { text: "/exit" }

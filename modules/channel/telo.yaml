@@ -1,0 +1,187 @@
+kind: Telo.Library
+metadata:
+  name: Channel
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Streaming]
+  description: >-
+    Holds a conversation with a running program over a line-oriented text channel:
+    read what it printed up to a marker, answer it, read the next thing, and close
+    the input when the exchange is over. Waiting for a marker that never arrives
+    fails with what arrived instead, so a stuck exchange reports why rather than
+    hanging.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  telo: ">=0.82.0"
+exports:
+  kinds:
+    - Text
+    - SendLine
+    - ReadUntil
+    - End
+---
+# Channel.Text — what something on the other end of a text conversation IS.
+#
+# Abstract rather than a union of concrete kinds: a reference slot listing
+# `[App.Instance, Shell.Session]` would make this module know about the modules
+# that implement it, which is the coupling the abstract exists to remove.
+kind: Telo.Abstract
+metadata:
+  name: Text
+  description: >-
+    A running program reachable as a stream of text in both directions — a child
+    application, a shell session, a remote host. What it prints can be read up to a
+    marker and answered, and its input can be closed so it reads end of input.
+capability: Telo.Service
+---
+# Channel.SendLine — write one line.
+kind: Telo.Definition
+metadata:
+  name: SendLine
+  description: >-
+    Writes a line to the program on the other end of the channel, appending the
+    newline that ends it. Fails if the input side has been closed or the program
+    has already exited, rather than discarding what was written.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/channel.mjs&local_path=./nodejs/src/index.ts#SendLine
+throws:
+  codes:
+    ERR_CHANNEL_NOT_STARTED:
+      description: >-
+        The program has not been started, so there is nothing to write to. It is
+        missing from the `targets:` that should run before these steps.
+    ERR_CHANNEL_CLOSED:
+      description: >-
+        The program is no longer taking input — its input side was closed, or it
+        has exited. The text was not written.
+schema:
+  type: object
+  required: [channel]
+  additionalProperties: false
+  properties:
+    channel:
+      title: Channel
+      description: The program this writes to.
+      x-telo-ref:
+        kind: Self.Text
+        use: dependency
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [text]
+    additionalProperties: false
+    properties:
+      text:
+        type: string
+        description: >-
+          The line to write, without its newline — the newline is what makes this
+          a line rather than a fragment, so it is appended here and never written
+          by the author.
+---
+# Channel.ReadUntil — read up to a marker.
+kind: Telo.Definition
+metadata:
+  name: ReadUntil
+  description: >-
+    Waits for the program's output to reach a literal marker, then returns
+    everything up to and including it; the rest stays for the next read. Reading a
+    line is a marker of a newline. A marker that does not arrive within the timeout
+    fails with the text that arrived instead, and a program that exits mid-read
+    fails with its exit code rather than returning what it had.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/channel.mjs&local_path=./nodejs/src/index.ts#ReadUntil
+throws:
+  codes:
+    ERR_CHANNEL_READ_TIMEOUT:
+      description: >-
+        The marker did not arrive within the timeout. Carries the text read while
+        waiting, so the failure says what came instead.
+    ERR_CHANNEL_CLOSED:
+      description: >-
+        The program's output ended before the marker arrived — it exited, or its
+        output side closed. Carries what had been read.
+    ERR_CHANNEL_OVERFLOW:
+      description: >-
+        A channel retains a bounded amount of unread output, and the marker is
+        further away than that. Waiting longer cannot help.
+    ERR_CHANNEL_CONCURRENT_READ:
+      description: >-
+        A second read began while one was still waiting. Reads consume what they
+        return, so two at once would interleave and which got a given line would
+        depend on scheduling.
+schema:
+  type: object
+  required: [channel]
+  additionalProperties: false
+  properties:
+    channel:
+      title: Channel
+      description: >-
+        The program this reads. Reading is what makes the channel retain output at
+        all, so a channel no reader names costs no memory — and one channel has at
+        most one reader, because two would take each other's text.
+      x-telo-ref:
+        kind: Self.Text
+        use: dependency
+    timeout:
+      title: Timeout
+      description: >-
+        How long a read waits for its marker. There is deliberately no unbounded
+        spelling: a read that waits forever is the hang this kind exists to
+        replace with a report.
+      type: string
+      pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+      default: 30s
+      x-telo-eval: compile
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [until]
+    additionalProperties: false
+    properties:
+      until:
+        type: string
+        description: >-
+          Literal text to read up to. Not a pattern: a pattern dialect is the
+          first thing two runtimes disagree about silently, and matching beyond a
+          literal belongs in CEL over the text this returns.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [text]
+    additionalProperties: false
+    properties:
+      text:
+        type: string
+        description: Everything read, up to and including the marker.
+---
+# Channel.End — close the input side.
+kind: Telo.Definition
+metadata:
+  name: End
+  description: >-
+    Closes the input side, so the program reads end of input and can finish on its
+    own. A kind rather than part of shutting the program down, because a program
+    that exits cleanly once its input ends is exactly what a caller wants to
+    observe. Doing it twice is not an error.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/channel.mjs&local_path=./nodejs/src/index.ts#End
+schema:
+  type: object
+  required: [channel]
+  additionalProperties: false
+  properties:
+    channel:
+      title: Channel
+      description: The program whose input is closed.
+      x-telo-ref:
+        kind: Self.Text
+        use: dependency

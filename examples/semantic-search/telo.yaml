@@ -30,15 +30,15 @@ metadata:
     before `/ask`, because a wrong answer is usually wrong retrieval rather than
     a wrong model.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
-  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
-  OpenAI: oci://ghcr.io/telorun/openai@0.3.1#sha256-FVg-jmRPGB43Or9_LU8XhDhG_G2Mio56iiSDwi_ofLk
-  Ai: oci://ghcr.io/telorun/ai@0.18.1#sha256-QKVK7-JK8AOmpm_6fwO5Hta75oUg0X9FL-aEy9A19YQ
+  Http: oci://ghcr.io/telorun/http-server@0.31.1#sha256-bHVTaRpBawOUeJcsaW38aAg2BFy9ZXM6K2m8tz0bpqc
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.2#sha256-MgBP2BIWuM3-PEv7j3IHCH0Pfrr6jW0Ao-YR7Dr7bCk
+  OpenAI: oci://ghcr.io/telorun/openai@0.5.1#sha256-weAhBYyV-sZXjSNiIMnAqLLuDGvCFduRImF3P1KmXbU
+  Ai: oci://ghcr.io/telorun/ai@0.20.1#sha256-Ys9inTxTXKIdAIEqG8elivkWEngImXsMsmNol8rxa3w
   Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
   VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
   VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.8.0#sha256-xHjRmne30UlHnjpNgm8MVrlg_F-XqaLSeJv7pPanBE4
-  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
-  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Console: oci://ghcr.io/telorun/console@0.18.0#sha256-rehHO9omxIjC-2wR3aRpXSRbtbt9jczNbkY_dLxocy4
 targets:
   - !ref indexCorpus
   - !ref server

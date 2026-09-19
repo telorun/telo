@@ -30,6 +30,8 @@ inputs:
 
 The connection's bind-placeholder style is fixed to SQLite anonymous `?`, so inline `${{ }}` parameters stay dialect-neutral. Migrations run with transactional DDL (a transactional-SQLite adapter wraps the batch), matching PostgreSQL.
 
+SQLite has no boolean storage class, so a bound `true` or `false` is written as `1` or `0` in an `integer` column — the same convention a declared column `default: true` renders. It reads back as the number, and a predicate bound with a boolean matches accordingly. Both drivers do this identically.
+
 ## Declarative schema
 
 `SQLite.Table` declares a table in SQLite's own vocabulary — the five storage

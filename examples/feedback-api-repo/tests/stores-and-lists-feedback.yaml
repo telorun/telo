@@ -1,0 +1,79 @@
+kind: Telo.Application
+metadata:
+  name: FeedbackApiExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/feedback-api-repo` and posts, lists and rejects feedback. The
+    rejected rating is the assertion worth having: the request schema is what keeps
+    an out-of-range value from ever reaching the database.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8844
+targets:
+  - !ref app
+steps:
+  - name: post
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8844/v1/feedback
+      method: POST
+    inputs:
+      body:
+        text: the docs made sense
+        rating: 5
+  - name: verifyPosted
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.post.result.status"
+        body: !cel "steps.post.result.body"
+      expected:
+        status: 201
+        body:
+          ok: true
+          message: Feedback received
+
+  - name: badRating
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8844/v1/feedback
+      method: POST
+    inputs:
+      body:
+        text: out of range
+        rating: 9
+  - name: verifyRejected
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.badRating.result.status"
+      expected: 400
+
+  - name: list
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8844/v1/feedback
+      method: GET
+  - name: verifyListed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.list.result.status"
+        text: !cel "steps.list.result.body[0].text"
+        rating: !cel "steps.list.result.body[0].rating"
+      expected:
+        status: 200
+        text: the docs made sense
+        rating: 5

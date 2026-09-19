@@ -1,0 +1,56 @@
+kind: Telo.Application
+metadata:
+  name: ScheduledJobTemplateTest
+  version: 1.0.0
+  description: >-
+    Runs the template and triggers the job through its on-demand route. Two
+    triggers onto one declaration is what the template teaches — a cron schedule
+    and an HTTP call reaching the same resource — and the route is the half a test
+    can reach without waiting for a clock.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8046
+    variables:
+      # A cron that will not fire during the test, so what the job route reports
+      # is this test's own trigger and nothing else.
+      jobCron: "0 3 1 1 *"
+      scanPath: ./templates/apps/scheduled-job
+targets:
+  - !ref app
+steps:
+  - name: health
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8046/healthz
+      method: GET
+  - name: run
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8046/run
+      method: POST
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        healthStatus: !cel "steps.health.result.status"
+        runStatus: !cel "steps.run.result.status"
+        # The job scans a directory that exists, so it counts at least the
+        # template's own manifest.
+        scannedSomething: !cel "steps.run.result.body.files > 0"
+      expected:
+        healthStatus: 200
+        runStatus: 200
+        scannedSomething: true

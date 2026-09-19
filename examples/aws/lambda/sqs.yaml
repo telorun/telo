@@ -17,8 +17,8 @@ metadata:
     failed. See `examples/aws/lambda/README.md` for the full packaging +
     deploy walkthrough.
 imports:
-  Lambda: oci://ghcr.io/telorun/aws/lambda@0.9.1#sha256-j3T4Xg1dDA-6h8kQjJMxPLwf83cieI5A45DJht3XdD4
-  JS: oci://ghcr.io/telorun/javascript@0.12.3#sha256-iUQQQDhaz0vY_ILjBbmwieUFhgVG8HXtPq-bwtcDWdA
+  Lambda: oci://ghcr.io/telorun/aws/lambda@0.11.0#sha256-z4Sh2fdoIbnEGK8rKrMI3c6OiqXv3mktJJ4kQQSsvuU
+  JS: oci://ghcr.io/telorun/javascript@0.13.0#sha256-mC0Ed61_aqEk9IzHyqy-h-dm9LRcENLDIhkhi46cDAw
 targets:
   - !ref main
 ---

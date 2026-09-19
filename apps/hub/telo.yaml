@@ -38,25 +38,31 @@ requires:
   # by following an exported entry point into its declaring library. An older
   # runtime sees `{∅}` for every cross-module handler and rejects seven of the
   # codes below.
-  telo: ">=0.87.0"
+  # 0.90.0: verified by execution, which is what moved this bound up from 0.87.0.
+  # 0.87.0 rejects nine of the routes below — a `!cel` in a `when:` or a computed
+  # `Retry-After` is read against the scalar the shape declares, with no
+  # placeholder substituted — and 0.88/0.89 still refuse `stream@0.12.0`, which
+  # this imports transitively. 0.90.0 is the first release that reads the whole
+  # graph clean.
+  telo: ">=0.90.0"
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.29.2#sha256-9MtWZqXF9agsYRx97nLMJZW7YYwXpW2dLYcn_oA4kUs
+  Http: oci://ghcr.io/telorun/http-server@0.31.1#sha256-bHVTaRpBawOUeJcsaW38aAg2BFy9ZXM6K2m8tz0bpqc
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
   Postgres: oci://ghcr.io/telorun/postgres@0.4.0#sha256-urAQgZtDIlbm4PFi0OlBgYPTU0fSdFbw3l3sHVdh-MQ
-  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Mcp: oci://ghcr.io/telorun/mcp-server@0.16.0#sha256-GGSQyzXynfdHeMNTS3vqOceP1Uw9rCoJriPlL_Ph-fU
-  Console: oci://ghcr.io/telorun/console@0.17.4#sha256-T3hXxYNK-UClSE_wssnkYI-urC-4c8CEx82rSBc-dR4
+  Mcp: oci://ghcr.io/telorun/mcp-server@0.16.1#sha256-FvBOyuEPt09re8c0hALsLemki5y074MoRC-z5rf97LI
+  Console: oci://ghcr.io/telorun/console@0.18.0#sha256-rehHO9omxIjC-2wR3aRpXSRbtbt9jczNbkY_dLxocy4
   Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
-  OpenAI: oci://ghcr.io/telorun/openai@0.3.1#sha256-FVg-jmRPGB43Or9_LU8XhDhG_G2Mio56iiSDwi_ofLk
-  HttpClient: oci://ghcr.io/telorun/http-client@0.22.0#sha256-UyC8nQDnKHXyPpPPHC7TS8MicesLsgDUKWBYObf5oQ4
+  OpenAI: oci://ghcr.io/telorun/openai@0.5.1#sha256-weAhBYyV-sZXjSNiIMnAqLLuDGvCFduRImF3P1KmXbU
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.2#sha256-MgBP2BIWuM3-PEv7j3IHCH0Pfrr6jW0Ao-YR7Dr7bCk
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.9.0#sha256-xf5Sl63MYbMSM4GzzRPVNrqbtrxQ27x9cwFKrDCjCEM
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.4#sha256-_E2AqSEEsTotJXiSmk9GBqlnlwW8JRXNJXZWbx-olxY
   VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
   VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.12.0#sha256-2PYbXSCmI2WlRtVQoQJO6ebJzmVHBOe1kJk8c3-wjfg
-  Scheduler: oci://ghcr.io/telorun/scheduler@0.9.0#sha256-4MpeweWGk4LedDa34TE9lELndNfl9YyBLAyOiHyap9s
-  Durable: oci://ghcr.io/telorun/durable-local@0.3.0#sha256-zMx3J2RRD_eb5c8BRWE9CaWZ1_XsiiB_6SaF5o7csNg
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.9.1#sha256-GKos66CxC3CyRL9GYIsVLKRcwJZjoJYyiLoqaZDqfWM
+  Durable: oci://ghcr.io/telorun/durable-local@0.4.1#sha256-dVL3E0nVgdq_t37WQi0qGox7tsr0OB8GLlW-QIeF0vM
   # ── The hub's own libraries ────────────────────────────────────────────────
   # Each is handed the instances declared below. `hub-schema` and `hub-origin`
   # declare `lifecycle: shared`, so the imports of them here and inside

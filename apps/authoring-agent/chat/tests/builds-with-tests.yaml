@@ -60,11 +60,11 @@ imports:
       # No `model:` — inherited from the library, so this exercises what ships.
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
       allowManifestRuns: true
-  Fs: oci://ghcr.io/telorun/fs@0.10.0#sha256-LX1vWAKCnN5QVScxbPuNbxMuhNrSgSTHcAL-MwR1Jxw
+  Fs: oci://ghcr.io/telorun/fs@0.10.1#sha256-pj5pToa-5CERdxQQpeRNYEJmtNWsNYIGKqehjamHXUo
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
-  Stream: oci://ghcr.io/telorun/stream@0.11.0#sha256-nODqk6Vl8bhNF7R2yYT1WN0NrHL_rSzty9O7lrmlMsQ
-  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
-  Assert: oci://ghcr.io/telorun/assert@0.18.0#sha256-mSy7HGMq_UoQUvt4WbQCIO_uqXcRZwRlmROp6DfLDjY
+  Stream: oci://ghcr.io/telorun/stream@0.12.0#sha256-9k7wI-86RokMs-fb01heH4kitM5hNQcOrFj2OesahXE
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.0#sha256-CHKb_ylzNVdyIA4XFFvofXSbgCUAyuaiSgWXyZKtPSI
 targets:
   - !ref cleanWorkspace
   - !ref Chat.ensureWorkspace

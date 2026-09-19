@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: ConsoleUserInputExampleTest
+  version: 1.0.0
+  description: >-
+    Answers `examples/console-user-input` the way a person would: wait for the
+    prompt, type, wait for the next one, type again, and check what it echoed back.
+    The second prompt only exists once the first is answered, so this is the shape
+    the example cannot be tested in any other way.
+imports:
+  App: ../../../modules/app
+  Channel: ../../../modules/channel
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref app
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: app }
+source: ../telo.yaml
+# It blocks on its first prompt, so its targets never all finish dispatching.
+awaitStart: false
+---
+kind: Channel.ReadUntil
+metadata: { name: read }
+channel: !ref app
+timeout: "10s"
+---
+kind: Channel.SendLine
+metadata: { name: send }
+channel: !ref app
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: usernamePrompt
+    invoke: !ref read
+    inputs: { until: "Username: " }
+  - name: sendUsername
+    invoke: !ref send
+    inputs: { text: Ada }
+
+  - name: passwordPrompt
+    invoke: !ref read
+    inputs: { until: "Password: " }
+  - name: sendPassword
+    invoke: !ref send
+    inputs: { text: secret }
+
+  - name: echoed
+    invoke: !ref read
+    inputs: { until: "\n" }
+
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.echoed.result.text"
+      expected: "Username: Ada, Password: secret\n"

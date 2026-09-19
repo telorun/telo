@@ -1,0 +1,122 @@
+kind: Telo.Application
+metadata:
+  name: ExclusiveWorkerExampleTest
+  version: 1.0.0
+  description: >-
+    Runs three replicas of `examples/exclusive-worker` over one database — the
+    example's README asks a reader to open three terminals, and this is that,
+    declared. The assertion is the guarantee the example exists for: however many
+    replicas run, each job is processed once.
+
+    The replicas start one at a time, in nested scopes. Booting all three at once
+    has them run their first migration against the same SQLite file in the same
+    instant, and two of them fail with "database is locked" — a real race, but one
+    about starting a SQLite-backed application three times over rather than about
+    the lease this test is for. Nesting also tears each replica down in the
+    reverse order it started.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  Timer: ../../../modules/timer
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: workerA }
+    source: ../telo.yaml
+    variables: { instanceId: a, dbFile: ./.telo/exclusive-worker-test.db }
+    ports: { http: 8051 }
+targets:
+  - !ref workerA
+steps:
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 400ms
+  - name: withSecondReplica
+    invoke: !ref secondReplica
+---
+kind: Run.Sequence
+metadata: { name: secondReplica }
+with:
+  - kind: App.Instance
+    metadata: { name: workerB }
+    source: ../telo.yaml
+    variables: { instanceId: b, dbFile: ./.telo/exclusive-worker-test.db }
+    ports: { http: 8052 }
+targets:
+  - !ref workerB
+steps:
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 400ms
+  - name: withThirdReplica
+    invoke: !ref thirdReplica
+---
+kind: Run.Sequence
+metadata: { name: thirdReplica }
+with:
+  - kind: App.Instance
+    metadata: { name: workerC }
+    source: ../telo.yaml
+    variables: { instanceId: c, dbFile: ./.telo/exclusive-worker-test.db }
+    ports: { http: 8053 }
+targets:
+  - !ref workerC
+steps:
+  # All three are running here: the two outer scopes are still open.
+  - name: letThemTick
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 1500ms
+
+  - name: statusA
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8051/status
+      method: GET
+  - name: statusB
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8052/status
+      method: GET
+  - name: statusC
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8053/status
+      method: GET
+
+  - name: verifyIdentities
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        aStatus: !cel "steps.statusA.result.status"
+        bStatus: !cel "steps.statusB.result.status"
+        cStatus: !cel "steps.statusC.result.status"
+        a: !cel "steps.statusA.result.body.me"
+        b: !cel "steps.statusB.result.body.me"
+        c: !cel "steps.statusC.result.body.me"
+      expected:
+        aStatus: 200
+        bStatus: 200
+        cStatus: 200
+        a: a
+        b: b
+        c: c
+
+  # The ledger the three share adds up: each of the twelve seeded jobs is either
+  # done or still pending, never both and never counted twice. Double-processing
+  # is what the lease prevents, and it would show up here as a total above twelve.
+  - name: verifyNoJobDoneTwice
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        steps.statusA.result.body.pending +
+        sum(steps.statusA.result.body.processedBy.map(row, row.jobs))
+      expected: 12

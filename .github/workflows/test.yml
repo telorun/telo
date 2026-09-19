@@ -167,12 +167,21 @@ jobs:
       - name: Run tests (bun)
         run: pnpm test
 
-      # An example that IS a test suite has to be RUN, not just checked. The root
-      # suite excludes `examples/**` because they pin published module versions —
-      # which is right, and left this one's tests running nowhere at all. Its own
-      # suite is the command its README tells a reader to use.
-      - name: Run the example test suite (bun)
-        run: pnpm run telo ./examples/testing-a-manifest/test-suite.yaml
+      # `telo check` says an example parses; it says nothing about whether the
+      # application still does what its README claims. Each example owns its
+      # tests, and these suites run every one of them — standing the example up
+      # on a port of the test's own and calling it, which is what catches a route
+      # that silently stopped serving.
+      #
+      # Separate from the module suite, and from each other, because an example
+      # and a template both import PUBLISHED modules: a red run here can mean the
+      # release sequence is behind rather than that the code is wrong, and that
+      # signal must not make a red module suite ambiguous.
+      - name: Run the example test suites (bun)
+        run: pnpm run telo ./examples/test-suite.yaml
+
+      - name: Run the template test suites (bun)
+        run: pnpm run telo ./templates/test-suite.yaml
 
   integration:
     name: "Linux: integration tests (Postgres)"
@@ -686,8 +695,11 @@ jobs:
       - name: Run telo manifest tests (Node)
         run: pnpm run test:node
 
-      - name: Run the example test suite (Node)
-        run: pnpm run telo:node ./examples/testing-a-manifest/test-suite.yaml
+      - name: Run the example test suites (Node)
+        run: pnpm run telo:node ./examples/test-suite.yaml
+
+      - name: Run the template test suites (Node)
+        run: pnpm run telo:node ./templates/test-suite.yaml
 
   rust:
     name: "Linux: Rust tests"

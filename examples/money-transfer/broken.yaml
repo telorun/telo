@@ -16,8 +16,8 @@ metadata:
     execution-zone diagnostic can be seen rather than described.
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
-  SQLite: oci://ghcr.io/telorun/sqlite@0.4.0#sha256-G8qidbhcpiVLiCbrI8TSZZWDO95R4JM9kNX_oVenLmY
-  Run: oci://ghcr.io/telorun/run@0.26.0#sha256-ZhW56yiMCImqBh0wJ4mVaUvh5WuUVIaWErASFx--wCY
+  SQLite: oci://ghcr.io/telorun/sqlite@0.5.0#sha256-A8EQEU4t73P9GqvxfkAvTL0pqAm1b6aovw1a17lxvTU
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
 targets:
   - !ref payout
 ---

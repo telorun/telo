@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: Quiz
+  version: 1.0.0
+  description: >-
+    Asks two questions and reports what it was told, then exits. A fixture for the
+    channel tests: the second question only appears after the first is answered, so
+    a conversation is the only way to reach it.
+imports:
+  Console: ../../../../console
+  Run: ../../../../run
+targets:
+  - !ref quiz
+---
+kind: Run.Sequence
+metadata: { name: quiz }
+steps:
+  - name: name
+    invoke: { kind: Console.ReadLine }
+    inputs:
+      prompt: "Name: "
+  - name: colour
+    invoke: { kind: Console.ReadLine }
+    inputs:
+      prompt: "Colour: "
+  - name: report
+    invoke: { kind: Console.WriteLine }
+    inputs:
+      output: !cel "steps.name.result.value + ' likes ' + steps.colour.result.value"

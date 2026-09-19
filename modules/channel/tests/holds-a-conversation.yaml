@@ -1,0 +1,68 @@
+kind: Telo.Application
+metadata:
+  name: HoldsAConversationTest
+  version: 1.0.0
+  description: >-
+    Answers a program's questions one at a time. The second question only appears
+    after the first is answered, so nothing that hands over a fixed script at boot
+    can reach it — reading up to a marker, answering, and reading again is the whole
+    point.
+imports:
+  App: ../../app
+  Channel: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref quiz
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: quiz }
+source: ./__fixtures__/quiz/telo.yaml
+# It blocks on its first prompt, so its targets never all finish dispatching.
+awaitStart: false
+---
+kind: Channel.ReadUntil
+metadata: { name: read }
+channel: !ref quiz
+timeout: "10s"
+---
+kind: Channel.SendLine
+metadata: { name: send }
+channel: !ref quiz
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: namePrompt
+    invoke: !ref read
+    inputs: { until: "Name: " }
+  - name: sendName
+    invoke: !ref send
+    inputs: { text: Ada }
+
+  - name: colourPrompt
+    invoke: !ref read
+    inputs: { until: "Colour: " }
+  - name: sendColour
+    invoke: !ref send
+    inputs: { text: green }
+
+  - name: report
+    invoke: !ref read
+    inputs: { until: "\n" }
+
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: !cel "steps.namePrompt.result.text"
+        # The second prompt is everything printed since the first was consumed —
+        # a read continues where the last one stopped rather than re-matching
+        # what it already returned.
+        second: !cel "steps.colourPrompt.result.text"
+        report: !cel "steps.report.result.text"
+      expected:
+        first: "Name: "
+        second: "Colour: "
+        report: "Ada likes green\n"

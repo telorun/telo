@@ -1,0 +1,7 @@
+modules:
+  modules/sqlite: Fixed
+body: An application whose table has a text primary key can boot against its own
+  database again. SQLite backs such a key with an implicit index, which introspection
+  read back as a column-level unique flag the declaration never carried; the second boot
+  diffed unique true to false, called it an in-place constraint change and refused. The
+  application worked once and failed every time after.

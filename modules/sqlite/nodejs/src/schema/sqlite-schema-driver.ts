@@ -144,13 +144,36 @@ export class SqliteSchemaDriver implements SchemaDriver {
     return String(result.rows[0]?.now);
   }
 
+  /**
+   * `BEGIN IMMEDIATE`, not the deferred `BEGIN` a generic transaction issues.
+   *
+   * A deferred transaction takes a read lock first and asks for the write lock
+   * at its first write. SQLite does NOT run the busy handler for that upgrade —
+   * waiting there could deadlock two readers both wanting to write — so it
+   * raises "database is locked" at once, however long a busy timeout is set.
+   * Two applications booting against one file is an ordinary shape (the same app
+   * run twice, a worker beside a server), and every one of them reconciles its
+   * schema at boot, so this was reached by simply starting two at the same time.
+   *
+   * Asking for the write lock up front is what makes the busy timeout apply: the
+   * second pass waits for the first instead of failing. It costs nothing here —
+   * every statement in this batch is DDL, so the transaction was always going to
+   * write.
+   */
   async runAtomically(statements: readonly string[]): Promise<void> {
     if (statements.length === 0) return;
-    await this.#db.transaction().execute(async (trx) => {
+    await this.connection.execute("BEGIN IMMEDIATE");
+    try {
       for (const statement of statements) {
-        await trx.executeQuery(CompiledQuery.raw(statement));
+        await this.connection.execute(statement);
       }
-    });
+    } catch (err) {
+      // A rollback that itself fails must not replace the real failure: the
+      // caller needs the statement that broke, not the cleanup after it.
+      await this.connection.execute("ROLLBACK").catch(() => undefined);
+      throw err;
+    }
+    await this.connection.execute("COMMIT");
   }
 
   /** SQLite has no DDL this design must keep out of a transaction, so this is
@@ -189,10 +212,20 @@ export class SqliteSchemaDriver implements SchemaDriver {
           `PRAGMA index_info(${this.quote(name)})`,
         );
         const columns = columnsResult.rows.map((entry) => String(entry.name));
-        if (unique && columns.length === 1) uniqueColumns.add(columns[0]!);
         // `origin` is `c` for an index the author created, `u`/`pk` for one
         // SQLite made to back a constraint.
-        if (String(row.origin ?? "c") === "c") indexes.push({ name, columns, unique });
+        const origin = String(row.origin ?? "c");
+        // A `pk`-origin index IS the primary key — SQLite builds one for every
+        // primary key that is not an INTEGER rowid alias. Reading it as a column
+        // `unique` flag reported uniqueness the author never declared, so a
+        // `text` primary key came back as `unique: true`, diffed against a
+        // declaration that says only `primaryKey: true`, and refused as an
+        // in-place constraint change. The application booted once and failed
+        // every time after, against its own database. `primaryKey` already
+        // carries the constraint; a column that is BOTH gets a second,
+        // `u`-origin index, which is still read here.
+        if (unique && columns.length === 1 && origin !== "pk") uniqueColumns.add(columns[0]!);
+        if (origin === "c") indexes.push({ name, columns, unique });
       }
 
       const columns: LiveColumn[] = info.rows.map((row) => {

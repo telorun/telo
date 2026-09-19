@@ -1,0 +1,123 @@
+kind: Telo.Application
+metadata:
+  name: RefusesUndeclaredPropertiesTest
+  version: 1.0.0
+  description: >-
+    A body declaring `additionalProperties: false` refuses a property it does not
+    declare, rather than accepting the request and dropping the value. The stripping
+    behaviour answered 201 while discarding what the client sent — a misspelled
+    field is the common case, and it was indistinguishable from success until
+    someone read the row back. A schema that leaves the object open still accepts.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 8939
+    openapi:
+      info:
+        title: Undeclared properties
+        version: 1.0.0
+    mounts:
+      - path: /v1
+        mount: !ref api
+targets:
+  - !ref server
+steps:
+  - name: declaredOnly
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8939/v1/closed
+      method: POST
+    inputs:
+      body: { text: hello }
+  - name: withUndeclared
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8939/v1/closed
+      method: POST
+    inputs:
+      body: { text: hello, colour: blue }
+  - name: openBody
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8939/v1/open
+      method: POST
+    inputs:
+      body: { text: hello, colour: blue }
+
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        declaredOnly: !cel "steps.declaredOnly.result.status"
+        withUndeclared: !cel "steps.withUndeclared.result.status"
+        openBody: !cel "steps.openBody.result.status"
+        # What the handler received: an open schema passes the extra value
+        # through rather than dropping it.
+        openEcho: !cel "steps.openBody.result.body.colour"
+      expected:
+        declaredOnly: 200
+        withUndeclared: 400
+        openBody: 200
+        openEcho: blue
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /closed
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [text]
+          properties:
+            text: { type: string }
+    handler: !ref echo
+    inputs:
+      received: !cel "request.body"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.received"
+
+  - request:
+      path: /open
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [text]
+          properties:
+            text: { type: string }
+    handler: !ref echo
+    inputs:
+      received: !cel "request.body"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.received"
+---
+kind: Run.Value
+metadata: { name: echo }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      received: { type: object, additionalProperties: true }
+value:
+  received: !cel "inputs.received"

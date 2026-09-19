@@ -1,0 +1,7 @@
+modules:
+  modules/sqlite: Fixed
+body: Two applications can boot against one database file. A schema pass opened a
+  deferred transaction, and SQLite refuses the read-to-write upgrade immediately rather
+  than running the busy handler, so the second application to start failed with
+  'database is locked' whatever timeout was set. The pass now takes the write lock up
+  front, and both drivers set an explicit busy timeout.

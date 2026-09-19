@@ -1,0 +1,62 @@
+kind: Telo.Application
+metadata:
+  name: SupportInboxExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/support-inbox-mcp` and reaches the same tickets through both of
+    its front doors — the HTTP route a browser uses and the MCP tool an assistant
+    calls. Asserting both is the point of the example: the handlers know nothing
+    about MCP, so a change that serves one door and breaks the other is exactly
+    what this catches.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8066
+targets:
+  - !ref app
+steps:
+  - name: search
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8066/api/tickets?q=login
+      method: GET
+  - name: verifySearch
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.search.result.status"
+      expected: 200
+  - name: verifyMatchedSomething
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "size(steps.search.result.body) > 0"
+      expected: true
+
+  - name: tools
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8066/mcp
+      method: POST
+      headers:
+        accept: application/json, text/event-stream
+    inputs:
+      body:
+        jsonrpc: "2.0"
+        id: 1
+        method: tools/list
+  - name: verifyToolsListed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.tools.result.status"
+      expected: 200

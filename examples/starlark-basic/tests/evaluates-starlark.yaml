@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: StarlarkBasicExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/starlark-basic` to completion and checks the value it computed.
+imports:
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: test }
+source: ../telo.yaml
+expect:
+  runs: true
+  stdout: "Evaluated starlark code.\nResult is: 84\n\n"

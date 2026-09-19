@@ -1,0 +1,45 @@
+kind: Telo.Application
+metadata:
+  name: NightlyReportExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/nightly-report` and asks for the report over HTTP. The example
+    wires one report resource to two triggers — a cron schedule and a route — and
+    the route is the half a test can reach without waiting for a clock. The cron is
+    set to a date the test will never see, so what comes back is this request's
+    work and nothing else.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8044
+    variables:
+      reportCron: "0 3 1 1 *"
+targets:
+  - !ref app
+steps:
+  - name: report
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8044/report
+      method: GET
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.report.result.status"
+        rows: !cel "size(steps.report.result.body) > 0"
+      expected:
+        status: 200
+        rows: true

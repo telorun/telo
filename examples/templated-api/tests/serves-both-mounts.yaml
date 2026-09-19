@@ -1,0 +1,55 @@
+kind: Telo.Application
+metadata:
+  name: TemplatedApiExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/templated-api` and calls both mounts. One library-exported route
+    mounted at two paths is the whole point of the example, so both are asserted —
+    a mount that quietly stopped serving would otherwise show up as a 404 nobody
+    looks for.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8846
+targets:
+  - !ref app
+steps:
+  - name: v1
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8846/v1/hello?name=World
+      method: GET
+  - name: v2
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8846/v2/hello?name=World
+      method: GET
+  - name: verifyBothMounts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        v1Status: !cel "steps.v1.result.status"
+        v1Body: !cel "steps.v1.result.body"
+        v2Status: !cel "steps.v2.result.status"
+        v2Body: !cel "steps.v2.result.body"
+      expected:
+        v1Status: 200
+        v1Body:
+          greeting: "Hello World!!"
+          nice: WOW
+        v2Status: 200
+        v2Body:
+          greeting: "Hello World!!"
+          nice: WOW

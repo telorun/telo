@@ -37,6 +37,23 @@ export interface EnvResolutionResult {
   ports: Record<string, number>;
 }
 
+/**
+ * Values supplied for this application's declared inputs by whoever started it —
+ * a parent application running it as a resource — keyed by DECLARATION name, not
+ * by the environment variable the declaration binds.
+ *
+ * A supplied value replaces the env read for that name and is validated against
+ * the same residual schema, so the child stays the authority on what it accepts.
+ * A supplied name the application does not declare is an error rather than a
+ * silent no-op: it is either a typo or a stale caller, and both read as "the
+ * value I passed was ignored" at the far end.
+ */
+export interface ApplicationInputs {
+  variables?: Record<string, unknown>;
+  secrets?: Record<string, unknown>;
+  ports?: Record<string, number>;
+}
+
 /** Residual schema every resolved port value is validated against. Ports are
  *  implicitly integers in the IANA range; `protocol` selects transport and
  *  carries no validation. */
@@ -67,14 +84,17 @@ export function resolveApplicationEnv(
   manifest: Record<string, any>,
   env: Record<string, string | undefined>,
   validator: SchemaValidator,
+  inputs?: ApplicationInputs,
 ): EnvResolutionResult {
   const errors: string[] = [];
+  reportUndeclaredInputs(manifest, inputs, errors);
   const variables = resolveBlock(
     manifest.variables ?? {},
     env,
     validator,
     errors,
     false,
+    inputs?.variables,
   );
   const secrets = resolveBlock(
     manifest.secrets ?? {},
@@ -82,8 +102,9 @@ export function resolveApplicationEnv(
     validator,
     errors,
     true,
+    inputs?.secrets,
   );
-  const ports = resolvePorts(manifest.ports ?? {}, env, validator, errors);
+  const ports = resolvePorts(manifest.ports ?? {}, env, validator, errors, inputs?.ports);
   if (errors.length > 0) {
     throw new RuntimeError(
       "ERR_MANIFEST_VALIDATION_FAILED",
@@ -311,6 +332,7 @@ function resolvePorts(
   env: Record<string, string | undefined>,
   validator: SchemaValidator,
   errors: string[],
+  supplied?: Record<string, number>,
 ): Record<string, number> {
   const out: Record<string, number> = {};
   if (!block || typeof block !== "object" || Array.isArray(block)) {
@@ -318,6 +340,15 @@ function resolvePorts(
   }
   for (const [name, entry] of Object.entries(block as Record<string, PortEntry>)) {
     if (!entry || typeof entry !== "object") continue;
+    // A supplied value is already in the value domain — it came from a parent
+    // manifest, not from a string in the environment — so it is validated but
+    // never coerced.
+    if (supplied && Object.hasOwn(supplied, name)) {
+      const validation = validateResidual(supplied[name], PORT_RESIDUAL_SCHEMA, validator);
+      if (validation) errors.push(`${name}: ${validation}`);
+      else out[name] = supplied[name];
+      continue;
+    }
     const envKey = entry.env;
     const raw = env[envKey];
 
@@ -360,6 +391,7 @@ function resolveBlock(
   validator: SchemaValidator,
   errors: string[],
   isSecret: boolean,
+  supplied?: Record<string, unknown>,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!block || typeof block !== "object" || Array.isArray(block)) {
@@ -367,9 +399,17 @@ function resolveBlock(
   }
   for (const [name, entry] of Object.entries(block as Record<string, EnvEntry>)) {
     if (!entry || typeof entry !== "object") continue;
+    const residual = residualEntrySchema(entry as Record<string, unknown>);
+    // See the note in `resolvePorts`: a supplied value is a value, not text, so
+    // it is validated against the same residual schema but never coerced.
+    if (supplied && Object.hasOwn(supplied, name)) {
+      const validation = validateResidual(supplied[name], residual, validator);
+      if (validation) errors.push(`${name}: ${validation}`);
+      else out[name] = supplied[name];
+      continue;
+    }
     const envKey = entry.env;
     const raw = env[envKey];
-    const residual = residualEntrySchema(entry as Record<string, unknown>);
 
     if (raw === undefined || raw === null) {
       if (entry.default !== undefined) {
@@ -404,6 +444,39 @@ function resolveBlock(
     out[name] = coerced;
   }
   return out;
+}
+
+/**
+ * Refuse every supplied name the application does not declare, before any of
+ * them is resolved, so a caller sees the whole list at once rather than the
+ * first one.
+ *
+ * The declared names are named back: a caller that misspelled one is looking at
+ * the spelling it should have used, and a caller written against an older
+ * version of the child sees what the child accepts now.
+ */
+function reportUndeclaredInputs(
+  manifest: Record<string, any>,
+  inputs: ApplicationInputs | undefined,
+  errors: string[],
+): void {
+  if (!inputs) return;
+  for (const block of ["variables", "secrets", "ports"] as const) {
+    const supplied = inputs[block];
+    if (!supplied) continue;
+    const declared = manifest[block];
+    const names =
+      declared && typeof declared === "object" && !Array.isArray(declared)
+        ? Object.keys(declared)
+        : [];
+    for (const name of Object.keys(supplied)) {
+      if (names.includes(name)) continue;
+      errors.push(
+        `${name}: this application declares no \`${block}\` entry by that name` +
+          (names.length > 0 ? ` (it declares: ${names.join(", ")})` : ` (it declares none)`),
+      );
+    }
+  }
 }
 
 /** An env value arrives from outside Telo, so every instance-typed slot in it is

@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: PdfChartReportExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/pdf-chart-report` to completion. It renders a chart, lays out a
+    PDF around it and writes the file — a chain of four modules where a break
+    anywhere shows up as a failed run rather than a wrong pixel, which is exactly
+    what a run-to-completion check is good for.
+imports:
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: test }
+source: ../telo.yaml
+expect:
+  runs: true

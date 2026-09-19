@@ -1,0 +1,126 @@
+kind: Telo.Application
+metadata:
+  name: TodoAppExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/todo-app` and walks its REST surface: create, list, update,
+    delete, and a create the model refuses. The model IS the request contract in
+    this example, so the rejected create is what shows validation happening before
+    the database is touched.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8077
+targets:
+  - !ref app
+steps:
+  # The example keeps its todos in a database file that outlives the test, so the
+  # row this test creates is identified freshly on every run — otherwise a second
+  # run would pick up the first run's row when it looks its id up.
+  - name: subject
+    value:
+      text: !cel "'write the tests ' + uuidv4()"
+
+  - name: create
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8077/api/todos
+      method: POST
+    inputs:
+      body:
+        text: !cel "steps.subject.result.text"
+  - name: verifyCreated
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.create.result.status"
+        text: !cel "steps.create.result.body.text"
+      expected:
+        status: 201
+        text: !cel "steps.subject.result.text"
+
+  - name: list
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8077/api/todos
+      method: GET
+  - name: verifyListed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.list.result.status"
+        found: !cel "size(steps.list.result.body.filter(row, row.text == steps.subject.result.text))"
+      expected:
+        status: 200
+        found: 1
+
+  # The create route answers with the body it was given, so the id comes from the
+  # listing — which is also what proves the row is really there.
+  - name: created
+    value:
+      id: !cel "steps.list.result.body.filter(row, row.text == steps.subject.result.text)[0].id"
+
+  # `text` is required, so an empty one is refused before the database is
+  # touched. The model also closes the object, and a request carrying a property
+  # it does not declare is refused too — but only from the http-server release
+  # that stops silently stripping one; the example still pins the version that
+  # strips. `modules/http-server/tests/refuses-undeclared-properties.yaml` holds
+  # that assertion until this can be re-pinned.
+  - name: emptyText
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8077/api/todos
+      method: POST
+    inputs:
+      body:
+        text: ""
+  - name: verifyRefused
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.emptyText.result.status"
+      expected: 400
+
+  - name: complete
+    invoke:
+      kind: HttpClient.Request
+      method: PUT
+    inputs:
+      url: !cel "'http://127.0.0.1:8077/api/todos/' + string(steps.created.result.id)"
+      body:
+        text: !cel "steps.subject.result.text"
+        isDone: true
+  - name: remove
+    invoke:
+      kind: HttpClient.Request
+      method: DELETE
+    inputs:
+      url: !cel "'http://127.0.0.1:8077/api/todos/' + string(steps.created.result.id)"
+  - name: gone
+    invoke:
+      kind: HttpClient.Request
+      method: GET
+    inputs:
+      url: !cel "'http://127.0.0.1:8077/api/todos/' + string(steps.created.result.id)"
+  - name: verifyLifecycle
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        completed: !cel "steps.complete.result.status"
+        deleted: !cel "steps.remove.result.status"
+        afterDelete: !cel "steps.gone.result.status"
+      expected:
+        completed: 200
+        deleted: 204
+        afterDelete: 404

@@ -115,6 +115,7 @@ import {
 import { defaultTransportRegistry } from "./transports/transport-registry.js";
 import {
   collectDeclaredEnvKeys,
+  type ApplicationInputs,
   precompileApplicationEnvSchemas,
   precompileDefinitionSchemas,
   precompileTypeSchemas,
@@ -164,6 +165,11 @@ export interface KernelOptions {
    *  fails to dispatch). Order matters — later entries take priority over
    *  earlier ones (sources are unshifted onto the dispatch chain). */
   sources: ManifestSource[];
+  /** Values for the root Application's declared `variables` / `secrets` /
+   *  `ports`, supplied by whoever started this kernel instead of read from
+   *  `env`. Set when one application runs another as a resource; see
+   *  {@link ApplicationInputs}. */
+  inputs?: ApplicationInputs;
 }
 
 /**
@@ -220,6 +226,11 @@ export class Kernel implements IKernel {
    *  `ManifestDiffOptions.previousSignatures` for why they cannot be taken
    *  later. */
   private _declarationSignatures = new Map<string, string>();
+
+  /** Values a parent supplied for this application's declared inputs, replacing
+   *  the env read for each name it covers. Undefined for a kernel started by a
+   *  host rather than by another application. */
+  private readonly _inputs?: ApplicationInputs;
 
   /** Set while a reconciliation is in flight. Two overlapping calls would
    *  interleave unwind, deregister and re-initialize on one context, and a watch
@@ -299,6 +310,7 @@ export class Kernel implements IKernel {
     for (const source of options.sources) {
       this.loader.register(source);
     }
+    this._inputs = options.inputs;
   }
 
   async registerController(
@@ -1103,6 +1115,7 @@ export class Kernel implements IKernel {
         rootApplicationManifest as Record<string, any>,
         this.env,
         this.sharedSchemaValidator,
+        this._inputs,
       );
       if (Object.keys(variables).length > 0) {
         this.rootContext.setVariables(variables);

@@ -1,0 +1,124 @@
+kind: Telo.Library
+metadata:
+  name: App
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Compute]
+  description: >-
+    Runs another application as a resource of this one: supervise several applications
+    from a single manifest, or stand one up for the length of a test and call it over
+    the network. The child's own variables, secrets and ports are supplied by name and
+    validated by the child; its exit code is reported as observed state, and it is shut
+    down cleanly when the scope that declared it ends.
+requires:
+  # Controllers return their effects from `init()` / `run()`; a runtime that does
+  # not execute a returned chain allocates nothing and undoes nothing.
+  #
+  # The floor is what keeps a child's inputs from being silently dropped: an
+  # older runtime's child-manifest seam took an environment map alone, so the
+  # `variables:` / `secrets:` / `ports:` supplied here would reach the child as
+  # nothing at all and it would boot on its defaults — a wrong port, a wrong
+  # identity, and no error anywhere. The same release carries the rest of what
+  # this module stands on: a start that resolves once the child is listening, and
+  # the child's input and output reachable as a text channel.
+  #
+  # 0.93.0 is the release that will carry them — forward-declared, because 0.92.0
+  # is the newest published one and has none of it.
+  telo: ">=0.93.0"
+imports:
+  Channel: ../channel
+exports:
+  kinds:
+    - Instance
+---
+# App.Instance — another application, running as a resource of this one.
+#
+# An application cannot be imported: it is a root, run directly. So the way to
+# reach one from a test, or to run several as one, is to RUN it — which is what
+# this kind declares. What crosses the boundary is the child's declared input
+# contract and its exit code; nothing else, because nothing else is the child's
+# public surface.
+kind: Telo.Definition
+metadata:
+  name: Instance
+  description: >-
+    Starts the application at the given location when this resource runs, and shuts it
+    down when the scope holding it ends. Values for the child's declared variables,
+    secrets and ports are supplied by name and validated against its own declarations.
+    The application stays up while a child runs; once a child exits, its exit code is
+    reported and it stops holding.
+capability: Telo.Service
+# A running child is something you can hold a conversation with, and that
+# vocabulary belongs to every program reachable as text — a shell session, a
+# remote host — not to applications. Extending the abstract is what lets one
+# `Channel.ReadUntil` step work against any of them.
+extends: Channel.Text
+controllers:
+  - pkg:telo/local/js?path=./nodejs/app.mjs&local_path=./nodejs/src/index.ts#Instance
+status:
+  type: object
+  properties:
+    exitCode:
+      title: Exit code
+      description: >-
+        The code the child exited with, or null while it is still running. A child that
+        is still up when its scope ends is stopped rather than observed, so the value
+        read after teardown is the code its shutdown produced.
+      type: [integer, "null"]
+schema:
+  type: object
+  required: [source]
+  additionalProperties: false
+  properties:
+    source:
+      title: Source
+      description: >-
+        Where the child application's manifest is: a path relative to the module
+        declaring this resource, or a published module reference. Always a literal —
+        a location computed at run time cannot be resolved, pinned or checked before
+        the application starts.
+
+        NOT CHECKED STATICALLY YET: whether it resolves, whether it is an
+        application, and whether the values below name inputs it declares are all
+        decided when the child boots. Checking them at `telo check` needs the child's
+        manifest in hand while analysing this one, which is an edge the loader does
+        not yet follow.
+      type: string
+    variables:
+      title: Variables
+      description: >-
+        Values for the child's declared `variables:`, keyed by the name the child
+        declares — not by the environment variable it binds. A name the child does not
+        declare is refused; one left out falls back to the child's own default.
+      type: object
+      additionalProperties: true
+      x-telo-eval: compile
+    secrets:
+      title: Secrets
+      description: Values for the child's declared `secrets:`, supplied like `variables`.
+      type: object
+      additionalProperties: true
+      x-telo-eval: compile
+    awaitStart:
+      title: Await start
+      description: >-
+        Whether starting this resource waits for the child's own `targets:` to be
+        dispatched — so a server it declares is already listening and the next
+        step needs no retry. Default true. An application that BLOCKS ON INPUT
+        never finishes dispatching its targets, so a conversation declares
+        `false` and orders itself on what it reads instead.
+      type: boolean
+      default: true
+      x-telo-eval: compile
+    ports:
+      title: Ports
+      description: >-
+        Ports for the child's declared `ports:`, keyed by the child's own port name.
+        This is where a second copy of the same application is given a port of its
+        own.
+      type: object
+      additionalProperties:
+        type: integer
+        x-telo-type: Telo.TcpPort
+      x-telo-eval: compile

@@ -1,0 +1,79 @@
+kind: Telo.Application
+metadata:
+  name: AgentConsoleExampleTest
+  version: 1.0.0
+  description: >-
+    Holds two turns with `examples/agent-console`: one the model answers from
+    nothing, and one it can only answer by calling the weather tool the example
+    gives it. The second turn is what the example is FOR — an agent loop that
+    reaches a tool and comes back — and a REPL can only be driven a turn at a time,
+    since each prompt exists because the previous answer arrived.
+imports:
+  App: ../../../modules/app
+  Channel: ../../../modules/channel
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref app
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: app }
+source: ../telo.yaml
+# It blocks on its first prompt, so its targets never all finish dispatching.
+awaitStart: false
+variables:
+  # A conversation the example persists outlives the test, and a run that resumes
+  # one left half-finished behaves differently from a fresh one — so each run gets
+  # its own history.
+  historyFile: !cel "'./.telo/agent-console-test-' + uuidv4() + '.sqlite'"
+---
+kind: Channel.ReadUntil
+metadata: { name: read }
+channel: !ref app
+timeout: "120s"
+---
+kind: Channel.SendLine
+metadata: { name: send }
+channel: !ref app
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: firstPrompt
+    invoke: !ref read
+    inputs: { until: "you › " }
+
+  - name: ask
+    invoke: !ref send
+    inputs: { text: "Reply with exactly the word BANANA and nothing else." }
+  - name: reply
+    invoke: !ref read
+    inputs: { until: "you › " }
+  - name: verifyAnswered
+    invoke: { kind: Assert.Contains }
+    inputs:
+      actual: !cel "steps.reply.result.text"
+      value: BANANA
+
+  # The example prints a `🔧` line naming every tool a turn called, so asking for
+  # something only the tool knows is checkable without trusting the prose: what is
+  # asserted is that the agent REACHED the tool, not what the weather was.
+  - name: askWeather
+    invoke: !ref send
+    inputs:
+      text: >-
+        Call get_weather for latitude 48.85, longitude 2.35 and tell me the
+        temperature. Do not use any other tool.
+  - name: weatherReply
+    invoke: !ref read
+    inputs: { until: "you › " }
+  - name: verifyToolUsed
+    invoke: { kind: Assert.Contains }
+    inputs:
+      actual: !cel "steps.weatherReply.result.text"
+      value: "🔧"
+
+  - name: exit
+    invoke: !ref send
+    inputs: { text: "/exit" }

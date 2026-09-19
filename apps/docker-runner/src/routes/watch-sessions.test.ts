@@ -70,6 +70,19 @@ async function harness(watchEnabled: boolean, apps?: string): Promise<Harness> {
   }
 }
 
+/**
+ * POST a session and wait for the background `backend.start()` to settle — the
+ * route answers 201 before start runs, so returning here leaves the bundle still
+ * being written into the session directory. A test that then tears its harness
+ * down removes that directory from under an in-flight write: silently tolerated
+ * on POSIX, EBUSY on Windows.
+ */
+async function startSession(h: Harness, payload: object = BODY) {
+  const res = await h.app.inject({ method: "POST", url: "/v1/sessions", payload });
+  if (res.statusCode === 201) await waitFor(() => h.docker._lastCreateOpts !== null, "session start");
+  return res;
+}
+
 describe("watch session validation", () => {
   let h: Harness;
   afterEach(async () => {
@@ -141,15 +154,11 @@ describe("watch session validation", () => {
     // session would make an app that declares 8080 unrunnable for a reason
     // naming a container the user never requested and cannot decline.
     h = await harness(true, CATALOG);
-    const res = await h.app.inject({
-      method: "POST",
-      url: "/v1/sessions",
-      payload: {
-        ...BODY,
-        mode: "watch",
-        agent: "authoring-agent",
-        ports: [{ port: 8080, protocol: "tcp" }],
-      },
+    const res = await startSession(h, {
+      ...BODY,
+      mode: "watch",
+      agent: "authoring-agent",
+      ports: [{ port: 8080, protocol: "tcp" }],
     });
     expect(res.statusCode).toBe(201);
   });
@@ -239,13 +248,11 @@ describe("watch session validation", () => {
     // It OUTRANKS the workspace marker, so a client that sets it silently gives
     // every app its own module cache — the exact thing the marker prevents.
     h = await harness(true);
-    const created = await h.app.inject({
-      method: "POST",
-      url: "/v1/sessions",
-      payload: { ...BODY, env: { TELO_CACHE_DIR: "/tmp/mine", KEEP: "yes" } },
+    const created = await startSession(h, {
+      ...BODY,
+      env: { TELO_CACHE_DIR: "/tmp/mine", KEEP: "yes" },
     });
     expect(created.statusCode).toBe(201);
-    await waitFor(() => h.docker._lastCreateOpts !== null);
     const env = h.docker._lastCreateOpts!.Env;
     expect(env).not.toContain("TELO_CACHE_DIR=/tmp/mine");
     expect(env).toContain("KEEP=yes");
@@ -253,11 +260,7 @@ describe("watch session validation", () => {
 
   it("keeps the watch-only surface off a run session", async () => {
     h = await harness(true);
-    const created = await h.app.inject({
-      method: "POST",
-      url: "/v1/sessions",
-      payload: BODY,
-    });
+    const created = await startSession(h);
     const { sessionId } = created.json();
     for (const url of [
       `/v1/sessions/${sessionId}/workspace`,
@@ -276,7 +279,7 @@ describe("watch session validation", () => {
 
   it("reports the app set and its generations on the session document", async () => {
     h = await harness(true);
-    const created = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: BODY });
+    const created = await startSession(h);
     const { sessionId } = created.json();
     const doc = (await h.app.inject({ method: "GET", url: `/v1/sessions/${sessionId}` })).json();
     // A single-app session is written exactly as before and still names its app,
@@ -297,7 +300,7 @@ describe("watch session lifetime", () => {
   });
 
   it("answers 404 on resume for a session that is not suspended", async () => {
-    const created = await h.app.inject({ method: "POST", url: "/v1/sessions", payload: BODY });
+    const created = await startSession(h);
     const { sessionId } = created.json();
     const res = await h.app.inject({
       method: "POST",
