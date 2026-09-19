@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.32.0 - 2026-09-19
+### Added
+* A request body that declares additionalProperties false now refuses a property it does not declare. BREAKING for an API whose clients send extra fields: those requests previously succeeded with the undeclared value silently discarded, and now answer 400. A misspelled field name was the common case and was indistinguishable from success until someone read the row back. A schema that leaves the object open accepts extra properties and passes them to the handler as before.
+### Fixed
+* A response header built from CEL is accepted again. Header values were typed as strings, so a computed one — Retry-After from a rate limiter, Location from a created id — arrived as a compiled CEL object and the route was refused at boot with a message about the header rather than about CEL. The dispatcher already expanded them; only the validation disagreed.
+* A response header whose CEL yields something that is not text now fails with the header name, the status entry and the type it produced. Loosening the header type so a computed header could be sent left nothing checking what CEL returned, so an object or an integer reached Node and failed inside the server with a message naming none of the three. A number is rendered.
+
 ## 0.31.1 - 2026-09-17
 ### Fixed
 * A timestamp, duration or bytes value in a JSON response body is written in its plain encoding - RFC 3339 text in UTC, seconds such as 5400s, base64url - where a duration and a uint used to arrive as an empty object and bytes as an object keyed by index; NaN and Infinity arrive as the strings NaN, Infinity and -Infinity, and a map with int or bool keys as an object keyed by their text. A request schema slot declaring Telo.Timestamp, Telo.Duration or Telo.Bytes is validated and documented in OpenAPI as the text a client sends, arrives in CEL as the value itself, and text its encoding does not read is a 400 ValidationError whose details name each refused field's path.

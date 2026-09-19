@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 - 2026-09-19
+### Fixed
+* The hub declares the telo release it is actually readable by: 0.87.0 refuses nine of its routes, reading a CEL condition or a computed Retry-After against the scalar the shape declares, and 0.88 and 0.89 still refuse a module it imports. The authoring agent's primer gains the pattern for running and conversing with an application.
+
 ## 0.9.0 - 2026-09-17
 ### Added
 * search_resources and GET /search/resources return an instances list beside the kind hits: exported resources whose name or description matches the query, each as { name, kind, description, module: { ref, version, name }, score }, so a ready-made function such as hmacSha256 is found by what it does even when its kind is unexported or a built-in Telo.Function. The kind hits keep their shape; instance matching is lexical, runs only for a non-empty query, and follows the category and runtime filters through the instance's kind where its own module declares that kind, and through the module's categories otherwise. The ingest revision moves to 2, so every tracked version is re-ingested once to record which instances are of the module's own kinds.

@@ -1,7 +1,0 @@
-modules:
-  apps/hub: Fixed
-  apps/authoring-agent: Fixed
-body: "The hub declares the telo release it is actually readable by: 0.87.0 refuses nine
-  of its routes, reading a CEL condition or a computed Retry-After against the scalar
-  the shape declares, and 0.88 and 0.89 still refuse a module it imports. The authoring
-  agent's primer gains the pattern for running and conversing with an application."

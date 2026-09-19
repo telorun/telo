@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.1 - 2026-09-19
+### Fixed
+* Console.ReadLine no longer hangs at end of input, and no longer loses piped lines. It resolved only from a prompt callback that never fires once input has ended, so an application reading a closed pipe waited forever and, holding nothing, exited silently having done none of its work. A reader was also opened per call and per resource, and each new one started after what the previous had buffered — so every line after the first was dropped, and a second reader over an already-ended input waited for a close that had been and gone. One reader per input now, shared by every call.
+
 ## 0.18.0 - 2026-09-13
 ### Added
 * Console.Write and the exported Console.write instance: write one string or byte chunk to standard output exactly as given — no trailing newline and no markup interpretation, so command output, file contents and escaped JSON are not altered. It ships a Rust controller too, which writes text only and refuses bytes and any other non-string value.
