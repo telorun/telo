@@ -1,10 +1,9 @@
 import type { LoadedGraph } from "@telorun/analyzer";
 import { createHash } from "crypto";
-import { readFileSync } from "fs";
 import * as fs from "fs/promises";
-import { createRequire } from "module";
 import * as path from "path";
-import { fileURLToPath } from "url";
+import type { Logger } from "@telorun/sdk";
+import { readKernelVersion, readVersion, reportUndeterminableVersion } from "../runtime-versions.js";
 
 /**
  * Hash-keyed analysis cache: a tiny JSON sidecar under `.telo/analysis/`
@@ -42,73 +41,30 @@ import { fileURLToPath } from "url";
  *  newly-stricter validation until the next manifest edit. */
 const ANALYSIS_STAMP_FORMAT_VERSION = 1;
 
-const localRequire = createRequire(import.meta.url);
-
-/** Read the kernel's own `package.json` — `createRequire` can't resolve
- *  `@telorun/kernel/package.json` from inside the kernel package itself
- *  (the self-reference loops in some node_modules layouts). The file
- *  sits two levels up from `dist/manifest-sources/`. */
-function readKernelVersion(): string {
-  try {
-    const url = new URL("../../package.json", import.meta.url);
-    const pkg = JSON.parse(readFileSync(fileURLToPath(url), "utf-8"));
-    return typeof pkg.version === "string" ? pkg.version : "unknown";
-  } catch {
-    return "unknown";
-  }
-}
-
-function readDepVersion(spec: string): string {
-  // Fast path: direct `require("<pkg>/package.json")`. Fails (with
-  // ERR_PACKAGE_PATH_NOT_EXPORTED) when the dependency declares a strict
-  // `exports` map without listing `./package.json` — common for packages
-  // that consider package.json an implementation detail. Don't return
-  // "unknown" in that case; fall back to resolving the package's main
-  // entry and walking the filesystem up to its package.json.
-  const pkgJsonSpec = spec.endsWith("/package.json")
-    ? spec
-    : `${spec}/package.json`;
-  try {
-    const pkg = localRequire(pkgJsonSpec);
-    if (typeof pkg.version === "string") return pkg.version;
-  } catch {
-    // fall through to filesystem walk
-  }
-  try {
-    const mainSpec = spec.endsWith("/package.json") ? spec.slice(0, -13) : spec;
-    const entry = localRequire.resolve(mainSpec);
-    let dir = path.dirname(entry);
-    while (dir !== path.dirname(dir)) {
-      const candidate = path.join(dir, "package.json");
-      try {
-        const pkg = JSON.parse(readFileSync(candidate, "utf-8"));
-        // Guard against scoped-package interior package.json files (some
-        // packages stamp one in dist/) — match by name when the spec
-        // names a package.
-        const expectedName = mainSpec
-          .split("/")
-          .slice(0, mainSpec.startsWith("@") ? 2 : 1)
-          .join("/");
-        if (typeof pkg.name === "string" && pkg.name === expectedName) {
-          return typeof pkg.version === "string" ? pkg.version : "unknown";
-        }
-      } catch {
-        // not at the package root yet — keep walking
-      }
-      dir = path.dirname(dir);
-    }
-  } catch {
-    // resolution failed — package not installed at all
-  }
-  return "unknown";
-}
-
 const KERNEL_VERSION = readKernelVersion();
-const ANALYZER_VERSION = readDepVersion("@telorun/analyzer");
+const ANALYZER_VERSION = readVersion("@telorun/analyzer");
 
 export interface AnalysisStamp {
   version: number;
   signature: string;
+}
+
+/**
+ * Whether this installation can key the analysis cache at all.
+ *
+ * A version neither side can determine is not a version both sides agree on:
+ * keyed on a placeholder, one kernel's verdict is served to another. So an
+ * undeterminable version disables the cache — every load re-analyses, which is
+ * slower and correct — and says so once, through the caller's logger: every
+ * kernel diagnostic goes through the logging pipeline, where a `LoggingHost`
+ * can see it, rather than to a raw stream nothing is watching.
+ */
+function analysisCacheKeyable(log?: Logger): boolean {
+  if (KERNEL_VERSION && ANALYZER_VERSION) return true;
+  reportUndeterminableVersion("analysis", ["@telorun/kernel", "@telorun/analyzer"], (message) =>
+    log?.error(message),
+  );
+  return false;
 }
 
 /** Hash every owner + partial file in `graph` together with the resolved
@@ -162,7 +118,9 @@ function stampPath(analysisDir: string, entryUrl: string): string {
 export async function readAnalysisStamp(
   entryUrl: string,
   analysisDir: string,
+  log?: Logger,
 ): Promise<AnalysisStamp | undefined> {
+  if (!analysisCacheKeyable(log)) return undefined;
   try {
     const text = await fs.readFile(stampPath(analysisDir, entryUrl), "utf-8");
     const parsed = JSON.parse(text) as Partial<AnalysisStamp>;
@@ -185,7 +143,9 @@ export async function writeAnalysisStamp(
   entryUrl: string,
   signature: string,
   analysisDir: string,
+  log?: Logger,
 ): Promise<void> {
+  if (!analysisCacheKeyable(log)) return;
   const stamp: AnalysisStamp = {
     version: ANALYSIS_STAMP_FORMAT_VERSION,
     signature,

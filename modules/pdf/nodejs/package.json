@@ -1,7 +1,7 @@
 {
-  "name": "@telorun/pdf",
+  "name": "@telorun/pdf-build",
   "version": "0.8.0",
-  "description": "PDF primitives — rasterize pages to PNG images, read the text a document renders, and author editable AcroForm fields.",
+  "description": "Build-only package for the pdf module: declares the dependencies its bundled controller inlines, and type-checks its sources. Never published.",
   "keywords": [
     "telo",
     "pdf",
@@ -50,9 +50,7 @@
     "src/**"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json",
-    "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
-    "postpack": "rm -f LICENSE && rm -f README.md"
+    "build": "tsc -p tsconfig.lib.json"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
@@ -66,5 +64,6 @@
     "@napi-rs/canvas": "^1.0.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.0.227"
-  }
+  },
+  "private": true
 }

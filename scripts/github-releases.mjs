@@ -275,14 +275,37 @@ async function github(path, init = {}) {
   });
 }
 
-/** Whether a release already exists for `tag` — the probe that makes a re-run a
- *  no-op rather than a duplicate or an error. */
-async function releaseExists(tag) {
-  if (dryRun) return false;
+/**
+ * The release at `tag`, or null when there is none — the probe that makes a
+ * re-run a no-op rather than a duplicate or an error.
+ *
+ * It returns the release rather than a boolean because "exists" is no longer the
+ * whole question: the standalone-binary workflow attaches assets to this same
+ * tag and fires on the same signal, so it may create the release first, with no
+ * body. Existence alone would then mean "nothing to do" and the changelog would
+ * never be written — decided by which of two jobs happened to finish first.
+ */
+async function findRelease(tag) {
+  if (dryRun) return null;
   const response = await github(`/releases/tags/${encodeURIComponent(tag)}`);
-  if (response.status === 404) return false;
-  if (response.ok) return true;
+  if (response.status === 404) return null;
+  if (response.ok) return await response.json();
   throw new Error(`Checking release ${tag} failed: ${response.status} ${await response.text()}`);
+}
+
+/** Write the body and name of a release that has none. Never overwrites one that
+ *  does: a body already there is this script's own from an earlier run, and the
+ *  only other writer sets none. */
+async function fillRelease(release, { tag, name, body }) {
+  const response = await github(`/releases/${release.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name, body }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Filling release ${tag} failed: ${response.status} ${await response.text()}`,
+    );
+  }
 }
 
 async function createRelease({ tag, name, body }) {
@@ -358,7 +381,7 @@ if (!cli) {
   );
   for (const pkg of releases) {
     const tag = `${pkg.name}@${pkg.version}`;
-    if (await releaseExists(tag)) {
+    if (await findRelease(tag)) {
       console.log(`  = ${tag} (release already exists)`);
       continue;
     }
@@ -372,8 +395,9 @@ if (!cli) {
 }
 
 const tag = `v${cli.version}`;
-if (await releaseExists(tag)) {
-  console.log(`github-releases: ${tag} already exists; nothing to do.`);
+const existing = await findRelease(tag);
+if (existing && (existing.body ?? "").trim().length > 0) {
+  console.log(`github-releases: ${tag} already exists and carries a body; nothing to do.`);
   process.exit(0);
 }
 
@@ -386,6 +410,11 @@ console.log(
 );
 if (dryRun) {
   console.log(`\n${"=".repeat(72)}\nTelo ${tag}\n${"=".repeat(72)}\n${body}`);
+} else if (existing) {
+  // The binaries' workflow got here first and created the tag's release to hang
+  // its assets on. Fill in what it deliberately left empty.
+  console.log(`github-releases: ${tag} exists with an empty body — filling it.`);
+  await fillRelease(existing, { tag, name: `Telo ${tag}`, body });
 } else {
   await createRelease({ tag, name: `Telo ${tag}`, body });
 }

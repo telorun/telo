@@ -20,6 +20,24 @@ extraction use pdf.js; field writing uses pdf-lib.
   field names, and out-of-bounds boxes all raise `ERR_INVALID_INPUT` with the
   offending field and bounds spelled out.
 
+## Platforms
+
+Rendering runs on Skia, which ships as a binary per platform: macOS (Intel and
+Apple Silicon), Linux x64 and arm64 on both glibc and musl, and Windows x64 and
+arm64. Only the one your machine needs is downloaded. Everything else — pdf.js,
+its standard fonts, CMaps, wasm decoders and worker — travels inside the module,
+so running it needs no package manager and no build step.
+
+Requires telo 0.91.0 or newer.
+
+**One Skia per process.** The renderer's library is located through
+`NAPI_RS_NATIVE_LIBRARY_PATH`, which is the wrapper's only override and is
+process-wide. It is set once, before the wrapper first loads, and left: another
+module loading `@napi-rs/canvas` in the same process gets the copy this module
+staged. They are the same upstream release, so this costs nothing today — but it
+is the kind of coupling worth knowing about before you assume two modules hold
+separate canvases.
+
 ## Kinds
 
 | Kind | Purpose |

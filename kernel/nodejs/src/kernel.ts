@@ -898,7 +898,9 @@ export class Kernel implements IKernel {
     // passes are elided. Memory- / HTTP-rooted entries have no
     // local stamp store and always re-validate.
     const analysisSignature = computeAnalysisSignature(analysisGraph);
-    const stamp = analysisDir ? await readAnalysisStamp(sourceUrl, analysisDir) : undefined;
+    const stamp = analysisDir
+      ? await readAnalysisStamp(sourceUrl, analysisDir, this.logging.kernelLogger())
+      : undefined;
     const skipValidation = stamp?.signature === analysisSignature;
     const errors = this.analyzer.analyzeErrors(
       staticManifests,
@@ -925,7 +927,12 @@ export class Kernel implements IKernel {
       // failure on stderr and keeps running — the lookup above will
       // simply miss next time. Skipped under `--no-cache-write`.
       try {
-        await writeAnalysisStamp(sourceUrl, analysisSignature, analysisDir);
+        await writeAnalysisStamp(
+          sourceUrl,
+          analysisSignature,
+          analysisDir,
+          this.logging.kernelLogger(),
+        );
       } catch (err) {
         this.logging.kernelLogger().warn("analysis stamp write failed", undefined, { error: err });
       }

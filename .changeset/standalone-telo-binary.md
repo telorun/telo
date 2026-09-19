@@ -1,0 +1,15 @@
+---
+"@telorun/kernel": minor
+"@telorun/cli": minor
+---
+
+Ship `telo` as a standalone executable, and fix what a distribution without `node_modules` exposed.
+
+The binaries are assets of the existing `v<version>` GitHub Release rather than a release of their own, named in Telo's own platform vocabulary (`telo-<version>-linux-amd64-gnu.tar.gz`, `…-windows-arm64.zip` — the tokens `native:` entries and `telo install --platform` already use). `curl -fsSL https://telo.run/install.sh | sh` installs it; on Windows, `irm https://telo.run/install.ps1 | iex`. The implementation language appears nowhere in a tag, an asset name or an install command: which kernel can host a kind is derived from its `controllers:` PURLs, so it is not a question to hand a user at download time.
+
+- **A controller bundle now resolves `@telorun/sdk` through a generated package** re-exporting the instance the running kernel has loaded, instead of a symlink at the kernel's own package directory. A symlink needs that directory to exist, which it does not when the SDK is inside a single-file executable. The generated package works on Node and Bun alike, is content-checked so a cache shared between kernel versions converges, and replaces a symlink found in a writable slot rather than writing through it. The npm install root keeps its `file:` dependency: a package manager prunes what it did not install, so a generated package there would be replaced by a registry copy — two SDK instances in one process.
+- **A cache is never keyed on an undeterminable version.** The kernel and analyzer versions behind the analysis stamp, and the ajv versions behind the compiled-validator cache, used to fall back to the string `unknown` — a key every version agrees on, so one version's entry was served to another. The cache is now disabled and the reason reported once. A build that can know the versions bakes them in.
+- **A compiled validator that cannot be loaded is reported**, once, with its path and reason, instead of a per-entry warning; an integrity mismatch stays silent, because rewriting the file is the designed recovery. Cached validators also take ajv's runtime helpers from the running kernel, so the cache works where ajv is not on disk.
+- **No loader probes for an external tool.** The `rustc --version` probe before every cargo build is gone; a missing `cargo` or package manager is recognised from the spawn's own failure and reported with what to install. `telo check` answers the same question ahead of time and warns (`CONTROLLER_TOOL_MISSING`), for kinds whose candidates all need a tool.
+- **`telo --version` reports the version in every distribution**, including the binary, where it printed `unknown`.
+- **A controller built from source may depend on a native binary.** A `.node` addon, and a bare package whose whole content is one, are left external instead of failing the build with "No loader is configured for .node files" — the same rule the npm-delivered path already applied. A module reaches its own native library through `native:` and `ctx.resolveNativeFile`; what this removes is a build-time failure standing between the two.

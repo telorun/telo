@@ -1,12 +1,12 @@
 [package]
 name = "telo-cli"
-version = "0.0.0"
+version = "0.92.0"
 edition = "2021"
 publish = false
-description = "Command-line entry point for the Rust Telo kernel."
+description = "Command-line entry point for the Rust Telo kernel. Builds the `telo` binary: one command, whichever kernel is behind it."
 
 [[bin]]
-name = "telo-rs"
+name = "telo"
 path = "src/main.rs"
 
 [dependencies]

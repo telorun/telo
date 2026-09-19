@@ -1,6 +1,6 @@
 [package]
 name = "telo-kernel"
-version = "0.0.0"
+version = "0.92.0"
 edition = "2021"
 publish = false
 description = "Rust Telo kernel — loads a manifest, resolves resources, dispatches invocations."

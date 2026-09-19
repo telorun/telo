@@ -1,4 +1,4 @@
-//! `telo-rs` — command-line entry point for the Rust Telo kernel.
+//! `telo` — command-line entry point for the Rust Telo kernel.
 
 mod cli;
 mod commands;

@@ -23,7 +23,7 @@ obvious Node counterpart:
 | `templating/rust` | `templating/nodejs` | `sentinel.rs`, `yaml_tags.rs` — the `!ref` tag only; CEL lands here later |
 | `analyzer/rust`   | `analyzer/nodejs`   | `manifest_loader.rs`, `parse_loaded_file.rs`, `resolve_ref_sentinels.rs`, `builtins.rs`, `system_kinds.rs`, `loaded_types.rs`, `types.rs` |
 | `kernel/rust`     | `kernel/nodejs`     | `kernel.rs`, `module_context.rs`, `evaluation_context.rs`, `resource_context.rs`, `controller_registry.rs`, `controller_loader.rs`, `controller_loaders/`, `controllers/`, `invoke_dispatch.rs`, `invocation_contract_binding.rs`, `schema_validator.rs`, `runtime_registry.rs`, `manifest_sources/`, `error.rs` |
-| `cli/rust`        | `cli/nodejs`        | `cli.rs`, `commands/run.rs`; binary `telo-rs`                            |
+| `cli/rust`        | `cli/nodejs`        | `cli.rs`, `commands/run.rs`; binary `telo`                            |
 | `sdk/rust/abi`    | — (see below)       | `telorun-abi`: the `#[repr(C)]` controller vtable, host callback table and buffer type |
 
 **Alignment is a hard rule, not a preference.** A Rust file carries the same stem as its Node
@@ -70,7 +70,7 @@ mirror the cases in `modules/console/tests/markup-smoke.yaml`. `console/telo.yam
 Node kernel's default `auto` policy still resolves to JS.
 
 **Tests.** `kernel/rust/tests/` runs fixture manifests under `kernel/rust/tests/fixtures/`
-through the kernel and asserts the dispatch result; `cli/rust/tests/` spawns the `telo-rs`
+through the kernel and asserts the dispatch result; `cli/rust/tests/` spawns the `telo`
 binary and asserts stdout and exit code, since that is the package the binary belongs to. The
 fixtures are also checked by the Node analyzer's pre-commit hook, so both kernels agree they are
 valid manifests.
@@ -112,7 +112,7 @@ valid manifests.
   unify the napi backend into the kernel binary, which then fails to link. A featureless
   contract crate is the only shape that lets both sides share the definition. It has no Node
   counterpart because Node has no such problem — N-API is its runtime's.
-- **Five crates rather than one.** A single `telo-rs` crate would be smaller today but would
+- **Five crates rather than one.** A single `telo-cli` crate would be smaller today but would
   break the filename-alignment rule at the first shared file, since manifest loading is an
   analyzer concern in Node.
 - **Releases:** the Rust crates stay in-tree and unpublished, so they take no changesets.

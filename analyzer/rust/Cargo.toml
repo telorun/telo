@@ -1,6 +1,6 @@
 [package]
 name = "telo-analyzer"
-version = "0.0.0"
+version = "0.76.0"
 edition = "2021"
 publish = false
 description = "Telo manifest loading and reference resolution, shared between the Rust kernel and future static analysis."

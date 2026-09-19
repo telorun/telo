@@ -1,19 +1,10 @@
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-import { type Canvas, createCanvas } from "@napi-rs/canvas";
+import type { Canvas } from "@napi-rs/canvas";
 // The legacy build is pdf.js's Node target: it polyfills DOMMatrix/ImageData/
-// Path2D from @napi-rs/canvas; the main build expects browser globals.
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-
-// Bundled pdf.js assets (standard 14 fonts, CMaps, wasm image decoders) —
-// without these, PDFs using built-in fonts or CJK encodings render degraded.
-const PDFJS_ROOT = dirname(createRequire(import.meta.url).resolve("pdfjs-dist/package.json"));
-const ASSET_OPTIONS = {
-  standardFontDataUrl: join(PDFJS_ROOT, "standard_fonts") + "/",
-  cMapUrl: join(PDFJS_ROOT, "cmaps") + "/",
-  cMapPacked: true,
-  wasmUrl: join(PDFJS_ROOT, "wasm") + "/",
-};
+// Path2D from @napi-rs/canvas; the main build expects browser globals. Both it
+// and the canvas come from `pdf-runtime`, which locates the addon and the pdf.js
+// assets a bundle cannot resolve beside itself — without the assets, PDFs using
+// built-in fonts or CJK encodings render degraded.
+import { loadCanvas, loadPdfjs, pdfAssetOptions } from "./pdf-runtime.js";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 
@@ -47,7 +38,10 @@ interface RasterizerOutputs {
  * converts back from.
  */
 class PdfRasterizer implements ResourceInstance<RasterizerInputs, RasterizerOutputs> {
-  constructor(private readonly resource: RasterizerResource) {}
+  constructor(
+    private readonly resource: RasterizerResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   async invoke(inputs: RasterizerInputs): Promise<RasterizerOutputs> {
     const name = this.resource.metadata.name;
@@ -65,7 +59,8 @@ class PdfRasterizer implements ResourceInstance<RasterizerInputs, RasterizerOutp
     // still this controller's to make (below).
     const pageNumber = inputs.page ?? 1;
 
-    const task = loadPdf(data);
+    const { createCanvas } = await loadCanvas(this.ctx);
+    const task = await loadPdf(this.ctx, data);
     try {
       const doc = await task.promise.catch((err) => {
         throw new InvokeError(
@@ -110,8 +105,9 @@ class PdfRasterizer implements ResourceInstance<RasterizerInputs, RasterizerOutp
 
 /** pdf.js transfers the buffer it is given — hand it a copy so the caller's
  *  bytes survive (the same `data` may feed `Pdf.FormFields` next). */
-function loadPdf(data: Uint8Array) {
-  return getDocument({ data: new Uint8Array(data), ...ASSET_OPTIONS });
+async function loadPdf(ctx: ResourceContext, data: Uint8Array) {
+  const { getDocument } = await loadPdfjs(ctx);
+  return getDocument({ data: new Uint8Array(data), ...(await pdfAssetOptions(ctx)) });
 }
 
 const MEDIA_TYPE: Record<string, string> = {
@@ -161,6 +157,6 @@ export async function create(
   resource: RasterizerResource,
   ctx: ResourceContext,
 ): Promise<PdfRasterizer> {
-  return new PdfRasterizer(resource);
+  return new PdfRasterizer(resource, ctx);
 }
 

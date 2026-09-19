@@ -14,6 +14,11 @@ import { tryBuildControllerBundle } from "./bundle-builder.js";
 import { withDirectoryLock } from "../directory-lock.js";
 import { ControllerEnvMissingError } from "./napi-loader.js";
 import { REALM_COLLAPSE_NAMES } from "./realm.js";
+import {
+  isCommandNotFound,
+  missingToolMessage,
+  packageManagerRequirement,
+} from "./controller-tool-requirements.js";
 import { resolveInstallRoot, writeInstallRootMarker } from "./npm-install-root.js";
 
 const execFileAsync = promisify(execFile);
@@ -667,19 +672,16 @@ async function runPackageManager(cwd: string, args: string[]): Promise<void> {
       { cwd, maxBuffer: 32 * 1024 * 1024, env: hostEnv(), shell: viaCmd },
     );
   } catch (err: any) {
-    // Through a shell the binary always resolves — cmd.exe itself exists — so a
-    // missing package manager arrives as cmd's own 9009 plus "is not recognized
-    // as an internal or external command" on stderr, never as ENOENT. Matching
-    // only the direct-spawn shape reported that as a generic install failure and
-    // buried the one line saying what to install.
-    const said = `${err?.message ?? ""}\n${err?.stderr ?? ""}`;
-    const isMissing =
-      err?.code === "ENOENT" || err?.code === 9009 || /not found|not recognized/i.test(said);
-    if (isMissing) {
+    // The shapes a missing binary arrives in, and the sentence it gets, are the
+    // shared table's (`controller-tool-requirements.ts`) — the same one
+    // `telo check` probes with, so the two halves cannot drift into saying
+    // different things about the same missing program.
+    if (isCommandNotFound(err)) {
       throw new Error(
-        `[telo] '${PACKAGE_MANAGER}' not found on PATH. Telo's controller installer requires a ` +
-          `JavaScript package manager (npm or pnpm). Install Node.js (which bundles npm) or set ` +
-          `TELO_PKG_MANAGER to a different binary name.`,
+        `[telo] ${missingToolMessage(
+          packageManagerRequirement(hostEnv()),
+          "Installing an npm-delivered controller",
+        )}`,
       );
     }
     // Both streams: npm writes its diagnosis to stderr, pnpm and bun put parts

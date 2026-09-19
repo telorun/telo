@@ -18,6 +18,7 @@ import {
   type JsonDiagnostic,
   type Logger,
 } from "../logger.js";
+import { probeControllerTools } from "../controller-tool-probe.js";
 import { writeOriginDigests } from "../manifest-freshness.js";
 import { outErrLine, output } from "../output.js";
 
@@ -59,6 +60,10 @@ async function checkOne(
       hostVersions: nodeHostVersions(),
     });
     const { diagnostics } = assembleGraphDiagnostics(graph, analysis);
+    // Probing costs a process launch per tool the manifest actually calls for,
+    // and nothing at all for a manifest of bundled controllers. A running app
+    // never asks this question ahead of time; check is where it is affordable.
+    diagnostics.push(...(await probeControllerTools(graph)));
     const counts = formatAnalysisDiagnostics(diagnostics, graph, log, entryPath);
 
     if (cacheWrite && cacheTarget) {

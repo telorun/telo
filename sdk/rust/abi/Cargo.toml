@@ -1,5 +1,8 @@
 [package]
 name = "telorun-abi"
+# The one crate with no Node twin, so there is no version for it to carry: what
+# it is versioned by is the ABI generation, written on every candidate that
+# opens it (`abi=telo-<n>`), not by this field.
 version = "0.0.0"
 edition = "2021"
 publish = false
