@@ -1,5 +1,97 @@
 # @telorun/analyzer
 
+## 0.77.0
+
+### Minor Changes
+
+- 0796a3c: Reject a resource declared with an abstract kind, and stop offering one as
+  something to create.
+
+  `kind: Telo.Invocable` and `kind: Sql.Connection` passed `telo check` and then
+  failed at boot with "is abstract and cannot be instantiated directly" — the
+  checker was more permissive than the runtime it predicts, and the config
+  validation that followed checked the declaration against the abstract's own
+  schema, reporting nothing about the one thing that was wrong. The new
+  `ABSTRACT_KIND_INSTANTIATED` error covers both shapes a declaration takes: a
+  resource document, and an inline `{ kind, …config }` at a reference slot, which
+  an abstract declaring no `schema:` used to slip past entirely. It names the
+  implementations in the ALIAS form the author would write — the canonical
+  `sqlite.Connection` the registry is keyed on is not something anyone can type.
+
+  The editor half is the same question from the other side. `userFacingKindsForRef`
+  — what every "create one here" affordance reads — returned the abstracts in the
+  accepted set, so `Telo.Invocable` and `Telo.Runnable` were offered at every
+  step's `invoke:` and every boot target, both extending `Telo.Executable`. The
+  accepted set keeps them, because substitutability and constructibility are
+  different questions; only the creation answer drops them. `implementationsOf`
+  drops them too, so the kernel's own "instantiate a concrete implementation" hint
+  no longer lists kinds it would refuse.
+
+  One reader answers it now (`isInstantiableDefinition`), which the completion /
+  "did you mean" list already had its own copy of.
+
+- 0796a3c: Draw a library root's exports instead of boot targets it cannot have.
+
+  The module graph stamped `targets` on every root, empty or not, on the premise
+  that a boot list is something a root always has. That is true of a
+  `Telo.Application` and false of a `Telo.Library`, where `targets:` is forbidden
+  — so a library was drawn a branch, and an add affordance, for a field it may not
+  declare.
+
+  A library root now lists what it exports: `exports.kinds` and
+  `exports.resources`, as two arrays rather than one, because a kind and an
+  instance are different things to export — a kind lets an importer construct its
+  own, an instance is one the library already built and hands over. Entries are
+  carried as written, so an `Alias.Name` re-export reads as the author typed it,
+  and an entry that resolves to nothing keeps its row: a name the library lists
+  but nothing provides is a fact about the manifest, and dropping it would hide
+  the one export that is broken.
+
+  Each exported INSTANCE gets an edge to the node it names, classed `holds` — the
+  module owns it and hands it out, and control never transfers along that edge.
+  An exported KIND gets none: kinds are a separate plane, deliberately, so that
+  things which exist at runtime and things which do not are not drawn among each
+  other, and selecting a kind already rings its instances.
+
+  The new `export` row kind is not ordered. An export list is a set, so there is
+  no entry before any other and a "move up" would be an affordance over a
+  distinction that does not exist.
+
+  Export edges are minted outside the call-graph projection, which flags every
+  edge leaving the root as a boot target on the premise that the root has no other
+  slots. That premise held while `targets:` was the root's only reference; an
+  export reported as a boot target would claim the library starts something.
+
+  `Telo.Library`'s `exports.kinds` / `exports.resources` gain schema titles, which
+  is where the editor reads a branch's label from — naming them in the schema is
+  what keeps resource-kind knowledge out of the view.
+
+### Patch Changes
+
+- 0796a3c: Stop the module graph declaring a port for a slot nothing can fill.
+
+  `Http.Server` drew `notFoundHandler` twice — once wired to its handler, once as
+  an empty socket that refused every drop. A port is a place a value is or could
+  be written, and that second one was neither: `notFoundHandler` carries two ref
+  slots, `invoke` and an `encoder` the `returns:` schema pulls in through
+  `x-telo-schema-from` at `returns[].content.{}.encoder`, and a slot nested past
+  an array and a map has no write site until the item and the key exist. Rail
+  ports are grouped under their top-level property and drawn one line per port, so
+  the dead slot surfaced as a second, identical, unfillable `notFoundHandler`.
+
+  `buildPorts` already declined to invent a write site for those shapes, and
+  `appendPathFor` already declined to offer one — the port was emitted anyway. It
+  is now dropped when it is neither occupied nor fillable, which is the rule the
+  synthesis comment had stated all along ("it offers an affordance and then
+  refuses"), applied to the port rather than only to the path.
+
+  Emptiness is what decides, never the shape of the path: an encoder somebody
+  actually wrote keeps its port and its edge, and `mounts[].mount` on a server
+  with no mounts keeps its empty port, because one array deep the append path is
+  determined.
+
+  - @telorun/templating@0.21.0
+
 ## 0.76.0
 
 ### Minor Changes
