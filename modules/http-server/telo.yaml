@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: HttpServer
-  version: "0.31.1"
+  version: "0.32.0"
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
   categories: [Transport]

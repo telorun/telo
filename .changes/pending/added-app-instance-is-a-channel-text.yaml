@@ -1,6 +1,0 @@
-modules:
-  modules/app: Added
-body: "App.Instance is a Channel.Text, so a running child can be read from and written
-  to as text. BREAKING: the stdin: field is removed. A fixed script handed over at
-  start-up cannot answer a question that only appears once the previous one is answered;
-  sending is a step now, and a boot-time script is the first steps of a sequence."

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.1 - 2026-09-19
+### Fixed
+* A response header built from CEL is accepted again. Header values were typed as strings, so a computed one — Retry-After from a rate limiter, Location from a created id — arrived as a compiled CEL object and the route was refused at boot with a message about the header rather than about CEL. The dispatcher already expanded them; only the validation disagreed.
+* A response header whose CEL yields something that is not text now fails with the header name, the status entry and the type it produced. Loosening the header type so a computed header could be sent left nothing checking what CEL returned, so an object or an integer reached Node and failed inside the server with a message naming none of the three. A number is rendered.
+
 ## 0.13.0 - 2026-09-09
 ### Added
 * `Http.Api` and `Http.Server` each accept a `catches:` list of their own, so error rendering is declared once per scope instead of restated on every route. A route's own entries are tried first, then its router's, then the server's; a throw no entry claims renders the same `{error: {code, message, data}}` envelope with status 500 that an unmatched throw produced before, so a manifest declaring no scope-level list is unchanged on the wire. Scope entries see `error` and the request's `path` / `method` / `ip`; `query` / `body` / `params` stay with a route's own list, because there is no single route to type them from. A route entry with no `when:` deliberately overrides both outer lists for that route alone.

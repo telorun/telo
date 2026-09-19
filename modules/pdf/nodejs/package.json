@@ -1,6 +1,6 @@
 {
   "name": "@telorun/pdf-build",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Build-only package for the pdf module: declares the dependencies its bundled controller inlines, and type-checks its sources. Never published.",
   "keywords": [
     "telo",

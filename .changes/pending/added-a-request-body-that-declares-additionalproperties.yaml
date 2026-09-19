@@ -1,8 +1,0 @@
-modules:
-  modules/http-server: Added
-body: "A request body that declares additionalProperties false now refuses a property it
-  does not declare. BREAKING for an API whose clients send extra fields: those requests
-  previously succeeded with the undeclared value silently discarded, and now answer 400.
-  A misspelled field name was the common case and was indistinguishable from success
-  until someone read the row back. A schema that leaves the object open accepts extra
-  properties and passes them to the handler as before."

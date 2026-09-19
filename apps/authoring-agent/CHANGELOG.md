@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.7 - 2026-09-19
+### Fixed
+* The hub declares the telo release it is actually readable by: 0.87.0 refuses nine of its routes, reading a CEL condition or a computed Retry-After against the scalar the shape declares, and 0.88 and 0.89 still refuse a module it imports. The authoring agent's primer gains the pattern for running and conversing with an application.
+
 ## 0.11.6 - 2026-09-17
 ### Fixed
 * The primer states that a replayed durable value keeps its CEL type, including a scheduled run's stored inputs and the result Local.Result reads, that a step's when guard, Run.Iteration's and Run.Projection's collection and Run.Loop's per-turn condition are journaled, that a stream cannot be iterated inside a durable body, and that a loop's maxIterations is not a decision and so must not be written over a clock.

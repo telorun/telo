@@ -1,7 +1,0 @@
-modules:
-  modules/channel: Added
-body: "Channel.SendLine and Channel.ReadUntil report what actually went wrong: writing
-  to a program that has not started is ERR_CHANNEL_NOT_STARTED rather than a
-  closed-channel error, and a second read while one is already waiting is
-  ERR_CHANNEL_CONCURRENT_READ rather than two reads silently interleaving what they
-  consume."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-09-19
+### Added
+* Bundled delivery: the controllers now ship inside the module's own artifact instead of the @telorun/pdf npm package, so loading them needs no package manager. Skia ships as a per-platform native file (darwin x64/arm64, linux x64/arm64 in gnu and musl, windows x64/arm64) and pdf.js's standard fonts, CMaps, wasm decoders and worker ship as the module's own assets. BREAKING: the module now requires telo >=0.91.0, and the @telorun/pdf npm package is no longer published — nothing needs to depend on it, since the controller is delivered with the module.
+
 ## 0.8.0 - 2026-08-23
 ### Added
 * `Pdf.Text` reads the text a PDF renders, per page and whole-document, and reports its page count. The counterpart to `Pdf.Rasterizer`: rasterizing answers what a page looks like, which moves with the platform's font rasterization, while this answers what it says — which is what an assertion about a generated document needs, since a page image cannot tell a correct table from an empty one.

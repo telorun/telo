@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 - 2026-09-19
+### Fixed
+* An application whose table has a text primary key can boot against its own database again. SQLite backs such a key with an implicit index, which introspection read back as a column-level unique flag the declaration never carried; the second boot diffed unique true to false, called it an in-place constraint change and refused. The application worked once and failed every time after.
+* Binding a boolean now works on both drivers: SQLite has no boolean storage class, so `true`/`false` are bound as 1 and 0 — the same convention a declared column DEFAULT already renders. Previously bun:sqlite coerced the value while better-sqlite3 refused it ("SQLite3 can only bind numbers, strings, bigints, buffers, and null"), so the same manifest wrote the row under Bun and failed under Node.
+* Two applications can boot against one database file. A schema pass opened a deferred transaction, and SQLite refuses the read-to-write upgrade immediately rather than running the busy handler, so the second application to start failed with 'database is locked' whatever timeout was set. The pass now takes the write lock up front, and both drivers set an explicit busy timeout.
+
 ## 0.5.0 - 2026-09-15
 ### Added
 * Breaking: the controllers ship inside the module artifact and better-sqlite3's addon in per-platform native layers, instead of being installed from npm at load. On Node, a host needs linux (amd64, arm64, arm; gnu or musl), darwin (amd64, arm64) or windows (amd64, arm64) at Node 24 or 25; any other host fails with ERR_NATIVE_FILE_UNAVAILABLE naming the platforms the module ships. Bun keeps using bun:sqlite. Requires telo >=0.90.0.
