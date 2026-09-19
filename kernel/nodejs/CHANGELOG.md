@@ -1,5 +1,12 @@
 # @telorun/kernel
 
+## 0.93.1
+
+### Patch Changes
+
+- Updated dependencies [815f566]
+  - @telorun/analyzer@0.77.1
+
 ## 0.93.0
 
 ### Minor Changes
