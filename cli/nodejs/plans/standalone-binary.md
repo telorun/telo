@@ -211,6 +211,11 @@ version of the same product would split it across two pages. So the standalone w
 so the release script fills a body it finds empty instead of treating an existing release as
 "nothing to do" — otherwise which job won the race decided whether the release ever got a changelog.
 
+**That release is created as a DRAFT and published only once the installers are attached and
+verified.** A published `v<version>` carrying no installers is one nobody can install from. The
+install scripts read `releases/latest`, which skips drafts, so a failed build leaves the previous
+release standing and shows the failure as a stuck draft rather than as an empty release page.
+
 **Asset names use Telo's own platform vocabulary** — `telo-<version>-linux-amd64-gnu.tar.gz`,
 `…-windows-arm64.zip` — the tokens a `native:` entry, a platform-qualified controller PURL and
 `telo install --platform` already use. Native installers keep their own format's spelling

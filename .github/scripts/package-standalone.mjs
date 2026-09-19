@@ -77,7 +77,15 @@ function buildArchive({ target, version, dir }) {
   const name = `telo-${version}-${target}`;
   if (isWindows) {
     const out = path.join(dir, `${name}.zip`);
-    run("zip", ["-j", out, path.join(dir, "telo.exe")]);
+    // `Compress-Archive`, not `zip`: a Windows runner has PowerShell and does
+    // NOT have `zip` — the Git-Bash toolset it ships carries no such binary,
+    // and the release failed with `spawnSync zip ENOENT`.
+    run("powershell", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `Compress-Archive -Path '${path.join(dir, "telo.exe")}' -DestinationPath '${out}' -Force`,
+    ]);
     return out;
   }
   const out = path.join(dir, `${name}.tar.gz`);
@@ -139,7 +147,6 @@ function buildRpm({ target, version, dir }) {
       "Release: 1",
       "Summary: Telo — a declarative runtime for YAML manifests",
       "License: SEE LICENSE IN LICENSE",
-      `BuildArch: ${arch}`,
       "%description",
       "The standalone build: one executable, no Node.js required.",
       "%install",
@@ -150,7 +157,13 @@ function buildRpm({ target, version, dir }) {
       "",
     ].join("\n"),
   );
-  run("rpmbuild", ["--define", `_topdir ${root}`, "-bb", spec]);
+  // The architecture is the command's, never the spec's. Measured: a spec
+  // carrying `BuildArch: aarch64` is refused on an x64 builder — "No compatible
+  // architectures found for build" — with or without `--target`, while the same
+  // spec with no `BuildArch` and `--target aarch64` builds the arm64 package.
+  // `BuildArch: noarch` is not the way out either: rpm refuses arch-dependent
+  // binaries in a noarch package, which this is.
+  run("rpmbuild", ["--define", `_topdir ${root}`, "--target", arch, "-bb", spec]);
   const built = path.join(root, "RPMS", arch, `telo-${version}-1.${arch}.rpm`);
   const out = path.join(dir, path.basename(built));
   fs.copyFileSync(built, out);

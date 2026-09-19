@@ -11,17 +11,26 @@ name: Release standalone CLI
 # the current version.
 #
 # THE BINARIES ARE ASSETS OF THE PRODUCT'S RELEASE, NOT A RELEASE OF THEIR OWN.
-# `scripts/github-releases.mjs` already creates `v<cli version>` on the same
-# signal and owns its name and body; this workflow attaches files to that tag and
-# sets neither. A second release for the same version of the same product would
-# split one changelog across two pages, and make "which one is the release?" a
+# `scripts/github-releases.mjs` creates `v<cli version>` on the same signal and
+# owns its name and body; this workflow attaches files to that tag and sets
+# neither. A second release for the same version of the same product would split
+# one changelog across two pages, and make "which one is the release?" a
 # question with two answers.
 #
-# A build runs on the runner matching its target: esbuild's executable and the
-# platform packages are resolved from the workspace install, and macOS signing
-# needs macOS. Linux arm64 is cross-built from the x64 runner, which works
-# because nothing here compiles native code — the Node runtime is downloaded
-# prebuilt and the blob injected into it is platform-independent.
+# **NO PUBLISHED RELEASE WITHOUT INSTALLERS.** That release is created as a
+# DRAFT, and the last job here promotes it — after every target has built and
+# after the packages have been installed in containers that have no Node.js. A
+# published `v<version>` carrying no installers is one nobody can install from,
+# and it is what this repo shipped twice before the promotion gate existed.
+# `releases/latest`, which the install scripts read, skips drafts, so a failed
+# build leaves the previous release standing instead of pointing users at an
+# empty one.
+#
+# A build runs on the runner its target needs: macOS signing needs macOS, and a
+# Windows installer needs Windows. Everything else cross-builds, because nothing
+# here compiles native code — the Node runtime and esbuild's executable are
+# downloaded prebuilt for the target, and the blob injected into the runtime is
+# platform-independent.
 
 on:
   push:
@@ -118,28 +127,18 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
+      # Pinned, not read from the repo's package.json: that file declares no
+      # `engines.node`, so `node-version-file` silently leaves the runner's
+      # default in place — and which Node builds the binary decides which Node
+      # archives the cross-targets can fetch.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # esbuild's executable for a target other than the runner's comes from
-      # that target's own package, which the workspace install does not carry.
-      - name: Install esbuild for the target
-        if: matrix.target == 'linux-arm64-gnu' || matrix.target == 'windows-arm64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          case "${{ matrix.target }}" in
-            linux-arm64-gnu) pkg="@esbuild/linux-arm64" ;;
-            windows-arm64) pkg="@esbuild/win32-arm64" ;;
-            *) echo "no cross esbuild needed for ${{ matrix.target }}"; exit 0 ;;
-          esac
-          pnpm add --filter @telorun/cli -D "$pkg"
 
       - name: Build workspace
         run: pnpm --filter "@telorun/cli..." build
@@ -244,7 +243,7 @@ jobs:
           '
 
   release:
-    name: Attach binaries to the release
+    name: Attach binaries and publish the release
     needs: [gate, build, verify]
     runs-on: ubuntu-latest
     permissions:
@@ -260,11 +259,31 @@ jobs:
 
       # Attach only. `name` and `body` are deliberately unset: the npm release job
       # writes them, and passing either here would overwrite the changelog with a
-      # sentence about binaries. `softprops` creates the tag's release when this
-      # job wins the race, leaving the body empty for that job to fill.
-      - name: Attach binaries to the release
+      # sentence about binaries. `draft: true` covers the race in which this job
+      # arrives first — the release it creates is then the draft the npm job
+      # fills and this job promotes, never a published one with no changelog.
+      - name: Attach binaries to the draft release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.gate.outputs.version }}
           files: artifacts/**/*
           fail_on_unmatched_files: true
+          draft: true
+
+      # The gate this whole workflow exists to hold: the release becomes visible
+      # only now, with every archive and installer attached and verified. Until
+      # this step runs it is a draft, which `releases/latest` does not serve.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          id=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases" |
+            jq -r --arg tag "$TAG" '.[] | select(.tag_name == $tag) | .id' | head -1)
+          [ -n "$id" ] || { echo "no release found for $TAG"; exit 1; }
+          curl -fsSL -X PATCH -H "Authorization: Bearer $GH_TOKEN" \
+            -d '{"draft":false}' \
+            "https://api.github.com/repos/${{ github.repository }}/releases/$id" > /dev/null
+          echo "published $TAG"

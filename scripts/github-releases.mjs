@@ -308,13 +308,14 @@ async function fillRelease(release, { tag, name, body }) {
   }
 }
 
-async function createRelease({ tag, name, body }) {
+async function createRelease({ tag, name, body, draft = false }) {
   const response = await github("/releases", {
     method: "POST",
     body: JSON.stringify({
       tag_name: tag,
       name,
       body: body || undefined,
+      draft,
       ...(commit ? { target_commitish: commit } : {}),
     }),
   });
@@ -388,6 +389,7 @@ if (!cli) {
     const section = changelogSection(workspace.dirOf(pkg.name), pkg.version);
     console.log(`  + ${tag}`);
     if (!dryRun) {
+      // No binaries hang off a per-package tag, so nothing gates it.
       await createRelease({ tag, name: tag, body: section.replace(/^## .*\n/, "").trim() });
     }
   }
@@ -416,5 +418,11 @@ if (dryRun) {
   console.log(`github-releases: ${tag} exists with an empty body — filling it.`);
   await fillRelease(existing, { tag, name: `Telo ${tag}`, body });
 } else {
-  await createRelease({ tag, name: `Telo ${tag}`, body });
+  // CREATED AS A DRAFT, and promoted by the workflow that attaches the
+  // standalone binaries once they have been built AND install-verified. A
+  // published `v<version>` with no installers is a release nobody can install
+  // from — and `releases/latest`, which the install scripts read, skips drafts,
+  // so a build that fails leaves the previous release standing rather than
+  // pointing users at an empty one.
+  await createRelease({ tag, name: `Telo ${tag}`, body, draft: true });
 }

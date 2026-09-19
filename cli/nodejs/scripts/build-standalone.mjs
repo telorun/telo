@@ -42,6 +42,22 @@ const CLI_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const REPO_ROOT = path.resolve(CLI_DIR, "..", "..");
 
 /**
+ * The Node runtime every binary carries, whatever built it.
+ *
+ * Taking the building machine's own version instead made the artifact a
+ * property of the runner: a runner defaulting to Node 22 asked nodejs.org for
+ * `node-v22.x-linux-x64-musl.tar.gz`, which does not exist — official musl
+ * builds begin at 24 — and two targets released on the same day could ship
+ * different runtimes.
+ *
+ * **Every bump is checked against all seven targets**, because the set a
+ * version publishes is not uniform: 24.11.1 has no musl build, so pinning it
+ * would have reproduced the very failure this replaced. `--node-version`
+ * overrides for a one-off.
+ */
+const NODE_RUNTIME_VERSION = "24.21.0";
+
+/**
  * Every target that has an official Node build, named in **Telo's own platform
  * vocabulary** — `<os>-<arch>[-<libc>]`, the tokens a `native:` entry, a
  * platform-qualified controller PURL and `telo install --platform` already use.
@@ -151,12 +167,19 @@ async function bundle(stagingDir, versions) {
   return outfile;
 }
 
-/** The Node runtime to inject into: the running one for a host build, else the
- *  official build for the target, downloaded and cached under the staging dir. */
+/**
+ * The Node runtime to inject into: the official build for the target, at the
+ * pinned version, downloaded and cached under the staging dir.
+ *
+ * The running Node is reused only when it IS that build — same target, same
+ * version. Reusing it whenever the target matched was how a macOS binary came
+ * to be carved out of the runner's own signed-and-hardened Node, which
+ * `codesign --remove-signature` then refused to strip.
+ */
 async function runtimeBinary(target, stagingDir, nodeVersion) {
   const spec = TARGETS[target];
-  if (target === hostTarget() && !nodeVersion) return process.execPath;
-  const version = nodeVersion ?? process.versions.node;
+  const version = nodeVersion ?? NODE_RUNTIME_VERSION;
+  if (target === hostTarget() && version === process.versions.node) return process.execPath;
   const isWindows = spec.exe === ".exe";
   const archive = isWindows
     ? `node-v${version}-${spec.nodeFile}.zip`
@@ -181,23 +204,54 @@ async function runtimeBinary(target, stagingDir, nodeVersion) {
   return path.join(extractDir, `node-v${version}-${spec.nodeFile}`, "bin", "node");
 }
 
-/** esbuild's executable for the target, out of the per-platform npm package. */
-function esbuildExecutable(target) {
+/**
+ * esbuild's executable for the target.
+ *
+ * An install carries only the HOST's per-platform package, so every other
+ * target's is fetched from the registry at the version the workspace resolved —
+ * the build already downloads a Node runtime, and one npm tarball is the same
+ * kind of fetch. The alternative was a workflow step naming each cross target,
+ * which silently omitted two of the four and failed at the build.
+ */
+async function esbuildExecutable(target, stagingDir) {
   const pkg = TARGETS[target].esbuild;
   // Anchored at esbuild itself: its per-platform packages are optional
   // dependencies of esbuild, which under pnpm puts them in esbuild's own
   // directory rather than anywhere this script can reach by name.
   const fromKernel = createRequire(path.join(REPO_ROOT, "kernel", "nodejs", "package.json"));
   const fromEsbuild = createRequire(fromKernel.resolve("esbuild/package.json"));
-  const root = path.dirname(fromEsbuild.resolve(`${pkg}/package.json`));
+  const version = JSON.parse(
+    fs.readFileSync(fromKernel.resolve("esbuild/package.json"), "utf8"),
+  ).version;
+
+  let root;
+  try {
+    root = path.dirname(fromEsbuild.resolve(`${pkg}/package.json`));
+  } catch {
+    root = await fetchPackage(pkg, version, path.join(stagingDir, "esbuild"));
+  }
   const candidates = [path.join(root, "bin", "esbuild"), path.join(root, "esbuild.exe")];
   const found = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!found) {
-    throw new Error(
-      `${pkg} is installed but carries no executable. Install it for this target before building.`,
-    );
-  }
+  if (!found) throw new Error(`${pkg}@${version} carries no esbuild executable`);
+  fs.chmodSync(found, 0o755);
   return found;
+}
+
+/** Unpack one npm package into `dir`, returning the directory its files landed
+ *  in. Tarball members are prefixed `package/`, which is stripped. */
+async function fetchPackage(name, version, dir) {
+  const target = path.join(dir, `${name.replace(/[@/]/g, "-")}-${version}`);
+  if (fs.existsSync(target)) return target;
+  const scope = name.startsWith("@") ? name.split("/")[1] : name;
+  const url = `https://registry.npmjs.org/${name}/-/${scope}-${version}.tgz`;
+  process.stderr.write(`fetching ${url}\n`);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`could not fetch ${url}: HTTP ${response.status}`);
+  fs.mkdirSync(target, { recursive: true });
+  const archive = `${target}.tgz`;
+  fs.writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
+  execFileSync("tar", ["xzf", archive, "-C", target, "--strip-components=1"], { stdio: "inherit" });
+  return target;
 }
 
 async function main() {
@@ -211,7 +265,7 @@ async function main() {
   process.stderr.write(`building telo ${versions["@telorun/cli"]} for ${args.target}\n`);
 
   const script = await bundle(stagingDir, versions);
-  const esbuildBin = esbuildExecutable(args.target);
+  const esbuildBin = await esbuildExecutable(args.target, stagingDir);
 
   const seaConfig = path.join(stagingDir, "sea-config.json");
   const blob = path.join(stagingDir, "telo.blob");
