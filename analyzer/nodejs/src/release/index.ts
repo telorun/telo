@@ -58,6 +58,7 @@ export {
   VersionStampError,
   readManifestVersion,
   stampCrateVersion,
+  stampLockedCrateVersion,
   stampManifestVersion,
   stampSelfNpmPins,
   stampPackageVersion,

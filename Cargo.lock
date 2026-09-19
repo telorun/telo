@@ -1223,7 +1223,7 @@ version = "0.0.0"
 
 [[package]]
 name = "telorun-console"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "serde_json",
  "telorun-sdk",
