@@ -28,7 +28,7 @@ metadata:
         curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/export \
           -H 'accept: image/png'                                  # 406
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.31.1#sha256-bHVTaRpBawOUeJcsaW38aAg2BFy9ZXM6K2m8tz0bpqc
+  Http: oci://ghcr.io/telorun/http-server@0.32.0#sha256-BCghrZHLFCpZUhbYn9MBbRM2hsLssW3KD9IqqhxEwzU
   Multipart: oci://ghcr.io/telorun/multipart@0.2.2#sha256-RCqiT4UMwrVeRq1hU1xxkysRSxX4NC5DzsdrbbEBxv8
   Ndjson: oci://ghcr.io/telorun/ndjson-codec@0.9.6#sha256-tvszxz4U3DygtlJnFyEZkncziR69zJgHPD3gCQMlUhs
   Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA

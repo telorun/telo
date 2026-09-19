@@ -2,7 +2,8 @@
  * Writing a module's one version into every manifest it owns.
  *
  * A module has a single version across `telo.yaml`, `nodejs/package.json` and
- * `rust/Cargo.toml`. Three formats, one rule: find the scalar, splice over its
+ * `rust/Cargo.toml` — and, for a crate, in the `Cargo.lock` that records it.
+ * Four formats, one rule: find the scalar, splice over its
  * span, touch nothing else. That is `yaml-source-edit.ts`'s primitive — the same
  * one the quick fix, `telo migrate` and `telo upgrade`'s pin rewrite use — so a
  * bump lands as a one-line diff instead of a re-serialized file that re-folds
@@ -197,4 +198,59 @@ export function stampCrateVersion(
   return applyTextEdits(text, [
     { start, end: start + entry[2].length, newText: `${quote}${version}${quote}` },
   ]);
+}
+
+/**
+ * A workspace member's `version` in the `Cargo.lock` that governs it.
+ *
+ * The lockfile records every workspace member's own version, so stamping a crate
+ * without stamping the lock leaves the two disagreeing — and a disagreement is
+ * not a cosmetic one: any `cargo --locked` invocation then has to re-resolve,
+ * which means reaching the network, which `--locked` forbids. That is a build
+ * that fails on whichever machine runs a locked cargo command before an unlocked
+ * one silently repairs the file.
+ *
+ * Scanned like a `Cargo.toml` and for the same reasons. Only a PATH package is
+ * addressed — a workspace member carries no `source` key, while a registry
+ * package of the same name is a different crate whose version is not ours to
+ * move. A name recorded more than once without a source is refused rather than
+ * guessed at.
+ */
+export function stampLockedCrateVersion(
+  text: string,
+  crate: string,
+  version: string,
+  where: string,
+): string | undefined {
+  const headers = /^\[\[package\]\][ \t]*$/gm;
+  const edits: { start: number; end: number; newText: string }[] = [];
+
+  for (let header = headers.exec(text); header; header = headers.exec(text)) {
+    const bodyStart = header.index + header[0].length;
+    const next = /^[ \t]*\[/m.exec(text.slice(bodyStart));
+    const bodyEnd = next ? bodyStart + next.index : text.length;
+    const body = text.slice(bodyStart, bodyEnd);
+
+    if (/^[ \t]*name[ \t]*=[ \t]*"(.*?)"[ \t]*$/m.exec(body)?.[1] !== crate) continue;
+    if (/^[ \t]*source[ \t]*=/m.test(body)) continue;
+
+    const entry = /^([ \t]*version[ \t]*=[ \t]*)(".*?")[ \t]*$/m.exec(body);
+    if (!entry) {
+      throw new VersionStampError(
+        `${where}: the '${crate}' package records no version that can be rewritten in place, ` +
+          `so the lockfile would keep naming a version of it that no longer exists.`,
+      );
+    }
+    const start = bodyStart + entry.index + entry[1].length;
+    edits.push({ start, end: start + entry[2].length, newText: `"${version}"` });
+  }
+
+  if (edits.length === 0) return undefined;
+  if (edits.length > 1) {
+    throw new VersionStampError(
+      `${where}: '${crate}' is recorded ${edits.length} times as a path package, so which entry ` +
+        `is the workspace member cannot be decided.`,
+    );
+  }
+  return applyTextEdits(text, edits);
 }

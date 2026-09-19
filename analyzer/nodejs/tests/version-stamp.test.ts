@@ -3,8 +3,10 @@ import { prependChangelogRelease, renderChangelogRelease } from "../src/release/
 import {
   readManifestVersion,
   stampCrateVersion,
+  stampLockedCrateVersion,
   stampManifestVersion,
   stampPackageVersion,
+  VersionStampError,
 } from "../src/release/version-stamp.js";
 
 describe("stampManifestVersion", () => {
@@ -92,6 +94,56 @@ describe("stampCrateVersion", () => {
 
   it("returns undefined when there is no [package] table", () => {
     expect(stampCrateVersion("[workspace]\nmembers = []\n", "1.0.0", "Cargo.toml")).toBeUndefined();
+  });
+});
+
+describe("stampLockedCrateVersion", () => {
+  const lock = [
+    "version = 4",
+    "",
+    "[[package]]",
+    'name = "serde"',
+    'version = "1.0.219"',
+    'source = "registry+https://github.com/rust-lang/crates.io-index"',
+    "",
+    "[[package]]",
+    'name = "telorun-console"',
+    'version = "0.18.0"',
+    "dependencies = [",
+    ' "serde_json",',
+    "]",
+    "",
+    "[[package]]",
+    'name = "telorun-sdk"',
+    'version = "0.92.0"',
+    "",
+  ].join("\n");
+
+  it("rewrites the workspace member's recorded version and nothing else", () => {
+    const out = stampLockedCrateVersion(lock, "telorun-console", "0.18.1", "Cargo.lock")!;
+    expect(out).toBe(lock.replace('version = "0.18.0"', 'version = "0.18.1"'));
+  });
+
+  it("leaves a registry package of the same name alone", () => {
+    expect(stampLockedCrateVersion(lock, "serde", "9.9.9", "Cargo.lock")).toBeUndefined();
+  });
+
+  it("returns undefined for a crate the lockfile does not record", () => {
+    expect(stampLockedCrateVersion(lock, "telorun-absent", "1.0.0", "Cargo.lock")).toBeUndefined();
+  });
+
+  it("refuses a name recorded twice as a path package", () => {
+    const twice = `${lock}\n[[package]]\nname = "telorun-console"\nversion = "0.1.0"\n`;
+    expect(() => stampLockedCrateVersion(twice, "telorun-console", "0.18.1", "Cargo.lock")).toThrow(
+      VersionStampError,
+    );
+  });
+
+  it("refuses an entry with no version rather than leaving a stale one", () => {
+    const broken = '[[package]]\nname = "telorun-console"\ndependencies = []\n';
+    expect(() =>
+      stampLockedCrateVersion(broken, "telorun-console", "0.18.1", "Cargo.lock"),
+    ).toThrow("records no version");
   });
 });
 

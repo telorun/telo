@@ -12,6 +12,7 @@ import {
   prependChangelogRelease,
   renderChangelogRelease,
   stampCrateVersion,
+  stampLockedCrateVersion,
   stampManifestVersion,
   stampPackageVersion,
   stampSelfNpmPins,
@@ -25,6 +26,7 @@ import {
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ModulePayloadBuilder } from "../bundle/module-payload.js";
+import { parseCargoToml } from "./cargo-toml.js";
 import { digestPayload, imageDigest, type ModuleTarget } from "./evidence.js";
 import { readLedger } from "./ledger-store.js";
 import { loadWorkspace, requireModule, type Workspace } from "./workspace.js";
@@ -51,7 +53,7 @@ export function writePlannedVersions(
 ): AppliedModule[] {
   return plan.modules.map((module) => {
     const discovered = requireModule(workspace, module.key);
-    const files = [...stampVersion(discovered.dir, module.to)];
+    const files = [...stampVersion(workspace, discovered.dir, module.to)];
     const changelog = writeChangelog(workspace, discovered.dir, module, date);
     if (changelog) files.push(changelog);
     return { key: module.key, from: module.from, to: module.to, files };
@@ -89,7 +91,59 @@ function readPackageName(file: string): string | undefined {
   return pkg.private ? undefined : pkg.name;
 }
 
-function stampVersion(dir: string, version: string): string[] {
+/** The `Cargo.lock` governing `from` — its own, else the nearest one above it,
+ *  never past the workspace anchor. */
+function findLockfile(from: string, root: string): string | undefined {
+  for (let dir = from; ; dir = path.dirname(dir)) {
+    const candidate = path.join(dir, "Cargo.lock");
+    if (fs.existsSync(candidate)) return candidate;
+    if (dir === root || path.dirname(dir) === dir) return undefined;
+  }
+}
+
+/**
+ * Move the module's crate version in the lockfile that records it.
+ *
+ * A `Cargo.lock` carries every workspace member's own version, so stamping the
+ * crate alone leaves the two disagreeing — and every `cargo --locked` invocation
+ * then has to re-resolve, which means reaching the network, which `--locked`
+ * forbids. The failure lands on whoever runs a locked cargo command before an
+ * unlocked one has silently repaired the file, which is why it surfaced as one
+ * Windows unit test while Linux was green.
+ *
+ * A crate with no lockfile above it has nothing to record the version, so there
+ * is nothing to write; a crate whose manifest has no readable `[package].name`
+ * is a hard error, because that name is what addresses the entry.
+ */
+function stampCrateLock(
+  workspace: Workspace,
+  crateDir: string,
+  version: string,
+): string | undefined {
+  const manifest = path.join(crateDir, "Cargo.toml");
+  if (!fs.existsSync(manifest)) return undefined;
+
+  const where = path.relative(workspace.root, manifest);
+  const table = parseCargoToml(fs.readFileSync(manifest, "utf8"), where).package;
+  const name = typeof table === "object" && !Array.isArray(table) ? table.name : undefined;
+  if (typeof name !== "string") {
+    throw new VersionStampError(
+      `${where}: [package].name is missing, so the crate's entry in Cargo.lock cannot be ` +
+        `addressed and the lockfile would keep naming a version that no longer exists.`,
+    );
+  }
+
+  const lockfile = findLockfile(crateDir, workspace.root);
+  if (!lockfile) return undefined;
+  const before = fs.readFileSync(lockfile, "utf8");
+  const relative = path.relative(workspace.root, lockfile);
+  const after = stampLockedCrateVersion(before, name, version, relative);
+  if (after === undefined || after === before) return undefined;
+  fs.writeFileSync(lockfile, after, "utf8");
+  return relative;
+}
+
+function stampVersion(workspace: Workspace, dir: string, version: string): string[] {
   const targets: Array<[string, (text: string, v: string, where: string) => string | undefined]> = [
     ["telo.yaml", stampManifestVersion],
     ["nodejs/package.json", stampPackageVersion],
@@ -105,6 +159,9 @@ function stampVersion(dir: string, version: string): string[] {
     fs.writeFileSync(file, after, "utf8");
     written.push(relative);
   }
+
+  const lockfile = stampCrateLock(workspace, path.join(dir, "rust"), version);
+  if (lockfile) written.push(lockfile);
 
   // A module delivering its controller from npm pins its OWN package in the
   // manifest, and that pin is part of its version too. Left behind it would name

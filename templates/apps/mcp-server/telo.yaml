@@ -17,10 +17,10 @@ metadata:
           -H 'accept: application/json, text/event-stream' \
           -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.31.1#sha256-bHVTaRpBawOUeJcsaW38aAg2BFy9ZXM6K2m8tz0bpqc
+  Http: oci://ghcr.io/telorun/http-server@0.32.0#sha256-BCghrZHLFCpZUhbYn9MBbRM2hsLssW3KD9IqqhxEwzU
   Mcp: oci://ghcr.io/telorun/mcp-server@0.16.1#sha256-FvBOyuEPt09re8c0hALsLemki5y074MoRC-z5rf97LI
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
-  SQLite: oci://ghcr.io/telorun/sqlite@0.5.0#sha256-A8EQEU4t73P9GqvxfkAvTL0pqAm1b6aovw1a17lxvTU
+  SQLite: oci://ghcr.io/telorun/sqlite@0.5.1#sha256-EwMIFmqcg8lg56OCcySKg5NgZ4iNP7hX-no8pEfjV6c
 targets:
   - !ref migrate
   - !ref server

@@ -721,13 +721,19 @@ jobs:
       # Both SDK backends are compiled explicitly. `telorun-sdk` declares no
       # default backend, so a bare `cargo test` would exercise neither bridge
       # and let one of them bit-rot unnoticed.
+      #
+      # `--locked` on every invocation, because without it cargo silently
+      # REPAIRS a `Cargo.lock` that disagrees with a workspace member's version
+      # and the job stays green — while the kernel's napi fixture test builds
+      # with `--locked` and fails on whichever platform reaches it first. This
+      # is the cheapest job to read that failure on, and it reads as what it is.
       - name: Check the napi backend
-        run: cargo check --workspace --features telorun-sdk/napi
+        run: cargo check --workspace --locked --features telorun-sdk/napi
 
       - name: Check the native backend
-        run: cargo check --workspace --features telorun-sdk/native
+        run: cargo check --workspace --locked --features telorun-sdk/native
 
       # The kernel's integration tests build the console controller crate as a
       # subprocess, so this covers the native backend end to end.
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked

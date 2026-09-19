@@ -217,6 +217,13 @@ published, and deletes the fragments it consumed. Version rewriting is a
 byte-splice over the author's own text, so a bump lands as a one-line diff
 rather than a re-serialized file.
 
+A module with a Rust half also has its entry moved in the `Cargo.lock` that
+records the crate — its own, else the nearest one above it. A lockfile left
+behind still names the version the crate had, so every `cargo --locked`
+invocation has to re-resolve, which means reaching the network, which `--locked`
+forbids: the build fails on whichever machine runs a locked cargo command before
+an unlocked one has silently repaired the file.
+
 `stage` fetches the prebuilt files a module's `sources:` block declares from
 their pinned upstream archives and verifies each against its `sha256` and
 executable bit; a file already on disk and matching its pin is not fetched.
