@@ -88,15 +88,19 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
+            triple: aarch64-apple-darwin
             label: macos-arm64
           - os: macos-latest
             target: x86_64-apple-darwin
+            triple: x86_64-apple-darwin
             label: macos-x64
           - os: ubuntu-22.04
             target: ''
+            triple: x86_64-unknown-linux-gnu
             label: linux-x64
           - os: windows-latest
             target: ''
+            triple: x86_64-pc-windows-msvc
             label: windows-x64
     runs-on: ${{ matrix.os }}
     steps:
@@ -149,6 +153,17 @@ jobs:
       # `^...` selector is deps-only (excludes studio itself).
       - name: Build workspace dependencies
         run: pnpm --filter "@telorun/studio^..." build
+
+      # Studio runs applications through `telo runner`, so it ships the telo it
+      # runs them with — built from THIS commit rather than downloaded from a
+      # release, which is what makes the bundled runtime derivable instead of
+      # asserted and unties this build from the CLI's release schedule. Tauri
+      # names a sidecar by the Rust target triple; the script translates that to
+      # the CLI build's own platform tokens. A failure here fails the release:
+      # an editor that cannot run anything is the outcome the sidecar exists to
+      # prevent.
+      - name: Stage the telo sidecar
+        run: node apps/studio/scripts/stage-cli-sidecar.mjs --triple ${{ matrix.triple }}
 
       - name: Build Tauri bundles
         id: tauri
@@ -212,6 +227,9 @@ jobs:
             | macOS (Intel) | `.dmg` — `macos-x64` |
             | Windows | `.msi` / `.exe` |
             | Linux | `.AppImage` / `.deb` |
+
+            Each build carries the `telo` CLI it runs applications with, so a
+            local run needs no separate install and no Docker.
 
             > These are **unsigned** builds: macOS Gatekeeper and Windows
             > SmartScreen will warn on first launch. Code signing is a follow-up.

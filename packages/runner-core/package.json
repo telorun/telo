@@ -6,7 +6,7 @@
     "telo",
     "runner"
   ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
@@ -20,6 +20,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./container": {
+      "import": "./dist/container-config.js",
+      "types": "./dist/container-config.d.ts"
     }
   },
   "files": [

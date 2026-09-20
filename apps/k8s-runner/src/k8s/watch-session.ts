@@ -11,6 +11,7 @@ import type {
   RunStatus,
   WorkspaceAccess,
 } from "@telorun/runner-core";
+import { optionalContainerConfig } from "@telorun/runner-core/container";
 import {
   portKey,
   portsResolvedFrom,
@@ -77,6 +78,9 @@ export async function startWatchSession(
   const { kube, config, router } = deps;
   const ns = config.sessionNamespace;
   const limits = clampLimits(config.appLimits, undefined);
+  // Core carries the session config as an opaque bag; this runner falls back to
+  // its operator-configured image when the client names none.
+  const sessionImage = optionalContainerConfig(spec.config);
 
   let apps = spec.apps;
   let podName = freshPodName(spec.sessionId);
@@ -121,8 +125,8 @@ export async function startWatchSession(
       apps,
       agent: spec.agent,
       limits,
-      image: spec.config.image || config.defaultImage,
-      pullPolicy: spec.config.pullPolicy,
+      image: sessionImage.image ?? config.defaultImage,
+      pullPolicy: sessionImage.pullPolicy,
       workspaceAppConfigMap,
     });
 

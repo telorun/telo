@@ -2,6 +2,8 @@
 
 HTTP service that runs Telo Applications in Docker containers on the host daemon. Exposes `/v1/sessions`, `/v1/probe`, and `/v1/health` so the Telo editor (or any compatible client) can start, stop, and stream runs without itself having Docker access.
 
+For running applications on your own machine with no daemon at all, `telo runner` serves the same API over local processes — no isolation and no terminal, but nothing to install. This runner is the one to reach for when a run should behave the way production does: an image, a container, published ports.
+
 ## How it works
 
 The runner binds the host Docker socket (`/var/run/docker.sock`), receives bundle files over HTTP, writes them into a shared named volume, and spawns `telorun/node:latest-slim` (or any compatible image) as a sibling container on the host daemon. Logs stream back to the client via Server-Sent Events.

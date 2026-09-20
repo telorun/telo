@@ -16,6 +16,7 @@ import { moduleCommand } from "./commands/module.js";
 import { publishCommand } from "./commands/publish.js";
 import { releaseCommand } from "./commands/release.js";
 import { runCommand } from "./commands/run.js";
+import { runnerCommand } from "./commands/runner.js";
 import { searchCommand } from "./commands/search.js";
 import { upgradeCommand } from "./commands/upgrade.js";
 
@@ -31,6 +32,7 @@ cli = moduleCommand(cli) as typeof cli;
 cli = publishCommand(cli) as typeof cli;
 cli = releaseCommand(cli) as typeof cli;
 cli = runCommand(cli) as typeof cli;
+cli = runnerCommand(cli) as typeof cli;
 cli = searchCommand(cli) as typeof cli;
 cli = upgradeCommand(cli) as typeof cli;
 

@@ -2,7 +2,10 @@ export * from "./contract.js";
 export * from "./backend.js";
 export * from "./config.js";
 export * from "./server.js";
-export { sessionConfigSchema, type SessionConfigSchemaOptions } from "./capabilities-schema.js";
+// `./container-config.js` is deliberately NOT re-exported here: it is the
+// vocabulary of a backend that runs container IMAGES, and the neutral entry
+// point is what `telo runner` links. Container backends import it from
+// `@telorun/runner-core/container`.
 export {
   BaseImageCatalog,
   filterTags,
@@ -34,7 +37,11 @@ export { EventRingBuffer, type BufferedEvent } from "./session/ring-buffer.js";
 export { ByteRingBuffer, type BufferedBytes } from "./session/byte-ring-buffer.js";
 export { normalizeBundlePath, validateSessionId, BundlePathError } from "./session/bundle-path.js";
 export { WorkspaceClient } from "./session/workspace-client.js";
-export { workspaceAppManifest, WORKSPACE_APP_FILENAME } from "./session/workspace-app.js";
+export {
+  workspaceAppManifest,
+  WORKSPACE_APP_FILENAME,
+  WORKSPACE_EXCLUDED_DIRECTORIES,
+} from "./session/workspace-app.js";
 export {
   workspaceMarkerWrite,
   WORKSPACE_MARKER_CONTENTS,

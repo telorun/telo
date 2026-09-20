@@ -48,6 +48,7 @@
     "@telorun/glob": "workspace:*",
     "@telorun/ide-support": "workspace:*",
     "@telorun/kernel": "workspace:*",
+    "@telorun/runner-core": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@telorun/templating": "workspace:*",
     "dotenv": "^17.4.0",

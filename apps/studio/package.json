@@ -28,7 +28,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "stage:cli": "node scripts/stage-cli-sidecar.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",

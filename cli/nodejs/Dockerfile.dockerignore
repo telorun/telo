@@ -11,6 +11,9 @@
 !scripts
 !packages/ide-support
 !packages/debug-wire
+# `telo runner` serves the /v1 session contract from this package, so the CLI
+# does not build without it.
+!packages/runner-core
 !packages/debug-ui
 !packages/glob/nodejs
 !package.json

@@ -3,6 +3,9 @@
 .git
 .github
 apps/studio/src-tauri/target
+# The `telo` sidecar staged for a desktop build: ~140MB of binary that no image
+# builds from, and `COPY . .` would otherwise put it in every runner image.
+apps/studio/src-tauri/binaries
 pages/build
 pages/.docusaurus
 **/.turbo

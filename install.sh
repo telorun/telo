@@ -107,6 +107,14 @@ mkdir -p "$DIR"
 install -m 0755 "$TMP/telo-$VERSION-$TARGET/telo" "$DIR/telo"
 
 echo "installed telo $VERSION to $DIR/telo"
+
+# The musl runtime is dynamically linked against libstdc++, which a bare Alpine
+# does not carry. Said here, because what it looks like otherwise is a list of
+# missing C++ symbols on the first run.
+if [ "$TARGET" = "linux-amd64-musl" ] && ! "$DIR/telo" --version >/dev/null 2>&1; then
+  echo "note: telo could not start. On Alpine this is usually a missing libstdc++: apk add libstdc++" >&2
+fi
+
 case ":$PATH:" in
   *":$DIR:"*) ;;
   *) echo "note: $DIR is not on your PATH." ;;

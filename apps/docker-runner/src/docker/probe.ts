@@ -1,4 +1,5 @@
 import type { AvailabilityReport, ProbeConfig } from "@telorun/runner-core";
+import { validateContainerConfig } from "@telorun/runner-core/container";
 
 export interface ProbeDockerClient {
   ping(): Promise<unknown>;
@@ -47,15 +48,24 @@ export async function runProbe(
     };
   }
 
+  // A probe carries the config the client is about to run with, and core no
+  // longer knows its shape — so a config this backend cannot use is reported as
+  // something to fix rather than probed around.
+  const invalid = validateContainerConfig(probe);
+  if (invalid) {
+    return { status: "needs-setup", issues: [{ path: "/image", message: invalid }] };
+  }
+
+  const image = probe.image as string;
   if (probe.pullPolicy !== "always") {
     try {
-      await docker.getImage(probe.image).inspect();
+      await docker.getImage(image).inspect();
     } catch {
       if (probe.pullPolicy === "never") {
         return {
           status: "unavailable",
-          message: `Image '${probe.image}' not present locally and pullPolicy is 'never'.`,
-          remediation: `Run \`docker pull ${probe.image}\` or change pullPolicy to 'missing' or 'always'.`,
+          message: `Image '${image}' not present locally and pullPolicy is 'never'.`,
+          remediation: `Run \`docker pull ${image}\` or change pullPolicy to 'missing' or 'always'.`,
         };
       }
     }

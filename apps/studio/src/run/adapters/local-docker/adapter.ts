@@ -12,7 +12,7 @@ import {
   type LocalDockerConfig,
 } from "./config-schema";
 import { LOCAL_RUNNER_IMAGE } from "./runner-image";
-import { localRunnerStatus, probeDocker, startLocalRunner } from "./supervisor";
+import { localRunnerStatus, probeDocker, startLocalRunner, stopLocalRunner } from "./supervisor";
 
 const DISPLAY_NAME = "Local (docker)";
 const DESCRIPTION =
@@ -123,6 +123,14 @@ export const localDockerAdapter: RunAdapter<LocalDockerConfig> = {
     const status = await localRunnerStatus();
     if (status.state !== "ready" || !status.baseUrl) return;
     await inner.stopSession!(sessionId, dial(config, status.baseUrl));
+  },
+
+  async isRunning() {
+    return (await localRunnerStatus()).state === "ready";
+  },
+
+  async teardown() {
+    await stopLocalRunner();
   },
 
   async resolveBaseUrl() {

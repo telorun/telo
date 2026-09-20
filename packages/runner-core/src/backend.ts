@@ -68,11 +68,14 @@ export interface BackendAppSpec {
 export interface WorkloadLaunch {
   bundle: RunBundle;
   env: Record<string, string>;
+  /** Whatever this runner declares on `/v1/capabilities`; opaque to core, and
+   *  narrowed by the backend that owns the vocabulary. */
   config: SessionConfig;
   /** True for an operator-predefined app session (`POST /v1/apps/:name/sessions`):
-   *  `config.image` is self-contained (app + controllers baked in), so the
-   *  backend runs the image's own entrypoint and stages no bundle — `bundle`
-   *  is an empty placeholder. */
+   *  the catalog entry the route resolved carries the whole application (app +
+   *  controllers baked into its image), so the backend runs that image's own
+   *  entrypoint and stages no bundle — `bundle` is an empty placeholder. A
+   *  backend with no image catalog has no such session and refuses it. */
   selfContained: boolean;
   /** When true, launch each app with `--inspect` and relay its kernel debug
    *  stream via `onDebug`. The inspect endpoint stays reachable only by the

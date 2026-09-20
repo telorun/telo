@@ -42,6 +42,14 @@ export interface SessionsRouteDeps {
    *  an operator-predefined application, just one sharing a pod. */
   apps?: Record<string, ResolvedRunnerApp>;
   watch: WatchConfig;
+  /** The byte-channel modes this runner offers, in preference order — the same
+   *  list `/v1/capabilities` advertises as `features.io`, passed in so the route
+   *  enforces exactly what the runner claims. The first entry is what an app
+   *  that declares no `io` gets. A backend with no PTY offers `["streams"]`
+   *  alone, and an explicit `io: "tty"` is then REFUSED rather than quietly
+   *  downgraded: `isatty()` is observable to the application, so a silent
+   *  downgrade hands it a terminal it can detect it does not have. */
+  io: IoMode[];
 }
 
 const appsSchema = {
@@ -61,7 +69,10 @@ const appsSchema = {
 
 const startBodySchema = {
   type: "object",
-  required: ["bundle", "env", "config"],
+  // `config` is no longer required: a runner may advertise no editable fields at
+  // all, and demanding an empty object from such a client is a ceremony with
+  // nothing behind it.
+  required: ["bundle", "env"],
   properties: {
     bundle: {
       type: "object",
@@ -86,14 +97,11 @@ const startBodySchema = {
       additionalProperties: { type: "string" },
     },
     ports: portsSchema,
-    config: {
-      type: "object",
-      required: ["image", "pullPolicy"],
-      properties: {
-        image: { type: "string", minLength: 1 },
-        pullPolicy: { type: "string", enum: ["missing", "always", "never"] },
-      },
-    },
+    // Opaque here, on purpose: what a session config may contain is the
+    // runner's own answer (`/v1/capabilities`), enforced by `validateConfig`.
+    // A runner that names an image and one that runs a local process cannot
+    // share a field list, and core is the wrong place to hold either.
+    config: { type: "object" },
     inspect: { type: "boolean" },
     mode: { type: "string", enum: ["run", "watch"] },
     agent: { type: "string", minLength: 1 },
@@ -316,7 +324,7 @@ export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
           reply.code(409).send({ error: "not_running", message: "session has no live workload" });
           return;
         }
-        const resolved = resolveApps(req.body.apps, undefined, []);
+        const resolved = resolveApps(req.body.apps, undefined, [], deps.io);
         if ("error" in resolved) {
           reply.code(400).send(resolved.error);
           return;
@@ -475,6 +483,7 @@ function resolveApps(
   declared: SessionAppSpec[] | undefined,
   bundleEntry: string | undefined,
   fallbackPorts: PortMapping[],
+  io: IoMode[],
 ): ResolvedApps {
   const specs: SessionAppSpec[] = declared ?? [
     {
@@ -537,11 +546,24 @@ function resolveApps(
       portOwner.set(key, spec.name);
     }
 
+    // Declared, it must be one this runner serves; omitted, it is the runner's
+    // own default — the first mode it advertises.
+    if (spec.io && !io.includes(spec.io)) {
+      return {
+        error: {
+          error: "io_unsupported",
+          message:
+            `this runner does not offer io mode '${spec.io}' (see /v1/capabilities) — ` +
+            `it serves ${io.join(", ")}`,
+        },
+      };
+    }
+
     apps.push({
       name: spec.name,
       entryRelativePath,
       ports,
-      io: (spec.io ?? "tty") as IoMode,
+      io: spec.io ?? io[0] ?? "tty",
     });
   }
 
@@ -570,10 +592,12 @@ async function startSession(
     throw err;
   }
 
-  // Backend config gate (e.g. an image allowlist). The advertised capabilities
-  // constrain the editor; this enforces the same against any client.
+  // Backend config gate (e.g. an image allowlist, or a required field core no
+  // longer knows about). The advertised capabilities constrain the editor; this
+  // enforces the same against any client.
+  const config = body.config ?? {};
   if (deps.validateConfig) {
-    const message = deps.validateConfig(body.config);
+    const message = deps.validateConfig(config);
     if (message) {
       reply.code(400).send({ error: "invalid_config", message });
       return;
@@ -644,7 +668,7 @@ async function startSession(
     }
   }
 
-  const resolved = resolveApps(body.apps, entryRelative, body.ports ?? []);
+  const resolved = resolveApps(body.apps, entryRelative, body.ports ?? [], deps.io);
   if ("error" in resolved) {
     reply.code(400).send(resolved.error);
     return;
@@ -682,7 +706,7 @@ async function startSession(
     {
       bundle: body.bundle,
       env: body.env,
-      config: body.config,
+      config,
       selfContained: false,
       // A watch session always runs with the kernel debug stream on: that stream
       // is the only place run outcomes exist, and parsing the merged PTY output

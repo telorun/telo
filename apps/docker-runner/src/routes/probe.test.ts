@@ -34,22 +34,34 @@ describe("POST /v1/probe", () => {
     expect(res.json()).toEqual({ status: "ready" });
   });
 
-  it("rejects bodies missing the config field with 400", async () => {
+  // The session config is the runner's vocabulary, not core's, so a config this
+  // backend cannot use comes back as something to FIX — a probe's whole job —
+  // rather than as a schema rejection from a route that no longer knows the
+  // fields.
+  it("reports a missing image as needs-setup, naming the field", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/probe",
       payload: {},
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      status: "needs-setup",
+      issues: [{ message: expect.stringMatching(/config\.image/) }],
+    });
   });
 
-  it("rejects unknown pullPolicy values with 400", async () => {
+  it("reports an unknown pullPolicy as needs-setup", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/probe",
       payload: { config: { image: "img", pullPolicy: "sometimes" } },
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      status: "needs-setup",
+      issues: [{ message: expect.stringMatching(/pullPolicy/) }],
+    });
   });
 
   it("surfaces probe unavailable responses verbatim", async () => {

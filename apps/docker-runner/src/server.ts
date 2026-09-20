@@ -8,6 +8,7 @@ import {
   type ServerHandle,
   type SessionRegistry,
 } from "@telorun/runner-core";
+import { validateContainerConfig } from "@telorun/runner-core/container";
 
 import packageJson from "../package.json" with { type: "json" };
 import { dockerRunnerCapabilities } from "./capabilities.js";
@@ -63,6 +64,10 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on
     // /v1/capabilities and enforced by the core session route.
     apps,
+    // Core carries the session config as an opaque bag, so the runner that
+    // needs an image is the one that insists on it — a 400 naming the field,
+    // rather than a start failure arriving on the event stream.
+    validateConfig: validateContainerConfig,
     registry: deps.registry,
   });
 }

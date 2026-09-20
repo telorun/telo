@@ -58,6 +58,18 @@ export interface RunAdapter<Config = unknown> {
    *  longer running, INCLUDING when the runner never had it; throws only when
    *  the outcome is genuinely unknown. */
   stopSession?(sessionId: string, config: Config): Promise<void>;
+
+  /** Whether an editor-MANAGED runner is up right now — a separate question
+   *  from `isAvailable`, which answers whether this runner can run anything (a
+   *  runner the editor starts on demand is available while stopped). Only the
+   *  adapters that supervise a local runner implement it; the settings row uses
+   *  it to decide whether there is anything to stop. */
+  isRunning?(config: Config): Promise<boolean>;
+
+  /** Stop the editor-managed runner, which stops every session it holds. Absent
+   *  for a runner the editor does not own: an adapter that dials somebody
+   *  else's infrastructure has nothing to tear down. */
+  teardown?(config: Config): Promise<void>;
 }
 
 /** A runner's self-description, fetched from `GET /v1/capabilities`. Mirrors

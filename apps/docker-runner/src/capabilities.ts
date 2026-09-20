@@ -1,4 +1,5 @@
-import { sessionConfigSchema, type RunnerCapabilities } from "@telorun/runner-core";
+import type { RunnerCapabilities } from "@telorun/runner-core";
+import { sessionConfigSchema } from "@telorun/runner-core/container";
 
 /** Default image the docker-runner spawns when the client doesn't pick one. */
 export const DEFAULT_SESSION_IMAGE = "telorun/node:0-slim";

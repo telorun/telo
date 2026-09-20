@@ -143,10 +143,36 @@ function bakedVersions() {
   };
 }
 
+/**
+ * Give a CommonJS `require('ws')` the CommonJS `ws`.
+ *
+ * This build resolves the `import` condition, under which `ws` answers with an
+ * ESM wrapper exporting `WebSocketServer` and no `Server`. `@fastify/websocket`
+ * — which carries the session byte channel — does `require('ws')` and then
+ * reads `.Server` off it, so the bundled runner threw `WebSocket2.Server is not
+ * a constructor` the moment a client attached, in the binary only.
+ *
+ * Resolved FROM THE IMPORTER rather than by walking a path of our own, so the
+ * answer is whatever that consumer's own `require` would have produced and the
+ * rule holds for any package that requires `ws`, at any depth, under any
+ * `node_modules` layout. Dropping the `import` condition wholesale would fix
+ * the class too, and break every package whose ESM entry is the one that works.
+ */
+const requireCjsResolution = {
+  name: "cjs-require-resolution",
+  setup(build) {
+    build.onResolve({ filter: /^ws$/ }, (args) => {
+      if (args.kind !== "require-call") return null;
+      return { path: createRequire(args.importer).resolve("ws") };
+    });
+  },
+};
+
 async function bundle(stagingDir, versions) {
   const esbuild = require("esbuild");
   const outfile = path.join(stagingDir, "telo.cjs");
   await esbuild.build({
+    plugins: [requireCjsResolution],
     entryPoints: [path.join(CLI_DIR, "dist", "standalone", "entry.js")],
     outfile,
     bundle: true,

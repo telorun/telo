@@ -32,3 +32,7 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# The `telo` sidecar staged by `pnpm stage:cli` — built from this commit, never
+# committed: it is a 100MB binary that differs per target triple.
+/src-tauri/binaries

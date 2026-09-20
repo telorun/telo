@@ -37,8 +37,8 @@ const TARGET_ARCH = {
   "linux-arm64-gnu": { deb: "arm64", rpm: "aarch64" },
   "darwin-amd64": {},
   "darwin-arm64": {},
-  "windows-amd64": {},
-  "windows-arm64": {},
+  "windows-amd64": { msi: "x64" },
+  "windows-arm64": { msi: "arm64" },
 };
 
 function parseArgs(argv) {
@@ -57,13 +57,16 @@ function parseArgs(argv) {
   return args;
 }
 
+/** Whether a tool is on PATH, decided by looking for it rather than by running
+ *  it: `--version` is not a universal probe. `pkgbuild --version` TAKES a
+ *  version, so probing that way reports the one tool macOS is guaranteed to
+ *  have as missing — and a missing tool fails the build. */
 function has(tool) {
-  try {
-    execFileSync(tool, ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
+  const extensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE").split(";") : [""];
+  return (process.env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .some((dir) => extensions.some((ext) => fs.existsSync(path.join(dir, tool + ext))));
 }
 
 function run(command, args, options = {}) {
@@ -89,9 +92,17 @@ function buildArchive({ target, version, dir }) {
     return out;
   }
   const out = path.join(dir, `${name}.tar.gz`);
-  // `--transform` puts the binary under a single top-level directory, so an
-  // extract cannot scatter a bare `telo` into the current directory.
-  run("tar", ["czf", out, "-C", dir, "--transform", `s,^telo$,${name}/telo,`, "telo"]);
+  // The binary is copied under a directory named after the release and that
+  // directory is archived, so an extract cannot scatter a bare `telo` into the
+  // current directory. Not `--transform`, which is GNU tar's: macOS ships
+  // bsdtar, which answers `Option --transform is not supported` and fails the
+  // only format both darwin targets have.
+  const staging = fs.mkdtempSync(path.join(os.tmpdir(), "telo-tar-"));
+  fs.mkdirSync(path.join(staging, name));
+  fs.copyFileSync(path.join(dir, "telo"), path.join(staging, name, "telo"));
+  fs.chmodSync(path.join(staging, name, "telo"), 0o755);
+  // Without this bsdtar writes an AppleDouble `._telo` beside the binary.
+  run("tar", ["czf", out, "-C", staging, name], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
   return out;
 }
 
@@ -142,6 +153,14 @@ function buildRpm({ target, version, dir }) {
   fs.writeFileSync(
     spec,
     [
+      // rpm's build-root policy scripts run over the payload, and the first of
+      // them strips it. The binary is a finished artifact built for a target
+      // that is not this builder, so `strip` reported `Unable to recognise the
+      // format of the input file` and failed the arm64 build — and on the
+      // target that did match it rewrote a file carrying an injected SEA blob.
+      // Nothing here needs post-processing: one prebuilt executable is copied
+      // into place.
+      "%define __os_install_post %{nil}",
       "Name: telo",
       `Version: ${version}`,
       "Release: 1",
@@ -225,7 +244,10 @@ function buildMsi({ target, version, dir }) {
   // one name for two architectures is an upload collision in which whichever
   // job finishes second silently replaces the other's installer.
   const out = path.join(dir, `telo-${version}-${target}.msi`);
-  run("wix", ["build", wxs, "-o", out]);
+  // `-arch` is the package's, and it defaults to x86: an arm64 executable in a
+  // 32-bit package installs to the wrong Program Files and is offered to the
+  // wrong machines. It also has to agree with `ProgramFiles64Folder` above.
+  run("wix", ["build", "-arch", TARGET_ARCH[target].msi, wxs, "-o", out]);
   return out;
 }
 
