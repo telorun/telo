@@ -244,6 +244,7 @@ export class Kernel implements IKernel {
     analysisDir: string | undefined;
     writeCache: boolean;
     analyzeOnly: boolean;
+    analysisKey?: string;
   };
   // Lifecycle state — guards boot/runTargets/teardown/invoke transitions.
   // teardown() is the only idempotent method; everything else throws on misuse.
@@ -486,7 +487,17 @@ export class Kernel implements IKernel {
    */
   async load(
     url: string,
-    options?: { analyzeOnly?: boolean; cacheDir?: string | null; writeCache?: boolean },
+    options?: {
+      analyzeOnly?: boolean;
+      cacheDir?: string | null;
+      writeCache?: boolean;
+      /** The identity a PACKAGED application's analysis verdict is filed and
+       *  signed under — a digest of its payload — in place of the entry URL and
+       *  the absolute source paths of the files it covers, neither of which
+       *  survives the payload being unpacked somewhere other than where it was
+       *  built. See `computeAnalysisSignature`. */
+      analysisKey?: string;
+    },
   ): Promise<void> {
     const sourceUrl = await this.loader.resolveEntryPoint(url);
     this._entryUrl = sourceUrl;
@@ -536,12 +547,19 @@ export class Kernel implements IKernel {
 
     // Kept so `reconcile()` re-produces against the same directories and cache
     // policy this load used — a second load resolving them again could differ.
-    this._produceOptions = { manifestsDir, analysisDir, writeCache, analyzeOnly: false };
+    this._produceOptions = {
+      manifestsDir,
+      analysisDir,
+      writeCache,
+      analyzeOnly: false,
+      ...(options?.analysisKey !== undefined ? { analysisKey: options.analysisKey } : {}),
+    };
     const produced = await this.produceManifests(sourceUrl, {
       manifestsDir,
       analysisDir,
       writeCache,
       analyzeOnly: options?.analyzeOnly === true,
+      ...(options?.analysisKey !== undefined ? { analysisKey: options.analysisKey } : {}),
     });
     // `analyzeOnly` stops before instantiation, so there is nothing to install.
     if (!produced) return;
@@ -797,6 +815,7 @@ export class Kernel implements IKernel {
       analysisDir: string | undefined;
       writeCache: boolean;
       analyzeOnly: boolean;
+      analysisKey?: string;
     },
   ): Promise<
     | { graph: LoadedGraph; manifests: ResourceManifest[]; signatures: Map<string, string> }
@@ -897,9 +916,15 @@ export class Kernel implements IKernel {
     // and inline-resource normalisation still runs — only the diagnostic
     // passes are elided. Memory- / HTTP-rooted entries have no
     // local stamp store and always re-validate.
-    const analysisSignature = computeAnalysisSignature(analysisGraph);
+    const analysisSignature = computeAnalysisSignature(analysisGraph, {
+      ...(opts.analysisKey !== undefined ? { appKey: opts.analysisKey } : {}),
+      entryUrl: sourceUrl,
+    });
+    // Both halves take the same key: filing under the entry URL while signing
+    // over a payload digest would hit a stamp written for another payload.
+    const stampKey = opts.analysisKey ?? sourceUrl;
     const stamp = analysisDir
-      ? await readAnalysisStamp(sourceUrl, analysisDir, this.logging.kernelLogger())
+      ? await readAnalysisStamp(stampKey, analysisDir, this.logging.kernelLogger())
       : undefined;
     const skipValidation = stamp?.signature === analysisSignature;
     const errors = this.analyzer.analyzeErrors(
@@ -928,7 +953,7 @@ export class Kernel implements IKernel {
       // simply miss next time. Skipped under `--no-cache-write`.
       try {
         await writeAnalysisStamp(
-          sourceUrl,
+          stampKey,
           analysisSignature,
           analysisDir,
           this.logging.kernelLogger(),

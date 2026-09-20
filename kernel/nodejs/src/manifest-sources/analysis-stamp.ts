@@ -1,7 +1,9 @@
 import type { LoadedGraph } from "@telorun/analyzer";
 import { createHash } from "crypto";
+import { statSync } from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
+import { fileURLToPath } from "url";
 import type { Logger } from "@telorun/sdk";
 import { readKernelVersion, readVersion, reportUndeterminableVersion } from "../runtime-versions.js";
 
@@ -74,12 +76,31 @@ function analysisCacheKeyable(log?: Logger): boolean {
  *  or any pnpm/npm install that bumps the kernel or analyzer — flips it.
  *  This is what the kernel uses to decide whether the previous analyzer
  *  run's verdict still applies. */
-export function computeAnalysisSignature(graph: LoadedGraph): string {
+export function computeAnalysisSignature(
+  graph: LoadedGraph,
+  options: { appKey?: string; entryUrl?: string } = {},
+): string {
+  // **Every signature covers the CONTENT of every reachable file.** What an
+  // `appKey` changes is only how each file is IDENTIFIED, and it exists because
+  // the ordinary identity — the file's absolute source URL — does not survive
+  // being loaded from somewhere else: a packaged application unpacks at a
+  // digest-keyed path that has nothing to do with where it was built, so every
+  // start re-ran the whole validation walk, silently, a miss being the designed
+  // quiet recovery.
+  //
+  // Identifying files relocatably rather than replacing the content hash with
+  // the key is the whole point. A verdict keyed on the payload alone is a
+  // verdict about the PAYLOAD while the load is from an unpacked TREE, and after
+  // the first unpack nothing binds the two — a tree truncated by a full disk or
+  // half-restored from a backup would hit the stamp and boot a manifest nothing
+  // had validated.
+  const { appKey, entryUrl } = options;
+  const entryDir = appKey !== undefined && entryUrl ? directoryOf(entryUrl) : undefined;
   const entries: Array<[string, string]> = [];
   for (const [, mod] of graph.modules) {
     for (const file of [mod.owner, ...mod.partials]) {
       const digest = createHash("sha256").update(file.text).digest("hex");
-      entries.push([file.source, digest]);
+      entries.push([entryDir ? relocatableIdentity(file, entryDir) : file.source, digest]);
     }
   }
   entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
@@ -88,10 +109,49 @@ export function computeAnalysisSignature(graph: LoadedGraph): string {
       JSON.stringify({
         kernel: KERNEL_VERSION,
         analyzer: ANALYZER_VERSION,
+        ...(appKey !== undefined ? { app: appKey } : {}),
         files: entries,
       }),
     )
     .digest("hex");
+}
+
+/**
+ * A name for one file that is the same wherever the tree holding it sits.
+ *
+ * A remote module is named by the pinned ref it was requested as — content-
+ * addressed already, and identical on both machines. A local file is named by
+ * its path relative to the entry's own directory, which is a property of the
+ * manifests rather than of the machine: a payload preserves those offsets
+ * exactly so that relative imports keep resolving inside it.
+ */
+function relocatableIdentity(
+  file: { source: string; requestedUrl?: string },
+  entryDir: string,
+): string {
+  const requested = file.requestedUrl;
+  if (requested && /^[a-z][a-z0-9+.-]*:/i.test(requested) && !requested.startsWith("file:")) {
+    return requested;
+  }
+  const local = localPathOf(file.source);
+  if (!local) return file.source;
+  return path.relative(entryDir, local).split(path.sep).join("/");
+}
+
+function directoryOf(entryUrl: string): string | undefined {
+  const local = localPathOf(entryUrl);
+  if (!local) return undefined;
+  try {
+    return statSync(local).isDirectory() ? local : path.dirname(local);
+  } catch {
+    return path.dirname(local);
+  }
+}
+
+/** An on-disk path for a loader source URL, or `undefined` for a remote one. */
+function localPathOf(source: string): string | undefined {
+  if (source.startsWith("file://")) return fileURLToPath(source);
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(source) ? undefined : source;
 }
 
 /** Where one entry's stamp lives: `<analysisDir>/<hash of entry URL>.json`.

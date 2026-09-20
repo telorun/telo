@@ -72,14 +72,22 @@ export interface EnvFileResolution {
   readonly failed?: string;
 }
 
-/** Collect the env files visible to a manifest. Pure: reads the filesystem and
- *  returns what it found. */
-export function resolveEnvFiles(manifestPath: string): EnvFileResolution {
+/**
+ * Collect the env files visible from `anchor` — a manifest, or the directory a
+ * walk should start at. Pure: reads the filesystem and returns what it found.
+ *
+ * The anchor is the CALLER's to choose, and the two callers choose differently:
+ * an ordinary `telo run` starts at the manifest, which sits at or near where the
+ * command was typed, while a packaged application starts at the working
+ * directory, because its manifest lives at a digest-keyed path inside the unpack
+ * cache that no operator should have to find.
+ */
+export function resolveEnvFiles(anchor: string): EnvFileResolution {
   const loaded: string[] = [];
   const unreadable: UnreadableEnvFile[] = [];
   const values: Record<string, string> = {};
 
-  const from = manifestDirectory(manifestPath);
+  const from = anchorDirectory(anchor);
   const root = findWorkspaceRoot(from);
   const marker = readMarker(root);
   const envErrors = diagnosticsFor(marker.diagnostics, "env");
@@ -134,10 +142,11 @@ function readMarker(root: string | undefined): ReturnType<typeof readWorkspaceCo
   }
 }
 
-/** The directory holding the manifest — or the path itself when it names a
- *  directory. Resolved through symlinks, so the walk climbs the real tree. */
-function manifestDirectory(manifestPath: string): string {
-  const resolved = realPath(path.resolve(manifestPath));
+/** The directory the walk starts at: the anchor itself when it names one, else
+ *  the directory holding it. Resolved through symlinks, so the walk climbs the
+ *  real tree. */
+function anchorDirectory(anchor: string): string {
+  const resolved = realPath(path.resolve(anchor));
   return fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()
     ? resolved
     : path.dirname(resolved);

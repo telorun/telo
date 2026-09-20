@@ -18,30 +18,23 @@ import {
   type SiblingLibraryMap,
 } from "@telorun/kernel";
 
-/**
- * Pre-materialize every module layer a `target` platform could need.
- *
- * This is `telo install`'s make-this-offline pass. `telo run` materializes layers
- * lazily — a controller layer when its candidate wins resolution, an asset layer
- * on first module-relative access — so warming here is an optimization, never a
- * correctness requirement. That is the point of the change it replaces:
- * previously a cold `telo run` failed outright because payloads landed on disk
- * only after the load that needed them.
- *
- * `target` defaults to the host but is explicit so a baked image
- * (`TELO_CACHE_DIR`) can be built from a machine of a different architecture —
- * without it, cross-building a `linux/arm64` image on a darwin laptop would cache
- * the wrong binaries.
- *
- * Best-effort per module for transient fetch failures (reported and skipped —
- * the manifest is cached either way, and `run` will fetch what it needs). An
- * integrity failure, a malformed layer index, and a tar entry escaping the module
- * directory are all hard: a tampered or corrupt artifact must never be used, and
- * a bad index is an authoring error the publisher has to fix.
- */
+/** One layer the target needs that this warm did not produce. */
+export interface LayerGap {
+  /** The module's pinned ref, as the manifest named it. */
+  readonly module: string;
+  /** `undetermined` names axes the target left open; `fetch` is a transfer that
+   *  failed. Two causes, two repairs — one message for both would name a flag at
+   *  a network failure. */
+  readonly cause: "undetermined" | "fetch";
+  readonly detail: string;
+}
+
 export interface WarmedLayers {
   /** Layers actually materialized for the target platform. */
   materialized: number;
+  /** What the target needs and did not get. Empty is the only state a caller
+   *  that depends on the cache being complete may proceed from. */
+  gaps: LayerGap[];
   /**
    * One artifact handle per module that ships a payload, keyed by the module's
    * canonical source — the same key a `Telo.Definition`'s `metadata.source`
@@ -62,18 +55,45 @@ export interface WarmedLayers {
   libraries: Map<string, SiblingLibraryMap>;
 }
 
+/**
+ * Pre-materialize every module layer a `target` platform could need.
+ *
+ * This is `telo install`'s make-this-offline pass. `telo run` materializes layers
+ * lazily — a controller layer when its candidate wins resolution, an asset layer
+ * on first module-relative access — so warming here is an optimization, never a
+ * correctness requirement. That is the point of the change it replaces:
+ * previously a cold `telo run` failed outright because payloads landed on disk
+ * only after the load that needed them.
+ *
+ * `target` defaults to the host but is explicit so a baked image
+ * (`TELO_CACHE_DIR`) can be built from a machine of a different architecture —
+ * without it, cross-building a `linux/arm64` image on a darwin laptop would cache
+ * the wrong binaries.
+ *
+ * **A layer this target needs and did not get is REPORTED, never swallowed.**
+ * Two things can leave one behind — a fetch that failed, and a layer
+ * constraining an axis the target leaves undetermined — and both used to be a
+ * warning on the grounds that `run` fetches lazily. That is sound while a lazy
+ * path exists and false for everything this warm is actually for: a baked image
+ * and a packaged application both have the warmed tree as their ONLY cache, so a
+ * skipped layer is a boot failure reported at build time as a line nobody read.
+ * They are returned as `gaps` and the caller refuses (`telo install` exits
+ * non-zero, `telo package` writes no file). An integrity failure, a malformed
+ * layer index and a tar entry escaping the module directory stay hard here: a
+ * tampered artifact must never be used, and a bad index is an authoring error.
+ */
 export async function warmModuleLayers(
   graph: LoadedGraph,
   entryDir: string,
   manifestsDir: string,
   target: PlatformTarget,
-  onWarn: (message: string) => void,
 ): Promise<WarmedLayers> {
   const transports = defaultTransportRegistry();
   const artifacts = new Map<string, ModuleArtifact>();
   const owners = new Map<string, OwnerManifest>();
   const directories = new Map<string, string | undefined>();
   const seen = new Set<string>();
+  const gaps: LayerGap[] = [];
   let materialized = 0;
 
   for (const [, module] of graph.modules as Map<string, LoadedModule>) {
@@ -102,11 +122,13 @@ export async function warmModuleLayers(
     artifacts.set(file.source, artifact);
 
     for (const { layer, axes } of artifact.warmPlan(target).undetermined) {
-      onWarn(
-        `skipped the ${layer.role} layer ${describeSelector(layer.selector!)} of ` +
-          `${file.requestedUrl}: it constrains ${axes.join(", ")}, which the install target ` +
-          `leaves undetermined. Name the target with --platform os/arch[/libc] and --abi to warm it.`,
-      );
+      gaps.push({
+        module: file.requestedUrl,
+        cause: "undetermined",
+        detail:
+          `the ${layer.role} layer ${describeSelector(layer.selector!)} constrains ` +
+          `${axes.join(", ")}, which this target leaves undetermined.`,
+      });
     }
 
     try {
@@ -115,10 +137,11 @@ export async function warmModuleLayers(
       if (err instanceof IntegrityError) throw err;
       const code = (err as { code?: string } | undefined)?.code;
       if (code === "ERR_MODULE_LAYER_INTEGRITY" || code === "ERR_MODULE_LAYER_INVALID") throw err;
-      onWarn(
-        `could not warm layers for ${file.requestedUrl}: ` +
-          (err instanceof Error ? err.message : String(err)),
-      );
+      gaps.push({
+        module: file.requestedUrl,
+        cause: "fetch",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -128,7 +151,23 @@ export async function warmModuleLayers(
     directoryFor: (source) => directories.get(source),
   });
 
-  return { materialized, artifacts, libraries };
+  return { materialized, gaps, artifacts, libraries };
+}
+
+/**
+ * What is missing and from which module. The REMEDY is the caller's, because the
+ * flags are: `telo install` names `--platform` and `--abi`, while `telo package`
+ * accepts neither — it takes the abi from the carrier — so one shared sentence
+ * would send half its readers to a flag that does not exist.
+ */
+export function describeGaps(gaps: readonly LayerGap[], remedy?: string): string {
+  const lines = [
+    `${gaps.length} module layer${gaps.length === 1 ? "" : "s"} could not be materialized, ` +
+      `so this cache is incomplete:`,
+  ];
+  for (const gap of gaps) lines.push(`  ${gap.module}`, `    ${gap.detail}`);
+  if (remedy && gaps.some((gap) => gap.cause === "undetermined")) lines.push(remedy);
+  return lines.join("\n");
 }
 
 /**
@@ -137,17 +176,19 @@ export async function warmModuleLayers(
  * the published selectors use; omitted, the host's os, arch and libc are the
  * target.
  *
- * `abi` comes from `--abi` alone, never from the host: the process running the
- * install is not the one that will run the app, which may be another Node
- * release or Bun. Omitted, it is undetermined, so no abi-constrained layer is
- * warmed.
+ * **`--abi` decides it for a NAMED platform, the host for its own.** The process
+ * running an install is not the one that will run the app when a `--platform` is
+ * named — it may be another Node release, or Bun — so nothing may be assumed
+ * there. Without `--platform` the target IS this machine, whose abi the host
+ * already reports, and discarding it made a bare `telo install` unable to warm
+ * an abi-constrained native layer for the very runtime about to open it.
  */
 export function parsePlatformTarget(
   platform: string | undefined,
   abi: string | undefined,
 ): PlatformTarget {
   const target = platform ? parsePlatformTriple(platform) : { ...hostPlatformTarget() };
-  delete target.abi;
+  if (platform) delete target.abi;
   if (abi !== undefined) target.abi = normalizeAxisValue("abi", abi, "--abi");
   return target;
 }

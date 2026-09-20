@@ -1,6 +1,6 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, and publishes module artifacts to an OCI registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, ships an application as a single executable with `telo package`, and publishes module artifacts to an OCI registry with `telo publish`.
 
 ## Installation
 
@@ -166,7 +166,7 @@ On success:
 
 Pre-downloads every controller declared by a manifest and its transitive imports into the on-disk cache, and persists every imported manifest's YAML alongside it. At runtime the kernel finds each controller already installed AND resolves every import from disk — boot does zero network I/O.
 
-Installs run in parallel; failures are reported per controller and the command exits non-zero if any failed. Subsequent runs are idempotent — already-cached packages are skipped, and manifest cache files are overwritten with freshly fetched bytes.
+Installs run in parallel; failures are reported per controller and the command exits non-zero if any failed. **For a platform you NAME, a module layer that did not materialize is also a failure** — a fetch that could not complete, or a layer constraining an axis the target leaves undetermined (pass `--abi <family>-<version>` beside `--platform os/arch[/libc]`). The tree such an install produces is the only cache its consumer has — a baked image, a packaged application — so a skipped layer would otherwise surface as a boot failure on another machine. Without `--platform` the target is this machine, whose ABI is used automatically, and a gap is a warning: `telo run` here still fetches what it needs. Subsequent runs are idempotent — already-cached packages are skipped, and manifest cache files are overwritten with freshly fetched bytes.
 
 ```bash
 telo install ./apps/my-app/telo.yaml
@@ -316,6 +316,29 @@ A rewrite the loader applies in memory can still be unwritable in place — a fl
 ```
 
 Under `-o json` the payload is `{ ok, rewrites, unwritable, files: [{ file, rewrites: [{ migration, count }], unwritable: [{ migration, path }] }] }`.
+
+---
+
+### `telo package <manifest>`
+
+Build a single executable that runs one application on a machine with no Node.js, no telo and no network. The file is the released `telo` binary for the chosen platform with the application's payload inside it: the manifest, every local file its graph reaches, and the whole resolved import closure, already warmed.
+
+```bash
+telo package ./telo.yaml --out dist/orders
+telo package ./telo.yaml --out dist/orders --platform linux/arm64
+telo package inspect dist/orders
+```
+
+**Options:**
+
+- `--out <file>` - Where to write the executable. Required; `.exe` is added for a windows platform.
+- `--platform <os/arch[/libc]>` - The platform to package for (`linux/amd64`, `linux/arm64/musl`, `darwin/arm64`, …), in the same vocabulary `telo install --platform` takes. Defaults to the host; on linux an omitted `libc` means `gnu`. **A darwin platform can only be packaged on a macOS host**, because the payload rides in a Mach-O segment and the binary is re-signed afterwards.
+
+The binary carries the telo that packaged it, enforced rather than assumed: there is no flag to choose another version, and only a *released* telo may download a carrier. A working copy and the release of the same version number are different code, so from a source checkout you build that checkout's own binary (`pnpm --filter @telorun/cli build:standalone`) and package with it; that binary is the carrier for its own platform, and packaging for another platform needs an installed release. A payload carries only controllers that are files on the target machine: a closure whose kind is delivered from npm (`pkg:npm`) or built from a crate (`pkg:cargo`) is refused, naming the kind and the candidate.
+
+Running the result: every argument belongs to the application, `.env` files are read from the working directory, and signals and exit codes behave exactly as under `telo run`. `TELO_APP_INFO=1 ./orders` prints what the binary carries; `TELO_APP_DIR` moves the directory it unpacks into (`~/.cache/telo/apps/<name>-<digest>` by default). `TELO_CACHE_DIR` is ignored inside a packaged app — the payload is its cache.
+
+Full guide: [Packaging an application](/guides/packaging-an-app).
 
 ---
 

@@ -15,6 +15,7 @@ import * as path from "path";
 import { pathToFileURL } from "url";
 import type { Argv } from "yargs";
 import {
+  describeGaps,
   describePlatformTarget,
   parsePlatformTarget,
   warmModuleLayers,
@@ -22,6 +23,9 @@ import {
 import { createLogger, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine, output } from "../output.js";
 
+
+/** What determines an axis an install left open. */
+const INSTALL_REMEDY = "Name the target with --platform os/arch[/libc] and --abi.";
 
 interface ControllerJob {
   purls: string[];
@@ -107,6 +111,9 @@ async function warmAnalysisCache(
 async function installOne(
   inputPath: string,
   platform: PlatformTarget,
+  /** Whether this install is for a platform the operator NAMED, which is what
+   *  makes its tree something another machine will run from. */
+  deliverable: boolean,
   log: Logger,
 ): Promise<boolean> {
   const isUrl = inputPath.startsWith("http://") || inputPath.startsWith("https://");
@@ -167,15 +174,26 @@ async function installOne(
           `  ${log.ok("✓")}  cached ${written.length} manifest${written.length !== 1 ? "s" : ""} to ${log.dim(path.relative(process.cwd(), manifestsDir))}`,
         );
       }
-      // Warm every layer this target could need. `run` fetches lazily, so this
-      // is purely so a later run (or a baked image) needs no network.
-      const warmed = await warmModuleLayers(
-        graph,
-        entryDir,
-        manifestsDir,
-        platform,
-        (msg) => outErrLine(`  ${log.err.warn("⚠")}  ${msg}`),
-      );
+      // Warm every layer this target needs. `run` fetches lazily, so a hit here
+      // is what makes a later run — or a baked image, or a packaged app —
+      // need no network. A layer that did NOT land is a refusal rather than a
+      // warning: the tree this produces is the only cache its consumer has, so
+      // the gap would surface as a boot failure on another machine.
+      const warmed = await warmModuleLayers(graph, entryDir, manifestsDir, platform);
+      if (warmed.gaps.length > 0) {
+        // **Fatal for a NAMED target, a warning for this machine.** An install
+        // for a platform the operator named is a deliverable — a baked image, a
+        // payload — whose tree is the only cache its consumer will ever have, so
+        // a gap there is a boot failure elsewhere. An install for the host is an
+        // optimization over a `telo run` that can still fetch what it needs, and
+        // failing it would stop a developer's install over a layer the next run
+        // would pull anyway.
+        if (deliverable) {
+          outErrLine(`${displayPath}  ${log.err.error("error")}  ${describeGaps(warmed.gaps, INSTALL_REMEDY)}`);
+          return false;
+        }
+        outErrLine(`${displayPath}  ${log.err.warn("⚠")}  ${describeGaps(warmed.gaps, INSTALL_REMEDY)}`);
+      }
       moduleArtifacts = warmed.artifacts;
       moduleLibraries = warmed.libraries;
       if (warmed.materialized > 0) {
@@ -283,7 +301,7 @@ export async function install(argv: {
   const installed: string[] = [];
   const failures: string[] = [];
   for (const p of argv.paths) {
-    const ok = await installOne(p, platform, log);
+    const ok = await installOne(p, platform, argv.platform !== undefined, log);
     (ok ? installed : failures).push(p);
     if (!ok) failed = true;
   }

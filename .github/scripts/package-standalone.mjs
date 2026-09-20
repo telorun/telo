@@ -214,7 +214,12 @@ function buildPkg({ target, version, dir }) {
 
 /** A Windows installer, named per target. WiX is not present on a stock runner,
  *  so the `.zip` is the guaranteed artifact and the `.msi` is built when the
- *  toolchain is there. */
+ *  toolchain is there.
+ *
+ *  `MediaTemplate EmbedCab="yes"` is load-bearing: WiX's implicit default media
+ *  does not embed, so the payload lands in a sibling `cab1.cab` while the
+ *  release uploads the `.msi` alone — and installing that download fails with
+ *  "cannot find the source file cab1.cab" beside wherever it was saved. */
 function buildMsi({ target, version, dir }) {
   if (!has("wix")) return { skipped: "the WiX toolset is not installed" };
   const wxs = path.join(dir, "telo.wxs");
@@ -224,6 +229,7 @@ function buildMsi({ target, version, dir }) {
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Telo CLI" Manufacturer="Telo" Version="${version}" UpgradeCode="6F1F6A1E-9F0A-4F3A-9A3F-1B0C7E5D42A7" Scope="perMachine">
     <MajorUpgrade DowngradeErrorMessage="A newer version of Telo is already installed." />
+    <MediaTemplate EmbedCab="yes" />
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Telo">
         <Component Id="TeloExe" Guid="*">
