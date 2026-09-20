@@ -11,6 +11,7 @@ import type {
   RunnerBackend,
 } from "@telorun/runner-core";
 import { relayDebugStream, SessionStartError, watchReachability } from "@telorun/runner-core";
+import { optionalContainerConfig } from "@telorun/runner-core/container";
 
 import type { BundleStore } from "../bundle-store.js";
 import type { K8sRunnerConfig } from "../config.js";
@@ -109,6 +110,9 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     // already min(requested, ceiling). App sessions (operator-curated,
     // long-lived) get their own roomier ceilings.
     const limits = clampLimits(spec.selfContained ? config.appLimits : config.limits, undefined);
+    // The session config is the runner's own vocabulary (core carries it as an
+    // opaque bag), and this runner supplies its own image when none is named.
+    const sessionImage = optionalContainerConfig(spec.config);
 
     let pod: V1Pod;
     if (spec.selfContained) {
@@ -122,8 +126,8 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         env: spec.env,
         ports: app.ports,
         limits,
-        image: spec.config.image,
-        pullPolicy: spec.config.pullPolicy,
+        image: sessionImage.image ?? config.defaultImage,
+        pullPolicy: sessionImage.pullPolicy,
       });
     } else {
       // Deliver the body to the Pod's /app at boot via a tokenized, single-use
@@ -139,8 +143,8 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         env: spec.env,
         ports: app.ports,
         limits,
-        image: spec.config.image || config.defaultImage,
-        pullPolicy: spec.config.pullPolicy,
+        image: sessionImage.image ?? config.defaultImage,
+        pullPolicy: sessionImage.pullPolicy,
         bundleUrl,
         inspect: spec.inspect,
       });

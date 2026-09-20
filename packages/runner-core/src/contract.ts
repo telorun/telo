@@ -88,15 +88,24 @@ export interface RunnerAppDescriptor {
  *  on a JSON-Schema type package. The editor treats it as `JSONSchema7`. */
 export type JsonSchema = Record<string, unknown>;
 
-export interface ProbeConfig {
-  image: string;
-  pullPolicy: PullPolicy;
-}
+/**
+ * The client-supplied session configuration, opaque to core.
+ *
+ * It used to be `{ image, pullPolicy }` — container vocabulary in the
+ * backend-neutral contract, which only stayed invisible while every backend ran
+ * containers. A backend that runs local processes has no image to name, and the
+ * repairs that keep the fields (a fake image, a `kind: "process"` branch in
+ * core) are both worse than the fields being wrong.
+ *
+ * The runner is the authority on its own config surface and already says so:
+ * `RunnerCapabilities.config.schema` is what the editor renders the form from,
+ * and `ServerDeps.validateConfig` is what enforces the same against a client
+ * that skipped the editor. A backend narrows this bag to its own shape.
+ */
+export type SessionConfig = Record<string, unknown>;
 
-export interface SessionConfig {
-  image: string;
-  pullPolicy: PullPolicy;
-}
+/** The same bag, on `POST /v1/probe`. */
+export type ProbeConfig = SessionConfig;
 
 export interface ConfigIssue {
   path: string;
@@ -183,7 +192,9 @@ export interface StartSessionRequest {
   bundle: RunBundle;
   env: Record<string, string>;
   ports?: PortMapping[];
-  config: SessionConfig;
+  /** Whatever this runner's `/v1/capabilities` declares as editable. Omitted
+   *  against a runner that declares none. */
+  config?: SessionConfig;
   /** Request the kernel debug stream. When true the runner launches the
    *  workload with `--inspect`, subscribes to the in-workload inspect endpoint
    *  (reachable only by the runner — never published outward), and relays each

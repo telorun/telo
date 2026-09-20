@@ -105,18 +105,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `smoke` is how the built binary can be executed HERE: `native` when
+          # the runner is that target, `alpine` for the musl build, which needs
+          # a musl userland, and absent for a cross-built target no runner can
+          # load — `verify` and the install scripts cover those.
           - target: linux-amd64-gnu
             os: ubuntu-22.04
+            smoke: native
           - target: linux-amd64-musl
             os: ubuntu-22.04
+            smoke: alpine
           - target: linux-arm64-gnu
             os: ubuntu-22.04
           - target: darwin-amd64
             os: macos-latest
           - target: darwin-arm64
             os: macos-latest
+            smoke: native
           - target: windows-amd64
             os: windows-latest
+            smoke: native
           - target: windows-arm64
             os: windows-latest
     runs-on: ${{ matrix.os }}
@@ -168,9 +176,15 @@ jobs:
 
       # WiX builds the `.msi`; without it the packaging step fails rather than
       # publishing a Windows release with only a `.zip`.
+      #
+      # Pinned to the last 5.x on purpose. From v6 the toolset refuses to run
+      # until the Open Source Maintenance Fee EULA is accepted (`error
+      # WIX7015`), and accepting a licence on the project's behalf is not a CI
+      # decision — an unpinned `dotnet tool install` made the release's fate a
+      # function of what NuGet served that morning.
       - name: Install WiX
         if: startsWith(matrix.target, 'windows')
-        run: dotnet tool install --global wix
+        run: dotnet tool install --global wix --version 5.0.2
 
       - name: Build Windows package
         if: startsWith(matrix.target, 'windows')
@@ -181,13 +195,26 @@ jobs:
       # — but it catches a binary that was built wrong before anything is
       # published.
       - name: Smoke test
-        if: matrix.target != 'linux-arm64-gnu' && matrix.target != 'windows-arm64'
+        if: matrix.smoke == 'native'
         shell: bash
         run: |
           set -euo pipefail
           BIN=dist-standalone/telo
           [ -f "$BIN.exe" ] && BIN="$BIN.exe"
           PATH=/usr/bin:/bin "$BIN" --version
+
+      # The musl binary names `/lib/ld-musl-x86_64.so.1` as its interpreter, so
+      # a glibc runner cannot load it at all: the kernel refuses the exec and
+      # the shell reports the BINARY as `No such file or directory`, which reads
+      # as a build that produced no file. Alpine is the shell that can see it,
+      # and it carries no Node either. `libstdc++` because the official musl
+      # runtime is linked against it and a bare Alpine has neither it nor
+      # `libgcc_s` — the install scripts say so too.
+      - name: Smoke test (musl)
+        if: matrix.smoke == 'alpine'
+        run: |
+          docker run --rm -v "$PWD/dist-standalone:/telo" alpine:3.20 \
+            sh -c 'apk add --no-cache libstdc++ >/dev/null && /telo/telo --version'
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -222,9 +249,13 @@ jobs:
           - image: rockylinux:9
             target: linux-amd64-gnu
             install: rpm -i --nodeps /artifacts/*.rpm
+          # `libstdc++` is what the musl runtime is linked against, and a bare
+          # Alpine carries neither it nor `libgcc_s`; without it the binary
+          # fails to relocate. Installing it is not installing Node — the check
+          # below still refuses an image that has one.
           - image: alpine:3.20
             target: linux-amd64-musl
-            install: tar xzf /artifacts/*.tar.gz -C /usr/local/bin --strip-components=1
+            install: apk add --no-cache libstdc++ && tar xzf /artifacts/*.tar.gz -C /usr/local/bin --strip-components=1
     steps:
       - name: Download ${{ matrix.target }}
         uses: actions/download-artifact@v4

@@ -50,11 +50,34 @@ Modules get their **own Version PR** (`module-release/main`, `chore(release): ve
 
 **One command, whichever kernel is behind it.** `cli/rust` builds a binary called `telo` too, at the same version, and is not published while it hosts fewer controller formats than this one — 185 standard-library kinds ship as `pkg:telo/local/js` bundles, which only the Node kernel opens. When a build cannot host everything this one hosts, it is named for that restriction, never for the language it was written in: which kernel can host a kind is derived from its `controllers:` PURLs, so it is not a question to hand a user at download time.
 
-**Seven targets, because those are the ones nodejs.org publishes a runtime for**: linux x64 glibc and musl, linux arm64 glibc, darwin x64 and arm64, win32 x64 and arm64. There is no linux arm64 musl runtime to inject into, so that binary cannot exist — a module may still ship a native file for the tuple, which the npm-installed CLI uses.
+**Seven targets, because those are the ones nodejs.org publishes a runtime for**: linux x64 glibc and musl, linux arm64 glibc, darwin x64 and arm64, win32 x64 and arm64. There is no linux arm64 musl runtime to inject into, so that binary cannot exist — a module may still ship a native file for the tuple, which the npm-installed CLI uses. **The musl binary is not self-contained**: the official musl runtime is dynamically linked against `libstdc++`, which a bare Alpine carries no more than it carries `libgcc_s`, so it fails to relocate until `apk add libstdc++` — which is why every check that runs it does that first, and why `install.sh` says so when the installed binary will not start.
 
 **Three things the build decides that the bundle cannot ask at runtime.** Versions are baked (`__TELO_BAKED_VERSIONS__`, read by `distribution-versions.ts` here and `runtime-versions.ts` in the kernel) because a binary has no `package.json` — `telo --version` printed `unknown` before, and the cache keys were worse. `import.meta.url` is rewritten to the executable's own path, since the output is CommonJS. And esbuild's JavaScript API is inlined while its executable is an asset, unpacked to `<cache-root>/tools/` on first use by `src/standalone/standalone-runtime.ts` — a run that loads only published modules never unpacks it.
 
 **There is no second code path.** `src/standalone/entry.ts` registers what the binary supplies and then imports the ordinary CLI, so a command cannot work in one distribution and not the other. What the binary genuinely lacks is a package manager, so an npm-delivered controller fails there with the kernel's actionable message; `telo check` warns about it ahead of time (`src/controller-tool-probe.ts`, the probing half of the kernel's shared tool table).
+
+## `telo runner`
+
+**The CLI hosts a runner, and the substrate it owns is this binary.** `telo runner` serves the backend-neutral `/v1` session contract (`@telorun/runner-core`) over a local-process backend: each application in a session is a `telo run --watch --inspect` of **the currently-running executable**, never a `telo` resolved from `PATH`. That is what makes supervisor and supervised one version by construction — same debug wire, same workspace marker, same run flags — with no version pair to keep in agreement. A single-file executable IS the command; an npm install re-enters through `process.argv[1]`.
+
+Three differences from the container runners, each **advertised rather than hidden**, because a capability a client cannot read is a surprise at run time:
+
+- **`io: ["streams"]` only.** Nothing in the repo carries a pty library and a native one cannot ride inside the single-file executable. An explicit `io: "tty"` is refused (`400 io_unsupported`) rather than downgraded — `isatty()` is observable to the application.
+- **No isolation.** The workload inherits this process's environment (a local run's whole point is the machine it runs on) and its privileges. Hence loopback by default (`--host` anything else is refused without `--allow-remote`) and **no browser origin by default**: `*` is right for a runner an operator deployed, and wrong here, because every page the user visits reaches `127.0.0.1` from their browser and a cross-origin `POST /v1/sessions` that `*` waves through runs arbitrary code as this user. `--allow-origin` names one; the editor passes its own webview's. `RUNNER_CORS_ORIGINS` still wins, and core refuses an unnamed origin server-side rather than trusting the browser to (the byte channel already did, with `4403`).
+- **No session config**, and that is enforced, not only advertised: a request carrying one is `400 invalid_config`. A closed schema on `/v1/capabilities` with nothing behind it is the half-kept invariant the contract change exists to remove.
+- **Ports are bound, not published.** A port that appears on reload is reachable as soon as something binds it, which is the case a host-publishing docker session has to refuse. A port two apps in one session both declare is still reported as rejected.
+
+**Session workspaces are private and reclaimable.** They hold the user's source, so the state root and every directory under it are `0700` (chmod'ed, since `mkdir`'s mode is masked by the umask), and each runner owns a subdirectory named by its PID. A runner that is SIGKILLed cannot clean up, so the next one sweeps the PID directories whose process is gone — a question with an answer, unlike a timestamp heuristic that eventually deletes a live session's files.
+
+**Child-process discipline replaces container labels.** Each app runs in its own process group (`detached` on POSIX, `taskkill /T` on Windows), a stop kills the group, and the command's SIGTERM handler stops every live session before the process exits. A leaked `telo run --watch` holding a port after the editor quits is the failure that discipline exists to prevent.
+
+**The web server is loaded when the command runs, not when the CLI starts.** `commands/runner.ts` registers with yargs statically (so `--help` lists it) and `await import()`s `@telorun/runner-core` inside the handler: fastify, pino and ws are ~70ms of a ~270ms startup, and no other command needs them. This is the one place the repo's static-import convention is deliberately not followed, and the reason is the hot path every `telo check` takes.
+
+**`telo runner` is NOT exempt from the `Output` seam** the way `telo run` is: workload bytes travel the `/v1` byte channel, so the runner's own stdout and stderr are genuinely the CLI's. It emits its address as the command's result (`-o json`) and passes stderr to runner-core as the server's `logStream`, because pino's default destination is stdout.
+
+**Studio ships this binary** and supervises `telo runner` on loopback (`apps/studio/scripts/stage-cli-sidecar.mjs` builds it per Rust target triple), so the standalone build now has a second consumer: a break in `telo runner` is a desktop editor that cannot run anything.
+
+**Polyglot debt:** `telo runner` is part of the one `telo` surface, so `cli/rust` owes it and `packages/runner-core` owes a Rust twin under the one-for-one layout rule. Unlike the retired editor-side runner, this is a second implementation of a WRITTEN contract — the case the mirroring rule exists to cover — rather than a second implementation of an unspecified concept.
 
 ## Where to look
 
@@ -62,3 +85,4 @@ Modules get their **own Version PR** (`module-release/main`, `chore(release): ve
 - `telo run` env files (the workspace marker's `env:` half) → `cli/nodejs/src/env-files.ts`
 - `telo upgrade` → `cli/nodejs/src/commands/upgrade.ts`; `telo migrate` → `cli/nodejs/src/commands/migrate.ts`
 - The standalone binary → `scripts/build-standalone.mjs`, `src/standalone/`, `src/distribution-versions.ts`, `.github/workflows/cli-standalone-release.yml`, `.github/scripts/package-standalone.mjs`
+- The local runner → `src/commands/runner.ts`, `src/runner/` (`process-backend.ts`, `workspace-directory.ts`, `capabilities.ts`, `self-invocation.ts`); the contract it serves is `packages/runner-core/CLAUDE.md`

@@ -60,7 +60,7 @@ export function useEditorPersistence(
     // later editor versions, then normalize the runner list (migrate the legacy
     // adapter-keyed config, seed built-ins, fix the active selection).
     const merged = savedSettings ? { ...defaultSettings, ...savedSettings } : defaultSettings;
-    setSettings(normalizeRunnerSettings(merged, isTauri()));
+    setSettings(normalizeRunnerSettings(merged, isTauri(), !savedSettings));
 
     isHydrated.current = true;
   }, []);

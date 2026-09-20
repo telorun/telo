@@ -3,9 +3,9 @@
   "version": "../package.json",
   "identifier": "com.telo.studio",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm stage:cli --if-missing && pnpm dev",
     "devUrl": "http://localhost:5173",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm stage:cli --if-missing && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -23,6 +23,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": [
+      "binaries/telo"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

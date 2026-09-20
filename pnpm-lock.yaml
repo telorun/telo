@@ -426,6 +426,9 @@ importers:
       '@telorun/kernel':
         specifier: workspace:*
         version: link:../../kernel/nodejs
+      '@telorun/runner-core':
+        specifier: workspace:*
+        version: link:../../packages/runner-core
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../sdk/nodejs

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_SETTINGS,
+  LOCAL_CLI_RUNNER_ID,
   LOCAL_DOCKER_RUNNER_ID,
   TELO_CLOUD_RUNNER_ID,
   type AppSettings,
@@ -17,6 +18,34 @@ describe("normalizeRunnerSettings", () => {
     const next = normalizeRunnerSettings({ ...DEFAULT_SETTINGS }, false);
     expect(next.runners.some((r) => r.id === TELO_CLOUD_RUNNER_ID)).toBe(true);
     expect(next.activeRunnerId).toBe(TELO_CLOUD_RUNNER_ID);
+  });
+
+  it("adds both local runners under Tauri and drops them in the browser", () => {
+    const underTauri = normalizeRunnerSettings({ ...DEFAULT_SETTINGS }, true);
+    expect(underTauri.runners.some((r) => r.id === LOCAL_CLI_RUNNER_ID)).toBe(true);
+
+    const inBrowser = normalizeRunnerSettings(underTauri, false);
+    // A browser has no process to supervise, so the adapter is not registered
+    // there and a runner pointing at it would fail on every probe.
+    expect(inBrowser.runners.some((r) => r.id === LOCAL_CLI_RUNNER_ID)).toBe(false);
+  });
+
+  it("runs through the bundled CLI on a first desktop launch, and leaves a choice alone after that", () => {
+    const firstLaunch = normalizeRunnerSettings({ ...DEFAULT_SETTINGS }, true, true);
+    expect(firstLaunch.activeRunnerId).toBe(LOCAL_CLI_RUNNER_ID);
+
+    // A later launch carries persisted settings; whatever the user selected
+    // stays selected, including the seeded cloud runner.
+    const chosen = normalizeRunnerSettings(
+      { ...firstLaunch, activeRunnerId: LOCAL_DOCKER_RUNNER_ID },
+      true,
+    );
+    expect(chosen.activeRunnerId).toBe(LOCAL_DOCKER_RUNNER_ID);
+
+    // The browser build has no local runner to default to.
+    expect(normalizeRunnerSettings({ ...DEFAULT_SETTINGS }, false, true).activeRunnerId).toBe(
+      TELO_CLOUD_RUNNER_ID,
+    );
   });
 
   it("adds the local docker runner under Tauri and drops it in the browser", () => {

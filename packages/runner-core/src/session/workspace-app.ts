@@ -6,6 +6,20 @@ import { fileURLToPath } from "node:url";
 export const WORKSPACE_APP_FILENAME = "telo.yaml";
 
 /**
+ * Base names a workspace listing skips at any depth — caches a workspace can
+ * always rebuild.
+ *
+ * **Every backend must skip the same set.** The tree is what the editor diffs
+ * its own files against, so a backend that includes one more entry than another
+ * reports files as changed that are not, and one that includes fewer drops them
+ * across a checkpoint. The workspace application reads this list as the default
+ * of its `WORKSPACE_EXCLUDE` variable, and a backend that walks a directory
+ * itself (the local runner) reads it from here — one list, asserted equal to the
+ * manifest's own default by a test in this package.
+ */
+export const WORKSPACE_EXCLUDED_DIRECTORIES: readonly string[] = ["node_modules", ".telo", ".git"];
+
+/**
  * The workspace application's manifest, read from the package rather than
  * inlined as a string: it is a Telo manifest, so it must stay a `.yaml` file the
  * repo's own `telo check` and formatter see. It lives in runner-core because the

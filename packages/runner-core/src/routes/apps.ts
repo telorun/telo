@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 
 import type { RunnerBackend } from "../backend.js";
 import type { ResolvedRunnerApp } from "../config.js";
-import { DEFAULT_APP_NAME, type PortMapping, type RunnerTerms } from "../contract.js";
+import { DEFAULT_APP_NAME, type IoMode, type PortMapping, type RunnerTerms } from "../contract.js";
 import type { SessionRegistry } from "../session/registry.js";
 import { enforceTerms, portsSchema, startWorkloadSession } from "./session-start.js";
 
@@ -16,6 +16,9 @@ export interface AppsRouteDeps {
    *  whole gate: the client picks a name, never an image, and the operator env
    *  is injected server-side. */
   apps?: Record<string, ResolvedRunnerApp>;
+  /** The runner's advertised byte-channel modes; this door takes the first,
+   *  since it declares no `apps` for a client to put an `io` on. */
+  io: IoMode[];
 }
 
 interface StartAppSessionBody {
@@ -100,7 +103,7 @@ export function appsRoute(deps: AppsRouteDeps): FastifyPluginAsync {
                 name: DEFAULT_APP_NAME,
                 entryRelativePath: "",
                 ports: req.body?.ports ?? [],
-                io: "tty",
+                io: deps.io[0] ?? "tty",
               },
             ],
           },

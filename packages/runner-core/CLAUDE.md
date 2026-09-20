@@ -2,7 +2,23 @@
 
 Loaded when working under `packages/runner-core/`. Also the guide for `apps/docker-runner/`; k8s-specific rules (routing seam, infrastructure error summaries, the Helm chart) are in `apps/k8s-runner/CLAUDE.md`. Repo-wide rules live in the root `CLAUDE.md`.
 
-**Runners** — `packages/runner-core` (the backend-neutral `/v1` session contract, routes, registry, ring buffers) plus `apps/docker-runner` and `apps/k8s-runner` behind the `RunnerBackend` seam.
+**Runners** — `packages/runner-core` (the backend-neutral `/v1` session contract, routes, registry, ring buffers) plus `apps/docker-runner`, `apps/k8s-runner` and the CLI's own local-process backend behind the `RunnerBackend` seam.
+
+**A backend is hosted by the artifact that owns its substrate.** The docker backend lives in the image that fronts a docker socket, the k8s one in the deployment that holds the API credentials, and the local-process one in `telo` itself — a local run IS `telo run --watch --inspect`, so any other host would put a supervisor beside the thing it supervises and make them agree on an unwritten protocol. What is shared is the contract, not the substrate: core knows nothing about an executable, a process group or a container.
+
+## The session config is the runner's, not the contract's
+
+`SessionConfig` and `ProbeConfig` are opaque bags (`Record<string, unknown>`). They used to declare `image` and `pullPolicy` — container vocabulary in the backend-neutral contract, which only stayed invisible while every backend ran containers, and which the third one exposed. The runner is the authority on its own config surface and already said so twice: `config.schema` on `/v1/capabilities` is what the editor renders the form from, and `ServerDeps.validateConfig` is what enforces the same against a client that skipped the editor. **The forbidden repairs are a fake image on the local runner and a `kind: "process"` branch in core.** `container-config.ts` holds both halves of the container backends' answer — the schema they advertise and the parser they read it back with — so a field cannot be advertised in a shape the backend will not accept.
+
+**An origin allowlist is enforced by the runner, not by the browser.** With `corsOrigins` narrowed, core refuses a request whose `Origin` is not on the list (`403 origin_not_allowed`) instead of only withholding the CORS header — a client that ignores response headers is otherwise unaffected by CORS, and a local runner starts workloads for whoever reaches it. A request with NO origin is left alone (every CLI and health check sends none; the transport is what bounds those), while the byte channel makes the opposite call for the opposite reason — a browser always sends one on an upgrade, so a missing origin there is a rejection, closed with `4403` rather than an HTTP status a WebSocket client cannot read. The hook skips upgrades so that answer stays the io route's.
+
+## Capabilities are enforced, not just published
+
+`features.io` reaches the session routes from the same capabilities document the client reads (`server.ts` passes `capabilities.features.io` into both session-creating routes). An app that declares no `io` takes the runner's first advertised mode; one that declares a mode the runner does not serve is refused with `400 io_unsupported`. **Never silently downgrade a `tty` request**: `isatty()` drives colour, buffering and prompts, so a session that claims a terminal it does not have is a lie the application can detect. The same rule already governed `watch` (`400 watch_disabled`) and terms (`428 terms_required`).
+
+**A gate that only one backend installs is a gate.** `validateConfig` is the runner's half of the config contract, and it has to be UNCONDITIONAL: k8s used to install one only when a base-image catalog was configured, so a catalog-less deployment accepted `{"image": 42, "pullPolicy": "sometimes"}` and started a pod on its default image under `missing`. The readers in `container-config.ts` throw rather than coerce for the same reason — only the gate decides what is acceptable, and a reader that substitutes a default makes the gate optional in practice.
+
+`buildServer` takes an optional `logStream`. Pino's default destination is stdout, which is right for a container whose stdout IS its log and wrong inside a CLI, where stdout is the machine surface — `telo runner` passes stderr.
 
 ## Session shapes
 
@@ -32,4 +48,5 @@ Loaded when working under `packages/runner-core/`. Also the guide for `apps/dock
 
 ## Where to look
 
+- "where does the local runner live?" → `cli/nodejs/src/runner/` (`process-backend.ts` the third `RunnerBackend`, `workspace-directory.ts` the `WorkspaceAccess` a directory can serve without a workspace container, `self-invocation.ts` why it spawns the RUNNING executable rather than a `telo` from `PATH`), `cli/nodejs/src/commands/runner.ts`
 - "how does a session run, and for how long?" → `packages/runner-core/src/contract.ts` (the `/v1` shapes), `backend.ts` (the `RunnerBackend` seam + `WorkspaceAccess`), `session/registry.ts` (per-app channels, generations, the non-terminal `suspended`), `session/watch-supervisor.ts` (the checkpoint timer + the idle reaper), `debug/run-projection.ts` (run outcomes from kernel lifecycle events), `routes/sessions.ts` (validation + the workspace/reload/apps/resume surface), `apps/{k8s,docker}-runner/src/*/watch-session.ts`

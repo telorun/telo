@@ -7,29 +7,23 @@ export interface ProbeRouteDeps {
   backend: RunnerBackend;
 }
 
+// The config is the runner's own vocabulary (see `SessionConfig`), so core
+// checks that it is an object and nothing more; the backend reads the fields it
+// declared on `/v1/capabilities` and reports a missing one as `needs-setup`.
 const bodySchema = {
   type: "object",
-  required: ["config"],
   additionalProperties: false,
   properties: {
-    config: {
-      type: "object",
-      required: ["image", "pullPolicy"],
-      additionalProperties: false,
-      properties: {
-        image: { type: "string", minLength: 1 },
-        pullPolicy: { type: "string", enum: ["missing", "always", "never"] },
-      },
-    },
+    config: { type: "object" },
   },
 } as const;
 
 export function probeRoute(deps: ProbeRouteDeps): FastifyPluginAsync {
   return async (app: FastifyInstance) => {
-    app.post<{ Body: { config: ProbeConfig } }>(
+    app.post<{ Body: { config?: ProbeConfig } }>(
       "/v1/probe",
       { schema: { body: bodySchema } },
-      async (req) => deps.backend.probe(req.body.config),
+      async (req) => deps.backend.probe(req.body?.config ?? {}),
     );
   };
 }

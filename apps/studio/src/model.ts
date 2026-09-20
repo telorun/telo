@@ -11,11 +11,12 @@ export interface RunnerInstance {
   name: string;
   /** The runner's advertised description, shown under the name. */
   description?: string;
-  /** Which adapter type drives this runner: "http-runner" | "local-docker". */
+  /** Which adapter type drives this runner: "http-runner" | "local-cli" |
+   *  "local-docker". */
   adapterId: string;
   /** The adapter's opaque config (baseUrl, …). */
   config: unknown;
-  /** Seeded, non-removable runner (the local docker singleton). */
+  /** Seeded, non-removable runner (the two local singletons). */
   builtIn?: boolean;
 }
 
@@ -45,6 +46,7 @@ export interface AppSettings {
 
 export const TELO_CLOUD_RUNNER_ID = "telo-cloud";
 export const LOCAL_DOCKER_RUNNER_ID = "local-docker";
+export const LOCAL_CLI_RUNNER_ID = "local-cli";
 
 export interface AvailableKind {
   fullKind: string;

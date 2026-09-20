@@ -11,6 +11,7 @@ import type {
   RunnerEndpoint,
   WorkspaceAccess,
 } from "@telorun/runner-core";
+import { containerConfig } from "@telorun/runner-core/container";
 import {
   portKey,
   portsResolvedFrom,
@@ -123,7 +124,8 @@ export async function startDockerWatchSession(
   await mkdir(appHostDir, { recursive: true });
   await writeFile(join(appHostDir, WORKSPACE_APP_FILENAME), workspaceAppManifest(), "utf8");
 
-  await ensureImage(deps.docker, spec.config.image, spec.config.pullPolicy);
+  const image = containerConfig(spec.config);
+  await ensureImage(deps.docker, image.image, image.pullPolicy);
   if (spec.agent) await ensureImage(deps.docker, spec.agent.image, spec.agent.pullPolicy);
 
   let apps = spec.apps;
@@ -183,7 +185,7 @@ export async function startDockerWatchSession(
 
   function baseOpts(overrides: Partial<CreateContainerOpts>): Omit<CreateContainerOpts, "name"> {
     return {
-      Image: spec.config.image,
+      Image: image.image,
       Env: [],
       Tty: false,
       OpenStdin: false,

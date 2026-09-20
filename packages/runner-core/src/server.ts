@@ -34,6 +34,12 @@ export interface ServerDeps {
    *  `POST /v1/apps/:name/sessions`. */
   apps?: Record<string, ResolvedRunnerApp>;
   registry?: SessionRegistry;
+  /** Where the runner's own log goes. Defaults to pino's own destination
+   *  (stdout), which is right for a container whose stdout IS its log — and
+   *  wrong for a runner hosted inside a CLI, where stdout is the machine
+   *  surface and a request line written onto it is corruption rather than
+   *  noise. */
+  logStream?: NodeJS.WritableStream;
 }
 
 export interface ServerHandle {
@@ -43,7 +49,10 @@ export interface ServerHandle {
 
 export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   const app = Fastify({
-    logger: { level: deps.config.logLevel },
+    logger: {
+      level: deps.config.logLevel,
+      ...(deps.logStream ? { stream: deps.logStream } : {}),
+    },
   });
 
   // CORS: SSE and fetch from the editor's browser origin are cross-origin by
@@ -53,6 +62,36 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     origin: deps.config.corsOrigins,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   });
+
+  // **A narrowed origin list is enforced on the server, not just advertised.**
+  // CORS is a browser's rule about what it hands back to a page: the request
+  // still arrives, and a client that ignores the response headers is unaffected.
+  // For a runner that starts workloads for whoever can reach it, the refusal has
+  // to be the runner's own. The byte channel already refuses on its own terms
+  // (`4403`, an application close code a browser can actually read, where an
+  // HTTP 403 on a failed upgrade is invisible), so upgrades are left to it.
+  //
+  // Registered BEFORE the routes, because Fastify binds hooks at route
+  // registration. A request with NO `Origin` is left alone here: every CLI,
+  // script and health check sends none, and what bounds those is the transport
+  // (a loopback bind, a cluster network). The upgrade path makes the opposite
+  // call for the opposite reason — a browser always sends one there.
+  const allowedOrigins = deps.config.corsOrigins;
+  if (allowedOrigins !== "*") {
+    const allowed = new Set(allowedOrigins);
+    app.addHook("onRequest", async (req, reply) => {
+      if (req.headers.upgrade?.toLowerCase() === "websocket") return;
+      const origin = req.headers.origin;
+      if (typeof origin === "string" && !allowed.has(origin)) {
+        await reply.code(403).send({
+          error: "origin_not_allowed",
+          message:
+            `origin '${origin}' is not allowed by this runner` +
+            (allowed.size > 0 ? ` — it serves ${[...allowed].join(", ")}` : ""),
+        });
+      }
+    });
+  }
 
   await app.register(websocket);
 
@@ -114,6 +153,12 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
         maxSessions: deps.config.watch.maxSessions,
         reloadLimitPerMinute: deps.config.watch.reloadLimitPerMinute,
       },
+      // Read from the advertised capabilities for the same reason terms are:
+      // the document a client reads and the rule the route enforces have to be
+      // one statement. A runner advertising `["streams"]` refuses an explicit
+      // `io: "tty"` here, rather than handing back a session that says it has a
+      // terminal and does not.
+      io: capabilitiesValue.features.io,
     }),
   );
   await app.register(
@@ -122,6 +167,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       registry,
       terms: capabilitiesValue.terms,
       apps: deps.apps,
+      io: capabilitiesValue.features.io,
     }),
   );
   await app.register(ioRoute({ registry, corsOrigins: deps.config.corsOrigins }));

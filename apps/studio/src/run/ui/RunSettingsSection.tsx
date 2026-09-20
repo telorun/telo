@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "../../components/ui/button";
 import type { RunnerInstance } from "../../model";
-import { stopLocalRunner } from "../adapters/local-docker/supervisor";
 import { registry } from "../registry";
 import type {
   AvailabilityAction,
@@ -15,7 +14,6 @@ import type {
 import { RunnerEditDialog } from "./RunnerEditDialog";
 
 const HTTP_RUNNER_ADAPTER_ID = "http-runner";
-const LOCAL_DOCKER_ADAPTER_ID = "local-docker";
 
 interface RunSettingsSectionProps {
   runners: RunnerInstance[];
@@ -131,6 +129,9 @@ function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove }: 
   const [probeError, setProbeError] = useState<string | null>(null);
   const [caps, setCaps] = useState<RunnerCapabilities | null>(null);
   const [capsLoading, setCapsLoading] = useState(false);
+  /** Whether an editor-managed local runner is currently up — the only thing
+   *  that decides whether there is something to stop. */
+  const [localRunning, setLocalRunning] = useState(false);
 
   const baseUrl = runnerUrl(runner);
 
@@ -169,11 +170,22 @@ function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove }: 
     caps?.description ??
     (adapter && !adapter.fetchCapabilities ? adapter.description : runner.description);
 
+  // An editor-MANAGED runner is one the adapter can stop; whether it is up
+  // right now is its own question, which `isAvailable` does not answer (a
+  // runner the editor starts on demand is available while stopped). Asked of
+  // the adapter this row already holds, so a third supervised runner needs no
+  // edit here.
+  const managed = adapter?.teardown && adapter.isRunning ? adapter : undefined;
+
   const probe = useCallback(async () => {
     if (!adapter) return;
     setChecking(true);
     setProbeError(null);
     try {
+      // Whether a local runner is up is a separate question from whether this
+      // runner can run anything, and only the first decides if there is
+      // something to stop.
+      setLocalRunning(managed ? await managed.isRunning!(runner.config).catch(() => false) : false);
       const syncIssues = adapter.validateConfig(runner.config);
       if (syncIssues.length > 0) {
         setReport({ status: "needs-setup", issues: syncIssues });
@@ -186,7 +198,7 @@ function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove }: 
     } finally {
       setChecking(false);
     }
-  }, [adapter, runner.config]);
+  }, [adapter, managed, runner.config]);
 
   useEffect(() => {
     if (!selected) return;
@@ -258,8 +270,11 @@ function RunnerRow({ runner, selected, canRemove, onSelect, onEdit, onRemove }: 
             {report?.status === "unavailable" && report.action && (
               <ActionButton action={report.action} onDone={probe} />
             )}
-            {runner.adapterId === LOCAL_DOCKER_ADAPTER_ID && report?.status === "ready" && (
-              <StopLocalRunnerButton onDone={probe} />
+            {managed && localRunning && (
+              <StopLocalRunnerButton
+                stop={() => managed.teardown!(runner.config)}
+                onDone={probe}
+              />
             )}
             <Button size="sm" variant="outline" onClick={probe} disabled={checking || !adapter}>
               {checking ? "Checking…" : "Recheck"}
@@ -365,9 +380,15 @@ function ActionButton({ action, onDone }: { action: AvailabilityAction; onDone: 
   );
 }
 
-/** Tears the editor-managed local runner down (stops all its sessions and
- *  removes the container + bundle volume), then re-probes the row. */
-function StopLocalRunnerButton({ onDone }: { onDone: () => Promise<void> }) {
+/** Tears the editor-managed local runner down — it stops every session it holds
+ *  on the way — then re-probes the row. */
+function StopLocalRunnerButton({
+  stop,
+  onDone,
+}: {
+  stop: () => Promise<void>;
+  onDone: () => Promise<void>;
+}) {
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -375,7 +396,7 @@ function StopLocalRunnerButton({ onDone }: { onDone: () => Promise<void> }) {
     setStopping(true);
     setError(null);
     try {
-      await stopLocalRunner();
+      await stop();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

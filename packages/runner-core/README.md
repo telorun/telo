@@ -1,8 +1,9 @@
 # @telorun/runner-core
 
-Backend-neutral core shared by the Telo runners ([`docker-runner`](../../apps/docker-runner)
-and [`k8s-runner`](../../apps/k8s-runner)). It owns everything about a run
-*except* how the workload is actually spawned:
+Backend-neutral core shared by the Telo runners: [`docker-runner`](../../apps/docker-runner),
+[`k8s-runner`](../../apps/k8s-runner) and `telo runner`, the local-process
+runner the CLI serves. It owns everything about a run *except* how the workload
+is actually spawned:
 
 - the `/v1` HTTP+SSE **session contract** and Fastify routes (`/v1/health`,
   `/v1/probe`, `/v1/sessions`, `/v1/sessions/:id/events` SSE,
@@ -45,9 +46,34 @@ run, so its lifetime outlives every run inside it.
 
 Bundle delivery is the backend's responsibility (docker writes a shared-volume
 workdir; k8s stages a tarball for an initContainer fetch, and a watch session
-seeds through the workspace container's own routes), so `start` receives the raw
-`bundle` rather than a pre-resolved path. `buildServer({ backend, config,
-version })` wires a backend into the full `/v1` app.
+seeds through the workspace container's own routes; the local runner writes a
+directory it holds itself), so `start` receives the raw `bundle` rather than a
+pre-resolved path. `buildServer({ backend, config, version })` wires a backend
+into the full `/v1` app; pass `logStream` when the host's stdout is not the
+runner's to write, as it is not inside a CLI.
+
+## The session config belongs to the runner
+
+`SessionConfig` is an opaque bag. It used to declare `image` and `pullPolicy`,
+which is container vocabulary — invisible only while every backend ran
+containers, and wrong for one that runs local processes. A runner describes its
+own editable fields through `config.schema` on `/v1/capabilities`, which is what
+the editor renders the form from, and enforces the same through `validateConfig`
+against a client that skipped the editor. The container backends narrow the bag
+with `containerConfig` / `validateContainerConfig`, which live here because both
+of them need exactly the same two fields.
+
+A narrowed `corsOrigins` is enforced by the runner too, not just handed to the
+browser: a request carrying an origin the runner does not serve is refused
+(`403 origin_not_allowed`), because CORS only governs what a browser hands back
+to a page. A request with no origin is left alone — every CLI and health check
+sends none — while the byte channel refuses a missing one, since a browser
+always sends it on an upgrade.
+
+`features.io` is enforced the same way: the modes a runner advertises are the
+modes its session route accepts, an app that declares none gets the first, and
+an explicit mode the runner does not serve is refused with `io_unsupported`
+rather than downgraded — `isatty()` is observable to the application.
 
 ## Two nouns, one stream
 

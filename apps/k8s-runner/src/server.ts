@@ -9,6 +9,10 @@ import {
   type ServerHandle,
   type SessionConfig,
 } from "@telorun/runner-core";
+import {
+  optionalContainerConfig,
+  validateOptionalContainerConfig,
+} from "@telorun/runner-core/container";
 
 import packageJson from "../package.json" with { type: "json" };
 import { BundleStore } from "./bundle-store.js";
@@ -57,13 +61,24 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on
     // /v1/capabilities; app sessions run the catalog image directly.
     apps,
-    validateConfig: catalog
-      ? (sessionConfig: SessionConfig): string | undefined =>
-          catalog.isAllowed(sessionConfig.image)
-            ? undefined
-            : `base image '${sessionConfig.image}' is not offered by this runner. ` +
-              `Allowed images: ${catalog.current().join(", ")}`
-      : undefined,
+    // The session config is opaque to core, so this runner enforces its own
+    // shape — UNCONDITIONALLY, not only when a catalog is configured: the
+    // catalog answers "which image", while the shape check answers "is this a
+    // config at all", and tying the second to the first is what let a
+    // catalog-less runner accept an unusable one. An absent image is not a
+    // violation; this runner supplies its own default, which is the operator's
+    // choice rather than the caller's.
+    validateConfig: (sessionConfig: SessionConfig): string | undefined => {
+      const invalid = validateOptionalContainerConfig(sessionConfig);
+      if (invalid) return invalid;
+      if (!catalog) return undefined;
+      const { image } = optionalContainerConfig(sessionConfig);
+      if (image === undefined || catalog.isAllowed(image)) return undefined;
+      return (
+        `base image '${image}' is not offered by this runner. ` +
+        `Allowed images: ${catalog.current().join(", ")}`
+      );
+    },
   });
   // Mount the internal, tokenized fetch route on the same app so a session pod's
   // initContainer can pull the bundle tarball.

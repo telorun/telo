@@ -1,4 +1,5 @@
 import type { BackendSession, BackendStartSpec, RunnerBackend } from "@telorun/runner-core";
+import { containerConfig } from "@telorun/runner-core/container";
 
 import { BundleWorkdir } from "./bundle-workdir.js";
 import { runProbe, type ProbeDockerClient } from "./probe.js";
@@ -50,6 +51,9 @@ export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
         );
       }
 
+      // The session config is the runner's own vocabulary, so it is narrowed
+      // here rather than read field-by-field off the contract.
+      const image = containerConfig(spec.config);
       const containerName = `telo-run-${spec.sessionId}`;
       const workingDir = `/srv/${spec.sessionId}`;
       // A run session is one application by construction — `apps` carries
@@ -65,8 +69,8 @@ export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
           docker: deps.docker,
           containerName,
           sessionId: spec.sessionId,
-          image: spec.config.image,
-          pullPolicy: spec.config.pullPolicy,
+          image: image.image,
+          pullPolicy: image.pullPolicy,
           entryRelativePath: "",
           workingDir: "",
           env: spec.env,
@@ -92,8 +96,8 @@ export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
           docker: deps.docker,
           containerName,
           sessionId: spec.sessionId,
-          image: spec.config.image,
-          pullPolicy: spec.config.pullPolicy,
+          image: image.image,
+          pullPolicy: image.pullPolicy,
           entryRelativePath: `./${app.entryRelativePath}`,
           workingDir,
           env: spec.env,

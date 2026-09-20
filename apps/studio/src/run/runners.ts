@@ -1,15 +1,18 @@
 import {
+  LOCAL_CLI_RUNNER_ID,
   LOCAL_DOCKER_RUNNER_ID,
   TELO_CLOUD_RUNNER_ID,
   type AppSettings,
   type RunnerInstance,
 } from "../model";
 import { DEFAULT_RUNNER_URL } from "./adapters/http-runner/config-schema";
+import { localCliDefaultConfig } from "./adapters/local-cli/config-schema";
 import {
   localDockerDefaultConfig,
   type LocalDockerConfig,
 } from "./adapters/local-docker/config-schema";
 
+const LOCAL_CLI_ADAPTER_ID = "local-cli";
 const LOCAL_DOCKER_ADAPTER_ID = "local-docker";
 /** The removed Rust-side adapter this one supersedes; persisted instances and
  *  legacy keyed configs still reference it and are migrated in place. */
@@ -25,6 +28,20 @@ function cloudRunner(): RunnerInstance {
     name: "Telo Cloud",
     adapterId: "http-runner",
     config: { baseUrl: DEFAULT_RUNNER_URL },
+  };
+}
+
+/** The seeded local CLI runner — `telo runner` over the executable the editor
+ *  ships. Present only under Tauri, where there is a process to supervise, and
+ *  the desktop default: a local run needs nothing installed, while the docker
+ *  runner is the choice for "run it the way production does". */
+function localCliRunner(): RunnerInstance {
+  return {
+    id: LOCAL_CLI_RUNNER_ID,
+    name: "Local (telo CLI)",
+    adapterId: LOCAL_CLI_ADAPTER_ID,
+    config: { ...localCliDefaultConfig },
+    builtIn: true,
   };
 }
 
@@ -89,10 +106,18 @@ function migrateLegacy(legacy: LegacySettings): { runners: RunnerInstance[]; act
 /**
  * Reconcile persisted run settings into the runner-instance model. Migrates the
  * legacy single-config-per-adapter shape and tauri-docker instances, guarantees
- * the seeded built-ins exist (Telo Cloud always; Local docker only under
- * Tauri), and ensures `activeRunnerId` points at a real runner. Idempotent.
+ * the seeded built-ins exist (Telo Cloud always; the two local runners only
+ * under Tauri), and ensures `activeRunnerId` points at a real runner.
+ * Idempotent.
+ *
+ * `firstRun` says nothing was persisted — the only moment at which the editor
+ * gets to pick a runner on the user's behalf.
  */
-export function normalizeRunnerSettings(settings: AppSettings, isTauriEnv: boolean): AppSettings {
+export function normalizeRunnerSettings(
+  settings: AppSettings,
+  isTauriEnv: boolean,
+  firstRun = false,
+): AppSettings {
   const legacy = settings as AppSettings & LegacySettings;
   let runners: RunnerInstance[] = Array.isArray(settings.runners) ? [...settings.runners] : [];
   let activeRunnerId = settings.activeRunnerId;
@@ -117,7 +142,15 @@ export function normalizeRunnerSettings(settings: AppSettings, isTauriEnv: boole
     runners.unshift(cloudRunner());
   }
 
-  // Local docker built-in: present under Tauri, absent otherwise.
+  // Local built-ins: present under Tauri, absent otherwise. The CLI runner goes
+  // first, because it is the one the desktop build defaults to.
+  const hasLocalCli = runners.some((r) => r.id === LOCAL_CLI_RUNNER_ID);
+  if (isTauriEnv && !hasLocalCli) {
+    runners.push(localCliRunner());
+  } else if (!isTauriEnv && hasLocalCli) {
+    runners = runners.filter((r) => r.id !== LOCAL_CLI_RUNNER_ID);
+  }
+
   const hasLocal = runners.some((r) => r.id === LOCAL_DOCKER_RUNNER_ID);
   if (isTauriEnv && !hasLocal) {
     const legacyLocalConfig = legacy.runAdapterConfig?.[LEGACY_TAURI_ADAPTER_ID];
@@ -126,6 +159,15 @@ export function normalizeRunnerSettings(settings: AppSettings, isTauriEnv: boole
     );
   } else if (!isTauriEnv && hasLocal) {
     runners = runners.filter((r) => r.id !== LOCAL_DOCKER_RUNNER_ID);
+  }
+
+  // A desktop editor with nothing persisted yet runs locally, through the CLI
+  // it carries: nothing to install, nothing to pull, no account. The browser
+  // build has no local runner at all and keeps the hosted one. Only the FIRST
+  // run decides this — every later launch has a persisted selection, and a user
+  // who chose docker or a remote runner keeps it.
+  if (firstRun && isTauriEnv && runners.some((r) => r.id === LOCAL_CLI_RUNNER_ID)) {
+    activeRunnerId = LOCAL_CLI_RUNNER_ID;
   }
 
   // Guarantee a valid active selection.

@@ -1,8 +1,5 @@
-import {
-  sessionConfigSchema,
-  type RunnerCapabilities,
-  type RunnerTerms,
-} from "@telorun/runner-core";
+import type { RunnerCapabilities, RunnerTerms } from "@telorun/runner-core";
+import { sessionConfigSchema } from "@telorun/runner-core/container";
 
 export interface KubernetesRunnerCapabilitiesOptions {
   /** Identity shown as the runner's label in studio; operator-configurable
