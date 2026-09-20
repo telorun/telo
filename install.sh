@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install the standalone `telo` executable.
 #
-#   curl -fsSL https://telo.run/install.sh | sh
+#   curl -fsSL https://telo.sh/install.sh | sh
 #
 # Downloads the release archive for this machine and puts one file on PATH.
 # Nothing is compiled, no package manager is involved, and Node.js is not
@@ -67,8 +67,15 @@ DIR=$(choose_dir)
 if [ -n "${TELO_VERSION:-}" ]; then
   VERSION="$TELO_VERSION"
 else
-  VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" |
-    sed -n 's/.*"tag_name" *: *"v\([^"]*\)".*/\1/p' | head -1)
+  # The newest release whose tag is the CLI's own — NOT `releases/latest`, which
+  # is the newest release in the repository whatever it releases. The VS Code
+  # extension ships from here too, so `latest` regularly answers
+  # `vscode-v0.2.30`, out of which the old pattern happily read the version
+  # "scode-v0.2.30" and built an asset name nothing serves. Requiring a digit
+  # after the `v` is what separates the two, and the listing is newest-first.
+  # (It also lists prereleases, which this repository does not publish.)
+  VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=100" |
+    sed -n 's/.*"tag_name" *: *"v\([0-9][^"]*\)".*/\1/p' | head -1)
   [ -n "$VERSION" ] || fail "could not determine the latest version; set TELO_VERSION."
 fi
 
@@ -81,12 +88,14 @@ trap 'rm -rf "$TMP"' EXIT
 echo "downloading $URL"
 curl -fsSL "$URL" -o "$TMP/$ASSET" || fail "could not download $URL"
 
-# The release publishes a checksum beside every archive; checking it is what
-# turns a truncated or tampered download into a refusal here rather than a
-# confusing failure later. Skipped only when no digest tool exists, which is
+# The release publishes one `checksums.txt` covering every asset; checking this
+# one's line is what turns a truncated download into a refusal here rather than
+# a confusing failure later. Skipped only when no digest tool exists, which is
 # said out loud rather than passed over.
-if curl -fsSL "$URL.sha256" -o "$TMP/$ASSET.sha256" 2>/dev/null; then
-  EXPECTED=$(cut -d" " -f1 < "$TMP/$ASSET.sha256")
+if curl -fsSL "https://github.com/$REPO/releases/download/v$VERSION/checksums.txt" \
+  -o "$TMP/checksums.txt" 2>/dev/null; then
+  EXPECTED=$(awk -v asset="$ASSET" '$2 == asset { print $1; exit }' "$TMP/checksums.txt")
+  [ -n "$EXPECTED" ] || fail "checksums.txt for v$VERSION does not list $ASSET"
   if command -v sha256sum >/dev/null 2>&1; then
     ACTUAL=$(sha256sum "$TMP/$ASSET" | cut -d" " -f1)
   elif command -v shasum >/dev/null 2>&1; then
@@ -98,7 +107,7 @@ if curl -fsSL "$URL.sha256" -o "$TMP/$ASSET.sha256" 2>/dev/null; then
   [ -z "$ACTUAL" ] || [ "$ACTUAL" = "$EXPECTED" ] ||
     fail "checksum mismatch for $ASSET: expected $EXPECTED, got $ACTUAL"
 else
-  echo "install.sh: no published checksum for $ASSET; continuing" >&2
+  echo "install.sh: no published checksums for v$VERSION; continuing" >&2
 fi
 
 tar xzf "$TMP/$ASSET" -C "$TMP"

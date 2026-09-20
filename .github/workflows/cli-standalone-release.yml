@@ -216,14 +216,19 @@ jobs:
           docker run --rm -v "$PWD/dist-standalone:/telo" alpine:3.20 \
             sh -c 'apk add --no-cache libstdc++ >/dev/null && /telo/telo --version'
 
+      # The packaged formats, and only those. A release asset is named by its
+      # BASENAME, and the bare `telo` / `telo.exe` are named for no target — so
+      # all seven jobs wrote one asset called `telo`, each deleting and
+      # re-uploading the last one's, which is what the concurrent `error
+      # updating release asset metadata ... Not Found` was. Whichever job
+      # finished last decided which platform's binary a visitor downloaded.
+      # Nothing reads them: the install scripts fetch the archives, and every
+      # archive holds the same binary.
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: telo-${{ matrix.target }}
           path: |
-            dist-standalone/telo
-            dist-standalone/telo.exe
-            dist-standalone/*.sha256
             dist-standalone/*.tar.gz
             dist-standalone/*.zip
             dist-standalone/*.deb
@@ -285,8 +290,27 @@ jobs:
         with:
           path: artifacts
 
-      - name: List artifacts
-        run: find artifacts -type f | sort
+      # Every asset in one directory, checksummed into one `checksums.txt` in
+      # `sha256sum -c` format — not a `.sha256` beside each file, which is what
+      # made half the release page checksums. The digests are taken here rather
+      # than carried from the build jobs because this is the directory the
+      # release is attached from: what is hashed is what is uploaded.
+      #
+      # Flattening is also the collision check. Release assets are keyed by
+      # basename, so two jobs producing one name means an asset silently
+      # overwritten — refused here instead, while it is still a build failure.
+      - name: Collect the assets and checksum them
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          for file in $(find artifacts -type f | sort); do
+            name=$(basename "$file")
+            [ -e "release/$name" ] && { echo "two jobs produced an asset named $name" >&2; exit 1; }
+            mv "$file" "release/$name"
+          done
+          (cd release && sha256sum * > ../checksums.txt)
+          mv checksums.txt release/
+          cat release/checksums.txt
 
       # Attach only. `name` and `body` are deliberately unset: the npm release job
       # writes them, and passing either here would overwrite the changelog with a
@@ -297,7 +321,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.gate.outputs.version }}
-          files: artifacts/**/*
+          files: release/*
           fail_on_unmatched_files: true
           draft: true
 

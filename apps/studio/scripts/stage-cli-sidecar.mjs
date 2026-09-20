@@ -114,15 +114,17 @@ function main() {
   // The standalone build needs the CLI's compiled entry point; building it here
   // rather than assuming it keeps a fresh checkout from staging a stale binary
   // (or none at all, which Tauri reports as a missing sidecar).
-  // `pnpm` is a `.cmd` shim on Windows, which `execFileSync` cannot launch
-  // without the extension.
-  execFileSync(process.platform === "win32" ? "pnpm.cmd" : "pnpm", [
-    "--filter",
-    "@telorun/cli...",
-    "build",
-  ], {
+  //
+  // `pnpm` is a `.cmd` shim on Windows, and since the CVE-2024-27980 fix
+  // (Node 20.12.2 / 18.20.2) a `.cmd` cannot be launched without a shell at
+  // all: `spawnSync pnpm.cmd EINVAL`, which reads as a missing pnpm rather than
+  // a refused one. `shell: true` is the documented way, and these arguments are
+  // literals, so there is nothing for the shell to reinterpret.
+  const windows = process.platform === "win32";
+  execFileSync(windows ? "pnpm.cmd" : "pnpm", ["--filter", "@telorun/cli...", "build"], {
     cwd: REPO_ROOT,
     stdio: "inherit",
+    shell: windows,
   });
 
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "telo-sidecar-"));
