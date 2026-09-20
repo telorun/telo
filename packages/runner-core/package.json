@@ -1,12 +1,12 @@
 {
   "name": "@telorun/runner-core",
-  "version": "0.14.1",
+  "version": "0.15.0",
   "description": "Backend-neutral core for Telo runners: the /v1 session contract, the RunnerBackend interface, the session registry, SSE/byte ring buffers, and bundle handling. Shared by docker-runner and k8s-runner.",
   "keywords": [
     "telo",
     "runner"
   ],
-  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
