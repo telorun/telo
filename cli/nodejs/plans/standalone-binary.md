@@ -224,11 +224,13 @@ a `.deb` whose filename disagrees with its `Architecture:` is a broken package. 
 installer is named per target: one name for two architectures is an upload collision in which the
 second job silently replaces the first.
 
-**The advertised command is `curl -fsSL https://telo.run/install.sh | sh`** (`irm
-https://telo.run/install.ps1 | iex` on Windows). The scripts live at the repository root — they
-install the product, not `cli/nodejs` — and the site copies them into its static files at build, so
-there is one source of truth. A `raw.githubusercontent.com` URL is never advertised: it pins the
-product's most permanent line to a git host, an organisation, a repository name and a branch.
+**The advertised command is `curl -fsSL https://telo.sh/install.sh | sh`** (`irm
+https://telo.sh/install.ps1 | iex` on Windows), served as a redirect to the scripts at a release
+tag. The scripts live at the repository root — they install the product, not `cli/nodejs` — and the
+site copies them into its static files at build, so there is one source of truth and
+`telo.run/install.sh` keeps resolving. A `raw.githubusercontent.com` URL is never advertised: it
+pins the product's most permanent line to a git host, an organisation, a repository name and a
+branch.
 
 **The implementation language appears in no tag, asset name or install command.** `cli/rust` builds
 a binary called `telo` at the same version, and is not published while it hosts fewer controller

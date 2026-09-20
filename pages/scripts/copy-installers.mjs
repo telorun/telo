@@ -14,6 +14,10 @@
  * `raw.githubusercontent.com/<org>/<repo>/main/install.sh` pins it to a git
  * host, an organisation, a repository name and a branch — four things that are
  * not the product, in the first line anyone pastes into a Dockerfile.
+ *
+ * The ADVERTISED command is now `https://telo.sh/install.sh`, which redirects
+ * to the copy at a release tag; these files are the mirror that keeps
+ * `telo.run/install.sh` resolving for everyone who already pasted it.
  */
 
 import * as fs from "node:fs";

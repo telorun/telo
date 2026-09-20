@@ -22,7 +22,6 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -270,14 +269,6 @@ function main() {
     record(buildPkg(args));
   } else if (args.target.startsWith("windows")) {
     record(buildMsi(args));
-  }
-
-  // A checksum beside every artifact, in the `sha256sum -c` format the install
-  // scripts read. Only the bare binary had one, so the archives they actually
-  // download had nothing to verify against.
-  for (const file of produced) {
-    const digest = createHash("sha256").update(fs.readFileSync(file)).digest("hex");
-    fs.writeFileSync(`${file}.sha256`, `${digest}  ${path.basename(file)}\n`);
   }
 
   for (const file of produced) process.stderr.write(`packaged ${file}\n`);

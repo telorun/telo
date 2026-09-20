@@ -7,7 +7,7 @@ Downloads the release archive for this machine and puts one file on PATH.
 Nothing is compiled, no package manager is involved, and Node.js is not
 required — the binary carries its own runtime.
 
-    irm https://telo.run/install.ps1 | iex
+    irm https://telo.sh/install.ps1 | iex
 
 .PARAMETER Version
 The version to install. Defaults to the latest release.
@@ -33,11 +33,18 @@ $target = switch ($env:PROCESSOR_ARCHITECTURE) {
 }
 
 if (-not $Version) {
-    $latest = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest"
-    if ($latest.tag_name -notmatch '^v(.+)$') {
+    # The newest release whose tag is the CLI's own — NOT `releases/latest`,
+    # which is the newest release in the repository whatever it releases. The
+    # VS Code extension ships from here too, so `latest` regularly answers
+    # `vscode-v0.2.30`, out of which `^v(.+)$` happily read the version
+    # "scode-v0.2.30" and built an asset name nothing serves. Requiring a digit
+    # after the `v` is what separates the two, and the listing is newest-first.
+    $releases = Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=100"
+    $release = $releases | Where-Object { $_.tag_name -match '^v[0-9]' } | Select-Object -First 1
+    if (-not $release) {
         throw "could not determine the latest version; pass -Version."
     }
-    $Version = $Matches[1]
+    $Version = $release.tag_name.Substring(1)
 }
 
 $asset = "telo-$Version-$target.zip"
@@ -49,19 +56,24 @@ try {
     Write-Host "downloading $url"
     Invoke-WebRequest -Uri $url -OutFile (Join-Path $temp $asset)
 
-    # The release publishes a checksum beside every archive; checking it turns a
-    # truncated or tampered download into a refusal here rather than a confusing
-    # failure later.
+    # The release publishes one checksums.txt covering every asset; checking
+    # this one's line turns a truncated download into a refusal here rather than
+    # a confusing failure later.
     try {
-        Invoke-WebRequest -Uri "$url.sha256" -OutFile (Join-Path $temp "$asset.sha256")
-        $expected = ((Get-Content (Join-Path $temp "$asset.sha256") -Raw) -split '\s+')[0]
+        $checksums = Join-Path $temp 'checksums.txt'
+        Invoke-WebRequest -Uri "https://github.com/$repo/releases/download/v$Version/checksums.txt" -OutFile $checksums
+        $line = Get-Content $checksums | Where-Object { ($_ -split '\s+')[1] -eq $asset } | Select-Object -First 1
+        if (-not $line) {
+            throw "checksums.txt for v${Version} does not list $asset"
+        }
+        $expected = ($line -split '\s+')[0]
         $actual = (Get-FileHash (Join-Path $temp $asset) -Algorithm SHA256).Hash
         if ($actual -ne $expected) {
             throw "checksum mismatch for ${asset}: expected $expected, got $actual"
         }
     }
     catch [System.Net.WebException] {
-        Write-Warning "no published checksum for $asset; continuing"
+        Write-Warning "no published checksums for v$Version; continuing"
     }
 
     Expand-Archive -Path (Join-Path $temp $asset) -DestinationPath $temp -Force

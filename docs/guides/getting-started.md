@@ -18,13 +18,13 @@ The quickest route needs nothing installed first — not even Node.js. The
 standalone build is a single executable that carries its own runtime:
 
 ```bash
-curl -fsSL https://telo.run/install.sh | sh
+curl -fsSL https://telo.sh/install.sh | sh
 ```
 
 On Windows:
 
 ```powershell
-irm https://telo.run/install.ps1 | iex
+irm https://telo.sh/install.ps1 | iex
 ```
 
 The release page also carries `.deb`, `.rpm`, `.pkg` and `.msi` packages, and a
