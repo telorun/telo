@@ -2,9 +2,14 @@ import type { LoadedGraph } from "@telorun/analyzer";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import { TransportRegistry, computeFilesIntegrity, type PayloadFile } from "@telorun/kernel";
+import {
+  TransportRegistry,
+  computeFilesIntegrity,
+  hostPlatformTarget,
+  type PayloadFile,
+} from "@telorun/kernel";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { parsePlatformTarget, warmModuleLayers } from "../src/bundle/warm-layers.js";
+import { describeGaps, parsePlatformTarget, warmModuleLayers } from "../src/bundle/warm-layers.js";
 
 /**
  * `warmModuleLayers` returns the artifact handles it builds, keyed by module
@@ -79,19 +84,19 @@ describe("warmModuleLayers", () => {
       importEdges: new Map(),
     } as unknown as LoadedGraph;
 
-    const warnings: string[] = [];
     const warmed = await warmModuleLayers(
       graph,
       entryDir,
       path.join(entryDir, ".telo", "manifests"),
       { os: "linux", arch: "amd64" },
-      (msg) => warnings.push(msg),
     );
 
-    // The fetch failed (refused), so nothing materialized and the warn fired —
-    // but the handle is still returned for the pre-install pass to use.
+    // The fetch failed (refused), so nothing materialized and the gap is
+    // reported — but the handle is still returned for the pre-install pass to
+    // use.
     expect(warmed.materialized).toBe(0);
-    expect(warnings.some((w) => w.includes(OCI_REF))).toBe(true);
+    expect(warmed.gaps.map((gap) => gap.cause)).toEqual(["fetch"]);
+    expect(warmed.gaps[0].module).toBe(OCI_REF);
     expect(warmed.artifacts.has(OCI_SOURCE)).toBe(true);
     // A module with no `layers:` index has no payload to address.
     expect(warmed.artifacts.has(localSource)).toBe(false);
@@ -149,31 +154,37 @@ describe("warmModuleLayers", () => {
         importEdges: new Map(),
       } as unknown as LoadedGraph;
       const moduleCache = await fs.mkdtemp(path.join(entryDir, "abi-"));
-      const warnings: string[] = [];
-      const warmed = await warmModuleLayers(graph, moduleCache, path.join(moduleCache, "manifests"), target, (m) =>
-        warnings.push(m),
+      const warmed = await warmModuleLayers(
+        graph,
+        moduleCache,
+        path.join(moduleCache, "manifests"),
+        target,
       );
-      return { warmed, warnings };
+      return { warmed };
     };
 
     it("warms none and reports each one it skips when the target names no abi", async () => {
-      const { warmed, warnings } = await warm({ os: "linux", arch: "amd64" });
+      const { warmed } = await warm({ os: "linux", arch: "amd64" });
       expect(warmed.materialized).toBe(0);
       expect(fetched).toEqual([]);
-      // The darwin layer is for another platform, not for want of an abi.
-      const hint =
-        "which the install target leaves undetermined. Name the target with --platform os/arch[/libc] and --abi to warm it.";
-      expect(warnings).toEqual([
-        `skipped the native layer node (linux/node-137) of ${OCI_REF}: it constrains abi, ${hint}`,
-        `skipped the controller layer js (linux/node-141) of ${OCI_REF}: it constrains abi, ${hint}`,
-      ]);
+      // The darwin layer is for another platform, not for want of an abi — so
+      // it is not a gap. Each gap names the flag that determines the axis,
+      // because that is the repair; a fetch gap names the failure instead.
+      expect(warmed.gaps.map((gap) => gap.cause)).toEqual(["undetermined", "undetermined"]);
+      expect(warmed.gaps[0].detail).toContain("the native layer node (linux/node-137) constrains abi");
+      expect(warmed.gaps[1].detail).toContain("the controller layer js (linux/node-141) constrains abi");
+      // A gap states the fact; the REMEDY belongs to whoever refuses, because
+      // the flags differ — `telo package` accepts no `--abi` at all.
+      for (const gap of warmed.gaps) expect(gap.detail).not.toContain("--abi");
+      expect(describeGaps(warmed.gaps, "Name the target with --abi.")).toContain("--abi");
+      expect(describeGaps(warmed.gaps)).not.toContain("--abi");
     });
 
     it("warms the layer matching --abi, not one stating another abi", async () => {
-      const { warmed, warnings } = await warm({ os: "linux", arch: "amd64", abi: "node-137" });
+      const { warmed } = await warm({ os: "linux", arch: "amd64", abi: "node-137" });
       expect(fetched).toEqual([NATIVE_LAYERS[0].blob]);
       expect(warmed.materialized).toBe(1);
-      expect(warnings).toEqual([]);
+      expect(warmed.gaps).toEqual([]);
 
       fetched.length = 0;
       await warm({ os: "linux", arch: "amd64", abi: "telo-3" });
@@ -191,7 +202,11 @@ describe("parsePlatformTarget", () => {
       abi: "node-141",
     });
     expect(parsePlatformTarget("linux/amd64", undefined)).toEqual({ os: "linux", arch: "amd64" });
-    expect(parsePlatformTarget(undefined, undefined).abi).toBeUndefined();
+    // Without `--platform` the target IS this machine, so its abi is not
+    // discarded: a bare `telo install` has to warm the native layer the runtime
+    // about to open it reports, and asking for `--abi` there names a flag for a
+    // value already in hand.
+    expect(parsePlatformTarget(undefined, undefined).abi).toBe(hostPlatformTarget().abi);
   });
 
   it("refuses an abi that is not <family>-<version>", () => {

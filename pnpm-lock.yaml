@@ -441,6 +441,9 @@ importers:
       packageurl-js:
         specifier: ^2.0.1
         version: 2.0.1
+      postject:
+        specifier: ^1.0.0-alpha.6
+        version: 1.0.0-alpha.6
       semver:
         specifier: ^7.7.3
         version: 7.7.3
@@ -472,9 +475,6 @@ importers:
       nock:
         specifier: ^14.0.15
         version: 14.0.15
-      postject:
-        specifier: ^1.0.0-alpha.6
-        version: 1.0.0-alpha.6
       typescript:
         specifier: ^5.0.0
         version: 5.9.3

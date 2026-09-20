@@ -152,6 +152,10 @@ jobs:
         run: pnpm --filter "@telorun/cli..." build
 
       - name: Build standalone binary
+        env:
+          # This binary IS the release, and says so: `telo package` lets only a
+          # released telo stand a downloaded carrier around an application.
+          TELO_RELEASE_BUILD: "1"
         run: pnpm --filter @telorun/cli exec node scripts/build-standalone.mjs --target ${{ matrix.target }} --out ../../dist-standalone
 
       # The binary is the deliverable; the installers wrap it. Each one only has
@@ -278,9 +282,51 @@ jobs:
             telo --version
           '
 
+  # A packaged APPLICATION is the second thing this binary is for, and its two
+  # halves only meet here: `telo package` runs from the binary (which is the
+  # carrier — a released version is what an unreleased one cannot download), and
+  # what it produces has to run where nothing is installed. Anything short of
+  # this passes with a binary that packages an app nobody can start.
+  package-app:
+    name: Package an application and run it with no Node.js
+    needs: [gate, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download linux-amd64-gnu
+        uses: actions/download-artifact@v4
+        with:
+          name: telo-linux-amd64-gnu
+          path: artifacts
+
+      - name: Package an example with the built binary
+        run: |
+          set -euo pipefail
+          mkdir -p bin dist
+          tar xzf artifacts/telo-${{ needs.gate.outputs.version }}-linux-amd64-gnu.tar.gz \
+            -C bin --strip-components=1
+          # The binary IS the carrier here, so nothing is downloaded and the
+          # packaged app carries exactly the telo this run built.
+          ./bin/telo package examples/hello-world --out dist/hello
+          ./bin/telo package inspect dist/hello
+
+      - name: Run the packaged application where nothing is installed
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/dist:/dist" debian:trixie-slim sh -c '
+            set -eu
+            ! command -v node >/dev/null || { echo "image unexpectedly carries node"; exit 1; }
+            # A packaged app unpacks into the user cache, so it needs a writable
+            # HOME — the refusal names TELO_APP_DIR when it has neither.
+            export HOME=/tmp
+            /dist/hello | grep "Hello from Telo!"
+            TELO_APP_INFO=1 /dist/hello | grep HelloConsole
+          '
+
   release:
     name: Attach binaries and publish the release
-    needs: [gate, build, verify]
+    needs: [gate, build, verify, package-app]
     runs-on: ubuntu-latest
     permissions:
       contents: write

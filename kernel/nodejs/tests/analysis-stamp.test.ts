@@ -2,7 +2,9 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { LoadedGraph } from "@telorun/analyzer";
 import {
+  computeAnalysisSignature,
   readAnalysisStamp,
   writeAnalysisStamp,
 } from "../src/manifest-sources/analysis-stamp.js";
@@ -63,6 +65,76 @@ describe("analysis stamp", () => {
     expect((await readAnalysisStamp("file:///ws/suite.telo.yaml", analysisDir))?.signature).toBe(
       "sig-suite",
     );
+  });
+
+  describe("a packaged application's signature", () => {
+    // A payload is unpacked at a digest-keyed path that has nothing to do with
+    // where it was built, so the ordinary identity — each file's absolute source
+    // URL — moves and every start re-runs the whole validation walk, silently.
+    const graph = (root: string, body = "kind: Telo.Application\n"): LoadedGraph =>
+      ({
+        modules: new Map([
+          [
+            "app",
+            {
+              owner: { source: `${root}/telo.yaml`, text: body },
+              partials: [{ source: `${root}/lib/telo.yaml`, text: "kind: Telo.Library\n" }],
+            },
+          ],
+          [
+            "console",
+            {
+              owner: {
+                source: "/some/cache/manifests/oci/ghcr.io/telorun/console/1.0.0/telo.yaml",
+                requestedUrl: "oci://ghcr.io/telorun/console@1.0.0#sha256-abc",
+                text: "kind: Telo.Library\n",
+              },
+              partials: [],
+            },
+          ],
+        ]),
+      }) as unknown as LoadedGraph;
+
+    const BUILT = "/build/app";
+    const UNPACKED = "/home/u/.cache/telo/apps/App-abc/app";
+
+    it("survives relocation, so the verdict is hit where the payload is unpacked", () => {
+      expect(computeAnalysisSignature(graph(BUILT))).not.toBe(
+        computeAnalysisSignature(graph(UNPACKED)),
+      );
+      expect(
+        computeAnalysisSignature(graph(BUILT), {
+          appKey: "payload-key",
+          entryUrl: `${BUILT}/telo.yaml`,
+        }),
+      ).toBe(
+        computeAnalysisSignature(graph(UNPACKED), {
+          appKey: "payload-key",
+          entryUrl: `${UNPACKED}/telo.yaml`,
+        }),
+      );
+    });
+
+    it("still covers file CONTENT, so an edited tree does not hit a stamp", () => {
+      // The verdict is about the files the kernel actually loaded. Keyed on the
+      // payload alone it would be a verdict about the PAYLOAD while the load is
+      // from an unpacked TREE — and a tree truncated by a full disk or
+      // half-restored from a backup would boot a manifest nothing validated.
+      const key = { appKey: "payload-key", entryUrl: `${UNPACKED}/telo.yaml` };
+      const clean = computeAnalysisSignature(graph(UNPACKED), key);
+      const edited = computeAnalysisSignature(
+        graph(UNPACKED, "kind: Telo.Application\n# edited after unpacking\n"),
+        key,
+      );
+      expect(edited).not.toBe(clean);
+    });
+
+    it("is a verdict about one payload, not any payload", () => {
+      const entryUrl = `${UNPACKED}/telo.yaml`;
+      expect(computeAnalysisSignature(graph(UNPACKED), { appKey: "a", entryUrl })).not.toBe(
+        computeAnalysisSignature(graph(UNPACKED), { appKey: "b", entryUrl }),
+      );
+    });
   });
 
   it("reads nothing from a pre-workspace-anchor stamp file", async () => {

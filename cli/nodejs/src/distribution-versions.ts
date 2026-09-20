@@ -57,6 +57,35 @@ export function cliVersion(): string | undefined {
   return typeof version === "string" ? version : undefined;
 }
 
+/**
+ * Whether this CLI IS a released artifact, as opposed to a working copy.
+ *
+ * A version number is not an identity for an unreleased tree: a checkout and the
+ * release of the same version number can be arbitrarily different code. That
+ * distinction is invisible almost everywhere and load-bearing in exactly one
+ * place — `telo package`, which otherwise puts a DOWNLOADED binary of the same
+ * version number around an application and calls it "the telo that built it".
+ *
+ * Two signals, one per distribution shape, and neither is a guess: a binary says
+ * which build it is (`build`, baked by the release workflow), and an npm
+ * package's own manifest still naming `workspace:` dependencies is a checkout,
+ * since publishing rewrites those to concrete versions.
+ */
+export function distributionKind(
+  pkg: Record<string, unknown> | null = ownPackageJson(),
+  build: string | undefined = baked["build"],
+): "release" | "checkout" | "unknown" {
+  if (build) return build === "release" ? "release" : "checkout";
+  // A single-file executable has no `package.json` to walk up to, so an unbaked
+  // one cannot say what it is — and a claim nothing can check is exactly what
+  // this exists to refuse.
+  if (!pkg) return "unknown";
+  const specifiers = [pkg.dependencies, pkg.devDependencies, pkg.optionalDependencies]
+    .flatMap((group) => Object.values((group ?? {}) as Record<string, unknown>))
+    .filter((value): value is string => typeof value === "string");
+  return specifiers.some((value) => value.startsWith("workspace:")) ? "checkout" : "release";
+}
+
 /** The `@telorun/debug-ui` version the inspect UI is fetched at.
  *
  *  `TELO_DEBUG_UI_VERSION` wins over both: container images set it because

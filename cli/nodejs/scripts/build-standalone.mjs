@@ -35,27 +35,28 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 const CLI_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO_ROOT = path.resolve(CLI_DIR, "..", "..");
 
 /**
- * The Node runtime every binary carries, whatever built it.
+ * The Node runtime every binary carries, whatever built it — read from the CLI's
+ * own source of truth, which `telo package` reads too.
  *
  * Taking the building machine's own version instead made the artifact a
  * property of the runner: a runner defaulting to Node 22 asked nodejs.org for
  * `node-v22.x-linux-x64-musl.tar.gz`, which does not exist — official musl
  * builds begin at 24 — and two targets released on the same day could ship
- * different runtimes.
- *
- * **Every bump is checked against all seven targets**, because the set a
- * version publishes is not uniform: 24.11.1 has no musl build, so pinning it
- * would have reproduced the very failure this replaced. `--node-version`
- * overrides for a one-off.
+ * different runtimes. Stating it in ONE place is the same argument one level
+ * out: the build injects the runtime and the packager warms native layers for
+ * its ABI, and two copies of that pair drift into a packaged app that cannot
+ * open its own addons. `--node-version` overrides for a one-off.
  */
-const NODE_RUNTIME_VERSION = "24.21.0";
+const { CARRIER_NODE_VERSION: NODE_RUNTIME_VERSION, CARRIER_NODE_ABI } = await import(
+  pathToFileURL(path.join(CLI_DIR, "dist", "carrier-runtime.js")).href
+);
 
 /**
  * Every target that has an official Node build, named in **Telo's own platform
@@ -140,6 +141,14 @@ function bakedVersions() {
     // version's — esbuild refuses a host/binary version mismatch, which would
     // surface as a controller build failure with no mention of a stale file.
     esbuild: dep("esbuild"),
+    "node-abi": CARRIER_NODE_ABI,
+    // WHICH build this is, not which version. A version number is not an
+    // identity for an unreleased tree, and `telo package` is the one place that
+    // matters: it may download a carrier only when the CLI asking for it IS that
+    // release. Set by the release workflow; absent here means a build of one's
+    // own, which is allowed to be the carrier for its own platform and nothing
+    // else.
+    build: process.env.TELO_RELEASE_BUILD === "1" ? "release" : "local",
   };
 }
 
@@ -181,6 +190,13 @@ async function bundle(stagingDir, versions) {
     format: "cjs",
     conditions: ["import", "node"],
     logLevel: "warning",
+    // esbuild's own `main.js` calls `require.resolve("esbuild")` from
+    // `pkgForSomeOtherPlatform`, a branch that exists only to word the error an
+    // install with the wrong platform package gets. The binary never reaches it:
+    // the host names the executable through `ESBUILD_BINARY_PATH` before the
+    // first build. Marking esbuild external, which is what the warning asks for,
+    // is the one thing this bundle must not do.
+    logOverride: { "require-resolve-not-external": "silent" },
     define: {
       __TELO_BAKED_VERSIONS__: JSON.stringify(versions),
       // Rewritten rather than left to esbuild's empty substitute for CommonJS,
@@ -205,7 +221,19 @@ async function bundle(stagingDir, versions) {
 async function runtimeBinary(target, stagingDir, nodeVersion) {
   const spec = TARGETS[target];
   const version = nodeVersion ?? NODE_RUNTIME_VERSION;
-  if (target === hostTarget() && version === process.versions.node) return process.execPath;
+  if (target === hostTarget() && version === process.versions.node) {
+    // The one place the build can SEE the runtime it injects: check the pair
+    // rather than trusting a comment that they move together. A packaged app
+    // warms its native layers for this ABI, so a wrong one is an app that cannot
+    // open the addons travelling inside it.
+    if (process.versions.modules !== CARRIER_NODE_ABI) {
+      throw new Error(
+        `carrier-runtime.ts says Node ${version} reports abi ${CARRIER_NODE_ABI}, but this ` +
+          `Node ${process.versions.node} reports ${process.versions.modules}. Fix CARRIER_NODE_ABI.`,
+      );
+    }
+    return process.execPath;
+  }
   const isWindows = spec.exe === ".exe";
   const archive = isWindows
     ? `node-v${version}-${spec.nodeFile}.zip`
@@ -329,11 +357,23 @@ async function main() {
     "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2",
   ];
   if (isMac) postjectArgs.push("--macho-segment-name", "NODE_SEA");
-  execFileSync(
-    process.execPath,
-    [createRequire(path.join(CLI_DIR, "package.json")).resolve("postject/dist/cli.js"), ...postjectArgs],
-    { stdio: "inherit" },
-  );
+  // postject drives LIEF, whose ELF reader emits `Can't find string offset for
+  // section name` once per note section of the official Node runtime — a remark
+  // about the input binary, not about the injection, and not fixable from here.
+  // Its output is held and replayed only when the injection fails, so the exit
+  // code decides what is a failure rather than a pattern over someone else's
+  // text.
+  try {
+    execFileSync(
+      process.execPath,
+      [createRequire(path.join(CLI_DIR, "package.json")).resolve("postject/dist/cli.js"), ...postjectArgs],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+  } catch (err) {
+    process.stderr.write(String(err?.stdout ?? ""));
+    process.stderr.write(String(err?.stderr ?? ""));
+    throw new Error(`postject could not inject NODE_SEA_BLOB into ${output}: ${err?.message ?? err}`);
+  }
 
   if (isMac) run("codesign", ["--sign", "-", output]);
 

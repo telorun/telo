@@ -38,8 +38,8 @@ import { resolveUiBundle } from "../ui-fetch.js";
  * rather than fatal. A run has no interest in a release typo; it does have an
  * interest in the bound on its own env walk, so a problem inside `env:` throws.
  */
-function applyEnvFiles(manifestPath: string, report: boolean): void {
-  const { values, loaded, unreadable, diagnostics, failed } = resolveEnvFiles(manifestPath);
+function applyEnvFiles(anchor: string, report: boolean): void {
+  const { values, loaded, unreadable, diagnostics, failed } = resolveEnvFiles(anchor);
   for (const diagnostic of diagnostics) outErrLine(`[env] ${diagnostic.message}`);
   if (failed) {
     throw new Error(
@@ -254,7 +254,7 @@ function createWatcherSet(log: Logger, onChange: () => void): WatcherSet & Watch
   };
 }
 
-type RunArgv = {
+export type RunArgv = {
   path: string;
   verbose: boolean;
   /** `--debug`: write the `.telo.debug.jsonl` event log. No network, no UI. */
@@ -267,6 +267,19 @@ type RunArgv = {
   watch: boolean;
   /** `--no-cache-write`: read the baked cache but never persist derived entries. */
   cacheWrite: boolean;
+  /** Where the env-file walk starts. The manifest's own directory for an
+   *  ordinary run — which is at or near where the command was typed — and the
+   *  WORKING DIRECTORY for a packaged application, whose manifest sits at a
+   *  digest-keyed path inside the unpack cache that no operator should have to
+   *  find. One walk, one anchor, chosen by the caller. */
+  envAnchor?: string;
+  /** A packaged application's payload identity, under which its analysis verdict
+   *  is filed and signed. Absent everywhere else. */
+  analysisKey?: string;
+  /** The cache root to run against. A packaged application passes its unpacked
+   *  payload, which is the only cache it has; everywhere else it is resolved
+   *  from the entry as usual. */
+  cacheDir?: string;
   "--"?: string[];
 };
 
@@ -573,7 +586,7 @@ export async function run(argv: RunArgv): Promise<void> {
   }
 
   // Resolve the `.telo` cache root once per invocation, then thread it.
-  const cacheRoot = resolveCacheRoot(argv.path);
+  const cacheRoot = argv.cacheDir ?? resolveCacheRoot(argv.path);
   const debug =
     argv.debug || argv.inspect !== undefined
       ? await startDebugSession(argv, log, cacheRoot)
@@ -596,10 +609,11 @@ export async function run(argv: RunArgv): Promise<void> {
     process.once("SIGINT", shutdown);
     process.once("SIGTERM", shutdown);
 
-    applyEnvFiles(argv.path, argv.debug);
+    applyEnvFiles(argv.envAnchor ?? argv.path, argv.debug);
     await kernel.load(argv.path, {
       cacheDir: cacheRoot,
       writeCache: argv.cacheWrite,
+      ...(argv.analysisKey !== undefined ? { analysisKey: argv.analysisKey } : {}),
     });
     loaded = true;
     await persistManifestCache(argv, kernel, log, cacheRoot);
@@ -680,7 +694,7 @@ function emitRunFailed(
 async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
   applyEnvFiles(argv.path, argv.debug);
   // Resolve the `.telo` cache root once per invocation, then thread it.
-  const cacheRoot = resolveCacheRoot(argv.path);
+  const cacheRoot = argv.cacheDir ?? resolveCacheRoot(argv.path);
   // One inspect endpoint for the whole watch session — reloads re-attach the
   // rebuilt kernel to it (see startDebugSession), so the UI connection survives.
   const debug =
