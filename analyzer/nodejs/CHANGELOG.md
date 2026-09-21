@@ -1,5 +1,63 @@
 # @telorun/analyzer
 
+## 0.78.0
+
+### Minor Changes
+
+- abe08ab: Close three `telo check` gaps and make declared integers CEL integers on the way in
+
+  - `inputs` inside a step body is typed from the resource's resolved input
+    contract, so `inputs.<typo>` is `CEL_UNKNOWN_FIELD` — including in a handler
+    declared inline in a route, whose open `inputs` view no longer wins over the
+    contract. Open only where no `inputType` is declared.
+  - A handler with no `outputType` whose `outputs:` map carries
+    `x-telo-value-schema-from: outputType` is typed by that map's keys, so
+    `result.<typo>` in a route's `returns:` (and `steps.<name>.result.<typo>` after
+    a step invoking it) is reported.
+  - A pure `value:` step's computed result is typed by the scalar its expression
+    checks to, so `steps.a.result + steps.b.result` over a `double` and an `int` is
+    `CEL_TYPE_ERROR` rather than a dispatch failure.
+  - A value an input contract declares `integer` is an int64 wherever the resource
+    evaluates CEL over it; controllers still receive arguments as the call site
+    produced them. `ctx.readPlainEncoded` also normalizes declared scalars, so a
+    transport's declared `integer` request field reaches CEL as an int.
+
+- abe08ab: Forward references through a template body
+
+  A template body may hand a whole value holding references to an entry with a
+  bare `!cel "self.<path>"` — `routes: !cel "self.routes"`, where each route's
+  `handler` is a reference the instance declared. The router received each handler
+  as a live instance and failed at create with `JSON.stringify cannot serialize
+cyclic structures`; the kernel now names an injected instance by the declaration
+  it was created from, and a malformed slot value no longer crashes the error that
+  reports it.
+
+  `telo check` reports `TEMPLATE_REF_COMPUTED` when a `!cel` expression that is not
+  a bare `self.<path>` sits at or above a reference slot inside a template entry.
+  CEL values are data, so such an expression passed `telo check` and failed at boot
+  with `Unsupported type`.
+
+- abe08ab: Check a value forwarded through a template body as the entry's own field
+
+  A template body that hands a value to an entry with a bare `!cel "self.<path>"`
+  (`routes: !cel "self.workflows"`) gives the entry exactly what the consumer wrote,
+  and the entry validates it at boot. `telo check` validated only the enclosing
+  kind's own schema, so a forwarded route with `status: notanumber` checked clean
+  and failed at boot with the router's `ERR_INVALID_VALUE`. Now each such value is
+  checked as a field of a resource of the entry's kind — its schema (with
+  `x-telo-schema-from` resolved), its reference slots and their `inputs:`, and its
+  CEL in the entry's contexts — and every finding is reported on the consumer's own
+  line (`workflows[0].returns[0].status`). A forwarded expression is typed where it
+  is evaluated, so a wrapper no longer needs to restate the entry's `x-telo-context`
+  blocks for its consumers' CEL to be checked.
+
+  New diagnostic `TEMPLATE_FORWARD_INCOMPATIBLE`: the schema a templated kind
+  declares for a path it forwards is not assignable to the entry field receiving it.
+
+### Patch Changes
+
+- @telorun/templating@0.21.0
+
 ## 0.77.1
 
 ### Patch Changes

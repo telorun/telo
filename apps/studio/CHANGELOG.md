@@ -1,5 +1,22 @@
 # @telorun/studio
 
+## 0.18.0
+
+### Minor Changes
+
+- abe08ab: The module graph no longer draws the module root. An Application's boot sequence (`targets:`) is shown instead as a marker on each resource it starts — its position in the boot order, drawn conditional for a gated entry with the `when:` on hover — and as an ordered Boot section in the module bar that lists every entry (bare, gated and inline invoke steps), reorders, removes and adds them. A resource whose kind may be booted offers "Start at boot" / "Don't start at boot" from its context menu. The Application's `logging:` block is edited from a Logging section in the module bar.
+- abe08ab: The template gallery is now "Starters": the empty-workspace panel offers "Start from a starter", the new-module dialog lists starters, and a starter is fetched from `starters.json` (catalog key `starters`) under the new default `https://raw.githubusercontent.com/telorun/telo/refs/heads/main/starters`. The setting that overrides the source is `startersBaseUrl`; a value saved under the former `templatesBaseUrl` is read as `startersBaseUrl` on load. A custom gallery host must rename its `templates.json` to `starters.json` and its top-level `templates` key to `starters`.
+
+### Patch Changes
+
+- Updated dependencies [abe08ab]
+- Updated dependencies [abe08ab]
+- Updated dependencies [abe08ab]
+  - @telorun/analyzer@0.78.0
+  - @telorun/sdk@0.96.0
+  - @telorun/ide-support@0.21.3
+  - @telorun/templating@0.21.0
+
 ## 0.17.0
 
 ### Minor Changes
