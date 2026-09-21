@@ -197,11 +197,13 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
   if (moduleKind === "Library") {
     return { ...base, kind: "Library" };
   }
-  // `ports` and `targets` are Application-only.
+  // `ports`, `targets` and `logging` are Application-only.
+  const logging = moduleMeta?.logging as Record<string, unknown> | undefined;
   return {
     ...base,
     kind: "Application",
     targets: rawTargets,
     ports: moduleMeta?.ports as Record<string, unknown> | undefined,
+    ...(logging ? { logging } : {}),
   };
 }

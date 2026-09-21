@@ -4,7 +4,6 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDashed,
-  Container,
   FileCog,
   ChevronsDown,
   ChevronsUp,
@@ -12,6 +11,8 @@ import {
   CornerDownRight,
   Lock,
   Plus,
+  Power,
+  PowerOff,
   Radio,
   Shield,
   SlidersHorizontal,
@@ -24,6 +25,13 @@ import {
 } from "lucide-react";
 import { summarizeResource } from "../../../../diagnostics-aggregate";
 import { CREATE_REF_OPTION_PREFIX } from "../../../resource-schema-form/ref-candidates";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "../../../ui/context-menu";
+import type { BootMarker } from "../boot-targets";
 import {
   Select,
   SelectContent,
@@ -103,9 +111,14 @@ export interface GraphBoxData extends Record<string, unknown> {
   heldBy?: number;
   /** Nothing reaches this declaration: no reference, no boot target. */
   unwired?: boolean;
-  /** A way work ENTERS: the module root, or a resource registering an inbound
-   *  trigger. Marked on the box, since the flow ranking already puts it left. */
+  /** A way work ENTERS: a resource registering an inbound trigger. Marked on
+   *  the box, since the flow ranking already puts it left. */
   entryPoint?: boolean;
+  /** The Application's `targets:` entries that start this resource. */
+  boot?: BootMarker[];
+  /** Start this resource at boot, or stop starting it. Absent where it may not
+   *  be a boot target, or where the module root cannot be written. */
+  onToggleBoot?: () => void;
   /** Zone regions this box OPENS, as `attribute → reason` — what it guarantees
    *  about everything its body reaches. */
   zones?: { site: string; attributes: Readonly<Record<string, string>> }[];
@@ -210,7 +223,7 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
   const summary = summarizeResource(diagState, filePaths, node.name);
   // A way IN is marked on the node rather than by where it sits: entry points
   // no longer have a lane, since one pulled a whole chain into it.
-  const Icon = node.root ? Container : data.entryPoint ? Radio : FileCog;
+  const Icon = data.entryPoint ? Radio : FileCog;
   const border =
     (summary && severityBorderClass(summary.worstSeverity)) ||
     (node.unknownKind
@@ -253,7 +266,7 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
   const drawn = drawnRows(node, (_id, property) => data.isOpen(property));
   const branching = branchingRows(node.rows);
 
-  return (
+  const box = (
     <div
       className={`flex w-full flex-col rounded-md border text-left shadow-sm ${
         nested
@@ -261,7 +274,7 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
           : "bg-white dark:bg-zinc-900"
       } ${border} ${
         data.selected ? "ring-2 ring-indigo-400 ring-offset-1 dark:ring-offset-zinc-900" : ""
-      } ${node.root ? "border-2" : ""} ${
+      } ${
         data.inZone ? "ring-1 ring-violet-300 dark:ring-violet-700" : ""
       } ${data.ofSelectedKind ? "ring-1 ring-indigo-300 dark:ring-indigo-700" : ""}`}
       style={{ height: nested ? "100%" : undefined, minHeight: nested ? undefined : "100%" }}
@@ -277,6 +290,7 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
         <span className="min-w-0 truncate text-xs font-semibold text-zinc-800 dark:text-zinc-100">
           {node.name}
         </span>
+        {data.boot && data.boot.length > 0 && <BootBadge markers={data.boot} />}
         {data.fanIn ? (
           <span
             className="shrink-0 rounded bg-zinc-100 px-1 text-[9px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
@@ -352,6 +366,52 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
         />
       ))}
     </div>
+  );
+
+  if (!data.onToggleBoot) return box;
+  const started = (data.boot?.length ?? 0) > 0;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{box}</ContextMenuTrigger>
+      {/* Portalled, and React still bubbles its clicks through the box — which
+          would open the resource under the menu. */}
+      <ContextMenuContent data-no-open className="w-48" onClick={(e) => e.stopPropagation()}>
+        <ContextMenuItem className="text-xs" onSelect={data.onToggleBoot}>
+          {started ? <PowerOff /> : <Power />}
+          {started ? "Don't start at boot" : "Start at boot"}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+/**
+ * Where this resource sits in the boot order — one position per `targets:`
+ * entry starting it. A gated entry is marked conditional, its `when:` on hover.
+ */
+function BootBadge({ markers }: { markers: BootMarker[] }) {
+  const conditional = markers.some((marker) => marker.when !== undefined);
+  const title = markers
+    .map((marker) =>
+      marker.when !== undefined
+        ? `Started at boot, #${marker.position}, when ${marker.when}`
+        : `Started at boot, #${marker.position}`,
+    )
+    .join("\n");
+  return (
+    <span
+      className={`flex shrink-0 items-center gap-0.5 rounded px-1 text-[9px] text-indigo-600 dark:text-indigo-300 ${
+        conditional
+          ? "border border-dashed border-indigo-300 dark:border-indigo-700"
+          : "bg-indigo-50 dark:bg-indigo-950/60"
+      }`}
+      title={title}
+      aria-label={title}
+    >
+      <Power className="size-2.5 shrink-0" />
+      {markers.map((marker) => marker.position).join(",")}
+      {conditional && <Filter className="size-2.5 shrink-0" />}
+    </span>
   );
 }
 

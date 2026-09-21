@@ -30,10 +30,10 @@ export interface AppSettings {
    *  + version lists). Empty/undefined uses the public default (`telo.sh`);
    *  a self-hosted hub points this at its own endpoint. */
   hubUrl?: string;
-  /** Base URL the starter-template gallery loads from. It must serve a
-   *  `templates.json` catalog and the referenced manifests over http(s) with
-   *  CORS. Empty/undefined uses `DEFAULT_TEMPLATES_BASE_URL`. */
-  templatesBaseUrl?: string;
+  /** Base URL the starter gallery loads from. It must serve a `starters.json`
+   *  catalog and the referenced manifests over http(s) with CORS.
+   *  Empty/undefined uses `DEFAULT_STARTERS_BASE_URL`. */
+  startersBaseUrl?: string;
   /** The user's runners. A run uses the one whose id is
    *  `activeRunnerId` (a single global selection). */
   runners: RunnerInstance[];
@@ -132,6 +132,8 @@ export interface ApplicationManifest extends BaseParsedManifest {
   targets: string[];
   /** Declared inbound ports (`name → { env, protocol?, default? }`). */
   ports?: Record<string, unknown>;
+  /** The `logging:` block — threshold, redaction, sampling and sinks. */
+  logging?: Record<string, unknown>;
 }
 
 /** A parsed `Telo.Library` — an importable unit of kinds/definitions. No

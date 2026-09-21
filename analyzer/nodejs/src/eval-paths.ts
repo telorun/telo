@@ -20,6 +20,12 @@
  * Browser-safe: no Node built-ins.
  */
 
+import type { ResourceDefinition } from "@telorun/sdk";
+import {
+  effectiveAuthorSchema,
+  inheritedCapability,
+  type DefResolver,
+} from "./extends-resolution.js";
 import { isStepSlot } from "./step-slot.js";
 
 /**
@@ -225,6 +231,28 @@ export function mergeCelEvalSites(...sites: CelEvalSites[]): CelEvalSites {
     runtime: sites.flatMap((s) => s.runtime),
     regions: sites.flatMap((s) => s.regions),
   };
+}
+
+/**
+ * Every place a RESOURCE OF THIS KIND has its values evaluated: the kind's
+ * inheritance-resolved schema (an `extends` child is authored against
+ * merge(parent, own), and the kernel expands what the merged schema marks), its
+ * capability abstract's (a `Telo.Provider`'s implicit root compile-eval), and a
+ * base-form child's implicit compile-eval.
+ */
+export function kindCelEvalSites(
+  definition: ResourceDefinition | undefined,
+  resolveDef: DefResolver,
+): CelEvalSites {
+  if (!definition) return NO_CEL_EVAL_SITES;
+  const capability = inheritedCapability(definition, resolveDef);
+  return mergeCelEvalSites(
+    celEvalSites(effectiveAuthorSchema(definition, resolveDef)),
+    celEvalSites(
+      (capability ? resolveDef(capability)?.schema : undefined) as Record<string, any> | undefined,
+    ),
+    implicitEvalSites(definition as { base?: unknown }),
+  );
 }
 
 /**

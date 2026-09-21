@@ -113,13 +113,14 @@ export class HttpServerApi implements ResourceInstance {
 
     // Fastify validates, and OpenAPI documents, the TEXT a client sends: an
     // instance-typed slot (`Telo.Timestamp`) is registered as its plain
-    // encoding's schema, and decoded into the instance below, before the handler.
-    const plainRequest = new Map<RequestLocation, Record<string, any>>();
+    // encoding's schema. Every declared location is then read as its declaration
+    // says before the handler — instances decoded, declared integers made CEL
+    // integers — since `request.*` is read by CEL.
+    const declaredRequest = new Map<RequestLocation, Record<string, any>>();
     const register = (location: RequestLocation, key: string, declared: unknown) => {
       if (!declared) return;
-      const plain = plainSchemaOf(declared as Record<string, any>);
-      schema[key] = plain;
-      if (plain !== declared) plainRequest.set(location, declared as Record<string, any>);
+      schema[key] = plainSchemaOf(declared as Record<string, any>);
+      declaredRequest.set(location, declared as Record<string, any>);
     };
     register("query", "querystring", route.request.schema?.query);
     register("params", "params", route.request.schema?.params);
@@ -158,7 +159,7 @@ export class HttpServerApi implements ResourceInstance {
           body: request.body,
           headers: request.headers,
         };
-        for (const [location, declared] of plainRequest) {
+        for (const [location, declared] of declaredRequest) {
           try {
             received[location] = this.ctx.readPlainEncoded(received[location], declared);
           } catch (err) {

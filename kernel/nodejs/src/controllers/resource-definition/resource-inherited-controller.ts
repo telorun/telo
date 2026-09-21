@@ -10,6 +10,7 @@ import {
   buildReferenceFieldMap,
   effectiveAuthorSchema,
   isRefEntry,
+  SELF_PATH,
   type DefResolver,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
@@ -25,11 +26,6 @@ export interface InheritedInstanceHost {
     resource: Record<string, unknown>,
   ): Promise<ResourceInstance | null>;
 }
-
-/** Matches a CEL source that is exactly a `self.<path>` member access — resolved
- *  by direct navigation so live resource instances (which CEL's output type
- *  checker rejects) can flow through `base:` untouched. */
-const SELF_PATH = /^self((?:\.[A-Za-z_$][\w$]*)+)$/;
 
 interface Snapshotable {
   snapshot(): Record<string, unknown>;

@@ -14,7 +14,7 @@ import {
   openWorkspaceDirectory,
   readManifestUrlParam,
   reopenWorkspaceAt,
-  resolveTemplatesBaseUrl,
+  resolveStartersBaseUrl,
   VIRTUAL_WORKSPACE_ROOT,
   writeRemoteImportPlan,
 } from "../loader";
@@ -122,7 +122,7 @@ export interface WorkspaceLifecycle {
   /** Source for workspace file I/O; shared with file ops, run, and persist. */
   workspaceAdapterRef: React.RefObject<WorkspaceAdapter | null>;
   handleOpen: () => Promise<void>;
-  /** Creates and opens a new module (blank or from a template); throws
+  /** Creates and opens a new module (blank or from a starter); throws
    *  `ModuleExistsError` when the target exists and `overwrite` is unset. */
   createNewModule: (
     kind: ModuleKind,
@@ -425,7 +425,7 @@ export function useWorkspaceLifecycle({
     }
   }
 
-  // Creates a new module — blank or from a starter template — and opens it.
+  // Creates a new module — blank or from a starter — and opens it.
   // With a workspace open, it lands in that workspace (apps/ or libs/) and the
   // reload preserves existing tabs; with none open (first-run), it lands in a
   // fresh virtual workspace, mirroring the remote-open path. Throws
@@ -451,7 +451,7 @@ export function useWorkspaceLifecycle({
       kind,
       name,
       selection,
-      templatesBaseUrl: resolveTemplatesBaseUrl(settings),
+      startersBaseUrl: resolveStartersBaseUrl(settings),
       manifestSources,
       overwrite: opts?.overwrite,
     });
@@ -496,7 +496,7 @@ export function useWorkspaceLifecycle({
     }
 
     setToast({
-      title: selection.type === "template" ? "Template added" : "Module created",
+      title: selection.type === "starter" ? "Created from starter" : "Module created",
       description: `${name.trim()} is ready to edit.`,
     });
   }

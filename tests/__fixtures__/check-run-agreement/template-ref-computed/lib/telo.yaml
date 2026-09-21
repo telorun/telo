@@ -1,0 +1,40 @@
+# A template body building a reference slot with a CEL expression. CEL values
+# are data, so the handler a route needs cannot survive the `map`: this
+# library's own `telo check` reports `TEMPLATE_REF_COMPUTED`, and the kernel
+# fails the expression when an instance of the kind initializes.
+kind: Telo.Library
+metadata:
+  name: TemplateRefComputedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose template body computes a route list holding handler
+    references, which cannot carry a reference through CEL.
+imports:
+  Http: ../../../../../modules/http-server
+exports:
+  kinds: [Endpoints]
+---
+kind: Telo.Definition
+metadata:
+  name: Endpoints
+capability: Telo.Mount
+schema:
+  type: object
+  required: [endpoints]
+  properties:
+    endpoints:
+      type: array
+      items:
+        type: object
+        required: [path, handler]
+        properties:
+          path: { type: string }
+          handler:
+            x-telo-ref:
+              kind: Telo.Executable
+              use: trigger.inbound
+resources:
+  - kind: Http.Api
+    metadata: { name: api }
+    routes: !cel "self.endpoints.map(e, {'request': {'path': e.path, 'method': 'GET'}, 'handler': e.handler, 'returns': [{'status': 200}]})"
+mount: !ref api

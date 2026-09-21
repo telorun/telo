@@ -1,4 +1,5 @@
 import type { AppSettings, EditorState, EditorTab, ViewId } from "./model";
+import { migrateSettingsFields } from "./settings-field-migration";
 import { LOCAL_KEYS, LOCAL_PREFIXES } from "./storage-keys";
 
 const KEY = LOCAL_KEYS.uiState;
@@ -166,7 +167,7 @@ export function loadSettings(): AppSettings | null {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as AppSettings;
+    return migrateSettingsFields(JSON.parse(raw) as AppSettings);
   } catch {
     return null;
   }

@@ -2,8 +2,8 @@ import { Button } from "./ui/button";
 
 interface AppLifecyclePanelProps {
   onOpen: () => void;
-  /** Opens the starter-template gallery (app templates) in a fresh workspace. */
-  onStartFromTemplate: () => void;
+  /** Opens the starter gallery (app starters) in a fresh workspace. */
+  onStartFromStarter: () => void;
   /** `"chooser"` where a directory picker exists, `"single"` where every open
    *  resolves to the one browser-stored workspace — which is a different offer,
    *  not the same one worded differently. */
@@ -16,7 +16,7 @@ interface AppLifecyclePanelProps {
 
 export function AppLifecyclePanel({
   onOpen,
-  onStartFromTemplate,
+  onStartFromStarter,
   openMode,
   recentRootDir,
 }: AppLifecyclePanelProps) {
@@ -27,14 +27,14 @@ export function AppLifecyclePanel({
         <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">No workspace open</p>
         <p className="max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
           {chooser
-            ? "Start from a working template, or open a directory to load its modules. An empty directory becomes a new workspace — you can add applications and libraries from the sidebar."
-            : "Start from a working template, or create an empty workspace. This browser can't open a directory, so the workspace is kept in its own storage — you can add applications and libraries from the sidebar."}
+            ? "Start from a starter — a working app copied into your workspace — or open a directory to load its modules. An empty directory becomes a new workspace — you can add applications and libraries from the sidebar."
+            : "Start from a starter — a working app copied into your workspace — or create an empty workspace. This browser can't open a directory, so the workspace is kept in its own storage — you can add applications and libraries from the sidebar."}
         </p>
       </div>
       <div className="flex flex-col items-center gap-2">
         <div className="flex items-center gap-2">
-          <Button variant="default" onClick={onStartFromTemplate}>
-            Start from a template
+          <Button variant="default" onClick={onStartFromStarter}>
+            Start from a starter
           </Button>
           <Button variant="outline" onClick={onOpen}>
             {chooser ? "Open folder…" : "Create workspace"}

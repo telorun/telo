@@ -49,6 +49,8 @@ import type { ModuleFunctionIndex, ResolvedFunction } from "./module-function-in
 import type { CallableFlags, CallableFlagsIndex } from "./callable-flags.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
+import { valueDerivedContract } from "./value-derived-contract.js";
+import { inferredResultSchema } from "./step-result-inference.js";
 import { bodyForPath, templateBodies } from "./template-body.js";
 import {
   getManifestItem,
@@ -224,8 +226,9 @@ export function buildStepContextSchema(
         // A pure step dispatches nothing, so there is no contract to resolve.
         // Where its expression is a plain chain into something already typed —
         // an earlier step's result, or the kind's own inputs — that type carries
-        // through; anything else (arithmetic, a call, a comprehension) stays
-        // permissive rather than guessed. Same rule as a named binding's.
+        // through; anything else (arithmetic, a call, a comprehension) is typed
+        // by the CEL type its expression checks to, recorded when `steps` is
+        // registered with the environment (`step-result-inference.ts`).
         if (valueField && valueField in s) {
           const scopeRoot = {
             properties: {
@@ -236,7 +239,9 @@ export function buildStepContextSchema(
           const chained = schemaAtChain(bindingPathChain(s[valueField]), scopeRoot);
           stepProperties[name] = {
             type: "object",
-            properties: { result: chained ?? PERMISSIVE_CONTRACT },
+            properties: {
+              result: chained ?? inferredResultSchema(s[valueField]) ?? PERMISSIVE_CONTRACT,
+            },
           };
         }
         return;
@@ -261,10 +266,17 @@ export function buildStepContextSchema(
         invokedDef,
         contractScope,
       )?.schema;
+      const derived = outputSchema
+        ? undefined
+        : valueDerivedContract(
+            invokedManifest,
+            defs.effectiveSchemaOf(invokedDef) as Record<string, any> | undefined,
+            outputTypeField,
+          );
       stepProperties[name] = {
         type: "object",
         properties: {
-          result: outputSchema ?? PERMISSIVE_CONTRACT,
+          result: outputSchema ?? derived ?? PERMISSIVE_CONTRACT,
         },
       };
     });
@@ -469,8 +481,12 @@ export class CelScopeResolver {
     scopePrefix: string;
     manifest: Record<string, any>;
     stepContext: Record<string, any> | undefined;
+    inputsSchema: Record<string, any> | undefined;
     errorScopes: Map<string, Record<string, any>>;
   }> = [];
+  /** The input contract a step body's `inputs` is typed from, when the
+   *  resource or its kind declares one. */
+  private inputsSchema: Record<string, any> | undefined;
   /** The enclosing definition's `self` schema, resolved once per resource. A
    *  template body's contexts resolve against the BODY, so `self` — the one
    *  binding anchored on the definition — is substituted before they do. */
@@ -522,23 +538,36 @@ export class CelScopeResolver {
         )
       : undefined;
     this.errorScopes = collectErrorContextScopes(authorSchema);
+    const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests as Record<string, any>[]);
+    this.inputsSchema = this.stepContext
+      ? resolveContract("inputType", m as Record<string, any>, definition, contractScope)?.schema
+      : undefined;
     this.selfSchema =
       m.kind === "Telo.Definition" ? buildSelfSchema(m as Record<string, any>, defs, aliases) : undefined;
     this.bodyScopes = templateBodies(m, defs, aliases, scopes).map((body) => {
       const bodySchema = defs.effectiveSchemaOf(body.definition) as Record<string, any> | undefined;
+      const stepContext = bodySchema
+        ? buildStepContextSchema(
+            body.manifest as Record<string, any>,
+            bodySchema,
+            allManifests as Record<string, any>[],
+            defs,
+            aliases,
+            scopes,
+          )
+        : undefined;
       return {
         prefix: body.prefix,
         scopePrefix: body.scopePrefix,
         manifest: body.manifest as Record<string, any>,
-        stepContext: bodySchema
-          ? buildStepContextSchema(
+        stepContext,
+        inputsSchema: stepContext
+          ? resolveContract(
+              "inputType",
               body.manifest as Record<string, any>,
-              bodySchema,
-              allManifests as Record<string, any>[],
-              defs,
-              aliases,
-              scopes,
-            )
+              body.definition,
+              contractScope,
+            )?.schema
           : undefined,
         errorScopes: collectErrorContextScopes(bodySchema),
       };
@@ -631,6 +660,7 @@ export class CelScopeResolver {
 
     if (stepContext) {
       const base = matched ?? { type: "object", properties: {}, additionalProperties: true };
+      const declaredInputs = inBody ? inBody.inputsSchema : this.inputsSchema;
       matched = {
         ...base,
         properties: {
@@ -641,11 +671,15 @@ export class CelScopeResolver {
           // chain through it was never checked and the name's absence went
           // unnoticed until something asked whether the root existed.
           //
-          // OPEN, not typed from the kind's `inputType`: closing it would newly
-          // reject every read of an argument the contract does not spell out,
-          // which is a separate decision from knowing the name is legal.
+          // Typed from the resolved input contract — the one the kernel binds
+          // and validates every call against — so a misspelled argument is the
+          // same `CEL_UNKNOWN_FIELD` a misspelled request field is. It wins over
+          // a caller's view of the slot (a route's open `inputs`), since the
+          // contract is what every call is validated against. Open only where
+          // no contract is declared.
           inputs: { type: "object", additionalProperties: true },
           ...(base.properties ?? {}),
+          ...(declaredInputs ? { inputs: declaredInputs } : {}),
           steps: stepContext,
         },
       };

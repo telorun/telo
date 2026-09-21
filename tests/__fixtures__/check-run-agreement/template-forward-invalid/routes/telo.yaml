@@ -1,0 +1,42 @@
+# A kind whose instances list their routes, forwarded to the router untouched
+# with `routes: !cel "self.routes"`. It names the route fields and declares the
+# handler as a reference slot, and leaves every constraint to the router, which
+# checks each forwarded route as its own.
+kind: Telo.Library
+metadata:
+  name: TemplateForwardRoutes
+  version: 1.0.0
+  description: >-
+    Fixture library exporting a mountable router whose routes are supplied by the
+    instance and forwarded to the router verbatim.
+imports:
+  Http: ../../../../../modules/http-server
+exports:
+  kinds: [Routes]
+---
+kind: Telo.Definition
+metadata:
+  name: Routes
+capability: Telo.Mount
+schema:
+  type: object
+  required: [routes]
+  properties:
+    routes:
+      type: array
+      items:
+        type: object
+        properties:
+          request: { title: Request }
+          inputs: { title: Inputs }
+          returns: { title: Returns }
+          handler:
+            x-telo-ref:
+              kind: Telo.Executable
+              use: trigger.inbound
+              inputs: /inputs
+resources:
+  - kind: Http.Api
+    metadata: { name: api }
+    routes: !cel "self.routes"
+mount: !ref api

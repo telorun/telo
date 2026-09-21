@@ -100,18 +100,18 @@ export type { ImportableLibrary } from "./loader/queries";
 export { buildFileTree } from "./loader/file-tree";
 export type { FileNode } from "./loader/file-tree";
 export {
-  DEFAULT_TEMPLATES_BASE_URL,
-  fetchTemplateCatalog,
-  fetchTemplateFiles,
-  resolveTemplatesBaseUrl,
-  templateManifestUrl,
-} from "./loader/templates";
+  DEFAULT_STARTERS_BASE_URL,
+  fetchStarterCatalog,
+  fetchStarterFiles,
+  resolveStartersBaseUrl,
+  starterManifestUrl,
+} from "./loader/starters";
 export type {
-  TemplateCatalog,
-  TemplateCategory,
-  TemplateDescriptor,
-  TemplateFile,
-} from "./loader/templates";
+  StarterCatalog,
+  StarterCategory,
+  StarterDescriptor,
+  StarterFile,
+} from "./loader/starters";
 
 // ---------------------------------------------------------------------------
 // Workspace scan

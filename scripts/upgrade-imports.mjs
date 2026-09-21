@@ -8,7 +8,7 @@
 // select on content — a file with a top-level `imports:` block is a module doc by definition,
 // since a partial file may not carry one.
 //
-// Only `examples/`, `templates/` and `apps/` are scanned by default. `modules/`, `benchmarks/`,
+// Only `examples/`, `starters/` and `apps/` are scanned by default. `modules/`, `benchmarks/`,
 // `tests/` and the root test suite import by relative path (`../../modules/http-server`), which
 // carries no version to bump — passing them would print noise and change nothing.
 //
@@ -17,7 +17,7 @@
 // as a sibling import is upgraded once, and recursion is cycle-safe.
 //
 // Usage:
-//   node scripts/upgrade-imports.mjs                    # examples, templates, apps
+//   node scripts/upgrade-imports.mjs                    # examples, starters, apps
 //   node scripts/upgrade-imports.mjs --dry-run          # show what would change
 //   node scripts/upgrade-imports.mjs examples/todo-app  # narrow the scan to a subtree
 //   node scripts/upgrade-imports.mjs --include-prerelease
@@ -31,7 +31,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_ROOTS = ["examples", "templates", "apps"];
+const DEFAULT_ROOTS = ["examples", "starters", "apps"];
 
 // `.telo` holds the manifest/npm caches — copies of PUBLISHED manifests, whose pins are the
 // artifact's own and are not ours to rewrite. The rest are ordinary build/vendor noise.

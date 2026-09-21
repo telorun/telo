@@ -11,6 +11,7 @@ import { moduleAliasScope } from "./module-alias-scope.js";
 import { withRefSlotsAsReadings } from "./ref-slot-reading.js";
 import { inlineNamedShapes } from "./schema-compat.js";
 import { dispatchTargetOf } from "./template-body.js";
+import { valueDerivedContract } from "./value-derived-contract.js";
 // Where CEL is evaluated is one reader (`eval-paths.ts`), and the region half of
 // it moved there so the scope walk and the `x-telo-eval` walk answer the same
 // question in one place. Re-exported: this module is where every existing
@@ -70,6 +71,9 @@ export interface ContextResolveOpts {
      *  `!ref` is seen through. Optional so a caller holding no registry can still
      *  resolve the other annotations. */
     schemaForId?(id: string): Record<string, any> | undefined;
+    /** The author-facing schema, inheritance resolved. Falls back to the
+     *  definition's own `schema` when absent. */
+    effectiveSchemaOf?(definition: any): Record<string, unknown> | undefined;
   };
   aliases?: {
     resolveKind(kind: string): string | undefined;
@@ -586,6 +590,16 @@ export function resolveContextAnnotations(
           );
           if (resolved && typeof resolved === "object") {
             return resolved;
+          }
+          // Neither declares the contract: the instance's own value slot for it
+          // (a sequence's `outputs:`) is what it produces.
+          if (segments.length === 1) {
+            const derived = valueDerivedContract(
+              refManifest,
+              (defs.effectiveSchemaOf?.(def) ?? def.schema) as Record<string, any> | undefined,
+              segments[0]!,
+            );
+            if (derived) return derived;
           }
         }
       }

@@ -105,6 +105,10 @@ targets:
   - !ref exportedInstanceScopeRuns
   - !ref templateInputsShapeRootRuns
   - !ref templateInputsShapeNestedRuns
+  - !ref templateRefComputed
+  - !ref templateRefComputedAtRuntime
+  - !ref templateForwardInvalid
+  - !ref templateForwardInvalidAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -994,6 +998,48 @@ metadata:
 source: ./__fixtures__/check-run-agreement/template-inputs-shape/nested.yaml
 expect:
   runs: true
+---
+# A template body computing a value that holds a reference slot. Only a bare
+# `self.<path>` carries a reference across the boundary; anything CEL evaluates
+# is data. Reported where the body is written…
+kind: Assert.Manifest
+metadata:
+  name: templateRefComputed
+source: ./__fixtures__/check-run-agreement/template-ref-computed/lib/telo.yaml
+expect:
+  errors:
+    - code: TEMPLATE_REF_COMPUTED
+      message: "holds the reference slot 'routes[].handler'"
+---
+# …and failed by the kernel's CEL evaluation when an instance initializes, from a
+# consumer whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: templateRefComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/template-ref-computed/telo.yaml
+expect:
+  runFails: "Unsupported type"
+---
+# A value a template body forwards with a bare `self.<path>` is a field of the
+# ENTRY's kind at boot, so it is checked as one: a forwarded route whose status
+# is not an integer is reported at the route the declaring module wrote…
+kind: Assert.Manifest
+metadata:
+  name: templateForwardInvalid
+source: ./__fixtures__/check-run-agreement/template-forward-invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: DEPENDENT_SCHEMA_MISMATCH
+      message: "'routes' is forwarded into the Http.Api entry 'api' as 'routes', which checks it as its own field — 'routes[0].returns' does not match schema from 'HttpDispatch.Outcomes/$defs/Returns': /0/status must be integer"
+---
+# …and refused by the router's own validation when that module is imported,
+# from a consumer whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: templateForwardInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/template-forward-invalid/telo.yaml
+expect:
+  runFails: "/routes/0/returns/0/status must be integer"
 ---
 # A CEL value under a map described only by `additionalProperties` — a header
 # map, or a kind's `schema.properties` whose description quotes `${{ … }}` —

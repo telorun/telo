@@ -24,7 +24,7 @@ All three paths share the same analyzer, so a manifest authored in one tool is c
 
 A typical authoring cycle:
 
-1. **Start from a template** — [Getting Started](/learn/getting-started) walks through a minimal `Telo.Application`; the [Examples](/examples) index has runnable manifests for common patterns (HTTP API, chat console, scheduled job).
+1. **Start from a working manifest** — [Getting Started](/learn/getting-started) walks through a minimal `Telo.Application`; the [Examples](/examples) index has runnable manifests for common patterns (HTTP API, chat console, scheduled job).
 2. **Declare imports** in the `imports:` map and pin each to an exact version. `telo upgrade` refreshes those pins; the [CLI reference](/learn/installation-and-cli) covers every command in detail.
 3. **Compose resources** — invokes, sequences, routers, services. The [Kernel reference](/reference/kernel) explains the building blocks; the [Standard Library](/reference/standard-library) is the surface you import from.
 4. **Run it** — `telo ./manifest.yaml` runs locally; [Telo Studio](/build/studio)'s Deployment view spawns it in a container.

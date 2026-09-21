@@ -1,0 +1,111 @@
+kind: Telo.Application
+metadata:
+  name: OrderWorkflows
+  version: 1.0.0
+  description: |
+    A workflow app built on the WorkflowApp blueprint: two workflows, each
+    served as its own endpoint. There is no server, router or route to write —
+    only the workflows.
+
+    Run, then:
+        curl -X POST localhost:8848/orders/quote -H 'content-type: application/json' \
+          -d '{"items":[{"price":12,"quantity":2},{"price":5,"quantity":1}]}'
+        curl -X POST localhost:8848/greet -H 'content-type: application/json' \
+          -d '{"name":"Ada"}'
+imports:
+  WorkflowApp: ..
+  Run: ../../../modules/run
+targets:
+  - !ref app
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8848
+---
+kind: WorkflowApp.App
+metadata:
+  name: app
+port: !cel "ports.http"
+title: Orders
+workflows:
+  - request:
+      path: /orders/quote
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                required: [price, quantity]
+                properties:
+                  price: { type: integer, minimum: 0 }
+                  quantity: { type: integer, minimum: 1 }
+    inputs:
+      items: !cel "request.body.items"
+    handler:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  price: { type: integer }
+                  quantity: { type: integer }
+      steps:
+        # `sum` is a double; `int(...)` brings it into the integer domain the
+        # shipping rule and the total are written in.
+        - name: subtotal
+          value: !cel "int(sum(inputs.items.map(i, i.price * i.quantity)))"
+        - name: shipping
+          value: !cel "steps.subtotal.result >= 50 ? 0 : 7"
+      outputs:
+        subtotal: !cel "steps.subtotal.result"
+        shipping: !cel "steps.shipping.result"
+        total: !cel "steps.subtotal.result + steps.shipping.result"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  - request:
+      path: /greet
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string }
+    inputs:
+      name: !cel "request.body.name"
+    handler:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string }
+      steps:
+        - name: greeting
+          value: !cel "'Hello, ' + inputs.name + '!'"
+      outputs:
+        greeting: !cel "steps.greeting.result"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"

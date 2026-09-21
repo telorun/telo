@@ -321,8 +321,8 @@ function rootSchema(isApplication: boolean): Record<string, unknown> {
 }
 
 /** Schema for the detail-panel form when a module root is selected. Exposes
- *  only `variables` / `secrets` as editable maps — `targets` is edited on the
- *  canvas as edges, `ports` in the deployment view. Branches on kind because
+ *  only `variables` / `secrets` as editable maps — `targets` and `logging` are
+ *  edited from the module bar, `ports` in the deployment view. Branches on kind because
  *  Application entries are env bindings while Library entries are plain
  *  JSON-Schema declarations (see `bindingEntrySchema`). */
 export function moduleRootFormSchema(isApplication: boolean): Record<string, unknown> {
@@ -352,8 +352,8 @@ export function moduleRootKind(manifest: ParsedManifest): AvailableKind {
 
 /** A `ParsedResource`-shaped projection of the module root, keyed by the module
  *  name. `fields` mirrors the root's editable blocks; `variables` / `secrets`
- *  are shared by both kinds, while `targets` / `ports` are Application-only and
- *  `exports` is the Library's counterpart to them. */
+ *  are shared by both kinds, while `targets` / `ports` / `logging` are
+ *  Application-only and `exports` is the Library's counterpart to them. */
 export function moduleRootResource(manifest: ParsedManifest): ParsedResource {
   const fields: Record<string, unknown> = { metadata: manifest.metadata };
   const imports = inlineImportEntries(manifest);
@@ -363,6 +363,7 @@ export function moduleRootResource(manifest: ParsedManifest): ParsedResource {
   if (manifest.kind === "Application") {
     fields.targets = manifest.targets;
     if (manifest.ports) fields.ports = manifest.ports;
+    if (manifest.logging) fields.logging = manifest.logging;
   } else if (manifest.exports) {
     fields.exports = manifest.exports;
   }

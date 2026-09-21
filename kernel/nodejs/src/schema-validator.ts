@@ -23,7 +23,7 @@ import { ruleCondition, stampRuleCallNames } from "./type-rule-condition.js";
 /** Render a value for an error message without ever throwing — the offending
  *  data may be cyclic, and a throw here would REPLACE the validation failure
  *  with an unrelated error naming no field. */
-function describeValue(data: unknown): string {
+export function describeValue(data: unknown): string {
   try {
     return JSON.stringify(data) ?? String(data);
   } catch {

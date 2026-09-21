@@ -2215,6 +2215,7 @@ export class Kernel implements IKernel {
     // it, and the trace site has only the instance. Lazily, so a contract is
     // still compiled on first dispatch rather than at create time.
     if (input) recordSensitivePaths(instance, "inputType", () => input.sensitivePaths());
+    if (input) impl.setInputScalarPaths(() => input.scalarPaths());
     if (output) recordSensitivePaths(instance, "outputType", () => output.sensitivePaths());
 
     bindContract(instance, {

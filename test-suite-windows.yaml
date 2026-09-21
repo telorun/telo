@@ -28,9 +28,12 @@ exclude:
   # Same as the root suite: most examples pin published module versions, and an
   # example with tests is run from ITS OWN suite, which CI invokes explicitly.
   - "examples/**"
-  # A template's tests run the template, which imports published modules. See
-  # `test-suite.yaml`; `templates/test-suite.yaml` runs them.
-  - "templates/**"
+  # A starter's tests run the starter, which imports published modules. See
+  # `test-suite.yaml`; `starters/test-suite.yaml` runs them.
+  - "starters/**"
+  # A blueprint imports published modules too. See `test-suite.yaml`;
+  # `blueprints/test-suite.yaml` runs them.
+  - "blueprints/**"
   # Generated and gitignored — the authoring agent's e2e output. See
   # `test-suite.yaml` for why discovering it also double-ran its nested suite.
   - "workspace/**"

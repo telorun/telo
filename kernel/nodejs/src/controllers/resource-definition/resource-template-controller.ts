@@ -13,6 +13,7 @@ import {
   mergeCelEvalSites,
   NO_CEL_EVAL_SITES,
   pathMatchesScope,
+  SELF_PATH,
   type CelEvalSites,
 } from "@telorun/analyzer";
 import { isCompiledValue, RuntimeError, type ResourceDefinition } from "@telorun/sdk";
@@ -66,10 +67,6 @@ function isDeferredPath(sites: CelEvalSites, path: string): boolean {
 function referencesBeyondSelf(value: CompiledValue): boolean {
   return (value.refs ?? []).some((r) => r !== "self");
 }
-
-/** Matches a CEL source that is exactly a `self.<path>` member access (capturing
- *  the `.<path>` tail) — the form resolved by direct navigation rather than CEL. */
-const SELF_PATH = /^self((?:\.[A-Za-z_$][\w$]*)+)$/;
 
 /** Reports the resources: entries available to dispatch against, by EXPANDED
  *  name and kind — an entry may still be named by a CEL template, so the raw

@@ -50,6 +50,8 @@ describe("http-server request cancellation", () => {
       ensureKindRef: () => ({ kind: "Test.Handler", name: "SlowWork" }),
       moduleContext: { expandWith: (value: unknown) => value },
       createCancellationSource: () => createCancellationSource(),
+      // As the kernel reads a string body: nothing to decode, no integer to type.
+      readPlainEncoded: (value: unknown) => value,
       // As the kernel implements it: an inbound registrant dispatches through a
       // context it minted rather than the ambient (execution-zones spec §7), and
       // the request's cancellation token rides in on it — which is what makes

@@ -36,11 +36,15 @@ exclude:
   # invocation is not optional: excluding them here and adding no other caller is
   # how the only example about testing ended up tested by nothing.
   - "examples/**"
-  # A template's tests run the template, which imports PUBLISHED modules for the
+  # A starter's tests run the starter, which imports PUBLISHED modules for the
   # same reason an example does — it is copied verbatim, so it must not point at
-  # this workspace. Same split, same reason: `templates/test-suite.yaml` runs
+  # this workspace. Same split, same reason: `starters/test-suite.yaml` runs
   # them, and CI invokes it.
-  - "templates/**"
+  - "starters/**"
+  # A blueprint is published outside `modules/`, so it imports what it builds on
+  # as PUBLISHED modules too. Same split: `blueprints/test-suite.yaml` runs them,
+  # and CI invokes it.
+  - "blueprints/**"
   # GENERATED, and gitignored: the authoring agent's e2e writes the apps it
   # builds here, so this directory does not exist on a clean checkout and its
   # contents are whatever the last run produced. Discovering it also ran the

@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DirEntry, WorkspaceAdapter } from "../model";
 import { materializeModule, ModuleExistsError } from "./crud";
-import type { TemplateDescriptor } from "./templates";
+import type { StarterDescriptor } from "./starters";
 
-// The template path calls out to the network via `fetchTemplateFiles`; stub it
+// The starter path calls out to the network via `fetchStarterFiles`; stub it
 // so the atomicity test can force a fetch failure deterministically.
-vi.mock("./templates", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./templates")>();
-  return { ...actual, fetchTemplateFiles: vi.fn(async () => { throw new Error("offline"); }) };
+vi.mock("./starters", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./starters")>();
+  return { ...actual, fetchStarterFiles: vi.fn(async () => { throw new Error("offline"); }) };
 });
 
 function memAdapter(existing: Record<string, DirEntry[]> = {}) {
@@ -28,8 +28,8 @@ function memAdapter(existing: Record<string, DirEntry[]> = {}) {
   return { adapter, writes, deleted };
 }
 
-const CTX = { templatesBaseUrl: "https://x.dev", manifestSources: [] };
-const TEMPLATE: TemplateDescriptor = {
+const CTX = { startersBaseUrl: "https://x.dev", manifestSources: [] };
+const STARTER: StarterDescriptor = {
   id: "t",
   title: "T",
   description: "",
@@ -104,7 +104,7 @@ describe("materializeModule — overwrite", () => {
 });
 
 describe("materializeModule — atomicity", () => {
-  it("does not delete the existing directory when the template fetch fails", async () => {
+  it("does not delete the existing directory when the starter fetch fails", async () => {
     const { adapter, deleted, writes } = memAdapter({
       "/ws/apps/notes": [{ name: "index.html", isDirectory: false }],
     });
@@ -112,7 +112,7 @@ describe("materializeModule — atomicity", () => {
       materializeModule(adapter, "/ws", {
         kind: "Application",
         name: "Notes",
-        selection: { type: "template", template: TEMPLATE },
+        selection: { type: "starter", starter: STARTER },
         overwrite: true,
         ...CTX,
       }),

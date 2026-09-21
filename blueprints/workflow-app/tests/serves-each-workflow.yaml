@@ -1,0 +1,73 @@
+kind: Telo.Application
+metadata:
+  name: WorkflowAppBlueprintTest
+  version: 1.0.0
+  description: >-
+    Runs the example app built on the WorkflowApp blueprint and calls each
+    workflow at its own endpoint — the blueprint's whole promise is that
+    declaring a workflow is enough to serve it.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../example/telo.yaml
+    ports:
+      http: 8849
+targets:
+  - !ref app
+steps:
+  - name: quote
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8849/orders/quote
+      method: POST
+      body:
+        items:
+          - { price: 12, quantity: 2 }
+          - { price: 5, quantity: 1 }
+  - name: verifyQuote
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.quote.result.status"
+        body: !cel "steps.quote.result.body"
+      expected:
+        status: 200
+        body: { subtotal: 29, shipping: 7, total: 36 }
+
+  - name: greet
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8849/greet
+      method: POST
+      body: { name: Ada }
+  - name: verifyGreeting
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.greet.result.status"
+        body: !cel "steps.greet.result.body"
+      expected:
+        status: 200
+        body: { greeting: "Hello, Ada!" }
+
+  - name: badQuote
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8849/orders/quote
+      method: POST
+      body: { items: [ { price: 12 } ] }
+  - name: verifyRejected
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.badQuote.result.status"
+      expected: 400

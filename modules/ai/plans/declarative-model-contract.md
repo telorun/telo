@@ -444,7 +444,7 @@ one final version each, declaring `metadata.deprecated` and nothing else.
 
 **The in-repo consumers move in the same change.** Naming `OpenaiModel` today:
 `examples/chat-console`, `examples/agent-console`, `examples/draw-shapes-agent`,
-`templates/apps/ai-agent-console`, `apps/authoring-agent/chat`, and the four
+`starters/apps/ai-agent-console`, `apps/authoring-agent/chat`, and the four
 `modules/ai-openai/tests/*.yaml` that travel with the module. Of those,
 `examples/chat-console` and `apps/authoring-agent/chat` gain a second resource, since
 `Ai.TextStream` and `Ai.AgentStream` now need an `Ai.ModelStream`. One test changes

@@ -5,6 +5,14 @@ export interface ControllerContext {
   emit(event: string, payload?: any, metadata?: Record<string, any>): void;
   acquireHold(reason?: string): () => void;
   requestExit(code: number): void;
+  /**
+   * Evaluate the CEL in `value` against `context`.
+   *
+   * `inputs` in `context` is reserved for THIS resource's own call arguments:
+   * the kernel reads it through the resource's bound input contract, so a
+   * declared `integer` is a CEL int however it arrived. Bind another resource's
+   * arguments under a different name. The same holds for {@link bindScope}.
+   */
   expandValue(value: any, context: Record<string, any>): any;
   /**
    * Extend a CEL scope with a kind's named `bindings:` map — the field a schema

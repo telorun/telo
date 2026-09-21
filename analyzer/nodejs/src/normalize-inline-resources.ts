@@ -54,7 +54,7 @@ function sanitizeName(raw: string): string {
  *  nodes (`{__compiled, source, call?}`) are opaque leaves carrying functions —
  *  copied by reference, never descended into — matching how `resolveRefSentinels`
  *  and `manifest-visitor` short-circuit on `__compiled`. */
-function cloneForMutation(value: unknown): unknown {
+export function cloneForMutation(value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
   if ((value as { __compiled?: unknown }).__compiled) return value;
   if (Array.isArray(value)) return value.map(cloneForMutation);

@@ -43,7 +43,7 @@ export function isEntryPoint(node: GraphNode, graph: ModuleGraph): boolean {
  * than leaves to the solver.
  *
  * ELK's own layering minimises total edge length, which answers a different
- * question: on the agent template it put a boot target three columns out from
+ * question: on the agent starter it put a boot target three columns out from
  * the application booting it, and a console handler three columns past the
  * sequence calling it — both one hop away. So this is handed over as a layer
  * constraint, and a column means hops from the way in.

@@ -1,0 +1,31 @@
+# A route forwarded into the router with a status that is not an integer. This
+# library's own `telo check` reports it at the route it wrote, as the router's
+# own field; a consumer's entry-scoped check cannot see it, and the router
+# refuses it when the library is imported.
+kind: Telo.Library
+metadata:
+  name: TemplateForwardInvalidLib
+  version: 1.0.0
+  description: >-
+    Fixture library declaring a forwarded route whose response status is not an
+    integer, which the router it is forwarded into refuses.
+imports:
+  Routes: ../routes
+  Run: ../../../../../modules/run
+---
+kind: Routes.Routes
+metadata:
+  name: orders
+routes:
+  - request:
+      path: /orders
+      method: GET
+    handler:
+      kind: Run.Value
+      value:
+        ok: true
+    returns:
+      - status: notanumber
+        content:
+          application/json:
+            body: !cel "result"

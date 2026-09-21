@@ -1,0 +1,20 @@
+# Consumes the library next door. Its analysis is entry-scoped, so the
+# library's computed reference is invisible here by design — the kernel's CEL
+# evaluation is what refuses it at boot.
+kind: Telo.Application
+metadata:
+  name: TemplateRefComputedApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Run: ../../../../modules/run
+---
+kind: Lib.Endpoints
+metadata:
+  name: endpoints
+endpoints:
+  - path: /hello
+    handler:
+      kind: Run.Value
+      value:
+        greeting: hello

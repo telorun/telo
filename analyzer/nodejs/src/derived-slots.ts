@@ -39,6 +39,7 @@ import { readStepSlot } from "./step-slot.js";
 import { dispatchTargetOf } from "./template-body.js";
 import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
+import { resolveScopeValues, valueSchemaSlots } from "./value-schema-slot.js";
 
 /** What resolving a site needs from its host. */
 export interface DerivedSlotContext {
@@ -271,7 +272,7 @@ export function valueSchemaSites(
 ): ValueSchemaSite[] {
   if (!defSchema) return [];
   const out: ValueSchemaSite[] = [];
-  for (const { scope, from } of valueSchemaAnnotations(defSchema, "$")) {
+  for (const { scope, from } of valueSchemaSlots(defSchema)) {
     const schema = resolveTypeFieldToSchema(manifest[from], ctx.typeManifests);
     if (!schema || typeof schema !== "object") continue;
     for (const { path, value } of resolveScopeValues(manifest, scope)) {
@@ -279,63 +280,6 @@ export function valueSchemaSites(
     }
   }
   return out;
-}
-
-const VALUE_SCHEMA_ANNOTATION = "x-telo-value-schema-from";
-
-function valueSchemaAnnotations(
-  schema: Record<string, any>,
-  path: string,
-): Array<{ scope: string; from: string }> {
-  if (!schema || typeof schema !== "object") return [];
-  const out: Array<{ scope: string; from: string }> = [];
-  const from = schema[VALUE_SCHEMA_ANNOTATION];
-  if (typeof from === "string" && from.length > 0) out.push({ scope: path, from });
-  if (schema.properties) {
-    for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {
-      out.push(...valueSchemaAnnotations(value, `${path}.${key}`));
-    }
-  }
-  if (schema.items && typeof schema.items === "object") {
-    out.push(...valueSchemaAnnotations(schema.items, `${path}[*]`));
-  }
-  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
-    if (Array.isArray(schema[key])) {
-      for (const sub of schema[key]) out.push(...valueSchemaAnnotations(sub, path));
-    }
-  }
-  return out;
-}
-
-/** Expand a `$.a[*].b` scope into the concrete values present, each with its path. */
-function resolveScopeValues(
-  manifest: Record<string, any>,
-  scope: string,
-): Array<{ path: string; value: unknown }> {
-  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
-  if (!stripped) return [];
-  let frontier: Array<{ path: string; value: unknown }> = [{ path: "", value: manifest }];
-  for (const segment of stripped.split(".")) {
-    const wildcard = segment.endsWith("[*]");
-    const name = wildcard ? segment.slice(0, -3) : segment;
-    const next: Array<{ path: string; value: unknown }> = [];
-    for (const entry of frontier) {
-      const container = entry.value as Record<string, unknown> | undefined;
-      if (!container || typeof container !== "object") continue;
-      const child = container[name];
-      if (child === undefined) continue;
-      const childPath = entry.path ? `${entry.path}.${name}` : name;
-      if (!wildcard) {
-        next.push({ path: childPath, value: child });
-        continue;
-      }
-      if (!Array.isArray(child)) continue;
-      child.forEach((item, i) => next.push({ path: `${childPath}[${i}]`, value: item }));
-    }
-    frontier = next;
-    if (frontier.length === 0) break;
-  }
-  return frontier;
 }
 
 /**

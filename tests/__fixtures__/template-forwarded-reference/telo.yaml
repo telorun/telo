@@ -1,0 +1,52 @@
+# A mountable kind whose instances list their routes; the template body hands
+# the list to an `Http.Api` untouched. `routes: !cel "self.routes"` is the one
+# CEL form that carries a reference across a template boundary — each route's
+# handler reaches the router as the live instance the consumer declared.
+kind: Telo.Library
+metadata:
+  name: ForwardedRoutes
+  version: 1.0.0
+  description: >-
+    Fixture library exporting a mountable router whose routes, handlers
+    included, are supplied by the instance and forwarded to the router verbatim.
+imports:
+  Http: ../../../modules/http-server
+exports:
+  kinds: [Routes]
+---
+kind: Telo.Definition
+metadata:
+  name: Routes
+capability: Telo.Mount
+schema:
+  type: object
+  required: [routes]
+  properties:
+    routes:
+      type: array
+      items:
+        type: object
+        required: [request, handler, returns]
+        additionalProperties: false
+        properties:
+          request:
+            type: object
+            required: [path, method]
+            properties:
+              path: { type: string }
+              method: { type: string }
+          handler:
+            x-telo-ref:
+              kind: Telo.Executable
+              use: trigger.inbound
+          returns:
+            type: array
+            x-telo-context:
+              type: object
+              properties:
+                result: {}
+resources:
+  - kind: Http.Api
+    metadata: { name: api }
+    routes: !cel "self.routes"
+mount: !ref api

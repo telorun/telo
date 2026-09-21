@@ -68,7 +68,7 @@ const LAYOUT_OPTIONS: Record<string, string> = {
  * for.
  *
  * ELK's default layering minimises total edge length, which is a different
- * question from "how far along the flow is this": on the agent template it put
+ * question from "how far along the flow is this": on the agent starter it put
  * a boot target three columns out from the application that boots it, and a
  * console handler three columns past the sequence that calls it — both one hop
  * away, both drawn as though they were deep in the chain. The ranks were

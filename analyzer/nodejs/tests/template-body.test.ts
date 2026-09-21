@@ -218,6 +218,81 @@ describe("template body: reference slots inside entries", () => {
     expect(codes(diags, "INVALID_REFERENCE_FORM")).toEqual([]);
   });
 
+  it("refuses a computed expression at a reference slot or above one", () => {
+    const routerKind = {
+      kind: "Telo.Definition",
+      metadata: { name: "Router", module: "sql" },
+      capability: "Telo.Mount",
+      schema: {
+        type: "object",
+        properties: {
+          routes: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                handler: { "x-telo-ref": { kind: "sql.Query", use: "call" } },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as ResourceManifest;
+    const diags = analyze(
+      queryKind,
+      connectionKind,
+      routerKind,
+      template({
+        resources: [
+          { kind: "sql.Query", metadata: { name: "query" }, connection: cel("true ? self.a : self.b") },
+          {
+            kind: "sql.Router",
+            metadata: { name: "router" },
+            routes: cel("self.items.map(i, {'handler': i.handler})"),
+          },
+        ],
+      }),
+    );
+    const computed = codes(diags, "TEMPLATE_REF_COMPUTED");
+    expect(computed.map((d) => d.data?.path)).toEqual([
+      "resources[0].connection",
+      "resources[1].routes",
+    ]);
+  });
+
+  it("accepts a bare `self.<path>` forwarding a whole value that holds references", () => {
+    const routerKind = {
+      kind: "Telo.Definition",
+      metadata: { name: "Router", module: "sql" },
+      capability: "Telo.Mount",
+      schema: {
+        type: "object",
+        properties: {
+          routes: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                handler: { "x-telo-ref": { kind: "sql.Query", use: "call" } },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as ResourceManifest;
+    const diags = analyze(
+      queryKind,
+      routerKind,
+      template({
+        resources: [
+          { kind: "sql.Query", metadata: { name: "query" } },
+          { kind: "sql.Router", metadata: { name: "router" }, routes: cel("self.routes") },
+        ],
+      }),
+    );
+    expect(codes(diags, "TEMPLATE_REF_COMPUTED")).toEqual([]);
+  });
+
   it("leaves a published dependency's body alone", () => {
     const diags = analyze(
       queryKind,

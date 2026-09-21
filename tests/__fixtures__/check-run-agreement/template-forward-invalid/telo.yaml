@@ -1,0 +1,9 @@
+# Imports the library next door. Its analysis is entry-scoped, so the malformed
+# route inside the library is invisible here by design — the router's own
+# validation is what refuses it when the library initializes.
+kind: Telo.Application
+metadata:
+  name: TemplateForwardInvalidApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

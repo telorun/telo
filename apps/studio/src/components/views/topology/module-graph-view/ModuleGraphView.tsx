@@ -21,7 +21,18 @@ import { isRecord } from "../../../../lib/utils";
 import { readConcretePath } from "../../../../lib/concrete-path";
 import { resolveRef } from "../../../../schema-utils";
 import type { RefWrite } from "../application-canvas-model";
+import {
+  BOOT_FIELD,
+  bootEntries,
+  bootEntryPointer,
+  bootMarkers,
+  canStartAtBoot,
+  withBootTarget,
+  withoutBootEntries,
+  type BootMarker,
+} from "../boot-targets";
 import type { TopologyViewProps } from "../topology-view";
+import { leavesModuleRoot, withoutModuleRoot } from "./module-root";
 import { isEntryPoint } from "./placement";
 import { isImportedInstance, nodesReaching, offCanvasNodes } from "./off-canvas";
 import { resolveMirrors } from "./mirrors";
@@ -68,6 +79,10 @@ import { suggestedResourceName } from "../../../../resource-naming";
  * only ever HELD collapses to the name in its slot's picker, with the target
  * itself moved to a drawer rather than left as a box no line reaches.
  *
+ * The module root is the one declaration that is not a box: the side panel
+ * lists what it declares, and its boot sequence is a marker on each resource it
+ * starts (see `module-root.ts`, `boot-targets.ts`).
+ *
  * Layout and edge routing are ELK's (see `elk-layout.ts`), solved together over
  * fixed ports: an edge leaves the exact row it was declared on, and the target
  * is placed to suit. Nothing is dragged and nothing is persisted — the view
@@ -88,7 +103,7 @@ const VIEWPORT_KEY = "graph";
 interface ViewState {
   /** Branches the reader has PUT AWAY, as `<node id><property>` keys. Stored as
    *  the exception rather than the rule: a branch's rows are its content — the
-   *  routes, the steps, the boot order — so hiding them by default shows a
+   *  routes, the steps, the mounts — so hiding them by default shows a
    *  canvas of summaries and makes opening every branch the price of reading the
    *  module. */
   collapsed?: string[];
@@ -142,7 +157,6 @@ function edgeStyle(
 ): { stroke: string; strokeWidth: number; strokeDasharray?: string } {
   const base = ((): { stroke: string; strokeWidth: number; strokeDasharray?: string } => {
     if (edge.class === "data") return { stroke: "#8b5cf6", strokeWidth: 1, strokeDasharray: "2 3" };
-    if (edge.boot) return { stroke: "#6366f1", strokeWidth: 1.6 };
     if (edge.class === "holds") return { stroke: "#a1a1aa", strokeWidth: 1 };
     if (edge.use.includes("detached"))
       return { stroke: "#0ea5e9", strokeWidth: 1.4, strokeDasharray: "4 3" };
@@ -160,6 +174,7 @@ export function ModuleGraphView({
   registry,
   viewData,
   selectedResource,
+  resource,
   state,
   onStateChange,
   onSelect,
@@ -259,7 +274,7 @@ export function ModuleGraphView({
     const heldBy = new Map<string, number>();
     const drawn: GraphEdge[] = [];
     for (const edge of moduleGraph.edges) {
-      if (edge.class === "shape") continue;
+      if (edge.class === "shape" || leavesModuleRoot(moduleGraph, edge)) continue;
       // A data read is a real dependency and a noisy one: it is drawn when the
       // resource it concerns is selected, which is when a reader is asking.
       if (edge.class === "data") {
@@ -338,11 +353,15 @@ export function ModuleGraphView({
     [moduleGraph, visible],
   );
 
-  /** What the layout is given: the visible set less what moved to a drawer. */
+  /** What the layout is given: the visible set less what moved to a drawer and
+   *  the module root, which is never a box — see `module-root.ts`. */
   const placedIds = useMemo(() => {
-    if (!offCanvas) return visible.nodes;
-    return new Set([...visible.nodes].filter((id) => !offCanvas.ids.has(id)));
-  }, [visible, offCanvas]);
+    if (!moduleGraph || !offCanvas) return visible.nodes;
+    return withoutModuleRoot(
+      moduleGraph,
+      new Set([...visible.nodes].filter((id) => !offCanvas.ids.has(id))),
+    );
+  }, [moduleGraph, visible, offCanvas]);
 
   const sourcePathOf = useCallback(
     (edge: GraphEdge) => sourceHandlePath(moduleGraph, edge, isOpen),
@@ -466,36 +485,26 @@ export function ModuleGraphView({
   );
 
   /**
-   * The schema of the ENTRY a row stands for — see `entry-schema.ts`.
-   *
-   * The module root is the one node whose schema does not come from the kind
-   * table: the view projects a placeholder for it (`targets` is edited on the
-   * canvas, so the projection declares it as a list of names), and the real
-   * shape — the union a boot target actually is — is the kernel built-in the
-   * registry holds. Every other kind's schema is the canonicalized one the panel
-   * itself renders from, so an entry form and a resource form cannot disagree
-   * about what a field is.
+   * The schema of the ENTRY a row stands for — see `entry-schema.ts`. The kind's
+   * schema is the canonicalized one the panel itself renders from, so an entry
+   * form and a resource form cannot disagree about what a field is.
    */
   const entrySchemaOf = useCallback(
     (node: GraphNode, row: GraphRow) => {
-      const schema = node.root
-        ? (registry?.resolveDefinitionIn(node.kind, node.module)?.schema as
-            | Record<string, unknown>
-            | undefined)
-        : viewData.kinds.get(node.canonicalKind ?? node.kind)?.schema;
+      const schema = viewData.kinds.get(node.canonicalKind ?? node.kind)?.schema;
       const declared = viewData.manifest.resources.find(
         (resource) => resource.kind === node.kind && resource.name === node.name,
       );
       return entrySchemaFor(schema, row.array, readConcretePath(declared?.fields, row.path));
     },
-    [registry, viewData],
+    [viewData],
   );
 
   /**
    * What clicking a row shows in the panel beside the canvas.
    *
-   * **A row IS an entry, and that is what it opens.** A boot target, a mount, a
-   * route, a step is a line of its host's configuration, and it carries its own:
+   * **A row IS an entry, and that is what it opens.** A mount, a route, a step
+   * is a line of its host's configuration, and it carries its own:
    * a guard, an argument map, a retry budget, a path and a method. Selecting the
    * host answered a question the reader did not ask — its whole body, with the
    * one line they clicked somewhere inside it — and selecting the RESOURCE at
@@ -546,8 +555,8 @@ export function ModuleGraphView({
    * The SAME rule the drag and a picked slot's select use, so the three ways of
    * filling one slot cannot disagree about what fills it — and it is what keeps
    * an imported instance reachable now that it is a drawer row rather than a box
-   * to drop onto. Per SITE, not per module: a boot target accepts a dozen kinds
-   * in a real app while a connection slot accepts exactly one.
+   * to drop onto. Per SITE, not per module: a step's `invoke:` accepts a dozen
+   * kinds in a real app while a connection slot accepts exactly one.
    */
   const wireOptions = useMemo(() => {
     if (!wiring || !moduleGraph || !refResolver) return undefined;
@@ -568,9 +577,8 @@ export function ModuleGraphView({
   /**
    * Fill the open site with a name, or with a resource created for it.
    *
-   * WHICH spelling the reference lands in follows from what was picked — a boot
-   * target's bare entry takes a Runnable, its `invoke:` takes any Executable —
-   * so a reader picks a resource and never a syntax. A choice no spelling
+   * WHICH spelling the reference lands in follows from what was picked — a site
+   * with several spellings accepts different kinds at each — so a reader picks a resource and never a syntax. A choice no spelling
    * accepts is dropped rather than written somewhere it would fail: the picker
    * offered only what one of them takes, so there is nothing to report.
    */
@@ -595,6 +603,60 @@ export function ModuleGraphView({
       setWiring(null);
     },
     [wiring, moduleGraph, refResolver, onWriteRef],
+  );
+
+  /** The boot sequence, as the markers on the resources it starts. `resource`
+   *  is the module root — the canvas's own resource — and a Library has no
+   *  `targets:`, so it marks nothing. */
+  const bootMarkersById = useMemo(
+    () =>
+      moduleGraph
+        ? bootMarkers(bootEntries(resource.fields[BOOT_FIELD]), moduleGraph)
+        : new Map<string, BootMarker[]>(),
+    [moduleGraph, resource],
+  );
+
+  /** Writes land in the module root, so the toggle needs IT to be editable. */
+  const bootEditable =
+    !!moduleGraph?.root &&
+    (!moduleGraph.root.module || isEditableModule(moduleGraph.root.module));
+
+  /**
+   * Start a resource at boot, or stop starting it.
+   *
+   * On appends a bare `!ref` — the one spelling that means only "start this".
+   * Off removes every entry that starts it, a lone one as a sequence edit so the
+   * rest keep their tags and comments; several at once go through one field
+   * write, since two sequence edits in a row would each read the workspace the
+   * other had not written yet.
+   */
+  const toggleBoot = useCallback(
+    (node: GraphNode) => {
+      const targets = resource.fields[BOOT_FIELD];
+      const started = bootMarkersById.get(node.id) ?? [];
+      if (started.length === 0) {
+        onUpdateResource(resource.kind, resource.name, {
+          ...resource.fields,
+          [BOOT_FIELD]: withBootTarget(targets, referenceName(node)),
+        });
+        return;
+      }
+      if (started.length === 1 && onRemoveField) {
+        onRemoveField(
+          { kind: resource.kind, name: resource.name },
+          bootEntryPointer(started[0].index),
+        );
+        return;
+      }
+      onUpdateResource(resource.kind, resource.name, {
+        ...resource.fields,
+        [BOOT_FIELD]: withoutBootEntries(
+          targets,
+          started.map((marker) => marker.index),
+        ),
+      });
+    },
+    [resource, bootMarkersById, onUpdateResource, onRemoveField],
   );
 
   const { nodes, edges } = useMemo(() => {
@@ -645,9 +707,14 @@ export function ModuleGraphView({
         rowCountByArray[row.array] = (rowCountByArray[row.array] ?? 0) + 1;
       }
       const isMirror = mirrorOf.has(node.id);
+      const boot = isMirror ? undefined : bootMarkersById.get(node.id);
+      const bootToggle =
+        !isMirror && bootEditable && refResolver && canStartAtBoot(node, moduleGraph, refResolver);
       const data: GraphBoxData = {
         node,
         ...(isMirror ? { mirror: true } : {}),
+        ...(boot ? { boot } : {}),
+        ...(bootToggle ? { onToggleBoot: () => toggleBoot(node) } : {}),
         ...(mirrored?.fanIn.get(node.id) ? { fanIn: mirrored.fanIn.get(node.id) } : {}),
         depth: placed.depth,
         owned: (layout.ownedBy.get(node.id) ?? []).length,
@@ -835,6 +902,10 @@ export function ModuleGraphView({
     mirrored,
     pickerOptions,
     selectRow,
+    bootMarkersById,
+    bootEditable,
+    refResolver,
+    toggleBoot,
   ]);
 
 

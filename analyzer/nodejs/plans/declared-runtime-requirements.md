@@ -135,7 +135,7 @@ declaration; the imports half never needs computing, since each is checked where
 as the graph loads, but the app's own half is visible nowhere else. What differs is the
 *consumer*: nobody imports an application and it is never a resolution candidate, so its block
 buys only a version-attributed message for its own operators plus the CI hook. Declaring is
-therefore optional and recommended for anything distributed — most of all `templates/apps/*`,
+therefore optional and recommended for anything distributed — most of all `starters/apps/*`,
 the one app-shaped thing with real distribution. Grammar and reader stay identical across doc
 kinds; a block parsing differently by kind would be a second rule to keep in sync forever.
 
@@ -201,7 +201,7 @@ to know every axis that generation defines. Every axis shares one grammar — a 
 1. `requires:` parsed and enforced at load (analyzer, consumed by kernel, IDE and editor);
    verification in `publish` and `release check`; `upgrade` filtering with its held-back message.
 2. The standard library republished once, every library declaring the then-current range;
-   `templates/apps/*` and the distributed applications declaring in the same pass.
+   `starters/apps/*` and the distributed applications declaring in the same pass.
 3. Only then may zone attributes — or any other vocabulary change — land.
 
 Step 2 cannot be skipped and cannot be done retroactively: a version that carries new syntax

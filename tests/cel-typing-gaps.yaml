@@ -1,0 +1,26 @@
+kind: Telo.Application
+metadata:
+  name: CelTypingGapsTest
+  version: 1.0.0
+  description: >-
+    Each expression in the fixture used to check clean: `inputs` in a step body
+    was open whatever the contract declared, a handler's `outputs:` typed no
+    `result`, and a pure step's computed result was untyped, so `double + int`
+    surfaced only at dispatch.
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref reportsEachGap
+---
+kind: Assert.Manifest
+metadata:
+  name: reportsEachGap
+source: ./__fixtures__/cel-typing-gaps.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'inputs.nmae' is not defined (available: name)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "'result.totl' is not defined (available: greeting, total, subtotalRan)"
+    - code: CEL_TYPE_ERROR
+      message: "no such overload: double + int"
