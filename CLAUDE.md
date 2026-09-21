@@ -161,6 +161,8 @@ Registers a new resource kind (`<module-name>.<Name>`).
 - `status` — optional JSON Schema for observed state (`resources.<name>.status.<field>`); `required:` is rejected.
 - `inputType` / `outputType` — the invocation contract.
 - `resources` / `invoke` / `run` / `provide` — template bodies: entries are named by literals, dispatch slots take a `!ref` to a sibling or a module resource, and `inputs:` / `result:` are top-level siblings. The `{ kind, name }` object form and CEL-computed entry names are deprecated.
+- `targets` — on a templated Service / Runnable, instead of `run:`: `!ref` entries the instance starts in order when it runs (a server and the poller beside it). Guide: `docs/extend/templated-definitions.md`.
+- **Blueprints** (`blueprints/`) are libraries exporting one templated kind that is a whole application; a starter imports one. Guide: `blueprints/README.md`.
 
 **Resource-doc validation injects only `kind` and `metadata`** into a definition's `additionalProperties: false` schema. Every other top-level field an author may write — including `outputType` — must be declared as a property in the kind's own `schema`, or validation rejects it.
 

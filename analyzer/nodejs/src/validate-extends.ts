@@ -99,7 +99,7 @@ export function validateExtends(
     if (isDefinition && (m as { base?: unknown }).base != null) {
       const hasBody = hasOwnControllerOrTemplate(m as ResourceDefinition);
       const bodyKey =
-        (["resources", "controllers", "invoke", "run", "provide", "mount"] as const).find(
+        (["resources", "controllers", "invoke", "run", "targets", "provide", "mount"] as const).find(
           (key) => (m as Record<string, unknown>)[key] !== undefined,
         ) ?? "resources";
       if (hasBody) {

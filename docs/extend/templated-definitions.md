@@ -1,7 +1,7 @@
 ---
 sidebar_label: Templated Definitions
 slug: /extend/templated-definitions
-description: Define a new resource kind without writing a controller — compose existing kinds declaratively with a dispatch body (resources, invoke/provide/run/mount, inputs, result).
+description: Define a new resource kind without writing a controller — compose existing kinds declaratively with a dispatch body (resources, invoke/provide/run/mount, targets, inputs, result).
 ---
 
 # Templated definitions
@@ -31,6 +31,7 @@ A templated definition omits `controllers:` and instead supplies:
 | `inputType` / `outputType` | the invocation contract (Invocable / Runnable) |
 | `resources` | internal sub-resources instantiated per outer instance — the kinds the template composes |
 | `invoke:` / `provide:` / `run:` / `mount:` | the **dispatch target** — a `!ref` to the internal resource that fulfils the capability |
+| `targets:` | Service / Runnable only, instead of `run:` — the internal resources the instance **starts**, in order, when it runs |
 | `inputs` | top-level sibling — the values passed *to* the dispatch target |
 | `result` | top-level sibling — post-call mapping applied to the target's output |
 | `extends` | the `Telo.Abstract` this kind implements (optional) |
@@ -146,6 +147,51 @@ mount: !ref api
 
 See [`modules/crud/telo.yaml`](https://github.com/telorun/telo/blob/main/modules/crud/telo.yaml) for the full CRUD surface.
 
+## Starting several entries — `targets:`
+
+`run:` forwards the instance's one `run()` to one entry. A kind that has more
+than one thing to start — a server and the poller beside it, a schema migration
+before the server that reads the table — lists them in `targets:` instead, the
+template's counterpart to an Application's boot sequence:
+
+```yaml
+kind: Telo.Definition
+metadata:
+  name: App
+capability: Telo.Service
+schema: { … }
+resources:
+  - kind: DurableLocal.Resumer
+    metadata: { name: resumer }
+    workflow: !ref process
+  - kind: Http.Server
+    metadata: { name: server }
+    port: !cel "self.port"
+    mounts: [ … ]
+targets:
+  - !ref resumer
+  - !ref server
+```
+
+When an instance runs, each target is started in order through the kernel's
+run path — traced, marked started, and holding what its own `run()` allocated
+(a listening socket, a kernel hold) for as long as the instance lives. A target
+that fails stops the ones after it.
+
+- Each item is `!ref <entry>` naming a `resources:` entry; anything else is
+  `TEMPLATE_TARGETS_INVALID`, and a name matching no entry is
+  `TEMPLATE_TARGET_UNKNOWN`.
+- Only on a `Telo.Service` or `Telo.Runnable` definition
+  (`TEMPLATE_TARGETS_CAPABILITY`) — an invocable, provider or mount is never run,
+  so nothing would start its targets.
+- Not beside `run:` (`TEMPLATE_TARGETS_WITH_RUN`); a single entry is
+  `targets: [!ref <entry>]`.
+
+Each refusal is reported by `telo check` at the definition and, for a
+dependency's definition the consumer's check does not read, by the kernel when
+the definition is registered (`ERR_TEMPLATE_TARGETS_WITH_RUN`, …). A module
+writing `targets:` on a definition declares `requires: telo: ">=0.96.0"`.
+
 ## A `resources:` entry is a declaration of its own kind
 
 Write each entry exactly as you would write the same resource at the top level. Its CEL is resolved through **that kind's** annotations — its `x-telo-context` regions, its step body, its error branches — so every name the kind binds is in scope where it binds it:
@@ -173,6 +219,8 @@ resources:
         value: !cel "item.body"        # the ITERATION's element
 ```
 
+An entry is checked as that resource would be: against its kind's schema, with every `!ref` — including a step's `invoke:` — naming a sibling entry or a resource of the declaring module, and no two entries under one name. A resource used once inside an entry can be declared inline where it is used (a route's `handler: { kind: Run.Sequence, … }`); it is created with the rest of the body, and its CEL is typed by its own kind.
+
 A body is not limited to one dispatch. `inputs` inside a nested body types from **that entry's own `inputType:`**, never the enclosing definition's — the template reaches its body through a mapping free to rename or narrow, so typing against the outer contract would accept names the body never receives.
 
 Which nodes survive the template's `init()` is decided by the nested kind too: a field it marks `x-telo-eval: runtime`, or one under a CEL-bearing region, is left compiled for its own controller to evaluate. Everything else is resolved once against `self`.
@@ -186,7 +234,9 @@ Which nodes survive the template's `init()` is decided by the nested kind too: a
 | `result` | the dispatch target's `outputType` | top-level `result` |
 | whatever the nested kind binds | that kind's own annotations | inside the entry that declares it — `item` / `index` in an iteration, `request` in a route, `error` in a `catch:` |
 
-`self` may be mixed with a call-time name in one expression.
+`self` may be mixed with a call-time name in one expression. A field the instance leaves out reads as its schema `default:` through `self`.
+
+An expression reading nothing but `self` is resolved once, when the instance is created — unless it calls a function whose result differs per call (`uuidv4()`, `nowMillis()`), which is always evaluated where the nested kind evaluates the field.
 
 The analyzer validates every expression against the scope in force at its position, so a typo like `self.tabel`, `inputs.fitlers` or `item.bodyy` is a `telo check` error rather than a runtime surprise. Where a scope is open — a name the declaring kind leaves untyped — a typo below it is not decidable and is not reported.
 

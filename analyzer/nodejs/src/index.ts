@@ -95,6 +95,14 @@ export type {
   ReplacingDeclaration,
   SignatureDirection,
 } from "./extends-resolution.js";
+// A template's `targets:`, read once for `telo check` and the kernel.
+export {
+  capabilityStartsTargets,
+  templateTargetProblems,
+  templateTargetsOf,
+} from "./template-targets.js";
+export { nearestName } from "./nearest-name.js";
+export type { TemplateTarget, TemplateTargetProblem } from "./template-targets.js";
 // The callable signature, and the rules a callable kind is subject to. Shared
 // with the kernel so its definition-registration refusal and `telo check` cannot
 // drift — the `buildEvalPaths` / `evalPathCovers` precedent.
@@ -189,9 +197,11 @@ export {
   isAmbientHold,
   isOrderedRow,
   isUnwired,
+  templateModule,
 } from "./module-graph.js";
 export type {
   BuildModuleGraphOptions,
+  TemplateModule,
   EdgeClass,
   GraphEdge,
   GraphKind,

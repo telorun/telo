@@ -26,6 +26,7 @@ interface DefinitionBody {
   provide?: unknown;
   mount?: unknown;
   resources?: unknown[];
+  targets?: unknown;
   base?: Record<string, unknown>;
   schema?: Record<string, any>;
   status?: Record<string, any>;
@@ -70,13 +71,15 @@ export function ancestorChain(
 }
 
 /** True when a definition carries its own controller (`controllers:`) or a
- *  template body (`invoke:` / `run:` / `provide:` / `mount:` / `resources:`). */
+ *  template body (`invoke:` / `run:` / `targets:` / `provide:` / `mount:` /
+ *  `resources:`). */
 export function hasOwnControllerOrTemplate(def: ResourceDefinition | undefined): boolean {
   const d = body(def);
   return !!(
     (d.controllers && d.controllers.length) ||
     d.invoke ||
     d.run ||
+    d.targets ||
     d.provide ||
     d.mount ||
     d.resources

@@ -86,6 +86,10 @@ interface Declaration extends Provenance {
   /** Scopes it is lexically inside and not created in — see {@link OutsideScope}.
    *  Whatever it declares inline is created where it is, so inherits them. */
   outside: OutsideScope[];
+  /** A template body entry, or an extraction from one. A `use: schema` slot is
+   *  left inline there: a shape is resolved where it is written, never looked up
+   *  as a sibling. */
+  inBody?: true;
 }
 
 /** What `metadata.xTeloOrigin` records: where an extracted declaration was
@@ -173,13 +177,35 @@ export function normalizeInlineResources(
       ...provenanceOf(manifest, undefined),
     }));
 
-  const place = (manifest: ResourceManifest, into: unknown[] | undefined, module?: string) => {
+  // A template body's entries are declarations too, created in the template's
+  // own child context — so what one declares inline joins the same `resources:`
+  // list, where the kernel creates it with its siblings.
+  for (const definition of result) {
+    if (definition.kind !== "Telo.Definition") continue;
+    const body = (definition as { resources?: unknown }).resources;
+    if (!Array.isArray(body)) continue;
+    const provenance = provenanceOf(definition, undefined);
+    for (const entry of body) {
+      const name = (entry as { metadata?: { name?: unknown } } | undefined)?.metadata?.name;
+      if (typeof name !== "string" || name.includes("${{")) continue;
+      if (typeof (entry as { kind?: unknown }).kind !== "string") continue;
+      queue.push({ manifest: entry as NamedManifest, home: body, outside: [], inBody: true, ...provenance });
+    }
+  }
+
+  const place = (
+    manifest: ResourceManifest,
+    into: unknown[] | undefined,
+    module?: string,
+    inBody?: true,
+  ) => {
     if (into) into.push(manifest);
     else result.push(manifest);
     queue.push({
       manifest: manifest as NamedManifest,
       home: into,
       outside: outsideScopesOf(manifest),
+      ...(inBody ? { inBody } : {}),
       ...provenanceOf(manifest, module),
     });
   };
@@ -235,6 +261,7 @@ export function normalizeInlineResources(
     for (const [fieldPath, entry] of fieldMap) {
       if (!isRefEntry(entry)) continue;
       if (!acceptsInline(resource.kind, entry)) continue;
+      if (current.inBody && entry.uses.includes("schema")) continue;
       const scope = scopes.find((s) => scopeEncloses(s, fieldPath));
       for (const manifest of extractInlinesAtPath(
         resource,
@@ -245,13 +272,13 @@ export function normalizeInlineResources(
         outsideAt(fieldPath, scope),
         entry.context,
       )) {
-        place(manifest, scope?.declarations ?? home, parentModule);
+        place(manifest, scope?.declarations ?? home, parentModule, current.inBody);
       }
     }
 
     if (SYSTEM_KINDS.has(resource.kind)) continue;
     extractStepTargets(resource, view, registry, aliases, aliasesByModule, inherit, outsideAt, (m) =>
-      place(m, home, parentModule),
+      place(m, home, parentModule, current.inBody),
     );
   }
 

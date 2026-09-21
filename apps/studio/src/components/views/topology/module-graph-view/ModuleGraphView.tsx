@@ -26,7 +26,7 @@ import {
   bootEntries,
   bootEntryPointer,
   bootMarkers,
-  canStartAtBoot,
+  bootToggleAction,
   withBootTarget,
   withoutBootEntries,
   type BootMarker,
@@ -56,6 +56,7 @@ import {
   type ScreenPoint,
 } from "./graph-nodes";
 import {
+  isReferenceable,
   referenceableTargets,
   referenceName,
   siteOfHandle,
@@ -189,6 +190,8 @@ export function ModuleGraphView({
   onBackgroundClick,
   viewportFor,
   onViewportChange,
+  bootWritable = true,
+  onOpenTemplate,
 }: TopologyViewProps) {
   /**
    * Which edges are selected.
@@ -618,14 +621,15 @@ export function ModuleGraphView({
 
   /** Writes land in the module root, so the toggle needs IT to be editable. */
   const bootEditable =
+    bootWritable &&
     !!moduleGraph?.root &&
     (!moduleGraph.root.module || isEditableModule(moduleGraph.root.module));
 
   /**
-   * Start a resource at boot, or stop starting it.
+   * Start a resource at boot, or take it out of the boot sequence.
    *
    * On appends a bare `!ref` — the one spelling that means only "start this".
-   * Off removes every entry that starts it, a lone one as a sequence edit so the
+   * Off removes every entry naming it, an invoke step included, a lone one as a sequence edit so the
    * rest keep their tags and comments; several at once go through one field
    * write, since two sequence edits in a row would each read the workspace the
    * other had not written yet.
@@ -697,7 +701,10 @@ export function ModuleGraphView({
       // `kind: Self.WriteLine` is only in the kind table under the name its
       // owning module gives it.
       const schema = viewData.kinds.get(node.canonicalKind ?? node.kind)?.schema;
-      const editable = !node.module || isEditableModule(node.module);
+      // A template body draws what it reaches without owning it — the module's
+      // resource, what the instance supplies — and neither is written from it.
+      const foreign = node.ownership === "enclosing" || node.ownership === "forwarded";
+      const editable = !foreign && (!node.module || isEditableModule(node.module));
       // Ordered rows only: a declaration written at a dispatch site borrows its
       // host's array so it groups into the right branch, and counting it would
       // give the last real step a "move down" past a row that cannot move.
@@ -709,7 +716,10 @@ export function ModuleGraphView({
       const isMirror = mirrorOf.has(node.id);
       const boot = isMirror ? undefined : bootMarkersById.get(node.id);
       const bootToggle =
-        !isMirror && bootEditable && refResolver && canStartAtBoot(node, moduleGraph, refResolver);
+        !isMirror &&
+        bootEditable &&
+        refResolver &&
+        bootToggleAction(node, moduleGraph, refResolver, boot) !== undefined;
       const data: GraphBoxData = {
         node,
         ...(isMirror ? { mirror: true } : {}),
@@ -734,7 +744,14 @@ export function ModuleGraphView({
         (selectedId && mirrorOf.get(node.id) === selectedId)
           ? { ofSelectedKind: true }
           : {}),
-        ...(node.external && !editable ? { readOnly: true } : {}),
+        ...((node.external || node.ownership === "enclosing") && !editable
+          ? { readOnly: true }
+          : {}),
+        // A forwarded field is named by the kind it belongs to — the node's
+        // kind — so its label is that schema's title for the field.
+        ...(node.ownership === "forwarded"
+          ? { label: portTitlesFor(schema, [node.name])[node.name] ?? node.name }
+          : {}),
         isOpen: (property: string) => isOpen(node.id, property),
         onToggleProperty: (property: string) => toggleProperty(node.id, property),
         rowCountByArray,
@@ -823,7 +840,9 @@ export function ModuleGraphView({
                 ]),
             }
           : {}),
-        onOpen: () => onSelectResource(node.kind, node.name),
+        ...(node.ownership === "forwarded"
+          ? {}
+          : { onOpen: () => onSelectResource(node.kind, node.name) }),
         // A row click SELECTS — the panel shows this resource's body beside the
         // canvas. It used to navigate into the target, which replaced the whole
         // surface with that resource's editor: a click on a row is a request to
@@ -954,7 +973,7 @@ export function ModuleGraphView({
       if (!moduleGraph || !refResolver) return false;
       const from = connection.source ? moduleGraph.nodeById(connection.source) : undefined;
       const to = connection.target ? moduleGraph.nodeById(connection.target) : undefined;
-      if (!from || !to) return false;
+      if (!from || !to || !isReferenceable(to)) return false;
       const site = siteOfHandle(from, connection.sourceHandle);
       return !!site && !!spellingFor(site, to, refResolver);
     },
@@ -970,7 +989,7 @@ export function ModuleGraphView({
       if (!moduleGraph || !onWriteRef || !refResolver) return;
       const from = connection.source ? moduleGraph.nodeById(connection.source) : undefined;
       const to = connection.target ? moduleGraph.nodeById(connection.target) : undefined;
-      if (!from || !to) return;
+      if (!from || !to || !isReferenceable(to)) return;
       const site = siteOfHandle(from, connection.sourceHandle);
       const spelling = site ? spellingFor(site, to, refResolver) : undefined;
       if (!spelling) return;
@@ -1151,6 +1170,7 @@ export function ModuleGraphView({
         onToggle={() => patch({ kindsOpen: !view.kindsOpen })}
         selectedKind={selectedKind}
         onSelectKind={(kind) => patch({ kind })}
+        {...(onOpenTemplate ? { onOpenTemplate } : {})}
         selectedResource={selectedResource}
         onSelectResource={onSelectResource}
       />

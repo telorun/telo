@@ -172,9 +172,7 @@ export function accepts(
  * `slot` is a single spelling or a whole site: a drag lands on a box and any
  * spelling that takes it will do, while a rail port has only the one.
  *
- * An owned declaration is never offered: an inline or `with:`-scoped resource
- * exists nowhere but its owner's YAML and has no name to reference it by. Nor
- * is the module root, which is not a resource.
+ * Only a {@link isReferenceable} node is offered.
  */
 export function referenceableTargets(
   slot: { refs: string[] } | WireSite,
@@ -185,12 +183,23 @@ export function referenceableTargets(
     "spellings" in slot
       ? !!spellingFor(slot, node, resolver)
       : accepts(slot, node, resolver);
-  return nodes.filter(
-    (node) =>
-      !node.root &&
-      node.ownership !== "inline" &&
-      node.ownership !== "scoped" &&
-      takes(node),
+  return nodes.filter((node) => isReferenceable(node) && takes(node));
+}
+
+/**
+ * May a `!ref` name this node at all?
+ *
+ * An owned declaration may not: an inline or `with:`-scoped resource exists
+ * nowhere but its owner's YAML and has no name to reference it by. Nor may the
+ * module root, which is not a resource, nor a template body's forwarded field,
+ * which is reached by `self.<field>` and names no declaration.
+ */
+export function isReferenceable(node: GraphNode): boolean {
+  return (
+    !node.root &&
+    node.ownership !== "inline" &&
+    node.ownership !== "scoped" &&
+    node.ownership !== "forwarded"
   );
 }
 

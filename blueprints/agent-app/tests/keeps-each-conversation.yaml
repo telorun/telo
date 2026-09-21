@@ -1,0 +1,81 @@
+kind: Telo.Application
+metadata:
+  name: AgentAppBlueprintTest
+  version: 1.0.0
+  description: >-
+    Talks to an AgentApp over a model that echoes: every reply must be built
+    from the whole conversation so far, and two conversations must not see each
+    other's messages.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ./__fixtures__/echo-assistant.yaml
+    ports:
+      http: 8855
+    variables:
+      history: !cel "'.telo/agent-app-test-' + string(nowMillis()) + '.sqlite'"
+targets:
+  - !ref app
+steps:
+  - name: first
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8855/conversations/ada/messages
+      method: POST
+      body: { message: hello }
+  - name: second
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8855/conversations/ada/messages
+      method: POST
+      body: { message: where is my order }
+  - name: other
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8855/conversations/bob/messages
+      method: POST
+      body: { message: hi }
+  - name: history
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8855/conversations/ada/messages
+      method: GET
+  - name: empty
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8855/conversations/ada/messages
+      method: POST
+      body: { message: "" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: !cel "steps.first.result.body"
+        second: !cel "steps.second.result.body"
+        other: !cel "steps.other.result.body"
+        history: !cel "steps.history.result.body"
+        empty: !cel "steps.empty.result.status"
+      # Each count includes the system prompt the agent sends first. The second
+      # message mentions an order, so the model asks for `order_status` and
+      # answers from its result — two more turns the history does not keep.
+      expected:
+        first: { reply: "You said: hello (2 messages)" }
+        second: { reply: "You said: {\"status\":\"shipped\"} (6 messages)" }
+        other: { reply: "You said: hi (2 messages)" }
+        history:
+          messages:
+            - { role: user, content: hello }
+            - { role: assistant, content: "You said: hello (2 messages)" }
+            - { role: user, content: where is my order }
+            - { role: assistant, content: "You said: {\"status\":\"shipped\"} (6 messages)" }
+        empty: 400

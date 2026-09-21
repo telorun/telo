@@ -1,0 +1,89 @@
+kind: Telo.Application
+metadata:
+  name: ExpenseApprovals
+  version: 1.0.0
+  description: |
+    Expense claims built on the ApprovalApp blueprint. A claim under the limit
+    is paid without review; a larger one waits for a manager, for up to a week.
+    There is no server, router, journal or wait to write — only the claim's
+    shape, the rule and what happens after the decision.
+
+    Run, then:
+        curl -s -XPOST localhost:8850/requests -H 'content-type: application/json' \
+          -d '{"employee":"ada","amountCents":250000,"reason":"conference"}'
+        # → {"id":"<id>","status":"running"}
+        curl -s localhost:8850/requests/<id>                  # pending
+        curl -s -XPOST localhost:8850/requests/<id>/approve -H 'content-type: application/json' \
+          -d '{"decidedBy":"grace","note":"ok"}'
+        curl -s localhost:8850/requests/<id>                  # completed, approved
+imports:
+  ApprovalApp: ..
+  Run: ../../../modules/run
+  Console: ../../../modules/console
+targets:
+  - !ref approvals
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8850
+variables:
+  journal:
+    env: EXPENSES_JOURNAL
+    type: string
+    default: .telo/expenses
+  reviewDeadline:
+    env: REVIEW_DEADLINE
+    type: string
+    default: 168h
+    description: How long a claim waits for a manager before it is rejected.
+---
+kind: ApprovalApp.App
+metadata:
+  name: approvals
+port: !cel "ports.http"
+title: Expense claims
+journal: !cel "variables.journal"
+request:
+  type: object
+  additionalProperties: false
+  required: [employee, amountCents, reason]
+  properties:
+    employee: { type: string, minLength: 1 }
+    amountCents: { type: integer, minimum: 1 }
+    reason: { type: string, minLength: 1 }
+autoApprove: !cel "request.body.amountCents < 10000"
+timeout: !cel "variables.reviewDeadline"
+onApproved:
+  kind: Run.Sequence
+  inputType: &decided
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [id, request, decidedBy, note]
+      properties:
+        id: { type: string }
+        request:
+          type: object
+          properties:
+            employee: { type: string }
+            amountCents: { type: integer }
+            reason: { type: string }
+        decidedBy: { type: string }
+        note: { type: string }
+  steps:
+    - name: pay
+      invoke: { kind: Console.WriteLine }
+      inputs:
+        output: !cel >-
+          '{green paid} ' + string(inputs.request.amountCents) + ' cents to ' +
+          inputs.request.employee + ', approved by ' + inputs.decidedBy
+onRejected:
+  kind: Run.Sequence
+  inputType: *decided
+  steps:
+    - name: notify
+      invoke: { kind: Console.WriteLine }
+      inputs:
+        output: !cel >-
+          '{red rejected} ' + inputs.request.employee + "'s claim: " + inputs.note

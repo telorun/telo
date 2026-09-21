@@ -1,0 +1,41 @@
+kind: Telo.Application
+metadata:
+  name: EchoAssistant
+  version: 1.0.0
+  description: >-
+    An AgentApp over a model that echoes, so the blueprint's endpoints, history
+    and tool wiring can be exercised without a provider.
+imports:
+  AgentApp: ../..
+  Echo: ./echo-model.yaml
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+targets:
+  - !ref assistant
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8855
+variables:
+  history:
+    env: CONVERSATIONS_FILE
+    type: string
+---
+kind: AgentApp.App
+metadata:
+  name: assistant
+port: !cel "ports.http"
+history: !cel "variables.history"
+model:
+  kind: Echo.Model
+system: Answer briefly.
+tools:
+  - tool:
+      kind: Run.Value
+      value: { status: shipped }
+    name: order_status
+    description: Where an order is.
+    parameters:
+      type: object
+      properties:
+        orderId: { type: string }

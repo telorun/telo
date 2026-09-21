@@ -1,0 +1,28 @@
+# Two template body entries under one name.
+kind: Telo.Library
+metadata:
+  name: TemplateDuplicateEntryLib
+exports:
+  kinds: [Job]
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Job
+capability: Telo.Runnable
+schema:
+  type: object
+resources:
+  - kind: Run.Sequence
+    metadata: { name: body }
+    steps:
+      - name: first
+        value: 1
+  - kind: Run.Sequence
+    metadata: { name: body }
+    steps:
+      - name: second
+        value: 2
+targets:
+  - !ref body

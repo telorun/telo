@@ -1715,6 +1715,16 @@ system: |
     (`TEMPLATE_ENTRY_NAME_DYNAMIC`). Reference slots INSIDE an entry follow the
     same rule: `!ref` a sibling entry or a resource of your own module.
 
+    A SERVICE OR RUNNABLE KIND THAT STARTS MORE THAN ONE ENTRY lists them in
+    `targets:` instead of `run:` — `targets: [!ref resumer, !ref server]`, each
+    a `!ref` to an entry, started in order when an instance runs (the template's
+    counterpart to an Application's boot sequence). `run:` starts exactly one
+    entry, so a server beside a poller, or a schema step before the server that
+    reads the table, needs `targets:`. Never both on one definition
+    (`TEMPLATE_TARGETS_WITH_RUN`), and never on an invocable, provider or mount
+    kind (`TEMPLATE_TARGETS_CAPABILITY`). A field your instance leaves out reads
+    as its schema `default:` through `self`.
+
     A reference your kind's INSTANCE holds reaches an entry only through a bare
     `!cel "self.<path>"` — one slot (`connection: !cel "self.connection"`) or a
     whole value holding several (`routes: !cel "self.routes"`, each route's

@@ -23,6 +23,14 @@ targets:
   - !ref dispatchRef
   - !ref baseWithBody
   - !ref baseWithBodyAtRuntime
+  - !ref templateTargets
+  - !ref templateTargetsAtRuntime
+  - !ref templateTargetsCapability
+  - !ref templateTargetsCapabilityAtRuntime
+  - !ref templateEntrySchema
+  - !ref templateEntrySchemaAtRuntime
+  - !ref templateDuplicateEntry
+  - !ref templateDuplicateEntryAtRuntime
   - !ref badExports
   - !ref childAliasScope
   - !ref moduleNameAlias
@@ -161,6 +169,75 @@ metadata:
 source: ./__fixtures__/check-run-agreement/base-with-body/telo.yaml
 expect:
   runFails: "ERR_BASE_WITH_TEMPLATE_BODY"
+---
+# A template's `targets:` beside `run:`, and naming no entry. The consumer's
+# entry-scoped check is silent, so the kernel refuses the definition itself.
+kind: Assert.Manifest
+metadata:
+  name: templateTargets
+source: ./__fixtures__/check-run-agreement/template-targets/lib/telo.yaml
+expect:
+  errors:
+    - code: TEMPLATE_TARGETS_WITH_RUN
+      message: "'targets:' and 'run:' both say what running this kind does"
+    - code: TEMPLATE_TARGET_UNKNOWN
+      message: "'targets[0]: !ref frist' names no entry in 'resources:'"
+---
+kind: Assert.Manifest
+metadata:
+  name: templateTargetsAtRuntime
+source: ./__fixtures__/check-run-agreement/template-targets/telo.yaml
+expect:
+  runFails: "ERR_TEMPLATE_TARGETS_WITH_RUN"
+---
+# `targets:` on an invocable kind: nothing runs it, so nothing would start them.
+kind: Assert.Manifest
+metadata:
+  name: templateTargetsCapability
+source: ./__fixtures__/check-run-agreement/template-targets-capability/lib/telo.yaml
+expect:
+  errors:
+    - code: TEMPLATE_TARGETS_CAPABILITY
+      message: "only valid on a 'Telo.Service' or 'Telo.Runnable' definition"
+---
+kind: Assert.Manifest
+metadata:
+  name: templateEntrySchema
+source: ./__fixtures__/check-run-agreement/template-entry-schema/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "the Run.Sequence entry 'body': / is missing required property 'steps'"
+---
+kind: Assert.Manifest
+metadata:
+  name: templateDuplicateEntry
+source: ./__fixtures__/check-run-agreement/template-duplicate-entry/lib/telo.yaml
+expect:
+  errors:
+    - code: DUPLICATE_RESOURCE_NAME
+      message: "two 'resources:' entries are named 'body'"
+---
+kind: Assert.Manifest
+metadata:
+  name: templateDuplicateEntryAtRuntime
+source: ./__fixtures__/check-run-agreement/template-duplicate-entry/telo.yaml
+expect:
+  runFails: "ERR_DUPLICATE_RESOURCE"
+---
+kind: Assert.Manifest
+metadata:
+  name: templateEntrySchemaAtRuntime
+source: ./__fixtures__/check-run-agreement/template-entry-schema/telo.yaml
+expect:
+  runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED"
+---
+kind: Assert.Manifest
+metadata:
+  name: templateTargetsCapabilityAtRuntime
+source: ./__fixtures__/check-run-agreement/template-targets-capability/telo.yaml
+expect:
+  runFails: "ERR_TEMPLATE_TARGETS_CAPABILITY"
 ---
 # A library's export list, resolved where it is written rather than in whichever
 # consumer first tries to use it.

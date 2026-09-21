@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: TemplateTargetsTest
+  version: 1.0.0
+  description: >-
+    A templated kind's `targets:` start each listed entry, once and in order,
+    when an instance runs — the entries a single `run:` could not start
+    together.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref pipeline
+  - !ref runs
+---
+kind: Telo.Definition
+metadata:
+  name: TwoStage
+capability: Telo.Runnable
+schema:
+  type: object
+resources:
+  - kind: Run.Sequence
+    metadata: { name: prepare }
+    steps:
+      - name: noop
+        value: 1
+  - kind: Run.Sequence
+    metadata: { name: publish }
+    steps:
+      - name: noop
+        value: 2
+targets:
+  - !ref prepare
+  - !ref publish
+---
+kind: Self.TwoStage
+metadata: { name: pipeline }
+---
+kind: Assert.Events
+metadata: { name: runs }
+filter:
+  - type: "prepare.Run"
+  - type: "publish.Run"
+expect:
+  - event: prepare.Run
+    times: 1
+  - event: publish.Run
+    times: 1

@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: TemplateTargetsApp
+imports:
+  Lib: ./lib
+targets:
+  - !ref starts
+---
+kind: Lib.Starts
+metadata:
+  name: starts

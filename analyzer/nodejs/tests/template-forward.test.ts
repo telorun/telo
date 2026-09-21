@@ -105,7 +105,7 @@ function routesKind(workflows: Record<string, unknown>): ResourceManifest {
     capability: "Telo.Mount",
     schema: { type: "object", required: ["workflows"], properties: { workflows } },
     resources: [
-      { kind: "http.Api", metadata: { name: "api" }, title: 42, routes: cel("self.workflows") },
+      { kind: "http.Api", metadata: { name: "api" }, title: "Routes", routes: cel("self.workflows") },
     ],
     mount: ref("api"),
   } as unknown as ResourceManifest;
@@ -169,8 +169,8 @@ describe("a template forward is checked as the entry kind's field", () => {
   });
 
   it("reports nothing about what the consumer did not write", () => {
-    // The entry's literal `title: 42` and the view's missing `title` are the
-    // library's; a valid consumer checks clean.
+    // The view holds only what is forwarded, so it lacks the entry's required
+    // `title`; that is the library's, and a valid consumer checks clean.
     expect(
       errors(routesKind(workflowsSlot), consumer({ returns: [{ status: 200, body: cel("result") }] })),
     ).toEqual([]);

@@ -102,7 +102,7 @@ describe("a module call's result", () => {
   it("types as the callee's declared result, operators included", async () => {
     const diagnostics = await check(withFunction(`!cel "string(Self.amountOf(items[0]) + 'x')"`));
     expect(diagnostics).toEqual([
-      ["CEL_TYPE_ERROR", "Telo.Function/probe: !cel at 'body': no such overload: int + string"],
+      ["CEL_TYPE_ERROR", "Telo.Function/probe: !cel: no such overload: int + string"],
     ]);
   });
 
